@@ -408,6 +408,14 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
                 DynamicPPL.TestUtils.DEMO_MODELS..., DynamicPPL.TestUtils.demo_lkjchol(2)
             ]
             @testset "$(model.f)" for model in models_to_test
+                if model.f === DynamicPPL.TestUtils.demo_nested_colons && VERSION < v"1.11"
+                    # On v1.10, the demo_nested_colons model, which uses a lot of
+                    # NamedTuples, is badly type unstable. Not worth doing much about
+                    # it, since it's fixed on later Julia versions, so just skipping
+                    # these tests.
+                    @test_skip false skip = true
+                    continue
+                end
                 vns = DynamicPPL.TestUtils.varnames(model)
                 example_values = DynamicPPL.TestUtils.rand_prior_true(model)
                 varinfos = filter(
