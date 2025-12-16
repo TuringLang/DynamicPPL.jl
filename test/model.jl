@@ -413,7 +413,7 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
                     # NamedTuples, is badly type unstable. Not worth doing much about
                     # it, since it's fixed on later Julia versions, so just skipping
                     # these tests.
-                    @test_skip false skip = true
+                    @test false skip = true
                     continue
                 end
                 vns = DynamicPPL.TestUtils.varnames(model)
