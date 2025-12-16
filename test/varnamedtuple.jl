@@ -4,7 +4,7 @@ using Combinatorics: Combinatorics
 using Test: @inferred, @test, @test_throws, @testset
 using DynamicPPL: DynamicPPL, @varname, VarNamedTuple
 using DynamicPPL.VarNamedTuples: PartialArray, ArrayLikeBlock
-using AbstractPPL: VarName, prefix
+using AbstractPPL: VarName, concretize, prefix
 using BangBang: setindex!!
 
 """
@@ -230,6 +230,25 @@ Base.size(st::SizedThing) = st.size
         vn5 = prefix(prefix(vn3, vn2), vn1)
         vnt = @inferred(setindex!!(vnt, 6, vn5))
         @test @inferred(getindex(vnt, vn5)) == 6
+        test_invariants(vnt)
+
+        # ConcretizedSlices
+        vnt = VarNamedTuple()
+        x = [1, 2, 3]
+        vn = concretize(@varname(y[:]), x)
+        vnt = @inferred(setindex!!(vnt, x, vn))
+        @test haskey(vnt, vn)
+        @test @inferred(getindex(vnt, vn)) == x
+        test_invariants(vnt)
+
+        y = fill("a", (3, 2, 4))
+        x = y[:, 2, :]
+        a = (; b=[nothing, nothing, (; c=(; d=reshape(y, (1, 3, 2, 4, 1))))])
+        vn = @varname(a.b[3].c.d[1, 3:5, 2, :, 1])
+        vn = concretize(vn, a)
+        vnt = @inferred(setindex!!(vnt, x, vn))
+        @test haskey(vnt, vn)
+        @test @inferred(getindex(vnt, vn)) == x
         test_invariants(vnt)
     end
 

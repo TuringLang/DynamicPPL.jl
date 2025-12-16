@@ -565,6 +565,71 @@ function varnames(model::Model{typeof(demo_assume_matrix_observe_matrix_index)})
     return [@varname(s), @varname(m)]
 end
 
+@model function demo_nested_colons(
+    x=(; data=[(; subdata=transpose([1.5 2.0;]))]), ::Type{TV}=Array{Float64}
+) where {TV}
+    n = length(x.data[1].subdata)
+    d = n ÷ 2
+    s = (; params=[(; subparams=TV(undef, (d, 1, 2)))])
+    s.params[1].subparams[:, 1, :] ~ reshape(
+        product_distribution(fill(InverseGamma(2, 3), n)), d, 2
+    )
+    s_vec = vec(s.params[1].subparams)
+    # TODO(mhauru) The below element type concretisation is because of
+    # https://github.com/JuliaFolds2/BangBang.jl/issues/39
+    # which causes, when this is evaluated with an untyped VarInfo, s_vec to be an
+    # Array{Any}.
+    s_vec = [x for x in s_vec]
+    m ~ MvNormal(zeros(n), Diagonal(s_vec))
+
+    x.data[1].subdata[:, 1] ~ MvNormal(m, Diagonal(s_vec))
+
+    return (; s=s, m=m, x=x)
+end
+function logprior_true(model::Model{typeof(demo_nested_colons)}, s, m)
+    n = length(model.args.x.data[1].subdata)
+    # TODO(mhauru) We need to enforce a convention on whether this function gets called
+    # with the parameters as the model returns them, or with the parameters "unpacked".
+    # Currently different tests do different things.
+    s_vec = if s isa NamedTuple
+        vec(s.params[1].subparams)
+    else
+        vec(s)
+    end
+    return loglikelihood(InverseGamma(2, 3), s_vec) +
+           logpdf(MvNormal(zeros(n), Diagonal(s_vec)), m)
+end
+function loglikelihood_true(model::Model{typeof(demo_nested_colons)}, s, m)
+    # TODO(mhauru) We need to enforce a convention on whether this function gets called
+    # with the parameters as the model returns them, or with the parameters "unpacked".
+    # Currently different tests do different things.
+    s_vec = if s isa NamedTuple
+        vec(s.params[1].subparams)
+    else
+        vec(s)
+    end
+    return loglikelihood(MvNormal(m, Diagonal(s_vec)), model.args.x.data[1].subdata)
+end
+function logprior_true_with_logabsdet_jacobian(
+    model::Model{typeof(demo_nested_colons)}, s, m
+)
+    return _demo_logprior_true_with_logabsdet_jacobian(model, s.params[1].subparams, m)
+end
+function varnames(::Model{typeof(demo_nested_colons)})
+    return [
+        @varname(
+            s.params[1].subparams[
+                AbstractPPL.ConcretizedSlice(Base.Slice(Base.OneTo(1))),
+                1,
+                AbstractPPL.ConcretizedSlice(Base.Slice(Base.OneTo(2))),
+            ]
+        ),
+        # @varname(s.params[1].subparams[1,1,1]),
+        # @varname(s.params[1].subparams[1,1,2]),
+        @varname(m),
+    ]
+end
+
 const UnivariateAssumeDemoModels = Union{
     Model{typeof(demo_assume_dot_observe)},
     Model{typeof(demo_assume_dot_observe_literal)},
@@ -701,6 +766,51 @@ function rand_prior_true(rng::Random.AbstractRNG, model::MatrixvariateAssumeDemo
     return vals
 end
 
+function posterior_mean(model::Model{typeof(demo_nested_colons)})
+    # Get some containers to fill.
+    vals = rand_prior_true(model)
+
+    vals.s.params[1].subparams[1, 1, 1] = 19 / 8
+    vals.m[1] = 3 / 4
+
+    vals.s.params[1].subparams[1, 1, 2] = 8 / 3
+    vals.m[2] = 1
+
+    return vals
+end
+function likelihood_optima(model::Model{typeof(demo_nested_colons)})
+    # Get some containers to fill.
+    vals = rand_prior_true(model)
+
+    # NOTE: These are "as close to zero as we can get".
+    vals.s.params[1].subparams[1, 1, 1] = 1e-32
+    vals.s.params[1].subparams[1, 1, 2] = 1e-32
+
+    vals.m[1] = 1.5
+    vals.m[2] = 2.0
+
+    return vals
+end
+function posterior_optima(model::Model{typeof(demo_nested_colons)})
+    # Get some containers to fill.
+    vals = rand_prior_true(model)
+
+    # TODO: Figure out exact for `s[1]`.
+    vals.s.params[1].subparams[1, 1, 1] = 0.890625
+    vals.s.params[1].subparams[1, 1, 2] = 1
+    vals.m[1] = 3 / 4
+    vals.m[2] = 1
+
+    return vals
+end
+function rand_prior_true(rng::Random.AbstractRNG, ::Model{typeof(demo_nested_colons)})
+    svec = rand(rng, InverseGamma(2, 3), 2)
+    return (;
+        s=(; params=[(; subparams=reshape(svec, (1, 1, 2)))]),
+        m=rand(rng, MvNormal(zeros(2), Diagonal(svec))),
+    )
+end
+
 """
 A collection of models corresponding to the posterior distribution defined by
 the generative process
@@ -749,6 +859,7 @@ const DEMO_MODELS = (
     demo_dot_assume_observe_submodel(),
     demo_dot_assume_observe_matrix_index(),
     demo_assume_matrix_observe_matrix_index(),
+    demo_nested_colons(),
 )
 
 """
