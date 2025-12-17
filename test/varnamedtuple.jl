@@ -5,7 +5,7 @@ using Test: @inferred, @test, @test_throws, @testset
 using DynamicPPL: DynamicPPL, @varname, VarNamedTuple
 using DynamicPPL.VarNamedTuples: PartialArray, ArrayLikeBlock
 using AbstractPPL: VarName, concretize, prefix
-using BangBang: setindex!!
+using BangBang: setindex!!, empty!!
 
 """
     test_invariants(vnt::VarNamedTuple)
@@ -15,8 +15,11 @@ Test properties that should hold for all VarNamedTuples.
 Uses @test for all the tests. Intended to be called inside a @testset.
 """
 function test_invariants(vnt::VarNamedTuple)
+    # These will be needed repeatedly.
+    vnt_keys = keys(vnt)
+    vnt_values = values(vnt)
     # Check that for all keys in vnt, haskey is true, and resetting the value is a no-op.
-    for k in keys(vnt)
+    for k in vnt_keys
         @test haskey(vnt, k)
         v = getindex(vnt, k)
         # ArrayLikeBlocks are an implementation detail, and should not be exposed through
@@ -40,10 +43,22 @@ function test_invariants(vnt::VarNamedTuple)
     @test merge(VarNamedTuple(), vnt) == vnt
     # Check that the VNT can be constructed back from its keys and values.
     vnt4 = VarNamedTuple()
-    for (k, v) in zip(keys(vnt), values(vnt))
+    for (k, v) in zip(vnt_keys, vnt_values)
         vnt4 = setindex!!(vnt4, v, k)
     end
     @test vnt == vnt4
+    # Check that vnt isempty only if it has no keys
+    was_empty = isempty(vnt)
+    @test was_empty == isempty(vnt_keys)
+    @test was_empty == isempty(vnt_values)
+    # Check that vnt can be emptied
+    @test empty(vnt) == VarNamedTuple()
+    emptied_vnt = empty!!(copy(vnt))
+    @test isempty(emptied_vnt)
+    @test isempty(keys(emptied_vnt))
+    @test isempty(values(emptied_vnt))
+    # Check that the copy protected the original vnt from being modified.
+    @test isempty(vnt) == was_empty
 end
 
 """ A type that has a size but is not an Array. Used in ArrayLikeBlock tests."""
@@ -518,6 +533,35 @@ Base.size(st::SizedThing) = st.size
 
         vnt = setindex!!(vnt, SizedThing((3, 2)), @varname(x[1, 4:6, 2, 1:2, 3]))
         @test @inferred(length(vnt)) == 14
+    end
+
+    @testset "empty" begin
+        # test_invariants already checks that many different kinds of VarNamedTuples can be
+        # emptied with empty and empty!!. What remains to check here is that
+        # 1) isempty gives the expected results:
+        vnt = VarNamedTuple()
+        @test @inferred(isempty(vnt)) == true
+        vnt = setindex!!(vnt, 1.0, @varname(a))
+        @test @inferred(isempty(vnt)) == false
+
+        vnt = VarNamedTuple()
+        vnt = setindex!!(vnt, [], @varname(a[1]))
+        @test @inferred(isempty(vnt)) == false
+
+        # 2) empty!! keeps PartialArrays in place:
+        vnt = VarNamedTuple()
+        vnt = @inferred(setindex!!(vnt, [1, 2, 3], @varname(a[1:3])))
+        vnt = @inferred(empty!!(vnt))
+        @test !haskey(vnt, @varname(a[1]))
+        @test !haskey(vnt, @varname(a[1:3]))
+        @test haskey(vnt, @varname(a))
+        @test_throws BoundsError getindex(vnt, @varname(a[1]))
+        @test_throws BoundsError getindex(vnt, @varname(a[1:3]))
+        @test getindex(vnt, @varname(a)) == []
+        vnt = @inferred(setindex!!(vnt, [1, 2, 3], @varname(a[2:4])))
+        @test @inferred(getindex(vnt, @varname(a[2:4]))) == [1, 2, 3]
+        @test haskey(vnt, @varname(a[2:4]))
+        @test !haskey(vnt, @varname(a[1]))
     end
 
     @testset "printing" begin

@@ -339,6 +339,8 @@ function Base.hash(pa::PartialArray, h::UInt)
     return h
 end
 
+Base.isempty(pa::PartialArray) = !any(pa.mask)
+Base.empty(pa::PartialArray) = PartialArray(similar(pa.data), fill(false, size(pa.mask)))
 function BangBang.empty!!(pa::PartialArray)
     for i in eachindex(pa.mask)
         @inbounds pa.mask[i] = false
@@ -896,9 +898,13 @@ function Base.copy(vnt::VarNamedTuple{names}) where {names}
     )
 end
 
-_has_partial_array(::Type{T}) where {T} = false
-_has_partial_array(::Type{<:PartialArray}) = true
+"""
+    _has_partial_array(::Type{VarNamedTuple{Names,Values}}) where {Names,Values}
 
+Check if any of the types in the `Values` tuple is or contains a `PartialArray`.
+
+Recurses into any sub-`VarNamedTuple`s.
+"""
 @generated function _has_partial_array(
     ::Type{VarNamedTuple{Names,Values}}
 ) where {Names,Values}
@@ -910,28 +916,71 @@ _has_partial_array(::Type{<:PartialArray}) = true
     return :(return false)
 end
 
-# TODO(mhauru) Should this recur to PartialArray?
-Base.isempty(vnt::VarNamedTuple) = isempty(vnt.data)
+_has_partial_array(::Type{T}) where {T} = false
+_has_partial_array(::Type{<:PartialArray}) = true
 
-# TODO(mhauru) Should this in fact keep the PartialArrays in place, but set them all to have
-# mask = fill(false, size(pa.mask))? That might save some allocations.
 Base.empty(::VarNamedTuple) = VarNamedTuple()
 
+"""
+    empty!!(vnt::VarNamedTuple)
+
+Create an empty version of `vnt` in place.
+
+This differs from `Base.empty` in that any `PartialArray`s contained within `vnt` are kept
+but have their contents deleted, rather than being removed entirely. This means that
+
+1) The result has a "memory" of how many dimensions different variables had, and you cannot,
+   for example, set `a[1,2]` after emptying a `VarNamedTuple` that had only `a[1]` defined.
+2) Memory allocations may be reduced when reusing `VarNamedTuple`s, since the internal
+   `PartialArray`s do not need to be reallocated from scratch.
+"""
 @generated function BangBang.empty!!(vnt::VarNamedTuple{Names,Values}) where {Names,Values}
     if !_has_partial_array(VarNamedTuple{Names,Values})
         return :(return VarNamedTuple())
     end
+    # Check all the fields of the NamedTuple, and keep the ones that contain PartialArrays,
+    # calling empty!! on them recursively.
     new_names = ()
     new_values = ()
     for (name, ValType) in zip(Names, Values.parameters)
         if _has_partial_array(ValType)
-            new_values = (new_values..., :(BangBang.empty!!(vnt.data[$(QuoteNode(name))])))
+            new_values = (new_values..., :(BangBang.empty!!(vnt.data.$name)))
             new_names = (new_names..., name)
         end
     end
     return quote
         return VarNamedTuple(NamedTuple{$new_names}(($(new_values...),)))
     end
+end
+
+@generated function Base.isempty(vnt::VarNamedTuple{Names,Values}) where {Names,Values}
+    if isempty(Names)
+        return :(return true)
+    end
+    if !_has_partial_array(VarNamedTuple{Names,Values})
+        return :(return false)
+    end
+    exs = Expr[]
+    for (name, ValType) in zip(Names, Values.parameters)
+        if !_has_partial_array(ValType)
+            return :(return false)
+        end
+        push!(
+            exs,
+            quote
+                val = vnt.data.$name
+                if val isa VarNamedTuple || val isa PartialArray
+                    if !Base.isempty(val)
+                        return false
+                    end
+                else
+                    return false
+                end
+            end,
+        )
+    end
+    push!(exs, :(return true))
+    return Expr(:block, exs...)
 end
 
 """
