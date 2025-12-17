@@ -390,19 +390,19 @@ Base.size(st::SizedThing) = st.size
 
         vnt = setindex!!(vnt, [1, 2, 3], @varname(b))
         @test keys(vnt) == [@varname(a), @varname(b)]
-        @test values(vnt) == [1.0, [1,2,3]]
+        @test values(vnt) == [1.0, [1, 2, 3]]
 
         vnt = setindex!!(vnt, 15, @varname(b[2]))
         @test keys(vnt) == [@varname(a), @varname(b)]
-        @test values(vnt) == [1.0, [1,15,3]]
+        @test values(vnt) == [1.0, [1, 15, 3]]
 
         vnt = setindex!!(vnt, [10], @varname(c.x.y))
         @test keys(vnt) == [@varname(a), @varname(b), @varname(c.x.y)]
-        @test values(vnt) == [1.0, [1,15,3], [10]]
+        @test values(vnt) == [1.0, [1, 15, 3], [10]]
 
         vnt = setindex!!(vnt, -1.0, @varname(d[4]))
         @test keys(vnt) == [@varname(a), @varname(b), @varname(c.x.y), @varname(d[4])]
-        @test values(vnt) == [1.0, [1,15,3], [10], -1.0]
+        @test values(vnt) == [1.0, [1, 15, 3], [10], -1.0]
 
         vnt = setindex!!(vnt, 2.0, @varname(e.f[3, 3].g.h[2, 4, 1].i))
         @test keys(vnt) == [
@@ -412,7 +412,7 @@ Base.size(st::SizedThing) = st.size
             @varname(d[4]),
             @varname(e.f[3, 3].g.h[2, 4, 1].i),
         ]
-        @test values(vnt) == [1.0, [1,15,3], [10], -1.0, 2.0]
+        @test values(vnt) == [1.0, [1, 15, 3], [10], -1.0, 2.0]
 
         vnt = setindex!!(vnt, fill(1.0, 4), @varname(j[1:4]))
         @test keys(vnt) == [
@@ -426,8 +426,7 @@ Base.size(st::SizedThing) = st.size
             @varname(j[3]),
             @varname(j[4]),
         ]
-        @test values(vnt) == [1.0, [1,15,3], [10], -1.0, 2.0, fill(1.0, 4)...]
-
+        @test values(vnt) == [1.0, [1, 15, 3], [10], -1.0, 2.0, fill(1.0, 4)...]
 
         vnt = setindex!!(vnt, "a", @varname(j[6]))
         @test keys(vnt) == [
@@ -442,7 +441,7 @@ Base.size(st::SizedThing) = st.size
             @varname(j[4]),
             @varname(j[6]),
         ]
-        @test values(vnt) == [1.0, [1,15,3], [10], -1.0, 2.0, fill(1.0, 4)..., "a"]
+        @test values(vnt) == [1.0, [1, 15, 3], [10], -1.0, 2.0, fill(1.0, 4)..., "a"]
 
         vnt = setindex!!(vnt, 1.0, @varname(n[2].a))
         @test keys(vnt) == [
@@ -458,7 +457,7 @@ Base.size(st::SizedThing) = st.size
             @varname(j[6]),
             @varname(n[2].a),
         ]
-        @test values(vnt) == [1.0, [1,15,3], [10], -1.0, 2.0, fill(1.0, 4)..., "a", 1.0]
+        @test values(vnt) == [1.0, [1, 15, 3], [10], -1.0, 2.0, fill(1.0, 4)..., "a", 1.0]
 
         vnt = setindex!!(vnt, SizedThing((3, 1, 4)), @varname(o[2:4, 5:5, 11:14]))
         @test keys(vnt) == [
@@ -475,7 +474,50 @@ Base.size(st::SizedThing) = st.size
             @varname(n[2].a),
             @varname(o[2:4, 5:5, 11:14]),
         ]
-        @test values(vnt) == [1.0, [1,15,3], [10], -1.0, 2.0, fill(1.0, 4)..., "a", 1.0, SizedThing((3, 1, 4))]
+        @test values(vnt) == [
+            1.0,
+            [1, 15, 3],
+            [10],
+            -1.0,
+            2.0,
+            fill(1.0, 4)...,
+            "a",
+            1.0,
+            SizedThing((3, 1, 4)),
+        ]
+    end
+
+    @testset "length" begin
+        vnt = VarNamedTuple()
+        @test @inferred(length(vnt)) == 0
+
+        vnt = setindex!!(vnt, 1.0, @varname(a))
+        @test @inferred(length(vnt)) == 1
+
+        vnt = setindex!!(vnt, [1, 2, 3], @varname(b))
+        @test @inferred(length(vnt)) == 2
+
+        vnt = setindex!!(vnt, 15, @varname(b[2]))
+        @test @inferred(length(vnt)) == 2
+
+        vnt = setindex!!(vnt, [10, 11], @varname(c.x.y))
+        @test @inferred(length(vnt)) == 3
+
+        vnt = setindex!!(vnt, -1.0, @varname(d[4]))
+        @test @inferred(length(vnt)) == 4
+
+        vnt = setindex!!(vnt, ["a", "b"], @varname(d[1:2]))
+        @test @inferred(length(vnt)) == 6
+
+        vnt = setindex!!(vnt, 2.0, @varname(e.f[3].g.h[2].i))
+        vnt = setindex!!(vnt, 3.0, @varname(e.f[3].g.h[2].j))
+        @test @inferred(length(vnt)) == 8
+
+        vnt = setindex!!(vnt, SizedThing((3, 2)), @varname(x[1, 2:4, 2, 1:2, 3]))
+        @test @inferred(length(vnt)) == 14
+
+        vnt = setindex!!(vnt, SizedThing((3, 2)), @varname(x[1, 4:6, 2, 1:2, 3]))
+        @test @inferred(length(vnt)) == 14
     end
 
     @testset "printing" begin

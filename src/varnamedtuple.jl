@@ -766,6 +766,76 @@ function Base.values(pa::PartialArray)
     return vs
 end
 
+function Base.length(pa::PartialArray)
+    len = 0
+    for ind in CartesianIndices(pa.mask)
+        @inbounds if !pa.mask[ind]
+            continue
+        end
+        val = getindex(pa.data, ind)
+        if val isa VarNamedTuple
+            len += length(val)
+        else
+            # Note we don't need to special case here for ArrayLikeBlocks. That's because
+            # we want to treat index pointing to the same ArrayLikeBlock as contributing to
+            # the length.
+            len += 1
+        end
+    end
+    return len
+end
+
+"""
+    _dense_array(pa::PartialArray)
+
+Return a `Base.Array` of the elements of the `PartialArray`.
+
+If the `PartialArray` has any missing elements that are "within" the block of set elements,
+this will error. Likewise, if any elements are blocks set as ArrayLikeBlocks, this will
+error.
+"""
+function _dense_array(pa::PartialArray)
+    # Find the size of the dense array, by checking what are the largest indices set in pa.
+    num_dims = ndims(pa)
+    size_needed = fill(0, num_dims)
+    # TODO(mhauru) This could be optimised by not looping over the whole array: If e.g.
+    # (3,3) is set, we have no need to check any indices within the block (3,3).
+    for ind in CartesianIndices(pa.mask)
+        @inbounds if !pa.mask[ind]
+            continue
+        end
+        for d in 1:num_dims
+            size_needed[d] = max(size_needed[d], ind[d])
+        end
+    end
+
+    # Check that all indices within size_needed are set.
+    slice = ntuple(d -> 1:size_needed[d], num_dims)
+    if any(.!(pa.mask[slice...]))
+        throw(
+            ArgumentError(
+                "Cannot convert PartialArray to dense Array when some elements within " *
+                "the dense block are not set.",
+            ),
+        )
+    end
+
+    retval = pa.data[slice...]
+    if eltype(pa) <: ArrayLikeBlock || ArrayLikeBlock <: eltype(pa)
+        for ind in CartesianIndices(retval)
+            @inbounds if retval[ind] isa ArrayLikeBlock
+                throw(
+                    ArgumentError(
+                        "Cannot convert PartialArray to dense Array when some elements " *
+                        "are set as ArrayLikeBlocks.",
+                    ),
+                )
+            end
+        end
+    end
+    return retval
+end
+
 """
     VarNamedTuple{names,Values}
 
@@ -986,6 +1056,21 @@ function Base.values(vnt::VarNamedTuple)
     return result
 end
 
+function Base.length(vnt::VarNamedTuple)
+    len = 0
+    for sym in keys(vnt.data)
+        subdata = vnt.data[sym]
+        if subdata isa VarNamedTuple
+            len += length(subdata)
+        elseif subdata isa PartialArray
+            len += length(subdata)
+        else
+            len += 1
+        end
+    end
+    return len
+end
+
 # The following methods, indexing with ComposedFunction, are exactly the same for
 # VarNamedTuple and PartialArray, since they just fall back on indexing with the outer and
 # inner lenses.
@@ -1011,7 +1096,13 @@ end
 
 # The entry points for getting, setting, and checking, using the familiar functions.
 Base.haskey(vnt::VarNamedTuple, vn::VarName) = _haskey(vnt, vn)
-Base.getindex(vnt::VarNamedTuple, vn::VarName) = _getindex(vnt, vn)
+
+# PartialArrays are an implementation detail of VarNamedTuple, and should never be the
+# return value of getindex. Thus, we automatically convert them to dense arrays if needed.
+_dense_array_if_needed(pa::PartialArray) = _dense_array(pa)
+_dense_array_if_needed(x) = x
+Base.getindex(vnt::VarNamedTuple, vn::VarName) = _dense_array_if_needed(_getindex(vnt, vn))
+
 BangBang.setindex!!(vnt::VarNamedTuple, value, vn::VarName) = _setindex!!(vnt, value, vn)
 
 Base.haskey(vnt::PartialArray, key) = _haskey(vnt, key)
@@ -1056,6 +1147,7 @@ function to_dict(::Type{T}, vnt::VarNamedTuple) where {T<:AbstractDict{<:VarName
     pairs = splat(Pair).(zip(keys(vnt), values(vnt)))
     return T(pairs...)
 end
+to_dict(vnt::VarNamedTuple) = to_dict(Dict{VarName,Any}, vnt)
 
 function AbstractPPL.hasvalue(vnt::VarNamedTuple, vn::VarName, ::Distribution)
     return haskey(vnt, vn)
