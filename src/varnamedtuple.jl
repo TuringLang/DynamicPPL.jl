@@ -2,6 +2,8 @@
 module VarNamedTuples
 
 using AbstractPPL
+using AbstractPPL: AbstractPPL
+using Distributions: Distribution
 using BangBang
 using Accessors
 using ..DynamicPPL: _compose_no_identity
@@ -1040,6 +1042,19 @@ function make_leaf(value, optic::IndexLens)
     end
     pa = PartialArray{et,num_inds}()
     return _setindex!!(pa, value, optic)
+end
+
+function to_dict(::Type{T}, vnt::VarNamedTuple) where {T<:AbstractDict{<:VarName}}
+    pairs = splat(Pair).(zip(keys(vnt), values(vnt)))
+    return T(pairs...)
+end
+
+function AbstractPPL.hasvalue(vnt::VarNamedTuple, vn::VarName, ::Distribution)
+    return haskey(vnt, vn)
+end
+
+function AbstractPPL.getvalue(vnt::VarNamedTuple, vn::VarName, ::Distribution)
+    return getindex(vnt, vn)
 end
 
 end
