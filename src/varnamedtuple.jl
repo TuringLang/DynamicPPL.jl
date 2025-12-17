@@ -731,15 +731,15 @@ function Base.keys(pa::PartialArray)
             subkeys = keys(val)
             for vn in subkeys
                 sublens = _varname_to_lens(vn)
-                ks = push!!(ks, _compose_no_identity(sublens, lens))
+                push!(ks, _compose_no_identity(sublens, lens))
             end
         elseif val isa ArrayLikeBlock
             if !(val.inds in alb_inds_seen)
-                ks = push!!(ks, IndexLens(Tuple(val.inds)))
+                push!(ks, IndexLens(Tuple(val.inds)))
                 push!(alb_inds_seen, val.inds)
             end
         else
-            ks = push!!(ks, lens)
+            push!(ks, lens)
         end
     end
     return ks
@@ -779,7 +779,7 @@ function Base.length(pa::PartialArray)
             len += length(val)
         else
             # Note we don't need to special case here for ArrayLikeBlocks. That's because
-            # we want to treat index pointing to the same ArrayLikeBlock as contributing to
+            # we treat every index pointing to the same ArrayLikeBlock as contributing to
             # the length.
             len += 1
         end
@@ -792,9 +792,11 @@ end
 
 Return a `Base.Array` of the elements of the `PartialArray`.
 
-If the `PartialArray` has any missing elements that are "within" the block of set elements,
-this will error. Likewise, if any elements are blocks set as ArrayLikeBlocks, this will
-error.
+If the `PartialArray` has any missing elements that are within the block of set elements,
+this will error. For instance, if `pa` is two-dimensional and (2,2) is set, but one of
+(1,1), (1,2), or (2,1) is not.
+
+Likewise, if `pa` includes any blocks set as `ArrayLikeBlocks`, this will error.
 """
 function _dense_array(pa::PartialArray)
     # Find the size of the dense array, by checking what are the largest indices set in pa.

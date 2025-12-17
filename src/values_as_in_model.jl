@@ -49,7 +49,9 @@ function combine(acc1::ValuesAsInModelAccumulator, acc2::ValuesAsInModelAccumula
 end
 
 function BangBang.push!!(acc::ValuesAsInModelAccumulator, vn::VarName, val)
-    # TODO(mhauru) Why do we deepcopy here?
+    # TODO(mhauru) The deepcopy here is quite unfortunate. It is needed so that the model
+    # body can go mutating the object without that reactively affecting the value in the
+    # accumulator, which should be as it was at `~` time. Could there be a way around this?
     Accessors.@reset acc.values = setindex!!(acc.values, deepcopy(val), vn)
     return acc
 end
