@@ -22,9 +22,10 @@ function test_invariants(vnt::VarNamedTuple)
     for k in vnt_keys
         @test haskey(vnt, k)
         v = getindex(vnt, k)
-        # ArrayLikeBlocks are an implementation detail, and should not be exposed through
-        # getindex.
+        # ArrayLikeBlocks and PartialArrays are implementation details, and should not be
+        # exposed through getindex.
         @test !(v isa ArrayLikeBlock)
+        @test !(v isa PartialArray)
         vnt2 = setindex!!(copy(vnt), v, k)
         @test vnt == vnt2
         @test isequal(vnt, vnt2)
@@ -562,6 +563,36 @@ Base.size(st::SizedThing) = st.size
         @test @inferred(getindex(vnt, @varname(a[2:4]))) == [1, 2, 3]
         @test haskey(vnt, @varname(a[2:4]))
         @test !haskey(vnt, @varname(a[1]))
+    end
+
+    @testset "densification" begin
+        vnt = VarNamedTuple()
+        vnt = @inferred(setindex!!(vnt, 1.0, @varname(a.b[1].c[1, 1])))
+        @test @inferred(getindex(vnt, @varname(a.b[1].c))) == fill(1.0, (1, 1))
+
+        vnt = VarNamedTuple()
+        vnt = @inferred(setindex!!(vnt, 1.0, @varname(a.b[1].c[1, 1])))
+        vnt = @inferred(setindex!!(vnt, 1.0, @varname(a.b[1].c[1, 2])))
+        @test @inferred(getindex(vnt, @varname(a.b[1].c))) == fill(1.0, (1, 2))
+
+        vnt = VarNamedTuple()
+        vnt = @inferred(setindex!!(vnt, 1.0, @varname(a.b[1].c[1, 1])))
+        vnt = @inferred(setindex!!(vnt, 1.0, @varname(a.b[1].c[2, 1])))
+        @test @inferred(getindex(vnt, @varname(a.b[1].c))) == fill(1.0, (2, 1))
+
+        vnt = VarNamedTuple()
+        vnt = @inferred(setindex!!(vnt, 1.0, @varname(a.b[1].c[1, 1])))
+        vnt = @inferred(setindex!!(vnt, 1.0, @varname(a.b[1].c[1, 2])))
+        vnt = @inferred(setindex!!(vnt, 1.0, @varname(a.b[1].c[2, 1])))
+        @test_throws ArgumentError @inferred(getindex(vnt, @varname(a.b[1].c)))
+        vnt = @inferred(setindex!!(vnt, 1.0, @varname(a.b[1].c[2, 2])))
+        @test @inferred(getindex(vnt, @varname(a.b[1].c))) == fill(1.0, (2, 2))
+        vnt = @inferred(setindex!!(vnt, 1.0, @varname(a.b[1].c[3, 3])))
+        @test_throws ArgumentError @inferred(getindex(vnt, @varname(a.b[1].c)))
+
+        vnt = VarNamedTuple()
+        vnt = @inferred(setindex!!(vnt, SizedThing((2,)), @varname(x[1:2])))
+        @test_throws ArgumentError @inferred(getindex(vnt, @varname(x)))
     end
 
     @testset "printing" begin
