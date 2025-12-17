@@ -714,11 +714,16 @@ function _merge_recursive(pa1::PartialArray, pa2::PartialArray)
 end
 
 function Base.keys(pa::PartialArray)
-    inds = findall(pa.mask)
-    lenses = map(x -> IndexLens(Tuple(x)), inds)
+    # TODO(mhauru) Should this rather be Union{}[]? It would make this very type unstable
+    # and cause more allocations, but would result in more concrete element types. Same
+    # question for Base.keys on VNT and Base.values.
     ks = Any[]
     alb_inds_seen = Set{Tuple}()
-    for lens in lenses
+    for ind in CartesianIndices(pa.mask)
+        @inbounds if !pa.mask[ind]
+            continue
+        end
+        lens = IndexLens(Tuple(ind))
         val = getindex(pa.data, lens.indices...)
         if val isa VarNamedTuple
             subkeys = keys(val)
@@ -728,7 +733,7 @@ function Base.keys(pa::PartialArray)
             end
         elseif val isa ArrayLikeBlock
             if !(val.inds in alb_inds_seen)
-                push!(ks, IndexLens(Tuple(val.inds)))
+                ks = push!!(ks, IndexLens(Tuple(val.inds)))
                 push!(alb_inds_seen, val.inds)
             end
         else
@@ -739,13 +744,21 @@ function Base.keys(pa::PartialArray)
 end
 
 function Base.values(pa::PartialArray)
-    inds = findall(pa.mask)
-    vs = Union{}[]
-    for ind in inds
-        val = getindex(pa.data, ind...)
+    vs = Any[]
+    albs_seen = Set{ArrayLikeBlock}()
+    for ind in CartesianIndices(pa.mask)
+        @inbounds if !pa.mask[ind]
+            continue
+        end
+        val = getindex(pa.data, ind)
         if val isa VarNamedTuple
             subvalues = values(val)
             vs = push!!(vs, subvalues...)
+        elseif val isa ArrayLikeBlock
+            if !(val in albs_seen)
+                vs = push!!(vs, val.block)
+                push!(albs_seen, val)
+            end
         else
             vs = push!!(vs, val)
         end
@@ -819,14 +832,12 @@ _has_partial_array(::Type{<:PartialArray}) = true
 @generated function _has_partial_array(
     ::Type{VarNamedTuple{Names,Values}}
 ) where {Names,Values}
-    exs = Expr[]
     for T in Values.parameters
         if _has_partial_array(T)
-            push!(exs, :(return true))
+            return :(return true)
         end
     end
-    push!(exs, :(return false))
-    return Expr(:block, exs...)
+    return :(return false)
 end
 
 # TODO(mhauru) Should this recur to PartialArray?
@@ -834,7 +845,7 @@ Base.isempty(vnt::VarNamedTuple) = isempty(vnt.data)
 
 # TODO(mhauru) Should this in fact keep the PartialArrays in place, but set them all to have
 # mask = fill(false, size(pa.mask))? That might save some allocations.
-Base.empty(vnt::VarNamedTuple) = VarNamedTuple()
+Base.empty(::VarNamedTuple) = VarNamedTuple()
 
 @generated function BangBang.empty!!(vnt::VarNamedTuple{Names,Values}) where {Names,Values}
     if !_has_partial_array(VarNamedTuple{Names,Values})
@@ -847,9 +858,6 @@ Base.empty(vnt::VarNamedTuple) = VarNamedTuple()
             new_values = (new_values..., :(BangBang.empty!!(vnt.data[$(QuoteNode(name))])))
             new_names = (new_names..., name)
         end
-    end
-    if length(new_names) != length(new_values)
-        error(new_values)
     end
     return quote
         return VarNamedTuple(NamedTuple{$new_names}(($(new_values...),)))
@@ -960,19 +968,19 @@ function Base.keys(vnt::VarNamedTuple)
     return result
 end
 
-# TODO(mhauru) Same comments as for keys.
 function Base.values(vnt::VarNamedTuple)
-    result = ()
+    # TODO(mhauru) Same comments as for keys for type stability and Any vs Union{}
+    result = Any[]
     for sym in keys(vnt.data)
         subdata = vnt.data[sym]
         if subdata isa VarNamedTuple
             subvalues = values(subdata)
-            result = (result..., subvalues...)
+            append!(result, subvalues)
         elseif subdata isa PartialArray
             subvalues = values(subdata)
-            result = (result..., subvalues...)
+            append!(result, subvalues)
         else
-            result = (result..., subdata)
+            push!(result, subdata)
         end
     end
     return result

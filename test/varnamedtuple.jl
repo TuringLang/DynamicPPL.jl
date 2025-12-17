@@ -38,6 +38,12 @@ function test_invariants(vnt::VarNamedTuple)
     # Check that merge with an empty VarNamedTuple is a no-op.
     @test merge(vnt, VarNamedTuple()) == vnt
     @test merge(VarNamedTuple(), vnt) == vnt
+    # Check that the VNT can be constructed back from its keys and values.
+    vnt4 = VarNamedTuple()
+    for (k, v) in zip(keys(vnt), values(vnt))
+        vnt4 = setindex!!(vnt4, v, k)
+    end
+    @test vnt == vnt4
 end
 
 """ A type that has a size but is not an Array. Used in ArrayLikeBlock tests."""
@@ -371,26 +377,32 @@ Base.size(st::SizedThing) = st.size
         @test merge(vnt2, vnt1) == expected_merge_21
     end
 
-    @testset "keys" begin
+    @testset "keys and values" begin
         vnt = VarNamedTuple()
         @test @inferred(keys(vnt)) == VarName[]
+        @test @inferred(values(vnt)) == Any[]
 
         vnt = setindex!!(vnt, 1.0, @varname(a))
         # TODO(mhauru) that the below passes @inferred, but any of the later ones don't.
         # We should improve type stability of keys().
         @test @inferred(keys(vnt)) == [@varname(a)]
+        @test @inferred(values(vnt)) == [1.0]
 
         vnt = setindex!!(vnt, [1, 2, 3], @varname(b))
         @test keys(vnt) == [@varname(a), @varname(b)]
+        @test values(vnt) == [1.0, [1,2,3]]
 
         vnt = setindex!!(vnt, 15, @varname(b[2]))
         @test keys(vnt) == [@varname(a), @varname(b)]
+        @test values(vnt) == [1.0, [1,15,3]]
 
         vnt = setindex!!(vnt, [10], @varname(c.x.y))
         @test keys(vnt) == [@varname(a), @varname(b), @varname(c.x.y)]
+        @test values(vnt) == [1.0, [1,15,3], [10]]
 
         vnt = setindex!!(vnt, -1.0, @varname(d[4]))
         @test keys(vnt) == [@varname(a), @varname(b), @varname(c.x.y), @varname(d[4])]
+        @test values(vnt) == [1.0, [1,15,3], [10], -1.0]
 
         vnt = setindex!!(vnt, 2.0, @varname(e.f[3, 3].g.h[2, 4, 1].i))
         @test keys(vnt) == [
@@ -400,6 +412,7 @@ Base.size(st::SizedThing) = st.size
             @varname(d[4]),
             @varname(e.f[3, 3].g.h[2, 4, 1].i),
         ]
+        @test values(vnt) == [1.0, [1,15,3], [10], -1.0, 2.0]
 
         vnt = setindex!!(vnt, fill(1.0, 4), @varname(j[1:4]))
         @test keys(vnt) == [
@@ -413,8 +426,10 @@ Base.size(st::SizedThing) = st.size
             @varname(j[3]),
             @varname(j[4]),
         ]
+        @test values(vnt) == [1.0, [1,15,3], [10], -1.0, 2.0, fill(1.0, 4)...]
 
-        vnt = setindex!!(vnt, 1.0, @varname(j[6]))
+
+        vnt = setindex!!(vnt, "a", @varname(j[6]))
         @test keys(vnt) == [
             @varname(a),
             @varname(b),
@@ -427,6 +442,7 @@ Base.size(st::SizedThing) = st.size
             @varname(j[4]),
             @varname(j[6]),
         ]
+        @test values(vnt) == [1.0, [1,15,3], [10], -1.0, 2.0, fill(1.0, 4)..., "a"]
 
         vnt = setindex!!(vnt, 1.0, @varname(n[2].a))
         @test keys(vnt) == [
@@ -442,6 +458,7 @@ Base.size(st::SizedThing) = st.size
             @varname(j[6]),
             @varname(n[2].a),
         ]
+        @test values(vnt) == [1.0, [1,15,3], [10], -1.0, 2.0, fill(1.0, 4)..., "a", 1.0]
 
         vnt = setindex!!(vnt, SizedThing((3, 1, 4)), @varname(o[2:4, 5:5, 11:14]))
         @test keys(vnt) == [
@@ -458,6 +475,7 @@ Base.size(st::SizedThing) = st.size
             @varname(n[2].a),
             @varname(o[2:4, 5:5, 11:14]),
         ]
+        @test values(vnt) == [1.0, [1,15,3], [10], -1.0, 2.0, fill(1.0, 4)..., "a", 1.0, SizedThing((3, 1, 4))]
     end
 
     @testset "printing" begin
