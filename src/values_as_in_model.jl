@@ -30,6 +30,9 @@ end
 
 accumulator_name(::Type{<:ValuesAsInModelAccumulator}) = :ValuesAsInModel
 
+# TODO(mhauru) We could start using reset!!, which could call empty!! on the VarNamedTuple.
+# This would create VarNamedTuples that share memory with the original one, saving
+# allocations but also making them not capable of taking in any arbitrary VarName.
 function _zero(acc::ValuesAsInModelAccumulator)
     return ValuesAsInModelAccumulator(empty(acc.values), acc.include_colon_eq)
 end

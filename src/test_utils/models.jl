@@ -8,7 +8,7 @@
 # Some additionally contain an implementation of `rand_prior_true`.
 
 """
-    varname(model::Model)
+    varnames(model::Model)
 
 Return the VarNames defined in `model`, as a Vector.
 """
@@ -22,7 +22,7 @@ function varnames end
 
 Return the VarNames in `model`, with any ranges or colons split into individual indices.
 
-The default implementation is to just return `varname(model)`. If something else is needed,
+The default implementation is to just return `varnames(model)`. If something else is needed,
 this should be defined separately.
 """
 varnames_split(model::Model) = varnames(model)
