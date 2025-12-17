@@ -82,7 +82,8 @@ end
             ps = ParamsWithStats(params, ldf)
 
             # Check that length of parameters is as expected
-            @test length(ps.params) == length(keys(vi))
+            expected_length = sum(prod ∘ DynamicPPL.varnamesize, keys(vi))
+            @test length(ps.params) == expected_length
 
             # Iterate over all variables to check that their values match
             for vn in keys(vi)

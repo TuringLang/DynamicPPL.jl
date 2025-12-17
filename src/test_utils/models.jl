@@ -8,6 +8,26 @@
 # Some additionally contain an implementation of `rand_prior_true`.
 
 """
+    varname(model::Model)
+
+Return the VarNames defined in `model`, as a Vector.
+"""
+function varnames end
+
+# TODO(mhauru) The fact that the below function exists is a sign that we are inconsistent in
+# how we handle IndexLenses. This should hopefully be resolved once we consistently use
+# VarNamedTuple rather than dictionaries everywhere.
+"""
+    varnames_split(model::Model)
+
+Return the VarNames in `model`, with any ranges or colons split into individual indices.
+
+The default implementation is to just return `varname(model)`. If something else is needed,
+this should be defined separately.
+"""
+varnames_split(model::Model) = varnames(model)
+
+"""
     demo_dynamic_constraint()
 
 A model with variables `m` and `x` with `x` having support depending on `m`.
@@ -76,6 +96,9 @@ function loglikelihood_true(model::Model{typeof(demo_one_variable_multiple_const
 end
 function varnames(model::Model{typeof(demo_one_variable_multiple_constraints)})
     return [@varname(x[1]), @varname(x[2]), @varname(x[3]), @varname(x[4:5])]
+end
+function varnames_split(model::Model{typeof(demo_one_variable_multiple_constraints)})
+    return [@varname(x[1]), @varname(x[2]), @varname(x[3]), @varname(x[4]), @varname(x[5])]
 end
 function logprior_true_with_logabsdet_jacobian(
     model::Model{typeof(demo_one_variable_multiple_constraints)}, x
@@ -624,8 +647,13 @@ function varnames(::Model{typeof(demo_nested_colons)})
                 AbstractPPL.ConcretizedSlice(Base.Slice(Base.OneTo(2))),
             ]
         ),
-        # @varname(s.params[1].subparams[1,1,1]),
-        # @varname(s.params[1].subparams[1,1,2]),
+        @varname(m),
+    ]
+end
+function varnames_split(::Model{typeof(demo_nested_colons)})
+    return [
+        @varname(s.params[1].subparams[1, 1, 1]),
+        @varname(s.params[1].subparams[1, 1, 2]),
         @varname(m),
     ]
 end
