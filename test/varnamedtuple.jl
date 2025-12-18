@@ -3,7 +3,7 @@ module VarNamedTupleTests
 using Combinatorics: Combinatorics
 using Test: @inferred, @test, @test_throws, @testset
 using DynamicPPL: DynamicPPL, @varname, VarNamedTuple
-using DynamicPPL.VarNamedTuples: PartialArray, ArrayLikeBlock
+using DynamicPPL.VarNamedTuples: PartialArray, ArrayLikeBlock, map!!, apply!!
 using AbstractPPL: VarName, concretize, prefix
 using BangBang: setindex!!, empty!!
 
@@ -740,6 +740,87 @@ Base.size(st::SizedThing) = st.size
         @test @inferred(getindex(vnt, @varname(y.z[2, 2:3, 3, 2:3, 4]))) == val
         @test haskey(vnt, @varname(y.z[3, 2:3, 3, 2:3, 4]))
         @test @inferred(getindex(vnt, @varname(y.z[3, 2:3, 3, 2:3, 4]))) == val
+    end
+
+    @testset "map!! and apply!!" begin
+        vnt = VarNamedTuple()
+        vnt = @inferred(setindex!!(vnt, 1, @varname(a)))
+        vnt = @inferred(setindex!!(vnt, [2, 2], @varname(b[1:2])))
+        vnt = @inferred(setindex!!(vnt, [3.0], @varname(c.d)))
+        vnt = @inferred(setindex!!(vnt, "a", @varname(e.f[3].g.h[2].i)))
+        # The below can't be type stable because the element type of `h` depends on whether
+        # we are setting `h[2].j` (which overwrites the earlier `h[2]`) or some other
+        # `h[index].j` (which would leave both `h[2].i` and `h[index].j` in the same array).
+        vnt = setindex!!(vnt, 5.0, @varname(e.f[3].g.h[2].j))
+        vnt = @inferred(
+            setindex!!(vnt, SizedThing((2, 2)), @varname(y.z[3, 2:3, 3, 2:3, 4]))
+        )
+        test_invariants(vnt)
+
+        struct AnotherSizedThing{T<:Tuple}
+            size::T
+        end
+        Base.size(st::AnotherSizedThing) = st.size
+
+        function f(val)
+            if val isa Int
+                return val + 10
+            elseif val isa AbstractVector{Int}
+                return val .+ 10
+            elseif val isa Float64
+                return val + 1.0
+            elseif val isa AbstractVector{Float64}
+                return val .- 1.0
+            elseif val isa String
+                return string(val, "b")
+            elseif val isa SizedThing
+                return AnotherSizedThing(size(val))
+            else
+                error("Unexpected value type $(typeof(val))")
+            end
+        end
+
+        vnt_mapped = @inferred(map!!(f, copy(vnt)))
+        test_invariants(vnt_mapped)
+        @test @inferred(getindex(vnt_mapped, @varname(a))) == 11
+        @test @inferred(getindex(vnt_mapped, @varname(b[1:2]))) == [12, 12]
+        @test @inferred(getindex(vnt_mapped, @varname(c.d))) == [2.0]
+        @test @inferred(getindex(vnt_mapped, @varname(e.f[3].g.h[2].i))) == "ab"
+        @test @inferred(getindex(vnt_mapped, @varname(e.f[3].g.h[2].j))) == 6.0
+        @test @inferred(getindex(vnt_mapped, @varname(y.z[3, 2:3, 3, 2:3, 4]))) ==
+            AnotherSizedThing((2, 2))
+
+        vnt_applied = @inferred(apply!!(f, vnt, @varname(a)))
+        test_invariants(vnt_applied)
+        @test @inferred(getindex(vnt_applied, @varname(a))) == 11
+        @test @inferred(getindex(vnt_applied, @varname(b[1:2]))) == [2, 2]
+
+        vnt_applied = @inferred(apply!!(f, vnt_applied, @varname(b[1:2])))
+        test_invariants(vnt_applied)
+        @test @inferred(getindex(vnt_applied, @varname(a))) == 11
+        @test @inferred(getindex(vnt_applied, @varname(b[1:2]))) == [12, 12]
+
+        vnt_applied = @inferred(apply!!(f, vnt_applied, @varname(c.d)))
+        test_invariants(vnt_applied)
+        @test @inferred(getindex(vnt_applied, @varname(c.d))) == [2.0]
+
+        vnt_applied = @inferred(apply!!(f, vnt_applied, @varname(e.f[3].g.h[2].i)))
+        test_invariants(vnt_applied)
+        @test @inferred(getindex(vnt_applied, @varname(e.f[3].g.h[2].i))) == "ab"
+        @test @inferred(getindex(vnt_applied, @varname(e.f[3].g.h[2].j))) == 5.0
+
+        vnt_applied = @inferred(apply!!(f, vnt_applied, @varname(e.f[3].g.h[2].j)))
+        test_invariants(vnt_applied)
+        @test @inferred(getindex(vnt_applied, @varname(e.f[3].g.h[2].i))) == "ab"
+        @test @inferred(getindex(vnt_applied, @varname(e.f[3].g.h[2].j))) == 6.0
+
+        # This can't be type stable because y.z might have many elements set, and we can't
+        # know at compile time that this sets the only one, thus allowing the element type
+        # to be AnotherSizedThing.
+        vnt_applied = apply!!(f, vnt_applied, @varname(y.z[3, 2:3, 3, 2:3, 4]))
+        test_invariants(vnt_applied)
+        @test @inferred(getindex(vnt_applied, @varname(y.z[3, 2:3, 3, 2:3, 4]))) ==
+            AnotherSizedThing((2, 2))
     end
 end
 
