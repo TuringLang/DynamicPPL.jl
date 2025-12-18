@@ -272,6 +272,17 @@ Base.size(st::SizedThing) = st.size
         @test haskey(vnt, vn)
         @test @inferred(getindex(vnt, vn)) == x
         test_invariants(vnt)
+
+        # Indices on indices
+        vnt = VarNamedTuple()
+        vnt = @inferred(setindex!!(vnt, 1, @varname(a[1][1])))
+        @test @inferred(getindex(vnt, @varname(a[1][1]))) == 1
+        vnt = @inferred(setindex!!(vnt, [1], @varname(b[1].c[1])))
+        @test @inferred(getindex(vnt, @varname(b[1].c[1]))) == [1]
+        vnt = @inferred(setindex!!(vnt, [1], @varname(e[3, 2].f[2, 2][10, 10])))
+        @test @inferred(getindex(vnt, @varname(e[3, 2].f[2, 2][10, 10]))) == [1]
+        vnt = @inferred(setindex!!(vnt, [1], @varname(g[3, 2][10, 10].h[2, 2])))
+        @test @inferred(getindex(vnt, @varname(g[3, 2][10, 10].h[2, 2]))) == [1]
     end
 
     @testset "equality and hash" begin
@@ -352,15 +363,33 @@ Base.size(st::SizedThing) = st.size
         expected_merge = setindex!!(expected_merge, fill(2, 4), @varname(e.a[8:11]))
         @test @inferred(merge(vnt1, vnt2)) == expected_merge
 
+        vnt1 = setindex!!(vnt1, 1, @varname(e.b[1][13]))
+        vnt2 = setindex!!(vnt2, 2, @varname(e.b[2][13]))
+        expected_merge = setindex!!(expected_merge, 1, @varname(e.b[1][13]))
+        expected_merge = setindex!!(expected_merge, 2, @varname(e.b[2][13]))
+        vnt1 = setindex!!(vnt1, 1, @varname(e.b[3][13]))
+        vnt2 = setindex!!(vnt2, 2, @varname(e.b[3][13]))
+        expected_merge = setindex!!(expected_merge, 2, @varname(e.b[3][13]))
+        @test @inferred(merge(vnt1, vnt2)) == expected_merge
+        vnt1 = setindex!!(vnt1, 1, @varname(e.b[4][13]))
+        vnt2 = setindex!!(vnt2, 2, @varname(e.b[4][14]))
+        expected_merge = setindex!!(expected_merge, 1, @varname(e.b[4][13]))
+        expected_merge = setindex!!(expected_merge, 2, @varname(e.b[4][14]))
+        @test @inferred(merge(vnt1, vnt2)) == expected_merge
+
         vnt1 = setindex!!(vnt1, ["1", "1"], @varname(f.a[1].b.c[2, 2].d[1, 3:4]))
         vnt2 = setindex!!(vnt2, ["2", "2"], @varname(f.a[1].b.c[2, 2].d[1, 3:4]))
         expected_merge = setindex!!(
             expected_merge, ["2", "2"], @varname(f.a[1].b.c[2, 2].d[1, 3:4])
         )
-        vnt1 = setindex!!(vnt1, :1, @varname(f.a[1].b.c[3, 2].d[1, 1]))
-        vnt2 = setindex!!(vnt2, :2, @varname(f.a[1].b.c[4, 2].d[1, 1]))
-        expected_merge = setindex!!(expected_merge, :1, @varname(f.a[1].b.c[3, 2].d[1, 1]))
-        expected_merge = setindex!!(expected_merge, :2, @varname(f.a[1].b.c[4, 2].d[1, 1]))
+        vnt1 = setindex!!(vnt1, :1, @varname(f.a[1].b.c[3, 2].d[1, 1][14, 13]))
+        vnt2 = setindex!!(vnt2, :2, @varname(f.a[1].b.c[4, 2].d[1, 1][14, 13]))
+        expected_merge = setindex!!(
+            expected_merge, :1, @varname(f.a[1].b.c[3, 2].d[1, 1][14, 13])
+        )
+        expected_merge = setindex!!(
+            expected_merge, :2, @varname(f.a[1].b.c[4, 2].d[1, 1][14, 13])
+        )
         @test merge(vnt1, vnt2) == expected_merge
 
         # PartialArrays with different sizes.
@@ -501,6 +530,35 @@ Base.size(st::SizedThing) = st.size
             1.0,
             SizedThing((3, 1, 4)),
         ]
+
+        vnt = setindex!!(vnt, SizedThing((3, 1, 4)), @varname(p[2, 1][2:4, 5:5, 11:14]))
+        @test keys(vnt) == [
+            @varname(a),
+            @varname(b),
+            @varname(c.x.y),
+            @varname(d[4]),
+            @varname(e.f[3, 3].g.h[2, 4, 1].i),
+            @varname(j[1]),
+            @varname(j[2]),
+            @varname(j[3]),
+            @varname(j[4]),
+            @varname(j[6]),
+            @varname(n[2].a),
+            @varname(o[2:4, 5:5, 11:14]),
+            @varname(p[2, 1][2:4, 5:5, 11:14]),
+        ]
+        @test values(vnt) == [
+            1.0,
+            [1, 15, 3],
+            [10],
+            -1.0,
+            2.0,
+            fill(1.0, 4)...,
+            "a",
+            1.0,
+            SizedThing((3, 1, 4)),
+            SizedThing((3, 1, 4)),
+        ]
     end
 
     @testset "length" begin
@@ -534,6 +592,9 @@ Base.size(st::SizedThing) = st.size
 
         vnt = setindex!!(vnt, SizedThing((3, 2)), @varname(x[1, 4:6, 2, 1:2, 3]))
         @test @inferred(length(vnt)) == 14
+
+        vnt = setindex!!(vnt, [:a, :b], @varname(y[4][3][2][1:2]))
+        @test @inferred(length(vnt)) == 16
     end
 
     @testset "empty" begin
@@ -622,7 +683,7 @@ Base.size(st::SizedThing) = st.size
             VarNamedTuple(a = "s", b = [1, 2, 3], \
             c = PartialArray{Symbol,1}((2,) => :dada))"""
 
-        vnt = setindex!!(vnt, [16.0, 17.0], @varname(d.e[3].f.g[1:2]))
+        vnt = setindex!!(vnt, [16.0, 17.0], @varname(d.e[3][2, 2].f.g[1:2]))
         io = IOBuffer()
         show(io, vnt)
         output = String(take!(io))
@@ -634,11 +695,13 @@ Base.size(st::SizedThing) = st.size
             VarNamedTuple(a = "s", b = [1, 2, 3], \
             c = PartialArray{Symbol,1}((2,) => :dada), \
             d = VarNamedTuple(\
-            e = PartialArray{VarNamedTuple{(:f,), \
+            e = PartialArray{PartialArray{VarNamedTuple{(:f,), \
             Tuple{VarNamedTuple{(:g,), \
-            Tuple{PartialArray{Float64, 1}}}}},1}((3,) => \
-            VarNamedTuple(f = VarNamedTuple(g = PartialArray{Float64,1}((1,) => 16.0, \
-            (2,) => 17.0),),)),))"""
+            Tuple{PartialArray{Float64, 1}}}}}, 2},1}((3,) => \
+            PartialArray{VarNamedTuple{(:f,), \
+            Tuple{VarNamedTuple{(:g,), \
+            Tuple{PartialArray{Float64, 1}}}}},2}((2, 2) => VarNamedTuple(f = VarNamedTuple(g = PartialArray{Float64,1}((1,) => 16.0, \
+            (2,) => 17.0),),))),))"""
     end
 
     @testset "block variables" begin
@@ -742,7 +805,7 @@ Base.size(st::SizedThing) = st.size
         @test @inferred(getindex(vnt, @varname(y.z[3, 2:3, 3, 2:3, 4]))) == val
     end
 
-    @testset "map!! and apply!!" begin
+    @testset "map!!, apply!!, and mapreduce" begin
         vnt = VarNamedTuple()
         vnt = @inferred(setindex!!(vnt, 1, @varname(a)))
         vnt = @inferred(setindex!!(vnt, [2, 2], @varname(b[1:2])))
@@ -755,6 +818,7 @@ Base.size(st::SizedThing) = st.size
         vnt = @inferred(
             setindex!!(vnt, SizedThing((2, 2)), @varname(y.z[3, 2:3, 3, 2:3, 4]))
         )
+        vnt = @inferred(setindex!!(vnt, "", @varname(w[4][3][2, 1])))
         test_invariants(vnt)
 
         struct AnotherSizedThing{T<:Tuple}
@@ -780,6 +844,12 @@ Base.size(st::SizedThing) = st.size
             end
         end
 
+        reduction = mapreduce(identity, vcat, vnt; init=Any[])
+        @test reduction == vcat(Any[], 1, [2, 2], [3.0], "a", 5.0, SizedThing((2, 2)), "")
+        reduction = mapreduce(f, vcat, vnt; init=Any[])
+        @test reduction ==
+            vcat(Any[], 11, [12, 12], [2.0], "ab", 6.0, AnotherSizedThing((2, 2)), "b")
+
         vnt_mapped = @inferred(map!!(f, copy(vnt)))
         test_invariants(vnt_mapped)
         @test @inferred(getindex(vnt_mapped, @varname(a))) == 11
@@ -789,6 +859,7 @@ Base.size(st::SizedThing) = st.size
         @test @inferred(getindex(vnt_mapped, @varname(e.f[3].g.h[2].j))) == 6.0
         @test @inferred(getindex(vnt_mapped, @varname(y.z[3, 2:3, 3, 2:3, 4]))) ==
             AnotherSizedThing((2, 2))
+        @test @inferred(getindex(vnt_mapped, @varname(w[4][3][2, 1]))) == "b"
 
         vnt_applied = @inferred(apply!!(f, vnt, @varname(a)))
         test_invariants(vnt_applied)
@@ -821,6 +892,10 @@ Base.size(st::SizedThing) = st.size
         test_invariants(vnt_applied)
         @test @inferred(getindex(vnt_applied, @varname(y.z[3, 2:3, 3, 2:3, 4]))) ==
             AnotherSizedThing((2, 2))
+
+        vnt_applied = @inferred(apply!!(f, vnt_applied, @varname(w[4][3][2, 1])))
+        test_invariants(vnt_applied)
+        @test @inferred(getindex(vnt_applied, @varname(w[4][3][2, 1]))) == "b"
     end
 end
 

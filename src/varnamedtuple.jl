@@ -286,10 +286,19 @@ function Base.copy(pa::PartialArray)
     # Make a shallow copy of pa, except for any VarNamedTuple elements, which we recursively
     # copy.
     pa_copy = PartialArray(copy(pa.data), copy(pa.mask))
-    if VarNamedTuple <: eltype(pa) || eltype(pa) <: VarNamedTuple
+    et = eltype(pa)
+    if (
+        VarNamedTuple <: et ||
+        et <: VarNamedTuple ||
+        PartialArray <: et ||
+        et <: PartialArray
+    )
         @inbounds for i in eachindex(pa.mask)
-            if pa.mask[i] && pa_copy.data[i] isa VarNamedTuple
-                pa_copy.data[i] = copy(pa.data[i])
+            if pa.mask[i]
+                val = @inbounds pa_copy.data[i]
+                if val isa VarNamedTuple || val isa PartialArray
+                    pa_copy.data[i] = copy(val)
+                end
             end
         end
     end
@@ -754,6 +763,11 @@ function Base.keys(pa::PartialArray)
                 sublens = _varname_to_lens(vn)
                 push!(ks, _compose_no_identity(sublens, lens))
             end
+        elseif val isa PartialArray
+            subkeys = keys(val)
+            for sublens in subkeys
+                push!(ks, _compose_no_identity(sublens, lens))
+            end
         elseif val isa ArrayLikeBlock
             if !(val.inds in alb_inds_seen)
                 push!(ks, IndexLens(Tuple(val.inds)))
@@ -774,7 +788,7 @@ function Base.values(pa::PartialArray)
             continue
         end
         val = getindex(pa.data, ind)
-        if val isa VarNamedTuple
+        if val isa VarNamedTuple || val isa PartialArray
             subvalues = values(val)
             vs = push!!(vs, subvalues...)
         elseif val isa ArrayLikeBlock
@@ -796,7 +810,7 @@ function Base.length(pa::PartialArray)
             continue
         end
         val = getindex(pa.data, ind)
-        if val isa VarNamedTuple
+        if val isa VarNamedTuple || val isa PartialArray
             len += length(val)
         else
             # Note we don't need to special case here for ArrayLikeBlocks. That's because
@@ -1157,6 +1171,55 @@ Apply `func` to all set elements of the `vnt`, in place if possible.
 """
 map!!(func, vnt::VarNamedTuple) = _map_recursive!!(func, vnt)
 
+function Base.mapreduce(f, op, vnt::VarNamedTuple; init=nothing)
+    if init === nothing
+        throw(
+            NotImplementedError(
+                "mapreduce without init is not implemented for VarNamedTuple."
+            ),
+        )
+    end
+    return _mapreduce_recursive(f, op, vnt, init)
+end
+
+_mapreduce_recursive(f, op, x, init) = op(init, f(x))
+_mapreduce_recursive(f, op, pa::ArrayLikeBlock, init) = op(init, f(pa.block))
+
+@generated function _mapreduce_recursive(
+    f, op, vnt::VarNamedTuple{Names}, init
+) where {Names}
+    exs = Expr[]
+    push!(
+        exs,
+        quote
+            result = init
+        end,
+    )
+    for name in Names
+        push!(exs, :(result = _mapreduce_recursive(f, op, vnt.data.$name, result)))
+    end
+    push!(exs, :(return result))
+    return Expr(:block, exs...)
+end
+
+function _mapreduce_recursive(f, op, pa::PartialArray, init)
+    result = init
+    albs_seen = Set{ArrayLikeBlock}()
+    @inbounds for i in eachindex(pa.mask)
+        if pa.mask[i]
+            val = @inbounds pa.data[i]
+            if val isa ArrayLikeBlock
+                if val in albs_seen
+                    continue
+                end
+                push!(albs_seen, val)
+            end
+            result = _mapreduce_recursive(f, op, pa.data[i], result)
+        end
+    end
+    return result
+end
+
 function Base.keys(vnt::VarNamedTuple)
     result = VarName[]
     for sym in keys(vnt.data)
@@ -1179,10 +1242,7 @@ function Base.values(vnt::VarNamedTuple)
     result = Any[]
     for sym in keys(vnt.data)
         subdata = vnt.data[sym]
-        if subdata isa VarNamedTuple
-            subvalues = values(subdata)
-            append!(result, subvalues)
-        elseif subdata isa PartialArray
+        if subdata isa VarNamedTuple || subdata isa PartialArray
             subvalues = values(subdata)
             append!(result, subvalues)
         else
@@ -1196,9 +1256,7 @@ function Base.length(vnt::VarNamedTuple)
     len = 0
     for sym in keys(vnt.data)
         subdata = vnt.data[sym]
-        if subdata isa VarNamedTuple
-            len += length(subdata)
-        elseif subdata isa PartialArray
+        if subdata isa VarNamedTuple || subdata isa PartialArray
             len += length(subdata)
         else
             len += 1
@@ -1245,6 +1303,7 @@ Base.haskey(vnt::VarNamedTuple, vn::VarName) = _haskey(vnt, vn)
 
 # PartialArrays are an implementation detail of VarNamedTuple, and should never be the
 # return value of getindex. Thus, we automatically convert them to dense arrays if needed.
+# TODO(mhauru) The below doesn't handle nested PartialArrays. Is that a problem?
 _dense_array_if_needed(pa::PartialArray) = _dense_array(pa)
 _dense_array_if_needed(x) = x
 Base.getindex(vnt::VarNamedTuple, vn::VarName) = _dense_array_if_needed(_getindex(vnt, vn))
