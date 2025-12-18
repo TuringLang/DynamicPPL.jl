@@ -27,7 +27,9 @@ function test_invariants(vnt::VarNamedTuple)
         @test !(v isa ArrayLikeBlock)
         @test !(v isa PartialArray)
         vnt2 = setindex!!(copy(vnt), v, k)
-        @test vnt == vnt2
+        equality = (vnt == vnt2)
+        # The value may be `missing` if vnt itself has values that are missing.
+        @test equality === true || equality === missing
         @test isequal(vnt, vnt2)
         @test hash(vnt) == hash(vnt2)
     end
@@ -36,24 +38,26 @@ function test_invariants(vnt::VarNamedTuple)
     # reconstructability-from-repr property, this will fail. Likewise if any element uses
     # in its repr print out types that are not in scope in this module, it will fail.
     vnt3 = eval(Meta.parse(repr(vnt)))
-    @test vnt == vnt3
+    equality = (vnt == vnt3)
+    # The value may be `missing` if vnt itself has values that are missing.
+    @test equality === true || equality === missing
     @test isequal(vnt, vnt3)
     @test hash(vnt) == hash(vnt3)
     # Check that merge with an empty VarNamedTuple is a no-op.
-    @test merge(vnt, VarNamedTuple()) == vnt
-    @test merge(VarNamedTuple(), vnt) == vnt
+    @test isequal(merge(vnt, VarNamedTuple()), vnt)
+    @test isequal(merge(VarNamedTuple(), vnt), vnt)
     # Check that the VNT can be constructed back from its keys and values.
     vnt4 = VarNamedTuple()
     for (k, v) in zip(vnt_keys, vnt_values)
         vnt4 = setindex!!(vnt4, v, k)
     end
-    @test vnt == vnt4
+    @test isequal(vnt, vnt4)
     # Check that vnt isempty only if it has no keys
     was_empty = isempty(vnt)
     @test was_empty == isempty(vnt_keys)
     @test was_empty == isempty(vnt_values)
     # Check that vnt can be emptied
-    @test empty(vnt) == VarNamedTuple()
+    @test empty(vnt) === VarNamedTuple()
     emptied_vnt = empty!!(copy(vnt))
     @test isempty(emptied_vnt)
     @test isempty(keys(emptied_vnt))
@@ -312,6 +316,8 @@ Base.size(st::SizedThing) = st.size
                     expected_isequal = expected_isequal & isequal(v1, v2)
                     expected_doubleequal = expected_doubleequal & (v1 == v2)
                 end
+                test_invariants(vnt1)
+                test_invariants(vnt2)
                 @test isequal(vnt1, vnt2) == expected_isequal
                 @test (vnt1 == vnt2) === expected_doubleequal
                 if expected_isequal
@@ -335,6 +341,8 @@ Base.size(st::SizedThing) = st.size
         expected_merge = setindex!!(expected_merge, 2, @varname(c))
         expected_merge = setindex!!(expected_merge, 2.0, @varname(b))
         @test @inferred(merge(vnt1, vnt2)) == expected_merge
+        test_invariants(vnt1)
+        test_invariants(vnt2)
 
         vnt1 = VarNamedTuple()
         vnt2 = VarNamedTuple()
@@ -391,6 +399,8 @@ Base.size(st::SizedThing) = st.size
             expected_merge, :2, @varname(f.a[1].b.c[4, 2].d[1, 1][14, 13])
         )
         @test merge(vnt1, vnt2) == expected_merge
+        test_invariants(vnt1)
+        test_invariants(vnt2)
 
         # PartialArrays with different sizes.
         vnt1 = VarNamedTuple()
@@ -406,6 +416,8 @@ Base.size(st::SizedThing) = st.size
         @test @inferred(merge(vnt1, vnt2)) == expected_merge_12
         expected_merge_21 = setindex!!(expected_merge_12, 1, @varname(a[1]))
         @test @inferred(merge(vnt2, vnt1)) == expected_merge_21
+        test_invariants(vnt1)
+        test_invariants(vnt2)
 
         vnt1 = VarNamedTuple()
         vnt2 = VarNamedTuple()
@@ -420,6 +432,8 @@ Base.size(st::SizedThing) = st.size
         @test merge(vnt1, vnt2) == expected_merge_12
         expected_merge_21 = setindex!!(expected_merge_12, 1, @varname(a[1, 1]))
         @test merge(vnt2, vnt1) == expected_merge_21
+        test_invariants(vnt1)
+        test_invariants(vnt2)
     end
 
     @testset "keys and values" begin
@@ -559,6 +573,7 @@ Base.size(st::SizedThing) = st.size
             SizedThing((3, 1, 4)),
             SizedThing((3, 1, 4)),
         ]
+        test_invariants(vnt)
     end
 
     @testset "length" begin
@@ -595,6 +610,7 @@ Base.size(st::SizedThing) = st.size
 
         vnt = setindex!!(vnt, [:a, :b], @varname(y[4][3][2][1:2]))
         @test @inferred(length(vnt)) == 16
+        test_invariants(vnt)
     end
 
     @testset "empty" begin
@@ -605,10 +621,12 @@ Base.size(st::SizedThing) = st.size
         @test @inferred(isempty(vnt)) == true
         vnt = setindex!!(vnt, 1.0, @varname(a))
         @test @inferred(isempty(vnt)) == false
+        test_invariants(vnt)
 
         vnt = VarNamedTuple()
         vnt = setindex!!(vnt, [], @varname(a[1]))
         @test @inferred(isempty(vnt)) == false
+        test_invariants(vnt)
 
         # 2) empty!! keeps PartialArrays in place:
         vnt = VarNamedTuple()
@@ -624,22 +642,26 @@ Base.size(st::SizedThing) = st.size
         @test @inferred(getindex(vnt, @varname(a[2:4]))) == [1, 2, 3]
         @test haskey(vnt, @varname(a[2:4]))
         @test !haskey(vnt, @varname(a[1]))
+        test_invariants(vnt)
     end
 
     @testset "densification" begin
         vnt = VarNamedTuple()
         vnt = @inferred(setindex!!(vnt, 1.0, @varname(a.b[1].c[1, 1])))
         @test @inferred(getindex(vnt, @varname(a.b[1].c))) == fill(1.0, (1, 1))
+        test_invariants(vnt)
 
         vnt = VarNamedTuple()
         vnt = @inferred(setindex!!(vnt, 1.0, @varname(a.b[1].c[1, 1])))
         vnt = @inferred(setindex!!(vnt, 1.0, @varname(a.b[1].c[1, 2])))
         @test @inferred(getindex(vnt, @varname(a.b[1].c))) == fill(1.0, (1, 2))
+        test_invariants(vnt)
 
         vnt = VarNamedTuple()
         vnt = @inferred(setindex!!(vnt, 1.0, @varname(a.b[1].c[1, 1])))
         vnt = @inferred(setindex!!(vnt, 1.0, @varname(a.b[1].c[2, 1])))
         @test @inferred(getindex(vnt, @varname(a.b[1].c))) == fill(1.0, (2, 1))
+        test_invariants(vnt)
 
         vnt = VarNamedTuple()
         vnt = @inferred(setindex!!(vnt, 1.0, @varname(a.b[1].c[1, 1])))
@@ -650,10 +672,12 @@ Base.size(st::SizedThing) = st.size
         @test @inferred(getindex(vnt, @varname(a.b[1].c))) == fill(1.0, (2, 2))
         vnt = @inferred(setindex!!(vnt, 1.0, @varname(a.b[1].c[3, 3])))
         @test_throws ArgumentError @inferred(getindex(vnt, @varname(a.b[1].c)))
+        test_invariants(vnt)
 
         vnt = VarNamedTuple()
         vnt = @inferred(setindex!!(vnt, SizedThing((2,)), @varname(x[1:2])))
         @test_throws ArgumentError @inferred(getindex(vnt, @varname(x)))
+        test_invariants(vnt)
     end
 
     @testset "printing" begin
@@ -702,6 +726,7 @@ Base.size(st::SizedThing) = st.size
             Tuple{VarNamedTuple{(:g,), \
             Tuple{PartialArray{Float64, 1}}}}},2}((2, 2) => VarNamedTuple(f = VarNamedTuple(g = PartialArray{Float64,1}((1,) => 16.0, \
             (2,) => 17.0),),))),))"""
+        test_invariants(vnt)
     end
 
     @testset "block variables" begin
