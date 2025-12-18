@@ -137,7 +137,7 @@ function link!!(::DynamicTransformation, vi::VNTVarInfo, model::Model)
     new_values = vi.values
     vns = keys(vi)
     for vn in vns
-        new_values = apply!!(vi.values, vn) do tv
+        new_values = apply!!(new_values, vn) do tv
             dist = getindex(dists, vn)
             transform = from_linked_vec_transform(dist)
             new_tv, logjac = change_transform(tv, transform, true)
@@ -177,7 +177,7 @@ function invlink!!(::DynamicTransformation, vi::VNTVarInfo, model::Model)
     new_values = vi.values
     vns = keys(vi)
     for vn in vns
-        new_values = apply!!(vi.values, vn) do tv
+        new_values = apply!!(new_values, vn) do tv
             transform = typed_identity
             new_tv, logjac = change_transform(tv, transform, false)
             cumulative_logjac += logjac
