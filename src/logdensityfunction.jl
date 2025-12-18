@@ -13,7 +13,7 @@ using DynamicPPL:
     OnlyAccsVarInfo,
     RangeAndLinked,
     VectorWithRanges,
-    Metadata,
+    # Metadata,
     VarNamedVector,
     default_accumulators,
     float_type_with_fallback,
@@ -310,45 +310,56 @@ representation, along with whether each variable is linked or unlinked.
 This function returns a VarNamedTuple mapping all VarNames to their corresponding
 `RangeAndLinked`.
 """
-function get_ranges_and_linked(varinfo::VarInfo{<:NamedTuple{syms}}) where {syms}
-    all_ranges = VarNamedTuple()
+function get_ranges_and_linked(vi::VNTVarInfo)
     offset = 1
-    for sym in syms
-        md = varinfo.metadata[sym]
-        this_md_others, offset = get_ranges_and_linked_metadata(md, offset)
-        all_ranges = merge(all_ranges, this_md_others)
+    vnt = map!!(vi.values) do tv
+        val = tv.val
+        range = offset:(offset + length(val) - 1)
+        offset += length(val)
+        RangeAndLinked(range, tv.linked, size(val))
     end
-    return all_ranges
+    return vnt
 end
-function get_ranges_and_linked(varinfo::VarInfo{<:Union{Metadata,VarNamedVector}})
-    all_ranges, _ = get_ranges_and_linked_metadata(varinfo.metadata, 1)
-    return all_ranges
-end
-function get_ranges_and_linked_metadata(md::Metadata, start_offset::Int)
-    all_ranges = VarNamedTuple()
-    offset = start_offset
-    for (vn, idx) in md.idcs
-        is_linked = md.is_transformed[idx]
-        range = md.ranges[idx] .+ (start_offset - 1)
-        orig_size = varnamesize(vn)
-        all_ranges = BangBang.setindex!!(
-            all_ranges, RangeAndLinked(range, is_linked, orig_size), vn
-        )
-        offset += length(range)
-    end
-    return all_ranges, offset
-end
-function get_ranges_and_linked_metadata(vnv::VarNamedVector, start_offset::Int)
-    all_ranges = VarNamedTuple()
-    offset = start_offset
-    for (vn, idx) in vnv.varname_to_index
-        is_linked = vnv.is_unconstrained[idx]
-        range = vnv.ranges[idx] .+ (start_offset - 1)
-        orig_size = varnamesize(vn)
-        all_ranges = BangBang.setindex!!(
-            all_ranges, RangeAndLinked(range, is_linked, orig_size), vn
-        )
-        offset += length(range)
-    end
-    return all_ranges, offset
-end
+
+# function get_ranges_and_linked(varinfo::VarInfo{<:NamedTuple{syms}}) where {syms}
+#     all_ranges = VarNamedTuple()
+#     offset = 1
+#     for sym in syms
+#         md = varinfo.metadata[sym]
+#         this_md_others, offset = get_ranges_and_linked_metadata(md, offset)
+#         all_ranges = merge(all_ranges, this_md_others)
+#     end
+#     return all_ranges
+# end
+# function get_ranges_and_linked(varinfo::VarInfo{<:Union{Metadata,VarNamedVector}})
+#     all_ranges, _ = get_ranges_and_linked_metadata(varinfo.metadata, 1)
+#     return all_ranges
+# end
+# function get_ranges_and_linked_metadata(md::Metadata, start_offset::Int)
+#     all_ranges = VarNamedTuple()
+#     offset = start_offset
+#     for (vn, idx) in md.idcs
+#         is_linked = md.is_transformed[idx]
+#         range = md.ranges[idx] .+ (start_offset - 1)
+#         orig_size = varnamesize(vn)
+#         all_ranges = BangBang.setindex!!(
+#             all_ranges, RangeAndLinked(range, is_linked, orig_size), vn
+#         )
+#         offset += length(range)
+#     end
+#     return all_ranges, offset
+# end
+# function get_ranges_and_linked_metadata(vnv::VarNamedVector, start_offset::Int)
+#     all_ranges = VarNamedTuple()
+#     offset = start_offset
+#     for (vn, idx) in vnv.varname_to_index
+#         is_linked = vnv.is_unconstrained[idx]
+#         range = vnv.ranges[idx] .+ (start_offset - 1)
+#         orig_size = varnamesize(vn)
+#         all_ranges = BangBang.setindex!!(
+#             all_ranges, RangeAndLinked(range, is_linked, orig_size), vn
+#         )
+#         offset += length(range)
+#     end
+#     return all_ranges, offset
+# end

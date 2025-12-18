@@ -256,15 +256,15 @@ function SimpleVarInfo(model::Model, init_strategy::AbstractInitStrategy=InitFro
 end
 
 # Constructor from `VarInfo`.
-function SimpleVarInfo(vi::NTVarInfo, ::Type{D}) where {D}
-    values = values_as(vi, D)
-    return SimpleVarInfo(values, copy(getaccs(vi)))
-end
-function SimpleVarInfo{T}(vi::NTVarInfo, ::Type{D}) where {T<:Real,D}
-    values = values_as(vi, D)
-    accs = map(acc -> convert_eltype(T, acc), getaccs(vi))
-    return SimpleVarInfo(values, accs)
-end
+# function SimpleVarInfo(vi::NTVarInfo, ::Type{D}) where {D}
+#     values = values_as(vi, D)
+#     return SimpleVarInfo(values, copy(getaccs(vi)))
+# end
+# function SimpleVarInfo{T}(vi::NTVarInfo, ::Type{D}) where {T<:Real,D}
+#     values = values_as(vi, D)
+#     accs = map(acc -> convert_eltype(T, acc), getaccs(vi))
+#     return SimpleVarInfo(values, accs)
+# end
 
 function untyped_simple_varinfo(model::Model)
     varinfo = SimpleVarInfo(OrderedDict{VarName,Any}())

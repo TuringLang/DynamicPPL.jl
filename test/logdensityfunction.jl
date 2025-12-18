@@ -18,10 +18,10 @@ using Mooncake: Mooncake
 @testset "LogDensityFunction: Correctness" begin
     @testset "$(m.f)" for m in DynamicPPL.TestUtils.ALL_MODELS
         @testset "$varinfo_func" for varinfo_func in [
-            DynamicPPL.untyped_varinfo,
+            # DynamicPPL.untyped_varinfo,
             DynamicPPL.typed_varinfo,
-            DynamicPPL.untyped_vector_varinfo,
-            DynamicPPL.typed_vector_varinfo,
+            # DynamicPPL.untyped_vector_varinfo,
+            # DynamicPPL.typed_vector_varinfo,
         ]
             unlinked_vi = varinfo_func(m)
             @testset "$islinked" for islinked in (false, true)
@@ -38,7 +38,7 @@ using Mooncake: Mooncake
                     # directly
                     range_with_linked = ranges[vn]
                     @test params[range_with_linked.range] ==
-                        DynamicPPL.getindex_internal(vi, vn)
+                        DynamicPPL.tovec(DynamicPPL.getindex_internal(vi, vn))
                     # Check that the link status is correct
                     @test range_with_linked.is_linked == islinked
                 end

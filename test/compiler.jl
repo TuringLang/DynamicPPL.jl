@@ -236,9 +236,9 @@ module Issue537 end
 
         # https://github.com/TuringLang/Turing.jl/issues/1464#issuecomment-731153615
         vi = VarInfo(gdemo(x))
-        @test haskey(vi.metadata, :x)
+        @test haskey(vi, @varname(x))
         vi = VarInfo(gdemo(x))
-        @test haskey(vi.metadata, :x)
+        @test haskey(vi, @varname(x))
 
         # Non-array variables
         @model function testmodel_nonarray(x, y)
