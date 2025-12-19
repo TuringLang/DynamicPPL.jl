@@ -2,6 +2,112 @@
 
 ## 0.40
 
+### Changes to indexing random variables with square brackets
+
+0.40 internally reimplements how DynamicPPL handles random variables like `x[1]`, `x.y[2,2]`, and `x[:,1:4,5]`, i.e. ones that use indexing with square brackets.
+Most of this is invisible to users, but it has some effects that show on the surface.
+The gist of the changes is that any indexing by square brackets is now implicitly assumed to be indexing into a regular `Base.Array`, with 1-based indexing.
+The general effect this has is that the new rules on what is and isn't allowed are stricter, forbidding some old syntax that used to be allowed, and at the same time guaranteeing that it works correctly.
+(Previously there were some sharp edges around these sorts of variable names.)
+
+#### No more linear indexing of multidimensional arrays
+
+Previously you could do this:
+
+```julia
+x = Array{Float64,2}(undef, (2, 2))
+x[1] ~ Normal()
+x[1, 1] ~ Normal()
+```
+
+Now you can't, this will error.
+If you first create a variable like `x[1]`, DynamicPPL from there on assumes that this variable only takes a single index (like a `Vector`).
+It will then error if you try to index the same variable with any other number of indices.
+
+The same logic also bans this, which likewise was previously allowed:
+
+```julia
+x = Array{Float64,2}(undef, (2, 2))
+x[1, 1, 1] ~ Normal()
+x[1, 1] ~ Normal()
+```
+
+This made use of Julia allowing trailing indices of `1`.
+
+Note that the above models were previously quite dangerous and easy to misuse, because DynamicPPL was oblivious to the fact that e.g. `x[1]` and `x[1,1]` refer to the same element.
+Both of the above examples previously created 2-dimensional models, with two distinct random variables, one of which effectively overwrote the other in the model body.
+
+TODO(mhauru) This may cause surprising issues when using `eachindex`, which is generally encouraged, e.g.
+
+```
+x = Array{Float64,2}(undef, (3, 3)
+for i in eachindex(x)
+    x[i] ~ Normal()
+end
+```
+
+Maybe we should fix linear indexing before releasing?
+
+#### No more square bracket indexing with arbitrary keys
+
+Previously you could do this:
+
+```julia
+x = Dict()
+x["a"] ~ Normal()
+```
+
+Now you can't, this will error.
+This is because DynamicPPL now assumes that if you are indexing with square brackets, you are dealing with an `Array`, for which `"a"` is not a valid index.
+You can still use a dictionary on the left-hand side of a `~` statement as long as the indices are valid indices to an `Array`, e.g. integers.
+
+#### No more unusually indexed arrays, such as `OffsetArrays`
+
+Previously you could do this
+
+```julia
+using OffsetArrays
+x = OffsetArray(Vector{Float64}(undef, 3), -3)
+x[-2] ~ Normal()
+0.0 ~ Normal(x[-2])
+```
+
+Now you can't, this will error.
+This is because DynamicPPL now assumes that if you are indexing with square brackes, you are dealing with an `Array`, for which `-2` is not a valid index.
+
+#### The above limitations are not fundamental
+
+The above, new restrictions to what sort of variable names are allowed aren't fundamental.
+With some effort we could e.g. add support for linear indexing, this time done properly, so that e.g. `x[1,1]` and `x[1]` would be the same variable.
+Likewise, we could manually add structures to support indexing into dictionaries or `OffsetArrays`.
+If this would be useful to you, let us know.
+
+#### This only affects `~` statements
+
+You can still use any arbitrary indexing within your model in statements that don't involve `~`.
+For instance, you can use `OffsetArray`s, or linear indexing, as long as you don't put them on the left-hand side of a `~`.
+
+#### Performance benefits
+
+The upside of all these new limitations is that models that use square bracket indexing are now faster.
+For instance, take the following model
+
+```julia
+@model function f()
+    x = Vector{Float64}(undef, 1000)
+    for i in eachindex(x)
+        x[i] ~ Normal()
+    end
+    return 0.0 ~ Normal(sum(x))
+end
+```
+
+Evaluating the log joint for this model has gotten about 3 times faster in v0.40.
+
+#### Robustness benefits
+
+TODO(mhauru) Add an example here for how this improves `condition`ing, once `condition` uses `VarNamedTuple`.
+
 ## 0.39.4
 
 Removed the internal functions `DynamicPPL.getranges`, `DynamicPPL.vector_getrange`, and `DynamicPPL.vector_getranges` (the new LogDensityFunction construction does exactly the same thing, so this specialised function was not needed).

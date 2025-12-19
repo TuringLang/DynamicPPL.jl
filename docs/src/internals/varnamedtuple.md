@@ -50,6 +50,7 @@ The typical use of this structure in DynamicPPL is that the user may define valu
 This is also the reason why `PartialArray`, and by extension `VarNamedTuple`, do not support indexing by `Colon()`, i.e. `:`, as in `x[:]`.
 A `Colon()` says that we should get or set all the values along that dimension, but a `PartialArray` does not know how many values there may be.
 If `x[1]` and `x[4]` have been set, asking for `x[:]` is not a well-posed question.
+Note however, that concretising the `VarName` resolves this ambiguity, and makes the `VarName` fine as a key to a `VarNamedTuple`.
 
 `PartialArray`s have other restrictions, compared to the full indexing syntax of Julia, as well:
 They do not support linearly indexing into multidimemensional arrays (as in `rand(3,3)[8]`), nor indexing with arrays of indices (as in `rand(4)[[1,3]]`), nor indexing with boolean mask arrays (as in `rand(4)[[true, false, true, false]]`).

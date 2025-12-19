@@ -30,7 +30,7 @@ end
 # The non-generated function implementations of these would be
 # _has_colon(::T) where {T<:Tuple} = any(x <: Colon for x in T.parameters)
 # function _is_multiindex(::T) where {T<:Tuple}
-#     return any(x <: UnitRange || x <: Colon for x in T.parameters)
+#     return any(x <: AbstractUnitRange || x <: Colon for x in T.parameters)
 # end
 # However, constant propagation sometimes fails if the index tuple is too big (e.g. length
 # 4), so we play it safe and use generated functions. Constant propagating these is
@@ -39,18 +39,18 @@ end
 @generated function _has_colon(::T) where {T<:Tuple}
     for x in T.parameters
         if x <: Colon
-            return :(true)
+            return :(return true)
         end
     end
-    return :(false)
+    return :(return false)
 end
 @generated function _is_multiindex(::T) where {T<:Tuple}
     for x in T.parameters
-        if x <: UnitRange || x <: Colon
-            return :(true)
+        if x <: AbstractUnitRange || x <: Colon || x <: AbstractPPL.ConcretizedSlice
+            return :(return true)
         end
     end
-    return :(false)
+    return :(return false)
 end
 
 """
@@ -74,7 +74,10 @@ _merge_recursive(_, x2) = x2
 const PARTIAL_ARRAY_DIM_GROWTH_FACTOR = 4
 
 """A convenience for defining method argument type bounds."""
-const INDEX_TYPES = Union{Integer,UnitRange,Colon}
+const INDEX_TYPES = Union{Integer,AbstractUnitRange,Colon,AbstractPPL.ConcretizedSlice}
+
+_unwrap_concretized_slice(cs::AbstractPPL.ConcretizedSlice) = cs.range
+_unwrap_concretized_slice(x::Union{Integer,AbstractUnitRange,Colon}) = x
 
 """
     ArrayLikeBlock{T,I}
@@ -376,7 +379,7 @@ end
 
 """Return the length needed in a dimension given an index."""
 _length_needed(i::Integer) = i
-_length_needed(r::UnitRange) = last(r)
+_length_needed(r::AbstractUnitRange) = last(r)
 
 """Take the minimum size that a dimension of a PartialArray needs to be, and return the size
 we choose it to be. This size will be the smallest possible power of
@@ -447,12 +450,16 @@ function _check_index_validity(pa::PartialArray, inds::NTuple{N,INDEX_TYPES}) wh
         throw(BoundsError(pa, inds))
     end
     if _has_colon(inds)
-        throw(ArgumentError("Indexing PartialArrays with Colon is not supported"))
+        msg = """
+            Indexing PartialArrays with Colon is not supported.
+            You may need to concretise the `VarName` first."""
+        throw(ArgumentError(msg))
     end
     return nothing
 end
 
 function _getindex(pa::PartialArray, inds::Vararg{INDEX_TYPES})
+    inds = _unwrap_concretized_slice.(inds)
     _check_index_validity(pa, inds)
     if !(checkbounds(Bool, pa.mask, inds...) && all(@inbounds(getindex(pa.mask, inds...))))
         throw(BoundsError(pa, inds))
@@ -501,6 +508,7 @@ function _getindex(pa::PartialArray, inds::Vararg{INDEX_TYPES})
 end
 
 function _haskey(pa::PartialArray, inds::NTuple{N,INDEX_TYPES}) where {N}
+    inds = _unwrap_concretized_slice.(inds)
     _check_index_validity(pa, inds)
     hasall =
         checkbounds(Bool, pa.mask, inds...) && all(@inbounds(getindex(pa.mask, inds...)))
@@ -528,6 +536,7 @@ function _haskey(pa::PartialArray, inds::NTuple{N,INDEX_TYPES}) where {N}
 end
 
 function BangBang.delete!!(pa::PartialArray, inds::Vararg{INDEX_TYPES})
+    inds = _unwrap_concretized_slice.(inds)
     _check_index_validity(pa, inds)
     if _is_multiindex(inds)
         pa.mask[inds...] .= false
@@ -537,7 +546,7 @@ function BangBang.delete!!(pa::PartialArray, inds::Vararg{INDEX_TYPES})
     return pa
 end
 
-_ensure_range(r::UnitRange) = r
+_ensure_range(r::AbstractUnitRange) = r
 _ensure_range(i::Integer) = i:i
 
 """
@@ -580,6 +589,7 @@ function _needs_arraylikeblock(value, inds::Vararg{INDEX_TYPES})
 end
 
 function _setindex!!(pa::PartialArray, value, inds::Vararg{INDEX_TYPES})
+    inds = _unwrap_concretized_slice.(inds)
     _check_index_validity(pa, inds)
     pa = if checkbounds(Bool, pa.mask, inds...)
         pa
@@ -733,6 +743,7 @@ The there are two major limitations to indexing by VarNamedTuples:
 
 * `VarName`s with `Colon`s, (e.g. `a[:]`) are not supported. This is because the meaning of
   `a[:]` is ambiguous if only some elements of `a`, say `a[1]` and `a[3]`, are defined.
+  However, _concretised_ `VarName`s with `Colon`s are supported.
 * Any `VarNames` with IndexLenses` must have a consistent number of indices. That is, one
   cannot set `a[1]` and `a[1,2]` in the same `VarNamedTuple`.
 
