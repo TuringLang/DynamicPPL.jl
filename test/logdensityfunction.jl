@@ -117,7 +117,7 @@ end
             @test begin
                 @inferred LogDensityProblems.logdensity(ldf, x)
                 true
-            end broken = (VERSION < v"1.11.0")
+            end skip = (VERSION < v"1.11.0")
         end
     end
 end
