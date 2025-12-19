@@ -49,6 +49,7 @@ function typed_identity end
 @inline typed_identity(x) = x
 @inline Bijectors.with_logabsdet_jacobian(::typeof(typed_identity), x) =
     (x, zero(LogProbType))
+@inline Bijectors.inverse(::typeof(typed_identity)) = typed_identity
 
 """
     @addlogprob!(ex)

@@ -67,8 +67,8 @@ end
 # Re-evaluating the model is unconscionably slow for untyped VarInfo. It's much faster to
 # convert it to a typed varinfo first, hence this method.
 # https://github.com/TuringLang/Turing.jl/issues/2604
-maybe_to_typed_varinfo(vi::UntypedVarInfo) = typed_varinfo(vi)
-maybe_to_typed_varinfo(vi::UntypedVectorVarInfo) = typed_vector_varinfo(vi)
+# maybe_to_typed_varinfo(vi::UntypedVarInfo) = typed_varinfo(vi)
+# maybe_to_typed_varinfo(vi::UntypedVectorVarInfo) = typed_vector_varinfo(vi)
 maybe_to_typed_varinfo(vi::AbstractVarInfo) = vi
 
 """

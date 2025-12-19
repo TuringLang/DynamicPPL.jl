@@ -8,7 +8,7 @@ using BangBang
 using Accessors
 using ..DynamicPPL: _compose_no_identity
 
-export VarNamedTuple
+export VarNamedTuple, map!!, apply!!
 
 # We define our own getindex, setindex!!, and haskey functions, which we use to
 # get/set/check values in VarNamedTuple and PartialArray. We do this because we want to be
@@ -19,12 +19,33 @@ export VarNamedTuple
 # 2. We would want `haskey` to fall back onto `checkbounds` when called on Base.Arrays.
 function _getindex end
 function _haskey end
+
+"""
+    _setindex!!(collection, value, key; allow_new=Val(true))
+
+Like `setindex!!`, but special-cased for `VarNamedTuple` and `PartialArray` to recurse
+into nested structures.
+
+The `allow_new` keywword argument is a performance optimisation: If it is set to
+`Val(false)`, the function can assume that the key being set already exists in `collection`.
+This allows skipping some code paths, which may have a minor benefit at runtime, but more
+importantly, allows for better constant propagation and type stability at compile time.
+
+`allow_new` being set to `Val(false)` does _not_ guarantee that no new keys will be added.
+It only gives the implementation of `_setindex!!` the permission to assume that the key
+already exists. Setting it to `Val(false)` should be done only when the caller is sure that
+the key already exists, anything else is a bug in the caller.
+
+Most methods of _setindex!! ignore the `allow_new` keyword argument, as they have no use for
+it. See the method for setting values in a `VarNamedTuple` with a `ComposedFunction` for
+when it is useful.
+"""
 function _setindex!! end
 
 _getindex(arr::AbstractArray, optic::IndexLens) = getindex(arr, optic.indices...)
 _haskey(arr::AbstractArray, optic::IndexLens) = _haskey(arr, optic.indices)
 _haskey(arr::AbstractArray, inds) = checkbounds(Bool, arr, inds...)
-function _setindex!!(arr::AbstractArray, value, optic::IndexLens)
+function _setindex!!(arr::AbstractArray, value, optic::IndexLens; allow_new=Val(true))
     return setindex!!(arr, value, optic.indices...)
 end
 
@@ -265,10 +286,19 @@ function Base.copy(pa::PartialArray)
     # Make a shallow copy of pa, except for any VarNamedTuple elements, which we recursively
     # copy.
     pa_copy = PartialArray(copy(pa.data), copy(pa.mask))
-    if VarNamedTuple <: eltype(pa) || eltype(pa) <: VarNamedTuple
+    et = eltype(pa)
+    if (
+        VarNamedTuple <: et ||
+        et <: VarNamedTuple ||
+        PartialArray <: et ||
+        et <: PartialArray
+    )
         @inbounds for i in eachindex(pa.mask)
-            if pa.mask[i] && pa_copy.data[i] isa VarNamedTuple
-                pa_copy.data[i] = copy(pa.data[i])
+            if pa.mask[i]
+                val = @inbounds pa_copy.data[i]
+                if val isa VarNamedTuple || val isa PartialArray
+                    pa_copy.data[i] = copy(val)
+                end
             end
         end
     end
@@ -451,7 +481,7 @@ end
 
 _getindex(pa::PartialArray, optic::IndexLens) = _getindex(pa, optic.indices...)
 _haskey(pa::PartialArray, optic::IndexLens) = _haskey(pa, optic.indices)
-function _setindex!!(pa::PartialArray, value, optic::IndexLens)
+function _setindex!!(pa::PartialArray, value, optic::IndexLens; allow_new=Val(true))
     return _setindex!!(pa, value, optic.indices...)
 end
 
@@ -733,6 +763,11 @@ function Base.keys(pa::PartialArray)
                 sublens = _varname_to_lens(vn)
                 push!(ks, _compose_no_identity(sublens, lens))
             end
+        elseif val isa PartialArray
+            subkeys = keys(val)
+            for sublens in subkeys
+                push!(ks, _compose_no_identity(sublens, lens))
+            end
         elseif val isa ArrayLikeBlock
             if !(val.inds in alb_inds_seen)
                 push!(ks, IndexLens(Tuple(val.inds)))
@@ -753,7 +788,7 @@ function Base.values(pa::PartialArray)
             continue
         end
         val = getindex(pa.data, ind)
-        if val isa VarNamedTuple
+        if val isa VarNamedTuple || val isa PartialArray
             subvalues = values(val)
             vs = push!!(vs, subvalues...)
         elseif val isa ArrayLikeBlock
@@ -775,7 +810,7 @@ function Base.length(pa::PartialArray)
             continue
         end
         val = getindex(pa.data, ind)
-        if val isa VarNamedTuple
+        if val isa VarNamedTuple || val isa PartialArray
             len += length(val)
         else
             # Note we don't need to special case here for ArrayLikeBlocks. That's because
@@ -1006,11 +1041,13 @@ _haskey(vnt::VarNamedTuple, ::PropertyLens{S}) where {S} = haskey(vnt.data, S)
 _haskey(vnt::VarNamedTuple, ::typeof(identity)) = true
 _haskey(::VarNamedTuple, ::IndexLens) = false
 
-function _setindex!!(vnt::VarNamedTuple, value, name::VarName)
-    return _setindex!!(vnt, value, _varname_to_lens(name))
+function _setindex!!(vnt::VarNamedTuple, value, name::VarName; allow_new=Val(true))
+    return _setindex!!(vnt, value, _varname_to_lens(name); allow_new=allow_new)
 end
 
-function _setindex!!(vnt::VarNamedTuple, value, ::PropertyLens{S}) where {S}
+function _setindex!!(
+    vnt::VarNamedTuple, value, ::PropertyLens{S}; allow_new=Val(true)
+) where {S}
     # I would like for this to just read
     # return VarNamedTuple(_setindex!!(vnt.data, value, S))
     # but that seems to be type unstable. Why? Shouldn't it obviously be the same as the
@@ -1041,12 +1078,12 @@ Base.merge(x1::VarNamedTuple, x2::VarNamedTuple) = _merge_recursive(x1, x2)
     return Expr(:block, exs...)
 end
 
-# TODO(mhauru) The below remains unfinished an undertested. I think it's incorrect for more
-# complex VarNames. It is unexported though.
 """
     apply!!(func, vnt::VarNamedTuple, name::VarName)
 
 Apply `func` to the subdata at `name` in `vnt`, and set the result back at `name`.
+
+Like `map!!`, but only for a single `VarName`.
 
 ```jldoctest
 julia> using DynamicPPL: VarNamedTuple, setindex!!
@@ -1069,7 +1106,118 @@ function apply!!(func, vnt::VarNamedTuple, name::VarName)
     end
     subdata = _getindex(vnt, name)
     new_subdata = func(subdata)
-    return _setindex!!(vnt, new_subdata, name)
+    # The allow_new=Val(true) is a performance optimisation: Since we've already checked
+    # that the key exists, we know that no new fields will be created.
+    return _setindex!!(vnt, new_subdata, name; allow_new=Val(false))
+end
+
+"""
+    _map_recursive!!(func, x)
+
+Call `func` on `x`, except if `x` is a `VarNamedTuple` or `PartialArray`, in which case
+call `_map_recursive!!` recursively on all their elements..
+
+This is the internal implementation of `map!!`, but because it has a method defined for
+literally every type in existence, we hide it behind the interface of the more
+discriminating `map!!`. It makes the implementation a bit simpler, compared to checking
+element types within `map!!` itself.
+"""
+_map_recursive!!(func, x) = func(x)
+
+function _map_recursive!!(func, pa::PartialArray)
+    # Ask the compiler to infer the return type of applying func to eltype(pa).
+    new_et = Core.Compiler.return_type(x -> _map_recursive!!(func, x), Tuple{eltype(pa)})
+    new_data = if new_et <: eltype(pa)
+        pa.data
+    else
+        similar(pa.data, new_et)
+    end
+    @inbounds for i in eachindex(pa.mask)
+        if pa.mask[i]
+            new_data[i] = _map_recursive!!(func, pa.data[i])
+        end
+    end
+    # The above type inference may be overly conservative, so we concretise the eltype.
+    return _concretise_eltype!!(PartialArray(new_data, pa.mask))
+end
+
+function _map_recursive!!(func, alb::ArrayLikeBlock)
+    new_block = _map_recursive!!(func, alb.block)
+    if size(new_block) != size(alb.block)
+        throw(
+            DimensionMismatch(
+                "map!! can't change the size of an ArrayLikeBlock. Tried to change from" *
+                "$(size(alb.block)) to $(size(new_block)).",
+            ),
+        )
+    end
+    return ArrayLikeBlock(new_block, alb.inds)
+end
+
+@generated function _map_recursive!!(func, vnt::VarNamedTuple{Names}) where {Names}
+    exs = Expr[]
+    for name in Names
+        push!(exs, :(_map_recursive!!(func, vnt.data.$name)))
+    end
+    return quote
+        return VarNamedTuple(NamedTuple{Names}(($(exs...),)))
+    end
+end
+
+"""
+    map!!(func, vnt::VarNamedTuple)
+
+Apply `func` to all set elements of the `vnt`, in place if possible.
+"""
+map!!(func, vnt::VarNamedTuple) = _map_recursive!!(func, vnt)
+
+function Base.mapreduce(f, op, vnt::VarNamedTuple; init=nothing)
+    if init === nothing
+        throw(
+            NotImplementedError(
+                "mapreduce without init is not implemented for VarNamedTuple."
+            ),
+        )
+    end
+    return _mapreduce_recursive(f, op, vnt, init)
+end
+
+_mapreduce_recursive(f, op, x, init) = op(init, f(x))
+_mapreduce_recursive(f, op, pa::ArrayLikeBlock, init) = op(init, f(pa.block))
+
+@generated function _mapreduce_recursive(
+    f, op, vnt::VarNamedTuple{Names}, init
+) where {Names}
+    exs = Expr[]
+    push!(
+        exs,
+        quote
+            result = init
+        end,
+    )
+    for name in Names
+        push!(exs, :(result = _mapreduce_recursive(f, op, vnt.data.$name, result)))
+    end
+    push!(exs, :(return result))
+    return Expr(:block, exs...)
+end
+
+function _mapreduce_recursive(f, op, pa::PartialArray, init)
+    result = init
+    albs_seen = Set{ArrayLikeBlock}()
+    @inbounds for i in eachindex(pa.mask)
+        if pa.mask[i]
+            val = @inbounds pa.data[i]
+            if val isa ArrayLikeBlock
+                if val in albs_seen
+                    continue
+                end
+                push!(albs_seen, val)
+            end
+            result = _mapreduce_recursive(f, op, pa.data[i], result)
+        end
+    end
+    return result
 end
 
 function Base.keys(vnt::VarNamedTuple)
@@ -1094,10 +1242,7 @@ function Base.values(vnt::VarNamedTuple)
     result = Any[]
     for sym in keys(vnt.data)
         subdata = vnt.data[sym]
-        if subdata isa VarNamedTuple
-            subvalues = values(subdata)
-            append!(result, subvalues)
-        elseif subdata isa PartialArray
+        if subdata isa VarNamedTuple || subdata isa PartialArray
             subvalues = values(subdata)
             append!(result, subvalues)
         else
@@ -1111,9 +1256,7 @@ function Base.length(vnt::VarNamedTuple)
     len = 0
     for sym in keys(vnt.data)
         subdata = vnt.data[sym]
-        if subdata isa VarNamedTuple
-            len += length(subdata)
-        elseif subdata isa PartialArray
+        if subdata isa VarNamedTuple || subdata isa PartialArray
             len += length(subdata)
         else
             len += 1
@@ -1132,13 +1275,23 @@ function _getindex(x::VNT_OR_PA, optic::ComposedFunction)
     return _getindex(subdata, optic.outer)
 end
 
-function _setindex!!(vnt::VNT_OR_PA, value, optic::ComposedFunction)
+# The allow_new keyword argument is a performance optimisation that helps constant
+# propagation and type inference by avoiding any possible dynamic dispatch calls to
+# `make_leaf`. It should only be set to `Val(false) if we are sure that the key already
+# exists, and thus there would be no need to call `make_leaf`.
+function _setindex!!(vnt::VNT_OR_PA, value, optic::ComposedFunction; allow_new=Val(true))
     sub = if _haskey(vnt, optic.inner)
-        _setindex!!(_getindex(vnt, optic.inner), value, optic.outer)
-    else
+        _setindex!!(_getindex(vnt, optic.inner), value, optic.outer; allow_new=allow_new)
+    elseif allow_new isa Val{true}
         make_leaf(value, optic.outer)
+    else
+        # If this branch is ever reached, then someone has used allow_new=Val(false)
+        # incorrectly.
+        error("""
+            _setindex was called with allow_new=Val(false) but the key does not exist.
+            This indicates a bug in DynamicPPL: Please file an issue on GitHub.""")
     end
-    return _setindex!!(vnt, sub, optic.inner)
+    return _setindex!!(vnt, sub, optic.inner; allow_new=allow_new)
 end
 
 function _haskey(vnt::VNT_OR_PA, optic::ComposedFunction)
@@ -1150,6 +1303,7 @@ Base.haskey(vnt::VarNamedTuple, vn::VarName) = _haskey(vnt, vn)
 
 # PartialArrays are an implementation detail of VarNamedTuple, and should never be the
 # return value of getindex. Thus, we automatically convert them to dense arrays if needed.
+# TODO(mhauru) The below doesn't handle nested PartialArrays. Is that a problem?
 _dense_array_if_needed(pa::PartialArray) = _dense_array(pa)
 _dense_array_if_needed(x) = x
 Base.getindex(vnt::VarNamedTuple, vn::VarName) = _dense_array_if_needed(_getindex(vnt, vn))

@@ -3,7 +3,7 @@ module VarNamedTupleTests
 using Combinatorics: Combinatorics
 using Test: @inferred, @test, @test_throws, @testset
 using DynamicPPL: DynamicPPL, @varname, VarNamedTuple
-using DynamicPPL.VarNamedTuples: PartialArray, ArrayLikeBlock
+using DynamicPPL.VarNamedTuples: PartialArray, ArrayLikeBlock, map!!, apply!!
 using AbstractPPL: VarName, concretize, prefix
 using BangBang: setindex!!, empty!!
 
@@ -27,7 +27,9 @@ function test_invariants(vnt::VarNamedTuple)
         @test !(v isa ArrayLikeBlock)
         @test !(v isa PartialArray)
         vnt2 = setindex!!(copy(vnt), v, k)
-        @test vnt == vnt2
+        equality = (vnt == vnt2)
+        # The value may be `missing` if vnt itself has values that are missing.
+        @test equality === true || equality === missing
         @test isequal(vnt, vnt2)
         @test hash(vnt) == hash(vnt2)
     end
@@ -36,24 +38,26 @@ function test_invariants(vnt::VarNamedTuple)
     # reconstructability-from-repr property, this will fail. Likewise if any element uses
     # in its repr print out types that are not in scope in this module, it will fail.
     vnt3 = eval(Meta.parse(repr(vnt)))
-    @test vnt == vnt3
+    equality = (vnt == vnt3)
+    # The value may be `missing` if vnt itself has values that are missing.
+    @test equality === true || equality === missing
     @test isequal(vnt, vnt3)
     @test hash(vnt) == hash(vnt3)
     # Check that merge with an empty VarNamedTuple is a no-op.
-    @test merge(vnt, VarNamedTuple()) == vnt
-    @test merge(VarNamedTuple(), vnt) == vnt
+    @test isequal(merge(vnt, VarNamedTuple()), vnt)
+    @test isequal(merge(VarNamedTuple(), vnt), vnt)
     # Check that the VNT can be constructed back from its keys and values.
     vnt4 = VarNamedTuple()
     for (k, v) in zip(vnt_keys, vnt_values)
         vnt4 = setindex!!(vnt4, v, k)
     end
-    @test vnt == vnt4
+    @test isequal(vnt, vnt4)
     # Check that vnt isempty only if it has no keys
     was_empty = isempty(vnt)
     @test was_empty == isempty(vnt_keys)
     @test was_empty == isempty(vnt_values)
     # Check that vnt can be emptied
-    @test empty(vnt) == VarNamedTuple()
+    @test empty(vnt) === VarNamedTuple()
     emptied_vnt = empty!!(copy(vnt))
     @test isempty(emptied_vnt)
     @test isempty(keys(emptied_vnt))
@@ -272,6 +276,17 @@ Base.size(st::SizedThing) = st.size
         @test haskey(vnt, vn)
         @test @inferred(getindex(vnt, vn)) == x
         test_invariants(vnt)
+
+        # Indices on indices
+        vnt = VarNamedTuple()
+        vnt = @inferred(setindex!!(vnt, 1, @varname(a[1][1])))
+        @test @inferred(getindex(vnt, @varname(a[1][1]))) == 1
+        vnt = @inferred(setindex!!(vnt, [1], @varname(b[1].c[1])))
+        @test @inferred(getindex(vnt, @varname(b[1].c[1]))) == [1]
+        vnt = @inferred(setindex!!(vnt, [1], @varname(e[3, 2].f[2, 2][10, 10])))
+        @test @inferred(getindex(vnt, @varname(e[3, 2].f[2, 2][10, 10]))) == [1]
+        vnt = @inferred(setindex!!(vnt, [1], @varname(g[3, 2][10, 10].h[2, 2])))
+        @test @inferred(getindex(vnt, @varname(g[3, 2][10, 10].h[2, 2]))) == [1]
     end
 
     @testset "equality and hash" begin
@@ -301,6 +316,8 @@ Base.size(st::SizedThing) = st.size
                     expected_isequal = expected_isequal & isequal(v1, v2)
                     expected_doubleequal = expected_doubleequal & (v1 == v2)
                 end
+                test_invariants(vnt1)
+                test_invariants(vnt2)
                 @test isequal(vnt1, vnt2) == expected_isequal
                 @test (vnt1 == vnt2) === expected_doubleequal
                 if expected_isequal
@@ -324,6 +341,8 @@ Base.size(st::SizedThing) = st.size
         expected_merge = setindex!!(expected_merge, 2, @varname(c))
         expected_merge = setindex!!(expected_merge, 2.0, @varname(b))
         @test @inferred(merge(vnt1, vnt2)) == expected_merge
+        test_invariants(vnt1)
+        test_invariants(vnt2)
 
         vnt1 = VarNamedTuple()
         vnt2 = VarNamedTuple()
@@ -352,16 +371,36 @@ Base.size(st::SizedThing) = st.size
         expected_merge = setindex!!(expected_merge, fill(2, 4), @varname(e.a[8:11]))
         @test @inferred(merge(vnt1, vnt2)) == expected_merge
 
+        vnt1 = setindex!!(vnt1, 1, @varname(e.b[1][13]))
+        vnt2 = setindex!!(vnt2, 2, @varname(e.b[2][13]))
+        expected_merge = setindex!!(expected_merge, 1, @varname(e.b[1][13]))
+        expected_merge = setindex!!(expected_merge, 2, @varname(e.b[2][13]))
+        vnt1 = setindex!!(vnt1, 1, @varname(e.b[3][13]))
+        vnt2 = setindex!!(vnt2, 2, @varname(e.b[3][13]))
+        expected_merge = setindex!!(expected_merge, 2, @varname(e.b[3][13]))
+        @test @inferred(merge(vnt1, vnt2)) == expected_merge
+        vnt1 = setindex!!(vnt1, 1, @varname(e.b[4][13]))
+        vnt2 = setindex!!(vnt2, 2, @varname(e.b[4][14]))
+        expected_merge = setindex!!(expected_merge, 1, @varname(e.b[4][13]))
+        expected_merge = setindex!!(expected_merge, 2, @varname(e.b[4][14]))
+        @test @inferred(merge(vnt1, vnt2)) == expected_merge
+
         vnt1 = setindex!!(vnt1, ["1", "1"], @varname(f.a[1].b.c[2, 2].d[1, 3:4]))
         vnt2 = setindex!!(vnt2, ["2", "2"], @varname(f.a[1].b.c[2, 2].d[1, 3:4]))
         expected_merge = setindex!!(
             expected_merge, ["2", "2"], @varname(f.a[1].b.c[2, 2].d[1, 3:4])
         )
-        vnt1 = setindex!!(vnt1, :1, @varname(f.a[1].b.c[3, 2].d[1, 1]))
-        vnt2 = setindex!!(vnt2, :2, @varname(f.a[1].b.c[4, 2].d[1, 1]))
-        expected_merge = setindex!!(expected_merge, :1, @varname(f.a[1].b.c[3, 2].d[1, 1]))
-        expected_merge = setindex!!(expected_merge, :2, @varname(f.a[1].b.c[4, 2].d[1, 1]))
+        vnt1 = setindex!!(vnt1, :1, @varname(f.a[1].b.c[3, 2].d[1, 1][14, 13]))
+        vnt2 = setindex!!(vnt2, :2, @varname(f.a[1].b.c[4, 2].d[1, 1][14, 13]))
+        expected_merge = setindex!!(
+            expected_merge, :1, @varname(f.a[1].b.c[3, 2].d[1, 1][14, 13])
+        )
+        expected_merge = setindex!!(
+            expected_merge, :2, @varname(f.a[1].b.c[4, 2].d[1, 1][14, 13])
+        )
         @test merge(vnt1, vnt2) == expected_merge
+        test_invariants(vnt1)
+        test_invariants(vnt2)
 
         # PartialArrays with different sizes.
         vnt1 = VarNamedTuple()
@@ -377,6 +416,8 @@ Base.size(st::SizedThing) = st.size
         @test @inferred(merge(vnt1, vnt2)) == expected_merge_12
         expected_merge_21 = setindex!!(expected_merge_12, 1, @varname(a[1]))
         @test @inferred(merge(vnt2, vnt1)) == expected_merge_21
+        test_invariants(vnt1)
+        test_invariants(vnt2)
 
         vnt1 = VarNamedTuple()
         vnt2 = VarNamedTuple()
@@ -391,6 +432,8 @@ Base.size(st::SizedThing) = st.size
         @test merge(vnt1, vnt2) == expected_merge_12
         expected_merge_21 = setindex!!(expected_merge_12, 1, @varname(a[1, 1]))
         @test merge(vnt2, vnt1) == expected_merge_21
+        test_invariants(vnt1)
+        test_invariants(vnt2)
     end
 
     @testset "keys and values" begin
@@ -501,6 +544,36 @@ Base.size(st::SizedThing) = st.size
             1.0,
             SizedThing((3, 1, 4)),
         ]
+
+        vnt = setindex!!(vnt, SizedThing((3, 1, 4)), @varname(p[2, 1][2:4, 5:5, 11:14]))
+        @test keys(vnt) == [
+            @varname(a),
+            @varname(b),
+            @varname(c.x.y),
+            @varname(d[4]),
+            @varname(e.f[3, 3].g.h[2, 4, 1].i),
+            @varname(j[1]),
+            @varname(j[2]),
+            @varname(j[3]),
+            @varname(j[4]),
+            @varname(j[6]),
+            @varname(n[2].a),
+            @varname(o[2:4, 5:5, 11:14]),
+            @varname(p[2, 1][2:4, 5:5, 11:14]),
+        ]
+        @test values(vnt) == [
+            1.0,
+            [1, 15, 3],
+            [10],
+            -1.0,
+            2.0,
+            fill(1.0, 4)...,
+            "a",
+            1.0,
+            SizedThing((3, 1, 4)),
+            SizedThing((3, 1, 4)),
+        ]
+        test_invariants(vnt)
     end
 
     @testset "length" begin
@@ -534,6 +607,10 @@ Base.size(st::SizedThing) = st.size
 
         vnt = setindex!!(vnt, SizedThing((3, 2)), @varname(x[1, 4:6, 2, 1:2, 3]))
         @test @inferred(length(vnt)) == 14
+
+        vnt = setindex!!(vnt, [:a, :b], @varname(y[4][3][2][1:2]))
+        @test @inferred(length(vnt)) == 16
+        test_invariants(vnt)
     end
 
     @testset "empty" begin
@@ -544,10 +621,12 @@ Base.size(st::SizedThing) = st.size
         @test @inferred(isempty(vnt)) == true
         vnt = setindex!!(vnt, 1.0, @varname(a))
         @test @inferred(isempty(vnt)) == false
+        test_invariants(vnt)
 
         vnt = VarNamedTuple()
         vnt = setindex!!(vnt, [], @varname(a[1]))
         @test @inferred(isempty(vnt)) == false
+        test_invariants(vnt)
 
         # 2) empty!! keeps PartialArrays in place:
         vnt = VarNamedTuple()
@@ -563,22 +642,26 @@ Base.size(st::SizedThing) = st.size
         @test @inferred(getindex(vnt, @varname(a[2:4]))) == [1, 2, 3]
         @test haskey(vnt, @varname(a[2:4]))
         @test !haskey(vnt, @varname(a[1]))
+        test_invariants(vnt)
     end
 
     @testset "densification" begin
         vnt = VarNamedTuple()
         vnt = @inferred(setindex!!(vnt, 1.0, @varname(a.b[1].c[1, 1])))
         @test @inferred(getindex(vnt, @varname(a.b[1].c))) == fill(1.0, (1, 1))
+        test_invariants(vnt)
 
         vnt = VarNamedTuple()
         vnt = @inferred(setindex!!(vnt, 1.0, @varname(a.b[1].c[1, 1])))
         vnt = @inferred(setindex!!(vnt, 1.0, @varname(a.b[1].c[1, 2])))
         @test @inferred(getindex(vnt, @varname(a.b[1].c))) == fill(1.0, (1, 2))
+        test_invariants(vnt)
 
         vnt = VarNamedTuple()
         vnt = @inferred(setindex!!(vnt, 1.0, @varname(a.b[1].c[1, 1])))
         vnt = @inferred(setindex!!(vnt, 1.0, @varname(a.b[1].c[2, 1])))
         @test @inferred(getindex(vnt, @varname(a.b[1].c))) == fill(1.0, (2, 1))
+        test_invariants(vnt)
 
         vnt = VarNamedTuple()
         vnt = @inferred(setindex!!(vnt, 1.0, @varname(a.b[1].c[1, 1])))
@@ -589,10 +672,12 @@ Base.size(st::SizedThing) = st.size
         @test @inferred(getindex(vnt, @varname(a.b[1].c))) == fill(1.0, (2, 2))
         vnt = @inferred(setindex!!(vnt, 1.0, @varname(a.b[1].c[3, 3])))
         @test_throws ArgumentError @inferred(getindex(vnt, @varname(a.b[1].c)))
+        test_invariants(vnt)
 
         vnt = VarNamedTuple()
         vnt = @inferred(setindex!!(vnt, SizedThing((2,)), @varname(x[1:2])))
         @test_throws ArgumentError @inferred(getindex(vnt, @varname(x)))
+        test_invariants(vnt)
     end
 
     @testset "printing" begin
@@ -622,7 +707,7 @@ Base.size(st::SizedThing) = st.size
             VarNamedTuple(a = "s", b = [1, 2, 3], \
             c = PartialArray{Symbol,1}((2,) => :dada))"""
 
-        vnt = setindex!!(vnt, [16.0, 17.0], @varname(d.e[3].f.g[1:2]))
+        vnt = setindex!!(vnt, [16.0, 17.0], @varname(d.e[3][2, 2].f.g[1:2]))
         io = IOBuffer()
         show(io, vnt)
         output = String(take!(io))
@@ -634,11 +719,14 @@ Base.size(st::SizedThing) = st.size
             VarNamedTuple(a = "s", b = [1, 2, 3], \
             c = PartialArray{Symbol,1}((2,) => :dada), \
             d = VarNamedTuple(\
-            e = PartialArray{VarNamedTuple{(:f,), \
+            e = PartialArray{PartialArray{VarNamedTuple{(:f,), \
             Tuple{VarNamedTuple{(:g,), \
-            Tuple{PartialArray{Float64, 1}}}}},1}((3,) => \
-            VarNamedTuple(f = VarNamedTuple(g = PartialArray{Float64,1}((1,) => 16.0, \
-            (2,) => 17.0),),)),))"""
+            Tuple{PartialArray{Float64, 1}}}}}, 2},1}((3,) => \
+            PartialArray{VarNamedTuple{(:f,), \
+            Tuple{VarNamedTuple{(:g,), \
+            Tuple{PartialArray{Float64, 1}}}}},2}((2, 2) => VarNamedTuple(f = VarNamedTuple(g = PartialArray{Float64,1}((1,) => 16.0, \
+            (2,) => 17.0),),))),))"""
+        test_invariants(vnt)
     end
 
     @testset "block variables" begin
@@ -740,6 +828,99 @@ Base.size(st::SizedThing) = st.size
         @test @inferred(getindex(vnt, @varname(y.z[2, 2:3, 3, 2:3, 4]))) == val
         @test haskey(vnt, @varname(y.z[3, 2:3, 3, 2:3, 4]))
         @test @inferred(getindex(vnt, @varname(y.z[3, 2:3, 3, 2:3, 4]))) == val
+    end
+
+    @testset "map!!, apply!!, and mapreduce" begin
+        vnt = VarNamedTuple()
+        vnt = @inferred(setindex!!(vnt, 1, @varname(a)))
+        vnt = @inferred(setindex!!(vnt, [2, 2], @varname(b[1:2])))
+        vnt = @inferred(setindex!!(vnt, [3.0], @varname(c.d)))
+        vnt = @inferred(setindex!!(vnt, "a", @varname(e.f[3].g.h[2].i)))
+        # The below can't be type stable because the element type of `h` depends on whether
+        # we are setting `h[2].j` (which overwrites the earlier `h[2]`) or some other
+        # `h[index].j` (which would leave both `h[2].i` and `h[index].j` in the same array).
+        vnt = setindex!!(vnt, 5.0, @varname(e.f[3].g.h[2].j))
+        vnt = @inferred(
+            setindex!!(vnt, SizedThing((2, 2)), @varname(y.z[3, 2:3, 3, 2:3, 4]))
+        )
+        vnt = @inferred(setindex!!(vnt, "", @varname(w[4][3][2, 1])))
+        test_invariants(vnt)
+
+        struct AnotherSizedThing{T<:Tuple}
+            size::T
+        end
+        Base.size(st::AnotherSizedThing) = st.size
+
+        function f(val)
+            if val isa Int
+                return val + 10
+            elseif val isa AbstractVector{Int}
+                return val .+ 10
+            elseif val isa Float64
+                return val + 1.0
+            elseif val isa AbstractVector{Float64}
+                return val .- 1.0
+            elseif val isa String
+                return string(val, "b")
+            elseif val isa SizedThing
+                return AnotherSizedThing(size(val))
+            else
+                error("Unexpected value type $(typeof(val))")
+            end
+        end
+
+        reduction = mapreduce(identity, vcat, vnt; init=Any[])
+        @test reduction == vcat(Any[], 1, [2, 2], [3.0], "a", 5.0, SizedThing((2, 2)), "")
+        reduction = mapreduce(f, vcat, vnt; init=Any[])
+        @test reduction ==
+            vcat(Any[], 11, [12, 12], [2.0], "ab", 6.0, AnotherSizedThing((2, 2)), "b")
+
+        vnt_mapped = @inferred(map!!(f, copy(vnt)))
+        test_invariants(vnt_mapped)
+        @test @inferred(getindex(vnt_mapped, @varname(a))) == 11
+        @test @inferred(getindex(vnt_mapped, @varname(b[1:2]))) == [12, 12]
+        @test @inferred(getindex(vnt_mapped, @varname(c.d))) == [2.0]
+        @test @inferred(getindex(vnt_mapped, @varname(e.f[3].g.h[2].i))) == "ab"
+        @test @inferred(getindex(vnt_mapped, @varname(e.f[3].g.h[2].j))) == 6.0
+        @test @inferred(getindex(vnt_mapped, @varname(y.z[3, 2:3, 3, 2:3, 4]))) ==
+            AnotherSizedThing((2, 2))
+        @test @inferred(getindex(vnt_mapped, @varname(w[4][3][2, 1]))) == "b"
+
+        vnt_applied = @inferred(apply!!(f, vnt, @varname(a)))
+        test_invariants(vnt_applied)
+        @test @inferred(getindex(vnt_applied, @varname(a))) == 11
+        @test @inferred(getindex(vnt_applied, @varname(b[1:2]))) == [2, 2]
+
+        vnt_applied = @inferred(apply!!(f, vnt_applied, @varname(b[1:2])))
+        test_invariants(vnt_applied)
+        @test @inferred(getindex(vnt_applied, @varname(a))) == 11
+        @test @inferred(getindex(vnt_applied, @varname(b[1:2]))) == [12, 12]
+
+        vnt_applied = @inferred(apply!!(f, vnt_applied, @varname(c.d)))
+        test_invariants(vnt_applied)
+        @test @inferred(getindex(vnt_applied, @varname(c.d))) == [2.0]
+
+        vnt_applied = @inferred(apply!!(f, vnt_applied, @varname(e.f[3].g.h[2].i)))
+        test_invariants(vnt_applied)
+        @test @inferred(getindex(vnt_applied, @varname(e.f[3].g.h[2].i))) == "ab"
+        @test @inferred(getindex(vnt_applied, @varname(e.f[3].g.h[2].j))) == 5.0
+
+        vnt_applied = @inferred(apply!!(f, vnt_applied, @varname(e.f[3].g.h[2].j)))
+        test_invariants(vnt_applied)
+        @test @inferred(getindex(vnt_applied, @varname(e.f[3].g.h[2].i))) == "ab"
+        @test @inferred(getindex(vnt_applied, @varname(e.f[3].g.h[2].j))) == 6.0
+
+        # This can't be type stable because y.z might have many elements set, and we can't
+        # know at compile time that this sets the only one, thus allowing the element type
+        # to be AnotherSizedThing.
+        vnt_applied = apply!!(f, vnt_applied, @varname(y.z[3, 2:3, 3, 2:3, 4]))
+        test_invariants(vnt_applied)
+        @test @inferred(getindex(vnt_applied, @varname(y.z[3, 2:3, 3, 2:3, 4]))) ==
+            AnotherSizedThing((2, 2))
+
+        vnt_applied = @inferred(apply!!(f, vnt_applied, @varname(w[4][3][2, 1])))
+        test_invariants(vnt_applied)
+        @test @inferred(getindex(vnt_applied, @varname(w[4][3][2, 1]))) == "b"
     end
 end
 

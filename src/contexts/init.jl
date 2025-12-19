@@ -320,7 +320,9 @@ function tilde_assume!!(
     insert_transformed_value = in_varinfo ? is_transformed(vi, vn) : is_transformed(vi)
     val_to_insert, logjac = if insert_transformed_value
         # Calculate the forward logjac and sum them up.
-        y, fwd_logjac = with_logabsdet_jacobian(link_transform(dist), x)
+        lt = link_transform(dist)
+        y, fwd_logjac = with_logabsdet_jacobian(lt, x)
+        transform = _compose_no_identity(transform, lt)
         # Note that if we use VectorWithRanges with a full VarInfo, this double-Jacobian
         # calculation wastes a lot of time going from linked vectorised -> unlinked ->
         # linked, and `inv_logjac` will also just be the negative of `fwd_logjac`.
@@ -360,7 +362,11 @@ function tilde_assume!!(
     if in_varinfo
         vi = setindex!!(vi, val_to_insert, vn)
     else
-        vi = push!!(vi, vn, val_to_insert, dist)
+        vi = if vi isa VNTVarInfo
+            push!!(vi, vn, val_to_insert, inverse(transform))
+        else
+            push!!(vi, vn, val_to_insert, dist)
+        end
     end
     # Neither of these set the `trans` flag so we have to do it manually if
     # necessary.
