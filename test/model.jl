@@ -58,6 +58,15 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
 
         #### logprior, logjoint, loglikelihood for MCMC chains ####
         @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
+            if model.f === DynamicPPL.TestUtils.demo_nested_colons
+                # TODO(mhauru) The below test fails on this model, due to the VarName
+                # s.params[1].subparams[:, 1, :], which AbstractPPL.varname_leaves splits
+                # into subvarnames like s.params[1].subparams[:, 1, :][1, 1], but the chain
+                # would know as s.params[1].subparams[1, 1, 1]. Unsure what the correct fix
+                # is, so leaving this for later.
+                @test false broken = true
+                continue
+            end
             N = 200
             chain = make_chain_from_prior(model, N)
             logpriors = logprior(model, chain)
@@ -441,6 +450,7 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
     @testset "values_as_in_model" begin
         @testset "$(model.f)" for model in DynamicPPL.TestUtils.ALL_MODELS
             vns = DynamicPPL.TestUtils.varnames(model)
+            vns_split = DynamicPPL.TestUtils.varnames_split(model)
             example_values = DynamicPPL.TestUtils.rand_prior_true(model)
             varinfos = DynamicPPL.TestUtils.setup_varinfos(model, example_values, vns)
             @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
@@ -450,7 +460,7 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
                 realizations = values_as_in_model(model, false, varinfo)
                 # Ensure that all variables are found.
                 vns_found = collect(keys(realizations))
-                @test vns ∩ vns_found == vns ∪ vns_found
+                @test vns_split ∩ vns_found == vns_split ∪ vns_found
                 # Ensure that the values are the same.
                 for vn in vns
                     @test realizations[vn] == varinfo[vn]

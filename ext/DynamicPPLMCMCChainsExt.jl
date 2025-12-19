@@ -1,6 +1,7 @@
 module DynamicPPLMCMCChainsExt
 
 using DynamicPPL: DynamicPPL, AbstractPPL, AbstractMCMC, Random
+using BangBang: setindex!!
 using MCMCChains: MCMCChains
 
 function getindex_varname(
@@ -82,7 +83,7 @@ end
 """
     AbstractMCMC.to_samples(
         ::Type{DynamicPPL.ParamsWithStats},
-        chain::MCMCChains.Chains
+        chain::MCMCChains.Chains,
     )
 
 Convert an `MCMCChains.Chains` object to an array of `DynamicPPL.ParamsWithStats`.
@@ -95,11 +96,11 @@ function AbstractMCMC.to_samples(
     idxs = Iterators.product(1:size(chain, 1), 1:size(chain, 3))
     # Get parameters
     params_matrix = map(idxs) do (sample_idx, chain_idx)
-        d = DynamicPPL.OrderedCollections.OrderedDict{DynamicPPL.VarName,Any}()
+        vnt = DynamicPPL.VarNamedTuple()
         for vn in get_varnames(chain)
-            d[vn] = getindex_varname(chain, sample_idx, vn, chain_idx)
+            vnt = setindex!!(vnt, getindex_varname(chain, sample_idx, vn, chain_idx), vn)
         end
-        d
+        vnt
     end
     # Statistics
     stats_matrix = if :internals in MCMCChains.sections(chain)
@@ -164,8 +165,8 @@ end
         fallback=nothing,
     )
 
-Re-evaluate `model` for each sample in `chain` using the accumulators provided in `at`,
-returning an matrix of `(retval, updated_at)` tuples.
+Re-evaluate `model` for each sample in `chain` using the accumulators provided in `accs`,
+returning a matrix of `(retval, updated_at)` tuples.
 
 This loops over all entries in the chain and uses `DynamicPPL.InitFromParams` as the
 initialisation strategy when re-evaluating the model. For many usecases the fallback should
