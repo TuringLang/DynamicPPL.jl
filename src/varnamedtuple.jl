@@ -3,7 +3,7 @@ module VarNamedTuples
 
 using AbstractPPL
 using AbstractPPL: AbstractPPL
-using Distributions: Distribution
+using Distributions: Distributions, Distribution
 using BangBang
 using Accessors
 using ..DynamicPPL: _compose_no_identity
@@ -1200,12 +1200,91 @@ function to_dict(::Type{T}, vnt::VarNamedTuple) where {T<:AbstractDict{<:VarName
 end
 to_dict(vnt::VarNamedTuple) = to_dict(Dict{VarName,Any}, vnt)
 
-function AbstractPPL.hasvalue(vnt::VarNamedTuple, vn::VarName, ::Distribution)
+function AbstractPPL.hasvalue(vnt::VarNamedTuple, vn::VarName)
     return haskey(vnt, vn)
 end
 
-function AbstractPPL.getvalue(vnt::VarNamedTuple, vn::VarName, ::Distribution)
+function AbstractPPL.getvalue(vnt::VarNamedTuple, vn::VarName)
     return getindex(vnt, vn)
+end
+
+# TODO(mhauru) The following methods mimic the structure of those in
+# AbstractPPLDistributionsExtension, and fall back on converting any PartialArrays to
+# dictionaries, and calling the AbstractPPL methods. We should eventually make
+# implementations of these directly for PartialArray, and maybe move these methods
+# elsewhere. Better yet, once we no longer store VarName values in Dictionaries anywhere,
+# and FlexiChains takes over from MCMCChains, this could hopefully all be removed.
+
+# The only case where the Distribution argument makes a difference is if the distribution
+# is multivariate and the values are stored in a PartialArray.
+
+function AbstractPPL.hasvalue(
+    vnt::VarNamedTuple, vn::VarName, ::Distributions.UnivariateDistribution
+)
+    return AbstractPPL.hasvalue(vnt, vn)
+end
+
+function AbstractPPL.getvalue(
+    vnt::VarNamedTuple, vn::VarName, ::Distributions.UnivariateDistribution
+)
+    return AbstractPPL.getvalue(vnt, vn)
+end
+
+function AbstractPPL.hasvalue(vals::VarNamedTuple, vn::VarName, dist::Distribution)
+    @warn "`hasvalue(vals, vn, dist)` is not implemented for $(typeof(dist)); falling back to `hasvalue(vals, vn)`."
+    return AbstractPPL.hasvalue(vals, vn)
+end
+
+function AbstractPPL.getvalue(vals::VarNamedTuple, vn::VarName, dist::Distribution)
+    @warn "`getvalue(vals, vn, dist)` is not implemented for $(typeof(dist)); falling back to `getvalue(vals, vn)`."
+    return AbstractPPL.getvalue(vals, vn)
+end
+
+const MV_DIST_TYPES = Union{
+    Distributions.MultivariateDistribution,
+    Distributions.MatrixDistribution,
+    Distributions.LKJCholesky,
+}
+
+function AbstractPPL.hasvalue(vnt::VarNamedTuple, vn::VarName, dist::MV_DIST_TYPES)
+    if !haskey(vnt, vn)
+        # Can't even find the parent VarName, there is no hope.
+        return false
+    end
+    # Note that _getindex, rather than getindex, skips the need to denseify PartialArrays.
+    val = _getindex(vnt, vn)
+    if !(val isa VarNamedTuple || val isa PartialArray)
+        # There is _a_ value. Where it's the right kind, we do not know, but returning true
+        # is no worse than `hasvalue` returning true for e.g. UnivariateDistributions
+        # whenever there is at least some value.
+        return true
+    end
+    # Convert to VarName-keyed Dict.
+    et = val isa VarNamedTuple ? Any : eltype(val)
+    dval = Dict{VarName,et}()
+    for k in keys(val)
+        # VarNamedTuples have VarNames as keys, PartialArrays have IndexLenses.
+        subvn = val isa VarNamedTuple ? prefix(k, vn) : (k ∘ vn)
+        dval[subvn] = getindex(val, k)
+    end
+    return hasvalue(dval, vn, dist)
+end
+
+function AbstractPPL.getvalue(vnt::VarNamedTuple, vn::VarName, dist::MV_DIST_TYPES)
+    # Note that _getindex, rather than getindex, skips the need to denseify PartialArrays.
+    val = _getindex(vnt, vn)
+    if !(val isa VarNamedTuple || val isa PartialArray)
+        return val
+    end
+    # Convert to VarName-keyed Dict.
+    et = val isa VarNamedTuple ? Any : eltype(val)
+    dval = Dict{VarName,et}()
+    for k in keys(val)
+        # VarNamedTuples have VarNames as keys, PartialArrays have IndexLenses.
+        subvn = val isa VarNamedTuple ? prefix(k, vn) : (k ∘ vn)
+        dval[subvn] = getindex(val, k)
+    end
+    return getvalue(dval, vn, dist)
 end
 
 end
