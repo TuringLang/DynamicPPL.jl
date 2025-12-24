@@ -1,4 +1,4 @@
-using Test, DynamicPPL, Accessors
+using Test, DynamicPPL
 using AbstractPPL: getoptic, hasvalue, getvalue
 using DynamicPPL:
     leafcontext,

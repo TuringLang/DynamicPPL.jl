@@ -480,7 +480,7 @@ end
                             @test getindex(vals, Symbol(vn)) == getindex(vi, vn)
                         else
                             # Assumed to be of form `(m = [1.0, ...], ...)`.
-                            @test get(vals, vn) == getindex(vi, vn)
+                            @test AbstractPPL.getvalue(vals, vn) == getindex(vi, vn)
                         end
                     end
                 end

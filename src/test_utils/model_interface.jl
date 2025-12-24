@@ -104,7 +104,7 @@ Return a `NamedTuple` compatible with `varnames(model)` where the values represe
 the posterior mean under `model`.
 
 "Compatible" means that a `varname` from `varnames(model)` can be used to extract the
-corresponding value using `get`, e.g. `get(posterior_mean(model), varname)`.
+corresponding value using e.g. `AbstractPPL.getvalue(posterior_mean(model), varname)`.
 """
 function posterior_mean end
 

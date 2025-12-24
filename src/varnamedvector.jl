@@ -1635,27 +1635,20 @@ function hasvalue(vnv::VarNamedVector, vn::VarName)
     # Handle the easy case where the right symbol isn't even present.
     !any(k -> getsym(k) == getsym(vn), keys(vnv)) && return false
 
+    # If vn is of the form @varname(somesymbol[someindex]), we check whether we store
+    # @varname(somesymbol) and can index into it with someindex. If we rather have a
+    # composed optic with the last part being an index lens, we do a similar check but
+    # stripping out the last index lens part. If these pass, the answer is definitely
+    # "yes". If not, we still don't know for sure.
+    # TODO(mhauru) What about casese where vnv stores both @varname(x) and
+    # @varname(x[1]) or @varname(x.a)? Those should probably be banned, but currently
+    # aren't.
     optic = getoptic(vn)
-    if optic isa Accessors.IndexLens || optic isa Accessors.ComposedOptic
-        # If vn is of the form @varname(somesymbol[someindex]), we check whether we store
-        # @varname(somesymbol) and can index into it with someindex. If we rather have a
-        # composed optic with the last part being an index lens, we do a similar check but
-        # stripping out the last index lens part. If these pass, the answer is definitely
-        # "yes". If not, we still don't know for sure.
-        # TODO(mhauru) What about casese where vnv stores both @varname(x) and
-        # @varname(x[1]) or @varname(x.a)? Those should probably be banned, but currently
-        # aren't.
-        head, tail = if optic isa Accessors.ComposedOptic
-            decomp_optic = Accessors.decompose(optic)
-            first(decomp_optic), Accessors.compose(decomp_optic[2:end]...)
-        else
-            optic, identity
-        end
-        parent_varname = VarName{getsym(vn)}(tail)
-        if haskey(vnv, parent_varname)
-            valvec = getindex(vnv, parent_varname)
-            return canview(head, valvec)
-        end
+    last, init = AbstractPPL.olast(optic), AbstractPPL.oinit(optic)
+    parent_varname = VarName{getsym(vn)}(init)
+    if haskey(vnv, parent_varname)
+        valvec = getindex(vnv, parent_varname)
+        return AbstractPPL.canview(last, valvec)
     end
     throw(ErrorException("hasvalue has not been fully implemented for this VarName: $(vn)"))
 end
@@ -1672,17 +1665,13 @@ function getvalue(vnv::VarNamedVector, vn::VarName)
     end
 
     optic = getoptic(vn)
-    # See hasvalue for some comments on the logic of this if block.
-    if optic isa Accessors.IndexLens || optic isa Accessors.ComposedOptic
-        head, tail = if optic isa Accessors.ComposedOptic
-            decomp_optic = Accessors.decompose(optic)
-            first(decomp_optic), Accessors.compose(decomp_optic[2:end]...)
-        else
-            optic, identity
-        end
-        parent_varname = VarName{getsym(vn)}(tail)
+    # See hasvalue for some comments on the logic of this.
+    optic = getoptic(vn)
+    last, init = AbstractPPL.olast(optic), AbstractPPL.oinit(optic)
+    parent_varname = VarName{getsym(vn)}(init)
+    if haskey(vnv, parent_varname)
         valvec = getindex(vnv, parent_varname)
-        return head(valvec)
+        return last(valvec)
     end
     throw(ErrorException("getvalue has not been fully implemented for this VarName: $(vn)"))
 end

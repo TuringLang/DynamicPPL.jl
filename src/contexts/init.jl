@@ -60,7 +60,7 @@ in `DynamicPPL.unflatten` for more details. For non-threadsafe evaluation, Julia
 of automatically promoting the types on its own. Secondly, the promotion only matters if you
 are trying to directly assign into a `Vector{Float64}` with a `ForwardDiff.Dual` or similar
 tracer type, for example using `xs[i] = MyDual`. This doesn't actually apply to
-tilde-statements like `xs[i] ~ ...` because those use `Accessors.@set` under the hood, which
+tilde-statements like `xs[i] ~ ...` because those use `Accessors.set` under the hood, which
 also does the promotion for you. For the gory details, see the following issues:
 
 - https://github.com/TuringLang/DynamicPPL.jl/issues/906 for accumulator types
@@ -260,7 +260,7 @@ struct VectorWithRanges{Tlink,N<:NamedTuple,T<:AbstractVector{<:Real}}
 end
 
 function _get_range_and_linked(
-    vr::VectorWithRanges, ::VarName{sym,typeof(identity)}
+    vr::VectorWithRanges, ::VarName{sym,AbstractPPL.Iden}
 ) where {sym}
     return vr.iden_varname_ranges[sym]
 end

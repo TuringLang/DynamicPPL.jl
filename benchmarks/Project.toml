@@ -3,6 +3,7 @@ uuid = "d94a1522-c11e-44a7-981a-42bf5dc1a001"
 version = "0.1.0"
 
 [deps]
+AbstractPPL = "7a57a42e-76ec-4ea3-a279-07e840d6d9cf"
 ADTypes = "47edcb42-4c32-4615-8424-f2b9edc5f35b"
 Chairmarks = "0ca39b1e-fe0b-4e98-acfc-b1656634c4de"
 Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
@@ -18,9 +19,11 @@ ReverseDiff = "37e2e3b7-166d-5795-8a7a-e32c996b4267"
 StableRNGs = "860ef19b-820b-49d6-a774-d7a799459cd3"
 
 [sources]
+AbstractPPL = {url = "https://github.com/TuringLang/AbstractPPL.jl", rev = "py/newvarname"}
 DynamicPPL = {path = "../"}
 
 [compat]
+AbstractPPL = "0.14"
 ADTypes = "1.14.0"
 Chairmarks = "1.3.1"
 Distributions = "0.25.117"
