@@ -8,6 +8,7 @@ using DistributionsAD: filldist
 using ADTypes
 using DynamicPPL.TestUtils.AD: run_ad, WithExpectedResult, NoTest
 using LinearAlgebra: I
+using Random: Xoshiro
 using Test
 using LogDensityProblems: LogDensityProblems
 
@@ -202,6 +203,30 @@ end
             )
             @test logp == logp_view
             @test grad == grad_view
+        end
+    end
+
+    @testset "rand_with_logdensity" begin
+        @testset "$(m.f)" for m in DynamicPPL.TestUtils.DEMO_MODELS
+            @testset for linked in (false, true)
+                vi = if linked
+                    DynamicPPL.link!!(VarInfo(m), m)
+                else
+                    VarInfo(m)
+                end
+                @testset for getlogdensity in (getlogjoint_internal, getlogjoint)
+                    ldf = LogDensityFunction(m, getlogdensity, vi)
+                    @testset for strategy in (InitFromPrior(), InitFromUniform())
+                        new_params, new_logp = DynamicPPL.rand_with_logdensity(
+                            Xoshiro(468), ldf, strategy
+                        )
+                        _, new_vi = DynamicPPL.init!!(Xoshiro(468), m, vi, strategy)
+                        @test new_params ≈ new_vi[:]
+                        @test new_logp ≈ getlogdensity(new_vi)
+                        @test LogDensityProblems.logdensity(ldf, new_params) ≈ new_logp
+                    end
+                end
+            end
         end
     end
 

@@ -388,3 +388,177 @@ function get_ranges_and_linked_metadata(vnv::VarNamedVector, start_offset::Int)
     end
     return all_iden_ranges, all_ranges, offset
 end
+
+####################################################
+# Generate new parameters for a LogDensityFunction #
+####################################################
+# Previously, when LogDensityFunction contained a full VarInfo, it was easy to generate
+# new 'trial' parameters for a LogDensityFunction by doing
+#
+#     new_vi = last(DynamicPPL.init!!(rng, ldf.model, ldf.varinfo, strategy))
+#
+# This is useful e.g. when initialising MCMC sampling.
+#
+# However, now that LogDensityFunction only contains ranges and link status, we need to
+# provide some functionality to generate new parameter vectors (and also return their
+# logp).
+
+struct LDFValuesAccumulator{T<:Real,N<:NamedTuple} <: AbstractAccumulator
+    # These are copied over from the LogDensityFunction
+    iden_varname_ranges::N
+    varname_ranges::Dict{VarName,RangeAndLinked}
+    # These are the actual outputs
+    values::Dict{UnitRange{Int},Vector{T}}
+    # This is the forward log-Jacobian term
+    fwd_logjac::T
+end
+function LDFValuesAccumulator(ldf::LogDensityFunction)
+    nt = ldf._iden_varname_ranges
+    T = eltype(_get_input_vector_type(ldf))
+    return LDFValuesAccumulator{T,typeof(nt)}(
+        nt, ldf._varname_ranges, Dict{UnitRange{Int},Vector{T}}(), zero(T)
+    )
+end
+
+const _LDFValuesAccName = :LDFValues
+accumulator_name(::Type{<:LDFValuesAccumulator}) = _LDFValuesAccName
+accumulate_observe!!(acc::LDFValuesAccumulator, dist, val, vn) = acc
+function accumulate_assume!!(acc::LDFValuesAccumulator, val, logjac, vn::VarName, dist)
+    ral = if DynamicPPL.getoptic(vn) === identity
+        acc.iden_varname_ranges[DynamicPPL.getsym(vn)]
+    else
+        acc.varname_ranges[vn]
+    end
+    range = ral.range
+    # Since `val` is always unlinked, we need to regenerate the vectorised value. This is a
+    # bit wasteful if `tilde_assume!!` also did the invlinking, but in general, this is not
+    # guaranteed: indeed, `tilde_assume!!` may never have seen a linked vector at all (e.g.
+    # if it was called with `InitContext{rng,<:Union{InitFromPrior,InitFromUniform}}`; which
+    # is the most likely situation where this accumulator will be used).
+    y, fwd_logjac = if ral.is_linked
+        with_logabsdet_jacobian(DynamicPPL.to_linked_vec_transform(dist), val)
+    else
+        with_logabsdet_jacobian(DynamicPPL.to_vec_transform(dist), val)
+    end
+    acc.values[range] = y
+    return LDFValuesAccumulator(
+        acc.iden_varname_ranges, acc.varname_ranges, acc.values, acc.fwd_logjac + fwd_logjac
+    )
+end
+function reset(acc::LDFValuesAccumulator{T}) where {T}
+    return LDFValuesAccumulator(
+        acc.iden_varname_ranges,
+        acc.varname_ranges,
+        Dict{UnitRange{Int},Vector{T}}(),
+        zero(T),
+    )
+end
+function Base.copy(acc::LDFValuesAccumulator)
+    return LDFValuesAccumulator(
+        acc.iden_varname_ranges, copy(acc.varname_ranges), copy(acc.values), acc.fwd_logjac
+    )
+end
+function split(acc::LDFValuesAccumulator{T}) where {T}
+    return LDFValuesAccumulator(
+        acc.iden_varname_ranges,
+        acc.varname_ranges,
+        Dict{UnitRange{Int},Vector{T}}(),
+        zero(T),
+    )
+end
+function combine(acc::LDFValuesAccumulator{T}, acc2::LDFValuesAccumulator{T}) where {T}
+    if acc.iden_varname_ranges != acc2.iden_varname_ranges ||
+        acc.varname_ranges != acc2.varname_ranges
+        throw(
+            ArgumentError(
+                "cannot combine LDFValuesAccumulators with different varname ranges"
+            ),
+        )
+    end
+    combined_values = merge(acc.values, acc2.values)
+    combined_logjac = acc.fwd_logjac + acc2.fwd_logjac
+    return LDFValuesAccumulator(
+        acc.iden_varname_ranges, acc.varname_ranges, combined_values, combined_logjac
+    )
+end
+
+"""
+    DynamicPPL.rand_with_logdensity(
+        [rng::Random.AbstractRNG,]
+        ldf::LogDensityFunction,
+        strategy::AbstractInitStrategy=InitFromPrior(),
+    )
+
+Given a LogDensityFunction, generate a new parameter vector by sampling from the model using
+the given strategy. Returns a tuple of (new parameters, logdensity).
+
+This function therefore provides an interface to sample from the model, even though the
+LogDensityFunction no longer carries a full VarInfo with it which would ordinarily be
+required for such sampling.
+
+If `ldf` was generated using the call `LogDensityFunction(model, getlogdensity, vi)`, then
+as long as `model` does not involve any indeterministic operations that use the `rng`
+argument (e.g. parallel sampling with multiple threads), then the outputs of
+
+```julia
+new_params, new_logp = rand_with_logdensity(rng, ldf, strategy)
+```
+
+and
+
+```julia
+_, new_vi = DynamicPPL.init!!(rng, model, vi, strategy)
+```
+
+are guaranteed to be related in that
+
+```julia
+new_params ≈ new_vi[:]               # (1)
+new_logp = getlogdensity(new_vi)     # (2)
+```
+
+Furthermore, it is also guaranteed that
+
+```julia
+LogDensityProblems.logdensity(ldf, new_params) ≈ new_logp  # (3)
+```
+
+If there are indeterministic operations, then (1) and (2) may not _exactly_ hold (for
+example, since variables may be sampled in a different order), but (3) will always remain
+true. In other words, `new_params` will always be an element of the set of valid parameters
+that could have been generated given the indeterminacy, and `new_logp` is the corresponding
+log-density.
+"""
+function rand_with_logdensity(
+    rng::Random.AbstractRNG,
+    ldf::LogDensityFunction,
+    strategy::AbstractInitStrategy=InitFromPrior(),
+)
+    # Create a VarInfo with the necessary accumulators to generate both parameters and logp
+    accs = (ldf_accs(ldf._getlogdensity)..., LDFValuesAccumulator(ldf))
+    vi = OnlyAccsVarInfo(accs)
+    # Initialise the model with the given strategy
+    _, new_vi = DynamicPPL.init!!(rng, ldf.model, vi, strategy)
+    # Extract the new parameters into a vector
+    x = Vector{eltype(_get_input_vector_type(ldf))}(
+        undef, LogDensityProblems.dimension(ldf)
+    )
+    values_acc = DynamicPPL.getacc(new_vi, Val(_LDFValuesAccName))
+    for (range, val) in values_acc.values
+        x[range] = val
+    end
+    # This ignores the logjac if there is no LogJacobianAccumulator, which is the correct
+    # behaviour
+    new_vi = if haskey(getaccs(new_vi), Val(:LogJacobian))
+        acclogjac!!(new_vi, values_acc.fwd_logjac)
+    else
+        new_vi
+    end
+    lp = ldf._getlogdensity(new_vi)
+    return x, lp
+end
+function rand_with_logdensity(
+    ldf::LogDensityFunction, strategy::AbstractInitStrategy=InitFromPrior()
+)
+    return rand_with_logdensity(Random.default_rng(), ldf, strategy)
+end
