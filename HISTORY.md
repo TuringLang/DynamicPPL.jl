@@ -1,5 +1,9 @@
 # DynamicPPL Changelog
 
+## 0.39.6
+
+Mark `haskey(varinfo, varname)` as having zero derivative to make life easier for AD.
+
 ## 0.39.5
 
 Fixed a bug which prevented passing immutable data (such as NamedTuples or ordinary structs) as arguments to DynamicPPL models, or fixing the model on such data.
