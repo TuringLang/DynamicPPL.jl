@@ -154,11 +154,11 @@ julia> svi_nt[@varname(m.a[1])]
 1.0
 
 julia> svi_nt[@varname(m.a[2])]
-ERROR: BoundsError: attempt to access 1-element Vector{Float64} at index [2]
+ERROR: m.a[2] was not found in the NamedTuple provided
 [...]
 
 julia> svi_nt[@varname(m.b)]
-ERROR: FieldError: type NamedTuple has no field `b`, available fields: `a`
+ERROR: m.b was not found in the NamedTuple provided
 [...]
 ```
 
@@ -327,7 +327,7 @@ Base.getindex(vi::SimpleVarInfo, vns::Vector{<:VarName}) = map(Base.Fix1(getinde
 
 Base.getindex(svi::SimpleVarInfo, ::Colon) = values_as(svi, Vector)
 
-getindex_internal(vi::SimpleVarInfo, vn::VarName) = get(vi.values, vn)
+getindex_internal(vi::SimpleVarInfo, vn::VarName) = AbstractPPL.getvalue(vi.values, vn)
 # `AbstractDict`
 function getindex_internal(
     vi::SimpleVarInfo{<:Union{AbstractDict,VarNamedVector}}, vn::VarName
@@ -354,28 +354,36 @@ end
 function BangBang.setindex!!(vi::SimpleVarInfo{<:AbstractDict}, val, vn::VarName)
     # For dictlike objects, we treat the entire `vn` as a _key_ to set.
     dict = values_as(vi)
-    # Attempt to split into `parent` and `child` optic.
-    parent, child, issuccess = splitoptic(getoptic(vn)) do optic
-        o = optic === nothing ? identity : optic
-        haskey(dict, VarName{getsym(vn)}(o))
-    end
-    # When combined with `VarInfo`, `nothing` is equivalent to `identity`.
-    keyoptic = parent === nothing ? identity : parent
 
-    dict_new = if !issuccess
-        # Split doesn't exist ⟹ we're working with a new key.
-        BangBang.setindex!!(dict, val, vn)
-    else
-        # Split exists ⟹ trying to set an existing key.
-        vn_key = VarName{getsym(vn)}(keyoptic)
-        BangBang.setindex!!(dict, set!!(dict[vn_key], child, val), vn_key)
+    dict_new = dict
+    test_vn = vn
+    test_optic = AbstractPPL.Iden()
+    found = false
+    while true
+        if haskey(dict, test_vn) && AbstractPPL.canview(dict[test_vn], test_optic)
+            found = true
+            new_value = Accessors.set(dict[test_vn], test_optic, val)
+            dict_new = BangBang.setindex!!(dict, new_value, test_vn)
+            break
+        end
+        # Split the last optic off from the VarName and try again.
+        test_vn_optic = getoptic(test_vn)
+        if test_vn_optic isa AbstractPPL.Iden
+            # Ran out of options.
+            break
+        end
+        test_vn = VarName{getsym(test_vn)}(AbstractPPL.oinit(test_vn_optic))
+        test_optic = test_optic ∘ AbstractPPL.olast(test_vn_optic)
+    end
+    if !found
+        dict_new = BangBang.setindex!!(dict, val, vn)
     end
     return Accessors.@set vi.values = dict_new
 end
 
 # `NamedTuple`
 function BangBang.push!!(
-    vi::SimpleVarInfo{<:NamedTuple}, ::VarName{sym,typeof(identity)}, value, ::Distribution
+    vi::SimpleVarInfo{<:NamedTuple}, ::VarName{sym,AbstractPPL.Iden}, value, ::Distribution
 ) where {sym}
     return Accessors.@set vi.values = merge(vi.values, NamedTuple{(sym,)}((value,)))
 end
@@ -432,7 +440,7 @@ end
 
 function _subset(x::NamedTuple, vns)
     # NOTE: Here we can only handle `vns` that contain `identity` as optic.
-    if any(Base.Fix1(!==, identity) ∘ getoptic, vns)
+    if any(vn -> !(getoptic(vn) isa AbstractPPL.Iden), vns)
         throw(
             ArgumentError(
                 "Cannot subset `NamedTuple` with non-`identity` `VarName`. " *

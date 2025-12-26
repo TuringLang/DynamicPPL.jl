@@ -357,7 +357,7 @@ function get_ranges_and_linked_metadata(md::Metadata, start_offset::Int)
     for (vn, idx) in md.idcs
         is_linked = md.is_transformed[idx]
         range = md.ranges[idx] .+ (start_offset - 1)
-        if AbstractPPL.getoptic(vn) === identity
+        if AbstractPPL.getoptic(vn) isa AbstractPPL.Iden
             all_iden_ranges = merge(
                 all_iden_ranges,
                 NamedTuple((AbstractPPL.getsym(vn) => RangeAndLinked(range, is_linked),)),
@@ -376,7 +376,7 @@ function get_ranges_and_linked_metadata(vnv::VarNamedVector, start_offset::Int)
     for (vn, idx) in vnv.varname_to_index
         is_linked = vnv.is_unconstrained[idx]
         range = vnv.ranges[idx] .+ (start_offset - 1)
-        if AbstractPPL.getoptic(vn) === identity
+        if AbstractPPL.getoptic(vn) isa AbstractPPL.Iden
             all_iden_ranges = merge(
                 all_iden_ranges,
                 NamedTuple((AbstractPPL.getsym(vn) => RangeAndLinked(range, is_linked),)),

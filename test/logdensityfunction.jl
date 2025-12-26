@@ -36,7 +36,7 @@ using Mooncake: Mooncake
                 for vn in keys(vi)
                     # Check that `getindex_internal` returns the same thing as using the ranges
                     # directly
-                    range_with_linked = if AbstractPPL.getoptic(vn) === identity
+                    range_with_linked = if AbstractPPL.getoptic(vn) isa AbstractPPL.Iden
                         nt_ranges[AbstractPPL.getsym(vn)]
                     else
                         dict_ranges[vn]

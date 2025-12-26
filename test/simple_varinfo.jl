@@ -105,7 +105,9 @@
                 continue
             end
             for vn in DynamicPPL.TestUtils.varnames(model)
-                vi = DynamicPPL.setindex!!(vi, get(values_constrained, vn), vn)
+                vi = DynamicPPL.setindex!!(
+                    vi, AbstractPPL.getvalue(values_constrained, vn), vn
+                )
             end
             vi = last(DynamicPPL.evaluate!!(model, vi))
 
@@ -136,7 +138,7 @@
             # Should result in same values.
             @test all(
                 DynamicPPL.tovec(DynamicPPL.getindex_internal(vi_invlinked, vn)) ≈
-                DynamicPPL.tovec(get(values_constrained, vn)) for
+                DynamicPPL.tovec(AbstractPPL.getvalue(values_constrained, vn)) for
                 vn in DynamicPPL.TestUtils.varnames(model)
             )
         end
@@ -173,7 +175,7 @@
 
             # Realization for `m` should be different wp. 1.
             for vn in DynamicPPL.TestUtils.varnames(model)
-                @test svi_new[vn] != get(retval, vn)
+                @test svi_new[vn] != AbstractPPL.getvalue(retval, vn)
             end
 
             # Logjoint should be non-zero wp. 1.
@@ -209,7 +211,9 @@
             # Update the realizations in `svi_new`.
             svi_eval = svi_new
             for vn in DynamicPPL.TestUtils.varnames(model)
-                svi_eval = DynamicPPL.setindex!!(svi_eval, get(values_eval, vn), vn)
+                svi_eval = DynamicPPL.setindex!!(
+                    svi_eval, AbstractPPL.getvalue(values_eval, vn), vn
+                )
             end
 
             # Reset the logp accumulators.
@@ -225,7 +229,7 @@
                 # TODO(mhauru) Workaround for
                 # https://github.com/JuliaLang/LinearAlgebra.jl/pull/1404
                 # Remove once the fix is all Julia versions we support.
-                val = get(values_eval, vn)
+                val = AbstractPPL.getvalue(values_eval, vn)
                 if val isa Cholesky
                     @test svi_eval[vn].L == val.L
                 else
@@ -267,7 +271,8 @@
 
                 # Realizations from model should all be equal to the unconstrained realization.
                 for vn in DynamicPPL.TestUtils.varnames(model)
-                    @test get(retval_unconstrained, vn) ≈ svi[vn] rtol = 1e-6
+                    @test AbstractPPL.getvalue(retval_unconstrained, vn) ≈ svi[vn] rtol =
+                        1e-6
                 end
 
                 # `getlogp` should be equal to the logjoint with log-absdet-jac correction.
