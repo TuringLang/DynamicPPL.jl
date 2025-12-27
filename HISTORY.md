@@ -1,5 +1,9 @@
 # DynamicPPL Changelog
 
+## 0.39.7
+
+Improve concreteness when merging two `Metadata` structs.
+
 ## 0.39.6
 
 Mark `haskey(varinfo, varname)` as having zero derivative to make life easier for AD.
