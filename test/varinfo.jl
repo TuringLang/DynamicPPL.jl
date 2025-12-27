@@ -744,8 +744,14 @@ end
                     varinfo_merged = merge(varinfo, varinfo)
                     # Varnames should be unchanged.
                     check_varinfo_keys(varinfo_merged, vns)
-                    # Values should be the same.
-                    @test [varinfo_merged[vn] for vn in vns] == [varinfo[vn] for vn in vns]
+                    if varinfo isa ThreadSafeVarInfo
+                        # A weaker test: values should be the same.
+                        @test [varinfo_merged[vn] for vn in vns] == [varinfo[vn] for vn in vns]
+                    else
+                        # For everything that isn't ThreadSafeVarInfo, we can actually
+                        # compare equality.
+                        @test varinfo_merged == varinfo
+                    end
                 end
 
                 @testset "with itself (3-argument version)" begin
