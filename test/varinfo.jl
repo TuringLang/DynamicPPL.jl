@@ -14,6 +14,19 @@ function check_varinfo_keys(varinfo, vns)
     end
 end
 
+function check_metadata_type_equal(v1::VarInfo, v2::VarInfo)
+    @test typeof(v1.metadata) == typeof(v2.metadata)
+end
+function check_metadata_type_equal(v1::SimpleVarInfo, v2::SimpleVarInfo)
+    @test typeof(v1.values) == typeof(v2.values)
+end
+function check_metadata_type_equal(
+    v1::DynamicPPL.ThreadSafeVarInfo{<:AbstractVarInfo},
+    v2::DynamicPPL.ThreadSafeVarInfo{<:AbstractVarInfo},
+)
+    return check_metadata_type_equal(v1.varinfo, v2.varinfo)
+end
+
 """
 Return the value of `vn` in `vi`. If one doesn't exist, sample and set it.
 """
@@ -744,14 +757,10 @@ end
                     varinfo_merged = merge(varinfo, varinfo)
                     # Varnames should be unchanged.
                     check_varinfo_keys(varinfo_merged, vns)
-                    if varinfo isa ThreadSafeVarInfo
-                        # A weaker test: values should be the same.
-                        @test [varinfo_merged[vn] for vn in vns] == [varinfo[vn] for vn in vns]
-                    else
-                        # For everything that isn't ThreadSafeVarInfo, we can actually
-                        # compare equality.
-                        @test varinfo_merged == varinfo
-                    end
+                    # Values should be the same.
+                    @test [varinfo_merged[vn] for vn in vns] == [varinfo[vn] for vn in vns]
+                    # Metadata types should be exactly the same.
+                    check_metadata_type_equal(varinfo_merged, varinfo)
                 end
 
                 @testset "with itself (3-argument version)" begin
@@ -761,6 +770,8 @@ end
                     check_varinfo_keys(varinfo_merged, vns)
                     # Values should be the same.
                     @test [varinfo_merged[vn] for vn in vns] == [varinfo[vn] for vn in vns]
+                    # Metadata types should be exactly the same.
+                    check_metadata_type_equal(varinfo_merged, varinfo)
                 end
 
                 @testset "with empty" begin
@@ -772,6 +783,8 @@ end
                     # Values should be the same.
                     @test [varinfo_merged[vn] for vn in vns] == [varinfo[vn] for vn in vns]
 
+                    # Metadata types should be exactly the same.
+                    check_metadata_type_equal(varinfo_merged, varinfo)
                     # Empty is 2nd argument.
                     # Merging with an empty `VarInfo` should be a no-op.
                     varinfo_merged = merge(varinfo, empty!!(deepcopy(varinfo)))
@@ -779,6 +792,8 @@ end
                     check_varinfo_keys(varinfo_merged, vns)
                     # Values should be the same.
                     @test [varinfo_merged[vn] for vn in vns] == [varinfo[vn] for vn in vns]
+                    # Metadata types should be exactly the same.
+                    check_metadata_type_equal(varinfo_merged, varinfo)
                 end
 
                 @testset "with different value" begin
