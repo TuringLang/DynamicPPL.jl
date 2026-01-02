@@ -1,5 +1,7 @@
 # DynamicPPL Changelog
 
+## 0.40
+
 ## 0.39.7
 
 Improve concreteness when merging two `Metadata` structs.
