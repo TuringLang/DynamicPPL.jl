@@ -2,6 +2,18 @@
 
 ## 0.40
 
+## 0.39.7
+
+Improve concreteness when merging two `Metadata` structs.
+
+## 0.39.6
+
+Mark `haskey(varinfo, varname)` as having zero derivative to make life easier for AD.
+
+## 0.39.5
+
+Fixed a bug which prevented passing immutable data (such as NamedTuples or ordinary structs) as arguments to DynamicPPL models, or fixing the model on such data.
+
 ## 0.39.4
 
 Removed the internal functions `DynamicPPL.getranges`, `DynamicPPL.vector_getrange`, and `DynamicPPL.vector_getranges` (the new LogDensityFunction construction does exactly the same thing, so this specialised function was not needed).

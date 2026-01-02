@@ -581,8 +581,8 @@ function merge_metadata(metadata_left::Metadata, metadata_right::Metadata)
     end
 
     # Initialize required fields for `metadata`.
-    vns = VarName[]
-    idcs = Dict{VarName,Int}()
+    vns = eltype(vns_both)[]
+    idcs = Dict{eltype(vns_both),Int}()
     ranges = Vector{UnitRange{Int}}()
     vals = T[]
     dists = D[]
