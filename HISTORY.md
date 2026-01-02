@@ -1,6 +1,12 @@
 # DynamicPPL Changelog
 
-## 0.40
+## 0.40.0
+
+The argument `Tout` for `pointwise_logdensities` has been removed; it will always return a chain of the same type that was provided.
+
+There is a new exported function, `DynamicPPL.make_prior_chain`, which generates a chain from the prior distribution of a model.
+
+FlexiChainsDynamicPPLExt has been moved into this package (in the process, removing a lot of code duplication with MCMCChains).
 
 ## 0.39.7
 

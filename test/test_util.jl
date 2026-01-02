@@ -54,19 +54,3 @@ function modify_value_representation(nt::NamedTuple)
     end
     return modified_nt
 end
-
-"""
-    make_chain_from_prior([rng,] model, n_iters)
-
-Construct an MCMCChains.Chains object by sampling from the prior of `model` for
-`n_iters` iterations.
-"""
-function make_chain_from_prior(rng::Random.AbstractRNG, model::Model, n_iters::Int)
-    vi = VarInfo(model)
-    vi = DynamicPPL.setaccs!!(vi, (DynamicPPL.ValuesAsInModelAccumulator(false),))
-    ps = hcat([ParamsWithStats(last(DynamicPPL.init!!(rng, model, vi))) for _ in 1:n_iters])
-    return AbstractMCMC.from_samples(MCMCChains.Chains, ps)
-end
-function make_chain_from_prior(model::Model, n_iters::Int)
-    return make_chain_from_prior(Random.default_rng(), model, n_iters)
-end
