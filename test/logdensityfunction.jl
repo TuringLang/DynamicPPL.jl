@@ -104,6 +104,25 @@ end
         @test LogDensityProblems.capabilities(typeof(ldf)) ==
             LogDensityProblems.LogDensityOrder{1}()
     end
+
+    @testset "Callable struct as getlogdensity" begin
+        @model function f()
+            x ~ Normal()
+            return 1.0 ~ Normal(x)
+        end
+        struct ScaledLogLike
+            scale::Float64
+        end
+        function (sll::ScaledLogLike)(vi::AbstractVarInfo)
+            return sll.scale * getloglikelihood(vi)
+        end
+        model = f()
+        vi = VarInfo(model)
+        sll = ScaledLogLike(2.0)
+        ldf = DynamicPPL.LogDensityFunction(model, sll, vi)
+        x = vi[:]
+        @test LogDensityProblems.logdensity(ldf, x) == sll.scale * logpdf(Normal(x[1]), 1.0)
+    end
 end
 
 @testset "LogDensityFunction: Type stability" begin

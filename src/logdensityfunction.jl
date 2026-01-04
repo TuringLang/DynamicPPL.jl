@@ -32,7 +32,7 @@ using Random: Random
 """
     DynamicPPL.LogDensityFunction(
         model::Model,
-        getlogdensity::Function=getlogjoint_internal,
+        getlogdensity::Any=getlogjoint_internal,
         varinfo::AbstractVarInfo=VarInfo(model);
         adtype::Union{ADTypes.AbstractADType,Nothing}=nothing,
     )
@@ -47,7 +47,9 @@ using `LogDensityProblems.logdensity` and `LogDensityProblems.logdensity_and_gra
 `adtype` is nothing, then only `logdensity` is implemented. If `adtype` is a concrete AD
 backend type, then `logdensity_and_gradient` is also implemented.
 
-There are several options for `getlogdensity` that are 'supported' out of the box:
+`getlogdensity` should be a callable which takes a single argument: a `VarInfo`, and returns
+a `Real` corresponding to the log density of interest. There are several functions in
+DynamicPPL that are 'supported' out of the box:
 
 - [`getlogjoint_internal`](@ref): calculate the log joint, including the log-Jacobian term
   for any variables that have been linked in the provided VarInfo.
@@ -145,7 +147,7 @@ struct LogDensityFunction{
     Tlink,
     M<:Model,
     AD<:Union{ADTypes.AbstractADType,Nothing},
-    F<:Function,
+    F,
     N<:NamedTuple,
     ADP<:Union{Nothing,DI.GradientPrep},
     # type of the vector passed to logdensity functions
@@ -161,7 +163,7 @@ struct LogDensityFunction{
 
     function LogDensityFunction(
         model::Model,
-        getlogdensity::Function=getlogjoint_internal,
+        getlogdensity::Any=getlogjoint_internal,
         varinfo::AbstractVarInfo=VarInfo(model);
         adtype::Union{ADTypes.AbstractADType,Nothing}=nothing,
     )
@@ -219,12 +221,12 @@ end
 # LogDensityProblems.jl interface #
 ###################################
 """
-    ldf_accs(getlogdensity::Function)
+    ldf_accs(getlogdensity::Any)
 
 Determine which accumulators are needed for fast evaluation with the given
-`getlogdensity` function.
+`getlogdensity` callable.
 """
-ldf_accs(::Function) = default_accumulators()
+ldf_accs(::Any) = default_accumulators()
 ldf_accs(::typeof(getlogjoint_internal)) = default_accumulators()
 function ldf_accs(::typeof(getlogjoint))
     return AccumulatorTuple((LogPriorAccumulator(), LogLikelihoodAccumulator()))
@@ -235,7 +237,7 @@ end
 ldf_accs(::typeof(getlogprior)) = AccumulatorTuple((LogPriorAccumulator(),))
 ldf_accs(::typeof(getloglikelihood)) = AccumulatorTuple((LogLikelihoodAccumulator(),))
 
-struct LogDensityAt{Tlink,M<:Model,F<:Function,N<:NamedTuple}
+struct LogDensityAt{Tlink,M<:Model,F,N<:NamedTuple}
     model::M
     getlogdensity::F
     iden_varname_ranges::N
