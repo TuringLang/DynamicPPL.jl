@@ -1,5 +1,9 @@
 # DynamicPPL Changelog
 
+## 0.39.8
+
+Allow the `getlogdensity` argument of `LogDensityFunction` to accept callable structs as well as functions.
+
 ## 0.39.7
 
 Improve concreteness when merging two `Metadata` structs.
