@@ -1,5 +1,10 @@
 # DynamicPPL Changelog
 
+## 0.39.9
+
+The internals of `LogDensityFunction` have been changed slightly so that you do not need to specify `function_annotation` when performing AD with Enzyme.jl.
+There are also some small performance improvements with other AD backends.
+
 ## 0.39.8
 
 Allow the `getlogdensity` argument of `LogDensityFunction` to accept callable structs as well as functions.
@@ -28,6 +33,8 @@ In particular, when a test fails, it also tells you the tolerances needed to mak
 ## 0.39.2
 
 `returned(model, parameters...)` now accepts any arguments that can be wrapped in `InitFromParams` (previously it would only accept `NamedTuple`, `AbstractDict{<:VarName}`, or a chain).
+
+There should also be some minor performance improvements (maybe 10%) on AD with ForwardDiff / Mooncake.
 
 ## 0.39.1
 
