@@ -1010,12 +1010,14 @@ Return the arguments and keyword arguments to be passed to the evaluator of the 
     unwrap_args = [
         if is_splat_symbol(var)
             :(
-                $matchingvalue(
+                $convert_model_argument(
                     $get_param_eltype(varinfo, model.context), model.args.$var
                 )...
             )
         else
-            :($matchingvalue($get_param_eltype(varinfo, model.context), model.args.$var))
+            :($convert_model_argument(
+                $get_param_eltype(varinfo, model.context), model.args.$var
+            ))
         end for var in argnames
     ]
     return quote
@@ -1095,30 +1097,85 @@ Base.rand(::Type{T}, model::Model) where {T} = rand(Random.default_rng(), T, mod
 Base.rand(model::Model) = rand(Random.default_rng(), NamedTuple, model)
 
 """
+    logjoint(model::Model, params)
     logjoint(model::Model, varinfo::AbstractVarInfo)
 
-Return the log joint probability of variables `varinfo` for the probabilistic `model`.
+Return the log joint probability of variables `params` for the probabilistic `model`, or the
+log joint of the data in `varinfo` if provided.
 
-Note that this probability always refers to the parameters in unlinked space, i.e.,
-the return value of `logjoint` does not depend on whether `VarInfo` has been linked
-or not.
+Note that this probability always refers to the parameters in unlinked space, i.e., the
+return value of `logjoint` does not depend on whether `VarInfo` has been linked or not.
 
-See [`logprior`](@ref) and [`loglikelihood`](@ref).
+See also [`logprior`](@ref) and [`loglikelihood`](@ref).
+
+# Examples
+```jldoctest; setup=:(using Distributions)
+julia> @model function demo(x)
+           m ~ Normal()
+           for i in eachindex(x)
+               x[i] ~ Normal(m, 1.0)
+           end
+       end
+demo (generic function with 2 methods)
+
+julia> # Using a `NamedTuple`.
+       logjoint(demo([1.0]), (m = 100.0, ))
+-9902.33787706641
+
+julia> # Using a `OrderedDict`.
+       logjoint(demo([1.0]), OrderedDict(@varname(m) => 100.0))
+-9902.33787706641
+
+julia> # Truth.
+       logpdf(Normal(100.0, 1.0), 1.0) + logpdf(Normal(), 100.0)
+-9902.33787706641
+```
 """
 function logjoint(model::Model, varinfo::AbstractVarInfo)
     return getlogjoint(last(evaluate!!(model, varinfo)))
 end
+function logjoint(model::Model, params)
+    vi = OnlyAccsVarInfo(
+        AccumulatorTuple(LogPriorAccumulator(), LogLikelihoodAccumulator())
+    )
+    ctx = InitFromParams(params, nothing)
+    return getlogjoint(last(init!!(model, vi, ctx)))
+end
 
 """
+    logprior(model::Model, params)
     logprior(model::Model, varinfo::AbstractVarInfo)
 
-Return the log prior probability of variables `varinfo` for the probabilistic `model`.
+Return the log prior probability of variables `params` for the probabilistic `model`, or the
+log prior of the data in `varinfo` if provided.
 
-Note that this probability always refers to the parameters in unlinked space, i.e.,
-the return value of `logprior` does not depend on whether `VarInfo` has been linked
-or not.
+Note that this probability always refers to the parameters in unlinked space, i.e., the
+return value of `logprior` does not depend on whether `VarInfo` has been linked or not.
 
 See also [`logjoint`](@ref) and [`loglikelihood`](@ref).
+
+# Examples
+```jldoctest; setup=:(using Distributions)
+julia> @model function demo(x)
+           m ~ Normal()
+           for i in eachindex(x)
+               x[i] ~ Normal(m, 1.0)
+           end
+       end
+demo (generic function with 2 methods)
+
+julia> # Using a `NamedTuple`.
+       logprior(demo([1.0]), (m = 100.0, ))
+-5000.918938533205
+
+julia> # Using a `OrderedDict`.
+       logprior(demo([1.0]), OrderedDict(@varname(m) => 100.0))
+-5000.918938533205
+
+julia> # Truth.
+       logpdf(Normal(), 100.0)
+-5000.918938533205
+```
 """
 function logprior(model::Model, varinfo::AbstractVarInfo)
     # Remove other accumulators from varinfo, since they are unnecessary.
@@ -1130,13 +1187,42 @@ function logprior(model::Model, varinfo::AbstractVarInfo)
     varinfo = setaccs!!(deepcopy(varinfo), (logprioracc,))
     return getlogprior(last(evaluate!!(model, varinfo)))
 end
+function logprior(model::Model, params)
+    vi = OnlyAccsVarInfo(AccumulatorTuple(LogPriorAccumulator()))
+    ctx = InitFromParams(params, nothing)
+    return getlogprior(last(init!!(model, vi, ctx)))
+end
 
 """
+    loglikelihood(model::Model, params)
     loglikelihood(model::Model, varinfo::AbstractVarInfo)
 
-Return the log likelihood of variables `varinfo` for the probabilistic `model`.
+Return the log likelihood of variables `params` for the probabilistic `model`, or the log
+likelihood of the data in `varinfo` if provided.
 
 See also [`logjoint`](@ref) and [`logprior`](@ref).
+
+# Examples
+```jldoctest; setup=:(using Distributions)
+julia> @model function demo(x)
+           m ~ Normal()
+           for i in eachindex(x)
+               x[i] ~ Normal(m, 1.0)
+           end
+       end
+demo (generic function with 2 methods)
+
+julia> # Using a `NamedTuple`.
+       loglikelihood(demo([1.0]), (m = 100.0, ))
+-4901.418938533205
+
+julia> # Using a `OrderedDict`.
+       loglikelihood(demo([1.0]), OrderedDict(@varname(m) => 100.0))
+-4901.418938533205
+
+julia> # Truth.
+       logpdf(Normal(100.0, 1.0), 1.0)
+-4901.418938533205
 """
 function Distributions.loglikelihood(model::Model, varinfo::AbstractVarInfo)
     # Remove other accumulators from varinfo, since they are unnecessary.
@@ -1147,6 +1233,11 @@ function Distributions.loglikelihood(model::Model, varinfo::AbstractVarInfo)
     end
     varinfo = setaccs!!(deepcopy(varinfo), (loglikelihoodacc,))
     return getloglikelihood(last(evaluate!!(model, varinfo)))
+end
+function Distributions.loglikelihood(model::Model, params)
+    vi = OnlyAccsVarInfo(AccumulatorTuple(LogLikelihoodAccumulator()))
+    ctx = InitFromParams(params, nothing)
+    return getloglikelihood(last(init!!(model, vi, ctx)))
 end
 
 # Implemented & documented in DynamicPPLMCMCChainsExt
