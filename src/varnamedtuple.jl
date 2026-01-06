@@ -8,7 +8,7 @@ using BangBang
 using Accessors
 using ..DynamicPPL: _compose_no_identity
 
-export VarNamedTuple
+export VarNamedTuple, vnt_size
 
 # We define our own getindex, setindex!!, and haskey functions, which we use to
 # get/set/check values in VarNamedTuple and PartialArray. We do this because we want to be
@@ -80,6 +80,17 @@ const INDEX_TYPES = Union{Integer,AbstractUnitRange,Colon,AbstractPPL.Concretize
 
 _unwrap_concretized_slice(cs::AbstractPPL.ConcretizedSlice) = cs.range
 _unwrap_concretized_slice(x::Union{Integer,AbstractUnitRange,Colon}) = x
+
+"""
+    vnt_size(x)
+
+Get the size of an object `x` for use in `VarNamedTuple` and `PartialArray`.
+
+By default, this falls back onto `Base.size`, but can be overloaded for custom types.
+This notion of type is used to determine whether a value can be set into a `PartialArray`
+as a block, see the docstring of `PartialArray` and `ArrayLikeBlock` for details.
+"""
+vnt_size(x) = size(x)
 
 """
     ArrayLikeBlock{T,I}
@@ -156,11 +167,12 @@ Like `Base.Array`s, `PartialArray`s have a well-defined, compile-time-known elem
 
 One can set values in a `PartialArray` either element-by-element, or with ranges like
 `arr[1:3,2] = [5,10,15]`. When setting values over a range of indices, the value being set
-must either be an `AbstractArray` or otherwise something for which `size(value)` is defined,
-and the size mathces the range. If the value is an `AbstractArray`, the elements are copied
-individually, but if it is not, the value is stored as a block, that takes up the whole
-range, e.g. `[1:3,2]`, but is only a single object. Getting such a block-value must be done
-with the exact same range of indices, otherwise an error is thrown.
+must either be an `AbstractArray` or otherwise something for which `vnt_size(value)` or
+`Base.size(value)` (which `vnt_size` falls back onto) is defined, and the size matches the
+range. If the value is an `AbstractArray`, the elements are copied individually, but if it
+is not, the value is stored as a block, that takes up the whole range, e.g. `[1:3,2]`, but
+is only a single object. Getting such a block-value must be done with the exact same range
+of indices, otherwise an error is thrown.
 
 If the element type of a `PartialArray` is not concrete, any call to `setindex!!` will check
 if, after the new value has been set, the element type can be made more concrete. If so,
@@ -612,11 +624,11 @@ function _setindex!!(pa::PartialArray, value, inds::Vararg{INDEX_TYPES})
     new_data = pa.data
     if _needs_arraylikeblock(value, inds...)
         inds_size = reduce((x, y) -> tuple(x..., y...), map(size, inds))
-        if size(value) != inds_size
+        if vnt_size(value) != inds_size
             throw(
                 DimensionMismatch(
-                    "Assigned value has size $(size(value)), which does not match the " *
-                    "size implied by the indices $(map(x -> _length_needed(x), inds)).",
+                    "Assigned value has size $(vnt_size(value)), which does not match " *
+                    "the size implied by the indices $(map(x -> _length_needed(x), inds)).",
                 ),
             )
         end

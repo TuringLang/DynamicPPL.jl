@@ -215,7 +215,7 @@ struct RangeAndLinked{T<:Tuple}
     original_size::T
 end
 
-Base.size(ral::RangeAndLinked) = ral.original_size
+VarNamedTuples.vnt_size(ral::RangeAndLinked) = ral.original_size
 
 """
     VectorWithRanges{Tlink}(
