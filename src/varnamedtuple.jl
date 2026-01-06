@@ -608,7 +608,7 @@ The value only depends on the types of the arguments, and should be constant pro
 function _needs_arraylikeblock(value, inds::Vararg{INDEX_TYPES})
     return _is_multiindex(inds) &&
            !isa(value, AbstractArray) &&
-           hasmethod(size, Tuple{typeof(value)})
+           hasmethod(vnt_size, Tuple{typeof(value)})
 end
 
 function _setindex!!(pa::PartialArray, value, inds::Vararg{INDEX_TYPES})
