@@ -206,17 +206,20 @@ an unlinked value.
 
 $(TYPEDFIELDS)
 """
-struct RangeAndLinked
+struct RangeAndLinked{T<:Tuple}
     # indices that the variable corresponds to in the vectorised parameter
     range::UnitRange{Int}
     # whether it's linked
     is_linked::Bool
+    # original size of the variable before vectorisation
+    original_size::T
 end
+
+Base.size(ral::RangeAndLinked) = ral.original_size
 
 """
     VectorWithRanges{Tlink}(
-        iden_varname_ranges::NamedTuple,
-        varname_ranges::Dict{VarName,RangeAndLinked},
+        varname_ranges::VarNamedTuple,
         vect::AbstractVector{<:Real},
     )
 
@@ -228,26 +231,14 @@ this `VectorWithRanges` are linked/not linked, or `nothing` if either the linkin
 not known or is mixed, i.e. some are linked while others are not. Using `nothing` does not
 affect functionality or correctness, but causes more work to be done at runtime, with
 possible impacts on type stability and performance.
-
-In the simplest case, this could be accomplished only with a single dictionary mapping
-VarNames to ranges and link status. However, for performance reasons, we separate out
-VarNames with identity optics into a NamedTuple (`iden_varname_ranges`). All
-non-identity-optic VarNames are stored in the `varname_ranges` Dict.
-
-It would be nice to improve the NamedTuple and Dict approach. See, e.g.
-https://github.com/TuringLang/DynamicPPL.jl/issues/1116.
 """
-struct VectorWithRanges{Tlink,N<:NamedTuple,T<:AbstractVector{<:Real}}
-    # This NamedTuple stores the ranges for identity VarNames
-    iden_varname_ranges::N
-    # This Dict stores the ranges for all other VarNames
-    varname_ranges::Dict{VarName,RangeAndLinked}
+struct VectorWithRanges{Tlink,VNT<:VarNamedTuple,T<:AbstractVector{<:Real}}
+    # Ranges for all VarNames
+    varname_ranges::VNT
     # The full parameter vector which we index into to get variable values
     vect::T
 
-    function VectorWithRanges{Tlink}(
-        iden_varname_ranges::N, varname_ranges::Dict{VarName,RangeAndLinked}, vect::T
-    ) where {Tlink,N,T}
+    function VectorWithRanges{Tlink}(varname_ranges::VNT, vect::T) where {Tlink,VNT,T}
         if !(Tlink isa Union{Bool,Nothing})
             throw(
                 ArgumentError(
@@ -255,17 +246,17 @@ struct VectorWithRanges{Tlink,N<:NamedTuple,T<:AbstractVector{<:Real}}
                 ),
             )
         end
-        return new{Tlink,N,T}(iden_varname_ranges, varname_ranges, vect)
+        return new{Tlink,VNT,T}(varname_ranges, vect)
     end
 end
 
-function _get_range_and_linked(
-    vr::VectorWithRanges, ::VarName{sym,typeof(identity)}
-) where {sym}
-    return vr.iden_varname_ranges[sym]
-end
 function _get_range_and_linked(vr::VectorWithRanges, vn::VarName)
-    return vr.varname_ranges[vn]
+    # The type assertion does nothing if VectorWithRanges has concrete element types, as is
+    # the case for all type stable models. However, if the model is not type stable,
+    # vr.varname_ranges[vn] may infer to have type `Any`. In this case it is helpful to
+    # assert that it is a RangeAndLinked, because even though it remains non-concrete,
+    # it'll allow the compiler to infer the types of `range` and `is_linked`.
+    return vr.varname_ranges[vn]::RangeAndLinked
 end
 function init(
     ::Random.AbstractRNG,
