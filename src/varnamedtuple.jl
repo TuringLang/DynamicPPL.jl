@@ -342,9 +342,7 @@ end
 Base.isempty(pa::PartialArray) = !any(pa.mask)
 Base.empty(pa::PartialArray) = PartialArray(similar(pa.data), fill(false, size(pa.mask)))
 function BangBang.empty!!(pa::PartialArray)
-    for i in eachindex(pa.mask)
-        @inbounds pa.mask[i] = false
-    end
+    fill!(pa.mask, false)
     return pa
 end
 
@@ -815,7 +813,7 @@ function _dense_array(pa::PartialArray)
 
     # Check that all indices within size_needed are set.
     slice = ntuple(d -> 1:size_needed[d], num_dims)
-    if any(.!(pa.mask[slice...]))
+    if !all(pa.mask[slice...])
         throw(
             ArgumentError(
                 "Cannot convert PartialArray to dense Array when some elements within " *
