@@ -1192,12 +1192,6 @@ function make_leaf(value, optic::IndexLens)
     return _setindex!!(pa, value, optic)
 end
 
-function to_dict(::Type{T}, vnt::VarNamedTuple) where {T<:AbstractDict{<:VarName}}
-    pairs = splat(Pair).(zip(keys(vnt), values(vnt)))
-    return T(pairs...)
-end
-to_dict(vnt::VarNamedTuple) = to_dict(Dict{VarName,Any}, vnt)
-
 function AbstractPPL.hasvalue(vnt::VarNamedTuple, vn::VarName)
     return haskey(vnt, vn)
 end
