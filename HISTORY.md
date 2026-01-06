@@ -40,7 +40,7 @@ Both of the above examples previously created 2-dimensional models, with two dis
 TODO(mhauru) This may cause surprising issues when using `eachindex`, which is generally encouraged, e.g.
 
 ```
-x = Array{Float64,2}(undef, (3, 3)
+x = Array{Float64,2}(undef, (3, 3))
 for i in eachindex(x)
     x[i] ~ Normal()
 end
