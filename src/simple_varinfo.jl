@@ -408,7 +408,8 @@ const SimpleOrThreadSafeSimple{T,V,C} = Union{
 }
 
 # Necessary for `matchingvalue` to work properly.
-Base.eltype(::SimpleOrThreadSafeSimple{<:Any,V}) where {V} = V
+Base.eltype(svi::SimpleVarInfo) = infer_nested_eltype(typeof(svi.values))
+Base.eltype(tsvi::ThreadSafeVarInfo{<:SimpleVarInfo}) = eltype(tsvi.varinfo)
 
 # `subset`
 function subset(varinfo::SimpleVarInfo, vns::AbstractVector{<:VarName})
@@ -501,105 +502,6 @@ end
 function values_as(vi::SimpleVarInfo, ::Type{T}) where {T}
     return values_as(vi.values, T)
 end
-
-"""
-    logjoint(model::Model, θ::Union{NamedTuple,AbstractDict})
-
-Return the log joint probability of variables `θ` for the probabilistic `model`.
-
-See [`logprior`](@ref) and [`loglikelihood`](@ref).
-
-# Examples
-```jldoctest; setup=:(using Distributions)
-julia> @model function demo(x)
-           m ~ Normal()
-           for i in eachindex(x)
-               x[i] ~ Normal(m, 1.0)
-           end
-       end
-demo (generic function with 2 methods)
-
-julia> # Using a `NamedTuple`.
-       logjoint(demo([1.0]), (m = 100.0, ))
--9902.33787706641
-
-julia> # Using a `OrderedDict`.
-       logjoint(demo([1.0]), OrderedDict(@varname(m) => 100.0))
--9902.33787706641
-
-julia> # Truth.
-       logpdf(Normal(100.0, 1.0), 1.0) + logpdf(Normal(), 100.0)
--9902.33787706641
-```
-"""
-logjoint(model::Model, θ::Union{NamedTuple,AbstractDict}) =
-    logjoint(model, SimpleVarInfo(θ))
-
-"""
-    logprior(model::Model, θ::Union{NamedTuple,AbstractDict})
-
-Return the log prior probability of variables `θ` for the probabilistic `model`.
-
-See also [`logjoint`](@ref) and [`loglikelihood`](@ref).
-
-# Examples
-```jldoctest; setup=:(using Distributions)
-julia> @model function demo(x)
-           m ~ Normal()
-           for i in eachindex(x)
-               x[i] ~ Normal(m, 1.0)
-           end
-       end
-demo (generic function with 2 methods)
-
-julia> # Using a `NamedTuple`.
-       logprior(demo([1.0]), (m = 100.0, ))
--5000.918938533205
-
-julia> # Using a `OrderedDict`.
-       logprior(demo([1.0]), OrderedDict(@varname(m) => 100.0))
--5000.918938533205
-
-julia> # Truth.
-       logpdf(Normal(), 100.0)
--5000.918938533205
-```
-"""
-logprior(model::Model, θ::Union{NamedTuple,AbstractDict}) =
-    logprior(model, SimpleVarInfo(θ))
-
-"""
-    loglikelihood(model::Model, θ::Union{NamedTuple,AbstractDict})
-
-Return the log likelihood of variables `θ` for the probabilistic `model`.
-
-See also [`logjoint`](@ref) and [`logprior`](@ref).
-
-# Examples
-```jldoctest; setup=:(using Distributions)
-julia> @model function demo(x)
-           m ~ Normal()
-           for i in eachindex(x)
-               x[i] ~ Normal(m, 1.0)
-           end
-       end
-demo (generic function with 2 methods)
-
-julia> # Using a `NamedTuple`.
-       loglikelihood(demo([1.0]), (m = 100.0, ))
--4901.418938533205
-
-julia> # Using a `OrderedDict`.
-       loglikelihood(demo([1.0]), OrderedDict(@varname(m) => 100.0))
--4901.418938533205
-
-julia> # Truth.
-       logpdf(Normal(100.0, 1.0), 1.0)
--4901.418938533205
-```
-"""
-Distributions.loglikelihood(model::Model, θ::Union{NamedTuple,AbstractDict}) =
-    loglikelihood(model, SimpleVarInfo(θ))
 
 # Allow usage of `NamedBijector` too.
 function link!!(
