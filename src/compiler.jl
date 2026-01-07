@@ -774,6 +774,10 @@ function convert_model_argument(param_eltype, model_argument)
         # Vector{Union{Missing, ForwardDiff.Dual{...}}} anyway, which will avoid mutating
         # the original argument. We can check for this by first converting and then only
         # deepcopying if the converted value aliases the original.
+        # Note that indiscriminately deepcopying can not only lead to reduced performance,
+        # but sometimes also incorrect behaviour with ReverseDiff.jl, because ReverseDiff
+        # expects to be able to track array mutations. See e.g.
+        # https://github.com/TuringLang/DynamicPPL.jl/pull/1015#issuecomment-3166011534
         converted_argument = convert(
             promote_model_type_argument(param_eltype, T), model_argument
         )
