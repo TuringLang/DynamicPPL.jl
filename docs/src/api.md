@@ -377,6 +377,7 @@ SimpleVarInfo
 
 ```@docs
 DynamicPPL.VarNamedTuples.VarNamedTuple
+DynamicPPL.VarNamedTuples.vnt_size
 ```
 
 ### Accumulators
