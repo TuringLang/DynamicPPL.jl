@@ -2,6 +2,8 @@
 module VarNamedTuples
 
 using AbstractPPL
+using AbstractPPL: AbstractPPL
+using Distributions: Distributions, Distribution
 using BangBang
 using Accessors
 using ..DynamicPPL: _compose_no_identity
@@ -335,6 +337,13 @@ function Base.hash(pa::PartialArray, h::UInt)
         end
     end
     return h
+end
+
+Base.isempty(pa::PartialArray) = !any(pa.mask)
+Base.empty(pa::PartialArray) = PartialArray(similar(pa.data), fill(false, size(pa.mask)))
+function BangBang.empty!!(pa::PartialArray)
+    fill!(pa.mask, false)
+    return pa
 end
 
 """
@@ -705,11 +714,16 @@ function _merge_recursive(pa1::PartialArray, pa2::PartialArray)
 end
 
 function Base.keys(pa::PartialArray)
-    inds = findall(pa.mask)
-    lenses = map(x -> IndexLens(Tuple(x)), inds)
+    # TODO(mhauru) Should this rather be Union{}[]? It would make this very type unstable
+    # and cause more allocations, but would result in more concrete element types. Same
+    # question for Base.keys on VNT and Base.values.
     ks = Any[]
     alb_inds_seen = Set{Tuple}()
-    for lens in lenses
+    for ind in CartesianIndices(pa.mask)
+        @inbounds if !pa.mask[ind]
+            continue
+        end
+        lens = IndexLens(Tuple(ind))
         val = getindex(pa.data, lens.indices...)
         if val isa VarNamedTuple
             subkeys = keys(val)
@@ -727,6 +741,101 @@ function Base.keys(pa::PartialArray)
         end
     end
     return ks
+end
+
+function Base.values(pa::PartialArray)
+    vs = Any[]
+    albs_seen = Set{ArrayLikeBlock}()
+    for ind in CartesianIndices(pa.mask)
+        @inbounds if !pa.mask[ind]
+            continue
+        end
+        val = getindex(pa.data, ind)
+        if val isa VarNamedTuple
+            subvalues = values(val)
+            vs = push!!(vs, subvalues...)
+        elseif val isa ArrayLikeBlock
+            if !(val in albs_seen)
+                vs = push!!(vs, val.block)
+                push!(albs_seen, val)
+            end
+        else
+            vs = push!!(vs, val)
+        end
+    end
+    return vs
+end
+
+function Base.length(pa::PartialArray)
+    len = 0
+    for ind in CartesianIndices(pa.mask)
+        @inbounds if !pa.mask[ind]
+            continue
+        end
+        val = getindex(pa.data, ind)
+        if val isa VarNamedTuple
+            len += length(val)
+        else
+            # Note we don't need to special case here for ArrayLikeBlocks. That's because
+            # we treat every index pointing to the same ArrayLikeBlock as contributing to
+            # the length.
+            len += 1
+        end
+    end
+    return len
+end
+
+"""
+    _dense_array(pa::PartialArray)
+
+Return a `Base.Array` of the elements of the `PartialArray`.
+
+If the `PartialArray` has any missing elements that are within the block of set elements,
+this will error. For instance, if `pa` is two-dimensional and (2,2) is set, but one of
+(1,1), (1,2), or (2,1) is not.
+
+Likewise, if `pa` includes any blocks set as `ArrayLikeBlocks`, this will error.
+"""
+function _dense_array(pa::PartialArray)
+    # Find the size of the dense array, by checking what are the largest indices set in pa.
+    num_dims = ndims(pa)
+    size_needed = fill(0, num_dims)
+    # TODO(mhauru) This could be optimised by not looping over the whole array: If e.g.
+    # (3,3) is set, we have no need to check any indices within the block (3,3).
+    for ind in CartesianIndices(pa.mask)
+        @inbounds if !pa.mask[ind]
+            continue
+        end
+        for d in 1:num_dims
+            size_needed[d] = max(size_needed[d], ind[d])
+        end
+    end
+
+    # Check that all indices within size_needed are set.
+    slice = ntuple(d -> 1:size_needed[d], num_dims)
+    if !all(pa.mask[slice...])
+        throw(
+            ArgumentError(
+                "Cannot convert PartialArray to dense Array when some elements within " *
+                "the dense block are not set.",
+            ),
+        )
+    end
+
+    retval = pa.data[slice...]
+    if eltype(pa) <: ArrayLikeBlock || ArrayLikeBlock <: eltype(pa)
+        for ind in CartesianIndices(retval)
+            @inbounds if retval[ind] isa ArrayLikeBlock
+                throw(
+                    ArgumentError(
+                        "Cannot convert PartialArray to dense Array when some elements " *
+                        "are set as ArrayLikeBlocks.",
+                    ),
+                )
+            end
+        end
+    end
+    return retval
 end
 
 """
@@ -787,6 +896,91 @@ function Base.copy(vnt::VarNamedTuple{names}) where {names}
             ),
         ),
     )
+end
+
+"""
+    _has_partial_array(::Type{VarNamedTuple{Names,Values}}) where {Names,Values}
+
+Check if any of the types in the `Values` tuple is or contains a `PartialArray`.
+
+Recurses into any sub-`VarNamedTuple`s.
+"""
+@generated function _has_partial_array(
+    ::Type{VarNamedTuple{Names,Values}}
+) where {Names,Values}
+    for T in Values.parameters
+        if _has_partial_array(T)
+            return :(return true)
+        end
+    end
+    return :(return false)
+end
+
+_has_partial_array(::Type{T}) where {T} = false
+_has_partial_array(::Type{<:PartialArray}) = true
+
+Base.empty(::VarNamedTuple) = VarNamedTuple()
+
+"""
+    empty!!(vnt::VarNamedTuple)
+
+Create an empty version of `vnt` in place.
+
+This differs from `Base.empty` in that any `PartialArray`s contained within `vnt` are kept
+but have their contents deleted, rather than being removed entirely. This means that
+
+1) The result has a "memory" of how many dimensions different variables had, and you cannot,
+   for example, set `a[1,2]` after emptying a `VarNamedTuple` that had only `a[1]` defined.
+2) Memory allocations may be reduced when reusing `VarNamedTuple`s, since the internal
+   `PartialArray`s do not need to be reallocated from scratch.
+"""
+@generated function BangBang.empty!!(vnt::VarNamedTuple{Names,Values}) where {Names,Values}
+    if !_has_partial_array(VarNamedTuple{Names,Values})
+        return :(return VarNamedTuple())
+    end
+    # Check all the fields of the NamedTuple, and keep the ones that contain PartialArrays,
+    # calling empty!! on them recursively.
+    new_names = ()
+    new_values = ()
+    for (name, ValType) in zip(Names, Values.parameters)
+        if _has_partial_array(ValType)
+            new_values = (new_values..., :(BangBang.empty!!(vnt.data.$name)))
+            new_names = (new_names..., name)
+        end
+    end
+    return quote
+        return VarNamedTuple(NamedTuple{$new_names}(($(new_values...),)))
+    end
+end
+
+@generated function Base.isempty(vnt::VarNamedTuple{Names,Values}) where {Names,Values}
+    if isempty(Names)
+        return :(return true)
+    end
+    if !_has_partial_array(VarNamedTuple{Names,Values})
+        return :(return false)
+    end
+    exs = Expr[]
+    for (name, ValType) in zip(Names, Values.parameters)
+        if !_has_partial_array(ValType)
+            return :(return false)
+        end
+        push!(
+            exs,
+            quote
+                val = vnt.data.$name
+                if val isa VarNamedTuple || val isa PartialArray
+                    if !Base.isempty(val)
+                        return false
+                    end
+                else
+                    return false
+                end
+            end,
+        )
+    end
+    push!(exs, :(return true))
+    return Expr(:block, exs...)
 end
 
 """
@@ -893,6 +1087,39 @@ function Base.keys(vnt::VarNamedTuple)
     return result
 end
 
+function Base.values(vnt::VarNamedTuple)
+    # TODO(mhauru) Same comments as for keys for type stability and Any vs Union{}
+    result = Any[]
+    for sym in keys(vnt.data)
+        subdata = vnt.data[sym]
+        if subdata isa VarNamedTuple
+            subvalues = values(subdata)
+            append!(result, subvalues)
+        elseif subdata isa PartialArray
+            subvalues = values(subdata)
+            append!(result, subvalues)
+        else
+            push!(result, subdata)
+        end
+    end
+    return result
+end
+
+function Base.length(vnt::VarNamedTuple)
+    len = 0
+    for sym in keys(vnt.data)
+        subdata = vnt.data[sym]
+        if subdata isa VarNamedTuple
+            len += length(subdata)
+        elseif subdata isa PartialArray
+            len += length(subdata)
+        else
+            len += 1
+        end
+    end
+    return len
+end
+
 # The following methods, indexing with ComposedFunction, are exactly the same for
 # VarNamedTuple and PartialArray, since they just fall back on indexing with the outer and
 # inner lenses.
@@ -918,7 +1145,13 @@ end
 
 # The entry points for getting, setting, and checking, using the familiar functions.
 Base.haskey(vnt::VarNamedTuple, vn::VarName) = _haskey(vnt, vn)
-Base.getindex(vnt::VarNamedTuple, vn::VarName) = _getindex(vnt, vn)
+
+# PartialArrays are an implementation detail of VarNamedTuple, and should never be the
+# return value of getindex. Thus, we automatically convert them to dense arrays if needed.
+_dense_array_if_needed(pa::PartialArray) = _dense_array(pa)
+_dense_array_if_needed(x) = x
+Base.getindex(vnt::VarNamedTuple, vn::VarName) = _dense_array_if_needed(_getindex(vnt, vn))
+
 BangBang.setindex!!(vnt::VarNamedTuple, value, vn::VarName) = _setindex!!(vnt, value, vn)
 
 Base.haskey(vnt::PartialArray, key) = _haskey(vnt, key)
@@ -957,6 +1190,93 @@ function make_leaf(value, optic::IndexLens)
     end
     pa = PartialArray{et,num_inds}()
     return _setindex!!(pa, value, optic)
+end
+
+function AbstractPPL.hasvalue(vnt::VarNamedTuple, vn::VarName)
+    return haskey(vnt, vn)
+end
+
+function AbstractPPL.getvalue(vnt::VarNamedTuple, vn::VarName)
+    return getindex(vnt, vn)
+end
+
+# TODO(mhauru) The following methods mimic the structure of those in
+# AbstractPPLDistributionsExtension, and fall back on converting any PartialArrays to
+# dictionaries, and calling the AbstractPPL methods. We should eventually make
+# implementations of these directly for PartialArray, and maybe move these methods
+# elsewhere. Better yet, once we no longer store VarName values in Dictionaries anywhere,
+# and FlexiChains takes over from MCMCChains, this could hopefully all be removed.
+
+# The only case where the Distribution argument makes a difference is if the distribution
+# is multivariate and the values are stored in a PartialArray.
+
+function AbstractPPL.hasvalue(
+    vnt::VarNamedTuple, vn::VarName, ::Distributions.UnivariateDistribution
+)
+    return AbstractPPL.hasvalue(vnt, vn)
+end
+
+function AbstractPPL.getvalue(
+    vnt::VarNamedTuple, vn::VarName, ::Distributions.UnivariateDistribution
+)
+    return AbstractPPL.getvalue(vnt, vn)
+end
+
+function AbstractPPL.hasvalue(vals::VarNamedTuple, vn::VarName, dist::Distribution)
+    @warn "`hasvalue(vals, vn, dist)` is not implemented for $(typeof(dist)); falling back to `hasvalue(vals, vn)`."
+    return AbstractPPL.hasvalue(vals, vn)
+end
+
+function AbstractPPL.getvalue(vals::VarNamedTuple, vn::VarName, dist::Distribution)
+    @warn "`getvalue(vals, vn, dist)` is not implemented for $(typeof(dist)); falling back to `getvalue(vals, vn)`."
+    return AbstractPPL.getvalue(vals, vn)
+end
+
+const MV_DIST_TYPES = Union{
+    Distributions.MultivariateDistribution,
+    Distributions.MatrixDistribution,
+    Distributions.LKJCholesky,
+}
+
+function AbstractPPL.hasvalue(vnt::VarNamedTuple, vn::VarName, dist::MV_DIST_TYPES)
+    if !haskey(vnt, vn)
+        # Can't even find the parent VarName, there is no hope.
+        return false
+    end
+    # Note that _getindex, rather than getindex, skips the need to denseify PartialArrays.
+    val = _getindex(vnt, vn)
+    if !(val isa VarNamedTuple || val isa PartialArray)
+        # There is _a_ value. Where it's the right kind, we do not know, but returning true
+        # is no worse than `hasvalue` returning true for e.g. UnivariateDistributions
+        # whenever there is at least some value.
+        return true
+    end
+    # Convert to VarName-keyed Dict.
+    et = val isa VarNamedTuple ? Any : eltype(val)
+    dval = Dict{VarName,et}()
+    for k in keys(val)
+        # VarNamedTuples have VarNames as keys, PartialArrays have IndexLenses.
+        subvn = val isa VarNamedTuple ? prefix(k, vn) : (k ∘ vn)
+        dval[subvn] = getindex(val, k)
+    end
+    return hasvalue(dval, vn, dist)
+end
+
+function AbstractPPL.getvalue(vnt::VarNamedTuple, vn::VarName, dist::MV_DIST_TYPES)
+    # Note that _getindex, rather than getindex, skips the need to denseify PartialArrays.
+    val = _getindex(vnt, vn)
+    if !(val isa VarNamedTuple || val isa PartialArray)
+        return val
+    end
+    # Convert to VarName-keyed Dict.
+    et = val isa VarNamedTuple ? Any : eltype(val)
+    dval = Dict{VarName,et}()
+    for k in keys(val)
+        # VarNamedTuples have VarNames as keys, PartialArrays have IndexLenses.
+        subvn = val isa VarNamedTuple ? prefix(k, vn) : (k ∘ vn)
+        dval[subvn] = getindex(val, k)
+    end
+    return getvalue(dval, vn, dist)
 end
 
 end

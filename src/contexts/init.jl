@@ -169,7 +169,7 @@ InitFromParams(params) = InitFromParams(params, InitFromPrior())
 
 function init(
     rng::Random.AbstractRNG, vn::VarName, dist::Distribution, p::InitFromParams{P}
-) where {P<:Union{AbstractDict{<:VarName},NamedTuple}}
+) where {P<:Union{AbstractDict{<:VarName},NamedTuple,VarNamedTuple}}
     # TODO(penelopeysm): It would be nice to do a check to make sure that all
     # of the parameters in `p.params` were actually used, and either warn or
     # error if they aren't. This is actually quite non-trivial though because

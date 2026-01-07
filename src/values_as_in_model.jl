@@ -10,14 +10,14 @@ wants to extract the realization of a model in a constrained space.
 # Fields
 $(TYPEDFIELDS)
 """
-struct ValuesAsInModelAccumulator <: AbstractAccumulator
+struct ValuesAsInModelAccumulator{VNT<:VarNamedTuple} <: AbstractAccumulator
     "values that are extracted from the model"
-    values::OrderedDict{<:VarName}
+    values::VNT
     "whether to extract variables on the LHS of :="
     include_colon_eq::Bool
 end
 function ValuesAsInModelAccumulator(include_colon_eq)
-    return ValuesAsInModelAccumulator(OrderedDict{VarName,Any}(), include_colon_eq)
+    return ValuesAsInModelAccumulator(VarNamedTuple(), include_colon_eq)
 end
 
 function Base.:(==)(acc1::ValuesAsInModelAccumulator, acc2::ValuesAsInModelAccumulator)
@@ -30,6 +30,9 @@ end
 
 accumulator_name(::Type{<:ValuesAsInModelAccumulator}) = :ValuesAsInModel
 
+# TODO(mhauru) We could start using reset!!, which could call empty!! on the VarNamedTuple.
+# This would create VarNamedTuples that share memory with the original one, saving
+# allocations but also making them not capable of taking in any arbitrary VarName.
 function _zero(acc::ValuesAsInModelAccumulator)
     return ValuesAsInModelAccumulator(empty(acc.values), acc.include_colon_eq)
 end
@@ -45,8 +48,11 @@ function combine(acc1::ValuesAsInModelAccumulator, acc2::ValuesAsInModelAccumula
     )
 end
 
-function Base.push!(acc::ValuesAsInModelAccumulator, vn::VarName, val)
-    setindex!(acc.values, deepcopy(val), vn)
+function BangBang.push!!(acc::ValuesAsInModelAccumulator, vn::VarName, val)
+    # TODO(mhauru) The deepcopy here is quite unfortunate. It is needed so that the model
+    # body can go mutating the object without that reactively affecting the value in the
+    # accumulator, which should be as it was at `~` time. Could there be a way around this?
+    Accessors.@reset acc.values = setindex!!(acc.values, deepcopy(val), vn)
     return acc
 end
 
@@ -56,7 +62,7 @@ function is_extracting_values(vi::AbstractVarInfo)
 end
 
 function accumulate_assume!!(acc::ValuesAsInModelAccumulator, val, logjac, vn, right)
-    return push!(acc, vn, val)
+    return push!!(acc, vn, val)
 end
 
 accumulate_observe!!(acc::ValuesAsInModelAccumulator, right, left, vn) = acc
@@ -74,6 +80,8 @@ working in unconstrained space.
 
 Hence this method is a "safe" way of obtaining realizations in constrained
 space at the cost of additional model evaluations.
+
+Returns a `VarNamedTuple`.
 
 # Arguments
 - `model::Model`: model to extract realizations from.
