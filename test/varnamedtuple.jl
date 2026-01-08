@@ -875,9 +875,21 @@ Base.size(st::SizedThing) = st.size
 
         f_pair(pair) = f_val(pair.second)
 
-        reduction = mapreduce(identity, vcat, vnt; init=Any[])
-        @test reduction == vcat(Any[], 1, [2, 2], [3.0], "a", 5.0, SizedThing((2, 2)), "")
-        reduction = mapreduce(f_val, vcat, vnt; init=Any[])
+        val_reduction = mapreduce(pair -> pair.second, vcat, vnt; init=Any[])
+        @test val_reduction ==
+            vcat(Any[], 1, [2, 2], [3.0], "a", 5.0, SizedThing((2, 2)), "")
+        key_reduction = mapreduce(pair -> pair.first, vcat, vnt; init=Any[])
+        @test key_reduction == vcat(
+            @varname(a),
+            @varname(b[1]),
+            @varname(b[2]),
+            @varname(c.d),
+            @varname(e.f[3].g.h[2].i),
+            @varname(e.f[3].g.h[2].j),
+            @varname(y.z[3, 2:3, 3, 2:3, 4]),
+            @varname(w[4][3][2, 1]),
+        )
+        reduction = mapreduce(f_pair, vcat, vnt; init=Any[])
         @test reduction ==
             vcat(Any[], 11, [12, 12], [2.0], "ab", 6.0, AnotherSizedThing((2, 2)), "b")
 

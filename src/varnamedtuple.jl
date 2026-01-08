@@ -1136,12 +1136,13 @@ _map_recursive!!(func, x, vn) = func(vn => x)
 # constant propagation).
 function _map_recursive!!(func, pa::PartialArray, vn)
     # Ask the compiler to infer the return type of applying func recursively to eltype(pa).
+    et = eltype(pa)
     index_type = IndexLens{NTuple{ndims(pa),Int}}
     new_vn_type = Core.Compiler.return_type(∘, Tuple{index_type,typeof(vn)})
     new_et = Core.Compiler.return_type(
-        Tuple{typeof(_map_recursive!!),typeof(func),eltype(pa),new_vn_type}
+        Tuple{typeof(_map_recursive!!),typeof(func),et,new_vn_type}
     )
-    new_data = if new_et <: eltype(pa)
+    new_data = if new_et <: et
         # We can reuse the existing data array.
         pa.data
     else
@@ -1150,7 +1151,13 @@ function _map_recursive!!(func, pa::PartialArray, vn)
     end
     @inbounds for i in CartesianIndices(pa.mask)
         if pa.mask[i]
-            new_vn = IndexLens(Tuple(i)) ∘ vn
+            val = pa.data[i]
+            # The first two checks on the below line are just a performance optimisation:
+            # They may short circuit at compile time.
+            is_alb =
+                (et <: ArrayLikeBlock || ArrayLikeBlock <: et) && val isa ArrayLikeBlock
+            ind = is_alb ? val.inds : Tuple(i)
+            new_vn = IndexLens(ind) ∘ vn
             new_data[i] = _map_recursive!!(func, pa.data[i], new_vn)
         end
     end
@@ -1212,6 +1219,16 @@ Apply `func` to elements of `vnt`, in place if possible.
 """
 map_values!!(func, vnt::VarNamedTuple) = map_pairs!!(pair -> func(pair.second), vnt)
 
+"""
+    mapreduce(f, op, vnt::VarNamedTuple; init)
+
+Apply `f` to all elements of `vnt`, and reduce the results using `op`, starting from `init`.
+
+`init` is a keyword argument to conform to the usual `mapreduce` interface in Base, but it
+is not optional.
+
+`f` op` should accept pairs of `VarName` and value.
+"""
 function Base.mapreduce(f, op, vnt::VarNamedTuple; init=nothing)
     if init === nothing
         throw(
@@ -1223,8 +1240,8 @@ function Base.mapreduce(f, op, vnt::VarNamedTuple; init=nothing)
     return _mapreduce_recursive(f, op, vnt, init)
 end
 
-_mapreduce_recursive(f, op, x, init) = op(init, f(x))
-_mapreduce_recursive(f, op, pa::ArrayLikeBlock, init) = op(init, f(pa.block))
+_mapreduce_recursive(f, op, x, vn, init) = op(init, f(vn => x))
+_mapreduce_recursive(f, op, pa::ArrayLikeBlock, vn, init) = op(init, f(vn => pa.block))
 
 @generated function _mapreduce_recursive(
     f, op, vnt::VarNamedTuple{Names}, init
@@ -1237,25 +1254,68 @@ _mapreduce_recursive(f, op, pa::ArrayLikeBlock, init) = op(init, f(pa.block))
         end,
     )
     for name in Names
-        push!(exs, :(result = _mapreduce_recursive(f, op, vnt.data.$name, result)))
+        push!(
+            exs,
+            :(
+                result = _mapreduce_recursive(
+                    f, op, vnt.data.$name, VarName{$(QuoteNode(name))}(), result
+                )
+            ),
+        )
     end
     push!(exs, :(return result))
     return Expr(:block, exs...)
 end
 
-function _mapreduce_recursive(f, op, pa::PartialArray, init)
+@generated function _mapreduce_recursive(
+    f, op, vnt::VarNamedTuple{Names}, vn, init
+) where {Names}
+    exs = Expr[]
+    push!(
+        exs,
+        quote
+            result = init
+        end,
+    )
+    for name in Names
+        push!(
+            exs,
+            :(
+                result = _mapreduce_recursive(
+                    f,
+                    op,
+                    vnt.data.$name,
+                    AbstractPPL.prefix(VarName{$(QuoteNode(name))}(), vn),
+                    result,
+                )
+            ),
+        )
+    end
+    push!(exs, :(return result))
+    return Expr(:block, exs...)
+end
+
+function _mapreduce_recursive(f, op, pa::PartialArray, vn, init)
     result = init
+    et = eltype(pa)
+
     albs_seen = Set{ArrayLikeBlock}()
-    @inbounds for i in eachindex(pa.mask)
+    @inbounds for i in CartesianIndices(pa.mask)
         if pa.mask[i]
             val = @inbounds pa.data[i]
-            if val isa ArrayLikeBlock
+            # The first two checks on the below line are just a performance optimisation:
+            # They may short circuit at compile time.
+            is_alb =
+                (et <: ArrayLikeBlock || ArrayLikeBlock <: et) && val isa ArrayLikeBlock
+            if is_alb
                 if val in albs_seen
                     continue
                 end
                 push!(albs_seen, val)
             end
-            result = _mapreduce_recursive(f, op, pa.data[i], result)
+            ind = is_alb ? val.inds : Tuple(i)
+            new_vn = IndexLens(ind) ∘ vn
+            result = _mapreduce_recursive(f, op, pa.data[i], new_vn, result)
         end
     end
     return result
