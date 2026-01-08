@@ -378,6 +378,21 @@ function BangBang.empty!!(pa::PartialArray)
     return pa
 end
 
+# Length could be defined as a special case of mapreduce, but it's harder to keep it type
+# stable that way: If the element type is abstract, we end up calling _mapreduce_recursive
+# on an abstract type, which makes the type of the cumulant Any.
+function Base.length(pa::PartialArray)
+    len = 0
+    @inbounds for i in eachindex(pa.mask)
+        if !pa.mask[i]
+            continue
+        end
+        val = pa.data[i]
+        len += val isa VarNamedTuple || val isa PartialArray ? length(val) : 1
+    end
+    return len
+end
+
 """
     _concretise_eltype!!(pa::PartialArray)
 
@@ -745,83 +760,6 @@ function _merge_recursive(pa1::PartialArray, pa2::PartialArray)
     end
 end
 
-function Base.keys(pa::PartialArray)
-    # TODO(mhauru) Should this rather be Union{}[]? It would make this very type unstable
-    # and cause more allocations, but would result in more concrete element types. Same
-    # question for Base.keys on VNT and Base.values.
-    ks = Any[]
-    alb_inds_seen = Set{Tuple}()
-    for ind in CartesianIndices(pa.mask)
-        @inbounds if !pa.mask[ind]
-            continue
-        end
-        lens = IndexLens(Tuple(ind))
-        val = getindex(pa.data, lens.indices...)
-        if val isa VarNamedTuple
-            subkeys = keys(val)
-            for vn in subkeys
-                sublens = _varname_to_lens(vn)
-                push!(ks, _compose_no_identity(sublens, lens))
-            end
-        elseif val isa PartialArray
-            subkeys = keys(val)
-            for sublens in subkeys
-                push!(ks, _compose_no_identity(sublens, lens))
-            end
-        elseif val isa ArrayLikeBlock
-            if !(val.inds in alb_inds_seen)
-                push!(ks, IndexLens(Tuple(val.inds)))
-                push!(alb_inds_seen, val.inds)
-            end
-        else
-            push!(ks, lens)
-        end
-    end
-    return ks
-end
-
-function Base.values(pa::PartialArray)
-    vs = Any[]
-    albs_seen = Set{ArrayLikeBlock}()
-    for ind in CartesianIndices(pa.mask)
-        @inbounds if !pa.mask[ind]
-            continue
-        end
-        val = getindex(pa.data, ind)
-        if val isa VarNamedTuple || val isa PartialArray
-            subvalues = values(val)
-            vs = push!!(vs, subvalues...)
-        elseif val isa ArrayLikeBlock
-            if !(val in albs_seen)
-                vs = push!!(vs, val.block)
-                push!(albs_seen, val)
-            end
-        else
-            vs = push!!(vs, val)
-        end
-    end
-    return vs
-end
-
-function Base.length(pa::PartialArray)
-    len = 0
-    for ind in CartesianIndices(pa.mask)
-        @inbounds if !pa.mask[ind]
-            continue
-        end
-        val = getindex(pa.data, ind)
-        if val isa VarNamedTuple || val isa PartialArray
-            len += length(val)
-        else
-            # Note we don't need to special case here for ArrayLikeBlocks. That's because
-            # we treat every index pointing to the same ArrayLikeBlock as contributing to
-            # the length.
-            len += 1
-        end
-    end
-    return len
-end
-
 """
     _dense_array(pa::PartialArray)
 
@@ -1152,11 +1090,7 @@ function _map_recursive!!(func, pa::PartialArray, vn)
     @inbounds for i in CartesianIndices(pa.mask)
         if pa.mask[i]
             val = pa.data[i]
-            # The first two checks on the below line are just a performance optimisation:
-            # They may short circuit at compile time.
-            is_alb =
-                (et <: ArrayLikeBlock || ArrayLikeBlock <: et) && val isa ArrayLikeBlock
-            ind = is_alb ? val.inds : Tuple(i)
+            ind = val isa ArrayLikeBlock ? val.inds : Tuple(i)
             new_vn = IndexLens(ind) ∘ vn
             new_data[i] = _map_recursive!!(func, pa.data[i], new_vn)
         end
@@ -1303,10 +1237,7 @@ function _mapreduce_recursive(f, op, pa::PartialArray, vn, init)
     @inbounds for i in CartesianIndices(pa.mask)
         if pa.mask[i]
             val = @inbounds pa.data[i]
-            # The first two checks on the below line are just a performance optimisation:
-            # They may short circuit at compile time.
-            is_alb =
-                (et <: ArrayLikeBlock || ArrayLikeBlock <: et) && val isa ArrayLikeBlock
+            is_alb = val isa ArrayLikeBlock
             if is_alb
                 if val in albs_seen
                     continue
@@ -1321,47 +1252,13 @@ function _mapreduce_recursive(f, op, pa::PartialArray, vn, init)
     return result
 end
 
-function Base.keys(vnt::VarNamedTuple)
-    result = VarName[]
-    for sym in keys(vnt.data)
-        subdata = vnt.data[sym]
-        if subdata isa VarNamedTuple
-            subkeys = keys(subdata)
-            append!(result, [AbstractPPL.prefix(sk, VarName{sym}()) for sk in subkeys])
-        elseif subdata isa PartialArray
-            subkeys = keys(subdata)
-            append!(result, [VarName{sym}(lens) for lens in subkeys])
-        else
-            push!(result, VarName{sym}())
-        end
-    end
-    return result
-end
-
-function Base.values(vnt::VarNamedTuple)
-    # TODO(mhauru) Same comments as for keys for type stability and Any vs Union{}
-    result = Any[]
-    for sym in keys(vnt.data)
-        subdata = vnt.data[sym]
-        if subdata isa VarNamedTuple || subdata isa PartialArray
-            subvalues = values(subdata)
-            append!(result, subvalues)
-        else
-            push!(result, subdata)
-        end
-    end
-    return result
-end
+Base.keys(vnt::VarNamedTuple) = mapreduce(first, push!, vnt; init=VarName[])
+Base.values(vnt::VarNamedTuple) = mapreduce(pair -> pair.second, push!, vnt; init=Any[])
 
 function Base.length(vnt::VarNamedTuple)
     len = 0
-    for sym in keys(vnt.data)
-        subdata = vnt.data[sym]
-        if subdata isa VarNamedTuple || subdata isa PartialArray
-            len += length(subdata)
-        else
-            len += 1
-        end
+    for subdata in vnt.data
+        len += subdata isa VarNamedTuple || subdata isa PartialArray ? length(subdata) : 1
     end
     return len
 end
