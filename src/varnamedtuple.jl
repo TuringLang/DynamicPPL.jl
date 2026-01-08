@@ -1112,37 +1112,54 @@ function apply!!(func, vnt::VarNamedTuple, name::VarName)
 end
 
 """
-    _map_recursive!!(func, x)
+    _map_recursive!!(func, x, vn)
 
-Call `func` on `x`, except if `x` is a `VarNamedTuple` or `PartialArray`, in which case
-call `_map_recursive!!` recursively on all their elements..
+Call `func` on `vn => x`, except if `x` is a `VarNamedTuple` or `PartialArray`, in which
+case call `_map_recursive!!` recursively on all their elements, updating `vn` with the right
+prefix.
 
 This is the internal implementation of `map!!`, but because it has a method defined for
 literally every type in existence, we hide it behind the interface of the more
 discriminating `map!!`. It makes the implementation a bit simpler, compared to checking
 element types within `map!!` itself.
 """
-_map_recursive!!(func, x) = func(x)
+_map_recursive!!(func, x, vn) = func(vn => x)
 
-function _map_recursive!!(func, pa::PartialArray)
-    # Ask the compiler to infer the return type of applying func to eltype(pa).
-    new_et = Core.Compiler.return_type(x -> _map_recursive!!(func, x), Tuple{eltype(pa)})
+# TODO(mhauru) The below is type unstable for some complex VarNames. My example case
+# for which type stability fails is @varname(e.f[3].g.h[2].i). I don't understand this
+# well, but I think it's just because constant propagation gives up at some point, and fails
+# to go through the lines that figure out `new_et`. I could be wrong. I tried fixing this by
+# lifting the first three lines of the function into a generated function, but that seems
+# to run into trouble when trying to call Core.Compiler.return_type recursively on the same
+# function. An earlier implementation of this function that only operated on the values,
+# not on pairs of key => value, was type stable (presumably because it was a bit easier on
+# constant propagation).
+function _map_recursive!!(func, pa::PartialArray, vn)
+    # Ask the compiler to infer the return type of applying func recursively to eltype(pa).
+    index_type = IndexLens{NTuple{ndims(pa),Int}}
+    new_vn_type = Core.Compiler.return_type(∘, Tuple{index_type,typeof(vn)})
+    new_et = Core.Compiler.return_type(
+        Tuple{typeof(_map_recursive!!),typeof(func),eltype(pa),new_vn_type}
+    )
     new_data = if new_et <: eltype(pa)
+        # We can reuse the existing data array.
         pa.data
     else
+        # We need to allocate a new data array.
         similar(pa.data, new_et)
     end
     @inbounds for i in eachindex(pa.mask)
         if pa.mask[i]
-            new_data[i] = _map_recursive!!(func, pa.data[i])
+            new_vn = IndexLens(Tuple(i)) ∘ vn
+            new_data[i] = _map_recursive!!(func, pa.data[i], new_vn)
         end
     end
     # The above type inference may be overly conservative, so we concretise the eltype.
     return _concretise_eltype!!(PartialArray(new_data, pa.mask))
 end
 
-function _map_recursive!!(func, alb::ArrayLikeBlock)
-    new_block = _map_recursive!!(func, alb.block)
+function _map_recursive!!(func, alb::ArrayLikeBlock, vn)
+    new_block = _map_recursive!!(func, alb.block, vn)
     if size(new_block) != size(alb.block)
         throw(
             DimensionMismatch(
@@ -1157,7 +1174,22 @@ end
 @generated function _map_recursive!!(func, vnt::VarNamedTuple{Names}) where {Names}
     exs = Expr[]
     for name in Names
-        push!(exs, :(_map_recursive!!(func, vnt.data.$name)))
+        push!(exs, :(_map_recursive!!(func, vnt.data.$name, VarName{$(QuoteNode(name))}())))
+    end
+    return quote
+        return VarNamedTuple(NamedTuple{Names}(($(exs...),)))
+    end
+end
+
+@generated function _map_recursive!!(func, vnt::VarNamedTuple{Names}, vn::T) where {Names,T}
+    exs = Expr[]
+    for name in Names
+        push!(
+            exs,
+            :(_map_recursive!!(
+                func, vnt.data.$name, AbstractPPL.prefix(vn, VarName{$(QuoteNode(name))}())
+            )),
+        )
     end
     return quote
         return VarNamedTuple(NamedTuple{Names}(($(exs...),)))
@@ -1168,6 +1200,8 @@ end
     map!!(func, vnt::VarNamedTuple)
 
 Apply `func` to all set elements of the `vnt`, in place if possible.
+
+`func` should accept a pair of `VarName` and value, and return the new value to be set.
 """
 map!!(func, vnt::VarNamedTuple) = _map_recursive!!(func, vnt)
 

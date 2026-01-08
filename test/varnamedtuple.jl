@@ -851,7 +851,7 @@ Base.size(st::SizedThing) = st.size
         end
         Base.size(st::AnotherSizedThing) = st.size
 
-        function f(val)
+        function f_val(val)
             if val isa Int
                 return val + 10
             elseif val isa AbstractVector{Int}
@@ -869,13 +869,16 @@ Base.size(st::SizedThing) = st.size
             end
         end
 
+        f_pair(pair) = f_val(pair.second)
+
         reduction = mapreduce(identity, vcat, vnt; init=Any[])
         @test reduction == vcat(Any[], 1, [2, 2], [3.0], "a", 5.0, SizedThing((2, 2)), "")
-        reduction = mapreduce(f, vcat, vnt; init=Any[])
+        reduction = mapreduce(f_val, vcat, vnt; init=Any[])
         @test reduction ==
             vcat(Any[], 11, [12, 12], [2.0], "ab", 6.0, AnotherSizedThing((2, 2)), "b")
 
-        vnt_mapped = @inferred(map!!(f, copy(vnt)))
+        # vnt_mapped = @inferred(map!!(f, copy(vnt)))
+        vnt_mapped = map!!(f_pair, copy(vnt))
         test_invariants(vnt_mapped)
         @test @inferred(getindex(vnt_mapped, @varname(a))) == 11
         @test @inferred(getindex(vnt_mapped, @varname(b[1:2]))) == [12, 12]
@@ -886,26 +889,26 @@ Base.size(st::SizedThing) = st.size
             AnotherSizedThing((2, 2))
         @test @inferred(getindex(vnt_mapped, @varname(w[4][3][2, 1]))) == "b"
 
-        vnt_applied = @inferred(apply!!(f, vnt, @varname(a)))
+        vnt_applied = @inferred(apply!!(f_val, vnt, @varname(a)))
         test_invariants(vnt_applied)
         @test @inferred(getindex(vnt_applied, @varname(a))) == 11
         @test @inferred(getindex(vnt_applied, @varname(b[1:2]))) == [2, 2]
 
-        vnt_applied = @inferred(apply!!(f, vnt_applied, @varname(b[1:2])))
+        vnt_applied = @inferred(apply!!(f_val, vnt_applied, @varname(b[1:2])))
         test_invariants(vnt_applied)
         @test @inferred(getindex(vnt_applied, @varname(a))) == 11
         @test @inferred(getindex(vnt_applied, @varname(b[1:2]))) == [12, 12]
 
-        vnt_applied = @inferred(apply!!(f, vnt_applied, @varname(c.d)))
+        vnt_applied = @inferred(apply!!(f_val, vnt_applied, @varname(c.d)))
         test_invariants(vnt_applied)
         @test @inferred(getindex(vnt_applied, @varname(c.d))) == [2.0]
 
-        vnt_applied = @inferred(apply!!(f, vnt_applied, @varname(e.f[3].g.h[2].i)))
+        vnt_applied = @inferred(apply!!(f_val, vnt_applied, @varname(e.f[3].g.h[2].i)))
         test_invariants(vnt_applied)
         @test @inferred(getindex(vnt_applied, @varname(e.f[3].g.h[2].i))) == "ab"
         @test @inferred(getindex(vnt_applied, @varname(e.f[3].g.h[2].j))) == 5.0
 
-        vnt_applied = @inferred(apply!!(f, vnt_applied, @varname(e.f[3].g.h[2].j)))
+        vnt_applied = @inferred(apply!!(f_val, vnt_applied, @varname(e.f[3].g.h[2].j)))
         test_invariants(vnt_applied)
         @test @inferred(getindex(vnt_applied, @varname(e.f[3].g.h[2].i))) == "ab"
         @test @inferred(getindex(vnt_applied, @varname(e.f[3].g.h[2].j))) == 6.0
@@ -913,12 +916,12 @@ Base.size(st::SizedThing) = st.size
         # This can't be type stable because y.z might have many elements set, and we can't
         # know at compile time that this sets the only one, thus allowing the element type
         # to be AnotherSizedThing.
-        vnt_applied = apply!!(f, vnt_applied, @varname(y.z[3, 2:3, 3, 2:3, 4]))
+        vnt_applied = apply!!(f_val, vnt_applied, @varname(y.z[3, 2:3, 3, 2:3, 4]))
         test_invariants(vnt_applied)
         @test @inferred(getindex(vnt_applied, @varname(y.z[3, 2:3, 3, 2:3, 4]))) ==
             AnotherSizedThing((2, 2))
 
-        vnt_applied = @inferred(apply!!(f, vnt_applied, @varname(w[4][3][2, 1])))
+        vnt_applied = @inferred(apply!!(f_val, vnt_applied, @varname(w[4][3][2, 1])))
         test_invariants(vnt_applied)
         @test @inferred(getindex(vnt_applied, @varname(w[4][3][2, 1]))) == "b"
     end
