@@ -8,7 +8,7 @@ using BangBang
 using Accessors
 using ..DynamicPPL: _compose_no_identity
 
-export VarNamedTuple, map!!, apply!!
+export VarNamedTuple, map_pairs!!, map_values!!, apply!!
 
 # We define our own getindex, setindex!!, and haskey functions, which we use to
 # get/set/check values in VarNamedTuple and PartialArray. We do this because we want to be
@@ -1083,7 +1083,7 @@ end
 
 Apply `func` to the subdata at `name` in `vnt`, and set the result back at `name`.
 
-Like `map!!`, but only for a single `VarName`.
+Like `map_values!!`, but only for a single `VarName`.
 
 ```jldoctest
 julia> using DynamicPPL: VarNamedTuple, setindex!!
@@ -1118,10 +1118,10 @@ Call `func` on `vn => x`, except if `x` is a `VarNamedTuple` or `PartialArray`, 
 case call `_map_recursive!!` recursively on all their elements, updating `vn` with the right
 prefix.
 
-This is the internal implementation of `map!!`, but because it has a method defined for
-literally every type in existence, we hide it behind the interface of the more
-discriminating `map!!`. It makes the implementation a bit simpler, compared to checking
-element types within `map!!` itself.
+This is the internal implementation of `map_pairs!!`, but because it has a method defined
+for literally every type in existence, we hide it behind the interface of the more
+discriminating `map_pairs!!`. It makes the implementation a bit simpler, compared to
+checking element types within `map_pairs!!` itself.
 """
 _map_recursive!!(func, x, vn) = func(vn => x)
 
@@ -1148,7 +1148,7 @@ function _map_recursive!!(func, pa::PartialArray, vn)
         # We need to allocate a new data array.
         similar(pa.data, new_et)
     end
-    @inbounds for i in eachindex(pa.mask)
+    @inbounds for i in CartesianIndices(pa.mask)
         if pa.mask[i]
             new_vn = IndexLens(Tuple(i)) ∘ vn
             new_data[i] = _map_recursive!!(func, pa.data[i], new_vn)
@@ -1163,8 +1163,8 @@ function _map_recursive!!(func, alb::ArrayLikeBlock, vn)
     if size(new_block) != size(alb.block)
         throw(
             DimensionMismatch(
-                "map!! can't change the size of an ArrayLikeBlock. Tried to change from" *
-                "$(size(alb.block)) to $(size(new_block)).",
+                "map_pairs!! can't change the size of an ArrayLikeBlock. Tried to change " *
+                "from $(size(alb.block)) to $(size(new_block)).",
             ),
         )
     end
@@ -1187,7 +1187,7 @@ end
         push!(
             exs,
             :(_map_recursive!!(
-                func, vnt.data.$name, AbstractPPL.prefix(vn, VarName{$(QuoteNode(name))}())
+                func, vnt.data.$name, AbstractPPL.prefix(VarName{$(QuoteNode(name))}(), vn)
             )),
         )
     end
@@ -1197,13 +1197,20 @@ end
 end
 
 """
-    map!!(func, vnt::VarNamedTuple)
+    map_pairs!!(func, vnt::VarNamedTuple)
 
-Apply `func` to all set elements of the `vnt`, in place if possible.
+Apply `func` to all key => value pairs of `vnt`, in place if possible.
 
 `func` should accept a pair of `VarName` and value, and return the new value to be set.
 """
-map!!(func, vnt::VarNamedTuple) = _map_recursive!!(func, vnt)
+map_pairs!!(func, vnt::VarNamedTuple) = _map_recursive!!(func, vnt)
+
+"""
+    map_values!!(func, vnt::VarNamedTuple)
+
+Apply `func` to elements of `vnt`, in place if possible.
+"""
+map_values!!(func, vnt::VarNamedTuple) = map_pairs!!(pair -> func(pair.second), vnt)
 
 function Base.mapreduce(f, op, vnt::VarNamedTuple; init=nothing)
     if init === nothing

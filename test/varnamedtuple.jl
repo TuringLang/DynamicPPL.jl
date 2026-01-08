@@ -3,7 +3,8 @@ module VarNamedTupleTests
 using Combinatorics: Combinatorics
 using Test: @inferred, @test, @test_throws, @testset
 using DynamicPPL: DynamicPPL, @varname, VarNamedTuple
-using DynamicPPL.VarNamedTuples: PartialArray, ArrayLikeBlock, map!!, apply!!
+using DynamicPPL.VarNamedTuples:
+    PartialArray, ArrayLikeBlock, map_pairs!!, map_values!!, apply!!
 using AbstractPPL: VarName, concretize, prefix
 using BangBang: setindex!!, empty!!
 
@@ -64,6 +65,9 @@ function test_invariants(vnt::VarNamedTuple)
     @test isempty(values(emptied_vnt))
     # Check that the copy protected the original vnt from being modified.
     @test isempty(vnt) == was_empty
+    # Check that map is a no-op when using identity functions.
+    @test isequal(map_pairs!!(pair -> pair.second, copy(vnt)), vnt)
+    @test isequal(map_values!!(identity, copy(vnt)), vnt)
 end
 
 """ A type that has a size but is not an Array. Used in ArrayLikeBlock tests."""
@@ -830,7 +834,7 @@ Base.size(st::SizedThing) = st.size
         @test @inferred(getindex(vnt, @varname(y.z[3, 2:3, 3, 2:3, 4]))) == val
     end
 
-    @testset "map!!, apply!!, and mapreduce" begin
+    @testset "map and friends" begin
         vnt = VarNamedTuple()
         vnt = @inferred(setindex!!(vnt, 1, @varname(a)))
         vnt = @inferred(setindex!!(vnt, [2, 2], @varname(b[1:2])))
@@ -877,8 +881,11 @@ Base.size(st::SizedThing) = st.size
         @test reduction ==
             vcat(Any[], 11, [12, 12], [2.0], "ab", 6.0, AnotherSizedThing((2, 2)), "b")
 
-        # vnt_mapped = @inferred(map!!(f, copy(vnt)))
-        vnt_mapped = map!!(f_pair, copy(vnt))
+        # TODO(mhauru) This should hopefully be type stable, but fails to be so because of
+        # some complex VarNames being too much for constant propagation. See comment in
+        # src/varnamedtuple.jl for more.
+        vnt_mapped = map_pairs!!(f_pair, copy(vnt))
+        @test vnt_mapped == map_values!!(f_val, copy(vnt))
         test_invariants(vnt_mapped)
         @test @inferred(getindex(vnt_mapped, @varname(a))) == 11
         @test @inferred(getindex(vnt_mapped, @varname(b[1:2]))) == [12, 12]
@@ -924,6 +931,24 @@ Base.size(st::SizedThing) = st.size
         vnt_applied = @inferred(apply!!(f_val, vnt_applied, @varname(w[4][3][2, 1])))
         test_invariants(vnt_applied)
         @test @inferred(getindex(vnt_applied, @varname(w[4][3][2, 1]))) == "b"
+
+        # map a function that maps every key => value pair to key => key.
+        # For this, use a simpler VarNamedTuple, because block variables don't work with
+        # this mapping function. It also allows us to check type stability.
+        vnt = VarNamedTuple()
+        vnt = @inferred(setindex!!(vnt, 1, @varname(a)))
+        vnt = @inferred(setindex!!(vnt, 2, @varname(b[2])))
+        vnt = @inferred(setindex!!(vnt, [3.0], @varname(c.d)))
+        vnt = @inferred(setindex!!(vnt, :oi, @varname(y.z[3, 2, 3, 2, 4])))
+        vnt = @inferred(setindex!!(vnt, "", @varname(w[4][2, 1])))
+
+        get_key(pair) = pair.first
+        vnt_key_mapped = @inferred(map_pairs!!(get_key, copy(vnt)))
+        vnt_key_mapped_expected = VarNamedTuple()
+        for k in keys(vnt)
+            vnt_key_mapped_expected = setindex!!(vnt_key_mapped_expected, k, k)
+        end
+        @test vnt_key_mapped == vnt_key_mapped_expected
     end
 end
 
