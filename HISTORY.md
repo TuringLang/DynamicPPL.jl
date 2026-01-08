@@ -1,5 +1,10 @@
 # DynamicPPL Changelog
 
+## 0.39.11
+
+Allow passing `accs::Union{NTuple{N,AbstractAccumulator},AccumulatorTuple}` into the `LogDensityFunction` constructor to specify custom accumulators to use when evaluating the model.
+Previously, this was hard-coded.
+
 ## 0.39.10
 
 Rename the internal functions `matchingvalue` and `get_matching_type` to `convert_model_argument` and `promote_model_type_argument` respectively.

@@ -123,6 +123,38 @@ end
         x = vi[:]
         @test LogDensityProblems.logdensity(ldf, x) == sll.scale * logpdf(Normal(x[1]), 1.0)
     end
+
+    @testset "Custom accumulators" begin
+        # Define an accumulator that always throws an error to test that custom
+        # accumulators can be used with LogDensityFunction
+        struct ErrorAccumulatorException <: Exception end
+        struct ErrorAccumulator <: DynamicPPL.AbstractAccumulator end
+        DynamicPPL.accumulator_name(::ErrorAccumulator) = :ERROR
+        DynamicPPL.accumulate_assume!!(
+            ::ErrorAccumulator, ::Any, ::Any, ::VarName, ::Distribution
+        ) = throw(ErrorAccumulatorException())
+        DynamicPPL.accumulate_observe!!(
+            ::ErrorAccumulator, ::Distribution, ::Any, ::Union{VarName,Nothing}
+        ) = throw(ErrorAccumulatorException())
+        DynamicPPL.reset(ea::ErrorAccumulator) = ea
+        Base.copy(ea::ErrorAccumulator) = ea
+        # Construct an LDF
+        @model function demo_error()
+            return x ~ Normal()
+        end
+        model = demo_error()
+        # check that passing accs as a tuple works
+        ldf = LogDensityFunction(model, getlogjoint, VarInfo(model), (ErrorAccumulator(),))
+        @test_throws ErrorAccumulatorException LogDensityProblems.logdensity(ldf, [0.0])
+        # check that passing accs as AccumulatorTuple also works
+        ldf = LogDensityFunction(
+            model,
+            getlogjoint,
+            VarInfo(model),
+            DynamicPPL.AccumulatorTuple(ErrorAccumulator()),
+        )
+        @test_throws ErrorAccumulatorException LogDensityProblems.logdensity(ldf, [0.0])
+    end
 end
 
 @testset "LogDensityFunction: Type stability" begin
