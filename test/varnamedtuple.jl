@@ -1,6 +1,7 @@
 module VarNamedTupleTests
 
 using Combinatorics: Combinatorics
+using OrderedCollections: OrderedDict
 using Test: @inferred, @test, @test_throws, @testset
 using DynamicPPL: DynamicPPL, @varname, VarNamedTuple
 using DynamicPPL.VarNamedTuples:
@@ -19,6 +20,7 @@ function test_invariants(vnt::VarNamedTuple)
     # These will be needed repeatedly.
     vnt_keys = keys(vnt)
     vnt_values = values(vnt)
+
     # Check that for all keys in vnt, haskey is true, and resetting the value is a no-op.
     for k in vnt_keys
         @test haskey(vnt, k)
@@ -34,6 +36,7 @@ function test_invariants(vnt::VarNamedTuple)
         @test isequal(vnt, vnt2)
         @test hash(vnt) == hash(vnt2)
     end
+
     # Check that the printed representation can be parsed back to an equal VarNamedTuple.
     # The below eval test is a bit fragile: If any elements in vnt don't respect the same
     # reconstructability-from-repr property, this will fail. Likewise if any element uses
@@ -44,27 +47,33 @@ function test_invariants(vnt::VarNamedTuple)
     @test equality === true || equality === missing
     @test isequal(vnt, vnt3)
     @test hash(vnt) == hash(vnt3)
+
     # Check that merge with an empty VarNamedTuple is a no-op.
     @test isequal(merge(vnt, VarNamedTuple()), vnt)
     @test isequal(merge(VarNamedTuple(), vnt), vnt)
+
     # Check that the VNT can be constructed back from its keys and values.
     vnt4 = VarNamedTuple()
     for (k, v) in zip(vnt_keys, vnt_values)
         vnt4 = setindex!!(vnt4, v, k)
     end
     @test isequal(vnt, vnt4)
+
     # Check that vnt isempty only if it has no keys
     was_empty = isempty(vnt)
-    @test was_empty == isempty(vnt_keys)
-    @test was_empty == isempty(vnt_values)
+    @test isequal(was_empty, isempty(vnt_keys))
+    @test isequal(was_empty, isempty(vnt_values))
+
     # Check that vnt can be emptied
     @test empty(vnt) === VarNamedTuple()
     emptied_vnt = empty!!(copy(vnt))
     @test isempty(emptied_vnt)
     @test isempty(keys(emptied_vnt))
     @test isempty(values(emptied_vnt))
+
     # Check that the copy protected the original vnt from being modified.
     @test isempty(vnt) == was_empty
+
     # Check that map is a no-op when using identity functions.
     @test isequal(map_pairs!!(pair -> pair.second, copy(vnt)), vnt)
     @test isequal(map_values!!(identity, copy(vnt)), vnt)
@@ -84,11 +93,32 @@ Base.size(st::SizedThing) = st.size
         vnt1 = setindex!!(vnt1, [1, 2, 3], @varname(b))
         vnt1 = setindex!!(vnt1, "a", @varname(c.d.e))
         test_invariants(vnt1)
+
         vnt2 = VarNamedTuple(;
             a=1.0, b=[1, 2, 3], c=VarNamedTuple(; d=VarNamedTuple(; e="a"))
         )
         test_invariants(vnt2)
         @test vnt1 == vnt2
+
+        vnt3 = VarNamedTuple((;
+            a=1.0, b=[1, 2, 3], c=VarNamedTuple((; d=VarNamedTuple((; e="a"))))
+        ))
+        test_invariants(vnt3)
+        @test vnt1 == vnt3
+
+        vnt4 = VarNamedTuple(
+            OrderedDict(
+                @varname(a) => 1.0, @varname(b) => [1, 2, 3], @varname(c.d.e) => "a"
+            ),
+        )
+        test_invariants(vnt4)
+        @test vnt1 == vnt4
+
+        vnt5 = VarNamedTuple((
+            (@varname(a), 1.0), (@varname(b), [1, 2, 3]), (@varname(c.d.e), "a")
+        ))
+        test_invariants(vnt5)
+        @test vnt1 == vnt5
 
         pa1 = PartialArray{Float64,1}()
         pa1 = setindex!!(pa1, 1.0, 16)

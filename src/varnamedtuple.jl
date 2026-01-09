@@ -820,8 +820,25 @@ A `NamedTuple`-like structure with `VarName` keys.
 
 `VarNamedTuple` is a data structure for storing arbitrary data, keyed by `VarName`s, in an
 efficient and type stable manner. It is mainly used through `getindex`, `setindex!!`, and
-`haskey`, all of which accept `VarName`s and only `VarName`s as keys. Anther notable methods
-is `merge`, which recursively merges two `VarNamedTuple`s.
+`haskey`, all of which accept `VarName`s and only `VarName`s as keys. Other notable methods
+are `merge` and `subset`.
+
+`VarNamedTuple` has an ordering to its elements, and two `VarNamedTuple`s with the same keys
+and values but in different orders are considered different for equality and hashing.
+Iterations such as `keys` and `values` respect this ordering. The ordering is dependent on
+the order in which elements were inserted into the `VarNamedTuple`, though isn't always
+equal to it. More specifically
+
+* Any new keys that have a joint parent `VarName` with an existing key are inserted after
+  that key. For instance, if one first inserts, in order, `@varname(a.x)`, `@varname(b)`,
+  and `@varname(a.y)`, the resulting order will be
+  `(@varname(a.x), @varname(a.y), @varname(b))`.
+* `IndexLens` keys`, like `@varname(a[3])` or `@varname(b[2,3,4:5])`, are always iterated
+  in the same order an `Array` with the same indices would be iterated. For instance,
+  if one first inserts, in order, `@varname(a[2])`, `@varname(b)`, and `@varname(a[1])`,
+  the resulting order will be `(@varname(a[1]), @varname(a[2]), @varname(b))`.
+
+Otherwise insertion order is respected.
 
 The there are two major limitations to indexing by VarNamedTuples:
 
@@ -844,9 +861,36 @@ related to `VarName`s with `IndexLens` components.
 """
 struct VarNamedTuple{Names,Values}
     data::NamedTuple{Names,Values}
+
+    function VarNamedTuple(data::NamedTuple{Names,Values}) where {Names,Values}
+        return new{Names,Values}(data)
+    end
 end
 
 VarNamedTuple(; kwargs...) = VarNamedTuple((; kwargs...))
+
+"""
+    VarNamedTuple(d)
+    VarNamedTuple(nt::NamedTuple)
+
+Create a `VarNamedTuple` from a collection or a `NamedTuple`.
+
+Any collection `d` is assumed to be an iterable of key-value pairs, where the keys are
+`VarName`s. This could be a an `AbstractDict`, a vector of `Pair`s or `Tuple`s, etc. The
+only exception is `NamedTuple`s, for which the `Symbol` keys are converted to `VarName`s.
+
+Note that `VarNamedTuple` has an ordering to its elements, and two `VarNamedTuple`s with the
+same keys and values but in different orders are considered different. If `d` does not
+guarantee an iteration order, then the order of the elements in the resulting
+`VarNamedTuple` is undefined.
+"""
+function VarNamedTuple(d)
+    vnt = VarNamedTuple()
+    for (k, v) in d
+        vnt = setindex!!(vnt, v, k)
+    end
+    return vnt
+end
 
 Base.:(==)(vnt1::VarNamedTuple, vnt2::VarNamedTuple) = vnt1.data == vnt2.data
 Base.isequal(vnt1::VarNamedTuple, vnt2::VarNamedTuple) = isequal(vnt1.data, vnt2.data)
