@@ -157,6 +157,7 @@ end
 
 AccumulatorTuple(accs::Vararg{AbstractAccumulator}) = AccumulatorTuple(accs)
 AccumulatorTuple(nt::NamedTuple) = AccumulatorTuple(tuple(nt...))
+AccumulatorTuple(at::AccumulatorTuple) = at
 
 # When showing with text/plain, leave out information about the wrapper AccumulatorTuple.
 Base.show(io::IO, mime::MIME"text/plain", at::AccumulatorTuple) = show(io, mime, at.nt)
