@@ -341,21 +341,21 @@ module Issue537 end
     end
     @testset "user-defined variable name" begin
         @model f1() = x ~ NamedDist(Normal(), :y)
-        @model f2() = x ~ NamedDist(Normal(), @varname(y[2][:, 1]))
+        @model f2() = x ~ NamedDist(Normal(), @varname(y[2][5, 1]))
         @model f3() = x ~ NamedDist(Normal(), @varname(y[1]))
         vi1 = VarInfo(f1())
         vi2 = VarInfo(f2())
         vi3 = VarInfo(f3())
-        @test haskey(vi1.metadata, :y)
-        @test first(Base.keys(vi1.metadata.y)) == @varname(y)
-        @test haskey(vi2.metadata, :y)
-        @test first(Base.keys(vi2.metadata.y)) == @varname(y[2][:, 1])
-        @test haskey(vi3.metadata, :y)
-        @test first(Base.keys(vi3.metadata.y)) == @varname(y[1])
+        @test haskey(vi1, @varname(y))
+        @test first(Base.keys(vi1)) == @varname(y)
+        @test haskey(vi2, @varname(y[2][5, 1]))
+        @test first(Base.keys(vi2)) == @varname(y[2][5, 1])
+        @test haskey(vi3, @varname(y[1]))
+        @test first(Base.keys(vi3)) == @varname(y[1])
 
         # Conditioning
         f1_c = f1() | (y=1,)
-        f2_c = f2() | NamedTuple((Symbol(@varname(y[2][:, 1])) => 1,))
+        f2_c = f2() | NamedTuple((Symbol(@varname(y[2][5, 1])) => 1,))
         f3_c = f3() | NamedTuple((Symbol(@varname(y[1])) => 1,))
         @test f1_c() == 1
         # TODO(torfjelde): We need conditioning for `Dict`.
