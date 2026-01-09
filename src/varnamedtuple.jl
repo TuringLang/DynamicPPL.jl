@@ -1169,12 +1169,27 @@ function _map_recursive!!(func, pa::PartialArray, vn)
         # We need to allocate a new data array.
         similar(pa.data, new_et)
     end
+    # Keep a dictionary of already-seen ArrayLikeBlocks to avoid redundant computations.
+    # This matters not only for performance, but also for correctness, because
+    # _map_recursive!! may mutate the value, and we don't want to mutate it multiple times.
+    albs_seen = Dict{ArrayLikeBlock,ArrayLikeBlock}()
     @inbounds for i in CartesianIndices(pa.mask)
         if pa.mask[i]
             val = pa.data[i]
-            ind = val isa ArrayLikeBlock ? val.inds : Tuple(i)
+            is_alb = val isa ArrayLikeBlock
+            if is_alb
+                if val in keys(albs_seen)
+                    new_data[i] = albs_seen[val]
+                    continue
+                end
+            end
+            ind = is_alb ? val.inds : Tuple(i)
             new_vn = IndexLens(ind) ∘ vn
-            new_data[i] = _map_recursive!!(func, pa.data[i], new_vn)
+            new_val = _map_recursive!!(func, pa.data[i], new_vn)
+            new_data[i] = new_val
+            if is_alb
+                albs_seen[val] = new_val
+            end
         end
     end
     # The above type inference may be overly conservative, so we concretise the eltype.

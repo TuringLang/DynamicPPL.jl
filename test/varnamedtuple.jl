@@ -10,13 +10,15 @@ using AbstractPPL: AbstractPPL, VarName, concretize, prefix
 using BangBang: setindex!!, empty!!
 
 """
-    test_invariants(vnt::VarNamedTuple)
+    test_invariants(vnt::VarNamedTuple; skip=())
 
 Test properties that should hold for all VarNamedTuples.
 
 Uses @test for all the tests. Intended to be called inside a @testset.
+
+`skip` is a tuple of symbols indicating which tests are to be skipped.
 """
-function test_invariants(vnt::VarNamedTuple)
+function test_invariants(vnt::VarNamedTuple; skip=())
     # These will be needed repeatedly.
     vnt_keys = keys(vnt)
     vnt_values = values(vnt)
@@ -41,12 +43,14 @@ function test_invariants(vnt::VarNamedTuple)
     # The below eval test is a bit fragile: If any elements in vnt don't respect the same
     # reconstructability-from-repr property, this will fail. Likewise if any element uses
     # in its repr print out types that are not in scope in this module, it will fail.
-    vnt3 = eval(Meta.parse(repr(vnt)))
-    equality = (vnt == vnt3)
-    # The value may be `missing` if vnt itself has values that are missing.
-    @test equality === true || equality === missing
-    @test isequal(vnt, vnt3)
-    @test hash(vnt) == hash(vnt3)
+    if !(:parseeval in skip)
+        vnt3 = eval(Meta.parse(repr(vnt)))
+        equality = (vnt == vnt3)
+        # The value may be `missing` if vnt itself has values that are missing.
+        @test equality === true || equality === missing
+        @test isequal(vnt, vnt3)
+        @test hash(vnt) == hash(vnt3)
+    end
 
     # Check that merge with an empty VarNamedTuple is a no-op.
     @test isequal(merge(vnt, VarNamedTuple()), vnt)
@@ -310,9 +314,9 @@ Base.size(st::SizedThing) = st.size
         @test haskey(vnt, vn)
         @test vn in keys(vnt)
         @test @inferred(getindex(vnt, vn)) == SizedThing((3,))
-        # TODO(mhauru) The below test_invariants fails because AbstractPPL's ConretizedSlice
+        # TODO(mhauru) The below skip is needed because AbstractPPL's ConretizedSlice
         # objects don't respect the eval(Meta.parse(repr(...))) == ... property.
-        # test_invariants(vnt)
+        test_invariants(vnt; skip=(:parseeval,))
 
         vnt = VarNamedTuple()
         y = fill("a", (3, 2, 4))
@@ -927,15 +931,21 @@ Base.size(st::SizedThing) = st.size
         vnt = @inferred(
             setindex!!(vnt, SizedThing((2, 2)), @varname(y.z[3, 2:3, 3, 2:3, 4]))
         )
+        concretized_vn = concretize(@varname(v[:]), [0, 0])
+        vnt = @inferred(setindex!!(vnt, SizedThing((2,)), concretized_vn))
         vnt = @inferred(setindex!!(vnt, "", @varname(w[4][3][2, 1])))
-        test_invariants(vnt)
+        # TODO(mhauru) The below skip is needed because AbstractPPL's ConretizedSlice
+        # objects don't respect the eval(Meta.parse(repr(...))) == ... property.
+        test_invariants(vnt; skip=(:parseeval,))
 
         struct AnotherSizedThing{T<:Tuple}
             size::T
         end
         Base.size(st::AnotherSizedThing) = st.size
 
+        call_counter = 0
         function f_val(val)
+            call_counter += 1
             if val isa Int
                 return val + 10
             elseif val isa AbstractVector{Int}
@@ -956,8 +966,9 @@ Base.size(st::SizedThing) = st.size
         f_pair(pair) = f_val(pair.second)
 
         val_reduction = mapreduce(pair -> pair.second, vcat, vnt; init=Any[])
-        @test val_reduction ==
-            vcat(Any[], 1, [2, 2], [3.0], "a", 5.0, SizedThing((2, 2)), "")
+        @test val_reduction == vcat(
+            Any[], 1, [2, 2], [3.0], "a", 5.0, SizedThing((2, 2)), SizedThing((2,)), ""
+        )
         key_reduction = mapreduce(pair -> pair.first, vcat, vnt; init=Any[])
         @test key_reduction == vcat(
             @varname(a),
@@ -967,18 +978,35 @@ Base.size(st::SizedThing) = st.size
             @varname(e.f[3].g.h[2].i),
             @varname(e.f[3].g.h[2].j),
             @varname(y.z[3, 2:3, 3, 2:3, 4]),
+            concretized_vn,
             @varname(w[4][3][2, 1]),
         )
+
+        call_counter = 0
         reduction = mapreduce(f_pair, vcat, vnt; init=Any[])
-        @test reduction ==
-            vcat(Any[], 11, [12, 12], [2.0], "ab", 6.0, AnotherSizedThing((2, 2)), "b")
+        @test reduction == vcat(
+            Any[],
+            11,
+            [12, 12],
+            [2.0],
+            "ab",
+            6.0,
+            AnotherSizedThing((2, 2)),
+            AnotherSizedThing((2,)),
+            "b",
+        )
+        # Check that f_pair gets called exactly once per element.
+        @test call_counter == length(keys(vnt))
 
         # TODO(mhauru) This should hopefully be type stable, but fails to be so because of
         # some complex VarNames being too much for constant propagation. See comment in
         # src/varnamedtuple.jl for more.
+        call_counter = 0
         vnt_mapped = map_pairs!!(f_pair, copy(vnt))
+        # Check that f_pair gets called exactly once per element.
+        @test call_counter == length(keys(vnt))
         @test vnt_mapped == map_values!!(f_val, copy(vnt))
-        test_invariants(vnt_mapped)
+        test_invariants(vnt_mapped; skip=(:parseeval,))
         @test @inferred(getindex(vnt_mapped, @varname(a))) == 11
         @test @inferred(getindex(vnt_mapped, @varname(b[1:2]))) == [12, 12]
         @test @inferred(getindex(vnt_mapped, @varname(c.d))) == [2.0]
@@ -986,29 +1014,38 @@ Base.size(st::SizedThing) = st.size
         @test @inferred(getindex(vnt_mapped, @varname(e.f[3].g.h[2].j))) == 6.0
         @test @inferred(getindex(vnt_mapped, @varname(y.z[3, 2:3, 3, 2:3, 4]))) ==
             AnotherSizedThing((2, 2))
+        @test @inferred(getindex(vnt_mapped, concretized_vn)) == AnotherSizedThing((2,))
         @test @inferred(getindex(vnt_mapped, @varname(w[4][3][2, 1]))) == "b"
 
+        call_counter = 0
         vnt_applied = @inferred(apply!!(f_val, vnt, @varname(a)))
-        test_invariants(vnt_applied)
+        @test call_counter == 1
+        test_invariants(vnt_applied; skip=(:parseeval,))
         @test @inferred(getindex(vnt_applied, @varname(a))) == 11
         @test @inferred(getindex(vnt_applied, @varname(b[1:2]))) == [2, 2]
 
         vnt_applied = @inferred(apply!!(f_val, vnt_applied, @varname(b[1:2])))
-        test_invariants(vnt_applied)
+        # Unlike map_pairs!!, apply!! operates on the whole value at once, rather than
+        # element-wise, so this is only one more call.
+        @test call_counter == 2
+        test_invariants(vnt_applied; skip=(:parseeval,))
         @test @inferred(getindex(vnt_applied, @varname(a))) == 11
         @test @inferred(getindex(vnt_applied, @varname(b[1:2]))) == [12, 12]
 
         vnt_applied = @inferred(apply!!(f_val, vnt_applied, @varname(c.d)))
-        test_invariants(vnt_applied)
+        @test call_counter == 3
+        test_invariants(vnt_applied; skip=(:parseeval,))
         @test @inferred(getindex(vnt_applied, @varname(c.d))) == [2.0]
 
         vnt_applied = @inferred(apply!!(f_val, vnt_applied, @varname(e.f[3].g.h[2].i)))
-        test_invariants(vnt_applied)
+        @test call_counter == 4
+        test_invariants(vnt_applied; skip=(:parseeval,))
         @test @inferred(getindex(vnt_applied, @varname(e.f[3].g.h[2].i))) == "ab"
         @test @inferred(getindex(vnt_applied, @varname(e.f[3].g.h[2].j))) == 5.0
 
         vnt_applied = @inferred(apply!!(f_val, vnt_applied, @varname(e.f[3].g.h[2].j)))
-        test_invariants(vnt_applied)
+        @test call_counter == 5
+        test_invariants(vnt_applied; skip=(:parseeval,))
         @test @inferred(getindex(vnt_applied, @varname(e.f[3].g.h[2].i))) == "ab"
         @test @inferred(getindex(vnt_applied, @varname(e.f[3].g.h[2].j))) == 6.0
 
@@ -1016,12 +1053,19 @@ Base.size(st::SizedThing) = st.size
         # know at compile time that this sets the only one, thus allowing the element type
         # to be AnotherSizedThing.
         vnt_applied = apply!!(f_val, vnt_applied, @varname(y.z[3, 2:3, 3, 2:3, 4]))
-        test_invariants(vnt_applied)
+        @test call_counter == 6
+        test_invariants(vnt_applied; skip=(:parseeval,))
         @test @inferred(getindex(vnt_applied, @varname(y.z[3, 2:3, 3, 2:3, 4]))) ==
             AnotherSizedThing((2, 2))
 
+        vnt_applied = apply!!(f_val, vnt_applied, concretized_vn)
+        @test call_counter == 7
+        test_invariants(vnt_applied; skip=(:parseeval,))
+        @test @inferred(getindex(vnt_applied, concretized_vn)) == AnotherSizedThing((2,))
+
         vnt_applied = @inferred(apply!!(f_val, vnt_applied, @varname(w[4][3][2, 1])))
-        test_invariants(vnt_applied)
+        @test call_counter == 8
+        test_invariants(vnt_applied; skip=(:parseeval,))
         @test @inferred(getindex(vnt_applied, @varname(w[4][3][2, 1]))) == "b"
 
         # map a function that maps every key => value pair to key => key.
