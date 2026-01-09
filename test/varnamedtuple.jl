@@ -6,7 +6,7 @@ using Test: @inferred, @test, @test_throws, @testset
 using DynamicPPL: DynamicPPL, @varname, VarNamedTuple, subset
 using DynamicPPL.VarNamedTuples:
     PartialArray, ArrayLikeBlock, map_pairs!!, map_values!!, apply!!
-using AbstractPPL: VarName, concretize, prefix
+using AbstractPPL: AbstractPPL, VarName, concretize, prefix
 using BangBang: setindex!!, empty!!
 
 """
@@ -305,6 +305,16 @@ Base.size(st::SizedThing) = st.size
         @test @inferred(getindex(vnt, vn)) == x
         test_invariants(vnt)
 
+        vnt = VarNamedTuple()
+        vnt = @inferred(setindex!!(vnt, SizedThing((3,)), vn))
+        @test haskey(vnt, vn)
+        @test vn in keys(vnt)
+        @test @inferred(getindex(vnt, vn)) == SizedThing((3,))
+        # TODO(mhauru) The below test_invariants fails because AbstractPPL's ConretizedSlice
+        # objects don't respect the eval(Meta.parse(repr(...))) == ... property.
+        # test_invariants(vnt)
+
+        vnt = VarNamedTuple()
         y = fill("a", (3, 2, 4))
         x = y[:, 2, :]
         a = (; b=[nothing, nothing, (; c=(; d=reshape(y, (1, 3, 2, 4, 1))))])

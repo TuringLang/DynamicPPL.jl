@@ -525,6 +525,8 @@ function _check_index_validity(pa::PartialArray, inds::NTuple{N,INDEX_TYPES}) wh
 end
 
 function _getindex(pa::PartialArray, inds::Vararg{INDEX_TYPES})
+    # The original, non-bare inds is needed later for ArrayLikeBlock checks.
+    orig_inds = inds
     inds = _unwrap_concretized_slice.(inds)
     _check_index_validity(pa, inds)
     if !(checkbounds(Bool, pa.mask, inds...) && all(@inbounds(getindex(pa.mask, inds...))))
@@ -561,7 +563,7 @@ function _getindex(pa::PartialArray, inds::Vararg{INDEX_TYPES})
         if !(first_elem isa ArrayLikeBlock)
             throw(err)
         end
-        if inds != first_elem.inds
+        if orig_inds != first_elem.inds
             # The requested indices do not match the ones used to set the value.
             throw(err)
         end
@@ -655,6 +657,7 @@ function _needs_arraylikeblock(value, inds::Vararg{INDEX_TYPES})
 end
 
 function _setindex!!(pa::PartialArray, value, inds::Vararg{INDEX_TYPES})
+    orig_inds = inds
     inds = _unwrap_concretized_slice.(inds)
     _check_index_validity(pa, inds)
     pa = if checkbounds(Bool, pa.mask, inds...)
@@ -679,7 +682,7 @@ function _setindex!!(pa::PartialArray, value, inds::Vararg{INDEX_TYPES})
         # some notion of size, and that size matches the indices that are being set. In this
         # case we wrap the value in an ArrayLikeBlock, and set all the individual indices
         # to point to that.
-        alb = ArrayLikeBlock(value, inds)
+        alb = ArrayLikeBlock(value, orig_inds)
         new_data = setindex!!(new_data, fill(alb, inds_size...), inds...)
     else
         new_data = setindex!!(new_data, value, inds...)
@@ -1180,11 +1183,11 @@ end
 
 function _map_recursive!!(func, alb::ArrayLikeBlock, vn)
     new_block = _map_recursive!!(func, alb.block, vn)
-    if size(new_block) != size(alb.block)
+    if vnt_size(new_block) != vnt_size(alb.block)
         throw(
             DimensionMismatch(
                 "map_pairs!! can't change the size of an ArrayLikeBlock. Tried to change " *
-                "from $(size(alb.block)) to $(size(new_block)).",
+                "from $(vnt_size(alb.block)) to $(vnt_size(new_block)).",
             ),
         )
     end
