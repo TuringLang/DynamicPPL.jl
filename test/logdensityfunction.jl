@@ -114,10 +114,11 @@ end
             ldf = DynamicPPL.LogDensityFunction(m, DynamicPPL.getlogjoint_internal, vi)
             x = vi[:]
             # The below type inference fails on v1.10.
+            skip = (VERSION < v"1.11.0" && m.f === DynamicPPL.TestUtils.demo_nested_colons)
             @test begin
                 @inferred LogDensityProblems.logdensity(ldf, x)
                 true
-            end skip = (VERSION < v"1.11.0")
+            end skip = skip
         end
     end
 end

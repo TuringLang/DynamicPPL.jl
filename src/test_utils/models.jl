@@ -708,8 +708,8 @@ function likelihood_optima(model::MultivariateAssumeDemoModels)
     vals = rand_prior_true(model)
 
     # NOTE: These are "as close to zero as we can get".
-    vals.s[1] = 1e-32
-    vals.s[2] = 1e-32
+    vals.s[1] = floatmin()
+    vals.s[2] = floatmin()
 
     vals.m[1] = 1.5
     vals.m[2] = 2.0
@@ -761,8 +761,8 @@ function likelihood_optima(model::MatrixvariateAssumeDemoModels)
     vals = rand_prior_true(model)
 
     # NOTE: These are "as close to zero as we can get".
-    vals.s[1, 1] = 1e-32
-    vals.s[1, 2] = 1e-32
+    vals.s[1, 1] = floatmin()
+    vals.s[1, 2] = floatmin()
 
     vals.m[1] = 1.5
     vals.m[2] = 2.0
@@ -811,8 +811,8 @@ function likelihood_optima(model::Model{typeof(demo_nested_colons)})
     vals = rand_prior_true(model)
 
     # NOTE: These are "as close to zero as we can get".
-    vals.s.params[1].subparams[1, 1, 1] = 1e-32
-    vals.s.params[1].subparams[1, 1, 2] = 1e-32
+    vals.s.params[1].subparams[1, 1, 1] = floatmin()
+    vals.s.params[1].subparams[1, 1, 2] = floatmin()
 
     vals.m[1] = 1.5
     vals.m[2] = 2.0

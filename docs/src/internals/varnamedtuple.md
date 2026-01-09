@@ -168,6 +168,10 @@ For instance, if `setindex!!(vnt, @varname(a[1:5]), val)` has been set, then the
 Not `@varname(a[1:10])`, nor `@varname(a[3])`, nor for anything else that overlaps with `@varname(a[1:5])`.
 `haskey` likewise only returns true for `@varname(a[1:5])`, and `keys(vnt)` only has that as an element.
 
+The size of a value, for the purposes of inserting it into a `PartialArray`, is determined by a call to `vnt_size`.
+`vnt_size` falls back to calling `Base.size`.
+The reason we define a distinct function is to be able to control its behaviour, if necessary, without type piracy.
+
 ## Limitations
 
 This design has a several of benefits, for performance and generality, but it also has limitations:
