@@ -71,6 +71,12 @@ function BangBang.push!!(vi::ThreadSafeVarInfo, vn::VarName, r, dist::Distributi
     return Accessors.@set vi.varinfo = push!!(vi.varinfo, vn, r, dist)
 end
 
+function BangBang.push!!(
+    vi::ThreadSafeVarInfo, vn::VarName, r, transform=typed_identity, orig_size=size(r)
+)
+    return Accessors.@set vi.varinfo = push!!(vi.varinfo, vn, r, transform, orig_size)
+end
+
 syms(vi::ThreadSafeVarInfo) = syms(vi.varinfo)
 
 setval!(vi::ThreadSafeVarInfo, val, vn::VarName) = setval!(vi.varinfo, val, vn)

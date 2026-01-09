@@ -369,26 +369,6 @@ end
                     model, value_true, varnames; include_threadsafe=true
                 )
                 @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
-                    if varinfo isa DynamicPPL.SimpleOrThreadSafeSimple{<:NamedTuple}
-                        # NOTE: this is broken since we'll end up trying to set
-                        #
-                        #    varinfo[@varname(x[4:5])] = [x[4],]
-                        #
-                        # upon linking (since `x[4:5]` will be projected onto a 1-dimensional
-                        # space). In the case of `SimpleVarInfo{<:NamedTuple}`, this results in
-                        # calling `setindex!!(varinfo.values, [x[4],], @varname(x[4:5]))`, which
-                        # in turn attempts to call `setindex!(varinfo.values.x, [x[4],], 4:5)`,
-                        # i.e. a vector of length 1 (`[x[4],]`) being assigned to 2 indices (`4:5`).
-                        @test_broken false
-                        continue
-                    end
-
-                    if DynamicPPL.has_varnamedvector(varinfo) && mutating
-                        # NOTE: Can't handle mutating `link!` and `invlink!` `VarNamedVector`.
-                        @test_broken false
-                        continue
-                    end
-
                     # Evaluate the model once to update the logp of the varinfo.
                     varinfo = last(DynamicPPL.evaluate!!(model, varinfo))
 

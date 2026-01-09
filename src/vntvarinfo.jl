@@ -6,11 +6,14 @@ end
 # TODO(mhauru) Make this renaming permanent.
 const VarInfo = VNTVarInfo
 
-struct TransformedValue{ValType,TransformType}
+struct TransformedValue{ValType,TransformType,SizeType}
     val::ValType
     linked::Bool
     transform::TransformType
+    size::SizeType
 end
+
+VarNamedTuples.vnt_size(tv::TransformedValue) = tv.size
 
 VNTVarInfo() = VNTVarInfo(VarNamedTuple(), default_accumulators())
 
@@ -53,7 +56,7 @@ BangBang.empty!!(vi::VNTVarInfo) = VNTVarInfo(empty!!(vi.values), map(reset, vi.
 
 function setindex_internal!!(vi::VNTVarInfo, val, vn::VarName)
     old_tv = getindex(vi.values, vn)
-    new_tv = TransformedValue(val, old_tv.linked, old_tv.transform)
+    new_tv = TransformedValue(val, old_tv.linked, old_tv.transform, old_tv.size)
     new_values = setindex!!(vi.values, new_tv, vn)
     return VNTVarInfo(new_values, vi.accs)
 end
@@ -61,12 +64,14 @@ end
 BangBang.setindex!!(vi::VNTVarInfo, val, vn::VarName) = push!!(vi, vn, val)
 
 # TODO(mhauru) The arguments are in the wrong order, but this is the current convetion.
-function BangBang.push!!(vi::VNTVarInfo, vn::VarName, val, transform=typed_identity)
+function BangBang.push!!(
+    vi::VNTVarInfo, vn::VarName, val, transform=typed_identity, orig_size=size(val)
+)
     # TODO(mhauru) We should move away from having all values vectorised by default.
     # That messes with our use of unflatten though, so will require some thought.
     transform = _compose_no_identity(transform, from_vec_transform(val))
     val = to_vec_transform(val)(val)
-    new_tv = TransformedValue(val, false, transform)
+    new_tv = TransformedValue(val, false, transform, orig_size)
     new_values = setindex!!(vi.values, new_tv, vn)
     return VNTVarInfo(new_values, vi.accs)
 end
@@ -76,14 +81,14 @@ Base.values(vi::VNTVarInfo) = mapreduce(p -> p.second.val, push!, vi.values; ini
 
 function set_transformed!!(vi::VNTVarInfo, linked::Bool, vn::VarName)
     old_tv = getindex(vi.values, vn)
-    new_tv = TransformedValue(old_tv.val, linked, old_tv.transform)
+    new_tv = TransformedValue(old_tv.val, linked, old_tv.transform, old_tv.size)
     new_values = setindex!!(vi.values, new_tv, vn)
     return VNTVarInfo(new_values, vi.accs)
 end
 
 function set_transformed!!(vi::VNTVarInfo, linked::Bool)
     new_values = map_values!!(vi.values) do tv
-        TransformedValue(tv.val, linked, tv.transform)
+        TransformedValue(tv.val, linked, tv.transform, tv.size)
     end
     return VNTVarInfo(new_values, vi.accs)
 end
@@ -121,9 +126,11 @@ function from_linked_internal_transform(vi::VNTVarInfo, vn::VarName)
 end
 
 function change_transform(tv::TransformedValue, new_transform, linked)
+    # Note that the transform may change the size of `val`, but it doesn't change the
+    # tv.size, since that one tracks the original size of the value before any transforms.
     val_untransformed, logjac1 = with_logabsdet_jacobian(tv.transform, tv.val)
     val_new, logjac2 = with_logabsdet_jacobian(inverse(new_transform), val_untransformed)
-    return TransformedValue(val_new, linked, new_transform), logjac1 + logjac2
+    return TransformedValue(val_new, linked, new_transform, tv.size), logjac1 + logjac2
 end
 
 function link!!(::DynamicTransformation, vi::VNTVarInfo, vns, model::Model)
@@ -154,8 +161,7 @@ function link!!(::DynamicTransformation, vi::VNTVarInfo, model::Model)
     # map!!, but it doesn't have access to the VarName.
     dists = extract_priors(model, vi)
     cumulative_logjac = zero(LogProbType)
-    new_values = vi.values
-    new_values = map_pairs!!(new_values) do pair
+    new_values = map_pairs!!(vi.values) do pair
         vn, tv = pair
         dist = getindex(dists, vn)
         transform = from_linked_vec_transform(dist)
@@ -324,7 +330,7 @@ function unflatten!!(vi::VNTVarInfo, vec::AbstractVector)
         end
         len = length(old_val)
         new_val = get_next_chunk!(vci, len)
-        return TransformedValue(new_val, tv.linked, tv.transform)
+        return TransformedValue(new_val, tv.linked, tv.transform, tv.size)
     end
     return VNTVarInfo(new_values, vi.accs)
 end

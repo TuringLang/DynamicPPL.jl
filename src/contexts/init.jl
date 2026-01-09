@@ -363,7 +363,7 @@ function tilde_assume!!(
         vi = setindex!!(vi, val_to_insert, vn)
     else
         vi = if vi isa VNTVarInfo
-            push!!(vi, vn, val_to_insert, inverse(transform))
+            push!!(vi, vn, val_to_insert, inverse(transform), size(x))
         else
             push!!(vi, vn, val_to_insert, dist)
         end
