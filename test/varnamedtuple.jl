@@ -333,6 +333,8 @@ Base.size(st::SizedThing) = st.size
         vnt = VarNamedTuple()
         vnt = @inferred(setindex!!(vnt, 1, @varname(a[1][1])))
         @test @inferred(getindex(vnt, @varname(a[1][1]))) == 1
+        vnt = @inferred(setindex!!(vnt, 1, @varname(ab[1:2][1])))
+        @test @inferred(getindex(vnt, @varname(a[1][1]))) == 1
         vnt = @inferred(setindex!!(vnt, [1], @varname(b[1].c[1])))
         @test @inferred(getindex(vnt, @varname(b[1].c[1]))) == [1]
         vnt = @inferred(setindex!!(vnt, [1], @varname(e[3, 2].f[2, 2][10, 10])))

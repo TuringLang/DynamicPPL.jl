@@ -110,6 +110,8 @@ Get the size of an object `x` for use in `VarNamedTuple` and `PartialArray`.
 By default, this falls back onto `Base.size`, but can be overloaded for custom types.
 This notion of type is used to determine whether a value can be set into a `PartialArray`
 as a block, see the docstring of `PartialArray` and `ArrayLikeBlock` for details.
+
+A special return value of `Val(:pass)` indicates that the size check should be skipped.
 """
 vnt_size(x) = size(x)
 
@@ -293,6 +295,13 @@ end
 # We deliberately don't define Base.size for PartialArray, because it is ill-defined.
 # The size of the .data field is an implementation detail.
 _internal_size(pa::PartialArray, args...) = size(pa.data, args...)
+
+# Even though a PartialArray has no well-defined size, we still allow it to be used as an
+# ArrayLikeBlock. This enables setting values for keys like @varname(x[1:3][1]), which will
+# be stored as a PartialArray wrapped in an ArrayLikeBlock, stored in another PartialArray.
+# Note that this bypasses _any_ size checks, so that e.g. @varname(x[1:3][1,15]) is also a
+# valid key.
+vnt_size(pa::PartialArray) = Val(:pass)
 
 function Base.copy(pa::PartialArray)
     # Make a shallow copy of pa, except for any VarNamedTuple elements, which we recursively
@@ -677,7 +686,7 @@ function _setindex!!(pa::PartialArray, value, inds::Vararg{INDEX_TYPES})
     new_data = pa.data
     if _needs_arraylikeblock(value, inds...)
         inds_size = reduce((x, y) -> tuple(x..., y...), map(size, inds))
-        if vnt_size(value) != inds_size
+        if vnt_size(value) !== Val(:pass) && vnt_size(value) != inds_size
             throw(
                 DimensionMismatch(
                     "Assigned value has size $(vnt_size(value)), which does not match " *
@@ -1205,7 +1214,9 @@ end
 
 function _map_recursive!!(func, alb::ArrayLikeBlock, vn)
     new_block = _map_recursive!!(func, alb.block, vn)
-    if vnt_size(new_block) != vnt_size(alb.block)
+    sz_new = vnt_size(new_block)
+    sz_old = vnt_size(alb.block)
+    if sz_new !== Val(:pass) && sz_old !== Val(:pass) && sz_new != sz_old
         throw(
             DimensionMismatch(
                 "map_pairs!! can't change the size of an ArrayLikeBlock. Tried to change " *
