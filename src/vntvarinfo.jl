@@ -245,3 +245,14 @@ function unflatten(vi::VNTVarInfo, vec::AbstractVector)
     end
     return VNTVarInfo(new_values, vi.accs)
 end
+
+function subset(varinfo::VNTVarInfo, vns)
+    new_values = subset(varinfo.values, vns)
+    return VNTVarInfo(new_values, map(copy, getaccs(varinfo)))
+end
+
+function Base.merge(varinfo_left::VNTVarInfo, varinfo_right::VNTVarInfo)
+    new_values = merge(varinfo_left.values, varinfo_right.values)
+    new_accs = map(copy, getaccs(varinfo_right))
+    return VNTVarInfo(new_values, new_accs)
+end

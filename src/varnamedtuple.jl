@@ -6,7 +6,7 @@ using AbstractPPL: AbstractPPL
 using Distributions: Distributions, Distribution
 using BangBang
 using Accessors
-using ..DynamicPPL: _compose_no_identity
+using ..DynamicPPL: DynamicPPL, _compose_no_identity
 
 export VarNamedTuple, map_pairs!!, map_values!!, apply!!
 
@@ -1061,6 +1061,31 @@ Base.merge(x1::VarNamedTuple, x2::VarNamedTuple) = _merge_recursive(x1, x2)
 end
 
 """
+    subset(vnt::VarNamedTuple, vns)
+
+Create a new `VarNamedTuple` containing only the variables subsumed by ones in `vns`.
+"""
+function DynamicPPL.subset(vnt::VarNamedTuple, vns)
+    # TODO(mhauru) This could be done more efficiently by generating the code directly,
+    # because we could short-circuit: For instance, if `vns` contains `a`, we could
+    # directly include the whole subtree under `a`, without checking each individual
+    # variable under it.
+    return mapfoldl(
+        identity,
+        function (init, pair)
+            name, value = pair
+            return if any(vn -> subsumes(vn, name), vns)
+                setindex!!(init, value, name)
+            else
+                init
+            end
+        end,
+        vnt;
+        init=VarNamedTuple(),
+    )
+end
+
+"""
     apply!!(func, vnt::VarNamedTuple, name::VarName)
 
 Apply `func` to the subdata at `name` in `vnt`, and set the result back at `name`.
@@ -1217,6 +1242,9 @@ function Base.mapreduce(f, op, vnt::VarNamedTuple; init=nothing)
     end
     return _mapreduce_recursive(f, op, vnt, init)
 end
+
+# Our mapreduce is always left-associative.
+Base.mapfoldl(f, op, vnt::VarNamedTuple; init=nothing) = mapreduce(f, op, vnt; init=init)
 
 _mapreduce_recursive(f, op, x, vn, init) = op(init, f(vn => x))
 _mapreduce_recursive(f, op, pa::ArrayLikeBlock, vn, init) = op(init, f(vn => pa.block))

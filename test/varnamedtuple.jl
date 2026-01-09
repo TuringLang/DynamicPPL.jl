@@ -3,7 +3,7 @@ module VarNamedTupleTests
 using Combinatorics: Combinatorics
 using OrderedCollections: OrderedDict
 using Test: @inferred, @test, @test_throws, @testset
-using DynamicPPL: DynamicPPL, @varname, VarNamedTuple
+using DynamicPPL: DynamicPPL, @varname, VarNamedTuple, subset
 using DynamicPPL.VarNamedTuples:
     PartialArray, ArrayLikeBlock, map_pairs!!, map_values!!, apply!!
 using AbstractPPL: VarName, concretize, prefix
@@ -77,6 +77,10 @@ function test_invariants(vnt::VarNamedTuple)
     # Check that map is a no-op when using identity functions.
     @test isequal(map_pairs!!(pair -> pair.second, copy(vnt)), vnt)
     @test isequal(map_values!!(identity, copy(vnt)), vnt)
+
+    # Check that subsetting works as expected.
+    @test isequal(subset(vnt, vnt_keys), vnt)
+    @test isequal(subset(vnt, VarName[]), VarNamedTuple())
 end
 
 """ A type that has a size but is not an Array. Used in ArrayLikeBlock tests."""
@@ -468,6 +472,42 @@ Base.size(st::SizedThing) = st.size
         @test merge(vnt2, vnt1) == expected_merge_21
         test_invariants(vnt1)
         test_invariants(vnt2)
+    end
+
+    @testset "subset" begin
+        vnt = VarNamedTuple()
+        vnt = setindex!!(vnt, 1.0, @varname(a))
+        vnt = setindex!!(vnt, [1, 2, 3], @varname(b))
+        vnt = setindex!!(vnt, [10], @varname(c.x.y))
+        vnt = setindex!!(vnt, :1, @varname(d[1]))
+        vnt = setindex!!(vnt, :2, @varname(d[2]))
+        vnt = setindex!!(vnt, :3, @varname(d[3]))
+        vnt = setindex!!(vnt, 2.0, @varname(e.f[3, 3].g.h[2, 4, 1].i))
+        vnt = setindex!!(vnt, SizedThing((3, 1, 4)), @varname(p[2, 1][2:4, 5:5, 11:14]))
+        test_invariants(vnt)
+
+        @test subset(vnt, VarName[]) == VarNamedTuple()
+        @test subset(vnt, (@varname(z),)) == VarNamedTuple()
+        @test subset(vnt, (@varname(d[4]),)) == VarNamedTuple()
+        # TODO(mhauru) Not sure what to do about the below. AbstractPPL considers d[1,1] to
+        # subsume d[1], but that breaks my idea of how VNT subset should work.
+        @test subset(vnt, (@varname(d[1, 1]),)) == VarNamedTuple() broken = true
+        @test subset(vnt, [@varname(a)]) == VarNamedTuple(; a=1.0)
+        @test subset(vnt, [@varname(b), @varname(d[1])]) ==
+            VarNamedTuple((@varname(b) => [1, 2, 3], @varname(d[1]) => :1))
+        @test subset(vnt, [@varname(d[2:3])]) ==
+            VarNamedTuple((@varname(d[2]) => :2, @varname(d[3]) => :3))
+        @test subset(vnt, [@varname(d)]) == VarNamedTuple((
+            @varname(d[1]) => :1, @varname(d[2]) => :2, @varname(d[3]) => :3
+        ))
+        @test subset(vnt, [@varname(c.x.y)]) == VarNamedTuple((@varname(c.x.y) => [10],))
+        @test subset(vnt, [@varname(c)]) == VarNamedTuple((@varname(c.x.y) => [10],))
+        @test subset(vnt, [@varname(e.f[3, 3].g.h[2, 4, 1].i)]) ==
+            VarNamedTuple((@varname(e.f[3, 3].g.h[2, 4, 1].i) => 2.0,))
+        @test subset(vnt, [@varname(p[2, 1][2:4, 5:5, 11:14])]) ==
+            VarNamedTuple((@varname(p[2, 1][2:4, 5:5, 11:14]) => SizedThing((3, 1, 4)),))
+        # Cutting the last range a bit short should mean that nothing is returned.
+        @test subset(vnt, [@varname(p[2, 1][2:4, 5:5, 11:13])]) == VarNamedTuple()
     end
 
     @testset "keys and values" begin
