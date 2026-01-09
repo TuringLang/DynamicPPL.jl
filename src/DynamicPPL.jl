@@ -185,7 +185,7 @@ abstract type AbstractVarInfo <: AbstractModelTrace end
 # Necessary forward declarations
 include("utils.jl")
 include("varnamedtuple.jl")
-using .VarNamedTuples: VarNamedTuple, map!!, apply!!
+using .VarNamedTuples: VarNamedTuple, map_pairs!!, map_values!!, apply!!
 include("contexts.jl")
 include("contexts/default.jl")
 include("contexts/init.jl")

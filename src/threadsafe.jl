@@ -36,6 +36,9 @@ function getacc(vi::ThreadSafeVarInfo, accname::Val)
     return foldl(combine, other_accs; init=main_acc)
 end
 
+function Base.copy(vi::ThreadSafeVarInfo)
+    return ThreadSafeVarInfo(copy(vi.varinfo), deepcopy(vi.accs_by_thread))
+end
 hasacc(vi::ThreadSafeVarInfo, accname::Val) = hasacc(vi.varinfo, accname)
 acckeys(vi::ThreadSafeVarInfo) = acckeys(vi.varinfo)
 
@@ -195,8 +198,8 @@ end
 
 getindex_internal(vi::ThreadSafeVarInfo, vn::VarName) = getindex_internal(vi.varinfo, vn)
 
-function unflatten(vi::ThreadSafeVarInfo, x::AbstractVector)
-    return Accessors.@set vi.varinfo = unflatten(vi.varinfo, x)
+function unflatten!!(vi::ThreadSafeVarInfo, x::AbstractVector)
+    return Accessors.@set vi.varinfo = unflatten!!(vi.varinfo, x)
 end
 
 function subset(varinfo::ThreadSafeVarInfo, vns::AbstractVector{<:VarName})
