@@ -118,7 +118,7 @@ julia> # Perform computations in unconstrained space, e.g. changing the values o
        θ = [!varinfo[@varname(x)], rand(rng)];
 
 julia> # Update the `VarInfo` with the new values.
-       varinfo_linked = DynamicPPL.unflatten(varinfo_linked, θ);
+       varinfo_linked = DynamicPPL.unflatten!!(varinfo_linked, θ);
 
 julia> # Determine the expected support of `y`.
        lb, ub = θ[1] == 1 ? (0, 1) : (11, 12)

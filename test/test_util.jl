@@ -16,28 +16,31 @@ Return string representing a short description of `vi`.
 function short_varinfo_name(vi::DynamicPPL.ThreadSafeVarInfo)
     return "threadsafe($(short_varinfo_name(vi.varinfo)))"
 end
-function short_varinfo_name(vi::DynamicPPL.NTVarInfo)
-    return if DynamicPPL.has_varnamedvector(vi)
-        "TypedVectorVarInfo"
-    else
-        "TypedVarInfo"
-    end
-end
-short_varinfo_name(::DynamicPPL.UntypedVarInfo) = "UntypedVarInfo"
-short_varinfo_name(::DynamicPPL.UntypedVectorVarInfo) = "UntypedVectorVarInfo"
+# function short_varinfo_name(vi::DynamicPPL.NTVarInfo)
+#     return if DynamicPPL.has_varnamedvector(vi)
+#         "TypedVectorVarInfo"
+#     else
+#         "TypedVarInfo"
+#     end
+# end
+# short_varinfo_name(::DynamicPPL.UntypedVarInfo) = "UntypedVarInfo"
+# short_varinfo_name(::DynamicPPL.UntypedVectorVarInfo) = "UntypedVectorVarInfo"
 function short_varinfo_name(::SimpleVarInfo{<:NamedTuple,<:Ref})
     return "SimpleVarInfo{<:NamedTuple,<:Ref}"
 end
 function short_varinfo_name(::SimpleVarInfo{<:OrderedDict,<:Ref})
     return "SimpleVarInfo{<:OrderedDict,<:Ref}"
 end
-function short_varinfo_name(::SimpleVarInfo{<:DynamicPPL.VarNamedVector,<:Ref})
-    return "SimpleVarInfo{<:VarNamedVector,<:Ref}"
-end
+# function short_varinfo_name(::SimpleVarInfo{<:DynamicPPL.VarNamedVector,<:Ref})
+#     return "SimpleVarInfo{<:VarNamedVector,<:Ref}"
+# end
 short_varinfo_name(::SimpleVarInfo{<:NamedTuple}) = "SimpleVarInfo{<:NamedTuple}"
 short_varinfo_name(::SimpleVarInfo{<:OrderedDict}) = "SimpleVarInfo{<:OrderedDict}"
-function short_varinfo_name(::SimpleVarInfo{<:DynamicPPL.VarNamedVector})
-    return "SimpleVarInfo{<:VarNamedVector}"
+# function short_varinfo_name(::SimpleVarInfo{<:DynamicPPL.VarNamedVector})
+#     return "SimpleVarInfo{<:VarNamedVector}"
+# end
+function short_varinfo_name(::DynamicPPL.VNTVarInfo)
+    return "VNTVarInfo"
 end
 
 # convenient functions for testing model.jl

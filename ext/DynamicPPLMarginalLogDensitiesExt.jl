@@ -212,7 +212,7 @@ function DynamicPPL.VarInfo(
     if unmarginalized_params !== nothing
         full_params[MarginalLogDensities.ijoint(mld)] = unmarginalized_params
     end
-    return DynamicPPL.unflatten(original_vi, full_params)
+    return DynamicPPL.unflatten!!(original_vi, full_params)
 end
 
 end

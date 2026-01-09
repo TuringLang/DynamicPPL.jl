@@ -1,3 +1,7 @@
+# subset is defined here to avoid circular dependencies between files. Methods for it are
+# defined in other files.
+function subset end
+
 # singleton for indicating if no default arguments are present
 struct NoDefault end
 const NO_DEFAULT = NoDefault()
@@ -49,6 +53,7 @@ function typed_identity end
 @inline typed_identity(x) = x
 @inline Bijectors.with_logabsdet_jacobian(::typeof(typed_identity), x) =
     (x, zero(LogProbType))
+@inline Bijectors.inverse(::typeof(typed_identity)) = typed_identity
 
 """
     @addlogprob!(ex)
@@ -950,6 +955,8 @@ Return `typeof(x)` stripped of its type parameters.
 """
 basetypeof(x::T) where {T} = Base.typename(T).wrapper
 
+const MaybeTypedIdentity = Union{typeof(typed_identity),typeof(identity)}
+
 # TODO(mhauru) Might add another specialisation to _compose_no_identity, where if
 # ReshapeTransforms are composed with each other or with a an UnwrapSingeltonTransform, only
 # the latter one would be kept.
@@ -962,6 +969,6 @@ This helps avoid trivial cases of `ComposedFunction` that would cause unnecessar
 conflicts.
 """
 _compose_no_identity(f, g) = f ∘ g
-_compose_no_identity(::typeof(identity), g) = g
-_compose_no_identity(f, ::typeof(identity)) = f
-_compose_no_identity(::typeof(identity), ::typeof(identity)) = identity
+_compose_no_identity(::MaybeTypedIdentity, g) = g
+_compose_no_identity(f, ::MaybeTypedIdentity) = f
+_compose_no_identity(::MaybeTypedIdentity, ::MaybeTypedIdentity) = typed_identity
