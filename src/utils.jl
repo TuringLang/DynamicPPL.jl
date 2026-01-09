@@ -951,6 +951,8 @@ Return `typeof(x)` stripped of its type parameters.
 """
 basetypeof(x::T) where {T} = Base.typename(T).wrapper
 
+const MaybeTypedIdentity = Union{typeof(typed_identity),typeof(identity)}
+
 # TODO(mhauru) Might add another specialisation to _compose_no_identity, where if
 # ReshapeTransforms are composed with each other or with a an UnwrapSingeltonTransform, only
 # the latter one would be kept.
@@ -963,6 +965,6 @@ This helps avoid trivial cases of `ComposedFunction` that would cause unnecessar
 conflicts.
 """
 _compose_no_identity(f, g) = f ∘ g
-_compose_no_identity(::typeof(identity), g) = g
-_compose_no_identity(f, ::typeof(identity)) = f
-_compose_no_identity(::typeof(identity), ::typeof(identity)) = identity
+_compose_no_identity(::MaybeTypedIdentity, g) = g
+_compose_no_identity(f, ::MaybeTypedIdentity) = f
+_compose_no_identity(::MaybeTypedIdentity, ::MaybeTypedIdentity) = typed_identity
