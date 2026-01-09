@@ -311,13 +311,22 @@ This function returns a VarNamedTuple mapping all VarNames to their correspondin
 `RangeAndLinked`.
 """
 function get_ranges_and_linked(vi::VNTVarInfo)
-    offset = 1
-    vnt = map!!(vi.values) do tv
-        val = tv.val
-        range = offset:(offset + length(val) - 1)
-        offset += length(val)
-        RangeAndLinked(range, tv.linked, size(val))
-    end
+    # TODO(mhauru) Check that the closure doesn't cause type instability here.
+    vnt = VarNamedTuple()
+    vnt, _ = mapreduce(
+        identity,
+        function ((vnt, offset), pair)
+            vn, tv = pair
+            val = tv.val
+            range = offset:(offset + length(val) - 1)
+            offset += length(val)
+            ral = RangeAndLinked(range, tv.linked, size(val))
+            vnt = setindex!!(vnt, ral, vn)
+            return vnt, offset
+        end,
+        vi.values;
+        init=(VarNamedTuple(), 1),
+    )
     return vnt
 end
 

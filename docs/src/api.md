@@ -468,7 +468,7 @@ DynamicPPL.maybe_invlink_before_eval!!
 ```@docs
 Base.merge(::AbstractVarInfo)
 DynamicPPL.subset
-DynamicPPL.unflatten
+DynamicPPL.unflatten!!
 ```
 
 ### Evaluation Contexts

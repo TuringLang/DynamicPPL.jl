@@ -363,7 +363,8 @@ function tilde_assume!!(
         vi = setindex!!(vi, val_to_insert, vn)
     else
         vi = if vi isa VNTVarInfo
-            push!!(vi, vn, val_to_insert, inverse(transform), size(x))
+            x_size = hasmethod(size, Tuple{typeof(x)}) ? size(x) : ()
+            vi = push!!(vi, vn, val_to_insert, inverse(transform), x_size)
         else
             push!!(vi, vn, val_to_insert, dist)
         end

@@ -838,14 +838,14 @@ function link!!(
     t::StaticTransformation{<:Bijectors.Transform}, vi::AbstractVarInfo, ::Model
 )
     # TODO(mhauru) This assumes that the user has defined the bijector using the same
-    # variable ordering as what `vi[:]` and `unflatten(vi, x)` use. This is a bad user
+    # variable ordering as what `vi[:]` and `unflatten!!(vi, x)` use. This is a bad user
     # interface, and it's also dangerous for any AbstractVarInfo types that may not respect
     # a particular ordering, such as SimpleVarInfo{Dict}.
     b = inverse(t.bijector)
     x = vi[:]
     y, logjac = with_logabsdet_jacobian(b, x)
     # Set parameters and add the logjac term.
-    vi = unflatten(vi, y)
+    vi = unflatten!!(vi, y)
     if hasacc(vi, Val(:LogJacobian))
         vi = acclogjac!!(vi, logjac)
     end
@@ -910,7 +910,7 @@ function invlink!!(
     # Mildly confusing: we need to _add_ the logjac of the inverse transform,
     # because we are trying to remove the logjac of the forward transform
     # that was previously accumulated when linking.
-    vi = unflatten(vi, x)
+    vi = unflatten!!(vi, x)
     if hasacc(vi, Val(:LogJacobian))
         vi = acclogjac!!(vi, inv_logjac)
     end
@@ -1013,11 +1013,11 @@ end
 
 # Utilities
 """
-    unflatten(vi::AbstractVarInfo, x::AbstractVector)
+    unflatten!!(vi::AbstractVarInfo, x::AbstractVector)
 
 Return a new instance of `vi` with the values of `x` assigned to the variables.
 """
-function unflatten end
+function unflatten!! end
 
 """
     to_maybe_linked_internal(vi::AbstractVarInfo, vn::VarName, dist, val)

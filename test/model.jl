@@ -26,8 +26,7 @@ function innermost_distribution_type(d::Distributions.Product)
 end
 
 is_type_stable_varinfo(::DynamicPPL.AbstractVarInfo) = false
-is_type_stable_varinfo(varinfo::DynamicPPL.NTVarInfo) = true
-is_type_stable_varinfo(varinfo::DynamicPPL.SimpleVarInfo{<:NamedTuple}) = true
+is_type_stable_varinfo(varinfo::DynamicPPL.VNTVarInfo) = true
 
 const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
 
@@ -230,21 +229,10 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
         for i in 1:10
             # Sample with large variations.
             r_raw = randn(length(vi[:])) * 10
-            vi = DynamicPPL.unflatten(vi, r_raw)
+            vi = DynamicPPL.unflatten!!(vi, r_raw)
             @test vi[@varname(m)] == r_raw[1]
             @test vi[@varname(x)] != r_raw[2]
             model(vi)
-        end
-    end
-
-    @testset "Dynamic constraints, VectorVarInfo" begin
-        model = DynamicPPL.TestUtils.demo_dynamic_constraint()
-        for i in 1:10
-            for vi_constructor in
-                [DynamicPPL.typed_vector_varinfo, DynamicPPL.untyped_vector_varinfo]
-                vi = vi_constructor(model)
-                @test vi[@varname(x)] >= vi[@varname(m)]
-            end
         end
     end
 
@@ -510,26 +498,17 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
         end
         model = product_dirichlet()
 
-        varinfos = [
-            DynamicPPL.untyped_varinfo(model),
-            DynamicPPL.typed_varinfo(model),
-            DynamicPPL.typed_simple_varinfo(model),
-            DynamicPPL.untyped_simple_varinfo(model),
-        ]
-        @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
-            logjoint = getlogjoint(varinfo) # unlinked space
-            varinfo_linked = DynamicPPL.link(varinfo, model)
-            varinfo_linked_result = last(
-                DynamicPPL.evaluate!!(model, deepcopy(varinfo_linked))
-            )
-            # getlogjoint should return the same result as before it was linked
-            @test getlogjoint(varinfo_linked) ≈ getlogjoint(varinfo_linked_result)
-            @test getlogjoint(varinfo_linked) ≈ logjoint
-            # getlogjoint_internal shouldn't
-            @test getlogjoint_internal(varinfo_linked) ≈
-                getlogjoint_internal(varinfo_linked_result)
-            @test !isapprox(getlogjoint_internal(varinfo_linked), logjoint)
-        end
+        varinfo = DynamicPPL.VarInfo(model)
+        logjoint = getlogjoint(varinfo) # unlinked space
+        varinfo_linked = DynamicPPL.link(varinfo, model)
+        varinfo_linked_result = last(DynamicPPL.evaluate!!(model, deepcopy(varinfo_linked)))
+        # getlogjoint should return the same result as before it was linked
+        @test getlogjoint(varinfo_linked) ≈ getlogjoint(varinfo_linked_result)
+        @test getlogjoint(varinfo_linked) ≈ logjoint
+        # getlogjoint_internal shouldn't
+        @test getlogjoint_internal(varinfo_linked) ≈
+            getlogjoint_internal(varinfo_linked_result)
+        @test !isapprox(getlogjoint_internal(varinfo_linked), logjoint)
     end
 
     @testset "predict" begin
