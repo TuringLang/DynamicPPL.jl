@@ -1,3 +1,7 @@
+# subset is defined here to avoid circular dependencies between files. Methods for it are
+# defined in other files.
+function subset end
+
 # singleton for indicating if no default arguments are present
 struct NoDefault end
 const NO_DEFAULT = NoDefault()

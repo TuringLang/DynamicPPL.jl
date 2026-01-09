@@ -388,6 +388,13 @@ function BangBang.empty!!(pa::PartialArray)
     return pa
 end
 
+# This is a tad hacky: We use _mapreduce_recursive which requires a prefix VarName. We give
+# it the non-sense @varname(_), and then strip it away with the mapping function, returning
+# only the optic.
+function Base.keys(pa::PartialArray)
+    return _mapreduce_recursive(pair -> first(pair).optic, push!, pa, @varname(_), Any[])
+end
+
 # Length could be defined as a special case of mapreduce, but it's harder to keep it type
 # stable that way: If the element type is abstract, we end up calling _mapreduce_recursive
 # on an abstract type, which makes the type of the cumulant Any.
@@ -1500,8 +1507,8 @@ function AbstractPPL.hasvalue(vnt::VarNamedTuple, vn::VarName, dist::MV_DIST_TYP
     # Note that _getindex, rather than getindex, skips the need to denseify PartialArrays.
     val = _getindex(vnt, vn)
     if !(val isa VarNamedTuple || val isa PartialArray)
-        # There is _a_ value. Where it's the right kind, we do not know, but returning true
-        # is no worse than `hasvalue` returning true for e.g. UnivariateDistributions
+        # There is _a_ value. Whether it's the right kind, we do not know, but returning
+        # true is no worse than `hasvalue` returning true for e.g. UnivariateDistributions
         # whenever there is at least some value.
         return true
     end
