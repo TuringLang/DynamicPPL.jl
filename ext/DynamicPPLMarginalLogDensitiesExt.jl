@@ -1,6 +1,6 @@
 module DynamicPPLMarginalLogDensitiesExt
 
-using DynamicPPL: DynamicPPL, LogDensityProblems, VarName
+using DynamicPPL: DynamicPPL, LogDensityProblems, VarName, AbstractPPL
 using MarginalLogDensities: MarginalLogDensities
 
 # A thin wrapper to adapt a DynamicPPL.LogDensityFunction to the interface expected by
@@ -105,7 +105,7 @@ function DynamicPPL.marginalize(
     ldf = DynamicPPL.LogDensityFunction(model, getlogprob, varinfo)
     # Determine the indices for the variables to marginalise out.
     varindices = mapreduce(vcat, marginalized_varnames) do vn
-        if DynamicPPL.getoptic(vn) === identity
+        if AbstractPPL.getoptic(vn) isa AbstractPPL.Iden
             ldf._iden_varname_ranges[DynamicPPL.getsym(vn)].range
         else
             ldf._varname_ranges[vn].range

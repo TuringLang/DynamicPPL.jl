@@ -501,19 +501,19 @@ true
 julia> # Since we conditioned on `a.m`, it is not treated as a random variable.
        # However, `a.x` will still be a random variable.
        keys(VarInfo(cm))
-1-element Vector{VarName{:a, Accessors.PropertyLens{:x}}}:
+1-element Vector{VarName{:a, AbstractPPL.Property{:x, AbstractPPL.Iden}}}:
  a.x
 
 julia> # We can also condition on `a.m` _outside_ of the PrefixContext:
        cm = condition(contextualize(m, PrefixContext(@varname(a))), (@varname(a.m) => 1.0));
 
 julia> conditioned(cm)
-Dict{VarName{:a, Accessors.PropertyLens{:m}}, Float64} with 1 entry:
+Dict{VarName{:a, AbstractPPL.Property{:m, AbstractPPL.Iden}}, Float64} with 1 entry:
   a.m => 1.0
 
 julia> # Now `a.x` will be sampled.
        keys(VarInfo(cm))
-1-element Vector{VarName{:a, Accessors.PropertyLens{:x}}}:
+1-element Vector{VarName{:a, AbstractPPL.Property{:x, AbstractPPL.Iden}}}:
  a.x
 ```
 """
@@ -833,25 +833,25 @@ julia> # Returns all the variables we have fixed on + their values.
 (x = 100.0, m = 1.0)
 
 julia> # The rest of this is the same as the `condition` example above.
-       cm = fix(contextualize(m, PrefixContext(@varname(a), fix(m=1.0))), x=100.0);
+       fm = fix(contextualize(m, PrefixContext(@varname(a), fix(m=1.0))), x=100.0);
 
-julia> Set(keys(fixed(cm))) == Set([@varname(a.m), @varname(x)])
+julia> Set(keys(fixed(fm))) == Set([@varname(a.m), @varname(x)])
 true
 
-julia> keys(VarInfo(cm))
-1-element Vector{VarName{:a, Accessors.PropertyLens{:x}}}:
+julia> keys(VarInfo(fm))
+1-element Vector{VarName{:a, AbstractPPL.Property{:x, AbstractPPL.Iden}}}:
  a.x
 
-julia> # We can also condition on `a.m` _outside_ of the PrefixContext:
-       cm = fix(contextualize(m, PrefixContext(@varname(a))), (@varname(a.m) => 1.0));
+julia> # We can also fix `a.m` _outside_ of the PrefixContext:
+       fm = fix(contextualize(m, PrefixContext(@varname(a))), (@varname(a.m) => 1.0));
 
-julia> fixed(cm)
-Dict{VarName{:a, Accessors.PropertyLens{:m}}, Float64} with 1 entry:
+julia> fixed(fm)
+Dict{VarName{:a, AbstractPPL.Property{:m, AbstractPPL.Iden}}, Float64} with 1 entry:
   a.m => 1.0
 
 julia> # Now `a.x` will be sampled.
-       keys(VarInfo(cm))
-1-element Vector{VarName{:a, Accessors.PropertyLens{:x}}}:
+       keys(VarInfo(fm))
+1-element Vector{VarName{:a, AbstractPPL.Property{:x, AbstractPPL.Iden}}}:
  a.x
 ```
 """
