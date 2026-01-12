@@ -308,7 +308,6 @@ end
 function tilde_assume!!(
     ctx::InitContext, dist::Distribution, vn::VarName, vi::AbstractVarInfo
 )
-    in_varinfo = haskey(vi, vn)
     val, transform = init(ctx.rng, vn, dist, ctx.strategy)
     x, inv_logjac = with_logabsdet_jacobian(transform, val)
     # Determine whether to insert a transformed value into the VarInfo.
@@ -317,7 +316,7 @@ function tilde_assume!!(
     # check the rest of the VarInfo to see if other variables are linked.
     # is_transformed(vi) returns true if vi is nonempty and all variables in vi
     # are linked.
-    insert_transformed_value = in_varinfo ? is_transformed(vi, vn) : is_transformed(vi)
+    insert_transformed_value = haskey(vi, vn) ? is_transformed(vi, vn) : is_transformed(vi)
     val_to_insert, logjac = if insert_transformed_value
         # Calculate the forward logjac and sum them up.
         lt = link_transform(dist)
@@ -359,15 +358,11 @@ function tilde_assume!!(
     end
     # Add the new value to the VarInfo. `push!!` errors if the value already
     # exists, hence the need for setindex!!.
-    if in_varinfo
-        vi = setindex!!(vi, val_to_insert, vn)
+    vi = if vi isa VNTVarInfo
+        x_size = hasmethod(size, Tuple{typeof(x)}) ? size(x) : ()
+        vi = push!!(vi, vn, val_to_insert, inverse(transform), x_size)
     else
-        vi = if vi isa VNTVarInfo
-            x_size = hasmethod(size, Tuple{typeof(x)}) ? size(x) : ()
-            vi = push!!(vi, vn, val_to_insert, inverse(transform), x_size)
-        else
-            push!!(vi, vn, val_to_insert, dist)
-        end
+        push!!(vi, vn, val_to_insert, dist)
     end
     # Neither of these set the `trans` flag so we have to do it manually if
     # necessary.

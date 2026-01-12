@@ -125,70 +125,24 @@ function from_linked_internal_transform(vi::VNTVarInfo, vn::VarName)
     return getindex(vi.values, vn).transform
 end
 
-function change_transform(tv::TransformedValue, new_transform, linked)
-    # Note that the transform may change the size of `val`, but it doesn't change the
-    # tv.size, since that one tracks the original size of the value before any transforms.
-    val_untransformed, logjac1 = with_logabsdet_jacobian(tv.transform, tv.val)
-    val_new, logjac2 = with_logabsdet_jacobian(inverse(new_transform), val_untransformed)
-    return TransformedValue(val_new, linked, new_transform, tv.size), logjac1 + logjac2
-end
-
 function link!!(::DynamicTransformation, vi::VNTVarInfo, vns, model::Model)
-    dists = extract_priors(model, vi)
-    cumulative_logjac = zero(LogProbType)
-    new_values = vi.values
-    new_values = map_pairs!!(new_values) do pair
-        vn, tv = pair
-        if !any(x -> subsumes(x, vn), vns)
-            # Not one of the target variables.
-            return tv
-        end
-        dist = getindex(dists, vn)
-        transform = from_linked_vec_transform(dist)
-        new_tv, logjac = change_transform(tv, transform, true)
-        cumulative_logjac += logjac
-        return new_tv
-    end
-    vi = VNTVarInfo(new_values, vi.accs)
-    if hasacc(vi, Val(:LogJacobian))
-        vi = acclogjac!!(vi, cumulative_logjac)
-    end
-    return vi
-end
-
-function link!!(::DynamicTransformation, vi::VNTVarInfo, model::Model)
-    # TODO(mhauru) This is probably pretty inefficient. Do this better. Would like to use
-    # map!!, but it doesn't have access to the VarName.
     dists = extract_priors(model, vi)
     cumulative_logjac = zero(LogProbType)
     new_values = map_pairs!!(vi.values) do pair
         vn, tv = pair
-        dist = getindex(dists, vn)
-        transform = from_linked_vec_transform(dist)
-        new_tv, logjac = change_transform(tv, transform, true)
-        cumulative_logjac += logjac
-        return new_tv
-    end
-    vi = VNTVarInfo(new_values, vi.accs)
-    if hasacc(vi, Val(:LogJacobian))
-        vi = acclogjac!!(vi, cumulative_logjac)
-    end
-    return vi
-end
-
-function invlink!!(::DynamicTransformation, vi::VNTVarInfo, vns, model::Model)
-    cumulative_logjac = zero(LogProbType)
-    new_values = vi.values
-    new_values = map_pairs!!(new_values) do pair
-        vn, tv = pair
-        if !any(x -> subsumes(x, vn), vns)
+        if vns !== nothing && !any(x -> subsumes(x, vn), vns)
             # Not one of the target variables.
             return tv
         end
-        current_val = tv.transform(tv.val)
-        transform = from_vec_transform(current_val)
-        new_tv, logjac = change_transform(tv, transform, false)
-        cumulative_logjac += logjac
+        dist = getindex(dists, vn)
+        vec_transform = from_vec_transform(dist)
+        link_transform = from_linked_vec_transform(dist)
+        val_untransformed, logjac1 = with_logabsdet_jacobian(vec_transform, tv.val)
+        val_new, logjac2 = with_logabsdet_jacobian(
+            inverse(link_transform), val_untransformed
+        )
+        new_tv = TransformedValue(val_new, true, link_transform, tv.size)
+        cumulative_logjac += logjac1 + logjac2
         return new_tv
     end
     vi = VNTVarInfo(new_values, vi.accs)
@@ -198,16 +152,29 @@ function invlink!!(::DynamicTransformation, vi::VNTVarInfo, vns, model::Model)
     return vi
 end
 
-function invlink!!(::DynamicTransformation, vi::VNTVarInfo, model::Model)
-    # TODO(mhauru) This is probably pretty inefficient. Do this better. Would like to use
-    # map!!, but it doesn't have access to the VarName.
+function link!!(t::DynamicTransformation, vi::VNTVarInfo, model::Model)
+    return link!!(t, vi, nothing, model)
+end
+
+function invlink!!(::DynamicTransformation, vi::VNTVarInfo, vns, model::Model)
+    dists = extract_priors(model, vi)
     cumulative_logjac = zero(LogProbType)
-    new_values = vi.values
-    new_values = map_values!!(new_values) do tv
-        current_val = tv.transform(tv.val)
-        transform = from_vec_transform(current_val)
-        new_tv, logjac = change_transform(tv, transform, false)
-        cumulative_logjac += logjac
+    new_values = map_pairs!!(vi.values) do pair
+        vn, tv = pair
+        if vns !== nothing && !any(x -> subsumes(x, vn), vns)
+            # Not one of the target variables.
+            return tv
+        end
+        current_val = tv.val
+        dist = getindex(dists, vn)
+        vec_transform = from_vec_transform(dist)
+        link_transform = from_linked_vec_transform(dist)
+        val_untransformed, logjac1 = with_logabsdet_jacobian(link_transform, current_val)
+        val_new, logjac2 = with_logabsdet_jacobian(
+            inverse(vec_transform), val_untransformed
+        )
+        new_tv = TransformedValue(val_new, false, vec_transform, tv.size)
+        cumulative_logjac += logjac1 + logjac2
         return new_tv
     end
     vi = VNTVarInfo(new_values, vi.accs)
@@ -215,6 +182,10 @@ function invlink!!(::DynamicTransformation, vi::VNTVarInfo, model::Model)
         vi = acclogjac!!(vi, cumulative_logjac)
     end
     return vi
+end
+
+function invlink!!(t::DynamicTransformation, vi::VNTVarInfo, model::Model)
+    return invlink!!(t, vi, nothing, model)
 end
 
 function link!!(t::DynamicTransformation, vi::ThreadSafeVarInfo{<:VNTVarInfo}, model::Model)

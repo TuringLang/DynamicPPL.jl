@@ -35,7 +35,7 @@ function setup_varinfos(
 )
     vi = DynamicPPL.VarInfo(model)
     vi = update_values!!(vi, example_values, varnames)
-    last(DynamicPPL.evaluate!!(model, vi))
+    vi = last(DynamicPPL.evaluate!!(model, vi))
 
     varinfos = if include_threadsafe
         (vi, DynamicPPL.ThreadSafeVarInfo(deepcopy(vi)))
