@@ -9,9 +9,6 @@ const NO_DEFAULT = NoDefault()
 # A short-hand for a type commonly used in type signatures for VarInfo methods.
 VarNameTuple = NTuple{N,VarName} where {N}
 
-# TODO(mhauru) This is currently used in the transformation functions of NoDist,
-# ReshapeTransform, and UnwrapSingletonTransform, and in VarInfo. We should also use it in
-# SimpleVarInfo and maybe other places.
 """
 The type for all log probability variables.
 
@@ -506,8 +503,6 @@ end
 # UnivariateDistributions need to be handled as a special case, because size(dist) is (),
 # which makes the usual machinery think we are dealing with a 0-dim array, whereas in
 # actuality we are dealing with a scalar.
-# TODO(mhauru) Hopefully all this can go once the old Gibbs sampler is removed and
-# VarNamedVector takes over from Metadata.
 function from_linked_vec_transform(dist::UnivariateDistribution)
     f_invlink = invlink_transform(dist)
     f_vec = from_vec_transform(inverse(f_invlink), size(dist))

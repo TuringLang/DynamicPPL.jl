@@ -1,6 +1,6 @@
 module DynamicPPLBenchmarks
 
-using DynamicPPL: VarInfo, SimpleVarInfo, VarName
+using DynamicPPL: VarInfo, VarName
 using DynamicPPL: DynamicPPL
 using DynamicPPL.TestUtils.AD: run_ad, NoTest
 using ADTypes: ADTypes
@@ -23,7 +23,7 @@ Return the dimension of `model`, accounting for linking, if any.
 """
 function model_dimension(model, islinked)
     vi = VarInfo()
-    model(StableRNG(23), vi)
+    vi = last(DynamicPPL.init!!(StableRNG(23), model, vi))
     if islinked
         vi = DynamicPPL.link(vi, model)
     end
@@ -52,53 +52,24 @@ function to_backend(x::Union{AbstractString,Symbol})
 end
 
 """
-    benchmark(model, varinfo_choice::Symbol, adbackend::Symbol, islinked::Bool)
+    benchmark(model, adbackend::Symbol, islinked::Bool)
 
-Benchmark evaluation and gradient calculation for `model` using the selected varinfo type
-and AD backend.
-
-Available varinfo choices:
-  • `:untyped`           → uses `DynamicPPL.untyped_varinfo(model)`
-  • `:typed`             → uses `DynamicPPL.typed_varinfo(model)`
-  • `:simple_namedtuple` → uses `SimpleVarInfo{Float64}(model())`
-  • `:simple_dict`       → builds a `SimpleVarInfo{Float64}` from a Dict (pre-populated with the model’s outputs)
+Benchmark evaluation and gradient calculation for `model` using the selected AD backend.
 
 The AD backend should be specified as a Symbol (e.g. `:forwarddiff`, `:reversediff`, `:zygote`).
 
 `islinked` determines whether to link the VarInfo for evaluation.
 """
-function benchmark(model, varinfo_choice::Symbol, adbackend::Symbol, islinked::Bool)
+function benchmark(model, adbackend::Symbol, islinked::Bool)
     rng = StableRNG(23)
-
+    vi = VarInfo(rng, model)
     adbackend = to_backend(adbackend)
-
-    vi = if varinfo_choice == :untyped
-        DynamicPPL.untyped_varinfo(rng, model)
-    elseif varinfo_choice == :typed
-        DynamicPPL.typed_varinfo(rng, model)
-    elseif varinfo_choice == :simple_namedtuple
-        SimpleVarInfo{Float64}(model(rng))
-    elseif varinfo_choice == :simple_dict
-        retvals = model(rng)
-        vns = [VarName{k}() for k in keys(retvals)]
-        SimpleVarInfo{Float64}(Dict(zip(vns, values(retvals))))
-    elseif varinfo_choice == :typed_vector
-        DynamicPPL.typed_vector_varinfo(rng, model)
-    elseif varinfo_choice == :untyped_vector
-        DynamicPPL.untyped_vector_varinfo(rng, model)
-    else
-        error("Unknown varinfo choice: $varinfo_choice")
-    end
-
-    adbackend = to_backend(adbackend)
-
     if islinked
         vi = DynamicPPL.link(vi, model)
     end
-
     return run_ad(
         model, adbackend; varinfo=vi, benchmark=true, test=NoTest(), verbose=false
     )
 end
 
-end # module
+end

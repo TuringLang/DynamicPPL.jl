@@ -25,9 +25,6 @@ function innermost_distribution_type(d::Distributions.Product)
     return dists[1]
 end
 
-is_type_stable_varinfo(::DynamicPPL.AbstractVarInfo) = false
-is_type_stable_varinfo(varinfo::DynamicPPL.VNTVarInfo) = true
-
 const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
 
 @testset "model.jl" begin
@@ -221,7 +218,7 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
         @test !any(map(x -> x isa DynamicPPL.AbstractVarInfo, call_retval))
     end
 
-    @testset "Dynamic constraints, Metadata" begin
+    @testset "Dynamic constraints" begin
         model = DynamicPPL.TestUtils.demo_dynamic_constraint()
         vi = VarInfo(model)
         vi = link!!(vi, model)
@@ -415,10 +412,7 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
                 end
                 vns = DynamicPPL.TestUtils.varnames(model)
                 example_values = DynamicPPL.TestUtils.rand_prior_true(model)
-                varinfos = filter(
-                    is_type_stable_varinfo,
-                    DynamicPPL.TestUtils.setup_varinfos(model, example_values, vns),
-                )
+                varinfos = DynamicPPL.TestUtils.setup_varinfos(model, example_values, vns)
                 @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
                     @test begin
                         @inferred(DynamicPPL.evaluate!!(model, varinfo))

@@ -17,6 +17,15 @@ VarNamedTuples.vnt_size(tv::TransformedValue) = tv.size
 
 VNTVarInfo() = VNTVarInfo(VarNamedTuple(), default_accumulators())
 
+function VNTVarInfo(values::Union{NamedTuple,AbstractDict})
+    vi = VarInfo()
+    for (k, v) in pairs(values)
+        vn = k isa Symbol ? VarName{k}() : k
+        vi = setindex!!(vi, v, vn)
+    end
+    return vi
+end
+
 function VNTVarInfo(model::Model, init_strategy::AbstractInitStrategy=InitFromPrior())
     return VNTVarInfo(Random.default_rng(), model, init_strategy)
 end

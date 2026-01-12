@@ -13,8 +13,6 @@ using DynamicPPL:
     OnlyAccsVarInfo,
     RangeAndLinked,
     VectorWithRanges,
-    # Metadata,
-    VarNamedVector,
     default_accumulators,
     float_type_with_fallback,
     getlogjoint,
@@ -296,11 +294,6 @@ tweak_adtype(adtype::ADTypes.AbstractADType, ::Model, ::AbstractVarInfo) = adtyp
 # Helper functions to extract ranges and link status #
 ######################################################
 
-# This fails for SimpleVarInfo, but honestly there is no reason to support that here. The
-# fact is that evaluation doesn't use a VarInfo, it only uses it once to generate the ranges
-# and link status. So there is no motivation to use SimpleVarInfo inside a
-# LogDensityFunction any more, we can just always use typed VarInfo. In fact one could argue
-# that there is no purpose in supporting untyped VarInfo either.
 """
     get_ranges_and_linked(varinfo::VarInfo)
 
@@ -329,46 +322,3 @@ function get_ranges_and_linked(vi::VNTVarInfo)
     )
     return vnt
 end
-
-# function get_ranges_and_linked(varinfo::VarInfo{<:NamedTuple{syms}}) where {syms}
-#     all_ranges = VarNamedTuple()
-#     offset = 1
-#     for sym in syms
-#         md = varinfo.metadata[sym]
-#         this_md_others, offset = get_ranges_and_linked_metadata(md, offset)
-#         all_ranges = merge(all_ranges, this_md_others)
-#     end
-#     return all_ranges
-# end
-# function get_ranges_and_linked(varinfo::VarInfo{<:Union{Metadata,VarNamedVector}})
-#     all_ranges, _ = get_ranges_and_linked_metadata(varinfo.metadata, 1)
-#     return all_ranges
-# end
-# function get_ranges_and_linked_metadata(md::Metadata, start_offset::Int)
-#     all_ranges = VarNamedTuple()
-#     offset = start_offset
-#     for (vn, idx) in md.idcs
-#         is_linked = md.is_transformed[idx]
-#         range = md.ranges[idx] .+ (start_offset - 1)
-#         orig_size = varnamesize(vn)
-#         all_ranges = BangBang.setindex!!(
-#             all_ranges, RangeAndLinked(range, is_linked, orig_size), vn
-#         )
-#         offset += length(range)
-#     end
-#     return all_ranges, offset
-# end
-# function get_ranges_and_linked_metadata(vnv::VarNamedVector, start_offset::Int)
-#     all_ranges = VarNamedTuple()
-#     offset = start_offset
-#     for (vn, idx) in vnv.varname_to_index
-#         is_linked = vnv.is_unconstrained[idx]
-#         range = vnv.ranges[idx] .+ (start_offset - 1)
-#         orig_size = varnamesize(vn)
-#         all_ranges = BangBang.setindex!!(
-#             all_ranges, RangeAndLinked(range, is_linked, orig_size), vn
-#         )
-#         offset += length(range)
-#     end
-#     return all_ranges, offset
-# end

@@ -65,8 +65,6 @@ function map_accumulators!!(func::Function, vi::ThreadSafeVarInfo)
     return vi
 end
 
-has_varnamedvector(vi::ThreadSafeVarInfo) = has_varnamedvector(vi.varinfo)
-
 syms(vi::ThreadSafeVarInfo) = syms(vi.varinfo)
 
 setval!(vi::ThreadSafeVarInfo, val, vn::VarName) = setval!(vi.varinfo, val, vn)

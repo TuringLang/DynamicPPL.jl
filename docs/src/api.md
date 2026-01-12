@@ -333,25 +333,16 @@ Please see the documentation of [AbstractPPL.jl](https://github.com/TuringLang/A
 
 ### Data Structures of Variables
 
-DynamicPPL provides different data structures used in for storing samples and accumulation of the log-probabilities, all of which are subtypes of [`AbstractVarInfo`](@ref).
+DynamicPPL provides a data structure for storing samples and accumulation of the log-probabilities, called [`VarInfo`](@ref).
+The interface that `VarInfo` respects is described by the abstract type [`AbstractVarInfo`](@ref).
+Internally DynamicPPL also uses a couple of other subtypes of `AbstractVarInfo`.
 
 ```@docs
 AbstractVarInfo
 ```
 
-But exactly how a [`AbstractVarInfo`](@ref) stores this information can vary.
-
-#### `VarInfo`
-
 ```@docs
 VarInfo
-```
-
-```@docs
-DynamicPPL.untyped_varinfo
-DynamicPPL.typed_varinfo
-DynamicPPL.untyped_vector_varinfo
-DynamicPPL.typed_vector_varinfo
 ```
 
 One main characteristic of [`VarInfo`](@ref) is that samples are transformed to unconstrained Euclidean space and stored in a linearized form, as described in the [main Turing documentation](https://turinglang.org/docs/developers/transforms/dynamicppl/).
@@ -367,13 +358,10 @@ set_transformed!!
 Base.empty!
 ```
 
-#### `SimpleVarInfo`
-
-```@docs
-SimpleVarInfo
-```
-
 #### `VarNamedTuple`
+
+`VarInfo` is only a thin wrapper around [`VarNamedTuple`](@ref), which stores arbitrary data keyed by `VarName`s.
+For more details on `VarNamedTuple`, see the Internals section of our documentation.
 
 ```@docs
 DynamicPPL.VarNamedTuples.VarNamedTuple

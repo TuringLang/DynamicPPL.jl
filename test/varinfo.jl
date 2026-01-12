@@ -1,17 +1,6 @@
 function check_varinfo_keys(varinfo, vns)
-    if varinfo isa DynamicPPL.SimpleOrThreadSafeSimple{<:NamedTuple}
-        # NOTE: We can't compare the `keys(varinfo_merged)` directly with `vns`,
-        # since `keys(varinfo_merged)` only contains `VarName` with `identity`.
-        # So we just check that the original keys are present.
-        for vn in vns
-            # Should have all the original keys.
-            @test haskey(varinfo, vn)
-        end
-    else
-        vns_varinfo = keys(varinfo)
-        # Should be equivalent.
-        @test union(vns_varinfo, vns) == intersect(vns_varinfo, vns)
-    end
+    vns_varinfo = keys(varinfo)
+    @test union(vns_varinfo, vns) == intersect(vns_varinfo, vns)
 end
 
 @testset "varinfo.jl" begin
@@ -446,13 +435,9 @@ end
         varinfos = DynamicPPL.TestUtils.setup_varinfos(
             model, model(), vns; include_threadsafe=true
         )
-        varinfos_standard = filter(Base.Fix2(isa, VarInfo), varinfos)
-        varinfos_simple = filter(
-            Base.Fix2(isa, DynamicPPL.SimpleOrThreadSafeSimple), varinfos
-        )
 
         # `VarInfo` supports subsetting using, basically, arbitrary varnames.
-        vns_supported_standard = [
+        vns_supported = [
             [@varname(s)],
             [@varname(m)],
             [@varname(x[1])],
@@ -477,24 +462,9 @@ end
                 [@varname(s), @varname(m), @varname(x[1]), @varname(x[2])],
         ]
 
-        # `SimpleVarInfo` only supports subsetting using the varnames as they appear
-        # in the model.
-        vns_supported_simple = filter(∈(vns), vns_supported_standard)
-
         @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
             # All variables.
             check_varinfo_keys(varinfo, vns)
-
-            # Added a `convert` to make the naming of the testsets a bit more readable.
-            # `SimpleVarInfo{<:NamedTuple}` only supports subsetting with "simple" varnames,
-            ## i.e. `VarName{sym}()` without any indexing, etc.
-            vns_supported =
-                if varinfo isa DynamicPPL.SimpleOrThreadSafeSimple &&
-                    values_as(varinfo) isa NamedTuple
-                    vns_supported_simple
-                else
-                    vns_supported_standard
-                end
 
             @testset ("$(convert(Vector{VarName}, vns_subset)) empty") for vns_subset in
                                                                            vns_supported

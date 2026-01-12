@@ -2,7 +2,7 @@
 Models for benchmarking Turing.jl.
 
 Each model returns a NamedTuple of all the random variables in the model that are not
-observed (this is used for constructing SimpleVarInfos).
+observed.
 """
 module Models
 
