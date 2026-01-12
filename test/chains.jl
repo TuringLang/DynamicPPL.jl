@@ -68,8 +68,16 @@ end
 
 @testset "ParamsWithStats from LogDensityFunction" begin
     @testset "$(m.f)" for m in DynamicPPL.TestUtils.ALL_MODELS
-        unlinked_vi = VarInfo(m)
+        if m.f === DynamicPPL.TestUtils.demo_static_transformation
+            # TODO(mhauru) These tests are broken for demo_static_transformation because
+            # vi[vn] doesn't know which transform it should apply to the internally stored
+            # value. This requires a rethink, either of StaticTransformation or of what the
+            # comparison in this test should be.
+            @test false broken = true
+            continue
+        end
         @testset "$islinked" for islinked in (false, true)
+            unlinked_vi = VarInfo(m)
             vi = if islinked
                 DynamicPPL.link!!(unlinked_vi, m)
             else

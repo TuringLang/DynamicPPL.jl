@@ -839,12 +839,15 @@ function link!!(
 )
     # TODO(mhauru) This assumes that the user has defined the bijector using the same
     # variable ordering as what `vi[:]` and `unflatten!!(vi, x)` use. This is a bad user
-    # interface, and it's also dangerous for any AbstractVarInfo types that may not respect
-    # a particular ordering, such as SimpleVarInfo{Dict}.
+    # interface.
     b = inverse(t.bijector)
     x = vi[:]
     y, logjac = with_logabsdet_jacobian(b, x)
     # Set parameters and add the logjac term.
+    # TODO(mhauru) This doesn't set the transforms of `vi`. With the old Metadata that meant
+    # that getindex(vi, vn) would apply the default link transform of the distribution. With
+    # the new VarNamedTuple-based VarInfo it means that getindex(vi, vn) won't apply any
+    # transform. Neither is correct, rather the transform should be the inverse of b.
     vi = unflatten!!(vi, y)
     if hasacc(vi, Val(:LogJacobian))
         vi = acclogjac!!(vi, logjac)
