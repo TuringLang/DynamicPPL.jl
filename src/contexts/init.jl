@@ -309,68 +309,10 @@ function tilde_assume!!(
     ctx::InitContext, dist::Distribution, vn::VarName, vi::AbstractVarInfo
 )
     val, transform = init(ctx.rng, vn, dist, ctx.strategy)
-    x, inv_logjac = with_logabsdet_jacobian(transform, val)
-    # Determine whether to insert a transformed value into the VarInfo.
-    # If the VarInfo alrady had a value for this variable, we will
-    # keep the same linked status as in the original VarInfo. If not, we
-    # check the rest of the VarInfo to see if other variables are linked.
-    # is_transformed(vi) returns true if vi is nonempty and all variables in vi
-    # are linked.
-    insert_transformed_value = haskey(vi, vn) ? is_transformed(vi, vn) : is_transformed(vi)
-    val_to_insert, logjac = if insert_transformed_value
-        # Calculate the forward logjac and sum them up.
-        lt = link_transform(dist)
-        y, fwd_logjac = with_logabsdet_jacobian(lt, x)
-        transform = _compose_no_identity(transform, lt)
-        # Note that if we use VectorWithRanges with a full VarInfo, this double-Jacobian
-        # calculation wastes a lot of time going from linked vectorised -> unlinked ->
-        # linked, and `inv_logjac` will also just be the negative of `fwd_logjac`.
-        #
-        # However, `VectorWithRanges` is only really used with `OnlyAccsVarInfo`, in which
-        # case this branch is never hit (since `in_varinfo` will always be false). It does
-        # mean that the combination of InitFromParams{<:VectorWithRanges} with a full,
-        # linked, VarInfo will be very slow. That should never really be used, though. So
-        # (at least for now) we can leave this branch in for full generality with other
-        # combinations of init strategies / VarInfo.
-        #
-        # TODO(penelopeysm): Figure out one day how to refactor this. The crux of the issue
-        # is that the transform used by `VectorWithRanges` is `from_linked_VEC_transform`,
-        # which is NOT the same as `inverse(link_transform)` (because there is an additional
-        # vectorisation step). We need `init` and `tilde_assume!!` to share this information
-        # but it's not clear right now how to do this. In my opinion, there are a couple of
-        # potential ways forward:
-        #
-        # 1. Just remove metadata entirely so that there is never any need to construct
-        # a linked vectorised value again. This would require us to use VAIMAcc as the only
-        # way of getting values. I consider this the best option, but it might take a long
-        # time.
-        #
-        # 2. Clean up the behaviour of bijectors so that we can have a complete separation
-        # between the linking and vectorisation parts of it. That way, `x` can either be
-        # unlinked, unlinked vectorised, linked, or linked vectorised, and regardless of
-        # which it is, we should only need to apply at most one linking and one
-        # vectorisation transform. Doing so would allow us to remove the first call to
-        # `with_logabsdet_jacobian`, and instead compose and/or uncompose the
-        # transformations before calling `with_logabsdet_jacobian` once.
-        y, -inv_logjac + fwd_logjac
-    else
-        x, -inv_logjac
-    end
-    # Add the new value to the VarInfo. `push!!` errors if the value already
-    # exists, hence the need for setindex!!.
-    vi = if vi isa VNTVarInfo
-        x_size = hasmethod(size, Tuple{typeof(x)}) ? size(x) : ()
-        vi = push!!(vi, vn, val_to_insert, inverse(transform), x_size)
-    else
-        push!!(vi, vn, val_to_insert, dist)
-    end
-    # Neither of these set the `trans` flag so we have to do it manually if
-    # necessary.
-    if insert_transformed_value
-        vi = set_transformed!!(vi, true, vn)
-    end
+    x, init_logjac = with_logabsdet_jacobian(transform, val)
+    vi, logjac = setindex_with_dist!!(vi, x, dist, vn)
     # `accumulate_assume!!` wants untransformed values as the second argument.
-    vi = accumulate_assume!!(vi, x, logjac, vn, dist)
+    vi = accumulate_assume!!(vi, x, init_logjac + logjac, vn, dist)
     # We always return the untransformed value here, as that will determine
     # what the lhs of the tilde-statement is set to.
     return x, vi

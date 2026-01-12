@@ -1085,7 +1085,9 @@ Base.nameof(model::Model{<:Function}) = nameof(model.f)
 Generate a sample of type `T` from the prior distribution of the `model`.
 """
 function Base.rand(rng::Random.AbstractRNG, ::Type{T}, model::Model) where {T}
-    x = last(init!!(rng, model, SimpleVarInfo{Float64}(OrderedDict{VarName,Any}())))
+    vi = VarInfo()
+    vi = setaccs!!(vi, DynamicPPL.AccumulatorTuple())
+    x = last(init!!(rng, model, vi))
     return values_as(x, T)
 end
 

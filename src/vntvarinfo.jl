@@ -61,19 +61,39 @@ function setindex_internal!!(vi::VNTVarInfo, val, vn::VarName)
     return VNTVarInfo(new_values, vi.accs)
 end
 
-BangBang.setindex!!(vi::VNTVarInfo, val, vn::VarName) = push!!(vi, vn, val)
-
-# TODO(mhauru) The arguments are in the wrong order, but this is the current convetion.
-function BangBang.push!!(
-    vi::VNTVarInfo, vn::VarName, val, transform=typed_identity, orig_size=size(val)
-)
+# TODO(mhauru) It shouldn't really be VarInfo's business to know about `dist`. However,
+# we need `dist` to determine the linking transformation (or even just the vectorisation
+# transformation, in the case of ProductNamedTupleDistribions), and if we leave the work
+# of doing the transformation to the caller, it'll be done even when e.g. using
+# OnlyAccsVarInfo. Hence having this function. It should eventually hopefully be removed
+# once VAIMAcc is the only way to get values out of an evaluation.
+function setindex_with_dist!!(vi::VNTVarInfo, val, dist::Distribution, vn::VarName)
+    # Determine whether to insert a transformed value into `vi`.
+    # If the VarInfo alrady had a value for this variable, we will
+    # keep the same linked status as in the original VarInfo. If not, we
+    # check the rest of the VarInfo to see if other variables are linked.
+    # is_transformed(vi) returns true if vi is nonempty and all variables in vi
+    # are linked.
+    insert_transformed_value = haskey(vi, vn) ? is_transformed(vi, vn) : is_transformed(vi)
     # TODO(mhauru) We should move away from having all values vectorised by default.
     # That messes with our use of unflatten though, so will require some thought.
-    transform = _compose_no_identity(transform, from_vec_transform(val))
-    val = to_vec_transform(val)(val)
-    new_tv = TransformedValue(val, false, transform, orig_size)
-    new_values = setindex!!(vi.values, new_tv, vn)
-    return VNTVarInfo(new_values, vi.accs)
+    transform = if insert_transformed_value
+        from_linked_vec_transform(dist)
+    else
+        from_vec_transform(dist)
+    end
+    transformed_val, logjac = with_logabsdet_jacobian(inverse(transform), val)
+    val_size = hasmethod(size, Tuple{typeof(val)}) ? size(val) : ()
+    tv = TransformedValue(transformed_val, insert_transformed_value, transform, val_size)
+    vi = VNTVarInfo(setindex!!(vi.values, tv, vn), vi.accs)
+    return vi, logjac
+end
+
+function BangBang.setindex!!(vi::VNTVarInfo, val, vn::VarName)
+    transform = from_vec_transform(val)
+    transformed_val = inverse(transform)(val)
+    tv = TransformedValue(transformed_val, false, transform, size(val))
+    return VNTVarInfo(setindex!!(vi.values, tv, vn), vi.accs)
 end
 
 Base.keys(vi::VNTVarInfo) = keys(vi.values)
@@ -85,6 +105,20 @@ function set_transformed!!(vi::VNTVarInfo, linked::Bool, vn::VarName)
     new_values = setindex!!(vi.values, new_tv, vn)
     return VNTVarInfo(new_values, vi.accs)
 end
+
+# VNTVarInfo does not care whether the transformation was Static or Dynamic, it just tracks
+# whether one was applied at all.
+function set_transformed!!(vi::VNTVarInfo, ::AbstractTransformation, vn::VarName)
+    return set_transformed!!(vi, true, vn)
+end
+
+set_transformed!!(vi::VNTVarInfo, ::AbstractTransformation) = set_transformed!!(vi, true)
+
+function set_transformed!!(vi::VNTVarInfo, ::NoTransformation, vn::VarName)
+    return set_transformed!!(vi, false, vn)
+end
+
+set_transformed!!(vi::VNTVarInfo, ::NoTransformation) = set_transformed!!(vi, false)
 
 function set_transformed!!(vi::VNTVarInfo, linked::Bool)
     new_values = map_values!!(vi.values) do tv
@@ -236,6 +270,23 @@ function values_as(vi::VNTVarInfo, ::Type{T}) where {T<:AbstractDict}
         val = tv.transform(tv.val)
         return setindex!!(cumulant, val, vn)
     end, vi.values; init=T())
+end
+
+# TODO(mhauru) I really dislike this sort of conversion to Symbols, but it's the current
+# interface provided by rand(::Model). We should change that to return a VarNamedTuple
+# instead, and then this method (and any other values_as methods for NamedTuple) could be
+# removed.
+function values_as(vi::VNTVarInfo, ::Type{NamedTuple})
+    return mapfoldl(
+        identity,
+        function (cumulant, pair)
+            vn, tv = pair
+            val = tv.transform(tv.val)
+            return setindex!!(cumulant, val, Symbol(vn))
+        end,
+        vi.values;
+        init=NamedTuple(),
+    )
 end
 
 # TODO(mhauru) These two are now redundant, just conforming to the old interface

@@ -406,7 +406,7 @@ from_vec_transform(dist::Distribution) = from_vec_transform_for_size(size(dist))
 from_vec_transform(::UnivariateDistribution) = UnwrapSingletonTransform()
 from_vec_transform(dist::LKJCholesky) = ToChol(dist.uplo) ∘ ReshapeTransform(size(dist))
 
-struct ProductNamedTupleUnvecTransform{names,T<:NamedTuple{names}}
+struct ProductNamedTupleUnvecTransform{names,T<:NamedTuple{names}} <: Bijectors.Bijector
     dists::T
     # The `i`-th input range corresponds to the segment of the input vector
     # that belongs to the `i`-th distribution.
@@ -439,11 +439,28 @@ end
     return expr
 end
 
+@generated function (inv_trf::Bijectors.Inverse{<:ProductNamedTupleUnvecTransform{names}})(
+    x::NamedTuple{names}
+) where {names}
+    exprs = Expr[]
+    for name in names
+        push!(exprs, :(to_vec_transform(inv_trf.orig.dists.$name)(x.$name)))
+    end
+    return :(vcat($(exprs...)))
+end
+
 function from_vec_transform(dist::Distributions.ProductNamedTupleDistribution)
     return ProductNamedTupleUnvecTransform(dist)
 end
+
 function Bijectors.with_logabsdet_jacobian(f::ProductNamedTupleUnvecTransform, x)
     return f(x), zero(LogProbType)
+end
+
+function Bijectors.with_logabsdet_jacobian(
+    inv_f::Bijectors.Inverse{<:ProductNamedTupleUnvecTransform}, x
+)
+    return inv_f(x), zero(LogProbType)
 end
 
 # This function returns the length of the vector that the function from_vec_transform
