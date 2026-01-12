@@ -448,8 +448,10 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
                 # start by generating some rubbish values
                 vi = deepcopy(empty_vi)
                 old_x, old_y = 100000.00, [300000.00, 500000.00]
-                push!!(vi, @varname(x), old_x, Normal())
-                push!!(vi, @varname(y), old_y, MvNormal(fill(old_x, 2), I))
+                vi, _ = DynamicPPL.setindex_with_dist!!(vi, old_x, Normal(), @varname(x))
+                vi, _ = DynamicPPL.setindex_with_dist!!(
+                    vi, old_y, MvNormal(fill(old_x, 2), I), @varname(y)
+                )
                 # then overwrite it
                 _, new_vi = DynamicPPL.init!!(model, vi, strategy)
                 new_x, new_y = new_vi[@varname(x)], new_vi[@varname(y)]

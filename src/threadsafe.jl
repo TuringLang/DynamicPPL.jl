@@ -67,16 +67,6 @@ end
 
 has_varnamedvector(vi::ThreadSafeVarInfo) = has_varnamedvector(vi.varinfo)
 
-function BangBang.push!!(vi::ThreadSafeVarInfo, vn::VarName, r, dist::Distribution)
-    return Accessors.@set vi.varinfo = push!!(vi.varinfo, vn, r, dist)
-end
-
-function BangBang.push!!(
-    vi::ThreadSafeVarInfo, vn::VarName, r, transform=typed_identity, orig_size=size(r)
-)
-    return Accessors.@set vi.varinfo = push!!(vi.varinfo, vn, r, transform, orig_size)
-end
-
 syms(vi::ThreadSafeVarInfo) = syms(vi.varinfo)
 
 setval!(vi::ThreadSafeVarInfo, val, vn::VarName) = setval!(vi.varinfo, val, vn)
@@ -166,6 +156,11 @@ function getindex(vi::ThreadSafeVarInfo, vn::VarName, dist::Distribution)
 end
 function getindex(vi::ThreadSafeVarInfo, vns::AbstractVector{<:VarName}, dist::Distribution)
     return getindex(vi.varinfo, vns, dist)
+end
+
+function setindex_with_dist!!(vi::ThreadSafeVarInfo, val, dist::Distribution, vn::VarName)
+    vi_inner, logjac = setindex_with_dist!!(vi.varinfo, val, dist, vn)
+    return Accessors.@set(vi.varinfo = vi_inner), logjac
 end
 
 function BangBang.setindex!!(vi::ThreadSafeVarInfo, vals, vn::VarName)

@@ -17,7 +17,7 @@ end
 @testset "varinfo.jl" begin
     @testset "Base" begin
         # Test Base functions:
-        #   in, keys, haskey, isempty, push!!, empty!!,
+        #   in, keys, haskey, isempty, setindex!!, empty!!,
         #   getindex, setindex!, getproperty, setproperty!
 
         vi = VarInfo()
@@ -30,7 +30,7 @@ end
         @test isempty(vi)
         @test !haskey(vi, vn)
         @test !(vn in keys(vi))
-        vi = push!!(vi, vn, r)
+        vi = setindex!!(vi, r, vn)
         @test !isempty(vi)
         @test haskey(vi, vn)
         @test vn in keys(vi)
@@ -44,7 +44,7 @@ end
 
         vi = empty!!(vi)
         @test isempty(vi)
-        vi = push!!(vi, vn, r)
+        vi = setindex!!(vi, r, vn)
         @test !isempty(vi)
     end
 
@@ -223,7 +223,7 @@ end
         vn_x = @varname x
         r = rand()
 
-        vi = push!!(vi, vn_x, r)
+        vi = setindex!!(vi, r, vn_x)
 
         # is_transformed is unset by default
         @test !is_transformed(vi, vn_x)
@@ -637,9 +637,9 @@ end
     @testset "merge different dimensions" begin
         vn = @varname(x)
         vi_single = VarInfo()
-        vi_single = push!!(vi_single, vn, 1.0)
+        vi_single = setindex!!(vi_single, 1.0, vn)
         vi_double = VarInfo()
-        vi_double = push!!(vi_double, vn, [0.5, 0.6])
+        vi_double = setindex!!(vi_double, [0.5, 0.6], vn)
         @test merge(vi_single, vi_double)[vn] == [0.5, 0.6]
         @test merge(vi_double, vi_single)[vn] == 1.0
     end
