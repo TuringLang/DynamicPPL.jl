@@ -553,15 +553,6 @@ init
 get_param_eltype
 ```
 
-### Choosing a suitable VarInfo
-
-There is also the _experimental_ [`DynamicPPL.Experimental.determine_suitable_varinfo`](@ref), which uses static checking via [JET.jl](https://github.com/aviatesk/JET.jl) to determine whether one should use [`DynamicPPL.typed_varinfo`](@ref) or [`DynamicPPL.untyped_varinfo`](@ref), depending on which supports the model:
-
-```@docs
-DynamicPPL.Experimental.determine_suitable_varinfo
-DynamicPPL.Experimental.is_suitable_varinfo
-```
-
 ### Converting VarInfos to/from chains
 
 It is a fairly common operation to want to convert a collection of `VarInfo` objects into a chains object for downstream analysis.

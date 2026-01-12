@@ -211,7 +211,6 @@ include("logdensityfunction.jl")
 include("model_utils.jl")
 include("extract_priors.jl")
 include("values_as_in_model.jl")
-include("experimental.jl")
 include("chains.jl")
 include("bijector.jl")
 
@@ -223,27 +222,6 @@ include("deprecated.jl")
 
 if isdefined(Base.Experimental, :register_error_hint)
     function __init__()
-        # Better error message if users forget to load JET.jl
-        Base.Experimental.register_error_hint(MethodError) do io, exc, argtypes, _
-            requires_jet =
-                exc.f === DynamicPPL.Experimental._determine_varinfo_jet &&
-                length(argtypes) >= 2 &&
-                argtypes[1] <: Model &&
-                argtypes[2] <: AbstractContext
-            requires_jet |=
-                exc.f === DynamicPPL.Experimental.is_suitable_varinfo &&
-                length(argtypes) >= 3 &&
-                argtypes[1] <: Model &&
-                argtypes[2] <: AbstractContext &&
-                argtypes[3] <: AbstractVarInfo
-            if requires_jet
-                print(
-                    io,
-                    "\n$(exc.f) requires JET.jl to be loaded. Please run `using JET` before calling $(exc.f).",
-                )
-            end
-        end
-
         # Same for MarginalLogDensities.jl
         Base.Experimental.register_error_hint(MethodError) do io, exc, argtypes, _
             requires_mld =

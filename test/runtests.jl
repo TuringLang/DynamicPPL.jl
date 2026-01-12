@@ -28,8 +28,6 @@ using Test
 using Distributions
 using LinearAlgebra # Diagonal
 
-using JET: JET
-
 using Combinatorics: combinations
 using OrderedCollections: OrderedSet
 
@@ -76,7 +74,6 @@ include("test_util.jl")
         include("logdensityfunction.jl")
         @testset "extensions" begin
             include("ext/DynamicPPLMCMCChainsExt.jl")
-            include("ext/DynamicPPLJETExt.jl")
             include("ext/DynamicPPLMarginalLogDensitiesExt.jl")
         end
         @testset "ad" begin
