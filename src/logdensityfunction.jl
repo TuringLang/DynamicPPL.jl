@@ -320,7 +320,7 @@ function get_ranges_and_linked(vi::VNTVarInfo)
             val = tv.val
             range = offset:(offset + length(val) - 1)
             offset += length(val)
-            ral = RangeAndLinked(range, tv.linked, size(val))
+            ral = RangeAndLinked(range, tv.linked, tv.size)
             vnt = setindex!!(vnt, ral, vn)
             return vnt, offset
         end,
