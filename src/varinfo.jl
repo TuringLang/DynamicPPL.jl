@@ -145,34 +145,32 @@ Set the value of `vn` in `vi` to `val`, applying a transformation based on `dist
 
 `val` is taken to be the actual value of the variable, and is transformed into the internal
 (vectorised) representation using a transformation based on `dist`. If the variable is
-linked in `vi`, or doesn't exist in `vi` but all other variables in `vi` are linked, the
-linking transformation is used; otherwise, the standard vector transformation is used.
+currently linked in `vi`, or doesn't exist in `vi` but all other variables in `vi` are
+linked, the linking transformation is used; otherwise, the standard vector transformation is
+used.
 
 Returns the modified `vi` together with the log absolute determinant of the Jacobian of the
 transformation applied.
 """
 function setindex_with_dist!!(vi::VarInfo, val, dist::Distribution, vn::VarName)
-    # Determine whether to insert a transformed value into `vi`.
-    # If the VarInfo alrady had a value for this variable, we will
-    # keep the same linked status as in the original VarInfo. If not, we
-    # check the rest of the VarInfo to see if other variables are linked.
-    # is_transformed(vi) returns true if vi is nonempty and all variables in vi
-    # are linked.
-    insert_transformed_value = haskey(vi, vn) ? is_transformed(vi, vn) : is_transformed(vi)
-    # TODO(mhauru) We should move away from having all values vectorised by default.
-    # That messes with our use of unflatten though, so will require some thought.
-    transform = if insert_transformed_value
+    link = haskey(vi, vn) ? is_transformed(vi, vn) : is_transformed(vi)
+    transform = if link
         from_linked_vec_transform(dist)
     else
         from_vec_transform(dist)
     end
     transformed_val, logjac = with_logabsdet_jacobian(inverse(transform), val)
+    # All values for which `size` is not defined are assumed to be scalars.
     val_size = hasmethod(size, Tuple{typeof(val)}) ? size(val) : ()
-    tv = TransformedValue(transformed_val, insert_transformed_value, transform, val_size)
+    tv = TransformedValue(transformed_val, link, transform, val_size)
     vi = VarInfo(setindex!!(vi.values, tv, vn), vi.accs)
     return vi, logjac
 end
 
+# TODO(mhauru) The below is somewhat unsafe or incomplete: For instance, from_vec_transform
+# isn't defined for NamedTuples. However, this is needed in some places where values for
+# in a VarInfo are set outside the context of a `tilde_assume!!` and no distribution is
+# available. Hopefully we'll get rid of this eventually.
 """
     setindex!!(vi::VarInfo, val, vn::VarName)
 
@@ -228,17 +226,11 @@ end
 
 Get the internal (vectorised) value of variable `vn` in `vi`.
 """
-function getindex_internal(vi::VarInfo, vn::VarName)
-    tv = getindex(vi.values, vn)
-    return tv.val
-end
-
+getindex_internal(vi::VarInfo, vn::VarName) = getindex(vi.values, vn).val
+# TODO(mhauru) The below should be removed together with unflatten!!.
 getindex_internal(vi::VarInfo, ::Colon) = values_as(vi, Vector)
 
-function is_transformed(vi::VarInfo, vn::VarName)
-    tv = getindex(vi.values, vn)
-    return tv.linked
-end
+is_transformed(vi::VarInfo, vn::VarName) = getindex(vi.values, vn).linked
 
 function from_internal_transform(::VarInfo, ::VarName, dist::Distribution)
     return from_vec_transform(dist)
@@ -253,6 +245,9 @@ function from_internal_transform(vi::VarInfo, vn::VarName)
 end
 
 function from_linked_internal_transform(vi::VarInfo, vn::VarName)
+    if !is_transformed(vi, vn)
+        error("Variable $vn is not linked; cannot get linked transformation.")
+    end
     return getindex(vi.values, vn).transform
 end
 
@@ -330,11 +325,10 @@ function link!!(t::StaticTransformation{<:Bijectors.Transform}, vi::VarInfo, ::M
     b = inverse(t.bijector)
     x = vi[:]
     y, logjac = with_logabsdet_jacobian(b, x)
-    # Set parameters and add the logjac term.
     # TODO(mhauru) This doesn't set the transforms of `vi`. With the old Metadata that meant
     # that getindex(vi, vn) would apply the default link transform of the distribution. With
     # the new VarNamedTuple-based VarInfo it means that getindex(vi, vn) won't apply any
-    # transform. Neither is correct, rather the transform should be the inverse of b.
+    # link transform. Neither is correct, rather the transform should be the inverse of b.
     vi = unflatten!!(vi, y)
     if hasacc(vi, Val(:LogJacobian))
         vi = acclogjac!!(vi, logjac)
@@ -417,7 +411,7 @@ function unflatten!!(vi::VarInfo, vec::AbstractVector)
         old_val = tv.val
         if !(old_val isa AbstractVector)
             error(
-                "Can not unflatten a VarInfo for which existing values are not vectors:" *
+                "Can't unflatten a VarInfo for which existing values are not vectors:" *
                 " Got value of type $(typeof(old_val)).",
             )
         end
@@ -444,6 +438,8 @@ end
     merge(varinfo_left::VarInfo, varinfo_right::VarInfo)
 
 Merge two `VarInfo`s into a new `VarInfo` containing all variables from both.
+
+The accumulators are taken exclusively from `varinfo_right`.
 
 If a variable exists in both `varinfo_left` and `varinfo_right`, the value from
 `varinfo_right` is used.
