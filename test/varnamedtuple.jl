@@ -667,6 +667,9 @@ Base.size(st::SizedThing) = st.size
     end
 
     @testset "length" begin
+        # Type inference for length fails in some cases on Julia versions < 1.11
+        inference_broken = VERSION < v"1.11"
+
         vnt = VarNamedTuple()
         @test @inferred(length(vnt)) == 0
 
@@ -683,23 +686,23 @@ Base.size(st::SizedThing) = st.size
         @test @inferred(length(vnt)) == 3
 
         vnt = setindex!!(vnt, -1.0, @varname(d[4]))
-        @test @inferred(length(vnt)) == 4
+        @test @inferred(length(vnt)) == 4 broken = inference_broken
 
         vnt = setindex!!(vnt, ["a", "b"], @varname(d[1:2]))
-        @test @inferred(length(vnt)) == 6
+        @test @inferred(length(vnt)) == 6 broken = inference_broken
 
         vnt = setindex!!(vnt, 2.0, @varname(e.f[3].g.h[2].i))
         vnt = setindex!!(vnt, 3.0, @varname(e.f[3].g.h[2].j))
-        @test @inferred(length(vnt)) == 8
+        @test @inferred(length(vnt)) == 8 broken = inference_broken
 
         vnt = setindex!!(vnt, SizedThing((3, 2)), @varname(x[1, 2:4, 2, 1:2, 3]))
-        @test @inferred(length(vnt)) == 14
+        @test @inferred(length(vnt)) == 14 broken = inference_broken
 
         vnt = setindex!!(vnt, SizedThing((3, 2)), @varname(x[1, 4:6, 2, 1:2, 3]))
-        @test @inferred(length(vnt)) == 14
+        @test @inferred(length(vnt)) == 14 broken = inference_broken
 
         vnt = setindex!!(vnt, [:a, :b], @varname(y[4][3][2][1:2]))
-        @test @inferred(length(vnt)) == 16
+        @test @inferred(length(vnt)) == 16 broken = inference_broken
         test_invariants(vnt)
     end
 
@@ -917,7 +920,9 @@ Base.size(st::SizedThing) = st.size
         @test haskey(vnt, @varname(y.z[2, 2:3, 3, 2:3, 4]))
         @test @inferred(getindex(vnt, @varname(y.z[2, 2:3, 3, 2:3, 4]))) == val
         @test haskey(vnt, @varname(y.z[3, 2:3, 3, 2:3, 4]))
-        @test @inferred(getindex(vnt, @varname(y.z[3, 2:3, 3, 2:3, 4]))) == val
+        # Type inference fails on this one for Julia versions < 1.11
+        @test @inferred(getindex(vnt, @varname(y.z[3, 2:3, 3, 2:3, 4]))) == val broken =
+            VERSION < v"1.11"
     end
 
     @testset "map and friends" begin
