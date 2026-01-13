@@ -502,6 +502,9 @@ Base.size(st::SizedThing) = st.size
         vnt = setindex!!(vnt, SizedThing((3, 1, 4)), @varname(p[2, 1][2:4, 5:5, 11:14]))
         test_invariants(vnt)
 
+        # TODO(mhauru) I'm a bit saddened by the lack of type stability for subset: It's
+        # return type always infers as VarNamedTuple. Improving this would require a
+        # different implementation of subset.
         @test subset(vnt, VarName[]) == VarNamedTuple()
         @test subset(vnt, (@varname(z),)) == VarNamedTuple()
         @test subset(vnt, (@varname(d[4]),)) == VarNamedTuple()
@@ -1025,7 +1028,8 @@ Base.size(st::SizedThing) = st.size
         @test @inferred(getindex(vnt_mapped, @varname(w[4][3][2, 1]))) == "b"
 
         call_counter = 0
-        vnt_applied = @inferred(apply!!(f_val, vnt, @varname(a)))
+        vnt_applied = copy(vnt)
+        vnt_applied = @inferred(apply!!(f_val, vnt_applied, @varname(a)))
         @test call_counter == 1
         test_invariants(vnt_applied; skip=(:parseeval,))
         @test @inferred(getindex(vnt_applied, @varname(a))) == 11

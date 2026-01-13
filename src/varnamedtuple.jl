@@ -26,7 +26,7 @@ function _haskey end
 Like `setindex!!`, but special-cased for `VarNamedTuple` and `PartialArray` to recurse
 into nested structures.
 
-The `allow_new` keywword argument is a performance optimisation: If it is set to
+The `allow_new` keyword argument is a performance optimisation: If it is set to
 `Val(false)`, the function can assume that the key being set already exists in `collection`.
 This allows skipping some code paths, which may have a minor benefit at runtime, but more
 importantly, allows for better constant propagation and type stability at compile time.
@@ -541,7 +541,7 @@ function _check_index_validity(pa::PartialArray, inds::NTuple{N,INDEX_TYPES}) wh
 end
 
 function _getindex(pa::PartialArray, inds::Vararg{INDEX_TYPES})
-    # The original, non-bare inds is needed later for ArrayLikeBlock checks.
+    # The unmodified inds is needed later for ArrayLikeBlock checks.
     orig_inds = inds
     inds = _unwrap_concretized_slice.(inds)
     _check_index_validity(pa, inds)
@@ -1237,6 +1237,7 @@ end
     end
 end
 
+# As above but with a prefix VarName `vn`.
 @generated function _map_recursive!!(func, vnt::VarNamedTuple{Names}, vn::T) where {Names,T}
     exs = Expr[]
     for name in Names
@@ -1273,10 +1274,13 @@ map_values!!(func, vnt::VarNamedTuple) = map_pairs!!(pair -> func(pair.second), 
 
 Apply `f` to all elements of `vnt`, and reduce the results using `op`, starting from `init`.
 
+The order is the same as in `mapfoldl`, i.e. left-associative with `init` as the
+left-most value.
+
 `init` is a keyword argument to conform to the usual `mapreduce` interface in Base, but it
 is not optional.
 
-`f` op` should accept pairs of `VarName` and value.
+`f` op` should accept pairs of `varname => value`.
 """
 function Base.mapreduce(f, op, vnt::VarNamedTuple; init=nothing)
     if init === nothing
@@ -1298,41 +1302,30 @@ _mapreduce_recursive(f, op, pa::ArrayLikeBlock, vn, init) = op(init, f(vn => pa.
 @generated function _mapreduce_recursive(
     f, op, vnt::VarNamedTuple{Names}, init
 ) where {Names}
-    exs = Expr[]
-    push!(
-        exs,
-        quote
-            result = init
-        end,
-    )
+    exs = Expr[:(result = init)]
     for name in Names
         push!(
             exs,
-            :(
+            quote
                 result = _mapreduce_recursive(
                     f, op, vnt.data.$name, VarName{$(QuoteNode(name))}(), result
                 )
-            ),
+            end,
         )
     end
     push!(exs, :(return result))
     return Expr(:block, exs...)
 end
 
+# As above but with a prefix VarName `vn`.
 @generated function _mapreduce_recursive(
     f, op, vnt::VarNamedTuple{Names}, vn, init
 ) where {Names}
-    exs = Expr[]
-    push!(
-        exs,
-        quote
-            result = init
-        end,
-    )
+    exs = Expr[:(result = init)]
     for name in Names
         push!(
             exs,
-            :(
+            quote
                 result = _mapreduce_recursive(
                     f,
                     op,
@@ -1340,7 +1333,7 @@ end
                     AbstractPPL.prefix(VarName{$(QuoteNode(name))}(), vn),
                     result,
                 )
-            ),
+            end,
         )
     end
     push!(exs, :(return result))
@@ -1354,7 +1347,7 @@ function _mapreduce_recursive(f, op, pa::PartialArray, vn, init)
     albs_seen = Set{ArrayLikeBlock}()
     @inbounds for i in CartesianIndices(pa.mask)
         if pa.mask[i]
-            val = @inbounds pa.data[i]
+            val = pa.data[i]
             is_alb = val isa ArrayLikeBlock
             if is_alb
                 if val in albs_seen
@@ -1370,6 +1363,10 @@ function _mapreduce_recursive(f, op, pa::PartialArray, vn, init)
     return result
 end
 
+# TODO(mhauru) We could try to keep the return types of these more tight, rather than always
+# return the same, abstract element type. Would that be better? It would be faster in some
+# cases, but would be less consistent, and could result in a lot of allocations in the
+# mapreduce, as the element type is gradually expanded.
 Base.keys(vnt::VarNamedTuple) = mapreduce(first, push!, vnt; init=VarName[])
 Base.values(vnt::VarNamedTuple) = mapreduce(pair -> pair.second, push!, vnt; init=Any[])
 
