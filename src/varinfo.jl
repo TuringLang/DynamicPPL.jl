@@ -1,12 +1,67 @@
+"""
+    VarInfo{T<:VarNamedTuple,Accs<:AccumulatorTuple} <: AbstractVarInfo
+
+The default implementation of `AbstractVarInfo`, storing variable values and accumulators.
+
+`VarInfo` is quite a thin wrapper around a `VarNamedTuple` storing the variable values,
+and a tuple of accumulators. The only really noteworthy thing about it is that it stores
+the values of variables vectorised as instances of `TransformedValue`. That is, it stores
+each value as a vector and a transformation to be applied to that vector to get the actual
+value. It also stores whether the transformation is such that it guarantees all real vectors
+to be valid internal representations of the variable (i.e., whether the variable has been
+linked), as well as the size of the actual post-transformation value. These are all fields
+of [`TransformedValue`](@ref).
+
+Note that `setindex!!` and `getindex` on `VarInfo` deal with the actual values of variables.
+To get access to the internal vectorised values, use [`getindex_internal`](@ref),
+[`setindex_internal!!`](@ref), and [`unflatten!!`](@ref).
+
+There's also a `VarInfo`-specific function [`setindex_with_dist!!`](@ref), which sets a
+variable's value with a transformation based on the statistical distribution this value is
+a sample for.
+
+For more details on the internal storage, see documentation of [`TransformedValue`](@ref) and
+[`VarNamedTuple`](@ref).
+
+# Fields
+$(TYPEDFIELDS)
+
+"""
 struct VarInfo{T<:VarNamedTuple,Accs<:AccumulatorTuple} <: AbstractVarInfo
     values::T
     accs::Accs
 end
 
+# TODO(mhauru) The policy of vectorising all values was set when the old VarInfo type was
+# using a Vector as the internal storage in all cases. We should revisit this, and allow
+# values to be stored "raw", since VarNamedTuple supports it.
+
+# TODO(mhauru) Related to the above, I think we should reconsider whether we should store
+# transformations at all. We rarely use them, since they may be dynamic in a model.
+# tilde_assume!! rather gets the transformation from the current distribution encountered
+# during model execution. However, this would change the interface quite a lot, so I want to
+# finish implementing VarInfo using VNT (mostly) respecting the old interface first.
+
+"""
+    TransformedValue{ValType,TransformType,SizeType}
+
+A struct for storing a variable's value in its internal (vectorised) form.
+
+# Fields
+$(TYPEDFIELDS)
+"""
 struct TransformedValue{ValType,TransformType,SizeType}
+    "The internal (vectorised) value."
     val::ValType
+    """Boolean indicating whether the variable is linked, i.e. the transformation maps all
+    real vectors to valid values."""
     linked::Bool
+    """The transformation from internal (vectorised) to actual value. In other words, the
+    actual value of the variable being stored is `transform(val)`."""
     transform::TransformType
+    """The size of the actual value after transformation. This is needed when a
+    TransformedValue is stored as a block in an array (see [`PartialArray`](@ref) in
+    `VarNamedTuples`)."""
     size::SizeType
 end
 
@@ -41,10 +96,10 @@ setaccs!!(vi::VarInfo, accs::AccumulatorTuple) = VarInfo(vi.values, accs)
 transformation(::VarInfo) = DynamicTransformation()
 
 Base.copy(vi::VarInfo) = VarInfo(copy(vi.values), copy(getaccs(vi)))
-
 Base.haskey(vi::VarInfo, vn::VarName) = haskey(vi.values, vn)
-
 Base.length(vi::VarInfo) = length(vi.values)
+Base.keys(vi::VarInfo) = keys(vi.values)
+Base.values(vi::VarInfo) = mapreduce(p -> p.second.val, push!, vi.values; init=Any[])
 
 function Base.getindex(vi::VarInfo, vn::VarName)
     tv = getindex(vi.values, vn)
@@ -64,6 +119,13 @@ Base.isempty(vi::VarInfo) = isempty(vi.values)
 Base.empty(vi::VarInfo) = VarInfo(empty(vi.values), map(reset, vi.accs))
 BangBang.empty!!(vi::VarInfo) = VarInfo(empty!!(vi.values), map(reset, vi.accs))
 
+"""
+    setindex_internal!!(vi::VarInfo, val, vn::VarName)
+
+Set the internal (vectorised) value of variable `vn` in `vi` to `val`.
+
+This does not change the transformation or linked status of the variable.
+"""
 function setindex_internal!!(vi::VarInfo, val, vn::VarName)
     old_tv = getindex(vi.values, vn)
     new_tv = TransformedValue(val, old_tv.linked, old_tv.transform, old_tv.size)
@@ -73,10 +135,23 @@ end
 
 # TODO(mhauru) It shouldn't really be VarInfo's business to know about `dist`. However,
 # we need `dist` to determine the linking transformation (or even just the vectorisation
-# transformation, in the case of ProductNamedTupleDistribions), and if we leave the work
-# of doing the transformation to the caller, it'll be done even when e.g. using
-# OnlyAccsVarInfo. Hence having this function. It should eventually hopefully be removed
-# once VAIMAcc is the only way to get values out of an evaluation.
+# transformation in the case of ProductNamedTupleDistribions), and if we leave the work
+# of doing the transformation to the caller (tilde_assume!!), it'll be done even when e.g.
+# using OnlyAccsVarInfo. Hence having this function. It should eventually hopefully be
+# removed once VAIMAcc is the only way to get values out of an evaluation.
+"""
+    setindex_with_dist!!(vi::VarInfo, val, dist::Distribution, vn::VarName)
+
+Set the value of `vn` in `vi` to `val`, applying a transformation based on `dist`.
+
+`val` is taken to be the actual value of the variable, and is transformed into the internal
+(vectorised) representation using a transformation based on `dist`. If the variable is
+linked in `vi`, or doesn't exist in `vi` but all other variables in `vi` are linked, the
+linking transformation is used; otherwise, the standard vector transformation is used.
+
+Returns the modified `vi` together with the log absolute determinant of the Jacobian of the
+transformation applied.
+"""
 function setindex_with_dist!!(vi::VarInfo, val, dist::Distribution, vn::VarName)
     # Determine whether to insert a transformed value into `vi`.
     # If the VarInfo alrady had a value for this variable, we will
@@ -99,6 +174,14 @@ function setindex_with_dist!!(vi::VarInfo, val, dist::Distribution, vn::VarName)
     return vi, logjac
 end
 
+"""
+    setindex!!(vi::VarInfo, val, vn::VarName)
+
+Set the value of `vn` in `vi` to `val`.
+
+The transformation for `vn` is reset to be the standard vector transformation for values of
+the type of `val` and linking status is set to false.
+"""
 function BangBang.setindex!!(vi::VarInfo, val, vn::VarName)
     transform = from_vec_transform(val)
     transformed_val = inverse(transform)(val)
@@ -106,9 +189,13 @@ function BangBang.setindex!!(vi::VarInfo, val, vn::VarName)
     return VarInfo(setindex!!(vi.values, tv, vn), vi.accs)
 end
 
-Base.keys(vi::VarInfo) = keys(vi.values)
-Base.values(vi::VarInfo) = mapreduce(p -> p.second.val, push!, vi.values; init=Any[])
+"""
+    set_transformed!!(vi::VarInfo, linked::Bool, vn::VarName)
 
+Set the linked status of variable `vn` in `vi` to `linked`.
+
+This does not change the value or transformation of the variable.
+"""
 function set_transformed!!(vi::VarInfo, linked::Bool, vn::VarName)
     old_tv = getindex(vi.values, vn)
     new_tv = TransformedValue(old_tv.val, linked, old_tv.transform, old_tv.size)
@@ -137,13 +224,16 @@ function set_transformed!!(vi::VarInfo, linked::Bool)
     return VarInfo(new_values, vi.accs)
 end
 
+"""
+    getindex_internal(vi::VarInfo, vn::VarName)
+
+Get the internal (vectorised) value of variable `vn` in `vi`.
+"""
 function getindex_internal(vi::VarInfo, vn::VarName)
     tv = getindex(vi.values, vn)
     return tv.val
 end
 
-# TODO(mhauru) This is mimicing old behaviour, but is now wrong: The internal
-# representation does not have to be a Vector.
 getindex_internal(vi::VarInfo, ::Colon) = values_as(vi, Vector)
 
 function is_transformed(vi::VarInfo, vn::VarName)
@@ -151,18 +241,16 @@ function is_transformed(vi::VarInfo, vn::VarName)
     return tv.linked
 end
 
-# TODO(mhauru) Other VarInfos have something like this. Do we need it? Or should we use the
-# below version?
 function from_internal_transform(::VarInfo, ::VarName, dist::Distribution)
     return from_vec_transform(dist)
 end
 
-# function from_internal_transform(vi::VarInfo, vn::VarName, ::Distribution)
-#     return getindex(vi.values, vn).transform
-# end
-
 function from_linked_internal_transform(::VarInfo, ::VarName, dist::Distribution)
     return from_linked_vec_transform(dist)
+end
+
+function from_internal_transform(vi::VarInfo, vn::VarName)
+    return getindex(vi.values, vn).transform
 end
 
 function from_linked_internal_transform(vi::VarInfo, vn::VarName)
@@ -337,11 +425,26 @@ function unflatten!!(vi::VarInfo, vec::AbstractVector)
     return VarInfo(new_values, vi.accs)
 end
 
+"""
+    subset(varinfo::VarInfo, vns)
+
+Create a new `VarInfo` containing only the variables in `vns`.
+
+`vns` can be almost any collection of `VarName`s, e.g. a `Set`, `Vector`, or `Tuple`.
+"""
 function subset(varinfo::VarInfo, vns)
     new_values = subset(varinfo.values, vns)
     return VarInfo(new_values, map(copy, getaccs(varinfo)))
 end
 
+"""
+    merge(varinfo_left::VarInfo, varinfo_right::VarInfo)
+
+Merge two `VarInfo`s into a new `VarInfo` containing all variables from both.
+
+If a variable exists in both `varinfo_left` and `varinfo_right`, the value from
+`varinfo_right` is used.
+"""
 function Base.merge(varinfo_left::VarInfo, varinfo_right::VarInfo)
     new_values = merge(varinfo_left.values, varinfo_right.values)
     new_accs = map(copy, getaccs(varinfo_right))
