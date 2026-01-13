@@ -16,7 +16,7 @@ StableRNGs = "860ef19b-820b-49d6-a774-d7a799459cd3"
 
 [compat]
 AbstractMCMC = "5"
-AbstractPPL = "0.13"
+AbstractPPL = "0.13, 0.14"
 Accessors = "0.1"
 Distributions = "0.25"
 Documenter = "1"
