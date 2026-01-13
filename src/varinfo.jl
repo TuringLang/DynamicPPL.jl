@@ -297,34 +297,6 @@ function values_as(vi::VarInfo, ::Type{NamedTuple})
     )
 end
 
-# TODO(mhauru) These two are now redundant, just conforming to the old interface
-# temporarily.
-function untyped_varinfo(
-    rng::Random.AbstractRNG,
-    model::Model,
-    init_strategy::AbstractInitStrategy=InitFromPrior(),
-)
-    return VarInfo(rng, model, init_strategy)
-end
-
-function typed_varinfo(
-    rng::Random.AbstractRNG,
-    model::Model,
-    init_strategy::AbstractInitStrategy=InitFromPrior(),
-)
-    return VarInfo(rng, model, init_strategy)
-end
-
-typed_varinfo(vi::VarInfo) = vi
-
-function typed_varinfo(model::Model, init_strategy::AbstractInitStrategy=InitFromPrior())
-    return typed_varinfo(Random.default_rng(), model, init_strategy)
-end
-
-function untyped_varinfo(model::Model, init_strategy::AbstractInitStrategy=InitFromPrior())
-    return untyped_varinfo(Random.default_rng(), model, init_strategy)
-end
-
 """
     VectorChunkIterator{T<:AbstractVector}
 

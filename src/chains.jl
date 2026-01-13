@@ -38,7 +38,6 @@ function ParamsWithStats(
     include_colon_eq::Bool=true,
     include_log_probs::Bool=true,
 )
-    varinfo = maybe_to_typed_varinfo(varinfo)
     accs = if include_log_probs
         (
             DynamicPPL.LogPriorAccumulator(),
@@ -63,13 +62,6 @@ function ParamsWithStats(
     end
     return ParamsWithStats(params, stats)
 end
-
-# Re-evaluating the model is unconscionably slow for untyped VarInfo. It's much faster to
-# convert it to a typed varinfo first, hence this method.
-# https://github.com/TuringLang/Turing.jl/issues/2604
-# maybe_to_typed_varinfo(vi::UntypedVarInfo) = typed_varinfo(vi)
-# maybe_to_typed_varinfo(vi::UntypedVectorVarInfo) = typed_vector_varinfo(vi)
-maybe_to_typed_varinfo(vi::AbstractVarInfo) = vi
 
 """
     ParamsWithStats(

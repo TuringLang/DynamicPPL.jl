@@ -36,16 +36,12 @@ function test_leaf_context(context::DynamicPPL.AbstractContext, model::DynamicPP
     # varinfos.) Thus we only test evaluation with VarInfos that are already
     # filled with values.
     @testset "evaluation" begin
-        # Generate a new filled untyped varinfo
-        _, untyped_vi = DynamicPPL.init!!(model, DynamicPPL.VarInfo())
-        typed_vi = DynamicPPL.typed_varinfo(untyped_vi)
+        # Generate a new filled varinfo
+        _, vi = DynamicPPL.init!!(model, DynamicPPL.VarInfo())
         # Set the test context as the new leaf context
         new_model = DynamicPPL.setleafcontext(model, context)
-        # Check that evaluation works
-        for vi in [untyped_vi, typed_vi]
-            _, vi = DynamicPPL.evaluate!!(new_model, vi)
-            @test vi isa DynamicPPL.VarInfo
-        end
+        _, vi = DynamicPPL.evaluate!!(new_model, vi)
+        @test vi isa DynamicPPL.VarInfo
     end
 end
 
@@ -73,13 +69,12 @@ function test_parent_context(context::DynamicPPL.AbstractContext, model::Dynamic
 
     @testset "initialisation and evaluation" begin
         new_model = contextualize(model, context)
-        for vi in [DynamicPPL.VarInfo(), DynamicPPL.typed_varinfo(DynamicPPL.VarInfo())]
-            # Initialisation
-            _, vi = DynamicPPL.init!!(new_model, DynamicPPL.VarInfo())
-            @test vi isa DynamicPPL.VarInfo
-            # Evaluation
-            _, vi = DynamicPPL.evaluate!!(new_model, vi)
-            @test vi isa DynamicPPL.VarInfo
-        end
+        vi = DynamicPPL.VarInfo()
+        # Initialisation
+        _, vi = DynamicPPL.init!!(new_model, DynamicPPL.VarInfo())
+        @test vi isa DynamicPPL.VarInfo
+        # Evaluation
+        _, vi = DynamicPPL.evaluate!!(new_model, vi)
+        @test vi isa DynamicPPL.VarInfo
     end
 end
