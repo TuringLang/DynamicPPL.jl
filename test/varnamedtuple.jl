@@ -1060,7 +1060,14 @@ Base.size(st::SizedThing) = st.size
         @test @inferred(getindex(vnt_applied, @varname(e.f[3].g.h[2].i))) == "ab"
         @test @inferred(getindex(vnt_applied, @varname(e.f[3].g.h[2].j))) == 5.0
 
-        vnt_applied = @inferred(apply!!(f_val, vnt_applied, @varname(e.f[3].g.h[2].j)))
+        vnt_applied = begin
+            # The @inferred fails on Julia 1.10.
+            @static if VERSION < v"1.11"
+                apply!!(f_val, vnt_applied, @varname(e.f[3].g.h[2].j))
+            else
+                @inferred(apply!!(f_val, vnt_applied, @varname(e.f[3].g.h[2].j)))
+            end
+        end
         @test call_counter == 5
         test_invariants(vnt_applied; skip=(:parseeval,))
         @test @inferred(getindex(vnt_applied, @varname(e.f[3].g.h[2].i))) == "ab"
