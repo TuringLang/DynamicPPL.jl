@@ -60,8 +60,7 @@ struct TransformedValue{ValType,TransformType,SizeType}
     actual value of the variable being stored is `transform(val)`."""
     transform::TransformType
     """The size of the actual value after transformation. This is needed when a
-    TransformedValue is stored as a block in an array (see [`PartialArray`](@ref) in
-    `VarNamedTuples`)."""
+    `TransformedValue` is stored as a block in an array."""
     size::SizeType
 end
 

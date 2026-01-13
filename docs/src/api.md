@@ -343,6 +343,8 @@ AbstractVarInfo
 
 ```@docs
 VarInfo
+DynamicPPL.TransformedValue
+DynamicPPL.setindex_with_dist!!
 ```
 
 One main characteristic of [`VarInfo`](@ref) is that samples are transformed to unconstrained Euclidean space and stored in a linearized form, as described in the [main Turing documentation](https://turinglang.org/docs/developers/transforms/dynamicppl/).
@@ -354,11 +356,7 @@ is_transformed
 set_transformed!!
 ```
 
-```@docs
-Base.empty!
-```
-
-#### `VarNamedTuple`
+#### `VarNamedTuple`s
 
 `VarInfo` is only a thin wrapper around [`VarNamedTuple`](@ref), which stores arbitrary data keyed by `VarName`s.
 For more details on `VarNamedTuple`, see the Internals section of our documentation.
@@ -366,6 +364,10 @@ For more details on `VarNamedTuple`, see the Internals section of our documentat
 ```@docs
 DynamicPPL.VarNamedTuples.VarNamedTuple
 DynamicPPL.VarNamedTuples.vnt_size
+DynamicPPL.VarNamedTuples.apply!!
+DynamicPPL.VarNamedTuples.map_pairs!!
+DynamicPPL.VarNamedTuples.map_values!!
+DynamicPPL.VarNamedTuples.PartialArray
 ```
 
 ### Accumulators
@@ -411,19 +413,10 @@ accloglikelihood!!
 ```@docs
 keys
 getindex
-push!!
 empty!!
 isempty
 DynamicPPL.getindex_internal
-DynamicPPL.setindex_internal!
-DynamicPPL.update_internal!
-DynamicPPL.insert_internal!
-DynamicPPL.length_internal
-DynamicPPL.reset!
-DynamicPPL.update!
-DynamicPPL.insert!
-DynamicPPL.loosen_types!!
-DynamicPPL.tighten_types!!
+DynamicPPL.setindex_internal!!
 ```
 
 ```@docs
