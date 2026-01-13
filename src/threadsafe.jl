@@ -82,61 +82,6 @@ function invlink!!(t::AbstractTransformation, vi::ThreadSafeVarInfo, args...)
     return Accessors.@set vi.varinfo = invlink!!(t, vi.varinfo, args...)
 end
 
-function link(t::AbstractTransformation, vi::ThreadSafeVarInfo, model::Model)
-    return Accessors.@set vi.varinfo = link(t, vi.varinfo, model)
-end
-
-function invlink(t::AbstractTransformation, vi::ThreadSafeVarInfo, model::Model)
-    return Accessors.@set vi.varinfo = invlink(t, vi.varinfo, model)
-end
-
-function link(
-    t::AbstractTransformation, vi::ThreadSafeVarInfo, vns::VarNameTuple, model::Model
-)
-    return Accessors.@set vi.varinfo = link(t, vi.varinfo, vns, model)
-end
-
-function invlink(
-    t::AbstractTransformation, vi::ThreadSafeVarInfo, vns::VarNameTuple, model::Model
-)
-    return Accessors.@set vi.varinfo = invlink(t, vi.varinfo, vns, model)
-end
-
-# Need to define explicitly for `DynamicTransformation` to avoid method ambiguity.
-# NOTE: We also can't just defer to the wrapped varinfo, because we need to ensure
-# consistency between `vi.accs_by_thread` field and `getacc(vi.varinfo)`, which accumulates
-# to define `getacc(vi)`.
-function link!!(t::DynamicTransformation, vi::ThreadSafeVarInfo, model::Model)
-    model = setleafcontext(model, DynamicTransformationContext{false}())
-    return set_transformed!!(last(evaluate!!(model, vi)), t)
-end
-
-function invlink!!(::DynamicTransformation, vi::ThreadSafeVarInfo, model::Model)
-    model = setleafcontext(model, DynamicTransformationContext{true}())
-    return set_transformed!!(last(evaluate!!(model, vi)), NoTransformation())
-end
-
-function link(t::DynamicTransformation, vi::ThreadSafeVarInfo, model::Model)
-    return link!!(t, deepcopy(vi), model)
-end
-
-function invlink(t::DynamicTransformation, vi::ThreadSafeVarInfo, model::Model)
-    return invlink!!(t, deepcopy(vi), model)
-end
-
-# These two StaticTransformation methods needed to resolve ambiguities
-function link!!(
-    t::StaticTransformation{<:Bijectors.Transform}, vi::ThreadSafeVarInfo, model::Model
-)
-    return Accessors.@set vi.varinfo = link!!(t, vi.varinfo, model)
-end
-
-function invlink!!(
-    t::StaticTransformation{<:Bijectors.Transform}, vi::ThreadSafeVarInfo, model::Model
-)
-    return Accessors.@set vi.varinfo = invlink!!(t, vi.varinfo, model)
-end
-
 function maybe_invlink_before_eval!!(vi::ThreadSafeVarInfo, model::Model)
     # Defer to the wrapped `AbstractVarInfo` object.
     # NOTE: When computing `getacc` for `ThreadSafeVarInfo` we do include the

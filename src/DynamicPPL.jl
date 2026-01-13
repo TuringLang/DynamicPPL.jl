@@ -188,7 +188,6 @@ using .VarNamedTuples: VarNamedTuples, VarNamedTuple, map_pairs!!, map_values!!,
 include("contexts.jl")
 include("contexts/default.jl")
 include("contexts/init.jl")
-include("contexts/transformation.jl")
 include("contexts/prefix.jl")
 include("contexts/conditionfix.jl")  # Must come after contexts/prefix.jl
 include("model.jl")

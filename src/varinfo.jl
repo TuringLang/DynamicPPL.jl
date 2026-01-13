@@ -257,101 +257,105 @@ function from_linked_internal_transform(vi::VarInfo, vn::VarName)
     return getindex(vi.values, vn).transform
 end
 
+"""
+    _link_or_invlink!!(vi::VarInfo, vns, model::Model, ::Val{link}) where {link isa Bool}
+
+The internal function that implements both link!! and invlink!!.
+
+The last argument controls whether linking (true) or invlinking (false) is performed. If
+`vns` is `nothing`, all variables in `vi` are transformed; otherwise, only the variables
+in `vns` are transformed. Existing variables already in the desired state are left
+unchanged.
+"""
+function _link_or_invlink!!(vi::VarInfo, vns, model::Model, ::Val{link}) where {link}
+    @assert link isa Bool
+    # Note that extract_priors causes a model execution. In the past with the Metadata-based
+    # VarInfo we rather derived the transformations from the distributions stored in the
+    # VarInfo itself. However, that is not fail-safe with dynamic models, and would require
+    # storing the distributions in TransformedValue (which we could start doing). Instead we
+    # use extract_priors to get the current, correct transformations. This logic is very
+    # similar to what DynamicTransformation used to do, and we might replace this with a
+    # context that transforms each variable in turn during the execution.
+    dists = extract_priors(model, vi)
+    cumulative_logjac = zero(LogProbType)
+    new_values = map_pairs!!(vi.values) do pair
+        vn, tv = pair
+        if vns !== nothing && !any(x -> subsumes(x, vn), vns)
+            # Not one of the target variables.
+            return tv
+        end
+        if tv.linked == link
+            # Already in the desired state.
+            return tv
+        end
+        dist = getindex(dists, vn)
+        vec_transform = from_vec_transform(dist)
+        link_transform = from_linked_vec_transform(dist)
+        current_transform, new_transform = if link
+            (vec_transform, link_transform)
+        else
+            (link_transform, vec_transform)
+        end
+        val_untransformed, logjac1 = with_logabsdet_jacobian(current_transform, tv.val)
+        val_new, logjac2 = with_logabsdet_jacobian(
+            inverse(new_transform), val_untransformed
+        )
+        new_tv = TransformedValue(val_new, link, new_transform, tv.size)
+        cumulative_logjac += logjac1 + logjac2
+        return new_tv
+    end
+    vi = VarInfo(new_values, vi.accs)
+    if hasacc(vi, Val(:LogJacobian))
+        vi = acclogjac!!(vi, cumulative_logjac)
+    end
+    return vi
+end
+
 function link!!(::DynamicTransformation, vi::VarInfo, vns, model::Model)
-    dists = extract_priors(model, vi)
-    cumulative_logjac = zero(LogProbType)
-    new_values = map_pairs!!(vi.values) do pair
-        vn, tv = pair
-        if vns !== nothing && !any(x -> subsumes(x, vn), vns)
-            # Not one of the target variables.
-            return tv
-        end
-        dist = getindex(dists, vn)
-        vec_transform = from_vec_transform(dist)
-        link_transform = from_linked_vec_transform(dist)
-        val_untransformed, logjac1 = with_logabsdet_jacobian(vec_transform, tv.val)
-        val_new, logjac2 = with_logabsdet_jacobian(
-            inverse(link_transform), val_untransformed
-        )
-        new_tv = TransformedValue(val_new, true, link_transform, tv.size)
-        cumulative_logjac += logjac1 + logjac2
-        return new_tv
-    end
-    vi = VarInfo(new_values, vi.accs)
-    if hasacc(vi, Val(:LogJacobian))
-        vi = acclogjac!!(vi, cumulative_logjac)
-    end
-    return vi
+    return _link_or_invlink!!(vi, vns, model, Val(true))
 end
-
-function link!!(t::DynamicTransformation, vi::VarInfo, model::Model)
-    return link!!(t, vi, nothing, model)
+function link!!(::DynamicTransformation, vi::VarInfo, model::Model)
+    return _link_or_invlink!!(vi, nothing, model, Val(true))
 end
-
 function invlink!!(::DynamicTransformation, vi::VarInfo, vns, model::Model)
-    dists = extract_priors(model, vi)
-    cumulative_logjac = zero(LogProbType)
-    new_values = map_pairs!!(vi.values) do pair
-        vn, tv = pair
-        if vns !== nothing && !any(x -> subsumes(x, vn), vns)
-            # Not one of the target variables.
-            return tv
-        end
-        current_val = tv.val
-        dist = getindex(dists, vn)
-        vec_transform = from_vec_transform(dist)
-        link_transform = from_linked_vec_transform(dist)
-        val_untransformed, logjac1 = with_logabsdet_jacobian(link_transform, current_val)
-        val_new, logjac2 = with_logabsdet_jacobian(
-            inverse(vec_transform), val_untransformed
-        )
-        new_tv = TransformedValue(val_new, false, vec_transform, tv.size)
-        cumulative_logjac += logjac1 + logjac2
-        return new_tv
-    end
-    vi = VarInfo(new_values, vi.accs)
+    return _link_or_invlink!!(vi, vns, model, Val(false))
+end
+function invlink!!(::DynamicTransformation, vi::VarInfo, model::Model)
+    return _link_or_invlink!!(vi, nothing, model, Val(false))
+end
+
+function link!!(t::StaticTransformation{<:Bijectors.Transform}, vi::VarInfo, ::Model)
+    # TODO(mhauru) This assumes that the user has defined the bijector using the same
+    # variable ordering as what `vi[:]` and `unflatten!!(vi, x)` use. This is a bad user
+    # interface.
+    b = inverse(t.bijector)
+    x = vi[:]
+    y, logjac = with_logabsdet_jacobian(b, x)
+    # Set parameters and add the logjac term.
+    # TODO(mhauru) This doesn't set the transforms of `vi`. With the old Metadata that meant
+    # that getindex(vi, vn) would apply the default link transform of the distribution. With
+    # the new VarNamedTuple-based VarInfo it means that getindex(vi, vn) won't apply any
+    # transform. Neither is correct, rather the transform should be the inverse of b.
+    vi = unflatten!!(vi, y)
     if hasacc(vi, Val(:LogJacobian))
-        vi = acclogjac!!(vi, cumulative_logjac)
+        vi = acclogjac!!(vi, logjac)
     end
-    return vi
+    return set_transformed!!(vi, t)
 end
 
-function invlink!!(t::DynamicTransformation, vi::VarInfo, model::Model)
-    return invlink!!(t, vi, nothing, model)
-end
+function invlink!!(t::StaticTransformation{<:Bijectors.Transform}, vi::VarInfo, ::Model)
+    b = t.bijector
+    y = vi[:]
+    x, inv_logjac = with_logabsdet_jacobian(b, y)
 
-function link!!(t::DynamicTransformation, vi::ThreadSafeVarInfo{<:VarInfo}, model::Model)
-    # By default this will simply evaluate the model with `DynamicTransformationContext`,
-    # and so we need to specialize to avoid this.
-    return Accessors.@set vi.varinfo = DynamicPPL.link!!(t, vi.varinfo, model)
-end
-
-function link!!(
-    t::DynamicTransformation,
-    vi::ThreadSafeVarInfo{<:VarInfo},
-    vns::VarNameTuple,
-    model::Model,
-)
-    # By default this will simply evaluate the model with `DynamicTransformationContext`,
-    # and so we need to specialize to avoid this.
-    return Accessors.@set vi.varinfo = DynamicPPL.link!!(t, vi.varinfo, vns, model)
-end
-
-function invlink!!(t::DynamicTransformation, vi::ThreadSafeVarInfo{<:VarInfo}, model::Model)
-    # By default this will simply evaluate the model with `DynamicTransformationContext`,
-    # and so we need to specialize to avoid this.
-    return Accessors.@set vi.varinfo = DynamicPPL.invlink!!(t, vi.varinfo, model)
-end
-
-function invlink!!(
-    ::DynamicTransformation,
-    vi::ThreadSafeVarInfo{<:VarInfo},
-    vns::VarNameTuple,
-    model::Model,
-)
-    # By default this will simply evaluate the model with `DynamicTransformationContext`, and so
-    # we need to specialize to avoid this.
-    return Accessors.@set vi.varinfo = DynamicPPL.invlink!!(vi.varinfo, vns, model)
+    # Mildly confusing: we need to _add_ the logjac of the inverse transform,
+    # because we are trying to remove the logjac of the forward transform
+    # that was previously accumulated when linking.
+    vi = unflatten!!(vi, x)
+    if hasacc(vi, Val(:LogJacobian))
+        vi = acclogjac!!(vi, inv_logjac)
+    end
+    return set_transformed!!(vi, NoTransformation())
 end
 
 # TODO(mhauru) I don't think this should return the internal values, but that's the current

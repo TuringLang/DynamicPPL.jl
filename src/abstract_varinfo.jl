@@ -32,6 +32,9 @@ in the execution of a given `Model`.
 This is in constrast to `StaticTransformation` which transforms all variables
 _before_ the execution of a given `Model`.
 
+Different VarInfo types should implement their own methods for `link!!` and `invlink!!` for
+`DynamicTransformation`.
+
 See also: [`StaticTransformation`](@ref).
 """
 struct DynamicTransformation <: AbstractTransformation end
@@ -51,23 +54,6 @@ $(TYPEDFIELDS)
 struct StaticTransformation{F} <: AbstractTransformation
     "The function, assumed to implement the `Bijectors` interface, to be applied to the variables"
     bijector::F
-end
-
-"""
-    merge_transformations(transformation_left, transformation_right)
-
-Merge two transformations.
-
-The main use of this is in [`merge(::AbstractVarInfo, ::AbstractVarInfo)`](@ref).
-"""
-function merge_transformations(::NoTransformation, ::NoTransformation)
-    return NoTransformation()
-end
-function merge_transformations(::DynamicTransformation, ::DynamicTransformation)
-    return DynamicTransformation()
-end
-function merge_transformations(left::StaticTransformation, right::StaticTransformation)
-    return StaticTransformation(merge_bijectors(left.bijector, right.bijector))
 end
 
 function merge_bijectors(left::Bijectors.NamedTransform, right::Bijectors.NamedTransform)
@@ -744,31 +730,6 @@ end
 function link!!(vi::AbstractVarInfo, vns::VarNameTuple, model::Model)
     return link!!(default_transformation(model, vi), vi, vns, model)
 end
-function link!!(t::DynamicTransformation, vi::AbstractVarInfo, model::Model)
-    model = setleafcontext(model, DynamicTransformationContext{false}())
-    vi = last(evaluate!!(model, vi))
-    return set_transformed!!(vi, t)
-end
-function link!!(
-    t::StaticTransformation{<:Bijectors.Transform}, vi::AbstractVarInfo, ::Model
-)
-    # TODO(mhauru) This assumes that the user has defined the bijector using the same
-    # variable ordering as what `vi[:]` and `unflatten!!(vi, x)` use. This is a bad user
-    # interface.
-    b = inverse(t.bijector)
-    x = vi[:]
-    y, logjac = with_logabsdet_jacobian(b, x)
-    # Set parameters and add the logjac term.
-    # TODO(mhauru) This doesn't set the transforms of `vi`. With the old Metadata that meant
-    # that getindex(vi, vn) would apply the default link transform of the distribution. With
-    # the new VarNamedTuple-based VarInfo it means that getindex(vi, vn) won't apply any
-    # transform. Neither is correct, rather the transform should be the inverse of b.
-    vi = unflatten!!(vi, y)
-    if hasacc(vi, Val(:LogJacobian))
-        vi = acclogjac!!(vi, logjac)
-    end
-    return set_transformed!!(vi, t)
-end
 
 """
     link([t::AbstractTransformation, ]vi::AbstractVarInfo, model::Model)
@@ -810,27 +771,6 @@ function invlink!!(vi::AbstractVarInfo, model::Model)
 end
 function invlink!!(vi::AbstractVarInfo, vns::VarNameTuple, model::Model)
     return invlink!!(default_transformation(model, vi), vi, vns, model)
-end
-function invlink!!(::DynamicTransformation, vi::AbstractVarInfo, model::Model)
-    model = setleafcontext(model, DynamicTransformationContext{true}())
-    vi = last(evaluate!!(model, vi))
-    return set_transformed!!(vi, NoTransformation())
-end
-function invlink!!(
-    t::StaticTransformation{<:Bijectors.Transform}, vi::AbstractVarInfo, ::Model
-)
-    b = t.bijector
-    y = vi[:]
-    x, inv_logjac = with_logabsdet_jacobian(b, y)
-
-    # Mildly confusing: we need to _add_ the logjac of the inverse transform,
-    # because we are trying to remove the logjac of the forward transform
-    # that was previously accumulated when linking.
-    vi = unflatten!!(vi, x)
-    if hasacc(vi, Val(:LogJacobian))
-        vi = acclogjac!!(vi, inv_logjac)
-    end
-    return set_transformed!!(vi, NoTransformation())
 end
 
 """
