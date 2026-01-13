@@ -54,6 +54,10 @@ function Base.getindex(vi::VNTVarInfo, vn::VarName)
     return tv.transform(tv.val)
 end
 
+function Base.getindex(vi::VNTVarInfo, vns::Vector{<:VarName})
+    return [getindex(vi, vn) for vn in vns]
+end
+
 function Base.getindex(vi::VNTVarInfo, vn::VarName, dist::Distribution)
     val = getindex_internal(vi, vn)
     return from_maybe_linked_internal(vi, vn, dist, val)

@@ -107,35 +107,30 @@ julia> @model function model_changing_support()
 
 julia> model = model_changing_support();
 
-julia> # Construct initial type-stable `VarInfo`.
+julia> # Construct initial `VarInfo`.
        varinfo = VarInfo(rng, model);
 
 julia> # Link it so it works in unconstrained space.
-       varinfo_linked = DynamicPPL.link(varinfo, model);
+       varinfo_linked = DynamicPPL.link!!(copy(varinfo), model);
 
-julia> # Perform computations in unconstrained space, e.g. changing the values of `θ`.
+julia> # Perform computations in unconstrained space, e.g. changing the values of `vals`.
        # Flip `x` so we hit the other support of `y`.
-       θ = [!varinfo[@varname(x)], rand(rng)];
+       vals = [!varinfo[@varname(x)], rand(rng)];
 
 julia> # Update the `VarInfo` with the new values.
-       varinfo_linked = DynamicPPL.unflatten!!(varinfo_linked, θ);
+       varinfo_linked = DynamicPPL.unflatten!!(varinfo_linked, vals);
 
 julia> # Determine the expected support of `y`.
-       lb, ub = θ[1] == 1 ? (0, 1) : (11, 12)
+       lb, ub = vals[1] == 1 ? (0, 1) : (11, 12)
 (0, 1)
 
 julia> # Approach 1: Convert back to constrained space using `invlink` and extract.
-       varinfo_invlinked = DynamicPPL.invlink(varinfo_linked, model);
+       varinfo_invlinked = DynamicPPL.invlink!!(copy(varinfo_linked), model);
 
-julia> # (×) Fails! Because `VarInfo` _saves_ the original distributions
-       # used in the very first model evaluation, hence the support of `y`
-       # is not updated even though `x` has changed.
-       lb ≤ first(varinfo_invlinked[@varname(y)]) ≤ ub
-false
+julia> lb ≤ first(varinfo_invlinked[@varname(y)]) ≤ ub
+true
 
 julia> # Approach 2: Extract realizations using `values_as_in_model`.
-       # (✓) `values_as_in_model` will re-run the model and extract
-       # the correct realization of `y` given the new values of `x`.
        lb ≤ values_as_in_model(model, true, varinfo_linked)[@varname(y)] ≤ ub
 true
 ```

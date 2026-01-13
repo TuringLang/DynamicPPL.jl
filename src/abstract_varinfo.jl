@@ -506,13 +506,15 @@ If no `Type` is provided, return values as stored in `varinfo`.
 julia> # Just use an example model to construct the `VarInfo` because we're lazy.
        vi = DynamicPPL.VarInfo(DynamicPPL.TestUtils.demo_assume_dot_observe());
 
-julia> vi[@varname(s)] = 1.0; vi[@varname(m)] = 2.0;
+julia> vi = DynamicPPL.setindex!!(vi, 1.0, @varname(s));
+
+julia> vi = DynamicPPL.setindex!!(vi, 2.0, @varname(m));
 
 julia> values_as(vi, NamedTuple)
 (s = 1.0, m = 2.0)
 
 julia> values_as(vi, OrderedDict)
-OrderedDict{VarName{sym, typeof(identity)} where sym, Float64} with 2 entries:
+OrderedDict{Any, Any} with 2 entries:
   s => 1.0
   m => 2.0
 
@@ -570,20 +572,20 @@ demo (generic function with 2 methods)
 
 julia> model = demo();
 
-julia> varinfo = VarInfo(model);
+julia> vi = VarInfo(model);
 
-julia> keys(varinfo)
+julia> keys(vi)
 4-element Vector{VarName}:
  s
  m
  x[1]
  x[2]
 
-julia> for (i, vn) in enumerate(keys(varinfo))
-           varinfo[vn] = i
+julia> for (i, vn) in enumerate(keys(vi))
+           vi = DynamicPPL.setindex!!(vi, Float64(i), vn)
        end
 
-julia> varinfo[[@varname(s), @varname(m), @varname(x[1]), @varname(x[2])]]
+julia> vi[[@varname(s), @varname(m), @varname(x[1]), @varname(x[2])]]
 4-element Vector{Float64}:
  1.0
  2.0
@@ -591,59 +593,59 @@ julia> varinfo[[@varname(s), @varname(m), @varname(x[1]), @varname(x[2])]]
  4.0
 
 julia> # Extract one with only `m`.
-       varinfo_subset1 = subset(varinfo, [@varname(m),]);
+       vi_subset1 = subset(vi, [@varname(m),]);
 
 
-julia> keys(varinfo_subset1)
-1-element Vector{VarName{:m, typeof(identity)}}:
+julia> keys(vi_subset1)
+1-element Vector{VarName}:
  m
 
-julia> varinfo_subset1[@varname(m)]
+julia> vi_subset1[@varname(m)]
 2.0
 
 julia> # Extract one with both `s` and `x[2]`.
-       varinfo_subset2 = subset(varinfo, [@varname(s), @varname(x[2])]);
+       vi_subset2 = subset(vi, [@varname(s), @varname(x[2])]);
 
-julia> keys(varinfo_subset2)
+julia> keys(vi_subset2)
 2-element Vector{VarName}:
  s
  x[2]
 
-julia> varinfo_subset2[[@varname(s), @varname(x[2])]]
+julia> vi_subset2[[@varname(s), @varname(x[2])]]
 2-element Vector{Float64}:
  1.0
  4.0
 ```
 
-`subset` is particularly useful when combined with [`merge(varinfo::AbstractVarInfo)`](@ref)
+`subset` is particularly useful when combined with [`merge(vi::AbstractVarInfo)`](@ref)
 
 ```jldoctest varinfo-subset
 julia> # Merge the two.
-       varinfo_subset_merged = merge(varinfo_subset1, varinfo_subset2);
+       vi_subset_merged = merge(vi_subset1, vi_subset2);
 
-julia> keys(varinfo_subset_merged)
+julia> keys(vi_subset_merged)
 3-element Vector{VarName}:
  m
  s
  x[2]
 
-julia> varinfo_subset_merged[[@varname(s), @varname(m), @varname(x[2])]]
+julia> vi_subset_merged[[@varname(s), @varname(m), @varname(x[2])]]
 3-element Vector{Float64}:
  1.0
  2.0
  4.0
 
 julia> # Merge the two with the original.
-       varinfo_merged = merge(varinfo, varinfo_subset_merged);
+       vi_merged = merge(vi, vi_subset_merged);
 
-julia> keys(varinfo_merged)
+julia> keys(vi_merged)
 4-element Vector{VarName}:
  s
  m
  x[1]
  x[2]
 
-julia> varinfo_merged[[@varname(s), @varname(m), @varname(x[1]), @varname(x[2])]]
+julia> vi_merged[[@varname(s), @varname(m), @varname(x[1]), @varname(x[2])]]
 4-element Vector{Float64}:
  1.0
  2.0

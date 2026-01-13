@@ -501,7 +501,7 @@ true
 julia> # Since we conditioned on `a.m`, it is not treated as a random variable.
        # However, `a.x` will still be a random variable.
        keys(VarInfo(cm))
-1-element Vector{VarName{:a, Accessors.PropertyLens{:x}}}:
+1-element Vector{VarName}:
  a.x
 
 julia> # We can also condition on `a.m` _outside_ of the PrefixContext:
@@ -513,7 +513,7 @@ Dict{VarName{:a, Accessors.PropertyLens{:m}}, Float64} with 1 entry:
 
 julia> # Now `a.x` will be sampled.
        keys(VarInfo(cm))
-1-element Vector{VarName{:a, Accessors.PropertyLens{:x}}}:
+1-element Vector{VarName}:
  a.x
 ```
 """
@@ -839,7 +839,7 @@ julia> Set(keys(fixed(cm))) == Set([@varname(a.m), @varname(x)])
 true
 
 julia> keys(VarInfo(cm))
-1-element Vector{VarName{:a, Accessors.PropertyLens{:x}}}:
+1-element Vector{VarName}:
  a.x
 
 julia> # We can also condition on `a.m` _outside_ of the PrefixContext:
@@ -851,7 +851,7 @@ Dict{VarName{:a, Accessors.PropertyLens{:m}}, Float64} with 1 entry:
 
 julia> # Now `a.x` will be sampled.
        keys(VarInfo(cm))
-1-element Vector{VarName{:a, Accessors.PropertyLens{:x}}}:
+1-element Vector{VarName}:
  a.x
 ```
 """
