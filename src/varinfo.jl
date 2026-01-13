@@ -1,10 +1,7 @@
-struct VNTVarInfo{T<:VarNamedTuple,Accs<:AccumulatorTuple} <: AbstractVarInfo
+struct VarInfo{T<:VarNamedTuple,Accs<:AccumulatorTuple} <: AbstractVarInfo
     values::T
     accs::Accs
 end
-
-# TODO(mhauru) Make this renaming permanent.
-const VarInfo = VNTVarInfo
 
 struct TransformedValue{ValType,TransformType,SizeType}
     val::ValType
@@ -15,9 +12,9 @@ end
 
 VarNamedTuples.vnt_size(tv::TransformedValue) = tv.size
 
-VNTVarInfo() = VNTVarInfo(VarNamedTuple(), default_accumulators())
+VarInfo() = VarInfo(VarNamedTuple(), default_accumulators())
 
-function VNTVarInfo(values::Union{NamedTuple,AbstractDict})
+function VarInfo(values::Union{NamedTuple,AbstractDict})
     vi = VarInfo()
     for (k, v) in pairs(values)
         vn = k isa Symbol ? VarName{k}() : k
@@ -26,52 +23,52 @@ function VNTVarInfo(values::Union{NamedTuple,AbstractDict})
     return vi
 end
 
-function VNTVarInfo(model::Model, init_strategy::AbstractInitStrategy=InitFromPrior())
-    return VNTVarInfo(Random.default_rng(), model, init_strategy)
+function VarInfo(model::Model, init_strategy::AbstractInitStrategy=InitFromPrior())
+    return VarInfo(Random.default_rng(), model, init_strategy)
 end
 
-function VNTVarInfo(
+function VarInfo(
     rng::Random.AbstractRNG,
     model::Model,
     init_strategy::AbstractInitStrategy=InitFromPrior(),
 )
-    return last(init!!(rng, model, VNTVarInfo(), init_strategy))
+    return last(init!!(rng, model, VarInfo(), init_strategy))
 end
 
-getaccs(vi::VNTVarInfo) = vi.accs
-setaccs!!(vi::VNTVarInfo, accs::AccumulatorTuple) = VNTVarInfo(vi.values, accs)
+getaccs(vi::VarInfo) = vi.accs
+setaccs!!(vi::VarInfo, accs::AccumulatorTuple) = VarInfo(vi.values, accs)
 
-transformation(::VNTVarInfo) = DynamicTransformation()
+transformation(::VarInfo) = DynamicTransformation()
 
-Base.copy(vi::VNTVarInfo) = VNTVarInfo(copy(vi.values), copy(getaccs(vi)))
+Base.copy(vi::VarInfo) = VarInfo(copy(vi.values), copy(getaccs(vi)))
 
-Base.haskey(vi::VNTVarInfo, vn::VarName) = haskey(vi.values, vn)
+Base.haskey(vi::VarInfo, vn::VarName) = haskey(vi.values, vn)
 
-Base.length(vi::VNTVarInfo) = length(vi.values)
+Base.length(vi::VarInfo) = length(vi.values)
 
-function Base.getindex(vi::VNTVarInfo, vn::VarName)
+function Base.getindex(vi::VarInfo, vn::VarName)
     tv = getindex(vi.values, vn)
     return tv.transform(tv.val)
 end
 
-function Base.getindex(vi::VNTVarInfo, vns::Vector{<:VarName})
+function Base.getindex(vi::VarInfo, vns::Vector{<:VarName})
     return [getindex(vi, vn) for vn in vns]
 end
 
-function Base.getindex(vi::VNTVarInfo, vn::VarName, dist::Distribution)
+function Base.getindex(vi::VarInfo, vn::VarName, dist::Distribution)
     val = getindex_internal(vi, vn)
     return from_maybe_linked_internal(vi, vn, dist, val)
 end
 
-Base.isempty(vi::VNTVarInfo) = isempty(vi.values)
-Base.empty(vi::VNTVarInfo) = VNTVarInfo(empty(vi.values), map(reset, vi.accs))
-BangBang.empty!!(vi::VNTVarInfo) = VNTVarInfo(empty!!(vi.values), map(reset, vi.accs))
+Base.isempty(vi::VarInfo) = isempty(vi.values)
+Base.empty(vi::VarInfo) = VarInfo(empty(vi.values), map(reset, vi.accs))
+BangBang.empty!!(vi::VarInfo) = VarInfo(empty!!(vi.values), map(reset, vi.accs))
 
-function setindex_internal!!(vi::VNTVarInfo, val, vn::VarName)
+function setindex_internal!!(vi::VarInfo, val, vn::VarName)
     old_tv = getindex(vi.values, vn)
     new_tv = TransformedValue(val, old_tv.linked, old_tv.transform, old_tv.size)
     new_values = setindex!!(vi.values, new_tv, vn)
-    return VNTVarInfo(new_values, vi.accs)
+    return VarInfo(new_values, vi.accs)
 end
 
 # TODO(mhauru) It shouldn't really be VarInfo's business to know about `dist`. However,
@@ -80,7 +77,7 @@ end
 # of doing the transformation to the caller, it'll be done even when e.g. using
 # OnlyAccsVarInfo. Hence having this function. It should eventually hopefully be removed
 # once VAIMAcc is the only way to get values out of an evaluation.
-function setindex_with_dist!!(vi::VNTVarInfo, val, dist::Distribution, vn::VarName)
+function setindex_with_dist!!(vi::VarInfo, val, dist::Distribution, vn::VarName)
     # Determine whether to insert a transformed value into `vi`.
     # If the VarInfo alrady had a value for this variable, we will
     # keep the same linked status as in the original VarInfo. If not, we
@@ -98,81 +95,81 @@ function setindex_with_dist!!(vi::VNTVarInfo, val, dist::Distribution, vn::VarNa
     transformed_val, logjac = with_logabsdet_jacobian(inverse(transform), val)
     val_size = hasmethod(size, Tuple{typeof(val)}) ? size(val) : ()
     tv = TransformedValue(transformed_val, insert_transformed_value, transform, val_size)
-    vi = VNTVarInfo(setindex!!(vi.values, tv, vn), vi.accs)
+    vi = VarInfo(setindex!!(vi.values, tv, vn), vi.accs)
     return vi, logjac
 end
 
-function BangBang.setindex!!(vi::VNTVarInfo, val, vn::VarName)
+function BangBang.setindex!!(vi::VarInfo, val, vn::VarName)
     transform = from_vec_transform(val)
     transformed_val = inverse(transform)(val)
     tv = TransformedValue(transformed_val, false, transform, size(val))
-    return VNTVarInfo(setindex!!(vi.values, tv, vn), vi.accs)
+    return VarInfo(setindex!!(vi.values, tv, vn), vi.accs)
 end
 
-Base.keys(vi::VNTVarInfo) = keys(vi.values)
-Base.values(vi::VNTVarInfo) = mapreduce(p -> p.second.val, push!, vi.values; init=Any[])
+Base.keys(vi::VarInfo) = keys(vi.values)
+Base.values(vi::VarInfo) = mapreduce(p -> p.second.val, push!, vi.values; init=Any[])
 
-function set_transformed!!(vi::VNTVarInfo, linked::Bool, vn::VarName)
+function set_transformed!!(vi::VarInfo, linked::Bool, vn::VarName)
     old_tv = getindex(vi.values, vn)
     new_tv = TransformedValue(old_tv.val, linked, old_tv.transform, old_tv.size)
     new_values = setindex!!(vi.values, new_tv, vn)
-    return VNTVarInfo(new_values, vi.accs)
+    return VarInfo(new_values, vi.accs)
 end
 
-# VNTVarInfo does not care whether the transformation was Static or Dynamic, it just tracks
+# VarInfo does not care whether the transformation was Static or Dynamic, it just tracks
 # whether one was applied at all.
-function set_transformed!!(vi::VNTVarInfo, ::AbstractTransformation, vn::VarName)
+function set_transformed!!(vi::VarInfo, ::AbstractTransformation, vn::VarName)
     return set_transformed!!(vi, true, vn)
 end
 
-set_transformed!!(vi::VNTVarInfo, ::AbstractTransformation) = set_transformed!!(vi, true)
+set_transformed!!(vi::VarInfo, ::AbstractTransformation) = set_transformed!!(vi, true)
 
-function set_transformed!!(vi::VNTVarInfo, ::NoTransformation, vn::VarName)
+function set_transformed!!(vi::VarInfo, ::NoTransformation, vn::VarName)
     return set_transformed!!(vi, false, vn)
 end
 
-set_transformed!!(vi::VNTVarInfo, ::NoTransformation) = set_transformed!!(vi, false)
+set_transformed!!(vi::VarInfo, ::NoTransformation) = set_transformed!!(vi, false)
 
-function set_transformed!!(vi::VNTVarInfo, linked::Bool)
+function set_transformed!!(vi::VarInfo, linked::Bool)
     new_values = map_values!!(vi.values) do tv
         TransformedValue(tv.val, linked, tv.transform, tv.size)
     end
-    return VNTVarInfo(new_values, vi.accs)
+    return VarInfo(new_values, vi.accs)
 end
 
-function getindex_internal(vi::VNTVarInfo, vn::VarName)
+function getindex_internal(vi::VarInfo, vn::VarName)
     tv = getindex(vi.values, vn)
     return tv.val
 end
 
 # TODO(mhauru) This is mimicing old behaviour, but is now wrong: The internal
 # representation does not have to be a Vector.
-getindex_internal(vi::VNTVarInfo, ::Colon) = values_as(vi, Vector)
+getindex_internal(vi::VarInfo, ::Colon) = values_as(vi, Vector)
 
-function is_transformed(vi::VNTVarInfo, vn::VarName)
+function is_transformed(vi::VarInfo, vn::VarName)
     tv = getindex(vi.values, vn)
     return tv.linked
 end
 
 # TODO(mhauru) Other VarInfos have something like this. Do we need it? Or should we use the
 # below version?
-function from_internal_transform(::VNTVarInfo, ::VarName, dist::Distribution)
+function from_internal_transform(::VarInfo, ::VarName, dist::Distribution)
     return from_vec_transform(dist)
 end
 
-# function from_internal_transform(vi::VNTVarInfo, vn::VarName, ::Distribution)
+# function from_internal_transform(vi::VarInfo, vn::VarName, ::Distribution)
 #     return getindex(vi.values, vn).transform
 # end
 
-function from_linked_internal_transform(::VNTVarInfo, ::VarName, dist::Distribution)
+function from_linked_internal_transform(::VarInfo, ::VarName, dist::Distribution)
     return from_linked_vec_transform(dist)
 end
 
-function from_linked_internal_transform(vi::VNTVarInfo, vn::VarName)
+function from_linked_internal_transform(vi::VarInfo, vn::VarName)
     return getindex(vi.values, vn).transform
 end
 
-function link!!(::DynamicTransformation, vi::VNTVarInfo, vns, model::Model)
+function link!!(::DynamicTransformation, vi::VarInfo, vns, model::Model)
     dists = extract_priors(model, vi)
     cumulative_logjac = zero(LogProbType)
     new_values = map_pairs!!(vi.values) do pair
@@ -192,18 +189,18 @@ function link!!(::DynamicTransformation, vi::VNTVarInfo, vns, model::Model)
         cumulative_logjac += logjac1 + logjac2
         return new_tv
     end
-    vi = VNTVarInfo(new_values, vi.accs)
+    vi = VarInfo(new_values, vi.accs)
     if hasacc(vi, Val(:LogJacobian))
         vi = acclogjac!!(vi, cumulative_logjac)
     end
     return vi
 end
 
-function link!!(t::DynamicTransformation, vi::VNTVarInfo, model::Model)
+function link!!(t::DynamicTransformation, vi::VarInfo, model::Model)
     return link!!(t, vi, nothing, model)
 end
 
-function invlink!!(::DynamicTransformation, vi::VNTVarInfo, vns, model::Model)
+function invlink!!(::DynamicTransformation, vi::VarInfo, vns, model::Model)
     dists = extract_priors(model, vi)
     cumulative_logjac = zero(LogProbType)
     new_values = map_pairs!!(vi.values) do pair
@@ -224,18 +221,18 @@ function invlink!!(::DynamicTransformation, vi::VNTVarInfo, vns, model::Model)
         cumulative_logjac += logjac1 + logjac2
         return new_tv
     end
-    vi = VNTVarInfo(new_values, vi.accs)
+    vi = VarInfo(new_values, vi.accs)
     if hasacc(vi, Val(:LogJacobian))
         vi = acclogjac!!(vi, cumulative_logjac)
     end
     return vi
 end
 
-function invlink!!(t::DynamicTransformation, vi::VNTVarInfo, model::Model)
+function invlink!!(t::DynamicTransformation, vi::VarInfo, model::Model)
     return invlink!!(t, vi, nothing, model)
 end
 
-function link!!(t::DynamicTransformation, vi::ThreadSafeVarInfo{<:VNTVarInfo}, model::Model)
+function link!!(t::DynamicTransformation, vi::ThreadSafeVarInfo{<:VarInfo}, model::Model)
     # By default this will simply evaluate the model with `DynamicTransformationContext`,
     # and so we need to specialize to avoid this.
     return Accessors.@set vi.varinfo = DynamicPPL.link!!(t, vi.varinfo, model)
@@ -243,7 +240,7 @@ end
 
 function link!!(
     t::DynamicTransformation,
-    vi::ThreadSafeVarInfo{<:VNTVarInfo},
+    vi::ThreadSafeVarInfo{<:VarInfo},
     vns::VarNameTuple,
     model::Model,
 )
@@ -252,9 +249,7 @@ function link!!(
     return Accessors.@set vi.varinfo = DynamicPPL.link!!(t, vi.varinfo, vns, model)
 end
 
-function invlink!!(
-    t::DynamicTransformation, vi::ThreadSafeVarInfo{<:VNTVarInfo}, model::Model
-)
+function invlink!!(t::DynamicTransformation, vi::ThreadSafeVarInfo{<:VarInfo}, model::Model)
     # By default this will simply evaluate the model with `DynamicTransformationContext`,
     # and so we need to specialize to avoid this.
     return Accessors.@set vi.varinfo = DynamicPPL.invlink!!(t, vi.varinfo, model)
@@ -262,7 +257,7 @@ end
 
 function invlink!!(
     ::DynamicTransformation,
-    vi::ThreadSafeVarInfo{<:VNTVarInfo},
+    vi::ThreadSafeVarInfo{<:VarInfo},
     vns::VarNameTuple,
     model::Model,
 )
@@ -273,11 +268,11 @@ end
 
 # TODO(mhauru) I don't think this should return the internal values, but that's the current
 # convention.
-function values_as(vi::VNTVarInfo, ::Type{Vector})
+function values_as(vi::VarInfo, ::Type{Vector})
     return mapfoldl(pair -> tovec(pair.second.val), vcat, vi.values; init=Union{}[])
 end
 
-function values_as(vi::VNTVarInfo, ::Type{T}) where {T<:AbstractDict}
+function values_as(vi::VarInfo, ::Type{T}) where {T<:AbstractDict}
     return mapfoldl(identity, function (cumulant, pair)
         vn, tv = pair
         val = tv.transform(tv.val)
@@ -289,7 +284,7 @@ end
 # interface provided by rand(::Model). We should change that to return a VarNamedTuple
 # instead, and then this method (and any other values_as methods for NamedTuple) could be
 # removed.
-function values_as(vi::VNTVarInfo, ::Type{NamedTuple})
+function values_as(vi::VarInfo, ::Type{NamedTuple})
     return mapfoldl(
         identity,
         function (cumulant, pair)
@@ -309,7 +304,7 @@ function untyped_varinfo(
     model::Model,
     init_strategy::AbstractInitStrategy=InitFromPrior(),
 )
-    return VNTVarInfo(rng, model, init_strategy)
+    return VarInfo(rng, model, init_strategy)
 end
 
 function typed_varinfo(
@@ -317,10 +312,10 @@ function typed_varinfo(
     model::Model,
     init_strategy::AbstractInitStrategy=InitFromPrior(),
 )
-    return VNTVarInfo(rng, model, init_strategy)
+    return VarInfo(rng, model, init_strategy)
 end
 
-typed_varinfo(vi::VNTVarInfo) = vi
+typed_varinfo(vi::VarInfo) = vi
 
 function typed_varinfo(model::Model, init_strategy::AbstractInitStrategy=InitFromPrior())
     return typed_varinfo(Random.default_rng(), model, init_strategy)
@@ -350,7 +345,7 @@ function get_next_chunk!(vci::VectorChunkIterator, len::Int)
     return chunk
 end
 
-function unflatten!!(vi::VNTVarInfo, vec::AbstractVector)
+function unflatten!!(vi::VarInfo, vec::AbstractVector)
     # You may wonder, why have a whole struct for this, rather than just an index variable
     # that the mapping function would close over. I wonder too. But for some reason type
     # inference fails on such an index variable, turning it into a Core.Box.
@@ -367,16 +362,16 @@ function unflatten!!(vi::VNTVarInfo, vec::AbstractVector)
         new_val = get_next_chunk!(vci, len)
         return TransformedValue(new_val, tv.linked, tv.transform, tv.size)
     end
-    return VNTVarInfo(new_values, vi.accs)
+    return VarInfo(new_values, vi.accs)
 end
 
-function subset(varinfo::VNTVarInfo, vns)
+function subset(varinfo::VarInfo, vns)
     new_values = subset(varinfo.values, vns)
-    return VNTVarInfo(new_values, map(copy, getaccs(varinfo)))
+    return VarInfo(new_values, map(copy, getaccs(varinfo)))
 end
 
-function Base.merge(varinfo_left::VNTVarInfo, varinfo_right::VNTVarInfo)
+function Base.merge(varinfo_left::VarInfo, varinfo_right::VarInfo)
     new_values = merge(varinfo_left.values, varinfo_right.values)
     new_accs = map(copy, getaccs(varinfo_right))
-    return VNTVarInfo(new_values, new_accs)
+    return VarInfo(new_values, new_accs)
 end

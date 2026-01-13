@@ -303,7 +303,7 @@ representation, along with whether each variable is linked or unlinked.
 This function returns a VarNamedTuple mapping all VarNames to their corresponding
 `RangeAndLinked`.
 """
-function get_ranges_and_linked(vi::VNTVarInfo)
+function get_ranges_and_linked(vi::VarInfo)
     # TODO(mhauru) Check that the closure doesn't cause type instability here.
     vnt = VarNamedTuple()
     vnt, _ = mapreduce(

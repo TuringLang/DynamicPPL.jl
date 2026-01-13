@@ -16,8 +16,8 @@ Return string representing a short description of `vi`.
 function short_varinfo_name(vi::DynamicPPL.ThreadSafeVarInfo)
     return "threadsafe($(short_varinfo_name(vi.varinfo)))"
 end
-function short_varinfo_name(::DynamicPPL.VNTVarInfo)
-    return "VNTVarInfo"
+function short_varinfo_name(::DynamicPPL.VarInfo)
+    return "VarInfo"
 end
 
 # convenient functions for testing model.jl
