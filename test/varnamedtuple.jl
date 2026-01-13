@@ -924,8 +924,7 @@ Base.size(st::SizedThing) = st.size
         @test @inferred(getindex(vnt, @varname(y.z[2, 2:3, 3, 2:3, 4]))) == val
         @test haskey(vnt, @varname(y.z[3, 2:3, 3, 2:3, 4]))
         # Type inference fails on this one for Julia versions < 1.11
-        @test @inferred(getindex(vnt, @varname(y.z[3, 2:3, 3, 2:3, 4]))) == val broken =
-            VERSION < v"1.11"
+        @test @inferred(getindex(vnt, @varname(y.z[3, 2:3, 3, 2:3, 4]))) == val
     end
 
     @testset "map and friends" begin
@@ -1048,7 +1047,14 @@ Base.size(st::SizedThing) = st.size
         test_invariants(vnt_applied; skip=(:parseeval,))
         @test @inferred(getindex(vnt_applied, @varname(c.d))) == [2.0]
 
-        vnt_applied = @inferred(apply!!(f_val, vnt_applied, @varname(e.f[3].g.h[2].i)))
+        vnt_applied = begin
+            # The @inferred fails on Julia 1.10.
+            @static if VERSION < v"1.11"
+                apply!!(f_val, vnt_applied, @varname(e.f[3].g.h[2].i))
+            else
+                @inferred(apply!!(f_val, vnt_applied, @varname(e.f[3].g.h[2].i)))
+            end
+        end
         @test call_counter == 4
         test_invariants(vnt_applied; skip=(:parseeval,))
         @test @inferred(getindex(vnt_applied, @varname(e.f[3].g.h[2].i))) == "ab"
