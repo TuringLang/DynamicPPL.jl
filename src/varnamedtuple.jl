@@ -1234,16 +1234,6 @@ function _map_recursive!!(func, alb::ArrayLikeBlock, vn)
     return ArrayLikeBlock(new_block, alb.inds)
 end
 
-@generated function _map_recursive!!(func, vnt::VarNamedTuple{Names}) where {Names}
-    exs = Expr[]
-    for name in Names
-        push!(exs, :(_map_recursive!!(func, vnt.data.$name, VarName{$(QuoteNode(name))}())))
-    end
-    return quote
-        return VarNamedTuple(NamedTuple{Names}(($(exs...),)))
-    end
-end
-
 # As above but with a prefix VarName `vn`.
 @generated function _map_recursive!!(func, vnt::VarNamedTuple{Names}, vn::T) where {Names,T}
     exs = Expr[]
@@ -1267,7 +1257,17 @@ Apply `func` to all key => value pairs of `vnt`, in place if possible.
 
 `func` should accept a pair of `VarName` and value, and return the new value to be set.
 """
-map_pairs!!(func, vnt::VarNamedTuple) = _map_recursive!!(func, vnt)
+@generated function map_pairs!!(func, vnt::VarNamedTuple{Names}) where {Names}
+    exs = Expr[]
+    for name in Names
+        push!(exs, :(_map_recursive!!(func, vnt.data.$name, VarName{$(QuoteNode(name))}())))
+    end
+    return quote
+        return VarNamedTuple(NamedTuple{Names}(($(exs...),)))
+    end
+end
+
+Base.foreach(func, vnt::VarNamedTuple) = map_pairs!!(p -> (func(p); p), vnt)
 
 """
     map_values!!(func, vnt::VarNamedTuple)
@@ -1289,26 +1289,19 @@ is not optional.
 
 `f` op` should accept pairs of `varname => value`.
 """
-function Base.mapreduce(f, op, vnt::VarNamedTuple; init=nothing)
-    if init === nothing
-        throw(
-            NotImplementedError(
-                "mapreduce without init is not implemented for VarNamedTuple."
-            ),
-        )
+@generated function Base.mapreduce(
+    f, op, vnt::VarNamedTuple{Names}; init::InitType=nothing
+) where {Names,InitType}
+    if InitType === Nothing
+        return quote
+            throw(
+                ArgumentError(
+                    "mapreduce without init is not implemented for VarNamedTuple."
+                ),
+            )
+        end
     end
-    return _mapreduce_recursive(f, op, vnt, init)
-end
 
-# Our mapreduce is always left-associative.
-Base.mapfoldl(f, op, vnt::VarNamedTuple; init=nothing) = mapreduce(f, op, vnt; init=init)
-
-_mapreduce_recursive(f, op, x, vn, init) = op(init, f(vn => x))
-_mapreduce_recursive(f, op, pa::ArrayLikeBlock, vn, init) = op(init, f(vn => pa.block))
-
-@generated function _mapreduce_recursive(
-    f, op, vnt::VarNamedTuple{Names}, init
-) where {Names}
     exs = Expr[:(result = init)]
     for name in Names
         push!(
@@ -1323,6 +1316,12 @@ _mapreduce_recursive(f, op, pa::ArrayLikeBlock, vn, init) = op(init, f(vn => pa.
     push!(exs, :(return result))
     return Expr(:block, exs...)
 end
+
+# Our mapreduce is always left-associative.
+Base.mapfoldl(f, op, vnt::VarNamedTuple; init=nothing) = mapreduce(f, op, vnt; init=init)
+
+_mapreduce_recursive(f, op, x, vn, init) = op(init, f(vn => x))
+_mapreduce_recursive(f, op, pa::ArrayLikeBlock, vn, init) = op(init, f(vn => pa.block))
 
 # As above but with a prefix VarName `vn`.
 @generated function _mapreduce_recursive(
