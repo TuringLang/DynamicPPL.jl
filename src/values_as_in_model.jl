@@ -111,7 +111,7 @@ julia> # Construct initial `VarInfo`.
        varinfo = VarInfo(rng, model);
 
 julia> # Link it so it works in unconstrained space.
-       varinfo_linked = DynamicPPL.link!!(copy(varinfo), model);
+       varinfo_linked = DynamicPPL.link(varinfo, model);
 
 julia> # Perform computations in unconstrained space, e.g. changing the values of `vals`.
        # Flip `x` so we hit the other support of `y`.
@@ -125,7 +125,7 @@ julia> # Determine the expected support of `y`.
 (0, 1)
 
 julia> # Approach 1: Convert back to constrained space using `invlink` and extract.
-       varinfo_invlinked = DynamicPPL.invlink!!(copy(varinfo_linked), model);
+       varinfo_invlinked = DynamicPPL.invlink(varinfo_linked, model);
 
 julia> lb ≤ first(varinfo_invlinked[@varname(y)]) ≤ ub
 true

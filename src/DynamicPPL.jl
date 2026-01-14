@@ -46,6 +46,10 @@ import Base:
 # VarInfo
 export AbstractVarInfo,
     VarInfo,
+    VarNamedTuple,
+    map_pairs!!,
+    map_values!!,
+    apply!!,
     AbstractAccumulator,
     LogLikelihoodAccumulator,
     LogPriorAccumulator,
