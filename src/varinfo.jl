@@ -109,11 +109,6 @@ function Base.getindex(vi::VarInfo, vns::AbstractVector{<:VarName})
     return [getindex(vi, vn) for vn in vns]
 end
 
-function Base.getindex(vi::VarInfo, vn::VarName, dist::Distribution)
-    val = getindex_internal(vi, vn)
-    return from_maybe_linked_internal(vi, vn, dist, val)
-end
-
 Base.isempty(vi::VarInfo) = isempty(vi.values)
 Base.empty(vi::VarInfo) = VarInfo(empty(vi.values), map(reset, vi.accs))
 BangBang.empty!!(vi::VarInfo) = VarInfo(empty!!(vi.values), map(reset, vi.accs))

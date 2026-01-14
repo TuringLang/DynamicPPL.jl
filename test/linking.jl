@@ -89,7 +89,7 @@ end
                   DynamicPPL.getlogjoint_internal(vi_linked) ≈ log(2)
             # The non-internal logjoint should be the same since it doesn't depend on linking.
             @test DynamicPPL.getlogjoint(vi) ≈ DynamicPPL.getlogjoint(vi_linked)
-            @test vi_linked[@varname(m), dist] == LowerTriangular(vi[@varname(m), dist])
+            @test vi_linked[@varname(m)] == LowerTriangular(vi[@varname(m)])
             # Linked one should be working with a lower-dimensional representation.
             @test length(vi_linked[:]) < length(vi[:])
             @test length(vi_linked[:]) == length(y)
@@ -100,7 +100,7 @@ end
                 DynamicPPL.invlink(vi_linked, model)
             end
             @test length(vi_invlinked[:]) == length(vi[:])
-            @test vi_invlinked[@varname(m), dist] ≈ LowerTriangular(vi[@varname(m), dist])
+            @test vi_invlinked[@varname(m)] ≈ LowerTriangular(vi[@varname(m)])
             # The non-internal logjoint should still be the same, again since
             # it doesn't depend on linking.
             @test DynamicPPL.getlogjoint(vi_invlinked) ≈ DynamicPPL.getlogjoint(vi)
@@ -121,7 +121,7 @@ end
                     model, values_original, (@varname(x),)
                 )
                 @testset "$(short_varinfo_name(vi))" for vi in vis
-                    val = vi[@varname(x), dist]
+                    val = vi[@varname(x)]
                     # Ensure that `reconstruct` works as intended.
                     @test val isa Cholesky
                     @test val.uplo == uplo
