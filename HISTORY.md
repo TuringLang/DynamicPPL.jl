@@ -2,6 +2,68 @@
 
 ## 0.40
 
+### `VarNamedTuple`
+
+DynamicPPL now exports a new type, called `VarNamedTuple`, which stores values keyed by `VarName`s.
+With it are exported a few new functions for using it: `map_values!!`, `map_pairs!!`, `apply!!`.
+Our documentation's Internals section now has a page about `VarNamedTuple`, how it works, and what it's good for.
+
+`VarNamedTuple` is now used internally in many different parts: In `VarInfo`, in `values_as_in_model`, in `LogDensityFunction`, etc.
+Almost all of the below changes are the consequence from switching over to using `VarNamedTuple` for various features internally.
+
+### Overhaul of `VarInfo`
+
+DynamicPPL tracks variable values during model execution using one of the `AbstractVarInfo` types.
+Previously, there were many versions of them: `VarInfo`, both "typed" and "untyped, and `SimpleVarInfo` with both `NamedTuple` and `OrderedDict` as storage backends.
+These have all been replaced by a rewritten implementation of `VarInfo`.
+While the basics of the `VarInfo` interface remain the same, this brings with it many changes:
+
+#### No more many `AbstractVarInfo` types
+
+`SimpleVarInfo`, `untyped_varinfo`, `typed_varinfo`, and many other constructors, some exported some not, have been removed.
+The remaining one is `VarInfo(...)`, which can take a model or a collection of values.
+See the docstring for details.
+
+Some related types and functions, that weren't exported but may have been used by some, have also been removed, most notably `VarNamedVector` and its associated functions like `loosen_types!!` and `tighten_types!!`.
+
+#### Setting and getting values
+
+Previously the various `AbstractVarInfo` types had a multitude of functions for setting values:
+`push!!`, `push!`, `setindex!`, `update!`, `update_internal!`, `insert_internal!`, `reset!`, etc.
+These have all been replaced by three functions
+
+  - `setindex!!` is the one to use for simply setting a variable in `VarInfo` to a known value. It works regardless of whether the variable already exists.
+  - `setindex_internal!!` is the one to use for setting the internal, vectorised representation of a variable. See the docstring for details.
+  - `setindex_with_dist!!` is to be used when you want to set a value, but choose the internal representation based on which distribution this value is a sample for.
+
+The order of the arguments for some of these functions has also changed, and now more closely matches the usual convention for `setindex!!`.
+
+Note that `setindex!` (with a single `!`) is not defined, and thus you can't do `varinfo[varname] = new_value`.
+
+`unflatten` works as before, but has been renamed to `unflatten!!`, since it may mutate the first argument and aliases memory with the second argument (it uses views rather than copies of the input vector).
+
+#### Linking is now safer
+
+`link!!` and `invlink!!` on `VarInfo` used to assume that the prior distribution of a variable didn't change from one execution to another (as it does in e.g. `truncated(dist; lower=x)` where `x` is a random variable).
+This is no longer the case.
+Linking should thus be safer to do.
+The cost to pay is that calls to `link!!` and `invlink!!` (and the non-mutating versions) now trigger a model evaluation, to determine the correct priors to use.
+
+#### Other miscellanea
+
+  - The `Experimental` module had functions like `Experimental.determine_suitable_varinfo` for determining which `AbstractVarInfo` type was suitable for a given model. This is now redundant and has been removed.
+  - `Bijectors.bijector(::Model)`, which creates a bijector from the vectorised variable space of the model to the linked variable space of the model, now has slightly different optional arguments. See the docstring for details.
+  - `NamedDist` no longer allows variable names with `Colon`s in them, such as `x[:]`.
+
+There are probably also changes to the `VarInfo` interface that we've neglected to document here, since the overhaul of `VarInfo` has been quite complete.
+If anything related to `VarInfo` is behaving unexpectedly, e.g. the arguments or return type of a function seem to have changed, please check the docstring, which should be comprehensive.
+
+#### Performance benefits
+
+The purpose of this overhaul of `VarInfo` is code simplification and performance benefits.
+
+TODO(mhauru) Add some basic summary of what has gotten faster by how much.
+
 ### Changes to indexing random variables with square brackets
 
 0.40 internally reimplements how DynamicPPL handles random variables like `x[1]`, `x.y[2,2]`, and `x[:,1:4,5]`, i.e. ones that use indexing with square brackets.
