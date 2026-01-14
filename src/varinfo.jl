@@ -12,9 +12,9 @@ to be valid internal representations of the variable (i.e., whether the variable
 linked), as well as the size of the actual post-transformation value. These are all fields
 of [`TransformedValue`](@ref).
 
-Note that `setindex!!` and `getindex` on `VarInfo` deal with the actual values of variables.
-To get access to the internal vectorised values, use [`getindex_internal`](@ref),
-[`setindex_internal!!`](@ref), and [`unflatten!!`](@ref).
+Note that `setindex!!` and `getindex` on `VarInfo` take and return values in the support of
+the original distribution. To get access to the internal vectorised values, use
+[`getindex_internal`](@ref), [`setindex_internal!!`](@ref), and [`unflatten!!`](@ref).
 
 There's also a `VarInfo`-specific function [`setindex_with_dist!!`](@ref), which sets a
 variable's value with a transformation based on the statistical distribution this value is
@@ -105,7 +105,7 @@ function Base.getindex(vi::VarInfo, vn::VarName)
     return tv.transform(tv.val)
 end
 
-function Base.getindex(vi::VarInfo, vns::Vector{<:VarName})
+function Base.getindex(vi::VarInfo, vns::AbstractVector{<:VarName})
     return [getindex(vi, vn) for vn in vns]
 end
 
