@@ -14,7 +14,7 @@ Almost all of the below changes are the consequence from switching over to using
 ### Overhaul of `VarInfo`
 
 DynamicPPL tracks variable values during model execution using one of the `AbstractVarInfo` types.
-Previously, there were many versions of them: `VarInfo`, both "typed" and "untyped, and `SimpleVarInfo` with both `NamedTuple` and `OrderedDict` as storage backends.
+Previously, there were many versions of them: `VarInfo`, both "typed" and "untyped", and `SimpleVarInfo` with both `NamedTuple` and `OrderedDict` as storage backends.
 These have all been replaced by a rewritten implementation of `VarInfo`.
 While the basics of the `VarInfo` interface remain the same, this brings with it many changes:
 
