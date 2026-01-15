@@ -226,8 +226,6 @@ function set_transformed!!(vi::VarInfo{Linked}, linked::Bool, vn::VarName) where
     old_tv = getindex(vi.values, vn)
     new_tv = TransformedValue{linked}(old_tv.val, old_tv.transform, old_tv.size)
     new_values = setindex!!(vi.values, new_tv, vn)
-    # The below check shouldn't ever pass, this should always result in `nothing`, but may
-    # as well play it safe, it'll be constant propagated away anyway.
     new_linked = Linked == linked ? Linked : nothing
     return VarInfo{new_linked}(new_values, vi.accs)
 end
@@ -496,6 +494,10 @@ function Base.merge(
     new_linked = if LinkedLeft == LinkedRight
         LinkedLeft
     else
+        # TODO(mhauru) Consider doing something more clever here, e.g. checking whether
+        # either varinfo_left or varinfo_right is empty, or actually iterating over all the
+        # values to check their linked status. Needs to balance keeping the type parameter
+        # alive vs runtime costs.
         nothing
     end
     return VarInfo{new_linked}(new_values, new_accs)

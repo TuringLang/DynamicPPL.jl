@@ -304,8 +304,6 @@ This function returns a VarNamedTuple mapping all VarNames to their correspondin
 `RangeAndLinked`.
 """
 function get_ranges_and_linked(vi::VarInfo)
-    # TODO(mhauru) Check that the closure doesn't cause type instability here.
-    vnt = VarNamedTuple()
     vnt, _ = mapreduce(
         identity,
         function ((vnt, offset), pair)
