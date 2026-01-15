@@ -1,7 +1,11 @@
 """
-    VarInfo{T<:VarNamedTuple,Accs<:AccumulatorTuple} <: AbstractVarInfo
+    VarInfo{Linked,T<:VarNamedTuple,Accs<:AccumulatorTuple} <: AbstractVarInfo
 
 The default implementation of `AbstractVarInfo`, storing variable values and accumulators.
+
+The `Linked` type parameter is either `true` or `false` to mark that all variables in this
+`VarInfo` are linked, or `nothing` to indicate that some variables may be linked and some
+not, and a runtime check is needed.
 
 `VarInfo` is quite a thin wrapper around a `VarNamedTuple` storing the variable values,
 and a tuple of accumulators. The only really noteworthy thing about it is that it stores
@@ -27,9 +31,15 @@ For more details on the internal storage, see documentation of [`TransformedValu
 $(TYPEDFIELDS)
 
 """
-struct VarInfo{T<:VarNamedTuple,Accs<:AccumulatorTuple} <: AbstractVarInfo
+struct VarInfo{Linked,T<:VarNamedTuple,Accs<:AccumulatorTuple} <: AbstractVarInfo
     values::T
     accs::Accs
+
+    function VarInfo{Linked}(
+        values::T, accs::Accs
+    ) where {Linked,T<:VarNamedTuple,Accs<:AccumulatorTuple}
+        return new{Linked,T,Accs}(values, accs)
+    end
 end
 
 # TODO(mhauru) The policy of vectorising all values was set when the old VarInfo type was
@@ -42,31 +52,43 @@ end
 # during model execution. However, this would change the interface quite a lot, so I want to
 # finish implementing VarInfo using VNT (mostly) respecting the old interface first.
 
+# TODO(mhauru) We are considering removing `transform` completely, and forcing people to use
+# ValuesAsInModelAcc instead. If that is done, we may want to move the Linked type parameter
+# to just be a bool field. It's currently a type parameter to make the type of `transform`
+# easier to type infer, but if `transform` no longer exists, it might start to cause
+# unnecessary type inconcreteness in the elements of PartialArray.
 """
-    TransformedValue{ValType,TransformType,SizeType}
+    TransformedValue{Linked,ValType,TransformType,SizeType}
 
 A struct for storing a variable's value in its internal (vectorised) form.
 
+The type parameter `Linked` is a `Bool` indicating whether the variable is linked, i.e.
+whether the transformation maps all real vectors to valid values.
 # Fields
 $(TYPEDFIELDS)
 """
-struct TransformedValue{ValType,TransformType,SizeType}
+struct TransformedValue{Linked,ValType,TransformType,SizeType}
     "The internal (vectorised) value."
     val::ValType
-    """Boolean indicating whether the variable is linked, i.e. the transformation maps all
-    real vectors to valid values."""
-    linked::Bool
     """The transformation from internal (vectorised) to actual value. In other words, the
     actual value of the variable being stored is `transform(val)`."""
     transform::TransformType
     """The size of the actual value after transformation. This is needed when a
     `TransformedValue` is stored as a block in an array."""
     size::SizeType
+
+    function TransformedValue{Linked}(
+        val::ValType, transform::TransformType, size::SizeType
+    ) where {Linked,ValType,TransformType,SizeType}
+        return new{Linked,ValType,TransformType,SizeType}(val, transform, size)
+    end
 end
+
+is_transformed(::TransformedValue{Linked}) where {Linked} = Linked
 
 VarNamedTuples.vnt_size(tv::TransformedValue) = tv.size
 
-VarInfo() = VarInfo(VarNamedTuple(), default_accumulators())
+VarInfo() = VarInfo{false}(VarNamedTuple(), default_accumulators())
 
 function VarInfo(values::Union{NamedTuple,AbstractDict})
     vi = VarInfo()
@@ -90,11 +112,15 @@ function VarInfo(
 end
 
 getaccs(vi::VarInfo) = vi.accs
-setaccs!!(vi::VarInfo, accs::AccumulatorTuple) = VarInfo(vi.values, accs)
+function setaccs!!(vi::VarInfo{Linked}, accs::AccumulatorTuple) where {Linked}
+    return VarInfo{Linked}(vi.values, accs)
+end
 
 transformation(::VarInfo) = DynamicTransformation()
 
-Base.copy(vi::VarInfo) = VarInfo(copy(vi.values), copy(getaccs(vi)))
+function Base.copy(vi::VarInfo{Linked}) where {Linked}
+    return VarInfo{Linked}(copy(vi.values), copy(getaccs(vi)))
+end
 Base.haskey(vi::VarInfo, vn::VarName) = haskey(vi.values, vn)
 Base.length(vi::VarInfo) = length(vi.values)
 Base.keys(vi::VarInfo) = keys(vi.values)
@@ -110,8 +136,8 @@ function Base.getindex(vi::VarInfo, vns::AbstractVector{<:VarName})
 end
 
 Base.isempty(vi::VarInfo) = isempty(vi.values)
-Base.empty(vi::VarInfo) = VarInfo(empty(vi.values), map(reset, vi.accs))
-BangBang.empty!!(vi::VarInfo) = VarInfo(empty!!(vi.values), map(reset, vi.accs))
+Base.empty(vi::VarInfo) = VarInfo{false}(empty(vi.values), map(reset, vi.accs))
+BangBang.empty!!(vi::VarInfo) = VarInfo{false}(empty!!(vi.values), map(reset, vi.accs))
 
 """
     setindex_internal!!(vi::VarInfo, val, vn::VarName)
@@ -120,11 +146,11 @@ Set the internal (vectorised) value of variable `vn` in `vi` to `val`.
 
 This does not change the transformation or linked status of the variable.
 """
-function setindex_internal!!(vi::VarInfo, val, vn::VarName)
+function setindex_internal!!(vi::VarInfo{Linked}, val, vn::VarName) where {Linked}
     old_tv = getindex(vi.values, vn)
-    new_tv = TransformedValue(val, old_tv.linked, old_tv.transform, old_tv.size)
+    new_tv = TransformedValue{is_transformed(old_tv)}(val, old_tv.transform, old_tv.size)
     new_values = setindex!!(vi.values, new_tv, vn)
-    return VarInfo(new_values, vi.accs)
+    return VarInfo{Linked}(new_values, vi.accs)
 end
 
 # TODO(mhauru) It shouldn't really be VarInfo's business to know about `dist`. However,
@@ -147,8 +173,14 @@ used.
 Returns the modified `vi` together with the log absolute determinant of the Jacobian of the
 transformation applied.
 """
-function setindex_with_dist!!(vi::VarInfo, val, dist::Distribution, vn::VarName)
-    link = haskey(vi, vn) ? is_transformed(vi, vn) : is_transformed(vi)
+function setindex_with_dist!!(
+    vi::VarInfo{Linked}, val, dist::Distribution, vn::VarName
+) where {Linked}
+    link = if Linked === nothing
+        haskey(vi, vn) ? is_transformed(vi, vn) : is_transformed(vi)
+    else
+        Linked
+    end
     transform = if link
         from_linked_vec_transform(dist)
     else
@@ -157,8 +189,9 @@ function setindex_with_dist!!(vi::VarInfo, val, dist::Distribution, vn::VarName)
     transformed_val, logjac = with_logabsdet_jacobian(inverse(transform), val)
     # All values for which `size` is not defined are assumed to be scalars.
     val_size = hasmethod(size, Tuple{typeof(val)}) ? size(val) : ()
-    tv = TransformedValue(transformed_val, link, transform, val_size)
-    vi = VarInfo(setindex!!(vi.values, tv, vn), vi.accs)
+    tv = TransformedValue{link}(transformed_val, transform, val_size)
+    new_linked = Linked == link ? Linked : nothing
+    vi = VarInfo{new_linked}(setindex!!(vi.values, tv, vn), vi.accs)
     return vi, logjac
 end
 
@@ -174,11 +207,12 @@ Set the value of `vn` in `vi` to `val`.
 The transformation for `vn` is reset to be the standard vector transformation for values of
 the type of `val` and linking status is set to false.
 """
-function BangBang.setindex!!(vi::VarInfo, val, vn::VarName)
+function BangBang.setindex!!(vi::VarInfo{Linked}, val, vn::VarName) where {Linked}
+    new_linked = Linked == false ? false : nothing
     transform = from_vec_transform(val)
     transformed_val = inverse(transform)(val)
-    tv = TransformedValue(transformed_val, false, transform, size(val))
-    return VarInfo(setindex!!(vi.values, tv, vn), vi.accs)
+    tv = TransformedValue{false}(transformed_val, transform, size(val))
+    return VarInfo{new_linked}(setindex!!(vi.values, tv, vn), vi.accs)
 end
 
 """
@@ -188,11 +222,14 @@ Set the linked status of variable `vn` in `vi` to `linked`.
 
 This does not change the value or transformation of the variable.
 """
-function set_transformed!!(vi::VarInfo, linked::Bool, vn::VarName)
+function set_transformed!!(vi::VarInfo{Linked}, linked::Bool, vn::VarName) where {Linked}
     old_tv = getindex(vi.values, vn)
-    new_tv = TransformedValue(old_tv.val, linked, old_tv.transform, old_tv.size)
+    new_tv = TransformedValue{linked}(old_tv.val, old_tv.transform, old_tv.size)
     new_values = setindex!!(vi.values, new_tv, vn)
-    return VarInfo(new_values, vi.accs)
+    # The below check shouldn't ever pass, this should always result in `nothing`, but may
+    # as well play it safe, it'll be constant propagated away anyway.
+    new_linked = Linked == linked ? Linked : nothing
+    return VarInfo{new_linked}(new_values, vi.accs)
 end
 
 # VarInfo does not care whether the transformation was Static or Dynamic, it just tracks
@@ -211,9 +248,9 @@ set_transformed!!(vi::VarInfo, ::NoTransformation) = set_transformed!!(vi, false
 
 function set_transformed!!(vi::VarInfo, linked::Bool)
     new_values = map_values!!(vi.values) do tv
-        TransformedValue(tv.val, linked, tv.transform, tv.size)
+        TransformedValue{linked}(tv.val, tv.transform, tv.size)
     end
-    return VarInfo(new_values, vi.accs)
+    return VarInfo{linked}(new_values, vi.accs)
 end
 
 """
@@ -225,7 +262,13 @@ getindex_internal(vi::VarInfo, vn::VarName) = getindex(vi.values, vn).val
 # TODO(mhauru) The below should be removed together with unflatten!!.
 getindex_internal(vi::VarInfo, ::Colon) = values_as(vi, Vector)
 
-is_transformed(vi::VarInfo, vn::VarName) = getindex(vi.values, vn).linked
+function is_transformed(vi::VarInfo{Linked}, vn::VarName) where {Linked}
+    return if Linked === nothing
+        is_transformed(getindex(vi.values, vn))
+    else
+        Linked
+    end
+end
 
 function from_internal_transform(::VarInfo, ::VarName, dist::Distribution)
     return from_vec_transform(dist)
@@ -273,7 +316,7 @@ function _link_or_invlink!!(vi::VarInfo, vns, model::Model, ::Val{link}) where {
             # Not one of the target variables.
             return tv
         end
-        if tv.linked == link
+        if is_transformed(tv) == link
             # Already in the desired state.
             return tv
         end
@@ -289,11 +332,17 @@ function _link_or_invlink!!(vi::VarInfo, vns, model::Model, ::Val{link}) where {
         val_new, logjac2 = with_logabsdet_jacobian(
             inverse(new_transform), val_untransformed
         )
-        new_tv = TransformedValue(val_new, link, new_transform, tv.size)
+        # !is_transformed(tv) is the same as `link`, but might be easier for type inference.
+        new_tv = TransformedValue{!is_transformed(tv)}(val_new, new_transform, tv.size)
         cumulative_logjac += logjac1 + logjac2
         return new_tv
     end
-    vi = VarInfo(new_values, vi.accs)
+    vi_linked = if vns === nothing
+        link
+    else
+        nothing
+    end
+    vi = VarInfo{vi_linked}(new_values, vi.accs)
     if hasacc(vi, Val(:LogJacobian))
         vi = acclogjac!!(vi, cumulative_logjac)
     end
@@ -397,7 +446,7 @@ function get_next_chunk!(vci::VectorChunkIterator, len::Int)
     return chunk
 end
 
-function unflatten!!(vi::VarInfo, vec::AbstractVector)
+function unflatten!!(vi::VarInfo{Linked}, vec::AbstractVector) where {Linked}
     # You may wonder, why have a whole struct for this, rather than just an index variable
     # that the mapping function would close over. I wonder too. But for some reason type
     # inference fails on such an index variable, turning it into a Core.Box.
@@ -412,9 +461,9 @@ function unflatten!!(vi::VarInfo, vec::AbstractVector)
         end
         len = length(old_val)
         new_val = get_next_chunk!(vci, len)
-        return TransformedValue(new_val, tv.linked, tv.transform, tv.size)
+        return TransformedValue{is_transformed(tv)}(new_val, tv.transform, tv.size)
     end
-    return VarInfo(new_values, vi.accs)
+    return VarInfo{Linked}(new_values, vi.accs)
 end
 
 """
@@ -424,9 +473,9 @@ Create a new `VarInfo` containing only the variables in `vns`.
 
 `vns` can be almost any collection of `VarName`s, e.g. a `Set`, `Vector`, or `Tuple`.
 """
-function subset(varinfo::VarInfo, vns)
+function subset(varinfo::VarInfo{Linked}, vns) where {Linked}
     new_values = subset(varinfo.values, vns)
-    return VarInfo(new_values, map(copy, getaccs(varinfo)))
+    return VarInfo{Linked}(new_values, map(copy, getaccs(varinfo)))
 end
 
 """
@@ -439,8 +488,15 @@ The accumulators are taken exclusively from `varinfo_right`.
 If a variable exists in both `varinfo_left` and `varinfo_right`, the value from
 `varinfo_right` is used.
 """
-function Base.merge(varinfo_left::VarInfo, varinfo_right::VarInfo)
+function Base.merge(
+    varinfo_left::VarInfo{LinkedLeft}, varinfo_right::VarInfo{LinkedRight}
+) where {LinkedLeft,LinkedRight}
     new_values = merge(varinfo_left.values, varinfo_right.values)
     new_accs = map(copy, getaccs(varinfo_right))
-    return VarInfo(new_values, new_accs)
+    new_linked = if LinkedLeft == LinkedRight
+        LinkedLeft
+    else
+        nothing
+    end
+    return VarInfo{new_linked}(new_values, new_accs)
 end

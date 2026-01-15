@@ -313,7 +313,7 @@ function get_ranges_and_linked(vi::VarInfo)
             val = tv.val
             range = offset:(offset + length(val) - 1)
             offset += length(val)
-            ral = RangeAndLinked(range, tv.linked, tv.size)
+            ral = RangeAndLinked(range, is_transformed(tv), tv.size)
             vnt = setindex!!(vnt, ral, vn)
             return vnt, offset
         end,
