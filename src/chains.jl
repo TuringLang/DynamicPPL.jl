@@ -113,7 +113,7 @@ Generate a `ParamsWithStats` by re-evaluating the given `ldf` with the provided
 `param_vector`.
 
 This method is intended to replace the old method of obtaining parameters and statistics
-via `unflatten` plus re-evaluation. It is faster for two reasons:
+via `unflatten!!` plus re-evaluation. It is faster for two reasons:
 
 1. It does not rely on `deepcopy`-ing the VarInfo object (this used to be mandatory as
    otherwise re-evaluation would mutate the VarInfo, rendering it unusable for subsequent

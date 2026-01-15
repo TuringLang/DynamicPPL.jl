@@ -727,7 +727,7 @@ See also: [`default_transformation`](@ref), [`invlink!!`](@ref).
 function link!!(vi::AbstractVarInfo, model::Model)
     return link!!(default_transformation(model, vi), vi, model)
 end
-function link!!(vi::AbstractVarInfo, vns::VarNameTuple, model::Model)
+function link!!(vi::AbstractVarInfo, vns, model::Model)
     return link!!(default_transformation(model, vi), vi, vns, model)
 end
 
@@ -746,7 +746,7 @@ See also: [`default_transformation`](@ref), [`invlink`](@ref).
 function link(vi::AbstractVarInfo, model::Model)
     return link(default_transformation(model, vi), vi, model)
 end
-function link(vi::AbstractVarInfo, vns::VarNameTuple, model::Model)
+function link(vi::AbstractVarInfo, vns, model::Model)
     return link(default_transformation(model, vi), vi, vns, model)
 end
 function link(t::AbstractTransformation, vi::AbstractVarInfo, model::Model)
@@ -769,7 +769,7 @@ See also: [`default_transformation`](@ref), [`link!!`](@ref).
 function invlink!!(vi::AbstractVarInfo, model::Model)
     return invlink!!(default_transformation(model, vi), vi, model)
 end
-function invlink!!(vi::AbstractVarInfo, vns::VarNameTuple, model::Model)
+function invlink!!(vi::AbstractVarInfo, vns, model::Model)
     return invlink!!(default_transformation(model, vi), vi, vns, model)
 end
 
@@ -789,7 +789,7 @@ See also: [`default_transformation`](@ref), [`link`](@ref).
 function invlink(vi::AbstractVarInfo, model::Model)
     return invlink(default_transformation(model, vi), vi, model)
 end
-function invlink(vi::AbstractVarInfo, vns::VarNameTuple, model::Model)
+function invlink(vi::AbstractVarInfo, vns, model::Model)
     return invlink(default_transformation(model, vi), vi, vns, model)
 end
 function invlink(t::AbstractTransformation, vi::AbstractVarInfo, model::Model)

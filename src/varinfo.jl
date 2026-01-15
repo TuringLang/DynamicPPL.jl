@@ -406,7 +406,7 @@ function unflatten!!(vi::VarInfo, vec::AbstractVector)
         old_val = tv.val
         if !(old_val isa AbstractVector)
             error(
-                "Can't unflatten a VarInfo for which existing values are not vectors:" *
+                "Can't unflatten!! a VarInfo for which existing values are not vectors:" *
                 " Got value of type $(typeof(old_val)).",
             )
         end

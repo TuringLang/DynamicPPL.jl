@@ -87,9 +87,9 @@ from:
 Up until DynamicPPL v0.38, there have been two ways of evaluating a DynamicPPL model at a
 given set of parameters:
 
-1. With `unflatten` + `evaluate!!` with `DefaultContext`: this stores a vector of parameters
-   inside a VarInfo's metadata, then reads parameter values from the VarInfo during
-   evaluation.
+1. With `unflatten!!` + `evaluate!!` with `DefaultContext`: this stores a vector of
+   parameters inside a VarInfo's metadata, then reads parameter values from the VarInfo
+   during evaluation.
 
 2. With `InitFromParams`: this reads parameter values from a NamedTuple or a Dict, and
    stores them inside a VarInfo's metadata.
@@ -114,7 +114,7 @@ In particular, it is not clear:
  - which parts of the vector correspond to which random variables, and
  - whether the variables are linked or unlinked.
 
-Traditionally, this problem has been solved by `unflatten`, because that function would
+Traditionally, this problem has been solved by `unflatten!!`, because that function would
 place values into the VarInfo's metadata alongside the information about ranges and linking.
 That way, when we evaluate with `DefaultContext`, we can read this information out again.
 However, we want to avoid using a metadata. Thus, here, we _extract this information from
@@ -131,7 +131,7 @@ the `LogDensityFunction` object. Therefore, a `LogDensityFunction` object cannot
 models which have variable numbers of parameters, or models which may visit random variables
 in different orders depending on stochastic control flow. **Indeed, silent errors may occur
 with such models.** This is a general limitation of vectorised parameters: the original
-`unflatten` + `evaluate!!` approach also fails with such models.
+`unflatten!!` + `evaluate!!` approach also fails with such models.
 """
 struct LogDensityFunction{
     # true if all variables are linked; false if all variables are unlinked; nothing if

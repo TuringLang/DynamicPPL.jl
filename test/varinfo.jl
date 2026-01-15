@@ -346,7 +346,7 @@ end
         end
     end
 
-    @testset "unflatten + linking" begin
+    @testset "unflatten!! + linking" begin
         @testset "Model: $(model.f)" for model in [
             DynamicPPL.TestUtils.demo_one_variable_multiple_constraints(),
             DynamicPPL.TestUtils.demo_lkjchol(),
@@ -403,7 +403,7 @@ end
         end
     end
 
-    @testset "unflatten type stability" begin
+    @testset "unflatten!! type stability" begin
         @model function demo(y)
             x ~ Normal()
             y ~ Normal(x, 1)

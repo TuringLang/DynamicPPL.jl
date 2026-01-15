@@ -56,12 +56,13 @@ used to determine whether the float type needs to be modified).
 
 In case that wasn't enough: in fact, even the above is not always true. Firstly, the
 accumulator argument is only true when evaluating with ThreadSafeVarInfo. See the comments
-in `DynamicPPL.unflatten` for more details. For non-threadsafe evaluation, Julia is capable
-of automatically promoting the types on its own. Secondly, the promotion only matters if you
-are trying to directly assign into a `Vector{Float64}` with a `ForwardDiff.Dual` or similar
-tracer type, for example using `xs[i] = MyDual`. This doesn't actually apply to
-tilde-statements like `xs[i] ~ ...` because those use `Accessors.@set` under the hood, which
-also does the promotion for you. For the gory details, see the following issues:
+in `DynamicPPL.unflatten!!` for more details. For non-threadsafe evaluation, Julia is
+capable of automatically promoting the types on its own. Secondly, the promotion only
+matters if you are trying to directly assign into a `Vector{Float64}` with a
+`ForwardDiff.Dual` or similar tracer type, for example using `xs[i] = MyDual`. This doesn't
+actually apply to tilde-statements like `xs[i] ~ ...` because those use `Accessors.@set`
+under the hood, which also does the promotion for you. For the gory details, see the
+following issues:
 
 - https://github.com/TuringLang/DynamicPPL.jl/issues/906 for accumulator types
 - https://github.com/TuringLang/DynamicPPL.jl/issues/823 for type argument promotion
