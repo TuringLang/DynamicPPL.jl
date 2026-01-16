@@ -1,8 +1,8 @@
-struct PriorDistributionAccumulator{D<:OrderedDict{VarName,Any}} <: AbstractAccumulator
+struct PriorDistributionAccumulator{D<:VarNamedTuple} <: AbstractAccumulator
     priors::D
 end
 
-PriorDistributionAccumulator() = PriorDistributionAccumulator(OrderedDict{VarName,Any}())
+PriorDistributionAccumulator() = PriorDistributionAccumulator(VarNamedTuple())
 
 function Base.copy(acc::PriorDistributionAccumulator)
     return PriorDistributionAccumulator(copy(acc.priors))
@@ -21,33 +21,34 @@ function combine(acc1::PriorDistributionAccumulator, acc2::PriorDistributionAccu
     return PriorDistributionAccumulator(merge(acc1.priors, acc2.priors))
 end
 
-function setprior!(acc::PriorDistributionAccumulator, vn::VarName, dist::Distribution)
-    acc.priors[vn] = dist
-    return acc
+function setprior!!(acc::PriorDistributionAccumulator, vn::VarName, dist::Distribution)
+    return PriorDistributionAccumulator(setindex!!(acc.priors, dist, vn))
 end
 
-function setprior!(
+function setprior!!(
     acc::PriorDistributionAccumulator, vns::AbstractArray{<:VarName}, dist::Distribution
 )
+    priors = acc.priors
     for vn in vns
-        acc.priors[vn] = dist
+        priors = setindex!!(priors, dist, vn)
     end
-    return acc
+    return PriorDistributionAccumulator(priors)
 end
 
-function setprior!(
+function setprior!!(
     acc::PriorDistributionAccumulator,
     vns::AbstractArray{<:VarName},
     dists::AbstractArray{<:Distribution},
 )
+    priors = acc.priors
     for (vn, dist) in zip(vns, dists)
-        acc.priors[vn] = dist
+        priors = setindex!!(priors, dist, vn)
     end
-    return acc
+    return PriorDistributionAccumulator(priors)
 end
 
 function accumulate_assume!!(acc::PriorDistributionAccumulator, val, logjac, vn, right)
-    return setprior!(acc, vn, right)
+    return setprior!!(acc, vn, right)
 end
 
 accumulate_observe!!(acc::PriorDistributionAccumulator, right, left, vn) = acc
@@ -57,8 +58,10 @@ accumulate_observe!!(acc::PriorDistributionAccumulator, right, left, vn) = acc
 
 Extract the priors from a model.
 
-This is done by sampling from the model and
-recording the distributions that are used to generate the samples.
+This is done by sampling from the model and recording the distributions that are used to
+generate the samples.
+
+Return a `VarNamedTuple`.
 
 !!! warning
     Because the extraction is done by execution of the model, there
@@ -135,7 +138,10 @@ This is done by evaluating the model at the values present in `varinfo`
 and recording the distributions that are present at each tilde statement.
 """
 function extract_priors(model::Model, varinfo::AbstractVarInfo)
-    varinfo = setaccs!!(deepcopy(varinfo), (PriorDistributionAccumulator(),))
+    model = setleafcontext(model, DefaultContext())
+    # TODO(mhauru) Why is setaccs!! BangBang? I'm pretty sure it doesn't mutate. Would
+    # really like to avoid a copy here.
+    varinfo = setaccs!!(varinfo, (PriorDistributionAccumulator(),))
     varinfo = last(evaluate!!(model, varinfo))
     return getacc(varinfo, Val(:PriorDistributionAccumulator)).priors
 end

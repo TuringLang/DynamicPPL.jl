@@ -287,6 +287,38 @@ function from_linked_internal_transform(vi::VarInfo, vn::VarName)
     return getindex(vi.values, vn).transform
 end
 
+mutable struct LinkIterator{Link,TDists,TVns}
+    dists::TDists
+    vns::TVns
+    cumulative_logjac::LogProbType
+end
+
+function (li::LinkIterator{link})(pair) where {link}
+    vn, tv = pair
+    if li.vns !== nothing && !any(x -> subsumes(x, vn), li.vns)
+        # Not one of the target variables.
+        return tv
+    end
+    if is_transformed(tv) == link
+        # Already in the desired state.
+        return tv
+    end
+    dist = getindex(li.dists, vn)
+    vec_transform = from_vec_transform(dist)
+    link_transform = from_linked_vec_transform(dist)
+    current_transform, new_transform = if link
+        (vec_transform, link_transform)
+    else
+        (link_transform, vec_transform)
+    end
+    val_untransformed, logjac1 = with_logabsdet_jacobian(current_transform, tv.val)
+    val_new, logjac2 = with_logabsdet_jacobian(inverse(new_transform), val_untransformed)
+    # !is_transformed(tv) is the same as `link`, but might be easier for type inference.
+    new_tv = TransformedValue{!is_transformed(tv)}(val_new, new_transform, tv.size)
+    li.cumulative_logjac += logjac1 + logjac2
+    return new_tv
+end
+
 """
     _link_or_invlink!!(vi::VarInfo, vns, model::Model, ::Val{link}) where {link isa Bool}
 
@@ -307,34 +339,37 @@ function _link_or_invlink!!(vi::VarInfo, vns, model::Model, ::Val{link}) where {
     # similar to what DynamicTransformation used to do, and we might replace this with a
     # context that transforms each variable in turn during the execution.
     dists = extract_priors(model, vi)
-    cumulative_logjac = zero(LogProbType)
-    new_values = map_pairs!!(vi.values) do pair
-        vn, tv = pair
-        if vns !== nothing && !any(x -> subsumes(x, vn), vns)
-            # Not one of the target variables.
-            return tv
-        end
-        if is_transformed(tv) == link
-            # Already in the desired state.
-            return tv
-        end
-        dist = getindex(dists, vn)
-        vec_transform = from_vec_transform(dist)
-        link_transform = from_linked_vec_transform(dist)
-        current_transform, new_transform = if link
-            (vec_transform, link_transform)
-        else
-            (link_transform, vec_transform)
-        end
-        val_untransformed, logjac1 = with_logabsdet_jacobian(current_transform, tv.val)
-        val_new, logjac2 = with_logabsdet_jacobian(
-            inverse(new_transform), val_untransformed
-        )
-        # !is_transformed(tv) is the same as `link`, but might be easier for type inference.
-        new_tv = TransformedValue{!is_transformed(tv)}(val_new, new_transform, tv.size)
-        cumulative_logjac += logjac1 + logjac2
-        return new_tv
-    end
+    # cumulative_logjac = zero(LogProbType)
+    li = LinkIterator{link,typeof(dists),typeof(vns)}(dists, vns, zero(LogProbType))
+    new_values = map_pairs!!(li, vi.values)
+    cumulative_logjac = li.cumulative_logjac
+    # new_values = map_pairs!!(vi.values) do pair
+    #     vn, tv = pair
+    #     if vns !== nothing && !any(x -> subsumes(x, vn), vns)
+    #         # Not one of the target variables.
+    #         return tv
+    #     end
+    #     if is_transformed(tv) == link
+    #         # Already in the desired state.
+    #         return tv
+    #     end
+    #     dist = getindex(dists, vn)
+    #     vec_transform = from_vec_transform(dist)
+    #     link_transform = from_linked_vec_transform(dist)
+    #     current_transform, new_transform = if link
+    #         (vec_transform, link_transform)
+    #     else
+    #         (link_transform, vec_transform)
+    #     end
+    #     val_untransformed, logjac1 = with_logabsdet_jacobian(current_transform, tv.val)
+    #     val_new, logjac2 = with_logabsdet_jacobian(
+    #         inverse(new_transform), val_untransformed
+    #     )
+    #     # !is_transformed(tv) is the same as `link`, but might be easier for type inference.
+    #     new_tv = TransformedValue{!is_transformed(tv)}(val_new, new_transform, tv.size)
+    #     cumulative_logjac += logjac1 + logjac2
+    #     return new_tv
+    # end
     vi_linked = if vns === nothing
         link
     else
@@ -444,23 +479,47 @@ function get_next_chunk!(vci::VectorChunkIterator, len::Int)
     return chunk
 end
 
+mutable struct UnflattenIterator{T}
+    vec::T
+    index::Int
+end
+
+function (ui::UnflattenIterator)(tv)
+    old_val = tv.val
+    if !(old_val isa AbstractVector)
+        error(
+            "Can't unflatten!! a VarInfo for which existing values are not vectors:" *
+            " Got value of type $(typeof(old_val)).",
+        )
+    end
+    len = length(old_val)
+    new_val = @view ui.vec[(ui.index):(ui.index + len - 1)]
+    ui.index += len
+    return new_val
+end
+
 function unflatten!!(vi::VarInfo{Linked}, vec::AbstractVector) where {Linked}
     # You may wonder, why have a whole struct for this, rather than just an index variable
     # that the mapping function would close over. I wonder too. But for some reason type
     # inference fails on such an index variable, turning it into a Core.Box.
-    vci = VectorChunkIterator(vec, 1)
-    new_values = map_values!!(vi.values) do tv
-        old_val = tv.val
-        if !(old_val isa AbstractVector)
-            error(
-                "Can't unflatten!! a VarInfo for which existing values are not vectors:" *
-                " Got value of type $(typeof(old_val)).",
-            )
-        end
-        len = length(old_val)
-        new_val = get_next_chunk!(vci, len)
-        return TransformedValue{is_transformed(tv)}(new_val, tv.transform, tv.size)
-    end
+    # vci = VectorChunkIterator(vec, 1)
+    new_values = map_values!!(UnflattenIterator(vec, 1), vi.values)
+    # index::Int = 1
+    #    new_values = map_values!!(vi.values) do tv
+    #        old_val = tv.val
+    #        if !(old_val isa AbstractVector)
+    #            error(
+    #                "Can't unflatten!! a VarInfo for which existing values are not vectors:" *
+    #                " Got value of type $(typeof(old_val)).",
+    #            )
+    #        end
+    #        len = length(old_val)
+    #        new_val = @view vec[index:(index + len - 1)]
+    #        index += len
+    #        new_val
+    #        # new_val = get_next_chunk!(vci, len)
+    # return TransformedValue{is_transformed(tv)}(new_val, tv.transform, tv.size)
+    #    end
     return VarInfo{Linked}(new_values, vi.accs)
 end
 
