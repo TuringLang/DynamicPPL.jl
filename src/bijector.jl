@@ -1,60 +1,65 @@
+struct BijectorAccumulator <: AbstractAccumulator
+    bijectors::Vector{Any}
+    sizes::Vector{Int}
+end
+
+BijectorAccumulator() = BijectorAccumulator(Bijectors.Bijector[], UnitRange{Int}[])
+
+function Base.:(==)(acc1::BijectorAccumulator, acc2::BijectorAccumulator)
+    return (acc1.bijectors == acc2.bijectors && acc1.sizes == acc2.sizes)
+end
+
+function Base.copy(acc::BijectorAccumulator)
+    return BijectorAccumulator(copy(acc.bijectors), copy(acc.sizes))
+end
+
+accumulator_name(::Type{<:BijectorAccumulator}) = :Bijector
+
+function _zero(acc::BijectorAccumulator)
+    return BijectorAccumulator(empty(acc.bijectors), empty(acc.sizes))
+end
+reset(acc::BijectorAccumulator) = _zero(acc)
+split(acc::BijectorAccumulator) = _zero(acc)
+function combine(acc1::BijectorAccumulator, acc2::BijectorAccumulator)
+    return BijectorAccumulator(
+        vcat(acc1.bijectors, acc2.bijectors), vcat(acc1.sizes, acc2.sizes)
+    )
+end
+
+function accumulate_assume!!(acc::BijectorAccumulator, val, logjac, vn, right)
+    bijector = _compose_no_identity(
+        to_linked_vec_transform(right), from_vec_transform(right)
+    )
+    push!(acc.bijectors, bijector)
+    push!(acc.sizes, prod(output_size(to_vec_transform(right), right); init=1))
+    return acc
+end
+
+accumulate_observe!!(acc::BijectorAccumulator, right, left, vn) = acc
 
 """
-    bijector(model::Model[, sym2ranges = Val(false)])
+    bijector(model::Model, init_strategy::AbstractInitStrategy=InitFromPrior())
 
-Returns a `Stacked <: Bijector` which maps from the support of the posterior to ℝᵈ with `d`
-denoting the dimensionality of the latent variables.
+Returns a `Stacked <: Bijector` which maps from constrained to unconstrained space.
+
+The input to the bijector is a vector of values for the whole model, like the input to
+`unflatten!!`. These are in constrained space, i.e., respecting variable constraints.
+The output is a vector of unconstrained values.
+
+`init_strategy` is passed to `DynamicPPL.init!!` to determine what values the model is
+evaluated with. This may affect the results if the prior distributions or constraints of
+variables are dependent on other variables.
 """
 function Bijectors.bijector(
-    model::DynamicPPL.Model,
-    (::Val{sym2ranges})=Val(false);
-    varinfo=DynamicPPL.VarInfo(model),
-) where {sym2ranges}
-    dists = vcat([varinfo.metadata[sym].dists for sym in keys(varinfo.metadata)]...)
-
-    num_ranges = sum([
-        length(varinfo.metadata[sym].ranges) for sym in keys(varinfo.metadata)
-    ])
-    ranges = Vector{UnitRange{Int}}(undef, num_ranges)
-    idx = 0
-    range_idx = 1
-
-    # ranges might be discontinuous => values are vectors of ranges rather than just ranges
-    sym_lookup = Dict{Symbol,Vector{UnitRange{Int}}}()
-    for sym in keys(varinfo.metadata)
-        sym_lookup[sym] = Vector{UnitRange{Int}}()
-        for r in varinfo.metadata[sym].ranges
-            ranges[range_idx] = idx .+ r
-            push!(sym_lookup[sym], ranges[range_idx])
-            range_idx += 1
-        end
-
-        idx += varinfo.metadata[sym].ranges[end][end]
+    model::DynamicPPL.Model, init_strategy::AbstractInitStrategy=InitFromPrior()
+)
+    vi = OnlyAccsVarInfo((BijectorAccumulator(),))
+    vi = last(DynamicPPL.init!!(model, vi, init_strategy))
+    acc = getacc(vi, Val(:Bijector))
+    ranges = foldl(acc.sizes; init=UnitRange{Int}[]) do cumulant, sz
+        last_index = length(cumulant) > 0 ? last(cumulant).stop : 0
+        push!(cumulant, (last_index + 1):(last_index + sz))
+        return cumulant
     end
-
-    bs = map(tuple(dists...)) do d
-        b = Bijectors.bijector(d)
-        if d isa Distributions.UnivariateDistribution
-            b
-        else
-            # Wrap a bijector `f` such that it operates on vectors of length `prod(in_size)`
-            # and produces a vector of length `prod(Bijectors.output(f, in_size))`.
-            in_size = size(d)
-            vec_in_length = prod(in_size)
-            reshape_inner = Bijectors.Reshape((vec_in_length,), in_size)
-            out_size = Bijectors.output_size(b, in_size)
-            vec_out_length = prod(out_size)
-            reshape_outer = Bijectors.Reshape(out_size, (vec_out_length,))
-            reshape_outer ∘ b ∘ reshape_inner
-        end
-    end
-
-    if sym2ranges
-        return (
-            Bijectors.Stacked(bs, ranges),
-            (; collect(zip(keys(sym_lookup), values(sym_lookup)))...),
-        )
-    else
-        return Bijectors.Stacked(bs, ranges)
-    end
+    return Bijectors.Stacked(acc.bijectors, ranges)
 end

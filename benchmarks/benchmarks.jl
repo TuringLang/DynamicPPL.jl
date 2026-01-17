@@ -9,9 +9,7 @@ using StableRNGs: StableRNG
 
 rng = StableRNG(23)
 
-colnames = [
-    "Model", "Dim", "AD Backend", "VarInfo", "Linked", "t(eval)/t(ref)", "t(grad)/t(eval)"
-]
+colnames = ["Model", "Dim", "AD Backend", "Linked", "t(eval)/t(ref)", "t(grad)/t(eval)"]
 function print_results(results_table; to_json=false)
     if to_json
         # Print to the given file as JSON
@@ -58,31 +56,26 @@ function run(; to_json=false)
     end
 
     # Specify the combinations to test:
-    # (Model Name, model instance, VarInfo choice, AD backend, linked)
+    # (Model Name, model instance, AD backend, linked)
     chosen_combinations = [
         (
             "Simple assume observe",
             Models.simple_assume_observe(randn(rng)),
-            :typed,
             :forwarddiff,
             false,
         ),
-        ("Smorgasbord", smorgasbord_instance, :typed, :forwarddiff, false),
-        ("Smorgasbord", smorgasbord_instance, :simple_namedtuple, :forwarddiff, true),
-        ("Smorgasbord", smorgasbord_instance, :untyped, :forwarddiff, true),
-        ("Smorgasbord", smorgasbord_instance, :simple_dict, :forwarddiff, true),
-        ("Smorgasbord", smorgasbord_instance, :typed_vector, :forwarddiff, true),
-        ("Smorgasbord", smorgasbord_instance, :untyped_vector, :forwarddiff, true),
-        ("Smorgasbord", smorgasbord_instance, :typed, :reversediff, true),
-        ("Smorgasbord", smorgasbord_instance, :typed, :mooncake, true),
-        ("Smorgasbord", smorgasbord_instance, :typed, :enzyme, true),
-        ("Loop univariate 1k", loop_univariate1k, :typed, :mooncake, true),
-        ("Multivariate 1k", multivariate1k, :typed, :mooncake, true),
-        ("Loop univariate 10k", loop_univariate10k, :typed, :mooncake, true),
-        ("Multivariate 10k", multivariate10k, :typed, :mooncake, true),
-        ("Dynamic", Models.dynamic(), :typed, :mooncake, true),
-        ("Submodel", Models.parent(randn(rng)), :typed, :mooncake, true),
-        ("LDA", lda_instance, :typed, :reversediff, true),
+        ("Smorgasbord", smorgasbord_instance, :forwarddiff, false),
+        ("Smorgasbord", smorgasbord_instance, :forwarddiff, true),
+        ("Smorgasbord", smorgasbord_instance, :reversediff, true),
+        ("Smorgasbord", smorgasbord_instance, :mooncake, true),
+        ("Smorgasbord", smorgasbord_instance, :enzyme, true),
+        ("Loop univariate 1k", loop_univariate1k, :mooncake, true),
+        ("Multivariate 1k", multivariate1k, :mooncake, true),
+        ("Loop univariate 10k", loop_univariate10k, :mooncake, true),
+        ("Multivariate 10k", multivariate10k, :mooncake, true),
+        ("Dynamic", Models.dynamic(), :mooncake, true),
+        ("Submodel", Models.parent(randn(rng)), :mooncake, true),
+        ("LDA", lda_instance, :reversediff, true),
     ]
 
     # Time running a model-like function that does not use DynamicPPL, as a reference point.
@@ -94,13 +87,13 @@ function run(; to_json=false)
     @info "Reference evaluation time: $(reference_time) seconds"
 
     results_table = Tuple{
-        String,Int,String,String,Bool,Union{Float64,Missing},Union{Float64,Missing}
+        String,Int,String,Bool,Union{Float64,Missing},Union{Float64,Missing}
     }[]
 
-    for (model_name, model, varinfo_choice, adbackend, islinked) in chosen_combinations
-        @info "Running benchmark for $model_name, $varinfo_choice, $adbackend, $islinked"
+    for (model_name, model, adbackend, islinked) in chosen_combinations
+        @info "Running benchmark for $model_name, $adbackend, $islinked"
         relative_eval_time, relative_ad_eval_time = try
-            results = benchmark(model, varinfo_choice, adbackend, islinked)
+            results = benchmark(model, adbackend, islinked)
             @info " t(eval) = $(results.primal_time)"
             @info " t(grad) = $(results.grad_time)"
             (results.primal_time / reference_time),
@@ -115,7 +108,6 @@ function run(; to_json=false)
                 model_name,
                 model_dimension(model, islinked),
                 string(adbackend),
-                string(varinfo_choice),
                 islinked,
                 relative_eval_time,
                 relative_ad_eval_time,
@@ -131,9 +123,8 @@ struct TestCase
     model_name::String
     dim::Integer
     ad_backend::String
-    varinfo::String
     linked::Bool
-    TestCase(d::Dict{String,Any}) = new((d[c] for c in colnames[1:5])...)
+    TestCase(d::Dict{String,Any}) = new((d[c] for c in colnames[1:4])...)
 end
 function combine(head_filename::String, base_filename::String)
     head_results = try
@@ -148,22 +139,21 @@ function combine(head_filename::String, base_filename::String)
         Dict{String,Any}[]
     end
     @info "Loaded $(length(base_results)) results from $base_filename"
-    # Identify unique combinations of (Model, Dim, AD Backend, VarInfo, Linked)
+    # Identify unique combinations of (Model, Dim, AD Backend, Linked)
     head_testcases = Dict(
-        TestCase(d) => (d[colnames[6]], d[colnames[7]]) for d in head_results
+        TestCase(d) => (d[colnames[5]], d[colnames[6]]) for d in head_results
     )
     base_testcases = Dict(
-        TestCase(d) => (d[colnames[6]], d[colnames[7]]) for d in base_results
+        TestCase(d) => (d[colnames[5]], d[colnames[6]]) for d in base_results
     )
     all_testcases = union(Set(keys(head_testcases)), Set(keys(base_testcases)))
     @info "$(length(all_testcases)) unique test cases found"
     sorted_testcases = sort(
-        collect(all_testcases); by=(c -> (c.model_name, c.linked, c.varinfo, c.ad_backend))
+        collect(all_testcases); by=(c -> (c.model_name, c.linked, c.ad_backend))
     )
     results_table = Tuple{
         String,
         Int,
-        String,
         String,
         Bool,
         String,
@@ -179,12 +169,12 @@ function combine(head_filename::String, base_filename::String)
     sublabels = ["base", "this PR", "speedup"]
     results_colnames = [
         [
-            EmptyCells(5),
+            EmptyCells(4),
             MultiColumn(3, "t(eval) / t(ref)"),
             MultiColumn(3, "t(grad) / t(eval)"),
             MultiColumn(3, "t(grad) / t(ref)"),
         ],
-        [colnames[1:5]..., sublabels..., sublabels..., sublabels...],
+        [colnames[1:4]..., sublabels..., sublabels..., sublabels...],
     ]
     sprint_float(x::Float64) = @sprintf("%.2f", x)
     sprint_float(m::Missing) = "err"
@@ -211,7 +201,6 @@ function combine(head_filename::String, base_filename::String)
                 c.model_name,
                 c.dim,
                 c.ad_backend,
-                c.varinfo,
                 c.linked,
                 sprint_float(base_eval),
                 sprint_float(head_eval),

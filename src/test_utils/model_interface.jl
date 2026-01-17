@@ -89,10 +89,10 @@ function logprior_true_with_logabsdet_jacobian end
 Return a collection of `VarName` as they are expected to appear in the model.
 
 Even though it is recommended to implement this by hand for a particular `Model`,
-a default implementation using [`SimpleVarInfo{<:Dict}`](@ref) is provided.
+a default implementation using [`VarInfo`](@ref) is provided.
 """
 function varnames(model::Model)
-    result = collect(keys(last(DynamicPPL.init!!(model, SimpleVarInfo(OrderedDict())))))
+    result = collect(keys(last(DynamicPPL.init!!(model, VarInfo()))))
     # Concretise the element type.
     return [x for x in result]
 end
@@ -104,7 +104,7 @@ Return a `NamedTuple` compatible with `varnames(model)` where the values represe
 the posterior mean under `model`.
 
 "Compatible" means that a `varname` from `varnames(model)` can be used to extract the
-corresponding value using `get`, e.g. `get(posterior_mean(model), varname)`.
+corresponding value using e.g. `AbstractPPL.getvalue(posterior_mean(model), varname)`.
 """
 function posterior_mean end
 

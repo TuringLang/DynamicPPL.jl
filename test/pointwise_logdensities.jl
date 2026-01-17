@@ -5,7 +5,7 @@
         # Instantiate a `VarInfo` with the example values.
         vi = VarInfo(model)
         for vn in DynamicPPL.TestUtils.varnames(model)
-            vi = DynamicPPL.setindex!!(vi, get(example_values, vn), vn)
+            vi = DynamicPPL.setindex!!(vi, AbstractPPL.getvalue(example_values, vn), vn)
         end
 
         loglikelihood_true = DynamicPPL.TestUtils.loglikelihood_true(

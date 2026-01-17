@@ -333,25 +333,18 @@ Please see the documentation of [AbstractPPL.jl](https://github.com/TuringLang/A
 
 ### Data Structures of Variables
 
-DynamicPPL provides different data structures used in for storing samples and accumulation of the log-probabilities, all of which are subtypes of [`AbstractVarInfo`](@ref).
+DynamicPPL provides a data structure for storing samples and accumulation of the log-probabilities, called [`VarInfo`](@ref).
+The interface that `VarInfo` respects is described by the abstract type [`AbstractVarInfo`](@ref).
+Internally DynamicPPL also uses a couple of other subtypes of `AbstractVarInfo`.
 
 ```@docs
 AbstractVarInfo
 ```
 
-But exactly how a [`AbstractVarInfo`](@ref) stores this information can vary.
-
-#### `VarInfo`
-
 ```@docs
 VarInfo
-```
-
-```@docs
-DynamicPPL.untyped_varinfo
-DynamicPPL.typed_varinfo
-DynamicPPL.untyped_vector_varinfo
-DynamicPPL.typed_vector_varinfo
+DynamicPPL.TransformedValue
+DynamicPPL.setindex_with_dist!!
 ```
 
 One main characteristic of [`VarInfo`](@ref) is that samples are transformed to unconstrained Euclidean space and stored in a linearized form, as described in the [main Turing documentation](https://turinglang.org/docs/developers/transforms/dynamicppl/).
@@ -363,14 +356,18 @@ is_transformed
 set_transformed!!
 ```
 
-```@docs
-Base.empty!
-```
+#### `VarNamedTuple`s
 
-#### `SimpleVarInfo`
+`VarInfo` is only a thin wrapper around [`VarNamedTuple`](@ref), which stores arbitrary data keyed by `VarName`s.
+For more details on `VarNamedTuple`, see the Internals section of our documentation.
 
 ```@docs
-SimpleVarInfo
+DynamicPPL.VarNamedTuples.VarNamedTuple
+DynamicPPL.VarNamedTuples.vnt_size
+DynamicPPL.VarNamedTuples.apply!!
+DynamicPPL.VarNamedTuples.map_pairs!!
+DynamicPPL.VarNamedTuples.map_values!!
+DynamicPPL.VarNamedTuples.PartialArray
 ```
 
 ### Accumulators
@@ -416,19 +413,10 @@ accloglikelihood!!
 ```@docs
 keys
 getindex
-push!!
 empty!!
 isempty
 DynamicPPL.getindex_internal
-DynamicPPL.setindex_internal!
-DynamicPPL.update_internal!
-DynamicPPL.insert_internal!
-DynamicPPL.length_internal
-DynamicPPL.reset!
-DynamicPPL.update!
-DynamicPPL.insert!
-DynamicPPL.loosen_types!!
-DynamicPPL.tighten_types!!
+DynamicPPL.setindex_internal!!
 ```
 
 ```@docs
@@ -461,7 +449,7 @@ DynamicPPL.maybe_invlink_before_eval!!
 ```@docs
 Base.merge(::AbstractVarInfo)
 DynamicPPL.subset
-DynamicPPL.unflatten
+DynamicPPL.unflatten!!
 ```
 
 ### Evaluation Contexts
@@ -544,15 +532,6 @@ In very rare situations, you may also need to implement `get_param_eltype`, whic
 AbstractInitStrategy
 init
 get_param_eltype
-```
-
-### Choosing a suitable VarInfo
-
-There is also the _experimental_ [`DynamicPPL.Experimental.determine_suitable_varinfo`](@ref), which uses static checking via [JET.jl](https://github.com/aviatesk/JET.jl) to determine whether one should use [`DynamicPPL.typed_varinfo`](@ref) or [`DynamicPPL.untyped_varinfo`](@ref), depending on which supports the model:
-
-```@docs
-DynamicPPL.Experimental.determine_suitable_varinfo
-DynamicPPL.Experimental.is_suitable_varinfo
 ```
 
 ### Converting VarInfos to/from chains

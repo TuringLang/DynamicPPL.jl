@@ -242,7 +242,7 @@ Everything else is optional, and can be categorised into several groups:
    Finally, note that these only reflect the parameters used for _evaluating_
    the gradient. If you also want to control the parameters used for
    _preparing_ the gradient, then you need to manually set these parameters in
-   the VarInfo object, for example using `vi = DynamicPPL.unflatten(vi,
+   the VarInfo object, for example using `vi = DynamicPPL.unflatten!!(vi,
    prep_params)`. You could then evaluate the gradient at a different set of
    parameters using the `params` keyword argument.
 

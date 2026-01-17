@@ -121,8 +121,7 @@ julia> length(extract_priors(rng, model)[@varname(x)])
 extract_priors(args::Union{Model,AbstractVarInfo}...) =
     extract_priors(Random.default_rng(), args...)
 function extract_priors(rng::Random.AbstractRNG, model::Model)
-    varinfo = VarInfo()
-    varinfo = setaccs!!(varinfo, (PriorDistributionAccumulator(),))
+    varinfo = OnlyAccsVarInfo((PriorDistributionAccumulator(),))
     varinfo = last(init!!(rng, model, varinfo))
     return getacc(varinfo, Val(:PriorDistributionAccumulator)).priors
 end
