@@ -8,9 +8,9 @@
 # 4), so we play it safe and use generated functions. Constant propagating these is
 # important, because many functions choose different paths based on their values, which
 # would lead to type instability if they were only evaluated at runtime.
-@generated function _has_colon(::T) where {T<:Tuple}
+@generated function _has_colon_or_dynamicindex(::T) where {T<:Tuple}
     for x in T.parameters
-        if x <: Colon
+        if x <: Colon || x <: AbstractPPL.DynamicIndex
             return :(return true)
         end
     end
@@ -46,7 +46,7 @@ _merge_recursive(_, x2) = x2
 const PARTIAL_ARRAY_DIM_GROWTH_FACTOR = 4
 
 """A convenience for defining method argument type bounds."""
-const INDEX_TYPES = Union{Integer,AbstractUnitRange,Colon}
+const INDEX_TYPES = Union{Integer,AbstractUnitRange,Colon,AbstractPPL.DynamicIndex}
 
 """
     SkipSizeCheck()
@@ -478,9 +478,9 @@ function _check_index_validity(pa::PartialArray, inds::NTuple{N,INDEX_TYPES}) wh
     if length(inds) != ndims(pa)
         throw(BoundsError(pa, inds))
     end
-    if _has_colon(inds)
+    if _has_colon_or_dynamicindex(inds)
         msg = """
-            Indexing PartialArrays with Colon is not supported.
+            Indexing PartialArrays with Colon or AbstractPPL.DynamicIndex is not supported.
             You may need to concretise the `VarName` first."""
         throw(ArgumentError(msg))
     end
