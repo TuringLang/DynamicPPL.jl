@@ -18,19 +18,19 @@ function error_kw_indices()
     throw(ArgumentError("Keyword indices in VarNames are not yet supported in DynamicPPL."))
 end
 
-include("partial_array.jl")
+include("varnamedtuple/partial_array.jl")
 # The actual definition of the VarNamedTuple struct. Yeah, it needs a better name, I'll sort
 # that out.
-include("actual.jl")
-include("getset.jl")
-include("map.jl")
+include("varnamedtuple/vnt.jl")
+include("varnamedtuple/getset.jl")
+include("varnamedtuple/map.jl")
 
 function AbstractPPL.hasvalue(vnt::VarNamedTuple, vn::VarName)
-    return haskey(vnt, vn)
+    return _haskey_optic(vnt, vn)
 end
 
 function AbstractPPL.getvalue(vnt::VarNamedTuple, vn::VarName)
-    return getindex(vnt, vn)
+    return _getindex_optic(vnt, vn)
 end
 
 # TODO(mhauru) The following methods mimic the structure of those in
@@ -91,7 +91,7 @@ function AbstractPPL.hasvalue(vnt::VarNamedTuple, vn::VarName, dist::MV_DIST_TYP
     for k in keys(val)
         # VarNamedTuples have VarNames as keys, PartialArrays have Index optics.
         subvn = val isa VarNamedTuple ? prefix(k, vn) : AbstractPPL.append_optic(vn, k)
-        dval[subvn] = getindex(val, k)
+        dval[subvn] = _getindex_optic(val, k)
     end
     return AbstractPPL.hasvalue(dval, vn, dist)
 end
@@ -109,7 +109,7 @@ function AbstractPPL.getvalue(vnt::VarNamedTuple, vn::VarName, dist::MV_DIST_TYP
     for k in keys(val)
         # VarNamedTuples have VarNames as keys, PartialArrays have Index optics.
         subvn = val isa VarNamedTuple ? prefix(k, vn) : AbstractPPL.append_optic(vn, k)
-        dval[subvn] = getindex(val, k)
+        dval[subvn] = _getindex_optic(val, k)
     end
     return AbstractPPL.getvalue(dval, vn, dist)
 end

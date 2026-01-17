@@ -105,7 +105,7 @@ _map_recursive!!(func, x, vn) = func(vn => x)
 function _map_recursive!!(func, pa::PartialArray, vn)
     # Ask the compiler to infer the return type of applying func recursively to eltype(pa).
     et = eltype(pa)
-    index_type = AbstractPPL.Index{NTuple{ndims(pa),Int},NamedTuple{},AbstractPPL.Iden}
+    index_type = AbstractPPL.Index{NTuple{ndims(pa),Int},@NamedTuple{},AbstractPPL.Iden}
     new_vn_type = Core.Compiler.return_type(
         AbstractPPL.append_optic, Tuple{typeof(vn),index_type}
     )
