@@ -545,7 +545,7 @@ Return instance similar to `vi` but with `vns` set to values from `vals`.
 """
 function update_values!!(vi::AbstractVarInfo, vals::NamedTuple, vns)
     for vn in vns
-        vi = DynamicPPL.setindex!!(vi, get(vals, vn), vn)
+        vi = DynamicPPL.setindex!!(vi, AbstractPPL.getvalue(vals, vn), vn)
     end
     return vi
 end
