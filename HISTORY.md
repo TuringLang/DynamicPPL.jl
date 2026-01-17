@@ -1,5 +1,10 @@
 # DynamicPPL Changelog
 
+## 0.39.12
+
+When constructing an `MCMCChains.Chains`, sampler statistics that are not `Union{Real,Missing}` are dropped from the chain (previously this would cause chain construction to fail).
+Note that MCMCChains in general cannot contain non-numeric statistics, so this is the only reasonable behaviour.
+
 ## 0.39.11
 
 Allow passing `accs::Union{NTuple{N,AbstractAccumulator},AccumulatorTuple}` into the `LogDensityFunction` constructor to specify custom accumulators to use when evaluating the model.
