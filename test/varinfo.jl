@@ -3,6 +3,16 @@ function check_varinfo_keys(varinfo, vns)
     @test union(vns_varinfo, vns) == intersect(vns_varinfo, vns)
 end
 
+function check_metadata_type_equal(v1::VarInfo, v2::VarInfo)
+    @test typeof(v1.values) == typeof(v2.values)
+end
+function check_metadata_type_equal(
+    v1::DynamicPPL.ThreadSafeVarInfo{<:AbstractVarInfo},
+    v2::DynamicPPL.ThreadSafeVarInfo{<:AbstractVarInfo},
+)
+    return check_metadata_type_equal(v1.varinfo, v2.varinfo)
+end
+
 @testset "varinfo.jl" begin
     @testset "Base" begin
         # Test Base functions:
