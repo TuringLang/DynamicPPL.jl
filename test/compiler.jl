@@ -836,4 +836,47 @@ module Issue537 end
         @test vi isa VarInfo
         @test vi[@varname(m)] isa Real
     end
+
+    @testset "convert_model_argument" begin
+        tdual = ForwardDiff.Dual{Nothing,Float64,0}
+        # no-op
+        @test DynamicPPL.convert_model_argument(Float64, 1.0) == 1.0
+        @testset "shouldn't promote types of value arguments" begin
+            # i.e. this shouldn't become a dual.
+            @test DynamicPPL.convert_model_argument(tdual, 1.0) == 1.0
+        end
+        @testset "arrays" begin
+            # convert_model_argument should make sure to not deepcopy arrays if not needed
+            x = [1.0]
+            @test DynamicPPL.convert_model_argument(Float64, x) === x
+            # but if there's a missing in the array, it should
+            y = [1.0, missing]
+            y_converted = DynamicPPL.convert_model_argument(Float64, y)
+            @test y_converted !== y
+            @test isequal(y_converted, y)
+        end
+        @testset "type arguments" begin
+            # These tests with types / TypeWrap as the second argument also test
+            # `promote_model_type_argument`.
+            function test_type_conversion(
+                ::Type{input}, ::Type{target}
+            ) where {input,target}
+                converted_type = DynamicPPL.convert_model_argument(tdual, input)
+                @test converted_type == target
+                typewrap = DynamicPPL.TypeWrap{input}()
+                converted_typewrap = DynamicPPL.convert_model_argument(tdual, typewrap)
+                @test converted_typewrap == DynamicPPL.TypeWrap{target}()
+            end
+            test_type_conversion(Float64, tdual)
+            test_type_conversion(Real, ForwardDiff.Dual{Nothing,Real,0})
+            test_type_conversion(Vector{Float64}, Vector{tdual})
+            test_type_conversion(Vector{Real}, Vector{ForwardDiff.Dual{Nothing,Real,0}})
+            test_type_conversion(Matrix{Float64}, Matrix{tdual})
+            test_type_conversion(Matrix{Real}, Matrix{ForwardDiff.Dual{Nothing,Real,0}})
+            test_type_conversion(Vector{Vector{Float64}}, Vector{Vector{tdual}})
+            test_type_conversion(
+                Vector{Vector{Real}}, Vector{Vector{ForwardDiff.Dual{Nothing,Real,0}}}
+            )
+        end
+    end
 end

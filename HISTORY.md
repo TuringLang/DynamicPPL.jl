@@ -170,6 +170,33 @@ Evaluating the log joint for this model has gotten about 3 times faster in v0.40
 
 TODO(mhauru) Add an example here for how this improves `condition`ing, once `condition` uses `VarNamedTuple`.
 
+## 0.39.12
+
+When constructing an `MCMCChains.Chains`, sampler statistics that are not `Union{Real,Missing}` are dropped from the chain (previously this would cause chain construction to fail).
+Note that MCMCChains in general cannot contain non-numeric statistics, so this is the only reasonable behaviour.
+
+## 0.39.11
+
+Allow passing `accs::Union{NTuple{N,AbstractAccumulator},AccumulatorTuple}` into the `LogDensityFunction` constructor to specify custom accumulators to use when evaluating the model.
+Previously, this was hard-coded.
+
+## 0.39.10
+
+Rename the internal functions `matchingvalue` and `get_matching_type` to `convert_model_argument` and `promote_model_type_argument` respectively.
+The behaviour of `promote_model_type_argument` has also been slightly changed in some edge cases: for example, `promote_model_type_argument(ForwardDiff.Dual{Nothing,Float64,0}, Vector{Real})` now returns `Vector{ForwardDiff.Dual{Nothing,Real,0}}` instead of `Vector{ForwardDiff.Dual{Nothing,Float64,0}}`.
+In other words, abstract types in the type argument are now properly respected.
+
+This should have almost no impact on end users (unless you were passing `::Type{T}=Vector{Real}` into the model, with an abstract eltype).
+
+## 0.39.9
+
+The internals of `LogDensityFunction` have been changed slightly so that you do not need to specify `function_annotation` when performing AD with Enzyme.jl.
+There are also some small performance improvements with other AD backends.
+
+## 0.39.8
+
+Allow the `getlogdensity` argument of `LogDensityFunction` to accept callable structs as well as functions.
+
 ## 0.39.7
 
 Improve concreteness when merging two `Metadata` structs.
@@ -194,6 +221,8 @@ In particular, when a test fails, it also tells you the tolerances needed to mak
 ## 0.39.2
 
 `returned(model, parameters...)` now accepts any arguments that can be wrapped in `InitFromParams` (previously it would only accept `NamedTuple`, `AbstractDict{<:VarName}`, or a chain).
+
+There should also be some minor performance improvements (maybe 10%) on AD with ForwardDiff / Mooncake.
 
 ## 0.39.1
 

@@ -12,7 +12,7 @@ using EnzymeCore
 ) = nothing
 # Enzyme errors on Gibbs sampling without this one.
 @inline EnzymeCore.EnzymeRules.inactive(
-    ::typeof(Base.haskey), ::DynamicPPL.NTVarInfo, ::DynamicPPL.VarName
+    ::typeof(Base.haskey), ::DynamicPPL.VarInfo, ::DynamicPPL.VarName
 ) = nothing
 
 end

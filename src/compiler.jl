@@ -629,7 +629,6 @@ function add_return_to_last_statment(body::Expr)
     return Expr(body.head, new_args...)
 end
 
-const FloatOrArrayType = Type{<:Union{AbstractFloat,AbstractArray}}
 hasmissing(::Type) = false
 hasmissing(::Type{>:Missing}) = true
 hasmissing(::Type{<:AbstractArray{TA}}) where {TA} = hasmissing(TA)
@@ -754,54 +753,80 @@ function warn_empty(body)
     return nothing
 end
 
-# TODO(mhauru) matchingvalue has methods that can accept both types and values. Why?
-# TODO(mhauru) This function needs a more comprehensive docstring.
 """
-    matchingvalue(param_eltype, value)
+    convert_model_argument(param_eltype, model_argument)
 
-Convert the `value` to the correct type, given the element type of the parameters
-being used to evaluate the model.
+Convert `model_argument` to the correct type, given the element type of the parameters being
+used to evaluate the model. This function potentially also deep-copies `model_argument` if it
+contains `missing` values.
 """
-function matchingvalue(param_eltype, value)
-    T = typeof(value)
-    if hasmissing(T)
-        _value = convert(get_matching_type(param_eltype, T), value)
-        # TODO(mhauru) Why do we make a deepcopy, even though in the !hasmissing branch we
-        # are happy to return `value` as-is?
-        if _value === value
-            return deepcopy(_value)
+function convert_model_argument(param_eltype, model_argument)
+    T = typeof(model_argument)
+    # If the argument contains missing data, then we potentially need to deepcopy it. This
+    # is because the argument may be e.g. a vector of missings, and evaluating a
+    # tilde-statement like x[1] ~ Normal() would set x[1] = some_not_missing_value, thus
+    # mutating x. If you then run the model again with the same argument, x[1] would no
+    # longer be missing.
+    return if hasmissing(T)
+        # It is possible that we could skip the deepcopy, if the argument has to be promoted
+        # anyway. For example, if we are running with ForwardDiff and the argument is a
+        # Vector{Union{Missing, Float64}}, then we will convert it to a
+        # Vector{Union{Missing, ForwardDiff.Dual{...}}} anyway, which will avoid mutating
+        # the original argument. We can check for this by first converting and then only
+        # deepcopying if the converted value aliases the original.
+        # Note that indiscriminately deepcopying can not only lead to reduced performance,
+        # but sometimes also incorrect behaviour with ReverseDiff.jl, because ReverseDiff
+        # expects to be able to track array mutations. See e.g.
+        # https://github.com/TuringLang/DynamicPPL.jl/pull/1015#issuecomment-3166011534
+        converted_argument = convert(
+            promote_model_type_argument(param_eltype, T), model_argument
+        )
+        if converted_argument === model_argument
+            deepcopy(model_argument)
         else
-            return _value
+            converted_argument
         end
     else
-        return value
+        model_argument
     end
 end
-
-function matchingvalue(param_eltype, value::FloatOrArrayType)
-    return get_matching_type(param_eltype, value)
+# These methods handle arguments that are types rather than values.
+function convert_model_argument(param_eltype, t::Type{<:Union{Real,AbstractArray}})
+    return promote_model_type_argument(param_eltype, t)
 end
-function matchingvalue(param_eltype, ::TypeWrap{T}) where {T}
-    return TypeWrap{get_matching_type(param_eltype, T)}()
+function convert_model_argument(param_eltype, ::TypeWrap{T}) where {T}
+    return TypeWrap{promote_model_type_argument(param_eltype, T)}()
 end
+# If the parameter element type is `Any`, then we don't need to do any conversion (but we
+# might need to deepcopy).
+function convert_model_argument(::Type{Any}, model_argument::T) where {T}
+    return hasmissing(T) ? deepcopy(model_argument) : model_argument
+end
+# Extra methods to avoid method ambiguity.
+convert_model_argument(::Type{Any}, t::Type{<:Union{Real,AbstractArray}}) = t
+convert_model_argument(::Type{Any}, t::TypeWrap{T}) where {T} = t
 
-# TODO(mhauru) This function needs a more comprehensive docstring. What is it for?
 """
-    get_matching_type(param_eltype, ::TypeWrap{T}) where {T}
+    promote_model_type_argument(param_eltype, ::Type{T}) where {T}
+    promote_model_type_argument(param_eltype, ::TypeWrap{T}) where {T}
 
-Get the specialized version of type `T`, given an element type of the parameters
-being used to evaluate the model.
+For arguments to a model that are types rather than values, promote the type `T` to
+match the element type of the parameters being used to evaluate the model.
 """
-get_matching_type(_, ::Type{T}) where {T} = T
-function get_matching_type(param_eltype, ::Type{<:Union{Missing,AbstractFloat}})
-    return Union{Missing,float_type_with_fallback(param_eltype)}
+promote_model_type_argument(_, ::Type{T}) where {T} = T
+function promote_model_type_argument(param_eltype, ::Type{T}) where {T<:Real}
+    # TODO(penelopeysm): This actually might still be over-aggressive. For example, if
+    # `param_eltype` is `Float32` and `T` is `Vector{Int}`, then (after going through the
+    # Array method) we will promote to `Vector{Float64}`, which seems unnecessary. However,
+    # there's no way to actually check if `T` is the type of something that will later be
+    # assigned to, so this is 'safe'.
+    return Base.promote_type(param_eltype, T)
 end
-function get_matching_type(param_eltype, ::Type{<:AbstractFloat})
-    return float_type_with_fallback(param_eltype)
-end
-function get_matching_type(param_eltype, ::Type{<:Array{T,N}}) where {T,N}
-    return Array{get_matching_type(param_eltype, T),N}
-end
-function get_matching_type(param_eltype, ::Type{<:Array{T}}) where {T}
-    return Array{get_matching_type(param_eltype, T)}
+# NOTE(penelopeysm): This doesn't work with other types of AbstractArray. To get around
+# that, one could in principle use ArrayInterface.promote_eltype. However, it doesn't seem
+# like there is (1) demand for that; and (2) sufficiently strong adoption of ArrayInterface
+# to make that worth adding as a dependency.
+function promote_model_type_argument(param_eltype, ::Type{Array{T,N}}) where {T,N}
+    promoted_eltype = promote_model_type_argument(param_eltype, T)
+    return Array{promoted_eltype,N}
 end
