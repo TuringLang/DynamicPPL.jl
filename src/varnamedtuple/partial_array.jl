@@ -473,14 +473,6 @@ function _resize_partialarray!!(pa::PartialArray{Eltype,1}, (ind,)) where {Eltyp
     return pa
 end
 
-function _getindex_optic(pa::PartialArray, optic::AbstractPPL.Index)
-    return _getindex_optic(_getindex_optic(pa, optic.ix...), optic.child)
-end
-_haskey(pa::PartialArray, optic::IndexLens) = _haskey(pa, optic.indices)
-function _setindex_optic!!(pa::PartialArray, value, optic::IndexLens; allow_new=Val(true))
-    return _setindex!!(pa, value, optic.indices...)
-end
-
 """Throw an appropriate error if the given indices are invalid for `pa`."""
 function _check_index_validity(pa::PartialArray, inds::NTuple{N,INDEX_TYPES}) where {N}
     if length(inds) != ndims(pa)
@@ -495,7 +487,15 @@ function _check_index_validity(pa::PartialArray, inds::NTuple{N,INDEX_TYPES}) wh
     return nothing
 end
 
-function _getindex(pa::PartialArray, inds::Vararg{INDEX_TYPES})
+"""
+    Base.getindex(pa::PartialArray, inds::Vararg{INDEX_TYPES}; kw...)
+
+Obtain the value at the given indices from the `PartialArray`. This needs to be smarter than
+just calling Base.getindex on the internal data array, because we need to check if the
+requested indices correspond to an ArrayLikeBlock.
+"""
+function Base.getindex(pa::PartialArray, inds::Vararg{INDEX_TYPES}; kw...)
+    isempty(kw) || error_kw_indices()
     # The unmodified inds is needed later for ArrayLikeBlock checks.
     orig_inds = inds
     _check_index_validity(pa, inds)
@@ -545,7 +545,8 @@ function _getindex(pa::PartialArray, inds::Vararg{INDEX_TYPES})
     end
 end
 
-function _haskey(pa::PartialArray, inds::NTuple{N,INDEX_TYPES}) where {N}
+function Base.haskey(pa::PartialArray, inds::NTuple{N,INDEX_TYPES}; kw...) where {N}
+    isempty(kw) || error_kw_indices()
     _check_index_validity(pa, inds)
     hasall =
         checkbounds(Bool, pa.mask, inds...) && all(@inbounds(getindex(pa.mask, inds...)))
@@ -624,7 +625,8 @@ function _needs_arraylikeblock(value, inds::Vararg{INDEX_TYPES})
            hasmethod(vnt_size, Tuple{typeof(value)})
 end
 
-function _setindex!!(pa::PartialArray, value, inds::Vararg{INDEX_TYPES})
+function BangBang.setindex!!(pa::PartialArray, value, inds::Vararg{INDEX_TYPES}; kw...)
+    isempty(kw) || error_kw_indices()
     orig_inds = inds
     _check_index_validity(pa, inds)
     pa = if checkbounds(Bool, pa.mask, inds...)

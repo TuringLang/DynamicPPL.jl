@@ -102,6 +102,21 @@ function Base.copy(vnt::VarNamedTuple{names}) where {names}
     )
 end
 
+# PartialArrays are an implementation detail of VarNamedTuple, and should never be the
+# return value of getindex. Thus, we automatically convert them to dense arrays if needed.
+# TODO(mhauru) The below doesn't handle nested PartialArrays. Is that a problem?
+_dense_array_if_needed(pa::PartialArray) = _dense_array(pa)
+_dense_array_if_needed(x) = x
+function Base.getindex(vnt::VarNamedTuple, vn::VarName)
+    return _dense_array_if_needed(_getindex_optic(vnt, vn))
+end
+
+Base.haskey(vnt::VarNamedTuple, vn::VarName) = _haskey(vnt, vn)
+
+function BangBang.setindex!!(vnt::VarNamedTuple, value, vn::VarName)
+    return _setindex_optic!!(vnt, value, vn)
+end
+
 """
     _has_partial_array(::Type{VarNamedTuple{Names,Values}}) where {Names,Values}
 

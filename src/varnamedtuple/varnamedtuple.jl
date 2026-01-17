@@ -9,6 +9,15 @@ using DynamicPPL: DynamicPPL
 
 export VarNamedTuple, vnt_size, map_pairs!!, map_values!!, apply!!
 
+# Currently, keyword arguments are not supported in getindex/_setindex!!. That is because
+# `PartialArray` under the hood is backed by `Base.Array`. Thus, if `kw` is not empty, we
+# will just error here. However, in principle, this can be expanded by allowing PartialArray
+# to wrap generic array types (the 'shadow array' mechanism); see
+# https://github.com/TuringLang/DynamicPPL.jl/issues/1194.
+function error_kw_indices()
+    throw(ArgumentError("Keyword indices in VarNames are not yet supported in DynamicPPL."))
+end
+
 include("partial_array.jl")
 # The actual definition of the VarNamedTuple struct. Yeah, it needs a better name, I'll sort
 # that out.

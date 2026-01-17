@@ -5,52 +5,64 @@
 # 1. We would want to index into things with lenses (from AbstractPPL.jl) using getindex and
 # setindex!!, but AbstractPPL does not define these methods.
 # 2. We would want `haskey` to fall back onto `checkbounds` when called on Base.Arrays.
-#
-# The difference between _getindex_optic and _getindex is that the former takes an optic
-# as the second argument, whereas the latter takes indices. The latter is therefore closer
-# in spirit to Base.getindex, whereas the former is more like AbstractPPL.getvalue.
-function _getindex_optic end
-function _getindex end
 
-function _haskey end
-
-# In many places, we don't yet know how to cleverly handle keyword indices. Sometimes we can
-# forward them to `Base.getindex`, but often we can't, unless we adopt a shadow-array
-# mechanism. See https://github.com/TuringLang/DynamicPPL.jl/issues/1194.
-function _error_if_kw_indices(i::AbstractPPL.Index)
-    if !isempty(i.kw)
-        throw(
-            ArgumentError("Keyword indices in VarName are not yet supported in DynamicPPL.")
-        )
-    end
-    return nothing
-end
-
-# When we have reached the bottom of the VNT i.e. we are only left with an AbstractArray
-# rather than some flavour of PartialArray, we don't know how to further handle any child
-# optics -- hence the type bound on `optic`.
 const IndexWithoutChild = AbstractPPL.Index{<:Tuple,<:NamedTuple,AbstractPPL.Iden}
-function _getindex_optic(arr::AbstractArray, optic::IndexWithoutChild)
-    return getindex(arr, optic.ix...; optic.kw...)
+
+"""
+    DynamicPPL._getindex_optic(collection, optic::AbstractPPL.Optic)
+    DynamicPPL._getindex_optic(collection, vn::VarName)
+
+Access the value in `collection` at the location specified by the given `optic`. If a `VarName`
+is provided, it is first converted to an optic using `AbstractPPL.varname_to_optic`.
+
+Here, `collection` can be either a `VarNamedTuple` or a `PartialArray`, or a leaf value stored
+within one of these.
+
+This is semantically similar to `AbstractPPL.getvalue` but is specialised for `VarNamedTuple`
+and `PartialArray`, and skips a number of checks that are unnecessary here.
+
+Note that it is only valid to index into a `VarNamedTuple` with a `Property` optic, and a
+`PartialArray` with an `Index` optic. Other combinations are not valid. When we have reached
+the leaf of the VNT i.e. a value, we could still handle pure `Index` optics if the value is
+an `AbstractArray`, but otherwise the only valid optic is `Iden`.
+"""
+function _getindex_optic(vnt::VarNamedTuple, vn::VarName)
+    return _getindex_optic(vnt, AbstractPPL.varname_to_optic(vn))
 end
-_haskey(arr::AbstractArray, optic::IndexWithoutChild) = _haskey(arr, optic.ix; optic.kw...)
-function _haskey(arr::AbstractArray, ix...; kw...)
+@inline _getindex_optic(@nospecialize(x::Any), ::AbstractPPL.Iden) = x
+function _getindex_optic(vnt::VarNamedTuple, optic::AbstractPPL.Property{S}) where {S}
+    return _getindex_optic(getindex(vnt.data, S), optic.child)
+end
+function _getindex_optic(pa::PartialArray, optic::AbstractPPL.Index)
+    return _getindex_optic(Base.getindex(pa, optic.ix...; optic.kw...), optic.child)
+end
+function _getindex_optic(arr::AbstractArray, optic::IndexWithoutChild)
+    return Base.getindex(arr, optic.ix...; optic.kw...)
+end
+
+function _haskey_optic(vnt::VarNamedTuple, name::VarName)
+    return _haskey_optic(vnt, AbstractPPL.varname_to_optic(name))
+end
+@inline _haskey_optic(@nospecialize(::Any), ::AbstractPPL.Iden) = true
+@inline _haskey_optic(::VarNamedTuple, ::AbstractPPL.Index) = false
+function _haskey_optic(vnt::VarNamedTuple, optic::AbstractPPL.Property{S}) where {S}
+    return Base.haskey(vnt.data, S) && _haskey_optic(getindex(vnt.data, S), optic.child)
+end
+function _haskey_optic(pa::PartialArray, optic::AbstractPPL.Index)
+    return Base.haskey(pa, optic.ix; optic.kw...) &&
+           _haskey_optic(Base.getindex(pa, optic.ix...; optic.kw...), optic.child)
+end
+function _haskey_optic(arr::AbstractArray, optic::IndexWithoutChild)
     # Note that this call to `checkbounds` can error, although it is technically out of our
     # hands: it depends on how the provider of the AbstractArray has implemented
     # checkbounds. For example, DimArray can error here:
     # https://github.com/rafaqz/DimensionalData.jl/issues/1156. But that is not our job to fix
     # -- it should be done upstream -- hence we just forward the indices.
-    return checkbounds(Bool, arr, ix...; kw...)
-end
-function _setindex_optic!!(
-    arr::AbstractArray, value, optic::IndexWithoutChild; allow_new=Val(true)
-)
-    # See comment in _getindex_optic above as to the type bound on `optic`.
-    return setindex!!(arr, value, optic.ix...; optic.kw...)
+    return checkbounds(Bool, arr, optic.ix...; optic.kw...)
 end
 
 """
-    _setindex!!(collection, value, key; allow_new=Val(true))
+    _setindex_optic!!(collection, value, key; allow_new=Val(true))
 
 Like `setindex!!`, but special-cased for `VarNamedTuple` and `PartialArray` to recurse
 into nested structures.
@@ -69,35 +81,67 @@ Most methods of _setindex!! ignore the `allow_new` keyword argument, as they hav
 it. See the method for setting values in a `VarNamedTuple` with a `ComposedFunction` for
 when it is useful.
 """
-function _setindex!! end
-function _setindex_optic!! end
-
-function _getindex_optic(vnt::VarNamedTuple, vn::VarName)
-    return _getindex_optic(vnt, AbstractPPL.varname_to_optic(vn))
-end
-function _getindex_optic(vnt::VarNamedTuple, optic::AbstractPPL.Property{S}) where {S}
-    return _getindex_optic(getindex(vnt.data, S), optic.child)
-end
-
-function _haskey(vnt::VarNamedTuple, name::VarName)
-    return _haskey(vnt, AbstractPPL.varname_to_optic(name))
-end
-
 function _setindex_optic!!(vnt::VarNamedTuple, value, name::VarName; allow_new=Val(true))
     return _setindex_optic!!(
         vnt, value, AbstractPPL.varname_to_optic(name); allow_new=allow_new
     )
 end
+@inline function _setindex_optic!!(
+    @nospecialize(::Any), value, ::AbstractPPL.Iden; allow_new=Val(true)
+)
+    return value
+end
+function _setindex_optic!!(
+    arr::AbstractArray, value, optic::IndexWithoutChild; allow_new=Val(true)
+)
+    return BangBang.setindex!!(arr, value, optic.ix...; optic.kw...)
+end
+
+function throw_setindex_allow_new_error()
+    return error(
+        "Attempted to set a value at a key that does not exist, but" *
+        " `allow_new=Val(false)` was specified. If you did not attempt" *
+        " to call this function yourself, this likely indicates a bug in" *
+        " DynamicPPL. Please file an issue at" *
+        " https://github.com/TuringLang/DynamicPPL.jl/issues.",
+    )
+end
+
+function _setindex_optic!!(
+    pa::PartialArray, value, optic::AbstractPPL.Index; allow_new=Val(true)
+)
+    sub_value = if optic.child isa AbstractPPL.Iden
+        # Skip recursion
+        value
+    elseif Base.haskey(pa, optic.ix; optic.kw...)
+        # Data already exists; we need to recurse into it
+        _setindex_optic!!(
+            Base.getindex(pa, optic.ix; optic.kw...),
+            value,
+            optic.child;
+            allow_new=allow_new,
+        )
+    elseif allow_new isa Val{true}
+        # No new data but we are allowed to create it.
+        make_leaf(value, optic.outer)
+    else
+        throw_setindex_allow_new_error()
+    end
+    return BangBang.setindex!!(pa, sub_value, optic.ix...; optic.kw...)
+end
 
 function _setindex_optic!!(
     vnt::VarNamedTuple, value, optic::AbstractPPL.Property{S}; allow_new=Val(true)
 ) where {S}
-    sub_value = if haskey(vnt.data, S)
+    sub_value = if optic.child isa AbstractPPL.Iden
+        # Skip recursion
+        value
+    elseif Base.haskey(vnt.data, S)
         # Data already exists; we need to recurse into it
         _setindex_optic!!(vnt.data[S], value, optic.child; allow_new=allow_new)
     elseif allow_new isa Val{true}
         # No new data but we are allowed to create it.
-        make_leaf(value, optic.outer)
+        make_leaf(value, optic)
     else
         # If this branch is ever reached, then someone has used allow_new=Val(false)
         # incorrectly.
@@ -108,29 +152,6 @@ function _setindex_optic!!(
     return VarNamedTuple(merge(vnt.data, NamedTuple{(S,)}((sub_value,))))
 end
 
-function _haskey(vnt::Union{PartialArray,VarNamedTuple}, optic::ComposedFunction)
-    return _haskey(vnt, optic.inner) &&
-           _haskey(_getindex_optic(vnt, optic.inner), optic.outer)
-end
-
-# The entry points for getting, setting, and checking, using the familiar functions.
-Base.haskey(vnt::VarNamedTuple, vn::VarName) = _haskey(vnt, vn)
-
-# PartialArrays are an implementation detail of VarNamedTuple, and should never be the
-# return value of getindex. Thus, we automatically convert them to dense arrays if needed.
-# TODO(mhauru) The below doesn't handle nested PartialArrays. Is that a problem?
-_dense_array_if_needed(pa::PartialArray) = _dense_array(pa)
-_dense_array_if_needed(x) = x
-function Base.getindex(vnt::VarNamedTuple, vn::VarName)
-    return _dense_array_if_needed(_getindex_optic(vnt, vn))
-end
-
-BangBang.setindex!!(vnt::VarNamedTuple, value, vn::VarName) = _setindex!!(vnt, value, vn)
-
-Base.haskey(pa::PartialArray, key) = _haskey(pa, key)
-Base.getindex(pa::PartialArray, inds...) = _getindex(pa, inds...)
-BangBang.setindex!!(pa::PartialArray, value, inds...) = _setindex!!(pa, value, inds...)
-
 """
     make_leaf(value, optic)
 
@@ -140,25 +161,25 @@ This is the function that sets any `optic` that is a `Property` to be stored as 
 `VarNamedTuple`, any `Index` to be stored as a `PartialArray`, and other `Iden` optics to be
 stored as raw values. It is the link that joins `VarNamedTuple` and `PartialArray` together.
 """
-make_leaf(value, ::AbstractPPL.Iden) = value
+@inline make_leaf(@nospecialize(value::Any), ::AbstractPPL.Iden) = value
 function make_leaf(value, optic::AbstractPPL.Property{S}) where {S}
-    sub = VarNamedTuple(NamedTuple{(S,)}((value,)))
-    return make_leaf(sub, optic.child)
+    sub_value = make_leaf(value, optic.child)
+    return VarNamedTuple(NamedTuple{(S,)}((sub_value,)))
 end
 function make_leaf(value, optic::AbstractPPL.Index)
-    _error_if_kw_indices(optic)
+    isempty(optic.kw) || error_kw_indices()
+    sub_value = make_leaf(value, optic.child)
     inds = optic.ix
     num_inds = length(inds)
     # The element type of the PartialArray depends on whether we are setting a single value
     # or a range of values.
     et = if !_is_multiindex(inds)
-        typeof(value)
-    elseif _needs_arraylikeblock(value, inds...)
-        ArrayLikeBlock{typeof(value),typeof(inds)}
+        typeof(sub_value)
+    elseif _needs_arraylikeblock(sub_value, inds...)
+        ArrayLikeBlock{typeof(sub_value),typeof(inds)}
     else
-        eltype(value)
+        eltype(sub_value)
     end
     pa = PartialArray{et,num_inds}()
-    sub = _setindex_optic!!(pa, value, optic)
-    return make_leaf(sub, optic.child)
+    return BangBang.setindex!!(pa, sub_value, optic.ix...; optic.kw...)
 end
