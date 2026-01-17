@@ -60,7 +60,7 @@ in `DynamicPPL.unflatten!!` for more details. For non-threadsafe evaluation, Jul
 capable of automatically promoting the types on its own. Secondly, the promotion only
 matters if you are trying to directly assign into a `Vector{Float64}` with a
 `ForwardDiff.Dual` or similar tracer type, for example using `xs[i] = MyDual`. This doesn't
-actually apply to tilde-statements like `xs[i] ~ ...` because those use `Accessors.@set`
+actually apply to tilde-statements like `xs[i] ~ ...` because those use `Accessors.set`
 under the hood, which also does the promotion for you. For the gory details, see the
 following issues:
 

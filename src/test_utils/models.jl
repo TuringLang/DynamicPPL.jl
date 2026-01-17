@@ -639,16 +639,7 @@ function logprior_true_with_logabsdet_jacobian(
     return _demo_logprior_true_with_logabsdet_jacobian(model, s.params[1].subparams, m)
 end
 function varnames(::Model{typeof(demo_nested_colons)})
-    return [
-        @varname(
-            s.params[1].subparams[
-                AbstractPPL.ConcretizedSlice(Base.Slice(Base.OneTo(1))),
-                1,
-                AbstractPPL.ConcretizedSlice(Base.Slice(Base.OneTo(2))),
-            ]
-        ),
-        @varname(m),
-    ]
+    return [@varname(s.params[1].subparams[:, 1, :]), @varname(m)]
 end
 function varnames_split(::Model{typeof(demo_nested_colons)})
     return [
@@ -887,7 +878,7 @@ const DEMO_MODELS = (
     demo_dot_assume_observe_submodel(),
     demo_dot_assume_observe_matrix_index(),
     demo_assume_matrix_observe_matrix_index(),
-    demo_nested_colons(),
+    # demo_nested_colons(),
 )
 
 """

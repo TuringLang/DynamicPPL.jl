@@ -42,9 +42,10 @@ julia> varnamesize(@varname(c.d[4].e[3, 2:5, 2, 1:4, 1]))
 (4, 4)
 """
 function varnamesize(vn::VarName)
-    l = AbstractPPL._last(vn.optic)
-    if l isa Accessors.IndexLens
-        return reduce((x, y) -> tuple(x..., y...), map(size, l.indices))
+    l = AbstractPPL.olast(vn.optic)
+    if l isa AbstractPPL.Index
+        isempty(l.kw) || error("keyword indices are not supported")
+        return reduce((x, y) -> tuple(x..., y...), map(size, l.ix))
     else
         return ()
     end

@@ -3,7 +3,6 @@ module DebugUtils
 using ..DynamicPPL
 
 using Random: Random
-using Accessors: Accessors
 using InteractiveUtils: InteractiveUtils
 
 using DocStringExtensions

@@ -1,22 +1,32 @@
 const INTERNALNAMES = (:__model__, :__varinfo__)
 
+drop_escape(x) = x
+function drop_escape(expr::Expr)
+    Meta.isexpr(expr, :escape) && return drop_escape(expr.args[1])
+    return Expr(expr.head, map(x -> drop_escape(x), expr.args)...)
+end
+
+get_top_level_symbol(expr::Symbol) = expr
+function get_top_level_symbol(expr::Expr)
+    # TODO(penelopeysm): what about Meta.isexpr(expr, :$)?
+    if Meta.isexpr(expr, :ref)
+        return get_top_level_symbol(expr.args[1])
+    elseif Meta.isexpr(expr, :.)
+        return get_top_level_symbol(expr.args[1])
+    else
+        error("unreachable")
+    end
+end
+
 """
     need_concretize(expr)
 
-Return `true` if `expr` needs to be concretized, i.e., if it contains a colon `:` or
-requires a dynamic optic.
+Determine whether `expr` defines a VarName that needs to be concretised.
 
-# Examples
+Note that, although we parse VarNames using our own lenses, Accessors.need_dynamic_optic is
+actually still 'good enough' to determine whether we need to concretise or not.
 
-```jldoctest; setup=:(using Accessors)
-julia> DynamicPPL.need_concretize(:(x[1, :]))
-true
-
-julia> DynamicPPL.need_concretize(:(x[1, end]))
-true
-
-julia> DynamicPPL.need_concretize(:(x[1, 1]))
-false
+Eventually, we can hopefully never concretise anything.
 """
 function need_concretize(expr)
     return Accessors.need_dynamic_optic(expr) || begin
@@ -32,13 +42,17 @@ end
 """
     make_varname_expression(expr)
 
-Return a `VarName` based on `expr`, concretizing it if necessary.
+Return a `VarName` based on `expr`.
 """
 function make_varname_expression(expr)
-    # HACK: Usage of `drop_escape` is unfortunate. It's a consequence of the fact
-    # that in DynamicPPL we the entire function body. Instead we should be
-    # more selective with our escape. Until that's the case, we remove them all.
-    return AbstractPPL.drop_escape(varname(expr, need_concretize(expr)))
+    # HACK: Usage of `drop_escape` is unfortunate. It's a consequence of the fact that in
+    # DynamicPPL we the entire function body. Instead we should be more selective with our
+    # escape. Until that's the case, we remove them all.
+    # TODO(penelopeysm): We still concretise things, because PartialArray does not
+    # understand dynamic indices. This is not necessarily a bad thing for performance, but
+    # it would be nice to not NEED to have to do it. That would require shadow arrays. See
+    # #1194.
+    return drop_escape(AbstractPPL.varname(expr, need_concretize(expr)))
 end
 
 """
@@ -55,10 +69,9 @@ Let `expr` be `:(x[1])`. It is an assumption in the following cases:
 
 When `expr` is not an expression or symbol (i.e., a literal), this expands to `false`.
 
-If `vn` is specified, it will be assumed to refer to a expression which
-evaluates to a `VarName`, and this will be used in the subsequent checks.
-If `vn` is not specified, `AbstractPPL.varname(expr, need_concretize(expr))` will be
-used in its place.
+If `vn` is specified, it will be assumed to refer to a expression which evaluates to a
+`VarName`, and this will be used in the subsequent checks. If `vn` is not specified,
+`(@varname \$expr)` will be used in its place.
 """
 function isassumption(expr::Union{Expr,Symbol}, vn=make_varname_expression(expr))
     return quote
@@ -221,9 +234,6 @@ variables.
 
 # Example
 ```jldoctest; setup=:(using Distributions, LinearAlgebra)
-julia> _, _, vns = DynamicPPL.unwrap_right_left_vns(MvNormal(ones(2), I), randn(2, 2), @varname(x)); vns[end]
-x[:, 2]
-
 julia> _, _, vns = DynamicPPL.unwrap_right_left_vns(Normal(), randn(1, 2), @varname(x)); vns[end]
 x[1, 2]
 
@@ -242,30 +252,19 @@ function unwrap_right_left_vns(right::NamedDist, left::AbstractMatrix, ::VarName
     return unwrap_right_left_vns(right.dist, left, right.name)
 end
 function unwrap_right_left_vns(
-    right::MultivariateDistribution, left::AbstractMatrix, vn::VarName
-)
-    # This an expression such as `x .~ MvNormal()` which we interpret as
-    #     x[:, i] ~ MvNormal()
-    # for `i = size(left, 2)`. Hence the symbol should be `x[:, i]`,
-    # and we therefore add the `Colon()` below.
-    vns = map(axes(left, 2)) do i
-        return AbstractPPL.concretize(Accessors.IndexLens((Colon(), i)) ∘ vn, left)
-    end
-    return unwrap_right_left_vns(right, left, vns)
-end
-function unwrap_right_left_vns(
     right::Union{Distribution,AbstractArray{<:Distribution}},
     left::AbstractArray,
     vn::VarName,
 )
     vns = map(CartesianIndices(left)) do i
-        return Accessors.IndexLens(Tuple(i)) ∘ vn
+        sym, optic = getsym(vn), getoptic(vn)
+        return VarName{sym}(AbstractPPL.Index(Tuple(i), (;), AbstractPPL.Iden()) ∘ optic)
     end
     return unwrap_right_left_vns(right, left, vns)
 end
 
 resolve_varnames(vn::VarName, _) = vn
-resolve_varnames(vn::VarName, dist::NamedDist) = dist.name
+resolve_varnames(::VarName, dist::NamedDist) = dist.name
 
 #################
 # Main Compiler #
@@ -463,9 +462,18 @@ function generate_tilde_literal(left, right)
     end
 end
 
-assign_or_set!!(lhs::Symbol, rhs) = AbstractPPL.drop_escape(:($lhs = $rhs))
-function assign_or_set!!(lhs::Expr, rhs)
-    return AbstractPPL.drop_escape(:($BangBang.@set!! $lhs = $rhs))
+assign_or_set!!(lhs::Symbol, rhs, vn) = drop_escape(:($lhs = $rhs))
+function assign_or_set!!(lhs::Expr, rhs, vn)
+    left_top_sym = get_top_level_symbol(lhs)
+    return drop_escape(
+        :(
+            $left_top_sym = $(Accessors.set)(
+                $left_top_sym,
+                $(AbstractPPL.with_mutation)($(AbstractPPL.getoptic)($vn)),
+                $rhs,
+            )
+        ),
+    )
 end
 
 """
@@ -487,12 +495,13 @@ function generate_tilde(left, right)
         $isassumption = $(DynamicPPL.isassumption(left, vn))
         if $(DynamicPPL.isfixed(left, vn))
             # $left may not be a simple varname, it might be x.a or x[1], in which case we
-            # need to use BangBang.@set!! to safely set it.
+            # need to use Accessors.set to safely set it.
             $(assign_or_set!!(
                 left,
                 :($(DynamicPPL.getfixed_nested)(
                     __model__.context, $(DynamicPPL.prefix)(__model__.context, $vn)
                 )),
+                vn,
             ))
         elseif $isassumption
             $(generate_tilde_assume(left, dist, vn))
@@ -520,7 +529,7 @@ function generate_tilde(left, right)
                 $vn,
                 __varinfo__,
             )
-            $(assign_or_set!!(left, value))
+            $(assign_or_set!!(left, value, vn))
             $value
         end
     end
@@ -531,11 +540,17 @@ function generate_tilde_assume(left, right, vn)
     # with multiple arguments on the LHS, we need to capture the return-values
     # and then update the LHS variables one by one.
     @gensym value
-    expr = :($left = $value)
-    if left isa Expr
-        expr = AbstractPPL.drop_escape(
-            Accessors.setmacro(BangBang.prefermutation, expr; overwrite=true)
+    expr = if left isa Expr # as opposed to Symbol
+        left_top_sym = get_top_level_symbol(left)
+        :(
+            $left_top_sym = $(Accessors.set)(
+                $left_top_sym,
+                $(AbstractPPL.with_mutation)($(AbstractPPL.getoptic)($vn)),
+                $value,
+            )
         )
+    else
+        :($left = $value)
     end
 
     return quote

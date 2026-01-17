@@ -10,7 +10,7 @@ Test that `vi[vn]` corresponds to the correct value in `vals` for every `vn` in 
 """
 function test_values(vi::AbstractVarInfo, vals::NamedTuple, vns; compare=isequal, kwargs...)
     for vn in vns
-        val = get(vals, vn)
+        val = AbstractPPL.getvalue(vals, vn)
         # TODO(mhauru) Workaround for https://github.com/JuliaLang/LinearAlgebra.jl/pull/1404
         # Remove once the fix is all Julia versions we support.
         if val isa Cholesky
