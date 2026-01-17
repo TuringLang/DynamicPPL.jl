@@ -89,8 +89,8 @@ function AbstractPPL.hasvalue(vnt::VarNamedTuple, vn::VarName, dist::MV_DIST_TYP
     et = val isa VarNamedTuple ? Any : eltype(val)
     dval = Dict{VarName,et}()
     for k in keys(val)
-        # VarNamedTuples have VarNames as keys, PartialArrays have IndexLenses.
-        subvn = val isa VarNamedTuple ? prefix(k, vn) : (k ∘ vn)
+        # VarNamedTuples have VarNames as keys, PartialArrays have Index optics.
+        subvn = val isa VarNamedTuple ? prefix(k, vn) : AbstractPPL.append_optic(vn, k)
         dval[subvn] = getindex(val, k)
     end
     return AbstractPPL.hasvalue(dval, vn, dist)
@@ -107,8 +107,8 @@ function AbstractPPL.getvalue(vnt::VarNamedTuple, vn::VarName, dist::MV_DIST_TYP
     et = val isa VarNamedTuple ? Any : eltype(val)
     dval = Dict{VarName,et}()
     for k in keys(val)
-        # VarNamedTuples have VarNames as keys, PartialArrays have IndexLenses.
-        subvn = val isa VarNamedTuple ? prefix(k, vn) : (k ∘ vn)
+        # VarNamedTuples have VarNames as keys, PartialArrays have Index optics.
+        subvn = val isa VarNamedTuple ? prefix(k, vn) : AbstractPPL.append_optic(vn, k)
         dval[subvn] = getindex(val, k)
     end
     return AbstractPPL.getvalue(dval, vn, dist)

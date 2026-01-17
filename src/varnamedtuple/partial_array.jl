@@ -213,7 +213,7 @@ function PartialArray{ElType,num_dims}(
     pa = PartialArray(data, mask)
 
     for (inds, value) in args
-        pa = _setindex!!(pa, convert(ElType, value), inds...)
+        pa = setindex!!(pa, convert(ElType, value), inds...)
     end
     return pa
 end
@@ -545,7 +545,7 @@ function Base.getindex(pa::PartialArray, inds::Vararg{INDEX_TYPES}; kw...)
     end
 end
 
-function Base.haskey(pa::PartialArray, inds::NTuple{N,INDEX_TYPES}; kw...) where {N}
+function Base.haskey(pa::PartialArray, inds::Vararg{INDEX_TYPES}; kw...)
     isempty(kw) || error_kw_indices()
     _check_index_validity(pa, inds)
     hasall =

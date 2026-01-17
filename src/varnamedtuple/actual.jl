@@ -18,7 +18,7 @@ equal to it. More specifically
   that key. For instance, if one first inserts, in order, `@varname(a.x)`, `@varname(b)`,
   and `@varname(a.y)`, the resulting order will be
   `(@varname(a.x), @varname(a.y), @varname(b))`.
-* `IndexLens` keys`, like `@varname(a[3])` or `@varname(b[2,3,4:5])`, are always iterated
+* `Index` keys`, like `@varname(a[3])` or `@varname(b[2,3,4:5])`, are always iterated
   in the same order an `Array` with the same indices would be iterated. For instance,
   if one first inserts, in order, `@varname(a[2])`, `@varname(b)`, and `@varname(a[1])`,
   the resulting order will be `(@varname(a[1]), @varname(a[2]), @varname(b))`.
@@ -30,7 +30,7 @@ The there are two major limitations to indexing by VarNamedTuples:
 * `VarName`s with `Colon`s, (e.g. `a[:]`) are not supported. This is because the meaning of
   `a[:]` is ambiguous if only some elements of `a`, say `a[1]` and `a[3]`, are defined.
   However, _concretised_ `VarName`s with `Colon`s are supported.
-* Any `VarNames` with IndexLenses` must have a consistent number of indices. That is, one
+* Any `VarNames` with `Index` lenses must have a consistent number of indices. That is, one
   cannot set `a[1]` and `a[1,2]` in the same `VarNamedTuple`.
 
 `setindex!!` and `getindex` on `VarNamedTuple` are type stable as long as one does not store
@@ -42,7 +42,7 @@ heterogeneous data under different indices of the same symbol. That is, if eithe
 then getting values for `a[1]` or `a[2]` will not be type stable.
 
 `VarNamedTuple` is intrinsically linked to `PartialArray`, which it'll use to store data
-related to `VarName`s with `IndexLens` components.
+related to `VarName`s with `Index` components.
 """
 struct VarNamedTuple{Names,Values}
     data::NamedTuple{Names,Values}
@@ -111,7 +111,7 @@ function Base.getindex(vnt::VarNamedTuple, vn::VarName)
     return _dense_array_if_needed(_getindex_optic(vnt, vn))
 end
 
-Base.haskey(vnt::VarNamedTuple, vn::VarName) = _haskey(vnt, vn)
+Base.haskey(vnt::VarNamedTuple, vn::VarName) = _haskey_optic(vnt, vn)
 
 function BangBang.setindex!!(vnt::VarNamedTuple, value, vn::VarName)
     return _setindex_optic!!(vnt, value, vn)

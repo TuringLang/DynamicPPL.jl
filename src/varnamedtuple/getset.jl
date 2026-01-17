@@ -49,7 +49,7 @@ function _haskey_optic(vnt::VarNamedTuple, optic::AbstractPPL.Property{S}) where
     return Base.haskey(vnt.data, S) && _haskey_optic(getindex(vnt.data, S), optic.child)
 end
 function _haskey_optic(pa::PartialArray, optic::AbstractPPL.Index)
-    return Base.haskey(pa, optic.ix; optic.kw...) &&
+    return Base.haskey(pa, optic.ix...; optic.kw...) &&
            _haskey_optic(Base.getindex(pa, optic.ix...; optic.kw...), optic.child)
 end
 function _haskey_optic(arr::AbstractArray, optic::IndexWithoutChild)
@@ -113,17 +113,17 @@ function _setindex_optic!!(
     sub_value = if optic.child isa AbstractPPL.Iden
         # Skip recursion
         value
-    elseif Base.haskey(pa, optic.ix; optic.kw...)
+    elseif Base.haskey(pa, optic.ix...; optic.kw...)
         # Data already exists; we need to recurse into it
         _setindex_optic!!(
-            Base.getindex(pa, optic.ix; optic.kw...),
+            Base.getindex(pa, optic.ix...; optic.kw...),
             value,
             optic.child;
             allow_new=allow_new,
         )
     elseif allow_new isa Val{true}
         # No new data but we are allowed to create it.
-        make_leaf(value, optic.outer)
+        make_leaf(value, optic.child)
     else
         throw_setindex_allow_new_error()
     end
@@ -141,7 +141,7 @@ function _setindex_optic!!(
         _setindex_optic!!(vnt.data[S], value, optic.child; allow_new=allow_new)
     elseif allow_new isa Val{true}
         # No new data but we are allowed to create it.
-        make_leaf(value, optic)
+        make_leaf(value, optic.child)
     else
         # If this branch is ever reached, then someone has used allow_new=Val(false)
         # incorrectly.

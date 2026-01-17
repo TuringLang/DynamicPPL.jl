@@ -72,7 +72,7 @@ function apply!!(func, vnt::VarNamedTuple, name::VarName)
     if !haskey(vnt, name)
         throw(KeyError(repr(name)))
     end
-    subdata = vnt.data[name]
+    subdata = _getindex_optic(vnt, name)
     new_subdata = func(subdata)
     # The allow_new=Val(true) is a performance optimisation: Since we've already checked
     # that the key exists, we know that no new fields will be created.
@@ -105,8 +105,10 @@ _map_recursive!!(func, x, vn) = func(vn => x)
 function _map_recursive!!(func, pa::PartialArray, vn)
     # Ask the compiler to infer the return type of applying func recursively to eltype(pa).
     et = eltype(pa)
-    index_type = IndexLens{NTuple{ndims(pa),Int}}
-    new_vn_type = Core.Compiler.return_type(∘, Tuple{index_type,typeof(vn)})
+    index_type = AbstractPPL.Index{NTuple{ndims(pa),Int},NamedTuple{},AbstractPPL.Iden}
+    new_vn_type = Core.Compiler.return_type(
+        AbstractPPL.append_optic, Tuple{typeof(vn),index_type}
+    )
     new_et = Core.Compiler.return_type(
         Tuple{typeof(_map_recursive!!),typeof(func),et,new_vn_type}
     )
@@ -132,7 +134,7 @@ function _map_recursive!!(func, pa::PartialArray, vn)
                 end
             end
             ind = is_alb ? val.inds : Tuple(i)
-            new_vn = AbstractPPL.Index(ind, (;)) ∘ vn
+            new_vn = AbstractPPL.append_optic(vn, AbstractPPL.Index(ind, (;)))
             new_val = _map_recursive!!(func, pa.data[i], new_vn)
             new_data[i] = new_val
             if is_alb
@@ -287,7 +289,7 @@ function _mapreduce_recursive(f, op, pa::PartialArray, vn, init)
                 push!(albs_seen, val)
             end
             ind = is_alb ? val.inds : Tuple(i)
-            new_vn = IndexLens(ind) ∘ vn
+            new_vn = AbstractPPL.append_optic(vn, AbstractPPL.Index(ind, (;)))
             result = _mapreduce_recursive(f, op, pa.data[i], new_vn, result)
         end
     end
