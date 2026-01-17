@@ -118,8 +118,7 @@ See also: [`split`](@ref)
 """
 function combine end
 
-# TODO(mhauru) The existence of this function makes me sad. See comment in unflatten in
-# src/varinfo.jl.
+# TODO(mhauru) The existence of this function makes me sad. See comment in src/model.jl.
 """
     convert_eltype(::Type{T}, acc::AbstractAccumulator)
 

@@ -17,35 +17,24 @@ using Mooncake: Mooncake
 
 @testset "LogDensityFunction: Correctness" begin
     @testset "$(m.f)" for m in DynamicPPL.TestUtils.ALL_MODELS
-        @testset "$varinfo_func" for varinfo_func in [
-            DynamicPPL.untyped_varinfo,
-            DynamicPPL.typed_varinfo,
-            DynamicPPL.untyped_vector_varinfo,
-            DynamicPPL.typed_vector_varinfo,
-        ]
-            unlinked_vi = varinfo_func(m)
-            @testset "$islinked" for islinked in (false, true)
-                vi = if islinked
-                    DynamicPPL.link!!(unlinked_vi, m)
-                else
-                    unlinked_vi
-                end
-                nt_ranges, dict_ranges = DynamicPPL.get_ranges_and_linked(vi)
-                params = [x for x in vi[:]]
-                # Iterate over all variables
-                for vn in keys(vi)
-                    # Check that `getindex_internal` returns the same thing as using the ranges
-                    # directly
-                    range_with_linked = if AbstractPPL.getoptic(vn) === identity
-                        nt_ranges[AbstractPPL.getsym(vn)]
-                    else
-                        dict_ranges[vn]
-                    end
-                    @test params[range_with_linked.range] ==
-                        DynamicPPL.getindex_internal(vi, vn)
-                    # Check that the link status is correct
-                    @test range_with_linked.is_linked == islinked
-                end
+        @testset "$islinked" for islinked in (false, true)
+            unlinked_vi = DynamicPPL.VarInfo(m)
+            vi = if islinked
+                DynamicPPL.link!!(unlinked_vi, m)
+            else
+                unlinked_vi
+            end
+            ranges = DynamicPPL.get_ranges_and_linked(vi)
+            params = [x for x in vi[:]]
+            # Iterate over all variables
+            for vn in keys(vi)
+                # Check that `getindex_internal` returns the same thing as using the ranges
+                # directly
+                range_with_linked = ranges[vn]
+                @test params[range_with_linked.range] ==
+                    DynamicPPL.tovec(DynamicPPL.getindex_internal(vi, vn))
+                # Check that the link status is correct
+                @test range_with_linked.is_linked == islinked
             end
         end
     end
@@ -108,8 +97,8 @@ end
 
 @testset "LogDensityFunction: Type stability" begin
     @testset "$(m.f)" for m in DynamicPPL.TestUtils.ALL_MODELS
-        unlinked_vi = DynamicPPL.VarInfo(m)
         @testset "$islinked" for islinked in (false, true)
+            unlinked_vi = DynamicPPL.VarInfo(m)
             vi = if islinked
                 DynamicPPL.link!!(unlinked_vi, m)
             else
@@ -117,7 +106,12 @@ end
             end
             ldf = DynamicPPL.LogDensityFunction(m, DynamicPPL.getlogjoint_internal, vi)
             x = vi[:]
-            @inferred LogDensityProblems.logdensity(ldf, x)
+            # The below type inference fails on v1.10.
+            skip = (VERSION < v"1.11.0" && m.f === DynamicPPL.TestUtils.demo_nested_colons)
+            @test begin
+                @inferred LogDensityProblems.logdensity(ldf, x)
+                true
+            end skip = skip
         end
     end
 end

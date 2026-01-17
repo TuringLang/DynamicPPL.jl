@@ -67,60 +67,6 @@
             model = ModelOuterWorking2()
             @test check_model(model, VarInfo(model); error_on_failure=true)
         end
-
-        @testset "subsumes (x then x[1])" begin
-            @model function buggy_subsumes_demo_model()
-                x = Vector{Float64}(undef, 2)
-                x ~ MvNormal(zeros(2), I)
-                x[1] ~ Normal()
-                return nothing
-            end
-            buggy_model = buggy_subsumes_demo_model()
-            varinfo = VarInfo(buggy_model)
-
-            @test_logs (:warn,) (:warn,) check_model(buggy_model, varinfo)
-            issuccess = check_model(buggy_model, varinfo)
-            @test !issuccess
-            @test_throws ErrorException check_model(
-                buggy_model, varinfo; error_on_failure=true
-            )
-        end
-
-        @testset "subsumes (x[1] then x)" begin
-            @model function buggy_subsumes_demo_model()
-                x = Vector{Float64}(undef, 2)
-                x[1] ~ Normal()
-                x ~ MvNormal(zeros(2), I)
-                return nothing
-            end
-            buggy_model = buggy_subsumes_demo_model()
-            varinfo = VarInfo(buggy_model)
-
-            @test_logs (:warn,) (:warn,) check_model(buggy_model, varinfo)
-            issuccess = check_model(buggy_model, varinfo)
-            @test !issuccess
-            @test_throws ErrorException check_model(
-                buggy_model, varinfo; error_on_failure=true
-            )
-        end
-
-        @testset "subsumes (x.a then x)" begin
-            @model function buggy_subsumes_demo_model()
-                x = (a=nothing,)
-                x.a ~ Normal()
-                x ~ Normal()
-                return nothing
-            end
-            buggy_model = buggy_subsumes_demo_model()
-            varinfo = VarInfo(buggy_model)
-
-            @test_logs (:warn,) (:warn,) check_model(buggy_model, varinfo)
-            issuccess = check_model(buggy_model, varinfo)
-            @test !issuccess
-            @test_throws ErrorException check_model(
-                buggy_model, varinfo; error_on_failure=true
-            )
-        end
     end
 
     @testset "NaN in data" begin

@@ -5,7 +5,7 @@ A struct which contains parameter values extracted from a `VarInfo`, along with 
 statistics associated with the VarInfo. The statistics are provided as a NamedTuple and are
 optional.
 """
-struct ParamsWithStats{P<:OrderedDict{<:VarName,<:Any},S<:NamedTuple}
+struct ParamsWithStats{P<:VarNamedTuple,S<:NamedTuple}
     params::P
     stats::S
 end
@@ -38,7 +38,6 @@ function ParamsWithStats(
     include_colon_eq::Bool=true,
     include_log_probs::Bool=true,
 )
-    varinfo = maybe_to_typed_varinfo(varinfo)
     accs = if include_log_probs
         (
             DynamicPPL.LogPriorAccumulator(),
@@ -63,13 +62,6 @@ function ParamsWithStats(
     end
     return ParamsWithStats(params, stats)
 end
-
-# Re-evaluating the model is unconscionably slow for untyped VarInfo. It's much faster to
-# convert it to a typed varinfo first, hence this method.
-# https://github.com/TuringLang/Turing.jl/issues/2604
-maybe_to_typed_varinfo(vi::UntypedVarInfo) = typed_varinfo(vi)
-maybe_to_typed_varinfo(vi::UntypedVectorVarInfo) = typed_vector_varinfo(vi)
-maybe_to_typed_varinfo(vi::AbstractVarInfo) = vi
 
 """
     ParamsWithStats(
@@ -121,7 +113,7 @@ Generate a `ParamsWithStats` by re-evaluating the given `ldf` with the provided
 `param_vector`.
 
 This method is intended to replace the old method of obtaining parameters and statistics
-via `unflatten` plus re-evaluation. It is faster for two reasons:
+via `unflatten!!` plus re-evaluation. It is faster for two reasons:
 
 1. It does not rely on `deepcopy`-ing the VarInfo object (this used to be mandatory as
    otherwise re-evaluation would mutate the VarInfo, rendering it unusable for subsequent
@@ -136,10 +128,7 @@ function ParamsWithStats(
     include_log_probs::Bool=true,
 ) where {Tlink}
     strategy = InitFromParams(
-        VectorWithRanges{Tlink}(
-            ldf._iden_varname_ranges, ldf._varname_ranges, param_vector
-        ),
-        nothing,
+        VectorWithRanges{Tlink}(ldf._varname_ranges, param_vector), nothing
     )
     accs = if include_log_probs
         (

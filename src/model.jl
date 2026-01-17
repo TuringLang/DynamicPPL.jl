@@ -501,7 +501,7 @@ true
 julia> # Since we conditioned on `a.m`, it is not treated as a random variable.
        # However, `a.x` will still be a random variable.
        keys(VarInfo(cm))
-1-element Vector{VarName{:a, Accessors.PropertyLens{:x}}}:
+1-element Vector{VarName}:
  a.x
 
 julia> # We can also condition on `a.m` _outside_ of the PrefixContext:
@@ -513,7 +513,7 @@ Dict{VarName{:a, Accessors.PropertyLens{:m}}, Float64} with 1 entry:
 
 julia> # Now `a.x` will be sampled.
        keys(VarInfo(cm))
-1-element Vector{VarName{:a, Accessors.PropertyLens{:x}}}:
+1-element Vector{VarName}:
  a.x
 ```
 """
@@ -839,7 +839,7 @@ julia> Set(keys(fixed(cm))) == Set([@varname(a.m), @varname(x)])
 true
 
 julia> keys(VarInfo(cm))
-1-element Vector{VarName{:a, Accessors.PropertyLens{:x}}}:
+1-element Vector{VarName}:
  a.x
 
 julia> # We can also condition on `a.m` _outside_ of the PrefixContext:
@@ -851,7 +851,7 @@ Dict{VarName{:a, Accessors.PropertyLens{:m}}, Float64} with 1 entry:
 
 julia> # Now `a.x` will be sampled.
        keys(VarInfo(cm))
-1-element Vector{VarName{:a, Accessors.PropertyLens{:x}}}:
+1-element Vector{VarName}:
  a.x
 ```
 """
@@ -1085,7 +1085,9 @@ Base.nameof(model::Model{<:Function}) = nameof(model.f)
 Generate a sample of type `T` from the prior distribution of the `model`.
 """
 function Base.rand(rng::Random.AbstractRNG, ::Type{T}, model::Model) where {T}
-    x = last(init!!(rng, model, SimpleVarInfo{Float64}(OrderedDict{VarName,Any}())))
+    vi = VarInfo()
+    vi = setaccs!!(vi, DynamicPPL.AccumulatorTuple())
+    x = last(init!!(rng, model, vi))
     return values_as(x, T)
 end
 
@@ -1147,6 +1149,117 @@ function Distributions.loglikelihood(model::Model, varinfo::AbstractVarInfo)
     end
     varinfo = setaccs!!(deepcopy(varinfo), (loglikelihoodacc,))
     return getloglikelihood(last(evaluate!!(model, varinfo)))
+end
+
+"""
+    logjoint(model::Model, values::Union{NamedTuple,AbstractDict})
+
+Return the log joint probability of variables `values` for the probabilistic `model`.
+
+See [`logprior`](@ref) and [`loglikelihood`](@ref).
+
+# Examples
+```jldoctest; setup=:(using Distributions)
+julia> @model function demo(x)
+           m ~ Normal()
+           for i in eachindex(x)
+               x[i] ~ Normal(m, 1.0)
+           end
+       end
+demo (generic function with 2 methods)
+
+julia> # Using a `NamedTuple`.
+       logjoint(demo([1.0]), (m = 100.0, ))
+-9902.33787706641
+
+julia> # Using a `OrderedDict`.
+       logjoint(demo([1.0]), OrderedDict(@varname(m) => 100.0))
+-9902.33787706641
+
+julia> # Truth.
+       logpdf(Normal(100.0, 1.0), 1.0) + logpdf(Normal(), 100.0)
+-9902.33787706641
+```
+"""
+function logjoint(model::Model, values::Union{NamedTuple,AbstractDict})
+    accs = AccumulatorTuple((LogPriorAccumulator(), LogLikelihoodAccumulator()))
+    vi = OnlyAccsVarInfo(accs)
+    _, vi = DynamicPPL.init!!(model, vi, InitFromParams(values, nothing))
+    return getlogjoint(vi)
+end
+
+"""
+    logprior(model::Model, values::Union{NamedTuple,AbstractDict})
+
+Return the log prior probability of variables `values` for the probabilistic `model`.
+
+See also [`logjoint`](@ref) and [`loglikelihood`](@ref).
+
+# Examples
+```jldoctest; setup=:(using Distributions)
+julia> @model function demo(x)
+           m ~ Normal()
+           for i in eachindex(x)
+               x[i] ~ Normal(m, 1.0)
+           end
+       end
+demo (generic function with 2 methods)
+
+julia> # Using a `NamedTuple`.
+       logprior(demo([1.0]), (m = 100.0, ))
+-5000.918938533205
+
+julia> # Using a `OrderedDict`.
+       logprior(demo([1.0]), OrderedDict(@varname(m) => 100.0))
+-5000.918938533205
+
+julia> # Truth.
+       logpdf(Normal(), 100.0)
+-5000.918938533205
+```
+"""
+function logprior(model::Model, values::Union{NamedTuple,AbstractDict})
+    accs = AccumulatorTuple((LogPriorAccumulator(),))
+    vi = OnlyAccsVarInfo(accs)
+    _, vi = DynamicPPL.init!!(model, vi, InitFromParams(values, nothing))
+    return getlogprior(vi)
+end
+
+"""
+    loglikelihood(model::Model, values::Union{NamedTuple,AbstractDict})
+
+Return the log likelihood of variables `values` for the probabilistic `model`.
+
+See also [`logjoint`](@ref) and [`logprior`](@ref).
+
+# Examples
+```jldoctest; setup=:(using Distributions)
+julia> @model function demo(x)
+           m ~ Normal()
+           for i in eachindex(x)
+               x[i] ~ Normal(m, 1.0)
+           end
+       end
+demo (generic function with 2 methods)
+
+julia> # Using a `NamedTuple`.
+       loglikelihood(demo([1.0]), (m = 100.0, ))
+-4901.418938533205
+
+julia> # Using a `OrderedDict`.
+       loglikelihood(demo([1.0]), OrderedDict(@varname(m) => 100.0))
+-4901.418938533205
+
+julia> # Truth.
+       logpdf(Normal(100.0, 1.0), 1.0)
+-4901.418938533205
+```
+"""
+function Distributions.loglikelihood(model::Model, values::Union{NamedTuple,AbstractDict})
+    accs = AccumulatorTuple((LogLikelihoodAccumulator(),))
+    vi = OnlyAccsVarInfo(accs)
+    _, vi = DynamicPPL.init!!(model, vi, InitFromParams(values, nothing))
+    return getloglikelihood(vi)
 end
 
 # Implemented & documented in DynamicPPLMCMCChainsExt

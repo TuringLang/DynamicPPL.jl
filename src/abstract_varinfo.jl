@@ -32,6 +32,9 @@ in the execution of a given `Model`.
 This is in constrast to `StaticTransformation` which transforms all variables
 _before_ the execution of a given `Model`.
 
+Different VarInfo types should implement their own methods for `link!!` and `invlink!!` for
+`DynamicTransformation`.
+
 See also: [`StaticTransformation`](@ref).
 """
 struct DynamicTransformation <: AbstractTransformation end
@@ -51,23 +54,6 @@ $(TYPEDFIELDS)
 struct StaticTransformation{F} <: AbstractTransformation
     "The function, assumed to implement the `Bijectors` interface, to be applied to the variables"
     bijector::F
-end
-
-"""
-    merge_transformations(transformation_left, transformation_right)
-
-Merge two transformations.
-
-The main use of this is in [`merge(::AbstractVarInfo, ::AbstractVarInfo)`](@ref).
-"""
-function merge_transformations(::NoTransformation, ::NoTransformation)
-    return NoTransformation()
-end
-function merge_transformations(::DynamicTransformation, ::DynamicTransformation)
-    return DynamicTransformation()
-end
-function merge_transformations(left::StaticTransformation, right::StaticTransformation)
-    return StaticTransformation(merge_bijectors(left.bijector, right.bijector))
 end
 
 function merge_bijectors(left::Bijectors.NamedTransform, right::Bijectors.NamedTransform)
@@ -502,100 +488,24 @@ If no `Type` is provided, return values as stored in `varinfo`.
 
 # Examples
 
-`SimpleVarInfo` with `NamedTuple`:
-
-```jldoctest
-julia> data = (x = 1.0, m = [2.0]);
-
-julia> values_as(SimpleVarInfo(data))
-(x = 1.0, m = [2.0])
-
-julia> values_as(SimpleVarInfo(data), NamedTuple)
-(x = 1.0, m = [2.0])
-
-julia> values_as(SimpleVarInfo(data), OrderedDict)
-OrderedDict{VarName{sym, typeof(identity)} where sym, Any} with 2 entries:
-  x => 1.0
-  m => [2.0]
-
-julia> values_as(SimpleVarInfo(data), Vector)
-2-element Vector{Float64}:
- 1.0
- 2.0
-```
-
-`SimpleVarInfo` with `OrderedDict`:
-
-```jldoctest
-julia> data = OrderedDict{Any,Any}(@varname(x) => 1.0, @varname(m) => [2.0]);
-
-julia> values_as(SimpleVarInfo(data))
-OrderedDict{Any, Any} with 2 entries:
-  x => 1.0
-  m => [2.0]
-
-julia> values_as(SimpleVarInfo(data), NamedTuple)
-(x = 1.0, m = [2.0])
-
-julia> values_as(SimpleVarInfo(data), OrderedDict)
-OrderedDict{Any, Any} with 2 entries:
-  x => 1.0
-  m => [2.0]
-
-julia> values_as(SimpleVarInfo(data), Vector)
-2-element Vector{Float64}:
- 1.0
- 2.0
-```
-
-`VarInfo` with `NamedTuple` of `Metadata`:
-
 ```jldoctest
 julia> # Just use an example model to construct the `VarInfo` because we're lazy.
-       vi = DynamicPPL.typed_varinfo(DynamicPPL.TestUtils.demo_assume_dot_observe());
+       vi = DynamicPPL.VarInfo(DynamicPPL.TestUtils.demo_assume_dot_observe());
 
-julia> vi[@varname(s)] = 1.0; vi[@varname(m)] = 2.0;
+julia> vi = DynamicPPL.setindex!!(vi, 1.0, @varname(s));
 
-julia> # For the sake of brevity, let's just check the type.
-       md = values_as(vi); md.s isa Union{DynamicPPL.Metadata, DynamicPPL.VarNamedVector}
-true
+julia> vi = DynamicPPL.setindex!!(vi, 2.0, @varname(m));
 
 julia> values_as(vi, NamedTuple)
 (s = 1.0, m = 2.0)
 
 julia> values_as(vi, OrderedDict)
-OrderedDict{VarName{sym, typeof(identity)} where sym, Float64} with 2 entries:
+OrderedDict{Any, Any} with 2 entries:
   s => 1.0
   m => 2.0
 
 julia> values_as(vi, Vector)
 2-element Vector{Float64}:
- 1.0
- 2.0
-```
-
-`VarInfo` with `Metadata`:
-
-```jldoctest
-julia> # Just use an example model to construct the `VarInfo` because we're lazy.
-       vi = DynamicPPL.untyped_varinfo(DynamicPPL.TestUtils.demo_assume_dot_observe());
-
-julia> vi[@varname(s)] = 1.0; vi[@varname(m)] = 2.0;
-
-julia> # For the sake of brevity, let's just check the type.
-       values_as(vi) isa Union{DynamicPPL.Metadata, Vector}
-true
-
-julia> values_as(vi, NamedTuple)
-(s = 1.0, m = 2.0)
-
-julia> values_as(vi, OrderedDict)
-OrderedDict{VarName{sym, typeof(identity)} where sym, Float64} with 2 entries:
-  s => 1.0
-  m => 2.0
-
-julia> values_as(vi, Vector)
-2-element Vector{Real}:
  1.0
  2.0
 ```
@@ -625,13 +535,6 @@ function Base.eltype(vi::AbstractVarInfo)
     return eltype(T)
 end
 
-"""
-    has_varnamedvector(varinfo::VarInfo)
-
-Returns `true` if `varinfo` uses `VarNamedVector` as metadata.
-"""
-has_varnamedvector(vi::AbstractVarInfo) = false
-
 # TODO: Should relax constraints on `vns` to be `AbstractVector{<:Any}` and just try to convert
 # the `eltype` to `VarName`? This might be useful when someone does `[@varname(x[1]), @varname(m)]` which
 # might result in a `Vector{Any}`.
@@ -655,20 +558,20 @@ demo (generic function with 2 methods)
 
 julia> model = demo();
 
-julia> varinfo = VarInfo(model);
+julia> vi = VarInfo(model);
 
-julia> keys(varinfo)
+julia> keys(vi)
 4-element Vector{VarName}:
  s
  m
  x[1]
  x[2]
 
-julia> for (i, vn) in enumerate(keys(varinfo))
-           varinfo[vn] = i
+julia> for (i, vn) in enumerate(keys(vi))
+           vi = DynamicPPL.setindex!!(vi, Float64(i), vn)
        end
 
-julia> varinfo[[@varname(s), @varname(m), @varname(x[1]), @varname(x[2])]]
+julia> vi[[@varname(s), @varname(m), @varname(x[1]), @varname(x[2])]]
 4-element Vector{Float64}:
  1.0
  2.0
@@ -676,59 +579,59 @@ julia> varinfo[[@varname(s), @varname(m), @varname(x[1]), @varname(x[2])]]
  4.0
 
 julia> # Extract one with only `m`.
-       varinfo_subset1 = subset(varinfo, [@varname(m),]);
+       vi_subset1 = subset(vi, [@varname(m),]);
 
 
-julia> keys(varinfo_subset1)
-1-element Vector{VarName{:m, typeof(identity)}}:
+julia> keys(vi_subset1)
+1-element Vector{VarName}:
  m
 
-julia> varinfo_subset1[@varname(m)]
+julia> vi_subset1[@varname(m)]
 2.0
 
 julia> # Extract one with both `s` and `x[2]`.
-       varinfo_subset2 = subset(varinfo, [@varname(s), @varname(x[2])]);
+       vi_subset2 = subset(vi, [@varname(s), @varname(x[2])]);
 
-julia> keys(varinfo_subset2)
+julia> keys(vi_subset2)
 2-element Vector{VarName}:
  s
  x[2]
 
-julia> varinfo_subset2[[@varname(s), @varname(x[2])]]
+julia> vi_subset2[[@varname(s), @varname(x[2])]]
 2-element Vector{Float64}:
  1.0
  4.0
 ```
 
-`subset` is particularly useful when combined with [`merge(varinfo::AbstractVarInfo)`](@ref)
+`subset` is particularly useful when combined with [`merge(vi::AbstractVarInfo)`](@ref)
 
 ```jldoctest varinfo-subset
 julia> # Merge the two.
-       varinfo_subset_merged = merge(varinfo_subset1, varinfo_subset2);
+       vi_subset_merged = merge(vi_subset1, vi_subset2);
 
-julia> keys(varinfo_subset_merged)
+julia> keys(vi_subset_merged)
 3-element Vector{VarName}:
  m
  s
  x[2]
 
-julia> varinfo_subset_merged[[@varname(s), @varname(m), @varname(x[2])]]
+julia> vi_subset_merged[[@varname(s), @varname(m), @varname(x[2])]]
 3-element Vector{Float64}:
  1.0
  2.0
  4.0
 
 julia> # Merge the two with the original.
-       varinfo_merged = merge(varinfo, varinfo_subset_merged);
+       vi_merged = merge(vi, vi_subset_merged);
 
-julia> keys(varinfo_merged)
+julia> keys(vi_merged)
 4-element Vector{VarName}:
  s
  m
  x[1]
  x[2]
 
-julia> varinfo_merged[[@varname(s), @varname(m), @varname(x[1]), @varname(x[2])]]
+julia> vi_merged[[@varname(s), @varname(m), @varname(x[1]), @varname(x[2])]]
 4-element Vector{Float64}:
  1.0
  2.0
@@ -824,32 +727,8 @@ See also: [`default_transformation`](@ref), [`invlink!!`](@ref).
 function link!!(vi::AbstractVarInfo, model::Model)
     return link!!(default_transformation(model, vi), vi, model)
 end
-function link!!(vi::AbstractVarInfo, vns::VarNameTuple, model::Model)
+function link!!(vi::AbstractVarInfo, vns, model::Model)
     return link!!(default_transformation(model, vi), vi, vns, model)
-end
-function link!!(t::DynamicTransformation, vi::AbstractVarInfo, model::Model)
-    # Note that in practice this method is only called for SimpleVarInfo, because VarInfo
-    # has a dedicated implementation
-    model = setleafcontext(model, DynamicTransformationContext{false}())
-    vi = last(evaluate!!(model, vi))
-    return set_transformed!!(vi, t)
-end
-function link!!(
-    t::StaticTransformation{<:Bijectors.Transform}, vi::AbstractVarInfo, ::Model
-)
-    # TODO(mhauru) This assumes that the user has defined the bijector using the same
-    # variable ordering as what `vi[:]` and `unflatten(vi, x)` use. This is a bad user
-    # interface, and it's also dangerous for any AbstractVarInfo types that may not respect
-    # a particular ordering, such as SimpleVarInfo{Dict}.
-    b = inverse(t.bijector)
-    x = vi[:]
-    y, logjac = with_logabsdet_jacobian(b, x)
-    # Set parameters and add the logjac term.
-    vi = unflatten(vi, y)
-    if hasacc(vi, Val(:LogJacobian))
-        vi = acclogjac!!(vi, logjac)
-    end
-    return set_transformed!!(vi, t)
 end
 
 """
@@ -867,7 +746,7 @@ See also: [`default_transformation`](@ref), [`invlink`](@ref).
 function link(vi::AbstractVarInfo, model::Model)
     return link(default_transformation(model, vi), vi, model)
 end
-function link(vi::AbstractVarInfo, vns::VarNameTuple, model::Model)
+function link(vi::AbstractVarInfo, vns, model::Model)
     return link(default_transformation(model, vi), vi, vns, model)
 end
 function link(t::AbstractTransformation, vi::AbstractVarInfo, model::Model)
@@ -890,31 +769,8 @@ See also: [`default_transformation`](@ref), [`link!!`](@ref).
 function invlink!!(vi::AbstractVarInfo, model::Model)
     return invlink!!(default_transformation(model, vi), vi, model)
 end
-function invlink!!(vi::AbstractVarInfo, vns::VarNameTuple, model::Model)
+function invlink!!(vi::AbstractVarInfo, vns, model::Model)
     return invlink!!(default_transformation(model, vi), vi, vns, model)
-end
-function invlink!!(::DynamicTransformation, vi::AbstractVarInfo, model::Model)
-    # Note that in practice this method is only called for SimpleVarInfo, because VarInfo
-    # has a dedicated implementation
-    model = setleafcontext(model, DynamicTransformationContext{true}())
-    vi = last(evaluate!!(model, vi))
-    return set_transformed!!(vi, NoTransformation())
-end
-function invlink!!(
-    t::StaticTransformation{<:Bijectors.Transform}, vi::AbstractVarInfo, ::Model
-)
-    b = t.bijector
-    y = vi[:]
-    x, inv_logjac = with_logabsdet_jacobian(b, y)
-
-    # Mildly confusing: we need to _add_ the logjac of the inverse transform,
-    # because we are trying to remove the logjac of the forward transform
-    # that was previously accumulated when linking.
-    vi = unflatten(vi, x)
-    if hasacc(vi, Val(:LogJacobian))
-        vi = acclogjac!!(vi, inv_logjac)
-    end
-    return set_transformed!!(vi, NoTransformation())
 end
 
 """
@@ -933,7 +789,7 @@ See also: [`default_transformation`](@ref), [`link`](@ref).
 function invlink(vi::AbstractVarInfo, model::Model)
     return invlink(default_transformation(model, vi), vi, model)
 end
-function invlink(vi::AbstractVarInfo, vns::VarNameTuple, model::Model)
+function invlink(vi::AbstractVarInfo, vns, model::Model)
     return invlink(default_transformation(model, vi), vi, vns, model)
 end
 function invlink(t::AbstractTransformation, vi::AbstractVarInfo, model::Model)
@@ -980,12 +836,12 @@ julia> # Change the `default_transformation` for our model to be a
 
 julia> model = demo();
 
-julia> vi = SimpleVarInfo(x=1.0)
-SimpleVarInfo((x = 1.0,), 0.0)
+julia> vi = setindex!!(VarInfo(), 1.0, @varname(x));
 
-julia> # Uses the `inverse` of `MyBijector`, which we have defined as `identity`
-       vi_linked = link!!(vi, model)
-Transformed SimpleVarInfo((x = 1.0,), 0.0)
+julia> vi[@varname(x)]
+1.0
+
+julia> vi_linked = link!!(vi, model);
 
 julia> # Now performs a single `invlink!!` before model evaluation.
        logjoint(model, vi_linked)
@@ -1013,11 +869,11 @@ end
 
 # Utilities
 """
-    unflatten(vi::AbstractVarInfo, x::AbstractVector)
+    unflatten!!(vi::AbstractVarInfo, x::AbstractVector)
 
 Return a new instance of `vi` with the values of `x` assigned to the variables.
 """
-function unflatten end
+function unflatten!! end
 
 """
     to_maybe_linked_internal(vi::AbstractVarInfo, vn::VarName, dist, val)

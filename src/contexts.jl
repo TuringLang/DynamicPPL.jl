@@ -25,18 +25,18 @@ Reconstruct `parent` but now using `child` is its [`childcontext`](@ref),
 effectively updating the child context.
 
 # Examples
-```jldoctest
-julia> using DynamicPPL: DynamicTransformationContext, ConditionContext
+```jldoctest; setup=:(using Random)
+julia> using DynamicPPL: InitContext, ConditionContext
 
 julia> ctx = ConditionContext((; a = 1));
 
 julia> DynamicPPL.childcontext(ctx)
 DefaultContext()
 
-julia> ctx_prior = DynamicPPL.setchildcontext(ctx, DynamicTransformationContext{true}());
+julia> ctx_prior = DynamicPPL.setchildcontext(ctx, InitContext(MersenneTwister(23), InitFromPrior()));
 
 julia> DynamicPPL.childcontext(ctx_prior)
-DynamicTransformationContext{true}()
+InitContext{MersenneTwister, InitFromPrior}(MersenneTwister(23), InitFromPrior())
 ```
 """
 setchildcontext
@@ -60,8 +60,8 @@ in which case effectively append `right` to `left`, dropping the
 original leaf context of `left`.
 
 # Examples
-```jldoctest
-julia> using DynamicPPL: leafcontext, setleafcontext, childcontext, setchildcontext, AbstractContext, DynamicTransformationContext
+```jldoctest; setup=:(using Random)
+julia> using DynamicPPL: leafcontext, setleafcontext, childcontext, setchildcontext, AbstractContext, InitContext
 
 julia> struct ParentContext{C} <: AbstractParentContext
            context::C
@@ -77,8 +77,8 @@ julia> ctx = ParentContext(ParentContext(DefaultContext()))
 ParentContext(ParentContext(DefaultContext()))
 
 julia> # Replace the leaf context with another leaf.
-       leafcontext(setleafcontext(ctx, DynamicTransformationContext{true}()))
-DynamicTransformationContext{true}()
+       leafcontext(setleafcontext(ctx, InitContext(MersenneTwister(23), InitFromPrior())))
+InitContext{MersenneTwister, InitFromPrior}(MersenneTwister(23), InitFromPrior())
 
 julia> # Append another parent context.
        setleafcontext(ctx, ParentContext(DefaultContext()))

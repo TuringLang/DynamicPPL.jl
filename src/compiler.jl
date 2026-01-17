@@ -434,14 +434,14 @@ end
 
 function generate_assign(left, right)
     # A statement `x := y` reduces to `x = y`, but if __varinfo__ has an accumulator for
-    # ValuesAsInModel then in addition we push! the pair of `x` and `y` to the accumulator.
+    # ValuesAsInModel then in addition we push!! the pair of `x` and `y` to the accumulator.
     @gensym acc right_val vn
     return quote
         $right_val = $right
         if $(DynamicPPL.is_extracting_values)(__varinfo__)
             $vn = $(DynamicPPL.prefix)(__model__.context, $(make_varname_expression(left)))
             __varinfo__ = $(map_accumulator!!)(
-                $acc -> push!($acc, $vn, $right_val), __varinfo__, Val(:ValuesAsInModel)
+                $acc -> push!!($acc, $vn, $right_val), __varinfo__, Val(:ValuesAsInModel)
             )
         end
         $left = $right_val

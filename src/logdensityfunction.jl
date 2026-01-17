@@ -13,8 +13,6 @@ using DynamicPPL:
     OnlyAccsVarInfo,
     RangeAndLinked,
     VectorWithRanges,
-    Metadata,
-    VarNamedVector,
     default_accumulators,
     float_type_with_fallback,
     getlogjoint,
@@ -89,11 +87,12 @@ from:
 Up until DynamicPPL v0.38, there have been two ways of evaluating a DynamicPPL model at a
 given set of parameters:
 
-1. With `unflatten` + `evaluate!!` with `DefaultContext`: this stores a vector of parameters
-   inside a VarInfo's metadata, then reads parameter values from the VarInfo during evaluation.
+1. With `unflatten!!` + `evaluate!!` with `DefaultContext`: this stores a vector of
+   parameters inside a VarInfo's metadata, then reads parameter values from the VarInfo
+   during evaluation.
 
-2. With `InitFromParams`: this reads parameter values from a NamedTuple or a Dict, and stores
-   them inside a VarInfo's metadata.
+2. With `InitFromParams`: this reads parameter values from a NamedTuple or a Dict, and
+   stores them inside a VarInfo's metadata.
 
 In general, both of these approaches work fine, but the fact that they modify the VarInfo's
 metadata can often be quite wasteful. In particular, it is very common that the only outputs
@@ -115,7 +114,7 @@ In particular, it is not clear:
  - which parts of the vector correspond to which random variables, and
  - whether the variables are linked or unlinked.
 
-Traditionally, this problem has been solved by `unflatten`, because that function would
+Traditionally, this problem has been solved by `unflatten!!`, because that function would
 place values into the VarInfo's metadata alongside the information about ranges and linking.
 That way, when we evaluate with `DefaultContext`, we can read this information out again.
 However, we want to avoid using a metadata. Thus, here, we _extract this information from
@@ -123,21 +122,16 @@ the VarInfo_ a single time when constructing a `LogDensityFunction` object. Insi
 LogDensityFunction, we store a mapping from VarNames to ranges in that vector, along with
 link status.
 
-For VarNames with identity optics, this is stored in a NamedTuple for efficiency. For all
-other VarNames, this is stored in a Dict. The internal data structure used to represent this
-could almost certainly be optimised further. See e.g. the discussion in
-https://github.com/TuringLang/DynamicPPL.jl/issues/1116.
-
-When evaluating the model, this allows us to combine the parameter vector together with those
-ranges to create an `InitFromParams{VectorWithRanges}`, which lets us very quickly read
-parameter values from the vector.
+When evaluating the model, this allows us to combine the parameter vector together with
+those ranges to create an `InitFromParams{VectorWithRanges}`, which lets us very quickly
+read parameter values from the vector.
 
 Note that this assumes that the ranges and link status are static throughout the lifetime of
 the `LogDensityFunction` object. Therefore, a `LogDensityFunction` object cannot handle
 models which have variable numbers of parameters, or models which may visit random variables
 in different orders depending on stochastic control flow. **Indeed, silent errors may occur
 with such models.** This is a general limitation of vectorised parameters: the original
-`unflatten` + `evaluate!!` approach also fails with such models.
+`unflatten!!` + `evaluate!!` approach also fails with such models.
 """
 struct LogDensityFunction{
     # true if all variables are linked; false if all variables are unlinked; nothing if
@@ -146,7 +140,7 @@ struct LogDensityFunction{
     M<:Model,
     AD<:Union{ADTypes.AbstractADType,Nothing},
     F<:Function,
-    N<:NamedTuple,
+    VNT<:VarNamedTuple,
     ADP<:Union{Nothing,DI.GradientPrep},
     # type of the vector passed to logdensity functions
     X<:AbstractVector,
@@ -154,8 +148,7 @@ struct LogDensityFunction{
     model::M
     adtype::AD
     _getlogdensity::F
-    _iden_varname_ranges::N
-    _varname_ranges::Dict{VarName,RangeAndLinked}
+    _varname_ranges::VNT
     _adprep::ADP
     _dim::Int
 
@@ -167,14 +160,11 @@ struct LogDensityFunction{
     )
         # Figure out which variable corresponds to which index, and
         # which variables are linked.
-        all_iden_ranges, all_ranges = get_ranges_and_linked(varinfo)
+        all_ranges = get_ranges_and_linked(varinfo)
         # Figure out if all variables are linked, unlinked, or mixed
         link_statuses = Bool[]
-        for ral in all_iden_ranges
-            push!(link_statuses, ral.is_linked)
-        end
-        for (_, ral) in all_ranges
-            push!(link_statuses, ral.is_linked)
+        for vn in keys(all_ranges)
+            push!(link_statuses, all_ranges[vn].is_linked)
         end
         Tlink = if all(link_statuses)
             true
@@ -192,9 +182,7 @@ struct LogDensityFunction{
             # Make backend-specific tweaks to the adtype
             adtype = DynamicPPL.tweak_adtype(adtype, model, varinfo)
             DI.prepare_gradient(
-                LogDensityAt{Tlink}(model, getlogdensity, all_iden_ranges, all_ranges),
-                adtype,
-                x,
+                LogDensityAt{Tlink}(model, getlogdensity, all_ranges), adtype, x
             )
         end
         return new{
@@ -202,11 +190,11 @@ struct LogDensityFunction{
             typeof(model),
             typeof(adtype),
             typeof(getlogdensity),
-            typeof(all_iden_ranges),
+            typeof(all_ranges),
             typeof(prep),
             typeof(x),
         }(
-            model, adtype, getlogdensity, all_iden_ranges, all_ranges, prep, dim
+            model, adtype, getlogdensity, all_ranges, prep, dim
         )
     end
 end
@@ -235,25 +223,19 @@ end
 ldf_accs(::typeof(getlogprior)) = AccumulatorTuple((LogPriorAccumulator(),))
 ldf_accs(::typeof(getloglikelihood)) = AccumulatorTuple((LogLikelihoodAccumulator(),))
 
-struct LogDensityAt{Tlink,M<:Model,F<:Function,N<:NamedTuple}
+struct LogDensityAt{Tlink,M<:Model,F<:Function,VNT<:VarNamedTuple}
     model::M
     getlogdensity::F
-    iden_varname_ranges::N
-    varname_ranges::Dict{VarName,RangeAndLinked}
+    varname_ranges::VNT
 
     function LogDensityAt{Tlink}(
-        model::M,
-        getlogdensity::F,
-        iden_varname_ranges::N,
-        varname_ranges::Dict{VarName,RangeAndLinked},
+        model::M, getlogdensity::F, varname_ranges::N
     ) where {Tlink,M,F,N}
-        return new{Tlink,M,F,N}(model, getlogdensity, iden_varname_ranges, varname_ranges)
+        return new{Tlink,M,F,N}(model, getlogdensity, varname_ranges)
     end
 end
 function (f::LogDensityAt{Tlink})(params::AbstractVector{<:Real}) where {Tlink}
-    strategy = InitFromParams(
-        VectorWithRanges{Tlink}(f.iden_varname_ranges, f.varname_ranges, params), nothing
-    )
+    strategy = InitFromParams(VectorWithRanges{Tlink}(f.varname_ranges, params), nothing)
     accs = ldf_accs(f.getlogdensity)
     _, vi = DynamicPPL.init!!(f.model, OnlyAccsVarInfo(accs), strategy)
     return f.getlogdensity(vi)
@@ -262,11 +244,7 @@ end
 function LogDensityProblems.logdensity(
     ldf::LogDensityFunction{Tlink}, params::AbstractVector{<:Real}
 ) where {Tlink}
-    return LogDensityAt{Tlink}(
-        ldf.model, ldf._getlogdensity, ldf._iden_varname_ranges, ldf._varname_ranges
-    )(
-        params
-    )
+    return LogDensityAt{Tlink}(ldf.model, ldf._getlogdensity, ldf._varname_ranges)(params)
 end
 
 function LogDensityProblems.logdensity_and_gradient(
@@ -274,9 +252,7 @@ function LogDensityProblems.logdensity_and_gradient(
 ) where {Tlink}
     params = convert(_get_input_vector_type(ldf), params)
     return DI.value_and_gradient(
-        LogDensityAt{Tlink}(
-            ldf.model, ldf._getlogdensity, ldf._iden_varname_ranges, ldf._varname_ranges
-        ),
+        LogDensityAt{Tlink}(ldf.model, ldf._getlogdensity, ldf._varname_ranges),
         ldf._adprep,
         ldf.adtype,
         params,
@@ -318,73 +294,29 @@ tweak_adtype(adtype::ADTypes.AbstractADType, ::Model, ::AbstractVarInfo) = adtyp
 # Helper functions to extract ranges and link status #
 ######################################################
 
-# This fails for SimpleVarInfo, but honestly there is no reason to support that here. The
-# fact is that evaluation doesn't use a VarInfo, it only uses it once to generate the ranges
-# and link status. So there is no motivation to use SimpleVarInfo inside a
-# LogDensityFunction any more, we can just always use typed VarInfo. In fact one could argue
-# that there is no purpose in supporting untyped VarInfo either.
 """
     get_ranges_and_linked(varinfo::VarInfo)
 
 Given a `VarInfo`, extract the ranges of each variable in the vectorised parameter
 representation, along with whether each variable is linked or unlinked.
 
-This function should return a tuple containing:
-
-- A NamedTuple mapping VarNames with identity optics to their corresponding `RangeAndLinked`
-- A Dict mapping all other VarNames to their corresponding `RangeAndLinked`.
+This function returns a VarNamedTuple mapping all VarNames to their corresponding
+`RangeAndLinked`.
 """
-function get_ranges_and_linked(varinfo::VarInfo{<:NamedTuple{syms}}) where {syms}
-    all_iden_ranges = NamedTuple()
-    all_ranges = Dict{VarName,RangeAndLinked}()
-    offset = 1
-    for sym in syms
-        md = varinfo.metadata[sym]
-        this_md_iden, this_md_others, offset = get_ranges_and_linked_metadata(md, offset)
-        all_iden_ranges = merge(all_iden_ranges, this_md_iden)
-        all_ranges = merge(all_ranges, this_md_others)
-    end
-    return all_iden_ranges, all_ranges
-end
-function get_ranges_and_linked(varinfo::VarInfo{<:Union{Metadata,VarNamedVector}})
-    all_iden, all_others, _ = get_ranges_and_linked_metadata(varinfo.metadata, 1)
-    return all_iden, all_others
-end
-function get_ranges_and_linked_metadata(md::Metadata, start_offset::Int)
-    all_iden_ranges = NamedTuple()
-    all_ranges = Dict{VarName,RangeAndLinked}()
-    offset = start_offset
-    for (vn, idx) in md.idcs
-        is_linked = md.is_transformed[idx]
-        range = md.ranges[idx] .+ (start_offset - 1)
-        if AbstractPPL.getoptic(vn) === identity
-            all_iden_ranges = merge(
-                all_iden_ranges,
-                NamedTuple((AbstractPPL.getsym(vn) => RangeAndLinked(range, is_linked),)),
-            )
-        else
-            all_ranges[vn] = RangeAndLinked(range, is_linked)
-        end
-        offset += length(range)
-    end
-    return all_iden_ranges, all_ranges, offset
-end
-function get_ranges_and_linked_metadata(vnv::VarNamedVector, start_offset::Int)
-    all_iden_ranges = NamedTuple()
-    all_ranges = Dict{VarName,RangeAndLinked}()
-    offset = start_offset
-    for (vn, idx) in vnv.varname_to_index
-        is_linked = vnv.is_unconstrained[idx]
-        range = vnv.ranges[idx] .+ (start_offset - 1)
-        if AbstractPPL.getoptic(vn) === identity
-            all_iden_ranges = merge(
-                all_iden_ranges,
-                NamedTuple((AbstractPPL.getsym(vn) => RangeAndLinked(range, is_linked),)),
-            )
-        else
-            all_ranges[vn] = RangeAndLinked(range, is_linked)
-        end
-        offset += length(range)
-    end
-    return all_iden_ranges, all_ranges, offset
+function get_ranges_and_linked(vi::VarInfo)
+    vnt, _ = mapreduce(
+        identity,
+        function ((vnt, offset), pair)
+            vn, tv = pair
+            val = tv.val
+            range = offset:(offset + length(val) - 1)
+            offset += length(val)
+            ral = RangeAndLinked(range, is_transformed(tv), tv.size)
+            vnt = setindex!!(vnt, ral, vn)
+            return vnt, offset
+        end,
+        vi.values;
+        init=(VarNamedTuple(), 1),
+    )
+    return vnt
 end

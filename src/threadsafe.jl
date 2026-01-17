@@ -36,6 +36,9 @@ function getacc(vi::ThreadSafeVarInfo, accname::Val)
     return foldl(combine, other_accs; init=main_acc)
 end
 
+function Base.copy(vi::ThreadSafeVarInfo)
+    return ThreadSafeVarInfo(copy(vi.varinfo), deepcopy(vi.accs_by_thread))
+end
 hasacc(vi::ThreadSafeVarInfo, accname::Val) = hasacc(vi.varinfo, accname)
 acckeys(vi::ThreadSafeVarInfo) = acckeys(vi.varinfo)
 
@@ -62,12 +65,6 @@ function map_accumulators!!(func::Function, vi::ThreadSafeVarInfo)
     return vi
 end
 
-has_varnamedvector(vi::ThreadSafeVarInfo) = has_varnamedvector(vi.varinfo)
-
-function BangBang.push!!(vi::ThreadSafeVarInfo, vn::VarName, r, dist::Distribution)
-    return Accessors.@set vi.varinfo = push!!(vi.varinfo, vn, r, dist)
-end
-
 syms(vi::ThreadSafeVarInfo) = syms(vi.varinfo)
 
 setval!(vi::ThreadSafeVarInfo, val, vn::VarName) = setval!(vi.varinfo, val, vn)
@@ -83,61 +80,6 @@ end
 
 function invlink!!(t::AbstractTransformation, vi::ThreadSafeVarInfo, args...)
     return Accessors.@set vi.varinfo = invlink!!(t, vi.varinfo, args...)
-end
-
-function link(t::AbstractTransformation, vi::ThreadSafeVarInfo, model::Model)
-    return Accessors.@set vi.varinfo = link(t, vi.varinfo, model)
-end
-
-function invlink(t::AbstractTransformation, vi::ThreadSafeVarInfo, model::Model)
-    return Accessors.@set vi.varinfo = invlink(t, vi.varinfo, model)
-end
-
-function link(
-    t::AbstractTransformation, vi::ThreadSafeVarInfo, vns::VarNameTuple, model::Model
-)
-    return Accessors.@set vi.varinfo = link(t, vi.varinfo, vns, model)
-end
-
-function invlink(
-    t::AbstractTransformation, vi::ThreadSafeVarInfo, vns::VarNameTuple, model::Model
-)
-    return Accessors.@set vi.varinfo = invlink(t, vi.varinfo, vns, model)
-end
-
-# Need to define explicitly for `DynamicTransformation` to avoid method ambiguity.
-# NOTE: We also can't just defer to the wrapped varinfo, because we need to ensure
-# consistency between `vi.accs_by_thread` field and `getacc(vi.varinfo)`, which accumulates
-# to define `getacc(vi)`.
-function link!!(t::DynamicTransformation, vi::ThreadSafeVarInfo, model::Model)
-    model = setleafcontext(model, DynamicTransformationContext{false}())
-    return set_transformed!!(last(evaluate!!(model, vi)), t)
-end
-
-function invlink!!(::DynamicTransformation, vi::ThreadSafeVarInfo, model::Model)
-    model = setleafcontext(model, DynamicTransformationContext{true}())
-    return set_transformed!!(last(evaluate!!(model, vi)), NoTransformation())
-end
-
-function link(t::DynamicTransformation, vi::ThreadSafeVarInfo, model::Model)
-    return link!!(t, deepcopy(vi), model)
-end
-
-function invlink(t::DynamicTransformation, vi::ThreadSafeVarInfo, model::Model)
-    return invlink!!(t, deepcopy(vi), model)
-end
-
-# These two StaticTransformation methods needed to resolve ambiguities
-function link!!(
-    t::StaticTransformation{<:Bijectors.Transform}, vi::ThreadSafeVarInfo, model::Model
-)
-    return Accessors.@set vi.varinfo = link!!(t, vi.varinfo, model)
-end
-
-function invlink!!(
-    t::StaticTransformation{<:Bijectors.Transform}, vi::ThreadSafeVarInfo, model::Model
-)
-    return Accessors.@set vi.varinfo = invlink!!(t, vi.varinfo, model)
 end
 
 function maybe_invlink_before_eval!!(vi::ThreadSafeVarInfo, model::Model)
@@ -157,6 +99,11 @@ function getindex(vi::ThreadSafeVarInfo, vn::VarName, dist::Distribution)
 end
 function getindex(vi::ThreadSafeVarInfo, vns::AbstractVector{<:VarName}, dist::Distribution)
     return getindex(vi.varinfo, vns, dist)
+end
+
+function setindex_with_dist!!(vi::ThreadSafeVarInfo, val, dist::Distribution, vn::VarName)
+    vi_inner, logjac = setindex_with_dist!!(vi.varinfo, val, dist, vn)
+    return Accessors.@set(vi.varinfo = vi_inner), logjac
 end
 
 function BangBang.setindex!!(vi::ThreadSafeVarInfo, vals, vn::VarName)
@@ -195,8 +142,8 @@ end
 
 getindex_internal(vi::ThreadSafeVarInfo, vn::VarName) = getindex_internal(vi.varinfo, vn)
 
-function unflatten(vi::ThreadSafeVarInfo, x::AbstractVector)
-    return Accessors.@set vi.varinfo = unflatten(vi.varinfo, x)
+function unflatten!!(vi::ThreadSafeVarInfo, x::AbstractVector)
+    return Accessors.@set vi.varinfo = unflatten!!(vi.varinfo, x)
 end
 
 function subset(varinfo::ThreadSafeVarInfo, vns::AbstractVector{<:VarName})

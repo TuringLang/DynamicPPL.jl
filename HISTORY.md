@@ -2,6 +2,174 @@
 
 ## 0.40
 
+### `VarNamedTuple`
+
+DynamicPPL now exports a new type, called `VarNamedTuple`, which stores values keyed by `VarName`s.
+With it are exported a few new functions for using it: `map_values!!`, `map_pairs!!`, `apply!!`.
+Our documentation's Internals section now has a page about `VarNamedTuple`, how it works, and what it's good for.
+
+`VarNamedTuple` is now used internally in many different parts: In `VarInfo`, in `values_as_in_model`, in `LogDensityFunction`, etc.
+Almost all of the below changes are the consequence from switching over to using `VarNamedTuple` for various features internally.
+
+### Overhaul of `VarInfo`
+
+DynamicPPL tracks variable values during model execution using one of the `AbstractVarInfo` types.
+Previously, there were many versions of them: `VarInfo`, both "typed" and "untyped", and `SimpleVarInfo` with both `NamedTuple` and `OrderedDict` as storage backends.
+These have all been replaced by a rewritten implementation of `VarInfo`.
+While the basics of the `VarInfo` interface remain the same, this brings with it many changes:
+
+#### No more many `AbstractVarInfo` types
+
+`SimpleVarInfo`, `untyped_varinfo`, `typed_varinfo`, and many other constructors, some exported some not, have been removed.
+The remaining one is `VarInfo(...)`, which can take a model or a collection of values.
+See the docstring for details.
+
+Some related types and functions, that weren't exported but may have been used by some, have also been removed, most notably `VarNamedVector` and its associated functions like `loosen_types!!` and `tighten_types!!`.
+
+#### Setting and getting values
+
+Previously the various `AbstractVarInfo` types had a multitude of functions for setting values:
+`push!!`, `push!`, `setindex!`, `update!`, `update_internal!`, `insert_internal!`, `reset!`, etc.
+These have all been replaced by three functions
+
+  - `setindex!!` is the one to use for simply setting a variable in `VarInfo` to a known value. It works regardless of whether the variable already exists.
+  - `setindex_internal!!` is the one to use for setting the internal, vectorised representation of a variable. See the docstring for details.
+  - `setindex_with_dist!!` is to be used when you want to set a value, but choose the internal representation based on which distribution this value is a sample for.
+
+The order of the arguments for some of these functions has also changed, and now more closely matches the usual convention for `setindex!!`.
+
+Note that `setindex!` (with a single `!`) is not defined, and thus you can't do `varinfo[varname] = new_value`.
+
+`unflatten` works as before, but has been renamed to `unflatten!!`, since it may mutate the first argument and aliases memory with the second argument (it uses views rather than copies of the input vector).
+
+#### Linking is now safer
+
+`link!!` and `invlink!!` on `VarInfo` used to assume that the prior distribution of a variable didn't change from one execution to another (as it does in e.g. `truncated(dist; lower=x)` where `x` is a random variable).
+This is no longer the case.
+Linking should thus be safer to do.
+The cost to pay is that calls to `link!!` and `invlink!!` (and the non-mutating versions) now trigger a model evaluation, to determine the correct priors to use.
+
+#### Other miscellanea
+
+  - The `Experimental` module had functions like `Experimental.determine_suitable_varinfo` for determining which `AbstractVarInfo` type was suitable for a given model. This is now redundant and has been removed.
+  - `Bijectors.bijector(::Model)`, which creates a bijector from the vectorised variable space of the model to the linked variable space of the model, now has slightly different optional arguments. See the docstring for details.
+  - `NamedDist` no longer allows variable names with `Colon`s in them, such as `x[:]`.
+
+There are probably also changes to the `VarInfo` interface that we've neglected to document here, since the overhaul of `VarInfo` has been quite complete.
+If anything related to `VarInfo` is behaving unexpectedly, e.g. the arguments or return type of a function seem to have changed, please check the docstring, which should be comprehensive.
+
+#### Performance benefits
+
+The purpose of this overhaul of `VarInfo` is code simplification and performance benefits.
+
+TODO(mhauru) Add some basic summary of what has gotten faster by how much.
+
+### Changes to indexing random variables with square brackets
+
+0.40 internally reimplements how DynamicPPL handles random variables like `x[1]`, `x.y[2,2]`, and `x[:,1:4,5]`, i.e. ones that use indexing with square brackets.
+Most of this is invisible to users, but it has some effects that show on the surface.
+The gist of the changes is that any indexing by square brackets is now implicitly assumed to be indexing into a regular `Base.Array`, with 1-based indexing.
+The general effect this has is that the new rules on what is and isn't allowed are stricter, forbidding some old syntax that used to be allowed, and at the same time guaranteeing that it works correctly.
+(Previously there were some sharp edges around these sorts of variable names.)
+
+#### No more linear indexing of multidimensional arrays
+
+Previously you could do this:
+
+```julia
+x = Array{Float64,2}(undef, (2, 2))
+x[1] ~ Normal()
+x[1, 1] ~ Normal()
+```
+
+Now you can't, this will error.
+If you first create a variable like `x[1]`, DynamicPPL from there on assumes that this variable only takes a single index (like a `Vector`).
+It will then error if you try to index the same variable with any other number of indices.
+
+The same logic also bans this, which likewise was previously allowed:
+
+```julia
+x = Array{Float64,2}(undef, (2, 2))
+x[1, 1, 1] ~ Normal()
+x[1, 1] ~ Normal()
+```
+
+This made use of Julia allowing trailing indices of `1`.
+
+Note that the above models were previously quite dangerous and easy to misuse, because DynamicPPL was oblivious to the fact that e.g. `x[1]` and `x[1,1]` refer to the same element.
+Both of the above examples previously created 2-dimensional models, with two distinct random variables, one of which effectively overwrote the other in the model body.
+
+TODO(mhauru) This may cause surprising issues when using `eachindex`, which is generally encouraged, e.g.
+
+```
+x = Array{Float64,2}(undef, (3, 3))
+for i in eachindex(x)
+    x[i] ~ Normal()
+end
+```
+
+Maybe we should fix linear indexing before releasing?
+
+#### No more square bracket indexing with arbitrary keys
+
+Previously you could do this:
+
+```julia
+x = Dict()
+x["a"] ~ Normal()
+```
+
+Now you can't, this will error.
+This is because DynamicPPL now assumes that if you are indexing with square brackets, you are dealing with an `Array`, for which `"a"` is not a valid index.
+You can still use a dictionary on the left-hand side of a `~` statement as long as the indices are valid indices to an `Array`, e.g. integers.
+
+#### No more unusually indexed arrays, such as `OffsetArrays`
+
+Previously you could do this
+
+```julia
+using OffsetArrays
+x = OffsetArray(Vector{Float64}(undef, 3), -3)
+x[-2] ~ Normal()
+0.0 ~ Normal(x[-2])
+```
+
+Now you can't, this will error.
+This is because DynamicPPL now assumes that if you are indexing with square brackes, you are dealing with an `Array`, for which `-2` is not a valid index.
+
+#### The above limitations are not fundamental
+
+The above, new restrictions to what sort of variable names are allowed aren't fundamental.
+With some effort we could e.g. add support for linear indexing, this time done properly, so that e.g. `x[1,1]` and `x[1]` would be the same variable.
+Likewise, we could manually add structures to support indexing into dictionaries or `OffsetArrays`.
+If this would be useful to you, let us know.
+
+#### This only affects `~` statements
+
+You can still use any arbitrary indexing within your model in statements that don't involve `~`.
+For instance, you can use `OffsetArray`s, or linear indexing, as long as you don't put them on the left-hand side of a `~`.
+
+#### Performance benefits
+
+The upside of all these new limitations is that models that use square bracket indexing are now faster.
+For instance, take the following model
+
+```julia
+@model function f()
+    x = Vector{Float64}(undef, 1000)
+    for i in eachindex(x)
+        x[i] ~ Normal()
+    end
+    return 0.0 ~ Normal(sum(x))
+end
+```
+
+Evaluating the log joint for this model has gotten about 3 times faster in v0.40.
+
+#### Robustness benefits
+
+TODO(mhauru) Add an example here for how this improves `condition`ing, once `condition` uses `VarNamedTuple`.
+
 ## 0.39.7
 
 Improve concreteness when merging two `Metadata` structs.
