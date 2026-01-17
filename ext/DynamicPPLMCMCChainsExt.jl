@@ -14,6 +14,18 @@ function get_varnames(c::MCMCChains.Chains)
     return keys(c.info.varname_to_symbol)
 end
 
+function get_stat_with_fallback(stats::NamedTuple, key::Symbol)
+    # MCMCChains can't handle any contents that are not Real or Missing. That means
+    # that if we have other types of statistics (e.g., arrays), we need to just silently
+    # drop them.
+    stat = get(stats, key, missing)
+    return if stat isa Union{Real,Missing}
+        stat
+    else
+        missing
+    end
+end
+
 """
     AbstractMCMC.from_samples(
         ::Type{MCMCChains.Chains},
@@ -62,7 +74,7 @@ function AbstractMCMC.from_samples(
     end
     stat_keys = collect(stat_keys)
     stat_vals = [
-        get(params_and_stats[i, j].stats, key, missing) for
+        get_stat_with_fallback(params_and_stats[i, j].stats, key) for
         i in eachindex(axes(params_and_stats, 1)), key in stat_keys,
         j in eachindex(axes(params_and_stats, 2))
     ]
