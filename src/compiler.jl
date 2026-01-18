@@ -19,27 +19,6 @@ function get_top_level_symbol(expr::Expr)
 end
 
 """
-    need_concretize(expr)
-
-Determine whether `expr` defines a VarName that needs to be concretised.
-
-Note that, although we parse VarNames using our own lenses, Accessors.need_dynamic_optic is
-actually still 'good enough' to determine whether we need to concretise or not.
-
-Eventually, we can hopefully never concretise anything.
-"""
-function need_concretize(expr)
-    return Accessors.need_dynamic_optic(expr) || begin
-        flag = false
-        MacroTools.postwalk(expr) do ex
-            # Concretise colon by default
-            ex == :(:) && (flag = true) && return ex
-        end
-        flag
-    end
-end
-
-"""
     make_varname_expression(expr)
 
 Return a `VarName` based on `expr`.
@@ -48,11 +27,7 @@ function make_varname_expression(expr)
     # HACK: Usage of `drop_escape` is unfortunate. It's a consequence of the fact that in
     # DynamicPPL we the entire function body. Instead we should be more selective with our
     # escape. Until that's the case, we remove them all.
-    # TODO(penelopeysm): We still concretise things, because PartialArray does not
-    # understand dynamic indices. This is not necessarily a bad thing for performance, but
-    # it would be nice to not NEED to have to do it. That would require shadow arrays. See
-    # #1194.
-    return drop_escape(AbstractPPL.varname(expr, need_concretize(expr)))
+    return drop_escape(AbstractPPL.varname(expr, false))
 end
 
 """
@@ -557,7 +532,6 @@ function generate_tilde_assume(left, right, vn)
     else
         left_top_sym
     end
-    @show vn, template
     return quote
         $value, __varinfo__ = $(DynamicPPL.tilde_assume!!)(
             __model__.context,

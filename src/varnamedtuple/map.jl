@@ -128,7 +128,7 @@ function _map_recursive!!(func, pa::PartialArray, vn)
             val = pa.data[i]
             is_alb = val isa Base.RefValue{<:ArrayLikeBlock}
             if is_alb
-                if val in albs_old_to_new
+                if haskey(albs_old_to_new, val)
                     new_data[i] = albs_old_to_new[val]
                     continue
                 end

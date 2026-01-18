@@ -200,6 +200,10 @@ function make_leaf(value, optic::AbstractPPL.Property{S}, template) where {S}
     )
     return VarNamedTuple(NamedTuple{(S,)}((sub_value,)))
 end
+function make_leaf(value, optic::AbstractPPL.Property{S}, template::VarNamedTuple) where {S}
+    sub_value = make_leaf(value, optic.child, template.data[S])
+    return VarNamedTuple(NamedTuple{(S,)}((sub_value,)))
+end
 function make_leaf(value, optic::AbstractPPL.Index, template::AbstractArray)
     isempty(optic.kw) || error_kw_indices()
     coptic = AbstractPPL.concretize(optic, template)
@@ -208,4 +212,19 @@ function make_leaf(value, optic::AbstractPPL.Index, template::AbstractArray)
     )
     pa = empty_partialarray_from(template)
     return BangBang.setindex!!(pa, sub_value, coptic.ix...; coptic.kw...)
+end
+function make_leaf(value, optic::AbstractPPL.Index, template::PartialArray)
+    # TODO(penelopeysm): This is really fragile. For example, if I use
+    # similar(template.data, Nothing) here, then setindex!! breaks when
+    # trying to set ArrayLikeBlocks. This is a BangBang bug.
+    # https://github.com/JuliaFolds2/BangBang.jl/issues/43
+    #
+    # Conversely, if you just use `template.data`, you run the risk of creating a
+    # PartialArray that stores data that is `similar(template.data)`. If
+    # eltype(template.data) is not a bits type, then this can lead to a bunch
+    # of uninitialised data and subsequent errors (also with BangBang).
+    #
+    # Using a Bool array seems to work for now, but this is definitely a hack.
+    nothings = similar(template.data, Bool)
+    return make_leaf(value, optic, nothings)
 end
