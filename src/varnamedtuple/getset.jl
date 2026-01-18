@@ -62,7 +62,7 @@ function _haskey_optic(arr::AbstractArray, optic::IndexWithoutChild)
 end
 
 """
-    _setindex_optic!!(collection, value, key; allow_new=Val(true))
+    _setindex_optic!!(collection, value, key, template; allow_new=Val(true))
 
 Like `setindex!!`, but special-cased for `VarNamedTuple` and `PartialArray` to recurse
 into nested structures.
@@ -81,18 +81,24 @@ Most methods of _setindex!! ignore the `allow_new` keyword argument, as they hav
 it. See the method for setting values in a `VarNamedTuple` with a `ComposedFunction` for
 when it is useful.
 """
-function _setindex_optic!!(vnt::VarNamedTuple, value, name::VarName; allow_new=Val(true))
+function _setindex_optic!!(
+    vnt::VarNamedTuple, value, name::VarName, template; allow_new=Val(true)
+)
     return _setindex_optic!!(
-        vnt, value, AbstractPPL.varname_to_optic(name); allow_new=allow_new
+        vnt, value, AbstractPPL.varname_to_optic(name), template; allow_new=allow_new
     )
 end
 @inline function _setindex_optic!!(
-    @nospecialize(::Any), value, ::AbstractPPL.Iden; allow_new=Val(true)
+    @nospecialize(::Any),
+    value,
+    ::AbstractPPL.Iden,
+    @nospecialize(::Any);
+    allow_new=Val(true),
 )
     return value
 end
 function _setindex_optic!!(
-    arr::AbstractArray, value, optic::IndexWithoutChild; allow_new=Val(true)
+    arr::AbstractArray, value, optic::IndexWithoutChild, template; allow_new=Val(true)
 )
     return BangBang.setindex!!(arr, value, optic.ix...; optic.kw...)
 end
@@ -108,7 +114,7 @@ function throw_setindex_allow_new_error()
 end
 
 function _setindex_optic!!(
-    pa::PartialArray, value, optic::AbstractPPL.Index; allow_new=Val(true)
+    pa::PartialArray, value, optic::AbstractPPL.Index, template; allow_new=Val(true)
 )
     sub_value = if optic.child isa AbstractPPL.Iden
         # Skip recursion
@@ -118,12 +124,13 @@ function _setindex_optic!!(
         _setindex_optic!!(
             Base.getindex(pa, optic.ix...; optic.kw...),
             value,
-            optic.child;
+            optic.child,
+            Base.getindex(template, optic.ix...; optic.kw...);
             allow_new=allow_new,
         )
     elseif allow_new isa Val{true}
         # No new data but we are allowed to create it.
-        make_leaf(value, optic.child)
+        make_leaf(value, optic.child, template)
     else
         throw_setindex_allow_new_error()
     end
@@ -131,17 +138,23 @@ function _setindex_optic!!(
 end
 
 function _setindex_optic!!(
-    vnt::VarNamedTuple, value, optic::AbstractPPL.Property{S}; allow_new=Val(true)
+    vnt::VarNamedTuple, value, optic::AbstractPPL.Property{S}, template; allow_new=Val(true)
 ) where {S}
     sub_value = if optic.child isa AbstractPPL.Iden
         # Skip recursion
         value
     elseif Base.haskey(vnt.data, S)
         # Data already exists; we need to recurse into it
-        _setindex_optic!!(vnt.data[S], value, optic.child; allow_new=allow_new)
+        _setindex_optic!!(
+            vnt.data[S],
+            value,
+            optic.child,
+            getproperty(template, S);
+            allow_new=allow_new,
+        )
     elseif allow_new isa Val{true}
         # No new data but we are allowed to create it.
-        make_leaf(value, optic.child)
+        make_leaf(value, optic.child, template)
     else
         # If this branch is ever reached, then someone has used allow_new=Val(false)
         # incorrectly.
@@ -153,7 +166,7 @@ function _setindex_optic!!(
 end
 
 """
-    make_leaf(value, optic)
+    make_leaf(value, optic, template)
 
 Make a new leaf node for a VarNamedTuple.
 
@@ -161,25 +174,19 @@ This is the function that sets any `optic` that is a `Property` to be stored as 
 `VarNamedTuple`, any `Index` to be stored as a `PartialArray`, and other `Iden` optics to be
 stored as raw values. It is the link that joins `VarNamedTuple` and `PartialArray` together.
 """
-@inline make_leaf(@nospecialize(value::Any), ::AbstractPPL.Iden) = value
-function make_leaf(value, optic::AbstractPPL.Property{S}) where {S}
-    sub_value = make_leaf(value, optic.child)
+@inline make_leaf(@nospecialize(value::Any), ::AbstractPPL.Iden, ::Any) = value
+function make_leaf(value, optic::AbstractPPL.Property{S}, template) where {S}
+    sub_value = make_leaf(
+        value, optic.child, template === nothing ? nothing : getproperty(template, S)
+    )
     return VarNamedTuple(NamedTuple{(S,)}((sub_value,)))
 end
-function make_leaf(value, optic::AbstractPPL.Index)
+function make_leaf(value, optic::AbstractPPL.Index, template::AbstractArray)
     isempty(optic.kw) || error_kw_indices()
-    sub_value = make_leaf(value, optic.child)
-    inds = optic.ix
-    num_inds = length(inds)
-    # The element type of the PartialArray depends on whether we are setting a single value
-    # or a range of values.
-    et = if !_is_multiindex(inds)
-        typeof(sub_value)
-    elseif _needs_arraylikeblock(sub_value, inds...)
-        ArrayLikeBlock{typeof(sub_value),typeof(inds)}
-    else
-        eltype(sub_value)
-    end
-    pa = PartialArray{et,num_inds}()
-    return BangBang.setindex!!(pa, sub_value, optic.ix...; optic.kw...)
+    coptic = AbstractPPL.concretize(optic, template)
+    sub_value = make_leaf(
+        value, coptic.child, getindex(template, coptic.ix...; coptic.kw...)
+    )
+    pa = empty_partialarray_from(template)
+    return BangBang.setindex!!(pa, sub_value, coptic.ix...; coptic.kw...)
 end

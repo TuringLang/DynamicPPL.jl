@@ -105,16 +105,36 @@ end
 # PartialArrays are an implementation detail of VarNamedTuple, and should never be the
 # return value of getindex. Thus, we automatically convert them to dense arrays if needed.
 # TODO(mhauru) The below doesn't handle nested PartialArrays. Is that a problem?
-_dense_array_if_needed(pa::PartialArray) = _dense_array(pa)
-_dense_array_if_needed(x) = x
+as_array_if_needed(pa::PartialArray) = as_array(pa)
+as_array_if_needed(x) = x
 function Base.getindex(vnt::VarNamedTuple, vn::VarName)
-    return _dense_array_if_needed(_getindex_optic(vnt, vn))
+    return as_array_if_needed(_getindex_optic(vnt, vn))
 end
 
 Base.haskey(vnt::VarNamedTuple, vn::VarName) = _haskey_optic(vnt, vn)
 
-function BangBang.setindex!!(vnt::VarNamedTuple, value, vn::VarName)
-    return _setindex_optic!!(vnt, value, vn)
+"""
+    DynamicPPL.VarNamedTuples.templated_setindex!!(vnt, value, vn, template; allow_new=Val(true))
+
+Assign `value` to the location in `vnt` specified by `vn`.
+
+The argument `template` must be provided in order to guide the creation of `PartialArray`s,
+as well as to concretise any dynamic indices in `vn`. It must be an object that has the
+shape of the top-level symbol in `vn`. For example:
+
+```julia
+vnt = VarNamedTuple()
+templated_setindex!!(vnt, 10, @varname(x[1]), rand(2, 2))
+```
+
+Here, `rand(2, 2)` is the template for the top-level symbol `x`, which tells `setindex!!`
+that `x` should be a `PartialArray` that is backed by a matrix.
+
+The actual data inside `template` is not needed, and `template` is never mutated by this
+call.
+"""
+function templated_setindex!!(vnt::VarNamedTuple, value, vn::VarName, template)
+    return _setindex_optic!!(vnt, value, vn, template)
 end
 
 """

@@ -552,11 +552,17 @@ function generate_tilde_assume(left, right, vn)
     else
         :($left = $value)
     end
-
+    template = if left isa Symbol  # i.e. identity optic
+        :(nothing)
+    else
+        left_top_sym
+    end
+    @show vn, template
     return quote
         $value, __varinfo__ = $(DynamicPPL.tilde_assume!!)(
             __model__.context,
             $(DynamicPPL.unwrap_right_vn)($(DynamicPPL.check_tilde_rhs)($right), $vn)...,
+            $template,
             __varinfo__,
         )
         $expr

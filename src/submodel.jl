@@ -165,13 +165,18 @@ to_submodel(m::Model, auto_prefix::Bool=true) = Submodel{typeof(m),auto_prefix}(
         context::AbstractContext,
         right::DynamicPPL.Submodel,
         vn::VarName,
+        ::Any,
         vi::AbstractVarInfo
     )
 
 Evaluate the submodel with the given context.
 """
 function tilde_assume!!(
-    context::AbstractContext, right::DynamicPPL.Submodel, vn::VarName, vi::AbstractVarInfo
+    context::AbstractContext,
+    right::DynamicPPL.Submodel,
+    vn::VarName,
+    ::Any,
+    vi::AbstractVarInfo,
 )
     return _evaluate!!(right, vi, context, vn)
 end
