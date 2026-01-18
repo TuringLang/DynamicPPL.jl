@@ -34,10 +34,12 @@ function _getindex_optic(vnt::VarNamedTuple, optic::AbstractPPL.Property{S}) whe
     return _getindex_optic(getindex(vnt.data, S), optic.child)
 end
 function _getindex_optic(pa::PartialArray, optic::AbstractPPL.Index)
-    return _getindex_optic(Base.getindex(pa, optic.ix...; optic.kw...), optic.child)
+    coptic = concretize(optic, pa.data)
+    return _getindex_optic(Base.getindex(pa, coptic.ix...; coptic.kw...), optic.child)
 end
 function _getindex_optic(arr::AbstractArray, optic::IndexWithoutChild)
-    return Base.getindex(arr, optic.ix...; optic.kw...)
+    coptic = concretize(optic, arr)
+    return Base.getindex(arr, coptic.ix...; coptic.kw...)
 end
 
 function _haskey_optic(vnt::VarNamedTuple, name::VarName)
@@ -62,10 +64,15 @@ function _haskey_optic(arr::AbstractArray, optic::IndexWithoutChild)
 end
 
 """
-    _setindex_optic!!(collection, value, key, template; allow_new=Val(true))
+    _setindex_optic!!(collection, value, optic, template, top_level; allow_new=Val(true))
 
 Like `setindex!!`, but special-cased for `VarNamedTuple` and `PartialArray` to recurse
 into nested structures.
+
+The `top_level` argument indicates whether `optic` refers to a top-level symbol (e.g. a
+`Property{:x}` referring to a top-level value of `x`). In such a case, the `template`
+argument refers to the structure of that top-level symbol (i.e., `x`). If not, then the
+`template` argument refers to the structure that should be indexed into with that optic.
 
 The `allow_new` keyword argument is a performance optimisation: If it is set to
 `Val(false)`, the function can assume that the key being set already exists in `collection`.
@@ -81,13 +88,6 @@ Most methods of _setindex!! ignore the `allow_new` keyword argument, as they hav
 it. See the method for setting values in a `VarNamedTuple` with a `ComposedFunction` for
 when it is useful.
 """
-function _setindex_optic!!(
-    vnt::VarNamedTuple, value, name::VarName, template; allow_new=Val(true)
-)
-    return _setindex_optic!!(
-        vnt, value, AbstractPPL.varname_to_optic(name), template, true; allow_new=allow_new
-    )
-end
 @inline function _setindex_optic!!(
     @nospecialize(::Any),
     value,
@@ -132,17 +132,23 @@ function _setindex_optic!!(
         # Skip recursion
         value
     elseif Base.haskey(pa, optic.ix...; optic.kw...)
+        child_template = if template === nothing
+            nothing
+        else
+            Base.getindex(template, optic.ix...; optic.kw...)
+        end
         # Data already exists; we need to recurse into it
         _setindex_optic!!(
             Base.getindex(pa, optic.ix...; optic.kw...),
             value,
             optic.child,
-            Base.getindex(template, optic.ix...; optic.kw...),
+            child_template,
             false;
             allow_new=allow_new,
         )
     elseif allow_new isa Val{true}
         # No new data but we are allowed to create it.
+        @show "index", optic.child, template
         make_leaf(value, optic.child, template)
     else
         throw_setindex_allow_new_error()
@@ -163,25 +169,43 @@ function _setindex_optic!!(
         value
     elseif Base.haskey(vnt.data, S)
         # Data already exists; we need to recurse into it
+        child_template = if is_top_level
+            template
+        elseif template === nothing
+            nothing
+        else
+            getproperty(template, S)
+        end
         _setindex_optic!!(
-            vnt.data[S],
-            value,
-            optic.child,
-            is_top_level ? template : getproperty(template, S),
-            false;
-            allow_new=allow_new,
+            vnt.data[S], value, optic.child, child_template, false; allow_new=allow_new
         )
     elseif allow_new isa Val{true}
         # No new data but we are allowed to create it.
-        make_leaf(value, optic.child, template)
+        leaf_template = if is_top_level
+            template
+        elseif template === nothing
+            nothing
+        else
+            getproperty(template, S)
+        end
+        @show "property", optic.child, template
+        make_leaf(value, optic.child, leaf_template)
     else
-        # If this branch is ever reached, then someone has used allow_new=Val(false)
-        # incorrectly.
-        error("""
-            _setindex_optic was called with allow_new=Val(false) but the key does not exist.
-            This indicates a bug in DynamicPPL: Please file an issue on GitHub.""")
+        throw_setindex_allow_new_error()
     end
     return VarNamedTuple(merge(vnt.data, NamedTuple{(S,)}((sub_value,))))
+end
+
+function error_no_template_index()
+    throw(
+        ArgumentError(
+            "Attempted to set a value with an Index optic (i.e., a" *
+            " variable that has array-like indexing); but no template" *
+            " was provided for the array. A template is required to" *
+            " determine the shape and type of the array so that the" *
+            " indexed data can be stored correctly.",
+        ),
+    )
 end
 
 """
@@ -204,8 +228,9 @@ function make_leaf(value, optic::AbstractPPL.Property{S}, template::VarNamedTupl
     sub_value = make_leaf(value, optic.child, template.data[S])
     return VarNamedTuple(NamedTuple{(S,)}((sub_value,)))
 end
-function make_leaf(value, optic::AbstractPPL.Index, template::AbstractArray)
+function make_leaf(value, optic::AbstractPPL.Index, template)
     isempty(optic.kw) || error_kw_indices()
+    template === nothing && error_no_template_index()
     coptic = AbstractPPL.concretize(optic, template)
     sub_value = make_leaf(
         value, coptic.child, getindex(template, coptic.ix...; coptic.kw...)

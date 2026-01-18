@@ -134,7 +134,30 @@ The actual data inside `template` is not needed, and `template` is never mutated
 call.
 """
 function templated_setindex!!(vnt::VarNamedTuple, value, vn::VarName, template)
-    return _setindex_optic!!(vnt, value, vn, template)
+    return _setindex_optic!!(vnt, value, AbstractPPL.varname_to_optic(vn), template, true)
+end
+
+"""
+    BangBang.setindex!!(vnt::VarNamedTuple, value, vn::VarName)
+
+This is similar to `templated_setindex!!`, but does not take a `template` argument. In
+effect the `template` passed through is `nothing`. It is often the case that the template is
+not actually needed (for example, if you are setting a top-level VarName: `@varname(a)`, or
+if the arrays already exist and you are merely updating a value inside it). In such cases,
+this method will work fine, but may throw an error if the template is actually needed.
+
+For example, this will error, since it is not known what `x` should be:
+
+```julia
+vnt = VarNamedTuple()
+setindex!!(vnt, 10, @varname(x[1]))
+```
+
+TODO(penelopeysm): Fix this such that there is a 'default' template that can be used when
+none is provided.
+"""
+function BangBang.setindex!!(vnt::VarNamedTuple, value, vn::VarName)
+    return _setindex_optic!!(vnt, value, AbstractPPL.varname_to_optic(vn), nothing, true)
 end
 
 """
