@@ -85,20 +85,27 @@ function _setindex_optic!!(
     vnt::VarNamedTuple, value, name::VarName, template; allow_new=Val(true)
 )
     return _setindex_optic!!(
-        vnt, value, AbstractPPL.varname_to_optic(name), template; allow_new=allow_new
+        vnt, value, AbstractPPL.varname_to_optic(name), template, true; allow_new=allow_new
     )
 end
 @inline function _setindex_optic!!(
     @nospecialize(::Any),
     value,
     ::AbstractPPL.Iden,
-    @nospecialize(::Any);
+    @nospecialize(::Any),
+    ::Bool,
+    ;
     allow_new=Val(true),
 )
     return value
 end
 function _setindex_optic!!(
-    arr::AbstractArray, value, optic::IndexWithoutChild, template; allow_new=Val(true)
+    arr::AbstractArray,
+    value,
+    optic::IndexWithoutChild,
+    template,
+    is_top_level;
+    allow_new=Val(true),
 )
     return BangBang.setindex!!(arr, value, optic.ix...; optic.kw...)
 end
@@ -114,7 +121,12 @@ function throw_setindex_allow_new_error()
 end
 
 function _setindex_optic!!(
-    pa::PartialArray, value, optic::AbstractPPL.Index, template; allow_new=Val(true)
+    pa::PartialArray,
+    value,
+    optic::AbstractPPL.Index,
+    template,
+    is_top_level;
+    allow_new=Val(true),
 )
     sub_value = if optic.child isa AbstractPPL.Iden
         # Skip recursion
@@ -125,7 +137,8 @@ function _setindex_optic!!(
             Base.getindex(pa, optic.ix...; optic.kw...),
             value,
             optic.child,
-            Base.getindex(template, optic.ix...; optic.kw...);
+            Base.getindex(template, optic.ix...; optic.kw...),
+            false;
             allow_new=allow_new,
         )
     elseif allow_new isa Val{true}
@@ -138,7 +151,12 @@ function _setindex_optic!!(
 end
 
 function _setindex_optic!!(
-    vnt::VarNamedTuple, value, optic::AbstractPPL.Property{S}, template; allow_new=Val(true)
+    vnt::VarNamedTuple,
+    value,
+    optic::AbstractPPL.Property{S},
+    template,
+    is_top_level;
+    allow_new=Val(true),
 ) where {S}
     sub_value = if optic.child isa AbstractPPL.Iden
         # Skip recursion
@@ -149,7 +167,8 @@ function _setindex_optic!!(
             vnt.data[S],
             value,
             optic.child,
-            getproperty(template, S);
+            is_top_level ? template : getproperty(template, S),
+            false;
             allow_new=allow_new,
         )
     elseif allow_new isa Val{true}
