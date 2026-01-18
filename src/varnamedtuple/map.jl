@@ -26,22 +26,24 @@ end
 
 Create a new `VarNamedTuple` containing only the variables subsumed by ones in `vns`.
 """
-function DynamicPPL.subset(vnt::VarNamedTuple, vns)
+function DynamicPPL.subset(parent_vnt::VarNamedTuple, vns)
     # TODO(mhauru) This could be done more efficiently by generating the code directly,
     # because we could short-circuit: For instance, if `vns` contains `a`, we could
     # directly include the whole subtree under `a`, without checking each individual
     # variable under it.
     return mapfoldl(
         identity,
-        function (init, pair)
+        function (acc_vnt, pair)
             name, value = pair
             return if any(vn -> subsumes(vn, name), vns)
-                setindex!!(init, value, name)
+                templated_setindex!!(
+                    acc_vnt, value, name, parent_vnt.data[AbstractPPL.getsym(name)]
+                )
             else
-                init
+                acc_vnt
             end
         end,
-        vnt;
+        parent_vnt;
         init=VarNamedTuple(),
     )
 end

@@ -148,7 +148,6 @@ function _setindex_optic!!(
         )
     elseif allow_new isa Val{true}
         # No new data but we are allowed to create it.
-        @show "index", optic.child, template
         make_leaf(value, optic.child, template)
     else
         throw_setindex_allow_new_error()
@@ -188,7 +187,6 @@ function _setindex_optic!!(
         else
             getproperty(template, S)
         end
-        @show "property", optic.child, template
         make_leaf(value, optic.child, leaf_template)
     else
         throw_setindex_allow_new_error()
@@ -196,6 +194,9 @@ function _setindex_optic!!(
     return VarNamedTuple(merge(vnt.data, NamedTuple{(S,)}((sub_value,))))
 end
 
+# TODO(penelopeysm): Don't error. Instead, create a 'default' PartialArray that uses
+# Base.Array (or a version of it) and which can be extended, similar to the old
+# PartialArray.
 function error_no_template_index()
     throw(
         ArgumentError(

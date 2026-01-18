@@ -581,7 +581,6 @@ julia> vi[[@varname(s), @varname(m), @varname(x[1]), @varname(x[2])]]
 julia> # Extract one with only `m`.
        vi_subset1 = subset(vi, [@varname(m),]);
 
-
 julia> keys(vi_subset1)
 1-element Vector{VarName}:
  m

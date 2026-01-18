@@ -483,7 +483,7 @@ end
 
 Base.merge(x1::PartialArray, x2::PartialArray) = _merge_recursive(x1, x2)
 
-function _merge_element_recursive(x1::PartialArray, x2::PartialArray, ind::CartesianIndex)
+function _merge_element_recursive(x1::PartialArray, x2::PartialArray, ind)
     m1 = x1.mask[ind]
     m2 = x2.mask[ind]
     return if m1 && m2
@@ -496,7 +496,7 @@ function _merge_element_recursive(x1::PartialArray, x2::PartialArray, ind::Carte
 end
 
 function _merge_recursive(pa1::PartialArray, pa2::PartialArray)
-    if size(pa1) != size(pa2)
+    if size(pa1.data) != size(pa2.data)
         throw(ArgumentError("Cannot merge PartialArrays with different sizes"))
     end
     result = copy(pa2)
