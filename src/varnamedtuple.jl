@@ -7,20 +7,28 @@ using Distributions: Distributions, Distribution
 using BangBang
 using DynamicPPL: DynamicPPL
 
-export VarNamedTuple, vnt_size, map_pairs!!, map_values!!, apply!!
+export VarNamedTuple,
+    vnt_size, map_pairs!!, map_values!!, apply!!, templated_setindex!!, NoTemplate
 
-# Currently, keyword arguments are not supported in getindex/_setindex!!. That is because
-# `PartialArray` under the hood is backed by `Base.Array`. Thus, if `kw` is not empty, we
-# will just error here. However, in principle, this can be expanded by allowing PartialArray
-# to wrap generic array types (the 'shadow array' mechanism); see
-# https://github.com/TuringLang/DynamicPPL.jl/issues/1194.
-function error_kw_indices()
-    throw(ArgumentError("Keyword indices in VarNames are not yet supported in DynamicPPL."))
-end
+"""
+    NoTemplate
+
+A singleton struct representing the fact that there is no template for a top-level variable.
+When `NoTemplate` is used, several things happen:
+
+ - If you attempt to call `make_leaf` with an Index optic, this will error.
+ - When recursing into substructures, `NoTemplate` will be propagated.
+
+Collectively this means that you can only set values for variables that only have Property
+optics, unless a template is provided.
+
+It might seem more idiomatic to use `nothing` or `missing` for this. However, this causes a
+bug with BangBang.setindex!!: https://github.com/JuliaFolds2/BangBang.jl/issues/43 so we use
+a dedicated struct instead.
+"""
+struct NoTemplate end
 
 include("varnamedtuple/partial_array.jl")
-# The actual definition of the VarNamedTuple struct. Yeah, it needs a better name, I'll sort
-# that out.
 include("varnamedtuple/vnt.jl")
 include("varnamedtuple/getset.jl")
 include("varnamedtuple/map.jl")

@@ -70,12 +70,15 @@ using DynamicPPL:
             logjac = pi
             vn = @varname(x)
             dist = Normal()
-            @test accumulate_assume!!(LogPriorAccumulator(1.0), val, logjac, vn, dist) ==
-                LogPriorAccumulator(1.0 + logpdf(dist, val))
-            @test accumulate_assume!!(LogJacobianAccumulator(2.0), val, logjac, vn, dist) ==
-                LogJacobianAccumulator(2.0 + logjac)
+            template = nothing
             @test accumulate_assume!!(
-                LogLikelihoodAccumulator(1.0), val, logjac, vn, dist
+                LogPriorAccumulator(1.0), val, logjac, vn, dist, template
+            ) == LogPriorAccumulator(1.0 + logpdf(dist, val))
+            @test accumulate_assume!!(
+                LogJacobianAccumulator(2.0), val, logjac, vn, dist, template
+            ) == LogJacobianAccumulator(2.0 + logjac)
+            @test accumulate_assume!!(
+                LogLikelihoodAccumulator(1.0), val, logjac, vn, dist, template
             ) == LogLikelihoodAccumulator(1.0)
         end
 

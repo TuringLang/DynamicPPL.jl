@@ -307,13 +307,13 @@ struct InitContext{R<:Random.AbstractRNG,S<:AbstractInitStrategy} <: AbstractCon
 end
 
 function tilde_assume!!(
-    ctx::InitContext, dist::Distribution, vn::VarName, vi::AbstractVarInfo
+    ctx::InitContext, dist::Distribution, vn::VarName, template::Any, vi::AbstractVarInfo
 )
     val, transform = init(ctx.rng, vn, dist, ctx.strategy)
     x, init_logjac = with_logabsdet_jacobian(transform, val)
-    vi, logjac = setindex_with_dist!!(vi, x, dist, vn)
+    vi, logjac = setindex_with_dist!!(vi, x, dist, vn, template)
     # `accumulate_assume!!` wants untransformed values as the second argument.
-    vi = accumulate_assume!!(vi, x, init_logjac + logjac, vn, dist)
+    vi = accumulate_assume!!(vi, x, init_logjac + logjac, vn, dist, template)
     # We always return the untransformed value here, as that will determine
     # what the lhs of the tilde-statement is set to.
     return x, vi

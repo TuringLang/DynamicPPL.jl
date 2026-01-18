@@ -26,22 +26,24 @@ end
 
 Create a new `VarNamedTuple` containing only the variables subsumed by ones in `vns`.
 """
-function DynamicPPL.subset(vnt::VarNamedTuple, vns)
+function DynamicPPL.subset(parent_vnt::VarNamedTuple, vns)
     # TODO(mhauru) This could be done more efficiently by generating the code directly,
     # because we could short-circuit: For instance, if `vns` contains `a`, we could
     # directly include the whole subtree under `a`, without checking each individual
     # variable under it.
     return mapfoldl(
         identity,
-        function (init, pair)
+        function (acc_vnt, pair)
             name, value = pair
             return if any(vn -> subsumes(vn, name), vns)
-                setindex!!(init, value, name)
+                templated_setindex!!(
+                    acc_vnt, value, name, parent_vnt.data[AbstractPPL.getsym(name)]
+                )
             else
-                init
+                acc_vnt
             end
         end,
-        vnt;
+        parent_vnt;
         init=VarNamedTuple(),
     )
 end
@@ -76,7 +78,14 @@ function apply!!(func, vnt::VarNamedTuple, name::VarName)
     new_subdata = func(subdata)
     # The allow_new=Val(true) is a performance optimisation: Since we've already checked
     # that the key exists, we know that no new fields will be created.
-    return _setindex_optic!!(vnt, new_subdata, name; allow_new=Val(false))
+    return _setindex_optic!!(
+        vnt,
+        new_subdata,
+        AbstractPPL.varname_to_optic(name),
+        nothing,
+        false;
+        allow_new=Val(false),
+    )
 end
 
 """
@@ -122,23 +131,23 @@ function _map_recursive!!(func, pa::PartialArray, vn)
     # Keep a dictionary of already-seen ArrayLikeBlocks to avoid redundant computations.
     # This matters not only for performance, but also for correctness, because
     # _map_recursive!! may mutate the value, and we don't want to mutate it multiple times.
-    albs_seen = Dict{ArrayLikeBlock,ArrayLikeBlock}()
+    albs_old_to_new = Dict{Base.RefValue,Base.RefValue}()
     @inbounds for i in CartesianIndices(pa.mask)
         if pa.mask[i]
             val = pa.data[i]
-            is_alb = val isa ArrayLikeBlock
+            is_alb = val isa Base.RefValue{<:ArrayLikeBlock}
             if is_alb
-                if val in keys(albs_seen)
-                    new_data[i] = albs_seen[val]
+                if haskey(albs_old_to_new, val)
+                    new_data[i] = albs_old_to_new[val]
                     continue
                 end
             end
-            ind = is_alb ? val.inds : Tuple(i)
+            ind = is_alb ? val[].idxs : Tuple(i)
             new_vn = AbstractPPL.append_optic(vn, AbstractPPL.Index(ind, (;)))
             new_val = _map_recursive!!(func, pa.data[i], new_vn)
             new_data[i] = new_val
             if is_alb
-                albs_seen[val] = new_val
+                albs_old_to_new[val] = new_val
             end
         end
     end
@@ -146,19 +155,19 @@ function _map_recursive!!(func, pa::PartialArray, vn)
     return _concretise_eltype!!(PartialArray(new_data, pa.mask))
 end
 
-function _map_recursive!!(func, alb::ArrayLikeBlock, vn)
-    new_block = _map_recursive!!(func, alb.block, vn)
+function _map_recursive!!(func, alb::Base.RefValue{<:ArrayLikeBlock}, vn)
+    new_block = _map_recursive!!(func, alb[].block, vn)
     sz_new = vnt_size(new_block)
-    sz_old = vnt_size(alb.block)
+    sz_old = vnt_size(alb[].block)
     if !(sz_new isa SkipSizeCheck) && !(sz_old isa SkipSizeCheck) && sz_new != sz_old
         throw(
             DimensionMismatch(
                 "map_pairs!! can't change the size of an ArrayLikeBlock. Tried to change " *
-                "from $(vnt_size(alb.block)) to $(vnt_size(new_block)).",
+                "from $(sz_old) to $(sz_new).",
             ),
         )
     end
-    return ArrayLikeBlock(new_block, alb.inds)
+    return Ref(ArrayLikeBlock(new_block, alb[].idxs, alb[].kw, alb[].index_size))
 end
 
 # As above but with a prefix VarName `vn`.
@@ -248,7 +257,9 @@ end
 Base.mapfoldl(f, op, vnt::VarNamedTuple; init=nothing) = mapreduce(f, op, vnt; init=init)
 
 _mapreduce_recursive(f, op, x, vn, init) = op(init, f(vn => x))
-_mapreduce_recursive(f, op, pa::ArrayLikeBlock, vn, init) = op(init, f(vn => pa.block))
+function _mapreduce_recursive(f, op, pa::Base.RefValue{<:ArrayLikeBlock}, vn, init)
+    return op(init, f(vn => pa[].block))
+end
 
 # As above but with a prefix VarName `vn`.
 @generated function _mapreduce_recursive(
@@ -277,18 +288,18 @@ function _mapreduce_recursive(f, op, pa::PartialArray, vn, init)
     result = init
     et = eltype(pa)
 
-    albs_seen = Set{ArrayLikeBlock}()
+    albs_seen = Set{Base.RefValue}()
     @inbounds for i in CartesianIndices(pa.mask)
         if pa.mask[i]
             val = pa.data[i]
-            is_alb = val isa ArrayLikeBlock
+            is_alb = val isa Base.RefValue{<:ArrayLikeBlock}
             if is_alb
                 if val in albs_seen
                     continue
                 end
                 push!(albs_seen, val)
             end
-            ind = is_alb ? val.inds : Tuple(i)
+            ind = is_alb ? val[].idxs : Tuple(i)
             new_vn = AbstractPPL.append_optic(vn, AbstractPPL.Index(ind, (;)))
             result = _mapreduce_recursive(f, op, pa.data[i], new_vn, result)
         end

@@ -95,6 +95,7 @@ setleafcontext(::AbstractContext, right::AbstractContext) = right
         context::AbstractContext,
         right::Distribution,
         vn::VarName,
+        template::Any,
         vi::AbstractVarInfo
     )
 
@@ -104,16 +105,22 @@ sampled value and updated `vi`.
 
 `vn` is the VarName on the left-hand side of the tilde statement.
 
+`template` is the value of the top-level symbol in `vn`.
+
 This function should return a tuple `(x, vi)`, where `x` is the sampled value (which
 must be in unlinked space!) and `vi` is the updated VarInfo.
 """
 function tilde_assume!!(
-    context::AbstractParentContext, right::Distribution, vn::VarName, vi::AbstractVarInfo
+    context::AbstractParentContext,
+    right::Distribution,
+    vn::VarName,
+    template::Any,
+    vi::AbstractVarInfo,
 )
-    return tilde_assume!!(childcontext(context), right, vn, vi)
+    return tilde_assume!!(childcontext(context), right, vn, template, vi)
 end
 function tilde_assume!!(
-    context::AbstractContext, ::Distribution, ::VarName, ::AbstractVarInfo
+    context::AbstractContext, ::Distribution, ::VarName, ::Any, ::AbstractVarInfo
 )
     return error("tilde_assume!! not implemented for context of type $(typeof(context))")
 end

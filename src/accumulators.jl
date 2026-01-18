@@ -12,7 +12,7 @@ seen so far.
 An accumulator type `T <: AbstractAccumulator` must implement the following methods:
 - `accumulator_name(acc::T)` or `accumulator_name(::Type{T})`
 - `accumulate_observe!!(acc::T, dist, val, vn)`
-- `accumulate_assume!!(acc::T, val, logjac, vn, dist)`
+- `accumulate_assume!!(acc::T, val, logjac, vn, dist, template)`
 - `reset(acc::T)`
 - `Base.copy(acc::T)`
 
@@ -26,6 +26,8 @@ In these functions:
 - `logjac` is the log determinant of the Jacobian of the link transformation, _if_ the
   variable is stored as a linked value in the VarInfo. If the variable is stored in its
   original, unlinked form, then `logjac` is zero.
+- `template` is a value that conveys the shape of the top-level symbol in `vn`, and is
+  used specifically for accumulators that carry VarNamedTuples.
 
 To be able to work with multi-threading, it should also implement:
 - `split(acc::T)`
@@ -60,7 +62,7 @@ See also: [`accumulate_assume!!`](@ref)
 function accumulate_observe!! end
 
 """
-    accumulate_assume!!(acc::AbstractAccumulator, val, logjac, vn, right)
+    accumulate_assume!!(acc::AbstractAccumulator, val, logjac, vn, right, template)
 
 Update `acc` in a `tilde_assume!!` call. Returns the updated `acc`.
 

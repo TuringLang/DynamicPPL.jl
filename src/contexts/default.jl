@@ -20,19 +20,23 @@ struct DefaultContext <: AbstractContext end
 
 """
     DynamicPPL.tilde_assume!!(
-        ::DefaultContext, right::Distribution, vn::VarName, vi::AbstractVarInfo
+        ::DefaultContext,
+        right::Distribution,
+        vn::VarName,
+        template::Any,
+        vi::AbstractVarInfo
     )
 
 Handle assumed variables. For `DefaultContext`, this function extracts the value associated
 with `vn` from `vi`, If `vi` does not contain an appropriate value then this will error.
 """
 function tilde_assume!!(
-    ::DefaultContext, right::Distribution, vn::VarName, vi::AbstractVarInfo
+    ::DefaultContext, right::Distribution, vn::VarName, template::Any, vi::AbstractVarInfo
 )
     y = getindex_internal(vi, vn)
     f = from_maybe_linked_internal_transform(vi, vn, right)
     x, inv_logjac = with_logabsdet_jacobian(f, y)
-    vi = accumulate_assume!!(vi, x, -inv_logjac, vn, right)
+    vi = accumulate_assume!!(vi, x, -inv_logjac, vn, right, template)
     return x, vi
 end
 

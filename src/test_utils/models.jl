@@ -878,7 +878,7 @@ const DEMO_MODELS = (
     demo_dot_assume_observe_submodel(),
     demo_dot_assume_observe_matrix_index(),
     demo_assume_matrix_observe_matrix_index(),
-    # demo_nested_colons(),
+    demo_nested_colons(),
 )
 
 """

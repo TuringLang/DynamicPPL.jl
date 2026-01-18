@@ -48,11 +48,13 @@ function combine(acc1::ValuesAsInModelAccumulator, acc2::ValuesAsInModelAccumula
     )
 end
 
-function BangBang.push!!(acc::ValuesAsInModelAccumulator, vn::VarName, val)
+function BangBang.push!!(acc::ValuesAsInModelAccumulator, vn::VarName, val, template)
     # TODO(mhauru) The deepcopy here is quite unfortunate. It is needed so that the model
     # body can go mutating the object without that reactively affecting the value in the
     # accumulator, which should be as it was at `~` time. Could there be a way around this?
-    Accessors.@reset acc.values = setindex!!(acc.values, deepcopy(val), vn)
+    Accessors.@reset acc.values = DynamicPPL.templated_setindex!!(
+        acc.values, deepcopy(val), vn, template
+    )
     return acc
 end
 
@@ -61,8 +63,10 @@ function is_extracting_values(vi::AbstractVarInfo)
            getacc(vi, Val(:ValuesAsInModel)).include_colon_eq
 end
 
-function accumulate_assume!!(acc::ValuesAsInModelAccumulator, val, logjac, vn, right)
-    return push!!(acc, vn, val)
+function accumulate_assume!!(
+    acc::ValuesAsInModelAccumulator, val, logjac, vn::VarName, right, template
+)
+    return push!!(acc, vn, val, template)
 end
 
 accumulate_observe!!(acc::ValuesAsInModelAccumulator, right, left, vn) = acc

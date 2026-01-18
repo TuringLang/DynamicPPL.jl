@@ -46,7 +46,9 @@ function setprior!(
     return acc
 end
 
-function accumulate_assume!!(acc::PriorDistributionAccumulator, val, logjac, vn, right)
+function accumulate_assume!!(
+    acc::PriorDistributionAccumulator, val, logjac, vn, right, template
+)
     return setprior!(acc, vn, right)
 end
 

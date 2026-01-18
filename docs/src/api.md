@@ -368,6 +368,7 @@ DynamicPPL.VarNamedTuples.apply!!
 DynamicPPL.VarNamedTuples.map_pairs!!
 DynamicPPL.VarNamedTuples.map_values!!
 DynamicPPL.VarNamedTuples.PartialArray
+DynamicPPL.VarNamedTuples.templated_setindex!!
 ```
 
 ### Accumulators

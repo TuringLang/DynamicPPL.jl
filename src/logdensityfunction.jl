@@ -436,7 +436,8 @@ function get_ranges_and_linked(vi::VarInfo)
             range = offset:(offset + length(val) - 1)
             offset += length(val)
             ral = RangeAndLinked(range, is_transformed(tv), tv.size)
-            vnt = setindex!!(vnt, ral, vn)
+            template = vi.values.data[AbstractPPL.getsym(vn)]
+            vnt = templated_setindex!!(vnt, ral, vn, template)
             return vnt, offset
         end,
         vi.values;

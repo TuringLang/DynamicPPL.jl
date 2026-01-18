@@ -75,7 +75,11 @@ function prefix_and_strip_contexts(ctx::AbstractParentContext, vn::VarName)
 end
 
 function tilde_assume!!(
-    context::PrefixContext, right::Distribution, vn::VarName, vi::AbstractVarInfo
+    context::PrefixContext,
+    right::Distribution,
+    vn::VarName,
+    template::Any,
+    vi::AbstractVarInfo,
 )
     # Note that we can't use something like this here:
     #     new_vn = prefix(context, vn)
@@ -87,7 +91,7 @@ function tilde_assume!!(
     # would apply the prefix `b._`, resulting in `b.a.b._`.
     # This is why we need a special function, `prefix_and_strip_contexts`.
     new_vn, new_context = prefix_and_strip_contexts(context, vn)
-    return tilde_assume!!(new_context, right, new_vn, vi)
+    return tilde_assume!!(new_context, right, new_vn, template, vi)
 end
 
 function tilde_observe!!(

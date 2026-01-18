@@ -289,12 +289,14 @@ function getacc(vi::AbstractVarInfo, accname::Symbol)
 end
 
 """
-    accumulate_assume!!(vi::AbstractVarInfo, val, logjac, vn, right)
+    accumulate_assume!!(vi::AbstractVarInfo, val, logjac, vn, right, template)
 
 Update all the accumulators of `vi` by calling `accumulate_assume!!` on them.
 """
-function accumulate_assume!!(vi::AbstractVarInfo, val, logjac, vn, right)
-    return map_accumulators!!(acc -> accumulate_assume!!(acc, val, logjac, vn, right), vi)
+function accumulate_assume!!(vi::AbstractVarInfo, val, logjac, vn, right, template)
+    return map_accumulators!!(
+        acc -> accumulate_assume!!(acc, val, logjac, vn, right, template), vi
+    )
 end
 
 """
@@ -581,7 +583,6 @@ julia> vi[[@varname(s), @varname(m), @varname(x[1]), @varname(x[2])]]
 julia> # Extract one with only `m`.
        vi_subset1 = subset(vi, [@varname(m),]);
 
-
 julia> keys(vi_subset1)
 1-element Vector{VarName}:
  m
@@ -645,7 +646,7 @@ julia> vi_merged[[@varname(s), @varname(m), @varname(x[1]), @varname(x[2])]]
 
 !!! warning
     This function is only type-stable when `vns` contains only varnames
-    with the same symbol. For exmaple, `[@varname(m[1]), @varname(m[2])]` will
+    with the same symbol. For example, `[@varname(m[1]), @varname(m[2])]` will
     be type-stable, but `[@varname(m[1]), @varname(x)]` will not be.
 """
 function subset end

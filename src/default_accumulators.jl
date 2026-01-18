@@ -91,7 +91,7 @@ logp(acc::LogPriorAccumulator) = acc.logp
 
 accumulator_name(::Type{<:LogPriorAccumulator}) = :LogPrior
 
-function accumulate_assume!!(acc::LogPriorAccumulator, val, logjac, vn, right)
+function accumulate_assume!!(acc::LogPriorAccumulator, val, logjac, vn, right, template)
     return acclogp(acc, logpdf(right, val))
 end
 accumulate_observe!!(acc::LogPriorAccumulator, right, left, vn) = acc
@@ -135,7 +135,7 @@ logp(acc::LogJacobianAccumulator) = acc.logjac
 
 accumulator_name(::Type{<:LogJacobianAccumulator}) = :LogJacobian
 
-function accumulate_assume!!(acc::LogJacobianAccumulator, val, logjac, vn, right)
+function accumulate_assume!!(acc::LogJacobianAccumulator, val, logjac, vn, right, template)
     return acclogp(acc, logjac)
 end
 accumulate_observe!!(acc::LogJacobianAccumulator, right, left, vn) = acc
@@ -157,7 +157,7 @@ logp(acc::LogLikelihoodAccumulator) = acc.logp
 
 accumulator_name(::Type{<:LogLikelihoodAccumulator}) = :LogLikelihood
 
-accumulate_assume!!(acc::LogLikelihoodAccumulator, val, logjac, vn, right) = acc
+accumulate_assume!!(acc::LogLikelihoodAccumulator, val, logjac, vn, right, template) = acc
 function accumulate_observe!!(acc::LogLikelihoodAccumulator, right, left, vn)
     # Note that it's important to use the loglikelihood function here, not logpdf, because
     # they handle vectors differently:

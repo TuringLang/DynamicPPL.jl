@@ -339,32 +339,30 @@ module Issue537 end
         varinfo = VarInfo(model)
         @test getlogjoint(varinfo) == lp
     end
+
     @testset "user-defined variable name" begin
         @model f1() = x ~ NamedDist(Normal(), :y)
-        @model f2() = x ~ NamedDist(Normal(), @varname(y[2][5, 1]))
-        @model f3() = x ~ NamedDist(Normal(), @varname(y[1]))
+        @model f2() = x ~ NamedDist(Normal(), @varname(z))
+        @model f3() = x ~ NamedDist(Normal(), @varname(w.x))
         vi1 = VarInfo(f1())
         vi2 = VarInfo(f2())
         vi3 = VarInfo(f3())
-        @test haskey(vi1, @varname(y))
-        @test first(Base.keys(vi1)) == @varname(y)
-        @test haskey(vi2, @varname(y[2][5, 1]))
-        @test first(Base.keys(vi2)) == @varname(y[2][5, 1])
-        @test haskey(vi3, @varname(y[1]))
-        @test first(Base.keys(vi3)) == @varname(y[1])
+        @test only(Base.keys(vi1)) == @varname(y)
+        @test only(Base.keys(vi2)) == @varname(z)
+        @test only(Base.keys(vi3)) == @varname(w.x)
 
         # Conditioning
         f1_c = f1() | (y=1,)
-        f2_c = f2() | NamedTuple((Symbol(@varname(y[2][5, 1])) => 1,))
-        f3_c = f3() | NamedTuple((Symbol(@varname(y[1])) => 1,))
+        f2_c = f2() | Dict(@varname(z) => 1)
+        f3_c = f3() | Dict(@varname(w.x) => 1)
         @test f1_c() == 1
-        # TODO(torfjelde): We need conditioning for `Dict`.
-        @test_broken f2_c() == 1
-        @test_broken f3_c() == 1
-        @test_broken getlogjoint(VarInfo(f1_c)) ==
+        @test f2_c() == 1
+        @test f3_c() == 1
+        @test getlogjoint(VarInfo(f1_c)) ==
             getlogjoint(VarInfo(f2_c)) ==
             getlogjoint(VarInfo(f3_c))
     end
+
     @testset "custom tilde" begin
         @model demo() = begin
             $(@custom m ~ Normal())

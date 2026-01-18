@@ -174,7 +174,7 @@ Returns the modified `vi` together with the log absolute determinant of the Jaco
 transformation applied.
 """
 function setindex_with_dist!!(
-    vi::VarInfo{Linked}, val, dist::Distribution, vn::VarName
+    vi::VarInfo{Linked}, val, dist::Distribution, vn::VarName, template
 ) where {Linked}
     link = if Linked === nothing
         haskey(vi, vn) ? is_transformed(vi, vn) : is_transformed(vi)
@@ -191,7 +191,7 @@ function setindex_with_dist!!(
     val_size = hasmethod(size, Tuple{typeof(val)}) ? size(val) : ()
     tv = TransformedValue{link}(transformed_val, transform, val_size)
     new_linked = Linked == link ? Linked : nothing
-    vi = VarInfo{new_linked}(setindex!!(vi.values, tv, vn), vi.accs)
+    vi = VarInfo{new_linked}(templated_setindex!!(vi.values, tv, vn, template), vi.accs)
     return vi, logjac
 end
 

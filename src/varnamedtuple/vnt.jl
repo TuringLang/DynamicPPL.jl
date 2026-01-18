@@ -105,16 +105,62 @@ end
 # PartialArrays are an implementation detail of VarNamedTuple, and should never be the
 # return value of getindex. Thus, we automatically convert them to dense arrays if needed.
 # TODO(mhauru) The below doesn't handle nested PartialArrays. Is that a problem?
-_dense_array_if_needed(pa::PartialArray) = _dense_array(pa)
-_dense_array_if_needed(x) = x
+as_array_if_needed(pa::PartialArray) = as_array(pa)
+as_array_if_needed(x) = x
 function Base.getindex(vnt::VarNamedTuple, vn::VarName)
-    return _dense_array_if_needed(_getindex_optic(vnt, vn))
+    return as_array_if_needed(_getindex_optic(vnt, vn))
 end
 
 Base.haskey(vnt::VarNamedTuple, vn::VarName) = _haskey_optic(vnt, vn)
 
+"""
+    DynamicPPL.VarNamedTuples.templated_setindex!!(vnt, value, vn, template; allow_new=Val(true))
+
+Assign `value` to the location in `vnt` specified by `vn`.
+
+The argument `template` must be provided in order to guide the creation of `PartialArray`s,
+as well as to concretise any dynamic indices in `vn`. It must be an object that has the
+shape of the top-level symbol in `vn`. For example:
+
+```julia
+vnt = VarNamedTuple()
+templated_setindex!!(vnt, 10, @varname(x[1]), rand(2, 2))
+```
+
+Here, `rand(2, 2)` is the template for the top-level symbol `x`, which tells `setindex!!`
+that `x` should be a `PartialArray` that is backed by a matrix.
+
+The actual data inside `template` is not needed, and `template` is never mutated by this
+call.
+"""
+function templated_setindex!!(vnt::VarNamedTuple, value, vn::VarName, template)
+    return _setindex_optic!!(vnt, value, AbstractPPL.varname_to_optic(vn), template, true)
+end
+
+"""
+    BangBang.setindex!!(vnt::VarNamedTuple, value, vn::VarName)
+
+This is similar to `templated_setindex!!`, but does not take a `template` argument. In
+effect the `template` passed through is `NoTemplate()`. It is often the case that the
+template is not actually needed (for example, if you are setting a top-level VarName:
+`@varname(a)`, or if the VarName only contains Property optics, or if the arrays already
+exist and you are merely updating a value inside it). In such cases, this method will work
+fine, but may throw an error if the template is actually needed.
+
+For example, this will error, since it is not known what `x` should be:
+
+```julia
+vnt = VarNamedTuple()
+setindex!!(vnt, 10, @varname(x[1]))
+```
+
+TODO(penelopeysm): Fix this such that there is a 'default' template that can be used when
+none is provided.
+"""
 function BangBang.setindex!!(vnt::VarNamedTuple, value, vn::VarName)
-    return _setindex_optic!!(vnt, value, vn)
+    return _setindex_optic!!(
+        vnt, value, AbstractPPL.varname_to_optic(vn), NoTemplate(), true
+    )
 end
 
 """

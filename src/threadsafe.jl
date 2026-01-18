@@ -101,8 +101,10 @@ function getindex(vi::ThreadSafeVarInfo, vns::AbstractVector{<:VarName}, dist::D
     return getindex(vi.varinfo, vns, dist)
 end
 
-function setindex_with_dist!!(vi::ThreadSafeVarInfo, val, dist::Distribution, vn::VarName)
-    vi_inner, logjac = setindex_with_dist!!(vi.varinfo, val, dist, vn)
+function setindex_with_dist!!(
+    vi::ThreadSafeVarInfo, val, dist::Distribution, vn::VarName, template
+)
+    vi_inner, logjac = setindex_with_dist!!(vi.varinfo, val, dist, vn, template)
     return Accessors.@set(vi.varinfo = vi_inner), logjac
 end
 
