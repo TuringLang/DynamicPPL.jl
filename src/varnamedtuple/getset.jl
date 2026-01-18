@@ -219,21 +219,6 @@ function _setindex_optic!!(
     return VarNamedTuple(merge(vnt.data, NamedTuple{(S,)}((sub_value,))))
 end
 
-# TODO(penelopeysm): Don't error. Instead, create a 'default' PartialArray that uses
-# Base.Array (or a version of it) and which can be extended, similar to the old
-# PartialArray.
-function error_no_template_index()
-    throw(
-        ArgumentError(
-            "Attempted to set a value with an Index optic (i.e., a" *
-            " variable that has array-like indexing); but no template" *
-            " was provided for the array. A template is required to" *
-            " determine the shape and type of the array so that the" *
-            " indexed data can be stored correctly.",
-        ),
-    )
-end
-
 """
     make_leaf(value, optic, template)
 
@@ -255,7 +240,6 @@ function make_leaf(value, optic::AbstractPPL.Property{S}, template) where {S}
     return VarNamedTuple(NamedTuple{(S,)}((sub_value,)))
 end
 function make_leaf(value, optic::AbstractPPL.Index, template)
-    template isa NoTemplate && error_no_template_index()
     coptic = AbstractPPL.concretize_top_level(optic, template)
     sub_value = if coptic.child isa AbstractPPL.Iden
         # Skip recursion
@@ -272,18 +256,22 @@ function make_leaf(value, optic::AbstractPPL.Index, template)
         end
         make_leaf(value, coptic.child, child_template)
     end
-    # TODO(penelopeysm): If coptic.child was a Property lens, then sub_value will always be
-    # normalised into a VNT (since that's what the inner make_leaf returns). However,
-    # `template` may contain things that are not VNTs, but could be either e.g. NamedTuples
-    # or just generic structs. In this case, it can be type unstable to create a
-    # PartialArray from the template and then setindex!! a VNT into it. So, we create a new
-    # template with the appropriate type here before creating the PartialArray.
-    pa_data = if !(eltype(template) <: typeof(sub_value))
+    pa_data = if template isa NoTemplate
+        # If no template was provided, we have to make a GrowableArray.
+        template_sz = get_implied_size_from_indices(coptic.ix...; coptic.kw...)
+        GrowableArray(Array{typeof(sub_value)}(undef, template_sz))
+    elseif !(eltype(template) <: typeof(sub_value))
+        # If coptic.child was a Property lens, then sub_value will always be normalised into
+        # a VNT (since that's what the inner make_leaf returns). However, `template` may
+        # contain things that are not VNTs, but could be either e.g. NamedTuples or just
+        # generic structs. In this case, it can be type unstable to create a PartialArray
+        # from the template and then setindex!! a VNT into it. So, we create a new template
+        # with the appropriate type here before creating the PartialArray.
         similar(template, typeof(sub_value))
     else
         similar(template)
     end
-    pa_mask = similar(template, Bool)
+    pa_mask = similar(pa_data, Bool)
     fill!(pa_mask, false)
     pa = PartialArray(pa_data, pa_mask)
     return BangBang.setindex!!(pa, sub_value, coptic.ix...; coptic.kw...)
