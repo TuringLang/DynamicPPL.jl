@@ -31,6 +31,7 @@ function tilde_assume!!(
     ctx::InitContext,
     dist::Distribution,
     vn::VarName,
+    ::Any,
     vi::Union{OnlyAccsVarInfo,ThreadSafeVarInfo{<:OnlyAccsVarInfo}},
 )
     # For OnlyAccsVarInfo, since we don't need to write into the VarInfo, we can 

@@ -7,7 +7,7 @@ using Distributions: Distributions, Distribution
 using BangBang
 using DynamicPPL: DynamicPPL
 
-export VarNamedTuple, vnt_size, map_pairs!!, map_values!!, apply!!
+export VarNamedTuple, vnt_size, map_pairs!!, map_values!!, apply!!, templated_setindex!!
 
 # Currently, keyword arguments are not supported in getindex/_setindex!!. That is because
 # `PartialArray` under the hood is backed by `Base.Array`. Thus, if `kw` is not empty, we
