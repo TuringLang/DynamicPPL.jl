@@ -644,7 +644,7 @@ julia> vi_merged[[@varname(s), @varname(m), @varname(x[1]), @varname(x[2])]]
 
 !!! warning
     This function is only type-stable when `vns` contains only varnames
-    with the same symbol. For exmaple, `[@varname(m[1]), @varname(m[2])]` will
+    with the same symbol. For example, `[@varname(m[1]), @varname(m[2])]` will
     be type-stable, but `[@varname(m[1]), @varname(x)]` will not be.
 """
 function subset end

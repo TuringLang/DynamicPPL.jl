@@ -78,7 +78,14 @@ function apply!!(func, vnt::VarNamedTuple, name::VarName)
     new_subdata = func(subdata)
     # The allow_new=Val(true) is a performance optimisation: Since we've already checked
     # that the key exists, we know that no new fields will be created.
-    return _setindex_optic!!(vnt, new_subdata, name, nothing, false; allow_new=Val(false))
+    return _setindex_optic!!(
+        vnt,
+        new_subdata,
+        AbstractPPL.varname_to_optic(name),
+        nothing,
+        false;
+        allow_new=Val(false),
+    )
 end
 
 """
