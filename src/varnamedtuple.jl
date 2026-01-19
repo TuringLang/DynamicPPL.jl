@@ -8,7 +8,13 @@ using BangBang
 using DynamicPPL: DynamicPPL
 
 export VarNamedTuple,
-    vnt_size, map_pairs!!, map_values!!, apply!!, templated_setindex!!, NoTemplate
+    vnt_size,
+    map_pairs!!,
+    map_values!!,
+    apply!!,
+    templated_setindex!!,
+    NoTemplate,
+    SkipTemplate
 
 """
     NoTemplate
@@ -43,9 +49,12 @@ SkipTemplate{N}(v) where {N} = SkipTemplate{N,typeof(v)}(v)
 SkipTemplate{0}(v) = v
 SkipTemplate{N}(::NoTemplate) where {N} = NoTemplate()
 SkipTemplate{0}(::NoTemplate) = NoTemplate()
+# Decrease the skip level: used when recursing inside make_leaf.
 function decrease_skip(st::SkipTemplate{N}) where {N}
     return SkipTemplate{N - 1}(st.value)
 end
+# Increase the skip level: used when applying a PrefixContext (the template
+# must be wrapped by the appropriate number of SkipTemplates).
 SkipTemplate{N}(v::SkipTemplate{M}) where {N,M} = SkipTemplate{N + M}(v.value)
 SkipTemplate{0}(v::SkipTemplate{M}) where {M} = SkipTemplate{M}(v.value)
 

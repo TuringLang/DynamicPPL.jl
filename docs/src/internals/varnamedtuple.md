@@ -177,8 +177,11 @@ The reason we define a distinct function is to be able to control its behaviour,
 This design has a several of benefits, for performance and generality, but it also has limitations:
 
  1. The lack of support for `Colon`s in `VarName`s.
+
  2. The lack of support for some other indexing syntaxes supported by Julia, such as linear indexing and boolean indexing.
  3. `VarNamedTuple` cannot store indices with different numbers of dimensions in the same value, so for instance `@varname(a[1])` and `@varname(a[1,1])` cannot be stored in the same `VarNamedTuple`.
  4. There is an asymmetry between storing arrays with `setindex!!(vnt, array, @varname(a))` and elements of arrays with `setindex!!(vnt, element, @varname(a[i]))`.
     The former stores the whole array, which can then be indexed with both `@varname(a)` and `@varname(a[i])`.
     The latter stores only individual elements, and even if all elements have been set, one still can't get the value associated with `@varname(a)` as a regular `Base.Array`.
+    
+    ## 
