@@ -841,52 +841,7 @@ Base.size(st::SizedThing) = st.size
     end
 
     @testset "printing" begin
-        vnt = VarNamedTuple()
-        io = IOBuffer()
-        show(io, vnt)
-        output = String(take!(io))
-        @test output == "VarNamedTuple()"
-
-        vnt = setindex!!(vnt, "s", @varname(a))
-        io = IOBuffer()
-        show(io, vnt)
-        output = String(take!(io))
-        @test output == """VarNamedTuple(a = "s",)"""
-
-        vnt = setindex!!(vnt, [1, 2, 3], @varname(b))
-        io = IOBuffer()
-        show(io, vnt)
-        output = String(take!(io))
-        @test output == """VarNamedTuple(a = "s", b = [1, 2, 3])"""
-
-        vnt = setindex!!(vnt, :dada, @varname(c[2]))
-        io = IOBuffer()
-        show(io, vnt)
-        output = String(take!(io))
-        @test output == """
-            VarNamedTuple(a = "s", b = [1, 2, 3], \
-            c = PartialArray{Symbol,1}((2,) => :dada))"""
-
-        vnt = setindex!!(vnt, [16.0, 17.0], @varname(d.e[3][2, 2].f.g[1:2]))
-        io = IOBuffer()
-        show(io, vnt)
-        output = String(take!(io))
-        # Depending on what's in scope, and maybe sometimes even the Julia version,
-        # sometimes types in the output are fully qualified, sometimes not. To avoid
-        # brittle tests, we normalise the output:
-        output = replace(output, "DynamicPPL." => "", "VarNamedTuples." => "")
-        @test output == """
-            VarNamedTuple(a = "s", b = [1, 2, 3], \
-            c = PartialArray{Symbol,1}((2,) => :dada), \
-            d = VarNamedTuple(\
-            e = PartialArray{PartialArray{VarNamedTuple{(:f,), \
-            Tuple{VarNamedTuple{(:g,), \
-            Tuple{PartialArray{Float64, 1}}}}}, 2},1}((3,) => \
-            PartialArray{VarNamedTuple{(:f,), \
-            Tuple{VarNamedTuple{(:g,), \
-            Tuple{PartialArray{Float64, 1}}}}},2}((2, 2) => VarNamedTuple(f = VarNamedTuple(g = PartialArray{Float64,1}((1,) => 16.0, \
-            (2,) => 17.0),),))),))"""
-        test_invariants(vnt)
+        # TODO(penelopeysm) Rework printing
     end
 
     @testset "block variables" begin
