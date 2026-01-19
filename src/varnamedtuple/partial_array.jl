@@ -638,17 +638,12 @@ function _merge_recursive(pa1::PartialArray, pa2::PartialArray)
     if size(pa1.data) != size(pa2.data)
         throw(ArgumentError("Cannot merge PartialArrays with different sizes"))
     end
+    # TODO(penelopeysm): Ideally we would also check the underlying Array type.
     result = copy(pa2)
     for i in eachindex(pa1.mask)
         if pa1.mask[i]
             new_elem = _merge_element_recursive(pa1, result, i)
-            # This is not only a performance optimisation: it also avoids a potential bug
-            # where calling setindex!! on `result` would lead to the deletion of overlapping
-            # ArrayLikeBlocks in `result`, thereby changing `result.mask` and making
-            # subsequent iterations behave wrongly.
-            if !isassigned(result.data, i) || new_elem !== result.data[i]
-                result = setindex!!(result, new_elem, i)
-            end
+            result = setindex!!(result, new_elem, i)
         end
     end
     return result
