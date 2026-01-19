@@ -166,8 +166,10 @@ function _setindex_optic!!(
         else
             NoTemplate()
         end
+        @show coptic child_template value
         if Base.haskey(pa, coptic.ix...; coptic.kw...)
-            # Data already exists; we need to recurse into it
+            # The PartialArray already contains an unmasked value at this index. We need to
+            # set that value in place there.
             _setindex_optic!!(
                 Base.getindex(pa, coptic.ix...; coptic.kw...),
                 value,
@@ -176,6 +178,11 @@ function _setindex_optic!!(
                 false;
                 allow_new=allow_new,
             )
+        elseif Base.checkbounds(Bool, pa.data, coptic.ix...; coptic.kw...)
+            # TODO(penelopeysm): There is a bug here: it may be that `pa` has a masked value
+            # here. In that case, we need to set child_template inside it and unmask the
+            # appropriate indices. I don't know exactly how to detect this.
+            error("There is a bug here!")
         elseif allow_new isa Val{true}
             # No new data but we are allowed to create it.
             make_leaf(value, coptic.child, child_template)
@@ -219,6 +226,15 @@ function _setindex_optic!!(
     return VarNamedTuple(merge(vnt.data, NamedTuple{(S,)}((sub_value,))))
 end
 
+@generated function _is_multiindex_static(::T) where {T<:Tuple}
+    for x in T.parameters
+        if x <: AbstractVector{<:Int} || x <: Colon
+            return :(return true)
+        end
+    end
+    return :(return false)
+end
+
 """
     make_leaf(value, optic, template)
 
@@ -256,18 +272,45 @@ function make_leaf(value, optic::AbstractPPL.Index, template)
         end
         make_leaf(value, coptic.child, child_template)
     end
+    # We need to be careful here, as depending on the indices, `sub_value` might either
+    # represent a single element or a slice of elements. When reconstructing the data
+    # to use for the PartialArray creation, we need to make sure to not accidentally
+    # create an array of arrays.
+    correct_template_eltype =
+        if (
+            template isa NoTemplate &&
+            _is_multiindex_static(coptic.ix) &&
+            sub_value isa AbstractArray
+        ) || (
+            template isa AbstractArray &&
+            _is_multiindex(template, coptic.ix...; coptic.kw...) &&
+            sub_value isa AbstractArray
+        )
+            # In this branch, we know that sub_value represents a slice of elements. Since
+            # it's an AbstractArray, we can safely get its element type.
+            eltype(sub_value)
+        else
+            # This is either for single-element indexing, or if the thing being set is not
+            # an AbstractArray (e.g. if it's an ArrayLikeBlock).
+            typeof(sub_value)
+        end
     pa_data = if template isa NoTemplate
         # If no template was provided, we have to make a GrowableArray.
         template_sz = get_implied_size_from_indices(coptic.ix...; coptic.kw...)
-        GrowableArray(Array{typeof(sub_value)}(undef, template_sz))
-    elseif !(eltype(template) <: typeof(sub_value))
+        GrowableArray(Array{correct_template_eltype}(undef, template_sz))
+    elseif sub_value isa PartialArray
+        # sub_value could be a PartialArray if coptic.child was a multi-index lens.
+        # In this case we can just reuse its data.
+        # TODO(penelopeysm): I'm not sure if we need to copy it. I'm copying it to be safe.
+        copy(sub_value.data)
+    elseif !(eltype(template) <: correct_template_eltype)
         # If coptic.child was a Property lens, then sub_value will always be normalised into
         # a VNT (since that's what the inner make_leaf returns). However, `template` may
         # contain things that are not VNTs, but could be either e.g. NamedTuples or just
         # generic structs. In this case, it can be type unstable to create a PartialArray
         # from the template and then setindex!! a VNT into it. So, we create a new template
         # with the appropriate type here before creating the PartialArray.
-        similar(template, typeof(sub_value))
+        similar(template, correct_template_eltype)
     else
         similar(template)
     end

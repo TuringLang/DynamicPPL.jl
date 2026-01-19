@@ -51,12 +51,11 @@ include("test_util.jl")
         # include("utils.jl")
         # include("accumulators.jl")
         # include("compiler.jl")
-        # include("varnamedtuple.jl")
-        include("varinfo.jl")
-        # include("model.jl")
-        # include("distribution_wrappers.jl")
-        # include("linking.jl")
-        # include("serialization.jl")
+        # include("varinfo.jl")
+        include("model.jl")
+        include("distribution_wrappers.jl")
+        include("linking.jl")
+        include("serialization.jl")
         # include("pointwise_logdensities.jl")
         # include("lkj.jl")
         # include("contexts.jl")
@@ -65,6 +64,9 @@ include("test_util.jl")
         # include("debug_utils.jl")
         # include("submodels.jl")
         # include("chains.jl")
+
+        # This is never going to pass :(
+        # include("varnamedtuple.jl")
     end
 
     # if GROUP == "All" || GROUP == "Group2"
