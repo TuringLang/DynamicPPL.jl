@@ -112,6 +112,10 @@ Base.similar(ga::GrowableArray, ::Type{T}) where {T} = GrowableArray(similar(ga.
 Base.similar(ga::GrowableArray, sz::Tuple) = GrowableArray(similar(ga.data, sz))
 # single-element indexing
 Base.getindex(ga::GrowableArray, ix::Vararg{Int}) = getindex(ga.data, ix...)
+function Base.copyto!(dest::GrowableArray, src::GrowableArray, args...)
+    return copyto!(dest.data, src.data, args...)
+end
+Base.copy!(dest::GrowableArray, src::GrowableArray) = copy!(dest.data, src.data)
 Base.getindex(ga::GrowableArray, ix::CartesianIndex) = getindex(ga.data, ix)
 # multi-element indexing
 Base.getindex(ga::GrowableArray, ix...) = GrowableArray(getindex(ga.data, ix...))
@@ -504,23 +508,25 @@ Remove any ArrayLikeBlocks that overlap with the given indices from the PartialA
 Note that this removes the whole block, even the parts that are within `inds`, to avoid
 partially indexing into ArrayLikeBlocks.
 """
-function _remove_partial_blocks!!(pa::PartialArray, inds::Vararg{Any}; kw...)
-    et = eltype(pa)
+function _remove_partial_blocks!!(
+    pa_data::AbstractArray, pa_mask::AbstractArray{Bool}, inds::Vararg{Any}; kw...
+)
+    et = eltype(pa_data)
     if !(et <: ArrayLikeBlock || ArrayLikeBlock <: et)
         # pa can't possibly hold any ArrayLikeBlocks, so nothing to do.
-        return pa
+        return pa_data, pa_mask
     end
 
     # Generate two views, which ensures that the indices will line up
-    dataview = view(pa.data, inds...; kw...)
-    maskview = view(pa.mask, inds...; kw...)
+    dataview = view(pa_data, inds...; kw...)
+    maskview = view(pa_mask, inds...; kw...)
     for i in eachindex(dataview)
         if maskview[i] && (dataview[i] isa ArrayLikeBlock)
-            val = dataview[i][]
-            pa = BangBang.delete!!(pa, val.ix...; val.kw...)
+            val = dataview[i]
+            fill!(view(pa_mask, val.ix...; val.kw...), false)
         end
     end
-    return pa
+    return pa_data, pa_mask
 end
 
 function _is_multiindex(f::AbstractArray, ix...; kw...)
@@ -546,13 +552,13 @@ function _needs_arraylikeblock(pa_data::AbstractArray, value, inds::Vararg{Any};
 end
 
 function BangBang.setindex!!(pa::PartialArray, value, inds::Vararg{Any}; kw...)
-    # Delete any overlapping ArrayLikeBlocks first
-    pa = _remove_partial_blocks!!(pa, inds...; kw...)
-
     # If pa.data and pa.mask are GrowableArrays, we may need to resize them before doing
     # anything else. For other AbstractArrays, grow_to_indices is a no-op.
     new_data = grow_to_indices(pa.data, inds...; kw...)
     new_mask = grow_to_indices(pa.mask, inds...; kw...)
+
+    # Then delete any overlapping ArrayLikeBlocks
+    new_data, new_mask = _remove_partial_blocks!!(new_data, new_mask, inds...; kw...)
 
     if _needs_arraylikeblock(new_data, value, inds...; kw...)
         # Check that we're trying to set a block that has the right size.
@@ -566,7 +572,6 @@ function BangBang.setindex!!(pa::PartialArray, value, inds::Vararg{Any}; kw...)
                 ),
             )
         end
-
         alb = ArrayLikeBlock(value, inds, NamedTuple(kw), idx_sz)
         new_data = setindex!!(new_data, fill(alb, idx_sz...), inds...; kw...)
         fill!(view(new_mask, inds...; kw...), true)

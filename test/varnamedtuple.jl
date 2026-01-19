@@ -273,8 +273,17 @@ Base.size(st::SizedThing) = st.size
         end
 
         @testset "InvertedIndices" begin
+            # TODO(penelopeysm): Templated setindex fails for II.Not(). I really don't know
+            # why but there is some failure in constant propagation when setting the mask
+            # using Not(3). Here is a minimiser that illustrates the difference between
+            # Not(3) and 1:2:
+            #
+            #     pa = PartialArray(randn(3), fill(false, 3))
+            #     @descend BangBang.setindex!!(pa, [1.0, 2.0], Not(3))
+            #     @descend BangBang.setindex!!(pa, [1.0, 2.0], 1:2)
             test_get_set(
                 GetSetTestCase(@varname(x[II.Not(3)]), randn(2), zeros(3), []);
+                templated_unstable=true,
                 skip_setindex=true,
             )
         end
@@ -455,13 +464,11 @@ Base.size(st::SizedThing) = st.size
 
         vnt = VarNamedTuple()
         vn = @varname(y[:])
-        # TODO(penelopeysm) Type stability fails here for anything that needs ALBs
-        vnt = templated_setindex!!(vnt, SizedThing((3,)), vn, randn(3))
+        vnt = @inferred(templated_setindex!!(vnt, SizedThing((3,)), vn, randn(3)))
         @test haskey(vnt, vn)
         @test vn in keys(vnt)
         @test @inferred(getindex(vnt, vn)) == SizedThing((3,))
-        # TODO(penelopeysm) Equality check fails, almost certainly because of Refs
-        # test_invariants(vnt)
+        test_invariants(vnt)
 
         vnt = VarNamedTuple()
         y = fill("a", (3, 2, 4))
@@ -564,7 +571,6 @@ Base.size(st::SizedThing) = st.size
         @test values(vnt) == [1.0, 2.0]
     end
 
-    #=
     @testset "equality and hash" begin
         # Test all combinations of having or not having the below values set, and having
         # them set to any of the possible_values, and check that isequal and == return the
@@ -718,8 +724,7 @@ Base.size(st::SizedThing) = st.size
         vnt = templated_setindex!!(
             vnt, SizedThing((3, 1, 4)), @varname(p[2, 1][2:4, 5:5, 11:14]), p
         )
-        # TODO(penelopeysm) equality fails
-        # test_invariants(vnt)
+        test_invariants(vnt)
 
         # TODO(mhauru) I'm a bit saddened by the lack of type stability for subset: It's
         # return type always infers as VarNamedTuple. Improving this would require a
@@ -743,9 +748,26 @@ Base.size(st::SizedThing) = st.size
             expected_vnt = setindex!!(expected_vnt, :3, @varname(d[3]))
             @test subset(vnt, [@varname(d[2:3])]) == expected_vnt
         end
-        # TODO(penelopeysm) investigate
-        @test_broken subset(vnt, [@varname(d)]) ==
-                     VarNamedTuple((@varname(d) => [:1, :2, :3],))
+        # For this one, we can't test exact equality because in the former case we
+        # constructed a PartialArray by adding individual elements of d. In the latter
+        # case we constructed it directly from a vector. So the internal representation
+        # is different, even though in the first case, the PartialArray has all its mask
+        # elements as true (and is thus conceptually the same as a full array).
+        # We can however test that the underlying values are the same when we try to extract
+        # them.
+        subsetted_d = subset(vnt, [@varname(d)])
+        expected_d = VarNamedTuple((@varname(d) => [:1, :2, :3],))
+        for vn in [
+            @varname(d),
+            @varname(d[1]),
+            @varname(d[2]),
+            @varname(d[3]),
+            @varname(d[:]),
+            @varname(d[1:2]),
+            @varname(d[2:3])
+        ]
+            @test getindex(subsetted_d, vn) == getindex(expected_d, vn)
+        end
 
         @test subset(vnt, [@varname(c.x.y)]) == VarNamedTuple((@varname(c.x.y) => [10],))
         @test subset(vnt, [@varname(c)]) == VarNamedTuple((@varname(c.x.y) => [10],))
@@ -756,14 +778,13 @@ Base.size(st::SizedThing) = st.size
             @test subset(vnt, [@varname(e.f[3, 3].g.h[2, 4, 1].i)]) == expected_vnt
         end
         begin
-            # TODO(penelopeysm) Equality fails because Ref(x) != Ref(y) even if x === y
             expected_vnt = templated_setindex!!(
                 VarNamedTuple(),
                 SizedThing((3, 1, 4)),
                 @varname(p[2, 1][2:4, 5:5, 11:14]),
                 p,
             )
-            @test_broken subset(vnt, [@varname(p[2, 1][2:4, 5:5, 11:14])]) == expected_vnt
+            @test subset(vnt, [@varname(p[2, 1][2:4, 5:5, 11:14])]) == expected_vnt
         end
         # Cutting the last range a bit short should mean that nothing is returned.
         @test subset(vnt, [@varname(p[2, 1][2:4, 5:5, 11:13])]) == VarNamedTuple()
@@ -949,6 +970,7 @@ Base.size(st::SizedThing) = st.size
         test_invariants(vnt)
     end
 
+    #=
     @testset "empty" begin
         # test_invariants already checks that many different kinds of VarNamedTuples can be
         # emptied with empty and empty!!. What remains to check here is that

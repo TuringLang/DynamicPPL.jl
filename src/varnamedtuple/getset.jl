@@ -307,9 +307,23 @@ function make_leaf(value, optic::AbstractPPL.Index, template)
             # In this branch, we know that sub_value represents a slice of elements. Since
             # it's an AbstractArray, we can safely get its element type.
             eltype(sub_value)
+        elseif is_multiindex
+            # This is the case where sub_value represents a slice of elements, but it's
+            # not an AbstractArray. This can happen if sub_value is something that needs
+            # to be set as an ArrayLikeBlock. In order to get the right element type for
+            # the template (to avoid type instability), we need to pre-construct the
+            # expected type that would be used here if we were to set it directly.
+            #
+            # Note that we don't perform any check here that vnt_size lines up with the
+            # size of the indices. That's checked for us inside PartialArray code.
+            ArrayLikeBlock{
+                typeof(sub_value),
+                typeof(coptic.ix),
+                typeof(coptic.kw),
+                typeof(vnt_size(value)),
+            }
         else
-            # This is either for single-element indexing, or if the thing being set is not
-            # an AbstractArray (e.g. if it's an ArrayLikeBlock).
+            # Single-element indexing.
             typeof(sub_value)
         end
     pa_data = if template isa NoTemplate
