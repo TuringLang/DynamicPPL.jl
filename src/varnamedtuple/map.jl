@@ -167,7 +167,7 @@ function _map_recursive!!(func, alb::ArrayLikeBlock, vn)
             ),
         )
     end
-    return ArrayLikeBlock(new_block, alb.block, alb.kw, alb.index_size)
+    return ArrayLikeBlock(new_block, alb.ix, alb.kw, alb.index_size)
 end
 
 # As above but with a prefix VarName `vn`.
