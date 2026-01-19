@@ -617,6 +617,24 @@ function _merge_element_recursive(x1::PartialArray, x2::PartialArray, ind)
     end
 end
 
+"""
+    _merge_element_norecurse(x1::PartialArray, x2::PartialArray, ind)
+
+Performs an elementwise merge of two `PartialArray`s, but does not attempt to recurse into
+nested values to merge those as well. In particular, if both `x1` and `x2` have the element
+at `ind` set, the value from `x2` is taken directly (whereas `_merge_element_recursive`
+would attempt to merge the values from both arrays).
+"""
+function _merge_element_norecurse(x1::PartialArray, x2::PartialArray, ind)
+    m1 = x1.mask[ind]
+    m2 = x2.mask[ind]
+    return if m2
+        x2.data[ind]
+    else
+        x1.data[ind]
+    end
+end
+
 function _merge_recursive(pa1::PartialArray, pa2::PartialArray)
     if size(pa1.data) != size(pa2.data)
         throw(ArgumentError("Cannot merge PartialArrays with different sizes"))
@@ -625,6 +643,26 @@ function _merge_recursive(pa1::PartialArray, pa2::PartialArray)
     for i in eachindex(pa1.mask)
         if pa1.mask[i]
             new_elem = _merge_element_recursive(pa1, result, i)
+            # This is not only a performance optimisation: it also avoids a potential bug
+            # where calling setindex!! on `result` would lead to the deletion of overlapping
+            # ArrayLikeBlocks in `result`, thereby changing `result.mask` and making
+            # subsequent iterations behave wrongly.
+            if !isassigned(result.data, i) || new_elem !== result.data[i]
+                result = setindex!!(result, new_elem, i)
+            end
+        end
+    end
+    return result
+end
+
+function _merge_norecurse(pa1::PartialArray, pa2::PartialArray)
+    if size(pa1.data) != size(pa2.data)
+        throw(ArgumentError("Cannot merge PartialArrays with different sizes"))
+    end
+    result = copy(pa2)
+    for i in eachindex(pa1.mask)
+        if pa1.mask[i]
+            new_elem = _merge_element_norecurse(pa1, result, i)
             # This is not only a performance optimisation: it also avoids a potential bug
             # where calling setindex!! on `result` would lead to the deletion of overlapping
             # ArrayLikeBlocks in `result`, thereby changing `result.mask` and making

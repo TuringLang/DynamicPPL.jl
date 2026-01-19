@@ -150,6 +150,7 @@ function _setindex_optic!!(
     is_top_level;
     allow_new=Val(true),
 )
+    need_merge = false
     coptic = AbstractPPL.concretize_top_level(optic, pa.data)
     sub_value = if optic.child isa AbstractPPL.Iden
         # Skip recursion
@@ -177,19 +178,37 @@ function _setindex_optic!!(
                 false;
                 allow_new=allow_new,
             )
-        elseif Base.checkbounds(Bool, pa.data, coptic.ix...; coptic.kw...)
-            # TODO(penelopeysm): There is a bug here: it may be that `pa` has a masked value
-            # here. In that case, we need to set child_template inside it and unmask the
-            # appropriate indices. I don't know exactly how to detect this.
-            error("There is a bug here!")
         elseif allow_new isa Val{true}
+            if Base.checkbounds(Bool, pa.data, coptic.ix...; coptic.kw...)
+                # NOTE: This is a VERY subtle case, which can happen when you are setting
+                # multiple indices at once, but some of them were masked. When they are
+                # masked, it will cause haskey to return false, so we can't go into the
+                # previous branch. However, if we call make_leaf naively, it will overwrite
+                # ALL the indices with the new leaf value, which will overwrite any
+                # previously active values! To avoid this, we will set a flag to indicate
+                # that we can create a new leaf, but at the end of the function we need to
+                # merge the new leaf into the existing PartialArray instead of overwriting
+                # it.
+                # This situation can happen e.g. with
+                #     using DynamicPPL
+                #     vnt = VarNamedTuple()
+                #     x = zeros(2)
+                #     vnt = DynamicPPL.templated_setindex!!(vnt, 1.0, @varname(x[1:2][1]), x)
+                #     vnt = DynamicPPL.templated_setindex!!(vnt, 2.0, @varname(x[1:2][2]), x)
+                need_merge = true
+            end
             # No new data but we are allowed to create it.
             make_leaf(value, coptic.child, child_template)
         else
             throw_setindex_allow_new_error()
         end
     end
-    return BangBang.setindex!!(pa, sub_value, coptic.ix...; coptic.kw...)
+    return if need_merge
+        new_pa = BangBang.setindex!!(copy(pa), sub_value, coptic.ix...; coptic.kw...)
+        _merge_norecurse(pa, new_pa)
+    else
+        BangBang.setindex!!(pa, sub_value, coptic.ix...; coptic.kw...)
+    end
 end
 
 function _setindex_optic!!(
