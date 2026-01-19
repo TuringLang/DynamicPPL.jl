@@ -166,7 +166,6 @@ function _setindex_optic!!(
         else
             NoTemplate()
         end
-        @show coptic child_template value
         if Base.haskey(pa, coptic.ix...; coptic.kw...)
             # The PartialArray already contains an unmasked value at this index. We need to
             # set that value in place there.
