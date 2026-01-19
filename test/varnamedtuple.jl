@@ -188,23 +188,24 @@ Base.size(st::SizedThing) = st.size
         @test !haskey(vnt, @varname(e.f[2].g.h[2].i))
         test_invariants(vnt)
 
-        vnt = @inferred(setindex!!(vnt, 2.0, @varname(e.f[3].g.h[2].i)))
+        # TODO(penelopeys) This one fails type stability
+        vnt = setindex!!(vnt, 2.0, @varname(e.f[3].g.h[2].i))
         @test @inferred(getindex(vnt, @varname(e.f[3].g.h[2].i))) == 2.0
         test_invariants(vnt)
 
-        vec = fill(1.0, 4)
-        vnt = @inferred(templated_setindex!!(vnt, vec, @varname(j[1:4]), zeros(4)))
-        @test @inferred(getindex(vnt, @varname(j[1:4]))) == vec
-        @test @inferred(getindex(vnt, @varname(j[2]))) == vec[2]
+        jval = fill(1.0, 4)
+        vnt = @inferred(templated_setindex!!(vnt, jval, @varname(j[1:4]), zeros(4)))
+        @test @inferred(getindex(vnt, @varname(j[1:4]))) == jval
+        @test @inferred(getindex(vnt, @varname(j[2]))) == jval[2]
         @test haskey(vnt, @varname(j[4]))
         @test !haskey(vnt, @varname(j[5]))
         @test_throws BoundsError getindex(vnt, @varname(j[5]))
         test_invariants(vnt)
 
-        vec = fill(2.0, 4)
-        vnt = @inferred(templated_setindex!!(vnt, vec, @varname(j2[2:5]), zeros(5)))
+        j2val = fill(2.0, 4)
+        vnt = @inferred(templated_setindex!!(vnt, j2val, @varname(j2[2:5]), zeros(5)))
         @test_throws BoundsError getindex(vnt, @varname(j2[1]))
-        @test @inferred(getindex(vnt, @varname(j2[2:5]))) == vec
+        @test @inferred(getindex(vnt, @varname(j2[2:5]))) == j2val
         @test haskey(vnt, @varname(j2[5]))
         test_invariants(vnt)
 
@@ -296,14 +297,16 @@ Base.size(st::SizedThing) = st.size
         x = y[:, 2, :]
         a = (; b=[nothing, nothing, (; c=(; d=zeros(1, 5, 2, 4, 1)))])
         vn = @varname(a.b[3].c.d[1, 3:5, 2, :, 1])
-        vnt = @inferred(templated_setindex!!(vnt, x, vn, a))
+        # TODO(penelopeysm) Type stability fails
+        vnt = templated_setindex!!(vnt, x, vn, a)
         @test haskey(vnt, vn)
         @test @inferred(getindex(vnt, vn)) == x
         test_invariants(vnt)
 
         # Indices on indices
         vnt = VarNamedTuple()
-        vnt = @inferred(templated_setindex!!(vnt, 1, @varname(a[1][1]), [[randn()]]))
+        # TODO(penelopeysm) type stability fails
+        vnt = templated_setindex!!(vnt, 1, @varname(a[1][1]), [[randn()]])
         @test @inferred(getindex(vnt, @varname(a[1][1]))) == 1
         vnt = @inferred(templated_setindex!!(vnt, 1, @varname(ab[1:2][1]), randn(2)))
         @test @inferred(getindex(vnt, @varname(ab[1]))) == 1
@@ -318,6 +321,75 @@ Base.size(st::SizedThing) = st.size
         # @test @inferred(getindex(vnt, @varname(e[3, 2].f[2, 2][10, 10]))) == [1]
         # vnt = @inferred(setindex!!(vnt, [1], @varname(g[3, 2][10, 10].h[2, 2])))
         # @test @inferred(getindex(vnt, @varname(g[3, 2][10, 10].h[2, 2]))) == [1]
+    end
+
+    @testset "setindex!! without template: GrowableArray" begin
+        # TODO(penelopeysm): Write these tests. In general, we can just copy everything
+        # from above but using setindex!! instead of templated_setindex!!.
+        # However, we should also add extra tests for specific GrowableArray behaviour, i.e.
+        # the changing length, and the way that different numbers of indices are forbidden,
+        # etc.
+        @test_broken false
+    end
+
+    @testset "chained multiindices, part 1" begin
+        # See https://github.com/TuringLang/DynamicPPL.jl/issues/1205.
+        # TODO(penelopeysm): Write more of these tests, as these things are a
+        # disgusting pain to deal with. Some issues I've ran into:
+        #  - UndefInitializers.
+        vnt = VarNamedTuple()
+        x = zeros(2)
+        vnt = @inferred(templated_setindex!!(vnt, 1.0, @varname(x[1:2][1]), x))
+        @test @inferred(getindex(vnt, @varname(x[1:2][1]))) == 1.0
+        @test @inferred(getindex(vnt, @varname(x[1]))) == 1.0
+        @test_throws BoundsError getindex(vnt, @varname(x[2]))
+        test_invariants(vnt)
+
+        # Now set the second index
+        vnt = @inferred(templated_setindex!!(vnt, 2.0, @varname(x[1:2][2]), x))
+        @test @inferred(getindex(vnt, @varname(x[1:2][2]))) == 2.0
+        @test @inferred(getindex(vnt, @varname(x[2]))) == 2.0
+        test_invariants(vnt)
+
+        # Check that the first index is still correct
+        @test @inferred(getindex(vnt, @varname(x[1]))) == 1.0
+        # Check that we can get both indices
+        @test @inferred(getindex(vnt, @varname(x[1:2]))) == [1.0, 2.0]
+        @test @inferred(getindex(vnt, @varname(x[:]))) == [1.0, 2.0]
+        @test @inferred(getindex(vnt, @varname(x))) == [1.0, 2.0]
+
+        @test keys(vnt) == [@varname(x[1]), @varname(x[2])]
+        @test values(vnt) == [1.0, 2.0]
+    end
+
+    @testset "chained multiindices, part 2" begin
+        # See https://github.com/TuringLang/DynamicPPL.jl/issues/1205.
+        vnt = VarNamedTuple()
+        x = zeros(3)
+        vnt = @inferred(templated_setindex!!(vnt, 1.0, @varname(x[1:2][1]), x))
+        @test @inferred(getindex(vnt, @varname(x[1:2][1]))) == 1.0
+        @test @inferred(getindex(vnt, @varname(x[1]))) == 1.0
+        @test_throws BoundsError getindex(vnt, @varname(x[2]))
+        @test_throws BoundsError getindex(vnt, @varname(x[3]))
+        test_invariants(vnt)
+
+        # Now set the second index
+        vnt = @inferred(templated_setindex!!(vnt, 2.0, @varname(x[end:end][1]), x))
+        @test @inferred(getindex(vnt, @varname(x[end:end][1]))) == 2.0
+        @test @inferred(getindex(vnt, @varname(x[3]))) == 2.0
+        test_invariants(vnt)
+
+        # Check that the first index is still correct
+        @test @inferred(getindex(vnt, @varname(x[1]))) == 1.0
+        # Check that we can get both indices
+        @test @inferred(getindex(vnt, @varname(x[[1, 3]]))) == [1.0, 2.0]
+        # Check that we can't get all three indices
+        @test_throws BoundsError getindex(vnt, @varname(x[1:3]))
+        @test_throws BoundsError getindex(vnt, @varname(x[:]))
+        @test_throws ArgumentError getindex(vnt, @varname(x))
+
+        @test keys(vnt) == [@varname(x[1]), @varname(x[3])]
+        @test values(vnt) == [1.0, 2.0]
     end
 
     @testset "equality and hash" begin

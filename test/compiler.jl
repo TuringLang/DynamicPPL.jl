@@ -269,6 +269,19 @@ module Issue537 end
         @test !any(ismissing, result.x.a)
         @test result.y.a !== missing
         @test result.x.a[end] > 10
+        @test Set(keys(VarInfo(m_nonarray))) == Set(
+            @varname(m),
+            @varname(s),
+            @varname(x.a[1]),
+            @varname(y.a),
+            # this is the x.a[end]
+            @varname(x.a[2]),
+            # this is z[1:2] but dot-tilde'd
+            @varname(z[1]),
+            @varname(z[2]),
+            # this is z[end:end]
+            @varname(z[3])
+        )
 
         # Ensure that we can work with `Vector{Real}(undef, N)` which is the
         # reason why we're using `BangBang.prefermutation` in `src/compiler.jl`

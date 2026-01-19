@@ -199,7 +199,6 @@ function _setindex_optic!!(
                 need_merge = true
             end
             # No new data but we are allowed to create it.
-            @show child_template
             make_leaf(value, coptic.child, child_template)
         else
             throw_setindex_allow_new_error()
@@ -320,9 +319,9 @@ function make_leaf(value, optic::AbstractPPL.Index, template)
         GrowableArray(Array{correct_template_eltype}(undef, template_sz))
     elseif sub_value isa PartialArray
         # sub_value could be a PartialArray if coptic.child was a multi-index lens.
-        # In this case we can just reuse its data.
-        # TODO(penelopeysm): I'm not sure if we need to copy it. I'm copying it to be safe.
-        copy(sub_value.data)
+        # In this case we can just reuse its data, but we need to make sure that
+        # the data has the size of the template.
+        similar(sub_value.data, size(template))
     elseif !(eltype(template) <: correct_template_eltype)
         # If coptic.child was a Property lens, then sub_value will always be normalised into
         # a VNT (since that's what the inner make_leaf returns). However, `template` may

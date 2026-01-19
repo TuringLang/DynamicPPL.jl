@@ -31,9 +31,6 @@ unless no specific method is defined for the type of `x` and `y`, in which case
 """
 _merge_recursive(_, x2) = x2
 
-"""A convenience for defining method argument type bounds."""
-const INDEX_TYPES = Union{Integer,AbstractUnitRange,Colon,AbstractPPL.DynamicIndex}
-
 """
     SkipSizeCheck()
 
@@ -395,13 +392,13 @@ function _concretise_eltype!!(pa::PartialArray)
 end
 
 """
-    Base.getindex(pa::PartialArray, inds::Vararg{INDEX_TYPES}; kw...)
+    Base.getindex(pa::PartialArray, inds::Vararg{Any}; kw...)
 
 Obtain the value at the given indices from the `PartialArray`. This needs to be smarter than
 just calling Base.getindex on the internal data array, because we need to check if the
 requested indices correspond to an ArrayLikeBlock.
 """
-function Base.getindex(pa::PartialArray, inds::Vararg{INDEX_TYPES}; kw...)
+function Base.getindex(pa::PartialArray, inds::Vararg{Any}; kw...)
     # The unmodified inds is needed later for ArrayLikeBlock checks.
     if !(checkbounds(Bool, pa.mask, inds...; kw...) && all(getindex(pa.mask, inds...)))
         throw(BoundsError(pa, (inds..., kw)))
@@ -464,7 +461,7 @@ function Base.getindex(pa::PartialArray, inds::Vararg{INDEX_TYPES}; kw...)
     end
 end
 
-function Base.haskey(pa::PartialArray, inds::Vararg{INDEX_TYPES}; kw...)
+function Base.haskey(pa::PartialArray, inds::Vararg{Any}; kw...)
     hasall =
         checkbounds(Bool, pa.mask, inds...; kw...) && all(getindex(pa.mask, inds...; kw...))
 
@@ -493,20 +490,20 @@ function Base.haskey(pa::PartialArray, inds::Vararg{INDEX_TYPES}; kw...)
     end
 end
 
-function BangBang.delete!!(pa::PartialArray, inds::Vararg{INDEX_TYPES}; kw...)
+function BangBang.delete!!(pa::PartialArray, inds::Vararg{Any}; kw...)
     fill!(view(pa.mask, inds...; kw...), false)
     return pa
 end
 
 """
-    _remove_partial_blocks!!(pa::PartialArray, inds::Vararg{INDEX_TYPES}; kw...)
+    _remove_partial_blocks!!(pa::PartialArray, inds::Vararg{Any}; kw...)
 
 Remove any ArrayLikeBlocks that overlap with the given indices from the PartialArray.
 
 Note that this removes the whole block, even the parts that are within `inds`, to avoid
 partially indexing into ArrayLikeBlocks.
 """
-function _remove_partial_blocks!!(pa::PartialArray, inds::Vararg{INDEX_TYPES}; kw...)
+function _remove_partial_blocks!!(pa::PartialArray, inds::Vararg{Any}; kw...)
     et = eltype(pa)
     if !(et <: ArrayLikeBlock || ArrayLikeBlock <: et)
         # pa can't possibly hold any ArrayLikeBlocks, so nothing to do.
@@ -533,23 +530,21 @@ function _is_multiindex(f::PartialArray, ix...; kw...)
 end
 
 """
-    _needs_arraylikeblock(pa_data::AbstractArray, value, inds::Vararg{INDEX_TYPES}; kw...)
+    _needs_arraylikeblock(pa_data::AbstractArray, value, inds::Vararg{Any}; kw...)
 
 Check if the given value needs to be wrapped in an `ArrayLikeBlock` when being set at the
 indices `inds` in the `PartialArray` with data array `pa_data`.
 
 The value only depends on the types of the arguments, and should be constant propagated.
 """
-function _needs_arraylikeblock(
-    pa_data::AbstractArray, value, inds::Vararg{INDEX_TYPES}; kw...
-)
-    return _is_multiindex(pa_data, inds...; kw...) &&
-           !isa(value, AbstractArray) &&
+function _needs_arraylikeblock(pa_data::AbstractArray, value, inds::Vararg{Any}; kw...)
+    return !isa(value, AbstractArray) &&
            !isa(value, PartialArray) &&
-           hasmethod(vnt_size, Tuple{typeof(value)})
+           hasmethod(vnt_size, Tuple{typeof(value)}) &&
+           _is_multiindex(pa_data, inds...; kw...)
 end
 
-function BangBang.setindex!!(pa::PartialArray, value, inds::Vararg{INDEX_TYPES}; kw...)
+function BangBang.setindex!!(pa::PartialArray, value, inds::Vararg{Any}; kw...)
     # Delete any overlapping ArrayLikeBlocks first
     pa = _remove_partial_blocks!!(pa, inds...; kw...)
 
@@ -579,12 +574,10 @@ function BangBang.setindex!!(pa::PartialArray, value, inds::Vararg{INDEX_TYPES};
             if _is_multiindex(new_data, inds...; kw...)
                 # Overwriting multiple parts of a PA with data from another PA.
                 new_data = setindex!!(new_data, value.data, inds...; kw...)
-                new_mask = setindex!(
-                    new_mask, getindex(value.mask, inds...; kw...), inds...; kw...
-                )
+                setindex!(new_mask, value.mask, inds...; kw...)
             else
                 # Overwriting one element of a PA with another PA. The PA is the value
-                # itself!
+                # itself! -- i.e. nested PAs! This can happen with things like x[1][1]
                 new_data = setindex!!(new_data, value, inds...; kw...)
                 setindex!(new_mask, true, inds...; kw...)
             end
@@ -597,7 +590,7 @@ function BangBang.setindex!!(pa::PartialArray, value, inds::Vararg{INDEX_TYPES};
     return _concretise_eltype!!(PartialArray(new_data, new_mask))
 end
 
-function _subset_partialarray(pa::PartialArray, inds::Vararg{INDEX_TYPES}; kw...)
+function _subset_partialarray(pa::PartialArray, inds::Vararg{Any}; kw...)
     new_data = view(pa.data, inds...; kw...)
     new_mask = view(pa.mask, inds...; kw...)
     return PartialArray(new_data, new_mask)
