@@ -109,6 +109,7 @@ Base.isequal(ga1::GrowableArray, ga2::GrowableArray) = isequal(ga1.data, ga2.dat
 Base.hash(ga::GrowableArray, h::UInt) = hash(GrowableArray, hash(ga.data, h))
 Base.collect(ga::GrowableArray) = collect(ga.data)
 Base.similar(ga::GrowableArray, ::Type{T}) where {T} = GrowableArray(similar(ga.data, T))
+Base.similar(ga::GrowableArray, sz::Tuple) = GrowableArray(similar(ga.data, sz))
 # single-element indexing
 Base.getindex(ga::GrowableArray, ix::Vararg{Int}) = getindex(ga.data, ix...)
 Base.getindex(ga::GrowableArray, ix::CartesianIndex) = getindex(ga.data, ix)
@@ -399,8 +400,8 @@ just calling Base.getindex on the internal data array, because we need to check 
 requested indices correspond to an ArrayLikeBlock.
 """
 function Base.getindex(pa::PartialArray, inds::Vararg{Any}; kw...)
-    # The unmodified inds is needed later for ArrayLikeBlock checks.
-    if !(checkbounds(Bool, pa.mask, inds...; kw...) && all(getindex(pa.mask, inds...)))
+    # Check the mask first. We defer bounds checking to the sub-arrays.
+    if !(all(getindex(pa.mask, inds...; kw...)))
         throw(BoundsError(pa, (inds..., kw)))
     end
     val = getindex(pa.data, inds...; kw...)

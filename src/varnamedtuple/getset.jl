@@ -303,7 +303,7 @@ function make_leaf(value, optic::AbstractPPL.Index, template)
     correct_template_eltype =
         if is_multiindex &&
             sub_value isa AbstractArray &&
-            template isa Union{<:NoTemplate,AbstractArray}
+            (template isa NoTemplate || template isa AbstractArray)
             # In this branch, we know that sub_value represents a slice of elements. Since
             # it's an AbstractArray, we can safely get its element type.
             eltype(sub_value)

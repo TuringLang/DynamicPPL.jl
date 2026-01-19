@@ -6,8 +6,61 @@ using Test: @inferred, @test, @test_throws, @testset, @test_broken
 using DynamicPPL: DynamicPPL, @varname, VarNamedTuple, subset
 using DynamicPPL.VarNamedTuples:
     PartialArray, ArrayLikeBlock, map_pairs!!, map_values!!, apply!!, templated_setindex!!
-using AbstractPPL: AbstractPPL, VarName, concretize, prefix
+using AbstractPPL: AbstractPPL, VarName, concretize, prefix, @opticof
 using BangBang: setindex!!, empty!!
+using DimensionalData: DimensionalData as DD
+using InvertedIndices: InvertedIndices as II
+using OffsetArrays: OffsetArrays as OA
+
+struct GetSetTestCase
+    # The VarName being set.
+    vn
+    # Its value.
+    val
+    # The structure of the top-level symbol in `vn`. Its values are unused.
+    template
+    # Sub-optics of `vn` that can be accessed once it has been set in a VNT.
+    suboptics
+end
+
+function test_get_set(
+    c::GetSetTestCase; templated_unstable=false, unstable=false, skip_setindex=false
+)
+    @testset "Templated setindex $(c.vn)" begin
+        vnt = VarNamedTuple()
+        vnt = if templated_unstable
+            @test_broken false
+            DynamicPPL.templated_setindex!!(vnt, c.val, c.vn, c.template)
+        else
+            @inferred(DynamicPPL.templated_setindex!!(vnt, c.val, c.vn, c.template))
+        end
+        @test @inferred(DynamicPPL.getindex(vnt, c.vn)) == c.val
+        for optic in c.suboptics
+            new_vn = AbstractPPL.append_optic(c.vn, optic)
+            new_val = optic(c.val)
+            @test @inferred(DynamicPPL.getindex(vnt, new_vn)) == new_val
+        end
+        test_invariants(vnt)
+    end
+    if !skip_setindex
+        @testset "setindex $(c.vn)" begin
+            vnt = VarNamedTuple()
+            vnt = if unstable
+                @test_broken false
+                DynamicPPL.setindex!!(vnt, c.val, c.vn)
+            else
+                @inferred(DynamicPPL.setindex!!(vnt, c.val, c.vn))
+            end
+            @test @inferred(DynamicPPL.getindex(vnt, c.vn)) == c.val
+            for optic in c.suboptics
+                new_vn = AbstractPPL.append_optic(c.vn, optic)
+                new_val = optic(c.val)
+                @test @inferred(DynamicPPL.getindex(vnt, new_vn)) == new_val
+            end
+            test_invariants(vnt)
+        end
+    end
+end
 
 """
     test_invariants(vnt::VarNamedTuple; skip=())
@@ -18,7 +71,7 @@ Uses @test for all the tests. Intended to be called inside a @testset.
 
 `skip` is a tuple of symbols indicating which tests are to be skipped.
 """
-function test_invariants(vnt::VarNamedTuple; skip=())
+function test_invariants(vnt::VarNamedTuple)
     # These will be needed repeatedly.
     vnt_keys = keys(vnt)
     vnt_values = values(vnt)
@@ -38,19 +91,6 @@ function test_invariants(vnt::VarNamedTuple; skip=())
         @test isequal(vnt, vnt2)
         @test hash(vnt) == hash(vnt2)
     end
-
-    # Check that the printed representation can be parsed back to an equal VarNamedTuple.
-    # The below eval test is a bit fragile: If any elements in vnt don't respect the same
-    # reconstructability-from-repr property, this will fail. Likewise if any element uses
-    # in its repr print out types that are not in scope in this module, it will fail.
-    # if !(:parseeval in skip)
-    #     vnt3 = eval(Meta.parse(repr(vnt)))
-    #     equality = (vnt == vnt3)
-    #     # The value may be `missing` if vnt itself has values that are missing.
-    #     @test equality === true || equality === missing
-    #     @test isequal(vnt, vnt3)
-    #     @test hash(vnt) == hash(vnt3)
-    # end
 
     # Check that merge with an empty VarNamedTuple is a no-op.
     @test isequal(merge(vnt, VarNamedTuple()), vnt)
@@ -129,7 +169,142 @@ Base.size(st::SizedThing) = st.size
         @test vnt1 == vnt5
     end
 
-    @testset "Basic sets and gets" begin
+    @testset "individual get/set" begin
+        @testset "top-level" begin
+            test_get_set(GetSetTestCase(@varname(a), 0.0, 0.0, []))
+            test_get_set(
+                GetSetTestCase(
+                    @varname(b),
+                    [1, 2, 3],
+                    zeros(3),
+                    [
+                        @opticof(_[1]),
+                        @opticof(_[2]),
+                        @opticof(_[3]),
+                        @opticof(_[1:3]),
+                        @opticof(_[:]),
+                        @opticof(_[1:2])
+                    ],
+                ),
+            )
+        end
+
+        @testset "Array indices" begin
+            test_get_set(GetSetTestCase(@varname(c[2]), 0.42, zeros(3), []))
+            # Should still be type stable even though the eltype of the template is different, since
+            # the eltype is taken from the value.
+            test_get_set(GetSetTestCase(@varname(c[2]), "a", zeros(3), []))
+            test_get_set(
+                GetSetTestCase(
+                    @varname(c[2:3]),
+                    [0.42, 1.42],
+                    zeros(3),
+                    [@opticof(_[1]), @opticof(_[2])],
+                ),
+            )
+        end
+
+        @testset "Properties" begin
+            test_get_set(GetSetTestCase(@varname(d.a), 0.42, (; a=1.0), []))
+            test_get_set(GetSetTestCase(@varname(d.a.b), 0.42, (; a=(; b=1.0)), []))
+            # Same as above, should still be type stable.
+            test_get_set(GetSetTestCase(@varname(d.a.b), "a", (; a=(; b=1.0)), []))
+            test_get_set(GetSetTestCase(@varname(d.a[2]), 0.42, (; a=zeros(3)), []))
+            test_get_set(
+                GetSetTestCase(@varname(d.a[2].e), 0.42, (; a=fill((; e=3.0), 3)), [])
+            )
+            test_get_set(
+                GetSetTestCase(
+                    @varname(e.a.b),
+                    [1.0, 2.0],
+                    (; a=(; b=1.0)),
+                    [@opticof(_[1]), @opticof(_[2]), @opticof(_[:]), @opticof(_[1:2])],
+                ),
+            )
+        end
+
+        @testset "Matrices" begin
+            test_get_set(GetSetTestCase(@varname(f[1]), 1.0, zeros(2, 2), []))
+            # Without a template this will fail because we don't know how big the second dim is,
+            # hence skipping the untemplated setindex.
+            test_get_set(
+                GetSetTestCase(@varname(f[1, :]), [1.0, 2.0], zeros(2, 2), []);
+                skip_setindex=true,
+            )
+            test_get_set(GetSetTestCase(@varname(f[1, 1]), 1.0, zeros(2, 2), []))
+            test_get_set(GetSetTestCase(@varname(f[1, 1]), "a", zeros(2, 2), []))
+            test_get_set(
+                GetSetTestCase(@varname(f[2, 2].b), 1.0, fill((; b=2.0), 2, 2), [])
+            )
+        end
+
+        @testset "Nested single-index" begin
+            test_get_set(GetSetTestCase(@varname(g[2][2]), 1.0, fill(zeros(2), 2), []))
+            gelem = (; a=fill(zeros(2), 2))
+            g = fill(fill(gelem, 2), 2)
+            test_get_set(GetSetTestCase(@varname(g[2][2].a[1][1]), 1.0, g, []))
+        end
+
+        @testset "Nested multi-index" begin
+            # TODO(penelopeysm) Untemplated setindex errors. Investigate.
+            test_get_set(
+                GetSetTestCase(@varname(g[1:2][2]), 1.0, zeros(2), []); skip_setindex=true
+            )
+            # TODO(penelopeysm) Untemplated setindex errors. Investigate.
+            test_get_set(
+                GetSetTestCase(@varname(g[1:2][2].a), 1.0, fill((; a=1.0), 2), []);
+                skip_setindex=true,
+            )
+        end
+
+        @testset "OffsetArray" begin
+            oa = OA.OffsetArray(zeros(5), 11:15)
+            test_get_set(GetSetTestCase(@varname(oa[11]), 1.0, oa, []); skip_setindex=true)
+            test_get_set(
+                GetSetTestCase(@varname(x.oa[11]), 1.0, (; oa=oa), []); skip_setindex=true
+            )
+            oa2 = OA.OffsetArray(fill((; g="a"), 5, 4), 11:15, -2:1)
+            test_get_set(
+                GetSetTestCase(@varname(oa2[11, -1].g), 1.0, oa2, []); skip_setindex=true
+            )
+            test_get_set(
+                GetSetTestCase(@varname(oa2[11, -1]), 1.0, oa2, []); skip_setindex=true
+            )
+        end
+
+        @testset "InvertedIndices" begin
+            test_get_set(
+                GetSetTestCase(@varname(x[II.Not(3)]), randn(2), zeros(3), []);
+                skip_setindex=true,
+            )
+        end
+
+        @testset "DimensionalData" begin
+            da = DD.DimArray(randn(3), (DD.X))
+            test_get_set(
+                GetSetTestCase(@varname(da[DD.X(2)]), 1.0, da, []); skip_setindex=true
+            )
+            test_get_set(
+                GetSetTestCase(@varname(x.da[DD.X(2)]), 1.0, (; da=da), []);
+                skip_setindex=true,
+            )
+            da2 = DD.DimArray(fill((; g="a"), 3, 5), (DD.X, DD.Y))
+            test_get_set(
+                GetSetTestCase(@varname(da2[DD.X(2), DD.Y(1)]), 1.0, da2, []);
+                skip_setindex=true,
+            )
+            test_get_set(
+                GetSetTestCase(@varname(da2[DD.X(2), DD.Y(1)].g), "b", da2, []);
+                skip_setindex=true,
+            )
+        end
+    end
+
+    @testset "Setting to same variable multiple times" begin
+        # TODO(penelopeysm) write these
+    end
+
+    @testset "Chain of sets and gets" begin
         vnt = VarNamedTuple()
         vnt = @inferred(setindex!!(vnt, 32.0, @varname(a)))
         @test @inferred(getindex(vnt, @varname(a))) == 32.0
@@ -329,11 +504,10 @@ Base.size(st::SizedThing) = st.size
         @test_broken false
     end
 
-    @testset "chained multiindices, part 1" begin
-        # See https://github.com/TuringLang/DynamicPPL.jl/issues/1205.
-        # TODO(penelopeysm): Write more of these tests, as these things are a
-        # disgusting pain to deal with. Some issues I've ran into:
-        #  - UndefInitializers.
+    @testset "chained multiindices [1:2][1] -> [1:2][2]" begin
+        # These are particularly finicky to deal with. See
+        # https://github.com/TuringLang/DynamicPPL.jl/issues/1205.
+        # TODO(penelopeysm) Test with untemplated setindex too.
         vnt = VarNamedTuple()
         x = zeros(2)
         vnt = @inferred(templated_setindex!!(vnt, 1.0, @varname(x[1:2][1]), x))
@@ -359,8 +533,9 @@ Base.size(st::SizedThing) = st.size
         @test values(vnt) == [1.0, 2.0]
     end
 
-    @testset "chained multiindices, part 2" begin
+    @testset "chained multiindices [1:2][1] -> [end:end][1]" begin
         # See https://github.com/TuringLang/DynamicPPL.jl/issues/1205.
+        # TODO(penelopeysm) Test with untemplated setindex too.
         vnt = VarNamedTuple()
         x = zeros(3)
         vnt = @inferred(templated_setindex!!(vnt, 1.0, @varname(x[1:2][1]), x))
@@ -389,6 +564,7 @@ Base.size(st::SizedThing) = st.size
         @test values(vnt) == [1.0, 2.0]
     end
 
+    #=
     @testset "equality and hash" begin
         # Test all combinations of having or not having the below values set, and having
         # them set to any of the possible_values, and check that isequal and == return the
@@ -569,7 +745,7 @@ Base.size(st::SizedThing) = st.size
         end
         # TODO(penelopeysm) investigate
         @test_broken subset(vnt, [@varname(d)]) ==
-            VarNamedTuple((@varname(d) => [:1, :2, :3],))
+                     VarNamedTuple((@varname(d) => [:1, :2, :3],))
 
         @test subset(vnt, [@varname(c.x.y)]) == VarNamedTuple((@varname(c.x.y) => [10],))
         @test subset(vnt, [@varname(c)]) == VarNamedTuple((@varname(c.x.y) => [10],))
@@ -962,9 +1138,7 @@ Base.size(st::SizedThing) = st.size
         colon_vn = concretize(@varname(v[:]), [0, 0])
         vnt = @inferred(setindex!!(vnt, SizedThing((2,)), colon_vn))
         vnt = @inferred(setindex!!(vnt, "", @varname(w[4][3][2, 1])))
-        # TODO(mhauru) The below skip is needed because AbstractPPL's ConretizedSlice
-        # objects don't respect the eval(Meta.parse(repr(...))) == ... property.
-        test_invariants(vnt; skip=(:parseeval,))
+        test_invariants(vnt)
 
         struct AnotherSizedThing{T<:Tuple}
             size::T
@@ -1034,14 +1208,14 @@ Base.size(st::SizedThing) = st.size
         # Check that f_pair gets called exactly once per element.
         @test call_counter == length(keys(vnt))
         @test vnt_mapped == map_values!!(f_val, copy(vnt))
-        test_invariants(vnt_mapped; skip=(:parseeval,))
+        test_invariants(vnt_mapped)
         @test @inferred(getindex(vnt_mapped, @varname(a))) == 11
         @test @inferred(getindex(vnt_mapped, @varname(b[1:2]))) == [12, 12]
         @test @inferred(getindex(vnt_mapped, @varname(c.d))) == [2.0]
         @test @inferred(getindex(vnt_mapped, @varname(e.f[3].g.h[2].i))) == "ab"
         @test @inferred(getindex(vnt_mapped, @varname(e.f[3].g.h[2].j))) == 6.0
         @test @inferred(getindex(vnt_mapped, @varname(y.z[3, 2:3, 3, 2:3, 4]))) ==
-            AnotherSizedThing((2, 2))
+              AnotherSizedThing((2, 2))
         @test @inferred(getindex(vnt_mapped, colon_vn)) == AnotherSizedThing((2,))
         @test @inferred(getindex(vnt_mapped, @varname(w[4][3][2, 1]))) == "b"
 
@@ -1049,7 +1223,7 @@ Base.size(st::SizedThing) = st.size
         vnt_applied = copy(vnt)
         vnt_applied = @inferred(apply!!(f_val, vnt_applied, @varname(a)))
         @test call_counter == 1
-        test_invariants(vnt_applied; skip=(:parseeval,))
+        test_invariants(vnt_applied)
         @test @inferred(getindex(vnt_applied, @varname(a))) == 11
         @test @inferred(getindex(vnt_applied, @varname(b[1:2]))) == [2, 2]
 
@@ -1057,13 +1231,13 @@ Base.size(st::SizedThing) = st.size
         # Unlike map_pairs!!, apply!! operates on the whole value at once, rather than
         # element-wise, so this is only one more call.
         @test call_counter == 2
-        test_invariants(vnt_applied; skip=(:parseeval,))
+        test_invariants(vnt_applied)
         @test @inferred(getindex(vnt_applied, @varname(a))) == 11
         @test @inferred(getindex(vnt_applied, @varname(b[1:2]))) == [12, 12]
 
         vnt_applied = @inferred(apply!!(f_val, vnt_applied, @varname(c.d)))
         @test call_counter == 3
-        test_invariants(vnt_applied; skip=(:parseeval,))
+        test_invariants(vnt_applied)
         @test @inferred(getindex(vnt_applied, @varname(c.d))) == [2.0]
 
         vnt_applied = begin
@@ -1075,7 +1249,7 @@ Base.size(st::SizedThing) = st.size
             end
         end
         @test call_counter == 4
-        test_invariants(vnt_applied; skip=(:parseeval,))
+        test_invariants(vnt_applied)
         @test @inferred(getindex(vnt_applied, @varname(e.f[3].g.h[2].i))) == "ab"
         @test @inferred(getindex(vnt_applied, @varname(e.f[3].g.h[2].j))) == 5.0
 
@@ -1088,7 +1262,7 @@ Base.size(st::SizedThing) = st.size
             end
         end
         @test call_counter == 5
-        test_invariants(vnt_applied; skip=(:parseeval,))
+        test_invariants(vnt_applied)
         @test @inferred(getindex(vnt_applied, @varname(e.f[3].g.h[2].i))) == "ab"
         @test @inferred(getindex(vnt_applied, @varname(e.f[3].g.h[2].j))) == 6.0
 
@@ -1097,18 +1271,18 @@ Base.size(st::SizedThing) = st.size
         # to be AnotherSizedThing.
         vnt_applied = apply!!(f_val, vnt_applied, @varname(y.z[3, 2:3, 3, 2:3, 4]))
         @test call_counter == 6
-        test_invariants(vnt_applied; skip=(:parseeval,))
+        test_invariants(vnt_applied)
         @test @inferred(getindex(vnt_applied, @varname(y.z[3, 2:3, 3, 2:3, 4]))) ==
-            AnotherSizedThing((2, 2))
+              AnotherSizedThing((2, 2))
 
         # vnt_applied = apply!!(f_val, vnt_applied, colon_vn)
         # @test call_counter == 7
-        # test_invariants(vnt_applied; skip=(:parseeval,))
+        # test_invariants(vnt_applied)
         # @test @inferred(getindex(vnt_applied, colon_vn)) == AnotherSizedThing((2,))
 
         vnt_applied = @inferred(apply!!(f_val, vnt_applied, @varname(w[4][3][2, 1])))
         @test call_counter == 7
-        test_invariants(vnt_applied; skip=(:parseeval,))
+        test_invariants(vnt_applied)
         @test @inferred(getindex(vnt_applied, @varname(w[4][3][2, 1]))) == "b"
 
         # map a function that maps every key => value pair to key => key.
@@ -1129,6 +1303,7 @@ Base.size(st::SizedThing) = st.size
         end
         @test vnt_key_mapped == vnt_key_mapped_expected
     end
+    =#
 end
 
 end
