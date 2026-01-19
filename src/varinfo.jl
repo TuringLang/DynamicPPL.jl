@@ -124,7 +124,14 @@ end
 Base.haskey(vi::VarInfo, vn::VarName) = haskey(vi.values, vn)
 Base.length(vi::VarInfo) = length(vi.values)
 Base.keys(vi::VarInfo) = keys(vi.values)
-Base.values(vi::VarInfo) = mapreduce(p -> p.second.val, push!, vi.values; init=Any[])
+# TODO(penelopeysm): Right now, this returns Vector{Any}. We could use init=Union{} and
+# BangBang.push!! instead of push!, which would give the resulting vector as concrete an
+# eltype as possible. However, that is type unstable since it is inferred as
+# Union{Vector{Union{}}, Vector{Float64}} (I suppose this is because it can't tell whether
+# the result will be empty or not...? Not sure).
+function Base.values(vi::VarInfo)
+    return mapreduce(p -> p.second.transform(p.second.val), push!, vi.values; init=Any[])
+end
 
 function Base.getindex(vi::VarInfo, vn::VarName)
     tv = getindex(vi.values, vn)

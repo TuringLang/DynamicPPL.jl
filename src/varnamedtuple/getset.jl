@@ -179,7 +179,7 @@ function _setindex_optic!!(
                 allow_new=allow_new,
             )
         elseif allow_new isa Val{true}
-            if Base.checkbounds(Bool, pa.data, coptic.ix...; coptic.kw...)
+            if any(view(pa.mask, coptic.ix...; coptic.kw...))
                 # NOTE: This is a VERY subtle case, which can happen when you are setting
                 # multiple indices at once, but some of them were masked. When they are
                 # masked, it will cause haskey to return false, so we can't go into the
@@ -198,6 +198,7 @@ function _setindex_optic!!(
                 need_merge = true
             end
             # No new data but we are allowed to create it.
+            @show child_template
             make_leaf(value, coptic.child, child_template)
         else
             throw_setindex_allow_new_error()
