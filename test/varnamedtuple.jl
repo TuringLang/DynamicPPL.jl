@@ -173,14 +173,6 @@ Base.size(st::SizedThing) = st.size
         @test @inferred(getindex(vnt, @varname(d[4]))) == -2.0
         test_invariants(vnt)
 
-        # These can't be @inferred because `d` now has an abstract element type. Note that this
-        # does not ruin type stability for other varnames that don't involve `d`.
-        # TODO(penelopeysm): This fails because the VNT already contains a PartialArray for
-        # d with size 4.
-        # vnt = setindex!!(vnt, "a", @varname(d[5]))
-        # @test getindex(vnt, @varname(d[5])) == "a"
-        # test_invariants(vnt)
-
         e = (; f=fill((; g=(; h=fill((; i=0.0), 2))), 3))
         vnt = @inferred(templated_setindex!!(vnt, 1.0, @varname(e.f[3].g.h[2].i), e))
         @test @inferred(getindex(vnt, @varname(e.f[3].g.h[2].i))) == 1.0
@@ -188,7 +180,11 @@ Base.size(st::SizedThing) = st.size
         @test !haskey(vnt, @varname(e.f[2].g.h[2].i))
         test_invariants(vnt)
 
-        # TODO(penelopeys) This one fails type stability
+        # TODO(penelopeysm) This one fails type stability. (The templated_setindex!! call
+        # above is type stable, but updating the value seems to fail.) However, I tried to
+        # find a smaller minimiser than this, and really couldn't. So I think it's fine to
+        # leave it for now, in the hope that nobody is using such pathologically nested data
+        # structures.
         vnt = setindex!!(vnt, 2.0, @varname(e.f[3].g.h[2].i))
         @test @inferred(getindex(vnt, @varname(e.f[3].g.h[2].i))) == 2.0
         test_invariants(vnt)
@@ -305,15 +301,16 @@ Base.size(st::SizedThing) = st.size
 
         # Indices on indices
         vnt = VarNamedTuple()
-        # TODO(penelopeysm) type stability fails
-        vnt = templated_setindex!!(vnt, 1, @varname(a[1][1]), [[randn()]])
+        vnt = @inferred(templated_setindex!!(vnt, 1, @varname(a[1][1]), [[randn()]]))
         @test @inferred(getindex(vnt, @varname(a[1][1]))) == 1
         vnt = @inferred(templated_setindex!!(vnt, 1, @varname(ab[1:2][1]), randn(2)))
         @test @inferred(getindex(vnt, @varname(ab[1]))) == 1
         @test @inferred(getindex(vnt, @varname(ab[1:2][1]))) == 1
         @test @inferred(getindex(vnt, @varname(ab[:][1]))) == 1
         @test_throws BoundsError getindex(vnt, @varname(ab[2]))
-        vnt = templated_setindex!!(vnt, [1], @varname(b[1].c[1]), [(; c=randn(1))])
+        vnt = @inferred(
+            templated_setindex!!(vnt, [1], @varname(b[1].c[1]), [(; c=randn(1))])
+        )
         @test @inferred(getindex(vnt, @varname(b[1].c[1]))) == [1]
         # TODO(penelopeysm) These all have to be changed to templated_setindex!!, but I
         # can't be bothered right now.

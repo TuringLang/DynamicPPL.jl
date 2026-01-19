@@ -276,6 +276,11 @@ function make_leaf(value, optic::AbstractPPL.Property{S}, template) where {S}
 end
 function make_leaf(value, optic::AbstractPPL.Index, template)
     coptic = AbstractPPL.concretize_top_level(optic, template)
+    is_multiindex = if template === NoTemplate()
+        _is_multiindex_static(coptic.ix)
+    else
+        _is_multiindex(template, coptic.ix...; coptic.kw...)
+    end
     sub_value = if coptic.child isa AbstractPPL.Iden
         # Skip recursion
         value
@@ -296,15 +301,9 @@ function make_leaf(value, optic::AbstractPPL.Index, template)
     # to use for the PartialArray creation, we need to make sure to not accidentally
     # create an array of arrays.
     correct_template_eltype =
-        if (
-            template isa NoTemplate &&
-            _is_multiindex_static(coptic.ix) &&
-            sub_value isa AbstractArray
-        ) || (
-            template isa AbstractArray &&
-            _is_multiindex(template, coptic.ix...; coptic.kw...) &&
-            sub_value isa AbstractArray
-        )
+        if is_multiindex &&
+            sub_value isa AbstractArray &&
+            template isa Union{<:NoTemplate,AbstractArray}
             # In this branch, we know that sub_value represents a slice of elements. Since
             # it's an AbstractArray, we can safely get its element type.
             eltype(sub_value)
@@ -317,10 +316,11 @@ function make_leaf(value, optic::AbstractPPL.Index, template)
         # If no template was provided, we have to make a GrowableArray.
         template_sz = get_implied_size_from_indices(coptic.ix...; coptic.kw...)
         GrowableArray(Array{correct_template_eltype}(undef, template_sz))
-    elseif sub_value isa PartialArray
-        # sub_value could be a PartialArray if coptic.child was a multi-index lens.
-        # In this case we can just reuse its data, but we need to make sure that
-        # the data has the size of the template.
+    elseif is_multiindex && sub_value isa PartialArray
+        # In this case, sub_value is actually just a subset of the data that we are going to
+        # create! This can happen with varnames like x[1:2][1].
+        # Note that this is different from varnames like x[1][1]. In that case, x should be
+        # a PartialArray that itself stores PartialArrays.
         similar(sub_value.data, size(template))
     elseif !(eltype(template) <: correct_template_eltype)
         # If coptic.child was a Property lens, then sub_value will always be normalised into
