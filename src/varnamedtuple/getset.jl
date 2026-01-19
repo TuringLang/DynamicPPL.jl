@@ -134,6 +134,7 @@ end
 struct SharedGetProperty{S} end
 (::SharedGetProperty{S})(x) where {S} = getproperty(x, S)
 (::SharedGetProperty)(::NoTemplate) = NoTemplate()
+(::SharedGetProperty)(t::SkipTemplate{N}) where {N} = decrease_skip(t)
 function (::SharedGetProperty{S})(x::VarNamedTuple) where {S}
     if Base.haskey(x.data, S)
         x.data[S]
@@ -160,6 +161,8 @@ function _setindex_optic!!(
             template
         elseif template === NoTemplate()
             NoTemplate()
+        elseif template isa SkipTemplate
+            decrease_skip(template)
         elseif _is_multiindex(template, coptic.ix...; coptic.kw...)
             Base.getindex(template, coptic.ix...; coptic.kw...)
         elseif isassigned(template, coptic.ix...; coptic.kw...)
@@ -276,7 +279,7 @@ function make_leaf(value, optic::AbstractPPL.Property{S}, template) where {S}
 end
 function make_leaf(value, optic::AbstractPPL.Index, template)
     coptic = AbstractPPL.concretize_top_level(optic, template)
-    is_multiindex = if template === NoTemplate()
+    is_multiindex = if template isa NoTemplate || template isa SkipTemplate
         _is_multiindex_static(coptic.ix)
     else
         _is_multiindex(template, coptic.ix...; coptic.kw...)
@@ -291,6 +294,8 @@ function make_leaf(value, optic::AbstractPPL.Index, template)
         # AbstractPPL.concretize.
         child_template = if template === NoTemplate()
             NoTemplate()
+        elseif template isa SkipTemplate
+            decrease_skip(template)
         else
             getindex(template, coptic.ix...; coptic.kw...)
         end
@@ -303,7 +308,11 @@ function make_leaf(value, optic::AbstractPPL.Index, template)
     correct_template_eltype =
         if is_multiindex &&
             sub_value isa AbstractArray &&
-            (template isa NoTemplate || template isa AbstractArray)
+            (
+                template isa NoTemplate ||
+                template isa SkipTemplate ||
+                template isa AbstractArray
+            )
             # In this branch, we know that sub_value represents a slice of elements. Since
             # it's an AbstractArray, we can safely get its element type.
             eltype(sub_value)
@@ -326,7 +335,7 @@ function make_leaf(value, optic::AbstractPPL.Index, template)
             # Single-element indexing.
             typeof(sub_value)
         end
-    pa_data = if template isa NoTemplate
+    pa_data = if template isa NoTemplate || template isa SkipTemplate
         # If no template was provided, we have to make a GrowableArray.
         template_sz = get_implied_size_from_indices(coptic.ix...; coptic.kw...)
         GrowableArray(Array{correct_template_eltype}(undef, template_sz))

@@ -195,7 +195,8 @@ using .VarNamedTuples:
     map_values!!,
     apply!!,
     templated_setindex!!,
-    NoTemplate
+    NoTemplate,
+    SkipTemplate
 include("contexts.jl")
 include("contexts/default.jl")
 include("contexts/init.jl")

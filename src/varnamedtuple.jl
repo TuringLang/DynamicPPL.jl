@@ -28,6 +28,27 @@ a dedicated struct instead.
 """
 struct NoTemplate end
 
+"""
+    SkipTemplate{N}(value)
+
+A struct representing the fact that `value` is the template for the variable `N` levels down
+from the top-level variable. In other words, SkipTemplate{0}(value) is equivalent to just
+`value`, and SkipTemplate{1}(value) means that `value` is the template for `a` when setting
+the variable `@varname(x.a)`.
+"""
+struct SkipTemplate{N,V}
+    value::V
+end
+SkipTemplate{N}(v) where {N} = SkipTemplate{N,typeof(v)}(v)
+SkipTemplate{0}(v) = v
+SkipTemplate{N}(::NoTemplate) where {N} = NoTemplate()
+SkipTemplate{0}(::NoTemplate) = NoTemplate()
+function decrease_skip(st::SkipTemplate{N}) where {N}
+    return SkipTemplate{N - 1}(st.value)
+end
+SkipTemplate{N}(v::SkipTemplate{M}) where {N,M} = SkipTemplate{N + M}(v.value)
+SkipTemplate{0}(v::SkipTemplate{M}) where {M} = SkipTemplate{M}(v.value)
+
 include("varnamedtuple/partial_array.jl")
 include("varnamedtuple/vnt.jl")
 include("varnamedtuple/getset.jl")
