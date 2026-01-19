@@ -131,18 +131,18 @@ function _map_recursive!!(func, pa::PartialArray, vn)
     # Keep a dictionary of already-seen ArrayLikeBlocks to avoid redundant computations.
     # This matters not only for performance, but also for correctness, because
     # _map_recursive!! may mutate the value, and we don't want to mutate it multiple times.
-    albs_old_to_new = Dict{Base.RefValue,Base.RefValue}()
+    albs_old_to_new = Dict{ArrayLikeBlock,ArrayLikeBlock}()
     @inbounds for i in CartesianIndices(pa.mask)
         if pa.mask[i]
             val = pa.data[i]
-            is_alb = val isa Base.RefValue{<:ArrayLikeBlock}
+            is_alb = val isa ArrayLikeBlock
             if is_alb
                 if haskey(albs_old_to_new, val)
                     new_data[i] = albs_old_to_new[val]
                     continue
                 end
             end
-            ind = is_alb ? val[].idxs : Tuple(i)
+            ind = is_alb ? val.ix : Tuple(i)
             new_vn = AbstractPPL.append_optic(vn, AbstractPPL.Index(ind, (;)))
             new_val = _map_recursive!!(func, pa.data[i], new_vn)
             new_data[i] = new_val
@@ -155,10 +155,10 @@ function _map_recursive!!(func, pa::PartialArray, vn)
     return _concretise_eltype!!(PartialArray(new_data, pa.mask))
 end
 
-function _map_recursive!!(func, alb::Base.RefValue{<:ArrayLikeBlock}, vn)
-    new_block = _map_recursive!!(func, alb[].block, vn)
+function _map_recursive!!(func, alb::ArrayLikeBlock, vn)
+    new_block = _map_recursive!!(func, alb.block, vn)
     sz_new = vnt_size(new_block)
-    sz_old = vnt_size(alb[].block)
+    sz_old = vnt_size(alb.block)
     if !(sz_new isa SkipSizeCheck) && !(sz_old isa SkipSizeCheck) && sz_new != sz_old
         throw(
             DimensionMismatch(
@@ -167,7 +167,7 @@ function _map_recursive!!(func, alb::Base.RefValue{<:ArrayLikeBlock}, vn)
             ),
         )
     end
-    return Ref(ArrayLikeBlock(new_block, alb[].idxs, alb[].kw, alb[].index_size))
+    return ArrayLikeBlock(new_block, alb.x, alb.kw, alb.index_size)
 end
 
 # As above but with a prefix VarName `vn`.
@@ -257,8 +257,8 @@ end
 Base.mapfoldl(f, op, vnt::VarNamedTuple; init=nothing) = mapreduce(f, op, vnt; init=init)
 
 _mapreduce_recursive(f, op, x, vn, init) = op(init, f(vn => x))
-function _mapreduce_recursive(f, op, pa::Base.RefValue{<:ArrayLikeBlock}, vn, init)
-    return op(init, f(vn => pa[].block))
+function _mapreduce_recursive(f, op, alb::ArrayLikeBlock, vn, init)
+    return op(init, f(vn => alb.block))
 end
 
 # As above but with a prefix VarName `vn`.
@@ -288,18 +288,18 @@ function _mapreduce_recursive(f, op, pa::PartialArray, vn, init)
     result = init
     et = eltype(pa)
 
-    albs_seen = Set{Base.RefValue}()
+    albs_seen = Set{ArrayLikeBlock}()
     @inbounds for i in CartesianIndices(pa.mask)
         if pa.mask[i]
             val = pa.data[i]
-            is_alb = val isa Base.RefValue{<:ArrayLikeBlock}
+            is_alb = val isa ArrayLikeBlock
             if is_alb
                 if val in albs_seen
                     continue
                 end
                 push!(albs_seen, val)
             end
-            ind = is_alb ? val[].idxs : Tuple(i)
+            ind = is_alb ? val.ix : Tuple(i)
             new_vn = AbstractPPL.append_optic(vn, AbstractPPL.Index(ind, (;)))
             result = _mapreduce_recursive(f, op, pa.data[i], new_vn, result)
         end

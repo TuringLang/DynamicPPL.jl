@@ -52,7 +52,7 @@ A special return value of `SkipSizeCheck()` indicates that the size check should
 vnt_size(x) = size(x)
 
 """
-    ArrayLikeBlock{T,I,S}
+    ArrayLikeBlock{T,I,N,S}
 
 A wrapper for non-array blocks stored in `PartialArray`s.
 
@@ -66,7 +66,7 @@ value. If they do, we return the underlying block, otherwise we throw an error.
 """
 struct ArrayLikeBlock{T,I,N,S}
     block::T
-    idxs::I
+    ix::I
     kw::N
     index_size::S
 end
@@ -75,7 +75,7 @@ function Base.show(io::IO, alb::ArrayLikeBlock)
     print(io, "ArrayLikeBlock(")
     show(io, alb.block)
     print(io, ", ")
-    show(io, alb.idxs)
+    show(io, alb.ix)
     print(io, ", ")
     show(io, alb.kw)
     print(io, ", ")
@@ -415,39 +415,34 @@ function Base.getindex(pa::PartialArray, inds::Vararg{Any}; kw...)
         A non-Array value set with a range of indices must be retrieved with the same
         range of indices.
         """)
-    if val isa Base.RefValue{<:ArrayLikeBlock}
+    if val isa ArrayLikeBlock
         # Tried to get a single value, but it's an ArrayLikeBlock.
         throw(err)
-    elseif val isa Array && (
-        eltype(val) <: Base.RefValue{<:ArrayLikeBlock} ||
-        Base.RefValue{<:ArrayLikeBlock} <: eltype(val)
-    )
+    elseif val isa Array && (eltype(val) <: ArrayLikeBlock || ArrayLikeBlock <: eltype(val))
         # Tried to get a range of values, and at least some of them may be ArrayLikeBlocks.
         # The below isempty check is deliberately kept separate from the outer elseif,
         # because the outer one can be resolved at compile time.
         if isempty(val)
             # We need to return an empty array, but for type stability, we want to unwrap
             # any ArrayLikeBlock types in the element type.
-            return if eltype(val) <: Base.RefValue{<:ArrayLikeBlock}
+            return if eltype(val) <: ArrayLikeBlock
                 Array{_blocktype(eltype(val)),ndims(val)}()
             else
                 val
             end
         end
-        # check that all elements that we're trying to access are a Ref to the same
-        # ArrayLikeBlock.
+        # check that all elements that we're trying to access are the same ArrayLikeBlock.
         first_elem = first(val)
-        if !(first_elem isa Base.RefValue{<:ArrayLikeBlock}) ||
-            any(v -> v !== first_elem, val)
+        if !(first_elem isa ArrayLikeBlock) || any(v -> v !== first_elem, val)
             throw(err)
         end
         # check that there are no other elements that also refer to the same ArrayLikeBlock.
-        if size(val) != first_elem[].index_size
+        if size(val) != first_elem.index_size
             throw(err)
         end
         # If _setindex!! works correctly, we should only be able to reach this point if all
         # the elements in `val` are identical to first_elem. Thus we just return that one.
-        return first(val)[].block
+        return first(val).block
     elseif val isa GrowableArray && any(i -> i isa Colon, inds)
         # This code path is hit for things like `vnt[@varname(x[:])]` where `x` is a PA that
         # stores a GrowableArray. We warn the user that the result may be wrong.
@@ -469,7 +464,7 @@ function Base.haskey(pa::PartialArray, inds::Vararg{Any}; kw...)
     # If not for ArrayLikeBlocks, we could just return hasall directly. However, we need to
     # check that if any ArrayLikeBlocks are included, they are fully included.
     et = eltype(pa)
-    if !(et <: Base.RefValue{<:ArrayLikeBlock} || Base.RefValue{<:ArrayLikeBlock} <: et)
+    if !(et <: ArrayLikeBlock || ArrayLikeBlock <: et)
         # pa can't possibly hold any ArrayLikeBlocks, so nothing to do.
         return hasall
     end
@@ -480,14 +475,19 @@ function Base.haskey(pa::PartialArray, inds::Vararg{Any}; kw...)
     # From this point on we can assume that all the requested elements are set, and the only
     # thing to check is that we are not partially indexing into any ArrayLikeBlocks.
     subview = view(pa.data, inds...; kw...)
-    return if prod(size(subview)) == 1
+    return if ndims(subview) == 0
         # Only one index being accessed
-        !(subview[] isa Base.RefValue{<:ArrayLikeBlock})
+        !(isassigned(subview) && subview isa ArrayLikeBlock)
     else
-        # Multiple indices being accessed
-        all_elems_are_equal = all(v -> v === first(subview), subview)
-        idx_size_matches = size(subview) == first(subview)[].index_size
-        all_elems_are_equal && idx_size_matches
+        # Multiple indices being accessed. We need to check that we are accessing an
+        # ArrayLikeBlock in its entirety.
+        first_elem = first(subview)
+        first_elem_is_alb = first_elem isa ArrayLikeBlock
+        all_elems_are_equal = all(
+            v -> isequal(v.ix, first_elem.ix) && isequal(v.kw, first_elem.kw), subview
+        )
+        idx_size_matches = size(subview) == first_elem.index_size
+        first_elem_is_alb && all_elems_are_equal && idx_size_matches
     end
 end
 
@@ -515,9 +515,9 @@ function _remove_partial_blocks!!(pa::PartialArray, inds::Vararg{Any}; kw...)
     dataview = view(pa.data, inds...; kw...)
     maskview = view(pa.mask, inds...; kw...)
     for i in eachindex(dataview)
-        if maskview[i] && (dataview[i] isa Base.RefValue{<:ArrayLikeBlock})
+        if maskview[i] && (dataview[i] isa ArrayLikeBlock)
             val = dataview[i][]
-            pa = BangBang.delete!!(pa, val.idxs...; val.kw...)
+            pa = BangBang.delete!!(pa, val.ix...; val.kw...)
         end
     end
     return pa
@@ -567,8 +567,8 @@ function BangBang.setindex!!(pa::PartialArray, value, inds::Vararg{Any}; kw...)
             )
         end
 
-        alb_ref = Ref(ArrayLikeBlock(value, inds, NamedTuple(kw), idx_sz))
-        new_data = setindex!!(new_data, fill(alb_ref, idx_sz...), inds...; kw...)
+        alb = ArrayLikeBlock(value, inds, NamedTuple(kw), idx_sz)
+        new_data = setindex!!(new_data, fill(alb, idx_sz...), inds...; kw...)
         fill!(view(new_mask, inds...; kw...), true)
     else
         if value isa PartialArray
@@ -688,10 +688,9 @@ function as_array(pa::PartialArray)
     end
 
     retval = pa.data
-    if eltype(retval) <: Base.RefValue{<:ArrayLikeBlock} ||
-        Base.RefValue{<:ArrayLikeBlock} <: eltype(retval)
+    if eltype(retval) <: ArrayLikeBlock || ArrayLikeBlock <: eltype(retval)
         for ind in eachindex(retval)
-            @inbounds if retval[ind] isa Base.RefValue{<:ArrayLikeBlock}
+            @inbounds if retval[ind] isa ArrayLikeBlock
                 throw(
                     ArgumentError(
                         "Cannot extract data from PartialArray when some elements " *
