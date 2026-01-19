@@ -970,7 +970,6 @@ Base.size(st::SizedThing) = st.size
         test_invariants(vnt)
     end
 
-    #=
     @testset "empty" begin
         # test_invariants already checks that many different kinds of VarNamedTuples can be
         # emptied with empty and empty!!. What remains to check here is that
@@ -995,7 +994,8 @@ Base.size(st::SizedThing) = st.size
         @test haskey(vnt, @varname(a))
         @test_throws BoundsError getindex(vnt, @varname(a[1]))
         @test_throws BoundsError getindex(vnt, @varname(a[1:3]))
-        @test getindex(vnt, @varname(a)) == []
+        # It's an empty PartialArray now, so attempting to extract anything will fail
+        @test_throws ArgumentError getindex(vnt, @varname(a))
         vnt = @inferred(setindex!!(vnt, [1, 2, 3], @varname(a[2:4])))
         @test @inferred(getindex(vnt, @varname(a[2:4]))) == [1, 2, 3]
         @test haskey(vnt, @varname(a[2:4]))
@@ -1039,7 +1039,7 @@ Base.size(st::SizedThing) = st.size
     end
 
     @testset "printing" begin
-        # TODO(penelopeysm) Rework printing
+        # TODO(penelopeysm) Rework printing tests
     end
 
     @testset "block variables" begin
@@ -1157,8 +1157,9 @@ Base.size(st::SizedThing) = st.size
         vnt = @inferred(
             setindex!!(vnt, SizedThing((2, 2)), @varname(y.z[3, 2:3, 3, 2:3, 4]))
         )
-        colon_vn = concretize(@varname(v[:]), [0, 0])
-        vnt = @inferred(setindex!!(vnt, SizedThing((2,)), colon_vn))
+        vnt = @inferred(
+            templated_setindex!!(vnt, SizedThing((2,)), @varname(v[:]), randn(2))
+        )
         vnt = @inferred(setindex!!(vnt, "", @varname(w[4][3][2, 1])))
         test_invariants(vnt)
 
@@ -1202,7 +1203,7 @@ Base.size(st::SizedThing) = st.size
             @varname(e.f[3].g.h[2].i),
             @varname(e.f[3].g.h[2].j),
             @varname(y.z[3, 2:3, 3, 2:3, 4]),
-            colon_vn,
+            @varname(v[:]),
             @varname(w[4][3][2, 1]),
         )
 
@@ -1237,8 +1238,8 @@ Base.size(st::SizedThing) = st.size
         @test @inferred(getindex(vnt_mapped, @varname(e.f[3].g.h[2].i))) == "ab"
         @test @inferred(getindex(vnt_mapped, @varname(e.f[3].g.h[2].j))) == 6.0
         @test @inferred(getindex(vnt_mapped, @varname(y.z[3, 2:3, 3, 2:3, 4]))) ==
-              AnotherSizedThing((2, 2))
-        @test @inferred(getindex(vnt_mapped, colon_vn)) == AnotherSizedThing((2,))
+            AnotherSizedThing((2, 2))
+        @test @inferred(getindex(vnt_mapped, @varname(v[:]))) == AnotherSizedThing((2,))
         @test @inferred(getindex(vnt_mapped, @varname(w[4][3][2, 1]))) == "b"
 
         call_counter = 0
@@ -1285,7 +1286,6 @@ Base.size(st::SizedThing) = st.size
         end
         @test call_counter == 5
         test_invariants(vnt_applied)
-        @test @inferred(getindex(vnt_applied, @varname(e.f[3].g.h[2].i))) == "ab"
         @test @inferred(getindex(vnt_applied, @varname(e.f[3].g.h[2].j))) == 6.0
 
         # This can't be type stable because y.z might have many elements set, and we can't
@@ -1295,15 +1295,15 @@ Base.size(st::SizedThing) = st.size
         @test call_counter == 6
         test_invariants(vnt_applied)
         @test @inferred(getindex(vnt_applied, @varname(y.z[3, 2:3, 3, 2:3, 4]))) ==
-              AnotherSizedThing((2, 2))
+            AnotherSizedThing((2, 2))
 
-        # vnt_applied = apply!!(f_val, vnt_applied, colon_vn)
-        # @test call_counter == 7
-        # test_invariants(vnt_applied)
-        # @test @inferred(getindex(vnt_applied, colon_vn)) == AnotherSizedThing((2,))
+        vnt_applied = apply!!(f_val, vnt_applied, @varname(v[:]))
+        @test call_counter == 7
+        test_invariants(vnt_applied)
+        @test @inferred(getindex(vnt_applied, @varname(v[:]))) == AnotherSizedThing((2,))
 
         vnt_applied = @inferred(apply!!(f_val, vnt_applied, @varname(w[4][3][2, 1])))
-        @test call_counter == 7
+        @test call_counter == 8
         test_invariants(vnt_applied)
         @test @inferred(getindex(vnt_applied, @varname(w[4][3][2, 1]))) == "b"
 
@@ -1325,7 +1325,6 @@ Base.size(st::SizedThing) = st.size
         end
         @test vnt_key_mapped == vnt_key_mapped_expected
     end
-    =#
 end
 
 end

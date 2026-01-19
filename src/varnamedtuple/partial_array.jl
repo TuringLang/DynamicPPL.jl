@@ -422,7 +422,9 @@ function Base.getindex(pa::PartialArray, inds::Vararg{Any}; kw...)
     if val isa ArrayLikeBlock
         # Tried to get a single value, but it's an ArrayLikeBlock.
         throw(err)
-    elseif val isa Array && (eltype(val) <: ArrayLikeBlock || ArrayLikeBlock <: eltype(val))
+    elseif _is_multiindex(pa.data, inds...; kw...) &&
+        val isa AbstractArray &&
+        (eltype(val) <: ArrayLikeBlock || ArrayLikeBlock <: eltype(val))
         # Tried to get a range of values, and at least some of them may be ArrayLikeBlocks.
         # The below isempty check is deliberately kept separate from the outer elseif,
         # because the outer one can be resolved at compile time.
@@ -480,8 +482,8 @@ function Base.haskey(pa::PartialArray, inds::Vararg{Any}; kw...)
     # thing to check is that we are not partially indexing into any ArrayLikeBlocks.
     subview = view(pa.data, inds...; kw...)
     return if ndims(subview) == 0
-        # Only one index being accessed
-        !(isassigned(subview) && subview isa ArrayLikeBlock)
+        # Only one index being accessed -- just check that it isn't an ArrayLikeBlock.
+        isassigned(subview) && !(subview[] isa ArrayLikeBlock)
     else
         # Multiple indices being accessed. We need to check that we are accessing an
         # ArrayLikeBlock in its entirety.
