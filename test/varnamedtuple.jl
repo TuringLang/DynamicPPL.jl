@@ -223,6 +223,24 @@ Base.size(st::SizedThing) = st.size
             )
         end
 
+        @testset "Heavily nested optics" begin
+            # TODO(penelopeysm): This is the only combination of things I can find for which
+            # templated_setindex!! is not type stable. It needs to at least have property ->
+            # index -> property -> index.
+            vnt = VarNamedTuple()
+            a = (; b=[nothing, (; y=zeros(2))])
+            test_get_set(
+                GetSetTestCase(@varname(a.b[2].y[1]), 1.0, a, []); templated_unstable=true
+            )
+            # Apart from the fact that it's 4 levels deep, to trigger the issue, the array
+            # template provided (in this case, the element `b`) must also have an abstract
+            # eltype. That's why we have to put `nothing` as the first element, rather than
+            # just using fill((; y=zeros(2)), 2) as the template, because that does pass.
+            # See for yourself:
+            a2 = (; b=fill((; y=zeros(2)), 2))
+            test_get_set(GetSetTestCase(@varname(a.b[2].y[1]), 1.0, a2, []))
+        end
+
         @testset "Matrices" begin
             test_get_set(GetSetTestCase(@varname(f[1]), 1.0, zeros(2, 2), []))
             # Without a template this will fail because we don't know how big the second dim is,
@@ -246,14 +264,15 @@ Base.size(st::SizedThing) = st.size
         end
 
         @testset "Nested multi-index" begin
-            # TODO(penelopeysm) Untemplated setindex errors. Investigate.
+            # TODO(penelopeysm) Untemplated setindex for these two is type unstable. Should
+            # investigate, but not very high priority right now since most calls in
+            # DynamicPPL will be templated.
             test_get_set(
-                GetSetTestCase(@varname(g[1:2][2]), 1.0, zeros(2), []); skip_setindex=true
+                GetSetTestCase(@varname(g[1:2][2]), 1.0, zeros(2), []); unstable=true
             )
-            # TODO(penelopeysm) Untemplated setindex errors. Investigate.
             test_get_set(
                 GetSetTestCase(@varname(g[1:2][2].a), 1.0, fill((; a=1.0), 2), []);
-                skip_setindex=true,
+                unstable=true,
             )
         end
 
@@ -428,10 +447,7 @@ Base.size(st::SizedThing) = st.size
         @test @inferred(getindex(vnt, @varname(n[2].b))) == 1.0
         test_invariants(vnt)
 
-        # Some funky Symbols in VarNames
-        # TODO(mhauru) This still isn't as robust as it should be, for instance Symbol(":")
-        # fails the eval(Meta.parse(print(vnt))) == vnt test because NamedTuple show doesn't
-        # respect the eval-property.
+        # Some funky Symbols in VarNames.
         vn1 = VarName{Symbol("a b c")}()
         vnt = @inferred(setindex!!(vnt, 2, vn1))
         @test @inferred(getindex(vnt, vn1)) == 2
@@ -471,12 +487,10 @@ Base.size(st::SizedThing) = st.size
         test_invariants(vnt)
 
         vnt = VarNamedTuple()
-        y = fill("a", (3, 2, 4))
-        x = y[:, 2, :]
-        a = (; b=[nothing, nothing, (; c=(; d=zeros(1, 5, 2, 4, 1)))])
+        x = fill("a", (3, 4))
+        a = (; b=fill((; c=(; d=zeros(1, 5, 2, 4, 1))), 3))
         vn = @varname(a.b[3].c.d[1, 3:5, 2, :, 1])
-        # TODO(penelopeysm) Type stability fails
-        vnt = templated_setindex!!(vnt, x, vn, a)
+        vnt = @inferred(templated_setindex!!(vnt, x, vn, a))
         @test haskey(vnt, vn)
         @test @inferred(getindex(vnt, vn)) == x
         test_invariants(vnt)
