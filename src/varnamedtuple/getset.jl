@@ -183,7 +183,8 @@ function _setindex_optic!!(
                 # NOTE: This is a VERY subtle case, which can happen when you are setting
                 # multiple indices at once, but some of them were masked. When they are
                 # masked, it will cause haskey to return false, so we can't go into the
-                # previous branch. However, if we call make_leaf naively, it will overwrite
+                # previous branch. However, if we naively call make_leaf to create the 
+                # sub-value and then setindex it inside the PartialArray, it will overwrite
                 # ALL the indices with the new leaf value, which will overwrite any
                 # previously active values! To avoid this, we will set a flag to indicate
                 # that we can create a new leaf, but at the end of the function we need to
