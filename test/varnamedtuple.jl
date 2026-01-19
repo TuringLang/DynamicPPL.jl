@@ -672,6 +672,69 @@ Base.size(st::SizedThing) = st.size
         expected_merge = templated_setindex!!(expected_merge, 2, @varname(e.b[4][14]), e)
         @test @inferred(merge(vnt1, vnt2)) == expected_merge
 
+        struct A
+            v # Just need something to disambiguate between two A's.
+        end
+        Base.size(::A) = (2,)
+        @testset "with sized things: same indices" begin
+            # When things are stored as ArrayLikeBlocks, need to be careful that merging
+            # works correctly. There have been weird bugs in the past around this where
+            # part of an ArrayLikeBlock was set, and then the merged result had ALBs from
+            # both sides of the merge.
+            vn = @varname(x[1:2])
+
+            # Without templating.
+            vnt1 = @inferred(setindex!!(VarNamedTuple(), A(1.0), vn))
+            @test vnt1[vn] == A(1.0)
+            vnt2 = @inferred(setindex!!(VarNamedTuple(), A(2.0), vn))
+            @test vnt2[vn] == A(2.0)
+            merged = @inferred(merge(vnt1, vnt2))
+            expected_merge = setindex!!(VarNamedTuple(), A(2.0), vn)
+            @test merged == expected_merge
+            @test only(keys(merged)) == vn
+            @test merged[vn] == A(2.0)
+
+            # With templating.
+            vnt1 = @inferred(templated_setindex!!(VarNamedTuple(), A(1.0), vn, zeros(2)))
+            @test vnt1[vn] == A(1.0)
+            vnt2 = @inferred(templated_setindex!!(VarNamedTuple(), A(2.0), vn, zeros(2)))
+            @test vnt2[vn] == A(2.0)
+            merged = @inferred(merge(vnt1, vnt2))
+            expected_merge = templated_setindex!!(VarNamedTuple(), A(2.0), vn, zeros(2))
+            @test merged == expected_merge
+            @test only(keys(merged)) == vn
+            @test merged[vn] == A(2.0)
+        end
+
+        @testset "with sized things: different but overlapping indices" begin
+            vn1 = @varname(x[1:2])
+            vn2 = @varname(x[2:3])
+
+            # Without templating.
+            # TODO(penelopeysm): This is currently broken: we need to let the merge function
+            # handle GrowableArrays.
+            #=
+            vnt1 = @inferred(setindex!!(VarNamedTuple(), A(1.0), vn1))
+            @test vnt1[vn1] == A(1.0)
+            vnt2 = @inferred(setindex!!(VarNamedTuple(), A(2.0), vn2))
+            @test vnt2[vn2] == A(2.0)
+            expected_merge = setindex!!(VarNamedTuple(), A(2.0), vn2)
+            @test @inferred(merge(vnt1, vnt2)) == expected_merge
+            @test merge(vnt1, vnt2)[vn] == A(2.0)
+            =#
+
+            # With templating.
+            vnt1 = @inferred(templated_setindex!!(VarNamedTuple(), A(1.0), vn1, zeros(3)))
+            @test vnt1[vn1] == A(1.0)
+            vnt2 = @inferred(templated_setindex!!(VarNamedTuple(), A(2.0), vn2, zeros(3)))
+            @test vnt2[vn2] == A(2.0)
+            merged = @inferred(merge(vnt1, vnt2))
+            expected_merge = templated_setindex!!(VarNamedTuple(), A(2.0), vn2, zeros(3))
+            @test merged == expected_merge
+            @test only(keys(merged)) == vn2
+            @test merge(vnt1, vnt2)[vn2] == A(2.0)
+        end
+
         # TODO(penelopeysm): This set of tests fails. The reason is because later on we
         # have a VarName that looks like d[1, 1][14, 13], i.e., d must be a matrix of
         # matrices. So we have to provide that as the structure for d (via `f`). However,

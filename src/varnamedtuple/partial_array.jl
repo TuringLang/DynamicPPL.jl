@@ -610,11 +610,9 @@ function _merge_element_recursive(x1::PartialArray, x2::PartialArray, ind)
     m1 = x1.mask[ind]
     m2 = x2.mask[ind]
     return if m1 && m2
-        _merge_recursive(x1.data[ind], x2.data[ind])
-    elseif m2
-        x2.data[ind]
+        _merge_recursive(x1.data[ind], x2.data[ind]), true
     else
-        x1.data[ind]
+        _merge_element_norecurse(x1, x2, ind)
     end
 end
 
@@ -625,14 +623,39 @@ Performs an elementwise merge of two `PartialArray`s, but does not attempt to re
 nested values to merge those as well. In particular, if both `x1` and `x2` have the element
 at `ind` set, the value from `x2` is taken directly (whereas `_merge_element_recursive`
 would attempt to merge the values from both arrays).
+
+Returns the value to be set at `ind`, plus the value of the mask at `ind`.
 """
 function _merge_element_norecurse(x1::PartialArray, x2::PartialArray, ind)
     m1 = x1.mask[ind]
     m2 = x2.mask[ind]
-    return if m2
-        x2.data[ind]
+    return if m1 && !m2
+        # This is the only potential case where we need to return something in x1. However,
+        # there is one additional check: we only want to copy ALBs over if all the target
+        # indices are completely 'free' in pa2. If pa2 has any overlapping indices set, we
+        # shouldn't copy the ALB over.
+        #
+        # It's safe to check x1.data[ind] here because the mask was set, so it can't be
+        # an uninitialized value.
+        d1 = x1.data[ind]
+        if d1 isa ArrayLikeBlock
+            if any(view(x2.mask, d1.ix...; d1.kw...))
+                # There is some overlap. Return d1 as the data (because x2.data[ind] might
+                # be uninitialized data!), but indicate that the mask should be false (which
+                # also causes setindex!! to be skipped).
+                d1, false
+            else
+                # No overlap -- safe to copy. Since all the target indices are free, this
+                # means that we will naturally copy over all the bits and pieces of the ALB
+                # eventually.
+                d1, true
+            end
+        else
+            # Just some other scalar value that we can copy over.
+            d1, true
+        end
     else
-        x1.data[ind]
+        x2.data[ind], true
     end
 end
 
@@ -645,9 +668,11 @@ function _merge_recursive(pa1::PartialArray, pa2::PartialArray)
     new_data, new_mask = result.data, result.mask
     for i in eachindex(pa1.mask)
         if pa1.mask[i]
-            new_elem = _merge_element_recursive(pa1, pa2, i)
-            new_data = setindex!!(new_data, new_elem, i)
-            new_mask[i] = true
+            new_elem, new_mask_val = _merge_element_recursive(pa1, pa2, i)
+            new_mask[i] = new_mask_val
+            if new_mask_val
+                new_data = setindex!!(new_data, new_elem, i)
+            end
         end
     end
     return _concretise_eltype!!(PartialArray(new_data, new_mask))
@@ -662,9 +687,11 @@ function _merge_norecurse(pa1::PartialArray, pa2::PartialArray)
     new_data, new_mask = result.data, result.mask
     for i in eachindex(pa1.mask)
         if pa1.mask[i]
-            new_elem = _merge_element_norecurse(pa1, pa2, i)
-            new_data = setindex!!(new_data, new_elem, i)
-            new_mask[i] = true
+            new_elem, new_mask_val = _merge_element_norecurse(pa1, pa2, i)
+            new_mask[i] = new_mask_val
+            if new_mask_val
+                new_data = setindex!!(new_data, new_elem, i)
+            end
         end
     end
     return _concretise_eltype!!(PartialArray(new_data, new_mask))
