@@ -642,33 +642,32 @@ function _merge_recursive(pa1::PartialArray, pa2::PartialArray)
     end
     # TODO(penelopeysm): Ideally we would also check the underlying Array type.
     result = copy(pa2)
+    new_data, new_mask = result.data, result.mask
     for i in eachindex(pa1.mask)
         if pa1.mask[i]
-            new_elem = _merge_element_recursive(pa1, result, i)
-            result = setindex!!(result, new_elem, i)
+            new_elem = _merge_element_recursive(pa1, pa2, i)
+            new_data = setindex!!(new_data, new_elem, i)
+            new_mask[i] = true
         end
     end
-    return result
+    return _concretise_eltype!!(PartialArray(new_data, new_mask))
 end
 
 function _merge_norecurse(pa1::PartialArray, pa2::PartialArray)
     if size(pa1.data) != size(pa2.data)
         throw(ArgumentError("Cannot merge PartialArrays with different sizes"))
     end
+    # TODO(penelopeysm): Ideally we would also check the underlying Array type.
     result = copy(pa2)
+    new_data, new_mask = result.data, result.mask
     for i in eachindex(pa1.mask)
         if pa1.mask[i]
-            new_elem = _merge_element_norecurse(pa1, result, i)
-            # This is not only a performance optimisation: it also avoids a potential bug
-            # where calling setindex!! on `result` would lead to the deletion of overlapping
-            # ArrayLikeBlocks in `result`, thereby changing `result.mask` and making
-            # subsequent iterations behave wrongly.
-            if !isassigned(result.data, i) || new_elem !== result.data[i]
-                result = setindex!!(result, new_elem, i)
-            end
+            new_elem = _merge_element_norecurse(pa1, pa2, i)
+            new_data = setindex!!(new_data, new_elem, i)
+            new_mask[i] = true
         end
     end
-    return result
+    return _concretise_eltype!!(PartialArray(new_data, new_mask))
 end
 
 """
