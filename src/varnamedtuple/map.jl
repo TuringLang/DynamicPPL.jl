@@ -76,7 +76,7 @@ function apply!!(func, vnt::VarNamedTuple, name::VarName)
     end
     subdata = _getindex_optic(vnt, name)
     new_subdata = func(subdata)
-    # The allow_new=Val(true) is a performance optimisation: Since we've already checked
+    # The allow_new=Val(false) is a performance optimisation: Since we've already checked
     # that the key exists, we know that no new fields will be created.
     return _setindex_optic!!(
         vnt,
@@ -127,26 +127,35 @@ function _map_recursive!!(func, pa::PartialArray, vn)
         # We need to allocate a new data array.
         similar(pa.data, new_et)
     end
-    # Keep a dictionary of already-seen ArrayLikeBlocks to avoid redundant computations.
-    # This matters not only for performance, but also for correctness, because
-    # _map_recursive!! may mutate the value, and we don't want to mutate it multiple times.
-    albs_old_to_new = Dict{ArrayLikeBlock,ArrayLikeBlock}()
-    @inbounds for i in CartesianIndices(pa.mask)
-        if pa.mask[i]
+    # If there are any ArrayLikeBlocks, we will need to modify the mask during the
+    # iteration, so make a copy. The alternative, which avoids mutating, is to store a Dict
+    # of already-visited ArrayLikeBlocks along with the result of applying `func` to them,
+    # but that is more expensive.
+    mask = if eltype(pa) <: ArrayLikeBlock || ArrayLikeBlock <: eltype(pa)
+        copy(pa.mask)
+    else
+        pa.mask
+    end
+    for i in CartesianIndices(mask)
+        if mask[i]
             val = pa.data[i]
-            is_alb = val isa ArrayLikeBlock
-            if is_alb
-                if haskey(albs_old_to_new, val)
-                    new_data[i] = albs_old_to_new[val]
-                    continue
-                end
-            end
-            ind = is_alb ? val.ix : Tuple(i)
-            new_vn = AbstractPPL.append_optic(vn, AbstractPPL.Index(ind, (;)))
-            new_val = _map_recursive!!(func, pa.data[i], new_vn)
-            new_data[i] = new_val
-            if is_alb
-                albs_old_to_new[val] = new_val
+            if val isa ArrayLikeBlock
+                # Create the new value, set it at all the places where it needs to be set,
+                # and mark those places as visited.
+                new_vn = AbstractPPL.append_optic(vn, AbstractPPL.Index(val.ix, val.kw))
+                new_val = _map_recursive!!(func, val, new_vn)
+                # TODO(penelopeysm). Would like to just do new_data[val.ix..., val.kw...] .=
+                # new_val, but that only works if `new_val` has length equal to 1 (i.e., is
+                # known to be a scalar), so that Julia's broadcasting knows how to deal with
+                # it. Is there a way to overload this...? We could define a method for
+                # `length(::ArrayLikeBlock) = 1` (currently there is no such method), but
+                # that feels a bit dangerous, since an ALB has a notion of size that isn't
+                # necessarily just 1.
+                fill!(view(new_data, val.ix..., val.kw...), new_val)
+                mask[val.ix..., val.kw...] .= false
+            else
+                new_vn = AbstractPPL.append_optic(vn, AbstractPPL.Index(Tuple(i), (;)))
+                new_data[i] = _map_recursive!!(func, val, new_vn)
             end
         end
     end
@@ -285,21 +294,28 @@ end
 
 function _mapreduce_recursive(f, op, pa::PartialArray, vn, init)
     result = init
-    et = eltype(pa)
-
-    albs_seen = Set{ArrayLikeBlock}()
-    @inbounds for i in CartesianIndices(pa.mask)
-        if pa.mask[i]
+    # If there are any ArrayLikeBlocks, we will need to modify the mask during the
+    # iteration, so make a copy. The alternative, which avoids mutating, is to store a Set
+    # of already-visited ArrayLikeBlocks, but that is more expensive.
+    mask = if eltype(pa) <: ArrayLikeBlock || ArrayLikeBlock <: eltype(pa)
+        copy(pa.mask)
+    else
+        pa.mask
+    end
+    for i in CartesianIndices(mask)
+        if mask[i]
             val = pa.data[i]
             is_alb = val isa ArrayLikeBlock
             if is_alb
-                if val in albs_seen
-                    continue
-                end
-                push!(albs_seen, val)
+                # Don't visit the same ArrayLikeBlock multiple times.
+                mask[val.ix..., val.kw...] .= false
             end
-            ind = is_alb ? val.ix : Tuple(i)
-            new_vn = AbstractPPL.append_optic(vn, AbstractPPL.Index(ind, (;)))
+            optic = if is_alb
+                AbstractPPL.Index(val.ix, val.kw)
+            else
+                AbstractPPL.Index(Tuple(i), (;))
+            end
+            new_vn = AbstractPPL.append_optic(vn, optic)
             result = _mapreduce_recursive(f, op, pa.data[i], new_vn, result)
         end
     end
