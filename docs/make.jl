@@ -40,7 +40,7 @@ makedocs(;
     pages=[
         "Home" => "index.md",
         "API" => "api.md",
-        "VarNamedTuple" => ["vnt/motivation.md", "vnt/design.md"],
+        "VarNamedTuple" => ["vnt/motivation.md", "vnt/design.md", "vnt/implementation.md"],
     ],
     checkdocs=:exports,
     doctest=false,

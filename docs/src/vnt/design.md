@@ -332,3 +332,28 @@ In the macro output below, you can see that `x` is passed as one of the argument
     return x[1] ~ Normal()
 end
 ```
+
+What this means is that in the core use case of VarNamedTuple (i.e., for storing random variables in DynamicPPL models), templates will always be provided.
+There are, for the most part, only two places where templates are unavailable, and we have to fall back on the `GrowableArray` approach:
+
+  - Loading data from chains.
+  - Providing conditioned or fixed values.
+
+The first of these is sadly unavoidable (unless we store template data in a chain).
+However, the second one could be 'fixed' by allowing users to provide templates themselves when constructing the collection of conditioned values.
+Of course, a user can always call `templated_setindex!!` themselves, but I (Penny) have some plans to make a macro that is more user-friendly.
+It might look something like:
+
+```julia
+x = zeros(10, 10)
+y = (; a=zeros(5))
+vnt = @vnt begin
+    @templates x, y
+    x[1] = 10.0
+    x[2, 5] = 20.0
+    y.a[1] = 30.0
+    z[2] = 40.0  # z has no template, so GrowableArray
+end
+```
+
+This would desugar to a series of consecutive calls to `templated_setindex!!` or `setindex!!` as appropriate.
