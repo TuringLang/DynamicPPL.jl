@@ -223,6 +223,31 @@ Base.size(st::SizedThing) = st.size
             )
         end
 
+        @testset "Wrong templates" begin
+            # We want to check that even if the template provided is wrong, we still can do
+            # something meaningful. Essentially, this checks the fallback behaviour in
+            # make_leaf: if the template does not have the right property, we can
+            # just fall back to NoTemplate.
+            @testset "Properties" begin
+                test_get_set(GetSetTestCase(@varname(x.a), 1.0, nothing, []))
+                test_get_set(GetSetTestCase(@varname(x.a.b), 1.0, nothing, []))
+                test_get_set(GetSetTestCase(@varname(x.a.b.c), 1.0, nothing, []))
+                test_get_set(GetSetTestCase(@varname(x.a.b.c.d), 1.0, nothing, []))
+            end
+
+            @testset "Indices" begin
+                # Note that all of these would actually error if you tried to use them in a
+                # model. That's why I don't care about the type stability of
+                # templated_setindex!! below.
+                test_get_set(GetSetTestCase(@varname(x[1]), 1.0, nothing, []))
+                test_get_set(GetSetTestCase(@varname(x[1, 1]), 1.0, nothing, []))
+                test_get_set(
+                    GetSetTestCase(@varname(x[1, 1:3]), rand(3), nothing, []);
+                    templated_unstable=true,
+                )
+            end
+        end
+
         @testset "Heavily nested optics" begin
             # TODO(penelopeysm): This is the only combination of things I can find for which
             # templated_setindex!! is not type stable. It needs to at least have property ->
@@ -249,6 +274,7 @@ Base.size(st::SizedThing) = st.size
                 GetSetTestCase(@varname(f[1, :]), [1.0, 2.0], zeros(2, 2), []);
                 skip_setindex=true,
             )
+            test_get_set(GetSetTestCase(@varname(x[1, 1:3]), rand(3), rand(3, 3), []))
             test_get_set(GetSetTestCase(@varname(f[1, 1]), 1.0, zeros(2, 2), []))
             test_get_set(GetSetTestCase(@varname(f[1, 1]), "a", zeros(2, 2), []))
             test_get_set(
@@ -690,34 +716,51 @@ Base.size(st::SizedThing) = st.size
             v # Just need something to disambiguate between two A's.
         end
         Base.size(::A) = (2,)
+
         @testset "with sized things: same indices" begin
             # When things are stored as ArrayLikeBlocks, need to be careful that merging
             # works correctly. There have been weird bugs in the past around this where
             # part of an ArrayLikeBlock was set, and then the merged result had ALBs from
             # both sides of the merge.
-            vn = @varname(x[1:2])
+            for (vn, template) in
+                [(@varname(x[1:2]), zeros(2)), (@varname(x[1:5][1:2]), zeros(5))]
+                # Regardless of how we set it above, the VNT should always store it as
+                # x[1:2].
+                normalized_vn = @varname(x[1:2])
 
-            # Without templating.
-            vnt1 = @inferred(setindex!!(VarNamedTuple(), A(1.0), vn))
-            @test vnt1[vn] == A(1.0)
-            vnt2 = @inferred(setindex!!(VarNamedTuple(), A(2.0), vn))
-            @test vnt2[vn] == A(2.0)
-            merged = @inferred(merge(vnt1, vnt2))
-            expected_merge = setindex!!(VarNamedTuple(), A(2.0), vn)
-            @test merged == expected_merge
-            @test only(keys(merged)) == vn
-            @test merged[vn] == A(2.0)
+                # Without templating.
+                if vn == @varname(x[1:5][1:2])
+                    # https://github.com/TuringLang/DynamicPPL.jl/issues/1206. Be warned, it
+                    # is very nontrivial to fix this.
+                    @test_broken false
+                else
+                    vnt1 = @inferred(setindex!!(VarNamedTuple(), A(1.0), vn))
+                    @test vnt1[vn] == A(1.0)
+                    vnt2 = @inferred(setindex!!(VarNamedTuple(), A(2.0), vn))
+                    @test vnt2[vn] == A(2.0)
+                    merged = @inferred(merge(vnt1, vnt2))
+                    expected_merge = setindex!!(VarNamedTuple(), A(2.0), vn)
+                    @test merged == expected_merge
+                    @test only(keys(merged)) == normalized_vn
+                    @test merged[vn] == A(2.0)
+                    @test merged[normalized_vn] == A(2.0)
+                end
 
-            # With templating.
-            vnt1 = @inferred(templated_setindex!!(VarNamedTuple(), A(1.0), vn, zeros(2)))
-            @test vnt1[vn] == A(1.0)
-            vnt2 = @inferred(templated_setindex!!(VarNamedTuple(), A(2.0), vn, zeros(2)))
-            @test vnt2[vn] == A(2.0)
-            merged = @inferred(merge(vnt1, vnt2))
-            expected_merge = templated_setindex!!(VarNamedTuple(), A(2.0), vn, zeros(2))
-            @test merged == expected_merge
-            @test only(keys(merged)) == vn
-            @test merged[vn] == A(2.0)
+                # With templating.
+                vnt1 = @inferred(
+                    templated_setindex!!(VarNamedTuple(), A(1.0), vn, template)
+                )
+                @test vnt1[vn] == A(1.0)
+                vnt2 = @inferred(
+                    templated_setindex!!(VarNamedTuple(), A(2.0), vn, template)
+                )
+                @test vnt2[vn] == A(2.0)
+                merged = @inferred(merge(vnt1, vnt2))
+                expected_merge = templated_setindex!!(VarNamedTuple(), A(2.0), vn, template)
+                @test merged == expected_merge
+                @test only(keys(merged)) == normalized_vn
+                @test merged[normalized_vn] == A(2.0)
+            end
         end
 
         @testset "with sized things: different but overlapping indices" begin

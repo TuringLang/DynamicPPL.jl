@@ -134,7 +134,9 @@ The actual data inside `template` is not needed, and `template` is never mutated
 call.
 """
 function templated_setindex!!(vnt::VarNamedTuple, value, vn::VarName, template)
-    return _setindex_optic!!(vnt, value, AbstractPPL.varname_to_optic(vn), template, true)
+    return _setindex_optic!!(
+        vnt, value, AbstractPPL.varname_to_optic(vn), SkipTemplate{1}(template)
+    )
 end
 
 """
@@ -145,7 +147,9 @@ effect the `template` passed through is `NoTemplate()`. It is often the case tha
 template is not actually needed (for example, if you are setting a top-level VarName:
 `@varname(a)`, or if the VarName only contains Property optics, or if the arrays already
 exist and you are merely updating a value inside it). In such cases, this method will work
-fine, but may throw an error if the template is actually needed.
+fine, but may throw an error if the template is actually needed. Specifically, this is
+likely to happen if you set a VarName with dynamic optics or colons, since in those cases
+the size and shape of the underlying arrays cannot be inferred without a template.
 
 For example, this will error, since it is not known what `x` should be:
 
@@ -153,14 +157,14 @@ For example, this will error, since it is not known what `x` should be:
 vnt = VarNamedTuple()
 setindex!!(vnt, 10, @varname(x[1]))
 ```
-
-TODO(penelopeysm): Fix this such that there is a 'default' template that can be used when
-none is provided.
 """
 function BangBang.setindex!!(vnt::VarNamedTuple, value, vn::VarName)
-    return _setindex_optic!!(
-        vnt, value, AbstractPPL.varname_to_optic(vn), NoTemplate(), true
-    )
+    # NOTE(penelopeysm): I _thought_ that if you allow setindex!! to reuse whatever template
+    # was inside the VNT, it would help with type stability. Essentially, check if
+    # getsym(vn) is inside the type parameter of vnt, and if so, use vnt.data.$sym as the
+    # template instead of NoTemplate(). But it actually made type stability worse. I don't
+    # know why.
+    return _setindex_optic!!(vnt, value, AbstractPPL.varname_to_optic(vn), NoTemplate())
 end
 
 """

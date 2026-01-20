@@ -75,15 +75,10 @@ function _haskey_optic(arr::AbstractArray, optic::IndexWithoutChild)
 end
 
 """
-    _setindex_optic!!(collection, value, optic, template, top_level; allow_new=Val(true))
+    _setindex_optic!!(collection, value, optic, template; allow_new=Val(true))
 
 Like `setindex!!`, but special-cased for `VarNamedTuple` and `PartialArray` to recurse
 into nested structures.
-
-The `top_level` argument indicates whether `optic` refers to a top-level symbol (e.g. a
-`Property{:x}` referring to a top-level value of `x`). In such a case, the `template`
-argument refers to the structure of that top-level symbol (i.e., `x`). If not, then the
-`template` argument refers to the structure that should be indexed into with that optic.
 
 The `allow_new` keyword argument is a performance optimisation: If it is set to
 `Val(false)`, the function can assume that the key being set already exists in `collection`.
@@ -104,19 +99,13 @@ when it is useful.
     value,
     ::AbstractPPL.Iden,
     @nospecialize(::Any),
-    ::Bool,
     ;
     allow_new=Val(true),
 )
     return value
 end
 function _setindex_optic!!(
-    arr::AbstractArray,
-    value,
-    optic::IndexWithoutChild,
-    template,
-    is_top_level;
-    allow_new=Val(true),
+    arr::AbstractArray, value, optic::IndexWithoutChild, template; allow_new=Val(true)
 )
     return BangBang.setindex!!(arr, value, optic.ix...; optic.kw...)
 end
@@ -132,11 +121,12 @@ function throw_setindex_allow_new_error()
 end
 
 struct SharedGetProperty{S} end
-(::SharedGetProperty{S})(x) where {S} = getproperty(x, S)
+# NOTE: The check on hasproperty can be type unstable!
+(::SharedGetProperty{S})(x) where {S} = hasproperty(x, S) ? getproperty(x, S) : NoTemplate()
 (::SharedGetProperty)(::NoTemplate) = NoTemplate()
 (::SharedGetProperty)(t::SkipTemplate{N}) where {N} = decrease_skip(t)
-function (::SharedGetProperty{S})(x::VarNamedTuple) where {S}
-    if Base.haskey(x.data, S)
+function (::SharedGetProperty{S})(x::VarNamedTuple{names}) where {S,names}
+    if S in names
         x.data[S]
     else
         NoTemplate()
@@ -144,12 +134,7 @@ function (::SharedGetProperty{S})(x::VarNamedTuple) where {S}
 end
 
 function _setindex_optic!!(
-    pa::PartialArray,
-    value,
-    optic::AbstractPPL.Index,
-    template,
-    is_top_level;
-    allow_new=Val(true),
+    pa::PartialArray, value, optic::AbstractPPL.Index, template; allow_new=Val(true)
 )
     need_merge = false
     coptic = AbstractPPL.concretize_top_level(optic, pa.data)
@@ -157,9 +142,7 @@ function _setindex_optic!!(
         # Skip recursion
         value
     else
-        child_template = if is_top_level
-            template
-        elseif template === NoTemplate()
+        child_template = if template === NoTemplate()
             NoTemplate()
         elseif template isa SkipTemplate
             decrease_skip(template)
@@ -177,8 +160,7 @@ function _setindex_optic!!(
                 Base.getindex(pa, coptic.ix...; coptic.kw...),
                 value,
                 coptic.child,
-                child_template,
-                false;
+                child_template;
                 allow_new=allow_new,
             )
         elseif allow_new isa Val{true}
@@ -216,27 +198,21 @@ function _setindex_optic!!(
 end
 
 function _setindex_optic!!(
-    vnt::VarNamedTuple,
+    vnt::VarNamedTuple{names},
     value,
     optic::AbstractPPL.Property{S},
-    template,
-    is_top_level;
+    template;
     allow_new=Val(true),
-) where {S}
+) where {names,S}
     sub_value = if optic.child isa AbstractPPL.Iden
         # Skip recursion
         value
     else
-        child_template = is_top_level ? template : SharedGetProperty{S}()(template)
-        if Base.haskey(vnt.data, S)
+        child_template = SharedGetProperty{S}()(template)
+        if S in names
             # Data already exists; we need to recurse into it
             _setindex_optic!!(
-                vnt.data[S],
-                value,
-                optic.child,
-                child_template,
-                false;
-                allow_new=allow_new,
+                vnt.data[S], value, optic.child, child_template; allow_new=allow_new
             )
         elseif allow_new isa Val{true}
             # No new data but we are allowed to create it.
@@ -277,30 +253,37 @@ function make_leaf(value, optic::AbstractPPL.Property{S}, template) where {S}
     end
     return VarNamedTuple(NamedTuple{(S,)}((sub_value,)))
 end
+
 function make_leaf(value, optic::AbstractPPL.Index, template)
     coptic = AbstractPPL.concretize_top_level(optic, template)
-    is_multiindex = if template isa NoTemplate || template isa SkipTemplate
-        _is_multiindex_static(coptic.ix)
-    else
+    is_multiindex = if template isa AbstractArray || template isa PartialArray
         _is_multiindex(template, coptic.ix...; coptic.kw...)
+    else
+        # This handles the case where no template is provided, or a nonsense template is
+        # provided.
+        isempty(coptic.kw) || throw_kw_error()
+        # This will error if there are things like colons.
+        _is_multiindex_static(coptic.ix)
     end
     sub_value = if coptic.child isa AbstractPPL.Iden
         # Skip recursion
         value
     else
-        # Note: don't need to check isassigned here because if the child template would be
-        # an undefined reference, then it is meaningless for coptic.child to be anything but
-        # Iden, which would have been caught above. Similar logic is used in
-        # AbstractPPL.concretize.
-        child_template = if template === NoTemplate()
+        child_template = if template isa NoTemplate
             NoTemplate()
         elseif template isa SkipTemplate
             decrease_skip(template)
-        else
+        elseif template isa AbstractArray || template isa PartialArray
+            # Note: don't need to check isassigned here because if the child template would
+            # be an undefined reference, then it is meaningless for coptic.child to be
+            # anything but Iden, which would have been caught above.
             getindex(template, coptic.ix...; coptic.kw...)
+        else
+            NoTemplate()
         end
         make_leaf(value, coptic.child, child_template)
     end
+
     # We need to be careful here, as depending on the indices, `sub_value` might either
     # represent a single element or a slice of elements. When reconstructing the data
     # to use for the PartialArray creation, we need to make sure to not accidentally
@@ -336,8 +319,10 @@ function make_leaf(value, optic::AbstractPPL.Index, template)
             typeof(sub_value)
         end
     pa_data = if template isa NoTemplate || template isa SkipTemplate
-        # If no template was provided, we have to make a GrowableArray.
-        template_sz = get_implied_size_from_indices(coptic.ix...; coptic.kw...)
+        # If no template was provided, we have to make a GrowableArray. This can happen if
+        # the template is NoTemplate or SkipTemplate, or if it's just a nonsensical
+        # template.
+        template_sz = get_maximum_size_from_indices(coptic.ix...; coptic.kw...)
         GrowableArray(Array{correct_template_eltype}(undef, template_sz))
     elseif is_multiindex && sub_value isa PartialArray
         # In this case, sub_value is actually just a subset of the data that we are going to
@@ -345,16 +330,23 @@ function make_leaf(value, optic::AbstractPPL.Index, template)
         # Note that this is different from varnames like x[1][1]. In that case, x should be
         # a PartialArray that itself stores PartialArrays.
         similar(sub_value.data, size(template))
-    elseif !(eltype(template) <: correct_template_eltype)
-        # If coptic.child was a Property lens, then sub_value will always be normalised into
-        # a VNT (since that's what the inner make_leaf returns). However, `template` may
-        # contain things that are not VNTs, but could be either e.g. NamedTuples or just
-        # generic structs. In this case, it can be type unstable to create a PartialArray
-        # from the template and then setindex!! a VNT into it. So, we create a new template
-        # with the appropriate type here before creating the PartialArray.
-        similar(template, correct_template_eltype)
+    elseif template isa AbstractArray || template isa PartialArray
+        # The template is already an array, presumably of the correct size.
+        if !(eltype(template) <: correct_template_eltype)
+            # If coptic.child was a Property lens, then sub_value will always be normalised into
+            # a VNT (since that's what the inner make_leaf returns). However, `template` may
+            # contain things that are not VNTs, but could be either e.g. NamedTuples or just
+            # generic structs. In this case, it can be type unstable to create a PartialArray
+            # from the template and then setindex!! a VNT into it. So, we create a new template
+            # with the appropriate type here before creating the PartialArray.
+            similar(template, correct_template_eltype)
+        else
+            similar(template)
+        end
     else
-        similar(template)
+        # Rubbish template. We have to create a GrowableArray.
+        template_sz = get_maximum_size_from_indices(coptic.ix...; coptic.kw...)
+        GrowableArray(Array{correct_template_eltype}(undef, template_sz))
     end
     pa_mask = similar(pa_data, Bool)
     fill!(pa_mask, false)

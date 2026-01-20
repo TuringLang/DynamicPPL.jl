@@ -133,7 +133,7 @@ function grow_to_indices(ga::GrowableArray{T,N}, ix...; kw...) where {T,N}
     end
     # This will error if there are any keyword indices -- we have to keep it in though
     # to ensure the signature matches.
-    required_size = get_implied_size_from_indices(ix...; kw...)
+    required_size = get_maximum_size_from_indices(ix...; kw...)
     current_size = size(ga.data)
     return if any(required_size .> current_size)
         # Need to make a new array that is big enough to hold the new index.
@@ -161,6 +161,18 @@ end
 # Other arrays cannot grow.
 grow_to_indices(x::AbstractArray, ix...; kw...) = x
 
+function throw_kw_error()
+    throw(
+        ArgumentError(
+            "Attempted to set a value with an keyword index, but no" *
+            " template (or an unsuitable template) was provided for the" *
+            " array. A proper template is needed to determine the shape" *
+            " and type of the array so that the indexed data can be stored" *
+            " correctly.",
+        ),
+    )
+end
+
 # Helper functions to determine the largest index from various index types.
 largest_index(ix::Integer) = ix
 largest_index(r::AbstractUnitRange) = last(r)
@@ -175,18 +187,24 @@ function largest_index(x)
         ),
     )
 end
-function get_implied_size_from_indices(ix...; kw...)
-    if !isempty(kw)
-        throw(
-            ArgumentError(
-                "Attempted to set a value with an keyword index, but no" *
-                " no template was provided for the array. A template is" *
-                " needed to determine the shape and type of the array so" *
-                " that the indexed data can be stored correctly.",
-            ),
-        )
-    end
+function get_maximum_size_from_indices(ix...; kw...)
+    isempty(kw) || throw_kw_error()
     return tuple(map(largest_index, ix)...)
+end
+
+# This determines the required size for setting into the indices ix. Note that ix is not
+# splatted! and this function takes no keywords! For example, if ix is (3:5,1), this
+# function will return (3,); but get_maximum_size_from_indices will return (5, 1).
+@generated function get_required_size_from_indices(ix::Tuple)
+    x = Expr(:tuple)
+    for (i, ti) in enumerate(ix.parameters)
+        if ti <: AbstractVector{<:Integer}
+            push!(x.args, :(length(ix[$i])))
+        elseif i isa Colon
+            error("nope")
+        end
+    end
+    return x
 end
 
 """

@@ -82,8 +82,7 @@ function apply!!(func, vnt::VarNamedTuple, name::VarName)
         vnt,
         new_subdata,
         AbstractPPL.varname_to_optic(name),
-        NoTemplate(),
-        false;
+        NoTemplate();
         allow_new=Val(false),
     )
 end
