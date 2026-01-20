@@ -1,33 +1,6 @@
-Rather the containers will flex to fit it, keeping element types concrete when possible, but making them abstract if needed.
-`VarNamedTuple`, or more precisely `PartialArray`, even explicitly concretises element types whenever possible.
-For instance, one can make an abstractly typed `VarNamedTuple` like so:
+# Array-like blocks
 
-```julia
-julia> vnt = VarNamedTuple();
-
-julia> vnt = setindex!!(vnt, 1.0, @varname(a[1]));
-
-julia> vnt = setindex!!(vnt, "hello", @varname(a[2]));
-
-julia> print(vnt)
-VarNamedTuple(; a=PartialArray{Any,1}((1,) => 1.0, (2,) => hello))
-```
-
-Note the element type of `PartialArray{Any}`.
-But if one changes the values to make them homogeneous, the element type is automatically made concrete again:
-
-```julia
-julia> vnt = setindex!!(vnt, "me here", @varname(a[1]));
-
-julia> print(vnt)
-VarNamedTuple(; a=PartialArray{String,1}((1,) => me here, (2,) => hello))
-```
-
-This approach is at the core of why `VarNamedTuple` is performant:
-As long as one does not store inhomogeneous types within a single `PartialArray`, by assigning different types to `VarName`s like `@varname(a[1])` and `@varname(a[2])`, different variables in a `VarNamedTuple` can have different types, and all `getindex` and `setindex!!` operations remain type stable.
-Note that assigning a value to `@varname(a[1].b)` but not to `@varname(a[2].b)` has the same effect as assigning values of different types to `@varname(a[1])` and `@varname(a[2])`, and also causes a loss of type stability for for `getindex` and `setindex!!`.
-Although, this only affects `getindex` and `setindex!!` on sub-`VarName`s of `@varname(a)`;
-You can still use the same `VarNamedTuple` to store information about an unrelated `@varname(c)` with stability.
+TODO(penelopeysm): Rewrite where necessary with illustrations
 
 ## Non-Array blocks with `IndexLens`es
 
