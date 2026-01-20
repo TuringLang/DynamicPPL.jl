@@ -1,19 +1,15 @@
-# `VarNamedTuple`
+# Design
 
-In DynamicPPL there is often a need to store data keyed by `VarName`s.
-This comes up when getting conditioned variable values from the user, when tracking values of random variables in the model outputs or inputs, etc.
-Historically we've had several different approaches to this: Dictionaries, `NamedTuple`s, vectors with subranges corresponding to different `VarName`s, and various combinations thereof.
+There are two aspects to the design of `VarNamedTuple`s: property access, and indexing.
+`VarNamedTuple` consists of recursively nested `NamedTuple`s and `PartialArray`s which together support both kinds of access.
 
-To unify the treatment of these use cases, and handle them all in a robust and performant way, is the purpose of `VarNamedTuple`, aka VNT.
-It's a data structure that can store arbitrary data, indexed by (nearly) arbitrary `VarName`s, in a type stable and performant manner.
+## Property access
 
-`VarNamedTuple` consists of nested `NamedTuple`s and `PartialArray`s.
 Let's first talk about the `NamedTuple` part.
-This is what is needed for handling `PropertyLens`es in `VarName`s, that is, `VarName`s consisting of nested symbols, like in `@varname(a.b.c)`.
-In a `VarNamedTuple` each level of such nesting of `PropertyLens`es corresponds to a level of nested `NamedTuple`s, with the `Symbol`s of the lenses as keys.
+In a `VarNamedTuple` each level of a `Property` optic corresponds to a level of nested `NamedTuple`s, with the `Symbol`s of the lenses as keys.
 For instance, the `VarNamedTuple` mapping `@varname(x) => 1, @varname(y.z) => 2` would be stored as
 
-```
+```julia
 VarNamedTuple(; x=1, y=VarNamedTuple(; z=2))
 ```
 
@@ -29,10 +25,14 @@ x /   \ y
           2
 ```
 
-If all `VarName`s consisted of only `PropertyLens`es we would be done designing the data structure.
-However, recall that `VarName`s allow three different kinds of lenses: `PropertyLens`es, `IndexLens`es, and `identity` (the trivial lens).
-The `identity` lens presents no complications, and in fact in the above example there was an implicit identity lens in e.g. `@varname(x) => 1`.
-It is the `IndexLenses` that require more structure.
+By virtue of these being `NamedTuple`, all variable access is completely type-stable.
+
+If all `VarName`s consisted of only `Property`es we would be done designing the data structure.
+Sadly, that isn't the case!
+
+## Indexing
+
+BLAHHHHHHHHHHHHHHHHHHH
 
 An `IndexLens` is the square bracket indexing part in `VarName`s like `@varname(x[1])`, `@varname(x[1].a.b[2:3])` and `@varname(x[:].b[1,2,3].c[1:5,:])`.
 `VarNamedTuple` cannot deal with `IndexLens`es in their full generality, for reasons we'll discuss below.
@@ -183,5 +183,3 @@ This design has a several of benefits, for performance and generality, but it al
  4. There is an asymmetry between storing arrays with `setindex!!(vnt, array, @varname(a))` and elements of arrays with `setindex!!(vnt, element, @varname(a[i]))`.
     The former stores the whole array, which can then be indexed with both `@varname(a)` and `@varname(a[i])`.
     The latter stores only individual elements, and even if all elements have been set, one still can't get the value associated with `@varname(a)` as a regular `Base.Array`.
-    
-    ## 

@@ -409,11 +409,8 @@ Base.size(st::SizedThing) = st.size
         @test !haskey(vnt, @varname(e.f[2].g.h[2].i))
         test_invariants(vnt)
 
-        # TODO(penelopeysm) This one fails type stability. (The templated_setindex!! call
-        # above is type stable, but updating the value seems to fail.) However, I tried to
-        # find a smaller minimiser than this, and really couldn't. So I think it's fine to
-        # leave it for now, in the hope that nobody is using such pathologically nested data
-        # structures.
+        # TODO(penelopeysm) This one fails type stability.
+        # https://github.com/TuringLang/DynamicPPL.jl/issues/1207
         vnt = setindex!!(vnt, 2.0, @varname(e.f[3].g.h[2].i))
         @test @inferred(getindex(vnt, @varname(e.f[3].g.h[2].i))) == 2.0
         test_invariants(vnt)
