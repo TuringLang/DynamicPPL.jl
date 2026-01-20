@@ -14,6 +14,7 @@ VarNamedTuple(; x=1, y=VarNamedTuple(; z=2))
 ```
 
 where `VarNamedTuple(; x=a, y=b)` is just a thin wrapper around the `NamedTuple` `(; x=a, y=b)`.
+In fact, if `vnt` is a `VarNamedTuple`, then `vnt.data` is exactly that underlying `NamedTuple`.
 
 It's often handy to think of this as a tree, with each node being a `VarNamedTuple`, like so:
 
@@ -30,156 +31,304 @@ By virtue of these being `NamedTuple`, all variable access is completely type-st
 If all `VarName`s consisted of only `Property`es we would be done designing the data structure.
 Sadly, that isn't the case!
 
-## Indexing
+## Indexing and `PartialArray`s
 
-BLAHHHHHHHHHHHHHHHHHHH
+Indexing is much more complicated to handle than property access, for a number of reasons.
 
-An `IndexLens` is the square bracket indexing part in `VarName`s like `@varname(x[1])`, `@varname(x[1].a.b[2:3])` and `@varname(x[:].b[1,2,3].c[1:5,:])`.
-`VarNamedTuple` cannot deal with `IndexLens`es in their full generality, for reasons we'll discuss below.
-Instead we restrict ourselves to `IndexLens`es where the indices are integers, explicit ranges with end points, like `1:5`, or tuples thereof.
+Let's start by talking about the most obvious issue: only some parts of an array may be set.
+For example, the user may set `x[1]` and `x[10]` but not the ones in the middle.
+This is accomplished using a `PartialArray`, which is a wrapper around an `AbstractArray` that holds the data of interest, together with a mask saying which elements have been set.
 
-When storing data in a `VarNamedTuple`, we recursively go through the nested lenses in the `VarName`, inserting a new `VarNamedTuple` for every `PropertyLens`.
-When we meet an `IndexLens`, we instead instert into the tree something called a `PartialArray`.
+The array type and size of the mask is always the same as the data array (this is done using `Base.similar`).
 
-A `PartialArray` is like a regular `Base.Array`, but with some elements possibly unset.
-It is a data structure we define ourselves for use within `VarNamedTuple`s.
-A `PartialArray` has an element type and a number of dimensions, and they are known at compile time, but it does not have a size, and thus is not an `AbstractArray`.
-This is because if we set the elements `x[1,2]` and `x[14,10]` in a `PartialArray` called `x`, this does not mean that 14 and 10 are the ends of their respective dimensions.
-The typical use of this structure in DynamicPPL is that the user may define values for elements in an array-like structure one by one, and we do not always know how large these arrays are.
+!!! info
+    
+    Currently this is not enforced in an inner constructor, because that sometimes leads to extra allocations. It would be nice to investigate if this invariant can be enforced.
 
-This is also the reason why `PartialArray`, and by extension `VarNamedTuple`, do not support indexing by `Colon()`, i.e. `:`, as in `x[:]`.
-A `Colon()` says that we should get or set all the values along that dimension, but a `PartialArray` does not know how many values there may be.
-If `x[1]` and `x[4]` have been set, asking for `x[:]` is not a well-posed question.
-Note however, that concretising the `VarName` resolves this ambiguity, and makes the `VarName` fine as a key to a `VarNamedTuple`.
+If `pa.mask[i]` is `true`, then `pa.data[i]` has been set; otherwise, `pa.data[i]` may contain some value, but it is not valid to index into that part of the array.
 
-`PartialArray`s have other restrictions, compared to the full indexing syntax of Julia, as well:
-They do not support linearly indexing into multidimemensional arrays (as in `rand(3,3)[8]`), nor indexing with arrays of indices (as in `rand(4)[[1,3]]`), nor indexing with boolean mask arrays (as in `rand(4)[[true, false, true, false]]`).
-This is mostly because we haven't seen a need to support them, and implementing them would complicate the codebase for little gain.
-We may add support for them later if needed.
+Here is an example:
 
-`PartialArray`s can hold any values, just like `Base.Array`s, and in particular they can hold `VarNamedTuple`s.
-Thus we nest them with `VarNamedTuple`s to support storing `VarName`s with arbitrary combinations of `PropertyLens`es and `IndexLens`es.
-A code example illustrates this the best:
+```@example 1
+using DynamicPPL.VarNamedTuples: PartialArray
 
-```julia
-julia> vnt = VarNamedTuple();
-
-julia> vnt = setindex!!(vnt, 1.0, @varname(a));
-
-julia> vnt = setindex!!(vnt, [2.0, 3.0], @varname(b.c));
-
-julia> vnt = setindex!!(vnt, [:hip, :hop], @varname(d.e[2].f[3:4]));
-
-julia> print(vnt)
-VarNamedTuple(; a=1.0, b=VarNamedTuple(; c=[2.0, 3.0]), d=VarNamedTuple(; e=PartialArray{VarNamedTuple{(:f,), Tuple{DynamicPPL.VarNamedTuples.PartialArray{Symbol, 1}}},1}((2,) => VarNamedTuple(; f=PartialArray{Symbol,1}((3,) => hip, (4,) => hop)))))
+data = randn(3)
+mask = similar(data, Bool)
+fill!(mask, false)
+pa = PartialArray(data, mask)
 ```
 
-The output there may be a bit hard to parse, so to illustrate:
+The main way of interacting with a `PartialArray` is to use `BangBang.setindex!!`.
+This sets one or more elements of the `PartialArray`'s data, and marks the corresponding elements in the mask as `true`.
 
-```julia
-julia> vnt[@varname(b)]
-VarNamedTuple(; c=[2.0, 3.0])
+```@example 1
+using BangBang: setindex!!
 
-julia> vnt[@varname(b.c[1])]
-2.0
-
-julia> vnt[@varname(d.e)]
-PartialArray{VarNamedTuple{(:f,), Tuple{DynamicPPL.VarNamedTuples.PartialArray{Symbol, 1}}},1}((2,) => VarNamedTuple(; f=PartialArray{Symbol,1}((3,) => hip, (4,) => hop)))
-
-julia> vnt[@varname(d.e[2].f)]
-PartialArray{Symbol,1}((3,) => hip, (4,) => hop)
+setindex!!(pa, 12.0, 2)
+pa.data, pa.mask
 ```
 
-Or as a tree drawing, where `PA` marks a `PartialArray`:
+When printed, `pa` shows only the elements that are set:
 
-```
-   /----VNT------\
-a /      | b      \ d
- 1      VNT       VNT
-         | c       | e
-    [2.0, 3.0]    PA(2 => VNT)
-                           | f
-                          PA(3 => :hip, 4 => :hop)
+```@example 1
+pa
 ```
 
-The above code also highlights how setting indices in a `VarNamedTuple` is done using `BangBang.setindex!!`.
-We do not define a method for `Base.setindex!` at all, `setindex!!` is the only way.
-This is because `VarNamedTuple` mixes mutable and immutable data structures.
-It is also for user convenience:
-One does not ever have to think about whether the value that one is inserting into a `VarNamedTuple` is of the right type to fit in.
-Rather the containers will flex to fit it, keeping element types concrete when possible, but making them abstract if needed.
-`VarNamedTuple`, or more precisely `PartialArray`, even explicitly concretises element types whenever possible.
-For instance, one can make an abstractly typed `VarNamedTuple` like so:
+It is invalid to index into the unset elements:
 
-```julia
-julia> vnt = VarNamedTuple();
-
-julia> vnt = setindex!!(vnt, 1.0, @varname(a[1]));
-
-julia> vnt = setindex!!(vnt, "hello", @varname(a[2]));
-
-julia> print(vnt)
-VarNamedTuple(; a=PartialArray{Any,1}((1,) => 1.0, (2,) => hello))
+```@repl 1
+pa[1]
 ```
 
-Note the element type of `PartialArray{Any}`.
-But if one changes the values to make them homogeneous, the element type is automatically made concrete again:
+but you can access the set elements:
 
-```julia
-julia> vnt = setindex!!(vnt, "me here", @varname(a[1]));
-
-julia> print(vnt)
-VarNamedTuple(; a=PartialArray{String,1}((1,) => me here, (2,) => hello))
+```@example 1
+pa[2]
 ```
 
-This approach is at the core of why `VarNamedTuple` is performant:
-As long as one does not store inhomogeneous types within a single `PartialArray`, by assigning different types to `VarName`s like `@varname(a[1])` and `@varname(a[2])`, different variables in a `VarNamedTuple` can have different types, and all `getindex` and `setindex!!` operations remain type stable.
-Note that assigning a value to `@varname(a[1].b)` but not to `@varname(a[2].b)` has the same effect as assigning values of different types to `@varname(a[1])` and `@varname(a[2])`, and also causes a loss of type stability for for `getindex` and `setindex!!`.
-Although, this only affects `getindex` and `setindex!!` on sub-`VarName`s of `@varname(a)`;
-You can still use the same `VarNamedTuple` to store information about an unrelated `@varname(c)` with stability.
+It follows from this, that because the `PartialArray` _is_ actually backed by a regular `Array`, it is constructive.
+The call to `getindex` will return the values stored in `pa.data`, as long as all the elements in `pa.mask` are set.
+For example:
 
-Note that if you `setindex!!` a new value into a `VarNamedTuple` with an `IndexLens`, this causes a `PartialArray` to be created.
-However, if there already is a regular `Base.Array` stored in a `VarNamedTuple`, you can index into it with `IndexLens`es without involving `PartialArray`s.
-That is, if you do `vnt = setindex!!(vnt, @varname(a), [1.0, 2.0])`, you can then either get the values with e.g. `vnt[@varname(a[1])`, which returns 1.0.
-You can also set the elements with `vnt = setindex!!(vnt, @varname(a[1]), 3.0)`, and this will modify the existing `Base.Array`.
-At this point you can not set any new values in that array that would be outside of its range, with something like `vnt = setindex!!(vnt, @varname(a[5]), 5.0)`.
-The philosophy here is that once a `Base.Array` has been attached to a `VarName`, that takes precedence, and a `PartialArray` is only used as a fallback when we are told to store a value for `@varname(a[i])` without having any previous knowledge about what `@varname(a)` is.
+```@example 1
+setindex!!(pa, 11.0, 1)
+pa[1:2]
+```
 
-## Non-Array blocks with `IndexLens`es
+You can even get the entirety of the array, once you have set all three elements.
+In this case, the `PartialArray` is (morally) equivalent to a single `Array`.
 
-The above is all that is needed for setting regular scalar values.
-However, in DynamicPPL we also have a particular need for something slightly odd:
-We sometimes need to do calls like `setindex!!(vnt, @varname(a[1:5]), val)` on a `val` that is _not_ an `AbstractArray`, or even iterable at all.
-Normally this would error: As a scalar value with size `()`, `val` is the wrong size to be set with `@varname(a[1:5])`, which clearly wants something with size `(5,)`.
-However, we want to allow this even if `val` is not an iterable, if it is some object for which `size` is well-defined, and `size(val) == (5,)`.
-In DynamicPPL this comes up when storing e.g. the priors of a model, where a random variable like `@varname(a[1:5])` may be associated with a prior that is a 5-dimensional distribution.
+```@example 1
+setindex!!(pa, 13.0, 3)
+pa[:]
+```
 
-Internally, a `PartialArray` is just a regular `Array` with a mask saying which elements have been set.
-Hence we can't store `val` directly in the same `PartialArray`:
-We need it to take up a sub-block of the array, in our example case a sub-block of length 5.
-To this end, internally, `PartialArray` uses a wrapper type called `ArrayLikeWrapper`, that stores `val` together with the indices that are being used to set it.
-The `PartialArray` has all its corresponding elements, in our example elements 1, 2, 3, 4, and, 5, point to the same wrapper object.
+All `Index` optics in `VarName`s correspond to `PartialArray`s in `VarNamedTuple`s.
+For example, let's say we want to store the mappings `@varname(x[1].a) => 1.0`, and `y.b[2,3] => 2.0`.
+The corresponding `VarNamedTuple` would look like this:
 
-While such blocks can be stored using a wrapper like this, some care must be taken in indexing into these blocks.
-For instance, after setting a block with `setindex!!(vnt, @varname(a[1:5]), val)`, we can't `getindex(vnt, @varname(a[1]))`, since we can't return "the first element of five in `val`", because `val` may not be indexable in any way.
-Similarly, if next we set `setindex!!(vnt, @varname(a[1]), some_other_value)`, that should invalidate/delete the elements `@varname(a[2:5])`, since the block only makes sense as a whole.
-Because of these reasons, setting and getting blocks of well-defined size like this is allowed with `VarNamedTuple`s, but _only by always using the full range_.
-For instance, if `setindex!!(vnt, @varname(a[1:5]), val)` has been set, then the only valid `getindex` key to access `val` is `@varname(a[1:5])`;
-Not `@varname(a[1:10])`, nor `@varname(a[3])`, nor for anything else that overlaps with `@varname(a[1:5])`.
-`haskey` likewise only returns true for `@varname(a[1:5])`, and `keys(vnt)` only has that as an element.
+```
+         VNT
+        /   \y  
+      x/     \    b
+      /     VNT------PA[[ _, _, _  ],
+     /                  [ _, _, 2.0]]
+    PA [VNT]
+         |
+        a|
+         |
+        1.0
+```
 
-The size of a value, for the purposes of inserting it into a `PartialArray`, is determined by a call to `vnt_size`.
-`vnt_size` falls back to calling `Base.size`.
-The reason we define a distinct function is to be able to control its behaviour, if necessary, without type piracy.
+where `_` indicates masked elements in a `PartialArray`.
+To demonstrate:
 
-## Limitations
+```@example 1
+using DynamicPPL
 
-This design has a several of benefits, for performance and generality, but it also has limitations:
+vnt = VarNamedTuple()
+vnt = setindex!!(vnt, 1.0, @varname(x[1].a))
+vnt = setindex!!(vnt, 2.0, @varname(y.b[2, 3]))
+```
 
- 1. The lack of support for `Colon`s in `VarName`s.
+```@example 1
+vnt.data.x  # This is a PartialArray
+```
 
- 2. The lack of support for some other indexing syntaxes supported by Julia, such as linear indexing and boolean indexing.
- 3. `VarNamedTuple` cannot store indices with different numbers of dimensions in the same value, so for instance `@varname(a[1])` and `@varname(a[1,1])` cannot be stored in the same `VarNamedTuple`.
- 4. There is an asymmetry between storing arrays with `setindex!!(vnt, array, @varname(a))` and elements of arrays with `setindex!!(vnt, element, @varname(a[i]))`.
-    The former stores the whole array, which can then be indexed with both `@varname(a)` and `@varname(a[i])`.
-    The latter stores only individual elements, and even if all elements have been set, one still can't get the value associated with `@varname(a)` as a regular `Base.Array`.
+```@example 1
+vnt.data.x.data[1]   # This is a VNT
+```
+
+```@example 1
+vnt.data.x.data[1].data.a  # This is 1.0
+```
+
+```@example 1
+vnt.data.y  # This is a VNT
+```
+
+```@example 1
+vnt.data.y.data.b  # This is a PartialArray
+```
+
+```@example 1
+vnt.data.y.data.b.data[2, 3]  # This is 2.0
+```
+
+This illustrates the fundamental structure of `VarNamedTuple`s.
+From this example, one can see that getting data from a `VarNamedTuple` is as type-stable as possible:
+
+  - All property accesses are `NamedTuple` accesses, which are type-stable.
+  - All indexing is done into `PartialArray`s: as long as indexing into the underlying data is type-stable (i.e., the element type of the data array is concrete), indexing into the `PartialArray` is type-stable as well.
+
+!!! info
+    
+    In fact, the underlying data need not all have the same (concrete) type: all that is needed is that the _unmasked_ elements have the same (concrete) type. The function `_concretise_eltype!!` is an attempt to force this to be the case: if the element type is abstract, but all the set elements have the same concrete type, the entire data array's element type will be changed to that concrete type (with junk in the unset elements).
+
+**One immediate question here is: how do we know what kind of array the `PartialArray` should use for its data and mask?**
+
+## `GrowableArray`s
+
+It's not obvious in the code above, but in the example above, we are implicitly making an assumption based on the indices that we see in the `VarName`s.
+For example, for `@varname(x[1].a)`, based on the index `1` we assume that `x` should be a vector with a length of at least 1.
+Similarly, for `@varname(y.b[2,3])`, we assume that `y.b` should be a matrix with at least 2 rows and 3 columns.
+
+We can inspect this by looking into the `PartialArray`s:
+
+```@example 1
+vnt.data.x.data
+```
+
+```@example 1
+vnt.data.y.data.b.data
+```
+
+So, these `PartialArray`s are backed by something called `GrowableArray`.
+A `GrowableArray` is an array type, defined in DynamicPPL, that can grow in size as needed when `setindex!!` is called with indices outside of its current bounds (with other arrays that would error).
+The reason for such an array type is that you may want to do something like
+
+```@example 1
+begin
+    local vnt = VarNamedTuple()
+    for i in 1:5
+        vnt = setindex!!(vnt, i, @varname(x[i]))
+    end
+    vnt
+end
+```
+
+and we don't have the ability to know in advance that `x` will eventually need to be at least of size 5.
+So, every call to `setindex!!` here will cause the underlying `GrowableArray` to grow in size as needed.
+
+The problem with this is that it makes a huge number of implicit assumptions about what kind of array `x` _actually_ is, and consequently it forbids a huge number of indexing operations in Julia.
+
+These include, for example, linear indexing.
+In this example, the first call will create a `GrowableArray` with one dimension (i.e., a vector); and the second call will fail since we can't index a vector with two indices.
+
+```@repl 1
+vnt = setindex!!(VarNamedTuple(), 10.0, @varname(x[1]))
+vnt = setindex!!(vnt, 20.0, @varname(x[2, 2]))
+```
+
+Colons also don't work.
+
+```@repl 1
+vnt = setindex!!(VarNamedTuple(), randn(2), @varname(x[:]))
+```
+
+Other things like `OffsetArray`s don't work (because `x[11]` would create a length-11 `GrowableArray`, which might not be appropriate; and `x[-1]` will just straight-up error).
+`DimArray`s will also fail if you use an index that isn't an integer.
+
+Finally, we don't know how large the final size of the array should be.
+If you try to access the entire array after setting some elements, it will work, but it will warn you:
+
+```@repl 1
+vnt = setindex!!(VarNamedTuple(), 10.0, @varname(x[1]))
+vnt[@varname(x)]
+```
+
+## Templated arrays
+
+**The general solution to this problem is for the user to provide a template for the array `x` in advance, so that we know what kind of array to create when we see `@varname(x[...])`.**
+
+At a low level, this is done using the [`DynamicPPL.templated_setindex!!`](@ref) function, which takes an extra argument that specifies the shape of the top-level symbol in the `VarName`.
+
+For example, the linear-indexing example above now works if you tell the function that `x` is a 2-by-2 matrix.
+
+```@example 1
+using DynamicPPL: templated_setindex!!
+
+x = zeros(2, 2)
+vnt = VarNamedTuple()
+vnt = templated_setindex!!(VarNamedTuple(), 10.0, @varname(x[1]), x)
+vnt = setindex!!(vnt, 20.0, @varname(x[2, 2]))
+```
+
+(The second call can also be `templated_setindex!!`, but it isn't necessary since the first call already establishes the shape of `x`, and indeed in such a case the template will be ignored.)
+Notice that the `PartialArray` is now backed by the correct Array:
+
+```@example 1
+vnt.data.x.data
+```
+
+It is no longer growable, so if you try to set an out-of-bounds index, it will error:
+
+```@repl 1
+vnt = setindex!!(vnt, 30.0, @varname(x[3, 1]))
+```
+
+This mechanism makes it far more flexible to work with arrays in DynamicPPL models.
+*Fundamentally, this resolves the inconsistency between indexing semantics in the model, and indexing semantics inside the `VarNamedTuple`.*
+
+For example, you can use `DimArray`s:
+
+```@example 1
+import DimensionalData as DD
+
+x = DD.DimArray(zeros(2, 3), (DD.X, DD.Y))
+
+vnt = VarNamedTuple()
+vnt = templated_setindex!!(vnt, 1.0, @varname(x[DD.X(1), DD.Y(2)]), x)
+```
+
+```@example 1
+vnt.data.x.data
+```
+
+You can access the data back again in any way you like, for example using linear indexing here:
+
+```@example 1
+getindex(vnt, @varname(x[3]))
+```
+
+!!! info
+    
+    Note that support for such arrays is contingent on the provider of the array type, as well as BangBang.jl. There may be bugs that prevent some array types from fully working correctly. For example, `BangBang.setindex!!` does not accept keyword arguments, which precludes the use of keyword indices in `DimArray`s. However, DynamicPPL itself does not inherently prevent you from using such arrays. We would definitely like to fix upstream issues like these, but we don't always have the time to do so: help is *very* greatly appreciated!
+
+## How do we provide the template?
+
+At this point, it would seem like a major faff for users to have to provide templates any time they wanted to use a `VarNamedTuple`.
+The good news is, within a DynamicPPL model, **the template always exists**.
+For example, consider:
+
+```@example 1
+using Distributions
+@model function bad_index()
+    return x[1] ~ Normal()
+end
+nothing # hide
+```
+
+If you were to attempt to execute this model, even without any interaction with `VarNamedTuple`s, this would error, because _there is no array `x` to set the first element in_.
+It would be like writing a function that does `x[1] = 10` without ever defining `y`:
+
+```@repl 1
+function bad_index_not_model()
+    return x[1] = 10
+end
+bad_index_not_model()
+```
+
+The model can **only** work if `x` is already provided, e.g. as an argument or a variable inside the model:
+
+```@example 1
+@model function ok_index1(x::AbstractArray)
+    return x[1] ~ Normal()
+end
+
+@model function ok_index2()
+    x = Vector{Float64}(undef, 10)
+    return x[1] ~ Normal()
+end
+nothing # hide
+```
+
+In both cases, we **do** have access to the template for `x`.
+Thus, this is just a matter of plumbing this information through to `DynamicPPL.tilde_assume!!` so that it can be used when setting values in the `VarNamedTuple`.
+In the macro output below, you can see that `x` is passed as one of the arguments to `tilde_assume!!`.
+
+```@example 1
+@macroexpand @model function bad_index()
+    return x[1] ~ Normal()
+end
+```
