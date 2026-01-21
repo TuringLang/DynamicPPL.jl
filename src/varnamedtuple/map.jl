@@ -111,6 +111,16 @@ _map_recursive!!(func, x, vn) = func(vn => x)
 # not on pairs of key => value, was type stable (presumably because it was a bit easier on
 # constant propagation).
 function _map_recursive!!(func, pa::PartialArray, vn)
+    return if eltype(pa) <: ArrayLikeBlock || ArrayLikeBlock <: eltype(pa)
+        # There are (or might be) some ALBs
+        _map_recursive_pa_alb!!(func, pa, vn)
+    else
+        # There are definitely no ALBs
+        _map_recursive_pa_noalb!!(func, pa, vn)
+    end
+end
+
+function _map_recursive_pa_alb!!(func, pa::PartialArray, vn)
     # Ask the compiler to infer the return type of applying func recursively to eltype(pa).
     et = eltype(pa)
     index_type = AbstractPPL.Index{NTuple{ndims(pa),Int},@NamedTuple{},AbstractPPL.Iden}
@@ -131,11 +141,7 @@ function _map_recursive!!(func, pa::PartialArray, vn)
     # iteration, so make a copy. The alternative, which avoids mutating, is to store a Dict
     # of already-visited ArrayLikeBlocks along with the result of applying `func` to them,
     # but that is more expensive.
-    mask = if eltype(pa) <: ArrayLikeBlock || ArrayLikeBlock <: eltype(pa)
-        copy(pa.mask)
-    else
-        pa.mask
-    end
+    mask = copy(pa.mask)
     for i in CartesianIndices(mask)
         if mask[i]
             val = pa.data[i]
@@ -154,6 +160,38 @@ function _map_recursive!!(func, pa::PartialArray, vn)
     end
     # The above type inference may be overly conservative, so we concretise the eltype.
     return _concretise_eltype!!(PartialArray(new_data, pa.mask))
+end
+
+function _map_recursive_pa_noalb!!(func, pa::PartialArray, vn)
+    # Don't have to faff with ALBs. Just map `func` over all elements that are set.
+    mask = pa.mask
+    ci = CartesianIndices(mask)
+    ixs_subset = ci[mask]
+    data_subset = pa.data[mask]
+
+    index_type = AbstractPPL.Index{NTuple{ndims(pa),Int},@NamedTuple{},AbstractPPL.Iden}
+    new_vn_type = Core.Compiler.return_type(
+        AbstractPPL.append_optic, Tuple{typeof(vn),index_type}
+    )
+    et = eltype(pa)
+    new_et = Core.Compiler.return_type(
+        Tuple{typeof(_map_recursive!!),typeof(func),eltype(pa),new_vn_type}
+    )
+
+    function inner(data_i, ix_i)
+        new_vn = AbstractPPL.append_optic(vn, AbstractPPL.Index(Tuple(ix_i), (;)))
+        return _map_recursive!!(func, data_i, new_vn)
+    end
+    return if new_et <: et
+        # Can write into existing data array.
+        map!(inner, view(pa.data, mask), data_subset, ixs_subset)
+        pa
+    else
+        # Need to allocate a new data array.
+        new_pa_data = similar(pa.data, new_et)
+        map!(inner, view(new_pa_data, mask), data_subset, ixs_subset)
+        _concretise_eltype!!(PartialArray(new_pa_data, pa.mask))
+    end
 end
 
 function _map_recursive!!(func, alb::ArrayLikeBlock, vn)
