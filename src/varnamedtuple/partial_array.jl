@@ -70,6 +70,9 @@ struct ArrayLikeBlock{T,I,N,S}
     kw::N
     index_size::S
 end
+# When broadcasting (e.g. my_array[1:5] .= array_like_block), we want to treat
+# ArrayLikeBlocks as scalars.
+Base.broadcastable(o::ArrayLikeBlock) = Ref(o)
 
 function Base.show(io::IO, alb::ArrayLikeBlock)
     print(io, "ArrayLikeBlock(")

@@ -144,14 +144,7 @@ function _map_recursive!!(func, pa::PartialArray, vn)
                 # and mark those places as visited.
                 new_vn = AbstractPPL.append_optic(vn, AbstractPPL.Index(val.ix, val.kw))
                 new_val = _map_recursive!!(func, val, new_vn)
-                # TODO(penelopeysm). Would like to just do new_data[val.ix..., val.kw...] .=
-                # new_val, but that only works if `new_val` has length equal to 1 (i.e., is
-                # known to be a scalar), so that Julia's broadcasting knows how to deal with
-                # it. Is there a way to overload this...? We could define a method for
-                # `length(::ArrayLikeBlock) = 1` (currently there is no such method), but
-                # that feels a bit dangerous, since an ALB has a notion of size that isn't
-                # necessarily just 1.
-                fill!(view(new_data, val.ix..., val.kw...), new_val)
+                new_data[val.ix..., val.kw...] .= new_val
                 mask[val.ix..., val.kw...] .= false
             else
                 new_vn = AbstractPPL.append_optic(vn, AbstractPPL.Index(Tuple(i), (;)))
