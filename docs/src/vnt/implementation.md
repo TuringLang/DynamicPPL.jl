@@ -106,13 +106,17 @@ function make_leaf(leaf_value, optic, template)
 end
 ```
 
-To explain each line:
+Some explanatory notes:
 
-  - The whole purpose of the function is to ensure that `value` is something where you can index into with `optic` to get `leaf_value`.
+ 1. The whole purpose of the function is to ensure that `value` is something where you can index into with `optic` to get `leaf_value`.
 
-  - Since `sub_value` is also created with the same function, that means it must be something you can index into with `child_optic` to get `leaf_value`.
-  - `empty_value` needs to be something that can hold `sub_value` at `this_optic`. We don't put the data in (not just yet). However, to ensure type stability, we should *instantiate* the PA with the correct element type: in this case that's just `typeof(sub_value)`.
-  - `value` is then created by putting `sub_value` into `empty_value` at `this_optic`.
+ 2. Since `sub_value` is also created with the same function, that means it must be something you can index into with `child_optic` to get `leaf_value`.
+ 3. `empty_value` needs to be something that can hold `sub_value` at `this_optic`. We don't yet insert the data. However, to ensure type stability, we should *instantiate* the PA with the correct element type: in this case that's just `typeof(sub_value)`. (If we don't use the correct element type, the subsequent call to `setindex!!` will have to change the element type of the PA.)
+ 4. `value` is then created by putting `sub_value` into `empty_value` at `this_optic`.
+
+!!! info
+    
+    Regarding point (3): we haven't yet covered `ArrayLikeBlock`s (that will be on the next page). If `sub_value` is something that would be stored as an `ArrayLikeBlock`, we need to instantiate `empty_value` with `typeof(ArrayLikeBlock(sub_value))` instead of `typeof(sub_value)`, again for type stability reasons. If you are not familiar with this, don't worry about it for now.
 
 ## Multi-indices
 
@@ -181,7 +185,7 @@ function _is_multiindex(template::AbstractArray, ix...; kw...)
 end
 ```
 
-which actually works surprisingly well, and is frequently (if not always?) constant propagated.
+which works really well across different array types, and is frequently (if not always?) constant propagated.
 
 ```@repl 1
 using DimensionalData;
