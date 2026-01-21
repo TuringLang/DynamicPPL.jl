@@ -102,13 +102,11 @@ function Base.copy(vnt::VarNamedTuple{names}) where {names}
     )
 end
 
-# PartialArrays are an implementation detail of VarNamedTuple, and should never be the
-# return value of getindex. Thus, we automatically convert them to dense arrays if needed.
-# TODO(mhauru) The below doesn't handle nested PartialArrays. Is that a problem?
-as_array_if_needed(pa::PartialArray) = as_array(pa)
-as_array_if_needed(x) = x
+# PartialArrays and GrowableArrays are an implementation detail of VarNamedTuple, and should
+# never be the return value of getindex. Thus, we automatically convert them to dense arrays
+# if needed.
 function Base.getindex(vnt::VarNamedTuple, vn::VarName)
-    return as_array_if_needed(_getindex_optic(vnt, vn))
+    return unwrap_internal_array(_getindex_optic(vnt, vn))
 end
 
 Base.haskey(vnt::VarNamedTuple, vn::VarName) = _haskey_optic(vnt, vn)

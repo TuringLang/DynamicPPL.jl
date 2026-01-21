@@ -123,20 +123,7 @@ Base.getindex(ga::GrowableArray, ix::CartesianIndex) = getindex(ga.data, ix)
 # multi-element indexing
 Base.getindex(ga::GrowableArray, ix...) = GrowableArray(getindex(ga.data, ix...))
 Base.setindex!(ga::GrowableArray, value, ix...) = setindex!(ga.data, value, ix...)
-function grow_to_indices(ga::GrowableArray{T,N}, ix...; kw...) where {T,N}
-    if length(ix) != N
-        throw(
-            ArgumentError(
-                "Attempted to set the index $ix in a GrowableArray of dimension $N." *
-                " This is not supported (even if the index is valid). To avoid this error," *
-                " you have to provide a template for the array so that its shape and type" *
-                " are known.",
-            ),
-        )
-    end
-    # This will error if there are any keyword indices -- we have to keep it in though
-    # to ensure the signature matches.
-    required_size = get_maximum_size_from_indices(ix...; kw...)
+function grow_to_size!!(ga::GrowableArray{T,N}, required_size::NTuple{N,Int}) where {T,N}
     current_size = size(ga.data)
     return if any(required_size .> current_size)
         # Need to make a new array that is big enough to hold the new index.
@@ -146,14 +133,37 @@ function grow_to_indices(ga::GrowableArray{T,N}, ix...; kw...) where {T,N}
             # for the mask part of PartialArray, which may be a GrowableArray{Bool,N}.
             fill(false, new_size)
         else
-            Array{T,N}(undef, new_size)
+            # Otherwise, it's some data array.
+            similar(ga.data, new_size)
         end
-        # Copy the old data into the old array.
+        # Copy the old data into the new array.
         # TODO(penelopeysm): This could in theory be made more efficient by only copying
         # over the parts that are not masked. However, in this function we don't have the
-        # mask, so...
-        for c in CartesianIndices(ga.data)
-            new_data[c] = ga.data[c]
+        # mask, so... I tried to turn grow_to_size!! into a function that took both the
+        # data and the mask at the same time (which would make sense *anyway*), but that
+        # inexplicably ruined type stability.
+        for c in CartesianIndices(new_data)
+            if all(c.I .<= current_size)
+                if isassigned(ga.data, c)
+                    new_data[c] = ga.data[c]
+                else
+                    # Avoid creating the new array with uninitialised data. By construction,
+                    # ga.data[end] must always be initialised (otherwise the GrowableArray
+                    # would not have grown to that size).
+                    new_data[c] = ga.data[end]
+                end
+            else
+                # Set all the new values to the value at the end of the old array, to avoid
+                # creating new indices which may be uninitialized, which could cause bugs.
+                # See my comment in setindex!! for PartialArray, particularly, when the
+                # value being set is itself a PartialArray.
+                if T == Bool
+                    # For masks, we want to initialise new data to false.
+                    new_data[c] = false
+                else
+                    new_data[c] = ga.data[end]
+                end
+            end
         end
         GrowableArray{T,N}(new_data)
     else
@@ -161,8 +171,6 @@ function grow_to_indices(ga::GrowableArray{T,N}, ix...; kw...) where {T,N}
         ga
     end
 end
-# Other arrays cannot grow.
-grow_to_indices(x::AbstractArray, ix...; kw...) = x
 
 function throw_kw_error()
     throw(
@@ -190,8 +198,7 @@ function largest_index(x)
         ),
     )
 end
-function get_maximum_size_from_indices(ix...; kw...)
-    isempty(kw) || throw_kw_error()
+function get_maximum_size_from_indices(ix...)
     return tuple(map(largest_index, ix)...)
 end
 
@@ -431,19 +438,21 @@ function Base.getindex(pa::PartialArray, inds::Vararg{Any}; kw...)
     end
     val = getindex(pa.data, inds...; kw...)
 
+    is_multiindex = _is_multiindex(pa.data, inds...; kw...)
+
     # If not for ArrayLikeBlocks, at this point we could just return val directly. However,
     # we need to check if val contains any ArrayLikeBlocks, and if so, make sure that that
     # we are retrieving exactly that block and nothing else.
 
     # The error we'll throw if the retrieval is invalid.
-    err = ArgumentError("""
+    alb_err = ArgumentError("""
         A non-Array value set with a range of indices must be retrieved with the same
         range of indices.
         """)
     if val isa ArrayLikeBlock
-        # Tried to get a single value, but it's an ArrayLikeBlock.
-        throw(err)
-    elseif _is_multiindex(pa.data, inds...; kw...) &&
+        # Error if we try to get a single value, but it's an ArrayLikeBlock.
+        throw(alb_err)
+    elseif is_multiindex &&
         val isa AbstractArray &&
         (eltype(val) <: ArrayLikeBlock || ArrayLikeBlock <: eltype(val))
         # Tried to get a range of values, and at least some of them may be ArrayLikeBlocks.
@@ -461,11 +470,11 @@ function Base.getindex(pa::PartialArray, inds::Vararg{Any}; kw...)
         # check that all elements that we're trying to access are the same ArrayLikeBlock.
         first_elem = first(val)
         if !(first_elem isa ArrayLikeBlock) || any(v -> v !== first_elem, val)
-            throw(err)
+            throw(alb_err)
         end
         # check that there are no other elements that also refer to the same ArrayLikeBlock.
         if size(val) != first_elem.index_size
-            throw(err)
+            throw(alb_err)
         end
         # If _setindex!! works correctly, we should only be able to reach this point if all
         # the elements in `val` are identical to first_elem. Thus we just return that one.
@@ -478,7 +487,7 @@ function Base.getindex(pa::PartialArray, inds::Vararg{Any}; kw...)
         # wrong result, most notably when using the `end` DynamicIndex. However, inds is
         # already concretised outside of this function, so we can't check for that here.
         # This should be fixed.
-        return as_array(val)
+        return unwrap_internal_array(val)
     else
         return val
     end
@@ -577,8 +586,12 @@ end
 function BangBang.setindex!!(pa::PartialArray, value, inds::Vararg{Any}; kw...)
     # If pa.data and pa.mask are GrowableArrays, we may need to resize them before doing
     # anything else. For other AbstractArrays, grow_to_indices is a no-op.
-    new_data = grow_to_indices(pa.data, inds...; kw...)
-    new_mask = grow_to_indices(pa.mask, inds...; kw...)
+    new_data, new_mask = if pa.data isa GrowableArray
+        required_size = get_maximum_size_from_indices(inds...; kw...)
+        grow_to_size!!(pa.data, required_size), grow_to_size!!(pa.mask, required_size)
+    else
+        pa.data, pa.mask
+    end
 
     # Then delete any overlapping ArrayLikeBlocks
     new_data, new_mask = _remove_partial_blocks!!(new_data, new_mask, inds...; kw...)
@@ -602,6 +615,8 @@ function BangBang.setindex!!(pa::PartialArray, value, inds::Vararg{Any}; kw...)
         if value isa PartialArray
             if _is_multiindex(new_data, inds...; kw...)
                 # Overwriting multiple parts of a PA with data from another PA.
+                # TODO(penelopeysm): There is a potential optimisation here: only set the
+                # values where value.mask is true.
                 new_data = setindex!!(new_data, value.data, inds...; kw...)
                 setindex!(new_mask, value.mask, inds...; kw...)
             else
@@ -719,15 +734,21 @@ function _merge_norecurse(pa1::PartialArray, pa2::PartialArray)
 end
 
 """
-    as_array(x::AbstractArray)
+    unwrap_internal_array(x)
 
-Return the underlying data of the `AbstractArray`.
+`x` here is some data obtained by indexing with a slice into an AbstractArray or
+PartialArray stored in a VNT. (It might be an AbstractArray if for example the VarName `x`
+is just set to an array, rather than its individual elements being set one by one.)
 
-If `x` is a `PartialArray` and has any elements that are masked, or if any of the elements
-are `ArrayLikeBlock`s, this will error.
+This function unwraps any PartialArray or GrowableArray wrappers, returning the underlying
+Base.Array. It errors if any elements are not set, or if any elements are still
+ArrayLikeBlocks.
+
+Sometimes, indexing with a slice into a PartialArray returns an unwrapped ArrayLikeBlock.
+In that case, this function does nothing.
 """
-as_array(x::AbstractArray) = x
-function as_array(pa::PartialArray)
+unwrap_internal_array(x) = x
+function unwrap_internal_array(pa::PartialArray)
     if !(all(pa.mask))
         throw(
             ArgumentError(
@@ -749,9 +770,14 @@ function as_array(pa::PartialArray)
             end
         end
     end
-    return as_array(retval)
+    return unwrap_internal_array(retval)
 end
-function as_array(ga::GrowableArray)
+function unwrap_internal_array(ga::GrowableArray)
+    # TODO(penelopeysm): This warning is too eager. For example, if we set x[1] and x[2] but
+    # then access x[1:2], this warning will still be triggered. We should only warn if the
+    # user calls something with colons or with DynamicIndex in it. However, that requires
+    # threading some information through from the original getindex call. This problem can
+    # be solved later on.
     @warn (
         "Returning a `Base.Array` with a presumed size based on the indices" *
         " used to set values; but this may not be the actual shape or size" *
@@ -759,5 +785,5 @@ function as_array(ga::GrowableArray)
         " You should inspect the returned Array to make sure that it has the" *
         " shape and type you expect."
     )
-    return as_array(ga.data)
+    return unwrap_internal_array(ga.data)
 end

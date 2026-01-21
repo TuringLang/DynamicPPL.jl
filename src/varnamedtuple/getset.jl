@@ -121,15 +121,18 @@ function throw_setindex_allow_new_error()
 end
 
 struct SharedGetProperty{S} end
-# NOTE: The check on hasproperty can be type unstable!
+# TODO(penelopeysm): The check on hasproperty can be type unstable! This avoids erroring
+# when an incorrect template is passed (e.g. trying to set `x.a.b` on something that doesn't
+# have a field `a`) -- but is it worth it?
 (::SharedGetProperty{S})(x) where {S} = hasproperty(x, S) ? getproperty(x, S) : NoTemplate()
 (::SharedGetProperty)(::NoTemplate) = NoTemplate()
 (::SharedGetProperty)(t::SkipTemplate{N}) where {N} = decrease_skip(t)
-function (::SharedGetProperty{S})(x::VarNamedTuple{names}) where {S,names}
-    if S in names
-        x.data[S]
+# Unsure if this needs to be a generated function, but it's not too complex.
+@generated function (::SharedGetProperty{S})(x::VarNamedTuple{names}) where {S,names}
+    return if S in names
+        :(x.data.$S)
     else
-        NoTemplate()
+        :(NoTemplate())
     end
 end
 
@@ -149,6 +152,8 @@ function _setindex_optic!!(
         elseif _is_multiindex(template, coptic.ix...; coptic.kw...)
             Base.getindex(template, coptic.ix...; coptic.kw...)
         elseif isassigned(template, coptic.ix...; coptic.kw...)
+            # Single-index, but we should check that there is actual data there before
+            # calling getindex, as otherwise it will error
             Base.getindex(template, coptic.ix...; coptic.kw...)
         else
             NoTemplate()
@@ -173,7 +178,7 @@ function _setindex_optic!!(
                 # ALL the indices with the new leaf value, which will overwrite any
                 # previously active values! To avoid this, we will set a flag to indicate
                 # that we can create a new leaf, but at the end of the function we need to
-                # merge the new leaf into the existing PartialArray instead of overwriting
+                # MERGE the new leaf into the existing PartialArray instead of overwriting
                 # it.
                 # This situation can happen e.g. with
                 #     using DynamicPPL
@@ -241,11 +246,16 @@ Make a new leaf node for a VarNamedTuple.
 This is the function that sets any `optic` that is a `Property` to be stored as a
 `VarNamedTuple`, any `Index` to be stored as a `PartialArray`, and other `Iden` optics to be
 stored as raw values. It is the link that joins `VarNamedTuple` and `PartialArray` together.
+
+A lot of the complexity in the VarNamedTuple code comes from this function. For this reason,
+it is heavily documented, not only with comments in the code, but also in the built
+DynamicPPL documentation. If you are modifying this function, please read it!
+
+https://turinglang.org/DynamicPPL.jl/stable/vnt/implementation/
 """
 @inline make_leaf(@nospecialize(value::Any), ::AbstractPPL.Iden, ::Any) = value
 function make_leaf(value, optic::AbstractPPL.Property{S}, template) where {S}
     sub_value = if optic.child isa AbstractPPL.Iden
-        # Skip recursion
         value
     else
         child_template = SharedGetProperty{S}()(template)
@@ -254,7 +264,17 @@ function make_leaf(value, optic::AbstractPPL.Property{S}, template) where {S}
     return VarNamedTuple(NamedTuple{(S,)}((sub_value,)))
 end
 
+# This function handles Index optics. Since Index optics can represent either single-element
+# indexing or multi-element indexing (e.g., slices, arrays of indices), and their
+# implementation can be somewhat different, we dispatch to separate functions for each case.
+function make_leaf(value, optic::AbstractPPL.Index, template::PartialArray)
+    # If the template is a PA, use its data as the template.
+    return make_leaf(value, optic, template.data)
+end
 function make_leaf(value, optic::AbstractPPL.Index, template)
+    # First we need to resolve any dynamic indices, since _is_multiindex doesn't work with
+    # them. This also helpfully catches errors if there is a dynamic index and a suitable
+    # template is not provided (e.g., if someone tries to set `x[end]` without a template).
     coptic = AbstractPPL.concretize_top_level(optic, template)
     is_multiindex = if template isa AbstractArray || template isa PartialArray
         _is_multiindex(template, coptic.ix...; coptic.kw...)
@@ -265,94 +285,110 @@ function make_leaf(value, optic::AbstractPPL.Index, template)
         # This will error if there are things like colons.
         _is_multiindex_static(coptic.ix)
     end
-    sub_value = if coptic.child isa AbstractPPL.Iden
-        # Skip recursion
+    return if is_multiindex
+        make_leaf_multiindex(value, coptic, template)
+    else
+        make_leaf_singleindex(value, coptic, template)
+    end
+end
+
+function make_sub_value(value, coptic::AbstractPPL.Index, template)
+    return if coptic.child isa AbstractPPL.Iden
         value
     else
         child_template = if template isa NoTemplate
             NoTemplate()
         elseif template isa SkipTemplate
             decrease_skip(template)
-        elseif template isa AbstractArray || template isa PartialArray
-            # Note: don't need to check isassigned here because if the child template would
-            # be an undefined reference, then it is meaningless for coptic.child to be
-            # anything but Iden, which would have been caught above.
+        elseif template isa AbstractArray
+            # Note template can't be a PartialArray as that would have been unwrapped in
+            # another make_leaf method.
             getindex(template, coptic.ix...; coptic.kw...)
         else
             NoTemplate()
         end
         make_leaf(value, coptic.child, child_template)
     end
+end
 
-    # We need to be careful here, as depending on the indices, `sub_value` might either
-    # represent a single element or a slice of elements. When reconstructing the data
-    # to use for the PartialArray creation, we need to make sure to not accidentally
-    # create an array of arrays.
-    correct_template_eltype =
-        if is_multiindex &&
-            sub_value isa AbstractArray &&
-            (
-                template isa NoTemplate ||
-                template isa SkipTemplate ||
-                template isa AbstractArray
-            )
-            # In this branch, we know that sub_value represents a slice of elements. Since
-            # it's an AbstractArray, we can safely get its element type.
-            eltype(sub_value)
-        elseif is_multiindex
-            # This is the case where sub_value represents a slice of elements, but it's
-            # not an AbstractArray. This can happen if sub_value is something that needs
-            # to be set as an ArrayLikeBlock. In order to get the right element type for
-            # the template (to avoid type instability), we need to pre-construct the
-            # expected type that would be used here if we were to set it directly.
-            #
-            # Note that we don't perform any check here that vnt_size lines up with the
-            # size of the indices. That's checked for us inside PartialArray code.
-            ArrayLikeBlock{
-                typeof(sub_value),
-                typeof(coptic.ix),
-                typeof(coptic.kw),
-                typeof(vnt_size(value)),
-            }
-        else
-            # Single-element indexing.
-            typeof(sub_value)
-        end
-    pa_data = if template isa NoTemplate || template isa SkipTemplate
-        # If no template was provided, we have to make a GrowableArray. This can happen if
-        # the template is NoTemplate or SkipTemplate, or if it's just a nonsensical
-        # template.
-        template_sz = get_maximum_size_from_indices(coptic.ix...; coptic.kw...)
-        GrowableArray(Array{correct_template_eltype}(undef, template_sz))
-    elseif is_multiindex && sub_value isa PartialArray
-        # In this case, sub_value is actually just a subset of the data that we are going to
-        # create! This can happen with varnames like x[1:2][1].
-        # Note that this is different from varnames like x[1][1]. In that case, x should be
-        # a PartialArray that itself stores PartialArrays.
-        similar(sub_value.data, size(template))
-    elseif template isa AbstractArray || template isa PartialArray
-        # The template is already an array, presumably of the correct size.
-        if !(eltype(template) <: correct_template_eltype)
-            # If coptic.child was a Property lens, then sub_value will always be normalised into
-            # a VNT (since that's what the inner make_leaf returns). However, `template` may
-            # contain things that are not VNTs, but could be either e.g. NamedTuples or just
-            # generic structs. In this case, it can be type unstable to create a PartialArray
-            # from the template and then setindex!! a VNT into it. So, we create a new template
-            # with the appropriate type here before creating the PartialArray.
-            similar(template, correct_template_eltype)
-        else
+# This is the easy case, and is directly analogous to the Property optic case above.
+# The optic is called `coptic` to indicate that it has already been concretised
+# by the caller.
+function make_leaf_singleindex(value, coptic::AbstractPPL.Index, template)
+    sub_value = make_sub_value(value, coptic, template)
+    # `sub_value` will become a single element inside the PartialArray that we create. To
+    # ensure type stability, we want to make sure that the PartialArray is created with the
+    # correct eltype to begin with, otherwise setindex!! may become type unstable.
+    pa_eltype = typeof(sub_value)
+    pa_data = if template isa AbstractArray
+        if pa_eltype <: eltype(template)
+            # Reuse the eltype of template: it might be more abstract than sub_value_type,
+            # but that's fine since it will mimic the semantics of what the user passed in.
             similar(template)
+        else
+            # Use the eltype of sub_value.
+            similar(template, pa_eltype)
         end
     else
-        # Rubbish template. We have to create a GrowableArray.
-        template_sz = get_maximum_size_from_indices(coptic.ix...; coptic.kw...)
-        GrowableArray(Array{correct_template_eltype}(undef, template_sz))
+        # If no template was provided, or an incorrectly typed template was provided, we
+        # have to make a GrowableArray. No need to use `kw` since make_leaf already errors
+        # if there are uninterpretable keyword indices.
+        template_sz = get_maximum_size_from_indices(coptic.ix...)
+        GrowableArray(Array{pa_eltype}(undef, template_sz))
     end
     pa_mask = similar(pa_data, Bool)
     fill!(pa_mask, false)
     pa = PartialArray(pa_data, pa_mask)
     return BangBang.setindex!!(pa, sub_value, coptic.ix...; coptic.kw...)
 end
-function make_leaf(value, optic::AbstractPPL.Index, template::PartialArray)
-    return make_leaf(value, optic, template.data)
+
+# This is more complex.
+function make_leaf_multiindex(value, coptic::AbstractPPL.Index, template)
+    sub_value = make_sub_value(value, coptic, template)
+
+    # Firstly, we need to make sure that sub_value has *exactly* the right size to fit into
+    # the indices specified by `coptic`. This might not always be the case. Consider
+    # _[2:3][1] without a template -- the inner `make_leaf` call will create a GrowableArray
+    # of size 1 (because that's the minimum size it infers from the inner indices), but we
+    # actually need a slice of length 2. (If there's a template, we don't have this problem,
+    # because the inner make_leaf will use the template to set the correct size of 2.)
+    grown_sub_value = if sub_value isa PartialArray && sub_value.data isa GrowableArray
+        required_size = get_required_size_from_indices(coptic.ix)
+        new_subvalue_data = grow_to_size!!(sub_value.data, required_size)
+        new_subvalue_mask = grow_to_size!!(sub_value.mask, required_size)
+        PartialArray(new_subvalue_data, new_subvalue_mask)
+    else
+        sub_value
+    end
+
+    # `sub_value` is not just one element, but is actually a slice inside the PartialArray
+    # that we create. To add to that, it might not just be a slice, but it might be an
+    # ArrayLikeBlock that is set at multiple indices.
+    pa_eltype = if sub_value isa AbstractArray || sub_value isa PartialArray
+        eltype(sub_value)
+    else
+        ArrayLikeBlock{
+            typeof(sub_value),
+            typeof(coptic.ix),
+            typeof(coptic.kw),
+            typeof(vnt_size(value)),
+        }
+    end
+
+    # The rest is the same as the single-index case.
+    pa_data = if template isa AbstractArray
+        if pa_eltype <: eltype(template)
+            similar(template)
+        else
+            similar(template, pa_eltype)
+        end
+    else
+        # No template, or incorrectly typed template
+        template_sz = get_maximum_size_from_indices(coptic.ix...)
+        GrowableArray(Array{pa_eltype}(undef, template_sz))
+    end
+    pa_mask = similar(pa_data, Bool)
+    fill!(pa_mask, false)
+    pa = PartialArray(pa_data, pa_mask)
+    return BangBang.setindex!!(pa, grown_sub_value, coptic.ix...; coptic.kw...)
 end

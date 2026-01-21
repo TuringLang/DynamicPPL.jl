@@ -290,15 +290,9 @@ Base.size(st::SizedThing) = st.size
         end
 
         @testset "Nested multi-index" begin
-            # TODO(penelopeysm) Untemplated setindex for these two is type unstable. Should
-            # investigate, but not very high priority right now since most calls in
-            # DynamicPPL will be templated.
-            test_get_set(
-                GetSetTestCase(@varname(g[1:2][2]), 1.0, zeros(2), []); unstable=true
-            )
+            test_get_set(GetSetTestCase(@varname(g[1:2][2]), 1.0, zeros(2), []))
             test_get_set(
                 GetSetTestCase(@varname(g[1:2][2].a), 1.0, fill((; a=1.0), 2), []);
-                unstable=true,
             )
         end
 
@@ -548,40 +542,138 @@ Base.size(st::SizedThing) = st.size
         @test_broken false
     end
 
+    @testset "multiindices" begin
+        # These tests essentially check that:
+        #   (1) setting a slice works as expected
+        #   (2) setting an index of a slice works as expected
+        #   (3) setting a slice of a slice works as expected
+        #
+        # There used to be a litany of bugs around this. See DynamicPPL #1205.
+        @testset for (index_chains, template_length) in [
+            ((1:2, 1), 3),
+            ((2:3, 1), 3),
+            ((1:2, 2), 3),
+            ((2:3, 2), 3),
+            ((1:3, 1:2), 4),
+            ((1:3, 2:3), 4),
+            ((2:4, 1:2), 4),
+            ((2:4, 2:3), 4),
+            ((1:3, 1:2, 1), 4),
+            ((1:3, 1:2, 2), 4),
+            ((2:4, 2:3, 1), 4),
+            ((2:4, 2:3, 2), 4),
+            ((1:3, 2:3, 1), 4),
+            ((1:3, 2:3, 2), 4),
+            ((2:4, 1:2, 1), 4),
+            ((2:4, 1:2, 2), 4),
+            ((1:3, :), 4),
+            ((2:4, :), 4),
+            ((:, 1:3), 4),
+            ((:, 2:4), 4),
+            ((1:3, :, 1:2), 4),
+            ((2:4, :, 1:2), 4),
+            ((1:3, :, 2:3), 4),
+            ((2:4, :, 2:3), 4),
+            ((1:2, :, 1), 3),
+            ((1:2, :, 2), 3),
+            ((2:3, :, 1), 3),
+            ((2:3, :, 2), 3),
+        ]
+            # I couldn't figure out a better way to do this. `@varname(x[index_chains...])`
+            # works, but it gives the wrong thing: it gives you `x[1:2, 1]` instead of
+            # `x[1:2][1]`.
+            vn = if length(index_chains) == 2
+                @varname(x[index_chains[1]][index_chains[2]])
+            elseif length(index_chains) == 3
+                @varname(x[index_chains[1]][index_chains[2]][index_chains[3]])
+            else
+                error("unsupported length")
+            end
+            # This gets the final position where the values should end up --
+            # get_collapsed_indices((1:3, 2:3, 1), nothing) = 2
+            function get_collapsed_indices(chain, init)
+                if isnothing(init) || init isa Colon
+                    return get_collapsed_indices(Base.tail(chain), first(chain))
+                end
+                isempty(chain) && return init
+                inds = first(chain)
+                return if inds isa Colon
+                    get_collapsed_indices(Base.tail(chain), init)
+                else
+                    get_collapsed_indices(Base.tail(chain), init[inds])
+                end
+            end
+            final_indices = get_collapsed_indices(index_chains, nothing)
+
+            val = if final_indices isa Integer
+                1.0
+            else
+                fill(1.0, length(final_indices))
+            end
+
+            for (func!!, args) in
+                ((templated_setindex!!, (zeros(template_length),)), (setindex!!, ()))
+                vnt = @inferred(
+                    templated_setindex!!(VarNamedTuple(), val, vn, zeros(template_length))
+                )
+                @test @inferred(getindex(vnt, vn)) == val
+                normalized_vn = @varname(x[final_indices])
+                @test @inferred(getindex(vnt, normalized_vn)) == val
+
+                # Check that other indices are not set
+                for i in 1:template_length
+                    if !(i in final_indices)
+                        @test_throws BoundsError getindex(vnt, @varname(x[i]))
+                    end
+                end
+            end
+        end
+    end
+
     @testset "chained multiindices [1:2][1] -> [1:2][2]" begin
         # These are particularly finicky to deal with. See
         # https://github.com/TuringLang/DynamicPPL.jl/issues/1205.
-        # TODO(penelopeysm) Test with untemplated setindex too.
-        vnt = VarNamedTuple()
+        #
+        # The aim of these tests is to make sure that when you set [1:2][2], you don't
+        # lose [1:2][1]. This could happen if you're not careful because when you
+        # set [1:2][2], you get back a length-2 PartialArray with only the second element
+        # set, and you could overwrite the entire [1:2] entry in the target PartialArray,
+
         x = zeros(2)
-        vnt = @inferred(templated_setindex!!(vnt, 1.0, @varname(x[1:2][1]), x))
-        @test @inferred(getindex(vnt, @varname(x[1:2][1]))) == 1.0
-        @test @inferred(getindex(vnt, @varname(x[1]))) == 1.0
-        @test_throws BoundsError getindex(vnt, @varname(x[2]))
-        test_invariants(vnt)
+        for (func!!, args) in ((templated_setindex!!, (x,)), (setindex!!, ()))
+            vnt = VarNamedTuple()
 
-        # Now set the second index
-        vnt = @inferred(templated_setindex!!(vnt, 2.0, @varname(x[1:2][2]), x))
-        @test @inferred(getindex(vnt, @varname(x[1:2][2]))) == 2.0
-        @test @inferred(getindex(vnt, @varname(x[2]))) == 2.0
-        test_invariants(vnt)
+            vnt = @inferred(func!!(vnt, 1.0, @varname(x[1:2][1]), args...))
+            @test @inferred(getindex(vnt, @varname(x[1:2][1]))) == 1.0
+            @test @inferred(getindex(vnt, @varname(x[1]))) == 1.0
+            @test_throws BoundsError getindex(vnt, @varname(x[2]))
+            test_invariants(vnt)
 
-        # Check that the first index is still correct
-        @test @inferred(getindex(vnt, @varname(x[1]))) == 1.0
-        # Check that we can get both indices
-        @test @inferred(getindex(vnt, @varname(x[1:2]))) == [1.0, 2.0]
-        @test @inferred(getindex(vnt, @varname(x[:]))) == [1.0, 2.0]
-        @test @inferred(getindex(vnt, @varname(x))) == [1.0, 2.0]
+            # Now set the second index
+            vnt = @inferred(func!!(vnt, 2.0, @varname(x[1:2][2]), args...))
+            @test @inferred(getindex(vnt, @varname(x[1:2][2]))) == 2.0
+            @test @inferred(getindex(vnt, @varname(x[2]))) == 2.0
+            test_invariants(vnt)
 
-        @test keys(vnt) == [@varname(x[1]), @varname(x[2])]
-        @test values(vnt) == [1.0, 2.0]
+            # Check that the first index is still correct
+            @test @inferred(getindex(vnt, @varname(x[1]))) == 1.0
+            # Check that we can get both indices
+            @test @inferred(getindex(vnt, @varname(x[1:2]))) == [1.0, 2.0]
+            @test @inferred(getindex(vnt, @varname(x[:]))) == [1.0, 2.0]
+            @test @inferred(getindex(vnt, @varname(x))) == [1.0, 2.0]
+
+            @test keys(vnt) == [@varname(x[1]), @varname(x[2])]
+            @test values(vnt) == [1.0, 2.0]
+        end
     end
 
     @testset "chained multiindices [1:2][1] -> [end:end][1]" begin
         # See https://github.com/TuringLang/DynamicPPL.jl/issues/1205.
-        # TODO(penelopeysm) Test with untemplated setindex too.
+        # Note that this doesn't work with untemplated setindex!! because `end` will be
+        # wrong.
         vnt = VarNamedTuple()
         x = zeros(3)
+
         vnt = @inferred(templated_setindex!!(vnt, 1.0, @varname(x[1:2][1]), x))
         @test @inferred(getindex(vnt, @varname(x[1:2][1]))) == 1.0
         @test @inferred(getindex(vnt, @varname(x[1]))) == 1.0
@@ -726,22 +818,16 @@ Base.size(st::SizedThing) = st.size
                 normalized_vn = @varname(x[1:2])
 
                 # Without templating.
-                if vn == @varname(x[1:5][1:2])
-                    # https://github.com/TuringLang/DynamicPPL.jl/issues/1206. Be warned, it
-                    # is very nontrivial to fix this.
-                    @test_broken false
-                else
-                    vnt1 = @inferred(setindex!!(VarNamedTuple(), A(1.0), vn))
-                    @test vnt1[vn] == A(1.0)
-                    vnt2 = @inferred(setindex!!(VarNamedTuple(), A(2.0), vn))
-                    @test vnt2[vn] == A(2.0)
-                    merged = @inferred(merge(vnt1, vnt2))
-                    expected_merge = setindex!!(VarNamedTuple(), A(2.0), vn)
-                    @test merged == expected_merge
-                    @test only(keys(merged)) == normalized_vn
-                    @test merged[vn] == A(2.0)
-                    @test merged[normalized_vn] == A(2.0)
-                end
+                vnt1 = @inferred(setindex!!(VarNamedTuple(), A(1.0), vn))
+                vnt2 = @inferred(setindex!!(VarNamedTuple(), A(2.0), vn))
+                @test vnt1[vn] == A(1.0)
+                @test vnt2[vn] == A(2.0)
+                merged = @inferred(merge(vnt1, vnt2))
+                expected_merge = setindex!!(VarNamedTuple(), A(2.0), vn)
+                @test merged == expected_merge
+                @test only(keys(merged)) == normalized_vn
+                @test merged[vn] == A(2.0)
+                @test merged[normalized_vn] == A(2.0)
 
                 # With templating.
                 vnt1 = @inferred(
