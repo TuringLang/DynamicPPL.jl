@@ -84,10 +84,8 @@ To do so, it first has to create the sub-structure that will hold `1.0` at `.b`,
 make_leaf(1.0, @opticof(_.a.b), NoTemplate())
 ```
 
-This should conceptually be fairly understandable, but dealing with multi-indices (i.e., slices) makes it very hard to reason about what interface the function must obey.
-
-Before launching into that, let's state the necessary invariants at each point of the `make_leaf` function.
-Our recursive implementation is something like:
+This should conceptually be fairly understandable.
+Here is a simplified version of the recursive implementation:
 
 ```julia
 # Let's say `optic` is _[1].a
@@ -108,16 +106,18 @@ function make_leaf(leaf_value, optic, template)
 end
 ```
 
+To explain each line:
+
   - The whole purpose of the function is to ensure that `value` is something where you can index into with `optic` to get `leaf_value`.
 
   - Since `sub_value` is also created with the same function, that means it must be something you can index into with `child_optic` to get `leaf_value`.
-  - `empty_value` needs to be something that can hold `sub_value` at `this_optic`. We don't put the data in (not just yet).\However, to ensure type stability, we should *instantiate* the PA with the correct element type: in this case that's just `typeof(sub_value)`.
+  - `empty_value` needs to be something that can hold `sub_value` at `this_optic`. We don't put the data in (not just yet). However, to ensure type stability, we should *instantiate* the PA with the correct element type: in this case that's just `typeof(sub_value)`.
   - `value` is then created by putting `sub_value` into `empty_value` at `this_optic`.
 
 ## Multi-indices
 
-Now, let's look at an example of multi-indexing.
-We'll now consider the case where the optic is `_[2:3][1]`.
+Multi-indexing, or slices, is where things get a bit more complicated, as it enforces extra constraints that are not present above.
+To illustrate this, we'll now consider the case where the optic is `_[2:3][1]`.
 
 Logically speaking, this is exactly the same as `_[2]`.
 So we should be creating a PartialArray that holds `leaf_value` at index `2`.
