@@ -4,9 +4,9 @@
 A `NamedTuple`-like structure with `VarName` keys.
 
 `VarNamedTuple` is a data structure for storing arbitrary data, keyed by `VarName`s, in an
-efficient and type stable manner. It is mainly used through `getindex`, `setindex!!`, and
-`haskey`, all of which accept `VarName`s and only `VarName`s as keys. Other notable methods
-are `merge` and `subset`.
+efficient and type stable manner. It is mainly used through `getindex`, `setindex!!`,
+`templated_setindex!!`, and `haskey`, all of which only accept `VarName`s as keys. Other
+notable methods are `merge` and `subset`.
 
 `VarNamedTuple` has an ordering to its elements, and two `VarNamedTuple`s with the same keys
 and values but in different orders are considered different for equality and hashing.
@@ -25,14 +25,6 @@ equal to it. More specifically
 
 Otherwise insertion order is respected.
 
-The there are two major limitations to indexing by VarNamedTuples:
-
-* `VarName`s with `Colon`s, (e.g. `a[:]`) are not supported. This is because the meaning of
-  `a[:]` is ambiguous if only some elements of `a`, say `a[1]` and `a[3]`, are defined.
-  However, _concretised_ `VarName`s with `Colon`s are supported.
-* Any `VarNames` with `Index` lenses must have a consistent number of indices. That is, one
-  cannot set `a[1]` and `a[1,2]` in the same `VarNamedTuple`.
-
 `setindex!!` and `getindex` on `VarNamedTuple` are type stable as long as one does not store
 heterogeneous data under different indices of the same symbol. That is, if either
 
@@ -40,9 +32,6 @@ heterogeneous data under different indices of the same symbol. That is, if eithe
 * if `a[1]` and `a[2]` both exist, one sets `a[1].b` without setting `a[2].b`,
 
 then getting values for `a[1]` or `a[2]` will not be type stable.
-
-`VarNamedTuple` is intrinsically linked to `PartialArray`, which it'll use to store data
-related to `VarName`s with `Index` components.
 """
 struct VarNamedTuple{Names,Values}
     data::NamedTuple{Names,Values}
@@ -79,7 +68,7 @@ end
 
 Base.:(==)(vnt1::VarNamedTuple, vnt2::VarNamedTuple) = vnt1.data == vnt2.data
 Base.isequal(vnt1::VarNamedTuple, vnt2::VarNamedTuple) = isequal(vnt1.data, vnt2.data)
-Base.hash(vnt::VarNamedTuple, h::UInt) = hash(vnt.data, h)
+Base.hash(vnt::VarNamedTuple, h::UInt) = hash("vnt", hash(vnt.data, h))
 
 function Base.show(io::IO, vnt::VarNamedTuple)
     if isempty(vnt.data)

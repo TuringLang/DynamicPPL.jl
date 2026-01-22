@@ -27,10 +27,6 @@ end
 Create a new `VarNamedTuple` containing only the variables subsumed by ones in `vns`.
 """
 function DynamicPPL.subset(parent_vnt::VarNamedTuple, vns)
-    # TODO(mhauru) This could be done more efficiently by generating the code directly,
-    # because we could short-circuit: For instance, if `vns` contains `a`, we could
-    # directly include the whole subtree under `a`, without checking each individual
-    # variable under it.
     return mapfoldl(
         identity,
         function (acc_vnt, pair)
@@ -72,7 +68,7 @@ VarNamedTuple(a = [2, 3, 4],)
 """
 function apply!!(func, vnt::VarNamedTuple, name::VarName)
     if !haskey(vnt, name)
-        throw(KeyError(repr(name)))
+        throw(KeyError(name))
     end
     subdata = _getindex_optic(vnt, name)
     new_subdata = func(subdata)
@@ -88,18 +84,18 @@ function apply!!(func, vnt::VarNamedTuple, name::VarName)
 end
 
 """
-    _map_recursive!!(func, x, vn)
+    _map_pairs_recursive!!(func, x, vn)
 
 Call `func` on `vn => x`, except if `x` is a `VarNamedTuple` or `PartialArray`, in which
-case call `_map_recursive!!` recursively on all their elements, updating `vn` with the right
-prefix.
+case call `_map_pairs_recursive!!` recursively on all their elements, updating `vn` with the
+right prefix.
 
 This is the internal implementation of `map_pairs!!`, but because it has a method defined
 for literally every type in existence, we hide it behind the interface of the more
 discriminating `map_pairs!!`. It makes the implementation a bit simpler, compared to
 checking element types within `map_pairs!!` itself.
 """
-_map_recursive!!(func, x, vn) = func(vn => x)
+_map_pairs_recursive!!(func, x, vn) = func(vn => x)
 
 # TODO(mhauru) The below is type unstable for some complex VarNames. My example case
 # for which type stability fails is @varname(e.f[3].g.h[2].i). I don't understand this
@@ -110,7 +106,7 @@ _map_recursive!!(func, x, vn) = func(vn => x)
 # function. An earlier implementation of this function that only operated on the values,
 # not on pairs of key => value, was type stable (presumably because it was a bit easier on
 # constant propagation).
-function _map_recursive!!(func, pa::PartialArray, vn)
+function _map_pairs_recursive!!(func, pa::PartialArray, vn)
     return if eltype(pa) <: ArrayLikeBlock || ArrayLikeBlock <: eltype(pa)
         # There are (or might be) some ALBs
         _map_recursive_pa_alb!!(func, pa, vn)
@@ -128,7 +124,7 @@ function _map_recursive_pa_alb!!(func, pa::PartialArray, vn)
         AbstractPPL.append_optic, Tuple{typeof(vn),index_type}
     )
     new_et = Core.Compiler.return_type(
-        Tuple{typeof(_map_recursive!!),typeof(func),et,new_vn_type}
+        Tuple{typeof(_map_pairs_recursive!!),typeof(func),et,new_vn_type}
     )
     new_data = if new_et <: et
         # We can reuse the existing data array.
@@ -149,12 +145,12 @@ function _map_recursive_pa_alb!!(func, pa::PartialArray, vn)
                 # Create the new value, set it at all the places where it needs to be set,
                 # and mark those places as visited.
                 new_vn = AbstractPPL.append_optic(vn, AbstractPPL.Index(val.ix, val.kw))
-                new_val = _map_recursive!!(func, val, new_vn)
+                new_val = _map_pairs_recursive!!(func, val, new_vn)
                 new_data[val.ix..., val.kw...] .= new_val
                 mask[val.ix..., val.kw...] .= false
             else
                 new_vn = AbstractPPL.append_optic(vn, AbstractPPL.Index(Tuple(i), (;)))
-                new_data[i] = _map_recursive!!(func, val, new_vn)
+                new_data[i] = _map_pairs_recursive!!(func, val, new_vn)
             end
         end
     end
@@ -175,12 +171,12 @@ function _map_recursive_pa_noalb!!(func, pa::PartialArray, vn)
     )
     et = eltype(pa)
     new_et = Core.Compiler.return_type(
-        Tuple{typeof(_map_recursive!!),typeof(func),eltype(pa),new_vn_type}
+        Tuple{typeof(_map_pairs_recursive!!),typeof(func),eltype(pa),new_vn_type}
     )
 
     function inner(data_i, ix_i)
         new_vn = AbstractPPL.append_optic(vn, AbstractPPL.Index(Tuple(ix_i), (;)))
-        return _map_recursive!!(func, data_i, new_vn)
+        return _map_pairs_recursive!!(func, data_i, new_vn)
     end
     return if new_et <: et
         # Can write into existing data array.
@@ -194,8 +190,8 @@ function _map_recursive_pa_noalb!!(func, pa::PartialArray, vn)
     end
 end
 
-function _map_recursive!!(func, alb::ArrayLikeBlock, vn)
-    new_block = _map_recursive!!(func, alb.block, vn)
+function _map_pairs_recursive!!(func, alb::ArrayLikeBlock, vn)
+    new_block = _map_pairs_recursive!!(func, alb.block, vn)
     sz_new = vnt_size(new_block)
     sz_old = vnt_size(alb.block)
     if sz_new != sz_old
@@ -210,12 +206,14 @@ function _map_recursive!!(func, alb::ArrayLikeBlock, vn)
 end
 
 # As above but with a prefix VarName `vn`.
-@generated function _map_recursive!!(func, vnt::VarNamedTuple{Names}, vn::T) where {Names,T}
+@generated function _map_pairs_recursive!!(
+    func, vnt::VarNamedTuple{Names}, vn::T
+) where {Names,T}
     exs = Expr[]
     for name in Names
         push!(
             exs,
-            :(_map_recursive!!(
+            :(_map_pairs_recursive!!(
                 func, vnt.data.$name, AbstractPPL.prefix(VarName{$(QuoteNode(name))}(), vn)
             )),
         )
@@ -235,14 +233,15 @@ Apply `func` to all key => value pairs of `vnt`, in place if possible.
 @generated function map_pairs!!(func, vnt::VarNamedTuple{Names}) where {Names}
     exs = Expr[]
     for name in Names
-        push!(exs, :(_map_recursive!!(func, vnt.data.$name, VarName{$(QuoteNode(name))}())))
+        push!(
+            exs,
+            :(_map_pairs_recursive!!(func, vnt.data.$name, VarName{$(QuoteNode(name))}())),
+        )
     end
     return quote
         return VarNamedTuple(NamedTuple{Names}(($(exs...),)))
     end
 end
-
-Base.foreach(func, vnt::VarNamedTuple) = map_pairs!!(p -> (func(p); p), vnt)
 
 """
     map_values!!(func, vnt::VarNamedTuple)
