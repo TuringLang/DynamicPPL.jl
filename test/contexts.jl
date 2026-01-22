@@ -464,10 +464,10 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
                 # start by generating some rubbish values
                 vi = deepcopy(empty_vi)
                 old_x, old_y = 100000.00, [300000.00, 500000.00]
-                vi, _ = DynamicPPL.setindex_with_dist!!(
+                vi, _, _ = DynamicPPL.setindex_with_dist!!(
                     vi, old_x, Normal(), @varname(x), DynamicPPL.NoTemplate()
                 )
-                vi, _ = DynamicPPL.setindex_with_dist!!(
+                vi, _, _ = DynamicPPL.setindex_with_dist!!(
                     vi,
                     old_y,
                     MvNormal(fill(old_x, 2), I),

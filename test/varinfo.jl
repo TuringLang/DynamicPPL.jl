@@ -275,10 +275,12 @@ end
         _, vi = DynamicPPL.init!!(model, vi, InitFromUniform())
         vals = values(vi)
 
-        all_transformed(vi) =
-            mapreduce(p -> is_transformed(p.second), &, vi.values; init=true)
-        any_transformed(vi) =
-            mapreduce(p -> is_transformed(p.second), |, vi.values; init=false)
+        all_transformed(vi) = mapreduce(
+            p -> p.second isa DynamicPPL.LinkedVectorValue, &, vi.values; init=true
+        )
+        any_transformed(vi) = mapreduce(
+            p -> p.second isa DynamicPPL.LinkedVectorValue, |, vi.values; init=false
+        )
 
         @test !any_transformed(vi)
 

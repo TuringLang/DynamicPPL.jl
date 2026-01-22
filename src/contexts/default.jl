@@ -33,10 +33,18 @@ with `vn` from `vi`, If `vi` does not contain an appropriate value then this wil
 function tilde_assume!!(
     ::DefaultContext, right::Distribution, vn::VarName, template::Any, vi::AbstractVarInfo
 )
-    y = getindex_internal(vi, vn)
-    f = from_maybe_linked_internal_transform(vi, vn, right)
-    x, inv_logjac = with_logabsdet_jacobian(f, y)
-    vi = accumulate_assume!!(vi, x, -inv_logjac, vn, right, template)
+    tval = get_transformed_value(vi, vn)
+    trf = if tval isa LinkedVectorValue
+        # Note that we can't rely on the stored transform being correct (e.g. if new values
+        # were placed in `vi` via `unflatten!!`, so we regenerate the transforms.
+        from_linked_vec_transform(right)
+    elseif tval isa VectorValue
+        from_vec_transform(right)
+    else
+        error("Expected transformed value to be a VectorValue or LinkedVectorValue")
+    end
+    x, inv_logjac = with_logabsdet_jacobian(trf, get_internal_value(tval))
+    vi = accumulate_assume!!(vi, x, tval, -inv_logjac, vn, right, template)
     return x, vi
 end
 

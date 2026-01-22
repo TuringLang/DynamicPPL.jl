@@ -64,7 +64,7 @@ function is_extracting_values(vi::AbstractVarInfo)
 end
 
 function accumulate_assume!!(
-    acc::ValuesAsInModelAccumulator, val, logjac, vn::VarName, right, template
+    acc::ValuesAsInModelAccumulator, val, tval, logjac, vn::VarName, right, template
 )
     return push!!(acc, vn, val, template)
 end

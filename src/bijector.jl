@@ -26,7 +26,9 @@ function combine(acc1::BijectorAccumulator, acc2::BijectorAccumulator)
     )
 end
 
-function accumulate_assume!!(acc::BijectorAccumulator, val, logjac, vn, right, template)
+function accumulate_assume!!(
+    acc::BijectorAccumulator, val, tval, logjac, vn, right, template
+)
     bijector = _compose_no_identity(
         to_linked_vec_transform(right), from_vec_transform(right)
     )

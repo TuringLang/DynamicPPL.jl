@@ -120,7 +120,7 @@ end
         struct ErrorAccumulator <: DynamicPPL.AbstractAccumulator end
         DynamicPPL.accumulator_name(::ErrorAccumulator) = :ERROR
         DynamicPPL.accumulate_assume!!(
-            ::ErrorAccumulator, ::Any, ::Any, ::VarName, ::Distribution, ::Any
+            ::ErrorAccumulator, ::Any, ::Any, ::Any, ::VarName, ::Distribution, ::Any
         ) = throw(ErrorAccumulatorException())
         DynamicPPL.accumulate_observe!!(
             ::ErrorAccumulator, ::Distribution, ::Any, ::Union{VarName,Nothing}
