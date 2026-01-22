@@ -136,6 +136,11 @@ function _map_pairs_recursive_pa_alb!!(pairfunc, pa::PartialArray, vn)
     new_et = Core.Compiler.return_type(
         Tuple{typeof(_map_pairs_recursive!!),typeof(pairfunc),et,new_vn_type}
     )
+    # Confusingly, sometimes the compiler just gives up and returns Union{}. We'll bail it
+    # out. TODO(penelopeysm): I have noticed that sometimes return_type is not amazingly
+    # good at inferring types, especially when there are ArrayLikeBlocks -- Not sure if
+    # there is a better way to hack into the type system here.
+    new_et = new_et == Union{} ? Any : new_et
     new_data = if new_et <: et
         # We can reuse the existing data array.
         pa.data
@@ -172,6 +177,7 @@ function _map_values_recursive_pa_alb!!(func, pa::PartialArray)
     new_et = Core.Compiler.return_type(
         Tuple{typeof(_map_values_recursive!!),typeof(func),et}
     )
+    new_et = new_et == Union{} ? Any : new_et
     new_data = if new_et <: et
         pa.data
     else
@@ -264,7 +270,8 @@ function _check_size(new_block, old_block)
     end
 end
 function _map_pairs_recursive!!(pairfunc, alb::ArrayLikeBlock, vn)
-    new_block = _map_pairs_recursive!!(pairfunc, alb.block, vn)
+    # new_block = _map_pairs_recursive!!(pairfunc, alb.block, vn)
+    new_block = pairfunc(vn => alb.block)
     _check_size(new_block, alb.block)
     return ArrayLikeBlock(new_block, alb.ix, alb.kw, alb.index_size)
 end

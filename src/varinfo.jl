@@ -325,7 +325,7 @@ function _link_or_invlink!!(vi::VarInfo, vns, model::Model, ::Val{link}) where {
             # Already in the desired state.
             return tv
         end
-        dist = getindex(dists, vn)
+        dist = getindex(dists, vn)::Distribution
         vec_transform = from_vec_transform(dist)
         link_transform = from_linked_vec_transform(dist)
         current_transform, new_transform = if link
