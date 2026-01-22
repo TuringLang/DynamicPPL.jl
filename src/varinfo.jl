@@ -7,14 +7,13 @@ The `Linked` type parameter is either `true` or `false` to mark that all variabl
 `VarInfo` are linked, or `nothing` to indicate that some variables may be linked and some
 not, and a runtime check is needed.
 
-`VarInfo` is quite a thin wrapper around a `VarNamedTuple` storing the variable values,
-and a tuple of accumulators. The only really noteworthy thing about it is that it stores
-the values of variables vectorised as instances of `TransformedValue`. That is, it stores
-each value as a vector and a transformation to be applied to that vector to get the actual
-value. It also stores whether the transformation is such that it guarantees all real vectors
-to be valid internal representations of the variable (i.e., whether the variable has been
-linked), as well as the size of the actual post-transformation value. These are all fields
-of [`TransformedValue`](@ref).
+`VarInfo` is quite a thin wrapper around a `VarNamedTuple` storing the variable values, and
+a tuple of accumulators. The only really noteworthy thing about it is that it stores the
+values of variables vectorised as instances of [`AbstractTransformedValue`](@ref). That is,
+it stores each value as a special vector with a flag indicating whether it is just a
+vectorised value ([`VectorValue`](@ref)), or whether it is also linked
+([`LinkedVectorValue`](@ref)). It also stores the size of the actual post-transformation
+value. These are all accessible via [`AbstractTransformedValue`](@ref).
 
 Note that `setindex!!` and `getindex` on `VarInfo` take and return values in the support of
 the original distribution. To get access to the internal vectorised values, use
@@ -24,8 +23,8 @@ There's also a `VarInfo`-specific function [`setindex_with_dist!!`](@ref), which
 variable's value with a transformation based on the statistical distribution this value is
 a sample for.
 
-For more details on the internal storage, see documentation of [`TransformedValue`](@ref) and
-[`VarNamedTuple`](@ref).
+For more details on the internal storage, see documentation of
+[`AbstractTransformedValue`](@ref) and [`VarNamedTuple`](@ref).
 
 # Fields
 $(TYPEDFIELDS)
@@ -42,51 +41,12 @@ struct VarInfo{Linked,T<:VarNamedTuple,Accs<:AccumulatorTuple} <: AbstractVarInf
     end
 end
 
-# TODO(mhauru) The policy of vectorising all values was set when the old VarInfo type was
-# using a Vector as the internal storage in all cases. We should revisit this, and allow
-# values to be stored "raw", since VarNamedTuple supports it.
-
-# TODO(mhauru) Related to the above, I think we should reconsider whether we should store
-# transformations at all. We rarely use them, since they may be dynamic in a model.
-# tilde_assume!! rather gets the transformation from the current distribution encountered
-# during model execution. However, this would change the interface quite a lot, so I want to
-# finish implementing VarInfo using VNT (mostly) respecting the old interface first.
-
-# TODO(mhauru) We are considering removing `transform` completely, and forcing people to use
-# ValuesAsInModelAcc instead. If that is done, we may want to move the Linked type parameter
-# to just be a bool field. It's currently a type parameter to make the type of `transform`
-# easier to type infer, but if `transform` no longer exists, it might start to cause
-# unnecessary type inconcreteness in the elements of PartialArray.
-"""
-    TransformedValue{Linked,ValType,TransformType,SizeType}
-
-A struct for storing a variable's value in its internal (vectorised) form.
-
-The type parameter `Linked` is a `Bool` indicating whether the variable is linked, i.e.
-whether the transformation maps all real vectors to valid values.
-# Fields
-$(TYPEDFIELDS)
-"""
-struct TransformedValue{Linked,ValType<:AbstractVector,TransformType,SizeType}
-    "The internal (vectorised) value."
-    val::ValType
-    """The transformation from internal (vectorised) to actual value. In other words, the
-    actual value of the variable being stored is `transform(val)`."""
-    transform::TransformType
-    """The size of the actual value after transformation. This is needed when a
-    `TransformedValue` is stored as a block in an array."""
-    size::SizeType
-
-    function TransformedValue{Linked}(
-        val::ValType, transform::TransformType, size::SizeType
-    ) where {Linked,ValType,TransformType,SizeType}
-        return new{Linked,ValType,TransformType,SizeType}(val, transform, size)
-    end
+function Base.:(==)(vi1::VarInfo, vi2::VarInfo)
+    return (vi1.values == vi2.values) & (vi1.accs == vi2.accs)
 end
-
-is_transformed(::TransformedValue{Linked}) where {Linked} = Linked
-
-VarNamedTuples.vnt_size(tv::TransformedValue) = tv.size
+function Base.isequal(vi1::VarInfo, vi2::VarInfo)
+    return isequal(vi1.values, vi2.values) && isequal(vi1.accs, vi2.accs)
+end
 
 VarInfo() = VarInfo{false}(VarNamedTuple(), default_accumulators())
 
@@ -99,16 +59,96 @@ function VarInfo(values::Union{NamedTuple,AbstractDict})
     return vi
 end
 
-function VarInfo(model::Model, init_strategy::AbstractInitStrategy=InitFromPrior())
-    return VarInfo(Random.default_rng(), model, init_strategy)
-end
+"""
+    VarInfo(
+       [rng::AbstractRNG,]
+       model::Model,
+       link::AbstractLinkStrategy=UnlinkAll(),
+       init::AbstractInitStrategy=InitFromPrior()
+    )
 
-function VarInfo(
+Create a fresh `VarInfo` for the given model by running the model and populating it
+according to the given initialisation strategy. The resulting variables in the `VarInfo` can
+be linked or unlinked according to the given linking strategy.
+
+# Arguments
+
+- `rng::AbstractRNG`: An optional random number generator to use for any stochastic
+  initialisation. If not provided, `Random.default_rng()` is used.
+- `model::Model`: The model for which to create the `VarInfo`.
+- `link::AbstractLinkStrategy`: An optional linking strategy (see `AbstractLinkStrategy`).
+  Defaults to `UnlinkAll()`, i.e., all variables are vectorised but not linked.
+- `init::AbstractInitStrategy`: An optional initialisation strategy (see
+  [`AbstractInitStrategy`](@ref)). Defaults to `InitFromPrior()`, i.e., all variables are
+  initialised by sampling from their prior distributions.
+
+# Extended help
+
+## Performance characteristics of linked VarInfo
+
+This method allows the immediate generation of a linked VarInfo, which was not possible in
+previous versions of DynamicPPL. It is guaranteed that `link!!(VarInfo(rng, model), model)`
+(the old way of instantiating a linked `VarInfo`) is equivalent to `VarInfo(rng, model,
+LinkAll())`.
+
+Depending on the model, each of these two methods may be more performant, although the
+reasons for this are still somewhat unclear. Small models tend to do better with
+instantiating an unlinked `VarInfo` and then linking it, while large models tend to do
+better with directly instantiating a linked `VarInfo`. The hope is that this generally does
+not impact usage since linking is not typically something done in performance-critical
+sections of Turing.jl. If linking performance is critical, it is recommended to benchmark
+both methods for the specific model in question.
+"""
+function DynamicPPL.VarInfo(
     rng::Random.AbstractRNG,
     model::Model,
-    init_strategy::AbstractInitStrategy=InitFromPrior(),
+    ::Union{UnlinkAll,UnlinkSome},
+    initstrat::AbstractInitStrategy,
 )
-    return last(init!!(rng, model, VarInfo(), init_strategy))
+    # In this case, no variables are to be linked. We can optimise performance by directly
+    # calling init!! and not faffing about with accumulators. (This does lead to significant
+    # performance improvements for the typical use case of generating an unlinked VarInfo.)
+    return last(init!!(rng, model, VarInfo(), initstrat))
+end
+function DynamicPPL.VarInfo(
+    rng::Random.AbstractRNG,
+    model::Model,
+    linkstrat::AbstractLinkStrategy,
+    initstrat::AbstractInitStrategy=InitFromPrior(),
+)
+    linked_value_acc = VNTAccumulator{LINK_ACCNAME}(Link!(linkstrat))
+    vi = OnlyAccsVarInfo((linked_value_acc, default_accumulators()...))
+    vi = last(init!!(rng, model, vi, initstrat))
+    # Extract the linked values and the change in logjac.
+    link_acc = getacc(vi, Val(LINK_ACCNAME))
+    new_vi_is_linked = if linkstrat isa LinkAll
+        true
+    else
+        # TODO(penelopeysm): We can definitely do better here. The linking accumulator can
+        # keep track of whether any variables were linked or unlinked, and we can use that
+        # here. It won't be type-stable, but that's fine, right now it isn't either.
+        nothing
+    end
+    vi = VarInfo{new_vi_is_linked}(
+        link_acc.values, DynamicPPL.deleteacc(vi.accs, Val(LINK_ACCNAME))
+    )
+    vi = acclogjac!!(vi, link_acc.f.logjac)
+    return vi
+end
+function DynamicPPL.VarInfo(
+    model::Model,
+    linkstrat::AbstractLinkStrategy,
+    initstrat::AbstractInitStrategy=InitFromPrior(),
+)
+    return DynamicPPL.VarInfo(Random.default_rng(), model, linkstrat, initstrat)
+end
+function VarInfo(
+    rng::Random.AbstractRNG, model::Model, initstrat::AbstractInitStrategy=InitFromPrior()
+)
+    return VarInfo(rng, model, UnlinkAll(), initstrat)
+end
+function VarInfo(model::Model, initstrat::AbstractInitStrategy=InitFromPrior())
+    return VarInfo(Random.default_rng(), model, initstrat)
 end
 
 getaccs(vi::VarInfo) = vi.accs
@@ -130,7 +170,12 @@ Base.keys(vi::VarInfo) = keys(vi.values)
 # Union{Vector{Union{}}, Vector{Float64}} (I suppose this is because it can't tell whether
 # the result will be empty or not...? Not sure).
 function Base.values(vi::VarInfo)
-    return mapreduce(p -> p.second.transform(p.second.val), push!, vi.values; init=Any[])
+    return mapreduce(
+        p -> DynamicPPL.get_transform(p.second)(DynamicPPL.get_internal_value(p.second)),
+        push!,
+        vi.values;
+        init=Any[],
+    )
 end
 
 function Base.show(io::IO, ::MIME"text/plain", vi::VarInfo)
@@ -149,9 +194,8 @@ end
 
 function Base.getindex(vi::VarInfo, vn::VarName)
     tv = getindex(vi.values, vn)
-    return tv.transform(tv.val)
+    return get_transform(tv)(get_internal_value(tv))
 end
-
 function Base.getindex(vi::VarInfo, vns::AbstractVector{<:VarName})
     return [getindex(vi, vn) for vn in vns]
 end
@@ -169,7 +213,7 @@ This does not change the transformation or linked status of the variable.
 """
 function setindex_internal!!(vi::VarInfo{Linked}, val, vn::VarName) where {Linked}
     old_tv = getindex(vi.values, vn)
-    new_tv = TransformedValue{is_transformed(old_tv)}(val, old_tv.transform, old_tv.size)
+    new_tv = update_value(old_tv, val)
     new_values = setindex!!(vi.values, new_tv, vn)
     return VarInfo{Linked}(new_values, vi.accs)
 end
@@ -191,8 +235,10 @@ currently linked in `vi`, or doesn't exist in `vi` but all other variables in `v
 linked, the linking transformation is used; otherwise, the standard vector transformation is
 used.
 
-Returns the modified `vi` together with the log absolute determinant of the Jacobian of the
-transformation applied.
+Returns three things:
+ - the modified `vi`,
+ - the log absolute determinant of the Jacobian of the transformation applied,
+ - the `AbstractTransformedValue` used to store the value.
 """
 function setindex_with_dist!!(
     vi::VarInfo{Linked}, val, dist::Distribution, vn::VarName, template
@@ -203,17 +249,21 @@ function setindex_with_dist!!(
         Linked
     end
     transform = if link
-        from_linked_vec_transform(dist)
+        to_linked_vec_transform(dist)
     else
-        from_vec_transform(dist)
+        to_vec_transform(dist)
     end
-    transformed_val, logjac = with_logabsdet_jacobian(inverse(transform), val)
+    transformed_val, logjac = with_logabsdet_jacobian(transform, val)
     # All values for which `size` is not defined are assumed to be scalars.
     val_size = hasmethod(size, Tuple{typeof(val)}) ? size(val) : ()
-    tv = TransformedValue{link}(transformed_val, transform, val_size)
+    tv = if link
+        LinkedVectorValue(transformed_val, inverse(transform), val_size)
+    else
+        VectorValue(transformed_val, inverse(transform), val_size)
+    end
     new_linked = Linked == link ? Linked : nothing
     vi = VarInfo{new_linked}(templated_setindex!!(vi.values, tv, vn, template), vi.accs)
-    return vi, logjac
+    return vi, logjac, tv
 end
 
 # TODO(mhauru) The below is somewhat unsafe or incomplete: For instance, from_vec_transform
@@ -229,10 +279,11 @@ The transformation for `vn` is reset to be the standard vector transformation fo
 the type of `val` and linking status is set to false.
 """
 function BangBang.setindex!!(vi::VarInfo{Linked}, val, vn::VarName) where {Linked}
+    # TODO(penelopeysm) This function is BS, really should get rid of it asap
     new_linked = Linked == false ? false : nothing
     transform = from_vec_transform(val)
     transformed_val = inverse(transform)(val)
-    tv = TransformedValue{false}(transformed_val, transform, size(val))
+    tv = VectorValue(transformed_val, transform, size(val))
     return VarInfo{new_linked}(setindex!!(vi.values, tv, vn), vi.accs)
 end
 
@@ -241,11 +292,16 @@ end
 
 Set the linked status of variable `vn` in `vi` to `linked`.
 
-This does not change the value or transformation of the variable.
+Note that this function is potentially unsafe as it does not change the value or
+transformation of the variable!
 """
 function set_transformed!!(vi::VarInfo{Linked}, linked::Bool, vn::VarName) where {Linked}
     old_tv = getindex(vi.values, vn)
-    new_tv = TransformedValue{linked}(old_tv.val, old_tv.transform, old_tv.size)
+    new_tv = if linked
+        LinkedVectorValue(old_tv.val, old_tv.transform, old_tv.size)
+    else
+        VectorValue(old_tv.val, old_tv.transform, old_tv.size)
+    end
     new_values = setindex!!(vi.values, new_tv, vn)
     new_linked = Linked == linked ? Linked : nothing
     return VarInfo{new_linked}(new_values, vi.accs)
@@ -266,8 +322,9 @@ end
 set_transformed!!(vi::VarInfo, ::NoTransformation) = set_transformed!!(vi, false)
 
 function set_transformed!!(vi::VarInfo, linked::Bool)
+    ctor = linked ? LinkedVectorValue : VectorValue
     new_values = map_values!!(vi.values) do tv
-        TransformedValue{linked}(tv.val, tv.transform, tv.size)
+        ctor(tv.val, tv.transform, tv.size)
     end
     return VarInfo{linked}(new_values, vi.accs)
 end
@@ -281,9 +338,16 @@ getindex_internal(vi::VarInfo, vn::VarName) = getindex(vi.values, vn).val
 # TODO(mhauru) The below should be removed together with unflatten!!.
 getindex_internal(vi::VarInfo, ::Colon) = values_as(vi, Vector)
 
+"""
+    get_transformed_value(vi::VarInfo, vn::VarName)
+
+Get the entire `AbstractTransformedValue` for variable `vn` in `vi`.
+"""
+get_transformed_value(vi::VarInfo, vn::VarName) = getindex(vi.values, vn)
+
 function is_transformed(vi::VarInfo{Linked}, vn::VarName) where {Linked}
     return if Linked === nothing
-        is_transformed(getindex(vi.values, vn))
+        getindex(vi.values, vn) isa LinkedVectorValue
     else
         Linked
     end
@@ -298,87 +362,43 @@ function from_linked_internal_transform(::VarInfo, ::VarName, dist::Distribution
 end
 
 function from_internal_transform(vi::VarInfo, vn::VarName)
-    return getindex(vi.values, vn).transform
+    return DynamicPPL.get_transform(getindex(vi.values, vn))
 end
 
 function from_linked_internal_transform(vi::VarInfo, vn::VarName)
     if !is_transformed(vi, vn)
         error("Variable $vn is not linked; cannot get linked transformation.")
     end
-    return getindex(vi.values, vn).transform
+    return DynamicPPL.get_transform(getindex(vi.values, vn))
 end
 
-"""
-    _link_or_invlink!!(vi::VarInfo, vns, model::Model, ::Val{link}) where {link isa Bool}
-
-The internal function that implements both link!! and invlink!!.
-
-The last argument controls whether linking (true) or invlinking (false) is performed. If
-`vns` is `nothing`, all variables in `vi` are transformed; otherwise, only the variables
-in `vns` are transformed. Existing variables already in the desired state are left
-unchanged.
-"""
-function _link_or_invlink!!(vi::VarInfo, vns, model::Model, ::Val{link}) where {link}
-    @assert link isa Bool
-    # Note that extract_priors causes a model execution. In the past with the Metadata-based
-    # VarInfo we rather derived the transformations from the distributions stored in the
-    # VarInfo itself. However, that is not fail-safe with dynamic models, and would require
-    # storing the distributions in TransformedValue (which we could start doing). Instead we
-    # use extract_priors to get the current, correct transformations. This logic is very
-    # similar to what DynamicTransformation used to do, and we might replace this with a
-    # context that transforms each variable in turn during the execution.
-    dists = extract_priors(model, vi)
-    cumulative_logjac = zero(LogProbType)
-    new_values = map_pairs!!(vi.values) do pair
-        vn, tv = pair
-        if vns !== nothing && !any(x -> subsumes(x, vn), vns)
-            # Not one of the target variables.
-            return tv
-        end
-        if is_transformed(tv) == link
-            # Already in the desired state.
-            return tv
-        end
-        dist = getindex(dists, vn)::Distribution
-        vec_transform = from_vec_transform(dist)
-        link_transform = from_linked_vec_transform(dist)
-        current_transform, new_transform = if link
-            (vec_transform, link_transform)
-        else
-            (link_transform, vec_transform)
-        end
-        val_untransformed, logjac1 = with_logabsdet_jacobian(current_transform, tv.val)
-        val_new, logjac2 = with_logabsdet_jacobian(
-            inverse(new_transform), val_untransformed
-        )
-        # !is_transformed(tv) is the same as `link`, but might be easier for type inference.
-        new_tv = TransformedValue{!is_transformed(tv)}(val_new, new_transform, tv.size)
-        cumulative_logjac += logjac1 + logjac2
-        return new_tv
+# TODO(penelopeysm): In principle, `link` can be statically determined from the type of
+# `linker`. However, I'm not sure if doing that could mess with type stability.
+function _link_or_invlink!!(
+    orig_vi::VarInfo, linker::AbstractLinkStrategy, model::Model, ::Val{link}
+) where {link}
+    linked_value_acc = VNTAccumulator{LINK_ACCNAME}(Link!(linker))
+    new_vi = OnlyAccsVarInfo((linked_value_acc,))
+    new_vi = last(init!!(model, new_vi, InitFromParamsUnsafe(orig_vi.values)))
+    link_acc = getacc(new_vi, Val(LINK_ACCNAME))
+    new_vi = VarInfo{link}(link_acc.values, orig_vi.accs)
+    if hasacc(new_vi, Val(:LogJacobian))
+        new_vi = acclogjac!!(new_vi, link_acc.f.logjac)
     end
-    vi_linked = if vns === nothing
-        link
-    else
-        nothing
-    end
-    vi = VarInfo{vi_linked}(new_values, vi.accs)
-    if hasacc(vi, Val(:LogJacobian))
-        vi = acclogjac!!(vi, cumulative_logjac)
-    end
-    return vi
+    return new_vi
 end
 
 function link!!(::DynamicTransformation, vi::VarInfo, vns, model::Model)
-    return _link_or_invlink!!(vi, vns, model, Val(true))
-end
-function link!!(::DynamicTransformation, vi::VarInfo, model::Model)
-    return _link_or_invlink!!(vi, nothing, model, Val(true))
+    return _link_or_invlink!!(vi, LinkSome(Set(vns)), model, Val(nothing))
 end
 function invlink!!(::DynamicTransformation, vi::VarInfo, vns, model::Model)
-    return _link_or_invlink!!(vi, vns, model, Val(false))
+    return _link_or_invlink!!(vi, UnlinkSome(Set(vns)), model, Val(nothing))
+end
+function link!!(::DynamicTransformation, vi::VarInfo, model::Model)
+    return _link_or_invlink!!(vi, LinkAll(), model, Val(true))
 end
 function invlink!!(::DynamicTransformation, vi::VarInfo, model::Model)
-    return _link_or_invlink!!(vi, nothing, model, Val(false))
+    return _link_or_invlink!!(vi, UnlinkAll(), model, Val(false))
 end
 
 function link!!(t::StaticTransformation{<:Bijectors.Transform}, vi::VarInfo, ::Model)
@@ -421,11 +441,16 @@ function values_as(vi::VarInfo, ::Type{Vector})
 end
 
 function values_as(vi::VarInfo, ::Type{T}) where {T<:AbstractDict}
-    return mapfoldl(identity, function (cumulant, pair)
-        vn, tv = pair
-        val = tv.transform(tv.val)
-        return setindex!!(cumulant, val, vn)
-    end, vi.values; init=T())
+    return mapfoldl(
+        identity,
+        function (cumulant, pair)
+            vn, tv = pair
+            val = DynamicPPL.get_transform(tv)(DynamicPPL.get_internal_value(tv))
+            return setindex!!(cumulant, val, vn)
+        end,
+        vi.values;
+        init=T(),
+    )
 end
 
 # TODO(mhauru) I really dislike this sort of conversion to Symbols, but it's the current
@@ -437,7 +462,7 @@ function values_as(vi::VarInfo, ::Type{NamedTuple})
         identity,
         function (cumulant, pair)
             vn, tv = pair
-            val = tv.transform(tv.val)
+            val = DynamicPPL.get_transform(tv)(DynamicPPL.get_internal_value(tv))
             return setindex!!(cumulant, val, Symbol(vn))
         end,
         vi.values;
@@ -457,12 +482,16 @@ mutable struct VectorChunkIterator!{T<:AbstractVector}
     vec::T
     index::Int
 end
-function (vci::VectorChunkIterator!)(tv::TransformedValue{Linked}) where {Linked}
-    old_val = tv.val
-    len = length(old_val)
-    new_val = @view vci.vec[(vci.index):(vci.index + len - 1)]
-    vci.index += len
-    return TransformedValue{Linked}(new_val, tv.transform, tv.size)
+for T in (:VectorValue, :LinkedVectorValue)
+    @eval begin
+        function (vci::VectorChunkIterator!)(tv::$T)
+            old_val = tv.val
+            len = length(old_val)
+            new_val = @view vci.vec[(vci.index):(vci.index + len - 1)]
+            vci.index += len
+            return $T(new_val, tv.transform, tv.size)
+        end
+    end
 end
 function unflatten!!(vi::VarInfo{Linked}, vec::AbstractVector) where {Linked}
     vci = VectorChunkIterator!(vec, 1)

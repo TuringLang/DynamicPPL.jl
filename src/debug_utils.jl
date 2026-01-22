@@ -242,7 +242,7 @@ _has_nans(x) = isnan(x)
 _has_nans(::Missing) = false
 
 function DynamicPPL.accumulate_assume!!(
-    acc::DebugAccumulator, val, _logjac, vn::VarName, right::Distribution, template
+    acc::DebugAccumulator, val, tval, logjac, vn::VarName, right::Distribution, template
 )
     record_varname!(acc, vn, right)
     stmt = AssumeStmt(; varname=vn, right=right, value=val)

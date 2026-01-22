@@ -435,7 +435,7 @@ function get_ranges_and_linked(vi::VarInfo)
             val = tv.val
             range = offset:(offset + length(val) - 1)
             offset += length(val)
-            ral = RangeAndLinked(range, is_transformed(tv), tv.size)
+            ral = RangeAndLinked(range, tv isa LinkedVectorValue, tv.size)
             template = vi.values.data[AbstractPPL.getsym(vn)]
             vnt = templated_setindex!!(vnt, ral, vn, template)
             return vnt, offset

@@ -102,8 +102,8 @@ end
 function setindex_with_dist!!(
     vi::ThreadSafeVarInfo, val, dist::Distribution, vn::VarName, template
 )
-    vi_inner, logjac = setindex_with_dist!!(vi.varinfo, val, dist, vn, template)
-    return Accessors.@set(vi.varinfo = vi_inner), logjac
+    vi_inner, logjac, tval = setindex_with_dist!!(vi.varinfo, val, dist, vn, template)
+    return Accessors.@set(vi.varinfo = vi_inner), logjac, tval
 end
 
 function BangBang.setindex!!(vi::ThreadSafeVarInfo, vals, vn::VarName)
@@ -141,6 +141,9 @@ function is_transformed(vi::ThreadSafeVarInfo, vns::AbstractVector{<:VarName})
 end
 
 getindex_internal(vi::ThreadSafeVarInfo, vn::VarName) = getindex_internal(vi.varinfo, vn)
+function get_transformed_value(vi::ThreadSafeVarInfo, vn::VarName)
+    return get_transformed_value(vi.varinfo, vn)
+end
 
 function unflatten!!(vi::ThreadSafeVarInfo, x::AbstractVector)
     return Accessors.@set vi.varinfo = unflatten!!(vi.varinfo, x)
