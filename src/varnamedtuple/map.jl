@@ -95,7 +95,8 @@ for literally every type in existence, we hide it behind the interface of the mo
 discriminating `map_pairs!!`. It makes the implementation a bit simpler, compared to
 checking element types within `map_pairs!!` itself.
 """
-_map_pairs_recursive!!(func, x, vn) = func(vn => x)
+_map_pairs_recursive!!(pairfunc, x, vn) = pairfunc(vn => x)
+_map_values_recursive!!(func, x) = func(x)
 
 # TODO(mhauru) The below is type unstable for some complex VarNames. My example case
 # for which type stability fails is @varname(e.f[3].g.h[2].i). I don't understand this
@@ -109,14 +110,23 @@ _map_pairs_recursive!!(func, x, vn) = func(vn => x)
 function _map_pairs_recursive!!(func, pa::PartialArray, vn)
     return if eltype(pa) <: ArrayLikeBlock || ArrayLikeBlock <: eltype(pa)
         # There are (or might be) some ALBs
-        _map_recursive_pa_alb!!(func, pa, vn)
+        _map_pairs_recursive_pa_alb!!(func, pa, vn)
     else
         # There are definitely no ALBs
-        _map_recursive_pa_noalb!!(func, pa, vn)
+        _map_pairs_recursive_pa_noalb!!(func, pa, vn)
+    end
+end
+function _map_values_recursive!!(func, pa::PartialArray)
+    return if eltype(pa) <: ArrayLikeBlock || ArrayLikeBlock <: eltype(pa)
+        # There are (or might be) some ALBs
+        _map_values_recursive_pa_alb!!(func, pa)
+    else
+        # There are definitely no ALBs
+        _map_values_recursive_pa_noalb!!(func, pa)
     end
 end
 
-function _map_recursive_pa_alb!!(func, pa::PartialArray, vn)
+function _map_pairs_recursive_pa_alb!!(pairfunc, pa::PartialArray, vn)
     # Ask the compiler to infer the return type of applying func recursively to eltype(pa).
     et = eltype(pa)
     index_type = AbstractPPL.Index{NTuple{ndims(pa),Int},@NamedTuple{},AbstractPPL.Iden}
@@ -124,7 +134,7 @@ function _map_recursive_pa_alb!!(func, pa::PartialArray, vn)
         AbstractPPL.append_optic, Tuple{typeof(vn),index_type}
     )
     new_et = Core.Compiler.return_type(
-        Tuple{typeof(_map_pairs_recursive!!),typeof(func),et,new_vn_type}
+        Tuple{typeof(_map_pairs_recursive!!),typeof(pairfunc),et,new_vn_type}
     )
     new_data = if new_et <: et
         # We can reuse the existing data array.
@@ -145,38 +155,63 @@ function _map_recursive_pa_alb!!(func, pa::PartialArray, vn)
                 # Create the new value, set it at all the places where it needs to be set,
                 # and mark those places as visited.
                 new_vn = AbstractPPL.append_optic(vn, AbstractPPL.Index(val.ix, val.kw))
-                new_val = _map_pairs_recursive!!(func, val, new_vn)
+                new_val = _map_pairs_recursive!!(pairfunc, val, new_vn)
                 new_data[val.ix..., val.kw...] .= new_val
                 mask[val.ix..., val.kw...] .= false
             else
                 new_vn = AbstractPPL.append_optic(vn, AbstractPPL.Index(Tuple(i), (;)))
-                new_data[i] = _map_pairs_recursive!!(func, val, new_vn)
+                new_data[i] = _map_pairs_recursive!!(pairfunc, val, new_vn)
             end
         end
     end
     # The above type inference may be overly conservative, so we concretise the eltype.
     return _concretise_eltype!!(PartialArray(new_data, pa.mask))
 end
+function _map_values_recursive_pa_alb!!(func, pa::PartialArray)
+    et = eltype(pa)
+    new_et = Core.Compiler.return_type(
+        Tuple{typeof(_map_values_recursive!!),typeof(func),et}
+    )
+    new_data = if new_et <: et
+        pa.data
+    else
+        similar(pa.data, new_et)
+    end
+    mask = copy(pa.mask)
+    for i in CartesianIndices(mask)
+        if mask[i]
+            val = pa.data[i]
+            if val isa ArrayLikeBlock
+                # Create the new value, set it at all the places where it needs to be set,
+                # and mark those places as visited.
+                new_val = _map_values_recursive!!(func, val)
+                new_data[val.ix..., val.kw...] .= new_val
+                mask[val.ix..., val.kw...] .= false
+            else
+                new_data[i] = _map_values_recursive!!(func, val)
+            end
+        end
+    end
+    return _concretise_eltype!!(PartialArray(new_data, pa.mask))
+end
 
-function _map_recursive_pa_noalb!!(func, pa::PartialArray, vn)
+function _map_pairs_recursive_pa_noalb!!(pairfunc, pa::PartialArray, vn)
     # Don't have to faff with ALBs. Just map `func` over all elements that are set.
     mask = pa.mask
     ci = CartesianIndices(mask)
-    ixs_subset = ci[mask]
-    data_subset = pa.data[mask]
-
+    ixs_subset = @view ci[mask]
+    data_subset = @view pa.data[mask]
     index_type = AbstractPPL.Index{NTuple{ndims(pa),Int},@NamedTuple{},AbstractPPL.Iden}
     new_vn_type = Core.Compiler.return_type(
         AbstractPPL.append_optic, Tuple{typeof(vn),index_type}
     )
     et = eltype(pa)
     new_et = Core.Compiler.return_type(
-        Tuple{typeof(_map_pairs_recursive!!),typeof(func),eltype(pa),new_vn_type}
+        Tuple{typeof(_map_pairs_recursive!!),typeof(pairfunc),eltype(pa),new_vn_type}
     )
-
     function inner(data_i, ix_i)
         new_vn = AbstractPPL.append_optic(vn, AbstractPPL.Index(Tuple(ix_i), (;)))
-        return _map_pairs_recursive!!(func, data_i, new_vn)
+        return _map_pairs_recursive!!(pairfunc, data_i, new_vn)
     end
     return if new_et <: et
         # Can write into existing data array.
@@ -189,34 +224,78 @@ function _map_recursive_pa_noalb!!(func, pa::PartialArray, vn)
         _concretise_eltype!!(PartialArray(new_pa_data, pa.mask))
     end
 end
+function _map_values_recursive_pa_noalb!!(func, pa::PartialArray)
+    mask = pa.mask
+    et = eltype(pa)
+    new_et = Core.Compiler.return_type(
+        Tuple{typeof(_map_values_recursive!!),typeof(func),eltype(pa)}
+    )
+    return if new_et <: et
+        # Can write into existing data array.
+        new_pa_data = view(pa.data, mask)
+        # According to the docstring of `map!` on 1.11, "unexpected behaviour" may happen if
+        # the input and output alias each other. But the docstring on 1.12 says that you can
+        # do this, so...
+        # https://docs.julialang.org/en/v1/base/collections/#Julia-1.12-9b4e28751024c91d
+        map!(Base.Fix1(_map_values_recursive!!, func), new_pa_data, new_pa_data)
+        pa
+    else
+        # Need to allocate a new data array.
+        new_pa_data = similar(pa.data, new_et)
+        map!(
+            Base.Fix1(_map_values_recursive!!, func),
+            view(new_pa_data, mask),
+            view(pa.data, mask),
+        )
+        _concretise_eltype!!(PartialArray(new_pa_data, pa.mask))
+    end
+end
 
-function _map_pairs_recursive!!(func, alb::ArrayLikeBlock, vn)
-    new_block = _map_pairs_recursive!!(func, alb.block, vn)
+function _check_size(new_block, old_block)
     sz_new = vnt_size(new_block)
-    sz_old = vnt_size(alb.block)
+    sz_old = vnt_size(old_block)
     if sz_new != sz_old
         throw(
             DimensionMismatch(
-                "map_pairs!! can't change the size of an ArrayLikeBlock. Tried to change " *
+                "map_pairs!! can't change the size of a block. Tried to change " *
                 "from $(sz_old) to $(sz_new).",
             ),
         )
     end
+end
+function _map_pairs_recursive!!(pairfunc, alb::ArrayLikeBlock, vn)
+    new_block = _map_pairs_recursive!!(pairfunc, alb.block, vn)
+    _check_size(new_block, alb.block)
+    return ArrayLikeBlock(new_block, alb.ix, alb.kw, alb.index_size)
+end
+function _map_values_recursive!!(func, alb::ArrayLikeBlock)
+    new_block = _map_values_recursive!!(func, alb.block)
+    _check_size(new_block, alb.block)
     return ArrayLikeBlock(new_block, alb.ix, alb.kw, alb.index_size)
 end
 
-# As above but with a prefix VarName `vn`.
 @generated function _map_pairs_recursive!!(
-    func, vnt::VarNamedTuple{Names}, vn::T
+    pairfunc, vnt::VarNamedTuple{Names}, vn::T
 ) where {Names,T}
     exs = Expr[]
     for name in Names
         push!(
             exs,
             :(_map_pairs_recursive!!(
-                func, vnt.data.$name, AbstractPPL.prefix(VarName{$(QuoteNode(name))}(), vn)
+                pairfunc,
+                vnt.data.$name,
+                AbstractPPL.append_optic(vn, AbstractPPL.Property{$(QuoteNode(name))}()),
             )),
         )
+    end
+    return quote
+        return VarNamedTuple(NamedTuple{Names}(($(exs...),)))
+    end
+end
+@generated function _map_values_recursive!!(func, vnt::VarNamedTuple{Names}) where {Names}
+    exs = Expr[]
+    for name in Names
+        push!(exs, :(_map_values_recursive!!(func, vnt.data.$name)))
     end
     return quote
         return VarNamedTuple(NamedTuple{Names}(($(exs...),)))
@@ -248,7 +327,15 @@ end
 
 Apply `func` to elements of `vnt`, in place if possible.
 """
-map_values!!(func, vnt::VarNamedTuple) = map_pairs!!(pair -> func(pair.second), vnt)
+@generated function map_values!!(func, vnt::VarNamedTuple{Names}) where {Names}
+    exs = Expr[]
+    for name in Names
+        push!(exs, :(_map_values_recursive!!(func, vnt.data.$name)))
+    end
+    return quote
+        return VarNamedTuple(NamedTuple{Names}(($(exs...),)))
+    end
+end
 
 """
     mapreduce(f, op, vnt::VarNamedTuple; init)
