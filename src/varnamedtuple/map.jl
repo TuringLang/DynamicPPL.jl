@@ -353,6 +353,8 @@ is not optional.
 @generated function Base.mapreduce(
     f, op, vnt::VarNamedTuple{Names}; init::InitType=nothing
 ) where {Names,InitType}
+    # NOTE(penelopeysm): I tried doing a separate implementation for mapreduce and
+    # mapreduce_pairs, just like for map and map_pairs, but it actually led to slowdowns.
     if InitType === Nothing
         return quote
             throw(
