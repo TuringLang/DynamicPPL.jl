@@ -67,7 +67,7 @@ whether the transformation maps all real vectors to valid values.
 # Fields
 $(TYPEDFIELDS)
 """
-struct TransformedValue{Linked,ValType,TransformType,SizeType}
+struct TransformedValue{Linked,ValType<:AbstractVector,TransformType,SizeType}
     "The internal (vectorised) value."
     val::ValType
     """The transformation from internal (vectorised) to actual value. In other words, the
@@ -325,7 +325,7 @@ function _link_or_invlink!!(vi::VarInfo, vns, model::Model, ::Val{link}) where {
             # Already in the desired state.
             return tv
         end
-        dist = getindex(dists, vn)
+        dist = getindex(dists, vn)::Distribution
         vec_transform = from_vec_transform(dist)
         link_transform = from_linked_vec_transform(dist)
         current_transform, new_transform = if link
@@ -439,35 +439,20 @@ A tiny struct for getting chunks of a vector sequentially.
 The only function provided is `get_next_chunk!`, which takes a length and returns
 a view into the next chunk of that length, updating the internal index.
 """
-mutable struct VectorChunkIterator{T<:AbstractVector}
+mutable struct VectorChunkIterator!{T<:AbstractVector}
     vec::T
     index::Int
 end
-
-function get_next_chunk!(vci::VectorChunkIterator, len::Int)
-    i = vci.index
-    chunk = @view vci.vec[i:(i + len - 1)]
+function (vci::VectorChunkIterator!)(tv::TransformedValue{Linked}) where {Linked}
+    old_val = tv.val
+    len = length(old_val)
+    new_val = @view vci.vec[(vci.index):(vci.index + len - 1)]
     vci.index += len
-    return chunk
+    return TransformedValue{Linked}(new_val, tv.transform, tv.size)
 end
-
 function unflatten!!(vi::VarInfo{Linked}, vec::AbstractVector) where {Linked}
-    # You may wonder, why have a whole struct for this, rather than just an index variable
-    # that the mapping function would close over. I wonder too. But for some reason type
-    # inference fails on such an index variable, turning it into a Core.Box.
-    vci = VectorChunkIterator(vec, 1)
-    new_values = map_values!!(vi.values) do tv
-        old_val = tv.val
-        if !(old_val isa AbstractVector)
-            error(
-                "Can't unflatten!! a VarInfo for which existing values are not vectors:" *
-                " Got value of type $(typeof(old_val)).",
-            )
-        end
-        len = length(old_val)
-        new_val = get_next_chunk!(vci, len)
-        return TransformedValue{is_transformed(tv)}(new_val, tv.transform, tv.size)
-    end
+    vci = VectorChunkIterator!(vec, 1)
+    new_values = map_values!!(vci, vi.values)
     return VarInfo{Linked}(new_values, vi.accs)
 end
 

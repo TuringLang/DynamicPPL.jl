@@ -271,7 +271,7 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
 
             # We know that any variable starting with `s` should have `InverseGamma`
             # and any variable starting with `m` should have `Normal`.
-            for (vn, prior) in priors
+            for (vn, prior) in pairs(priors)
                 if DynamicPPL.getsym(vn) == :s
                     @test innermost_distribution_type(prior) <: InverseGamma
                 elseif DynamicPPL.getsym(vn) == :m

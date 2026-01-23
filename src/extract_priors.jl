@@ -1,14 +1,15 @@
-struct PriorDistributionAccumulator{D<:OrderedDict{VarName,Any}} <: AbstractAccumulator
-    priors::D
+struct PriorDistributionAccumulator{VNT<:VarNamedTuple} <: AbstractAccumulator
+    priors::VNT
 end
 
-PriorDistributionAccumulator() = PriorDistributionAccumulator(OrderedDict{VarName,Any}())
+PriorDistributionAccumulator() = PriorDistributionAccumulator(VarNamedTuple())
 
 function Base.copy(acc::PriorDistributionAccumulator)
     return PriorDistributionAccumulator(copy(acc.priors))
 end
 
-accumulator_name(::PriorDistributionAccumulator) = :PriorDistributionAccumulator
+const PRIOR_ACCNAME = :PriorDistributionAccumulator
+accumulator_name(::PriorDistributionAccumulator) = PRIOR_ACCNAME
 
 function Base.:(==)(acc1::PriorDistributionAccumulator, acc2::PriorDistributionAccumulator)
     return acc1.priors == acc2.priors
@@ -21,35 +22,13 @@ function combine(acc1::PriorDistributionAccumulator, acc2::PriorDistributionAccu
     return PriorDistributionAccumulator(merge(acc1.priors, acc2.priors))
 end
 
-function setprior!(acc::PriorDistributionAccumulator, vn::VarName, dist::Distribution)
-    acc.priors[vn] = dist
-    return acc
-end
-
-function setprior!(
-    acc::PriorDistributionAccumulator, vns::AbstractArray{<:VarName}, dist::Distribution
-)
-    for vn in vns
-        acc.priors[vn] = dist
-    end
-    return acc
-end
-
-function setprior!(
-    acc::PriorDistributionAccumulator,
-    vns::AbstractArray{<:VarName},
-    dists::AbstractArray{<:Distribution},
-)
-    for (vn, dist) in zip(vns, dists)
-        acc.priors[vn] = dist
-    end
-    return acc
-end
-
 function accumulate_assume!!(
-    acc::PriorDistributionAccumulator, val, logjac, vn, right, template
+    acc::PriorDistributionAccumulator, val, logjac, vn, dist, template
 )
-    return setprior!(acc, vn, right)
+    Accessors.@reset acc.priors = DynamicPPL.templated_setindex!!(
+        acc.priors, dist, vn, template
+    )
+    return acc
 end
 
 accumulate_observe!!(acc::PriorDistributionAccumulator, right, left, vn) = acc
@@ -125,7 +104,7 @@ extract_priors(args::Union{Model,AbstractVarInfo}...) =
 function extract_priors(rng::Random.AbstractRNG, model::Model)
     varinfo = OnlyAccsVarInfo((PriorDistributionAccumulator(),))
     varinfo = last(init!!(rng, model, varinfo))
-    return getacc(varinfo, Val(:PriorDistributionAccumulator)).priors
+    return getacc(varinfo, Val(PRIOR_ACCNAME)).priors
 end
 
 """
@@ -139,5 +118,5 @@ and recording the distributions that are present at each tilde statement.
 function extract_priors(model::Model, varinfo::AbstractVarInfo)
     varinfo = setaccs!!(deepcopy(varinfo), (PriorDistributionAccumulator(),))
     varinfo = last(evaluate!!(model, varinfo))
-    return getacc(varinfo, Val(:PriorDistributionAccumulator)).priors
+    return getacc(varinfo, Val(PRIOR_ACCNAME)).priors
 end
