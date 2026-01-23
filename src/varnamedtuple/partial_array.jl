@@ -344,6 +344,7 @@ end
 
 function Base.hash(pa::PartialArray, h::UInt)
     h = hash(typeof(pa.data), h)
+    h = hash(size(pa.data), h)
     for i in eachindex(pa.mask)
         @inbounds if pa.mask[i]
             h = hash(i, h)
