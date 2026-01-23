@@ -335,6 +335,20 @@ end
 Apply `func` to elements of `vnt`, in place if possible.
 """
 @generated function map_values!!(func, vnt::VarNamedTuple{Names}) where {Names}
+    # NOTE(penelopeysm): The definition of this function, and the functions it recurses
+    # into, is almost entirely the same as for map_pairs!!, except that we don't generate
+    # and pass around the VarName. This leads to a LOT of code duplication, unfortunately.
+    # One could get rid of this by defining:
+    #
+    #   map_values!!(func, vnt) = map_pairs!!((pair) -> func(pair.second), vnt)
+    #
+    # Unfortunately, that does cause substantial performance regressions on functions such
+    # as unflatten!! (differences of 10x have been seen on some models). So do make sure
+    # you benchmark any changes to this function carefully.
+    #
+    # We could also use @eval to reduce the code duplication, but I personally don't think
+    # it's worth the added complexity right now. I would be open to a PR that changed this,
+    # though.
     exs = Expr[]
     for name in Names
         push!(exs, :(_map_values_recursive!!(func, vnt.data.$name)))
