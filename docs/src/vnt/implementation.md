@@ -25,7 +25,7 @@ If a template is provided, it must be for the entire structure being created, th
     It seems like we are introducing an inconsistency here, since the template above would be for the entire structure.
     That is why `templated_setindex!!` does not pass the template as-is; it wraps the template in one level of `SkipTemplate{1}(template)`, which effectively means 'don't use a template for the first level, then use it for the next'.
 
-Because `VarName`s have a linked list structure, it should not be surprising to find that `VarNamedTuple`s are constructed by recursing into `_setindex_optic!!`.
+Because `VarName`s have a nested structure, it should not be surprising to find that `VarNamedTuple`s are constructed by recursing into `_setindex_optic!!`.
 For an optic like `_.x[1].a`, the strategy is as follows:
 
   - Look at the outermost layer of the optic (`.x` above).

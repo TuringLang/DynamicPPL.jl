@@ -87,7 +87,7 @@ These structures essentially attempted to remove as much overhead as possible fr
 Furthermore, they were often wrapped in `NamedTuple`s to get some type stability benefits.
 This approach was somewhat successful and was used for many years: it is also described in the [Turing.jl *ACM Transactions on Probabilistic Machine Learning* paper](https://dl.acm.org/doi/10.1145/3711897).
 
-While this fixed many performance problems with `Dict`, at its very core, it is still a mapping of `VarName`s to values, and therefore suffers from a lack of what I (Penny) call 'constructiveness'.
+While this fixed many performance problems with `Dict`, at its very core, it is still a mapping of `VarName`s to values, and therefore suffers from a lack of what we call *'constructiveness'*.
 
 ## Constructiveness
 
