@@ -32,13 +32,6 @@ unless no specific method is defined for the type of `x` and `y`, in which case
 _merge_recursive(_, x2) = x2
 
 """
-    SkipSizeCheck()
-
-A special return value for `vnt_size` indicating that size checks should be skipped.
-"""
-struct SkipSizeCheck end
-
-"""
     vnt_size(x)
 
 Get the size of an object `x` for use in `VarNamedTuple` and `PartialArray`.
@@ -46,8 +39,6 @@ Get the size of an object `x` for use in `VarNamedTuple` and `PartialArray`.
 By default, this falls back onto `Base.size`, but can be overloaded for custom types.
 This notion of type is used to determine whether a value can be set into a `PartialArray`
 as a block, see the docstring of `PartialArray` and `ArrayLikeBlock` for details.
-
-A special return value of `SkipSizeCheck()` indicates that the size check should be skipped.
 """
 vnt_size(x) = size(x)
 
@@ -601,7 +592,7 @@ function BangBang.setindex!!(pa::PartialArray, value, inds::Vararg{Any}; kw...)
         # Check that we're trying to set a block that has the right size.
         idx_sz = size(@view new_data[inds..., kw...])
         vnt_sz = vnt_size(value)
-        if !(vnt_sz isa SkipSizeCheck) && vnt_sz != idx_sz
+        if vnt_sz != idx_sz
             throw(
                 DimensionMismatch(
                     "Assigned value has size $(vnt_sz), which does not match " *

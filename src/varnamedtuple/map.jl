@@ -160,7 +160,7 @@ function _map_recursive!!(func, alb::ArrayLikeBlock, vn)
     new_block = _map_recursive!!(func, alb.block, vn)
     sz_new = vnt_size(new_block)
     sz_old = vnt_size(alb.block)
-    if !(sz_new isa SkipSizeCheck) && !(sz_old isa SkipSizeCheck) && sz_new != sz_old
+    if sz_new != sz_old
         throw(
             DimensionMismatch(
                 "map_pairs!! can't change the size of an ArrayLikeBlock. Tried to change " *
