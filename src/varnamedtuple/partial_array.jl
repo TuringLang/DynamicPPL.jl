@@ -355,7 +355,7 @@ end
 
 Base.isempty(pa::PartialArray) = !any(pa.mask)
 function Base.empty(pa::PartialArray)
-    return PartialArray(similar(pa.data), fill!(false, similar(pa.mask)))
+    return PartialArray(similar(pa.data), fill!(similar(pa.mask), false))
 end
 function BangBang.empty!!(pa::PartialArray)
     fill!(pa.mask, false)
