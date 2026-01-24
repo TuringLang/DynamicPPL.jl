@@ -62,6 +62,7 @@ include("varnamedtuple/partial_array.jl")
 include("varnamedtuple/vnt.jl")
 include("varnamedtuple/getset.jl")
 include("varnamedtuple/map.jl")
+include("varnamedtuple/show.jl")
 
 function AbstractPPL.hasvalue(vnt::VarNamedTuple, vn::VarName)
     return _haskey_optic(vnt, vn)

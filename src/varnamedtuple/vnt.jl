@@ -70,15 +70,6 @@ Base.:(==)(vnt1::VarNamedTuple, vnt2::VarNamedTuple) = vnt1.data == vnt2.data
 Base.isequal(vnt1::VarNamedTuple, vnt2::VarNamedTuple) = isequal(vnt1.data, vnt2.data)
 Base.hash(vnt::VarNamedTuple, h::UInt) = hash("vnt", hash(vnt.data, h))
 
-function Base.show(io::IO, vnt::VarNamedTuple)
-    if isempty(vnt.data)
-        return print(io, "VarNamedTuple()")
-    end
-    print(io, "VarNamedTuple")
-    show(io, vnt.data)
-    return nothing
-end
-
 function Base.copy(vnt::VarNamedTuple{names}) where {names}
     # Make a shallow copy of vnt, except for any VarNamedTuple or PartialArray elements,
     # which we recursively copy.

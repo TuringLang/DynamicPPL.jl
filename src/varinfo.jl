@@ -133,6 +133,20 @@ function Base.values(vi::VarInfo)
     return mapreduce(p -> p.second.transform(p.second.val), push!, vi.values; init=Any[])
 end
 
+function Base.show(io::IO, ::MIME"text/plain", vi::VarInfo)
+    printstyled(io, "VarInfo\n"; bold=true)
+    print(io, " ├─ ")
+    printstyled("values"; bold=true)
+    print(io, "\n │  ")
+    DynamicPPL.VarNamedTuples.vnt_pretty_print(io, vi.values, " │  ", 0)
+    println(io)
+    print(io, " └─ ")
+    printstyled("accs"; bold=true)
+    print(io, "\n    ")
+    DynamicPPL.pretty_print(io, vi.accs, "    ")
+    return nothing
+end
+
 function Base.getindex(vi::VarInfo, vn::VarName)
     tv = getindex(vi.values, vn)
     return tv.transform(tv.val)

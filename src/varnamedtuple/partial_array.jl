@@ -65,19 +65,6 @@ end
 # ArrayLikeBlocks as scalars.
 Base.broadcastable(o::ArrayLikeBlock) = Ref(o)
 
-function Base.show(io::IO, alb::ArrayLikeBlock)
-    print(io, "ArrayLikeBlock(")
-    show(io, alb.block)
-    print(io, ", ")
-    show(io, alb.ix)
-    print(io, ", ")
-    show(io, alb.kw)
-    print(io, ", ")
-    show(io, alb.index_size)
-    print(io, ")")
-    return nothing
-end
-
 _blocktype(::Type{ArrayLikeBlock{T}}) where {T} = T
 
 """
@@ -262,30 +249,6 @@ end
 
 Base.ndims(::PartialArray{ElType,num_dims}) where {ElType,num_dims} = num_dims
 Base.eltype(::PartialArray{ElType}) where {ElType} = ElType
-
-function Base.show(io::IO, pa::PartialArray)
-    print(io, "PartialArray{", eltype(pa), ",", ndims(pa), "}(")
-    is_first = true
-    for inds in CartesianIndices(pa.mask)
-        if @inbounds(!pa.mask[inds])
-            continue
-        end
-        if !is_first
-            print(io, ", ")
-        else
-            is_first = false
-        end
-        val = @inbounds(pa.data[inds])
-        # Note the distinction: The raw strings that form part of the structure of the print
-        # out are `print`ed, whereas the keys and values are `show`n. The latter ensures
-        # that strings are quoted, Symbols are prefixed with :, etc.
-        show(io, Tuple(inds))
-        print(io, " => ")
-        show(io, val)
-    end
-    print(io, ")")
-    return nothing
-end
 
 Base.size(pa::PartialArray) = size(pa.data)
 Base.isassigned(pa::PartialArray, ix...; kw...) = isassigned(pa.data, ix...; kw...)

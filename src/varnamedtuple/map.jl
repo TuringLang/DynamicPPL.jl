@@ -60,10 +60,12 @@ julia> vnt = VarNamedTuple()
 VarNamedTuple()
 
 julia> vnt = setindex!!(vnt, [1, 2, 3], @varname(a))
-VarNamedTuple(a = [1, 2, 3],)
+VarNamedTuple
+└─ a => [1, 2, 3]
 
 julia> apply!!(x -> x .+ 1, vnt, @varname(a))
-VarNamedTuple(a = [2, 3, 4],)
+VarNamedTuple
+└─ a => [2, 3, 4]
 ```
 """
 function apply!!(func, vnt::VarNamedTuple, name::VarName)
