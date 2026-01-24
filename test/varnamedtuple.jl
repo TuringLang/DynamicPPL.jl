@@ -5,7 +5,14 @@ using OrderedCollections: OrderedDict
 using Test: @inferred, @test, @test_throws, @testset, @test_broken
 using DynamicPPL: DynamicPPL, @varname, VarNamedTuple, subset
 using DynamicPPL.VarNamedTuples:
-    PartialArray, ArrayLikeBlock, map_pairs!!, map_values!!, apply!!, templated_setindex!!
+    PartialArray,
+    ArrayLikeBlock,
+    map_pairs!!,
+    map_values!!,
+    apply!!,
+    templated_setindex!!,
+    GrowableArray,
+    grow_to_indices!!
 using AbstractPPL: AbstractPPL, VarName, concretize, prefix, @opticof
 using BangBang: setindex!!, empty!!
 using DimensionalData: DimensionalData as DD
@@ -533,13 +540,36 @@ Base.size(st::SizedThing) = st.size
         # @test @inferred(getindex(vnt, @varname(g[3, 2][10, 10].h[2, 2]))) == [1]
     end
 
-    @testset "setindex!! without template: GrowableArray" begin
-        # TODO(penelopeysm): Write these tests. In general, we can just copy everything
-        # from above but using setindex!! instead of templated_setindex!!.
-        # However, we should also add extra tests for specific GrowableArray behaviour, i.e.
-        # the changing length, and the way that different numbers of indices are forbidden,
-        # etc.
-        @test_broken false
+    @testset "GrowableArray behaviour" begin
+        @testset "grow_to_indices!! on PartialArray->GrowableArray" begin
+            pa = PartialArray(GrowableArray(ones(2)), GrowableArray([false, true]))
+            @test_throws BoundsError pa[1]
+            @test pa[2] == 1.0
+            pa = grow_to_indices!!(pa, 1:3)
+            @test size(pa.data) == (3,)
+            @test_throws BoundsError pa[1]
+            @test pa[2] == 1.0
+            # pa[3] should still error...
+            @test_throws BoundsError pa[3]
+            # ... but the underlying data should be there
+            @test pa.mask[3] == false
+        end
+
+        @testset "grow_to_indices!! can't change dimensionality" begin
+            pa = PartialArray(GrowableArray(ones(2)), GrowableArray([false, true]))
+            @test_throws ArgumentError grow_to_indices!!(pa, 1, 2)
+            pa = PartialArray(GrowableArray(randn(2, 2)), GrowableArray(fill(false, 2, 2)))
+            @test_throws ArgumentError grow_to_indices!!(pa, 1)
+        end
+
+        @testset "Data is correctly copied when expanding" begin
+            x = randn(2, 3)
+            vnt = VarNamedTuple()
+            for c in CartesianIndices((2, 3))
+                vnt = setindex!!(vnt, x[c], @varname(x[c.I...]))
+            end
+            @test vnt[@varname(x)] == x
+        end
     end
 
     @testset "multiindices" begin

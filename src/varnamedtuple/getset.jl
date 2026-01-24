@@ -351,12 +351,11 @@ function make_leaf_multiindex(value, coptic::AbstractPPL.Index, template)
     # _[2:3][1] without a template -- the inner `make_leaf` call will create a GrowableArray
     # of size 1 (because that's the minimum size it infers from the inner indices), but we
     # actually need a slice of length 2. (If there's a template, we don't have this problem,
-    # because the inner make_leaf will use the template to set the correct size of 2.)
-    grown_sub_value = if sub_value isa PartialArray && sub_value.data isa GrowableArray
-        required_size = get_required_size_from_indices(coptic.ix)
-        new_subvalue_data = grow_to_size!!(sub_value.data, required_size)
-        new_subvalue_mask = grow_to_size!!(sub_value.mask, required_size)
-        PartialArray(new_subvalue_data, new_subvalue_mask)
+    # because the inner make_leaf will use the template to set the correct size of 2.) Note
+    # that `grow_to_indices!!` is a no-op for any PartialArray that doesn't contain a
+    # GrowableArray.
+    grown_sub_value = if sub_value isa PartialArray
+        grow_to_indices!!(sub_value, coptic.ix...; coptic.kw...)
     else
         sub_value
     end
