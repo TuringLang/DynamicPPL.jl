@@ -12,42 +12,10 @@ This context is useful in nested models to ensure that the names of the paramete
 unique.
 
 See also: [`to_submodel`](@ref)
-
-# Extended help
-
-## The `skip_length` field
-
-The inner constructor of a `PrefixContext` calculates the `skip_length` field, which
-represents the 'length' of the prefix added to variable names within this context. For
-example, prefixing with `@varname(x)` gives a `skip_length` of 1; prefixing with
-`@varname(x.a.b)` gives a `skip_length` of 3; and so on.
-
-This is needed when providing templates when setting values in a VarNamedTuple, _within_ a
-submodel. That is, inside a submodel, suppose we have `a[1] ~ Normal()`. To call
-`DynamicPPL.templated_setindex!!` for this variable correctly, we need to provide the shape
-of `a`. Of course, we can do this, because `a` should be a top-level variable in the model
-function. The problem is that `templated_setindex!!` is called from `tilde_assume!!`, which
-does _not_ see the variable `a[1]`, but rather `x.a[1]` where `x` is the prefix added by the
-`PrefixContext`.
-
-Thus, to correctly communicate the template, we need to wrap the value for `a` inside N
-levels of `SkipTemplate`, which says that "the template is actually for the variable N
-levels down". `skip_length` is exactly that N.
-
-Note that this only counts the prefixes added by `PrefixContext`s; it does not count any
-child contexts. That is because each child context will add its own prefixes as we traverse
-the context stack.
 """
 struct PrefixContext{Tvn<:VarName,C<:AbstractContext} <: AbstractParentContext
     vn_prefix::Tvn
-    skip_length::Int
     context::C
-
-    function PrefixContext(vn::T, childcontext::C) where {T<:VarName,C<:AbstractContext}
-        # Add 1 for the top-level symbol of the VarName.
-        skip_length = 1 + optic_skip_length(AbstractPPL.getoptic(vn))
-        return new{T,C}(vn, skip_length, childcontext)
-    end
 end
 PrefixContext(vn::VarName) = PrefixContext(vn, DefaultContext())
 function PrefixContext(::Val{sym}, context::AbstractContext) where {sym}
@@ -76,7 +44,23 @@ end
 """
     optic_skip_length(optic::AbstractPPL.Optic)
 
-Helper function to Determine the number of optics in a chain.
+Determine the number of optics that would be added to a VarName by prefixing the VarName
+with this optic.
+
+This is needed when providing templates when setting values in a VarNamedTuple, _within_ a
+submodel. That is, inside a submodel, suppose we have `a[1] ~ Normal()`. To call
+`templated_setindex!!` for this variable correctly, we need to provide the shape of `a`. Of
+course, we can do this, because `a` should be a top-level variable in the model function.
+The problem is that `templated_setindex!!` is called from `tilde_assume!!`, which does _not_
+see the variable `a[1]`, but rather `x.a[1]` where `x` is the prefix added by the
+`PrefixContext`.
+
+Thus, to correctly communicate the template, we need to wrap the value for `a` inside N
+levels of `SkipTemplate`, which says that "the template is actually for the variable N
+levels down". This function computes that N.
+
+Note that this only counts the prefixes added by `PrefixContext`s; it does not count any
+child contexts. That is because each child context will add its own prefixes.
 """
 optic_skip_length(::AbstractPPL.Iden) = 0
 optic_skip_length(c::AbstractPPL.Index) = 1 + optic_skip_length(c.child)
@@ -132,9 +116,9 @@ function tilde_assume!!(
     # would apply the prefix `b._`, resulting in `b.a.b._`.
     # This is why we need a special function, `prefix_and_strip_contexts`.
     new_vn, new_context = prefix_and_strip_contexts(context, vn)
-    return tilde_assume!!(
-        new_context, right, new_vn, SkipTemplate{context.skip_length}(template), vi
-    )
+    # Add 1 for the top-level symbol in the VarName.
+    n = optic_skip_length(AbstractPPL.getoptic(context.vn_prefix)) + 1
+    return tilde_assume!!(new_context, right, new_vn, SkipTemplate{n}(template), vi)
 end
 
 function tilde_observe!!(
@@ -159,7 +143,6 @@ function store_coloneq_value!!(
     context::PrefixContext, vn::VarName, right::Any, template::Any, vi::AbstractVarInfo
 )
     new_vn, new_context = prefix_and_strip_contexts(context, vn)
-    return store_coloneq_value!!(
-        new_context, new_vn, right, SkipTemplate{context.skip_length}(template), vi
-    )
+    n = optic_skip_length(AbstractPPL.getoptic(context.vn_prefix)) + 1
+    return store_coloneq_value!!(new_context, new_vn, right, SkipTemplate{n}(template), vi)
 end
