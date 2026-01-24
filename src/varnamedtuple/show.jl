@@ -20,7 +20,7 @@ function vnt_pretty_print(io::IO, pa::PartialArray, prefix::String, depth::Int)
     end
     print(io, "PartialArray ")
     printstyled(io, "size=" * string(size(pa.data)); size_style...)
-    println(" data::" * string(typeof(pa.data)))
+    println(io, " data::" * string(typeof(pa.data)))
     # can't use `keys(pa)` here as that recurses into each element.
     nindices = count(pa.mask)
     truncate = nindices > MAX_KEYS_OR_INDICES
