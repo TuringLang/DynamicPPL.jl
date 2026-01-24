@@ -418,11 +418,9 @@ function generate_assign(left, right)
     return quote
         $right_val = $right
         if $(DynamicPPL.is_extracting_values)(__varinfo__)
-            $vn = $(DynamicPPL.prefix)(__model__.context, $(make_varname_expression(left)))
-            __varinfo__ = $(map_accumulator!!)(
-                $acc -> push!!($acc, $vn, $right_val, $template),
-                __varinfo__,
-                Val(:ValuesAsInModel),
+            $vn = $(make_varname_expression(left))
+            __varinfo__ = $(DynamicPPL.store_coloneq_value!!)(
+                __model__.context, $vn, $right_val, $template, __varinfo__
             )
         end
         $left = $right_val

@@ -44,22 +44,16 @@ end
 """
     optic_skip_length(optic::AbstractPPL.Optic)
 
-Determine the number of optics in a chain.
-"""
-optic_skip_length(::AbstractPPL.Iden) = 0
-optic_skip_length(c::AbstractPPL.Index) = 1 + optic_skip_length(c.child)
-optic_skip_length(c::AbstractPPL.Property) = 1 + optic_skip_length(c.child)
-"""
-    prefix_skip_length(context::AbstractContext)
+Determine the number of optics that would be added to a VarName by prefixing the VarName
+with this optic.
 
-Determine the number of optics that would be added to a VarName by applying the prefixes in
-the given context. This is needed when providing templates when setting values in a
-VarNamedTuple, _within_ a submodel. That is, inside a submodel, suppose we have `a[1] ~
-Normal()`. To call `templated_setindex!!` for this variable correctly, we need to provide
-the shape of `a`. Of course, we can do this, because `a` should be a top-level variable in
-the model function. The problem is that `templated_setindex!!` is called from
-`tilde_assume!!`, which does _not_ see the variable `a[1]`, but rather `x.a[1]` where `x` is
-the prefix added by the `PrefixContext`.
+This is needed when providing templates when setting values in a VarNamedTuple, _within_ a
+submodel. That is, inside a submodel, suppose we have `a[1] ~ Normal()`. To call
+`templated_setindex!!` for this variable correctly, we need to provide the shape of `a`. Of
+course, we can do this, because `a` should be a top-level variable in the model function.
+The problem is that `templated_setindex!!` is called from `tilde_assume!!`, which does _not_
+see the variable `a[1]`, but rather `x.a[1]` where `x` is the prefix added by the
+`PrefixContext`.
 
 Thus, to correctly communicate the template, we need to wrap the value for `a` inside N
 levels of `SkipTemplate`, which says that "the template is actually for the variable N
@@ -68,10 +62,9 @@ levels down". This function computes that N.
 Note that this only counts the prefixes added by `PrefixContext`s; it does not count any
 child contexts. That is because each child context will add its own prefixes.
 """
-function prefix_skip_length(context::PrefixContext)
-    # 1 for the top-level VarName.
-    return 1 + optic_skip_length(AbstractPPL.getoptic(context.vn_prefix))
-end
+optic_skip_length(::AbstractPPL.Iden) = 0
+optic_skip_length(c::AbstractPPL.Index) = 1 + optic_skip_length(c.child)
+optic_skip_length(c::AbstractPPL.Property) = 1 + optic_skip_length(c.child)
 
 """
     prefix_and_strip_contexts(ctx::PrefixContext, vn::VarName)
@@ -123,7 +116,13 @@ function tilde_assume!!(
     # would apply the prefix `b._`, resulting in `b.a.b._`.
     # This is why we need a special function, `prefix_and_strip_contexts`.
     new_vn, new_context = prefix_and_strip_contexts(context, vn)
-    n = prefix_skip_length(context)
+    # Add 1 for the top-level symbol in the VarName.
+    # NOTE(penelopeysm): I tried to move this into an inner constructor of PrefixContext, so
+    # that it could be reused here and in store_coloneq_value!!, and also just because it
+    # makes sense to tie this information to the PrefixContext. But that caused nonzero
+    # allocations on the LogDensityFunction submodel test, for reasons that are rather
+    # unclear! Be careful if you think of doing that.
+    n = optic_skip_length(AbstractPPL.getoptic(context.vn_prefix)) + 1
     return tilde_assume!!(new_context, right, new_vn, SkipTemplate{n}(template), vi)
 end
 
@@ -143,4 +142,12 @@ function tilde_observe!!(
         vn, childcontext(context)
     end
     return tilde_observe!!(new_context, right, left, new_vn, vi)
+end
+
+function store_coloneq_value!!(
+    context::PrefixContext, vn::VarName, right::Any, template::Any, vi::AbstractVarInfo
+)
+    new_vn, new_context = prefix_and_strip_contexts(context, vn)
+    n = optic_skip_length(AbstractPPL.getoptic(context.vn_prefix)) + 1
+    return store_coloneq_value!!(new_context, new_vn, right, SkipTemplate{n}(template), vi)
 end
