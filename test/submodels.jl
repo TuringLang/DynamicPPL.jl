@@ -196,6 +196,57 @@ end
         vi = VarInfo(g(missing))
         @test Set(keys(vi)) == Set([@varname(a.x), @varname(a.y)])
     end
+
+    @testset ":= in submodels" begin
+        @testset "basic" begin
+            @model function inner1()
+                a ~ Normal()
+                b := a + 1.0
+                return a
+            end
+            @model function outer1()
+                x ~ to_submodel(inner1())
+                return x
+            end
+
+            model = outer1()
+            a, vi = DynamicPPL.init!!(model, VarInfo())
+            @test only(keys(vi)) == @varname(x.a)
+
+            vnt = values_as_in_model(model, true, vi)
+            @test vnt[@varname(x.a)] == a
+            @test vnt[@varname(x.b)] == vnt[@varname(x.a)] + 1.0
+        end
+
+        @testset "with sub-VarNames" begin
+            # This test set also checks that templating is happening correctly for := calls
+            # inside submodels. See https://github.com/TuringLang/DynamicPPL.jl/issues/1215.
+            @model function inner2()
+                a ~ Normal()
+                b = zeros(1)
+                b[1] := a + 1.0
+                return a
+            end
+            @model function outer2()
+                x ~ to_submodel(inner2())
+                return x
+            end
+
+            model = outer2()
+            a, vi = DynamicPPL.init!!(model, VarInfo())
+            @test only(keys(vi)) == @varname(x.a)
+
+            vnt = values_as_in_model(model, true, vi)
+            @test vnt[@varname(x.a)] == a
+            @test vnt[@varname(x.b[1])] == vnt[@varname(x.a)] + 1.0
+            # If the templating fails, then x.b will be stored as a GrowableArray, and
+            # trying to access the entire array will fail.
+            @test vnt[@varname(x.b)] isa Vector{Float64}
+            @test vnt[@varname(x.b)] == [a + 1.0]
+            # For good measure.
+            @test vnt[@varname(x.b[:])] == [a + 1.0]
+        end
+    end
 end
 
 end
