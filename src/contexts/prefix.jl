@@ -117,6 +117,11 @@ function tilde_assume!!(
     # This is why we need a special function, `prefix_and_strip_contexts`.
     new_vn, new_context = prefix_and_strip_contexts(context, vn)
     # Add 1 for the top-level symbol in the VarName.
+    # NOTE(penelopeysm): I tried to move this into an inner constructor of PrefixContext, so
+    # that it could be reused here and in store_coloneq_value!!, and also just because it
+    # makes sense to tie this information to the PrefixContext. But that caused nonzero
+    # allocations on the LogDensityFunction submodel test, for reasons that are rather
+    # unclear! Be careful if you think of doing that.
     n = optic_skip_length(AbstractPPL.getoptic(context.vn_prefix)) + 1
     return tilde_assume!!(new_context, right, new_vn, SkipTemplate{n}(template), vi)
 end
