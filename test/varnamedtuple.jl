@@ -1241,10 +1241,6 @@ Base.size(st::SizedThing) = st.size
         test_invariants(vnt)
     end
 
-    @testset "printing" begin
-        # TODO(penelopeysm) Rework printing tests
-    end
-
     @testset "block variables" begin
         # Tests for setting and getting block variables, i.e. variables that have a non-zero
         # size in a PartialArray, but are not Arrays themselves.

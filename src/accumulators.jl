@@ -160,8 +160,33 @@ AccumulatorTuple(accs::Vararg{AbstractAccumulator}) = AccumulatorTuple(accs)
 AccumulatorTuple(nt::NamedTuple) = AccumulatorTuple(tuple(nt...))
 AccumulatorTuple(at::AccumulatorTuple) = at
 
-# When showing with text/plain, leave out information about the wrapper AccumulatorTuple.
-Base.show(io::IO, mime::MIME"text/plain", at::AccumulatorTuple) = show(io, mime, at.nt)
+function pretty_print(io::IO, at::AccumulatorTuple, prefix::String)
+    naccs = length(at)
+    if isempty(at.nt)
+        print(io, "AccumulatorTuple with 0 accumulators")
+        return nothing
+    end
+    println(
+        io, "AccumulatorTuple with ", naccs, naccs == 1 ? " accumulator:" : " accumulators"
+    )
+    for (i, (name, acc)) in enumerate(pairs(at.nt))
+        tree_symbol = i == naccs ? "└─ " : "├─ "
+        key_name = string(name)
+        print(io, prefix * tree_symbol)
+        printstyled(io, key_name; color=:cyan)
+        print(io, " => ")
+        show(io, acc)
+        if i < naccs
+            println(io)
+        end
+    end
+    return nothing
+end
+
+function Base.show(io::IO, ::MIME"text/plain", at::AccumulatorTuple)
+    pretty_print(io, at, "")
+    return nothing
+end
 Base.getindex(at::AccumulatorTuple, idx) = at.nt[idx]
 Base.length(::AccumulatorTuple{N}) where {N} = N
 Base.iterate(at::AccumulatorTuple, args...) = iterate(at.nt, args...)
