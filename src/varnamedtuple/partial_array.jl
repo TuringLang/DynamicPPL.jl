@@ -688,10 +688,23 @@ function _merge_element_norecurse(x1::PartialArray, x2::PartialArray, ind)
 end
 
 function _merge_recursive(pa1::PartialArray, pa2::PartialArray)
+    return _merge_recursive_nogrow(pa1, pa2)
+end
+function _merge_recursive(
+    pa1::PartialArray{T1,ndims,A1}, pa2::PartialArray{T2,ndims,A2}
+) where {T1,T2,ndims,A1<:GrowableArray,A2<:GrowableArray}
+    # If they are both GrowableArrays we should expand them before merging.
+    size1 = size(pa1.data)
+    size2 = size(pa2.data)
+    new_size = map(max, size1, size2)
+    pa1 = grow_to_indices!!(pa1, new_size...)
+    pa2 = grow_to_indices!!(pa2, new_size...)
+    return _merge_recursive_nogrow(pa1, pa2)
+end
+function _merge_recursive_nogrow(pa1::PartialArray, pa2::PartialArray)
     if size(pa1.data) != size(pa2.data)
         throw(ArgumentError("Cannot merge PartialArrays with different sizes"))
     end
-    # TODO(penelopeysm): Ideally we would also check the underlying Array type.
     result = copy(pa2)
     new_data, new_mask = result.data, result.mask
     for i in eachindex(pa1.mask)
@@ -706,11 +719,25 @@ function _merge_recursive(pa1::PartialArray, pa2::PartialArray)
     return _concretise_eltype!!(PartialArray(new_data, new_mask))
 end
 
+# TODO(penelopeysm): Clean this up.
 function _merge_norecurse(pa1::PartialArray, pa2::PartialArray)
+    return _merge_norecurse_nogrow(pa1, pa2)
+end
+function _merge_norecurse(
+    pa1::PartialArray{T1,ndims,A1}, pa2::PartialArray{T2,ndims,A2}
+) where {T1,T2,ndims,A1<:GrowableArray,A2<:GrowableArray}
+    # If they are both GrowableArrays we should expand them before merging.
+    size1 = size(pa1.data)
+    size2 = size(pa2.data)
+    new_size = map(max, size1, size2)
+    pa1 = grow_to_indices!!(pa1, new_size...)
+    pa2 = grow_to_indices!!(pa2, new_size...)
+    return _merge_norecurse_nogrow(pa1, pa2)
+end
+function _merge_norecurse_nogrow(pa1::PartialArray, pa2::PartialArray)
     if size(pa1.data) != size(pa2.data)
         throw(ArgumentError("Cannot merge PartialArrays with different sizes"))
     end
-    # TODO(penelopeysm): Ideally we would also check the underlying Array type.
     result = copy(pa2)
     new_data, new_mask = result.data, result.mask
     for i in eachindex(pa1.mask)
