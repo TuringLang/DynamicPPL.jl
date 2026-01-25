@@ -279,7 +279,7 @@ function DynamicPPL.predict(
     accs = (
         DynamicPPL.LogPriorAccumulator(),
         DynamicPPL.LogLikelihoodAccumulator(),
-        DynamicPPL.ValuesAsInModelAccumulator(false),
+        DynamicPPL.ValuesAsInModelAccumulator(true),
     )
     predictions = map(
         DynamicPPL.ParamsWithStats ∘ last,

@@ -2,6 +2,11 @@
 
 ## 0.40
 
+### Results of `predict` now include `:=` statements
+
+The chain generated from `predict(model, chain::MCMCChains.Chains)` will now include values for `x := y` statements in the model.
+(For FlexiChains, this was already the case.)
+
 ### `VarNamedTuple`
 
 DynamicPPL now exports a new type, called `VarNamedTuple`, which stores values keyed by `VarName`s.

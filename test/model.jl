@@ -538,8 +538,9 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
 
             @testset "variables in chain" begin
                 # Note that this also checks that variables on the lhs of :=,
-                # such as σ2, are not included in the resulting chain
-                @test Set(keys(predictions)) == Set([Symbol("y[1]"), Symbol("y[2]")])
+                # such as σ2, are included in the resulting chain.
+                @test Set(keys(predictions)) ==
+                    Set([Symbol("y[1]"), Symbol("y[2]"), Symbol("σ2")])
             end
 
             @testset "include_all=true" begin
