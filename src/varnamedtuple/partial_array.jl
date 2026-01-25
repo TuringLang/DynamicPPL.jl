@@ -506,17 +506,20 @@ function grow_to_indices!!(
     return if any(required_size .> current_size)
         old_data = pa.data.data
         old_mask = pa.mask.data
-        # Need to make a new Array that is big enough to hold the new index.
-        # Note that these are just Arrays, not GrowableArrays.
+        # Need to make a new Array that is big enough to hold the new index. Note that these
+        # are just Arrays, not GrowableArrays.
         new_size = map(max, required_size, current_size)
         new_data = similar(old_data, new_size)
         new_mask = fill(false, new_size)
-        # Copy the old mask into the new array. copyto! works if we are
-        # extending only the last dimension of the array, but if we are
-        # extending any other dimension, it will copy elements wrongly
+        # Copy the old mask into the new array. copyto! works if we are extending only the
+        # last dimension of the array, but if we are extending any other dimension, it will
+        # copy elements wrongly
         for c in CartesianIndices(old_mask)
-            new_mask[c] = old_mask[c]
-            new_data[c] = old_data[c]
+            # If the old value was masked, it might be undefined. Don't copy it over.
+            if old_mask[c]
+                new_mask[c] = old_mask[c]
+                new_data[c] = old_data[c]
+            end
         end
         PartialArray(GrowableArray(new_data), GrowableArray(new_mask))
     else

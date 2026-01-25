@@ -570,6 +570,54 @@ Base.size(st::SizedThing) = st.size
             end
             @test vnt[@varname(x)] == x
         end
+
+        @testset "GrowableArrays and slices" begin
+            # see e.g. https://github.com/TuringLang/DynamicPPL.jl/issues/1216
+            vnt = VarNamedTuple()
+            vnt = @inferred(setindex!!(vnt, 1.0, @varname(x[1:2][1])))
+            vnt = @inferred(setindex!!(vnt, 1.0, @varname(x[2:3][1])))
+            @test vnt[@varname(x[1])] == 1.0
+            @test vnt[@varname(x[2])] == 1.0
+            @test_throws BoundsError vnt[@varname(x[3])]
+
+            # check overlapping indices
+            vnt = VarNamedTuple()
+            vnt = @inferred(setindex!!(vnt, 1.0, @varname(x[1:2][2])))
+            vnt = @inferred(setindex!!(vnt, 2.0, @varname(x[2:3][1])))
+            @test_throws BoundsError vnt[@varname(x[1])]
+            @test vnt[@varname(x[2])] == 2.0
+            @test_throws BoundsError vnt[@varname(x[3])]
+
+            # slices of slices
+            vnt = VarNamedTuple()
+            vnt = @inferred(setindex!!(vnt, [1.0, 2.0], @varname(x[2:6][2:3])))
+            vnt = @inferred(setindex!!(vnt, [3.0, 4.0], @varname(x[2:6][4:5])))
+            @test vnt[@varname(x[3:6])] == [1.0, 2.0, 3.0, 4.0]
+            @test_throws BoundsError vnt[@varname(x[1])]
+            @test_throws BoundsError vnt[@varname(x[2])]
+            @test_throws BoundsError vnt[@varname(x[7])]
+
+            # overlapping slices of slices
+            vnt = VarNamedTuple()
+            vnt = @inferred(setindex!!(vnt, [1.0, 2.0], @varname(x[2:6][2:3])))
+            vnt = @inferred(setindex!!(vnt, [3.0, 4.0], @varname(x[3:5][2:3])))
+            @test vnt[@varname(x[3:5])] == [1.0, 3.0, 4.0]
+            @test_throws BoundsError vnt[@varname(x[1])]
+            @test_throws BoundsError vnt[@varname(x[2])]
+            @test_throws BoundsError vnt[@varname(x[6])]
+            @test_throws BoundsError vnt[@varname(x[7])]
+        end
+
+        @testset "GrowableArrays only need to grow when setting slices" begin
+            # For VarNames like x[1:2][1], we need to make the inner GrowableArray (which is
+            # initially created with length 1) grow to fit the indices 1:2. However, for
+            # x[1][1,2], we need to make sure that we don't try to make the inner
+            # GrowableArray (that has 2 dims) grow to fit index 1, which would error.
+            vnt = VarNamedTuple()
+            vnt = @inferred(setindex!!(vnt, 1.0, @varname(x[1][1, 2])))
+            vnt = @inferred(setindex!!(vnt, 2.0, @varname(x[1][1, 2])))
+            @test @inferred(vnt[@varname(x[1][1, 2])]) == 2.0
+        end
     end
 
     @testset "multiindices" begin
