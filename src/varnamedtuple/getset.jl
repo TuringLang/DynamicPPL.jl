@@ -141,6 +141,17 @@ function _setindex_optic!!(
 )
     need_merge = false
     coptic = AbstractPPL.concretize_top_level(optic, pa.data)
+    # We might be attempting to set a slice into a PartialArray{GrowableArray} that
+    # doesn't yet have enough indices for that slice. Expand it if so.
+    pa = grow_to_indices!!(pa, coptic.ix...; coptic.kw...)
+
+    is_multiindex = if template isa AbstractArray || template isa PartialArray
+        _is_multiindex(template, coptic.ix...; coptic.kw...)
+    else
+        isempty(coptic.kw) || throw_kw_error()
+        _is_multiindex_static(coptic.ix)
+    end
+
     sub_value = if optic.child isa AbstractPPL.Iden
         # Skip recursion
         value
@@ -149,7 +160,7 @@ function _setindex_optic!!(
             NoTemplate()
         elseif template isa SkipTemplate
             decrease_skip(template)
-        elseif _is_multiindex(template, coptic.ix...; coptic.kw...)
+        elseif is_multiindex
             Base.getindex(template, coptic.ix...; coptic.kw...)
         elseif isassigned(template, coptic.ix...; coptic.kw...)
             # Single-index, but we should check that there is actual data there before
@@ -194,11 +205,22 @@ function _setindex_optic!!(
             throw_setindex_allow_new_error()
         end
     end
+
+    # If sub_value is a GrowableArray, we need to make sure it is grown to the right size to
+    # fit into the indices specified by `coptic`. This is the same logic as in
+    # `make_leaf_multiindex`. Again, if there is no GrowableArray underpinning sub_value
+    # then grow_to_indices!! is a no-op so won't hurt.
+    grown_sub_value = if is_multiindex && sub_value isa PartialArray
+        grow_to_indices!!(sub_value, coptic.ix...; coptic.kw...)
+    else
+        sub_value
+    end
+
     return if need_merge
-        new_pa = BangBang.setindex!!(copy(pa), sub_value, coptic.ix...; coptic.kw...)
+        new_pa = BangBang.setindex!!(copy(pa), grown_sub_value, coptic.ix...; coptic.kw...)
         _merge_norecurse(pa, new_pa)
     else
-        BangBang.setindex!!(pa, sub_value, coptic.ix...; coptic.kw...)
+        BangBang.setindex!!(pa, grown_sub_value, coptic.ix...; coptic.kw...)
     end
 end
 
@@ -351,12 +373,11 @@ function make_leaf_multiindex(value, coptic::AbstractPPL.Index, template)
     # _[2:3][1] without a template -- the inner `make_leaf` call will create a GrowableArray
     # of size 1 (because that's the minimum size it infers from the inner indices), but we
     # actually need a slice of length 2. (If there's a template, we don't have this problem,
-    # because the inner make_leaf will use the template to set the correct size of 2.)
-    grown_sub_value = if sub_value isa PartialArray && sub_value.data isa GrowableArray
-        required_size = get_required_size_from_indices(coptic.ix)
-        new_subvalue_data = grow_to_size!!(sub_value.data, required_size)
-        new_subvalue_mask = grow_to_size!!(sub_value.mask, required_size)
-        PartialArray(new_subvalue_data, new_subvalue_mask)
+    # because the inner make_leaf will use the template to set the correct size of 2.) Note
+    # that `grow_to_indices!!` is a no-op for any PartialArray that doesn't contain a
+    # GrowableArray.
+    grown_sub_value = if sub_value isa PartialArray
+        grow_to_indices!!(sub_value, coptic.ix...; coptic.kw...)
     else
         sub_value
     end

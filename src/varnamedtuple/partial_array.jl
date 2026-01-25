@@ -101,54 +101,6 @@ Base.getindex(ga::GrowableArray, ix::CartesianIndex) = getindex(ga.data, ix)
 # multi-element indexing
 Base.getindex(ga::GrowableArray, ix...) = GrowableArray(getindex(ga.data, ix...))
 Base.setindex!(ga::GrowableArray, value, ix...) = setindex!(ga.data, value, ix...)
-function grow_to_size!!(ga::GrowableArray{T,N}, required_size::NTuple{N,Int}) where {T,N}
-    current_size = size(ga.data)
-    return if any(required_size .> current_size)
-        # Need to make a new array that is big enough to hold the new index.
-        new_size = map(max, required_size, current_size)
-        new_data = if T == Bool
-            # If the array has Bool elements, initialise them all to false. This is relevant
-            # for the mask part of PartialArray, which may be a GrowableArray{Bool,N}.
-            fill(false, new_size)
-        else
-            # Otherwise, it's some data array.
-            similar(ga.data, new_size)
-        end
-        # Copy the old data into the new array.
-        # TODO(penelopeysm): This could in theory be made more efficient by only copying
-        # over the parts that are not masked. However, in this function we don't have the
-        # mask, so... I tried to turn grow_to_size!! into a function that took both the
-        # data and the mask at the same time (which would make sense *anyway*), but that
-        # inexplicably ruined type stability.
-        for c in CartesianIndices(new_data)
-            if all(c.I .<= current_size)
-                if isassigned(ga.data, c)
-                    new_data[c] = ga.data[c]
-                else
-                    # Avoid creating the new array with uninitialised data. By construction,
-                    # ga.data[end] must always be initialised (otherwise the GrowableArray
-                    # would not have grown to that size).
-                    new_data[c] = ga.data[end]
-                end
-            else
-                # Set all the new values to the value at the end of the old array, to avoid
-                # creating new indices which may be uninitialized, which could cause bugs.
-                # See my comment in setindex!! for PartialArray, particularly, when the
-                # value being set is itself a PartialArray.
-                if T == Bool
-                    # For masks, we want to initialise new data to false.
-                    new_data[c] = false
-                else
-                    new_data[c] = ga.data[end]
-                end
-            end
-        end
-        GrowableArray{T,N}(new_data)
-    else
-        # Reuse the old one.
-        ga
-    end
-end
 
 function throw_kw_error()
     throw(
@@ -170,13 +122,14 @@ function largest_index(x)
     throw(
         ArgumentError(
             "Attempted to set a value with an index of $x, but no" *
-            " no template was provided for the array. For such an index," *
+            " template was provided for the array. For such an index," *
             " a template is needed to determine the shape and type of the" *
             " array so that the indexed data can be stored correctly.",
         ),
     )
 end
-function get_maximum_size_from_indices(ix...)
+function get_maximum_size_from_indices(ix...; kw...)
+    isempty(kw) || throw_kw_error()
     return tuple(map(largest_index, ix)...)
 end
 
@@ -196,7 +149,12 @@ end
 end
 
 """
-    PartialArray{D,M}
+    PartialArray{
+        ElType,
+        num_dims,
+        D<:AbstractArray{ElType,num_dims},
+        M<:AbstractArray{Bool,num_dims}
+    }
 
 An array-like like structure that may only have some of its elements defined.
 
@@ -538,15 +496,63 @@ function _needs_arraylikeblock(pa_data::AbstractArray, value, inds::Vararg{Any};
            _is_multiindex(pa_data, inds...; kw...)
 end
 
+function grow_to_indices!!(
+    pa::PartialArray{T,ndims,A}, inds::Vararg{Any,ndims}; kw...
+) where {T,ndims,A<:GrowableArray}
+    # pa.data = GrowableArray{T}
+    # pa.mask = GrowableArray{Bool}
+    required_size = get_maximum_size_from_indices(inds...; kw...)
+    current_size = size(pa.data)
+    return if any(required_size .> current_size)
+        old_data = pa.data.data
+        old_mask = pa.mask.data
+        # Need to make a new Array that is big enough to hold the new index. Note that these
+        # are just Arrays, not GrowableArrays.
+        new_size = map(max, required_size, current_size)
+        new_data = similar(old_data, new_size)
+        new_mask = fill(false, new_size)
+        # Copy the old mask into the new array. copyto! works if we are extending only the
+        # last dimension of the array, but if we are extending any other dimension, it will
+        # copy elements wrongly
+        for c in CartesianIndices(old_mask)
+            # If the old value was masked, it might be undefined. Don't copy it over.
+            if old_mask[c]
+                new_mask[c] = old_mask[c]
+                new_data[c] = old_data[c]
+            end
+        end
+        PartialArray(GrowableArray(new_data), GrowableArray(new_mask))
+    else
+        # Can reuse the old one.
+        pa
+    end
+end
+function grow_to_indices!!(
+    pa::PartialArray{T,ndims,A}, inds::Vararg{Any,ndims2}; kw...
+) where {T,ndims,ndims2,A<:GrowableArray}
+    throw(
+        ArgumentError(
+            "Cannot expand a GrowableArray with $ndims dimensions" *
+            " using an index with $ndims2 dimensions. GrowableArrays" *
+            " are created when no template is provided when setting" *
+            " VarNames with indices, e.g. `@varname(x[1])`, which causes" *
+            " DynamicPPL to have no knowledge of the shape of `x`. To" *
+            " fix this, you should provide a template for `x` when creating" *
+            " the VarNamedTuple. Alternatively, if `x` is an array with" *
+            " `N` dimensions, you should always index into it with `N`" *
+            " indices. This means avoiding using, for example, a mixture of" *
+            " linear and Cartesian indexing for arrays with more than one" *
+            " dimension.",
+        ),
+    )
+end
+grow_to_indices!!(pa::PartialArray, inds::Vararg{Any}; kw...) = pa
+
 function BangBang.setindex!!(pa::PartialArray, value, inds::Vararg{Any}; kw...)
     # If pa.data and pa.mask are GrowableArrays, we may need to resize them before doing
     # anything else. For other AbstractArrays, grow_to_indices is a no-op.
-    new_data, new_mask = if pa.data isa GrowableArray
-        required_size = get_maximum_size_from_indices(inds...; kw...)
-        grow_to_size!!(pa.data, required_size), grow_to_size!!(pa.mask, required_size)
-    else
-        pa.data, pa.mask
-    end
+    new_pa = grow_to_indices!!(pa, inds...; kw...)
+    new_data, new_mask = new_pa.data, new_pa.mask
 
     # Then delete any overlapping ArrayLikeBlocks
     new_data, new_mask = _remove_partial_blocks!!(new_data, new_mask, inds...; kw...)
@@ -569,11 +575,42 @@ function BangBang.setindex!!(pa::PartialArray, value, inds::Vararg{Any}; kw...)
     else
         if value isa PartialArray
             if _is_multiindex(new_data, inds...; kw...)
-                # Overwriting multiple parts of a PA with data from another PA.
-                # TODO(penelopeysm): There is a potential optimisation here: only set the
-                # values where value.mask is true.
-                new_data = setindex!!(new_data, value.data, inds...; kw...)
-                setindex!(new_mask, value.mask, inds...; kw...)
+                # This branch occurs if we are overwriting a slice of a PA with data from
+                # another PA.
+                #
+                # A naive implementation of this would be:
+                #
+                #    new_data = setindex!!(new_data, value.data, inds...; kw...)
+                #    setindex!(new_mask, value.mask, inds...; kw...)
+                #
+                # However, there are two problems with this.
+                #
+                # 1. We only really want to overwrite the parts of `value` that are
+                #    unmasked. Right now we are just copying over everything.
+                # 2. If it was just the above, that would be fine because it would just
+                #    be a performance loss. The problem is that `value.data` may be
+                #    uninitialised in the places where it is masked. Attempting to copy
+                #    over that data would lead to an error.
+                #
+                # So we need to do it manually. :(
+                new_eltype = promote_type(eltype(value.data), eltype(new_data))
+                new_data = if new_eltype <: eltype(new_data)
+                    new_data
+                else
+                    broadened = similar(new_data, new_eltype)
+                    copy!(broadened, new_data)
+                    broadened
+                end
+                new_data_view = view(new_data, inds...; kw...)
+                new_mask_view = view(new_mask, inds...; kw...)
+                for i in eachindex(new_mask_view)
+                    if value.mask[i]
+                        # If value.mask[i] is true, we can guarantee that value.data[i] is
+                        # initialised to a concrete value
+                        new_data_view[i] = value.data[i]
+                        new_mask_view[i] = true
+                    end
+                end
             else
                 # Overwriting one element of a PA with another PA. The PA is the value
                 # itself! -- i.e. nested PAs! This can happen with things like x[1][1]

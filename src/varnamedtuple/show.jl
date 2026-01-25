@@ -61,6 +61,9 @@ function vnt_pretty_print(io::IO, pa::PartialArray, prefix::String, depth::Int)
     end
     return nothing
 end
+function Base.show(io::IO, ::MIME"text/plain", pa::PartialArray)
+    return vnt_pretty_print(io, pa, "", 0)
+end
 
 colors = [:red, :green, :blue, :yellow, :magenta, :cyan]
 color_at_depth(depth::Int) = colors[mod1(depth, length(colors))]
