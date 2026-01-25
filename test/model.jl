@@ -539,8 +539,7 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
             @testset "variables in chain" begin
                 # Note that this also checks that variables on the lhs of :=,
                 # such as σ2, are included in the resulting chain.
-                @test Set(keys(predictions)) ==
-                    Set([Symbol("y[1]"), Symbol("y[2]"), Symbol("σ2")])
+                @test Set(keys(predictions)) == Set([Symbol("y[1]"), Symbol("y[2]"), :σ2])
             end
 
             @testset "include_all=true" begin
@@ -548,7 +547,7 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
                     m_lin_reg_test, β_chain; include_all=true
                 )
                 @test Set(keys(inc_predictions)) ==
-                    Set([:β, Symbol("y[1]"), Symbol("y[2]")])
+                    Set([:β, Symbol("y[1]"), Symbol("y[2]"), :σ2])
                 @test inc_predictions[:β] == β_chain[:β]
                 # check rng is respected
                 inc_predictions1 = DynamicPPL.predict(
