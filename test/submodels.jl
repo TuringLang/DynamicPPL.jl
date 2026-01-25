@@ -247,6 +247,32 @@ end
             @test vnt[@varname(x.b[:])] == [a + 1.0]
         end
     end
+
+    @testset "submodels with indexed prefixes" begin
+        # These submodels briefly failed when VNT was implemented, due to GrowableArray
+        # issues (see example in https://github.com/TuringLang/DynamicPPL.jl/issues/1221).
+        # They're included here to prevent regressions.
+        #
+        @model function inner()
+            return a ~ Normal()
+        end
+        @model function outer()
+            x = zeros(4)
+            for i in eachindex(x)
+                x[i] ~ to_submodel(inner())
+            end
+        end
+        model = outer()
+        vi = VarInfo(model)
+        @test Set(keys(vi)) == Set([@varname(x[i].a) for i in 1:4])
+        for i in 1:4
+            # Need to be careful about what we're testing here. If we do vi[vn], then
+            # it expects that vi.values[vn] isa AbstractTransformedValue. That is true
+            # of the inner keys (x[i].a), but x[i] is not itself a key.
+            @test vi.values[@varname(x[i])] isa VarNamedTuple
+            @test vi[@varname(x[i].a)] isa Float64
+        end
+    end
 end
 
 end
