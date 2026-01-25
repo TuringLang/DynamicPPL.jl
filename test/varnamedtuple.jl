@@ -618,6 +618,29 @@ Base.size(st::SizedThing) = st.size
             vnt = @inferred(setindex!!(vnt, 2.0, @varname(x[1][1, 2])))
             @test @inferred(vnt[@varname(x[1][1, 2])]) == 2.0
         end
+
+        @testset "Merging" begin
+            # Note that there are a couple more merge tests with ALBs under the merge
+            # section.
+            @testset "non-overlapping" begin
+                v1 = setindex!!(VarNamedTuple(), 1.0, @varname(x[1]))
+                v2 = setindex!!(VarNamedTuple(), 2.0, @varname(x[2]))
+                vmerged = @inferred(merge(v1, v2))
+                @test @inferred(vmerged[@varname(x[1])]) == 1.0
+                @test @inferred(vmerged[@varname(x[2])]) == 2.0
+                @test length(keys(vmerged)) == 2
+            end
+
+            @testset "overlapping" begin
+                v1 = setindex!!(VarNamedTuple(), [1.0, 2.0], @varname(x[1:2]))
+                v2 = setindex!!(VarNamedTuple(), [3.0, 4.0], @varname(x[2:3]))
+                vmerged = @inferred(merge(v1, v2))
+                @test @inferred(vmerged[@varname(x[1])]) == 1.0
+                @test @inferred(vmerged[@varname(x[2])]) == 3.0
+                @test @inferred(vmerged[@varname(x[3])]) == 4.0
+                @test length(keys(vmerged)) == 3
+            end
+        end
     end
 
     @testset "multiindices" begin
@@ -929,17 +952,13 @@ Base.size(st::SizedThing) = st.size
             vn2 = @varname(x[2:3])
 
             # Without templating.
-            # TODO(penelopeysm): This is currently broken: we need to let the merge function
-            # handle GrowableArrays.
-            #=
             vnt1 = @inferred(setindex!!(VarNamedTuple(), A(1.0), vn1))
             @test vnt1[vn1] == A(1.0)
             vnt2 = @inferred(setindex!!(VarNamedTuple(), A(2.0), vn2))
             @test vnt2[vn2] == A(2.0)
             expected_merge = setindex!!(VarNamedTuple(), A(2.0), vn2)
             @test @inferred(merge(vnt1, vnt2)) == expected_merge
-            @test merge(vnt1, vnt2)[vn] == A(2.0)
-            =#
+            @test merge(vnt1, vnt2)[vn2] == A(2.0)
 
             # With templating.
             vnt1 = @inferred(templated_setindex!!(VarNamedTuple(), A(1.0), vn1, zeros(3)))
