@@ -532,7 +532,17 @@ function grow_to_indices!!(
 ) where {T,ndims,ndims2,A<:GrowableArray}
     throw(
         ArgumentError(
-            "Cannot expand a GrowableArray with $ndims dimensions using an index with $ndims2 dimensions. GrowableArrays are created when there is no template provided when setting VarNames with indices, e.g. `@varname(x[1])` but without knowing the shape of `x`. To fix this, you should provide a template for `x` when creating the VarName. Alternatively, if `x` is an array with `N` dimensions, you should always index into it with `N` indices. This means avoiding using, for example, linear indexing for arrays with more than one dimension.",
+            "Cannot expand a GrowableArray with $ndims dimensions" *
+            " using an index with $ndims2 dimensions. GrowableArrays" *
+            " are created when no template is provided when setting" *
+            " VarNames with indices, e.g. `@varname(x[1])`, which causes" *
+            " DynamicPPL to have no knowledge of the shape of `x`. To" *
+            " fix this, you should provide a template for `x` when creating" *
+            " the VarNamedTuple. Alternatively, if `x` is an array with" *
+            " `N` dimensions, you should always index into it with `N`" *
+            " indices. This means avoiding using, for example, a mixture of" *
+            " linear and Cartesian indexing for arrays with more than one" *
+            " dimension.",
         ),
     )
 end
