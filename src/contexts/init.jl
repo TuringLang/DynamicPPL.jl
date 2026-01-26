@@ -244,6 +244,14 @@ function init(
         error("No value was provided for the variable `$(vn)`.")
     end
 end
+function DynamicPPL.get_param_eltype(p::InitFromParamsUnsafe)
+    # TODO(penelopeysm): Ugly hack. Currently this is not used anywhere except in Turing's
+    # ADTypeCheckContext tests. However, when we stop using DefaultContext and start using
+    # this as its replacement, we will need this function so that we can promote the
+    # accumulators' eltype accordingly (unless we find a better solution than eltypes).
+    vals = mapfoldl(pair -> tovec(pair.second.val), vcat, p; init=Union{}[])
+    return eltype(vals)
+end
 
 """
     RangeAndLinked
