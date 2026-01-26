@@ -197,3 +197,7 @@ We can see that this is exactly how the `LogDensityFunction` has stored the info
 ```@example 1
 ldf._varname_ranges
 ```
+
+!!! note
+    
+    From the example above, we can see that indexing into this `PartialArray` is necessarily type-unstable (since the element type is `Any`). This immediately suggests a performance optimisation for the user: do not mix and match different kinds of distributions within the same vector. For example, if all the `x[i]`'s were distributed according to univariate distributions, this would not be an issue.
