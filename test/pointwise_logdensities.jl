@@ -103,7 +103,10 @@ end
         model_m_only = m_only()
         chain_m_only = AbstractMCMC.from_samples(
             MCMCChains.Chains,
-            hcat([ParamsWithStats(VarInfo(model_m_only), model_m_only) for _ in 1:50]),
+            hcat([
+                DynamicPPL.ParamsWithStats(VarInfo(model_m_only), model_m_only) for
+                _ in 1:50
+            ]),
         )
 
         # Define a model that needs both `m` and `s`.
