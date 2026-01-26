@@ -3,24 +3,19 @@
 
 An abstract type for strategies specifying which variables to link or unlink.
 
-Current subtypes are [`LinkAll`](@ref), [`UnlinkAll`](@ref), [`LinkSome`](@ref), and
+Subtypes in DynamicPPL are [`LinkAll`](@ref), [`UnlinkAll`](@ref), [`LinkSome`](@ref), and
 [`UnlinkSome`](@ref).
 
-!!! warning
-    Even though the subtypes listed above are public, this abstract type is not part of
-    DynamicPPL's public API and end users should not subtype this. (There should really not
-    be any reason to!)
-
 For subtypes of `AbstractLinkStrategy`, the only method that needs to be overloaded is
-`DynamicPPL.generate_linked_value`. Note that this is also an internal function.
+`DynamicPPL.generate_linked_value`.
 """
 abstract type AbstractLinkStrategy end
 
 """
     generate_linked_value(linker::AbstractLinkStrategy, vn::VarName)
 
-Determine whether a variable with name `vn` should be linked according to the
-`linker` strategy.
+Determine whether a variable with name `vn` should be linked according to the `linker`
+strategy. Returns `true` if the variable should be linked, and `false` otherwise.
 """
 function generate_linked_value end
 
