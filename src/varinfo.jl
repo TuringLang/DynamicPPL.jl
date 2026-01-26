@@ -437,7 +437,12 @@ end
 # TODO(mhauru) I don't think this should return the internal values, but that's the current
 # convention.
 function values_as(vi::VarInfo, ::Type{Vector})
-    return mapfoldl(pair -> tovec(pair.second.val), vcat, vi.values; init=Union{}[])
+    return mapfoldl(
+        pair -> tovec(DynamicPPL.get_internal_value(pair.second)),
+        vcat,
+        vi.values;
+        init=Union{}[],
+    )
 end
 
 function values_as(vi::VarInfo, ::Type{T}) where {T<:AbstractDict}

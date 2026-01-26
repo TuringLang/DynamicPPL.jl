@@ -249,7 +249,14 @@ function DynamicPPL.get_param_eltype(p::InitFromParamsUnsafe)
     # ADTypeCheckContext tests. However, when we stop using DefaultContext and start using
     # this as its replacement, we will need this function so that we can promote the
     # accumulators' eltype accordingly (unless we find a better solution than eltypes).
-    vals = mapfoldl(pair -> tovec(pair.second.val), vcat, p; init=Union{}[])
+    # 
+    # Note that pair.second returns internal values.
+    vals = mapfoldl(
+        pair -> tovec(DynamicPPL.get_internal_value(pair.second)),
+        vcat,
+        p.params;
+        init=Union{}[],
+    )
     return eltype(vals)
 end
 
