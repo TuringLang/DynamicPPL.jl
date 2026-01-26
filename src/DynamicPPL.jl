@@ -125,6 +125,8 @@ export AbstractVarInfo,
     UntransformedValue,
     get_transform,
     get_internal_value,
+    get_true_value,
+    get_true_value_with_logjac,
     # Linking
     LinkAll,
     UnlinkAll,

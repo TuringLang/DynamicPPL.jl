@@ -67,8 +67,19 @@ Subtypes of this should implement the following functions:
 
 - `DynamicPPL.VarNamedTuples.vnt_size(tv::AbstractTransformedValue)`: Get the size of the
   original value before transformation.
+
+As a freebie, the function `DynamicPPL.get_true_value(tv::AbstractTransformedValue)` is also
+defined (which applies the transformation to the internal value), as well as
+`DynamicPPL.get_true_value_with_logjac(tv::AbstractTransformedValue)`, which also computes
+the log-absolute-determinant of the Jacobian of the transformation.
 """
 abstract type AbstractTransformedValue end
+function get_true_value(tval::AbstractTransformedValue)
+    return get_transform(tval)(get_internal_value(tval))
+end
+function get_true_value_with_logjac(tval::AbstractTransformedValue)
+    return Bijectors.with_logabsdet_jacobian(get_transform(tval), get_internal_value(tval))
+end
 
 """
     VectorValue{V<:AbstractVector,T,S}

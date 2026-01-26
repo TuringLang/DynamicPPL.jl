@@ -170,12 +170,7 @@ Base.keys(vi::VarInfo) = keys(vi.values)
 # Union{Vector{Union{}}, Vector{Float64}} (I suppose this is because it can't tell whether
 # the result will be empty or not...? Not sure).
 function Base.values(vi::VarInfo)
-    return mapreduce(
-        p -> DynamicPPL.get_transform(p.second)(DynamicPPL.get_internal_value(p.second)),
-        push!,
-        vi.values;
-        init=Any[],
-    )
+    return mapreduce(p -> DynamicPPL.get_true_value(p.second), push!, vi.values; init=Any[])
 end
 
 function Base.show(io::IO, ::MIME"text/plain", vi::VarInfo)
@@ -194,7 +189,7 @@ end
 
 function Base.getindex(vi::VarInfo, vn::VarName)
     tv = getindex(vi.values, vn)
-    return get_transform(tv)(get_internal_value(tv))
+    return DynamicPPL.get_true_value(tv)
 end
 function Base.getindex(vi::VarInfo, vns::AbstractVector{<:VarName})
     return [getindex(vi, vn) for vn in vns]
@@ -446,16 +441,11 @@ function values_as(vi::VarInfo, ::Type{Vector})
 end
 
 function values_as(vi::VarInfo, ::Type{T}) where {T<:AbstractDict}
-    return mapfoldl(
-        identity,
-        function (cumulant, pair)
-            vn, tv = pair
-            val = DynamicPPL.get_transform(tv)(DynamicPPL.get_internal_value(tv))
-            return setindex!!(cumulant, val, vn)
-        end,
-        vi.values;
-        init=T(),
-    )
+    return mapfoldl(identity, function (cumulant, pair)
+        vn, tv = pair
+        val = DynamicPPL.get_true_value(tv)
+        return setindex!!(cumulant, val, vn)
+    end, vi.values; init=T())
 end
 
 # TODO(mhauru) I really dislike this sort of conversion to Symbols, but it's the current
@@ -467,7 +457,7 @@ function values_as(vi::VarInfo, ::Type{NamedTuple})
         identity,
         function (cumulant, pair)
             vn, tv = pair
-            val = DynamicPPL.get_transform(tv)(DynamicPPL.get_internal_value(tv))
+            val = DynamicPPL.get_true_value(tv)
             return setindex!!(cumulant, val, Symbol(vn))
         end,
         vi.values;

@@ -474,7 +474,7 @@ Return the actual `AbstractTransformedValue` stored in `vi` for variable `vn`.
 
 This differs from `getindex_internal`, which obtains the `AbstractTransformedValue` and then
 directly returns `get_internal_value(tval)`; and `getindex` which returns
-`get_transform(tval)(get_internal_value(tval))`.
+`get_true_value(tval)`.
 """
 function get_transformed_value end
 
