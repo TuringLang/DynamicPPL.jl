@@ -1,26 +1,53 @@
-# DynamicPPL Changelog
+# v0.40
 
-## 0.40
+v0.40 of DynamicPPL brings with it a complete rewrite of DynamicPPL's core data structure, `VarInfo`.
 
-### Results of `predict` now include `:=` statements
+The main breaking change for users here is the removal of `AbstractDict` indexing in DynamicPPL models.
+Other breaking changes relate to the function signatures of some core DynamicPPL functions, and will not affect you unless you are developing against DynamicPPL.
 
-The chain generated from `predict(model, chain::MCMCChains.Chains)` will now include values for `x := y` statements in the model.
-(For FlexiChains, this was already the case.)
+**In return for these breaking changes, there are major improvements in both performance and robustness of DynamicPPL models.**
+These are described in more detail under the 'Other changes' section.
 
-### `VarNamedTuple`
+## Breaking changes
 
-DynamicPPL now exports a new type, called `VarNamedTuple`, which stores values keyed by `VarName`s.
-With it are exported a few new functions for using it: `map_values!!`, `map_pairs!!`, `apply!!`.
-Our documentation's Internals section now has a page about `VarNamedTuple`, how it works, and what it's good for.
+### No indexing into `AbstractDict`s
 
-`VarNamedTuple` is now used internally in many different parts: In `VarInfo`, in `values_as_in_model`, in `LogDensityFunction`, etc.
-Almost all of the below changes are the consequence from switching over to using `VarNamedTuple` for various features internally.
+This used to be possible:
+
+```julia
+@model function f()
+    x = Dict()
+    return x["a"] ~ Normal()
+end
+```
+
+In v0.40 this will not work, as DynamicPPL assumes that all indexing behaviour is that of an `AbstractArray`.
+Please consider rewriting your model to use NamedTuples instead (note that `x = (;); x.a ~ Normal()` will work -- you do not need the NamedTuple to already have a field `a`, it will be added for you).
+If you have a strong need to use dictionaries, please open an issue!
+
+### Function signature changes
+
+`DynamicPPL.init` must now return an `AbstractTransformedValue` instead of a tuple of `(transformed value, transform)`.
+Please see the docstring for details.
+
+`tilde_assume!!` and `accumulate_assume!!` now take extra arguments.
+
+In particular
+
+  - `tilde_assume!!(ctx, dist, vn, vi)` is now `tilde_assume!!(ctx, dist, vn, template, vi)`, where `template` is the value for the top-level symbol in `vn`.
+    For example, if `vn` is `@varname(x[1])`, then `template` is the current value of `x` in the model.
+    The DynamicPPL compiler is responsible for generating and providing this argument.
+
+  - `accumulate_assume!!(acc::AbstractAccumulator, val, logjac, vn, dist)` is now `accumulate_assume!!(acc, val, tval, logjac, vn, dist, template)`.
+    `template` is the same as above.
+    `tval` is either the `AbstractTransformedValue` that `DynamicPPL.init` provided (for InitContext), or the `AbstractTransformedValue` found inside the VarInfo (for DefaultContext).
+  - `accumulate_assume!!(vi::AbstractVarInfo, val, logjac, vn, dist)` is now `accumulate_assume!!(vi, val, tval, logjac, vn, dist, template)`.
 
 ### Overhaul of `VarInfo`
 
 DynamicPPL tracks variable values during model execution using one of the `AbstractVarInfo` types.
 Previously, there were many versions of them: `VarInfo`, both "typed" and "untyped", and `SimpleVarInfo` with both `NamedTuple` and `OrderedDict` as storage backends.
-These have all been replaced by a rewritten implementation of `VarInfo`.
+These have all been replaced by a rewritten implementation of `VarInfo`, which is backed by `VarNamedTuple` (see below for more details on this).
 While the basics of the `VarInfo` interface remain the same, this brings with it many changes:
 
 #### No more many `AbstractVarInfo` types
@@ -47,13 +74,6 @@ Note that `setindex!` (with a single `!`) is not defined, and thus you can't do 
 
 `unflatten` works as before, but has been renamed to `unflatten!!`, since it may mutate the first argument and aliases memory with the second argument (it uses views rather than copies of the input vector).
 
-#### Linking is now safer
-
-`link!!` and `invlink!!` on `VarInfo` used to assume that the prior distribution of a variable didn't change from one execution to another (as it does in e.g. `truncated(dist; lower=x)` where `x` is a random variable).
-This is no longer the case.
-Linking should thus be safer to do.
-The cost to pay is that calls to `link!!` and `invlink!!` (and the non-mutating versions) now trigger a model evaluation, to determine the correct priors to use.
-
 #### Other miscellanea
 
   - The `Experimental` module had functions like `Experimental.determine_suitable_varinfo` for determining which `AbstractVarInfo` type was suitable for a given model. This is now redundant and has been removed.
@@ -63,129 +83,47 @@ The cost to pay is that calls to `link!!` and `invlink!!` (and the non-mutating 
 There are probably also changes to the `VarInfo` interface that we've neglected to document here, since the overhaul of `VarInfo` has been quite complete.
 If anything related to `VarInfo` is behaving unexpectedly, e.g. the arguments or return type of a function seem to have changed, please check the docstring, which should be comprehensive.
 
-#### Performance benefits
+## Other changes
 
-The purpose of this overhaul of `VarInfo` is code simplification and performance benefits.
+### Results of `predict` now include `:=` statements
 
-TODO(mhauru) Add some basic summary of what has gotten faster by how much.
+The chain generated from `predict(model, chain::MCMCChains.Chains)` will now include values for `x := y` statements in the model.
+(For FlexiChains, this was already the case.)
 
-### Changes to indexing random variables with square brackets
+### VarInfo linking
 
-0.40 internally reimplements how DynamicPPL handles random variables like `x[1]`, `x.y[2,2]`, and `x[:,1:4,5]`, i.e. ones that use indexing with square brackets.
-Most of this is invisible to users, but it has some effects that show on the surface.
-The gist of the changes is that any indexing by square brackets is now implicitly assumed to be indexing into a regular `Base.Array`, with 1-based indexing.
-The general effect this has is that the new rules on what is and isn't allowed are stricter, forbidding some old syntax that used to be allowed, and at the same time guaranteeing that it works correctly.
-(Previously there were some sharp edges around these sorts of variable names.)
+Linking (and inverse linking) with VarInfos obeys the same interface as before, but is substantially faster than before.
 
-#### No more linear indexing of multidimensional arrays
+You can now also generate a linked VarInfo _directly_, without first creating an unlinked one and then linking it, using `VarInfo([rng,] model, LinkAll())`.
+See the docstring of `VarInfo` for more details.
 
-Previously you could do this:
+Linking is also more robust: it used to assume that the prior distribution of a variable didn't change from one execution to another (as it does in e.g. `truncated(dist; lower=x)` where `x` is a random variable).
+This is no longer the case; linking should thus be safer to do.
+The cost to pay is that calls to `link!!` and `invlink!!` (and the non-mutating versions) now trigger a model evaluation, to determine the correct priors to use.
+(However, even with a model evaluation, in many cases linking is still substantially faster than the old implementation.)
 
-```julia
-x = Array{Float64,2}(undef, (2, 2))
-x[1] ~ Normal()
-x[1, 1] ~ Normal()
-```
+### `VarNamedTuple`
 
-Now you can't, this will error.
-If you first create a variable like `x[1]`, DynamicPPL from there on assumes that this variable only takes a single index (like a `Vector`).
-It will then error if you try to index the same variable with any other number of indices.
+DynamicPPL now exports a new type, called `VarNamedTuple`, which stores values keyed by `VarName`s.
+With it are exported a few new functions for using it: `map_values!!`, `map_pairs!!`, `apply!!`.
+[Our documentation's Internals section now has a page about `VarNamedTuple`, how it works, and what it's good for.](https://turinglang.org/DynamicPPL.jl/v0.40/vnt/motivation/)
 
-The same logic also bans this, which likewise was previously allowed:
+`VarNamedTuple` is now used internally in many different parts: In `VarInfo`, in `values_as_in_model`, in `LogDensityFunction`, etc.
+Almost all of the changes in this version are a consequence resulting from the consistent use of `VarNamedTuple` for various features internally.
 
-```julia
-x = Array{Float64,2}(undef, (2, 2))
-x[1, 1, 1] ~ Normal()
-x[1, 1] ~ Normal()
-```
+**TODO(penelopeysm) write this**
 
-This made use of Julia allowing trailing indices of `1`.
-
-Note that the above models were previously quite dangerous and easy to misuse, because DynamicPPL was oblivious to the fact that e.g. `x[1]` and `x[1,1]` refer to the same element.
-Both of the above examples previously created 2-dimensional models, with two distinct random variables, one of which effectively overwrote the other in the model body.
-
-TODO(mhauru) This may cause surprising issues when using `eachindex`, which is generally encouraged, e.g.
-
-```
-x = Array{Float64,2}(undef, (3, 3))
-for i in eachindex(x)
-    x[i] ~ Normal()
-end
-```
-
-Maybe we should fix linear indexing before releasing?
-
-#### No more square bracket indexing with arbitrary keys
-
-Previously you could do this:
-
-```julia
-x = Dict()
-x["a"] ~ Normal()
-```
-
-Now you can't, this will error.
-This is because DynamicPPL now assumes that if you are indexing with square brackets, you are dealing with an `Array`, for which `"a"` is not a valid index.
-You can still use a dictionary on the left-hand side of a `~` statement as long as the indices are valid indices to an `Array`, e.g. integers.
-
-#### No more unusually indexed arrays, such as `OffsetArrays`
-
-Previously you could do this
-
-```julia
-using OffsetArrays
-x = OffsetArray(Vector{Float64}(undef, 3), -3)
-x[-2] ~ Normal()
-0.0 ~ Normal(x[-2])
-```
-
-Now you can't, this will error.
-This is because DynamicPPL now assumes that if you are indexing with square brackes, you are dealing with an `Array`, for which `-2` is not a valid index.
-
-#### The above limitations are not fundamental
-
-The above, new restrictions to what sort of variable names are allowed aren't fundamental.
-With some effort we could e.g. add support for linear indexing, this time done properly, so that e.g. `x[1,1]` and `x[1]` would be the same variable.
-Likewise, we could manually add structures to support indexing into dictionaries or `OffsetArrays`.
-If this would be useful to you, let us know.
-
-#### This only affects `~` statements
-
-You can still use any arbitrary indexing within your model in statements that don't involve `~`.
-For instance, you can use `OffsetArray`s, or linear indexing, as long as you don't put them on the left-hand side of a `~`.
-
-#### Performance benefits
-
-The upside of all these new limitations is that models that use square bracket indexing are now faster.
-For instance, take the following model
-
-```julia
-@model function f()
-    x = Vector{Float64}(undef, 1000)
-    for i in eachindex(x)
-        x[i] ~ Normal()
-    end
-    return 0.0 ~ Normal(sum(x))
-end
-```
-
-Evaluating the log joint for this model has gotten about 3 times faster in v0.40.
-
-#### Robustness benefits
-
-TODO(mhauru) Add an example here for how this improves `condition`ing, once `condition` uses `VarNamedTuple`.
-
-## 0.39.12
+# 0.39.12
 
 When constructing an `MCMCChains.Chains`, sampler statistics that are not `Union{Real,Missing}` are dropped from the chain (previously this would cause chain construction to fail).
 Note that MCMCChains in general cannot contain non-numeric statistics, so this is the only reasonable behaviour.
 
-## 0.39.11
+# 0.39.11
 
 Allow passing `accs::Union{NTuple{N,AbstractAccumulator},AccumulatorTuple}` into the `LogDensityFunction` constructor to specify custom accumulators to use when evaluating the model.
 Previously, this was hard-coded.
 
-## 0.39.10
+# 0.39.10
 
 Rename the internal functions `matchingvalue` and `get_matching_type` to `convert_model_argument` and `promote_model_type_argument` respectively.
 The behaviour of `promote_model_type_argument` has also been slightly changed in some edge cases: for example, `promote_model_type_argument(ForwardDiff.Dual{Nothing,Float64,0}, Vector{Real})` now returns `Vector{ForwardDiff.Dual{Nothing,Real,0}}` instead of `Vector{ForwardDiff.Dual{Nothing,Float64,0}}`.
@@ -193,51 +131,51 @@ In other words, abstract types in the type argument are now properly respected.
 
 This should have almost no impact on end users (unless you were passing `::Type{T}=Vector{Real}` into the model, with an abstract eltype).
 
-## 0.39.9
+# 0.39.9
 
 The internals of `LogDensityFunction` have been changed slightly so that you do not need to specify `function_annotation` when performing AD with Enzyme.jl.
 There are also some small performance improvements with other AD backends.
 
-## 0.39.8
+# 0.39.8
 
 Allow the `getlogdensity` argument of `LogDensityFunction` to accept callable structs as well as functions.
 
-## 0.39.7
+# 0.39.7
 
 Improve concreteness when merging two `Metadata` structs.
 
-## 0.39.6
+# 0.39.6
 
 Mark `haskey(varinfo, varname)` as having zero derivative to make life easier for AD.
 
-## 0.39.5
+# 0.39.5
 
 Fixed a bug which prevented passing immutable data (such as NamedTuples or ordinary structs) as arguments to DynamicPPL models, or fixing the model on such data.
 
-## 0.39.4
+# 0.39.4
 
 Removed the internal functions `DynamicPPL.getranges`, `DynamicPPL.vector_getrange`, and `DynamicPPL.vector_getranges` (the new LogDensityFunction construction does exactly the same thing, so this specialised function was not needed).
 
-## 0.39.3
+# 0.39.3
 
 `DynamicPPL.TestUtils.AD.run_ad` now generates much prettier output.
 In particular, when a test fails, it also tells you the tolerances needed to make it pass.
 
-## 0.39.2
+# 0.39.2
 
 `returned(model, parameters...)` now accepts any arguments that can be wrapped in `InitFromParams` (previously it would only accept `NamedTuple`, `AbstractDict{<:VarName}`, or a chain).
 
 There should also be some minor performance improvements (maybe 10%) on AD with ForwardDiff / Mooncake.
 
-## 0.39.1
+# 0.39.1
 
 `LogDensityFunction` now allows you to call `logdensity_and_gradient(ldf, x)` with `AbstractVector`s `x` that are not plain Vectors (they will be converted internally before calculating the gradient).
 
-## 0.39.0
+# 0.39.0
 
-### Breaking changes
+## Breaking changes
 
-#### Fast Log Density Functions
+### Fast Log Density Functions
 
 This version provides a reimplementation of `LogDensityFunction` that provides performance improvements on the order of 2–10× for both model evaluation as well as automatic differentiation.
 Exact speedups depend on the model size: larger models have less significant speedups because the bulk of the work is done in calls to `logpdf`.
@@ -248,7 +186,7 @@ As a result of this change, `LogDensityFunction` no longer stores a VarInfo insi
 In general, if `ldf` is a `LogDensityFunction`, it is now only valid to access `ldf.model` and `ldf.adtype`.
 If you were previously relying on this behaviour, you will need to store a VarInfo separately.
 
-#### Threadsafe evaluation
+### Threadsafe evaluation
 
 DynamicPPL models have traditionally supported running some probabilistic statements (e.g. tilde-statements, or `@addlogprob!`) in parallel.
 Prior to DynamicPPL 0.39, thread safety for such models used to be enabled by default if Julia was launched with more than one thread.
@@ -285,7 +223,7 @@ When threadsafe evaluation is enabled for a model, an internal flag is set on th
 The value of this flag can be queried using `DynamicPPL.requires_threadsafe(model)`, which returns a boolean.
 This function is newly exported in this version of DynamicPPL.
 
-#### Parent and leaf contexts
+### Parent and leaf contexts
 
 The `DynamicPPL.NodeTrait` function has been removed.
 Instead of implementing this, parent contexts should subtype `DynamicPPL.AbstractParentContext`.
@@ -298,11 +236,11 @@ Leaf contexts require no changes, apart from a removal of the `NodeTrait` functi
 `ConditionContext` and `PrefixContext` are no longer exported.
 You should not need to use these directly, please use `AbstractPPL.condition` and `DynamicPPL.prefix` instead.
 
-#### ParamsWithStats
+### ParamsWithStats
 
 In the 'stats' part of `DynamicPPL.ParamsWithStats`, the log-joint is now consistently represented with the key `logjoint` instead of `lp`.
 
-#### Miscellaneous
+### Miscellaneous
 
 Removed the method `returned(::Model, values, keys)`; please use `returned(::Model, ::AbstractDict{<:VarName})` instead.
 
@@ -314,7 +252,7 @@ This is a generalisation of the previous behaviour, where `init` would always re
 The family of functions `returned(model, chain)`, along with the same signatures of `pointwise_logdensities`, `logjoint`, `loglikelihood`, and `logprior`, have been changed such that if the chain does not contain all variables in the model, an error is thrown.
 Previously the behaviour would have been to sample missing variables.
 
-## 0.38.10
+# 0.38.10
 
 `returned(model, chain)` and `pointwise_logdensities(model, chain)` will now error if a value for a random variable cannot be found in the chain.
 (Previously, they would instead resample such variables, which could lead to silent mistakes.)
@@ -322,54 +260,54 @@ Previously the behaviour would have been to sample missing variables.
 If you encounter this error and it is accompanied by a warning about `hasvalue` not being implemented, you should be able to fix this by [using FlexiChains instead of MCMCChains](https://github.com/penelopeysm/FlexiChains.jl).
 (Alternatively, implementations of `hasvalue` for unsupported distributions are more than welcome; these must be provided in the Distributions extension of AbstractPPL.jl.)
 
-## 0.38.9
+# 0.38.9
 
 Remove warning when using Enzyme as the AD backend.
 
-## 0.38.8
+# 0.38.8
 
 Added a new exported struct, `DynamicPPL.ParamsWithStats`.
 This can broadly be used to represent the output of a model: it consists of an `OrderedDict` of `VarName` parameters and their values, along with a `stats` NamedTuple which can hold arbitrary data, such as (but not limited to) log-probabilities.
 
 Implemented the functions `AbstractMCMC.to_samples` and `AbstractMCMC.from_samples`, which convert between an `MCMCChains.Chains` object and a matrix of `DynamicPPL.ParamsWithStats` objects.
 
-## 0.38.7
+# 0.38.7
 
 Made a small tweak to DynamicPPL's compiler output to avoid potential undefined variables when resuming model functions midway through (e.g. with Libtask in Turing's SMC/PG samplers).
 
-## 0.38.6
+# 0.38.6
 
 Renamed keyword argument `only_ddpl` to `only_dppl` for `Experimental.is_suitable_varinfo`.
 
-## 0.38.5
+# 0.38.5
 
 Improve performance of VarNamedVector, mostly by changing how it handles contiguification.
 
-## 0.38.4
+# 0.38.4
 
 Improve performance of VarNamedVector. It should now be very nearly on par with Metadata for all models we've benchmarked on.
 
-## 0.38.3
+# 0.38.3
 
 Add an implementation of `returned(::Model, ::AbstractDict{<:VarName})`.
 Please note we generally recommend using Dict, as NamedTuples cannot correctly represent variables with indices / fields on the left-hand side of tildes, like `x[1]` or `x.a`.
 
 The generic method `returned(::Model, values, keys)` is deprecated and will be removed in the next minor version.
 
-## 0.38.2
+# 0.38.2
 
 Added a compatibility entry for JET@0.11.
 
-## 0.38.1
+# 0.38.1
 
 Added `from_linked_vec_transform` and `from_vec_transform` methods for `ProductNamedTupleDistribution`.
 This patch allows sampling from `ProductNamedTupleDistribution` in DynamicPPL models.
 
-## 0.38.0
+# 0.38.0
 
-### Breaking changes
+## Breaking changes
 
-#### Introduction of `InitContext`
+### Introduction of `InitContext`
 
 DynamicPPL 0.38 introduces a new evaluation context, `InitContext`.
 It is used to generate fresh values for random variables in a model.
@@ -395,7 +333,7 @@ In particular:
   - When providing a set of fixed parameters (i.e. `InitFromParams(p)`), `p` must now either be a NamedTuple or a Dict. Previously Vectors were allowed, which is error-prone because the ordering of variables in a VarInfo is not obvious.
   - The parameters in `p` must now always be provided in unlinked space (i.e., in the space of the distribution on the right-hand side of the tilde). Previously, whether a parameter was expected to be in linked or unlinked space depended on whether the VarInfo was linked or not, which was confusing.
 
-#### Removal of `SamplingContext`
+### Removal of `SamplingContext`
 
 For developers working on DynamicPPL, `InitContext` now completely replaces what used to be `SamplingContext`, `SampleFromPrior`, and `SampleFromUniform`.
 Evaluating a model with `SamplingContext(SampleFromPrior())` (e.g. with `DynamicPPL.evaluate_and_sample!!(model, VarInfo(), SampleFromPrior())` has a direct one-to-one replacement in `DynamicPPL.init!!(model, VarInfo(), InitFromPrior())`.
@@ -407,7 +345,7 @@ The main change that this is likely to create is for those who are implementing 
 The exact way in which this happens will be detailed in the Turing.jl changelog when a new release is made.
 Broadly speaking, though, `SamplingContext(MySampler())` will be removed so if your sampler needs custom behaviour with the tilde-pipeline you will likely have to define your own context.
 
-#### Removal of `DynamicPPL.Sampler`
+### Removal of `DynamicPPL.Sampler`
 
 `DynamicPPL.Sampler` and **all associated interface functions** have also been removed entirely.
 If you were using these, the corresponding replacements are:
@@ -420,7 +358,7 @@ If you were using these, the corresponding replacements are:
   - `DynamicPPL.default_varinfo`: `Turing.Inference.default_varinfo` (will be introduced in the next version)
   - `DynamicPPL.TestUtils.test_sampler` and related methods: removed, please implement your own testing utilities as needed
 
-#### Simplification of the tilde-pipeline
+### Simplification of the tilde-pipeline
 
 There are now only two functions in the tilde-pipeline that need to be overloaded to change the behaviour of tilde-statements, namely, `tilde_assume!!` and `tilde_observe!!`.
 Other functions such as `tilde_assume` and `assume` (and their `observe` counterparts) have been removed.
@@ -428,49 +366,49 @@ Other functions such as `tilde_assume` and `assume` (and their `observe` counter
 Note that this was effectively already the case in DynamicPPL 0.37 (where they were just wrappers around each other).
 The separation of these functions was primarily implemented to avoid performing extra work where unneeded (e.g. to not calculate the log-likelihood when `PriorContext` was being used). This functionality has since been replaced with accumulators (see the 0.37 changelog for more details).
 
-#### Removal of the `"del"` flag
+### Removal of the `"del"` flag
 
 Previously `VarInfo` (or more correctly, the `Metadata` object within a `VarInfo`), had a flag called `"del"` for all variables. If it was set to `true` the variable was to be overwritten with a new value at the next evaluation. The new `InitContext` and related changes above make this flag unnecessary, and it has been removed.
 
 The only flag other than `"del"` that `Metadata` ever used was `"trans"`. Thus the generic functions `set_flag!`, `unset_flag!` and `is_flagged!` have also been removed in favour of more specific ones. We've also used this opportunity to name the `"trans"` flag and the corresponding `istrans` function to be more explicit. The new, exported interface consists of the `is_transformed` and `set_transformed!!` functions.
 
-#### Removal of `resume_from`
+### Removal of `resume_from`
 
 The `resume_from=chn` keyword argument to `sample` has been removed; please use the `initial_state` argument instead.
 `loadstate` will be exported from Turing in the next release of Turing.
 
-#### Change of output type for `pointwise_logdensities`
+### Change of output type for `pointwise_logdensities`
 
 The functions `pointwise_prior_logdensities`, `pointwise_logdensities`, and `pointwise_loglikelihoods` when called on `MCMCChains.Chains` objects, now return new `MCMCChains.Chains` objects by default, instead of dictionaries of matrices.
 
 If you want the old behaviour, you can pass `OrderedDict` as the third argument, i.e., `pointwise_logdensities(model, chain, OrderedDict)`.
 
-### Other changes
+## Other changes
 
-#### `predict(model, chain; include_all)`
+### `predict(model, chain; include_all)`
 
 The `include_all` keyword argument for `predict` now works even when no RNG is specified (previously it would only work when an RNG was explicitly passed).
 
-#### `DynamicPPL.setleafcontext(model, context)`
+### `DynamicPPL.setleafcontext(model, context)`
 
 This convenience method has been added to quickly modify the leaf context of a model.
 
-#### Reimplementation of functions using `InitContext`
+### Reimplementation of functions using `InitContext`
 
 A number of functions have been reimplemented and unified with the help of `InitContext`.
 In particular, this release brings substantial performance improvements for `returned` and `predict`.
 Their APIs are the same.
 
-#### Upstreaming of VarName functionality
+### Upstreaming of VarName functionality
 
 The implementation of the `varname_leaves` and `varname_and_value_leaves` functions have been moved to AbstractPPL.jl.
 Their behaviour is otherwise identical, and they are still accessible from the DynamicPPL module (though still not exported).
 
-## 0.37.5
+# 0.37.5
 
 A minor optimisation for Enzyme AD on DynamicPPL models.
 
-## 0.37.4
+# 0.37.4
 
 An extension for MarginalLogDensities.jl has been added.
 
@@ -482,21 +420,21 @@ Note that the Laplace approximation relies on the model being differentiable wit
 
 Please see [the MarginalLogDensities documentation](https://eloceanografo.github.io/MarginalLogDensities.jl/stable) and the [new Marginalisation section of the DynamicPPL documentation](https://turinglang.org/DynamicPPL.jl/v0.37/api/#Marginalisation) for further information.
 
-## 0.37.3
+# 0.37.3
 
 Prevents inlining of `DynamicPPL.istrans` with Enzyme, which allows Enzyme to differentiate models where `VarName`s have the same symbol but different types.
 
-## 0.37.2
+# 0.37.2
 
 Make the `resume_from` keyword work for multiple-chain (parallel) sampling as well.
 Prior to this version, it was silently ignored.
 Note that to get the correct behaviour you also need to have a recent version of MCMCChains (v7.2.1).
 
-## 0.37.1
+# 0.37.1
 
 Update DynamicPPLMooncakeExt to work with Mooncake 0.4.147.
 
-## 0.37.0
+# 0.37.0
 
 DynamicPPL 0.37 comes with a substantial reworking of its internals.
 Fundamentally, there is no change to the actual modelling syntax: if you are a Turing.jl user, for example, this release will not affect you too much (apart from the changes to `@addlogprob!`).
@@ -509,11 +447,11 @@ Note that virtually all changes listed here are breaking.
 
 **Public-facing changes**
 
-### Submodel macro
+## Submodel macro
 
 The `@submodel` macro is fully removed; please use `to_submodel` instead.
 
-### `DynamicPPL.TestUtils.AD.run_ad`
+## `DynamicPPL.TestUtils.AD.run_ad`
 
 The three keyword arguments, `test`, `reference_backend`, and `expected_value_and_grad` have been merged into a single `test` keyword argument.
 Please see the API documentation for more details.
@@ -529,12 +467,12 @@ Times are reported in seconds.
 Previously there was only a single `time_vs_primal` field which represented the ratio of these two.
 You can of course access the same quantity by dividing `grad_time` by `primal_time`.
 
-### `DynamicPPL.TestUtils.check_model`
+## `DynamicPPL.TestUtils.check_model`
 
 You now need to explicitly pass a `VarInfo` argument to `check_model` and `check_model_and_trace`.
 Previously, these functions would generate a new VarInfo for you (using an optionally provided `rng`).
 
-### Evaluating model log-probabilities in more detail
+## Evaluating model log-probabilities in more detail
 
 Previously, during evaluation of a model, DynamicPPL only had the capability to store a _single_ log probability (`logp`) field.
 `DefaultContext`, `PriorContext`, and `LikelihoodContext` were used to control what this field represented: they would accumulate the log joint, log prior, or log likelihood, respectively.
@@ -557,7 +495,7 @@ To this end, you can use:
 
 Since transformations only apply to random variables, the likelihood is unaffected by linking.
 
-### Removal of `PriorContext` and `LikelihoodContext`
+## Removal of `PriorContext` and `LikelihoodContext`
 
 Following on from the above, a number of DynamicPPL's contexts have been removed, most notably `PriorContext` and `LikelihoodContext`.
 Although these are not the only _exported_ contexts, we consider unlikely that anyone was using _other_ contexts manually: if you have a question about contexts _other_ than these, please continue reading the 'Internals' section below.
@@ -573,7 +511,7 @@ The other case where one might use `PriorContext` was to use `@addlogprob!` to a
 Previously, this was accomplished by manually checking `__context__ isa DynamicPPL.PriorContext`.
 Now, you can write `@addlogprob (; logprior=x, loglikelihood=y)` to add `x` to the log-prior and `y` to the log-likelihood.
 
-### Removal of `order` and `num_produce`
+## Removal of `order` and `num_produce`
 
 The `VarInfo` type used to carry with it:
 
@@ -604,7 +542,7 @@ The interested reader is referred to that PR for more details.
 
 **Internals**
 
-### Accumulators
+## Accumulators
 
 This release overhauls how VarInfo objects track variables such as the log joint probability. The new approach is to use what we call accumulators: Objects that the VarInfo carries on it that may change their state at each `tilde_assume!!` and `tilde_observe!!` call based on the value of the variable in question. They replace both variables that were previously hard-coded in the `VarInfo` object (`logp` and `num_produce`) and some contexts. This brings with it a number of breaking changes:
 
@@ -617,7 +555,7 @@ This release overhauls how VarInfo objects track variables such as the log joint
   - `getlogp` now returns a `NamedTuple` with keys `logprior` and `loglikelihood`. If you want the log joint probability, which is what `getlogp` used to return, use `getlogjoint`.
   - Correspondingly `setlogp!!` and `acclogp!!` should now be called with a `NamedTuple` with keys `logprior` and `loglikelihood`. The `acclogp!!` method with a single scalar value has been deprecated and falls back on `accloglikelihood!!`, and the single scalar version of `setlogp!!` has been removed. Corresponding setter/accumulator functions exist for the log prior as well.
 
-### Evaluation contexts
+## Evaluation contexts
 
 Historically, evaluating a DynamicPPL model has required three arguments: a model, some kind of VarInfo, and a context.
 It's less known, though, that since DynamicPPL 0.14.0 the _model_ itself actually contains a context as well.
@@ -654,78 +592,78 @@ And a couple of more internal changes:
   - The model evaluation function, `model.f` for some `model::Model`, no longer takes a context as an argument
   - The internal representation and API dealing with submodels (i.e., `ReturnedModelWrapper`, `Sampleable`, `should_auto_prefix`, `is_rhs_model`) has been simplified. If you need to check whether something is a submodel, just use `x isa DynamicPPL.Submodel`. Note that the public API i.e. `to_submodel` remains completely untouched.
 
-## 0.36.15
+# 0.36.15
 
 Bumped minimum Julia version to 1.10.8 to avoid potential crashes with `Core.Compiler.widenconst` (which Mooncake uses).
 
-## 0.36.14
+# 0.36.14
 
 Added compatibility with AbstractPPL@0.12.
 
-## 0.36.13
+# 0.36.13
 
 Added documentation for the `returned(::Model, ::MCMCChains.Chains)` method.
 
-## 0.36.12
+# 0.36.12
 
 Removed several unexported functions.
 The only notable one is `DynamicPPL.alg_str`, which was used in old versions of AdvancedVI and the Turing test suite.
 
-## 0.36.11
+# 0.36.11
 
 Make `ThreadSafeVarInfo` hold a total of `Threads.nthreads() * 2` logp values, instead of just `Threads.nthreads()`.
 This fix helps to paper over the cracks in using `threadid()` to index into the `ThreadSafeVarInfo` object.
 
-## 0.36.10
+# 0.36.10
 
 Added compatibility with ForwardDiff 1.0.
 
-## 0.36.9
+# 0.36.9
 
 Fixed a failure when sampling from `ProductNamedTupleDistribution` due to
 missing `tovec` methods for `NamedTuple` and `Tuple`.
 
-## 0.36.8
+# 0.36.8
 
 Made `LogDensityFunction` a subtype of `AbstractMCMC.AbstractModel`.
 
-## 0.36.7
+# 0.36.7
 
 Added compatibility with MCMCChains 7.0.
 
-## 0.36.6
+# 0.36.6
 
 `DynamicPPL.TestUtils.run_ad` now takes an extra `context` keyword argument, which is passed to the `LogDensityFunction` constructor.
 
-## 0.36.5
+# 0.36.5
 
 `varinfo[:]` now returns an empty vector if `varinfo::DynamicPPL.NTVarInfo` is empty, rather than erroring.
 
 In its place, `check_model` now issues a warning if the model is empty.
 
-## 0.36.4
+# 0.36.4
 
 Added compatibility with DifferentiationInterface.jl 0.7, and also with JET.jl 0.10.
 
 The JET compatibility entry should only affect you if you are using DynamicPPL on the Julia 1.12 pre-release.
 
-## 0.36.3
+# 0.36.3
 
 Moved the `bijector(model)`, where `model` is a `DynamicPPL.Model`, function from the Turing main repo.
 
-## 0.36.2
+# 0.36.2
 
 Improved docstrings for AD testing utilities.
 
-## 0.36.1
+# 0.36.1
 
 Fixed a missing method for `tilde_assume`.
 
-## 0.36.0
+# 0.36.0
 
 **Breaking changes**
 
-### Submodels: conditioning
+## Submodels: conditioning
 
 Variables in a submodel can now be conditioned and fixed in a correct way.
 See https://github.com/TuringLang/DynamicPPL.jl/issues/857 for a full illustration, but essentially it means you can now do this:
@@ -743,7 +681,7 @@ end
 and the `a.x` variable will be correctly conditioned.
 (Previously, you would have to condition `inner()` with the variable `a.x`, meaning that you would need to know what prefix to use before you had actually prefixed it.)
 
-### Submodel prefixing
+## Submodel prefixing
 
 The way in which VarNames in submodels are prefixed has been changed.
 This is best explained through an example.
@@ -810,7 +748,7 @@ Before this version, it used to be a single variable called `var"a[1].x"`.
 Note that if you are sampling from a model with submodels, this doesn't affect the way you interact with the `MCMCChains.Chains` object, because VarNames are converted into Symbols when stored in the chain.
 (This behaviour will likely be changed in the future, in that Chains should be indexable by VarNames and not just Symbols, but that has not been implemented yet.)
 
-### AD testing utilities
+## AD testing utilities
 
 `DynamicPPL.TestUtils.AD.run_ad` now links the VarInfo by default.
 To disable this, pass the `linked=false` keyword argument.
@@ -818,11 +756,11 @@ If the calculated value or gradient is incorrect, it also throws a `DynamicPPL.T
 This exception contains the actual and expected gradient so you can inspect it if needed; see the documentation for more information.
 From a practical perspective, this means that if you need to add this to a test suite, you need to use `@test run_ad(...) isa Any` rather than just `run_ad(...)`.
 
-### SimpleVarInfo linking / invlinking
+## SimpleVarInfo linking / invlinking
 
 Linking a linked SimpleVarInfo, or invlinking an unlinked SimpleVarInfo, now displays a warning instead of an error.
 
-### VarInfo constructors
+## VarInfo constructors
 
 `VarInfo(vi::VarInfo, values)` has been removed. You can replace this directly with `unflatten(vi, values)` instead.
 
@@ -855,24 +793,24 @@ The reason for this change is that there were several flavours of VarInfo.
 Some, like `typed_varinfo`, were easy to construct because we had convenience methods for them; however, the others were more difficult.
 This change makes it easier to access different VarInfo types, and also makes it more explicit which one you are constructing.
 
-## 0.35.9
+# 0.35.9
 
 Fixed the `isnan` check introduced in 0.35.7 for distributions which returned NamedTuple.
 
-## 0.35.8
+# 0.35.8
 
 Added the `DynamicPPL.TestUtils.AD.run_ad` function to test the correctness and/or benchmark the performance of an automatic differentiation backend on DynamicPPL models.
 Please see [the docstring](https://turinglang.org/DynamicPPL.jl/api/#DynamicPPL.TestUtils.AD.run_ad) for more information.
 
-## 0.35.7
+# 0.35.7
 
 `check_model_and_trace` now errors if any NaN's are encountered when evaluating the model.
 
-## 0.35.6
+# 0.35.6
 
 Fixed the implementation of `.~`, such that running a model with it no longer requires DynamicPPL itself to be loaded.
 
-## 0.35.5
+# 0.35.5
 
 Several internal methods have been removed:
 
@@ -883,7 +821,7 @@ Several internal methods have been removed:
 
 The **exported** method `VarInfo(vi::VarInfo, values)` has been deprecated, and will be removed in the next minor version. You can replace this directly with `unflatten(vi, values)` instead.
 
-## 0.35.4
+# 0.35.4
 
 Fixed a type instability in an implementation of `with_logabsdet_jacobian`, which resulted in the log-jacobian returned being an Int in some cases and a Float in others.
 This resolves an Enzyme.jl error on a number of models.
@@ -891,26 +829,26 @@ More generally, this version also changes the type of various log probabilities 
 Although we aren't fully there yet, our eventual aim is that log probabilities will generally default to Float64 on 64-bit systems, and Float32 on 32-bit systems.
 If you run into any issues with these types, please get in touch.
 
-## 0.35.3
+# 0.35.3
 
 `model | (@varname(x) => 1.0, @varname(y) => 2.0)` now works.
 Previously, this would throw a `MethodError` if the tuple had more than one element.
 
-## 0.35.2
+# 0.35.2
 
 `unflatten(::VarInfo, params)` now works with params that have non-float types (such as Int or Bool).
 
-## 0.35.1
+# 0.35.1
 
 `subset(::AbstractVarInfo, ::AbstractVector{<:VarName})` now preserves the ordering of the varnames in the original varinfo argument.
 Previously, this would select the varnames according to their order in the second argument.
 This fixes an upstream Turing.jl issue with Gibbs sampling when a component sampler was assigned multiple variables.
 
-## 0.35.0
+# 0.35.0
 
 **Breaking changes**
 
-### `.~` right hand side must be a univariate distribution
+## `.~` right hand side must be a univariate distribution
 
 Previously we allowed statements like
 
@@ -978,7 +916,7 @@ end
 
 This release also completely rewrites the internal implementation of `.~`, where from now on all `.~` statements are turned into loops over `~` statements at macro time. However, the only breaking aspect of this change is the above change to what's allowed on the right hand side.
 
-### Remove indexing by samplers
+## Remove indexing by samplers
 
 This release removes the feature of `VarInfo` where it kept track of which variable was associated with which sampler. This means removing all user-facing methods where `VarInfo`s where being indexed with samplers. In particular,
 
@@ -992,7 +930,7 @@ This release removes the feature of `VarInfo` where it kept track of which varia
   - `push!!` and `push!` no longer accept samplers or `Selector`s as arguments
   - `getgid`, `setgid!`, `updategid!`, `getspace`, and `inspace` no longer exist
 
-### Reverse prefixing order
+## Reverse prefixing order
 
   - For submodels constructed using `to_submodel`, the order in which nested prefixes are applied has been changed.
     Previously, the order was that outer prefixes were applied first, then inner ones.
@@ -1025,7 +963,7 @@ This release removes the feature of `VarInfo` where it kept track of which varia
     
     This change also affects sampling in Turing.jl.
 
-### `LogDensityFunction` argument order
+## `LogDensityFunction` argument order
 
   - The method `LogDensityFunction(varinfo, model, sampler)` has been removed.
     The only accepted order is `LogDensityFunction(model, varinfo, context; adtype)`.
@@ -1034,11 +972,11 @@ This release removes the feature of `VarInfo` where it kept track of which varia
 
 **Other changes**
 
-### New exports
+## New exports
 
 `LogDensityFunction` and `predict` are now exported from DynamicPPL.
 
-### `LogDensityProblems` interface
+## `LogDensityProblems` interface
 
 LogDensityProblemsAD is now removed as a dependency.
 Instead of constructing a `LogDensityProblemAD.ADgradient` object, we now directly use `DifferentiationInterface` to calculate the gradient of the log density with respect to model parameters.
@@ -1075,7 +1013,7 @@ ldf = LogDensityFunction(f())  # by default, no adtype set
 ldf_with_ad = LogDensityFunction(ldf, AutoForwardDiff())
 ```
 
-## 0.34.2
+# 0.34.2
 
   - Fixed bugs in ValuesAsInModelContext as well as DebugContext where underlying PrefixContexts were not being applied.
     From a user-facing perspective, this means that for models which use manually prefixed submodels, e.g.
@@ -1095,13 +1033,13 @@ ldf_with_ad = LogDensityFunction(ldf, AutoForwardDiff())
 
   - More broadly, implemented a general `prefix(ctx::AbstractContext, ::VarName)` which traverses the context tree in `ctx` to apply all necessary prefixes. This was a necessary step in fixing the above issues, but it also means that `prefix` is now capable of handling context trees with e.g. multiple prefixes at different levels of nesting.
 
-## 0.34.1
+# 0.34.1
 
   - Fix an issue that prevented merging two VarInfos if they had different dimensions for a variable.
 
   - Upper bound the compat version of KernelAbstractions to work around an issue in determining the right VarInfo type to use.
 
-## 0.34.0
+# 0.34.0
 
 **Breaking**
 
@@ -1114,12 +1052,12 @@ ldf_with_ad = LogDensityFunction(ldf, AutoForwardDiff())
     
     If you aren't using this function (it's probably only used in Turing.jl) then this won't affect you.
 
-## 0.33.1
+# 0.33.1
 
 Reworked internals of `condition` and `decondition`.
 There are no changes to the public-facing API, but internally you can no longer use `condition` and `decondition` on an `AbstractContext`, you can only use it on a `DynamicPPL.Model`. If you want to modify a context, use `ConditionContext` and `decondition_context`.
 
-## 0.33.0
+# 0.33.0
 
 **Breaking**
 
