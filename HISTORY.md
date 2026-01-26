@@ -2,7 +2,7 @@
 
 v0.40 of DynamicPPL brings with it a complete rewrite of DynamicPPL's core data structure, `VarInfo`.
 
-The main breaking change for users here is the removal of `AbstractDict` indexing in DynamicPPL models.
+The main breaking change for users here is the removal of `AbstractDict` indexing in DynamicPPL models, and the stipulation that arrays do not change size during model execution.
 Other breaking changes relate to the function signatures of some core DynamicPPL functions, and will not affect you unless you are developing against DynamicPPL.
 
 **In return for these breaking changes, there are major improvements in both performance and robustness of DynamicPPL models.**
@@ -17,13 +17,40 @@ This used to be possible:
 ```julia
 @model function f()
     x = Dict()
-    return x["a"] ~ Normal()
+    x["a"] ~ Normal()
+    return nothing
 end
 ```
 
 In v0.40 this will not work, as DynamicPPL assumes that all indexing behaviour is that of an `AbstractArray`.
 Please consider rewriting your model to use NamedTuples instead (note that `x = (;); x.a ~ Normal()` will work -- you do not need the NamedTuple to already have a field `a`, it will be added for you).
 If you have a strong need to use dictionaries, please open an issue!
+
+### Arrays on the LHS of tildes should not change size or container type
+
+```julia
+@model function f()
+    x = zeros(1)
+    x[1] ~ Normal()
+    push!(x, 0.0)
+    x[2] ~ Normal()
+    return nothing
+end
+```
+
+A model like the above would previously have worked, but will now error.
+In general we expect that `x` is an array with a specific container type and size throughout the model execution.
+(The element type may change without any problem.)
+
+The reason for this is because DynamicPPL internally tracks users' arrays each time it sees on in a tilde-statement.
+Consequently, upon the first call to `x[1]`, DynamicPPL will register `x` as an array of length 1.
+When the second tilde-statement is reached, an error will be thrown since `x[2]` is out of bounds.
+(Because the statement `push!(x, 0.0)` is _not_ in a tilde-statement, DynamicPPL has no way of knowing about this.)
+
+In general, there should be no real reason why arrays need to change size during model execution.
+In many cases it would in fact be better to not do so: in the above example, `x` can obviously be initialised with length 2.
+
+You can still use arrays that change size as long as they are not used on the left-hand side of a tilde.
 
 ### Function signature changes
 
