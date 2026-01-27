@@ -133,15 +133,16 @@ function Base.values(vi::VarInfo)
     return mapreduce(p -> p.second.transform(p.second.val), push!, vi.values; init=Any[])
 end
 
-function Base.show(io::IO, ::MIME"text/plain", vi::VarInfo)
-    printstyled(io, "VarInfo\n"; bold=true)
+function Base.show(io::IO, ::MIME"text/plain", vi::VarInfo{link}) where {link}
+    printstyled(io, "VarInfo"; bold=true)
+    print(io, " {linked=$link}\n")
     print(io, " ├─ ")
-    printstyled("values"; bold=true)
+    printstyled(io, "values"; bold=true)
     print(io, "\n │  ")
     DynamicPPL.VarNamedTuples.vnt_pretty_print(io, vi.values, " │  ", 0)
     println(io)
     print(io, " └─ ")
-    printstyled("accs"; bold=true)
+    printstyled(io, "accs"; bold=true)
     print(io, "\n    ")
     DynamicPPL.pretty_print(io, vi.accs, "    ")
     return nothing
