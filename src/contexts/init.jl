@@ -236,7 +236,7 @@ function init(
             # Same as above.
             LinkedVectorValue(x.val, from_linked_vec_transform(dist), x.size)
         elseif x isa UntransformedValue
-            UntransformedValue(x)
+            x
         else
             UntransformedValue(x)
         end
