@@ -435,7 +435,7 @@ DynamicPPL.StaticTransformation
 ```
 
 ```@docs
-DynamicPPL.transformation
+DynamicPPL.AbstractLinkStrategy
 DynamicPPL.LinkAll
 DynamicPPL.UnlinkAll
 DynamicPPL.LinkSome
@@ -444,6 +444,12 @@ DynamicPPL.link
 DynamicPPL.invlink
 DynamicPPL.link!!
 DynamicPPL.invlink!!
+DynamicPPL.update_link_status!!
+DynamicPPL.generate_linked_value
+```
+
+```@docs
+DynamicPPL.transformation
 DynamicPPL.default_transformation
 DynamicPPL.link_transform
 DynamicPPL.invlink_transform
