@@ -195,7 +195,7 @@ end
 
 function Base.getindex(vi::VarInfo, vn::VarName)
     tv = getindex(vi.values, vn)
-    return get_transform(tv)(get_internal_value(tv))
+    return DynamicPPL.get_transform(tv)(DynamicPPL.get_internal_value(tv))
 end
 function Base.getindex(vi::VarInfo, vns::AbstractVector{<:VarName})
     return [getindex(vi, vn) for vn in vns]
@@ -373,9 +373,7 @@ function from_linked_internal_transform(vi::VarInfo, vn::VarName)
     return DynamicPPL.get_transform(getindex(vi.values, vn))
 end
 
-# TODO(penelopeysm): In principle, `link` can be statically determined from the type of
-# `linker`. However, I'm not sure if doing that could mess with type stability.
-function _link_or_invlink!!(
+function _update_link_status!!(
     orig_vi::VarInfo, linker::AbstractLinkStrategy, model::Model, ::Val{link}
 ) where {link}
     linked_value_acc = VNTAccumulator{LINK_ACCNAME}(Link!(linker))
@@ -389,17 +387,37 @@ function _link_or_invlink!!(
     return new_vi
 end
 
+"""
+    DynamicPPL.update_link_status!!(
+        orig_vi::VarInfo, linker::AbstractLinkStrategy, model::Model,
+    )::VarInfo
+
+Create a new VarInfo based on `orig_vi`, but with the link statuses of variables updated
+according to `linker`.
+"""
+function update_link_status!!(vi::VarInfo, ::LinkAll, model::Model)
+    return _update_link_status!!(vi, LinkAll(), model, Val(true))
+end
+function update_link_status!!(vi::VarInfo, ::UnlinkAll, model::Model)
+    return _update_link_status!!(vi, UnlinkAll(), model, Val(false))
+end
+function update_link_status!!(vi::VarInfo, l::AbstractLinkStrategy, model::Model)
+    # In other cases, we can't (easily) infer anything about the overall linked status of
+    # the VarInfo.
+    return _update_link_status!!(vi, l, model, Val(nothing))
+end
+
 function link!!(::DynamicTransformation, vi::VarInfo, vns, model::Model)
-    return _link_or_invlink!!(vi, LinkSome(Set(vns)), model, Val(nothing))
+    return update_link_status!!(vi, LinkSome(Set(vns)), model)
 end
 function invlink!!(::DynamicTransformation, vi::VarInfo, vns, model::Model)
-    return _link_or_invlink!!(vi, UnlinkSome(Set(vns)), model, Val(nothing))
+    return update_link_status!!(vi, UnlinkSome(Set(vns)), model)
 end
 function link!!(::DynamicTransformation, vi::VarInfo, model::Model)
-    return _link_or_invlink!!(vi, LinkAll(), model, Val(true))
+    return update_link_status!!(vi, LinkAll(), model)
 end
 function invlink!!(::DynamicTransformation, vi::VarInfo, model::Model)
-    return _link_or_invlink!!(vi, UnlinkAll(), model, Val(false))
+    return update_link_status!!(vi, UnlinkAll(), model)
 end
 
 function link!!(t::StaticTransformation{<:Bijectors.Transform}, vi::VarInfo, ::Model)
@@ -438,7 +456,12 @@ end
 # TODO(mhauru) I don't think this should return the internal values, but that's the current
 # convention.
 function values_as(vi::VarInfo, ::Type{Vector})
-    return mapfoldl(pair -> tovec(pair.second.val), vcat, vi.values; init=Union{}[])
+    return mapfoldl(
+        pair -> tovec(DynamicPPL.get_internal_value(pair.second)),
+        vcat,
+        vi.values;
+        init=Union{}[],
+    )
 end
 
 function values_as(vi::VarInfo, ::Type{T}) where {T<:AbstractDict}
