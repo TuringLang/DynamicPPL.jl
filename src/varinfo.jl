@@ -214,7 +214,7 @@ This does not change the transformation or linked status of the variable.
 """
 function setindex_internal!!(vi::VarInfo{Linked}, val, vn::VarName) where {Linked}
     old_tv = getindex(vi.values, vn)
-    new_tv = update_value(old_tv, val)
+    new_tv = set_internal_value(old_tv, val)
     new_values = setindex!!(vi.values, new_tv, vn)
     return VarInfo{Linked}(new_values, vi.accs)
 end

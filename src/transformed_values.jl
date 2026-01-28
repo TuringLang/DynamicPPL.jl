@@ -61,7 +61,7 @@ Subtypes of this should implement the following functions:
 - `DynamicPPL.get_internal_value(tv::AbstractTransformedValue)`: Get the internal value
   stored in `tv`.
 
-- `DynamicPPL.update_value(tv::AbstractTransformedValue, new_val)`: Create a new
+- `DynamicPPL.set_internal_value(tv::AbstractTransformedValue, new_val)`: Create a new
   `AbstractTransformedValue` with the same transformation as `tv`, but with internal value
   `new_val`.
 
@@ -69,6 +69,37 @@ Subtypes of this should implement the following functions:
   original value before transformation.
 """
 abstract type AbstractTransformedValue end
+
+"""
+    get_transform(tv::AbstractTransformedValue)
+
+Get the transformation that converts the internal value back to the raw value.
+
+!!! warning
+    If the distribution associated with the variable has changed since this
+    `AbstractTransformedValue` was created, this transform may be inaccurate. This can
+    happen e.g. if `unflatten!!` has been called on a VarInfo containing this.
+
+    Consequently, when the distribution on the right-hand side of a tilde-statement is
+    available, you should always prefer regenerating the transform from that distribution
+    rather than using this function.
+"""
+function get_transform end
+
+"""
+    get_internal_value(tv::AbstractTransformedValue)
+
+Get the internal value stored in `tv`.
+"""
+function get_internal_value end
+
+"""
+    set_internal_value(tv::AbstractTransformedValue, new_val)
+
+Create a new `AbstractTransformedValue` with the same transformation as `tv`, but with
+internal value `new_val`.
+"""
+function set_internal_value end
 
 """
     VectorValue{V<:AbstractVector,T,S}
@@ -141,7 +172,7 @@ for T in (:VectorValue, :LinkedVectorValue)
         get_transform(tv::$T) = tv.transform
         get_internal_value(tv::$T) = tv.val
 
-        function update_value(tv::$T, new_val)
+        function set_internal_value(tv::$T, new_val)
             return $T(new_val, tv.transform, tv.size)
         end
     end
@@ -160,9 +191,9 @@ struct UntransformedValue{V} <: AbstractTransformedValue
     val::V
     UntransformedValue(val::V) where {V} = new{V}(val)
 end
-is_transformed(::UntransformedValue) = false
 VarNamedTuples.vnt_size(tv::UntransformedValue) = vnt_size(tv.val)
 Base.:(==)(tv1::UntransformedValue, tv2::UntransformedValue) = tv1.val == tv2.val
 Base.isequal(tv1::UntransformedValue, tv2::UntransformedValue) = isequal(tv1.val, tv2.val)
 get_transform(::UntransformedValue) = typed_identity
 get_internal_value(tv::UntransformedValue) = tv.val
+set_internal_value(::UntransformedValue, new_val) = UntransformedValue(new_val)

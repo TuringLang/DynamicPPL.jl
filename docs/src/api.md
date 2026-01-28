@@ -550,6 +550,14 @@ DynamicPPL.LinkedVectorValue
 DynamicPPL.UntransformedValue
 ```
 
+The interface for working with transformed values consists of:
+
+```@docs
+DynamicPPL.get_transform
+DynamicPPL.get_internal_value
+DynamicPPL.set_internal_value
+```
+
 ### Converting VarInfos to/from chains
 
 It is a fairly common operation to want to convert a collection of `VarInfo` objects into a chains object for downstream analysis.

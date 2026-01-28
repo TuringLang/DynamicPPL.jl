@@ -120,11 +120,13 @@ export AbstractVarInfo,
     InitFromParams,
     get_param_eltype,
     init,
+    # Transformed values
     VectorValue,
     LinkedVectorValue,
     UntransformedValue,
     get_transform,
     get_internal_value,
+    set_internal_value,
     # Linking
     LinkAll,
     UnlinkAll,
