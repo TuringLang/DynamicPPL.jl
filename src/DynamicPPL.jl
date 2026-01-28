@@ -75,10 +75,6 @@ export AbstractVarInfo,
     accloglikelihood!!,
     is_transformed,
     set_transformed!!,
-    link,
-    link!!,
-    invlink,
-    invlink!!,
     values_as,
     # VarName (reexport from AbstractPPL)
     VarName,
@@ -122,8 +118,24 @@ export AbstractVarInfo,
     InitFromPrior,
     InitFromUniform,
     InitFromParams,
-    init,
     get_param_eltype,
+    init,
+    # Transformed values
+    VectorValue,
+    LinkedVectorValue,
+    UntransformedValue,
+    get_transform,
+    get_internal_value,
+    set_internal_value,
+    # Linking
+    LinkAll,
+    UnlinkAll,
+    LinkSome,
+    UnlinkSome,
+    link,
+    link!!,
+    invlink,
+    invlink!!,
     # Pseudo distributions
     NamedDist,
     NoDist,
@@ -204,10 +216,13 @@ include("contexts/prefix.jl")
 include("contexts/conditionfix.jl")  # Must come after contexts/prefix.jl
 include("model.jl")
 include("varname.jl")
+include("transformed_values.jl")
 include("distribution_wrappers.jl")
 include("submodel.jl")
 include("accumulators.jl")
 include("accs/default.jl")
+include("accs/vnt.jl")
+include("accs/transformed_values.jl")
 include("accs/priors.jl")
 include("accs/values.jl")
 include("accs/pointwise_logdensities.jl")

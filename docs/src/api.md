@@ -343,7 +343,6 @@ AbstractVarInfo
 
 ```@docs
 VarInfo
-DynamicPPL.TransformedValue
 DynamicPPL.setindex_with_dist!!
 ```
 
@@ -437,6 +436,10 @@ DynamicPPL.StaticTransformation
 
 ```@docs
 DynamicPPL.transformation
+DynamicPPL.LinkAll
+DynamicPPL.UnlinkAll
+DynamicPPL.LinkSome
+DynamicPPL.UnlinkSome
 DynamicPPL.link
 DynamicPPL.invlink
 DynamicPPL.link!!
@@ -535,6 +538,24 @@ In very rare situations, you may also need to implement `get_param_eltype`, whic
 AbstractInitStrategy
 init
 get_param_eltype
+```
+
+The function [`DynamicPPL.init`](@ref) should return an `AbstractTransformedValue`.
+There are three subtypes currently available:
+
+```@docs
+DynamicPPL.AbstractTransformedValue
+DynamicPPL.VectorValue
+DynamicPPL.LinkedVectorValue
+DynamicPPL.UntransformedValue
+```
+
+The interface for working with transformed values consists of:
+
+```@docs
+DynamicPPL.get_transform
+DynamicPPL.get_internal_value
+DynamicPPL.set_internal_value
 ```
 
 ### Converting VarInfos to/from chains

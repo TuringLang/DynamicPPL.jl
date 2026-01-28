@@ -30,7 +30,7 @@ end
 """
     AbstractMCMC.from_samples(
         ::Type{MCMCChains.Chains},
-        params_and_stats::AbstractMatrix{<:ParamsWithStats}
+        params_and_stats::AbstractMatrix{<:DynamicPPL.ParamsWithStats}
     )
 
 Convert an array of `DynamicPPL.ParamsWithStats` to an `MCMCChains.Chains` object.

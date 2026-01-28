@@ -289,13 +289,13 @@ function getacc(vi::AbstractVarInfo, accname::Symbol)
 end
 
 """
-    accumulate_assume!!(vi::AbstractVarInfo, val, logjac, vn, right, template)
+    accumulate_assume!!(vi::AbstractVarInfo, val, tval, logjac, vn, right, template)
 
 Update all the accumulators of `vi` by calling `accumulate_assume!!` on them.
 """
-function accumulate_assume!!(vi::AbstractVarInfo, val, logjac, vn, right, template)
+function accumulate_assume!!(vi::AbstractVarInfo, val, tval, logjac, vn, right, template)
     return map_accumulators!!(
-        acc -> accumulate_assume!!(acc, val, logjac, vn, right, template), vi
+        acc -> accumulate_assume!!(acc, val, tval, logjac, vn, right, template), vi
     )
 end
 
@@ -466,6 +466,17 @@ information on how transformed variables are stored in DynamicPPL.
 See also: [`getindex(vi::AbstractVarInfo, vn::VarName, dist::Distribution)`](@ref)
 """
 function getindex_internal end
+
+"""
+    get_transformed_value(vi::AbstractVarInfo, vn::VarName)
+
+Return the actual `AbstractTransformedValue` stored in `vi` for variable `vn`.
+
+This differs from `getindex_internal`, which obtains the `AbstractTransformedValue` and then
+directly returns `get_internal_value(tval)`; and `getindex` which returns
+`get_transform(tval)(get_internal_value(tval))`.
+"""
+function get_transformed_value end
 
 @doc """
     empty!!(vi::AbstractVarInfo)

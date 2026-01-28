@@ -36,8 +36,16 @@ function tilde_assume!!(
 )
     # For OnlyAccsVarInfo, since we don't need to write into the VarInfo, we can 
     # cut out a lot of the code above.
-    val, transform = init(ctx.rng, vn, dist, ctx.strategy)
-    x, inv_logjac = with_logabsdet_jacobian(transform, val)
-    vi = accumulate_assume!!(vi, x, -inv_logjac, vn, dist, template)
+    tval = init(ctx.rng, vn, dist, ctx.strategy)
+    # Prefer to use the transform from the distribution.
+    transform = if tval isa LinkedVectorValue
+        DynamicPPL.from_linked_vec_transform(dist)
+    elseif tval isa VectorValue
+        DynamicPPL.from_vec_transform(dist)
+    else
+        DynamicPPL.get_transform(tval)
+    end
+    x, inv_logjac = with_logabsdet_jacobian(transform, DynamicPPL.get_internal_value(tval))
+    vi = accumulate_assume!!(vi, x, tval, -inv_logjac, vn, dist, template)
     return x, vi
 end

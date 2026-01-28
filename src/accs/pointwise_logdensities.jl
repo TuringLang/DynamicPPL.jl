@@ -48,7 +48,7 @@ function combine(
 end
 
 function accumulate_assume!!(
-    acc::PointwiseLogProbAccumulator{whichlogprob}, val, logjac, vn, right, template
+    acc::PointwiseLogProbAccumulator{whichlogprob}, val, tval, logjac, vn, right, template
 ) where {whichlogprob}
     if whichlogprob == :both || whichlogprob == :prior
         acc.logps[vn] = logpdf(right, val)

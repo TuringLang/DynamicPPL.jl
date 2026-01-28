@@ -23,7 +23,7 @@ function combine(acc1::PriorDistributionAccumulator, acc2::PriorDistributionAccu
 end
 
 function accumulate_assume!!(
-    acc::PriorDistributionAccumulator, val, logjac, vn, dist, template
+    acc::PriorDistributionAccumulator, val, tval, logjac, vn, dist, template
 )
     Accessors.@reset acc.priors = DynamicPPL.templated_setindex!!(
         acc.priors, dist, vn, template

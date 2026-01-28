@@ -46,6 +46,8 @@ makedocs(;
             "vnt/implementation.md",
             "vnt/arraylikeblocks.md",
         ],
+        "Model evaluation" => "flow.md",
+        "Storing values" => "values.md",
     ],
     checkdocs=:exports,
     doctest=false,
