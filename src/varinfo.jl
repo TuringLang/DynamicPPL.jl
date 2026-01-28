@@ -170,18 +170,24 @@ Base.keys(vi::VarInfo) = keys(vi.values)
 # Union{Vector{Union{}}, Vector{Float64}} (I suppose this is because it can't tell whether
 # the result will be empty or not...? Not sure).
 function Base.values(vi::VarInfo)
-    return mapreduce(p -> DynamicPPL.get_true_value(p.second), push!, vi.values; init=Any[])
+    return mapreduce(
+        p -> DynamicPPL.get_transform(p.second)(DynamicPPL.get_internal_value(p.second)),
+        push!,
+        vi.values;
+        init=Any[],
+    )
 end
 
-function Base.show(io::IO, ::MIME"text/plain", vi::VarInfo)
-    printstyled(io, "VarInfo\n"; bold=true)
+function Base.show(io::IO, ::MIME"text/plain", vi::VarInfo{link}) where {link}
+    printstyled(io, "VarInfo"; bold=true)
+    print(io, " {linked=$link}\n")
     print(io, " ├─ ")
-    printstyled("values"; bold=true)
+    printstyled(io, "values"; bold=true)
     print(io, "\n │  ")
     DynamicPPL.VarNamedTuples.vnt_pretty_print(io, vi.values, " │  ", 0)
     println(io)
     print(io, " └─ ")
-    printstyled("accs"; bold=true)
+    printstyled(io, "accs"; bold=true)
     print(io, "\n    ")
     DynamicPPL.pretty_print(io, vi.accs, "    ")
     return nothing
@@ -189,7 +195,7 @@ end
 
 function Base.getindex(vi::VarInfo, vn::VarName)
     tv = getindex(vi.values, vn)
-    return DynamicPPL.get_true_value(tv)
+    return DynamicPPL.get_transform(tv)(DynamicPPL.get_internal_value(tv))
 end
 function Base.getindex(vi::VarInfo, vns::AbstractVector{<:VarName})
     return [getindex(vi, vn) for vn in vns]
@@ -208,7 +214,7 @@ This does not change the transformation or linked status of the variable.
 """
 function setindex_internal!!(vi::VarInfo{Linked}, val, vn::VarName) where {Linked}
     old_tv = getindex(vi.values, vn)
-    new_tv = update_value(old_tv, val)
+    new_tv = set_internal_value(old_tv, val)
     new_values = setindex!!(vi.values, new_tv, vn)
     return VarInfo{Linked}(new_values, vi.accs)
 end
@@ -459,11 +465,16 @@ function values_as(vi::VarInfo, ::Type{Vector})
 end
 
 function values_as(vi::VarInfo, ::Type{T}) where {T<:AbstractDict}
-    return mapfoldl(identity, function (cumulant, pair)
-        vn, tv = pair
-        val = DynamicPPL.get_true_value(tv)
-        return setindex!!(cumulant, val, vn)
-    end, vi.values; init=T())
+    return mapfoldl(
+        identity,
+        function (cumulant, pair)
+            vn, tv = pair
+            val = DynamicPPL.get_transform(tv)(DynamicPPL.get_internal_value(tv))
+            return setindex!!(cumulant, val, vn)
+        end,
+        vi.values;
+        init=T(),
+    )
 end
 
 # TODO(mhauru) I really dislike this sort of conversion to Symbols, but it's the current
@@ -475,7 +486,7 @@ function values_as(vi::VarInfo, ::Type{NamedTuple})
         identity,
         function (cumulant, pair)
             vn, tv = pair
-            val = DynamicPPL.get_true_value(tv)
+            val = DynamicPPL.get_transform(tv)(DynamicPPL.get_internal_value(tv))
             return setindex!!(cumulant, val, Symbol(vn))
         end,
         vi.values;

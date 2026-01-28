@@ -236,7 +236,7 @@ function init(
             # Same as above.
             LinkedVectorValue(x.val, from_linked_vec_transform(dist), x.size)
         elseif x isa UntransformedValue
-            UntransformedValue(x)
+            x
         else
             UntransformedValue(x)
         end
@@ -244,6 +244,7 @@ function init(
         error("No value was provided for the variable `$(vn)`.")
     end
 end
+
 function DynamicPPL.get_param_eltype(p::InitFromParamsUnsafe)
     # TODO(penelopeysm): Ugly hack. Currently this is not used anywhere except in Turing's
     # ADTypeCheckContext tests. However, when we stop using DefaultContext and start using

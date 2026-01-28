@@ -121,6 +121,7 @@ Some examples follow.
 
 In `VarInfo`, we need to be able to store either linked or unlinked values (in general, `AbstractTransformedValue`s).
 These are always vectorised values, and the linked and unlinked vectors may have different sizes (this is indeed the case for Dirichlet distributions).
+This means that we have to collectively assign multiple indices in the `VarNamedTuple` to a single vector, which may or may not have the same size as the indices.
 
 ```@example 1
 @model function dirichlet()
@@ -132,33 +133,13 @@ vi = VarInfo(dirichlet_model)
 vi.values
 ```
 
-Thus, in the actual `VarInfo` we do not have a notion of what `x[1]` is.
+This means that in the actual `VarInfo` we do not have a notion of what `x[1]` is:
 
-**Note**: this is in contrast to `ValuesAsInModelAccumulator`, where we do store raw values:
-
-```@example 1
-oavi = DynamicPPL.OnlyAccsVarInfo()
-oavi = DynamicPPL.setaccs!!(oavi, (DynamicPPL.ValuesAsInModelAccumulator(false),))
-_, oavi = DynamicPPL.init!!(dirichlet_model, oavi)
-raw_vals = DynamicPPL.getacc(oavi, Val(:ValuesAsInModel)).values
+```@repl 1
+vi[@varname(x[1])]
 ```
 
-This distinction is important to understand when working with downstream code that uses `VarInfo` and its outputs.
-In particular, when constructing a chain, we use the raw values from `ValuesAsInModelAccumulator`, not the linked/unlinked values from `VarInfo`.
-
-There is also a difference between the keys.
-Because the `VarInfo` stores array-like blocks, the keys correspond to the entire blocks:
-
-```@example 1
-keys(vi.values)
-```
-
-On the other hand, in `ValuesAsInModelAccumulator`, there is no longer any notion that `x[1:3]` was set together, so the keys correspond to the individual indices.
-This is why indices are split up in chains:
-
-```@example 1
-keys(raw_vals)
-```
+See the [documentation on storing values](@ref "Storing values") for more details.
 
 ### Prior distributions
 

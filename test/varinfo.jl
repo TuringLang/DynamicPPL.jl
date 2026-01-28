@@ -13,6 +13,8 @@ function check_metadata_type_equal(
     return check_metadata_type_equal(v1.varinfo, v2.varinfo)
 end
 
+using Random: Xoshiro
+
 @testset "varinfo.jl" begin
     @testset "Base" begin
         # Test Base functions:
@@ -312,6 +314,55 @@ end
             @test !any_transformed(vi)
             @test values(vi) ≈ vals atol = 1e-10
         end
+    end
+
+    @testset "instantiation with link strategy" begin
+        @model function f()
+            x ~ Beta(2, 2)
+            return y ~ LogNormal(0, 1)
+        end
+
+        function test_link_strategy(
+            link_strategy::DynamicPPL.AbstractLinkStrategy,
+            model::DynamicPPL.Model,
+            expected_linked_vns::Set{<:VarName},
+        )
+            # Test that the variables are linked according to the link strategy
+            vi = VarInfo(Xoshiro(468), model, link_strategy)
+            for vn in keys(vi)
+                if vn in expected_linked_vns
+                    @test DynamicPPL.get_transformed_value(vi, vn) isa
+                        DynamicPPL.LinkedVectorValue
+                else
+                    @test DynamicPPL.get_transformed_value(vi, vn) isa
+                        DynamicPPL.VectorValue
+                end
+            end
+            # Test that initialising directly is the same as linking later (if rng is the
+            # same)
+            if link_strategy isa LinkAll
+                vi2 = VarInfo(Xoshiro(468), model)
+                vi2 = DynamicPPL.link!!(vi2, model)
+                @test vi == vi2
+            end
+            if link_strategy isa LinkSome
+                vi2 = VarInfo(Xoshiro(468), model)
+                vi2 = DynamicPPL.link!!(vi2, link_strategy.vns, model)
+                @test vi == vi2
+            end
+        end
+
+        model = f()
+        test_link_strategy(LinkAll(), model, Set([@varname(x), @varname(y)]))
+        test_link_strategy(LinkSome((@varname(x),)), model, Set([@varname(x)]))
+        test_link_strategy(LinkSome((@varname(y),)), model, Set([@varname(y)]))
+        test_link_strategy(
+            LinkSome((@varname(x), @varname(y))), model, Set([@varname(x), @varname(y)])
+        )
+        test_link_strategy(UnlinkAll(), model, Set{VarName}())
+        test_link_strategy(UnlinkSome((@varname(x),)), model, Set{VarName}())
+        test_link_strategy(UnlinkSome((@varname(y),)), model, Set{VarName}())
+        test_link_strategy(UnlinkSome((@varname(x), @varname(y))), model, Set{VarName}())
     end
 
     @testset "logp evaluation on linked varinfo" begin
