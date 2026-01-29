@@ -386,6 +386,9 @@ DynamicPPL provides the following default accumulators.
 LogPriorAccumulator
 LogJacobianAccumulator
 LogLikelihoodAccumulator
+PriorDistributionAccumulator
+VNTAccumulator
+DoNotAccumulate
 ```
 
 ### Common API

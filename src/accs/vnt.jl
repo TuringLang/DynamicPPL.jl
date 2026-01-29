@@ -14,7 +14,8 @@ The function `f` should have the signature:
     f(val, tval, logjac, vn, dist) -> value_to_store
 
 where `val`, `tval`, `logjac`, `vn`, and `dist` have their usual meanings in
-accumulate_assume!! (see its docstring for more details).
+accumulate_assume!! (see its docstring for more details). If a value does not need to
+be accumulated, this can be signalled by returning `DoNotAccumulate()` from `f`.
 """
 struct VNTAccumulator{AccName,F,VNT<:VarNamedTuple} <: AbstractAccumulator
     f::F
@@ -46,11 +47,22 @@ function combine(
     return VNTAccumulator{AccName}(acc2.f, merge(acc1.values, acc2.values))
 end
 
+"""
+    DoNotAccumulate()
+
+Sentinel value indicating that no accumulation should be performed for a given variable.
+"""
+struct DoNotAccumulate end
+
 function accumulate_assume!!(
     acc::VNTAccumulator{AccName}, val, tval, logjac, vn, dist, template
 ) where {AccName}
     new_val = acc.f(val, tval, logjac, vn, dist)
-    new_values = DynamicPPL.templated_setindex!!(acc.values, new_val, vn, template)
-    return VNTAccumulator{AccName}(acc.f, new_values)
+    return if new_val isa DoNotAccumulate
+        acc
+    else
+        new_values = DynamicPPL.templated_setindex!!(acc.values, new_val, vn, template)
+        VNTAccumulator{AccName}(acc.f, new_values)
+    end
 end
 accumulate_observe!!(acc::VNTAccumulator, right, left, vn) = acc
