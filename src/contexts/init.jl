@@ -14,14 +14,13 @@ abstract type AbstractInitStrategy end
 
 Generate a new value for a random variable with the given distribution.
 
-This function must return a tuple `(x, trf)`, where
+This function must return an `AbstractTransformedValue`.
 
-- `x` is the generated value
-- `trf` is a function that transforms the generated value back to the unlinked space. If the
-  value is already in unlinked space, then this should be `DynamicPPL.typed_identity`. You
-  can also use `Base.identity`, but if you use this, you **must** be confident that
-  `zero(eltype(x))` will **never** error. See the docstring of `typed_identity` for more
-  information.
+If `strategy` provides values that are already untransformed (e.g., a Float64 within (0, 1)
+for `dist::Beta`, then you should return an `UntransformedValue`.
+
+Otherwise, often there are cases where this will return either a `VectorValue` or a
+`LinkedVectorValue`, for example, if the strategy is reading from an existing `VarInfo`.
 """
 function init end
 
@@ -56,12 +55,13 @@ used to determine whether the float type needs to be modified).
 
 In case that wasn't enough: in fact, even the above is not always true. Firstly, the
 accumulator argument is only true when evaluating with ThreadSafeVarInfo. See the comments
-in `DynamicPPL.unflatten` for more details. For non-threadsafe evaluation, Julia is capable
-of automatically promoting the types on its own. Secondly, the promotion only matters if you
-are trying to directly assign into a `Vector{Float64}` with a `ForwardDiff.Dual` or similar
-tracer type, for example using `xs[i] = MyDual`. This doesn't actually apply to
-tilde-statements like `xs[i] ~ ...` because those use `Accessors.@set` under the hood, which
-also does the promotion for you. For the gory details, see the following issues:
+in `DynamicPPL.unflatten!!` for more details. For non-threadsafe evaluation, Julia is
+capable of automatically promoting the types on its own. Secondly, the promotion only
+matters if you are trying to directly assign into a `Vector{Float64}` with a
+`ForwardDiff.Dual` or similar tracer type, for example using `xs[i] = MyDual`. This doesn't
+actually apply to tilde-statements like `xs[i] ~ ...` because those use `Accessors.set`
+under the hood, which also does the promotion for you. For the gory details, see the
+following issues:
 
 - https://github.com/TuringLang/DynamicPPL.jl/issues/906 for accumulator types
 - https://github.com/TuringLang/DynamicPPL.jl/issues/823 for type argument promotion
@@ -75,7 +75,7 @@ Obtain new values by sampling from the prior distribution.
 """
 struct InitFromPrior <: AbstractInitStrategy end
 function init(rng::Random.AbstractRNG, ::VarName, dist::Distribution, ::InitFromPrior)
-    return rand(rng, dist), typed_identity
+    return UntransformedValue(rand(rng, dist))
 end
 
 """
@@ -115,7 +115,11 @@ function init(rng::Random.AbstractRNG, ::VarName, dist::Distribution, u::InitFro
     if x isa Array{<:Any,0}
         x = x[]
     end
-    return x, typed_identity
+    # NOTE: We don't return `LinkedVectorValue(y, ...)` here because we don't want the
+    # logjac of this transform to be included when evaluating the model! The fact that
+    # b_inv(y) has a non-trivial logjacobian is just an artefact of how the sampling is done
+    # and has nothing to do with the model.
+    return UntransformedValue(x)
 end
 
 """
@@ -169,21 +173,25 @@ InitFromParams(params) = InitFromParams(params, InitFromPrior())
 
 function init(
     rng::Random.AbstractRNG, vn::VarName, dist::Distribution, p::InitFromParams{P}
-) where {P<:Union{AbstractDict{<:VarName},NamedTuple}}
-    # TODO(penelopeysm): It would be nice to do a check to make sure that all
-    # of the parameters in `p.params` were actually used, and either warn or
-    # error if they aren't. This is actually quite non-trivial though because
-    # the structure of Dicts in particular can have arbitrary nesting.
+) where {P<:Union{AbstractDict{<:VarName},NamedTuple,VarNamedTuple}}
     return if hasvalue(p.params, vn, dist)
         x = getvalue(p.params, vn, dist)
         if x === missing
             p.fallback === nothing &&
                 error("A `missing` value was provided for the variable `$(vn)`.")
             init(rng, vn, dist, p.fallback)
+        elseif x isa VectorValue
+            # In this case, we can't trust the transform stored in x because the _value_
+            # in x may have been changed via unflatten!! without the transform being
+            # updated. Therefore, we always recompute the transform here.
+            VectorValue(x.val, from_vec_transform(dist), x.size)
+        elseif x isa LinkedVectorValue
+            # Same as above.
+            LinkedVectorValue(x.val, from_linked_vec_transform(dist), x.size)
+        elseif x isa UntransformedValue
+            x
         else
-            # TODO(penelopeysm): Since x is user-supplied, maybe we could also
-            # check here that the type / size of x matches the dist?
-            x, typed_identity
+            UntransformedValue(x)
         end
     else
         p.fallback === nothing && error("No value was provided for the variable `$(vn)`.")
@@ -197,6 +205,63 @@ function get_param_eltype(
 end
 
 """
+Like InitFromParams, but it is always assumed that the VNT contains _exactly_ the
+correct set of variables, and that indexing into them will always return _exactly_
+the values for those variables.
+
+The main difference is that InitFromParams will call hasvalue(p.params, vn, dist)
+rather than just hasvalue(p.params, vn), which can be substantially slower.
+
+TODO(penelopeysm): Get rid of MCMCChains and never call the three-value argument again.
+Seriously. It's just nuts that I have to do these workarounds because of a package that
+isn't even DynamicPPL.
+"""
+struct InitFromParamsUnsafe{P<:VarNamedTuple} <: AbstractInitStrategy
+    params::P
+end
+function init(
+    ::Random.AbstractRNG,
+    vn::VarName,
+    dist::Distribution,
+    p::InitFromParamsUnsafe{<:VarNamedTuple},
+)
+    return if haskey(p.params, vn)
+        x = p.params[vn]
+        if x isa VectorValue
+            # In this case, we can't trust the transform stored in x because the _value_
+            # in x may have been changed via unflatten!! without the transform being
+            # updated. Therefore, we always recompute the transform here.
+            VectorValue(x.val, from_vec_transform(dist), x.size)
+        elseif x isa LinkedVectorValue
+            # Same as above.
+            LinkedVectorValue(x.val, from_linked_vec_transform(dist), x.size)
+        elseif x isa UntransformedValue
+            x
+        else
+            UntransformedValue(x)
+        end
+    else
+        error("No value was provided for the variable `$(vn)`.")
+    end
+end
+
+function DynamicPPL.get_param_eltype(p::InitFromParamsUnsafe)
+    # TODO(penelopeysm): Ugly hack. Currently this is not used anywhere except in Turing's
+    # ADTypeCheckContext tests. However, when we stop using DefaultContext and start using
+    # this as its replacement, we will need this function so that we can promote the
+    # accumulators' eltype accordingly (unless we find a better solution than eltypes).
+    # 
+    # Note that pair.second returns internal values.
+    vals = mapfoldl(
+        pair -> tovec(DynamicPPL.get_internal_value(pair.second)),
+        vcat,
+        p.params;
+        init=Union{}[],
+    )
+    return eltype(vals)
+end
+
+"""
     RangeAndLinked
 
 Suppose we have vectorised parameters `params::AbstractVector{<:Real}`. Each random variable
@@ -206,17 +271,20 @@ an unlinked value.
 
 $(TYPEDFIELDS)
 """
-struct RangeAndLinked
+struct RangeAndLinked{T<:Tuple}
     # indices that the variable corresponds to in the vectorised parameter
     range::UnitRange{Int}
     # whether it's linked
     is_linked::Bool
+    # original size of the variable before vectorisation
+    original_size::T
 end
+
+VarNamedTuples.vnt_size(ral::RangeAndLinked) = ral.original_size
 
 """
     VectorWithRanges{Tlink}(
-        iden_varname_ranges::NamedTuple,
-        varname_ranges::Dict{VarName,RangeAndLinked},
+        varname_ranges::VarNamedTuple,
         vect::AbstractVector{<:Real},
     )
 
@@ -228,26 +296,14 @@ this `VectorWithRanges` are linked/not linked, or `nothing` if either the linkin
 not known or is mixed, i.e. some are linked while others are not. Using `nothing` does not
 affect functionality or correctness, but causes more work to be done at runtime, with
 possible impacts on type stability and performance.
-
-In the simplest case, this could be accomplished only with a single dictionary mapping
-VarNames to ranges and link status. However, for performance reasons, we separate out
-VarNames with identity optics into a NamedTuple (`iden_varname_ranges`). All
-non-identity-optic VarNames are stored in the `varname_ranges` Dict.
-
-It would be nice to improve the NamedTuple and Dict approach. See, e.g.
-https://github.com/TuringLang/DynamicPPL.jl/issues/1116.
 """
-struct VectorWithRanges{Tlink,N<:NamedTuple,T<:AbstractVector{<:Real}}
-    # This NamedTuple stores the ranges for identity VarNames
-    iden_varname_ranges::N
-    # This Dict stores the ranges for all other VarNames
-    varname_ranges::Dict{VarName,RangeAndLinked}
+struct VectorWithRanges{Tlink,VNT<:VarNamedTuple,T<:AbstractVector{<:Real}}
+    # Ranges for all VarNames
+    varname_ranges::VNT
     # The full parameter vector which we index into to get variable values
     vect::T
 
-    function VectorWithRanges{Tlink}(
-        iden_varname_ranges::N, varname_ranges::Dict{VarName,RangeAndLinked}, vect::T
-    ) where {Tlink,N,T}
+    function VectorWithRanges{Tlink}(varname_ranges::VNT, vect::T) where {Tlink,VNT,T}
         if !(Tlink isa Union{Bool,Nothing})
             throw(
                 ArgumentError(
@@ -255,17 +311,17 @@ struct VectorWithRanges{Tlink,N<:NamedTuple,T<:AbstractVector{<:Real}}
                 ),
             )
         end
-        return new{Tlink,N,T}(iden_varname_ranges, varname_ranges, vect)
+        return new{Tlink,VNT,T}(varname_ranges, vect)
     end
 end
 
-function _get_range_and_linked(
-    vr::VectorWithRanges, ::VarName{sym,typeof(identity)}
-) where {sym}
-    return vr.iden_varname_ranges[sym]
-end
 function _get_range_and_linked(vr::VectorWithRanges, vn::VarName)
-    return vr.varname_ranges[vn]
+    # The type assertion does nothing if VectorWithRanges has concrete element types, as is
+    # the case for all type stable models. However, if the model is not type stable,
+    # vr.varname_ranges[vn] may infer to have type `Any`. In this case it is helpful to
+    # assert that it is a RangeAndLinked, because even though it remains non-concrete,
+    # it'll allow the compiler to infer the types of `range` and `is_linked`.
+    return vr.varname_ranges[vn]::RangeAndLinked
 end
 function init(
     ::Random.AbstractRNG,
@@ -279,12 +335,19 @@ function init(
     # case we use the stored link status), or `true` / `false`, which
     # indicates that all variables are linked / unlinked.
     linked = isnothing(T) ? range_and_linked.is_linked : T
-    transform = if linked
-        from_linked_vec_transform(dist)
+    return if linked
+        LinkedVectorValue(
+            view(vr.vect, range_and_linked.range),
+            from_linked_vec_transform(dist),
+            range_and_linked.original_size,
+        )
     else
-        from_vec_transform(dist)
+        VectorValue(
+            view(vr.vect, range_and_linked.range),
+            from_vec_transform(dist),
+            range_and_linked.original_size,
+        )
     end
-    return (@view vr.vect[range_and_linked.range]), transform
 end
 function get_param_eltype(strategy::InitFromParams{<:VectorWithRanges})
     return eltype(strategy.params.vect)
@@ -315,69 +378,18 @@ struct InitContext{R<:Random.AbstractRNG,S<:AbstractInitStrategy} <: AbstractCon
 end
 
 function tilde_assume!!(
-    ctx::InitContext, dist::Distribution, vn::VarName, vi::AbstractVarInfo
+    ctx::InitContext, dist::Distribution, vn::VarName, template::Any, vi::AbstractVarInfo
 )
-    in_varinfo = haskey(vi, vn)
-    val, transform = init(ctx.rng, vn, dist, ctx.strategy)
-    x, inv_logjac = with_logabsdet_jacobian(transform, val)
-    # Determine whether to insert a transformed value into the VarInfo.
-    # If the VarInfo alrady had a value for this variable, we will
-    # keep the same linked status as in the original VarInfo. If not, we
-    # check the rest of the VarInfo to see if other variables are linked.
-    # is_transformed(vi) returns true if vi is nonempty and all variables in vi
-    # are linked.
-    insert_transformed_value = in_varinfo ? is_transformed(vi, vn) : is_transformed(vi)
-    val_to_insert, logjac = if insert_transformed_value
-        # Calculate the forward logjac and sum them up.
-        y, fwd_logjac = with_logabsdet_jacobian(link_transform(dist), x)
-        # Note that if we use VectorWithRanges with a full VarInfo, this double-Jacobian
-        # calculation wastes a lot of time going from linked vectorised -> unlinked ->
-        # linked, and `inv_logjac` will also just be the negative of `fwd_logjac`.
-        #
-        # However, `VectorWithRanges` is only really used with `OnlyAccsVarInfo`, in which
-        # case this branch is never hit (since `in_varinfo` will always be false). It does
-        # mean that the combination of InitFromParams{<:VectorWithRanges} with a full,
-        # linked, VarInfo will be very slow. That should never really be used, though. So
-        # (at least for now) we can leave this branch in for full generality with other
-        # combinations of init strategies / VarInfo.
-        #
-        # TODO(penelopeysm): Figure out one day how to refactor this. The crux of the issue
-        # is that the transform used by `VectorWithRanges` is `from_linked_VEC_transform`,
-        # which is NOT the same as `inverse(link_transform)` (because there is an additional
-        # vectorisation step). We need `init` and `tilde_assume!!` to share this information
-        # but it's not clear right now how to do this. In my opinion, there are a couple of
-        # potential ways forward:
-        #
-        # 1. Just remove metadata entirely so that there is never any need to construct
-        # a linked vectorised value again. This would require us to use VAIMAcc as the only
-        # way of getting values. I consider this the best option, but it might take a long
-        # time.
-        #
-        # 2. Clean up the behaviour of bijectors so that we can have a complete separation
-        # between the linking and vectorisation parts of it. That way, `x` can either be
-        # unlinked, unlinked vectorised, linked, or linked vectorised, and regardless of
-        # which it is, we should only need to apply at most one linking and one
-        # vectorisation transform. Doing so would allow us to remove the first call to
-        # `with_logabsdet_jacobian`, and instead compose and/or uncompose the
-        # transformations before calling `with_logabsdet_jacobian` once.
-        y, -inv_logjac + fwd_logjac
-    else
-        x, -inv_logjac
-    end
-    # Add the new value to the VarInfo. `push!!` errors if the value already
-    # exists, hence the need for setindex!!.
-    if in_varinfo
-        vi = setindex!!(vi, val_to_insert, vn)
-    else
-        vi = push!!(vi, vn, val_to_insert, dist)
-    end
-    # Neither of these set the `trans` flag so we have to do it manually if
-    # necessary.
-    if insert_transformed_value
-        vi = set_transformed!!(vi, true, vn)
-    end
+    tval = init(ctx.rng, vn, dist, ctx.strategy)
+    x, init_logjac = with_logabsdet_jacobian(get_transform(tval), get_internal_value(tval))
+    # TODO(penelopeysm): This could be inefficient if `tval` is already linked and
+    # `setindex_with_dist!!` tells it to create a new linked value again. In particular,
+    # this is inefficient if we use `InitFromParams` that provides linked values. The answer
+    # to this is to stop using setindex_with_dist!! and just use the TransformedValue
+    # accumulator.
+    vi, logjac, _ = setindex_with_dist!!(vi, x, dist, vn, template)
     # `accumulate_assume!!` wants untransformed values as the second argument.
-    vi = accumulate_assume!!(vi, x, logjac, vn, dist)
+    vi = accumulate_assume!!(vi, x, tval, init_logjac + logjac, vn, dist, template)
     # We always return the untransformed value here, as that will determine
     # what the lhs of the tilde-statement is set to.
     return x, vi

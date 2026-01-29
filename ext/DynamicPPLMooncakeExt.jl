@@ -10,7 +10,7 @@ Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
     typeof(DynamicPPL._get_range_and_linked),Vararg
 }
 Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
-    typeof(Base.haskey),DynamicPPL.NTVarInfo,DynamicPPL.VarName
+    typeof(Base.haskey),DynamicPPL.VarInfo,DynamicPPL.VarName
 }
 
 end # module

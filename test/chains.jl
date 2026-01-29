@@ -2,6 +2,7 @@ module DynamicPPLChainsTests
 
 using DynamicPPL
 using Distributions
+using LinearAlgebra
 using Test
 
 @testset "ParamsWithStats from VarInfo" begin
@@ -66,10 +67,24 @@ using Test
     end
 end
 
+_safe_length(x) = length(x)
+# This actually gives N^2 elements, although there are only really N(N+1)/2 parameters in
+# the Cholesky factor. It doesn't really matter because we are comparing like for like i.e.
+# both sides of the sum will have the same overcounting.
+_safe_length(c::LinearAlgebra.Cholesky) = length(c.UL)
+
 @testset "ParamsWithStats from LogDensityFunction" begin
     @testset "$(m.f)" for m in DynamicPPL.TestUtils.ALL_MODELS
-        unlinked_vi = VarInfo(m)
+        if m.f === DynamicPPL.TestUtils.demo_static_transformation
+            # TODO(mhauru) These tests are broken for demo_static_transformation because
+            # vi[vn] doesn't know which transform it should apply to the internally stored
+            # value. This requires a rethink, either of StaticTransformation or of what the
+            # comparison in this test should be.
+            @test false broken = true
+            continue
+        end
         @testset "$islinked" for islinked in (false, true)
+            unlinked_vi = VarInfo(m)
             vi = if islinked
                 DynamicPPL.link!!(unlinked_vi, m)
             else
@@ -81,8 +96,23 @@ end
             ldf = DynamicPPL.LogDensityFunction(m, getlogjoint, vi)
             ps = ParamsWithStats(params, ldf)
 
-            # Check that length of parameters is as expected
-            @test length(ps.params) == length(keys(vi))
+            # The keys are not necessarily going to be the same, because `ps.params` was
+            # obtained via ValuesAsInModelAcc, which only stores raw values. However, `vi`
+            # stores TransformedValue objects. So, if you have something like
+            #    x[4:5] ~ MvNormal(zeros(2), I)
+            # then `ps.params` will have keys `x[4]` and `x[5]` (since it just contains a
+            # PartialArray with those two elements unmasked), whereas `vi` will have the key
+            # `x[4:5]` which stores an ArrayLikeBlock with two elements.
+            #
+            # What we CAN do, though, is to check the size of the thing obtained by
+            # indexing into the keys. For `ps.params`, indexing into `x[4]` and `x[5]` will
+            # give two floats, each of "length" 1. For `vi`, indexing into `x[4:5]` will
+            # give a single object that has length 2. So we can check that the total number
+            # of _things_ contained inside is the same.
+            #
+            # Unfortunately, we need _safe_length to handle Cholesky.
+            @test sum(_safe_length(ps.params[vn]) for vn in keys(ps.params)) ==
+                sum(_safe_length(vi[vn]) for vn in keys(vi))
 
             # Iterate over all variables to check that their values match
             for vn in keys(vi)

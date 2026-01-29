@@ -16,28 +16,8 @@ Return string representing a short description of `vi`.
 function short_varinfo_name(vi::DynamicPPL.ThreadSafeVarInfo)
     return "threadsafe($(short_varinfo_name(vi.varinfo)))"
 end
-function short_varinfo_name(vi::DynamicPPL.NTVarInfo)
-    return if DynamicPPL.has_varnamedvector(vi)
-        "TypedVectorVarInfo"
-    else
-        "TypedVarInfo"
-    end
-end
-short_varinfo_name(::DynamicPPL.UntypedVarInfo) = "UntypedVarInfo"
-short_varinfo_name(::DynamicPPL.UntypedVectorVarInfo) = "UntypedVectorVarInfo"
-function short_varinfo_name(::SimpleVarInfo{<:NamedTuple,<:Ref})
-    return "SimpleVarInfo{<:NamedTuple,<:Ref}"
-end
-function short_varinfo_name(::SimpleVarInfo{<:OrderedDict,<:Ref})
-    return "SimpleVarInfo{<:OrderedDict,<:Ref}"
-end
-function short_varinfo_name(::SimpleVarInfo{<:DynamicPPL.VarNamedVector,<:Ref})
-    return "SimpleVarInfo{<:VarNamedVector,<:Ref}"
-end
-short_varinfo_name(::SimpleVarInfo{<:NamedTuple}) = "SimpleVarInfo{<:NamedTuple}"
-short_varinfo_name(::SimpleVarInfo{<:OrderedDict}) = "SimpleVarInfo{<:OrderedDict}"
-function short_varinfo_name(::SimpleVarInfo{<:DynamicPPL.VarNamedVector})
-    return "SimpleVarInfo{<:VarNamedVector}"
+function short_varinfo_name(::DynamicPPL.VarInfo)
+    return "VarInfo"
 end
 
 # convenient functions for testing model.jl
@@ -64,7 +44,10 @@ Construct an MCMCChains.Chains object by sampling from the prior of `model` for
 function make_chain_from_prior(rng::Random.AbstractRNG, model::Model, n_iters::Int)
     vi = VarInfo(model)
     vi = DynamicPPL.setaccs!!(vi, (DynamicPPL.ValuesAsInModelAccumulator(false),))
-    ps = hcat([ParamsWithStats(last(DynamicPPL.init!!(rng, model, vi))) for _ in 1:n_iters])
+    ps = hcat([
+        DynamicPPL.ParamsWithStats(last(DynamicPPL.init!!(rng, model, vi))) for
+        _ in 1:n_iters
+    ])
     return AbstractMCMC.from_samples(MCMCChains.Chains, ps)
 end
 function make_chain_from_prior(model::Model, n_iters::Int)

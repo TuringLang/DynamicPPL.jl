@@ -5,7 +5,7 @@
         # Instantiate a `VarInfo` with the example values.
         vi = VarInfo(model)
         for vn in DynamicPPL.TestUtils.varnames(model)
-            vi = DynamicPPL.setindex!!(vi, get(example_values, vn), vn)
+            vi = DynamicPPL.setindex!!(vi, AbstractPPL.getvalue(example_values, vn), vn)
         end
 
         loglikelihood_true = DynamicPPL.TestUtils.loglikelihood_true(
@@ -103,7 +103,10 @@ end
         model_m_only = m_only()
         chain_m_only = AbstractMCMC.from_samples(
             MCMCChains.Chains,
-            hcat([ParamsWithStats(VarInfo(model_m_only), model_m_only) for _ in 1:50]),
+            hcat([
+                DynamicPPL.ParamsWithStats(VarInfo(model_m_only), model_m_only) for
+                _ in 1:50
+            ]),
         )
 
         # Define a model that needs both `m` and `s`.

@@ -1,6 +1,7 @@
 module TestUtils
 
 using AbstractMCMC
+using AbstractPPL: AbstractPPL
 using DynamicPPL
 using LinearAlgebra
 using Distributions

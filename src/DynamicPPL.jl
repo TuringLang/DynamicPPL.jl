@@ -46,11 +46,16 @@ import Base:
 # VarInfo
 export AbstractVarInfo,
     VarInfo,
-    SimpleVarInfo,
+    VarNamedTuple,
+    map_pairs!!,
+    map_values!!,
+    apply!!,
     AbstractAccumulator,
     LogLikelihoodAccumulator,
     LogPriorAccumulator,
     LogJacobianAccumulator,
+    VNTAccumulator,
+    DoNotAccumulate,
     push!!,
     empty!!,
     subset,
@@ -72,10 +77,6 @@ export AbstractVarInfo,
     accloglikelihood!!,
     is_transformed,
     set_transformed!!,
-    link,
-    link!!,
-    invlink,
-    invlink!!,
     values_as,
     # VarName (reexport from AbstractPPL)
     VarName,
@@ -93,6 +94,7 @@ export AbstractVarInfo,
     setthreadsafe,
     requires_threadsafe,
     extract_priors,
+    PriorDistributionAccumulator,
     values_as_in_model,
     # evaluation
     evaluate!!,
@@ -119,8 +121,27 @@ export AbstractVarInfo,
     InitFromPrior,
     InitFromUniform,
     InitFromParams,
-    init,
     get_param_eltype,
+    init,
+    # Transformed values
+    VectorValue,
+    LinkedVectorValue,
+    UntransformedValue,
+    get_transform,
+    get_internal_value,
+    set_internal_value,
+    # Linking
+    link,
+    link!!,
+    invlink,
+    invlink!!,
+    AbstractLinkStrategy,
+    LinkAll,
+    UnlinkAll,
+    LinkSome,
+    UnlinkSome,
+    generate_linked_value,
+    update_link_status!!,
     # Pseudo distributions
     NamedDist,
     NoDist,
@@ -178,37 +199,46 @@ Abstract supertype for data structures that capture random variables when execut
 probabilistic model and accumulate log densities such as the log likelihood or the
 log joint probability of the model.
 
-See also: [`VarInfo`](@ref), [`SimpleVarInfo`](@ref).
+See also: [`VarInfo`](@ref)
 """
 abstract type AbstractVarInfo <: AbstractModelTrace end
 
 # Necessary forward declarations
 include("utils.jl")
+include("varnamedtuple.jl")
+using .VarNamedTuples:
+    VarNamedTuples,
+    VarNamedTuple,
+    map_pairs!!,
+    map_values!!,
+    apply!!,
+    templated_setindex!!,
+    NoTemplate,
+    SkipTemplate
 include("contexts.jl")
 include("contexts/default.jl")
 include("contexts/init.jl")
-include("contexts/transformation.jl")
 include("contexts/prefix.jl")
 include("contexts/conditionfix.jl")  # Must come after contexts/prefix.jl
 include("model.jl")
 include("varname.jl")
+include("transformed_values.jl")
 include("distribution_wrappers.jl")
 include("submodel.jl")
-include("varnamedvector.jl")
 include("accumulators.jl")
-include("default_accumulators.jl")
+include("accs/default.jl")
+include("accs/vnt.jl")
+include("accs/transformed_values.jl")
+include("accs/priors.jl")
+include("accs/values.jl")
+include("accs/pointwise_logdensities.jl")
 include("abstract_varinfo.jl")
 include("threadsafe.jl")
 include("varinfo.jl")
-include("simple_varinfo.jl")
 include("onlyaccs.jl")
 include("compiler.jl")
-include("pointwise_logdensities.jl")
 include("logdensityfunction.jl")
 include("model_utils.jl")
-include("extract_priors.jl")
-include("values_as_in_model.jl")
-include("experimental.jl")
 include("chains.jl")
 include("bijector.jl")
 
@@ -220,27 +250,6 @@ include("deprecated.jl")
 
 if isdefined(Base.Experimental, :register_error_hint)
     function __init__()
-        # Better error message if users forget to load JET.jl
-        Base.Experimental.register_error_hint(MethodError) do io, exc, argtypes, _
-            requires_jet =
-                exc.f === DynamicPPL.Experimental._determine_varinfo_jet &&
-                length(argtypes) >= 2 &&
-                argtypes[1] <: Model &&
-                argtypes[2] <: AbstractContext
-            requires_jet |=
-                exc.f === DynamicPPL.Experimental.is_suitable_varinfo &&
-                length(argtypes) >= 3 &&
-                argtypes[1] <: Model &&
-                argtypes[2] <: AbstractContext &&
-                argtypes[3] <: AbstractVarInfo
-            if requires_jet
-                print(
-                    io,
-                    "\n$(exc.f) requires JET.jl to be loaded. Please run `using JET` before calling $(exc.f).",
-                )
-            end
-        end
-
         # Same for MarginalLogDensities.jl
         Base.Experimental.register_error_hint(MethodError) do io, exc, argtypes, _
             requires_mld =
