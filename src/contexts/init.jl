@@ -274,7 +274,7 @@ $(TYPEDFIELDS)
 struct RangeAndLinked{T<:Tuple}
     # indices that the variable corresponds to in the vectorised parameter
     range::UnitRange{Int}
-    # whether it's linked
+    # whether the variable is linked or unlinked
     is_linked::Bool
     # original size of the variable before vectorisation
     original_size::T
@@ -283,36 +283,34 @@ end
 VarNamedTuples.vnt_size(ral::RangeAndLinked) = ral.original_size
 
 """
-    VectorWithRanges{Tlink}(
+    VectorWithRanges(
         varname_ranges::VarNamedTuple,
         vect::AbstractVector{<:Real},
+        transform_strategy::AbstractTransformStrategy,
     )
 
 A struct that wraps a vector of parameter values, plus information about how random
 variables map to ranges in that vector.
 
-The type parameter `Tlink` can be either `true` or `false`, to mark that the variables in
-this `VectorWithRanges` are linked/not linked, or `nothing` if either the linking status is
-not known or is mixed, i.e. some are linked while others are not. Using `nothing` does not
-affect functionality or correctness, but causes more work to be done at runtime, with
-possible impacts on type stability and performance.
+The `transform_strategy` argument in fact duplicates information stored inside `varname_ranges`.
+For example, if every `RangeAndLinked` in `varname_ranges` has `is_linked == true`, then
+`transform_strategy` will be `LinkAll()`.
+
+However, storing `transform_strategy` here is a way to communicate at the type level whether all
+variables are linked or unlinked, which provides much better performance in the case where
+all variables are linked or unlinked, due to improved type stability.
 """
-struct VectorWithRanges{Tlink,VNT<:VarNamedTuple,T<:AbstractVector{<:Real}}
+struct VectorWithRanges{
+    VNT<:VarNamedTuple,T<:AbstractVector{<:Real},L<:AbstractTransformStrategy
+}
     # Ranges for all VarNames
     varname_ranges::VNT
     # The full parameter vector which we index into to get variable values
     vect::T
-
-    function VectorWithRanges{Tlink}(varname_ranges::VNT, vect::T) where {Tlink,VNT,T}
-        if !(Tlink isa Union{Bool,Nothing})
-            throw(
-                ArgumentError(
-                    "VectorWithRanges type parameter has to be one of `true`, `false`, or `nothing`.",
-                ),
-            )
-        end
-        return new{Tlink,VNT,T}(varname_ranges, vect)
-    end
+    # Link strategy. The main reason why this is stored is to allow for greater type
+    # stability: in the case where `transform_strategy` is `LinkAll()` or `UnlinkAll()`, we can
+    # statically know that the transforms to be used are always linked or unlinked.
+    transform_strategy::L
 end
 
 function _get_range_and_linked(vr::VectorWithRanges, vn::VarName)
@@ -327,26 +325,22 @@ function init(
     ::Random.AbstractRNG,
     vn::VarName,
     dist::Distribution,
-    p::InitFromParams{<:VectorWithRanges{T}},
-) where {T}
+    p::InitFromParams{<:VectorWithRanges},
+)
     vr = p.params
     range_and_linked = _get_range_and_linked(vr, vn)
-    # T can either be `nothing` (i.e., link status is mixed, in which
-    # case we use the stored link status), or `true` / `false`, which
-    # indicates that all variables are linked / unlinked.
-    linked = isnothing(T) ? range_and_linked.is_linked : T
-    return if linked
-        LinkedVectorValue(
-            view(vr.vect, range_and_linked.range),
-            from_linked_vec_transform(dist),
-            range_and_linked.original_size,
-        )
+    vect = view(vr.vect, range_and_linked.range)
+    sz = range_and_linked.original_size
+    # This block here is why we store transform_strategy in VectorWithRanges, as it
+    # allows for type stability.
+    return if vr.transform_strategy isa LinkAll
+        LinkedVectorValue(vect, from_linked_vec_transform(dist), sz)
+    elseif vr.transform_strategy isa UnlinkAll
+        VectorValue(vect, from_vec_transform(dist), sz)
+    elseif range_and_linked.is_linked
+        LinkedVectorValue(vect, from_linked_vec_transform(dist), sz)
     else
-        VectorValue(
-            view(vr.vect, range_and_linked.range),
-            from_vec_transform(dist),
-            range_and_linked.original_size,
-        )
+        VectorValue(vect, from_vec_transform(dist), sz)
     end
 end
 function get_param_eltype(strategy::InitFromParams{<:VectorWithRanges})
@@ -355,41 +349,54 @@ end
 
 """
     InitContext(
-            [rng::Random.AbstractRNG=Random.default_rng()],
-            [strategy::AbstractInitStrategy=InitFromPrior()],
+        [rng::Random.AbstractRNG=Random.default_rng()],
+        strategy::AbstractInitStrategy,
+        transform_strategy::AbstractTransformStrategy,
     )
 
-A leaf context that indicates that new values for random variables are
-currently being obtained through sampling. Used e.g. when initialising a fresh
-VarInfo. Note that, if `leafcontext(model.context) isa InitContext`, then
-`evaluate!!(model, varinfo)` will override all values in the VarInfo.
+A leaf context that indicates that new values for random variables are currently being
+obtained through sampling. Used e.g. when initialising a fresh VarInfo.
+
+The `strategy` argument specifies how new values are to be obtained (see
+[`AbstractInitStrategy`](@ref) for details), while the `transform_strategy` argument specifies
+whether values should be treated as being in linked or unlinked space. That also means that
+`transform_strategy` determines whether the log-Jacobian of the link transform is included when
+evaluating the model.
+
+!!! note
+    If `leafcontext(model.context) isa InitContext`, then `evaluate!!(model, varinfo)` will
+    override all values in the VarInfo.
 """
-struct InitContext{R<:Random.AbstractRNG,S<:AbstractInitStrategy} <: AbstractContext
+struct InitContext{
+    R<:Random.AbstractRNG,S<:AbstractInitStrategy,L<:AbstractTransformStrategy
+} <: AbstractContext
     rng::R
     strategy::S
+    transform_strategy::L
+
     function InitContext(
-        rng::Random.AbstractRNG, strategy::AbstractInitStrategy=InitFromPrior()
+        rng::Random.AbstractRNG,
+        strategy::AbstractInitStrategy,
+        transform_strategy::AbstractTransformStrategy,
     )
-        return new{typeof(rng),typeof(strategy)}(rng, strategy)
+        return new{typeof(rng),typeof(strategy),typeof(transform_strategy)}(
+            rng, strategy, transform_strategy
+        )
     end
-    function InitContext(strategy::AbstractInitStrategy=InitFromPrior())
-        return InitContext(Random.default_rng(), strategy)
+    function InitContext(
+        strategy::AbstractInitStrategy, transform_strategy::AbstractTransformStrategy
+    )
+        return InitContext(Random.default_rng(), strategy, transform_strategy)
     end
 end
 
 function tilde_assume!!(
     ctx::InitContext, dist::Distribution, vn::VarName, template::Any, vi::AbstractVarInfo
 )
-    tval = init(ctx.rng, vn, dist, ctx.strategy)
-    x, init_logjac = with_logabsdet_jacobian(get_transform(tval), get_internal_value(tval))
-    # TODO(penelopeysm): This could be inefficient if `tval` is already linked and
-    # `setindex_with_dist!!` tells it to create a new linked value again. In particular,
-    # this is inefficient if we use `InitFromParams` that provides linked values. The answer
-    # to this is to stop using setindex_with_dist!! and just use the TransformedValue
-    # accumulator.
-    vi, logjac, _ = setindex_with_dist!!(vi, x, dist, vn, template)
-    # `accumulate_assume!!` wants untransformed values as the second argument.
-    vi = accumulate_assume!!(vi, x, tval, init_logjac + logjac, vn, dist, template)
+    init_tval = init(ctx.rng, vn, dist, ctx.strategy)
+    x, tval, logjac = apply_transform_strategy(ctx.transform_strategy, init_tval, vn, dist)
+    vi = setindex_with_dist!!(vi, tval, dist, vn, template)
+    vi = accumulate_assume!!(vi, x, tval, logjac, vn, dist, template)
     # We always return the untransformed value here, as that will determine
     # what the lhs of the tilde-statement is set to.
     return x, vi

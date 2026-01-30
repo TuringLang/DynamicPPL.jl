@@ -105,6 +105,8 @@ end
 ```
 
 If at the end of the model we were to ask *what the value of `x` was*, we would have no way of knowing this.
+This is what we refer to as a lack of constructiveness: it is not possible to reconstruct the value of `x` from the stored information.
+
 Let's say we are using a `Dict` to store the values.
 We would have something like
 
@@ -158,8 +160,6 @@ In such cases, you had to condition on `x` in full, rather than its components:
 model = f4() | Dict(@varname(x) => [1.0, -1.0])  # This would work.
 model = f4() | Dict(@varname(x[1]) => 1.0, @varname(x[2]) => -1.0)  # This would not.
 ```
-
-(This code block isn't run, because with the current version of DynamicPPL and VNT, both versions will work.)
 
 Finally, we are unable to properly use different indexing schemes.
 For example, `x[1]` and `x[1,1]` mean the same thing if `x` is a `Matrix`, but the dictionary will think that they are different `VarName`s.

@@ -56,7 +56,7 @@ function Bijectors.bijector(
     model::DynamicPPL.Model, init_strategy::AbstractInitStrategy=InitFromPrior()
 )
     vi = OnlyAccsVarInfo((BijectorAccumulator(),))
-    vi = last(DynamicPPL.init!!(model, vi, init_strategy))
+    vi = last(DynamicPPL.init!!(model, vi, init_strategy, UnlinkAll()))
     acc = getacc(vi, Val(:Bijector))
     ranges = foldl(acc.sizes; init=UnitRange{Int}[]) do cumulant, sz
         last_index = length(cumulant) > 0 ? last(cumulant).stop : 0

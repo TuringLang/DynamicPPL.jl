@@ -2,7 +2,7 @@ module VarNamedTupleTests
 
 using Combinatorics: Combinatorics
 using OrderedCollections: OrderedDict
-using Test: @inferred, @test, @test_throws, @testset, @test_broken
+using Test: @inferred, @test, @test_throws, @testset, @test_broken, @test_logs
 using DynamicPPL: DynamicPPL, @varname, VarNamedTuple, subset
 using DynamicPPL.VarNamedTuples:
     PartialArray,

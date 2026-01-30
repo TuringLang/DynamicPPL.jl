@@ -68,7 +68,7 @@ end
     VarInfo(
        [rng::AbstractRNG,]
        model::Model,
-       link::AbstractLinkStrategy=UnlinkAll(),
+       link::AbstractTransformStrategy=UnlinkAll(),
        init::AbstractInitStrategy=InitFromPrior()
     )
 
@@ -81,8 +81,9 @@ be linked or unlinked according to the given linking strategy.
 - `rng::AbstractRNG`: An optional random number generator to use for any stochastic
   initialisation. If not provided, `Random.default_rng()` is used.
 - `model::Model`: The model for which to create the `VarInfo`.
-- `link::AbstractLinkStrategy`: An optional linking strategy (see `AbstractLinkStrategy`).
-  Defaults to `UnlinkAll()`, i.e., all variables are vectorised but not linked.
+- `link::AbstractTransformStrategy`: An optional linking strategy (see
+  [`AbstractTransformStrategy`](@ref)). Defaults to [`UnlinkAll()`](@ref), i.e., all
+  variables are vectorised but not linked.
 - `init::AbstractInitStrategy`: An optional initialisation strategy (see
   [`AbstractInitStrategy`](@ref)). Defaults to `InitFromPrior()`, i.e., all variables are
   initialised by sampling from their prior distributions.
@@ -113,19 +114,19 @@ function DynamicPPL.VarInfo(
     # In this case, no variables are to be linked. We can optimise performance by directly
     # calling init!! and not faffing about with accumulators. (This does lead to significant
     # performance improvements for the typical use case of generating an unlinked VarInfo.)
-    return last(init!!(rng, model, VarInfo(), initstrat))
+    return last(init!!(rng, model, VarInfo(), initstrat, UnlinkAll()))
 end
 function DynamicPPL.VarInfo(
     rng::Random.AbstractRNG,
     model::Model,
-    linkstrat::AbstractLinkStrategy,
+    linkstrat::AbstractTransformStrategy,
     initstrat::AbstractInitStrategy=InitFromPrior(),
 )
-    linked_value_acc = VNTAccumulator{LINK_ACCNAME}(Link!(linkstrat))
-    vi = OnlyAccsVarInfo((linked_value_acc, default_accumulators()...))
-    vi = last(init!!(rng, model, vi, initstrat))
-    # Extract the linked values and the change in logjac.
-    link_acc = getacc(vi, Val(LINK_ACCNAME))
+    vi = OnlyAccsVarInfo((VectorValueAccumulator(), default_accumulators()...))
+    vi = last(init!!(rng, model, vi, initstrat, linkstrat))
+    # Now we just need to shuffle the VectorValueAccumulator values into the VarInfo.
+    # Extract the vectorised values values.
+    vec_val_acc = getacc(vi, Val(VECTORVAL_ACCNAME))
     new_vi_is_linked = if linkstrat isa LinkAll
         true
     else
@@ -134,15 +135,13 @@ function DynamicPPL.VarInfo(
         # here. It won't be type-stable, but that's fine, right now it isn't either.
         nothing
     end
-    vi = VarInfo{new_vi_is_linked}(
-        link_acc.values, DynamicPPL.deleteacc!!(vi.accs, Val(LINK_ACCNAME))
+    return VarInfo{new_vi_is_linked}(
+        vec_val_acc.values, DynamicPPL.deleteacc!!(vi.accs, Val(VECTORVAL_ACCNAME))
     )
-    vi = acclogjac!!(vi, link_acc.f.logjac)
-    return vi
 end
 function DynamicPPL.VarInfo(
     model::Model,
-    linkstrat::AbstractLinkStrategy,
+    linkstrat::AbstractTransformStrategy,
     initstrat::AbstractInitStrategy=InitFromPrior(),
 )
     return DynamicPPL.VarInfo(Random.default_rng(), model, linkstrat, initstrat)
@@ -229,52 +228,68 @@ function setindex_internal!!(vi::VarInfo{Linked}, val, vn::VarName) where {Linke
     return VarInfo{Linked}(new_values, vi.accs)
 end
 
-# TODO(mhauru) It shouldn't really be VarInfo's business to know about `dist`. However,
-# we need `dist` to determine the linking transformation (or even just the vectorisation
-# transformation in the case of ProductNamedTupleDistribions), and if we leave the work
-# of doing the transformation to the caller (tilde_assume!!), it'll be done even when e.g.
-# using OnlyAccsVarInfo. Hence having this function. It should eventually hopefully be
-# removed once VAIMAcc is the only way to get values out of an evaluation.
 """
-    setindex_with_dist!!(vi::VarInfo, val, dist::Distribution, vn::VarName)
+    setindex_with_dist!!(
+        vi::VarInfo,
+        tval::Union{VectorValue,LinkedVectorValue},
+        dist::Distribution,
+        vn::VarName,
+        template::Any,
+    )
 
-Set the value of `vn` in `vi` to `val`, applying a transformation based on `dist`.
-
-`val` is taken to be the actual value of the variable, and is transformed into the internal
-(vectorised) representation using a transformation based on `dist`. If the variable is
-currently linked in `vi`, or doesn't exist in `vi` but all other variables in `vi` are
-linked, the linking transformation is used; otherwise, the standard vector transformation is
-used.
-
-Returns three things:
- - the modified `vi`,
- - the log absolute determinant of the Jacobian of the transformation applied,
- - the `AbstractTransformedValue` used to store the value.
+Set the value of `vn` in `vi` to `tval`. Note that this will cause the linked status of `vi`
+to update according to what `tval` is. That means that whether or not a variable is
+considered to be 'linked' is determined by `tval` rather than the previous status of `vi`.
 """
 function setindex_with_dist!!(
-    vi::VarInfo{Linked}, val, dist::Distribution, vn::VarName, template
+    vi::VarInfo{Linked},
+    tval::Union{VectorValue,LinkedVectorValue},
+    ::Distribution,
+    vn::VarName,
+    template::Any,
 ) where {Linked}
-    link = if Linked === nothing
+    NewLinked = if tval isa LinkedVectorValue && (Linked || isempty(vi))
+        true
+    elseif tval isa VectorValue && (!Linked || isempty(vi))
+        false
+    else
+        nothing
+    end
+    return VarInfo{NewLinked}(templated_setindex!!(vi.values, tval, vn, template), vi.accs)
+end
+
+"""
+    setindex_with_dist!!(
+        vi::VarInfo,
+        tval::UntransformedValue,
+        dist::Distribution,
+        vn::VarName,
+        template::Any
+    )
+
+Set the value of `vn` in `vi` to `tval`. In the case where `tval` does not already specify
+a transform, the linked status of `vi` is preserved.
+"""
+function setindex_with_dist!!(
+    vi::VarInfo{Linked}, tval::UntransformedValue, dist::Distribution, vn::VarName, template
+) where {Linked}
+    raw_value = DynamicPPL.get_internal_value(tval)
+    sz = hasmethod(size, (typeof(raw_value),)) ? size(raw_value) : ()
+    insert_linked = if Linked === nothing
         haskey(vi, vn) ? is_transformed(vi, vn) : is_transformed(vi)
     else
         Linked
     end
-    transform = if link
-        to_linked_vec_transform(dist)
+    tval = if insert_linked
+        LinkedVectorValue(
+            to_linked_vec_transform(dist)(raw_value),
+            from_linked_vec_transform(dist),
+            sz,
+        )
     else
-        to_vec_transform(dist)
+        VectorValue(to_vec_transform(dist)(raw_value), from_vec_transform(dist), sz)
     end
-    transformed_val, logjac = with_logabsdet_jacobian(transform, val)
-    # All values for which `size` is not defined are assumed to be scalars.
-    val_size = hasmethod(size, Tuple{typeof(val)}) ? size(val) : ()
-    tv = if link
-        LinkedVectorValue(transformed_val, inverse(transform), val_size)
-    else
-        VectorValue(transformed_val, inverse(transform), val_size)
-    end
-    new_linked = Linked == link ? Linked : nothing
-    vi = VarInfo{new_linked}(templated_setindex!!(vi.values, tv, vn, template), vi.accs)
-    return vi, logjac, tv
+    return VarInfo{Linked}(templated_setindex!!(vi.values, tval, vn, template), vi.accs)
 end
 
 # TODO(mhauru) The below is somewhat unsafe or incomplete: For instance, from_vec_transform
@@ -383,23 +398,37 @@ function from_linked_internal_transform(vi::VarInfo, vn::VarName)
     return DynamicPPL.get_transform(getindex(vi.values, vn))
 end
 
+function internal_values_as_vector(vi::VarInfo)
+    return mapfoldl(
+        pair -> tovec(DynamicPPL.get_internal_value(pair.second)),
+        vcat,
+        vi.values;
+        init=Union{}[],
+    )
+end
+
 function _update_link_status!!(
-    orig_vi::VarInfo, linker::AbstractLinkStrategy, model::Model, ::Val{link}
+    orig_vi::VarInfo,
+    transform_strategy::AbstractTransformStrategy,
+    model::Model,
+    ::Val{link},
 ) where {link}
-    linked_value_acc = VNTAccumulator{LINK_ACCNAME}(Link!(linker))
-    new_vi = OnlyAccsVarInfo((linked_value_acc,))
-    new_vi = last(init!!(model, new_vi, InitFromParamsUnsafe(orig_vi.values)))
-    link_acc = getacc(new_vi, Val(LINK_ACCNAME))
-    new_vi = VarInfo{link}(link_acc.values, orig_vi.accs)
-    if hasacc(new_vi, Val(:LogJacobian))
-        new_vi = acclogjac!!(new_vi, link_acc.f.logjac)
+    # We'll just recalculate logjac from the start, rather than trying to adjust the old
+    # one.
+    new_vi = OnlyAccsVarInfo((VectorValueAccumulator(), LogJacobianAccumulator()))
+    new_vi = last(
+        init!!(model, new_vi, InitFromParamsUnsafe(orig_vi.values), transform_strategy)
+    )
+    new_vector_vals = getacc(new_vi, Val(VECTORVAL_ACCNAME))
+    if hasacc(orig_vi, Val(:LogJacobian))
+        orig_vi = setlogjac!!(orig_vi, getlogjac(new_vi))
     end
-    return new_vi
+    return VarInfo{link}(new_vector_vals.values, orig_vi.accs)
 end
 
 """
     DynamicPPL.update_link_status!!(
-        orig_vi::VarInfo, linker::AbstractLinkStrategy, model::Model,
+        orig_vi::VarInfo, linker::AbstractTransformStrategy, model::Model,
     )::VarInfo
 
 Create a new VarInfo based on `orig_vi`, but with the link statuses of variables updated
@@ -411,17 +440,17 @@ end
 function update_link_status!!(vi::VarInfo, ::UnlinkAll, model::Model)
     return _update_link_status!!(vi, UnlinkAll(), model, Val(false))
 end
-function update_link_status!!(vi::VarInfo, l::AbstractLinkStrategy, model::Model)
+function update_link_status!!(vi::VarInfo, l::AbstractTransformStrategy, model::Model)
     # In other cases, we can't (easily) infer anything about the overall linked status of
     # the VarInfo.
     return _update_link_status!!(vi, l, model, Val(nothing))
 end
 
 function link!!(::DynamicTransformation, vi::VarInfo, vns, model::Model)
-    return update_link_status!!(vi, LinkSome(Set(vns)), model)
+    return update_link_status!!(vi, LinkSome(Set(vns), get_transform_strategy(vi)), model)
 end
 function invlink!!(::DynamicTransformation, vi::VarInfo, vns, model::Model)
-    return update_link_status!!(vi, UnlinkSome(Set(vns)), model)
+    return update_link_status!!(vi, UnlinkSome(Set(vns), get_transform_strategy(vi)), model)
 end
 function link!!(::DynamicTransformation, vi::VarInfo, model::Model)
     return update_link_status!!(vi, LinkAll(), model)
@@ -463,13 +492,42 @@ function invlink!!(t::StaticTransformation{<:Bijectors.Transform}, vi::VarInfo, 
     return set_transformed!!(vi, NoTransformation())
 end
 
-function internal_values_as_vector(vi::VarInfo)
-    return mapfoldl(
-        pair -> tovec(DynamicPPL.get_internal_value(pair.second)),
-        vcat,
-        vi.values;
-        init=Union{}[],
-    )
+"""
+    get_transform_strategy(vi::VarInfo)
+
+In `tilde_assume!!(::InitContext, ...)`, we use a transform strategy to determine whether
+variables should be considered to be in linked space or unlinked space. This allows us to
+determine whether `logjac` should be accumulated or not.
+
+However, there are still a number of places in DynamicPPL where we want to make this
+decision as to whether a variable is linked or unlinked based on the current status of the
+variable inside a `VarInfo`.
+
+This function acts as the bridge between the two: it extracts an appropriate
+`AbstractTransformStrategy` from the current status of variables in a `VarInfo`.
+"""
+get_transform_strategy(::VarInfo{true}) = LinkAll()
+get_transform_strategy(::VarInfo{false}) = UnlinkAll()
+function get_transform_strategy(vi::VarInfo{nothing})
+    all_vns = keys(vi)
+    linked_vns = Set{VarName}()
+    unlinked_vns = Set{VarName}()
+    for vn in all_vns
+        if is_transformed(vi, vn)
+            push!(linked_vns, vn)
+        else
+            push!(unlinked_vns, vn)
+        end
+    end
+    return if isempty(linked_vns)
+        UnlinkAll()
+    elseif isempty(unlinked_vns)
+        LinkAll()
+    else
+        # Link exactly those that are linked, unlink exactly those that are unlinked,
+        # and for everything that is completely new, link it.
+        LinkSome(linked_vns, UnlinkSome(unlinked_vns, LinkAll()))
+    end
 end
 
 """

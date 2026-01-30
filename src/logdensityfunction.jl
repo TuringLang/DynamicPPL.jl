@@ -143,13 +143,11 @@ with such models.** This is a general limitation of vectorised parameters: the o
 `unflatten!!` + `evaluate!!` approach also fails with such models.
 """
 struct LogDensityFunction{
-    # true if all variables are linked; false if all variables are unlinked; nothing if
-    # mixed
-    Tlink,
     M<:Model,
     AD<:Union{ADTypes.AbstractADType,Nothing},
     F,
     VNT<:VarNamedTuple,
+    L<:AbstractTransformStrategy,
     ADP<:Union{Nothing,DI.GradientPrep},
     # type of the vector passed to logdensity functions
     X<:AbstractVector,
@@ -159,6 +157,7 @@ struct LogDensityFunction{
     adtype::AD
     _getlogdensity::F
     _varname_ranges::VNT
+    _transform_strategy::L
     _adprep::ADP
     _dim::Int
     _accs::AC
@@ -176,20 +175,29 @@ struct LogDensityFunction{
         );
         adtype::Union{ADTypes.AbstractADType,Nothing}=nothing,
     )
-        # Figure out which variable corresponds to which index, and
-        # which variables are linked.
         all_ranges = get_ranges_and_linked(varinfo)
         # Figure out if all variables are linked, unlinked, or mixed
-        link_statuses = Bool[]
+        linked_vns = Set{VarName}()
+        unlinked_vns = Set{VarName}()
         for vn in keys(all_ranges)
-            push!(link_statuses, all_ranges[vn].is_linked)
+            if all_ranges[vn].is_linked
+                push!(linked_vns, vn)
+            else
+                push!(unlinked_vns, vn)
+            end
         end
-        Tlink = if all(link_statuses)
-            true
-        elseif all(!s for s in link_statuses)
-            false
+        transform_strategy = if isempty(unlinked_vns)
+            LinkAll()
+        elseif isempty(linked_vns)
+            UnlinkAll()
         else
-            nothing
+            # We could have a marginal performance optimisation here by checking whether
+            # linked_vns or unlinked_vns is smaller, and then using LinkSome or UnlinkSome
+            # accordingly, so that there are fewer `subsumes` checks. However, in practice,
+            # the mixed linking case performance is going to be a lot worse than in the
+            # fully linked or fully unlinked cases anyway, so this would be a bit of a
+            # premature optimisation.
+            LinkSome(linked_vns, UnlinkAll())
         end
         x = [val for val in varinfo[:]]
         dim = length(x)
@@ -201,35 +209,29 @@ struct LogDensityFunction{
         else
             # Make backend-specific tweaks to the adtype
             adtype = DynamicPPL.tweak_adtype(adtype, model, varinfo)
-            args = (model, getlogdensity, all_ranges, accs)
+            args = (model, getlogdensity, all_ranges, transform_strategy, accs)
             if _use_closure(adtype)
-                DI.prepare_gradient(LogDensityAt{Tlink}(args...), adtype, x)
+                DI.prepare_gradient(LogDensityAt(args...), adtype, x)
             else
-                DI.prepare_gradient(
-                    logdensity_at,
-                    adtype,
-                    x,
-                    DI.Constant(Val{Tlink}()),
-                    map(DI.Constant, args)...,
-                )
+                DI.prepare_gradient(logdensity_at, adtype, x, map(DI.Constant, args)...)
             end
         end
         return new{
-            Tlink,
             typeof(model),
             typeof(adtype),
             typeof(getlogdensity),
             typeof(all_ranges),
+            typeof(transform_strategy),
             typeof(prep),
             typeof(x),
             typeof(accs),
         }(
-            model, adtype, getlogdensity, all_ranges, prep, dim, accs
+            model, adtype, getlogdensity, all_ranges, transform_strategy, prep, dim, accs
         )
     end
 end
 
-function _get_input_vector_type(::LogDensityFunction{T,M,A,G,I,P,X}) where {T,M,A,G,I,P,X}
+function _get_input_vector_type(::LogDensityFunction{M,A,G,R,L,P,X}) where {M,A,G,R,L,P,X}
     return X
 end
 
@@ -256,76 +258,96 @@ ldf_accs(::typeof(getloglikelihood)) = AccumulatorTuple((LogLikelihoodAccumulato
 """
     logdensity_at(
         params::AbstractVector{<:Real},
-        ::Val{Tlink},
         model::Model,
         getlogdensity::Any,
         varname_ranges::VarNamedTuple,
-    ) where {Tlink}
+        transform_strategy::AbstractTransformStrategy,
+        accs::AccumulatorTuple,
+    )
 
-Calculate the log density at the given `params`, using the provided
-information extracted from a `LogDensityFunction`.
+Calculate the log density at the given `params`, using the provided information extracted
+from a `LogDensityFunction`.
 """
 function logdensity_at(
     params::AbstractVector{<:Real},
-    ::Val{Tlink},
     model::Model,
     getlogdensity::Any,
     varname_ranges::VarNamedTuple,
+    transform_strategy::AbstractTransformStrategy,
     accs::AccumulatorTuple,
-) where {Tlink}
-    strategy = InitFromParams(VectorWithRanges{Tlink}(varname_ranges, params), nothing)
-    _, vi = DynamicPPL.init!!(model, OnlyAccsVarInfo(accs), strategy)
+)
+    init_strategy = InitFromParams(
+        VectorWithRanges(varname_ranges, params, transform_strategy), nothing
+    )
+    _, vi = DynamicPPL.init!!(
+        model, OnlyAccsVarInfo(accs), init_strategy, transform_strategy
+    )
     return getlogdensity(vi)
 end
 
 """
-    LogDensityAt{Tlink}(
+    LogDensityAt(
         model::Model,
         getlogdensity::Any,
         varname_ranges::VarNamedTuple,
+        transform_strategy::AbstractTransformStrategy,
         accs::AccumulatorTuple,
-    ) where {Tlink}
+    )
 
 A callable struct that behaves in the same way as `logdensity_at`, but stores the model and
 other information internally. Having two separate functions/structs allows for better
 performance with AD backends.
 """
-struct LogDensityAt{Tlink,M<:Model,F,V<:VarNamedTuple,A<:AccumulatorTuple}
+struct LogDensityAt{
+    M<:Model,F,V<:VarNamedTuple,L<:AbstractTransformStrategy,A<:AccumulatorTuple
+}
     model::M
     getlogdensity::F
     varname_ranges::V
+    transform_strategy::L
     accs::A
 
-    function LogDensityAt{Tlink}(
-        model::M, getlogdensity::F, varname_ranges::V, accs::A
-    ) where {Tlink,M,F,V,A}
-        return new{Tlink,M,F,V,A}(model, getlogdensity, varname_ranges, accs)
+    function LogDensityAt(
+        model::M, getlogdensity::F, varname_ranges::V, transform_strategy::L, accs::A
+    ) where {M,F,V,L,A}
+        return new{M,F,V,L,A}(
+            model, getlogdensity, varname_ranges, transform_strategy, accs
+        )
     end
 end
-function (f::LogDensityAt{Tlink})(params::AbstractVector{<:Real}) where {Tlink}
+function (f::LogDensityAt)(params::AbstractVector{<:Real})
     return logdensity_at(
-        params, Val{Tlink}(), f.model, f.getlogdensity, f.varname_ranges, f.accs
+        params, f.model, f.getlogdensity, f.varname_ranges, f.transform_strategy, f.accs
     )
 end
 
 function LogDensityProblems.logdensity(
-    ldf::LogDensityFunction{Tlink}, params::AbstractVector{<:Real}
-) where {Tlink}
+    ldf::LogDensityFunction, params::AbstractVector{<:Real}
+)
     return logdensity_at(
-        params, Val{Tlink}(), ldf.model, ldf._getlogdensity, ldf._varname_ranges, ldf._accs
+        params,
+        ldf.model,
+        ldf._getlogdensity,
+        ldf._varname_ranges,
+        ldf._transform_strategy,
+        ldf._accs,
     )
 end
 
 function LogDensityProblems.logdensity_and_gradient(
-    ldf::LogDensityFunction{Tlink}, params::AbstractVector{<:Real}
-) where {Tlink}
+    ldf::LogDensityFunction, params::AbstractVector{<:Real}
+)
     # `params` has to be converted to the same vector type that was used for AD preparation,
     # otherwise the preparation will not be valid.
     params = convert(_get_input_vector_type(ldf), params)
     return if _use_closure(ldf.adtype)
         DI.value_and_gradient(
-            LogDensityAt{Tlink}(
-                ldf.model, ldf._getlogdensity, ldf._varname_ranges, ldf._accs
+            LogDensityAt(
+                ldf.model,
+                ldf._getlogdensity,
+                ldf._varname_ranges,
+                ldf._transform_strategy,
+                ldf._accs,
             ),
             ldf._adprep,
             ldf.adtype,
@@ -337,23 +359,21 @@ function LogDensityProblems.logdensity_and_gradient(
             ldf._adprep,
             ldf.adtype,
             params,
-            DI.Constant(Val{Tlink}()),
             DI.Constant(ldf.model),
             DI.Constant(ldf._getlogdensity),
             DI.Constant(ldf._varname_ranges),
+            DI.Constant(ldf._transform_strategy),
             DI.Constant(ldf._accs),
         )
     end
 end
 
-function LogDensityProblems.capabilities(
-    ::Type{<:LogDensityFunction{T,M,Nothing}}
-) where {T,M}
+function LogDensityProblems.capabilities(::Type{<:LogDensityFunction{M,Nothing}}) where {M}
     return LogDensityProblems.LogDensityOrder{0}()
 end
 function LogDensityProblems.capabilities(
-    ::Type{<:LogDensityFunction{T,M,<:ADTypes.AbstractADType}}
-) where {T,M}
+    ::Type{<:LogDensityFunction{M,<:ADTypes.AbstractADType}}
+) where {M}
     return LogDensityProblems.LogDensityOrder{1}()
 end
 function LogDensityProblems.dimension(ldf::LogDensityFunction)

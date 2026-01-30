@@ -59,7 +59,9 @@ nothing # hide
 we can then make a proposal for `x` as follows:
 
 ```@example 1
-new_x, new_vi = DynamicPPL.init!!(model, VarInfo(), InitRandomWalk(x_prev, 0.5))
+new_x, new_vi = DynamicPPL.init!!(
+    model, VarInfo(), InitRandomWalk(x_prev, 0.5), UnlinkAll()
+)
 nothing # hide
 ```
 
@@ -84,13 +86,9 @@ For example, [`DynamicPPL.InitFromParams`](@ref) reads from a set of given param
 
 ## The returned `AbstractTransformedValue`
 
-!!! warning
-    
-    The correctness of this section is contingent on https://github.com/TuringLang/DynamicPPL.jl/pull/1231 being merged.
-
 As mentioned above, the `init` function must return an `AbstractTransformedValue`.
 The subtype of `AbstractTransformedValue` used does not affect the result of the model evaluation, but it may have performance implications.
-**In particular, the returned subtype does not determine whether the log-Jacobian term is accumulated or not: that is determined by a separate _link strategy_.**
+**In particular, the returned subtype does not determine whether the log-Jacobian term is accumulated or not: that is determined by a separate _transform strategy_.**
 
 What this means is that initialisation strategies should always choose the laziest possible subtype of `AbstractTransformedValue`.
 

@@ -110,7 +110,7 @@ These have all been replaced by three functions
 
   - `setindex!!` is the one to use for simply setting a variable in `VarInfo` to a known value. It works regardless of whether the variable already exists.
   - `setindex_internal!!` is the one to use for setting the internal, vectorised representation of a variable. See the docstring for details.
-  - `setindex_with_dist!!` is to be used when you want to set a value, but choose the internal representation based on which distribution this value is a sample for.
+  - `setindex_with_dist!!` is to be used when setting a `TransformedValue` into a VarInfo's values. You should really try not to use this unless you absolutely must! It is quite low-level and we much prefer that you use the accumulator API instead.
 
 The order of the arguments for some of these functions has also changed, and now more closely matches the usual convention for `setindex!!`.
 
