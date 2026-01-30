@@ -1,5 +1,11 @@
 const PRIOR_ACCNAME = :PriorDistributionAccumulator
 _get_dist(val, tv, logjac, vn, dist) = dist
+
+"""
+    PriorDistributionAccumulator()
+
+An accumulator that stores the prior distributions of every variable seen in a model.
+"""
 PriorDistributionAccumulator() = VNTAccumulator{PRIOR_ACCNAME}(_get_dist)
 
 """
