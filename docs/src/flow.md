@@ -118,4 +118,4 @@ vi = DynamicPPL.accumulate_assume!!(vi, x, tval, -inv_logjac, vn, dist, template
 
 This step is where most of the interesting action happens.
 
-[...]
+Accumulators are described in much more detail on the [Accumulators](./accumulators.md) page; please read that for more information!

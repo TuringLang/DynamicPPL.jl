@@ -46,6 +46,7 @@ makedocs(;
             "vnt/implementation.md",
             "vnt/arraylikeblocks.md",
         ],
+        "Accumulators" => "accumulators.md",
         "Model evaluation" => "flow.md",
         "Storing values" => "values.md",
     ],
