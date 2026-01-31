@@ -40,8 +40,9 @@ accepts whitespace-separated arguments, which must either be
 
 - a single symbol (e.g. `@template x`), in which case the template is the value of `x`
   (and `x` must already be defined in the current scope); or
-- an assignment of the form `y = x`, in which case the template for `y` is the value of
-  `x`. In this case `y` does not need to be defined in the current scope, but `x` must be.
+- an assignment of the form `y = expr`, in which case the template for `y` is the value of
+  `expr`. In this case `y` does not need to be defined in the current scope, but any symbols
+  referenced in `expr` must be.
 
 For example:
 
@@ -59,6 +60,12 @@ VarNamedTuple
 └─ y => PartialArray size=(3, 3) data::Matrix{Float64}
         └─ (1, 1) => 2.0
 ```
+
+!!! note
+    You can use any expression in `@template y=expr`, even a function call that is
+    completely contained within the macro (e.g. `@template y=zeros(3, 3)`). However note
+    that the expression will be evaluated each time a sub-value of `y` is set in the VNT, so
+    this may have performance implications.
 
 If no template is provided, the VNT will use a `GrowableArray`. This can produce correct
 results in simple cases, but is not recommended for general use. Please see the
