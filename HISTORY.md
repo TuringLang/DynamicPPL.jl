@@ -52,6 +52,23 @@ In many cases it would in fact be better to not do so: in the above example, `x`
 
 You can still use arrays that change size as long as they are not used on the left-hand side of a tilde.
 
+### `rand([rng,] model)` always returns a `VarNamedTuple`
+
+Previously, calling `rand(rng, T, model)` would return a type `T` of values.
+In v0.40, the type argument has been removed and this function always returns a `VarNamedTuple` of values.
+
+If you need a different output type, you can convert the `VarNamedTuple` to your desired type, using either `NamedTuple(vnt)` or `Dict{K,V}(pairs(vnt))`.
+
+### `values_as(varinfo, type)` is removed
+
+The function `values_as(varinfo, type)` has been removed.
+
+The specific case of `values_as(varinfo, Vector)` has been replaced by `internal_values_as_vector(varinfo)`.
+This is more explicit in saying that the values returned are the internal, vectorised representation of the variables in `varinfo`.
+Previously, `values_as` would return raw (untransformed) values for other types, but internal values for `Vector`, which was inconsistent.
+
+You can still use `varinfo[:]` as shorthand for `internal_values_as_vector(varinfo)`.
+
 ### Function signature changes
 
 `DynamicPPL.init` must now return an `AbstractTransformedValue` instead of a tuple of `(transformed value, transform)`.

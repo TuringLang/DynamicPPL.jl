@@ -128,8 +128,7 @@ function resetaccs!!(vi::ThreadSafeVarInfo)
     return vi
 end
 
-values_as(vi::ThreadSafeVarInfo) = values_as(vi.varinfo)
-values_as(vi::ThreadSafeVarInfo, ::Type{T}) where {T} = values_as(vi.varinfo, T)
+internal_values_as_vector(vi::ThreadSafeVarInfo) = internal_values_as_vector(vi.varinfo)
 
 function set_transformed!!(vi::ThreadSafeVarInfo, val::Bool, vn::VarName)
     return Accessors.@set vi.varinfo = set_transformed!!(vi.varinfo, val, vn)

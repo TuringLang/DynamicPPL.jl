@@ -372,6 +372,16 @@ DynamicPPL.VarNamedTuples.NoTemplate
 DynamicPPL.VarNamedTuples.SkipTemplate
 ```
 
+VarNamedTuple provides a Dict-like interface, so you can iterate over `keys(vnt)`, `values(vnt)`, and `pairs(vnt)`.
+You can also use `getindex(vnt, key)`, but `setindex!` is not allowed: all changes to a `VarNamedTuple` must be done via `setindex!!` or `templated_setindex!!`.
+Please see the VarNamedTuple documentation for more details.
+
+You can convert a `VarNamedTuple` to a NamedTuple in the case where all keys are VarNames with identity optics.
+
+```@docs
+NamedTuple(::VarNamedTuple)
+```
+
 ### Accumulators
 
 The subtypes of [`AbstractVarInfo`](@ref) store the cumulative log prior and log likelihood, and sometimes other variables that change during executing, in what are called accumulators.
@@ -424,10 +434,6 @@ DynamicPPL.getindex_internal
 DynamicPPL.setindex_internal!!
 ```
 
-```@docs
-values_as
-```
-
 #### Transformations
 
 ```@docs
@@ -465,6 +471,7 @@ DynamicPPL.maybe_invlink_before_eval!!
 Base.merge(::AbstractVarInfo)
 DynamicPPL.subset
 DynamicPPL.unflatten!!
+DynamicPPL.internal_values_as_vector
 ```
 
 ### Evaluation Contexts

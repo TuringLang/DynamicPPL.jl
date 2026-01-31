@@ -384,33 +384,6 @@ using Random: Xoshiro
         @test getlogprior(vi) ≈ Bijectors.logpdf_with_trans(dist, x, false)
     end
 
-    @testset "values_as" begin
-        @testset "$(nameof(model))" for model in DynamicPPL.TestUtils.ALL_MODELS
-            example_values = DynamicPPL.TestUtils.rand_prior_true(model)
-            vns = DynamicPPL.TestUtils.varnames(model)
-
-            # Set up the different instances of `AbstractVarInfo` with the desired values.
-            varinfos = DynamicPPL.TestUtils.setup_varinfos(
-                model, example_values, vns; include_threadsafe=true
-            )
-            @testset "$(short_varinfo_name(vi))" for vi in varinfos
-                # Just making sure.
-                DynamicPPL.TestUtils.test_values(vi, example_values, vns)
-                vals = values_as(vi, OrderedDict)
-                # All varnames in `vns` should be subsumed by one of `keys(vals)`.
-                @test all(vns) do vn
-                    any(DynamicPPL.subsumes(vn_left, vn) for vn_left in keys(vals))
-                end
-                # Iterate over `keys(vals)` because we might have scenarios such as
-                # `vals = OrderedDict(@varname(m) => [1.0])` but `@varname(m[1])` is
-                # the varname present in `vns`, not `@varname(m)`.
-                for vn in keys(vals)
-                    @test getindex(vals, vn) == getindex(vi, vn)
-                end
-            end
-        end
-    end
-
     @testset "unflatten!! + linking" begin
         @testset "Model: $(model.f)" for model in [
             DynamicPPL.TestUtils.demo_one_variable_multiple_constraints(),
@@ -481,6 +454,45 @@ using Random: Xoshiro
         )
         @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
             @inferred DynamicPPL.unflatten!!(varinfo, varinfo[:])
+        end
+    end
+
+    @testset "internal_values_as_vector" begin
+        @model function internal_values()
+            x ~ Normal()
+            y ~ Beta(2, 2)
+            return z ~ Dirichlet(ones(3))
+        end
+        distributions = OrderedDict(
+            @varname(x) => Normal(),
+            @varname(y) => Beta(2, 2),
+            @varname(z) => Dirichlet(ones(3)),
+        )
+        unlinked_values = OrderedDict(
+            @varname(x) => 1.0, @varname(y) => 0.5, @varname(z) => [0.2, 0.3, 0.5]
+        )
+
+        model = internal_values()
+        @testset for link_strategy in [
+            UnlinkAll(),
+            LinkAll(),
+            LinkSome((@varname(y),)),
+            LinkSome((@varname(x), @varname(z))),
+        ]
+            vi = VarInfo(model, link_strategy, InitFromParams(unlinked_values))
+
+            expected_vector_values = Float64[]
+            for (vn, dist) in distributions
+                # TODO(penelopeysm) remove the extra argument
+                vn_vec_val =
+                    if generate_linked_value(link_strategy, vn, UntransformedValue(0.0))
+                        DynamicPPL.to_linked_vec_transform(dist)(unlinked_values[vn])
+                    else
+                        DynamicPPL.to_vec_transform(dist)(unlinked_values[vn])
+                    end
+                append!(expected_vector_values, vn_vec_val)
+            end
+            @test internal_values_as_vector(vi) ≈ expected_vector_values
         end
     end
 

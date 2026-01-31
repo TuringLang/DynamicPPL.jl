@@ -64,6 +64,55 @@ include("varnamedtuple/getset.jl")
 include("varnamedtuple/map.jl")
 include("varnamedtuple/show.jl")
 
+"""
+    NamedTuple(vnt::VarNamedTuple)
+
+Convert a `VarNamedTuple` to a standard `NamedTuple`, provided all keys in the
+`VarNamedTuple` are `VarName`s with top-level symbols. If any key is a `VarName`
+with a non-identity optic (e.g., `@varname(x.a)` or `@varname(x[1])`), this will
+throw an `ArgumentError`.
+
+# Examples
+
+```jldoctest
+julia> using DynamicPPL, BangBang
+
+julia> vnt = VarNamedTuple(); vnt = setindex!!(vnt, 10, @varname(x))
+VarNamedTuple
+└─ x => 10
+
+julia> NamedTuple(vnt)
+(x = 10,)
+
+julia> vnt2 = setindex!!(vnt, 20, @varname(y.a))
+VarNamedTuple
+├─ x => 10
+└─ y => VarNamedTuple
+        └─ a => 20
+
+julia> NamedTuple(vnt2)
+ERROR: ArgumentError: Cannot convert VarNamedTuple containing non-identity VarNames to NamedTuple. To create a NamedTuple, all keys in the VarNamedTuple must be top-level symbols.
+[...]
+```
+"""
+@generated function NamedTuple(vnt::VarNamedTuple{names,vals}) where {names,vals}
+    nt = Expr(:tuple)
+    for (n, v) in zip(names, vals.parameters)
+        if v <: VarNamedTuple ||
+            VarNamedTuple <: v ||
+            v <: PartialArray ||
+            PartialArray <: v
+            throw(
+                ArgumentError(
+                    "Cannot convert VarNamedTuple containing non-identity VarNames to NamedTuple. To create a NamedTuple, all keys in the VarNamedTuple must be top-level symbols.",
+                ),
+            )
+        end
+        push!(nt.args, :($n = vnt.data.$n))
+    end
+    return nt
+end
+
 function AbstractPPL.hasvalue(vnt::VarNamedTuple, vn::VarName)
     return _haskey_optic(vnt, vn)
 end

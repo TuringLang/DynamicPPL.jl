@@ -878,14 +878,18 @@ julia> @model demo() = x ~ Dirac(1)
 demo (generic function with 2 methods)
 
 julia> rand(prefix(demo(), @varname(my_prefix)))
-(var"my_prefix.x" = 1,)
+VarNamedTuple
+└─ my_prefix => VarNamedTuple
+                └─ x => 1
 
 julia> rand(prefix(demo(), Val(:my_prefix)))
-(var"my_prefix.x" = 1,)
+VarNamedTuple
+└─ my_prefix => VarNamedTuple
+                └─ x => 1
 ```
 """
 prefix(model::Model, x::VarName) = contextualize(model, PrefixContext(x, model.context))
-function prefix(model::Model, x::Val{sym}) where {sym}
+function prefix(model::Model, ::Val{sym}) where {sym}
     return contextualize(model, PrefixContext(VarName{sym}(), model.context))
 end
 function prefix(model::Model, x)
@@ -1082,21 +1086,16 @@ Base.nameof(model::Model) = Symbol(model.f)
 Base.nameof(model::Model{<:Function}) = nameof(model.f)
 
 """
-    rand([rng=Random.default_rng()], [T=NamedTuple], model::Model)
+    rand([rng=Random.default_rng()], model::Model)
 
-Generate a sample of type `T` from the prior distribution of the `model`.
+Sample a `VarNamedTuple` of raw values from the prior of `model`.
 """
-function Base.rand(rng::Random.AbstractRNG, ::Type{T}, model::Model) where {T}
-    vi = VarInfo()
-    vi = setaccs!!(vi, DynamicPPL.AccumulatorTuple())
-    x = last(init!!(rng, model, vi))
-    return values_as(x, T)
+function Base.rand(rng::Random.AbstractRNG, model::Model)
+    vi = OnlyAccsVarInfo((ValuesAsInModelAccumulator(false),))
+    vi = last(init!!(rng, model, vi, InitFromPrior()))
+    return DynamicPPL.getacc(vi, Val(:ValuesAsInModel)).values
 end
-
-# Default RNG and type
-Base.rand(rng::Random.AbstractRNG, model::Model) = rand(rng, NamedTuple, model)
-Base.rand(::Type{T}, model::Model) where {T} = rand(Random.default_rng(), T, model)
-Base.rand(model::Model) = rand(Random.default_rng(), NamedTuple, model)
+Base.rand(model::Model) = rand(Random.default_rng(), model)
 
 """
     logjoint(model::Model, params)
