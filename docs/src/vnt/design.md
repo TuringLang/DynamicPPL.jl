@@ -339,7 +339,5 @@ There are, for the most part, only two places where templates are unavailable, a
   - Loading data from chains.
   - Providing conditioned or fixed values.
 
-The first of these is sadly unavoidable (unless we store template data in a chain).
-However, the second one could be 'fixed' by allowing users to provide templates themselves when constructing the collection of conditioned values.
-Right now, the only way to do this is by manually calling `templated_setindex!!`.
-See https://github.com/TuringLang/DynamicPPL.jl/issues/1217 for a possible solution to this, though.
+The first of these can be fixed by rerunning the model once to pick up the templates.
+The second cannot be truly fixed, but the [`DynamicPPL.@vnt`](@ref) macro allows users to manually provide templates themselves in cases where they are really needed.
