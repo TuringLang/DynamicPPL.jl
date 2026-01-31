@@ -96,6 +96,9 @@ ERROR: ArgumentError: Cannot convert VarNamedTuple containing non-identity VarNa
 ```
 """
 @generated function NamedTuple(vnt::VarNamedTuple{names,vals}) where {names,vals}
+    if isempty(names)
+        return :(NamedTuple())
+    end
     nt = Expr(:tuple)
     for (n, v) in zip(names, vals.parameters)
         if v <: VarNamedTuple ||
