@@ -56,7 +56,7 @@ For example, if `ctx.strategy` is `InitFromPrior()`, then `init()` samples a val
     
     For `DefaultContext`, this is replaced by looking for the value stored inside `vi`. As described above, this can be refactored in the near future.
 
-This step, in general, does not return just the raw value (like `rand(dist)`).
+As discussed in the [Initialisation strategies](./init.md) page, this step, in general, does not return just the raw value (like `rand(dist)`).
 It returns an [`DynamicPPL.AbstractTransformedValue`](@ref), which represents a value that _may_ have been transformed.
 In the case of `InitFromPrior()`, the value is of course not transformed; we return a [`DynamicPPL.UntransformedValue`](@ref) wrapping the sampled value.
 
