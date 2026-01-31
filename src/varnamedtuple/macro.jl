@@ -35,14 +35,21 @@ VNT 'knows' what kind of array is being used to store the values, and can set th
 the appropriate places (consider e.g. OffsetArrays where `x[1]` may not mean what it usually
 does).
 
-This is done by inserting a `@template` macro call in the block. The top-level symbols must
-already be defined in the current scope. For example:
+This is done by inserting a `@template` macro call in the block. The `@template` macro
+accepts whitespace-separated arguments, which must either be
+
+- a single symbol (e.g. `@template x`), in which case the template is the value of `x`
+  (and `x` must already be defined in the current scope); or
+- an assignment of the form `y = x`, in which case the template for `y` is the value of
+  `x`. In this case `y` does not need to be defined in the current scope, but `x` must be.
+
+For example:
 
 ```jldoctest; setup=:(using DynamicPPL)
-julia> x = zeros(5); y = zeros(3, 3);
+julia> x = zeros(5); outside_y = zeros(3, 3);
 
 julia> @vnt begin
-            @template x y
+            @template x y=outside_y
             x[1] = 1.0
             y[1, 1] = 2.0
        end
@@ -92,7 +99,7 @@ function _vnt(input)
     Meta.isexpr(input, :block) ||
         error("`@vnt` expects a block expression (e.g. `@vnt begin ... end`)")
     @gensym vnt
-    templated_symbols = Set{Symbol}()
+    symbols_to_templates = Dict{Symbol,Expr}()
     output = Expr(:block)
     push!(output.args, :($vnt = VarNamedTuple()))
     for expr in input.args
@@ -104,23 +111,26 @@ function _vnt(input)
                 if arg isa LineNumberNode
                     continue
                 elseif arg isa Symbol
-                    push!(templated_symbols, arg)
+                    # e.g. @template x
+                    symbols_to_templates[arg] = esc(arg)
+                elseif Meta.isexpr(arg, :(=))
+                    # e.g. @template y = x
+                    sym, template_expr = arg.args
+                    symbols_to_templates[sym] = esc(template_expr)
                 else
-                    error(
-                        "`@template` only accepts top-level symbols as arguments, separated by swhitespace (e.g. `@template x y z`)",
-                    )
+                    error("unexpected argument to `@template`: $arg")
                 end
             end
         elseif Meta.isexpr(expr, :(=))
             lhs, rhs = expr.args
             vn = AbstractPPL.varname(lhs, false)
             top_level_sym = _get_top_sym(lhs)
-            if top_level_sym in templated_symbols
+            if top_level_sym in keys(symbols_to_templates)
                 push!(
                     output.args,
                     :(
                         $vnt = DynamicPPL.templated_setindex!!(
-                            $vnt, $rhs, $vn, $(esc(top_level_sym))
+                            $vnt, $rhs, $vn, $(symbols_to_templates[top_level_sym])
                         )
                     ),
                 )
