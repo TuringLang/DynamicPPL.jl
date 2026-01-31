@@ -1621,6 +1621,29 @@ Base.size(st::SizedThing) = st.size
         end
         @test vnt_key_mapped == vnt_key_mapped_expected
     end
+
+    @testset "Conversion to NamedTuple" begin
+        @testset "type stability when it works" begin
+            vnt = DynamicPPL.VarNamedTuple()
+            @test @inferred(NamedTuple(vnt)) == NamedTuple()
+            vnt = setindex!!(vnt, 1.0, @varname(a))
+            @test @inferred(NamedTuple(vnt)) == (a=1.0,)
+            vnt = setindex!!(vnt, [1, 2, 3], @varname(b))
+            @test @inferred(NamedTuple(vnt)) == (a=1.0, b=[1, 2, 3])
+            vnt = setindex!!(vnt, "wut", @varname(b[2]))
+            @test @inferred(NamedTuple(vnt)) == (a=1.0, b=[1, "wut", 3])
+        end
+
+        @testset "invalid VarNames" begin
+            vnt = DynamicPPL.VarNamedTuple()
+            vnt = setindex!!(vnt, 1.0, @varname(a[1]))
+            @test_throws ArgumentError NamedTuple(vnt)
+
+            vnt = DynamicPPL.VarNamedTuple()
+            vnt = setindex!!(vnt, 1.0, @varname(a.b))
+            @test_throws ArgumentError NamedTuple(vnt)
+        end
+    end
 end
 
 end

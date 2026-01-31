@@ -238,21 +238,15 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
 
         Random.seed!(1776)
         s, m = model()
-        sample_namedtuple = (; s=s, m=m)
-        sample_dict = OrderedDict(@varname(s) => s, @varname(m) => m)
+        sample_vnt = DynamicPPL.VarNamedTuple()
+        sample_vnt = DynamicPPL.setindex!!(sample_vnt, s, @varname(s))
+        sample_vnt = DynamicPPL.setindex!!(sample_vnt, m, @varname(m))
 
         # With explicit RNG
-        @test rand(Random.seed!(1776), model) == sample_namedtuple
-        @test rand(Random.seed!(1776), NamedTuple, model) == sample_namedtuple
-        @test rand(Random.seed!(1776), Dict, model) == sample_dict
-
+        @test rand(Random.seed!(1776), model) == sample_vnt
         # Without explicit RNG
         Random.seed!(1776)
-        @test rand(model) == sample_namedtuple
-        Random.seed!(1776)
-        @test rand(NamedTuple, model) == sample_namedtuple
-        Random.seed!(1776)
-        @test rand(OrderedDict, model) == sample_dict
+        @test rand(model) == sample_vnt
     end
 
     @testset "default arguments" begin
@@ -262,7 +256,7 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
 
     @testset "missing kwarg" begin
         @model test_missing_kwarg(; x=missing) = x ~ Normal(0, 1)
-        @test :x in keys(rand(test_missing_kwarg()))
+        @test @varname(x) in keys(rand(test_missing_kwarg()))
     end
 
     @testset "extract priors" begin
@@ -289,15 +283,10 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
             # `rand_prior_true` should return a `NamedTuple`.
             @test x isa NamedTuple
 
-            # `rand` with a `AbstractDict` should have `varnames` as keys.
-            x_rand_dict = rand(OrderedDict, model)
+            # `rand` should give a VNT with have `varnames` as keys.
+            x_rand_vnt = rand(model)
             for vn in DynamicPPL.TestUtils.varnames(model)
-                @test haskey(x_rand_dict, vn)
-            end
-            # `rand` with a `NamedTuple` should have `map(Symbol, varnames)` as keys.
-            x_rand_nt = rand(NamedTuple, model)
-            for vn in DynamicPPL.TestUtils.varnames(model)
-                @test haskey(x_rand_nt, Symbol(vn))
+                @test haskey(x_rand_vnt, vn)
             end
 
             # Ensure log-probability computations are implemented.

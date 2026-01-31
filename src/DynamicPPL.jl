@@ -77,7 +77,9 @@ export AbstractVarInfo,
     accloglikelihood!!,
     is_transformed,
     set_transformed!!,
-    values_as,
+    # Working with internal values as vectors
+    unflatten!!,
+    internal_values_as_vector,
     # VarName (reexport from AbstractPPL)
     VarName,
     subsumes,

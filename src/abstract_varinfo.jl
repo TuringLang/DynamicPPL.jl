@@ -443,11 +443,18 @@ If `dist` is specified, the value(s) will be massaged into the representation ex
 Return the current value(s) of `vn` (`vns`) in `vi` in the support of its (their)
 distribution(s) as a flattened `Vector`.
 
-The default implementation is to call [`values_as`](@ref) with `Vector` as the type-argument.
+The default implementation is to call [`internal_values_as_vector`](@ref).
 
 See also: [`getindex(vi::AbstractVarInfo, vn::VarName, dist::Distribution)`](@ref)
 """
-Base.getindex(vi::AbstractVarInfo, ::Colon) = values_as(vi, Vector)
+Base.getindex(vi::AbstractVarInfo, ::Colon) = internal_values_as_vector(vi)
+
+"""
+    internal_values_as_vector(vi::AbstractVarInfo)
+
+Return all internal values stored in `vi.values` as a flattened `Vector`.
+"""
+function internal_values_as_vector end
 
 """
     getindex_internal(vi::AbstractVarInfo, vn::VarName)
@@ -491,39 +498,6 @@ This is useful when using a sampling algorithm that assumes an empty `vi`, e.g. 
 
 Return true if `vi` is empty and false otherwise.
 """ Base.isempty
-
-"""
-    values_as(varinfo[, Type])
-
-Return the values/realizations in `varinfo` as `Type`, if implemented.
-
-If no `Type` is provided, return values as stored in `varinfo`.
-
-# Examples
-
-```jldoctest
-julia> # Just use an example model to construct the `VarInfo` because we're lazy.
-       vi = DynamicPPL.VarInfo(DynamicPPL.TestUtils.demo_assume_dot_observe());
-
-julia> vi = DynamicPPL.setindex!!(vi, 1.0, @varname(s));
-
-julia> vi = DynamicPPL.setindex!!(vi, 2.0, @varname(m));
-
-julia> values_as(vi, NamedTuple)
-(s = 1.0, m = 2.0)
-
-julia> values_as(vi, OrderedDict)
-OrderedDict{Any, Any} with 2 entries:
-  s => 1.0
-  m => 2.0
-
-julia> values_as(vi, Vector)
-2-element Vector{Float64}:
- 1.0
- 2.0
-```
-"""
-function values_as end
 
 """
     eltype(vi::AbstractVarInfo)

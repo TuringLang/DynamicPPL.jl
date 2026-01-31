@@ -337,7 +337,7 @@ Get the internal (vectorised) value of variable `vn` in `vi`.
 """
 getindex_internal(vi::VarInfo, vn::VarName) = getindex(vi.values, vn).val
 # TODO(mhauru) The below should be removed together with unflatten!!.
-getindex_internal(vi::VarInfo, ::Colon) = values_as(vi, Vector)
+getindex_internal(vi::VarInfo, ::Colon) = internal_values_as_vector(vi)
 
 """
     get_transformed_value(vi::VarInfo, vn::VarName)
@@ -453,44 +453,12 @@ function invlink!!(t::StaticTransformation{<:Bijectors.Transform}, vi::VarInfo, 
     return set_transformed!!(vi, NoTransformation())
 end
 
-# TODO(mhauru) I don't think this should return the internal values, but that's the current
-# convention.
-function values_as(vi::VarInfo, ::Type{Vector})
+function internal_values_as_vector(vi::VarInfo)
     return mapfoldl(
         pair -> tovec(DynamicPPL.get_internal_value(pair.second)),
         vcat,
         vi.values;
         init=Union{}[],
-    )
-end
-
-function values_as(vi::VarInfo, ::Type{T}) where {T<:AbstractDict}
-    return mapfoldl(
-        identity,
-        function (cumulant, pair)
-            vn, tv = pair
-            val = DynamicPPL.get_transform(tv)(DynamicPPL.get_internal_value(tv))
-            return setindex!!(cumulant, val, vn)
-        end,
-        vi.values;
-        init=T(),
-    )
-end
-
-# TODO(mhauru) I really dislike this sort of conversion to Symbols, but it's the current
-# interface provided by rand(::Model). We should change that to return a VarNamedTuple
-# instead, and then this method (and any other values_as methods for NamedTuple) could be
-# removed.
-function values_as(vi::VarInfo, ::Type{NamedTuple})
-    return mapfoldl(
-        identity,
-        function (cumulant, pair)
-            vn, tv = pair
-            val = DynamicPPL.get_transform(tv)(DynamicPPL.get_internal_value(tv))
-            return setindex!!(cumulant, val, Symbol(vn))
-        end,
-        vi.values;
-        init=NamedTuple(),
     )
 end
 
