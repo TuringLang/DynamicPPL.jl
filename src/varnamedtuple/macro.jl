@@ -63,9 +63,9 @@ VarNamedTuple
 
 !!! note
     You can use any expression in `@template y=expr`, even a function call that is
-    completely contained within the macro (e.g. `@template y=zeros(3, 3)`). However note
-    that the expression will be evaluated each time a sub-value of `y` is set in the VNT, so
-    this may have performance implications.
+    completely contained within the macro (e.g. `@template y=zeros(3, 3)`). The macro makes
+    sure that `expr` is only evaluated once, so there is no performance penalty to doing
+    this.
 
 If no template is provided, the VNT will use a `GrowableArray`. This can produce correct
 results in simple cases, but is not recommended for general use. Please see the
@@ -119,11 +119,21 @@ function _vnt(input)
                     continue
                 elseif arg isa Symbol
                     # e.g. @template x
+                    if arg in keys(symbols_to_templates)
+                        error("duplicate template definition for symbol: $arg")
+                    end
                     symbols_to_templates[arg] = esc(arg)
                 elseif Meta.isexpr(arg, :(=))
                     # e.g. @template y = x
                     sym, template_expr = arg.args
-                    symbols_to_templates[sym] = esc(template_expr)
+                    if sym in keys(symbols_to_templates)
+                        error("duplicate template definition for symbol $sym")
+                    end
+                    # evaluate the template expression one time so that we don't
+                    # reevaluate it every time we set a value in the VNT
+                    new_sym = gensym()
+                    push!(output.args, :($new_sym = $(esc(template_expr))))
+                    symbols_to_templates[sym] = :(QuoteNode($new_sym))
                 else
                     error("unexpected argument to `@template`: $arg")
                 end
