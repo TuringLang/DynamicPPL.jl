@@ -1,73 +1,198 @@
-"""
+abstract type ConditionOrFix end
+struct Condition <: ConditionOrFix end
+struct Fix <: ConditionOrFix end
 
-    ConditionContext{Values<:Union{NamedTuple,AbstractDict},Ctx<:AbstractContext}
-
-Model context that contains values that are to be conditioned on. The values
-can either be a NamedTuple mapping symbols to values, such as `(a=1, b=2)`, or
-an AbstractDict mapping varnames to values (e.g. `Dict(@varname(a) => 1,
-@varname(b) => 2)`). The former is more performant, but the latter must be used
-when there are varnames that cannot be represented as symbols, e.g.
-`@varname(x[1])`.
 """
-struct ConditionContext{
-    Values<:Union{NamedTuple,AbstractDict{<:VarName}},Ctx<:AbstractContext
-} <: AbstractParentContext
+    CondFixContext{CF<:ConditionOrFix,Values<:VarNamedTuple,Ctx<:AbstractContext}
+
+Model context that contains values that are to be either conditioned on or fixed.
+
+If `CF` is `Condition`, the values are to be conditioned on; if `CF` is `Fix`, the values
+are to be fixed.
+
+The values are stored as a `VarNamedTuple`.
+"""
+struct CondFixContext{CF<:ConditionOrFix,Values<:VarNamedTuple,Ctx<:AbstractContext} <:
+       AbstractParentContext
     values::Values
     context::Ctx
+
+    function CondFixContext{CF}(
+        values::VarNamedTuple, context::AbstractContext=DefaultContext()
+    ) where {CF<:ConditionOrFix}
+        return new{CF,typeof(values),typeof(context)}(values, context)
+    end
+    function CondFixContext{CF}(
+        ::VarNamedTuple{()}, context::AbstractContext=DefaultContext()
+    ) where {CF<:ConditionOrFix}
+        # If there are no values, just return the child context.
+        return context
+    end
+end
+function CondFixContext{CF}(
+    values::VarNamedTuple, context::CondFixContext{CF}
+) where {CF<:ConditionOrFix}
+    # Note that `values` takes precedence over `context.values`, i.e., the outermost
+    # `CondFixContext`'s values override those of the inner `CondFixContext`.
+    merged_values = merge(context.values, values)
+    return CondFixContext{CF}(merged_values, childcontext(context))
 end
 
-const NamedConditionContext{Names} = ConditionContext{<:NamedTuple{Names}}
-const DictConditionContext = ConditionContext{<:AbstractDict}
-
-# Use DefaultContext as the default base context
-function ConditionContext(values::Union{NamedTuple,AbstractDict})
-    return ConditionContext(values, DefaultContext())
-end
-# Optimisation when there are no values to condition on
-ConditionContext(::NamedTuple{()}, context::AbstractContext) = context
-# Same as above, and avoids method ambiguity with below
-ConditionContext(::NamedTuple{()}, context::NamedConditionContext) = context
-# Collapse consecutive levels of `ConditionContext`. Note that this overrides
-# values inside the child context, thus giving precedence to the outermost
-# `ConditionContext`.
-function ConditionContext(values::NamedTuple, context::NamedConditionContext)
-    return ConditionContext(merge(context.values, values), childcontext(context))
-end
-function ConditionContext(values::AbstractDict{<:VarName}, context::DictConditionContext)
-    return ConditionContext(merge(context.values, values), childcontext(context))
+function Base.show(io::IO, context::CondFixContext{CF}) where {CF<:ConditionOrFix}
+    return print(io, "CondFixContext{$CF}($(context.values), $(childcontext(context)))")
 end
 
-function Base.show(io::IO, context::ConditionContext)
-    return print(io, "ConditionContext($(context.values), $(childcontext(context)))")
-end
-
-childcontext(context::ConditionContext) = context.context
-function setchildcontext(parent::ConditionContext, child::AbstractContext)
-    return ConditionContext(parent.values, child)
+childcontext(context::CondFixContext) = context.context
+function setchildcontext(parent::CondFixContext{CF}, child::AbstractContext) where {CF}
+    return CondFixContext{CF}(parent.values, child)
 end
 
 """
-    hasconditioned(context::AbstractContext, vn::VarName)
+    has_cf_value(::Type{CF}, context::AbstractContext, vn::VarName)
 
-Return `true` if `vn` is found in `context`.
+Return `true` if `vn` is found as a conditioned or fixed value in `context`. The first
+argument `CF` specifies whether to check for conditioned or fixed values.
+
+Note that this only checks the top-level `context`, and does not recursively check child
+contexts.
 """
-hasconditioned(context::AbstractContext, vn::VarName) = false
-hasconditioned(context::ConditionContext, vn::VarName) = hasvalue(context.values, vn)
-function hasconditioned(context::ConditionContext, vns::AbstractArray{<:VarName})
+function has_cf_value(
+    ::Type{CF}, context::AbstractContext, ::VarName
+) where {CF<:ConditionOrFix}
+    return false
+end
+function has_cf_value(
+    ::Type{CF}, context::CondFixContext{CF}, vn::VarName
+) where {CF<:ConditionOrFix}
+    return hasvalue(context.values, vn)
+end
+function has_cf_value(
+    ::Type{CF}, context::CondFixContext{CF}, vns::AbstractArray{<:VarName}
+) where {CF<:ConditionOrFix}
     return all(Base.Fix1(hasvalue, context.values), vns)
 end
 
 """
-    getconditioned(context::AbstractContext, vn::VarName)
+    get_cf_value(::Type{CF}, context::AbstractContext, vn::VarName)
 
-Return value of `vn` in `context`.
+Return the value of `vn` in `context`. The first argument `CF` specifies whether to
+get conditioned or fixed values.
+
+Note that this only checks the top-level `context`, and does not recursively check child
+contexts.
 """
-function getconditioned(context::AbstractContext, vn::VarName)
+function get_cf_value(
+    ::Type{CF}, context::AbstractContext, vn::VarName
+) where {CF<:ConditionOrFix}
     return error("context $(context) does not contain value for $vn")
 end
-function getconditioned(context::ConditionContext, vn::VarName)
+function get_cf_value(
+    ::Type{CF}, context::CondFixContext{CF}, vn::VarName
+) where {CF<:ConditionOrFix}
     return getvalue(context.values, vn)
 end
+
+"""
+    has_cf_value_nested(::Type{CF}, context, vn)
+
+Same as `has_cf_value(::Type{CF}, ::AbstractContext, ::VarName)` but recursively checks
+child contexts.
+"""
+has_cf_value_nested(
+    ::Type{CF}, context::AbstractContext, vn::VarName
+) where {CF<:ConditionOrFix} = has_cf_value(CF, context, vn)
+function has_cf_value_nested(
+    ::Type{CF}, context::AbstractParentContext, vn::VarName
+) where {CF<:ConditionOrFix}
+    return has_cf_value(CF, context, vn) ||
+           has_cf_value_nested(CF, childcontext(context), vn)
+end
+function has_cf_value_nested(
+    ::Type{CF}, context::PrefixContext, vn::VarName
+) where {CF<:ConditionOrFix}
+    return has_cf_value_nested(CF, collapse_prefix_stack(context), vn)
+end
+
+"""
+    get_cf_value_nested(::Type{CF}, context, vn)
+
+Same as `get_cf_value(::Type{CF}, ::AbstractContext, ::VarName)` but recursively checks
+child contexts.
+"""
+function get_cf_value_nested(
+    ::Type{CF}, context::AbstractContext, vn::VarName
+) where {CF<:ConditionOrFix}
+    return get_cf_value(CF, context, vn)
+end
+function get_cf_value_nested(
+    ::Type{CF}, context::AbstractParentContext, vn::VarName
+) where {CF<:ConditionOrFix}
+    return if has_cf_value(CF, context, vn)
+        get_cf_value(CF, context, vn)
+    else
+        get_cf_value_nested(CF, childcontext(context), vn)
+    end
+end
+function get_cf_value_nested(
+    ::Type{CF}, context::PrefixContext, vn::VarName
+) where {CF<:ConditionOrFix}
+    return get_cf_value_nested(CF, collapse_prefix_stack(context), vn)
+end
+
+"""
+    remove_cf_values(::Type{CF}, context::AbstractContext, syms_or_vns...)
+
+Return `context` but with the specified `Symbol`s or `VarName`s no longer present as
+conditioned or fixed values. If no `syms_or_vns` are provided, all conditioned or fixed
+values are removed.
+
+The first argument `CF` specifies whether to remove conditioned or fixed values.
+Note that this recursively traverses contexts, removing all along the way.
+"""
+function remove_cf_values(
+    ::Type{CF}, context::AbstractContext, args...
+) where {CF<:ConditionOrFix}
+    return error("TODO(penelopeysm): implement remove_cf_values")
+end
+
+"""
+    all_cf_values(::Type{CF}, context::AbstractContext)
+
+Return a VarNamedTuple containing all the conditioned or fixed values in `context` and its
+descendants. The first argument `CF` specifies whether to get conditioned or fixed values.
+"""
+function all_cf_values(::Type{CF}, context::AbstractContext) where {CF<:ConditionOrFix}
+    return VarNamedTuple()
+end
+function all_cf_values(
+    ::Type{CF}, context::AbstractParentContext
+) where {CF<:ConditionOrFix}
+    return all_cf_values(CF, childcontext(context))
+end
+function all_cf_values(::Type{CF}, context::CondFixContext{CF}) where {CF<:ConditionOrFix}
+    # Note that `context.values` takes precedence over values from descendants.
+    return merge(all_cf_values(CF, childcontext(context)), context.values)
+end
+function all_cf_values(::Type{CF}, context::PrefixContext) where {CF<:ConditionOrFix}
+    return all_cf_values(CF, collapse_prefix_stack(context))
+end
+
+#### The rest of the file are just wrappers around the above.
+
+"""
+    hasconditioned(context::AbstractContext, vn::VarName)
+
+Return `true` if `vn` has been conditioned in `context`. Note that this only checks
+the top-level `context`, and does not recursively checking its descendants.
+"""
+hasconditioned(context::AbstractContext, vns) = has_cf_value(Condition, context, vns)
+
+"""
+    getconditioned(context::AbstractContext, vn::VarName)
+
+Return the value of `vn` in `context`.
+"""
+getconditioned(context::AbstractContext, vn) = get_cf_value(Condition, context, vn)
 
 """
     hasconditioned_nested(context, vn)
@@ -77,13 +202,8 @@ Return `true` if `vn` is found in `context` or any of its descendants.
 This is contrast to [`hasconditioned(::AbstractContext, ::VarName)`](@ref) which only checks
 for `vn` in `context`, not recursively checking if `vn` is in any of its descendants.
 """
-hasconditioned_nested(context::AbstractContext, vn) = hasconditioned(context, vn)
-function hasconditioned_nested(context::AbstractParentContext, vn)
-    return hasconditioned(context, vn) || hasconditioned_nested(childcontext(context), vn)
-end
-function hasconditioned_nested(context::PrefixContext, vn)
-    return hasconditioned_nested(collapse_prefix_stack(context), vn)
-end
+hasconditioned_nested(context::AbstractContext, vn) =
+    has_cf_value_nested(Condition, context, vn)
 
 """
     getconditioned_nested(context, vn)
@@ -93,124 +213,43 @@ Return the value of the parameter corresponding to `vn` from `context` or its de
 This is contrast to [`getconditioned`](@ref) which only returns the value `vn` in `context`,
 not recursively looking into its descendants.
 """
-function getconditioned_nested(context::AbstractContext, vn)
-    return error("context $(context) does not contain value for $vn")
-end
-function getconditioned_nested(context::PrefixContext, vn)
-    return getconditioned_nested(collapse_prefix_stack(context), vn)
-end
-function getconditioned_nested(context::AbstractParentContext, vn)
-    return if hasconditioned(context, vn)
-        getconditioned(context, vn)
-    else
-        getconditioned_nested(childcontext(context), vn)
-    end
-end
+getconditioned_nested(context::AbstractContext, vn) =
+    get_cf_value_nested(Condition, context, vn)
 
 """
-    decondition_context(context::AbstractContext, syms...)
+    decondition_context(context::AbstractContext, syms_or_vns...)
 
-Return `context` but with `syms` no longer conditioned on.
+Return `context` but with the specified `Symbol`s or `VarName`s no longer conditioned on. If
+no `syms_or_vns` are provided, all conditioned values are removed.
 
 Note that this recursively traverses contexts, deconditioning all along the way.
-
-See also: [`condition`](@ref)
 """
-decondition_context(context::AbstractContext, args...) = context
-function decondition_context(context::AbstractParentContext, args...)
-    return setchildcontext(context, decondition_context(childcontext(context), args...))
-end
-function decondition_context(context::ConditionContext)
-    return decondition_context(childcontext(context))
-end
-function decondition_context(context::ConditionContext, sym, syms...)
-    new_values = deepcopy(context.values)
-    for s in (sym, syms...)
-        new_values = BangBang.delete!!(new_values, s)
-    end
-    return if length(new_values) == 0
-        # No more values left, can unwrap
-        decondition_context(childcontext(context), syms...)
-    else
-        ConditionContext(
-            new_values, decondition_context(childcontext(context), sym, syms...)
-        )
-    end
-end
-function decondition_context(context::NamedConditionContext, vn::VarName{sym}) where {sym}
-    return ConditionContext(
-        BangBang.delete!!(context.values, sym),
-        decondition_context(childcontext(context), vn),
-    )
-end
+decondition_context(context::AbstractContext, args...) =
+    remove_cf_values(Condition, context, args...)
 
 """
     conditioned(context::AbstractContext)
 
-Return `NamedTuple` of values that are conditioned on under context`.
+Return `VarNamedTuple` of values that are conditioned on under `context`.
 
-Note that this will recursively traverse the context stack and return
-a merged version of the condition values.
+Note that this will recursively traverse the context stack and return a merged version of
+the condition values.
 """
-conditioned(::AbstractContext) = NamedTuple()
-conditioned(context::AbstractParentContext) = conditioned(childcontext(context))
-function conditioned(context::ConditionContext)
-    # Note the order of arguments to `merge`. The behavior of the rest of DPPL
-    # is that the outermost `context` takes precendence, hence when resolving
-    # the `conditioned` variables we need to ensure that `context.values` takes
-    # precedence over decendants of `context`.
-    return _merge(context.values, conditioned(childcontext(context)))
-end
-function conditioned(context::PrefixContext)
-    return conditioned(collapse_prefix_stack(context))
-end
-
-struct FixedContext{Values,Ctx<:AbstractContext} <: AbstractParentContext
-    values::Values
-    context::Ctx
-end
-
-const NamedFixedContext{Names} = FixedContext{<:NamedTuple{Names}}
-const DictFixedContext = FixedContext{<:AbstractDict}
-
-FixedContext(values) = FixedContext(values, DefaultContext())
-
-# Try to avoid nested `FixedContext`.
-function FixedContext(values::NamedTuple, context::NamedFixedContext)
-    # Note that this potentially overrides values from `context`, thus giving
-    # precedence to the outmost `FixedContext`.
-    return FixedContext(merge(context.values, values), childcontext(context))
-end
-
-function Base.show(io::IO, context::FixedContext)
-    return print(io, "FixedContext($(context.values), $(childcontext(context)))")
-end
-
-childcontext(context::FixedContext) = context.context
-function setchildcontext(parent::FixedContext, child::AbstractContext)
-    return FixedContext(parent.values, child)
-end
+conditioned(ctx::AbstractContext) = all_cf_values(Condition, ctx)
 
 """
     hasfixed(context::AbstractContext, vn::VarName)
 
 Return `true` if a fixed value for `vn` is found in `context`.
 """
-hasfixed(::AbstractContext, ::VarName) = false
-hasfixed(context::FixedContext, vn::VarName) = hasvalue(context.values, vn)
-function hasfixed(context::FixedContext, vns::AbstractArray{<:VarName})
-    return all(Base.Fix1(hasvalue, context.values), vns)
-end
+hasfixed(context::AbstractContext, vns) = has_cf_value(Fix, context, vns)
 
 """
     getfixed(context::AbstractContext, vn::VarName)
 
 Return the fixed value of `vn` in `context`.
 """
-function getfixed(context::AbstractContext, vn::VarName)
-    return error("context $(context) does not contain value for $vn")
-end
-getfixed(context::FixedContext, vn::VarName) = getvalue(context.values, vn)
+getfixed(context::AbstractContext, vn) = get_cf_value(Fix, context, vn)
 
 """
     hasfixed_nested(context, vn)
@@ -220,13 +259,7 @@ Return `true` if a fixed value for `vn` is found in `context` or any of its desc
 This is contrast to [`hasfixed(::AbstractContext, ::VarName)`](@ref) which only checks
 for `vn` in `context`, not recursively checking if `vn` is in any of its descendants.
 """
-hasfixed_nested(context::AbstractContext, vn) = hasfixed(context, vn)
-function hasfixed_nested(context::AbstractParentContext, vn)
-    return hasfixed(context, vn) || hasfixed_nested(childcontext(context), vn)
-end
-function hasfixed_nested(context::PrefixContext, vn)
-    return hasfixed_nested(collapse_prefix_stack(context), vn)
-end
+hasfixed_nested(context::AbstractContext, vn) = has_cf_value_nested(Fix, context, vn)
 
 """
     getfixed_nested(context, vn)
@@ -236,108 +269,33 @@ Return the fixed value of the parameter corresponding to `vn` from `context` or 
 This is contrast to [`getfixed`](@ref) which only returns the value `vn` in `context`,
 not recursively looking into its descendants.
 """
-function getfixed_nested(context::AbstractContext, vn)
-    return error("context $(context) does not contain value for $vn")
-end
-function getfixed_nested(context::PrefixContext, vn)
-    return getfixed_nested(collapse_prefix_stack(context), vn)
-end
-function getfixed_nested(context::AbstractParentContext, vn)
-    return if hasfixed(context, vn)
-        getfixed(context, vn)
-    else
-        getfixed_nested(childcontext(context), vn)
-    end
-end
+getfixed_nested(context::AbstractContext, vn) = get_cf_value_nested(Fix, context, vn)
 
 """
-    fix([context::AbstractContext,] values::NamedTuple)
-    fix([context::AbstractContext]; values...)
+    unfix_context(context::AbstractContext, syms...)
 
-Return `FixedContext` with `values` and `context` if `values` is non-empty,
-otherwise return `context` which is [`DefaultContext`](@ref) by default.
-
-See also: [`unfix`](@ref)
-"""
-fix(; values...) = fix(NamedTuple(values))
-fix(values::NamedTuple) = fix(DefaultContext(), values)
-function fix(value::Pair{<:VarName}, values::Pair{<:VarName}...)
-    return fix((value, values...))
-end
-function fix(values::NTuple{<:Any,<:Pair{<:VarName}})
-    return fix(DefaultContext(), values)
-end
-fix(context::AbstractContext, ::NamedTuple{()}) = context
-function fix(context::AbstractContext, values::Union{AbstractDict,NamedTuple})
-    return FixedContext(values, context)
-end
-function fix(context::AbstractContext; values...)
-    return fix(context, NamedTuple(values))
-end
-function fix(context::AbstractContext, value::Pair{<:VarName}, values::Pair{<:VarName}...)
-    return fix(context, (value, values...))
-end
-function fix(context::AbstractContext, values::NTuple{<:Any,Pair{<:VarName}})
-    return fix(context, Dict(values))
-end
-
-"""
-    unfix(context::AbstractContext, syms...)
-
-Return `context` but with `syms` no longer fixed.
+Return `context` but with `syms` no longer fixed. If no `syms` are provided, all fixed
+values are removed.
 
 Note that this recursively traverses contexts, unfixing all along the way.
 
 See also: [`fix`](@ref)
 """
-unfix(context::AbstractContext, args...) = context
-function unfix(context::AbstractParentContext, args...)
-    return setchildcontext(context, unfix(childcontext(context), args...))
-end
-function unfix(context::FixedContext)
-    return unfix(childcontext(context))
-end
-function unfix(context::FixedContext, sym)
-    return fix(unfix(childcontext(context), sym), BangBang.delete!!(context.values, sym))
-end
-function unfix(context::FixedContext, sym, syms...)
-    return unfix(
-        fix(unfix(childcontext(context), syms...), BangBang.delete!!(context.values, sym)),
-        syms...,
-    )
-end
-
-function unfix(context::NamedFixedContext, vn::VarName{sym}) where {sym}
-    return fix(unfix(childcontext(context), vn), BangBang.delete!!(context.values, sym))
-end
-function unfix(context::FixedContext, vn::VarName)
-    return fix(unfix(childcontext(context), vn), BangBang.delete!!(context.values, vn))
-end
+unfix_context(context::AbstractContext, args...) = remove_cf_values(Fix, context, args...)
 
 """
     fixed(context::AbstractContext)
 
-Return the values that are fixed under `context`.
+Return a `VarNamedTuple` containing the values that are fixed under `context`.
 
-Note that this will recursively traverse the context stack and return
-a merged version of the fix values.
+Note that this will recursively traverse the context stack and return a merged version of
+the fix values.
 """
-fixed(::AbstractContext) = NamedTuple()
-fixed(context::AbstractParentContext) = fixed(childcontext(context))
-function fixed(context::FixedContext)
-    # Note the order of arguments to `merge`. The behavior of the rest of DPPL
-    # is that the outermost `context` takes precendence, hence when resolving
-    # the `fixed` variables we need to ensure that `context.values` takes
-    # precedence over decendants of `context`.
-    return _merge(context.values, fixed(childcontext(context)))
-end
-function fixed(context::PrefixContext)
-    return fixed(collapse_prefix_stack(context))
-end
+fixed(ctx::AbstractContext) = all_cf_values(Fix, ctx)
 
-###########################################################################
-### Interaction of PrefixContext with ConditionContext and FixedContext ###
-###########################################################################
+########################################################
+### Interaction of PrefixContext with CondFixContext ###
+########################################################
 
 """
     collapse_prefix_stack(context::AbstractContext)
@@ -347,31 +305,32 @@ the `PrefixContext`s from the context stack.
 
 !!! note
     If you are reading this docstring, you might probably be interested in a more
-thorough explanation of how PrefixContext and ConditionContext / FixedContext
-interact with one another, especially in the context of submodels.
-    The DynamicPPL documentation contains [a separate page on this
-topic](https://turinglang.org/DynamicPPL.jl/previews/PR892/internals/submodel_condition/)
-which explains this in much more detail.
+    thorough explanation of how `PrefixContext` and `CondFixContext` interact with one
+    another, especially in the context of submodels. The DynamicPPL documentation contains
+    [a separate page on this
+    topic](https://turinglang.org/DynamicPPL.jl/previews/PR892/internals/submodel_condition/)
+    which explains this in much more detail.
 
 ```jldoctest
-julia> using DynamicPPL: collapse_prefix_stack, PrefixContext, ConditionContext
+julia> using DynamicPPL: collapse_prefix_stack, PrefixContext, CondFixContext, Condition, @varname
 
-julia> c1 = PrefixContext(@varname(a), ConditionContext((x=1, )));
+julia> c1 = PrefixContext(@varname(a), CondFixContext{Condition}(VarNamedTuple(x=1,)));
 
 julia> collapse_prefix_stack(c1)
-ConditionContext(Dict(a.x => 1), DefaultContext())
+CondFixContext{Condition}(VarNamedTuple(a = VarNamedTuple(x = 1,),), DefaultContext())
 
 julia> # Here, `x` gets prefixed only with `a`, whereas `y` is prefixed with both.
-       c2 = PrefixContext(@varname(a), ConditionContext((x=1, ), PrefixContext(@varname(b), ConditionContext((y=2,)))));
+       c2 = PrefixContext(@varname(a), CondFixContext{Condition}(VarNamedTuple(x=1, ), PrefixContext(@varname(b), CondFixContext{Condition}(VarNamedTuple(y=2,)))));
 
-julia> collapsed = collapse_prefix_stack(c2);
+julia> collapsed = collapse_prefix_stack(c2)
+CondFixContext{Condition}(VarNamedTuple(a = VarNamedTuple(b = VarNamedTuple(y = 2,), x = 1),), DefaultContext())
 
-julia> # `collapsed` really looks something like this:
-       # ConditionContext(Dict{VarName{:a}, Int64}(a.b.y => 2, a.x => 1), DefaultContext())
-       # To avoid fragility arising from the order of the keys in the doctest, we test
-       # this indirectly:
-       collapsed.values[@varname(a.x)], collapsed.values[@varname(a.b.y)]
-(1, 2)
+julia> collapsed.values  # In a format that is easier to read.
+VarNamedTuple
+└─ a => VarNamedTuple
+        ├─ b => VarNamedTuple
+        │       └─ y => 2
+        └─ x => 1
 ```
 """
 function collapse_prefix_stack(context::PrefixContext)
@@ -396,34 +355,26 @@ Prefix all the conditioned and fixed variables in a given context with a single
 `prefix`.
 
 ```jldoctest
-julia> using DynamicPPL: prefix_cond_and_fixed_variables, ConditionContext
+julia> using DynamicPPL: prefix_cond_and_fixed_variables, CondFixContext, Condition, VarNamedTuple, @varname, DefaultContext
 
-julia> c1 = ConditionContext((a=1, ))
-ConditionContext((a = 1,), DefaultContext())
+julia> c1 = CondFixContext{Condition}(VarNamedTuple(a=1, ))
+CondFixContext{Condition}(VarNamedTuple(a = 1,), DefaultContext())
 
 julia> prefix_cond_and_fixed_variables(c1, @varname(y))
-ConditionContext(Dict(y.a => 1), DefaultContext())
+CondFixContext{Condition}(VarNamedTuple(y = VarNamedTuple(a = 1,),), DefaultContext())
 ```
 """
-function prefix_cond_and_fixed_variables(ctx::ConditionContext, prefix::VarName)
-    # Replace the prefix of the conditioned variables
-    vn_dict = to_varname_dict(ctx.values)
-    prefixed_vn_dict = Dict(
-        AbstractPPL.prefix(vn, prefix) => value for (vn, value) in vn_dict
-    )
+function prefix_cond_and_fixed_variables(
+    ctx::CondFixContext{CF}, prefix::VarName
+) where {CF}
+    # Add a prefix to the conditioned or fixed variables
+    new_values = VarNamedTuple()
+    # TODO(penelopeysm): In principle we should be able to pass down template info
+    # from tilde_assume!!. Try to do so.
+    new_values = DynamicPPL.setindex!!(new_values, ctx.values, prefix)
     # Prefix the child context as well
     prefixed_child_ctx = prefix_cond_and_fixed_variables(childcontext(ctx), prefix)
-    return ConditionContext(prefixed_vn_dict, prefixed_child_ctx)
-end
-function prefix_cond_and_fixed_variables(ctx::FixedContext, prefix::VarName)
-    # Replace the prefix of the conditioned variables
-    vn_dict = to_varname_dict(ctx.values)
-    prefixed_vn_dict = Dict(
-        AbstractPPL.prefix(vn, prefix) => value for (vn, value) in vn_dict
-    )
-    # Prefix the child context as well
-    prefixed_child_ctx = prefix_cond_and_fixed_variables(childcontext(ctx), prefix)
-    return FixedContext(prefixed_vn_dict, prefixed_child_ctx)
+    return CondFixContext{CF}(new_values, prefixed_child_ctx)
 end
 function prefix_cond_and_fixed_variables(context::AbstractContext, ::VarName)
     return context
