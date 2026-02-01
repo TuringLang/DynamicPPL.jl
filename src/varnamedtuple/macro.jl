@@ -106,7 +106,7 @@ function _vnt(input)
     Meta.isexpr(input, :block) ||
         error("`@vnt` expects a block expression (e.g. `@vnt begin ... end`)")
     @gensym vnt
-    symbols_to_templates = Dict{Symbol,Expr}()
+    symbols_to_templates = Dict{Symbol,Union{Expr,Symbol}}()
     output = Expr(:block)
     push!(output.args, :($vnt = VarNamedTuple()))
     for expr in input.args
@@ -133,7 +133,7 @@ function _vnt(input)
                     # reevaluate it every time we set a value in the VNT
                     new_sym = gensym()
                     push!(output.args, :($new_sym = $(esc(template_expr))))
-                    symbols_to_templates[sym] = :(QuoteNode($new_sym))
+                    symbols_to_templates[sym] = new_sym
                 else
                     error("unexpected argument to `@template`: $arg")
                 end
