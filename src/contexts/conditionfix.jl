@@ -152,7 +152,67 @@ Note that this recursively traverses contexts, removing all along the way.
 function remove_cf_values(
     ::Type{CF}, context::AbstractContext, args...
 ) where {CF<:ConditionOrFix}
-    return error("TODO(penelopeysm): implement remove_cf_values")
+    return context
+end
+function remove_cf_values(
+    ::Type{CF}, context::AbstractParentContext, args...
+) where {CF<:ConditionOrFix}
+    return setchildcontext(context, remove_cf_values(CF, childcontext(context), args...))
+end
+function remove_cf_values(
+    ::Type{CF}, context::CondFixContext{CF}, args...
+) where {CF<:ConditionOrFix}
+    if isempty(args)
+        # Remove all conditioned/fixed values
+        return remove_cf_values(CF, childcontext(context))
+    end
+    # TODO(penelopeysm): This would be much better if we had a `delete!!` method on VNT.
+    # We don't yet. The reason why it would be good is that it would allow us to decondition
+    # on things that weren't exactly keys of the VNT. For example, we could condition on
+    # x[1] and x[2], and then decondition on `x[:]`, or something like that.
+    ks = keys(context.values)
+    vn_args = map(a -> a isa VarName ? a : VarName{a}(), args)
+    should_retain(k::VarName) = all(vn_arg -> !subsumes(vn_arg, k), vn_args)
+    retained_keys = filter(should_retain, ks)
+    new_values = subset(context.values, retained_keys)
+    new_childcontext = remove_cf_values(CF, childcontext(context), args...)
+    return CondFixContext{CF}(new_values, new_childcontext)
+end
+function remove_cf_values(
+    ::Type{CF}, context::PrefixContext, args...
+) where {CF<:ConditionOrFix}
+    vn_args = map(a -> a isa VarName ? a : VarName{a}(), args)
+    # This is slightly hacky.
+    # First, we need to check if any of the args are actually the prefix (or a
+    # superset of it). If so, then we just remove everything, since all the 
+    # conditioned/fixed variables beneath this PrefixContext will be removed.
+    remove_all =
+        isempty(vn_args) || any(vn_arg -> subsumes(vn_arg, context.vn_prefix), vn_args)
+    if remove_all
+        new_childcontext = remove_cf_values(CF, childcontext(context))
+        return PrefixContext(context.vn_prefix, new_childcontext)
+    else
+        # Otherwise, we need to see which of the arguments actually will be carried through.
+        sub_args = ()
+        for vn_arg in vn_args
+            try
+                new_arg = AbstractPPL.unprefix(vn_arg, context.vn_prefix)
+                sub_args = (sub_args..., new_arg)
+            catch e
+                # ArgumentError means it couldn't be unprefixed; but that means that the
+                # argument is irrelevant as it won't be found in the child context.
+                e isa ArgumentError || rethrow(e)
+            end
+        end
+        # if sub_args is empty, we can't pass it through(!!) as that would decondition
+        # everything inside. It just means that none of the arguments are relevant.
+        return if isempty(sub_args)
+            context
+        else
+            new_childcontext = remove_cf_values(CF, childcontext(context), sub_args...)
+            PrefixContext(context.vn_prefix, new_childcontext)
+        end
+    end
 end
 
 """
