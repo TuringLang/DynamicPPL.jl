@@ -12,7 +12,8 @@ using DynamicPPL.VarNamedTuples:
     apply!!,
     templated_setindex!!,
     GrowableArray,
-    grow_to_indices!!
+    grow_to_indices!!,
+    @vnt
 using AbstractPPL: AbstractPPL, VarName, concretize, prefix, @opticof
 using BangBang: setindex!!, empty!!
 using DimensionalData: DimensionalData as DD
