@@ -362,6 +362,7 @@ For more details on `VarNamedTuple`, see the Internals section of our documentat
 
 ```@docs
 DynamicPPL.VarNamedTuples.VarNamedTuple
+DynamicPPL.VarNamedTuples.@vnt
 DynamicPPL.VarNamedTuples.vnt_size
 DynamicPPL.VarNamedTuples.apply!!
 DynamicPPL.VarNamedTuples.map_pairs!!

@@ -12,7 +12,8 @@ using DynamicPPL.VarNamedTuples:
     apply!!,
     templated_setindex!!,
     GrowableArray,
-    grow_to_indices!!
+    grow_to_indices!!,
+    @vnt
 using AbstractPPL: AbstractPPL, VarName, concretize, prefix, @opticof
 using BangBang: setindex!!, empty!!
 using DimensionalData: DimensionalData as DD
@@ -1642,6 +1643,77 @@ Base.size(st::SizedThing) = st.size
             vnt = DynamicPPL.VarNamedTuple()
             vnt = setindex!!(vnt, 1.0, @varname(a.b))
             @test_throws ArgumentError NamedTuple(vnt)
+        end
+    end
+
+    @testset "@vnt macro" begin
+        @testset "no templates" begin
+            vnt = @vnt begin
+                a = 1.0
+                b = [1, 15, 3]
+                c.x.y = [10]
+            end
+            expected_vnt = VarNamedTuple()
+            expected_vnt = setindex!!(expected_vnt, 1.0, @varname(a))
+            expected_vnt = setindex!!(expected_vnt, [1, 15, 3], @varname(b))
+            expected_vnt = setindex!!(expected_vnt, [10], @varname(c.x.y))
+            @test vnt == expected_vnt
+        end
+
+        @testset "templates as top-level symbols" begin
+            a = zeros(2, 2)
+            vnt = @vnt begin
+                @template a
+                a[1] = 1.0
+            end
+            expected_vnt = VarNamedTuple()
+            expected_vnt = templated_setindex!!(expected_vnt, 1.0, @varname(a[1]), a)
+            @test vnt == expected_vnt
+        end
+
+        @testset "scoping of templates" begin
+            a = zeros(2, 2)  # This should be ignored
+            vnt = begin
+                a = zeros(3)
+                @vnt begin
+                    @template a
+                    a[1] = 1.0
+                end
+            end
+            expected_vnt = VarNamedTuple()
+            expected_vnt = templated_setindex!!(expected_vnt, 1.0, @varname(a[1]), zeros(3))
+            @test vnt == expected_vnt
+        end
+
+        @testset "templates with assignment" begin
+            a = zeros(3)
+            vnt = @vnt begin
+                @template b = a
+                b[1] = 2.0
+            end
+            expected_vnt = VarNamedTuple()
+            expected_vnt = templated_setindex!!(expected_vnt, 2.0, @varname(b[1]), a)
+            @test vnt == expected_vnt
+        end
+
+        @testset "templates with expr" begin
+            evalcount = Ref(0)
+            function make_template()
+                evalcount[] += 1
+                return zeros(4)
+            end
+            vnt = @vnt begin
+                @template c = make_template()
+                c[1] = 1.0
+                c[2] = 2.0
+            end
+            # Check that the template expression is only evaluated once.
+            @test evalcount[] == 1
+
+            expected_vnt = VarNamedTuple()
+            expected_vnt = templated_setindex!!(expected_vnt, 1.0, @varname(c[1]), zeros(4))
+            expected_vnt = templated_setindex!!(expected_vnt, 2.0, @varname(c[2]), zeros(4))
+            @test vnt == expected_vnt
         end
     end
 end

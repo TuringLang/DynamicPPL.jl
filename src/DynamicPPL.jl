@@ -47,6 +47,7 @@ import Base:
 export AbstractVarInfo,
     VarInfo,
     VarNamedTuple,
+    @vnt,
     map_pairs!!,
     map_values!!,
     apply!!,
@@ -216,7 +217,8 @@ using .VarNamedTuples:
     apply!!,
     templated_setindex!!,
     NoTemplate,
-    SkipTemplate
+    SkipTemplate,
+    @vnt
 include("contexts.jl")
 include("contexts/default.jl")
 include("contexts/init.jl")

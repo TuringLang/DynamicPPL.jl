@@ -14,7 +14,8 @@ export VarNamedTuple,
     apply!!,
     templated_setindex!!,
     NoTemplate,
-    SkipTemplate
+    SkipTemplate,
+    @vnt
 
 """
     NoTemplate
@@ -63,6 +64,7 @@ include("varnamedtuple/vnt.jl")
 include("varnamedtuple/getset.jl")
 include("varnamedtuple/map.jl")
 include("varnamedtuple/show.jl")
+include("varnamedtuple/macro.jl")
 
 """
     NamedTuple(vnt::VarNamedTuple)
