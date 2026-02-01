@@ -57,11 +57,11 @@ function isassumption(expr::Union{Expr,Symbol}, vn=make_varname_expression(expr)
             # 1. We hit the default implementation, e.g. using `DefaultContext`,
             #    which in turn means that we haven't considered if it's one of
             #    the model arguments, hence we need to check this.
-            # 2. We are working with a `ConditionContext` _and_ it's NOT in the model arguments,
+            # 2. We are working with a `CondFixContext` _and_ it's NOT in the model arguments,
             #    i.e. we're trying to condition one of the latent variables.
             #    In this case, the below will return `true` since the first branch
             #    will be hit.
-            # 3. We are working with a `ConditionContext` _and_ it's in the model arguments,
+            # 3. We are working with a `CondFixContext` _and_ it's in the model arguments,
             #    i.e. we're trying to override the value. This is currently NOT supported.
             #    TODO: Support by adding context to model, and use `model.args`
             #    as the default conditioning. Then we no longer need to check `inargnames`

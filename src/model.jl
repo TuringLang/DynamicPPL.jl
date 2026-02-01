@@ -160,8 +160,7 @@ Return a `Model` which now treats variables on the right-hand side as observatio
 
 See [`condition`](@ref) for more information and examples.
 """
-Base.:|(model::Model, values::Union{Pair,Tuple,NamedTuple,AbstractDict{<:VarName}}) =
-    condition(model, values)
+Base.:|(model::Model, values) = condition(model, values)
 
 """
     condition(model::Model; values...)
@@ -196,7 +195,7 @@ demo (generic function with 2 methods)
 
 julia> model = demo();
 
-julia> m, x = model(); (m ≠ 1.0 && x ≠ 100.0)
+julia> m, x = model(); (m != 1.0 && x != 100.0)
 true
 
 julia> # Create a new instance which treats `x` as observed
@@ -209,42 +208,46 @@ true
 julia> # Let's only condition on `x = 100.0`.
        conditioned_model = condition(model, x = 100.0);
 
-julia> m, x =conditioned_model(); (m ≠ 1.0 && x == 100.0)
+julia> m, x = conditioned_model(); (m != 1.0 && x == 100.0)
 true
 
 julia> # We can also use the nicer `|` syntax.
        conditioned_model = model | (x = 100.0, );
 
-julia> m, x = conditioned_model(); (m ≠ 1.0 && x == 100.0)
+julia> m, x = conditioned_model(); (m != 1.0 && x == 100.0)
 true
 ```
 
-The above uses a `NamedTuple` to hold the conditioning variables, which allows us to perform some
-additional optimizations; in many cases, the above has zero runtime-overhead.
+In the above we have specified the conditioning variables via keyword arguments. You can also
+provide a `NamedTuple`, `AbstractDict{<:VarName}`, or a `VarNamedTuple`; internally these are
+all converted to a `VarNamedTuple`.
 
-But we can also use a `Dict`, which offers more flexibility in the conditioning
-(see examples further below) but generally has worse performance than the `NamedTuple`
-approach:
+For example, here we use a `Dict`:
 
 ```jldoctest condition
 julia> conditioned_model_dict = condition(model, Dict(@varname(x) => 100.0));
 
-julia> m, x = conditioned_model_dict(); (m ≠ 1.0 && x == 100.0)
+julia> m, x = conditioned_model_dict(); (m != 1.0 && x == 100.0)
 true
 
 julia> # There's also an option using `|` by letting the right-hand side be a tuple
        # with elements of type `Pair{<:VarName}`, i.e. `vn => value` with `vn isa VarName`.
-       conditioned_model_dict = model | (@varname(x) => 100.0, );
+       conditioned_model_pairs = model | (@varname(x) => 100.0);
 
-julia> m, x = conditioned_model_dict(); (m ≠ 1.0 && x == 100.0)
+julia> m, x = conditioned_model_pairs(); (m != 1.0 && x == 100.0)
 true
 ```
 
 ## Condition only a part of a multivariate variable
 
-Not only can be condition on multivariate random variables, but
-we can also use the standard mechanism of setting something to `missing`
-in the call to `condition` to only condition on a part of the variable.
+When conditioning on multiple variables at a time, we can use `missing` to signal that a
+part of the variable should not be conditioned on.
+
+However, note that in this case each element of the multivariate random variable must be on
+its own tilde-statement. In other words, if we write `m ~ MvNormal(...)`, then we cannot
+condition on only `m[1]`. (In principle, for some distributions this can be possible,
+specifically when the distribution can be factorised into independent components, like an
+MvNormal with a diagonal covariance matrix. However, this is not currently implemented.)
 
 ```jldoctest condition
 julia> @model function demo_mv(::Type{TV}=Float64) where {TV}
@@ -260,13 +263,13 @@ julia> model = demo_mv();
 julia> conditioned_model = condition(model, m = [missing, 1.0]);
 
 julia> # (✓) `m[1]` sampled while `m[2]` is fixed
-       m = conditioned_model(); (m[1] ≠ 1.0 && m[2] == 1.0)
+       m = conditioned_model(); (m[1] != 1.0 && m[2] == 1.0)
 true
 ```
 
-Intuitively one might also expect to be able to write `model | (m[1] = 1.0, )`.
-Unfortunately this is not supported as it has the potential of increasing compilation
-times but without offering any benefit with respect to runtime:
+Intuitively one might also expect to be able to write `model | (m[2] = 1.0, )`. You cannot
+do this with a `NamedTuple` because the `VarName` `m[2]` cannot be represented as a `Symbol`
+(i.e., `Symbol("m[2]")` is not the same as `@varname(m[2])`).
 
 ```jldoctest condition
 julia> # (×) `m[2]` is not set to 1.0.
@@ -274,21 +277,24 @@ julia> # (×) `m[2]` is not set to 1.0.
 false
 ```
 
-But you _can_ do this if you use a `Dict` as the underlying storage instead:
+But you _can_ do this if you use a `Dict` or a `VarNamedTuple` as the underlying storage
+instead:
 
 ```jldoctest condition
-julia> # Alternatives:
-       # - `model | (@varname(m[2]) => 1.0,)`
-       # - `condition(model, Dict(@varname(m[2] => 1.0)))`
-       # (✓) `m[2]` is set to 1.0.
-       m = condition(model, @varname(m[2]) => 1.0)(); (m[1] ≠ 1.0 && m[2] == 1.0)
+julia> vnt = @vnt begin
+           m[2] = 1.0
+       end
+VarNamedTuple
+└─ m => PartialArray size=(2,) data::DynamicPPL.VarNamedTuples.GrowableArray{Float64, 1}
+        └─ (2,) => 1.0
+
+julia> m = condition(model, vnt)(); (m[1] != 1.0 && m[2] == 1.0)
 true
 ```
 
 ## Nested models
 
-`condition` of course also supports the use of nested models through
-the use of [`to_submodel`](@ref).
+`condition` also supports the use of nested models through the use of [`to_submodel`](@ref).
 
 ```jldoctest condition
 julia> @model demo_inner() = m ~ Normal()
@@ -312,7 +318,7 @@ julia> # To condition the variable inside `demo_inner` we need to refer to it as
 julia> conditioned_model()
 1.0
 
-julia> # However, it's not possible to condition `inner` directly.
+julia> # However, it's not possible to condition `inner` itself.
        conditioned_model_fail = model | (inner = 1.0, );
 
 julia> conditioned_model_fail()
@@ -323,28 +329,37 @@ ERROR: ArgumentError: `x ~ to_submodel(...)` is not supported when `x` is observ
 function AbstractPPL.condition(model::Model, values...)
     # Positional arguments - need to handle cases carefully
     return contextualize(
-        model, ConditionContext(_make_conditioning_values(values...), model.context)
+        model, CondFixContext{Condition}(_make_condfix_values(values...), model.context)
     )
 end
 function AbstractPPL.condition(model::Model; values...)
-    # Keyword arguments -- just convert to a NamedTuple
-    return contextualize(model, ConditionContext(NamedTuple(values), model.context))
+    return contextualize(
+        model, CondFixContext{Condition}(VarNamedTuple(NamedTuple(values)), model.context)
+    )
 end
 
 """
-    _make_conditioning_values(vals...)
+    _make_condfix_values(vals...)
 
-Convert different types of input to either a `NamedTuple` or `AbstractDict` of
-conditioning values, suitable for storage in a `ConditionContext`.
+Convert different types of input to a `VarNamedTuple` of values, suitable for storage in a
+`CondFixContext`.
 
-This handles all the cases where `vals` is either already a NamedTuple or
-AbstractDict (e.g. `model | (x=1, y=2)`), as well as if they are splatted (e.g.
-`condition(model, x=1, y=2)`).
+This handles all the cases where `vals` is either already a `NamedTuple` or `AbstractDict`
+(e.g. `model | (x=1, y=2)`), as well as if they are splatted (e.g. `condition(model, x=1,
+y=2)`).
 """
-_make_conditioning_values(values::Union{NamedTuple,AbstractDict}) = values
-_make_conditioning_values(values::NTuple{N,Pair{<:VarName}}) where {N} = Dict(values)
-_make_conditioning_values(v::Pair{<:Symbol}, vs::Pair{<:Symbol}...) = NamedTuple(v, vs...)
-_make_conditioning_values(v::Pair{<:VarName}, vs::Pair{<:VarName}...) = Dict(v, vs...)
+_make_condfix_values(values::NamedTuple) = VarNamedTuple(values)
+_make_condfix_values(values::VarNamedTuple) = values
+_make_condfix_values(values::AbstractDict{<:VarName}) = VarNamedTuple(pairs(values))
+function _make_condfix_values(values::Pair{<:Union{VarName,Symbol}}...)
+    pairs = map(
+        v -> ((v.first isa Symbol ? VarName{v.first}() : v.first) => v.second), values
+    )
+    return VarNamedTuple(pairs)
+end
+function _make_condfix_values(values::NTuple{N,Pair{<:Union{VarName,Symbol}}}) where {N}
+    return _make_condfix_values(values...)
+end
 
 """
     decondition(model::Model)
@@ -475,7 +490,7 @@ Return the conditioned values in `model`.
 ```jldoctest
 julia> using Distributions
 
-julia> using DynamicPPL: conditioned, contextualize, PrefixContext, ConditionContext
+julia> using DynamicPPL: conditioned, contextualize, PrefixContext, CondFixContext, Condition
 
 julia> @model function demo()
            m ~ Normal()
@@ -487,16 +502,20 @@ julia> m = demo();
 
 julia> # Returns all the variables we have conditioned on + their values.
        conditioned(condition(m, x=100.0, m=1.0))
-(x = 100.0, m = 1.0)
+VarNamedTuple
+├─ x => 100.0
+└─ m => 1.0
 
-julia> # Nested ones also work.
-       # (Note that `PrefixContext` also prefixes the variables of any
-       # ConditionContext that is _inside_ it; because of this, the type of the
-       # container has to be broadened to a `Dict`.)
-       cm = condition(contextualize(m, PrefixContext(@varname(a), ConditionContext((m=1.0,)))), x=100.0);
+julia> # Nested ones also work. (Note that `PrefixContext` also prefixes
+       # the variables of any `CondFixContext` that is _inside_ it.)
+       new_context = PrefixContext(@varname(a), CondFixContext{Condition}(VarNamedTuple(m=1.0,)));
+       cm = condition(contextualize(m, new_context), x=100.0);
 
-julia> Set(keys(conditioned(cm))) == Set([@varname(a.m), @varname(x)])
-true
+julia> conditioned(cm)
+VarNamedTuple
+├─ a => VarNamedTuple
+│       └─ m => 1.0
+└─ x => 100.0
 
 julia> # Since we conditioned on `a.m`, it is not treated as a random variable.
        # However, `a.x` will still be a random variable.
@@ -508,8 +527,9 @@ julia> # We can also condition on `a.m` _outside_ of the PrefixContext:
        cm = condition(contextualize(m, PrefixContext(@varname(a))), (@varname(a.m) => 1.0));
 
 julia> conditioned(cm)
-Dict{VarName{:a, AbstractPPL.Property{:m, AbstractPPL.Iden}}, Float64} with 1 entry:
-  a.m => 1.0
+VarNamedTuple
+└─ a => VarNamedTuple
+        └─ m => 1.0
 
 julia> # Now `a.x` will be sampled.
        keys(VarInfo(cm))
@@ -554,120 +574,25 @@ true
 julia> # Let's only fix on `x = 100.0`.
        fixed_model = fix(model, x = 100.0);
 
-julia> m, x = fixed_model(); (m ≠ 1.0 && x == 100.0)
+julia> m, x = fixed_model(); (m != 1.0 && x == 100.0)
 true
 ```
 
-The above uses a `NamedTuple` to hold the fixed variables, which allows us to perform some
-additional optimizations; in many cases, the above has zero runtime-overhead.
+## Other ways of specifying fixed values
 
-But we can also use a `Dict`, which offers more flexibility in the fixing
-(see examples further below) but generally has worse performance than the `NamedTuple`
-approach:
-
-```jldoctest fix
-julia> fixed_model_dict = fix(model, Dict(@varname(x) => 100.0));
-
-julia> m, x = fixed_model_dict(); (m ≠ 1.0 && x == 100.0)
-true
-
-julia> # Alternative: pass `Pair{<:VarName}` as positional argument.
-       fixed_model_dict = fix(model, @varname(x) => 100.0, );
-
-julia> m, x = fixed_model_dict(); (m ≠ 1.0 && x == 100.0)
-true
-```
-
-## Fix only a part of a multivariate variable
-
-We can not only fix multivariate random variables, but
-we can also use the standard mechanism of setting something to `missing`
-in the call to `fix` to only fix a part of the variable.
-
-```jldoctest fix
-julia> @model function demo_mv(::Type{TV}=Float64) where {TV}
-           m = Vector{TV}(undef, 2)
-           m[1] ~ Normal()
-           m[2] ~ Normal()
-           return m
-       end
-demo_mv (generic function with 4 methods)
-
-julia> model = demo_mv();
-
-julia> fixed_model = fix(model, m = [missing, 1.0]);
-
-julia> # (✓) `m[1]` sampled while `m[2]` is fixed
-       m = fixed_model(); (m[1] ≠ 1.0 && m[2] == 1.0)
-true
-```
-
-Intuitively one might also expect to be able to write something like `fix(model, var\"m[1]\" = 1.0, )`.
-Unfortunately this is not supported as it has the potential of increasing compilation
-times but without offering any benefit with respect to runtime:
-
-```jldoctest fix
-julia> # (×) `m[2]` is not set to 1.0.
-       m = fix(model, var"m[2]" = 1.0)(); m[2] == 1.0
-false
-```
-
-But you _can_ do this if you use a `Dict` as the underlying storage instead:
-
-```jldoctest fix
-julia> # Alternative: `fix(model, Dict(@varname(m[2] => 1.0)))`
-       # (✓) `m[2]` is set to 1.0.
-       m = fix(model, @varname(m[2]) => 1.0)(); (m[1] ≠ 1.0 && m[2] == 1.0)
-true
-```
-
-## Nested models
-
-`fix` of course also supports the use of nested models through
-the use of [`to_submodel`](@ref), similar to [`condition`](@ref).
-
-```jldoctest fix
-julia> @model demo_inner() = m ~ Normal()
-demo_inner (generic function with 2 methods)
-
-julia> @model function demo_outer()
-           inner ~ to_submodel(demo_inner())
-           return inner
-       end
-demo_outer (generic function with 2 methods)
-
-julia> model = demo_outer();
-
-julia> model() ≠ 1.0
-true
-
-julia> fixed_model = fix(model, (@varname(inner.m) => 1.0, ));
-
-julia> fixed_model()
-1.0
-```
-
-However, unlike [`condition`](@ref), `fix` can also be used to fix the
-return-value of the submodel:
-
-```julia
-julia> fixed_model = fix(model, inner = 2.0,);
-
-julia> fixed_model()
-2.0
-```
+Specifying fixed values can be done exactly in the same way as for [`condition`](@ref);
+please see its docstring for more examples.
 
 ## Difference from `condition`
 
-A very similar functionality is also provided by [`condition`](@ref). The only
-difference between fixing and conditioning is as follows:
-- `condition`ed variables are considered to be observations, and are thus
-  included in the computation [`logjoint`](@ref) and [`loglikelihood`](@ref),
-  but not in [`logprior`](@ref).
-- `fix`ed variables are considered to be constant, and are thus not included
+The only difference between fixing and conditioning is as follows:
+
+- Conditioned variables are considered to be observations, and are thus included in the
+  computation log-joint and log-likelihood, but not the log-prior.
+- Fixed variables are considered to be constant, and are thus not included
   in any log-probability computations.
 
-```juliadoctest fix
+```jldoctest; setup=:(using DynamicPPL, Distributions)
 julia> @model function demo()
            m ~ Normal()
            x ~ Normal(m, 1)
@@ -684,33 +609,37 @@ julia> model_conditioned = condition(model, m = 1.0);
 julia> logjoint(model_fixed, (x=1.0,))
 -0.9189385332046728
 
-julia> # Different!
-       logjoint(model_conditioned, (x=1.0,))
+julia> logjoint(model_conditioned, (x=1.0,))
 -2.3378770664093453
 
-julia> # And the difference is the missing log-probability of `m`:
-       logjoint(model_fixed, (x=1.0,)) + logpdf(Normal(), 1.0) == logjoint(model_conditioned, (x=1.0,))
-true
+julia> # The difference is the missing log-probability of `m`:
+       logpdf(Normal(), 1.0)
+-1.4189385332046727
 ```
 """
-fix(model::Model; values...) = contextualize(model, fix(model.context; values...))
-function fix(model::Model, value, values...)
-    return contextualize(model, fix(model.context, value, values...))
+function fix(model::Model, values...)
+    return contextualize(
+        model, CondFixContext{Fix}(_make_condfix_values(values...), model.context)
+    )
+end
+function fix(model::Model; values...)
+    return contextualize(
+        model, CondFixContext{Fix}(VarNamedTuple(NamedTuple(values)), model.context)
+    )
 end
 
 """
     unfix(model::Model)
     unfix(model::Model, variables...)
 
-Return a `Model` for which `variables...` are _not_ considered fixed.
-If no `variables` are provided, then all variables currently considered fixed
-will no longer be.
+Return a `Model` for which `variables...` are _not_ considered fixed. If no `variables` are
+provided, then all variables currently considered fixed will no longer be.
 
-This is essentially the inverse of [`fix`](@ref). This also means that
-it suffers from the same limitiations.
+This is essentially the inverse of [`fix`](@ref). This also means that it suffers from the
+same limitiations.
 
-Note that currently we only support `variables` to take on explicit values
-provided to `fix`.
+Note that currently we only support `variables` to take on explicit values provided to
+`fix`.
 
 # Examples
 ```jldoctest unfix

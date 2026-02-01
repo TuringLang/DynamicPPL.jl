@@ -129,6 +129,24 @@ If anything related to `VarInfo` is behaving unexpectedly, e.g. the arguments or
 
 ## Other changes
 
+### `ConditionContext` and `FixedContext`
+
+The underlying code for `ConditionContext` and `FixedContext` is almost completely the same.
+In this release, to reduce code duplication, they have been merged into a single implementation, `CondFixContext{Condition}` and `CondFixContext{Fix}`, where the type parameter controls whether conditioning or fixing is performed.
+
+Conditioning and fixing now also exclusively use VarNamedTuple internally.
+You can still condition or fix a model with the same API as before (with NamedTuple or Dict).
+However, for most precise control over exactly which variables are conditioned as well as the templates for any arrays present, you can also condition directly using a `VarNamedTuple`.
+For example:
+
+```julia
+@model f() = x ~ Normal()
+vnt = @vnt begin
+    x = 1
+end
+f() | vnt  # Condition f on x == 1.
+```
+
 ### Results of `predict` now include `:=` statements
 
 The chain generated from `predict(model, chain::MCMCChains.Chains)` will now include values for `x := y` statements in the model.
