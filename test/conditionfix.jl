@@ -3,6 +3,7 @@ module DynamicPPLCondFixContextTests
 using DynamicPPL
 using DynamicPPL: CondFixContext, Condition, Fix, PrefixContext
 using Distributions
+using LinearAlgebra: I
 using Test
 
 # Useful test context types. Note we have to overload equality because otherwise two VNTs
@@ -372,6 +373,38 @@ DynamicPPL.setchildcontext(::MyParentContext, child) = MyParentContext(child)
         @test retval == 5.0
         @test vi isa VarInfo
         @test vi[@varname(m)] isa Real
+    end
+
+    @testset "can condition/fix on each individual part of a multivariate" begin
+        @model function mvnorm()
+            x ~ MvNormal(zeros(3), I)
+            return x
+        end
+        @testset "with templating" begin
+            vnt = @vnt begin
+                @template x = zeros(3)
+                x[1] := 1.0
+                x[2] := 2.0
+                x[3] := 3.0
+            end
+            for op in (condition, fix)
+                op_model = op(mvnorm(), vnt)
+                @test op_model() == [1.0, 2.0, 3.0]
+            end
+        end
+        @testset "without templating" begin
+            # Note that this is only guaranteed to work as long as rand(distribution)
+            # returns a Base.Vector.
+            vnt = @vnt begin
+                x[1] := 1.0
+                x[2] := 2.0
+                x[3] := 3.0
+            end
+            for op in (condition, fix)
+                op_model = op(mvnorm(), vnt)
+                @test op_model() == [1.0, 2.0, 3.0]
+            end
+        end
     end
 end
 

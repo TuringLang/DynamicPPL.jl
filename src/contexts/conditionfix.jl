@@ -105,7 +105,7 @@ end
 function get_cf_value(
     ::Type{CF}, context::CondFixContext{CF}, vn::VarName
 ) where {CF<:ConditionOrFix}
-    return getvalue(context.values, vn)
+    return context.values[vn]
 end
 
 """
