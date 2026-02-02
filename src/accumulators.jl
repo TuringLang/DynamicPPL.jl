@@ -232,11 +232,11 @@ function getacc(at::AccumulatorTuple, ::Val{accname}) where {accname}
 end
 
 """
-    deleteacc(at::AccumulatorTuple, ::Val{accname})
+    deleteacc!!(at::AccumulatorTuple, ::Val{accname})
 
 Delete the accumulator with name `accname` from `at`. Returns a new `AccumulatorTuple`.
 """
-function deleteacc(
+function deleteacc!!(
     accs::AccumulatorTuple{N,<:NamedTuple{names}}, ::Val{T}
 ) where {N,names,T}
     return AccumulatorTuple(NamedTuple{filter(x -> x != T, names)}(accs.nt))

@@ -150,6 +150,15 @@ For example, carrying on from the above, `conditioned(f() | vnt)` will return `v
 The underlying code for `ConditionContext` and `FixedContext` is almost completely the same.
 In this release, to reduce code duplication, they have been merged into a single implementation, `CondFixContext{Condition}` and `CondFixContext{Fix}`, where the type parameter controls whether conditioning or fixing is performed.
 
+### Accumulator interface exports more functions
+
+To define your own accumulator, you have to overload a number of functions.
+These are described in the `AbstractAccumulator` docstring.
+These functions are now exported.
+
+We now also export more of the accumulators defined in DynamicPPL so that they can be used in upstream packages.
+See the API docs for more info.
+
 ### Results of `predict` now include `:=` statements
 
 The chain generated from `predict(model, chain::MCMCChains.Chains)` will now include values for `x := y` statements in the model.
