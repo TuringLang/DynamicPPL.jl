@@ -1,5 +1,9 @@
 # DynamicPPL Changelog
 
+## 0.39.13
+
+Add compatibility with Mooncake.jl 0.5.
+
 ## 0.39.12
 
 When constructing an `MCMCChains.Chains`, sampler statistics that are not `Union{Real,Missing}` are dropped from the chain (previously this would cause chain construction to fail).

@@ -1,6 +1,7 @@
 module DynamicPPLMCMCChainsExtTests
 
 using DynamicPPL, Distributions, MCMCChains, Test, AbstractMCMC
+using DynamicPPL: ParamsWithStats
 
 @testset "DynamicPPLMCMCChainsExt" begin
     @testset "from_samples" begin
