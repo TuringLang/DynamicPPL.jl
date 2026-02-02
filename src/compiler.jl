@@ -473,7 +473,9 @@ function generate_tilde(left, right)
         $dist = $right
         $vn = $(DynamicPPL.resolve_varnames)($(make_varname_expression(left)), $dist)
         $isassumption = $(DynamicPPL.isassumption(left, vn))
-        if $(DynamicPPL.isfixed(left, vn))
+        # TODO(penelopeysm): VERY HACKY WORKAROUND FOR SUBMODELS. See src/submodel.jl
+        # tilde_observe!! for more details.
+        if $(DynamicPPL.isfixed(left, vn)) && !($dist isa DynamicPPL.Submodel)
             # $left may not be a simple varname, it might be x.a or x[1], in which case we
             # need to use Accessors.set to safely set it.
             $(assign_or_set!!(
