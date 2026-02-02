@@ -1,15 +1,16 @@
 """
     @vnt begin ... end
 
-Construct a `VarNamedTuple` from a block of assignments. This is best illustrated by
+Construct a `VarNamedTuple` from a block of assignments. Each assignment should be of the form
+`var := value`, where `var` is a variable name. This is best illustrated by
 example:
 
 ```jldoctest
 julia> using DynamicPPL
 
 julia> @vnt begin
-           a = 1
-           b = 2
+           a := 1
+           b := 2
        end
 VarNamedTuple
 ├─ a => 1
@@ -20,7 +21,7 @@ You can set entirely arbitrary variables:
 
 ```jldoctest; setup=:(using DynamicPPL)
 julia> @vnt begin
-           a.b.c.d.e = "hello"
+           a.b.c.d.e := "hello"
        end
 VarNamedTuple
 └─ a => VarNamedTuple
@@ -51,8 +52,8 @@ julia> x = zeros(5); outside_y = zeros(3, 3);
 
 julia> @vnt begin
             @template x y=outside_y
-            x[1] = 1.0
-            y[1, 1] = 2.0
+            x[1] := 1.0
+            y[1, 1] := 2.0
        end
 VarNamedTuple
 ├─ x => PartialArray size=(5,) data::Vector{Float64}
@@ -74,8 +75,8 @@ VarNamedTuple documentation for more details.
 ```jldoctest; setup=:(using DynamicPPL)
 julia> @vnt begin
             # No template provided.
-            x[1] = 1.0
-            y[1, 1] = 2.0
+            x[1] := 1.0
+            y[1, 1] := 2.0
        end
 VarNamedTuple
 ├─ x => PartialArray size=(1,) data::DynamicPPL.VarNamedTuples.GrowableArray{Float64, 1}
@@ -138,7 +139,7 @@ function _vnt(input)
                     error("unexpected argument to `@template`: $arg")
                 end
             end
-        elseif Meta.isexpr(expr, :(=))
+        elseif Meta.isexpr(expr, :(:=))
             lhs, rhs = expr.args
             vn = AbstractPPL.varname(lhs, false)
             top_level_sym = _get_top_sym(lhs)
@@ -147,12 +148,12 @@ function _vnt(input)
                     output.args,
                     :(
                         $vnt = DynamicPPL.templated_setindex!!(
-                            $vnt, $rhs, $vn, $(symbols_to_templates[top_level_sym])
+                            $vnt, $(esc(rhs)), $vn, $(symbols_to_templates[top_level_sym])
                         )
                     ),
                 )
             else
-                push!(output.args, :($vnt = BangBang.setindex!!($vnt, $rhs, $vn)))
+                push!(output.args, :($vnt = BangBang.setindex!!($vnt, $(esc(rhs)), $vn)))
             end
         else
             error("unexpected expression in `@vnt` block: $expr")

@@ -30,6 +30,7 @@ function _getindex_optic(vnt::VarNamedTuple, vn::VarName)
     return _getindex_optic(vnt, AbstractPPL.varname_to_optic(vn))
 end
 @inline _getindex_optic(@nospecialize(x::Any), ::AbstractPPL.Iden) = x
+@inline _getindex_optic(x::Any, o::AbstractPPL.AbstractOptic) = o(x)
 function _getindex_optic(vnt::VarNamedTuple, optic::AbstractPPL.Property{S}) where {S}
     return _getindex_optic(getindex(vnt.data, S), optic.child)
 end
@@ -57,6 +58,7 @@ function _haskey_optic(vnt::VarNamedTuple, name::VarName)
     return _haskey_optic(vnt, AbstractPPL.varname_to_optic(name))
 end
 @inline _haskey_optic(@nospecialize(::Any), ::AbstractPPL.Iden) = true
+@inline _haskey_optic(x::Any, o::AbstractPPL.AbstractOptic) = AbstractPPL.canview(o, x)
 @inline _haskey_optic(::VarNamedTuple, ::AbstractPPL.Index) = false
 function _haskey_optic(vnt::VarNamedTuple, optic::AbstractPPL.Property{S}) where {S}
     return Base.haskey(vnt.data, S) && _haskey_optic(getindex(vnt.data, S), optic.child)

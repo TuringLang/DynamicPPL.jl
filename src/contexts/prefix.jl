@@ -70,20 +70,17 @@ optic_skip_length(c::AbstractPPL.Property) = 1 + optic_skip_length(c.child)
     prefix_and_strip_contexts(ctx::PrefixContext, vn::VarName)
 
 Same as `prefix`, but additionally returns a new context stack that has all the
-PrefixContexts removed.
+`PrefixContext`s removed.
 
-NOTE: This does _not_ modify any variables in any `ConditionContext` and
-`FixedContext` that may be present in the context stack. This is because this
-function is only used in `tilde_assume!!`, which is lower in the tilde-pipeline
-than `contextual_isassumption` and `contextual_isfixed` (the functions which
-actually use the `ConditionContext` and `FixedContext` values). Thus, by this
-time, any `ConditionContext`s and `FixedContext`s present have already served
-their purpose.
+NOTE: This does _not_ modify any variables in any `CondFixContext`s that may be present in
+the context stack. This is because this function is only used in `tilde_assume!!`, which is
+lower in the tilde-pipeline than `contextual_isassumption` and `contextual_isfixed` (the
+functions which actually use the `CondFixContext`'s values). Thus, by this time, any
+`CondFixContext`s present have already served their purpose.
 
-If you call this function, you must therefore be careful to ensure that you _do
-not_ need to modify any inner `ConditionContext`s and `FixedContext`s. If you
-_do_ need to modify them, then you may need to use
-`prefix_cond_and_fixed_variables` instead.
+If you call this function, you must therefore be careful to ensure that you _do not_ need to
+modify any inner `CondFixContext`s. If you _do_ need to modify them, then you may need to
+use `prefix_cond_and_fixed_variables` instead.
 """
 function prefix_and_strip_contexts(ctx::PrefixContext, vn::VarName)
     child_context = childcontext(ctx)

@@ -291,13 +291,6 @@ function DynamicPPL.accumulate_observe!!(
     return acc
 end
 
-_conditioned_varnames(d::AbstractDict) = keys(d)
-_conditioned_varnames(d) = map(sym -> VarName{sym}(), keys(d))
-function conditioned_varnames(context)
-    conditioned_values = DynamicPPL.conditioned(context)
-    return _conditioned_varnames(conditioned_values)
-end
-
 function check_varnames_seen(varnames_seen::AbstractDict{VarName,Int})
     if isempty(varnames_seen)
         @warn "The model does not contain any parameters."
@@ -323,7 +316,8 @@ function check_model_pre_evaluation(model::Model)
     issuccess = true
     # If something is in the model arguments, then it should NOT be in `condition`,
     # nor should there be any symbol present in `condition` that has the same symbol.
-    for vn in conditioned_varnames(model.context)
+    conditioned_vns = keys(DynamicPPL.conditioned(model.context))
+    for vn in conditioned_vns
         if DynamicPPL.inargnames(vn, model)
             @warn "Variable $(vn) is both in the model arguments and in the conditioning!\n" *
                 "Please use either conditioning through the model arguments, or through " *

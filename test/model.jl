@@ -112,9 +112,11 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
         end
         model = demo_condition()
 
-        # Test that different syntaxes work and give the same underlying ConditionContext
+        # Test that different syntaxes work and give the same underlying CondFixContext
         @testset "conditioning NamedTuple" begin
-            expected_values = (y=2,)
+            expected_values = @vnt begin
+                y := 2
+            end
             @test condition(model, (y=2,)).context.values == expected_values
             @test condition(model; y=2).context.values == expected_values
             @test condition(model; y=2).context.values == expected_values
@@ -125,19 +127,38 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
 
         @testset "conditioning AbstractDict" begin
             # condition just 1 variable
-            expected_values = Dict(@varname(y) => 2)
+            expected_values = @vnt begin
+                y := 2
+            end
             @test condition(model, Dict(@varname(y) => 2)).context.values == expected_values
             @test condition(model, @varname(y) => 2).context.values == expected_values
             @test (model | (@varname(y) => 2,)).context.values == expected_values
+            @test (model | (@varname(y) => 2)).context.values == expected_values
             conditioned_model = condition(model, Dict(@varname(y) => 2))
             @test keys(VarInfo(conditioned_model)) == [@varname(x)]
 
             # condition 2 variables
-            expected_values = Dict(@varname(x) => 1, @varname(y) => 2)
+            expected_values = @vnt begin
+                x := 1
+                y := 2
+            end
             @test condition(model, (@varname(x) => 1, @varname(y) => 2)).context.values ==
                 expected_values
             conditioned_model = condition(model, (@varname(x) => 1, @varname(y) => 2))
             @test keys(VarInfo(conditioned_model)) == []
+        end
+
+        @testset "conditioning VNT" begin
+            # This is mostly to check that the VNT method exists
+            expected_values = @vnt begin
+                y := 2
+            end
+            @test condition(model, (@vnt begin
+                y := 2
+            end)).context.values == expected_values
+            @test (model | (@vnt begin
+                y := 2
+            end)).context.values == expected_values
         end
 
         @testset "deconditioning" begin

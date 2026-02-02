@@ -248,6 +248,27 @@ end
         end
     end
 
+    @testset "deconditioning a submodel from outside" begin
+        @testset "$op" for (op, deop) in [(condition, decondition), (fix, unfix)]
+            @model inner() = x ~ Normal()
+            @model function outer()
+                return a ~ to_submodel(inner())
+            end
+
+            model = outer()
+            @test only(keys(VarInfo(model))) == @varname(a.x)
+            op_model = op(model, (@varname(a.x) => 1.0))
+            @test isempty(keys(VarInfo(op_model)))
+
+            deop_model = deop(op_model)
+            @test only(keys(VarInfo(deop_model))) == @varname(a.x)
+            deop_model2 = deop(op_model, @varname(a))
+            @test only(keys(VarInfo(deop_model2))) == @varname(a.x)
+            deop_model3 = deop(op_model, @varname(a.x))
+            @test only(keys(VarInfo(deop_model3))) == @varname(a.x)
+        end
+    end
+
     @testset "submodels with indexed prefixes" begin
         # These submodels briefly failed when VNT was implemented, due to GrowableArray
         # issues (see example in https://github.com/TuringLang/DynamicPPL.jl/issues/1221).

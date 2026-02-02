@@ -1,5 +1,7 @@
 # Pretty-printing for VarNamedTuple and PartialArray.
 
+const ELIDED_COLOR = :light_black
+
 function Base.show(io::IO, vnt::VarNamedTuple)
     if isempty(vnt.data)
         return print(io, "VarNamedTuple()")
@@ -16,7 +18,7 @@ function vnt_pretty_print(io::IO, pa::PartialArray, prefix::String, depth::Int)
     size_style = if all(pa.mask)
         (;)
     else
-        (; color=:light_white)
+        (; color=ELIDED_COLOR)
     end
     print(io, "PartialArray ")
     printstyled(io, "size=" * string(size(pa.data)); size_style...)
@@ -33,7 +35,7 @@ function vnt_pretty_print(io::IO, pa::PartialArray, prefix::String, depth::Int)
                 printstyled(
                     io,
                     "⋮ (" * string(nindices - 3) * " more set indices) ";
-                    color=:light_white,
+                    color=ELIDED_COLOR,
                 )
                 println(io)
             end
@@ -79,7 +81,7 @@ function vnt_pretty_print(io::IO, vnt::VarNamedTuple, prefix::String, depth::Int
             if i == 3
                 print(io, prefix * "│  ")
                 printstyled(
-                    io, "⋮ (" * string(nkeys - 3) * " more keys) "; color=:light_white
+                    io, "⋮ (" * string(nkeys - 3) * " more keys) "; color=ELIDED_COLOR
                 )
                 println(io)
             end

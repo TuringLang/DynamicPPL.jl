@@ -97,7 +97,7 @@ ERROR: ArgumentError: Cannot convert VarNamedTuple containing non-identity VarNa
 [...]
 ```
 """
-@generated function NamedTuple(vnt::VarNamedTuple{names,vals}) where {names,vals}
+@generated function Base.NamedTuple(vnt::VarNamedTuple{names,vals}) where {names,vals}
     if isempty(names)
         return :(NamedTuple())
     end

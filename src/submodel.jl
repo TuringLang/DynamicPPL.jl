@@ -135,24 +135,6 @@ julia> loglikelihood = logpdf(Uniform(-1 - abs(sub1_x), 1 + abs(sub2_x)), 0.4);
 julia> getlogjoint(vi) ≈ logprior + loglikelihood
 true
 ```
-
-## Usage as likelihood is illegal
-
-Note that it is illegal to use a `to_submodel` model as a likelihood in another model:
-
-```jldoctest submodel-to_submodel-illegal; setup=:(using Distributions)
-julia> @model inner() = x ~ Normal()
-inner (generic function with 2 methods)
-
-julia> @model illegal_likelihood() = a ~ to_submodel(inner())
-illegal_likelihood (generic function with 2 methods)
-
-julia> model = illegal_likelihood() | (a = 1.0,);
-
-julia> model()
-ERROR: ArgumentError: `x ~ to_submodel(...)` is not supported when `x` is observed
-[...]
-```
 """
 to_submodel(m::Model, auto_prefix::Bool=true) = Submodel{typeof(m),auto_prefix}(m)
 
@@ -224,11 +206,53 @@ function _evaluate!!(
 end
 
 function tilde_observe!!(
-    ::AbstractContext,
-    ::DynamicPPL.Submodel,
-    left,
-    vn::Union{VarName,Nothing},
-    ::AbstractVarInfo,
+    context::AbstractContext,
+    right::DynamicPPL.Submodel,
+    left::Any,
+    vn::VarName,
+    vi::AbstractVarInfo,
 )
-    throw(ArgumentError("`x ~ to_submodel(...)` is not supported when `x` is observed"))
+    # TODO(penelopeysm) This is VERY BAD. See
+    # https://github.com/TuringLang/DynamicPPL.jl/issues/1246.
+    #
+    # We need a much more principled way of dealing with this. The problem is that, if we
+    # have
+    #
+    # @model inner() = a ~ Normal()
+    # @model function f()
+    #    x ~ to_submodel(inner())
+    # end
+    # model = f() | (@varname(x.a) => 2.0)
+    #
+    # and a user conditions the top-level model on `x.a` (for example), then when we check
+    # whether `x` is conditioned, we will find that it indeed is (since the conditioned
+    # values will have `values.data.x` pointing to a VNT). That sends us down the path of
+    # tilde_observe!!, so we HAVE to deal with this by calling evaluate.
+    #
+    # What we actually want to forbid is conditioning on the RETURN VALUE. That is, we don't
+    # want someone to think that they can do
+    #
+    # model = f() | (@varname(x) => 3.0)
+    #
+    # or indeed
+    #
+    # @model function f2(x)
+    #     x ~ to_submodel(inner())
+    # end
+    # model2 = f2(3.0)
+    # 
+    # These are the cases that we want to ban. BUT WE HAVE NO WAY OF FIGURING OUT WHICH ONE
+    # THE USER MEANT ---- BECAUSE WE LUMP THE RETURN VALUE AND LATENTS INTO ONE THING.
+    # This is REALLY, really frustrating.
+    #
+    # What we do here is to just evaluate the submodel so that we handle the first case
+    # above correctly. The other cases USED to error; however, now they will work (and the
+    # submodel will be evaluated, but the value of `x` will be ignored). That is probably
+    # not what the user wants, but hey, it'll make tests pass.
+    return _evaluate!!(right, vi, context, vn)
+end
+function tilde_observe!!(
+    ::AbstractContext, ::DynamicPPL.Submodel, left, ::Nothing, ::AbstractVarInfo
+)
+    throw(ArgumentError("`x ~ to_submodel(...)` is not supported when `x` is a literal"))
 end
