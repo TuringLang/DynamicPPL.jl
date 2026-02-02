@@ -642,6 +642,27 @@ Base.size(st::SizedThing) = st.size
                 @test length(keys(vmerged)) == 3
             end
         end
+
+        @testset "Warning when trying to extract values" begin
+            vnt = @vnt begin
+                x[1] := 1.0
+                x[2] := 2.0
+            end
+            warnmsg = r"Returning a `Base.Array` with"
+            # These should warn
+            @test_logs (:warn, warnmsg) vnt[@varname(x[:][1])]
+            @test_logs (:warn, warnmsg) vnt[@varname(x[:])]
+            @test_logs (:warn, warnmsg) vnt[@varname(x)]
+            # These shouldn't warn
+            @test_logs vnt[@varname(x[1:2])]
+            @test_logs vnt[@varname(x[1])]
+            # The following with DynamicIndex things are broken. They should warn, but
+            # currently they don't because by the time you try to index into the
+            # GrowableArray, the indices are already concretised. This can be fixed.
+            @test_broken false
+            @test_logs vnt[@varname(x[end])]
+            @test_logs vnt[@varname(x[1:end])]
+        end
     end
 
     @testset "multiindices" begin

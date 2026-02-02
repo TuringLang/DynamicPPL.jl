@@ -86,7 +86,11 @@ end
 # never be the return value of getindex. Thus, we automatically convert them to dense arrays
 # if needed.
 function Base.getindex(vnt::VarNamedTuple, vn::VarName)
-    return unwrap_internal_array(_getindex_optic(vnt, vn))
+    result = _getindex_optic(vnt, vn)
+    if result isa PartialArray{E,N,<:GrowableArray} where {E,N}
+        _warn_growable_array()
+    end
+    return unwrap_internal_array(result)
 end
 
 Base.haskey(vnt::VarNamedTuple, vn::VarName) = _haskey_optic(vnt, vn)

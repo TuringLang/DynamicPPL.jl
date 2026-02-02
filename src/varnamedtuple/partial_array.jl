@@ -392,14 +392,15 @@ function Base.getindex(pa::PartialArray, inds::Vararg{Any}; kw...)
         # If _setindex!! works correctly, we should only be able to reach this point if all
         # the elements in `val` are identical to first_elem. Thus we just return that one.
         return first(val).block
-    elseif val isa GrowableArray && any(i -> i isa Colon, inds)
+    elseif val isa GrowableArray
         # This code path is hit for things like `vnt[@varname(x[:])]` where `x` is a PA that
         # stores a GrowableArray. We warn the user that the result may be wrong.
-        #
-        # TODO(penelopeysm): There are also other cases where a GrowableArray may give the
-        # wrong result, most notably when using the `end` DynamicIndex. However, inds is
-        # already concretised outside of this function, so we can't check for that here.
-        # This should be fixed.
+        # TODO(penelopeysm): The DynamicIndex check actually doesn't work here because if
+        # you index with `x[end]` for example, `inds` is already concretised outside of this
+        # function.
+        if any(ind -> ind isa AbstractPPL.DynamicIndex || ind isa Colon, inds)
+            _warn_growable_array()
+        end
         return unwrap_internal_array(val)
     else
         return val
@@ -627,6 +628,10 @@ function BangBang.setindex!!(pa::PartialArray, value, inds::Vararg{Any}; kw...)
 end
 
 function _subset_partialarray(pa::PartialArray, inds::Vararg{Any}; kw...)
+    if pa.data isa GrowableArray &&
+        any(ind -> ind isa AbstractPPL.DynamicIndex || ind isa Colon, inds)
+        _warn_growable_array()
+    end
     new_data = view(pa.data, inds...; kw...)
     new_mask = view(pa.mask, inds...; kw...)
     return PartialArray(new_data, new_mask)
@@ -791,18 +796,14 @@ function unwrap_internal_array(pa::PartialArray)
     end
     return unwrap_internal_array(retval)
 end
-function unwrap_internal_array(ga::GrowableArray)
-    # TODO(penelopeysm): This warning is too eager. For example, if we set x[1] and x[2] but
-    # then access x[1:2], this warning will still be triggered. We should only warn if the
-    # user calls something with colons or with DynamicIndex in it. However, that requires
-    # threading some information through from the original getindex call. This problem can
-    # be solved later on.
+unwrap_internal_array(ga::GrowableArray) = unwrap_internal_array(ga.data)
+
+function _warn_growable_array()
     @warn (
         "Returning a `Base.Array` with a presumed size based on the indices" *
         " used to set values; but this may not be the actual shape or size" *
         " of the actual `AbstractArray` that was inside the DynamicPPL model." *
-        " You should inspect the returned Array to make sure that it has the" *
-        " shape and type you expect."
+        " You should inspect the returned result to make sure that it has the" *
+        " correct value."
     )
-    return unwrap_internal_array(ga.data)
 end
