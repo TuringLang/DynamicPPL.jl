@@ -135,24 +135,6 @@ julia> loglikelihood = logpdf(Uniform(-1 - abs(sub1_x), 1 + abs(sub2_x)), 0.4);
 julia> getlogjoint(vi) ≈ logprior + loglikelihood
 true
 ```
-
-## Usage as likelihood is illegal
-
-Note that it is illegal to use a `to_submodel` model as a likelihood in another model:
-
-```jldoctest submodel-to_submodel-illegal; setup=:(using Distributions)
-julia> @model inner() = x ~ Normal()
-inner (generic function with 2 methods)
-
-julia> @model illegal_likelihood() = a ~ to_submodel(inner())
-illegal_likelihood (generic function with 2 methods)
-
-julia> model = illegal_likelihood() | (a = 1.0,);
-
-julia> model()
-ERROR: ArgumentError: `x ~ to_submodel(...)` is not supported when `x` is observed
-[...]
-```
 """
 to_submodel(m::Model, auto_prefix::Bool=true) = Submodel{typeof(m),auto_prefix}(m)
 
@@ -224,11 +206,16 @@ function _evaluate!!(
 end
 
 function tilde_observe!!(
-    ::AbstractContext,
-    ::DynamicPPL.Submodel,
-    left,
-    vn::Union{VarName,Nothing},
-    ::AbstractVarInfo,
+    context::AbstractContext,
+    right::DynamicPPL.Submodel,
+    ::Any,
+    vn::VarName,
+    vi::AbstractVarInfo,
 )
-    throw(ArgumentError("`x ~ to_submodel(...)` is not supported when `x` is observed"))
+    return _evaluate!!(right, vi, context, vn)
+end
+function tilde_observe!!(
+    ::AbstractContext, ::DynamicPPL.Submodel, left, ::Nothing, ::AbstractVarInfo
+)
+    throw(ArgumentError("`x ~ to_submodel(...)` is not supported when `x` is a literal"))
 end

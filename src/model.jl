@@ -160,7 +160,8 @@ Return a `Model` which now treats variables on the right-hand side as observatio
 
 See [`condition`](@ref) for more information and examples.
 """
-Base.:|(model::Model, values) = condition(model, values)
+Base.:|(model::Model, values::Union{NamedTuple,AbstractDict,Pair,Tuple,VarNamedTuple}) =
+    condition(model, values)
 
 """
     condition(model::Model; values...)
@@ -318,12 +319,19 @@ julia> # To condition the variable inside `demo_inner` we need to refer to it as
 julia> conditioned_model()
 1.0
 
-julia> # However, it's not possible to condition `inner` itself.
-       conditioned_model_fail = model | (inner = 1.0, );
+julia> # If you attempt to condition on `inner` itself, it must refer to the prefixed
+       # latent variables, not the return value. For example, this will work:
+       conditioned_model2 = model | (inner = (m = 1.0,), );
 
-julia> conditioned_model_fail()
-ERROR: ArgumentError: `x ~ to_submodel(...)` is not supported when `x` is observed
-[...]
+julia> conditioned_model2()
+1.0
+
+julia> # However, if `inner` does not contain `m` inside it as a field, this will not
+       # result in any conditioning:
+       conditioned_model_fail = model | (inner = "something else", );
+
+julia> conditioned_model_fail == 1.0
+false
 ```
 """
 function AbstractPPL.condition(model::Model, values...)
@@ -365,15 +373,14 @@ end
     decondition(model::Model)
     decondition(model::Model, variables...)
 
-Return a `Model` for which `variables...` are _not_ considered observations.
-If no `variables` are provided, then all variables currently considered observations
-will no longer be.
+Return a `Model` for which `variables...` are _not_ conditioned on. If no `variables` are
+provided, then all conditioned variables will be removed.
 
-This is essentially the inverse of [`condition`](@ref). This also means that
-it suffers from the same limitiations.
+Note that this function cannot decondition variables that are provided as arguments to the
+model function itself; it can only decondition variables that were provided via `condition`
+or `|`.
 
-Note that currently we only support `variables` to take on explicit values
-provided to `condition`.
+This is essentially the inverse of [`condition`](@ref).
 
 # Examples
 ```jldoctest decondition
@@ -397,9 +404,8 @@ julia> # By specifying the `VarName` to `decondition`.
 julia> (m, x) = model(); (m ≠ 1.0 && x == 10.0)
 true
 
-julia> # When `NamedTuple` is used as the underlying, you can also provide
-       # the symbol directly (though the `@varname` approach is preferable if
-       # if the variable is known at compile-time).
+julia> # `decondition` also accepts symbols, although VarNames are preferable for
+       # type stability reasons.
        model = decondition(conditioned_model, :m);
 
 julia> (m, x) = model(); (m ≠ 1.0 && x == 10.0)
@@ -412,31 +418,12 @@ true
 julia> # `decondition` without any symbols will `decondition` all variables.
        (m, x) = decondition(model)(); (m ≠ 1.0 && x ≠ 10.0)
 true
-
-julia> # Usage of `Val` to perform `decondition` at compile-time if possible
-       # is also supported.
-       model = decondition(conditioned_model, Val{:m}());
-
-julia> (m, x) = model(); (m ≠ 1.0 && x == 10.0)
-true
 ```
 
-Similarly when using a `Dict`:
-
-```jldoctest decondition
-julia> conditioned_model_dict = condition(demo(), @varname(m) => 1.0, @varname(x) => 10.0);
-
-julia> conditioned_model_dict()
-(m = 1.0, x = 10.0)
-
-julia> deconditioned_model_dict = decondition(conditioned_model_dict, @varname(m));
-
-julia> (m, x) = deconditioned_model_dict(); m ≠ 1.0 && x == 10.0
-true
-```
-
-But, as mentioned, `decondition` is only supported for variables explicitly
-provided to `condition` earlier;
+Note that `decondition` is only guaranteed to work when you decondition variables that were
+explicitly provided to `condition` earlier. In this example we condition on `@varname(m)`
+but decondition on `@varname(m[1])`, which fails because `m[1]` was not explicitly
+conditioned on:
 
 ```jldoctest decondition
 julia> @model function demo_mv(::Type{TV}=Float64) where {TV}
@@ -462,24 +449,11 @@ julia> deconditioned_model()  # (×) `m[1]` is still conditioned
 2-element Vector{Float64}:
  1.0
  2.0
-
-julia> # (✓) this works though
-       deconditioned_model_2 = deconditioned_model | (@varname(m[1]) => missing);
-
-julia> m = deconditioned_model_2(); (m[1] ≠ 1.0 && m[2] == 2.0)
-true
 ```
 """
-function AbstractPPL.decondition(model::Model, syms...)
+function AbstractPPL.decondition(model::Model, syms::Union{Symbol,VarName}...)
     return contextualize(model, decondition_context(model.context, syms...))
 end
-
-"""
-    observations(model::Model)
-
-Alias for [`conditioned`](@ref).
-"""
-observations(model::Model) = conditioned(model)
 
 """
     conditioned(model::Model)
@@ -633,13 +607,12 @@ end
     unfix(model::Model, variables...)
 
 Return a `Model` for which `variables...` are _not_ considered fixed. If no `variables` are
-provided, then all variables currently considered fixed will no longer be.
+provided, then all fixed variables will be removed.
 
-This is essentially the inverse of [`fix`](@ref). This also means that it suffers from the
-same limitiations.
+This is essentially the inverse of [`fix`](@ref).
 
-Note that currently we only support `variables` to take on explicit values provided to
-`fix`.
+Conceptually this is very similar to [`decondition`](@ref) and thus the same limitations
+apply; please see its docstring for more details.
 
 # Examples
 ```jldoctest unfix
@@ -660,7 +633,7 @@ julia> fixed_model()
 julia> # By specifying the `VarName` to `unfix`.
        model = unfix(fixed_model, @varname(m));
 
-julia> (m, x) = model(); (m ≠ 1.0 && x == 10.0)
+julia> (m, x) = model(); (m != 1.0 && x == 10.0)
 true
 
 julia> # When `NamedTuple` is used as the underlying, you can also provide
@@ -668,75 +641,20 @@ julia> # When `NamedTuple` is used as the underlying, you can also provide
        # if the variable is known at compile-time).
        model = unfix(fixed_model, :m);
 
-julia> (m, x) = model(); (m ≠ 1.0 && x == 10.0)
+julia> (m, x) = model(); (m != 1.0 && x == 10.0)
 true
 
 julia> # `unfix` multiple at once:
-       (m, x) = unfix(model, :m, :x)(); (m ≠ 1.0 && x ≠ 10.0)
+       (m, x) = unfix(model, :m, :x)(); (m != 1.0 && x != 10.0)
 true
 
 julia> # `unfix` without any symbols will `unfix` all variables.
-       (m, x) = unfix(model)(); (m ≠ 1.0 && x ≠ 10.0)
-true
-
-julia> # Usage of `Val` to perform `unfix` at compile-time if possible
-       # is also supported.
-       model = unfix(fixed_model, Val{:m}());
-
-julia> (m, x) = model(); (m ≠ 1.0 && x == 10.0)
-true
-```
-
-Similarly when using a `Dict`:
-
-```jldoctest unfix
-julia> fixed_model_dict = fix(demo(), @varname(m) => 1.0, @varname(x) => 10.0);
-
-julia> fixed_model_dict()
-(m = 1.0, x = 10.0)
-
-julia> unfixed_model_dict = unfix(fixed_model_dict, @varname(m));
-
-julia> (m, x) = unfixed_model_dict(); m ≠ 1.0 && x == 10.0
-true
-```
-
-But, as mentioned, `unfix` is only supported for variables explicitly
-provided to `fix` earlier:
-
-```jldoctest unfix
-julia> @model function demo_mv(::Type{TV}=Float64) where {TV}
-           m = Vector{TV}(undef, 2)
-           m[1] ~ Normal()
-           m[2] ~ Normal()
-           return m
-       end
-demo_mv (generic function with 4 methods)
-
-julia> model = demo_mv();
-
-julia> fixed_model = fix(model, @varname(m) => [1.0, 2.0]);
-
-julia> fixed_model()
-2-element Vector{Float64}:
- 1.0
- 2.0
-
-julia> unfixed_model = unfix(fixed_model, @varname(m[1]));
-
-julia> unfixed_model()  # (×) `m[1]` is still fixed
-2-element Vector{Float64}:
- 1.0
- 2.0
-
-julia> # (✓) this works though
-       unfixed_model_2 = fix(unfixed_model, @varname(m[1]) => missing);
-
-julia> m = unfixed_model_2(); (m[1] ≠ 1.0 && m[2] == 2.0)
+       (m, x) = unfix(model)(); (m != 1.0 && x != 10.0)
 true
 ```
 """
-unfix(model::Model, syms...) = contextualize(model, unfix(model.context, syms...))
+unfix(model::Model, syms::Union{Symbol,VarName}...) =
+    contextualize(model, unfix_context(model.context, syms...))
 
 """
     fixed(model::Model)
@@ -747,7 +665,7 @@ Return the fixed values in `model`.
 ```jldoctest
 julia> using Distributions
 
-julia> using DynamicPPL: fixed, contextualize, PrefixContext
+julia> using DynamicPPL: fixed, contextualize, PrefixContext, CondFixContext, Fix
 
 julia> @model function demo()
            m ~ Normal()
@@ -759,10 +677,12 @@ julia> m = demo();
 
 julia> # Returns all the variables we have fixed on + their values.
        fixed(fix(m, x=100.0, m=1.0))
-(x = 100.0, m = 1.0)
+VarNamedTuple
+├─ x => 100.0
+└─ m => 1.0
 
 julia> # The rest of this is the same as the `condition` example above.
-       fm = fix(contextualize(m, PrefixContext(@varname(a), fix(m=1.0))), x=100.0);
+       fm = fix(contextualize(m, PrefixContext(@varname(a), CondFixContext{Fix}(VarNamedTuple(m=1.0)))), x=100.0);
 
 julia> Set(keys(fixed(fm))) == Set([@varname(a.m), @varname(x)])
 true
@@ -775,8 +695,9 @@ julia> # We can also fix `a.m` _outside_ of the PrefixContext:
        fm = fix(contextualize(m, PrefixContext(@varname(a))), (@varname(a.m) => 1.0));
 
 julia> fixed(fm)
-Dict{VarName{:a, AbstractPPL.Property{:m, AbstractPPL.Iden}}, Float64} with 1 entry:
-  a.m => 1.0
+VarNamedTuple
+└─ a => VarNamedTuple
+        └─ m => 1.0
 
 julia> # Now `a.x` will be sampled.
        keys(VarInfo(fm))
