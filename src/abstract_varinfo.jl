@@ -208,8 +208,6 @@ Add `acc` to the `AccumulatorTuple` of `vi`, mutating if it makes sense.
 
 If an accumulator with the same [`accumulator_name`](@ref) already exists, it will be
 replaced.
-
-See also: [`getaccs`](@ref).
 """
 function setacc!!(vi::AbstractVarInfo, acc::AbstractAccumulator)
     return setaccs!!(vi, setacc!!(getaccs(vi), acc))

@@ -39,6 +39,11 @@ struct VarInfo{Linked,T<:VarNamedTuple,Accs<:AccumulatorTuple} <: AbstractVarInf
     ) where {Linked,T<:VarNamedTuple,Accs<:AccumulatorTuple}
         return new{Linked,T,Accs}(values, accs)
     end
+    function VarInfo{Linked}(
+        values::T, accs::NTuple{N,AbstractAccumulator}
+    ) where {Linked,T<:VarNamedTuple,N}
+        return VarInfo{Linked}(values, AccumulatorTuple(accs))
+    end
 end
 
 function Base.:(==)(vi1::VarInfo, vi2::VarInfo)
@@ -130,7 +135,7 @@ function DynamicPPL.VarInfo(
         nothing
     end
     vi = VarInfo{new_vi_is_linked}(
-        link_acc.values, DynamicPPL.deleteacc(vi.accs, Val(LINK_ACCNAME))
+        link_acc.values, DynamicPPL.deleteacc!!(vi.accs, Val(LINK_ACCNAME))
     )
     vi = acclogjac!!(vi, link_acc.f.logjac)
     return vi
@@ -182,10 +187,15 @@ function Base.show(io::IO, ::MIME"text/plain", vi::VarInfo{link}) where {link}
     printstyled(io, "VarInfo"; bold=true)
     print(io, " {linked=$link}\n")
     print(io, " ├─ ")
-    printstyled(io, "values"; bold=true)
-    print(io, "\n │  ")
-    DynamicPPL.VarNamedTuples.vnt_pretty_print(io, vi.values, " │  ", 0)
-    println(io)
+    if isempty(vi.values)
+        printstyled(io, "values"; bold=true)
+        println(io, " (empty)")
+    else
+        printstyled(io, "values"; bold=true)
+        print(io, "\n │  ")
+        DynamicPPL.VarNamedTuples.vnt_pretty_print(io, vi.values, " │  ", 0)
+        println(io)
+    end
     print(io, " └─ ")
     printstyled(io, "accs"; bold=true)
     print(io, "\n    ")

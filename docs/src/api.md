@@ -389,17 +389,33 @@ The subtypes of [`AbstractVarInfo`](@ref) store the cumulative log prior and log
 
 ```@docs
 AbstractAccumulator
+accumulate_assume!!
+accumulate_observe!!
+accumulator_name
+DynamicPPL.reset
+DynamicPPL.split
+DynamicPPL.combine
 ```
 
-DynamicPPL provides the following default accumulators.
+DynamicPPL provides a number of default accumulators.
 
 ```@docs
 LogPriorAccumulator
 LogJacobianAccumulator
 LogLikelihoodAccumulator
+ValuesAsInModelAccumulator
 PriorDistributionAccumulator
 VNTAccumulator
 DoNotAccumulate
+```
+
+To manipulate the accumulators in a `VarInfo`, one can use:
+
+```@docs
+getacc
+setacc!!
+setaccs!!
+deleteacc!!
 ```
 
 ### Common API

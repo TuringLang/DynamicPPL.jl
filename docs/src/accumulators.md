@@ -101,12 +101,7 @@ In this implementation, our `accumulate_...!!` methods actually mutate the accum
 This is not mandatory; you can return a new accumulator if you prefer an immutable style.
 
 To use this accumulator in a model evaluation, we need to add it into a VarInfo.
-We can either do this by creating a `VarInfo` from scratch, or by calling `DynamicPPL.setacc!!` or `DynamicPPL.setaccs!!` on an existing `VarInfo`.
-
-!!! note
-    
-    These two functions have very similar names, so be careful to use the right one! `setacc!!` adds a single accumulator to a VarInfo, whereas `setaccs!!` replaces all the VarInfo's accumulators with a new set.
-
+We can either do this by creating a `VarInfo` from scratch, or by modifying an existing one (see the next section for details).
 In this example, we'll create a `VarInfo` from scratch using only our new accumulator.
 To minimise the computational overhead, we use an `OnlyAccsVarInfo`, which is a slimmed down version of a `VarInfo` that only contains accumulators.
 (This is a minor detail; don't worry about it if you aren't familiar with `VarInfo` types.)
@@ -139,6 +134,75 @@ output_acc.logps[@varname(y)] == (true, logpdf(Normal(1.0), 2.0))
 ```
 
 (Notice that because here we used an `OrderedDict`, the accumulation process is not commutative.)
+
+## Working with accumulators in VarInfos
+
+As shown above, users can choose exactly which accumulators to use during model evaluation in order to control what information is collected.
+This section explains how to specify which accumulators to use, and how to extract the information again afterwards.
+
+When creating a `VarInfo`, there is a set of _default accumulators_ that are used:
+
+```@example 1
+VarInfo()
+```
+
+As alluded to above, one can control this by passing a tuple of accumulators to the `VarInfo` constructor:
+
+```@example 1
+# the `false` controls the linking
+vi = VarInfo{false}(VarNamedTuple(), (LogLikelihoodAccumulator(),))
+```
+
+If you then use this `VarInfo` to evaluate a model, only the specified accumulators will be used.
+
+```@example 1
+@model function demo_likelihood()
+    x ~ Normal()
+    return 1.0 ~ Normal(x)
+end
+model = demo_likelihood()
+_, new_vi = init!!(model, vi)
+new_vi
+```
+
+Instead of creating a `VarInfo` from scratch, one can also add accumulators to an existing `VarInfo` using [`setacc!!`](@ref) and [`setaccs!!`](@ref).
+Note that these functions have very similar names!
+`setacc!!` adds a single accumulator to a `VarInfo`, while `setaccs!!` replaces the entire set of accumulators with a new set.
+
+```@example 1
+vi = VarInfo()
+# Add a new accumulator
+vi = setacc!!(vi, ValuesAsInModelAccumulator(false))
+```
+
+In the case of `setacc!!`, the accumulator will be _added_ to the existing set if it has a name (as defined by [`accumulator_name`](@ref)) that is not already present.
+If an accumulator with the same name is already present, it will be _replaced_!
+
+This means that you have to be careful to not accidentally create a name clash with an existing accumulator.
+If you are defining your own accumulator, it is a good idea to define its name with a prefix that is unique to your package.
+
+However, it does *also* mean that you can customise the behaviour of existing accumulators.
+For example, if you intentionally define an accumulator with the same name as an existing one, you can use `setacc!!` to replace it.
+Turing.jl uses this mechanism in SMC inference to replace the default log-likelihood accumulator with one that triggers particle reweighting each time the likelihood is incremented (i.e., each time a new observation is made).
+
+`setaccs!!` is simpler; it replaces whatever came before it.
+It takes a tuple of accumulators as input.
+
+```@example 1
+vi = VarInfo()
+# Replace all accumulators with just a ValuesAsInModelAccumulator
+acc = ValuesAsInModelAccumulator(false)
+vi = setaccs!!(vi, (acc,))
+```
+
+Once you have evaluated a model with a `VarInfo` containing your desired accumulators, you can extract the accumulated results using [`getacc`](@ref).
+
+```@example 1
+_, vi = init!!(model, vi)
+output_acc = getacc(vi, Val(accumulator_name(acc)))
+```
+
+For the default accumulators, there are convenience functions [`getlogprior`](@ref), [`getloglikelihood`](@ref), and [`getlogprior`](@ref) that extract the corresponding accumulators' wrapped values directly from the `VarInfo`.
 
 ## Thread-safe accumulation
 
