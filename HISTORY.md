@@ -129,12 +129,9 @@ If anything related to `VarInfo` is behaving unexpectedly, e.g. the arguments or
 
 ## Other changes
 
-### `ConditionContext` and `FixedContext`
+### Conditioning and fixing
 
-The underlying code for `ConditionContext` and `FixedContext` is almost completely the same.
-In this release, to reduce code duplication, they have been merged into a single implementation, `CondFixContext{Condition}` and `CondFixContext{Fix}`, where the type parameter controls whether conditioning or fixing is performed.
-
-Conditioning and fixing now also exclusively use VarNamedTuple internally.
+Conditioning and fixing now exclusively use VarNamedTuple internally.
 You can still condition or fix a model with the same API as before (with NamedTuple or Dict).
 However, for most precise control over exactly which variables are conditioned as well as the templates for any arrays present, you can also condition directly using a `VarNamedTuple`.
 For example:
@@ -146,6 +143,12 @@ vnt = @vnt begin
 end
 f() | vnt  # Condition f on x == 1.
 ```
+
+This release also exports `DynamicPPL.conditioned(::Model)` and `DynamicPPL.fixed(::Model)`, which are a way to quickly see what variables have been conditioned or fixed in a model.
+For example, carrying on from the above, `conditioned(f() | vnt)` will return `vnt`.
+
+The underlying code for `ConditionContext` and `FixedContext` is almost completely the same.
+In this release, to reduce code duplication, they have been merged into a single implementation, `CondFixContext{Condition}` and `CondFixContext{Fix}`, where the type parameter controls whether conditioning or fixing is performed.
 
 ### Results of `predict` now include `:=` statements
 
