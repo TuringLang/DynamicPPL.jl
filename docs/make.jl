@@ -39,6 +39,7 @@ makedocs(;
     ],
     pages=[
         "Home" => "index.md",
+        "Conditioning and fixing" => "conditionfix.md",
         "API" => "api.md",
         "VarNamedTuple" => [
             "vnt/motivation.md",

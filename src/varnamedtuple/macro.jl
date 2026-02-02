@@ -147,12 +147,12 @@ function _vnt(input)
                     output.args,
                     :(
                         $vnt = DynamicPPL.templated_setindex!!(
-                            $vnt, $rhs, $vn, $(symbols_to_templates[top_level_sym])
+                            $vnt, $(esc(rhs)), $vn, $(symbols_to_templates[top_level_sym])
                         )
                     ),
                 )
             else
-                push!(output.args, :($vnt = BangBang.setindex!!($vnt, $rhs, $vn)))
+                push!(output.args, :($vnt = BangBang.setindex!!($vnt, $(esc(rhs)), $vn)))
             end
         else
             error("unexpected expression in `@vnt` block: $expr")
