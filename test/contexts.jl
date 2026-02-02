@@ -408,10 +408,10 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
             c6 = collapse_prefix_stack(c6)
             @test has_no_prefixcontexts(c6)
             @test conditioned(c6) == @vnt begin
-                a.c = 1
+                a.c := 1
             end
             @test fixed(c6) == @vnt begin
-                a.b.d = 2
+                a.b.d := 2
             end
         end
     end

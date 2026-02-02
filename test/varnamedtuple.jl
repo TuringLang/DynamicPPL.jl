@@ -1649,9 +1649,25 @@ Base.size(st::SizedThing) = st.size
     @testset "@vnt macro" begin
         @testset "no templates" begin
             vnt = @vnt begin
-                a = 1.0
-                b = [1, 15, 3]
-                c.x.y = [10]
+                a := 1.0
+                b := [1, 15, 3]
+                c.x.y := [10]
+            end
+            expected_vnt = VarNamedTuple()
+            expected_vnt = setindex!!(expected_vnt, 1.0, @varname(a))
+            expected_vnt = setindex!!(expected_vnt, [1, 15, 3], @varname(b))
+            expected_vnt = setindex!!(expected_vnt, [10], @varname(c.x.y))
+            @test vnt == expected_vnt
+        end
+
+        @testset "rhs values outside of vnt block" begin
+            a = 1.0
+            b = [1, 15, 3]
+            cxy = [10]
+            vnt = @vnt begin
+                a := a
+                b := b
+                c.x.y := cxy
             end
             expected_vnt = VarNamedTuple()
             expected_vnt = setindex!!(expected_vnt, 1.0, @varname(a))
@@ -1664,7 +1680,7 @@ Base.size(st::SizedThing) = st.size
             a = zeros(2, 2)
             vnt = @vnt begin
                 @template a
-                a[1] = 1.0
+                a[1] := 1.0
             end
             expected_vnt = VarNamedTuple()
             expected_vnt = templated_setindex!!(expected_vnt, 1.0, @varname(a[1]), a)
@@ -1677,7 +1693,7 @@ Base.size(st::SizedThing) = st.size
                 a = zeros(3)
                 @vnt begin
                     @template a
-                    a[1] = 1.0
+                    a[1] := 1.0
                 end
             end
             expected_vnt = VarNamedTuple()
@@ -1689,7 +1705,7 @@ Base.size(st::SizedThing) = st.size
             a = zeros(3)
             vnt = @vnt begin
                 @template b = a
-                b[1] = 2.0
+                b[1] := 2.0
             end
             expected_vnt = VarNamedTuple()
             expected_vnt = templated_setindex!!(expected_vnt, 2.0, @varname(b[1]), a)
@@ -1704,8 +1720,8 @@ Base.size(st::SizedThing) = st.size
             end
             vnt = @vnt begin
                 @template c = make_template()
-                c[1] = 1.0
-                c[2] = 2.0
+                c[1] := 1.0
+                c[2] := 2.0
             end
             # Check that the template expression is only evaluated once.
             @test evalcount[] == 1

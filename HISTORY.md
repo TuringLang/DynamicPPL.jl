@@ -142,7 +142,7 @@ For example:
 ```julia
 @model f() = x ~ Normal()
 vnt = @vnt begin
-    x = 1
+    x := 1
 end
 f() | vnt  # Condition f on x == 1.
 ```

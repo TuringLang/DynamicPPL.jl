@@ -283,7 +283,7 @@ instead:
 
 ```jldoctest condition
 julia> vnt = @vnt begin
-           m[2] = 1.0
+           m[2] := 1.0
        end
 VarNamedTuple
 └─ m => PartialArray size=(2,) data::DynamicPPL.VarNamedTuples.GrowableArray{Float64, 1}

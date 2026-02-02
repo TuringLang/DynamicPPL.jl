@@ -64,7 +64,7 @@ The most robust way of conditioning is to provide a `VarNamedTuple` that holds t
 ```@example 1
 # Construct a `VarNamedTuple` that holds the conditioning values.
 observations = @vnt begin
-    y = y_data
+    y := y_data
 end
 
 # Equivalently: conditioned_model = condition(model, observations).
@@ -142,11 +142,11 @@ We recommend using `VarNamedTuple`s directly in all cases.**
 
 For example, if you only wanted to condition `y[1]` but not the other `y[i]`'s, you cannot specify this via a `NamedTuple`, since `NamedTuple`s require `Symbol`s as keys.
 
-You can easily specify this via `VarNamedTuple` and its helper macro `@vnt`:
+You can easily specify this via `VarNamedTuple` and its helper macro [`@vnt`](@ref):
 
 ```@example 1
 vnt = @vnt begin
-    y[1] = y_data[1]
+    y[1] := y_data[1]
 end
 ```
 
@@ -158,7 +158,7 @@ However, if you want to avoid this, you should provide the full shape of `y` whe
 ```@example 1
 vnt = @vnt begin
     @template y = y_data
-    y[1] = y_data[1]
+    y[1] := y_data[1]
 end
 ```
 
@@ -203,7 +203,7 @@ When each `y[i]` is individually on the left-hand side of a tilde-statement, thi
 
 ```@example 1
 vnt = @vnt begin
-    y = [missing, missing, 1.0, missing, 2.0, missing]
+    y := [missing, missing, 1.0, missing, 2.0, missing]
 end
 cond_model_missing = model | vnt
 
