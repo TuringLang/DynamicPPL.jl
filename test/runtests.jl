@@ -96,6 +96,9 @@ include("test_util.jl")
             r"└ @ .+:[0-9]+",
         ]
 
+        @static if VERSION < v"1.12"
+            @warn "Doctests currently only pass on Julia 1.12 due to different outputs in earlier versions of Julia. You are currently using Julia $(VERSION); do not be alarmed if the doctests fail."
+        end
         doctest(DynamicPPL; manual=false, doctestfilters=doctestfilters)
     end
 end
