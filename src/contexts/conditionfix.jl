@@ -47,6 +47,16 @@ end
 function Base.show(io::IO, context::CondFixContext{CF}) where {CF<:ConditionOrFix}
     return print(io, "CondFixContext{$CF}($(context.values), $(childcontext(context)))")
 end
+function Base.:(==)(
+    c1::CondFixContext{CF}, c2::CondFixContext{CF}
+) where {CF<:ConditionOrFix}
+    return (c1.values == c2.values) & (childcontext(c1) == childcontext(c2))
+end
+function Base.isequal(
+    c1::CondFixContext{CF}, c2::CondFixContext{CF}
+) where {CF<:ConditionOrFix}
+    return isequal(c1.values, c2.values) && isequal(childcontext(c1), childcontext(c2))
+end
 
 childcontext(context::CondFixContext) = context.context
 function setchildcontext(parent::CondFixContext{CF}, child::AbstractContext) where {CF}
