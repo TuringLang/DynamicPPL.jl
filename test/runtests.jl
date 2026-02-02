@@ -33,7 +33,7 @@ using JET: JET
 using Combinatorics: combinations
 using OrderedCollections: OrderedSet
 
-using DynamicPPL: getargs_dottilde, getargs_tilde
+using DynamicPPL: getargs_dottilde, getargs_tilde, ParamsWithStats
 
 # These flags are set in CI
 const GROUP = get(ENV, "GROUP", "All")
