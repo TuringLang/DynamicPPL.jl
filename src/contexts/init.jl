@@ -108,18 +108,15 @@ end
 function init(rng::Random.AbstractRNG, ::VarName, dist::Distribution, u::InitFromUniform)
     b = Bijectors.bijector(dist)
     sz = Bijectors.output_size(b, dist)
-    y = u.lower .+ ((u.upper - u.lower) .* rand(rng, sz...))
-    b_inv = Bijectors.inverse(b)
-    x = b_inv(y)
-    # 0-dim arrays: https://github.com/TuringLang/Bijectors.jl/issues/398
-    if x isa Array{<:Any,0}
-        x = x[]
+    # TODO(penelopeysm): This is stupid, and is really just because `output_size` doesn't
+    # give us **exactly** the info that we want. VectorBijectors will solve this since we
+    # get `linked_vec_length(dist)` which directly tells us how many elements we need to
+    # sample.
+    if sz == ()
+        sz = (1,)
     end
-    # NOTE: We don't return `LinkedVectorValue(y, ...)` here because we don't want the
-    # logjac of this transform to be included when evaluating the model! The fact that
-    # b_inv(y) has a non-trivial logjacobian is just an artefact of how the sampling is done
-    # and has nothing to do with the model.
-    return UntransformedValue(x)
+    y = u.lower .+ ((u.upper - u.lower) .* rand(rng, sz...))
+    return LinkedVectorValue(y, from_linked_vec_transform(dist), get_size_for_vnt(dist))
 end
 
 """

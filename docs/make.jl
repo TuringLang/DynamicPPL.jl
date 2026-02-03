@@ -48,7 +48,7 @@ makedocs(;
             "vnt/arraylikeblocks.md",
         ],
         "Initialisation strategies" => "init.md",
-        "Link strategies" => "link.md",
+        "Transform strategies" => "transforms.md",
         "Accumulators" => "accumulators.md",
         "Model evaluation" => "flow.md",
         "Storing values" => "values.md",
