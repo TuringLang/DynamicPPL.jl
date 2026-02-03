@@ -782,6 +782,9 @@ function unwrap_internal_array(pa::PartialArray)
     end
 
     retval = pa.data
+    if retval isa GrowableArray
+        _warn_growable_array()
+    end
     if eltype(retval) <: ArrayLikeBlock || ArrayLikeBlock <: eltype(retval)
         for ind in eachindex(retval)
             @inbounds if retval[ind] isa ArrayLikeBlock
@@ -796,7 +799,7 @@ function unwrap_internal_array(pa::PartialArray)
     end
     return unwrap_internal_array(retval)
 end
-unwrap_internal_array(ga::GrowableArray) = unwrap_internal_array(ga.data)
+unwrap_internal_array(ga::GrowableArray) = ga.data
 
 function _warn_growable_array()
     @warn (

@@ -87,9 +87,6 @@ end
 # if needed.
 function Base.getindex(vnt::VarNamedTuple, vn::VarName)
     result = _getindex_optic(vnt, vn)
-    if result isa PartialArray{E,N,<:GrowableArray} where {E,N}
-        _warn_growable_array()
-    end
     return unwrap_internal_array(result)
 end
 
