@@ -408,7 +408,7 @@ end
                 value_true = DynamicPPL.TestUtils.rand_prior_true(model)
                 varnames = DynamicPPL.TestUtils.varnames(model)
                 varinfos = DynamicPPL.TestUtils.setup_varinfos(
-                    model, value_true, varnames; include_threadsafe=true
+                    model, value_true; include_threadsafe=true
                 )
                 @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
                     # Evaluate the model once to update the logp of the varinfo.
@@ -465,7 +465,7 @@ end
 
         model = demo(0.0)
         varinfos = DynamicPPL.TestUtils.setup_varinfos(
-            model, (; x=1.0), (@varname(x),); include_threadsafe=true
+            model, (; x=1.0); include_threadsafe=true
         )
         @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
             @inferred DynamicPPL.unflatten!!(varinfo, varinfo[:])
@@ -526,7 +526,7 @@ end
 
         # `VarInfo` supports, effectively, arbitrary subsetting.
         varinfos = DynamicPPL.TestUtils.setup_varinfos(
-            model, model(), vns; include_threadsafe=true
+            model, model(); include_threadsafe=true
         )
 
         # `VarInfo` supports subsetting using, basically, arbitrary varnames.
@@ -616,10 +616,7 @@ end
         @testset "$(model.f)" for model in DynamicPPL.TestUtils.ALL_MODELS
             vns = DynamicPPL.TestUtils.varnames(model)
             varinfos = DynamicPPL.TestUtils.setup_varinfos(
-                model,
-                DynamicPPL.TestUtils.rand_prior_true(model),
-                vns;
-                include_threadsafe=true,
+                model, DynamicPPL.TestUtils.rand_prior_true(model); include_threadsafe=true
             )
             @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
                 @testset "with itself" begin
@@ -668,8 +665,8 @@ end
 
                 @testset "with different value" begin
                     x = DynamicPPL.TestUtils.rand_prior_true(model)
-                    varinfo_changed = DynamicPPL.TestUtils.update_values!!(
-                        deepcopy(varinfo), x, vns
+                    varinfo_changed = last(
+                        init!!(model, deepcopy(varinfo), InitFromParams(x, nothing))
                     )
                     # After `merge`, we should have the same values as `x`.
                     varinfo_merged = merge(varinfo, varinfo_changed)

@@ -284,7 +284,6 @@ Finally, the following methods can also be of use:
 DynamicPPL.TestUtils.varnames
 DynamicPPL.TestUtils.posterior_mean
 DynamicPPL.TestUtils.setup_varinfos
-DynamicPPL.TestUtils.update_values!!
 DynamicPPL.TestUtils.test_values
 ```
 

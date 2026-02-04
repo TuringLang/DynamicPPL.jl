@@ -466,9 +466,8 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
                     @test false skip = true
                     continue
                 end
-                vns = DynamicPPL.TestUtils.varnames(model)
                 example_values = DynamicPPL.TestUtils.rand_prior_true(model)
-                varinfos = DynamicPPL.TestUtils.setup_varinfos(model, example_values, vns)
+                varinfos = DynamicPPL.TestUtils.setup_varinfos(model, example_values)
                 @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
                     @test begin
                         @inferred(DynamicPPL.evaluate!!(model, varinfo))
@@ -490,7 +489,7 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
             vns = DynamicPPL.TestUtils.varnames(model)
             vns_split = DynamicPPL.TestUtils.varnames_split(model)
             example_values = DynamicPPL.TestUtils.rand_prior_true(model)
-            varinfos = DynamicPPL.TestUtils.setup_varinfos(model, example_values, vns)
+            varinfos = DynamicPPL.TestUtils.setup_varinfos(model, example_values)
             @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
                 # We can set the include_colon_eq arg to false because none of
                 # the demo models contain :=. The behaviour when

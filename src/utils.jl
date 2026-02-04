@@ -539,18 +539,6 @@ tovec(nt::NamedTuple) = mapreduce(tovec, vcat, values(nt))
 tovec(C::Cholesky) = tovec(Matrix(C.UL))
 
 """
-    update_values!!(vi::AbstractVarInfo, vals::NamedTuple, vns)
-
-Return instance similar to `vi` but with `vns` set to values from `vals`.
-"""
-function update_values!!(vi::AbstractVarInfo, vals::NamedTuple, vns)
-    for vn in vns
-        vi = DynamicPPL.setindex!!(vi, AbstractPPL.getvalue(vals, vn), vn)
-    end
-    return vi
-end
-
-"""
     float_type_with_fallback(T::DataType)
 
 Return `float(T)` if possible; otherwise return `float(Real)`.
