@@ -316,19 +316,19 @@ using Random: Xoshiro
         end
     end
 
-    @testset "instantiation with link strategy" begin
+    @testset "instantiation with transform strategy" begin
         @model function f()
             x ~ Beta(2, 2)
             return y ~ LogNormal(0, 1)
         end
 
-        function test_link_strategy(
-            link_strategy::DynamicPPL.AbstractLinkStrategy,
+        function test_transform_strategy(
+            transform_strategy::DynamicPPL.AbstractTransformStrategy,
             model::DynamicPPL.Model,
             expected_linked_vns::Set{<:VarName},
         )
-            # Test that the variables are linked according to the link strategy
-            vi = VarInfo(Xoshiro(468), model, link_strategy)
+            # Test that the variables are linked according to the transform strategy
+            vi = VarInfo(Xoshiro(468), model, transform_strategy)
             for vn in keys(vi)
                 if vn in expected_linked_vns
                     @test DynamicPPL.get_transformed_value(vi, vn) isa
@@ -340,48 +340,41 @@ using Random: Xoshiro
             end
             # Test that initialising directly is the same as linking later (if rng is the
             # same)
-            if link_strategy isa LinkAll
+            if transform_strategy isa LinkAll
                 vi2 = VarInfo(Xoshiro(468), model)
                 vi2 = DynamicPPL.link!!(vi2, model)
                 @test vi == vi2
             end
-            if link_strategy isa LinkSome
+            if transform_strategy isa LinkSome
                 vi2 = VarInfo(Xoshiro(468), model)
-                vi2 = DynamicPPL.link!!(vi2, link_strategy.vns, model)
+                vi2 = DynamicPPL.link!!(vi2, transform_strategy.vns, model)
                 @test vi == vi2
             end
         end
 
         model = f()
-        test_link_strategy(LinkAll(), model, Set([@varname(x), @varname(y)]))
-        test_link_strategy(LinkSome((@varname(x),)), model, Set([@varname(x)]))
-        test_link_strategy(LinkSome((@varname(y),)), model, Set([@varname(y)]))
-        test_link_strategy(
-            LinkSome((@varname(x), @varname(y))), model, Set([@varname(x), @varname(y)])
+        test_transform_strategy(LinkAll(), model, Set([@varname(x), @varname(y)]))
+        test_transform_strategy(
+            LinkSome((@varname(x),), UnlinkAll()), model, Set([@varname(x)])
         )
-        test_link_strategy(UnlinkAll(), model, Set{VarName}())
-        test_link_strategy(UnlinkSome((@varname(x),)), model, Set{VarName}())
-        test_link_strategy(UnlinkSome((@varname(y),)), model, Set{VarName}())
-        test_link_strategy(UnlinkSome((@varname(x), @varname(y))), model, Set{VarName}())
-    end
-
-    @testset "logp evaluation on linked varinfo" begin
-        @model demo_constrained() = x ~ truncated(Normal(); lower=0)
-        model = demo_constrained()
-        vn = @varname(x)
-        dist = truncated(Normal(); lower=0)
-
-        vi = DynamicPPL.VarInfo(model)
-        vi = DynamicPPL.set_transformed!!(vi, true, vn)
-        vi = last(DynamicPPL.init!!(model, vi, InitFromPrior()))
-        f = DynamicPPL.from_linked_internal_transform(vi, vn, dist)
-        x = f(DynamicPPL.getindex_internal(vi, vn))
-        @test is_transformed(vi, vn)
-        @test getlogjoint_internal(vi) ≈ Bijectors.logpdf_with_trans(dist, x, true)
-        @test getlogprior_internal(vi) ≈ Bijectors.logpdf_with_trans(dist, x, true)
-        @test getloglikelihood(vi) == 0.0
-        @test getlogjoint(vi) ≈ Bijectors.logpdf_with_trans(dist, x, false)
-        @test getlogprior(vi) ≈ Bijectors.logpdf_with_trans(dist, x, false)
+        test_transform_strategy(
+            LinkSome((@varname(y),), UnlinkAll()), model, Set([@varname(y)])
+        )
+        test_transform_strategy(
+            LinkSome((@varname(x), @varname(y)), UnlinkAll()),
+            model,
+            Set([@varname(x), @varname(y)]),
+        )
+        test_transform_strategy(UnlinkAll(), model, Set{VarName}())
+        test_transform_strategy(
+            UnlinkSome((@varname(x),), LinkAll()), model, Set{VarName}()
+        )
+        test_transform_strategy(
+            UnlinkSome((@varname(y),), LinkAll()), model, Set{VarName}()
+        )
+        test_transform_strategy(
+            UnlinkSome((@varname(x), @varname(y)), LinkAll()), model, Set{VarName}()
+        )
     end
 
     @testset "unflatten!! + linking" begin
@@ -476,20 +469,21 @@ using Random: Xoshiro
         @testset for link_strategy in [
             UnlinkAll(),
             LinkAll(),
-            LinkSome((@varname(y),)),
-            LinkSome((@varname(x), @varname(z))),
+            LinkSome((@varname(y),), UnlinkAll()),
+            LinkSome((@varname(x), @varname(z)), UnlinkAll()),
         ]
             vi = VarInfo(model, link_strategy, InitFromParams(unlinked_values))
 
             expected_vector_values = Float64[]
             for (vn, dist) in distributions
-                # TODO(penelopeysm) remove the extra argument
-                vn_vec_val =
-                    if generate_linked_value(link_strategy, vn, UntransformedValue(0.0))
-                        DynamicPPL.to_linked_vec_transform(dist)(unlinked_values[vn])
-                    else
-                        DynamicPPL.to_vec_transform(dist)(unlinked_values[vn])
-                    end
+                target = target_transform(link_strategy, vn)
+                vn_vec_val = if target isa DynamicLink
+                    DynamicPPL.to_linked_vec_transform(dist)(unlinked_values[vn])
+                elseif target isa Unlink
+                    DynamicPPL.to_vec_transform(dist)(unlinked_values[vn])
+                else
+                    error("don't know how to handle transform type $target")
+                end
                 append!(expected_vector_values, vn_vec_val)
             end
             @test internal_values_as_vector(vi) ≈ expected_vector_values

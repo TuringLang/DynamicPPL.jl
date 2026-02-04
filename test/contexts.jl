@@ -239,12 +239,16 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
                 # start by generating some rubbish values
                 vi = deepcopy(empty_vi)
                 old_x, old_y = 100000.00, [300000.00, 500000.00]
-                vi, _, _ = DynamicPPL.setindex_with_dist!!(
-                    vi, old_x, Normal(), @varname(x), DynamicPPL.NoTemplate()
-                )
-                vi, _, _ = DynamicPPL.setindex_with_dist!!(
+                vi = DynamicPPL.setindex_with_dist!!(
                     vi,
-                    old_y,
+                    UntransformedValue(old_x),
+                    Normal(),
+                    @varname(x),
+                    DynamicPPL.NoTemplate(),
+                )
+                vi = DynamicPPL.setindex_with_dist!!(
+                    vi,
+                    UntransformedValue(old_y),
                     MvNormal(fill(old_x, 2), I),
                     @varname(y),
                     DynamicPPL.NoTemplate(),
@@ -284,7 +288,7 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
                 model = logn()
                 vi = VarInfo(model)
                 linked_vi = DynamicPPL.link!!(vi, model)
-                _, new_vi = DynamicPPL.init!!(model, linked_vi, strategy)
+                _, new_vi = DynamicPPL.init!!(model, linked_vi, strategy, LinkAll())
                 @test DynamicPPL.is_transformed(new_vi)
                 # this is the unlinked value, since it uses `getindex`
                 a = new_vi[@varname(a)]

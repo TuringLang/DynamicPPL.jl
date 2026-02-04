@@ -770,7 +770,8 @@ end
         [rng::Random.AbstractRNG,]
         model::Model,
         varinfo::AbstractVarInfo,
-        [init_strategy::AbstractInitStrategy=InitFromPrior()]
+        [init_strategy::AbstractInitStrategy=InitFromPrior(),]
+        [transform_strategy::AbstractTransformStrategy=get_transform_strategy(varinfo),]
     )
 
 Evaluate the `model` and replace the values of the model's random variables in the given
@@ -779,6 +780,13 @@ Evaluate the `model` and replace the values of the model's random variables in t
 
 If `init_strategy` is not provided, defaults to `InitFromPrior()`.
 
+`transform_strategy` tells the model evaluation whether variables should be interpreted as linked
+or unlinked. Right now, it is slightly complicated because the default behaviour depends on
+the `varinfo` provided. If `varinfo isa VarInfo`, then the transform strategy is inferred
+from the VarInfo, i.e., linked variables in the VarInfo are treated as linked during
+evaluation. Conversely, if `varinfo isa OnlyAccsVarInfo`, then all variables are treated as
+unlinked.
+
 Returns a tuple of the model's return value, plus the updated `varinfo` object.
 """
 function init!!(
@@ -786,15 +794,19 @@ function init!!(
     model::Model,
     vi::AbstractVarInfo,
     strategy::AbstractInitStrategy=InitFromPrior(),
+    transform_strategy::AbstractTransformStrategy=get_transform_strategy(vi),
 )
-    ctx = InitContext(rng, strategy)
+    ctx = InitContext(rng, strategy, transform_strategy)
     model = DynamicPPL.setleafcontext(model, ctx)
     return DynamicPPL.evaluate!!(model, vi)
 end
 function init!!(
-    model::Model, vi::AbstractVarInfo, strategy::AbstractInitStrategy=InitFromPrior()
+    model::Model,
+    vi::AbstractVarInfo,
+    strategy::AbstractInitStrategy=InitFromPrior(),
+    transform_strategy::AbstractTransformStrategy=get_transform_strategy(vi),
 )
-    return init!!(Random.default_rng(), model, vi, strategy)
+    return init!!(Random.default_rng(), model, vi, strategy, transform_strategy)
 end
 
 """
@@ -942,7 +954,7 @@ Sample a `VarNamedTuple` of raw values from the prior of `model`.
 """
 function Base.rand(rng::Random.AbstractRNG, model::Model)
     vi = OnlyAccsVarInfo((ValuesAsInModelAccumulator(false),))
-    vi = last(init!!(rng, model, vi, InitFromPrior()))
+    vi = last(init!!(rng, model, vi, InitFromPrior(), UnlinkAll()))
     return DynamicPPL.getacc(vi, Val(:ValuesAsInModel)).values
 end
 Base.rand(model::Model) = rand(Random.default_rng(), model)
@@ -990,7 +1002,7 @@ function logjoint(model::Model, params)
         AccumulatorTuple(LogPriorAccumulator(), LogLikelihoodAccumulator())
     )
     ctx = InitFromParams(params, nothing)
-    return getlogjoint(last(init!!(model, vi, ctx)))
+    return getlogjoint(last(init!!(model, vi, ctx, UnlinkAll())))
 end
 
 """
@@ -1041,7 +1053,7 @@ end
 function logprior(model::Model, params)
     vi = OnlyAccsVarInfo(AccumulatorTuple(LogPriorAccumulator()))
     ctx = InitFromParams(params, nothing)
-    return getlogprior(last(init!!(model, vi, ctx)))
+    return getlogprior(last(init!!(model, vi, ctx, UnlinkAll())))
 end
 
 """
@@ -1088,7 +1100,7 @@ end
 function Distributions.loglikelihood(model::Model, params)
     vi = OnlyAccsVarInfo(AccumulatorTuple(LogLikelihoodAccumulator()))
     ctx = InitFromParams(params, nothing)
-    return getloglikelihood(last(init!!(model, vi, ctx)))
+    return getloglikelihood(last(init!!(model, vi, ctx, UnlinkAll())))
 end
 
 """
@@ -1124,7 +1136,7 @@ julia> # Truth.
 function logjoint(model::Model, values::Union{NamedTuple,AbstractDict})
     accs = AccumulatorTuple((LogPriorAccumulator(), LogLikelihoodAccumulator()))
     vi = OnlyAccsVarInfo(accs)
-    _, vi = DynamicPPL.init!!(model, vi, InitFromParams(values, nothing))
+    _, vi = DynamicPPL.init!!(model, vi, InitFromParams(values, nothing), UnlinkAll())
     return getlogjoint(vi)
 end
 
@@ -1161,7 +1173,7 @@ julia> # Truth.
 function logprior(model::Model, values::Union{NamedTuple,AbstractDict})
     accs = AccumulatorTuple((LogPriorAccumulator(),))
     vi = OnlyAccsVarInfo(accs)
-    _, vi = DynamicPPL.init!!(model, vi, InitFromParams(values, nothing))
+    _, vi = DynamicPPL.init!!(model, vi, InitFromParams(values, nothing), UnlinkAll())
     return getlogprior(vi)
 end
 
@@ -1198,7 +1210,7 @@ julia> # Truth.
 function Distributions.loglikelihood(model::Model, values::Union{NamedTuple,AbstractDict})
     accs = AccumulatorTuple((LogLikelihoodAccumulator(),))
     vi = OnlyAccsVarInfo(accs)
-    _, vi = DynamicPPL.init!!(model, vi, InitFromParams(values, nothing))
+    _, vi = DynamicPPL.init!!(model, vi, InitFromParams(values, nothing), UnlinkAll())
     return getloglikelihood(vi)
 end
 
@@ -1246,6 +1258,7 @@ function returned(model::Model, parameters...)
             # Use `nothing` as the fallback to ensure that any missing parameters cause an
             # error
             InitFromParams(parameters..., nothing),
+            UnlinkAll(),
         ),
     )
 end

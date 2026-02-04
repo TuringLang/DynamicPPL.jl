@@ -49,7 +49,7 @@ function test_parent_context(context::DynamicPPL.AbstractContext, model::Dynamic
     @testset "get/set leaf and child contexts" begin
         # Ensure we're using a different leaf context than the current.
         leafcontext_new = if DynamicPPL.leafcontext(context) isa DefaultContext
-            DynamicPPL.InitContext(Random.MersenneTwister(1234), InitFromPrior())
+            DynamicPPL.InitContext(Random.MersenneTwister(1234), InitFromPrior(), UnlinkAll())
         else
             DefaultContext()
         end

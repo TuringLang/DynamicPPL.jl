@@ -122,13 +122,14 @@ via `unflatten!!` plus re-evaluation. It is faster for two reasons:
 """
 function ParamsWithStats(
     param_vector::AbstractVector,
-    ldf::DynamicPPL.LogDensityFunction{Tlink},
+    ldf::DynamicPPL.LogDensityFunction,
     stats::NamedTuple=NamedTuple();
     include_colon_eq::Bool=true,
     include_log_probs::Bool=true,
-) where {Tlink}
+)
     strategy = InitFromParams(
-        VectorWithRanges{Tlink}(ldf._varname_ranges, param_vector), nothing
+        VectorWithRanges(ldf._varname_ranges, param_vector, ldf._transform_strategy),
+        nothing,
     )
     accs = if include_log_probs
         (
@@ -139,7 +140,12 @@ function ParamsWithStats(
     else
         (DynamicPPL.ValuesAsInModelAccumulator(include_colon_eq),)
     end
-    _, vi = DynamicPPL.init!!(ldf.model, OnlyAccsVarInfo(AccumulatorTuple(accs)), strategy)
+    # UnlinkAll() actually doesn't have any impact here, because there isn't even a
+    # LogJacobianAccumulator; consequently, it doesn't matter whether we interpret the
+    # parameters as being in linked space or not. However, we just include it for clarity.
+    _, vi = DynamicPPL.init!!(
+        ldf.model, OnlyAccsVarInfo(AccumulatorTuple(accs)), strategy, UnlinkAll()
+    )
     params = DynamicPPL.getacc(vi, Val(:ValuesAsInModel)).values
     if include_log_probs
         stats = merge(

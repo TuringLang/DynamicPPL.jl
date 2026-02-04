@@ -79,6 +79,7 @@ end
 function invlink!!(t::AbstractTransformation, vi::ThreadSafeVarInfo, args...)
     return Accessors.@set vi.varinfo = invlink!!(t, vi.varinfo, args...)
 end
+get_transform_strategy(vi::ThreadSafeVarInfo) = get_transform_strategy(vi.varinfo)
 
 function maybe_invlink_before_eval!!(vi::ThreadSafeVarInfo, model::Model)
     # Defer to the wrapped `AbstractVarInfo` object.
@@ -100,10 +101,10 @@ function getindex(vi::ThreadSafeVarInfo, vns::AbstractVector{<:VarName}, dist::D
 end
 
 function setindex_with_dist!!(
-    vi::ThreadSafeVarInfo, val, dist::Distribution, vn::VarName, template
+    vi::ThreadSafeVarInfo, tval, dist::Distribution, vn::VarName, template
 )
-    vi_inner, logjac, tval = setindex_with_dist!!(vi.varinfo, val, dist, vn, template)
-    return Accessors.@set(vi.varinfo = vi_inner), logjac, tval
+    vi_inner = setindex_with_dist!!(vi.varinfo, tval, dist, vn, template)
+    return Accessors.@set(vi.varinfo = vi_inner)
 end
 
 function BangBang.setindex!!(vi::ThreadSafeVarInfo, vals, vn::VarName)

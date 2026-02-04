@@ -139,7 +139,7 @@ This means that in the actual `VarInfo` we do not have a notion of what `x[1]` i
 vi[@varname(x[1])]
 ```
 
-See the [documentation on storing values](@ref "Storing values") for more details.
+See the [documentation on storing values](../values.md) for more details.
 
 ### Prior distributions
 

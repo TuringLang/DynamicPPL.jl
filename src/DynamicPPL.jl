@@ -151,13 +151,17 @@ export AbstractVarInfo,
     link!!,
     invlink,
     invlink!!,
-    AbstractLinkStrategy,
+    update_link_status!!,
+    AbstractTransformStrategy,
     LinkAll,
     UnlinkAll,
     LinkSome,
     UnlinkSome,
-    generate_linked_value,
-    update_link_status!!,
+    target_transform,
+    apply_transform_strategy,
+    AbstractTransform,
+    DynamicLink,
+    Unlink,
     # Pseudo distributions
     NamedDist,
     NoDist,
@@ -234,6 +238,8 @@ using .VarNamedTuples:
     NoTemplate,
     SkipTemplate,
     @vnt
+
+include("transformed_values.jl")
 include("contexts.jl")
 include("contexts/default.jl")
 include("contexts/init.jl")
@@ -241,13 +247,12 @@ include("contexts/prefix.jl")
 include("contexts/conditionfix.jl")  # Must come after contexts/prefix.jl
 include("model.jl")
 include("varname.jl")
-include("transformed_values.jl")
 include("distribution_wrappers.jl")
 include("submodel.jl")
 include("accumulators.jl")
 include("accs/default.jl")
 include("accs/vnt.jl")
-include("accs/transformed_values.jl")
+include("accs/vector_values.jl")
 include("accs/priors.jl")
 include("accs/values.jl")
 include("accs/pointwise_logdensities.jl")

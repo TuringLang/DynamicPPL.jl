@@ -461,17 +461,27 @@ DynamicPPL.StaticTransformation
 ```
 
 ```@docs
-DynamicPPL.AbstractLinkStrategy
-DynamicPPL.LinkAll
-DynamicPPL.UnlinkAll
-DynamicPPL.LinkSome
-DynamicPPL.UnlinkSome
 DynamicPPL.link
 DynamicPPL.invlink
 DynamicPPL.link!!
 DynamicPPL.invlink!!
 DynamicPPL.update_link_status!!
-DynamicPPL.generate_linked_value
+```
+
+```@docs
+DynamicPPL.AbstractTransformStrategy
+DynamicPPL.LinkAll
+DynamicPPL.UnlinkAll
+DynamicPPL.LinkSome
+DynamicPPL.UnlinkSome
+```
+
+```@docs
+DynamicPPL.AbstractTransform
+DynamicPPL.DynamicLink
+DynamicPPL.Unlink
+DynamicPPL.target_transform
+DynamicPPL.apply_transform_strategy
 ```
 
 ```@docs

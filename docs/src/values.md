@@ -1,4 +1,4 @@
-# Storing values
+# Storing vectorised vs. raw values
 
 ## The role of VarInfo
 
@@ -9,7 +9,7 @@ As described in the [model evaluation documentation page](./flow.md), each tilde
  3. Accumulation.
 
 Unfortunately, not everything in DynamicPPL follows this clean structure yet.
-In particular, there is a struct, called `VarInfo`, which has a dual role in both initialisation and accumulation:
+In particular, there is a struct, called `VarInfo`:
 
 ```julia
 struct VarInfo{linked,V<:VarNamedTuple,A<:AccumulatorTuple}
@@ -47,30 +47,39 @@ keys(vi.values)
 
 In a `VarInfo`, the `accs` field is responsible for the accumulation step, just like an ordinary `AccumulatorTuple`.
 
-However, `values` serves a dual purpose: it is sometimes used for initialisation (when the model's leaf context is `DefaultContext`, the `AbstractTransformedValue` to be used in the computation step is read from it) and it is sometimes also used for accumulation (when linking a VarInfo, we will potentially store a new `AbstractTransformedValue` in it).
+However, `values` serves three purposes in one:
 
-The path to removing `VarInfo` is essentially to separate these two roles:
+  - it is sometimes used for initialisation (when the model's leaf context is `DefaultContext`, the `AbstractTransformedValue` to be used in the computation step is read from it)
+  - it also determines whether the log-Jacobian term should be included or not (if the value is a `LinkedVectorValue`, the log-Jacobian is included)
+  - it is sometimes also used for accumulation (when evaluating a model with a VarInfo, we will potentially store a new `AbstractTransformedValue` in it!).
+
+The path to removing `VarInfo` is essentially to separate these three roles:
 
  1. The initialisation role of `varinfo.values` can be taken over by an initialisation strategy that wraps it.
     Recall that the only role of an initialisation strategy is to provide an `AbstractTransformedValue` via [`DynamicPPL.init`](@ref).
     This can be trivially done by indexing into the `VarNamedTuple` stored in the strategy.
 
- 2. The accumulation role of `varinfo.values` can be taken over by a new accumulator, which we call `TransformedValueAccumulator`.
-    The nomenclature here is not especially precise: it does not store `AbstractTransformedValue`s per se, but only two subtypes of it, `LinkedVectorValue` and `VectorValue`.
-
-`TransformedValueAccumulator` is implemented inside `src/accs/transformed_value.jl`, and additionally includes a link strategy as a parameter: the link strategy is responsible for deciding which values should be stored as `LinkedVectorValue`s and which as `VectorValue`s.
+ 2. Whether the log-Jacobian term should be included or not can be determined by a transform strategy.
+    Much like how we can have an initialisation strategy that takes values from a `VarInfo`, we can also have a transform strategy that is defined by the existing status of a `VarInfo`.
+    This is implemented in the `DynamicPPL.get_link_strategy(::AbstractVarInfo)` function.
+ 3. The accumulation role of `varinfo.values` can be taken over by a new accumulator, which we call `VectorValueAccumulator`.
+    This name is chosen because it does not store generic `AbstractTransformedValue`s, but only two subtypes of it, `LinkedVectorValue` and `VectorValue`.
+    `VectorValueAccumulator` is implemented inside `src/accs/vector_value.jl`.
 
 !!! note
     
-    Decoupling the initialisation from the accumulation also means that we can pair different initialisation strategies with a `TransformedValueAccumulator`.
-    Previously, to link a VarInfo, you would need to first generate an unlinked VarInfo and then link it.
+    Decoupling all of these components also means that we can mix and match different initialisation strategies, link strategies, and accumulators more easily.
+    
+    For example, previously, to create a linked VarInfo, you would need to first generate an unlinked VarInfo and then link it.
     Now, you can directly create a linked VarInfo (i.e., accumulate `LinkedVectorValue`s) by sampling from the prior (i.e., initialise with `InitFromPrior`).
 
 ## ValuesAsInModelAccumulator
 
-Earlier we said that `TransformedValueAccumulator` stores only two subtypes of `AbstractTransformedValue`: `LinkedVectorValue` and `VectorValue`.
+Earlier we said that `VectorValueAccumulator` stores only two subtypes of `AbstractTransformedValue`: `LinkedVectorValue` and `VectorValue`.
+One might therefore ask about the third subtype, namely, `UntransformedValue`.
 
-It is often also useful to store the raw values, i.e., [`UntransformedValue`](@ref)s; but additionally, since `UntransformedValue`s must always correspond exactly to the indices they are assigned to, we can unwrap them and do not need to store them as array-like blocks.
+It turns out that it is very often useful to store the raw values, i.e., [`UntransformedValue`](@ref)s.
+Additionally, since `UntransformedValue`s must always correspond exactly to the indices they are assigned to, we can unwrap them and do not need to store them as array-like blocks!
 
 This is the role of `ValuesAsInModelAccumulator`.
 
@@ -81,7 +90,7 @@ This is the role of `ValuesAsInModelAccumulator`.
 ```@example 1
 oavi = DynamicPPL.OnlyAccsVarInfo()
 oavi = DynamicPPL.setaccs!!(oavi, (DynamicPPL.ValuesAsInModelAccumulator(false),))
-_, oavi = DynamicPPL.init!!(dirichlet_model, oavi)
+_, oavi = DynamicPPL.init!!(dirichlet_model, oavi, InitFromPrior(), UnlinkAll())
 raw_vals = DynamicPPL.getacc(oavi, Val(:ValuesAsInModel)).values
 ```
 
@@ -93,15 +102,15 @@ keys(raw_vals)
 ```
 
 In particular, the outputs of `ValuesAsInModelAccumulator` are used for chain construction.
-This is why indices are split up in chains.
+This is why indices of keys like `x[1:3] ~ dist` end up being split up in chains.
 
 !!! note
     
-    If you have an entire vector stored as a top-level symbol, e.g. `x ~ Dirichlet(ones(3))`, it will not be broken up (as long as you use FlexiChains).
+    If you have an entire vector belonging to a top-level symbol, e.g. `x ~ Dirichlet(ones(3))`, it will not be broken up (as long as you use FlexiChains).
 
 ## Why do we still need to store `TransformedValue`s?
 
-Given that `ValuesAsInModelAccumulator` exists, one may wonder why we still need to store `TransformedValue`s at all, i.e. what the purpose of `TransformedValueAccumulator` is.
+Given that `ValuesAsInModelAccumulator` exists, one may wonder why we still need to store the other `AbstractTransformedValue`s at all, i.e. what the purpose of `VectorValueAccumulator` is.
 
 Currently, the only remaining reason for transformed values is the fact that we may sometimes need to perform [`DynamicPPL.unflatten!!`](@ref) on a `VarInfo`, to insert new values into it from a vector.
 
@@ -119,3 +128,6 @@ If we do not store the vectorised form of the values, we will not know how many 
 
 Removing upstream usage of `unflatten!!` would allow us to completely get rid of `TransformedValueAccumulator` and only ever use `ValuesAsInModelAccumulator`.
 See [this DynamicPPL issue](https://github.com/TuringLang/DynamicPPL.jl/issues/836) for more information.
+
+One possibility for removing `unflatten!!` is to turn it into a function that, instead of generating a new VarInfo, instead generates a tuple of new initialisation and link strategies which returns `LinkedVectorValue`s or `VectorValue`s containing views into the input vector.
+This would be conceptually very similar to how `LogDensityFunction` currently works.

@@ -196,7 +196,13 @@ function reevaluate_with_chain(
     params_with_stats = AbstractMCMC.to_samples(DynamicPPL.ParamsWithStats, chain)
     vi = DynamicPPL.OnlyAccsVarInfo(DynamicPPL.AccumulatorTuple(accs))
     return map(params_with_stats) do ps
-        DynamicPPL.init!!(rng, model, vi, DynamicPPL.InitFromParams(ps.params, fallback))
+        DynamicPPL.init!!(
+            rng,
+            model,
+            vi,
+            DynamicPPL.InitFromParams(ps.params, fallback),
+            DynamicPPL.UnlinkAll(),
+        )
     end
 end
 function reevaluate_with_chain(

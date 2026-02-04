@@ -33,6 +33,11 @@ with `vn` from `vi`, If `vi` does not contain an appropriate value then this wil
 function tilde_assume!!(
     ::DefaultContext, right::Distribution, vn::VarName, template::Any, vi::AbstractVarInfo
 )
+    # TODO(penelopeysm): Conceptually, this is the same as InitContext, except that:
+    #  1. init(...) is not called; instead we read the value from vi.
+    #  2. apply_transform_strategy(...) is not called; instead we infer from vi whether the
+    #     value is supposed to be linked or not.
+    # This can definitely be unified in the future.
     tval = get_transformed_value(vi, vn)
     trf = if tval isa LinkedVectorValue
         # Note that we can't rely on the stored transform being correct (e.g. if new values

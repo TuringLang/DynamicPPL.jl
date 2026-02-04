@@ -115,7 +115,7 @@ end
 model = f(2.0)
 
 vi = DynamicPPL.OnlyAccsVarInfo((VarNameLogpAccumulator(),))
-_, vi = DynamicPPL.init!!(model, vi, InitFromParams((; x=1.0)))
+_, vi = DynamicPPL.init!!(model, vi, InitFromParams((; x=1.0)), UnlinkAll())
 
 # This is why we used a const.
 output_acc = DynamicPPL.getacc(vi, Val(VARNAMELOGP_NAME))
@@ -244,7 +244,7 @@ This is slightly hacky, see the warning below and links therein for more discuss
 
 ```@example 1
 x = 1.0
-model = setleafcontext(model, DynamicPPL.InitContext(InitFromParams((; x=x))))
+model = setleafcontext(model, DynamicPPL.InitContext(InitFromParams((; x=x)), UnlinkAll()))
 _, tsvi = DynamicPPL._evaluate!!(model, tsvi)
 tsvi.accs_by_thread
 ```

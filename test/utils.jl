@@ -104,8 +104,16 @@ end
             vi_linked = DynamicPPL.link!!(VarInfo(model), model)
             @test (DynamicPPL.evaluate!!(model, vi_unlinked); true)
             @test (DynamicPPL.evaluate!!(model, vi_linked); true)
-            model_init = DynamicPPL.setleafcontext(model, DynamicPPL.InitContext())
+
+            model_init = DynamicPPL.setleafcontext(
+                model,
+                DynamicPPL.InitContext(DynamicPPL.InitFromPrior(), DynamicPPL.UnlinkAll()),
+            )
             @test (DynamicPPL.evaluate!!(model_init, vi_unlinked); true)
+            model_init = DynamicPPL.setleafcontext(
+                model,
+                DynamicPPL.InitContext(DynamicPPL.InitFromPrior(), DynamicPPL.LinkAll()),
+            )
             @test (DynamicPPL.evaluate!!(model_init, vi_linked); true)
         end
 

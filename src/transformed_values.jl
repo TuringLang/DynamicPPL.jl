@@ -197,3 +197,229 @@ Base.isequal(tv1::UntransformedValue, tv2::UntransformedValue) = isequal(tv1.val
 get_transform(::UntransformedValue) = typed_identity
 get_internal_value(tv::UntransformedValue) = tv.val
 set_internal_value(::UntransformedValue, new_val) = UntransformedValue(new_val)
+
+get_size_for_vnt(val) = hasmethod(size, Tuple{typeof(val)}) ? size(val) : ()
+
+"""
+    abstract type AbstractTransform end
+
+An abstract type to represent the intended transformation for a variable.
+"""
+abstract type AbstractTransform end
+
+"""
+    DynamicLink <: AbstractTransform
+
+A type indicating that a target transformation should be derived by recomputing the invlink
+transform from the distribution on the right-hand side of the tilde.
+"""
+struct DynamicLink <: AbstractTransform end
+
+"""
+    Unlink <: AbstractTransform
+
+A type indicating that the target transformation should be nothing.
+"""
+struct Unlink <: AbstractTransform end
+
+"""
+    abstract type AbstractTransformStrategy end
+
+An abstract type for strategies that determine how each variable should be transformed.
+
+For subtypes of `AbstractTransformStrategy`, the only method that needs to be overloaded is
+[`DynamicPPL.target_transform(::AbstractTransformStrategy, vn::VarName)`](@ref
+DynamicPPL.target_transform), which returns an [`AbstractTransform`](@ref) that
+specifies how the variable with name `vn` should be transformed.
+
+The transform strategy dictates how the log-Jacobian is accumulated during model evaluation.
+Regardless of what initialisation strategy is used (and what kind of transformed value
+`init()` returns, the log-Jacobian that is accumulated is always the log-Jacobian for the
+forward transform specified by `target_transform(strategy, vn)`.
+
+That is, even if `init()` returns an `UntransformedValue`, if the transform strategy is
+`LinkAll()` (which returns `DynamicLink` for all variables), then the log-Jacobian for
+linking will be accumulated during model evaluation.
+
+Subtypes in DynamicPPL are [`LinkAll`](@ref), [`UnlinkAll`](@ref), [`LinkSome`](@ref), and
+[`UnlinkSome`](@ref).
+"""
+abstract type AbstractTransformStrategy end
+
+"""
+    target_transform(linker::AbstractTransformStrategy, vn::VarName)
+
+Determine whether a variable with name `vn` should be linked according to the `linker`
+strategy. Returns `DynamicLink()` if the variable should be linked, or `Unlink()` if it
+should not.
+
+This function can in the future be extended to support fixed transformations.
+"""
+function target_transform end
+
+"""
+    LinkAll() <: AbstractTransformStrategy
+
+Indicate that all variables should be linked.
+"""
+struct LinkAll <: AbstractTransformStrategy end
+target_transform(::LinkAll, ::VarName) = DynamicLink()
+
+"""
+    UnlinkAll() <: AbstractTransformStrategy
+
+Indicate that all variables should be unlinked.
+"""
+struct UnlinkAll <: AbstractTransformStrategy end
+target_transform(::UnlinkAll, ::VarName) = Unlink()
+
+"""
+    LinkSome(vns, fallback) <: AbstractTransformStrategy
+
+Indicate that the variables in `vns` must be linked. The link statuses of other variables
+are determined by the `fallback` strategy.
+
+`vns` should be some iterable collection of `VarName`s, although there is no strict type
+requirement.
+"""
+struct LinkSome{V,L<:AbstractTransformStrategy} <: AbstractTransformStrategy
+    # TODO(penelopeysm): Should this be a tuple for maximum type stability?
+    vns::V
+    fallback::L
+end
+function target_transform(linker::LinkSome, vn::VarName)
+    return if any(linker_vn -> subsumes(linker_vn, vn), linker.vns)
+        DynamicLink()
+    else
+        target_transform(linker.fallback, vn)
+    end
+end
+# If the fallback is to link everything, then we can simplify.
+LinkSome(::Any, ::LinkAll) = LinkAll()
+
+"""
+    UnlinkSome(vns, fallback) <: AbstractTransformStrategy
+
+Indicate that the variables in `vns` must not be linked. The link statuses of other
+variables are determined by the `fallback` strategy.
+
+`vns` should be some iterable collection of `VarName`s, although there is no strict type
+requirement.
+"""
+struct UnlinkSome{V,L<:AbstractTransformStrategy} <: AbstractTransformStrategy
+    # TODO(penelopeysm): Should this be a tuple for maximum type stability?
+    vns::V
+    fallback::L
+end
+function target_transform(linker::UnlinkSome, vn::VarName)
+    return if any(linker_vn -> subsumes(linker_vn, vn), linker.vns)
+        Unlink()
+    else
+        target_transform(linker.fallback, vn)
+    end
+end
+UnlinkSome(::Any, ::UnlinkAll) = UnlinkAll()
+
+"""
+    DynamicPPL.apply_transform_strategy(
+        strategy::AbstractTransformStrategy,
+        tv::AbstractTransformedValue,
+        vn::VarName,
+        dist::Distribution,
+    )
+
+Apply the given `strategy` to the transformed value `tv` for a tilde-statement `vn ~ dist`.
+
+Specifically, this function does a number of things:
+
+- Calculates the raw value associated with `tv`.
+
+- Checks whether the `strategy` expects the VarName `vn` to be linked or unlinked. If the
+  current link status of `tv` matches the expected link status, `tv` is returned unchanged.
+  Otherwise, either linking or unlinking is applied as necessary. Note that this function
+  does not perform vectorisation unless it is needed.
+
+  A table summarising the possible transformations is as follows:
+
+  | tv isa ...          | `target_transform(...) isa DynamicLink` | `target_transform(...) isa Unlink` |
+  |---------------------|---------------------------------|------------------------------------|
+  | `LinkedVectorValue` | -> `LinkedVectorValue`          | -> `UntransformedValue`            |
+  | `VectorValue`       | -> `LinkedVectorValue`          | -> `VectorValue`                   |
+  | `UntransformedValue`| -> `LinkedVectorValue`          | -> `UntransformedValue`            |
+
+- If `vn` is supposed to be linked, calculates the associated log-Jacobian adjustment for
+  the **forward** linking transformation (i.e., from unlinked to linked).
+
+This function returns a tuple of `(raw_value, new_tv, logjac)`.
+
+!!! note
+    This function is therefore the single source of truth for whether `logjac` should be
+    incremented during model evaluation.
+"""
+function apply_transform_strategy(
+    strategy::AbstractTransformStrategy,
+    tv::LinkedVectorValue,
+    vn::VarName,
+    dist::Distribution,
+)
+    # tval is already linked. We need to get the raw value plus logjac
+    finvlink = DynamicPPL.from_linked_vec_transform(dist)
+    raw_value, inv_logjac = with_logabsdet_jacobian(finvlink, get_internal_value(tv))
+    target = target_transform(strategy, vn)
+    return if target isa DynamicLink
+        # No need to transform further
+        (raw_value, tv, -inv_logjac)
+    elseif target isa Unlink
+        # Need to return an unlinked value. We _could_ generate a VectorValue here, with the
+        # vectorisation transform. However, sometimes that's not needed (e.g. when
+        # evaluating with an OnlyAccsVarInfo). So we just return an UntransformedValue. If a
+        # downstream function requires a VectorValue, it's on them to generate it.
+        (raw_value, UntransformedValue(raw_value), zero(LogProbType))
+    else
+        error("unknown target transform $target")
+    end
+end
+
+function apply_transform_strategy(
+    strategy::AbstractTransformStrategy, tv::VectorValue, vn::VarName, dist::Distribution
+)
+    invlink = DynamicPPL.from_vec_transform(dist)
+    raw_value = invlink(get_internal_value(tv))
+    target = target_transform(strategy, vn)
+    return if target isa DynamicLink
+        # Need to link the value. We calculate the logjac
+        flink = DynamicPPL.to_linked_vec_transform(dist)
+        linked_value, logjac = with_logabsdet_jacobian(flink, raw_value)
+        finvlink = DynamicPPL.from_linked_vec_transform(dist)
+        linked_tv = LinkedVectorValue(linked_value, finvlink, get_size_for_vnt(raw_value))
+        (raw_value, linked_tv, logjac)
+    elseif target isa Unlink
+        # No need to transform further
+        (raw_value, tv, zero(LogProbType))
+    else
+        error("unknown target transform $target")
+    end
+end
+
+function apply_transform_strategy(
+    strategy::AbstractTransformStrategy,
+    tv::UntransformedValue,
+    vn::VarName,
+    dist::Distribution,
+)
+    raw_value = get_internal_value(tv)
+    target = target_transform(strategy, vn)
+    return if target isa DynamicLink
+        # Need to link the value. We calculate the logjac
+        flink = DynamicPPL.to_linked_vec_transform(dist)
+        linked_value, logjac = with_logabsdet_jacobian(flink, raw_value)
+        finvlink = DynamicPPL.from_linked_vec_transform(dist)
+        linked_tv = LinkedVectorValue(linked_value, finvlink, get_size_for_vnt(raw_value))
+        (raw_value, linked_tv, logjac)
+    elseif target isa Unlink
+        # No need to transform further
+        (raw_value, tv, zero(LogProbType))
+    else
+        error("unknown target transform $target")
+    end
+end

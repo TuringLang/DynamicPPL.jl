@@ -33,10 +33,10 @@ julia> ctx = CondFixContext{Condition}(VarNamedTuple(; a = 1));
 julia> DynamicPPL.childcontext(ctx)
 DefaultContext()
 
-julia> ctx_prior = DynamicPPL.setchildcontext(ctx, InitContext(MersenneTwister(23), InitFromPrior()));
+julia> ctx_prior = DynamicPPL.setchildcontext(ctx, InitContext(MersenneTwister(23), InitFromPrior(), UnlinkAll()));
 
 julia> DynamicPPL.childcontext(ctx_prior)
-InitContext{MersenneTwister, InitFromPrior}(MersenneTwister(23), InitFromPrior())
+InitContext{MersenneTwister, InitFromPrior, UnlinkAll}(MersenneTwister(23), InitFromPrior(), UnlinkAll())
 ```
 """
 setchildcontext
@@ -77,8 +77,8 @@ julia> ctx = ParentContext(ParentContext(DefaultContext()))
 ParentContext(ParentContext(DefaultContext()))
 
 julia> # Replace the leaf context with another leaf.
-       leafcontext(setleafcontext(ctx, InitContext(MersenneTwister(23), InitFromPrior())))
-InitContext{MersenneTwister, InitFromPrior}(MersenneTwister(23), InitFromPrior())
+       leafcontext(setleafcontext(ctx, InitContext(MersenneTwister(23), InitFromPrior(), UnlinkAll())))
+InitContext{MersenneTwister, InitFromPrior, UnlinkAll}(MersenneTwister(23), InitFromPrior(), UnlinkAll())
 
 julia> # Append another parent context.
        setleafcontext(ctx, ParentContext(DefaultContext()))
