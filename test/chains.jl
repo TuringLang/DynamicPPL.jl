@@ -1,5 +1,9 @@
 module DynamicPPLChainsTests
 
+using Dates: now
+@info "Testing $(@__FILE__)..."
+__now__ = now()
+
 using DynamicPPL
 using Distributions
 using LinearAlgebra
@@ -121,5 +125,7 @@ _safe_length(c::LinearAlgebra.Cholesky) = length(c.UL)
         end
     end
 end
+
+@info "Completed $(@__FILE__) in $(now() - __now__)."
 
 end # module

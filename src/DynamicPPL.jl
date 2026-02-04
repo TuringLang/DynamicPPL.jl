@@ -186,7 +186,6 @@ export AbstractVarInfo,
     ParamsWithStats,
     # Convenience macros
     @addlogprob!,
-    value_iterator_from_chain,
     check_model,
     check_model_and_trace,
     # Deprecated.

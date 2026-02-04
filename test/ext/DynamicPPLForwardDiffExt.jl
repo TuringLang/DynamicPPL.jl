@@ -7,8 +7,6 @@ using Distributions: MvNormal
 using LinearAlgebra: I
 using Test: @test, @testset
 
-# get_chunksize(ad::AutoForwardDiff{chunk}) where {chunk} = chunk
-
 @testset "ForwardDiff tweak_adtype" begin
     MODEL_SIZE = 10
     @model f() = x ~ MvNormal(zeros(MODEL_SIZE), I)

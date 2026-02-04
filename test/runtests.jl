@@ -1,44 +1,13 @@
-using Accessors
-using ADTypes
-using DynamicPPL
-using AbstractMCMC
-using AbstractPPL
-using BangBang: delete!!, setindex!!
-using Bijectors
-using DifferentiationInterface
-using Distributions
-using DistributionsAD
-using Documenter
-using ForwardDiff
-using LogDensityProblems
-using MacroTools
-using MCMCChains
-using Mooncake
-using StableRNGs
-using ReverseDiff
-using Mooncake
-using Zygote
-
-using Distributed
-using LinearAlgebra
-using Pkg
-using Random
-using Serialization
-using Test
-using Distributions
-using LinearAlgebra # Diagonal
-
-using Combinatorics: combinations
-using OrderedCollections: OrderedSet
-
-using DynamicPPL: getargs_dottilde, getargs_tilde, ParamsWithStats
+using Documenter: Documenter
+using DynamicPPL: DynamicPPL
+using Random: Random
+using Test: @testset, @test_throws
 
 # These flags are set in CI
 const GROUP = get(ENV, "GROUP", "All")
 const AQUA = get(ENV, "AQUA", "true") == "true"
 
 Random.seed!(100)
-include("test_util.jl")
 
 @testset verbose = true "DynamicPPL.jl" begin
     # The tests are split into two groups so that CI can run in parallel. The
@@ -81,13 +50,13 @@ include("test_util.jl")
             include("ext/DynamicPPLMooncakeExt.jl")
         end
         @testset "prob and logprob macro" begin
-            @test_throws ErrorException prob"..."
-            @test_throws ErrorException logprob"..."
+            @test_throws ErrorException DynamicPPL.prob"..."
+            @test_throws ErrorException DynamicPPL.logprob"..."
         end
     end
 
     if GROUP == "All" || GROUP == "Doctests"
-        DocMeta.setdocmeta!(
+        Documenter.DocMeta.setdocmeta!(
             DynamicPPL, :DocTestSetup, :(using DynamicPPL, Distributions); recursive=true
         )
         doctestfilters = [
@@ -99,6 +68,6 @@ include("test_util.jl")
         @static if VERSION < v"1.12"
             @warn "Doctests currently only pass on Julia 1.12 due to different outputs in earlier versions of Julia. You are currently using Julia $(VERSION); do not be alarmed if the doctests fail."
         end
-        doctest(DynamicPPL; manual=false, doctestfilters=doctestfilters)
+        Documenter.doctest(DynamicPPL; manual=false, doctestfilters=doctestfilters)
     end
 end

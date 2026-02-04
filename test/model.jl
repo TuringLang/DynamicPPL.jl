@@ -1,15 +1,47 @@
-# some functors (#367)
-struct MyModel
-    a::Int
+module DynamicPPLModelTests
+
+using Dates: now
+@info "Testing $(@__FILE__)..."
+__now__ = now()
+
+using AbstractMCMC: AbstractMCMC
+using AbstractPPL: AbstractPPL
+using Distributions
+using DistributionsAD: filldist
+using DynamicPPL
+using LinearAlgebra: I
+using MCMCChains: MCMCChains
+using Random: Random, Xoshiro
+using Test
+
+short_varinfo_name(::DynamicPPL.ThreadSafeVarInfo) = "ThreadSafeVarInfo"
+short_varinfo_name(::DynamicPPL.VarInfo) = "VarInfo"
+
+function make_chain_from_prior(rng::Random.AbstractRNG, model::Model, n_iters::Int)
+    vi = VarInfo(model)
+    vi = DynamicPPL.setaccs!!(vi, (DynamicPPL.ValuesAsInModelAccumulator(false),))
+    ps = hcat([
+        DynamicPPL.ParamsWithStats(last(DynamicPPL.init!!(rng, model, vi))) for
+        _ in 1:n_iters
+    ])
+    return AbstractMCMC.from_samples(MCMCChains.Chains, ps)
 end
-@model function (f::MyModel)(x)
-    m ~ Normal(f.a, 1)
-    return x ~ Normal(m, 1)
+function make_chain_from_prior(model::Model, n_iters::Int)
+    return make_chain_from_prior(Random.default_rng(), model, n_iters)
 end
-struct MyZeroModel end
-@model function (::MyZeroModel)(x)
-    m ~ Normal(0, 1)
-    return x ~ Normal(m, 1)
+
+# TODO(penelopeysm): Get rid of whatever test uses this
+function modify_value_representation(nt::NamedTuple)
+    modified_nt = NamedTuple()
+    for (key, value) in zip(keys(nt), values(nt))
+        if length(value) == 1  # Scalar value
+            modified_value = value[1]
+        else  # Non-scalar value
+            modified_value = value
+        end
+        modified_nt = merge(modified_nt, (key => modified_value,))
+    end
+    return modified_nt
 end
 
 innermost_distribution_type(d::Distribution) = typeof(d)
@@ -213,14 +245,28 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
             return x ~ Normal(m, 1)
         end
 
-        @test nameof(test1(rand())) == :test1
-        @test nameof(test2(rand())) == :test2
-        @test nameof(test3(rand())) == :test3
-        @test nameof(test4(rand())) == :test4
+        # use occursin because the actual name returned may include the module name
+        @test occursin("test1", String(nameof(test1(rand()))))
+        @test occursin("test2", String(nameof(test2(rand()))))
+        @test occursin("test3", String(nameof(test3(rand()))))
+        @test occursin("test4", String(nameof(test4(rand()))))
 
         # callables
-        @test nameof(MyModel(3)(rand())) == Symbol("MyModel(3)")
-        @test nameof(MyZeroModel()(rand())) == Symbol("MyZeroModel()")
+        struct MyModel
+            a::Int
+        end
+        @model function (f::MyModel)(x)
+            m ~ Normal(f.a, 1)
+            return x ~ Normal(m, 1)
+        end
+        struct MyZeroModel end
+        @model function (::MyZeroModel)(x)
+            m ~ Normal(0, 1)
+            return x ~ Normal(m, 1)
+        end
+
+        @test occursin("MyModel(3)", String(nameof(MyModel(3)(rand()))))
+        @test occursin("MyZeroModel()", String(nameof(MyZeroModel()(rand()))))
     end
 
     @testset "Internal methods" begin
@@ -570,23 +616,23 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
             end
 
             @testset "accuracy" begin
-                ys_pred = vec(mean(Array(group(predictions, :y)); dims=1))
+                ys_pred = vec(mean(Array(MCMCChains.group(predictions, :y)); dims=1))
                 @test ys_pred[1] ≈ ground_truth_β * xs_test[1] atol = 0.01
                 @test ys_pred[2] ≈ ground_truth_β * xs_test[2] atol = 0.01
             end
 
             @testset "ensure that rng is respected" begin
-                rng = MersenneTwister(42)
+                rng = Xoshiro(42)
                 predictions1 = DynamicPPL.predict(rng, m_lin_reg_test, β_chain[1:2])
-                predictions2 = DynamicPPL.predict(
-                    MersenneTwister(42), m_lin_reg_test, β_chain[1:2]
-                )
+                predictions2 = DynamicPPL.predict(Xoshiro(42), m_lin_reg_test, β_chain[1:2])
                 @test all(Array(predictions1) .== Array(predictions2))
             end
 
             @testset "accuracy on vectorized model" begin
                 predictions_vec = DynamicPPL.predict(m_lin_reg_test_vec, β_chain)
-                ys_pred_vec = vec(mean(Array(group(predictions_vec, :y)); dims=1))
+                ys_pred_vec = vec(
+                    mean(Array(MCMCChains.group(predictions_vec, :y)); dims=1)
+                )
 
                 @test ys_pred_vec[1] ≈ ground_truth_β * xs_test[1] atol = 0.01
                 @test ys_pred_vec[2] ≈ ground_truth_β * xs_test[2] atol = 0.01
@@ -604,7 +650,10 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
 
                 for chain_idx in MCMCChains.chains(multiple_β_chain)
                     ys_pred = vec(
-                        mean(Array(group(predictions[:, :, chain_idx], :y)); dims=1)
+                        mean(
+                            Array(MCMCChains.group(predictions[:, :, chain_idx], :y));
+                            dims=1,
+                        ),
                     )
                     @test ys_pred[1] ≈ ground_truth_β * xs_test[1] atol = 0.01
                     @test ys_pred[2] ≈ ground_truth_β * xs_test[2] atol = 0.01
@@ -615,7 +664,10 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
 
                 for chain_idx in MCMCChains.chains(multiple_β_chain)
                     ys_pred_vec = vec(
-                        mean(Array(group(predictions_vec[:, :, chain_idx], :y)); dims=1)
+                        mean(
+                            Array(MCMCChains.group(predictions_vec[:, :, chain_idx], :y));
+                            dims=1,
+                        ),
                     )
                     @test ys_pred_vec[1] ≈ ground_truth_β * xs_test[1] atol = 0.01
                     @test ys_pred_vec[2] ≈ ground_truth_β * xs_test[2] atol = 0.01
@@ -635,3 +687,7 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
         @test model() isa NamedTuple
     end
 end
+
+@info "Completed $(@__FILE__) in $(now() - __now__)."
+
+end # module

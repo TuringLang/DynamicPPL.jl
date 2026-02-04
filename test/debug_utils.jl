@@ -1,3 +1,12 @@
+module DynamicPPLDebugUtilsTests
+
+using Dates: now
+@info "Testing $(@__FILE__)..."
+__now__ = now()
+
+using DynamicPPL, Distributions, Test
+using LinearAlgebra: I
+
 @testset "check_model" begin
     @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
         issuccess, trace = check_model_and_trace(model, VarInfo(model))
@@ -124,7 +133,7 @@
             model = demo_assume()
             issuccess, trace = check_model_and_trace(model, VarInfo(model))
             @test issuccess
-            @test startswith(string(trace), " assume: x ~ Normal")
+            @test startswith(string(trace), r" assume: x ~ (Distributions\.)?Normal")
         end
 
         @testset "observe" begin
@@ -132,7 +141,9 @@
             model = demo_observe(1.0)
             issuccess, trace = check_model_and_trace(model, VarInfo(model))
             @test issuccess
-            @test occursin(r"observe: x \(= \d+\.\d+\) ~ Normal", string(trace))
+            @test occursin(
+                r"observe: x \(= \d+\.\d+\) ~ (Distributions\.)?Normal", string(trace)
+            )
         end
     end
 
@@ -183,3 +194,7 @@
         end
     end
 end
+
+@info "Completed $(@__FILE__) in $(now() - __now__)."
+
+end # module

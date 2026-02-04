@@ -1,3 +1,17 @@
+module DynamicPPLVarInfoTests
+
+using Dates: now
+@info "Testing $(@__FILE__)..."
+__now__ = now()
+
+using AbstractMCMC: AbstractMCMC
+using BangBang: setindex!!
+using DynamicPPL
+using Distributions
+using MCMCChains: MCMCChains
+using Random: Random, Xoshiro
+using Test
+
 function check_varinfo_keys(varinfo, vns)
     vns_varinfo = keys(varinfo)
     @test union(vns_varinfo, vns) == intersect(vns_varinfo, vns)
@@ -13,7 +27,21 @@ function check_metadata_type_equal(
     return check_metadata_type_equal(v1.varinfo, v2.varinfo)
 end
 
-using Random: Xoshiro
+short_varinfo_name(::DynamicPPL.ThreadSafeVarInfo) = "ThreadSafeVarInfo"
+short_varinfo_name(::DynamicPPL.VarInfo) = "VarInfo"
+
+function make_chain_from_prior(rng::Random.AbstractRNG, model::Model, n_iters::Int)
+    vi = VarInfo(model)
+    vi = DynamicPPL.setaccs!!(vi, (DynamicPPL.ValuesAsInModelAccumulator(false),))
+    ps = hcat([
+        DynamicPPL.ParamsWithStats(last(DynamicPPL.init!!(rng, model, vi))) for
+        _ in 1:n_iters
+    ])
+    return AbstractMCMC.from_samples(MCMCChains.Chains, ps)
+end
+function make_chain_from_prior(model::Model, n_iters::Int)
+    return make_chain_from_prior(Random.default_rng(), model, n_iters)
+end
 
 @testset "varinfo.jl" begin
     @testset "Base" begin
@@ -705,3 +733,7 @@ using Random: Xoshiro
         @test getlogjoint(DynamicPPL.unflatten!!(varinfo, fill(1, n))) isa typeof(float(1))
     end
 end
+
+@info "Completed $(@__FILE__) in $(now() - __now__)."
+
+end # module

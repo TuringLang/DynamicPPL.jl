@@ -1,4 +1,19 @@
-using Bijectors
+module DynamicPPLLinkingTests
+
+using Dates: now
+@info "Testing $(@__FILE__)..."
+__now__ = now()
+
+using DynamicPPL
+using Distributions
+using DistributionsAD: filldist
+using LinearAlgebra
+using Bijectors: Bijectors, inverse
+using Random: Random, randn!
+using Test
+
+short_varinfo_name(::DynamicPPL.ThreadSafeVarInfo) = "ThreadSafeVarInfo"
+short_varinfo_name(::DynamicPPL.VarInfo) = "VarInfo"
 
 # Simple transformations which alters the "dimension" of the variable.
 struct TrilToVec{S}
@@ -210,3 +225,7 @@ end
         end
     end
 end
+
+@info "Completed $(@__FILE__) in $(now() - __now__)."
+
+end # module

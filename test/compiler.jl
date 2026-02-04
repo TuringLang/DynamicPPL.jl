@@ -1,3 +1,16 @@
+module DynamicPPLCompilerTests
+
+using Dates: now
+@info "Testing $(@__FILE__)..."
+__now__ = now()
+
+using Distributions
+using DynamicPPL
+using ForwardDiff: ForwardDiff
+using LinearAlgebra: I
+using Random: Random
+using Test
+
 macro custom(expr)
     (Meta.isexpr(expr, :call, 3) && expr.args[1] === :~) || error("incorrect macro usage")
     quote
@@ -891,3 +904,7 @@ module Issue537 end
         end
     end
 end
+
+@info "Completed $(@__FILE__) in $(now() - __now__)."
+
+end # module

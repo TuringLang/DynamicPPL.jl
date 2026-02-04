@@ -94,6 +94,10 @@ Previously, there were many versions of them: `VarInfo`, both "typed" and "untyp
 These have all been replaced by a rewritten implementation of `VarInfo`, which is backed by `VarNamedTuple` (see below for more details on this).
 While the basics of the `VarInfo` interface remain the same, this brings with it many changes:
 
+### `value_iterator_from_chain` is removed
+
+Please use `AbstractMCMC.to_samples(DynamicPPL.ParamsWithStats, chain, model)` instead.
+
 #### No more many `AbstractVarInfo` types
 
 `SimpleVarInfo`, `untyped_varinfo`, `typed_varinfo`, and many other constructors, some exported some not, have been removed.

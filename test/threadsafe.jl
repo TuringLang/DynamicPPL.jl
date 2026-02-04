@@ -1,3 +1,22 @@
+module DynamicPPLThreadSafeTests
+
+using Dates: now
+@info "Testing $(@__FILE__)..."
+__now__ = now()
+
+using Distributions
+using DynamicPPL
+using Test
+
+@model function gdemo_d()
+    s ~ InverseGamma(2, 3)
+    m ~ Normal(0, sqrt(s))
+    1.5 ~ Normal(m, sqrt(s))
+    2.0 ~ Normal(m, sqrt(s))
+    return s, m
+end
+const gdemo_default = gdemo_d()
+
 @testset "threadsafe.jl" begin
     @testset "constructor" begin
         vi = VarInfo(gdemo_default)
@@ -33,7 +52,8 @@
         threadsafe_vi = DynamicPPL.acclogprior!!(threadsafe_vi, 42)
         @test threadsafe_vi.accs_by_thread[Threads.threadid()][:LogPrior].logp == 42
         @test getlogjoint(vi) == lp
-        @test getlogjoint(threadsafe_vi) == lp + 42
+        # float addition might lead to rounding errors so use approx rather than ==
+        @test getlogjoint(threadsafe_vi) ≈ lp + 42
 
         threadsafe_vi = DynamicPPL.resetaccs!!(threadsafe_vi)
         @test iszero(getlogjoint(threadsafe_vi))
@@ -50,11 +70,28 @@
         @test all(accs == expected_accs for accs in threadsafe_vi.accs_by_thread)
     end
 
-    @testset "model" begin
+    @testset "Check that VarInfo is wrapped during model evaluation" begin
+        @model function f()
+            global vi_ = __varinfo__
+            return x ~ Normal(0, 1)
+        end
+        model = setthreadsafe(f(), true)
+
+        _, vi = DynamicPPL.init!!(model, VarInfo())
+        # Inside the model evaluation function, it should be wrapped
+        @test vi_ isa DynamicPPL.ThreadSafeVarInfo
+        # But init!! should return the original VarInfo
+        @test vi isa DynamicPPL.VarInfo
+        # Same with evaluate!!
+        _, vi = DynamicPPL.evaluate!!(model, vi)
+        @test vi_ isa DynamicPPL.ThreadSafeVarInfo
+        @test vi isa DynamicPPL.VarInfo
+    end
+
+    @testset "logprob correctness" begin
         x = rand(10_000)
 
         @model function wthreads(x)
-            global vi_ = __varinfo__
             x[1] ~ Normal(0, 1)
             Threads.@threads for i in 2:length(x)
                 x[i] ~ Normal(x[i - 1], 1)
@@ -70,14 +107,13 @@
             return lp
         end
 
-        vi = VarInfo()
-        _, vi = DynamicPPL.evaluate!!(model, vi)
+        _, vi = DynamicPPL.init!!(model, VarInfo())
 
         # check that logp is correct
         @test getlogjoint(vi) ≈ correct_lp(x)
-        # check that varinfo was wrapped during the model evaluation
-        @test vi_ isa DynamicPPL.ThreadSafeVarInfo
-        # ensure that it's unwrapped after evaluation finishes
-        @test vi isa VarInfo
     end
 end
+
+@info "Completed $(@__FILE__) in $(now() - __now__)."
+
+end # module

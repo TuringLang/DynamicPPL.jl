@@ -1,5 +1,9 @@
 module DynamicPPLCondFixContextTests
 
+using Dates: now
+@info "Testing $(@__FILE__)..."
+__now__ = now()
+
 using DynamicPPL
 using DynamicPPL: CondFixContext, Condition, Fix, PrefixContext
 using Distributions
@@ -535,5 +539,7 @@ end
         end
     end
 end
+
+@info "Completed $(@__FILE__) in $(now() - __now__)."
 
 end # module

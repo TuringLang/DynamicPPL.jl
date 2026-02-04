@@ -1,3 +1,16 @@
+module DynamicPPLPointwiseLogDensitiesTests
+
+using Dates: now
+@info "Testing $(@__FILE__)..."
+__now__ = now()
+
+using AbstractMCMC: AbstractMCMC
+using AbstractPPL: AbstractPPL
+using Distributions: Normal, Exponential
+using DynamicPPL
+using MCMCChains: MCMCChains
+using Test
+
 @testset "pointwise_logdensities.jl" begin
     @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
         example_values = DynamicPPL.TestUtils.rand_prior_true(model)
@@ -46,7 +59,7 @@ end
     vals = [DynamicPPL.TestUtils.rand_prior_true(model) for _ in 1:num_iters]
     # Concatenate the vector representations and create a `Chains` from it.
     vals_arr = reduce(hcat, mapreduce(DynamicPPL.tovec, vcat, values(nt)) for nt in vals)
-    chain = Chains(
+    chain = MCMCChains.Chains(
         permutedims(vals_arr),
         map(Symbol, vns);
         info=(varname_to_symbol=Dict(vn => Symbol(vn) for vn in vns),),
@@ -123,3 +136,7 @@ end
         )
     end
 end
+
+@info "Completed $(@__FILE__) in $(now() - __now__)."
+
+end # module

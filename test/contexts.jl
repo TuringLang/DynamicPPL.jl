@@ -1,5 +1,12 @@
-using Test, DynamicPPL
-using AbstractPPL: getoptic, hasvalue, getvalue
+module DynamicPPLContextTests
+
+using Dates: now
+@info "Testing $(@__FILE__)..."
+__now__ = now()
+
+using Test, DynamicPPL, Distributions
+using AbstractPPL: AbstractPPL
+using Bijectors: inverse, Bijectors
 using DynamicPPL:
     leafcontext,
     setleafcontext,
@@ -93,13 +100,9 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
                     pairs(conditioned_values),
                 )
 
-                # We can now loop over them to check which ones are missing. We use
-                # `getvalue` to handle the awkward case where sometimes
-                # `conditioned_values` contains the full Varname (e.g. `a.x`) and
-                # sometimes only the main symbol (e.g. it contains `x` when
-                # `vn` is `x[1]`)
+                # We can now loop over them to check which ones are missing.
                 for vn in conditioned_vns
-                    val = getvalue(conditioned_values, vn)
+                    val = conditioned_values[vn]
                     # These VarNames are present in the conditioning values, so
                     # we should always be able to extract the value.
                     @test hasconditioned_nested(context, vn)
@@ -438,3 +441,7 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
         end
     end
 end
+
+@info "Completed $(@__FILE__) in $(now() - __now__)."
+
+end # module
