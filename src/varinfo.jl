@@ -267,29 +267,17 @@ end
         template::Any
     )
 
-Set the value of `vn` in `vi` to `tval`. In the case where `tval` does not already specify
-a transform, the linked status of `vi` is preserved.
+Vectorise `tval` (into a `VectorValue`) and store it. (Note that if `setindex_with_dist!!`
+receives an `UntransformedValue`, the variable is always considered unlinked, since if it
+were to be linked, `apply_transform_strategy` will already have done so.)
 """
 function setindex_with_dist!!(
     vi::VarInfo{Linked}, tval::UntransformedValue, dist::Distribution, vn::VarName, template
 ) where {Linked}
     raw_value = DynamicPPL.get_internal_value(tval)
     sz = hasmethod(size, (typeof(raw_value),)) ? size(raw_value) : ()
-    insert_linked = if Linked === nothing
-        haskey(vi, vn) ? is_transformed(vi, vn) : is_transformed(vi)
-    else
-        Linked
-    end
-    tval = if insert_linked
-        LinkedVectorValue(
-            to_linked_vec_transform(dist)(raw_value),
-            from_linked_vec_transform(dist),
-            sz,
-        )
-    else
-        VectorValue(to_vec_transform(dist)(raw_value), from_vec_transform(dist), sz)
-    end
-    return VarInfo{Linked}(templated_setindex!!(vi.values, tval, vn, template), vi.accs)
+    tval = VectorValue(to_vec_transform(dist)(raw_value), from_vec_transform(dist), sz)
+    return setindex_with_dist!!(vi, tval, dist, vn, template)
 end
 
 # TODO(mhauru) The below is somewhat unsafe or incomplete: For instance, from_vec_transform
