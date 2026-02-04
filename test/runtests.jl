@@ -65,10 +65,11 @@ Random.seed!(100)
             # This is a line that starts with "└ @ " and ends with the line number.
             r"└ @ .+:[0-9]+",
         ]
-
-        @static if VERSION < v"1.12"
-            @warn "Doctests currently only pass on Julia 1.12 due to different outputs in earlier versions of Julia. You are currently using Julia $(VERSION); do not be alarmed if the doctests fail."
-        end
+        # Doctests are sensitive to changes in imports in the main test file (I don't get
+        # why...) -- if we don't import them here then the doctest output will include
+        # the prefixed module name
+        using Distributions: Normal
+        using DynamicPPL: DefaultContext, Condition, Fix
         Documenter.doctest(DynamicPPL; manual=false, doctestfilters=doctestfilters)
     end
 end

@@ -332,9 +332,15 @@ end
     end
 
     @testset "instantiation with transform strategy" begin
-        @model function f()
+        # also check that the order in which variables appear in the model doesn't
+        # affect the transform strategy
+        @model function x_before_y()
             x ~ Beta(2, 2)
             return y ~ LogNormal(0, 1)
+        end
+        @model function y_before_x()
+            y ~ LogNormal(0, 1)
+            return x ~ Beta(2, 2)
         end
 
         function test_transform_strategy(
@@ -367,29 +373,30 @@ end
             end
         end
 
-        model = f()
-        test_transform_strategy(LinkAll(), model, Set([@varname(x), @varname(y)]))
-        test_transform_strategy(
-            LinkSome((@varname(x),), UnlinkAll()), model, Set([@varname(x)])
-        )
-        test_transform_strategy(
-            LinkSome((@varname(y),), UnlinkAll()), model, Set([@varname(y)])
-        )
-        test_transform_strategy(
-            LinkSome((@varname(x), @varname(y)), UnlinkAll()),
-            model,
-            Set([@varname(x), @varname(y)]),
-        )
-        test_transform_strategy(UnlinkAll(), model, Set{VarName}())
-        test_transform_strategy(
-            UnlinkSome((@varname(x),), LinkAll()), model, Set{VarName}()
-        )
-        test_transform_strategy(
-            UnlinkSome((@varname(y),), LinkAll()), model, Set{VarName}()
-        )
-        test_transform_strategy(
-            UnlinkSome((@varname(x), @varname(y)), LinkAll()), model, Set{VarName}()
-        )
+        @testset "$(model.f)" for model in (x_before_y(), y_before_x())
+            test_transform_strategy(LinkAll(), model, Set([@varname(x), @varname(y)]))
+            test_transform_strategy(
+                LinkSome((@varname(x),), UnlinkAll()), model, Set([@varname(x)])
+            )
+            test_transform_strategy(
+                LinkSome((@varname(y),), UnlinkAll()), model, Set([@varname(y)])
+            )
+            test_transform_strategy(
+                LinkSome((@varname(x), @varname(y)), UnlinkAll()),
+                model,
+                Set([@varname(x), @varname(y)]),
+            )
+            test_transform_strategy(UnlinkAll(), model, Set{VarName}())
+            test_transform_strategy(
+                UnlinkSome((@varname(x),), LinkAll()), model, Set{VarName}()
+            )
+            test_transform_strategy(
+                UnlinkSome((@varname(y),), LinkAll()), model, Set{VarName}()
+            )
+            test_transform_strategy(
+                UnlinkSome((@varname(x), @varname(y)), LinkAll()), model, Set{VarName}()
+            )
+        end
     end
 
     @testset "unflatten!! + linking" begin

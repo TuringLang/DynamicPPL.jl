@@ -393,13 +393,13 @@ julia> using DynamicPPL: collapse_prefix_stack, PrefixContext, CondFixContext, C
 julia> c1 = PrefixContext(@varname(a), CondFixContext{Condition}(VarNamedTuple(x=1,)));
 
 julia> collapse_prefix_stack(c1)
-CondFixContext{DynamicPPL.Condition}(VarNamedTuple(a = VarNamedTuple(x = 1,),), DefaultContext())
+CondFixContext{Condition}(VarNamedTuple(a = VarNamedTuple(x = 1,),), DefaultContext())
 
 julia> # Here, `x` gets prefixed only with `a`, whereas `y` is prefixed with both.
        c2 = PrefixContext(@varname(a), CondFixContext{Condition}(VarNamedTuple(x=1, ), PrefixContext(@varname(b), CondFixContext{Condition}(VarNamedTuple(y=2,)))));
 
 julia> collapsed = collapse_prefix_stack(c2)
-CondFixContext{DynamicPPL.Condition}(VarNamedTuple(a = VarNamedTuple(b = VarNamedTuple(y = 2,), x = 1),), DefaultContext())
+CondFixContext{Condition}(VarNamedTuple(a = VarNamedTuple(b = VarNamedTuple(y = 2,), x = 1),), DefaultContext())
 
 julia> collapsed.values  # In a format that is easier to read.
 VarNamedTuple
@@ -434,10 +434,10 @@ Prefix all the conditioned and fixed variables in a given context with a single
 julia> using DynamicPPL: prefix_cond_and_fixed_variables, CondFixContext, Condition, VarNamedTuple, @varname, DefaultContext
 
 julia> c1 = CondFixContext{Condition}(VarNamedTuple(a=1))
-CondFixContext{DynamicPPL.Condition}(VarNamedTuple(a = 1,), DefaultContext())
+CondFixContext{Condition}(VarNamedTuple(a = 1,), DefaultContext())
 
 julia> prefix_cond_and_fixed_variables(c1, @varname(y))
-CondFixContext{DynamicPPL.Condition}(VarNamedTuple(y = VarNamedTuple(a = 1,),), DefaultContext())
+CondFixContext{Condition}(VarNamedTuple(y = VarNamedTuple(a = 1,),), DefaultContext())
 ```
 """
 function prefix_cond_and_fixed_variables(
