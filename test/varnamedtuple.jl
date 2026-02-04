@@ -643,6 +643,25 @@ Base.size(st::SizedThing) = st.size
             end
         end
 
+        @testset "Warning when setting untemplated values" begin
+            warnmsg = r"Creating a growable `Base.Array`"
+            @test_logs (:warn, warnmsg) vnt = setindex!!(
+                VarNamedTuple(), [1.0, 2.0], @varname(x[1:2])
+            )
+            @test_logs (:warn, warnmsg) vnt = setindex!!(
+                VarNamedTuple(), 1.0, @varname(x[1])
+            )
+            @test_logs (:warn, warnmsg) vnt = setindex!!(
+                VarNamedTuple(), 1.0, @varname(x[2])
+            )
+            # This shouldn't warn, because `x` is just the whole vector
+            @test_logs vnt = setindex!!(VarNamedTuple(), [1.0, 2.0], @varname(x))
+            # With a template it shouldn't warn
+            @test_logs vnt = templated_setindex!!(
+                VarNamedTuple(), 1.0, @varname(x[1]), zeros(2)
+            )
+        end
+
         @testset "Warning when trying to extract values" begin
             vnt = @vnt begin
                 x[1] := 1.0
