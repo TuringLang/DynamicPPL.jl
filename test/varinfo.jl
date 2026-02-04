@@ -8,6 +8,7 @@ using AbstractMCMC: AbstractMCMC
 using BangBang: setindex!!
 using DynamicPPL
 using Distributions
+using LinearAlgebra: I
 using MCMCChains: MCMCChains
 using Random: Random, Xoshiro
 using Test
@@ -45,35 +46,32 @@ end
 
 @testset "varinfo.jl" begin
     @testset "Base" begin
-        # Test Base functions:
-        #   in, keys, haskey, isempty, setindex!!, empty!!,
-        #   getindex, setindex!, getproperty, setproperty!
-
         vi = VarInfo()
         @test getlogjoint(vi) == 0
         @test isempty(vi[:])
 
-        vn = @varname x
-        r = rand()
+        vn = @varname(x)
+        x = rand()
 
         @test isempty(vi)
         @test !haskey(vi, vn)
         @test !(vn in keys(vi))
-        vi = setindex!!(vi, r, vn)
+
+        vi = DynamicPPL.setindex_with_dist!!(vi, UntransformedValue(x), Normal(), vn, x)
         @test !isempty(vi)
         @test haskey(vi, vn)
         @test vn in keys(vi)
 
         @test length(vi[vn]) == 1
-        @test vi[vn] == r
-        @test vi[:] == [r]
-        vi = DynamicPPL.setindex!!(vi, 2 * r, vn)
-        @test vi[vn] == 2 * r
-        @test vi[:] == [2 * r]
+        @test vi[vn] == x
+        @test vi[:] == [x]
+        vi = DynamicPPL.setindex_with_dist!!(vi, UntransformedValue(2 * x), Normal(), vn, x)
+        @test vi[vn] == 2 * x
+        @test vi[:] == [2 * x]
 
         vi = empty!!(vi)
         @test isempty(vi)
-        vi = setindex!!(vi, r, vn)
+        vi = DynamicPPL.setindex_with_dist!!(vi, UntransformedValue(x), Normal(), vn, x)
         @test !isempty(vi)
     end
 
@@ -250,9 +248,9 @@ end
     @testset "is_transformed flag" begin
         vi = VarInfo()
         vn_x = @varname x
-        r = rand()
+        x = rand()
 
-        vi = setindex!!(vi, r, vn_x)
+        vi = DynamicPPL.setindex_with_dist!!(vi, UntransformedValue(x), Normal(), vn_x, x)
 
         # is_transformed is unset by default
         @test !is_transformed(vi, vn_x)
@@ -704,10 +702,12 @@ end
     # The below used to error, testing to avoid regression.
     @testset "merge different dimensions" begin
         vn = @varname(x)
-        vi_single = VarInfo()
-        vi_single = setindex!!(vi_single, 1.0, vn)
-        vi_double = VarInfo()
-        vi_double = setindex!!(vi_double, [0.5, 0.6], vn)
+        vi_single = DynamicPPL.setindex_with_dist!!(
+            VarInfo(), UntransformedValue(1.0), Normal(), vn, 1.0
+        )
+        vi_double = DynamicPPL.setindex_with_dist!!(
+            VarInfo(), UntransformedValue([0.5, 0.6]), MvNormal(zeros(2), I), vn, [0.5, 0.6]
+        )
         @test merge(vi_single, vi_double)[vn] == [0.5, 0.6]
         @test merge(vi_double, vi_single)[vn] == 1.0
     end
