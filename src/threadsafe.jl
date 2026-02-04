@@ -81,14 +81,6 @@ function invlink!!(t::AbstractTransformation, vi::ThreadSafeVarInfo, args...)
 end
 get_transform_strategy(vi::ThreadSafeVarInfo) = get_transform_strategy(vi.varinfo)
 
-function maybe_invlink_before_eval!!(vi::ThreadSafeVarInfo, model::Model)
-    # Defer to the wrapped `AbstractVarInfo` object.
-    # NOTE: When computing `getacc` for `ThreadSafeVarInfo` we do include the
-    # `getacc(vi.varinfo)` hence the log-absdet-jacobian term will correctly be included in
-    # the `getlogprior(vi)`.
-    return Accessors.@set vi.varinfo = maybe_invlink_before_eval!!(vi.varinfo, model)
-end
-
 # `getindex`
 getindex(vi::ThreadSafeVarInfo, ::Colon) = getindex(vi.varinfo, Colon())
 getindex(vi::ThreadSafeVarInfo, vn::VarName) = getindex(vi.varinfo, vn)
@@ -105,13 +97,6 @@ function setindex_with_dist!!(
 )
     vi_inner = setindex_with_dist!!(vi.varinfo, tval, dist, vn, template)
     return Accessors.@set(vi.varinfo = vi_inner)
-end
-
-function BangBang.setindex!!(vi::ThreadSafeVarInfo, vals, vn::VarName)
-    return Accessors.@set vi.varinfo = BangBang.setindex!!(vi.varinfo, vals, vn)
-end
-function BangBang.setindex!!(vi::ThreadSafeVarInfo, vals, vns::AbstractVector{<:VarName})
-    return Accessors.@set vi.varinfo = BangBang.setindex!!(vi.varinfo, vals, vns)
 end
 
 vector_length(vi::ThreadSafeVarInfo) = vector_length(vi.varinfo)

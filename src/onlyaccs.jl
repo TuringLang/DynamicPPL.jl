@@ -21,7 +21,6 @@ function OnlyAccsVarInfo(accs::NTuple{N,AbstractAccumulator}) where {N}
 end
 
 # Minimal AbstractVarInfo interface
-DynamicPPL.maybe_invlink_before_eval!!(vi::OnlyAccsVarInfo, ::Model) = vi
 DynamicPPL.getaccs(vi::OnlyAccsVarInfo) = vi.accs
 DynamicPPL.setaccs!!(::OnlyAccsVarInfo, accs::AccumulatorTuple) = OnlyAccsVarInfo(accs)
 function DynamicPPL.get_transform_strategy(::OnlyAccsVarInfo)

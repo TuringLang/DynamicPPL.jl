@@ -284,7 +284,6 @@ Finally, the following methods can also be of use:
 DynamicPPL.TestUtils.varnames
 DynamicPPL.TestUtils.posterior_mean
 DynamicPPL.TestUtils.setup_varinfos
-DynamicPPL.TestUtils.update_values!!
 DynamicPPL.TestUtils.test_values
 ```
 
@@ -482,7 +481,6 @@ DynamicPPL.transformation
 DynamicPPL.default_transformation
 DynamicPPL.link_transform
 DynamicPPL.invlink_transform
-DynamicPPL.maybe_invlink_before_eval!!
 ```
 
 #### Utils

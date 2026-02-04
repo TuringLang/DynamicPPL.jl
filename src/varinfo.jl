@@ -15,13 +15,15 @@ vectorised value ([`VectorValue`](@ref)), or whether it is also linked
 ([`LinkedVectorValue`](@ref)). It also stores the size of the actual post-transformation
 value. These are all accessible via [`AbstractTransformedValue`](@ref).
 
-Note that `setindex!!` and `getindex` on `VarInfo` take and return values in the support of
-the original distribution. To get access to the internal vectorised values, use
-[`getindex_internal`](@ref), [`setindex_internal!!`](@ref), and [`unflatten!!`](@ref).
+Because the job of `VarInfo` is to store transformed values, there is no generic
+`setindex!!` implementation on `VarInfo` itself. Instead, all storage must go via
+[`setindex_with_dist!!`](@ref), which takes care of storing the value in the correct
+transformed form. This in turn means that the distribution on the right-hand side of a
+tilde-statement must be available when modifying a VarInfo.
 
-There's also a `VarInfo`-specific function [`setindex_with_dist!!`](@ref), which sets a
-variable's value with a transformation based on the statistical distribution this value is
-a sample for.
+You can use `getindex` on `VarInfo` to obtain values in the support of the original
+distribution. To directly get access to the internal vectorised values, use
+[`getindex_internal`](@ref), [`setindex_internal!!`](@ref), and [`unflatten!!`](@ref).
 
 For more details on the internal storage, see documentation of
 [`AbstractTransformedValue`](@ref) and [`VarNamedTuple`](@ref).
@@ -54,15 +56,6 @@ function Base.isequal(vi1::VarInfo, vi2::VarInfo)
 end
 
 VarInfo() = VarInfo{false}(VarNamedTuple(), default_accumulators())
-
-function VarInfo(values::Union{NamedTuple,AbstractDict})
-    vi = VarInfo()
-    for (k, v) in pairs(values)
-        vn = k isa Symbol ? VarName{k}() : k
-        vi = setindex!!(vi, v, vn)
-    end
-    return vi
-end
 
 """
     VarInfo(
@@ -278,27 +271,6 @@ function setindex_with_dist!!(
     sz = hasmethod(size, (typeof(raw_value),)) ? size(raw_value) : ()
     tval = VectorValue(to_vec_transform(dist)(raw_value), from_vec_transform(dist), sz)
     return setindex_with_dist!!(vi, tval, dist, vn, template)
-end
-
-# TODO(mhauru) The below is somewhat unsafe or incomplete: For instance, from_vec_transform
-# isn't defined for NamedTuples. However, this is needed in some places where values for
-# in a VarInfo are set outside the context of a `tilde_assume!!` and no distribution is
-# available. Hopefully we'll get rid of this eventually.
-"""
-    setindex!!(vi::VarInfo, val, vn::VarName)
-
-Set the value of `vn` in `vi` to `val`.
-
-The transformation for `vn` is reset to be the standard vector transformation for values of
-the type of `val` and linking status is set to false.
-"""
-function BangBang.setindex!!(vi::VarInfo{Linked}, val, vn::VarName) where {Linked}
-    # TODO(penelopeysm) This function is BS, really should get rid of it asap
-    new_linked = Linked == false ? false : nothing
-    transform = from_vec_transform(val)
-    transformed_val = inverse(transform)(val)
-    tv = VectorValue(transformed_val, transform, size(val))
-    return VarInfo{new_linked}(setindex!!(vi.values, tv, vn), vi.accs)
 end
 
 """

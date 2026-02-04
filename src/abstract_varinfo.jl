@@ -8,11 +8,7 @@ A concrete implementation of this should implement the following methods:
 - [`link!!`](@ref): transforms the [`AbstractVarInfo`](@ref) to the unconstrained space.
 - [`invlink!!`](@ref): transforms the [`AbstractVarInfo`](@ref) to the constrained space.
 
-And potentially:
-- [`maybe_invlink_before_eval!!`](@ref): hook to decide whether to transform _before_
-  evaluating the model.
-
-See also: [`link!!`](@ref), [`invlink!!`](@ref), [`maybe_invlink_before_eval!!`](@ref).
+See also: [`link!!`](@ref), [`invlink!!`](@ref)
 """
 abstract type AbstractTransformation end
 
@@ -42,11 +38,10 @@ struct DynamicTransformation <: AbstractTransformation end
 """
     $(TYPEDEF)
 
-Transformation which transforms all variables _before_ the execution of a given `Model`.
+Transformation which represents a fixed bijector to be applied to the variables, as opposed
+to deriving the bijector again at runtime.
 
-This is done through the `maybe_invlink_before_eval!!` method.
-
-See also: [`DynamicTransformation`](@ref), [`maybe_invlink_before_eval!!`](@ref).
+See also: [`DynamicTransformation`](@ref).
 
 # Fields
 $(TYPEDFIELDS)
@@ -543,7 +538,17 @@ demo (generic function with 2 methods)
 
 julia> model = demo();
 
-julia> vi = VarInfo(model);
+julia> params = @vnt begin
+           s := 1.0
+           m := 2.0
+           x := [3.0, 4.0]
+       end
+VarNamedTuple
+├─ s => 1.0
+├─ m => 2.0
+└─ x => [3.0, 4.0]
+
+julia> vi = last(init!!(model, VarInfo(), InitFromParams(params), UnlinkAll()));
 
 julia> keys(vi)
 4-element Vector{VarName}:
@@ -551,17 +556,6 @@ julia> keys(vi)
  m
  x[1]
  x[2]
-
-julia> for (i, vn) in enumerate(keys(vi))
-           vi = DynamicPPL.setindex!!(vi, Float64(i), vn)
-       end
-
-julia> vi[[@varname(s), @varname(m), @varname(x[1]), @varname(x[2])]]
-4-element Vector{Float64}:
- 1.0
- 2.0
- 3.0
- 4.0
 
 julia> # Extract one with only `m`.
        vi_subset1 = subset(vi, [@varname(m),]);
@@ -778,77 +772,6 @@ function invlink(vi::AbstractVarInfo, vns, model::Model)
 end
 function invlink(t::AbstractTransformation, vi::AbstractVarInfo, model::Model)
     return invlink!!(t, deepcopy(vi), model)
-end
-
-"""
-    maybe_invlink_before_eval!!([t::Transformation,] vi, model)
-
-Return a possibly invlinked version of `vi`.
-
-This will be called prior to `model` evaluation, allowing one to perform a single
-`invlink!!` _before_ evaluation rather than lazyily evaluating the transforms on as-we-need
-basis as is done with [`DynamicTransformation`](@ref).
-
-See also: [`StaticTransformation`](@ref), [`DynamicTransformation`](@ref).
-
-# Examples
-```julia-repl
-julia> using DynamicPPL, Distributions, Bijectors
-
-julia> @model demo() = x ~ Normal()
-demo (generic function with 2 methods)
-
-julia> # By subtyping `Transform`, we inherit the `(inv)link!!`.
-       struct MyBijector <: Bijectors.Transform end
-
-julia> # Define some dummy `inverse` which will be used in the `link!!` call.
-       Bijectors.inverse(f::MyBijector) = identity
-
-julia> # We need to define `with_logabsdet_jacobian` for `MyBijector`
-       # (`identity` already has `with_logabsdet_jacobian` defined)
-       function Bijectors.with_logabsdet_jacobian(::MyBijector, x)
-           # Just using a large number of the logabsdet-jacobian term
-           # for demonstration purposes.
-           return (x, 1000)
-       end
-
-julia> # Change the `default_transformation` for our model to be a
-       # `StaticTransformation` using `MyBijector`.
-       function DynamicPPL.default_transformation(::Model{typeof(demo)})
-           return DynamicPPL.StaticTransformation(MyBijector())
-       end
-
-julia> model = demo();
-
-julia> vi = setindex!!(VarInfo(), 1.0, @varname(x));
-
-julia> vi[@varname(x)]
-1.0
-
-julia> vi_linked = link!!(vi, model);
-
-julia> # Now performs a single `invlink!!` before model evaluation.
-       logjoint(model, vi_linked)
--1001.4189385332047
-```
-"""
-function maybe_invlink_before_eval!!(vi::AbstractVarInfo, model::Model)
-    return maybe_invlink_before_eval!!(transformation(vi), vi, model)
-end
-function maybe_invlink_before_eval!!(::NoTransformation, vi::AbstractVarInfo, model::Model)
-    return vi
-end
-function maybe_invlink_before_eval!!(
-    ::DynamicTransformation, vi::AbstractVarInfo, model::Model
-)
-    # `DynamicTransformation` is meant to _not_ do the transformation statically, hence we
-    # do nothing.
-    return vi
-end
-function maybe_invlink_before_eval!!(
-    t::StaticTransformation, vi::AbstractVarInfo, model::Model
-)
-    return invlink!!(t, vi, model)
 end
 
 # Utilities

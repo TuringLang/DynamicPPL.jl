@@ -16,10 +16,7 @@ using Test
         example_values = DynamicPPL.TestUtils.rand_prior_true(model)
 
         # Instantiate a `VarInfo` with the example values.
-        vi = VarInfo(model)
-        for vn in DynamicPPL.TestUtils.varnames(model)
-            vi = DynamicPPL.setindex!!(vi, AbstractPPL.getvalue(example_values, vn), vn)
-        end
+        vi = last(init!!(model, VarInfo(), InitFromParams(example_values), UnlinkAll()))
 
         loglikelihood_true = DynamicPPL.TestUtils.loglikelihood_true(
             model, example_values...

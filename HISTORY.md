@@ -6,7 +6,6 @@ The main breaking change for users here is the removal of `AbstractDict` indexin
 Other breaking changes relate to the function signatures of some core DynamicPPL functions, and will not affect you unless you are developing against DynamicPPL.
 
 **In return for these breaking changes, there are major improvements in both performance and robustness of DynamicPPL models.**
-These are described in more detail under the 'Other changes' section.
 
 ## Breaking changes
 
@@ -69,10 +68,34 @@ Previously, `values_as` would return raw (untransformed) values for other types,
 
 You can still use `varinfo[:]` as shorthand for `internal_values_as_vector(varinfo)`.
 
-### Function signature changes
+### Initialisation strategies
 
-`DynamicPPL.init` must now return an `AbstractTransformedValue` instead of a tuple of `(transformed value, transform)`.
+The interface for `AbstractInitStrategy` is slightly different: `DynamicPPL.init` must now return an `AbstractTransformedValue` instead of a tuple of `(transformed value, transform)`.
 Please see the docstring for details.
+
+Each initialisation strategy can decide what kind of `AbstractTransformedValue` to return.
+This has no impact on whether the log-Jacobian is calculated or not, as that is determined by the *transform strategy* (see below).
+
+### Transform strategies
+
+When using `InitContext`, you can (and indeed sometimes must) now specify a *transform strategy* which controls whether values are interpreted as being in transformed space or not.
+This in turn controls whether:
+
+ 1. Linked or unlinked values are stored in the VarInfo (and accumulators);
+ 2. The forward transform to calculate and accumulate the log-Jacobian for (if the transform strategy specifies no transformation, then the log-Jacobian is zero).
+
+This is specified by passing an `AbstractTransformStrategy` as the last argument to `init!!`, i.e., `init!!(rng, model, vi, init_strategy, transform_strategy::AbstractTransformStrategy)`.
+
+When calling `init!!(rng, model, vi, init_strategy)` without a transform strategy, it is automatically inferred from the current transformation state of `vi`.
+This mimics the current behaviour of DynamicPPL.
+However, when `vi isa OnlyAccsVarInfo`, this is not possible and thus a transform strategy **must** be provided.
+
+In turn this also means that *initialisation strategies* are free to generate any `AbstractTransformedValue` that they like.
+The conversion to the correct space is now the responsibility of the *transform strategy*.
+
+Please see [the DynamicPPL docs](https://turinglang.org/DynamicPPL.jl/stable/transforms/) for more details; there are *many* more pages now describing the internal structure of DynamicPPL, including transform strategies.
+
+### Function signature changes
 
 `tilde_assume!!` and `accumulate_assume!!` now take extra arguments.
 
@@ -94,10 +117,6 @@ Previously, there were many versions of them: `VarInfo`, both "typed" and "untyp
 These have all been replaced by a rewritten implementation of `VarInfo`, which is backed by `VarNamedTuple` (see below for more details on this).
 While the basics of the `VarInfo` interface remain the same, this brings with it many changes:
 
-### `value_iterator_from_chain` is removed
-
-Please use `AbstractMCMC.to_samples(DynamicPPL.ParamsWithStats, chain, model)` instead.
-
 #### No more many `AbstractVarInfo` types
 
 `SimpleVarInfo`, `untyped_varinfo`, `typed_varinfo`, and many other constructors, some exported some not, have been removed.
@@ -110,28 +129,57 @@ Some related types and functions, that weren't exported but may have been used b
 
 Previously the various `AbstractVarInfo` types had a multitude of functions for setting values:
 `push!!`, `push!`, `setindex!`, `update!`, `update_internal!`, `insert_internal!`, `reset!`, etc.
-These have all been replaced by three functions
+These have all been replaced by two functions
 
-  - `setindex!!` is the one to use for simply setting a variable in `VarInfo` to a known value. It works regardless of whether the variable already exists.
   - `setindex_internal!!` is the one to use for setting the internal, vectorised representation of a variable. See the docstring for details.
-  - `setindex_with_dist!!` is to be used when setting a `TransformedValue` into a VarInfo's values. You should really try not to use this unless you absolutely must! It is quite low-level and we much prefer that you use the accumulator API instead.
+  - `setindex_with_dist!!` is to be used when setting a `TransformedValue` into a VarInfo's values.
 
 The order of the arguments for some of these functions has also changed, and now more closely matches the usual convention for `setindex!!`.
 
 Note that `setindex!` (with a single `!`) is not defined, and thus you can't do `varinfo[varname] = new_value`.
+Likewise, `setindex!!` does not exist: all modifications to a VarInfo should go via `setindex_internal!!` or (preferably `setindex_with_dist!!`).
+However, you should really try not to use these functions unless you absolutely must!
+They are quite low-level and we much prefer that you use the accumulator API instead.
 
 `unflatten` works as before, but has been renamed to `unflatten!!`, since it may mutate the first argument and aliases memory with the second argument (it uses views rather than copies of the input vector).
 
-#### Other miscellanea
+### Other miscellaneous breaking changes
 
   - The `Experimental` module had functions like `Experimental.determine_suitable_varinfo` for determining which `AbstractVarInfo` type was suitable for a given model. This is now redundant and has been removed.
   - `Bijectors.bijector(::Model)`, which creates a bijector from the vectorised variable space of the model to the linked variable space of the model, now has slightly different optional arguments. See the docstring for details.
   - `NamedDist` no longer allows variable names with `Colon`s in them, such as `x[:]`.
+  - `value_iterator_from_chain` is removed; please use `AbstractMCMC.to_samples(DynamicPPL.ParamsWithStats, chain, model)` instead.
 
 There are probably also changes to the `VarInfo` interface that we've neglected to document here, since the overhaul of `VarInfo` has been quite complete.
 If anything related to `VarInfo` is behaving unexpectedly, e.g. the arguments or return type of a function seem to have changed, please check the docstring, which should be comprehensive.
 
 ## Other changes
+
+### Performance
+
+This release includes significant performance improvements for many common operations in DynamicPPL, with speedups of up to several orders of magnitude.
+See e.g. [this PR](https://github.com/TuringLang/DynamicPPL.jl/pull/1212) for some benchmarks.
+
+### `VarNamedTuple`
+
+DynamicPPL now exports a new type, called `VarNamedTuple`, which stores values keyed by `VarName`s.
+With it are exported a few new functions for using it: `map_values!!`, `map_pairs!!`, `apply!!`.
+[The DynamicPPL documentation now has a series of pages about `VarNamedTuple`, covering its motivation, implementation, and how it is used in DynamicPPL](https://turinglang.org/DynamicPPL.jl/v0.40/vnt/motivation/)
+
+`VarNamedTuple` is now used internally in many different parts: In `VarInfo`, in `values_as_in_model`, in `LogDensityFunction`, etc.
+Almost all of the changes in this version are a consequence resulting from the consistent use of `VarNamedTuple` for various features internally.
+
+In particular, this version of DynamicPPL has much more robust handling of variables with indices, such as `x[1]` and `x[2]`.
+For example:
+
+  - You can condition on `x[1]` and `x[2]` separately, or even on `x[:]`, even if they are part of the same array `x ~ dist`.
+    This is subject to you specifying the correct template for `x` in the conditioning values (please see [the main TuringLang docs](https://turinglang.org/docs/usage/varnamedtuple/#creating-varnamedtuples) for more details).
+
+  - You can use arbitrary arrays in a DynamicPPL model (e.g. `OffsetArray`, `StaticArray`, etc) and DynamicPPL will handle the indexing correctly.
+  - In the outputs of functions such as `rand(model)` you can index into them with `VarName`s such as `x[1:2]` or `x[end]`, even if the model had `x[1]` and `x[2]` in separate tilde-statements.
+
+The bottom line is that indexing into DynamicPPL's data structures now has the same semantics as the model itself.
+Previously, this was not always the case; there were many silent errors where variables were ignored when their indices did not line up exactly.
 
 ### Conditioning and fixing
 
@@ -179,17 +227,6 @@ Linking is also more robust: it used to assume that the prior distribution of a 
 This is no longer the case; linking should thus be safer to do.
 The cost to pay is that calls to `link!!` and `invlink!!` (and the non-mutating versions) now trigger a model evaluation, to determine the correct priors to use.
 (However, even with a model evaluation, in many cases linking is still substantially faster than the old implementation.)
-
-### `VarNamedTuple`
-
-DynamicPPL now exports a new type, called `VarNamedTuple`, which stores values keyed by `VarName`s.
-With it are exported a few new functions for using it: `map_values!!`, `map_pairs!!`, `apply!!`.
-[Our documentation's Internals section now has a page about `VarNamedTuple`, how it works, and what it's good for.](https://turinglang.org/DynamicPPL.jl/v0.40/vnt/motivation/)
-
-`VarNamedTuple` is now used internally in many different parts: In `VarInfo`, in `values_as_in_model`, in `LogDensityFunction`, etc.
-Almost all of the changes in this version are a consequence resulting from the consistent use of `VarNamedTuple` for various features internally.
-
-**TODO(penelopeysm) write this**
 
 # 0.39.13
 

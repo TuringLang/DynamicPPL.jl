@@ -90,7 +90,9 @@ end
         model = demo()
 
         example_values = NamedTuple(rand(model))
-        vis = DynamicPPL.TestUtils.setup_varinfos(model, example_values, (@varname(m),))
+        # subset to m only
+        example_values_m_only = (m=example_values.m,)
+        vis = DynamicPPL.TestUtils.setup_varinfos(model, example_values_m_only)
         @testset "$(short_varinfo_name(vi))" for vi in vis
             # Evaluate once to ensure we have `logp` value.
             vi = last(DynamicPPL.evaluate!!(model, vi))
@@ -132,9 +134,8 @@ end
                 model = demo_lkj(d)
                 dist = LKJCholesky(d, 1.0, uplo)
                 values_original = NamedTuple(rand(model))
-                vis = DynamicPPL.TestUtils.setup_varinfos(
-                    model, values_original, (@varname(x),)
-                )
+                values_original_x_only = (x=values_original.x,)
+                vis = DynamicPPL.TestUtils.setup_varinfos(model, values_original_x_only)
                 @testset "$(short_varinfo_name(vi))" for vi in vis
                     val = vi[@varname(x)]
                     # Ensure that `reconstruct` works as intended.
@@ -173,7 +174,8 @@ end
         @testset "d=$d" for d in [2, 3, 5]
             model = demo_dirichlet(d)
             example_values = NamedTuple(rand(model))
-            vis = DynamicPPL.TestUtils.setup_varinfos(model, example_values, (@varname(x),))
+            example_values_x_only = (x=example_values.x,)
+            vis = DynamicPPL.TestUtils.setup_varinfos(model, example_values_x_only)
             @testset "$(short_varinfo_name(vi))" for vi in vis
                 lp = logpdf(Dirichlet(d, 1.0), vi[:])
                 @test length(vi[:]) == d
@@ -212,7 +214,8 @@ end
         ]
             model = demo_highdim_dirichlet(ns...)
             example_values = NamedTuple(rand(model))
-            vis = DynamicPPL.TestUtils.setup_varinfos(model, example_values, (@varname(x),))
+            example_values_x_only = (x=example_values.x,)
+            vis = DynamicPPL.TestUtils.setup_varinfos(model, example_values_x_only)
             @testset "$(short_varinfo_name(vi))" for vi in vis
                 # Linked.
                 vi_linked = if mutable

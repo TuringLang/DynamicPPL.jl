@@ -22,7 +22,7 @@ function test_values(vi::AbstractVarInfo, vals::NamedTuple, vns; compare=isequal
 end
 
 """
-    setup_varinfos(model::Model, example_values::NamedTuple, varnames; include_threadsafe::Bool=false)
+    setup_varinfos(model::Model, example_values::NamedTuple; include_threadsafe::Bool=false)
 
 Return a tuple of instances for different implementations of `AbstractVarInfo` with
 each `vi`, supposedly, satisfying `vi[vn] == get(example_values, vn)` for `vn` in `varnames`.
@@ -31,16 +31,14 @@ If `include_threadsafe` is `true`, then the returned tuple will also include thr
 of the varinfo instances.
 """
 function setup_varinfos(
-    model::Model, example_values::NamedTuple, varnames; include_threadsafe::Bool=false
+    model::Model, example_values::NamedTuple; include_threadsafe::Bool=false
 )
-    vi = DynamicPPL.VarInfo(model)
-    vi = update_values!!(vi, example_values, varnames)
-    vi = last(DynamicPPL.evaluate!!(model, vi))
-
-    varinfos = if include_threadsafe
+    _, vi = init!!(
+        model, VarInfo(), InitFromParams(example_values, InitFromPrior()), UnlinkAll()
+    )
+    return if include_threadsafe
         (vi, DynamicPPL.ThreadSafeVarInfo(deepcopy(vi)))
     else
         (vi,)
     end
-    return varinfos
 end

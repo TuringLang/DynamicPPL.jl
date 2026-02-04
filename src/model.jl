@@ -888,15 +888,7 @@ Return the arguments and keyword arguments to be passed to the evaluator of the 
         end for var in argnames
     ]
     return quote
-        args = (
-            model,
-            # Maybe perform `invlink!!` once prior to evaluation to avoid
-            # lazy `invlink`-ing of the parameters. This can be useful for
-            # speeding up computation. See docs for `maybe_invlink_before_eval!!`
-            # for more information.
-            maybe_invlink_before_eval!!(varinfo, model),
-            $(unwrap_args...),
-        )
+        args = (model, varinfo, $(unwrap_args...))
         kwargs = model.defaults
         return args, kwargs
     end
