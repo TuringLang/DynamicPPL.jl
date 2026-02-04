@@ -101,6 +101,13 @@ Base.getindex(ga::GrowableArray, ix::CartesianIndex) = getindex(ga.data, ix)
 # multi-element indexing
 Base.getindex(ga::GrowableArray, ix...) = GrowableArray(getindex(ga.data, ix...))
 Base.setindex!(ga::GrowableArray, value, ix...) = setindex!(ga.data, value, ix...)
+# This function is exported so we can override it!
+function AbstractPPL.concretize_top_level(idx::Index, val::GrowableArray)
+    if any(ix -> ix isa AbstractPPL.DynamicIndex, idx.ix)
+        _warn_growable_array()
+    end
+    return concretize_top_level(idx, val.data)
+end
 
 function throw_kw_error()
     throw(

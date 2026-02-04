@@ -649,19 +649,17 @@ Base.size(st::SizedThing) = st.size
                 x[2] := 2.0
             end
             warnmsg = r"Returning a `Base.Array` with"
-            # These should warn
+            # These should warn. There are various calls to _warn_growable_array() inside
+            # the VNT code to handle each of these cases.
             @test_logs (:warn, warnmsg) vnt[@varname(x[:][1])]
             @test_logs (:warn, warnmsg) vnt[@varname(x[:])]
             @test_logs (:warn, warnmsg) vnt[@varname(x)]
-            # These shouldn't warn
+            @test_logs (:warn, warnmsg) vnt[@varname(x[begin])]
+            @test_logs (:warn, warnmsg) vnt[@varname(x[end])]
+            @test_logs (:warn, warnmsg) vnt[@varname(x[1:end])]
+            # These shouldn't warn because they are safe
             @test_logs vnt[@varname(x[1:2])]
             @test_logs vnt[@varname(x[1])]
-            # The following with DynamicIndex things are broken. They should warn, but
-            # currently they don't because by the time you try to index into the
-            # GrowableArray, the indices are already concretised. This can be fixed.
-            @test_broken false
-            @test_logs vnt[@varname(x[end])]
-            @test_logs vnt[@varname(x[1:end])]
         end
     end
 
