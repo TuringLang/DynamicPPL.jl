@@ -248,9 +248,9 @@ function setindex_with_dist!!(
     vn::VarName,
     template::Any,
 ) where {Linked}
-    NewLinked = if tval isa LinkedVectorValue && (Linked || isempty(vi))
+    NewLinked = if tval isa LinkedVectorValue && ((Linked == true) || isempty(vi))
         true
-    elseif tval isa VectorValue && (!Linked || isempty(vi))
+    elseif tval isa VectorValue && ((Linked == false) || isempty(vi))
         false
     else
         nothing

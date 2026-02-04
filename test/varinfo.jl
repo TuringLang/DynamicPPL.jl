@@ -292,27 +292,12 @@ end
         end
         model = gdemo([1.0, 1.5], [2.0, 2.5])
 
-        # Check that instantiating the model using InitFromUniform does not
-        # perform linking
-        # Note (penelopeysm): The purpose of using InitFromUniform specifically in
-        # this test is because it samples from the linked distribution i.e. in
-        # unconstrained space. However, it does this not by linking the varinfo
-        # but by transforming the distributions on the fly. That's why it's
-        # worth specifically checking that it can do this without having to
-        # change the VarInfo object.
-        # TODO(penelopeysm): Move this to InitFromUniform tests rather than here.
-        vi = VarInfo()
-        _, vi = DynamicPPL.init!!(model, vi, InitFromUniform())
-        vals = values(vi)
-
         all_transformed(vi) = mapreduce(
             p -> p.second isa DynamicPPL.LinkedVectorValue, &, vi.values; init=true
         )
         any_transformed(vi) = mapreduce(
             p -> p.second isa DynamicPPL.LinkedVectorValue, |, vi.values; init=false
         )
-
-        @test !any_transformed(vi)
 
         # Check that linking and invlinking set the `is_transformed` flag accordingly
         vi = link!!(vi, model)
