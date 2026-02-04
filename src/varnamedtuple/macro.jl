@@ -78,6 +78,14 @@ julia> @vnt begin
             x[1] := 1.0
             y[1, 1] := 2.0
        end
+┌ Warning: Creating a growable `Base.Array` of dimension 1 to store values. This may not match the actual type or size of the actual `AbstractArray` that will be used inside the DynamicPPL model.
+│
+│  If this is not the type or size that you expect, please see: https://turinglang.org/docs/uri/growablearray
+└ @ DynamicPPL.VarNamedTuples /path/to/DynamicPPL.jl/src/varnamedtuple/partial_array.jl:823
+┌ Warning: Creating a growable `Base.Array` of dimension 2 to store values. This may not match the actual type or size of the actual `AbstractArray` that will be used inside the DynamicPPL model.
+│
+│  If this is not the type or size that you expect, please see: https://turinglang.org/docs/uri/growablearray
+└ @ DynamicPPL.VarNamedTuples /path/to/DynamicPPL.jl/src/varnamedtuple/partial_array.jl:823
 VarNamedTuple
 ├─ x => PartialArray size=(1,) data::DynamicPPL.VarNamedTuples.GrowableArray{Float64, 1}
 │       └─ (1,) => 1.0
