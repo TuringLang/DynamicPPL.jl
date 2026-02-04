@@ -9,6 +9,7 @@ using Distributions
 using DynamicPPL
 using LinearAlgebra: I
 using Random: Xoshiro
+using StableRNGs: StableRNG
 using Test
 
 @testset "InitContext" begin
@@ -147,13 +148,29 @@ using Test
         test_transform_strategy_respected(InitFromPrior())
 
         @testset "check that values are within support" begin
-            # Not many other sensible checks we can do for priors.
             @model just_unif() = x ~ Uniform(0.0, 1e-7)
             for _ in 1:100
                 _, vi = DynamicPPL.init!!(just_unif(), VarInfo(), InitFromPrior())
                 @test vi[@varname(x)] isa Real
                 @test 0.0 <= vi[@varname(x)] <= 1e-7
             end
+        end
+
+        @testset "check that values are being drawn from prior" begin
+            @model normal_m() = return x ~ Normal()
+            model = normal_m()
+            # Sample lots of times...
+            N = 1000
+            rng = StableRNG(468)
+            xs = Vector{Float64}(undef, N)
+            for i in 1:N
+                xs[i] = first(
+                    DynamicPPL.init!!(
+                        rng, model, OnlyAccsVarInfo(()), InitFromPrior(), UnlinkAll()
+                    ),
+                )
+            end
+            @test mean(xs) ≈ 0.0 atol = 0.05
         end
     end
 
@@ -163,117 +180,125 @@ using Test
         test_rng_respected(InitFromUniform())
         test_transform_strategy_respected(InitFromUniform())
 
-        @testset "check that bounds are respected" begin
-            @testset "unconstrained" begin
-                umin, umax = -1.0, 1.0
-                @model just_norm() = x ~ Normal()
-                for _ in 1:100
-                    _, vi = DynamicPPL.init!!(
-                        just_norm(), VarInfo(), InitFromUniform(umin, umax)
-                    )
-                    @test vi[@varname(x)] isa Real
-                    @test umin <= vi[@varname(x)] <= umax
-                end
-            end
-            @testset "constrained" begin
-                umin, umax = -1.0, 1.0
-                @model just_beta() = x ~ Beta(2, 2)
-                inv_bijector = Bijectors.inverse(Bijectors.bijector(Beta(2, 2)))
-                tmin, tmax = inv_bijector(umin), inv_bijector(umax)
-                for _ in 1:100
-                    _, vi = DynamicPPL.init!!(
-                        just_beta(), VarInfo(), InitFromUniform(umin, umax)
-                    )
-                    @test vi[@varname(x)] isa Real
-                    @test tmin <= vi[@varname(x)] <= tmax
-                end
-            end
-        end
-
-        @testset "check that InitFromUniform doesn't link" begin
-            # InitFromUniform returns a LinkedVectorValue. However, we want to ensure
-            # that this doesn't cause the VarInfo to be linked (because whether it's
-            # linked should be determined by the transform strategy, i.e. UnlinkAll()).
+        @testset "check that InitFromUniform really draws uniformly" begin
             @model logn() = a ~ LogNormal()
             model = logn()
-            _, vi = DynamicPPL.init!!(model, VarInfo(), InitFromUniform(), UnlinkAll())
-
-            @test !DynamicPPL.is_transformed(vi)
-            @test !any(vn -> vi.values[vn] isa LinkedVectorValue, keys(vi))
+            # Sample lots of times...
+            N = 1000
+            rng = StableRNG(468)
+            xs = Vector{Float64}(undef, N)
+            for i in 1:N
+                xs[i] = first(
+                    DynamicPPL.init!!(
+                        rng, model, OnlyAccsVarInfo(()), InitFromUniform(), UnlinkAll()
+                    ),
+                )
+            end
+            # Transform values back to linked space
+            xs = log.(xs)
+            # All the values should be between -2 and 2
+            @test all(-2.0 .<= xs .<= 2.0)
+            # The mean should be close to 0 since the distribution is symmetric around 0 in
+            # the linked space.
+            @test mean(xs) ≈ 0.0 atol = 0.05
         end
     end
 
     @testset "InitFromParams" begin
-        test_transform_strategy_respected(InitFromParams((; a=1.0)))
-        test_transform_strategy_respected(InitFromParams(Dict(@varname(a) => 1.0)))
+        # Once we've checked that NTs and Dicts are internally promoted to VNTs, the rest of
+        # the tests only need to check that InitFromParams(::VNT) is handled correctly.
+        @testset "NT promotion to VNT" begin
+            nt = (x=1.0, y=[2.0, 3.0], z="zzz")
+            ifp = InitFromParams(nt)
+            vnt = @vnt begin
+                x := 1.0
+                y := [2.0, 3.0]
+                z := "zzz"
+            end
+            @test ifp.params == vnt
+        end
+        @testset "Dict promotion to VNT" begin
+            dict = OrderedDict(
+                @varname(x) => 1.0, @varname(y) => [2.0, 3.0], @varname(z) => "zzz"
+            )
+            ifp = InitFromParams(dict)
+            vnt = @vnt begin
+                x := 1.0
+                y := [2.0, 3.0]
+                z := "zzz"
+            end
+            @test ifp.params == vnt
+            @testset "throws warning if GrowableArray is used" begin
+                dict = OrderedDict(@varname(x[1]) => 1.0)
+                warnmsg = r"Creating a growable `Base.Array`"
+                @test_logs (:warn, warnmsg) InitFromParams(dict)
+            end
+        end
+
+        test_transform_strategy_respected(InitFromParams(VarNamedTuple(; a=1.0)))
 
         @testset "given full set of parameters" begin
             # test_init_model has x ~ Normal() and y ~ MvNormal(zeros(2), I)
             my_x, my_y = 1.0, [2.0, 3.0]
-            params_nt = (; x=my_x, y=my_y)
-            params_dict = Dict(@varname(x) => my_x, @varname(y) => my_y)
+            vnt = @vnt begin
+                x := my_x
+                y := my_y
+            end
+
             model = test_init_model()
-            empty_vi = VarInfo()
-            _, vi = DynamicPPL.init!!(model, deepcopy(empty_vi), InitFromParams(params_nt))
-            @test vi[@varname(x)] == my_x
-            @test vi[@varname(y)] == my_y
-            logp_nt = getlogp(vi)
-            _, vi = DynamicPPL.init!!(
-                model, deepcopy(empty_vi), InitFromParams(params_dict)
-            )
-            @test vi[@varname(x)] == my_x
-            @test vi[@varname(y)] == my_y
-            logp_dict = getlogp(vi)
-            @test logp_nt == logp_dict
+            acc = ValuesAsInModelAccumulator(false)
+            empty_vi = OnlyAccsVarInfo((acc,))
+            _, vi = DynamicPPL.init!!(model, empty_vi, InitFromParams(vnt), UnlinkAll())
+            vals = DynamicPPL.getacc(vi, Val(DynamicPPL.accumulator_name(acc))).values
+            @test vals[@varname(x)] == my_x
+            @test vals[@varname(y)] == my_y
         end
 
         @testset "given only partial parameters" begin
             my_x = 1.0
-            params_nt = (; x=my_x)
-            params_dict = Dict(@varname(x) => my_x)
-            model = test_init_model()
-            empty_vi = VarInfo()
+            vnt = @vnt begin
+                x := my_x
+            end
+
             @testset "with InitFromPrior fallback" begin
+                model = test_init_model()
+                acc = ValuesAsInModelAccumulator(false)
+                empty_vi = OnlyAccsVarInfo((acc,))
                 _, vi = DynamicPPL.init!!(
-                    Xoshiro(468),
-                    model,
-                    deepcopy(empty_vi),
-                    InitFromParams(params_nt, InitFromPrior()),
+                    model, empty_vi, InitFromParams(vnt, InitFromPrior()), UnlinkAll()
                 )
-                @test vi[@varname(x)] == my_x
-                nt_y = vi[@varname(y)]
-                @test nt_y isa AbstractVector{<:Real}
-                @test length(nt_y) == 2
+                vals = DynamicPPL.getacc(vi, Val(DynamicPPL.accumulator_name(acc))).values
+                @test vals[@varname(x)] == my_x
+
+                # If we rerun it, the value of `x` should still be the same, but `y` should
+                # change
+                old_y = vals[@varname(y)]
                 _, vi = DynamicPPL.init!!(
-                    Xoshiro(469),
-                    model,
-                    deepcopy(empty_vi),
-                    InitFromParams(params_dict, InitFromPrior()),
+                    model, vi, InitFromParams(vnt, InitFromPrior()), UnlinkAll()
                 )
-                @test vi[@varname(x)] == my_x
-                dict_y = vi[@varname(y)]
-                @test dict_y isa AbstractVector{<:Real}
-                @test length(dict_y) == 2
-                # the values should be different since we used different seeds
-                @test dict_y != nt_y
+                vals = DynamicPPL.getacc(vi, Val(DynamicPPL.accumulator_name(acc))).values
+                @test vals[@varname(x)] == my_x
+                new_y = vals[@varname(y)]
+                @test new_y != old_y
             end
 
             @testset "with no fallback" begin
-                # These just don't have an entry for `y`.
+                model = test_init_model()
+                acc = ValuesAsInModelAccumulator(false)
+                empty_vi = OnlyAccsVarInfo((acc,))
+
+                # When there's no entry for `y`
                 @test_throws ErrorException DynamicPPL.init!!(
-                    model, deepcopy(empty_vi), InitFromParams(params_nt, nothing)
+                    model, empty_vi, InitFromParams(vnt, nothing), UnlinkAll()
                 )
-                @test_throws ErrorException DynamicPPL.init!!(
-                    model, deepcopy(empty_vi), InitFromParams(params_dict, nothing)
-                )
+
                 # We also explicitly test the case where `y = missing`.
-                params_nt_missing = (; x=my_x, y=missing)
-                params_dict_missing = Dict(@varname(x) => my_x, @varname(y) => missing)
+                vnt_missing = @vnt begin
+                    x := my_x
+                    y := missing
+                end
                 @test_throws ErrorException DynamicPPL.init!!(
-                    model, deepcopy(empty_vi), InitFromParams(params_nt_missing, nothing)
-                )
-                @test_throws ErrorException DynamicPPL.init!!(
-                    model, deepcopy(empty_vi), InitFromParams(params_dict_missing, nothing)
+                    model, empty_vi, InitFromParams(vnt_missing, nothing), UnlinkAll()
                 )
             end
         end
