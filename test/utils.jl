@@ -47,6 +47,11 @@ end
             @addlogprob! llh_nt
             return global lp_after = getlogjoint(__varinfo__)
         end
+        varinfo = VarInfo(testmodel_nt2())
+        @test iszero(lp_before)
+        @test getlogjoint(varinfo) == lp_after == 42
+        @test getloglikelihood(varinfo) == 42
+        @test iszero(getlogprior(varinfo))
     end
 
     @testset "transformations" begin
