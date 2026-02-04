@@ -814,6 +814,8 @@ function _warn_growable_array()
         " used to set values; but this may not be the actual shape or size" *
         " of the actual `AbstractArray` that was inside the DynamicPPL model." *
         " You should inspect the returned result to make sure that it has the" *
-        " correct value."
+        " correct value.\n\n" *
+        "To find out how to avoid this warning, please see: " *
+        "https://turinglang.org/docs/uri/growablearray"
     )
 end
