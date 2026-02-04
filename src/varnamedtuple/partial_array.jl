@@ -101,6 +101,13 @@ Base.getindex(ga::GrowableArray, ix::CartesianIndex) = getindex(ga.data, ix)
 # multi-element indexing
 Base.getindex(ga::GrowableArray, ix...) = GrowableArray(getindex(ga.data, ix...))
 Base.setindex!(ga::GrowableArray, value, ix...) = setindex!(ga.data, value, ix...)
+# This function is exported so we can override it!
+function AbstractPPL.concretize_top_level(idx::Index, val::GrowableArray)
+    if any(ix -> ix isa AbstractPPL.DynamicIndex, idx.ix)
+        _warn_growable_array_extraction()
+    end
+    return concretize_top_level(idx, val.data)
+end
 
 function throw_kw_error()
     throw(
@@ -399,7 +406,7 @@ function Base.getindex(pa::PartialArray, inds::Vararg{Any}; kw...)
         # you index with `x[end]` for example, `inds` is already concretised outside of this
         # function.
         if any(ind -> ind isa AbstractPPL.DynamicIndex || ind isa Colon, inds)
-            _warn_growable_array()
+            _warn_growable_array_extraction()
         end
         return unwrap_internal_array(val)
     else
@@ -630,7 +637,7 @@ end
 function _subset_partialarray(pa::PartialArray, inds::Vararg{Any}; kw...)
     if pa.data isa GrowableArray &&
         any(ind -> ind isa AbstractPPL.DynamicIndex || ind isa Colon, inds)
-        _warn_growable_array()
+        _warn_growable_array_extraction()
     end
     new_data = view(pa.data, inds...; kw...)
     new_mask = view(pa.mask, inds...; kw...)
@@ -783,7 +790,7 @@ function unwrap_internal_array(pa::PartialArray)
 
     retval = pa.data
     if retval isa GrowableArray
-        _warn_growable_array()
+        _warn_growable_array_extraction()
     end
     if eltype(retval) <: ArrayLikeBlock || ArrayLikeBlock <: eltype(retval)
         for ind in eachindex(retval)
@@ -801,12 +808,23 @@ function unwrap_internal_array(pa::PartialArray)
 end
 unwrap_internal_array(ga::GrowableArray) = ga.data
 
-function _warn_growable_array()
+function _warn_growable_array_extraction()
     @warn (
         "Returning a `Base.Array` with a presumed size based on the indices" *
-        " used to set values; but this may not be the actual shape or size" *
+        " used to set values; but this may not be the actual type or size" *
         " of the actual `AbstractArray` that was inside the DynamicPPL model." *
         " You should inspect the returned result to make sure that it has the" *
-        " correct value."
+        " correct value.\n\n" *
+        "To find out how to avoid this warning, please see: " *
+        "https://turinglang.org/docs/uri/growablearray"
+    )
+end
+function _warn_growable_array_creation(size)
+    @warn (
+        "Creating a growable `Base.Array` of dimension $(length(size)) to store" *
+        " values. This may not match the actual type or size of the actual" *
+        " `AbstractArray` that will be used inside the DynamicPPL model.\n\n" *
+        " If this is not the type or size that you expect, please see:" *
+        " https://turinglang.org/docs/uri/growablearray"
     )
 end

@@ -358,6 +358,7 @@ function make_leaf_singleindex(value, coptic::AbstractPPL.Index, template)
         # have to make a GrowableArray. No need to use `kw` since make_leaf already errors
         # if there are uninterpretable keyword indices.
         template_sz = get_maximum_size_from_indices(coptic.ix...)
+        _warn_growable_array_creation(template_sz)
         GrowableArray(Array{pa_eltype}(undef, template_sz))
     end
     pa_mask = similar(pa_data, Bool)
@@ -408,6 +409,7 @@ function make_leaf_multiindex(value, coptic::AbstractPPL.Index, template)
     else
         # No template, or incorrectly typed template
         template_sz = get_maximum_size_from_indices(coptic.ix...)
+        _warn_growable_array_creation(template_sz)
         GrowableArray(Array{pa_eltype}(undef, template_sz))
     end
     pa_mask = similar(pa_data, Bool)

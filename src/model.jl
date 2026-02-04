@@ -283,10 +283,11 @@ instead:
 
 ```jldoctest condition
 julia> vnt = @vnt begin
+           @template m = zeros(2)
            m[2] := 1.0
        end
 VarNamedTuple
-└─ m => PartialArray size=(2,) data::DynamicPPL.VarNamedTuples.GrowableArray{Float64, 1}
+└─ m => PartialArray size=(2,) data::Vector{Float64}
         └─ (2,) => 1.0
 
 julia> m = condition(model, vnt)(); (m[1] != 1.0 && m[2] == 1.0)
