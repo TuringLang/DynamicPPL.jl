@@ -481,7 +481,6 @@ DynamicPPL.transformation
 DynamicPPL.default_transformation
 DynamicPPL.link_transform
 DynamicPPL.invlink_transform
-DynamicPPL.maybe_invlink_before_eval!!
 ```
 
 #### Utils
