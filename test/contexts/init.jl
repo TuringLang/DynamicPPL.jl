@@ -21,12 +21,11 @@ using Test
 
     function test_generating_new_values(strategy::AbstractInitStrategy)
         @testset "generating new values: $(typeof(strategy))" begin
-            # Check that init!! can generate values that weren't there
-            # previously.
+            # Check that init!! can generate values that weren't there previously.
             model = test_init_model()
             empty_vi = VarInfo()
             this_vi = deepcopy(empty_vi)
-            _, vi = DynamicPPL.init!!(model, this_vi, strategy)
+            _, vi = DynamicPPL.init!!(model, this_vi, strategy, UnlinkAll())
             @test Set(keys(vi)) == Set([@varname(x), @varname(y)])
             x, y = vi[@varname(x)], vi[@varname(y)]
             @test x isa Real
@@ -61,7 +60,7 @@ using Test
                 DynamicPPL.NoTemplate(),
             )
             # then overwrite it
-            _, new_vi = DynamicPPL.init!!(model, vi, strategy)
+            _, new_vi = DynamicPPL.init!!(model, vi, strategy, UnlinkAll())
             new_x, new_y = new_vi[@varname(x)], new_vi[@varname(y)]
             # check that the values are (presumably) different
             @test old_x != new_x
@@ -83,8 +82,10 @@ using Test
         end
     end
 
-    function test_link_status_respected(strategy::AbstractInitStrategy)
-        @testset "check that varinfo linking is preserved: $(typeof(strategy))" begin
+    function test_transform_strategy_respected(strategy::AbstractInitStrategy)
+        # We want to check that regardless of the InitStrategy, the transform strategy takes
+        # precedence when determining whether variables are linked or not.
+        @testset "check that transform strategy is respected: $(typeof(strategy))" begin
             dist = LogNormal()
             from_linked_vec = DynamicPPL.from_linked_vec_transform(dist)
             @model function logn()
@@ -143,7 +144,7 @@ using Test
         test_generating_new_values(InitFromPrior())
         test_replacing_values(InitFromPrior())
         test_rng_respected(InitFromPrior())
-        test_link_status_respected(InitFromPrior())
+        test_transform_strategy_respected(InitFromPrior())
 
         @testset "check that values are within support" begin
             # Not many other sensible checks we can do for priors.
@@ -160,7 +161,7 @@ using Test
         test_generating_new_values(InitFromUniform())
         test_replacing_values(InitFromUniform())
         test_rng_respected(InitFromUniform())
-        test_link_status_respected(InitFromUniform())
+        test_transform_strategy_respected(InitFromUniform())
 
         @testset "check that bounds are respected" begin
             @testset "unconstrained" begin
@@ -203,8 +204,8 @@ using Test
     end
 
     @testset "InitFromParams" begin
-        test_link_status_respected(InitFromParams((; a=1.0)))
-        test_link_status_respected(InitFromParams(Dict(@varname(a) => 1.0)))
+        test_transform_strategy_respected(InitFromParams((; a=1.0)))
+        test_transform_strategy_respected(InitFromParams(Dict(@varname(a) => 1.0)))
 
         @testset "given full set of parameters" begin
             # test_init_model has x ~ Normal() and y ~ MvNormal(zeros(2), I)

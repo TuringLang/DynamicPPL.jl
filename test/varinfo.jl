@@ -300,6 +300,8 @@ end
         )
 
         # Check that linking and invlinking set the `is_transformed` flag accordingly
+        vi = VarInfo(model)
+        vals = values(vi)
         vi = link!!(vi, model)
         @test all_transformed(vi)
         vi = invlink!!(vi, model)

@@ -560,92 +560,11 @@ float_type_with_fallback(::Type{Union{}}) = float(Real)
 float_type_with_fallback(::Type{T}) where {T<:Real} = float(T)
 
 """
-    infer_nested_eltype(x::Type)
-
-Recursively unwrap the type, returning the first type where `eltype(x) === typeof(x)`.
-
-This is useful for obtaining a reasonable default `eltype` in deeply nested types.
-
-# Examples
-```jldoctest
-julia> # `AbstractArrary`
-       DynamicPPL.infer_nested_eltype(typeof([1.0]))
-Float64
-
-julia> # `NamedTuple` with `Float32`
-       DynamicPPL.infer_nested_eltype(typeof((x = [1f0], )))
-Float32
-
-julia> # `AbstractDict`
-       DynamicPPL.infer_nested_eltype(typeof(Dict(:x => [1.0, ])))
-Float64
-
-julia> # Nesting of containers.
-       DynamicPPL.infer_nested_eltype(typeof([Dict(:x => 1.0,) ]))
-Float64
-
-julia> DynamicPPL.infer_nested_eltype(typeof([Dict(:x => [1.0,],) ]))
-Float64
-
-julia> # Empty `Tuple`.
-       DynamicPPL.infer_nested_eltype(typeof(()))
-Any
-
-julia> # Empty `Dict`.
-       DynamicPPL.infer_nested_eltype(typeof(Dict()))
-Any
-```
-"""
-function infer_nested_eltype(::Type{T}) where {T}
-    ET = eltype(T)
-    return ET === T ? T : infer_nested_eltype(ET)
-end
-
-# We can do a better job than just `Any` with `Union`.
-infer_nested_eltype(::Type{Union{}}) = Any
-function infer_nested_eltype(::Type{U}) where {U<:Union}
-    return promote_type(U.a, infer_nested_eltype(U.b))
-end
-
-# Handle `NamedTuple` and `Tuple` specially given how prolific they are.
-function infer_nested_eltype(::Type{<:NamedTuple{<:Any,V}}) where {V}
-    return infer_nested_eltype(V)
-end
-
-# Recursively deal with `Tuple` so it has the potential of being compiled away.
-infer_nested_eltype(::Type{Tuple{T}}) where {T} = infer_nested_eltype(T)
-function infer_nested_eltype(::Type{T}) where {T<:Tuple{<:Any,Vararg{Any}}}
-    return promote_type(
-        infer_nested_eltype(Base.tuple_type_tail(T)),
-        infer_nested_eltype(Base.tuple_type_head(T)),
-    )
-end
-
-# Handle `AbstractDict` differently since `eltype` results in a `Pair`.
-infer_nested_eltype(::Type{<:AbstractDict{<:Any,ET}}) where {ET} = infer_nested_eltype(ET)
-
-# Convert (x=1,) to Dict(@varname(x) => 1)
-function to_varname_dict(nt::NamedTuple)
-    return Dict{VarName,Any}(VarName{k}() => v for (k, v) in pairs(nt))
-end
-to_varname_dict(d::AbstractDict) = d
-# Version of `merge` used by `conditioned` and `fixed` to handle
-# the scenario where we might try to merge a dict with an empty
-# tuple.
-# TODO: Maybe replace the default of returning `NamedTuple` with `nothing`?
-_merge(left::NamedTuple, right::NamedTuple) = merge(left, right)
-_merge(left::AbstractDict, right::AbstractDict) = merge(left, right)
-_merge(left::AbstractDict, ::NamedTuple{()}) = left
-_merge(left::AbstractDict, right::NamedTuple) = merge(left, to_varname_dict(right))
-_merge(::NamedTuple{()}, right::AbstractDict) = right
-_merge(left::NamedTuple, right::AbstractDict) = merge(to_varname_dict(left), right)
-
-"""
     basetypeof(x)
 
 Return `typeof(x)` stripped of its type parameters.
 """
-basetypeof(x::T) where {T} = Base.typename(T).wrapper
+basetypeof(::T) where {T} = Base.typename(T).wrapper
 
 const MaybeTypedIdentity = Union{typeof(typed_identity),typeof(identity)}
 

@@ -167,10 +167,24 @@ struct InitFromParams{P,S<:Union{AbstractInitStrategy,Nothing}} <: AbstractInitS
     fallback::S
 end
 InitFromParams(params) = InitFromParams(params, InitFromPrior())
+# For NamedTuple and Dict, we just convert to VNT internally. This saves us from having to
+# implement separate `init()` methods for those. It also means that when someone provides
+# a Dict with @varname(x[1]) => 1.0 we will issue a warning for untemplated VNT.
+function InitFromParams(params::NamedTuple, fallback::Union{AbstractInitStrategy,Nothing})
+    return InitFromParams(VarNamedTuple(params), fallback)
+end
+function InitFromParams(
+    params::AbstractDict{<:VarName}, fallback::Union{AbstractInitStrategy,Nothing}
+)
+    return InitFromParams(VarNamedTuple(pairs(params)), fallback)
+end
 
 function init(
-    rng::Random.AbstractRNG, vn::VarName, dist::Distribution, p::InitFromParams{P}
-) where {P<:Union{AbstractDict{<:VarName},NamedTuple,VarNamedTuple}}
+    rng::Random.AbstractRNG,
+    vn::VarName,
+    dist::Distribution,
+    p::InitFromParams{<:VarNamedTuple},
+)
     return if hasvalue(p.params, vn, dist)
         x = getvalue(p.params, vn, dist)
         if x === missing
@@ -194,11 +208,6 @@ function init(
         p.fallback === nothing && error("No value was provided for the variable `$(vn)`.")
         init(rng, vn, dist, p.fallback)
     end
-end
-function get_param_eltype(
-    strategy::InitFromParams{<:Union{AbstractDict{<:VarName},NamedTuple}}
-)
-    return infer_nested_eltype(typeof(strategy.params))
 end
 
 """
