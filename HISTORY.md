@@ -95,6 +95,18 @@ The conversion to the correct space is now the responsibility of the *transform 
 
 Please see [the DynamicPPL docs](https://turinglang.org/DynamicPPL.jl/stable/transforms/) for more details; there are *many* more pages now describing the internal structure of DynamicPPL, including transform strategies.
 
+### `values_as_in_model`
+
+`ValuesAsInModelAccumulator` has been renamed to `RawValueAccumulator`.
+Furthermore, the function `values_as_in_model` has been removed.
+In its place, you should directly use the accumulator API to:
+
+  - add a `RawValueAccumulator(include_colon_eq::Bool)` to the VarInfo, e.g. using `setacc!!`
+  - run the model
+  - extract the values.
+    To do so, we now export a convenience function `get_raw_values(::AbstractVarInfo)` that will get the stored `VarNamedTuple` of raw values.
+    This is exactly analogous to how `getlogprior(::AbstractVarInfo)` extracts the log-prior from a `LogPriorAccumulator`.
+
 ### Function signature changes
 
 `tilde_assume!!` and `accumulate_assume!!` now take extra arguments.

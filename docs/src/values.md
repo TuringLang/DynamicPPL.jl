@@ -73,35 +73,31 @@ The path to removing `VarInfo` is essentially to separate these three roles:
     For example, previously, to create a linked VarInfo, you would need to first generate an unlinked VarInfo and then link it.
     Now, you can directly create a linked VarInfo (i.e., accumulate `LinkedVectorValue`s) by sampling from the prior (i.e., initialise with `InitFromPrior`).
 
-## ValuesAsInModelAccumulator
+## `RawValueAccumulator`
 
 Earlier we said that `VectorValueAccumulator` stores only two subtypes of `AbstractTransformedValue`: `LinkedVectorValue` and `VectorValue`.
 One might therefore ask about the third subtype, namely, `UntransformedValue`.
 
-It turns out that it is very often useful to store the raw values, i.e., [`UntransformedValue`](@ref)s.
+It turns out that it is very often useful to store [`UntransformedValue`](@ref)s.
 Additionally, since `UntransformedValue`s must always correspond exactly to the indices they are assigned to, we can unwrap them and do not need to store them as array-like blocks!
 
-This is the role of `ValuesAsInModelAccumulator`.
-
-!!! note
-    
-    The name is a historical artefact, and can definitely be improved. Suggestions are welcome!
+This is the role of `RawValueAccumulator`.
 
 ```@example 1
 oavi = DynamicPPL.OnlyAccsVarInfo()
-oavi = DynamicPPL.setaccs!!(oavi, (DynamicPPL.ValuesAsInModelAccumulator(false),))
+oavi = DynamicPPL.setaccs!!(oavi, (DynamicPPL.RawValueAccumulator(false),))
 _, oavi = DynamicPPL.init!!(dirichlet_model, oavi, InitFromPrior(), UnlinkAll())
-raw_vals = DynamicPPL.getacc(oavi, Val(:ValuesAsInModel)).values
+raw_vals = get_raw_values(oavi)
 ```
 
 Note that when we unwrap `UntransformedValue`s, we also lose the block structure that was present in the model.
-That means that in `ValuesAsInModelAccumulator`, there is no longer any notion that `x[1:3]` was set together, so the keys correspond to the individual indices.
+That means that in `RawValueAccumulator`, there is no longer any notion that `x[1:3]` was set together, so the keys correspond to the individual indices.
 
 ```@example 1
 keys(raw_vals)
 ```
 
-In particular, the outputs of `ValuesAsInModelAccumulator` are used for chain construction.
+In particular, the outputs of `RawValueAccumulator` are used for chain construction.
 This is why indices of keys like `x[1:3] ~ dist` end up being split up in chains.
 
 !!! note
@@ -110,7 +106,7 @@ This is why indices of keys like `x[1:3] ~ dist` end up being split up in chains
 
 ## Why do we still need to store `TransformedValue`s?
 
-Given that `ValuesAsInModelAccumulator` exists, one may wonder why we still need to store the other `AbstractTransformedValue`s at all, i.e. what the purpose of `VectorValueAccumulator` is.
+Given that `RawValueAccumulator` exists, one may wonder why we still need to store the other `AbstractTransformedValue`s at all, i.e. what the purpose of `VectorValueAccumulator` is.
 
 Currently, the only remaining reason for transformed values is the fact that we may sometimes need to perform [`DynamicPPL.unflatten!!`](@ref) on a `VarInfo`, to insert new values into it from a vector.
 
@@ -126,7 +122,7 @@ vi[@varname(x[1:3])]
 
 If we do not store the vectorised form of the values, we will not know how many values to read from the input vector for each key.
 
-Removing upstream usage of `unflatten!!` would allow us to completely get rid of `TransformedValueAccumulator` and only ever use `ValuesAsInModelAccumulator`.
+Removing upstream usage of `unflatten!!` would allow us to completely get rid of `TransformedValueAccumulator` and only ever use `RawValueAccumulator`.
 See [this DynamicPPL issue](https://github.com/TuringLang/DynamicPPL.jl/issues/836) for more information.
 
 One possibility for removing `unflatten!!` is to turn it into a function that, instead of generating a new VarInfo, instead generates a tuple of new initialisation and link strategies which returns `LinkedVectorValue`s or `VectorValue`s containing views into the input vector.

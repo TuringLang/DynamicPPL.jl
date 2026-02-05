@@ -1,146 +1,34 @@
-"""
-    ValuesAsInModelAccumulator <: AbstractAccumulator
+const RAW_VALUE_ACCNAME = :RawValues
 
-An accumulator that is used by [`values_as_in_model`](@ref) to obtain values
-of the model parameters as they are in the model.
-
-This is particularly useful when working in unconstrained space, but one
-wants to extract the realization of a model in a constrained space.
-
-# Fields
-$(TYPEDFIELDS)
-"""
-struct ValuesAsInModelAccumulator{VNT<:VarNamedTuple} <: AbstractAccumulator
-    "values that are extracted from the model"
-    values::VNT
-    "whether to extract variables on the LHS of :="
+struct GetRawValues
+    "A flag indicating whether variables on the LHS of := should also be included"
     include_colon_eq::Bool
 end
-function ValuesAsInModelAccumulator(include_colon_eq)
-    return ValuesAsInModelAccumulator(VarNamedTuple(), include_colon_eq)
+# TODO(mhauru) The deepcopy here is quite unfortunate. It is needed so that the model body
+# can go mutating the object without that reactively affecting the value in the accumulator,
+# which should be as it was at `~` time. Could there be a way around this?
+(g::GetRawValues)(val, tval, logjac, vn, dist) = deepcopy(val)
+
+"""
+    RawValueAccumulator(include_colon_eq)::Bool <: AbstractAccumulator
+
+An accumulator that keeps tracks of the model parameters exactly as they are seen in the
+model.
+
+The parameter `include_colon_eq` controls whether variables on the LHS of `:=` are also
+included in the accumulator. If `true`, then these variables will be included; if `false`,
+they will not be included.
+"""
+function RawValueAccumulator(include_colon_eq::Bool)
+    return VNTAccumulator{RAW_VALUE_ACCNAME}(GetRawValues(include_colon_eq))
 end
 
-function Base.:(==)(acc1::ValuesAsInModelAccumulator, acc2::ValuesAsInModelAccumulator)
-    return (acc1.include_colon_eq == acc2.include_colon_eq && acc1.values == acc2.values)
-end
-
-function Base.copy(acc::ValuesAsInModelAccumulator)
-    return ValuesAsInModelAccumulator(copy(acc.values), acc.include_colon_eq)
-end
-
-accumulator_name(::Type{<:ValuesAsInModelAccumulator}) = :ValuesAsInModel
-
-# TODO(mhauru) We could start using reset!!, which could call empty!! on the VarNamedTuple.
-# This would create VarNamedTuples that share memory with the original one, saving
-# allocations but also making them not capable of taking in any arbitrary VarName.
-function _zero(acc::ValuesAsInModelAccumulator)
-    return ValuesAsInModelAccumulator(empty(acc.values), acc.include_colon_eq)
-end
-reset(acc::ValuesAsInModelAccumulator) = _zero(acc)
-split(acc::ValuesAsInModelAccumulator) = _zero(acc)
-function combine(acc1::ValuesAsInModelAccumulator, acc2::ValuesAsInModelAccumulator)
-    if acc1.include_colon_eq != acc2.include_colon_eq
-        msg = "Cannot combine accumulators with different include_colon_eq values."
-        throw(ArgumentError(msg))
-    end
-    return ValuesAsInModelAccumulator(
-        merge(acc1.values, acc2.values), acc1.include_colon_eq
-    )
-end
-
-function BangBang.push!!(acc::ValuesAsInModelAccumulator, vn::VarName, val, template)
-    # TODO(mhauru) The deepcopy here is quite unfortunate. It is needed so that the model
-    # body can go mutating the object without that reactively affecting the value in the
-    # accumulator, which should be as it was at `~` time. Could there be a way around this?
-    Accessors.@reset acc.values = DynamicPPL.templated_setindex!!(
-        acc.values, deepcopy(val), vn, template
-    )
-    return acc
-end
-
-function is_extracting_values(vi::AbstractVarInfo)
-    return hasacc(vi, Val(:ValuesAsInModel)) &&
-           getacc(vi, Val(:ValuesAsInModel)).include_colon_eq
-end
-
-function accumulate_assume!!(
-    acc::ValuesAsInModelAccumulator, val, tval, logjac, vn::VarName, right, template
+# We need a separate function for the colon-eq case since that function doesn't give us tval
+# and logjac, and we don't want to have to pass in dummy values for those.
+function store_colon_eq!!(
+    acc::VNTAccumulator{RAW_VALUE_ACCNAME}, vn::VarName, val, template
 )
-    return push!!(acc, vn, val, template)
-end
-
-accumulate_observe!!(acc::ValuesAsInModelAccumulator, right, left, vn) = acc
-
-"""
-    values_as_in_model(model::Model, include_colon_eq::Bool, varinfo::AbstractVarInfo)
-
-Get the values of `varinfo` as they would be seen in the model.
-
-More specifically, this method attempts to extract the realization _as seen in
-the model_. For example, `x[1] ~ truncated(Normal(); lower=0)` will result in a
-realization that is compatible with `truncated(Normal(); lower=0)` -- i.e. one
-where the value of `x[1]` is positive -- regardless of whether `varinfo` is
-working in unconstrained space.
-
-Hence this method is a "safe" way of obtaining realizations in constrained
-space at the cost of additional model evaluations.
-
-Returns a `VarNamedTuple`.
-
-# Arguments
-- `model::Model`: model to extract realizations from.
-- `include_colon_eq::Bool`: whether to also include variables on the LHS of `:=`.
-- `varinfo::AbstractVarInfo`: variable information to use for the extraction.
-
-# Examples
-
-## When `VarInfo` fails
-
-The following demonstrates a common pitfall when working with [`VarInfo`](@ref)
-and constrained variables.
-
-```jldoctest
-julia> using Distributions, StableRNGs
-
-julia> rng = StableRNG(42);
-
-julia> @model function model_changing_support()
-           x ~ Bernoulli(0.5)
-           y ~ x == 1 ? Uniform(0, 1) : Uniform(11, 12)
-       end;
-
-julia> model = model_changing_support();
-
-julia> # Construct initial `VarInfo`.
-       varinfo = VarInfo(rng, model);
-
-julia> # Link it so it works in unconstrained space.
-       varinfo_linked = DynamicPPL.link(varinfo, model);
-
-julia> # Perform computations in unconstrained space, e.g. changing the values of `vals`.
-       # Flip `x` so we hit the other support of `y`.
-       vals = [!varinfo[@varname(x)], rand(rng)];
-
-julia> # Update the `VarInfo` with the new values.
-       varinfo_linked = DynamicPPL.unflatten!!(varinfo_linked, vals);
-
-julia> # Determine the expected support of `y`.
-       lb, ub = vals[1] == 1 ? (0, 1) : (11, 12)
-(0, 1)
-
-julia> # Approach 1: Convert back to constrained space using `invlink` and extract.
-       varinfo_invlinked = DynamicPPL.invlink(varinfo_linked, model);
-
-julia> lb ≤ first(varinfo_invlinked[@varname(y)]) ≤ ub
-true
-
-julia> # Approach 2: Extract realizations using `values_as_in_model`.
-       lb ≤ values_as_in_model(model, true, varinfo_linked)[@varname(y)] ≤ ub
-true
-```
-"""
-function values_as_in_model(model::Model, include_colon_eq::Bool, varinfo::AbstractVarInfo)
-    varinfo = setaccs!!(deepcopy(varinfo), (ValuesAsInModelAccumulator(include_colon_eq),))
-    varinfo = last(evaluate!!(model, varinfo))
-    return getacc(varinfo, Val(:ValuesAsInModel)).values
+    new_val = deepcopy(val)
+    new_values = DynamicPPL.templated_setindex!!(acc.values, new_val, vn, template)
+    return VNTAccumulator{RAW_VALUE_ACCNAME}(acc.f, new_values)
 end

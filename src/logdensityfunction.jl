@@ -108,7 +108,7 @@ given set of parameters:
 In general, both of these approaches work fine, but the fact that they modify the VarInfo's
 metadata can often be quite wasteful. In particular, it is very common that the only outputs
 we care about from model evaluation are those which are stored in accumulators, such as log
-probability densities, or `ValuesAsInModel`.
+probability densities, or raw values.
 
 To avoid this issue, we use `OnlyAccsVarInfo`, which is a VarInfo that only contains
 accumulators. It implements enough of the `AbstractVarInfo` interface to not error during

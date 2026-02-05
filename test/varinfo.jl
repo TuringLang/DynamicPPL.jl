@@ -33,7 +33,7 @@ short_varinfo_name(::DynamicPPL.VarInfo) = "VarInfo"
 
 function make_chain_from_prior(rng::Random.AbstractRNG, model::Model, n_iters::Int)
     vi = VarInfo(model)
-    vi = DynamicPPL.setaccs!!(vi, (DynamicPPL.ValuesAsInModelAccumulator(false),))
+    vi = DynamicPPL.setaccs!!(vi, (DynamicPPL.RawValueAccumulator(false),))
     ps = hcat([
         DynamicPPL.ParamsWithStats(last(DynamicPPL.init!!(rng, model, vi))) for
         _ in 1:n_iters
@@ -191,7 +191,7 @@ end
         vi_orig = VarInfo(model)
         # It already has the logp accumulators, so let's add in some more.
         vi_orig = DynamicPPL.setacc!!(vi_orig, DynamicPPL.DebugUtils.DebugAccumulator(true))
-        vi_orig = DynamicPPL.setacc!!(vi_orig, DynamicPPL.ValuesAsInModelAccumulator(true))
+        vi_orig = DynamicPPL.setacc!!(vi_orig, DynamicPPL.RawValueAccumulator(true))
         vi_orig = DynamicPPL.setacc!!(vi_orig, DynamicPPL.PriorDistributionAccumulator())
         vi_orig = DynamicPPL.setacc!!(
             vi_orig, DynamicPPL.PointwiseLogProbAccumulator{:both}()

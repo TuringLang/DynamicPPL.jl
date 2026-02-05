@@ -189,8 +189,8 @@ This function should return only the updated VarInfo (not a tuple).
 
 !!! note
     This function is not part of DynamicPPL's public API as the only case where this
-    function has any effect is when using `ValuesAsInModelAccumulator`, which is itself
-    fully contained within DynamicPPL. There should be no need for users to directly call or
+    function has any effect is when using `RawValueAccumulator`, which is itself fully
+    contained within DynamicPPL. There should be no need for users to directly call or
     overload this function.
 """
 function store_coloneq_value!!(
@@ -210,6 +210,8 @@ function store_coloneq_value!!(
     # prefixed (PrefixContext overloads store_coloneq_value!!). That allows us to not fuss over
     # prefixes here.
     return DynamicPPL.map_accumulator!!(
-        acc -> push!!(acc, vn, right, template), vi, Val(:ValuesAsInModel)
+        acc -> store_colon_eq!!(acc, vn, right, template),
+        vi,
+        Val(DynamicPPL.RAW_VALUE_ACCNAME),
     )
 end

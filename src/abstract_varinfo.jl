@@ -237,6 +237,30 @@ See also: [`setlogprior!!`](@ref), [`setlogp!!`](@ref), [`getloglikelihood`](@re
 setloglikelihood!!(vi::AbstractVarInfo, logp) = setacc!!(vi, LogLikelihoodAccumulator(logp))
 
 """
+    DynamicPPL.is_extracting_colon_eq_values(vi::AbstractVarInfo)
+
+Return `true` if `vi` contains a `RawValueAccumulator` that is extracting values on the LHS
+of `:=`. This function is used to determine whether `store_colon_eq!!` should be called when
+encountering a `x := expr` statement in the model body.
+
+Note that this function is not public.
+"""
+function is_extracting_colon_eq_values(vi::AbstractVarInfo)
+    return hasacc(vi, Val(RAW_VALUE_ACCNAME)) &&
+           getacc(vi, Val(RAW_VALUE_ACCNAME)).f.include_colon_eq
+end
+
+"""
+    get_raw_values(vi::AbstractVarInfo)
+
+Extract a `VarNamedTuple` of values from the `RawValueAccumulator` in `vi`. This is the
+'raw' values as they are seen in the model, without any transformations applied to them.
+
+If `vi` does not contain a `RawValueAccumulator`, this function will throw an error.
+"""
+get_raw_values(vi::AbstractVarInfo) = getacc(vi, Val(RAW_VALUE_ACCNAME)).values
+
+"""
     setlogp!!(vi::AbstractVarInfo, logp::NamedTuple)
 
 Set both the log prior and the log likelihood probabilities in `vi`.
