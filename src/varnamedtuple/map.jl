@@ -1,4 +1,8 @@
+function Base.merge(a::VarNamedTuple, b::VarNamedTuple, cs::VarNamedTuple...)
+    return merge(merge(a, b), cs...)
+end
 Base.merge(x1::VarNamedTuple, x2::VarNamedTuple) = _merge_recursive(x1, x2)
+Base.merge(x1::VarNamedTuple) = x1
 
 # This needs to be a generated function for type stability.
 @generated function _merge_recursive(
