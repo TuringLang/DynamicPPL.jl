@@ -112,10 +112,8 @@ function init(rng::Random.AbstractRNG, ::VarName, dist::Distribution, u::InitFro
     # give us **exactly** the info that we want. VectorBijectors will solve this since we
     # get `linked_vec_length(dist)` which directly tells us how many elements we need to
     # sample.
-    if sz == ()
-        sz = (1,)
-    end
-    y = u.lower .+ ((u.upper - u.lower) .* rand(rng, sz...))
+    real_sz = prod(sz)
+    y = u.lower .+ ((u.upper - u.lower) .* rand(rng, real_sz))
     return LinkedVectorValue(y, from_linked_vec_transform(dist), get_size_for_vnt(dist))
 end
 
