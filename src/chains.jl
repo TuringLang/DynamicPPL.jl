@@ -128,8 +128,7 @@ function ParamsWithStats(
     include_log_probs::Bool=true,
 )
     strategy = InitFromParams(
-        VectorWithRanges(ldf._varname_ranges, param_vector, ldf._transform_strategy),
-        nothing,
+        VectorWithRanges(ldf._varname_ranges, param_vector, ldf.transform_strategy), nothing
     )
     accs = if include_log_probs
         (
