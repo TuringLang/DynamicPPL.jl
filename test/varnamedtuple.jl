@@ -356,6 +356,50 @@ Base.size(st::SizedThing) = st.size
         end
     end
 
+    @testset "haskey on PartialArray" begin
+        @testset "no ALBs" begin
+            vnt = @vnt begin
+                @template x = zeros(2)
+                x[1] := 1.0
+                x[2] := 2.0
+            end
+            # Sanity check
+            @test haskey(vnt, @varname(x[1]))
+            @test haskey(vnt, @varname(x[2]))
+            @test !haskey(vnt, @varname(x[3]))
+            # These should also be true
+            @test haskey(vnt, @varname(x[1:2]))
+            @test haskey(vnt, @varname(x[1:1]))
+            @test haskey(vnt, @varname(x[2:2]))
+            @test haskey(vnt, @varname(x[:]))
+        end
+
+        @testset "mixed values + ALBs" begin
+            vnt2 = @vnt begin
+                @template x = zeros(3)
+                x[1] := 1.0
+                x[2:3] := SizedThing((2,))
+            end
+            @test haskey(vnt2, @varname(x[1]))
+            @test haskey(vnt2, @varname(x[2:3]))
+            @test !haskey(vnt2, @varname(x[:]))
+            @test !haskey(vnt2, @varname(x[1:2]))
+            @test !haskey(vnt2, @varname(x))
+        end
+
+        @testset "only ALBs" begin
+            vnt3 = @vnt begin
+                @template x = zeros(3)
+                x[1:3] := SizedThing((3,))
+            end
+            @test haskey(vnt3, @varname(x[1:3]))
+            @test haskey(vnt3, @varname(x[:]))
+            @test haskey(vnt3, @varname(x))
+            @test !haskey(vnt3, @varname(x[1:2]))
+            @test !haskey(vnt3, @varname(x[1]))
+        end
+    end
+
     @testset "Setting to same variable multiple times" begin
         # TODO(penelopeysm) write these
     end
@@ -1319,22 +1363,28 @@ Base.size(st::SizedThing) = st.size
         @test @inferred(isempty(vnt)) == false
         test_invariants(vnt)
 
+        # Setting an empty value inside a VNT doesn't mean that the VNT is empty
         vnt = VarNamedTuple()
-        vnt = setindex!!(vnt, [], @varname(a[1]))
+        vnt = templated_setindex!!(vnt, [], @varname(a[1]), zeros(1))
         @test @inferred(isempty(vnt)) == false
         test_invariants(vnt)
 
         # 2) empty!! keeps PartialArrays in place:
         vnt = VarNamedTuple()
-        vnt = @inferred(setindex!!(vnt, [1, 2, 3], @varname(a[1:3])))
+        vnt = @inferred(templated_setindex!!(vnt, [1, 2, 3], @varname(a[1:3]), zeros(4)))
         vnt = @inferred(empty!!(vnt))
         @test !haskey(vnt, @varname(a[1]))
         @test !haskey(vnt, @varname(a[1:3]))
-        @test haskey(vnt, @varname(a))
+        @test !haskey(vnt, @varname(a))
+        # It's an empty PartialArray now, so attempting to extract anything will fail
         @test_throws BoundsError getindex(vnt, @varname(a[1]))
         @test_throws BoundsError getindex(vnt, @varname(a[1:3]))
-        # It's an empty PartialArray now, so attempting to extract anything will fail
         @test_throws ArgumentError getindex(vnt, @varname(a))
+        # but checking it explicitly, it should still be there
+        @test haskey(vnt.data, :a)
+        @test vnt.data.a isa PartialArray
+        @test !any(vnt.data.a.mask)
+        # We can set data back into it and it will reuse the same template
         vnt = @inferred(setindex!!(vnt, [1, 2, 3], @varname(a[2:4])))
         @test @inferred(getindex(vnt, @varname(a[2:4]))) == [1, 2, 3]
         @test haskey(vnt, @varname(a[2:4]))

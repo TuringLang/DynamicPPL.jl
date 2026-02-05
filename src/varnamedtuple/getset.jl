@@ -54,19 +54,39 @@ function _getindex_optic(arr::AbstractArray, optic::IndexWithoutChild)
     return Base.getindex(arr, coptic.ix...; coptic.kw...)
 end
 
+# Fallback for everything else.
+@inline _haskey_optic(x::Any, o::AbstractPPL.AbstractOptic) = AbstractPPL.canview(o, x)
 function _haskey_optic(vnt::VarNamedTuple, name::VarName)
     return _haskey_optic(vnt, AbstractPPL.varname_to_optic(name))
 end
 @inline _haskey_optic(@nospecialize(::Any), ::AbstractPPL.Iden) = true
-@inline _haskey_optic(pa::PartialArray, ::AbstractPPL.Iden) = all(pa.mask)
-@inline _haskey_optic(x::Any, o::AbstractPPL.AbstractOptic) = AbstractPPL.canview(o, x)
 @inline _haskey_optic(::VarNamedTuple, ::AbstractPPL.Index) = false
 function _haskey_optic(vnt::VarNamedTuple, optic::AbstractPPL.Property{S}) where {S}
     return Base.haskey(vnt.data, S) && _haskey_optic(getindex(vnt.data, S), optic.child)
 end
+function _haskey_optic(pa::PartialArray, ::AbstractPPL.Iden)
+    # no masked indices
+    all(pa.mask) || return false
+    # no partial ALBs
+    et = eltype(pa.data)
+    if et <: ArrayLikeBlock || ArrayLikeBlock <: et
+        return _can_get_arraylikeblock(pa.data)
+    else
+        # no ALBs at all, so it's fine
+        return true
+    end
+end
 function _haskey_optic(pa::PartialArray, optic::AbstractPPL.Index)
-    return Base.haskey(pa, optic.ix...; optic.kw...) &&
-           _haskey_optic(Base.getindex(pa, optic.ix...; optic.kw...), optic.child)
+    # check the top level Index
+    Base.haskey(pa, optic.ix...; optic.kw...) || return false
+    # recurse if necessary
+    return if optic.child isa AbstractPPL.Iden
+        true
+    elseif _is_multiindex(pa, optic.ix...; optic.kw...)
+        _haskey_optic(_subset_partialarray(pa, optic.ix...; optic.kw...), optic.child)
+    else
+        _haskey_optic(getindex(pa, optic.ix...; optic.kw...), optic.child)
+    end
 end
 function _haskey_optic(arr::AbstractArray, optic::IndexWithoutChild)
     # Note that this call to `checkbounds` can error, although it is technically out of our

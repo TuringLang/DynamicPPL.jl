@@ -345,6 +345,27 @@ function _concretise_eltype!!(pa::PartialArray)
 end
 
 """
+    _can_get_arraylikeblock(pa_data::AbstractArray)
+
+Returns a Boolean indicating whether `pa_data` refers to a single `ArrayLikeBlock` that can
+be retrieved.
+"""
+function _can_get_arraylikeblock(pa_data::AbstractArray)
+    # Check that all elements that we're trying to access are the same ArrayLikeBlock.
+    first_elem = first(pa_data)
+    if !(first_elem isa ArrayLikeBlock) || any(v -> v !== first_elem, pa_data)
+        return false
+    end
+    # check that there are no other elements that also refer to the same ArrayLikeBlock.
+    if size(pa_data) != first_elem.index_size
+        return false
+    end
+    # If _setindex!! works correctly, we should only be able to reach this point if all
+    # the elements in `val` are identical to first_elem. In this case we can return true.
+    return true
+end
+
+"""
     Base.getindex(pa::PartialArray, inds::Vararg{Any}; kw...)
 
 Obtain the value at the given indices from the `PartialArray`. This needs to be smarter than
@@ -358,11 +379,10 @@ function Base.getindex(pa::PartialArray, inds::Vararg{Any}; kw...)
     end
     val = getindex(pa.data, inds...; kw...)
 
-    is_multiindex = _is_multiindex(pa.data, inds...; kw...)
-
     # If not for ArrayLikeBlocks, at this point we could just return val directly. However,
     # we need to check if val contains any ArrayLikeBlocks, and if so, make sure that that
     # we are retrieving exactly that block and nothing else.
+    is_multiindex = _is_multiindex(pa.data, inds...; kw...)
 
     # The error we'll throw if the retrieval is invalid.
     alb_err = ArgumentError("""
@@ -387,18 +407,11 @@ function Base.getindex(pa::PartialArray, inds::Vararg{Any}; kw...)
                 val
             end
         end
-        # check that all elements that we're trying to access are the same ArrayLikeBlock.
-        first_elem = first(val)
-        if !(first_elem isa ArrayLikeBlock) || any(v -> v !== first_elem, val)
+        if _can_get_arraylikeblock(val)
+            return first(val).block
+        else
             throw(alb_err)
         end
-        # check that there are no other elements that also refer to the same ArrayLikeBlock.
-        if size(val) != first_elem.index_size
-            throw(alb_err)
-        end
-        # If _setindex!! works correctly, we should only be able to reach this point if all
-        # the elements in `val` are identical to first_elem. Thus we just return that one.
-        return first(val).block
     elseif val isa GrowableArray
         # This code path is hit for things like `vnt[@varname(x[:])]` where `x` is a PA that
         # stores a GrowableArray. We warn the user that the result may be wrong.
@@ -416,7 +429,7 @@ end
 
 function Base.haskey(pa::PartialArray, inds::Vararg{Any}; kw...)
     hasall =
-        checkbounds(Bool, pa.mask, inds...; kw...) && all(getindex(pa.mask, inds...; kw...))
+        checkbounds(Bool, pa.mask, inds...; kw...) && all(view(pa.mask, inds...; kw...))
 
     # If not for ArrayLikeBlocks, we could just return hasall directly. However, we need to
     # check that if any ArrayLikeBlocks are included, they are fully included.
@@ -438,13 +451,7 @@ function Base.haskey(pa::PartialArray, inds::Vararg{Any}; kw...)
     else
         # Multiple indices being accessed. We need to check that we are accessing an
         # ArrayLikeBlock in its entirety.
-        first_elem = first(subview)
-        first_elem_is_alb = first_elem isa ArrayLikeBlock
-        all_elems_are_equal = all(
-            v -> isequal(v.ix, first_elem.ix) && isequal(v.kw, first_elem.kw), subview
-        )
-        idx_size_matches = size(subview) == first_elem.index_size
-        first_elem_is_alb && all_elems_are_equal && idx_size_matches
+        _can_get_arraylikeblock(subview)
     end
 end
 
