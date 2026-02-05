@@ -90,6 +90,8 @@ from:
 - `ldf.model`: The original model from which this `LogDensityFunction` was constructed.
 - `ldf.adtype`: The AD type used for gradient calculations, or `nothing` if no AD
   type was provided.
+- `ldf.transform_strategy`: The transform strategy that specifies which variables in the
+  LogDensityFunction are linked or unlinked.
 
 # Extended help
 
@@ -145,9 +147,9 @@ with such models.** This is a general limitation of vectorised parameters: the o
 struct LogDensityFunction{
     M<:Model,
     AD<:Union{ADTypes.AbstractADType,Nothing},
+    L<:AbstractTransformStrategy,
     F,
     VNT<:VarNamedTuple,
-    L<:AbstractTransformStrategy,
     ADP<:Union{Nothing,DI.GradientPrep},
     # type of the vector passed to logdensity functions
     X<:AbstractVector,
@@ -155,9 +157,9 @@ struct LogDensityFunction{
 }
     model::M
     adtype::AD
+    transform_strategy::L
     _getlogdensity::F
     _varname_ranges::VNT
-    _transform_strategy::L
     _adprep::ADP
     _dim::Int
     _accs::AC
@@ -219,19 +221,19 @@ struct LogDensityFunction{
         return new{
             typeof(model),
             typeof(adtype),
+            typeof(transform_strategy),
             typeof(getlogdensity),
             typeof(all_ranges),
-            typeof(transform_strategy),
             typeof(prep),
             typeof(x),
             typeof(accs),
         }(
-            model, adtype, getlogdensity, all_ranges, transform_strategy, prep, dim, accs
+            model, adtype, transform_strategy, getlogdensity, all_ranges, prep, dim, accs
         )
     end
 end
 
-function _get_input_vector_type(::LogDensityFunction{M,A,G,R,L,P,X}) where {M,A,G,R,L,P,X}
+function _get_input_vector_type(::LogDensityFunction{M,A,L,G,R,P,X}) where {M,A,L,G,R,P,X}
     return X
 end
 
@@ -329,7 +331,7 @@ function LogDensityProblems.logdensity(
         ldf.model,
         ldf._getlogdensity,
         ldf._varname_ranges,
-        ldf._transform_strategy,
+        ldf.transform_strategy,
         ldf._accs,
     )
 end
@@ -346,7 +348,7 @@ function LogDensityProblems.logdensity_and_gradient(
                 ldf.model,
                 ldf._getlogdensity,
                 ldf._varname_ranges,
-                ldf._transform_strategy,
+                ldf.transform_strategy,
                 ldf._accs,
             ),
             ldf._adprep,
@@ -362,7 +364,7 @@ function LogDensityProblems.logdensity_and_gradient(
             DI.Constant(ldf.model),
             DI.Constant(ldf._getlogdensity),
             DI.Constant(ldf._varname_ranges),
-            DI.Constant(ldf._transform_strategy),
+            DI.Constant(ldf.transform_strategy),
             DI.Constant(ldf._accs),
         )
     end
