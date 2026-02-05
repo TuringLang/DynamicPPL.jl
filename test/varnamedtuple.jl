@@ -1,5 +1,9 @@
 module VarNamedTupleTests
 
+using Dates: now
+@info "Testing $(@__FILE__)..."
+__now__ = now()
+
 using Combinatorics: Combinatorics
 using OrderedCollections: OrderedDict
 using Test: @inferred, @test, @test_throws, @testset, @test_broken, @test_logs
@@ -1821,5 +1825,7 @@ Base.size(st::SizedThing) = st.size
         end
     end
 end
+
+@info "Completed $(@__FILE__) in $(now() - __now__)."
 
 end

@@ -9,7 +9,7 @@ using AbstractPPL: AbstractPPL
 using Distributions
 using DistributionsAD: filldist
 using DynamicPPL
-using LinearAlgebra: I
+using LinearAlgebra: I, Cholesky
 using MCMCChains: MCMCChains
 using Random: Random, Xoshiro
 using Test
@@ -485,6 +485,11 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
     end
 
     @testset "RawValueAccumulator" begin
+        # On < 1.12, Cholesky compares the upper triangular elements even when it wraps a
+        # LowerTriangular: https://github.com/JuliaLang/LinearAlgebra.jl/pull/1404
+        test_is_equal(x, y) = @test x == y
+        test_is_equal(x::Cholesky, y::Cholesky) = @test x.UL == y.UL
+
         @testset "$(model.f)" for model in DynamicPPL.TestUtils.ALL_MODELS
             vns = DynamicPPL.TestUtils.varnames(model)
             vns_split = DynamicPPL.TestUtils.varnames_split(model)
@@ -502,7 +507,7 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
                 @test vns_split ∩ vns_found == vns_split ∪ vns_found
                 # Ensure that the values are the same.
                 for vn in vns
-                    @test realizations[vn] == varinfo[vn]
+                    test_is_equal(realizations[vn], varinfo[vn])
                 end
             end
         end
