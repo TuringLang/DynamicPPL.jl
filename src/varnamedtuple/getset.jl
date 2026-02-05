@@ -58,6 +58,7 @@ function _haskey_optic(vnt::VarNamedTuple, name::VarName)
     return _haskey_optic(vnt, AbstractPPL.varname_to_optic(name))
 end
 @inline _haskey_optic(@nospecialize(::Any), ::AbstractPPL.Iden) = true
+@inline _haskey_optic(pa::PartialArray, ::AbstractPPL.Iden) = all(pa.mask)
 @inline _haskey_optic(x::Any, o::AbstractPPL.AbstractOptic) = AbstractPPL.canview(o, x)
 @inline _haskey_optic(::VarNamedTuple, ::AbstractPPL.Index) = false
 function _haskey_optic(vnt::VarNamedTuple, optic::AbstractPPL.Property{S}) where {S}
