@@ -3,7 +3,7 @@ module VarNamedTuples
 
 using AbstractPPL
 using AbstractPPL: AbstractPPL
-using Distributions: Distributions, Distribution
+using Distributions: Distributions, Distribution, LKJCholesky
 using BangBang
 using DynamicPPL: DynamicPPL
 
@@ -118,53 +118,20 @@ ERROR: ArgumentError: Cannot convert VarNamedTuple containing non-identity VarNa
     return nt
 end
 
-function AbstractPPL.hasvalue(vnt::VarNamedTuple, vn::VarName)
-    return _haskey_optic(vnt, vn)
-end
-
-function AbstractPPL.getvalue(vnt::VarNamedTuple, vn::VarName)
-    return _getindex_optic(vnt, vn)
-end
-
 # TODO(mhauru) The following methods mimic the structure of those in
 # AbstractPPLDistributionsExtension, and fall back on converting any PartialArrays to
 # dictionaries, and calling the AbstractPPL methods. We should eventually make
 # implementations of these directly for PartialArray, and maybe move these methods
 # elsewhere. Better yet, once we no longer store VarName values in Dictionaries anywhere,
 # and FlexiChains takes over from MCMCChains, this could hopefully all be removed.
-
-# The only case where the Distribution argument makes a difference is if the distribution
-# is multivariate and the values are stored in a PartialArray.
-
-function AbstractPPL.hasvalue(
-    vnt::VarNamedTuple, vn::VarName, ::Distributions.UnivariateDistribution
-)
-    return AbstractPPL.hasvalue(vnt, vn)
-end
-
-function AbstractPPL.getvalue(
-    vnt::VarNamedTuple, vn::VarName, ::Distributions.UnivariateDistribution
-)
-    return AbstractPPL.getvalue(vnt, vn)
-end
-
-function AbstractPPL.hasvalue(vals::VarNamedTuple, vn::VarName, dist::Distribution)
-    @warn "`hasvalue(vals, vn, dist)` is not implemented for $(typeof(dist)); falling back to `hasvalue(vals, vn)`."
-    return AbstractPPL.hasvalue(vals, vn)
-end
-
-function AbstractPPL.getvalue(vals::VarNamedTuple, vn::VarName, dist::Distribution)
-    @warn "`getvalue(vals, vn, dist)` is not implemented for $(typeof(dist)); falling back to `getvalue(vals, vn)`."
-    return AbstractPPL.getvalue(vals, vn)
-end
-
-const MV_DIST_TYPES = Union{
-    Distributions.MultivariateDistribution,
-    Distributions.MatrixDistribution,
-    Distributions.LKJCholesky,
-}
-
-function AbstractPPL.hasvalue(vnt::VarNamedTuple, vn::VarName, dist::MV_DIST_TYPES)
+#
+# NOTE(penelopeysm) See https://github.com/TuringLang/DynamicPPL.jl/issues/1262 for
+# explanation of these methods.
+AbstractPPL.hasvalue(vnt::VarNamedTuple, vn::VarName) = haskey(vnt, vn)
+AbstractPPL.getvalue(vnt::VarNamedTuple, vn::VarName) = vnt[vn]
+AbstractPPL.hasvalue(vals::VarNamedTuple, vn::VarName, ::Distribution) = haskey(vals, vn)
+AbstractPPL.getvalue(vals::VarNamedTuple, vn::VarName, ::Distribution) = vals[vn]
+function AbstractPPL.hasvalue(vnt::VarNamedTuple, vn::VarName, dist::LKJCholesky)
     if !haskey(vnt, vn)
         # Can't even find the parent VarName, there is no hope.
         return false
@@ -189,7 +156,7 @@ function AbstractPPL.hasvalue(vnt::VarNamedTuple, vn::VarName, dist::MV_DIST_TYP
     return AbstractPPL.hasvalue(dval, vn, dist)
 end
 
-function AbstractPPL.getvalue(vnt::VarNamedTuple, vn::VarName, dist::MV_DIST_TYPES)
+function AbstractPPL.getvalue(vnt::VarNamedTuple, vn::VarName, dist::LKJCholesky)
     # Note that _getindex_optic, rather than Base.getindex, skips the need to denseify
     # PartialArrays.
     val = _getindex_optic(vnt, vn)
