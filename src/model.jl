@@ -779,14 +779,22 @@ Evaluate the `model` and replace the values of the model's random variables in t
 `varinfo` with new values, using a specified initialisation strategy. If the values in
 `varinfo` are not set, they will be added using a specified initialisation strategy.
 
+!!! warning
+    This function will be deprecated and removed in the future. As far as possible, please
+    avoid using this function, and instead use the more explicit five-argument method
+    `evaluate!!([rng,] model, init_strategy, transform_strategy, accs)`, which is easier to
+    understand and has more explicit semantics. `init!!` has a very similar behaviour to it,
+    but additionally if `varinfo` is a full `VarInfo` (and not an `OnlyAccsVarInfo`), then
+    its values will be overwritten with the new values obtained from the initialisation
+    strategy.
+
 If `init_strategy` is not provided, defaults to `InitFromPrior()`.
 
 `transform_strategy` tells the model evaluation whether variables should be interpreted as linked
 or unlinked. Right now, it is slightly complicated because the default behaviour depends on
 the `varinfo` provided. If `varinfo isa VarInfo`, then the transform strategy is inferred
 from the VarInfo, i.e., linked variables in the VarInfo are treated as linked during
-evaluation. Conversely, if `varinfo isa OnlyAccsVarInfo`, then all variables are treated as
-unlinked.
+evaluation.
 
 Returns a tuple of the model's return value, plus the updated `varinfo` object.
 """
@@ -815,11 +823,44 @@ end
 
 Evaluate the `model` with the given `varinfo`.
 
-If the model has been marked as requiring threadsafe evaluation, are available, the varinfo
-provided will be wrapped in a `ThreadSafeVarInfo` before evaluation.
+!!! warning
+    The semantics of this method are complicated; we recommend that users do *not* use this
+    method unless absolutely necessary. In the future this method will be deprecated and
+    removed. In place of this, please consider using the five-argument `evaluate!!([rng,]
+    model, init_strategy, transform_strategy, accs)` method, which is more explicit and
+    easier to understand.
 
-Returns a tuple of the model's return value, plus the updated `varinfo`
-(unwrapped if necessary).
+The exact semantics depend on the `model`'s context. Fundamentally, this method executes the
+model evaluation function (i.e., the function used to define the model) using the given
+`varinfo` as an argument. At each tilde-statement, `tilde_assume!!` or `tilde_observe!!` is
+called, whose behaviour depends on the model's context.
+
+Broadly speaking, if the leaf context is an `InitContext`, then this function:
+
+- uses the initialisation strategy inside the `InitContext`;
+- uses the transform strategy inside the `InitContext`;
+- uses the accumulators inside `varinfo` (resetting them before evaluation);
+- overwrites the values in `varinfo` with the new values obtained from the initialisation strategy.
+
+If the leaf context is a `DefaultContext`, then this function:
+
+- uses the values inside the `varinfo` as the initialisation strategy;
+- derives a transform strategy from the `varinfo`'s stored variables (if a linked variable is
+  stored, then the transform strategy will treat that variable as linked; likewise for
+  unlinked)
+- uses the accumulators inside `varinfo` (resetting them before evaluation);
+- does not overwrite the values in the `varinfo` (that is unnecessary since the values used
+  for evaluation are already stored in `varinfo`).
+
+The long-term plan for this method is to:
+
+- Replace `DefaultContext` with `InitContext` by splitting up the functionality of `DefaultContext`
+  into its constituent components
+- Remove the `VarInfo` argument, and instead use only an `AccumulatorTuple`
+- Separate the initialisation and transform strategies into separate arguments, instead of storing
+  them inside the model's context.
+
+Until that is done, this method will remain.
 """
 function AbstractPPL.evaluate!!(model::Model, varinfo::AbstractVarInfo)
     return if requires_threadsafe(model)
@@ -849,6 +890,80 @@ function AbstractPPL.evaluate!!(model::Model, varinfo::AbstractVarInfo)
     else
         _evaluate!!(model, resetaccs!!(varinfo))
     end
+end
+
+"""
+    evaluate!!(
+        [rng::Random.AbstractRNG,]
+        model::Model,
+        init_strategy::AbstractInitStrategy,
+        transform_strategy::AbstractTransformStrategy,
+        accs::AccumulatorTuple,
+    )
+
+Evaluate the model using:
+
+- the given `init_strategy` to decide how to generate parameter values;
+- the given `transform_strategy` to decide whether to treat variables as linked or unlinked;
+- the given `accs` as the accumulators which store outputs.
+
+These three components collectively determine how model evaluation proceeds. Please see the
+DynamicPPL documentation for information on these three components.
+
+Returns the model's return value, plus an updated `AccumulatorTuple`.
+
+This function is at the heart of DynamicPPL; all other methods of `init!!` and `evaluate!!` are
+variations on this.
+"""
+function AbstractPPL.evaluate!!(
+    rng::Random.AbstractRNG,
+    model::Model,
+    init_strategy::AbstractInitStrategy,
+    transform_strategy::AbstractTransformStrategy,
+    accs::AccumulatorTuple,
+)
+    ctx = InitContext(rng, init_strategy, transform_strategy)
+    model = DynamicPPL.setleafcontext(model, ctx)
+    oavi = OnlyAccsVarInfo(accs)
+    retval, oavi = DynamicPPL.evaluate!!(model, oavi)
+    return retval, getaccs(oavi)
+end
+function AbstractPPL.evaluate!!(
+    model::Model,
+    init_strategy::AbstractInitStrategy,
+    transform_strategy::AbstractTransformStrategy,
+    accs::AccumulatorTuple,
+)
+    return evaluate!!(Random.default_rng(), model, init_strategy, transform_strategy, accs)
+end
+function AbstractPPL.evaluate!!(
+    rng::Random.AbstractRNG,
+    model::Model,
+    init_strategy::AbstractInitStrategy,
+    transform_strategy::AbstractTransformStrategy,
+    accs::NTuple{N,<:AbstractAccumulator},
+) where {N}
+    return evaluate!!(
+        Random.default_rng(),
+        model,
+        init_strategy,
+        transform_strategy,
+        AccumulatorTuple(accs),
+    )
+end
+function AbstractPPL.evaluate!!(
+    model::Model,
+    init_strategy::AbstractInitStrategy,
+    transform_strategy::AbstractTransformStrategy,
+    accs::NTuple{N,<:AbstractAccumulator},
+) where {N}
+    return evaluate!!(
+        Random.default_rng(),
+        model,
+        init_strategy,
+        transform_strategy,
+        AccumulatorTuple(accs),
+    )
 end
 
 """

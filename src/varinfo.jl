@@ -104,10 +104,12 @@ function DynamicPPL.VarInfo(
     ::Union{UnlinkAll,UnlinkSome},
     initstrat::AbstractInitStrategy,
 )
-    # In this case, no variables are to be linked. We can optimise performance by directly
-    # calling init!! and not faffing about with accumulators. (This does lead to significant
-    # performance improvements for the typical use case of generating an unlinked VarInfo.)
-    return last(init!!(rng, model, VarInfo(), initstrat, UnlinkAll()))
+    accumulators = (default_accumulators()..., VectorValueAccumulator())
+    _, accs = evaluate!!(rng, model, initstrat, UnlinkAll(), accumulators)
+    new_vval_acc = getacc(accs, Val(VECTORVAL_ACCNAME))
+    return VarInfo{false}(
+        new_vval_acc.values, DynamicPPL.deleteacc!!(accs, Val(VECTORVAL_ACCNAME))
+    )
 end
 function DynamicPPL.VarInfo(
     rng::Random.AbstractRNG,
@@ -115,11 +117,9 @@ function DynamicPPL.VarInfo(
     linkstrat::AbstractTransformStrategy,
     initstrat::AbstractInitStrategy=InitFromPrior(),
 )
-    vi = OnlyAccsVarInfo((VectorValueAccumulator(), default_accumulators()...))
-    vi = last(init!!(rng, model, vi, initstrat, linkstrat))
-    # Now we just need to shuffle the VectorValueAccumulator values into the VarInfo.
-    # Extract the vectorised values values.
-    vec_val_acc = getacc(vi, Val(VECTORVAL_ACCNAME))
+    accs = (default_accumulators()..., VectorValueAccumulator())
+    _, accs = evaluate!!(rng, model, initstrat, linkstrat, accs)
+    vec_val_acc = getacc(accs, Val(VECTORVAL_ACCNAME))
     new_vi_is_linked = if linkstrat isa LinkAll
         true
     else
