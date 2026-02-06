@@ -2,6 +2,21 @@ module DynamicPPLMCMCChainsExtTests
 
 using DynamicPPL, Distributions, MCMCChains, Test
 using AbstractMCMC: AbstractMCMC
+using AbstractPPL: AbstractPPL
+using Random: Random
+
+function make_chain_from_prior(rng::Random.AbstractRNG, model::Model, n_iters::Int)
+    vi = VarInfo(model)
+    vi = DynamicPPL.setaccs!!(vi, (DynamicPPL.RawValueAccumulator(false),))
+    ps = hcat([
+        DynamicPPL.ParamsWithStats(last(DynamicPPL.init!!(rng, model, vi))) for
+        _ in 1:n_iters
+    ])
+    return AbstractMCMC.from_samples(MCMCChains.Chains, ps)
+end
+function make_chain_from_prior(model::Model, n_iters::Int)
+    return make_chain_from_prior(Random.default_rng(), model, n_iters)
+end
 
 @testset "DynamicPPLMCMCChainsExt" begin
     @testset "from_samples" begin
@@ -40,7 +55,7 @@ using AbstractMCMC: AbstractMCMC
         ps = hcat([ParamsWithStats(VarInfo(model), model) for _ in 1:50])
         c = AbstractMCMC.from_samples(MCMCChains.Chains, ps)
         # Then convert back to ParamsWithStats
-        arr_pss = AbstractMCMC.to_samples(ParamsWithStats, c)
+        arr_pss = AbstractMCMC.to_samples(ParamsWithStats, c, model)
         @test size(arr_pss) == (50, 1)
         for i in 1:50
             new_p = arr_pss[i, 1]
@@ -50,40 +65,52 @@ using AbstractMCMC: AbstractMCMC
         end
     end
 
-    @testset "returned (basic)" begin
-        @model demo() = x ~ Normal()
-        model = demo()
+    @testset "returned()" begin
+        @testset "basic model" begin
+            @model demo() = x ~ Normal()
+            model = demo()
 
-        chain = MCMCChains.Chains(
-            randn(1000, 2, 1),
-            [:x, :y],
-            Dict(:internals => [:y]);
-            info=(; varname_to_symbol=Dict(@varname(x) => :x)),
-        )
-        chain_generated = @test_nowarn returned(model, chain)
-        @test size(chain_generated) == (1000, 1)
-        @test mean(chain_generated) ≈ 0 atol = 0.1
-    end
-
-    @testset "returned: errors on missing variable" begin
-        # Create a chain that only has `m`.
-        @model function m_only()
-            return m ~ Normal()
+            chain = MCMCChains.Chains(
+                randn(1000, 2, 1),
+                [:x, :y],
+                Dict(:internals => [:y]);
+                info=(; varname_to_symbol=Dict(@varname(x) => :x)),
+            )
+            chain_generated = @test_nowarn returned(model, chain)
+            @test size(chain_generated) == (1000, 1)
+            @test mean(chain_generated) ≈ 0 atol = 0.1
         end
-        model_m_only = m_only()
-        chain_m_only = AbstractMCMC.from_samples(
-            MCMCChains.Chains,
-            hcat([ParamsWithStats(VarInfo(model_m_only), model_m_only) for _ in 1:50]),
-        )
 
-        # Define a model that needs both `m` and `s`.
-        @model function f()
-            m ~ Normal()
-            s ~ Exponential()
-            return y ~ Normal(m, s)
+        @testset "demo models" begin
+            @testset "$(model.f)" for model in DynamicPPL.TestUtils.ALL_MODELS
+                chain = make_chain_from_prior(model, 10)
+                # A simple way of checking that the computation is determinstic: run twice and compare.
+                res1 = returned(model, MCMCChains.get_sections(chain, :parameters))
+                res2 = returned(model, MCMCChains.get_sections(chain, :parameters))
+                @test all(res1 .== res2)
+            end
         end
-        model = f() | (; y=1.0)
-        @test_throws "No value was provided" returned(model, chain_m_only)
+
+        @testset "errors on missing variable" begin
+            # Create a chain that only has `m`.
+            @model function m_only()
+                return m ~ Normal()
+            end
+            model_m_only = m_only()
+            chain_m_only = AbstractMCMC.from_samples(
+                MCMCChains.Chains,
+                hcat([ParamsWithStats(VarInfo(model_m_only), model_m_only) for _ in 1:50]),
+            )
+
+            # Define a model that needs both `m` and `s`.
+            @model function f()
+                m ~ Normal()
+                s ~ Exponential()
+                return y ~ Normal(m, s)
+            end
+            model = f() | (; y=1.0)
+            @test_throws "No value was provided" returned(model, chain_m_only)
+        end
     end
 end
 
