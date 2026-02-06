@@ -150,7 +150,7 @@ The constructor can be called with a tuple or a `VarArgs` of `AbstractAccumulato
 names will be generated automatically. One can also call the constructor with a `NamedTuple`
 but the names in the argument will be discarded in favour of the generated ones.
 """
-struct AccumulatorTuple{N,T<:NamedTuple}
+struct AccumulatorTuple{N,T<:NamedTuple} <: AbstractHasAccs
     nt::T
 
     function AccumulatorTuple(t::T) where {N,T<:NTuple{N,AbstractAccumulator}}
@@ -206,6 +206,8 @@ Base.copy(at::AccumulatorTuple) = AccumulatorTuple(map(copy, at.nt))
 function Base.convert(::Type{AccumulatorTuple{N,T}}, accs::AccumulatorTuple{N}) where {N,T}
     return AccumulatorTuple(convert(T, accs.nt))
 end
+
+DynamicPPL.getaccs(at::AccumulatorTuple) = at
 
 """
     setacc!!(at::AccumulatorTuple, acc::AbstractAccumulator)
@@ -263,4 +265,95 @@ function map_accumulator(
     new_val = func(at[accname])
     new_nt = merge(at.nt, NamedTuple{(accname,)}((new_val,)))
     return AccumulatorTuple(new_nt)
+end
+
+"""
+    accumulate_assume!!(aha::AbstractHasAccs, val, tval, logjac, vn, right, template)
+
+Update all the accumulators of `aha` by calling `accumulate_assume!!` on them.
+"""
+function accumulate_assume!!(aha::AbstractHasAccs, val, tval, logjac, vn, right, template)
+    return map_accumulators!!(
+        acc -> accumulate_assume!!(acc, val, tval, logjac, vn, right, template), aha
+    )
+end
+
+"""
+    accumulate_observe!!(aha::AbstractHasAccs, right, left, vn)
+
+Update all the accumulators of `aha` by calling `accumulate_observe!!` on them.
+"""
+function accumulate_observe!!(aha::AbstractHasAccs, right, left, vn)
+    return map_accumulators!!(acc -> accumulate_observe!!(acc, right, left, vn), aha)
+end
+
+"""
+    map_accumulators!!(func::Function, aha::AbstractHasAccs)
+
+Update all accumulators of `aha` by calling `func` on them and replacing them with the return
+values.
+"""
+function map_accumulators!!(func::Function, aha::AbstractHasAccs)
+    return setaccs!!(aha, map(func, getaccs(aha)))
+end
+
+"""
+    resetaccs!!(aha::AbstractHasAccs)
+
+Reset the values of all accumulators, using [`reset`](@ref).
+"""
+function resetaccs!!(aha::AbstractHasAccs)
+    return setaccs!!(aha, map(reset, getaccs(aha)))
+end
+
+"""
+    map_accumulator!!(func::Function, aha::AbstractHasAccs, ::Val{accname}) where {accname}
+
+Update the accumulator `accname` of `aha` by calling `func` on it and replacing it with the
+return value.
+"""
+function map_accumulator!!(func::Function, aha::AbstractHasAccs, accname::Val)
+    return setaccs!!(aha, map_accumulator(func, getaccs(aha), accname))
+end
+function map_accumulator!!(::Function, ::AbstractHasAccs, ::Symbol)
+    return error(
+        """
+        The method map_accumulator!!(func::Function, aha::AbstractHasAccs, accname::Symbol)
+        does not exist. For type stability reasons use
+        map_accumulator!!(func::Function, aha::AbstractHasAccs, ::Val{accname}) instead.
+        """
+    )
+end
+
+"""
+    acclogprior!!(aha::AbstractHasAccs, logp)
+
+Add `logp` to the value of the log of the prior probability in `aha`.
+
+See also: [`accloglikelihood!!`](@ref), [`acclogp!!`](@ref), [`getlogprior`](@ref), [`setlogprior!!`](@ref).
+"""
+function acclogprior!!(aha::AbstractHasAccs, logp)
+    return map_accumulator!!(acc -> acclogp(acc, logp), aha, Val(:LogPrior))
+end
+
+"""
+    acclogjac!!(aha::AbstractHasAccs, logjac)
+
+Add `logjac` to the value of the log Jacobian in `aha`.
+
+See also: [`getlogjac`](@ref), [`setlogjac!!`](@ref).
+"""
+function acclogjac!!(aha::AbstractHasAccs, logjac)
+    return map_accumulator!!(acc -> acclogp(acc, logjac), aha, Val(:LogJacobian))
+end
+
+"""
+    accloglikelihood!!(aha::AbstractHasAccs, logp)
+
+Add `logp` to the value of the log of the likelihood in `aha`.
+
+See also: [`accloglikelihood!!`](@ref), [`acclogp!!`](@ref), [`getloglikelihood`](@ref), [`setloglikelihood!!`](@ref).
+"""
+function accloglikelihood!!(aha::AbstractHasAccs, logp)
+    return map_accumulator!!(acc -> acclogp(acc, logp), aha, Val(:LogLikelihood))
 end

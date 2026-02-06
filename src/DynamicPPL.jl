@@ -210,19 +210,38 @@ macro prob_str(str)
     ))
 end
 
-# TODO(mhauru) We should write down the list of methods that any subtype of AbstractVarInfo
-# has to implement. Not sure what the full list is for parameters values, but for
-# accumulators we only need `getaccs` and `setaccs!!`.
 """
-    AbstractVarInfo
+    AbstractHasAccs
+
+An abstract type for anything that contains accumulators. Many functions for extracting
+model outputs, such as [`getlogjoint`](@ref), depend only on the presence of certain
+accumulators. Thus, these functions are defined for the abstract type `AbstractHasAccs`
+rather than `AbstractVarInfo`, which is a more specific type that contains accumulators but
+also contains other information such as the values of random variables.
+
+This is a supertype of both [`AccumulatorTuple`](@ref) as well as [`AbstractVarInfo`](@ref).
+
+To subtype this, you only need to implement two functions:
+
+- `DynamicPPL.getaccs(aha::AbstractHasAccs)`, which should return an `AccumulatorTuple`
+- `DynamicPPL.setaccs!!(aha::AbstractHasAccs, accs::AccumulatorTuple)`, which should return
+   a new `AbstractHasAccs` with the accumulators set to `accs`.
+
+All extra functionality of `AbstractHasAccs` is solely defined in terms of these two
+functions.
+"""
+abstract type AbstractHasAccs <: AbstractModelTrace end
+
+"""
+    AbstractVarInfo <: AbstractHasAccs
 
 Abstract supertype for data structures that capture random variables when executing a
 probabilistic model and accumulate log densities such as the log likelihood or the
 log joint probability of the model.
 
-See also: [`VarInfo`](@ref)
+Since `VarInfo`s also contain accumulators, they are also subtypes of `AbstractHasAccs`.
 """
-abstract type AbstractVarInfo <: AbstractModelTrace end
+abstract type AbstractVarInfo <: AbstractHasAccs end
 
 # Necessary forward declarations
 include("utils.jl")
@@ -255,6 +274,8 @@ include("accumulators/vector_values.jl")
 include("accumulators/priors.jl")
 include("accumulators/raw_values.jl")
 include("accumulators/pointwise_logdensities.jl")
+
+include("abstract_hasaccs.jl")
 include("abstract_varinfo.jl")
 include("threadsafe.jl")
 include("varinfo.jl")
