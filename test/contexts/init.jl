@@ -246,7 +246,7 @@ using Test
             end
 
             model = test_init_model()
-            acc = ValuesAsInModelAccumulator(false)
+            acc = RawValueAccumulator(false)
             empty_vi = OnlyAccsVarInfo((acc,))
             _, vi = DynamicPPL.init!!(model, empty_vi, InitFromParams(vnt), UnlinkAll())
             vals = DynamicPPL.getacc(vi, Val(DynamicPPL.accumulator_name(acc))).values
@@ -262,7 +262,7 @@ using Test
 
             @testset "with InitFromPrior fallback" begin
                 model = test_init_model()
-                acc = ValuesAsInModelAccumulator(false)
+                acc = RawValueAccumulator(false)
                 empty_vi = OnlyAccsVarInfo((acc,))
                 _, vi = DynamicPPL.init!!(
                     model, empty_vi, InitFromParams(vnt, InitFromPrior()), UnlinkAll()
@@ -284,7 +284,7 @@ using Test
 
             @testset "with no fallback" begin
                 model = test_init_model()
-                acc = ValuesAsInModelAccumulator(false)
+                acc = RawValueAccumulator(false)
                 empty_vi = OnlyAccsVarInfo((acc,))
 
                 # When there's no entry for `y`

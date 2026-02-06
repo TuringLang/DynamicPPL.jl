@@ -946,9 +946,9 @@ Base.nameof(model::Model{<:Function}) = nameof(model.f)
 Sample a `VarNamedTuple` of raw values from the prior of `model`.
 """
 function Base.rand(rng::Random.AbstractRNG, model::Model)
-    vi = OnlyAccsVarInfo((ValuesAsInModelAccumulator(false),))
+    vi = OnlyAccsVarInfo((RawValueAccumulator(false),))
     vi = last(init!!(rng, model, vi, InitFromPrior(), UnlinkAll()))
-    return DynamicPPL.getacc(vi, Val(:ValuesAsInModel)).values
+    return get_raw_values(vi)
 end
 Base.rand(model::Model) = rand(Random.default_rng(), model)
 

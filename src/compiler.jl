@@ -408,7 +408,7 @@ end
 
 function generate_assign(left, right)
     # A statement `x := y` reduces to `x = y`, but if __varinfo__ has an accumulator for
-    # ValuesAsInModel then in addition we push!! the pair of `x` and `y` to the accumulator.
+    # RawValues then in addition we push!! the pair of `x` and `y` to the accumulator.
     @gensym acc right_val vn
     template = if left isa Symbol  # i.e. identity optic
         :($(NoTemplate)())
@@ -417,7 +417,7 @@ function generate_assign(left, right)
     end
     return quote
         $right_val = $right
-        if $(DynamicPPL.is_extracting_values)(__varinfo__)
+        if $(DynamicPPL.is_extracting_colon_eq_values)(__varinfo__)
             $vn = $(make_varname_expression(left))
             __varinfo__ = $(DynamicPPL.store_coloneq_value!!)(
                 __model__.context, $vn, $right_val, $template, __varinfo__

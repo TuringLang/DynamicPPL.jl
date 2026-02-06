@@ -42,14 +42,14 @@ function ParamsWithStats(
         (
             DynamicPPL.LogPriorAccumulator(),
             DynamicPPL.LogLikelihoodAccumulator(),
-            DynamicPPL.ValuesAsInModelAccumulator(include_colon_eq),
+            DynamicPPL.RawValueAccumulator(include_colon_eq),
         )
     else
-        (DynamicPPL.ValuesAsInModelAccumulator(include_colon_eq),)
+        (DynamicPPL.RawValueAccumulator(include_colon_eq),)
     end
     varinfo = DynamicPPL.setaccs!!(varinfo, accs)
     varinfo = last(DynamicPPL.evaluate!!(model, varinfo))
-    params = DynamicPPL.getacc(varinfo, Val(:ValuesAsInModel)).values
+    params = get_raw_values(varinfo)
     if include_log_probs
         stats = merge(
             stats,
@@ -71,10 +71,10 @@ end
     )
 
 There is one case where re-evaluation is not necessary, which is when the VarInfos all
-already contain `DynamicPPL.ValuesAsInModelAccumulator`. This accumulator stores values
+already contain `DynamicPPL.RawValueAccumulator`. This accumulator stores values
 as seen during the model evaluation, so the values can be simply read off. In this case,
 the `model` argument can be omitted, and no re-evaluation will be performed. However, it is
-the caller's responsibility to ensure that `ValuesAsInModelAccumulator` is indeed present
+the caller's responsibility to ensure that `RawValueAccumulator` is indeed present
 inside `varinfo`.
 
 `include_log_probs` controls whether log probabilities (log prior, log likelihood, and log
@@ -83,7 +83,7 @@ joint) are added to the resulting statistics NamedTuple.
 function ParamsWithStats(
     varinfo::AbstractVarInfo, stats::NamedTuple=NamedTuple(); include_log_probs::Bool=true
 )
-    params = DynamicPPL.getacc(varinfo, Val(:ValuesAsInModel)).values
+    params = get_raw_values(varinfo)
     if include_log_probs
         has_prior_acc = DynamicPPL.hasacc(varinfo, Val(:LogPrior))
         has_likelihood_acc = DynamicPPL.hasacc(varinfo, Val(:LogLikelihood))
@@ -134,10 +134,10 @@ function ParamsWithStats(
         (
             DynamicPPL.LogPriorAccumulator(),
             DynamicPPL.LogLikelihoodAccumulator(),
-            DynamicPPL.ValuesAsInModelAccumulator(include_colon_eq),
+            DynamicPPL.RawValueAccumulator(include_colon_eq),
         )
     else
-        (DynamicPPL.ValuesAsInModelAccumulator(include_colon_eq),)
+        (DynamicPPL.RawValueAccumulator(include_colon_eq),)
     end
     # UnlinkAll() actually doesn't have any impact here, because there isn't even a
     # LogJacobianAccumulator; consequently, it doesn't matter whether we interpret the
@@ -145,7 +145,7 @@ function ParamsWithStats(
     _, vi = DynamicPPL.init!!(
         ldf.model, OnlyAccsVarInfo(AccumulatorTuple(accs)), strategy, UnlinkAll()
     )
-    params = DynamicPPL.getacc(vi, Val(:ValuesAsInModel)).values
+    params = get_raw_values(vi)
     if include_log_probs
         stats = merge(
             stats,

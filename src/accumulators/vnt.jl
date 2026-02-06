@@ -33,6 +33,9 @@ end
 
 accumulator_name(::VNTAccumulator{AccName}) where {AccName} = AccName
 
+# TODO(mhauru) We could start using reset!!, which could call empty!! on the VarNamedTuple.
+# This would create VarNamedTuples that share memory with the original one, saving
+# allocations but also making them not capable of taking in any arbitrary VarName.
 function _zero(acc::VNTAccumulator{AccName}) where {AccName}
     return VNTAccumulator{AccName}(acc.f, empty(acc.values))
 end

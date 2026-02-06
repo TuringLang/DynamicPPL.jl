@@ -172,7 +172,7 @@ Note that these functions have very similar names!
 ```@example 1
 vi = VarInfo()
 # Add a new accumulator
-vi = setacc!!(vi, ValuesAsInModelAccumulator(false))
+vi = setacc!!(vi, RawValueAccumulator(false))
 ```
 
 In the case of `setacc!!`, the accumulator will be _added_ to the existing set if it has a name (as defined by [`accumulator_name`](@ref)) that is not already present.
@@ -190,8 +190,8 @@ It takes a tuple of accumulators as input.
 
 ```@example 1
 vi = VarInfo()
-# Replace all accumulators with just a ValuesAsInModelAccumulator
-acc = ValuesAsInModelAccumulator(false)
+# Replace all accumulators with just a RawValueAccumulator
+acc = RawValueAccumulator(false)
 vi = setaccs!!(vi, (acc,))
 ```
 

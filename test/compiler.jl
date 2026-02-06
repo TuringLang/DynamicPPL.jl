@@ -762,15 +762,19 @@ module Issue537 end
             @test haskey(varinfo, @varname(x))
             @test !haskey(varinfo, @varname(y))
 
-            # While `values_as_in_model` should contain both `x` and `y`, if
-            # include_colon_eq is set to `true`.
-            values = values_as_in_model(model, true, deepcopy(varinfo))
+            # A `RawValueAccumulator` should contain both `x` and `y`, if include_colon_eq
+            # is set to `true`.
+            vi = OnlyAccsVarInfo((RawValueAccumulator(true),))
+            _, vi = init!!(model, vi, InitFromPrior(), UnlinkAll())
+            values = get_raw_values(vi)
             @test haskey(values, @varname(x))
             @test haskey(values, @varname(y))
 
-            # And if include_colon_eq is set to `false`, then `values` should
-            # only contain `x`.
-            values = values_as_in_model(model, false, deepcopy(varinfo))
+            # And if include_colon_eq is set to `false`, then `values` should only contain
+            # `x`.
+            vi = OnlyAccsVarInfo((RawValueAccumulator(false),))
+            _, vi = init!!(model, vi, InitFromPrior(), UnlinkAll())
+            values = get_raw_values(vi)
             @test haskey(values, @varname(x))
             @test !haskey(values, @varname(y))
         end
@@ -792,13 +796,15 @@ module Issue537 end
         @test haskey(varinfo, @varname(b.a.x))
         @test length(keys(varinfo)) == 1
 
-        values = values_as_in_model(model, true, deepcopy(varinfo))
+        vi = OnlyAccsVarInfo((RawValueAccumulator(true),))
+        _, vi = init!!(model, vi, InitFromPrior(), UnlinkAll())
+        values = get_raw_values(vi)
         @test haskey(values, @varname(b.a.x))
         @test haskey(values, @varname(b.a.y))
 
-        # And if include_colon_eq is set to `false`, then `values` should
-        # only contain `x`.
-        values = values_as_in_model(model, false, deepcopy(varinfo))
+        vi = OnlyAccsVarInfo((RawValueAccumulator(false),))
+        _, vi = init!!(model, vi, InitFromPrior(), UnlinkAll())
+        values = get_raw_values(vi)
         @test haskey(values, @varname(b.a.x))
         @test length(keys(varinfo)) == 1
     end

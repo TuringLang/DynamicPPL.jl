@@ -213,7 +213,9 @@ end
             a, vi = DynamicPPL.init!!(model, VarInfo())
             @test only(keys(vi)) == @varname(x.a)
 
-            vnt = values_as_in_model(model, true, vi)
+            vi = OnlyAccsVarInfo((RawValueAccumulator(true),))
+            _, vi = init!!(model, vi, InitFromPrior(), UnlinkAll())
+            vnt = get_raw_values(vi)
             @test vnt[@varname(x.a)] == a
             @test vnt[@varname(x.b)] == vnt[@varname(x.a)] + 1.0
         end
@@ -236,7 +238,9 @@ end
             a, vi = DynamicPPL.init!!(model, VarInfo())
             @test only(keys(vi)) == @varname(x.a)
 
-            vnt = values_as_in_model(model, true, vi)
+            vi = OnlyAccsVarInfo((RawValueAccumulator(true),))
+            _, vi = init!!(model, vi, InitFromPrior(), UnlinkAll())
+            vnt = get_raw_values(vi)
             @test vnt[@varname(x.a)] == a
             @test vnt[@varname(x.b[1])] == vnt[@varname(x.a)] + 1.0
             # If the templating fails, then x.b will be stored as a GrowableArray, and

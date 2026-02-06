@@ -58,9 +58,7 @@ using Test
         # Without VAIM, it should error
         @test_throws ErrorException ParamsWithStats(VarInfo(model))
         # With VAIM, it should work
-        vi = DynamicPPL.setaccs!!(
-            VarInfo(model), (DynamicPPL.ValuesAsInModelAccumulator(true),)
-        )
+        vi = DynamicPPL.setaccs!!(VarInfo(model), (DynamicPPL.RawValueAccumulator(true),))
         vi = last(DynamicPPL.evaluate!!(model, vi))
         ps = ParamsWithStats(vi)
         @test haskey(ps.params, @varname(x))
@@ -101,7 +99,7 @@ _safe_length(c::LinearAlgebra.Cholesky) = length(c.UL)
             ps = ParamsWithStats(params, ldf)
 
             # The keys are not necessarily going to be the same, because `ps.params` was
-            # obtained via ValuesAsInModelAcc, which only stores raw values. However, `vi`
+            # obtained via RawValueAccumulator, which only stores raw values. However, `vi`
             # stores TransformedValue objects. So, if you have something like
             #    x[4:5] ~ MvNormal(zeros(2), I)
             # then `ps.params` will have keys `x[4]` and `x[5]` (since it just contains a

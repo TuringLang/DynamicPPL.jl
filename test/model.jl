@@ -9,7 +9,7 @@ using AbstractPPL: AbstractPPL
 using Distributions
 using DistributionsAD: filldist
 using DynamicPPL
-using LinearAlgebra: I
+using LinearAlgebra: I, Cholesky
 using MCMCChains: MCMCChains
 using Random: Random, Xoshiro
 using Test
@@ -19,7 +19,7 @@ short_varinfo_name(::DynamicPPL.VarInfo) = "VarInfo"
 
 function make_chain_from_prior(rng::Random.AbstractRNG, model::Model, n_iters::Int)
     vi = VarInfo(model)
-    vi = DynamicPPL.setaccs!!(vi, (DynamicPPL.ValuesAsInModelAccumulator(false),))
+    vi = DynamicPPL.setaccs!!(vi, (DynamicPPL.RawValueAccumulator(false),))
     ps = hcat([
         DynamicPPL.ParamsWithStats(last(DynamicPPL.init!!(rng, model, vi))) for
         _ in 1:n_iters
@@ -484,7 +484,12 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
         end
     end
 
-    @testset "values_as_in_model" begin
+    @testset "RawValueAccumulator" begin
+        # On < 1.12, Cholesky compares the upper triangular elements even when it wraps a
+        # LowerTriangular: https://github.com/JuliaLang/LinearAlgebra.jl/pull/1404
+        test_is_equal(x, y) = @test x == y
+        test_is_equal(x::Cholesky, y::Cholesky) = @test x.UL == y.UL
+
         @testset "$(model.f)" for model in DynamicPPL.TestUtils.ALL_MODELS
             vns = DynamicPPL.TestUtils.varnames(model)
             vns_split = DynamicPPL.TestUtils.varnames_split(model)
@@ -494,13 +499,15 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
                 # We can set the include_colon_eq arg to false because none of
                 # the demo models contain :=. The behaviour when
                 # include_colon_eq is true is tested in test/compiler.jl
-                realizations = values_as_in_model(model, false, varinfo)
+                varinfo = DynamicPPL.setacc!!(varinfo, RawValueAccumulator(false))
+                _, varinfo = init!!(model, varinfo, InitFromPrior(), UnlinkAll())
+                realizations = get_raw_values(varinfo)
                 # Ensure that all variables are found.
                 vns_found = collect(keys(realizations))
                 @test vns_split ∩ vns_found == vns_split ∪ vns_found
                 # Ensure that the values are the same.
                 for vn in vns
-                    @test realizations[vn] == varinfo[vn]
+                    test_is_equal(realizations[vn], varinfo[vn])
                 end
             end
         end
@@ -520,8 +527,9 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
             end
 
             for model in (outer_auto_prefix(), outer_manual_prefix())
-                vi = VarInfo(model)
-                vns = Set(keys(values_as_in_model(model, false, vi)))
+                vi = OnlyAccsVarInfo((RawValueAccumulator(false),))
+                _, vi = init!!(model, vi, InitFromPrior(), UnlinkAll())
+                vns = Set(keys(get_raw_values(vi)))
                 @test vns == Set([@varname(a.x), @varname(b.x)])
             end
         end
