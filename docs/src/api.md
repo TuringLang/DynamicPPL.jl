@@ -613,7 +613,8 @@ If you only have a vector you can use `hcat` to convert it into an `N×1` matrix
 Furthermore, one can convert chains back into a collection of parameter dictionaries and/or stats with:
 
 ```@docs
-AbstractMCMC.to_samples(::Type{DynamicPPL.ParamsWithStats}, ::MCMCChains.Chains)
+AbstractMCMC.to_samples(::Type{DynamicPPL.ParamsWithStats}, ::MCMCChains.Chains, ::DynamicPPL.Model)
 ```
 
+(Note that the model argument is mandatory as it provides templating information for the variables in the chains.)
 With these, you can (for example) extract the parameter dictionaries and use `InitFromParams` to re-evaluate a model at each point in the chain.

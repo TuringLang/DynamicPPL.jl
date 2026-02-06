@@ -96,6 +96,7 @@ end
     AbstractMCMC.to_samples(
         ::Type{DynamicPPL.ParamsWithStats},
         chain::MCMCChains.Chains,
+        model::DynamicPPL.Model
     )
 
 Convert an `MCMCChains.Chains` object to an array of `DynamicPPL.ParamsWithStats`.
@@ -103,14 +104,27 @@ Convert an `MCMCChains.Chains` object to an array of `DynamicPPL.ParamsWithStats
 For this to work, `chain` must contain the `varname_to_symbol` mapping in its `info` field.
 """
 function AbstractMCMC.to_samples(
-    ::Type{DynamicPPL.ParamsWithStats}, chain::MCMCChains.Chains
+    ::Type{DynamicPPL.ParamsWithStats}, chain::MCMCChains.Chains, model::DynamicPPL.Model
 )
+    # Run model once to get templates for parameters. Note that the chain may include
+    # variables stored with `:=`, so we need to pick those up as well.
+    vi = DynamicPPL.OnlyAccsVarInfo((DynamicPPL.RawValueAccumulator(true),))
+    _, vi = DynamicPPL.init!!(model, vi, DynamicPPL.InitFromPrior(), DynamicPPL.UnlinkAll())
+    template_vnt = DynamicPPL.get_raw_values(vi)
+    # Now we can iterate over the chain
     idxs = Iterators.product(1:size(chain, 1), 1:size(chain, 3))
     # Get parameters
     params_matrix = map(idxs) do (sample_idx, chain_idx)
         vnt = DynamicPPL.VarNamedTuple()
         for vn in get_varnames(chain)
-            vnt = setindex!!(vnt, getindex_varname(chain, sample_idx, vn, chain_idx), vn)
+            top_sym = AbstractPPL.getsym(vn)
+            val = getindex_varname(chain, sample_idx, vn, chain_idx)
+            # This call to get() is type unstable, but I tried writing a generated function
+            # that was type stable and it's really no different in terms of performance.
+            # Presumably this is minimal compared to the rest of the work we do in this
+            # function
+            template = get(vnt.data, top_sym, DynamicPPL.NoTemplate())
+            vnt = DynamicPPL.templated_setindex!!(vnt, val, vn, template)
         end
         vnt
     end
@@ -193,7 +207,7 @@ function reevaluate_with_chain(
     accs::NTuple{N,DynamicPPL.AbstractAccumulator},
     fallback::Union{DynamicPPL.AbstractInitStrategy,Nothing}=nothing,
 ) where {N}
-    params_with_stats = AbstractMCMC.to_samples(DynamicPPL.ParamsWithStats, chain)
+    params_with_stats = AbstractMCMC.to_samples(DynamicPPL.ParamsWithStats, chain, model)
     vi = DynamicPPL.OnlyAccsVarInfo(DynamicPPL.AccumulatorTuple(accs))
     return map(params_with_stats) do ps
         DynamicPPL.init!!(
