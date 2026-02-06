@@ -762,8 +762,10 @@ function (model::Model)(varinfo::AbstractVarInfo)
 end
 # ^ Weird Documenter.jl bug means that we have to write the two above separately
 # as it can only detect the `function`-less syntax.
-function (model::Model)(rng::Random.AbstractRNG, varinfo::AbstractVarInfo=VarInfo())
-    return first(init!!(rng, model, varinfo))
+function (model::Model)(
+    rng::Random.AbstractRNG, varinfo::AbstractVarInfo=OnlyAccsVarInfo(())
+)
+    return first(init!!(rng, model, varinfo, InitFromPrior(), UnlinkAll()))
 end
 
 """
@@ -771,7 +773,7 @@ end
         [rng::Random.AbstractRNG,]
         model::Model,
         varinfo::AbstractVarInfo,
-        [init_strategy::AbstractInitStrategy=InitFromPrior(),]
+        init_strategy::AbstractInitStrategy,
         [transform_strategy::AbstractTransformStrategy=get_transform_strategy(varinfo),]
     )
 
@@ -779,14 +781,13 @@ Evaluate the `model` and replace the values of the model's random variables in t
 `varinfo` with new values, using a specified initialisation strategy. If the values in
 `varinfo` are not set, they will be added using a specified initialisation strategy.
 
-If `init_strategy` is not provided, defaults to `InitFromPrior()`.
-
-`transform_strategy` tells the model evaluation whether variables should be interpreted as linked
-or unlinked. Right now, it is slightly complicated because the default behaviour depends on
-the `varinfo` provided. If `varinfo isa VarInfo`, then the transform strategy is inferred
-from the VarInfo, i.e., linked variables in the VarInfo are treated as linked during
-evaluation. Conversely, if `varinfo isa OnlyAccsVarInfo`, then all variables are treated as
-unlinked.
+`transform_strategy` tells the model evaluation whether variables should be interpreted as
+linked or unlinked. Right now, it is slightly complicated because the default behaviour
+depends on the `varinfo` provided. If `varinfo isa VarInfo`, then the transform strategy is
+inferred from the VarInfo, i.e., linked variables in the VarInfo are treated as linked
+during evaluation. Conversely, if `varinfo isa OnlyAccsVarInfo`, then you must specify the
+transform strategy explicitly, since an `OnlyAccsVarInfo` does not contain any information
+about which variables are transformed.
 
 Returns a tuple of the model's return value, plus the updated `varinfo` object.
 """
@@ -794,34 +795,89 @@ function init!!(
     rng::Random.AbstractRNG,
     model::Model,
     vi::AbstractVarInfo,
-    strategy::AbstractInitStrategy=InitFromPrior(),
+    init_strategy::AbstractInitStrategy,
     transform_strategy::AbstractTransformStrategy=get_transform_strategy(vi),
 )
-    ctx = InitContext(rng, strategy, transform_strategy)
+    ctx = InitContext(rng, init_strategy, transform_strategy)
     model = DynamicPPL.setleafcontext(model, ctx)
-    return DynamicPPL.evaluate!!(model, vi)
+    return DynamicPPL.evaluate_nowarn!!(model, vi)
 end
 function init!!(
     model::Model,
     vi::AbstractVarInfo,
-    strategy::AbstractInitStrategy=InitFromPrior(),
+    init_strategy::AbstractInitStrategy=InitFromPrior(),
     transform_strategy::AbstractTransformStrategy=get_transform_strategy(vi),
 )
-    return init!!(Random.default_rng(), model, vi, strategy, transform_strategy)
+    return init!!(Random.default_rng(), model, vi, init_strategy, transform_strategy)
 end
 
 """
     evaluate!!(model::Model, varinfo)
 
-Evaluate the `model` with the given `varinfo`.
+Evaluate the `model` with the given `varinfo`, wrapping it in a `ThreadSafeVarInfo` if the
+model is marked as needing threadsafe evaluation.
 
-If the model has been marked as requiring threadsafe evaluation, are available, the varinfo
-provided will be wrapped in a `ThreadSafeVarInfo` before evaluation.
+!!! warning
+    The semantics of this method are complicated. We **strongly** recommend that users do
+    *not* use this method unless absolutely necessary. In the future this method will be
+    deprecated and removed. As far as possible (and it should **always** be possible --
+    please open an issue if you do not know how to adapt your code!) you should use the
+    five-argument `init!!([rng,] model, ::OnlyAccsVarInfo, init_strategy,
+    transform_strategy)` method, which has more explicit semantics and allows you to have
+    more control over each part of the evaluation process.
 
-Returns a tuple of the model's return value, plus the updated `varinfo`
-(unwrapped if necessary).
+The exact semantics depend on the `model`'s context. Fundamentally, this method executes the
+model evaluation function (i.e., the function used to define the model) using the given
+`varinfo` as an argument. At each tilde-statement, `tilde_assume!!` or `tilde_observe!!` is
+called, whose behaviour depends on the model's context.
+
+Broadly speaking, if the leaf context is an `InitContext`, then this function:
+
+- uses the initialisation strategy inside the `InitContext`;
+- uses the transform strategy inside the `InitContext`;
+- uses the accumulators inside `varinfo` (resetting them before evaluation);
+- overwrites the values in `varinfo` with the new values obtained from the initialisation strategy.
+
+If the leaf context is a `DefaultContext`, then this function:
+
+- uses the values inside the `varinfo` as the initialisation strategy;
+- derives a transform strategy from the `varinfo`'s stored variables (if a linked variable is
+  stored, then the transform strategy will treat that variable as linked; likewise for
+  unlinked)
+- uses the accumulators inside `varinfo` (resetting them before evaluation);
+- does not overwrite the values in the `varinfo` (that is unnecessary since the values used
+  for evaluation are already stored in `varinfo`).
+
+The long-term plan for this method is to:
+
+- Replace `DefaultContext` with `InitContext` by splitting up the functionality of `DefaultContext`
+  into its constituent components
+- Remove the `VarInfo` argument, and instead use only an `AccumulatorTuple`
+- Separate the initialisation and transform strategies into separate arguments, instead of storing
+  them inside the model's context.
 """
 function AbstractPPL.evaluate!!(model::Model, varinfo::AbstractVarInfo)
+    @warn (
+        "Calling `evaluate!!(model, varinfo)` directly is not recommended and will be" *
+        " deprecated in the future. Please switch to using `init!!([rng,] model," *
+        " ::OnlyAccsVarInfo, init_strategy, transform_strategy)` instead, which" *
+        " has more explicit semantics and allows you to have more control over each" *
+        " part of the evaluation process. Please see the DynamicPPL documentation" *
+        " for more details: https://turinglang.org/DynamicPPL.jl/stable/evaluation"
+    ) maxlog = 5
+    return DynamicPPL.evaluate_nowarn!!(model, varinfo)
+end
+
+"""
+    evaluate_nowarn!!(model::Model, varinfo)
+
+This is the same as `evaluate!!(model, varinfo)` but without the deprecation warning.
+
+!!! warning
+    This is meant for internal use in DynamicPPL.jl only! If you rely on this method in your
+    code, please note that it may break at any time.
+"""
+function evaluate_nowarn!!(model::Model, varinfo::AbstractVarInfo)
     return if requires_threadsafe(model)
         # Use of float_type_with_fallback(eltype(x)) is necessary to deal with cases where x is
         # a gradient type of some AD backend.
@@ -987,15 +1043,15 @@ julia> # Truth.
 -9902.33787706641
 ```
 """
-function logjoint(model::Model, varinfo::AbstractVarInfo)
-    return getlogjoint(last(evaluate!!(model, varinfo)))
-end
 function logjoint(model::Model, params)
     vi = OnlyAccsVarInfo(
         AccumulatorTuple(LogPriorAccumulator(), LogLikelihoodAccumulator())
     )
-    ctx = InitFromParams(params, nothing)
-    return getlogjoint(last(init!!(model, vi, ctx, UnlinkAll())))
+    init_strategy = InitFromParams(params, nothing)
+    return getlogjoint(last(init!!(model, vi, init_strategy, UnlinkAll())))
+end
+function logjoint(model::Model, varinfo::AbstractVarInfo)
+    return logjoint(model, get_values(varinfo))
 end
 
 """
@@ -1033,20 +1089,13 @@ julia> # Truth.
 -5000.918938533205
 ```
 """
-function logprior(model::Model, varinfo::AbstractVarInfo)
-    # Remove other accumulators from varinfo, since they are unnecessary.
-    logprioracc = if hasacc(varinfo, Val(:LogPrior))
-        getacc(varinfo, Val(:LogPrior))
-    else
-        LogPriorAccumulator()
-    end
-    varinfo = setaccs!!(deepcopy(varinfo), (logprioracc,))
-    return getlogprior(last(evaluate!!(model, varinfo)))
-end
 function logprior(model::Model, params)
     vi = OnlyAccsVarInfo(AccumulatorTuple(LogPriorAccumulator()))
-    ctx = InitFromParams(params, nothing)
-    return getlogprior(last(init!!(model, vi, ctx, UnlinkAll())))
+    init_strategy = InitFromParams(params, nothing)
+    return getlogprior(last(init!!(model, vi, init_strategy, UnlinkAll())))
+end
+function logprior(model::Model, varinfo::AbstractVarInfo)
+    return logprior(model, get_values(varinfo))
 end
 
 """
@@ -1080,131 +1129,13 @@ julia> # Truth.
        logpdf(Normal(100.0, 1.0), 1.0)
 -4901.418938533205
 """
-function Distributions.loglikelihood(model::Model, varinfo::AbstractVarInfo)
-    # Remove other accumulators from varinfo, since they are unnecessary.
-    loglikelihoodacc = if hasacc(varinfo, Val(:LogLikelihood))
-        getacc(varinfo, Val(:LogLikelihood))
-    else
-        LogLikelihoodAccumulator()
-    end
-    varinfo = setaccs!!(deepcopy(varinfo), (loglikelihoodacc,))
-    return getloglikelihood(last(evaluate!!(model, varinfo)))
-end
 function Distributions.loglikelihood(model::Model, params)
     vi = OnlyAccsVarInfo(AccumulatorTuple(LogLikelihoodAccumulator()))
-    ctx = InitFromParams(params, nothing)
-    return getloglikelihood(last(init!!(model, vi, ctx, UnlinkAll())))
+    init_strategy = InitFromParams(params, nothing)
+    return getloglikelihood(last(init!!(model, vi, init_strategy, UnlinkAll())))
 end
-
-"""
-    logjoint(model::Model, values::Union{NamedTuple,AbstractDict})
-
-Return the log joint probability of variables `values` for the probabilistic `model`.
-
-See [`logprior`](@ref) and [`loglikelihood`](@ref).
-
-# Examples
-```jldoctest; setup=:(using Distributions)
-julia> @model function demo(x)
-           m ~ Normal()
-           for i in eachindex(x)
-               x[i] ~ Normal(m, 1.0)
-           end
-       end
-demo (generic function with 2 methods)
-
-julia> # Using a `NamedTuple`.
-       logjoint(demo([1.0]), (m = 100.0, ))
--9902.33787706641
-
-julia> # Using a `OrderedDict`.
-       logjoint(demo([1.0]), OrderedDict(@varname(m) => 100.0))
--9902.33787706641
-
-julia> # Truth.
-       logpdf(Normal(100.0, 1.0), 1.0) + logpdf(Normal(), 100.0)
--9902.33787706641
-```
-"""
-function logjoint(model::Model, values::Union{NamedTuple,AbstractDict})
-    accs = AccumulatorTuple((LogPriorAccumulator(), LogLikelihoodAccumulator()))
-    vi = OnlyAccsVarInfo(accs)
-    _, vi = DynamicPPL.init!!(model, vi, InitFromParams(values, nothing), UnlinkAll())
-    return getlogjoint(vi)
-end
-
-"""
-    logprior(model::Model, values::Union{NamedTuple,AbstractDict})
-
-Return the log prior probability of variables `values` for the probabilistic `model`.
-
-See also [`logjoint`](@ref) and [`loglikelihood`](@ref).
-
-# Examples
-```jldoctest; setup=:(using Distributions)
-julia> @model function demo(x)
-           m ~ Normal()
-           for i in eachindex(x)
-               x[i] ~ Normal(m, 1.0)
-           end
-       end
-demo (generic function with 2 methods)
-
-julia> # Using a `NamedTuple`.
-       logprior(demo([1.0]), (m = 100.0, ))
--5000.918938533205
-
-julia> # Using a `OrderedDict`.
-       logprior(demo([1.0]), OrderedDict(@varname(m) => 100.0))
--5000.918938533205
-
-julia> # Truth.
-       logpdf(Normal(), 100.0)
--5000.918938533205
-```
-"""
-function logprior(model::Model, values::Union{NamedTuple,AbstractDict})
-    accs = AccumulatorTuple((LogPriorAccumulator(),))
-    vi = OnlyAccsVarInfo(accs)
-    _, vi = DynamicPPL.init!!(model, vi, InitFromParams(values, nothing), UnlinkAll())
-    return getlogprior(vi)
-end
-
-"""
-    loglikelihood(model::Model, values::Union{NamedTuple,AbstractDict})
-
-Return the log likelihood of variables `values` for the probabilistic `model`.
-
-See also [`logjoint`](@ref) and [`logprior`](@ref).
-
-# Examples
-```jldoctest; setup=:(using Distributions)
-julia> @model function demo(x)
-           m ~ Normal()
-           for i in eachindex(x)
-               x[i] ~ Normal(m, 1.0)
-           end
-       end
-demo (generic function with 2 methods)
-
-julia> # Using a `NamedTuple`.
-       loglikelihood(demo([1.0]), (m = 100.0, ))
--4901.418938533205
-
-julia> # Using a `OrderedDict`.
-       loglikelihood(demo([1.0]), OrderedDict(@varname(m) => 100.0))
--4901.418938533205
-
-julia> # Truth.
-       logpdf(Normal(100.0, 1.0), 1.0)
--4901.418938533205
-```
-"""
-function Distributions.loglikelihood(model::Model, values::Union{NamedTuple,AbstractDict})
-    accs = AccumulatorTuple((LogLikelihoodAccumulator(),))
-    vi = OnlyAccsVarInfo(accs)
-    _, vi = DynamicPPL.init!!(model, vi, InitFromParams(values, nothing), UnlinkAll())
-    return getloglikelihood(vi)
+function Distributions.loglikelihood(model::Model, varinfo::AbstractVarInfo)
+    return loglikelihood(model, get_values(varinfo))
 end
 
 # Implemented & documented in DynamicPPLMCMCChainsExt

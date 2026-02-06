@@ -74,9 +74,10 @@ function pointwise_logdensities(
     model::Model, varinfo::AbstractVarInfo, ::Val{whichlogprob}=Val(:both)
 ) where {whichlogprob}
     AccType = PointwiseLogProbAccumulator{whichlogprob}
-    varinfo = setaccs!!(varinfo, (AccType(),))
-    varinfo = last(evaluate!!(model, varinfo))
-    return getacc(varinfo, Val(accumulator_name(AccType))).logps
+    oavi = OnlyAccsVarInfo((AccType(),))
+    init_strategy = InitFromParams(varinfo.values, nothing)
+    varinfo = last(init!!(model, oavi, init_strategy, UnlinkAll()))
+    return getacc(oavi, Val(accumulator_name(AccType))).logps
 end
 
 function pointwise_loglikelihoods(model::Model, varinfo::AbstractVarInfo)

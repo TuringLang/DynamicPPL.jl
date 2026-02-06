@@ -37,10 +37,13 @@ function test_leaf_context(context::DynamicPPL.AbstractContext, model::DynamicPP
     # filled with values.
     @testset "evaluation" begin
         # Generate a new filled varinfo
-        _, vi = DynamicPPL.init!!(model, DynamicPPL.VarInfo())
+        vi = DynamicPPL.VarInfo(model)
         # Set the test context as the new leaf context
         new_model = DynamicPPL.setleafcontext(model, context)
-        _, vi = DynamicPPL.evaluate!!(new_model, vi)
+        # It might seem a bit ugly that we have to use `evaluate_nowarn!!` here. Essentially
+        # we want to test that low-level evaluation works with the context, so this is the
+        # right thing to do.
+        _, vi = DynamicPPL.evaluate_nowarn!!(new_model, vi)
         @test vi isa DynamicPPL.VarInfo
     end
 end
@@ -71,10 +74,15 @@ function test_parent_context(context::DynamicPPL.AbstractContext, model::Dynamic
         new_model = contextualize(model, context)
         vi = DynamicPPL.VarInfo()
         # Initialisation
-        _, vi = DynamicPPL.init!!(new_model, DynamicPPL.VarInfo())
+        _, vi = DynamicPPL.init!!(
+            new_model,
+            DynamicPPL.VarInfo(),
+            DynamicPPL.InitFromPrior(),
+            DynamicPPL.UnlinkAll(),
+        )
         @test vi isa DynamicPPL.VarInfo
-        # Evaluation
-        _, vi = DynamicPPL.evaluate!!(new_model, vi)
+        # Evaluation. See above regarding note about evaluate_nowarn!!.
+        _, vi = DynamicPPL.evaluate_nowarn!!(new_model, vi)
         @test vi isa DynamicPPL.VarInfo
     end
 end

@@ -124,6 +124,15 @@ function setaccs!!(vi::AbstractVarInfo, accs::NTuple{N,AbstractAccumulator}) whe
 end
 
 """
+    get_values(vi::AbstractVarInfo)
+
+Return the `VarNamedTuple` in `vi` that stores the variables' values.
+
+This should be implemented by each subtype of `AbstractVarInfo`.
+"""
+function get_values end
+
+"""
     getaccs(vi::AbstractVarInfo)
 
 Return the `AccumulatorTuple` of `vi`.

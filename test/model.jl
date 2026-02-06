@@ -18,11 +18,13 @@ short_varinfo_name(::DynamicPPL.ThreadSafeVarInfo) = "ThreadSafeVarInfo"
 short_varinfo_name(::DynamicPPL.VarInfo) = "VarInfo"
 
 function make_chain_from_prior(rng::Random.AbstractRNG, model::Model, n_iters::Int)
-    vi = VarInfo(model)
-    vi = DynamicPPL.setaccs!!(vi, (DynamicPPL.RawValueAccumulator(false),))
+    vi = DynamicPPL.OnlyAccsVarInfo((
+        DynamicPPL.default_accumulators()..., DynamicPPL.RawValueAccumulator(false)
+    ))
     ps = hcat([
-        DynamicPPL.ParamsWithStats(last(DynamicPPL.init!!(rng, model, vi))) for
-        _ in 1:n_iters
+        DynamicPPL.ParamsWithStats(
+            last(DynamicPPL.init!!(rng, model, vi, InitFromPrior(), UnlinkAll()))
+        ) for _ in 1:n_iters
     ])
     return AbstractMCMC.from_samples(MCMCChains.Chains, ps)
 end

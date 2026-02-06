@@ -143,9 +143,21 @@ VarInfo used in the marginalisation.
 !!! note
 
     The other fields of the VarInfo, e.g. accumulated log-probabilities, will not be
-    updated. If you wish to have a fully consistent VarInfo, you should re-evaluate the
-    model with the returned VarInfo (e.g. using `vi = last(DynamicPPL.evaluate!!(model,
-    vi))`).
+    updated. If you wish to obtain updated log-probabilities, you should re-evaluate the
+    model with the values inside the returned VarInfo, for example using:
+
+    ```julia
+    init_strategy = DynamicPPL.InitFromParams(varinfo.values, nothing)
+    oavi = DynamicPPL.OnlyAccsVarInfo((
+        DynamicPPL.LogPriorAccumulator(),
+        DynamicPPL.LogLikelihoodAccumulator(),
+        DynamicPPL.RawValueAccumulator(false),
+        # ... whatever else you need
+    ))
+    _, oavi = DynamicPPL.init!!(rng, model, oavi, init_strategy, DynamicPPL.UnlinkAll())
+    ```
+
+    You can then extract all the updated data from `oavi`.
 
 ## Example
 

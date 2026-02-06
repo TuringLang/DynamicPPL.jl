@@ -28,6 +28,8 @@ function setacc!!(vi::ThreadSafeVarInfo, acc::AbstractAccumulator)
     return ThreadSafeVarInfo(inner_vi, news_accs_by_thread)
 end
 
+get_values(vi::ThreadSafeVarInfo) = get_values(vi.varinfo)
+
 # Get both the main accumulator and the thread-specific accumulators of the same type and
 # combine them.
 function getacc(vi::ThreadSafeVarInfo, accname::Val)

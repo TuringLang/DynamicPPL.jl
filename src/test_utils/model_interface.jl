@@ -88,13 +88,16 @@ function logprior_true_with_logabsdet_jacobian end
 
 Return a collection of `VarName` as they are expected to appear in the model.
 
-Even though it is recommended to implement this by hand for a particular `Model`,
-a default implementation using [`VarInfo`](@ref) is provided.
+Even though it is recommended to implement this by hand for a particular `Model`, a default
+implementation that evaluates the model is provided.
 """
 function varnames(model::Model)
-    result = collect(keys(last(DynamicPPL.init!!(model, VarInfo()))))
+    vval_acc = DynamicPPL.VectorValueAccumulator()
+    oavi = OnlyAccsVarInfo((vval_acc,))
+    _, oavi = DynamicPPL.init!!(model, oavi, InitFromPrior(), UnlinkAll())
+    vvals = DynamicPPL.getacc(oavi, Val(DynamicPPL.accumulator_name(vval_acc))).values
     # Concretise the element type.
-    return [x for x in result]
+    return [x for x in keys(vvals)]
 end
 
 """

@@ -411,8 +411,8 @@ ERROR: varname x used multiple times in model
 function check_model_and_trace(
     model::Model, varinfo::AbstractVarInfo; error_on_failure=false
 )
-    # Add debug accumulator to the VarInfo.
-    varinfo = DynamicPPL.setaccs!!(deepcopy(varinfo), (DebugAccumulator(error_on_failure),))
+    oavi = DynamicPPL.OnlyAccsVarInfo((DebugAccumulator(error_on_failure),))
+    init_strategy = InitFromParams(varinfo.values, nothing)
 
     # Perform checks before evaluating the model.
     issuccess = check_model_pre_evaluation(model)
@@ -420,10 +420,10 @@ function check_model_and_trace(
     # TODO(penelopeysm): Implement merge, etc. for DebugAccumulator, and then perform a
     # check on the merged accumulator, rather than checking it in the accumulate_assume
     # calls. That way we can also correctly support multi-threaded evaluation.
-    _, varinfo = DynamicPPL.evaluate!!(model, varinfo)
+    _, oavi = DynamicPPL.init!!(model, oavi, init_strategy, UnlinkAll())
 
     # Perform checks after evaluating the model.
-    debug_acc = DynamicPPL.getacc(varinfo, Val(_DEBUG_ACC_NAME))
+    debug_acc = DynamicPPL.getacc(oavi, Val(_DEBUG_ACC_NAME))
     issuccess = issuccess && check_model_post_evaluation(debug_acc)
 
     if !issuccess && error_on_failure

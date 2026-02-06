@@ -76,7 +76,10 @@ Please see the docstring for details.
 Each initialisation strategy can decide what kind of `AbstractTransformedValue` to return.
 This has no impact on whether the log-Jacobian is calculated or not, as that is determined by the *transform strategy* (see below).
 
-### Transform strategies
+### `init!!` and transform strategies
+
+The initialisation strategy argument to `init!!` used to default to `InitFromPrior()`.
+It is now mandatory to specify this explicitly.
 
 When using `InitContext`, you can (and indeed sometimes must) now specify a *transform strategy* which controls whether values are interpreted as being in transformed space or not.
 This in turn controls whether:
