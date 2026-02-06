@@ -3,6 +3,20 @@ module DynamicPPLMCMCChainsExtTests
 using DynamicPPL, Distributions, MCMCChains, Test
 using AbstractMCMC: AbstractMCMC
 using AbstractPPL: AbstractPPL
+using Random: Random
+
+function make_chain_from_prior(rng::Random.AbstractRNG, model::Model, n_iters::Int)
+    vi = VarInfo(model)
+    vi = DynamicPPL.setaccs!!(vi, (DynamicPPL.RawValueAccumulator(false),))
+    ps = hcat([
+        DynamicPPL.ParamsWithStats(last(DynamicPPL.init!!(rng, model, vi))) for
+        _ in 1:n_iters
+    ])
+    return AbstractMCMC.from_samples(MCMCChains.Chains, ps)
+end
+function make_chain_from_prior(model::Model, n_iters::Int)
+    return make_chain_from_prior(Random.default_rng(), model, n_iters)
+end
 
 @testset "DynamicPPLMCMCChainsExt" begin
     @testset "from_samples" begin
@@ -51,89 +65,52 @@ using AbstractPPL: AbstractPPL
         end
     end
 
-    @testset "returned (basic)" begin
-        @model demo() = x ~ Normal()
-        model = demo()
+    @testset "returned()" begin
+        @testset "basic model" begin
+            @model demo() = x ~ Normal()
+            model = demo()
 
-        chain = MCMCChains.Chains(
-            randn(1000, 2, 1),
-            [:x, :y],
-            Dict(:internals => [:y]);
-            info=(; varname_to_symbol=Dict(@varname(x) => :x)),
-        )
-        chain_generated = @test_nowarn returned(model, chain)
-        @test size(chain_generated) == (1000, 1)
-        @test mean(chain_generated) ≈ 0 atol = 0.1
-    end
-
-    @testset "returned() on `LKJCholesky`" begin
-        n = 10
-        d = 2
-        model = DynamicPPL.TestUtils.demo_lkjchol(d)
-        xs = [model().x for _ in 1:n]
-
-        # Extract varnames and values.
-        vns_and_vals_xs = map(
-            collect ∘ Base.Fix1(AbstractPPL.varname_and_value_leaves, @varname(x)), xs
-        )
-        vns = map(first, first(vns_and_vals_xs))
-        vals = map(vns_and_vals_xs) do vns_and_vals
-            map(last, vns_and_vals)
+            chain = MCMCChains.Chains(
+                randn(1000, 2, 1),
+                [:x, :y],
+                Dict(:internals => [:y]);
+                info=(; varname_to_symbol=Dict(@varname(x) => :x)),
+            )
+            chain_generated = @test_nowarn returned(model, chain)
+            @test size(chain_generated) == (1000, 1)
+            @test mean(chain_generated) ≈ 0 atol = 0.1
         end
 
-        # Construct the chain.
-        syms = map(Symbol, vns)
-        vns_to_syms = OrderedDict{VarName,Any}(zip(vns, syms))
-
-        chain = MCMCChains.Chains(
-            permutedims(stack(vals)), syms; info=(varname_to_symbol=vns_to_syms,)
-        )
-
-        # Test!
-        results = returned(model, chain)
-        for (x_true, result) in zip(xs, results)
-            @test x_true.UL == result.x.UL
+        @testset "demo models" begin
+            @testset "$(model.f)" for model in DynamicPPL.TestUtils.ALL_MODELS
+                chain = make_chain_from_prior(model, 10)
+                # A simple way of checking that the computation is determinstic: run twice and compare.
+                res1 = returned(model, MCMCChains.get_sections(chain, :parameters))
+                res2 = returned(model, MCMCChains.get_sections(chain, :parameters))
+                @test all(res1 .== res2)
+            end
         end
 
-        # With variables that aren't in the `model`.
-        vns_to_syms_with_extra = let d = deepcopy(vns_to_syms)
-            d[@varname(y)] = :y
-            d
-        end
-        vals_with_extra = map(enumerate(vals)) do (i, v)
-            vcat(v, i)
-        end
-        chain_with_extra = MCMCChains.Chains(
-            permutedims(stack(vals_with_extra)),
-            vcat(syms, [:y]);
-            info=(varname_to_symbol=vns_to_syms_with_extra,),
-        )
-        # Test!
-        results = returned(model, chain_with_extra)
-        for (x_true, result) in zip(xs, results)
-            @test x_true.UL == result.x.UL
-        end
-    end
+        @testset "errors on missing variable" begin
+            # Create a chain that only has `m`.
+            @model function m_only()
+                return m ~ Normal()
+            end
+            model_m_only = m_only()
+            chain_m_only = AbstractMCMC.from_samples(
+                MCMCChains.Chains,
+                hcat([ParamsWithStats(VarInfo(model_m_only), model_m_only) for _ in 1:50]),
+            )
 
-    @testset "returned: errors on missing variable" begin
-        # Create a chain that only has `m`.
-        @model function m_only()
-            return m ~ Normal()
+            # Define a model that needs both `m` and `s`.
+            @model function f()
+                m ~ Normal()
+                s ~ Exponential()
+                return y ~ Normal(m, s)
+            end
+            model = f() | (; y=1.0)
+            @test_throws "No value was provided" returned(model, chain_m_only)
         end
-        model_m_only = m_only()
-        chain_m_only = AbstractMCMC.from_samples(
-            MCMCChains.Chains,
-            hcat([ParamsWithStats(VarInfo(model_m_only), model_m_only) for _ in 1:50]),
-        )
-
-        # Define a model that needs both `m` and `s`.
-        @model function f()
-            m ~ Normal()
-            s ~ Exponential()
-            return y ~ Normal(m, s)
-        end
-        model = f() | (; y=1.0)
-        @test_throws "No value was provided" returned(model, chain_m_only)
     end
 end
 

@@ -123,7 +123,7 @@ function AbstractMCMC.to_samples(
             # that was type stable and it's really no different in terms of performance.
             # Presumably this is minimal compared to the rest of the work we do in this
             # function
-            template = get(vnt.data, top_sym, DynamicPPL.NoTemplate())
+            template = get(template_vnt.data, top_sym, DynamicPPL.NoTemplate())
             vnt = DynamicPPL.templated_setindex!!(vnt, val, vn, template)
         end
         vnt
