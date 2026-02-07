@@ -110,7 +110,7 @@ In its place, you should directly use the accumulator API to:
     To do so, we now export a convenience function `get_raw_values(::AbstractVarInfo)` that will get the stored `VarNamedTuple` of raw values.
     This is exactly analogous to how `getlogprior(::AbstractVarInfo)` extracts the log-prior from a `LogPriorAccumulator`.
 
-### Function signature changes
+### Function signature changes in tilde-pipeline
 
 `tilde_assume!!` and `accumulate_assume!!` now take extra arguments.
 
@@ -124,6 +124,12 @@ In particular
     `template` is the same as above.
     `tval` is either the `AbstractTransformedValue` that `DynamicPPL.init` provided (for InitContext), or the `AbstractTransformedValue` found inside the VarInfo (for DefaultContext).
   - `accumulate_assume!!(vi::AbstractVarInfo, val, logjac, vn, dist)` is now `accumulate_assume!!(vi, val, tval, logjac, vn, dist, template)`.
+
+### `DynamicPPL.DebugUtils`
+
+The signature of `DynamicPPL.DebugUtils.check_model` and `DynamicPPL.DebugUtils.check_model_and_trace` are now changed.
+Instead of taking a `VarInfo` as the second argument, they now do not need a `VarInfo` at all; they simply sample from the prior of the model.
+To make this reproducible you can optionally pass `rng` as a first argument (before the model).
 
 ### Overhaul of `VarInfo`
 

@@ -76,7 +76,7 @@ function pointwise_logdensities(
     AccType = PointwiseLogProbAccumulator{whichlogprob}
     oavi = OnlyAccsVarInfo((AccType(),))
     init_strategy = InitFromParams(varinfo.values, nothing)
-    varinfo = last(init!!(model, oavi, init_strategy, UnlinkAll()))
+    oavi = last(init!!(model, oavi, init_strategy, UnlinkAll()))
     return getacc(oavi, Val(accumulator_name(AccType))).logps
 end
 
