@@ -335,10 +335,9 @@ function check_model_post_evaluation(acc::DebugAccumulator)
 end
 
 """
-    check_model_and_trace(model::Model, varinfo::AbstractVarInfo; error_on_failure=false)
+    check_model_and_trace([rng::Random.AbstractRNG,] model::Model; error_on_failure=false)
 
-Check that evaluating `model` with the given `varinfo` is valid, warning about any potential
-issues.
+Check that sampling from the prior of `model`, warning about any potential issues.
 
 This will check the model for the following issues:
 
@@ -360,16 +359,14 @@ This will check the model for the following issues:
 ## Correct model
 
 ```jldoctest check-model-and-tracecheck-model-and-trace; setup=:(using Distributions)
-julia> using StableRNGs
-
-julia> rng = StableRNG(42);
+julia> using StableRNGs; rng = StableRNG(42);
 
 julia> @model demo_correct() = x ~ Normal()
 demo_correct (generic function with 2 methods)
 
-julia> model = demo_correct(); varinfo = VarInfo(rng, model);
+julia> model = demo_correct();
 
-julia> issuccess, trace = check_model_and_trace(model, varinfo);
+julia> issuccess, trace = check_model_and_trace(rng, model);
 
 julia> issuccess
 true
@@ -379,7 +376,7 @@ julia> print(trace)
 
 julia> cond_model = model | (x = 1.0,);
 
-julia> issuccess, trace = check_model_and_trace(cond_model, VarInfo(cond_model));
+julia> issuccess, trace = check_model_and_trace(cond_model);
 ┌ Warning: The model does not contain any parameters.
 └ @ DynamicPPL.DebugUtils DynamicPPL.jl/src/debug_utils.jl:342
 
@@ -404,26 +401,25 @@ julia> # Notice that VarInfo(model_incorrect) evaluates the model, but doesn't a
        # alert us to the issue of `x` being sampled twice.
        model = demo_incorrect(); varinfo = VarInfo(model);
 
-julia> issuccess, trace = check_model_and_trace(model, varinfo; error_on_failure=true);
+julia> issuccess, trace = check_model_and_trace(model; error_on_failure=true);
 ERROR: varname x used multiple times in model
 ```
 """
 function check_model_and_trace(
-    model::Model, varinfo::AbstractVarInfo; error_on_failure=false
+    rng::Random.AbstractRNG, model::Model; error_on_failure=false
 )
-    # Add debug accumulator to the VarInfo.
-    varinfo = DynamicPPL.setaccs!!(deepcopy(varinfo), (DebugAccumulator(error_on_failure),))
-
     # Perform checks before evaluating the model.
     issuccess = check_model_pre_evaluation(model)
 
     # TODO(penelopeysm): Implement merge, etc. for DebugAccumulator, and then perform a
     # check on the merged accumulator, rather than checking it in the accumulate_assume
     # calls. That way we can also correctly support multi-threaded evaluation.
-    _, varinfo = DynamicPPL.evaluate!!(model, varinfo)
+    oavi = DynamicPPL.OnlyAccsVarInfo((DebugAccumulator(error_on_failure),))
+    init_strategy = InitFromPrior()
+    _, oavi = DynamicPPL.init!!(rng, model, oavi, init_strategy, UnlinkAll())
 
     # Perform checks after evaluating the model.
-    debug_acc = DynamicPPL.getacc(varinfo, Val(_DEBUG_ACC_NAME))
+    debug_acc = DynamicPPL.getacc(oavi, Val(_DEBUG_ACC_NAME))
     issuccess = issuccess && check_model_post_evaluation(debug_acc)
 
     if !issuccess && error_on_failure
@@ -433,9 +429,14 @@ function check_model_and_trace(
     trace = debug_acc.statements
     return issuccess, trace
 end
+function check_model_and_trace(model::Model; error_on_failure=false)
+    return check_model_and_trace(
+        Random.default_rng(), model; error_on_failure=error_on_failure
+    )
+end
 
 """
-    check_model(model::Model, varinfo::AbstractVarInfo; error_on_failure=false)
+    check_model(model::Model; error_on_failure=false)
 
 Check that `model` is valid, warning about any potential issues (or erroring if
 `error_on_failure` is `true`).
@@ -443,8 +444,11 @@ Check that `model` is valid, warning about any potential issues (or erroring if
 # Returns
 - `issuccess::Bool`: Whether the model check succeeded.
 """
-check_model(model::Model, varinfo::AbstractVarInfo; error_on_failure=false) =
-    first(check_model_and_trace(model, varinfo; error_on_failure=error_on_failure))
+check_model(rng::Random.AbstractRNG, model::Model; error_on_failure=false) =
+    first(check_model_and_trace(rng, model; error_on_failure=error_on_failure))
+function check_model(model::Model; error_on_failure=false)
+    return check_model(Random.default_rng(), model; error_on_failure=error_on_failure)
+end
 
 # Convenience method used to check if all elements in a list are the same.
 function all_the_same(xs)
@@ -479,11 +483,8 @@ and checking if the model is consistent across runs.
 function has_static_constraints(
     rng::Random.AbstractRNG, model::Model; num_evals::Int=5, error_on_failure::Bool=false
 )
-    new_model = DynamicPPL.contextualize(
-        model, InitContext(rng, InitFromPrior(), UnlinkAll())
-    )
     results = map(1:num_evals) do _
-        check_model_and_trace(new_model, VarInfo(); error_on_failure=error_on_failure)
+        check_model_and_trace(rng, model; error_on_failure=error_on_failure)
     end
 
     # Extract the distributions and the corresponding bijectors for each run.

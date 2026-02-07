@@ -22,11 +22,12 @@ export Models, benchmark, model_dimension
 Return the dimension of `model`, accounting for linking, if any.
 """
 function model_dimension(model, islinked)
-    vi = VarInfo()
-    vi = last(DynamicPPL.init!!(StableRNG(23), model, vi))
-    if islinked
-        vi = DynamicPPL.link(vi, model)
-    end
+    tfm_strategy = islinked ? DynamicPPL.LinkAll() : DynamicPPL.UnlinkAll()
+    vi = last(
+        DynamicPPL.init!!(
+            StableRNG(23), model, VarInfo(), DynamicPPL.InitFromPrior(), tfm_strategy
+        ),
+    )
     return length(vi[:])
 end
 

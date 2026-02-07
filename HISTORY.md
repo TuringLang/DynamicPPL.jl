@@ -76,7 +76,10 @@ Please see the docstring for details.
 Each initialisation strategy can decide what kind of `AbstractTransformedValue` to return.
 This has no impact on whether the log-Jacobian is calculated or not, as that is determined by the *transform strategy* (see below).
 
-### Transform strategies
+### `init!!` and transform strategies
+
+The initialisation strategy argument to `init!!` used to default to `InitFromPrior()`.
+It is now mandatory to specify this explicitly.
 
 When using `InitContext`, you can (and indeed sometimes must) now specify a *transform strategy* which controls whether values are interpreted as being in transformed space or not.
 This in turn controls whether:
@@ -107,7 +110,7 @@ In its place, you should directly use the accumulator API to:
     To do so, we now export a convenience function `get_raw_values(::AbstractVarInfo)` that will get the stored `VarNamedTuple` of raw values.
     This is exactly analogous to how `getlogprior(::AbstractVarInfo)` extracts the log-prior from a `LogPriorAccumulator`.
 
-### Function signature changes
+### Function signature changes in tilde-pipeline
 
 `tilde_assume!!` and `accumulate_assume!!` now take extra arguments.
 
@@ -121,6 +124,12 @@ In particular
     `template` is the same as above.
     `tval` is either the `AbstractTransformedValue` that `DynamicPPL.init` provided (for InitContext), or the `AbstractTransformedValue` found inside the VarInfo (for DefaultContext).
   - `accumulate_assume!!(vi::AbstractVarInfo, val, logjac, vn, dist)` is now `accumulate_assume!!(vi, val, tval, logjac, vn, dist, template)`.
+
+### `DynamicPPL.DebugUtils`
+
+The signature of `DynamicPPL.DebugUtils.check_model` and `DynamicPPL.DebugUtils.check_model_and_trace` are now changed.
+Instead of taking a `VarInfo` as the second argument, they now do not need a `VarInfo` at all; they simply sample from the prior of the model.
+To make this reproducible you can optionally pass `rng` as a first argument (before the model).
 
 ### Overhaul of `VarInfo`
 
@@ -213,6 +222,19 @@ For example, carrying on from the above, `conditioned(f() | vnt)` will return `v
 
 The underlying code for `ConditionContext` and `FixedContext` is almost completely the same.
 In this release, to reduce code duplication, they have been merged into a single implementation, `CondFixContext{Condition}` and `CondFixContext{Fix}`, where the type parameter controls whether conditioning or fixing is performed.
+
+### `DynamicPPL.evaluate!!(model, varinfo)` now warns
+
+This method has very complicated semantics; it's difficult to use properly.
+In DynamicPPL we are moving away from trying to encode all the different ways of evaluating a model in the `varinfo` object, and in a future release of DynamicPPL this method will be removed entirely.
+
+For now, the method still exists, but we would like to strongly encourage users to avoid using this method.
+In place you should use `init!!([rng,] model, oavi::OnlyAccsVarInfo, init_strategy, transform_strategy)` instead, which is much more explicit, and more closely matches what DynamicPPL.jl will use exclusively in the future.
+
+If you are using this function and are unsure how to adapt your code, please:
+
+ 1. Read the documentation! There is a *lot* more documentation at https://turinglang.org/DynamicPPL.jl/v0.40/.
+ 2. If you can't figure it out, please open an issue. We are happy to help.
 
 ### Accumulator interface exports more functions
 

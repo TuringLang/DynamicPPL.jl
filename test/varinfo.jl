@@ -32,11 +32,13 @@ short_varinfo_name(::DynamicPPL.ThreadSafeVarInfo) = "ThreadSafeVarInfo"
 short_varinfo_name(::DynamicPPL.VarInfo) = "VarInfo"
 
 function make_chain_from_prior(rng::Random.AbstractRNG, model::Model, n_iters::Int)
-    vi = VarInfo(model)
-    vi = DynamicPPL.setaccs!!(vi, (DynamicPPL.RawValueAccumulator(false),))
+    vi = DynamicPPL.OnlyAccsVarInfo((
+        DynamicPPL.default_accumulators()..., DynamicPPL.RawValueAccumulator(false)
+    ))
     ps = hcat([
-        DynamicPPL.ParamsWithStats(last(DynamicPPL.init!!(rng, model, vi))) for
-        _ in 1:n_iters
+        DynamicPPL.ParamsWithStats(
+            last(DynamicPPL.init!!(rng, model, vi, InitFromPrior(), UnlinkAll()))
+        ) for _ in 1:n_iters
     ])
     return AbstractMCMC.from_samples(MCMCChains.Chains, ps)
 end
@@ -114,7 +116,7 @@ end
 
         vi = DynamicPPL.unflatten!!(VarInfo(m), collect(values))
 
-        vi = last(DynamicPPL.evaluate!!(m, deepcopy(vi)))
+        vi = last(DynamicPPL.evaluate_nowarn!!(m, deepcopy(vi)))
         @test getlogprior(vi) == lp_a + lp_b
         @test getlogjac(vi) == 0.0
         @test getloglikelihood(vi) == lp_c + lp_d
@@ -151,7 +153,7 @@ end
         @test getlogp(setlogp!!(vi, getlogp(vi))) == getlogp(vi)
 
         vi = last(
-            DynamicPPL.evaluate!!(
+            DynamicPPL.evaluate_nowarn!!(
                 m, DynamicPPL.setaccs!!(deepcopy(vi), (LogPriorAccumulator(),))
             ),
         )
@@ -171,7 +173,7 @@ end
         end
 
         # Test evaluating without any accumulators.
-        vi = last(DynamicPPL.evaluate!!(m, DynamicPPL.setaccs!!(deepcopy(vi), ())))
+        vi = last(DynamicPPL.evaluate_nowarn!!(m, DynamicPPL.setaccs!!(deepcopy(vi), ())))
         # need regex because 1.11 and 1.12 throw different errors (in 1.12 the
         # missing field is surrounded by backticks)
         @test_throws r"has no field `?LogPrior" getlogprior(vi)
@@ -182,7 +184,7 @@ end
 
     @testset "resetaccs" begin
         # Put in a bunch of accumulators, check that they're all reset either
-        # when we call resetaccs!!, empty!!, or evaluate!!.
+        # when we call resetaccs!!, empty!!, or evaluate_nowarn!!.
         @model function demo()
             a ~ Normal()
             return x ~ Normal(a)
@@ -197,7 +199,7 @@ end
             vi_orig, DynamicPPL.PointwiseLogProbAccumulator{:both}()
         )
         # And evaluate the model once so that they are populated.
-        _, vi_orig = DynamicPPL.evaluate!!(model, vi_orig)
+        _, vi_orig = DynamicPPL.evaluate_nowarn!!(model, vi_orig)
 
         function all_accs_empty(vi::AbstractVarInfo)
             for acc_key in keys(DynamicPPL.getaccs(vi))
@@ -241,7 +243,7 @@ end
         @test all_accs_same(vi_orig, deepcopy(vi_orig))
         # If we re-evaluate, then we expect the accs to be reset prior to evaluation.
         # Thus after re-evaluation, the accs should be exactly the same as before.
-        _, vi = DynamicPPL.evaluate!!(model, deepcopy(vi_orig))
+        _, vi = DynamicPPL.evaluate_nowarn!!(model, deepcopy(vi_orig))
         @test all_accs_same(vi, vi_orig)
     end
 
@@ -409,9 +411,6 @@ end
                     model, value_true; include_threadsafe=true
                 )
                 @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
-                    # Evaluate the model once to update the logp of the varinfo.
-                    varinfo = last(DynamicPPL.evaluate!!(model, varinfo))
-
                     varinfo_linked = if mutating
                         DynamicPPL.link!!(deepcopy(varinfo), model)
                     else

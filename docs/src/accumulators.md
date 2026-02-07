@@ -227,7 +227,7 @@ Because the accumulation process is not always commutative, you may in general e
 However, for many accumulators such as log-probability accumulators, this is not an issue.
 
 We can see this in action if we step through the internal DynamicPPL calls.
-(Note that calling `DynamicPPL.evaluate!!` on a model where thread-safe mode has been enabled will automatically perform these steps for you.)
+(Note that calling `DynamicPPL.init!!` on a model where thread-safe mode has been enabled will automatically perform these steps for you.)
 
 ```@example 1
 Threads.nthreads()

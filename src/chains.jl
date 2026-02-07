@@ -47,16 +47,17 @@ function ParamsWithStats(
     else
         (DynamicPPL.RawValueAccumulator(include_colon_eq),)
     end
-    varinfo = DynamicPPL.setaccs!!(varinfo, accs)
-    varinfo = last(DynamicPPL.evaluate!!(model, varinfo))
-    params = get_raw_values(varinfo)
+    oavi = OnlyAccsVarInfo(accs)
+    init = InitFromParams(varinfo.values, nothing)
+    oavi = last(DynamicPPL.init!!(model, oavi, init, UnlinkAll()))
+    params = get_raw_values(oavi)
     if include_log_probs
         stats = merge(
             stats,
             (
-                logprior=DynamicPPL.getlogprior(varinfo),
-                loglikelihood=DynamicPPL.getloglikelihood(varinfo),
-                logjoint=DynamicPPL.getlogjoint(varinfo),
+                logprior=DynamicPPL.getlogprior(oavi),
+                loglikelihood=DynamicPPL.getloglikelihood(oavi),
+                logjoint=DynamicPPL.getlogjoint(oavi),
             ),
         )
     end

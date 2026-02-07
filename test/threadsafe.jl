@@ -83,7 +83,7 @@ const gdemo_default = gdemo_d()
         # But init!! should return the original VarInfo
         @test vi isa DynamicPPL.VarInfo
         # Same with evaluate!!
-        _, vi = DynamicPPL.evaluate!!(model, vi)
+        _, vi = DynamicPPL.evaluate_nowarn!!(model, vi)
         @test vi_ isa DynamicPPL.ThreadSafeVarInfo
         @test vi isa DynamicPPL.VarInfo
     end

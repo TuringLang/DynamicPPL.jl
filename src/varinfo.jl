@@ -148,6 +148,8 @@ function VarInfo(model::Model, initstrat::AbstractInitStrategy=InitFromPrior())
     return VarInfo(Random.default_rng(), model, initstrat)
 end
 
+get_values(vi::VarInfo) = vi.values
+
 getaccs(vi::VarInfo) = vi.accs
 function setaccs!!(vi::VarInfo{Linked}, accs::AccumulatorTuple) where {Linked}
     return VarInfo{Linked}(vi.values, accs)

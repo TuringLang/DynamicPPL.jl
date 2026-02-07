@@ -94,8 +94,6 @@ end
         example_values_m_only = (m=example_values.m,)
         vis = DynamicPPL.TestUtils.setup_varinfos(model, example_values_m_only)
         @testset "$(short_varinfo_name(vi))" for vi in vis
-            # Evaluate once to ensure we have `logp` value.
-            vi = last(DynamicPPL.evaluate!!(model, vi))
             vi_linked = if mutable
                 DynamicPPL.link!!(deepcopy(vi), model)
             else
