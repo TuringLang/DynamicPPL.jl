@@ -59,7 +59,7 @@ using Test
         @test_throws ErrorException ParamsWithStats(VarInfo(model))
         # With VAIM, it should work
         vi = DynamicPPL.setaccs!!(VarInfo(model), (DynamicPPL.RawValueAccumulator(true),))
-        vi = last(DynamicPPL.evaluate!!(model, vi))
+        vi = last(DynamicPPL.init!!(model, vi, InitFromPrior(), UnlinkAll()))
         ps = ParamsWithStats(vi)
         @test haskey(ps.params, @varname(x))
         @test haskey(ps.params, @varname(y))

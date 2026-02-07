@@ -99,6 +99,7 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
             end
             N = 200
             chain = make_chain_from_prior(model, N)
+            chain = MCMCChains.get_sections(chain, :parameters)
             logpriors = logprior(model, chain)
             loglikelihoods = loglikelihood(model, chain)
             logjoints = logjoint(model, chain)
@@ -274,12 +275,8 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
     @testset "Internal methods" begin
         model = GDEMO_DEFAULT
 
-        # sample from model and extract variables
-        vi = VarInfo(model)
-
-        # Second component of return-value of `evaluate!!` should
-        # be a `DynamicPPL.AbstractVarInfo`.
-        evaluate_retval = DynamicPPL.evaluate!!(model, vi)
+        # Second component of return-value of `init!!` should be a `DynamicPPL.AbstractVarInfo`.
+        evaluate_retval = DynamicPPL.init!!(model, VarInfo(), InitFromPrior(), UnlinkAll())
         @test evaluate_retval[2] isa DynamicPPL.AbstractVarInfo
 
         # Should not return `AbstractVarInfo` when we call the model.
@@ -405,33 +402,31 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
         end
     end
 
-    if VERSION >= v"1.8"
-        @testset "Type stability of models" begin
-            models_to_test = [
-                DynamicPPL.TestUtils.DEMO_MODELS..., DynamicPPL.TestUtils.demo_lkjchol(2)
-            ]
-            @testset "$(model.f)" for model in models_to_test
-                if model.f === DynamicPPL.TestUtils.demo_nested_colons && VERSION < v"1.11"
-                    # On v1.10, the demo_nested_colons model, which uses a lot of
-                    # NamedTuples, is badly type unstable. Not worth doing much about
-                    # it, since it's fixed on later Julia versions, so just skipping
-                    # these tests.
-                    @test false skip = true
-                    continue
+    @testset "Type stability of models" begin
+        models_to_test = [
+            DynamicPPL.TestUtils.DEMO_MODELS..., DynamicPPL.TestUtils.demo_lkjchol(2)
+        ]
+        @testset "$(model.f)" for model in models_to_test
+            if model.f === DynamicPPL.TestUtils.demo_nested_colons && VERSION < v"1.11"
+                # On v1.10, the demo_nested_colons model, which uses a lot of
+                # NamedTuples, is badly type unstable. Not worth doing much about
+                # it, since it's fixed on later Julia versions, so just skipping
+                # these tests.
+                @test false skip = true
+                continue
+            end
+            example_values = DynamicPPL.TestUtils.rand_prior_true(model)
+            varinfos = DynamicPPL.TestUtils.setup_varinfos(model, example_values)
+            @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
+                @test begin
+                    @inferred(DynamicPPL.evaluate_nowarn!!(model, varinfo))
+                    true
                 end
-                example_values = DynamicPPL.TestUtils.rand_prior_true(model)
-                varinfos = DynamicPPL.TestUtils.setup_varinfos(model, example_values)
-                @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
-                    @test begin
-                        @inferred(DynamicPPL.evaluate!!(model, varinfo))
-                        true
-                    end
 
-                    varinfo_linked = DynamicPPL.link(varinfo, model)
-                    @test begin
-                        @inferred(DynamicPPL.evaluate!!(model, varinfo_linked))
-                        true
-                    end
+                varinfo_linked = DynamicPPL.link(varinfo, model)
+                @test begin
+                    @inferred(DynamicPPL.evaluate_nowarn!!(model, varinfo_linked))
+                    true
                 end
             end
         end
@@ -511,7 +506,11 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
         varinfo = DynamicPPL.VarInfo(model)
         logjoint = getlogjoint(varinfo) # unlinked space
         varinfo_linked = DynamicPPL.link(varinfo, model)
-        varinfo_linked_result = last(DynamicPPL.evaluate!!(model, deepcopy(varinfo_linked)))
+        varinfo_linked_result = last(
+            DynamicPPL.init!!(
+                model, VarInfo(), InitFromParams(varinfo_linked.values, nothing), LinkAll()
+            ),
+        )
         # getlogjoint should return the same result as before it was linked
         @test getlogjoint(varinfo_linked) ≈ getlogjoint(varinfo_linked_result)
         @test getlogjoint(varinfo_linked) ≈ logjoint

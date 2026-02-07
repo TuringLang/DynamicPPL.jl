@@ -372,7 +372,7 @@ julia> issuccess
 true
 
 julia> print(trace)
- assume: x ~ Normal{Float64}(μ=0.0, σ=1.0) ⟼ 0.670252
+ assume: x ~ Normal{Float64}(μ=0.0, σ=1.0) ⟼ -0.670252
 
 julia> cond_model = model | (x = 1.0,);
 
