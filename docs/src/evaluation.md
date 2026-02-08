@@ -156,4 +156,4 @@ Here, we pass all of the information we have gathered so far for this tilde-stat
 `accumulate_assume!!(vi::AbstractVarInfo, ...)` will loop over all accumulators stored inside `vi`, and call each of their individual `accumulate_assume!!` methods.
 This method is responsible for deciding how to combine the information provided.
 
-Accumulators are described in much more detail on the [Accumulators](./accumulators.md) page; please read that for more information!
+Accumulators are described in much more detail on the [Accumulators](./accs/design.md) page; please read that for more information!

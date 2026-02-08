@@ -2,7 +2,7 @@
 
 ## The role of VarInfo
 
-As described in the [model evaluation documentation page](./flow.md), each tilde-statement is split up into three parts:
+As described in the [model evaluation documentation page](../evaluation.md), each tilde-statement is split up into three parts:
 
  1. Initialisation;
  2. Computation; and

@@ -3,7 +3,7 @@
 Accumulators are objects in DynamicPPL which collect the results of computations in each tilde-statement.
 
 Consider a tilde-statement `x ~ Beta(2, 2)`.
-There are several things going on in here (we will discuss this in full detail in the [Model evaluation](flow.md) page).
+There are several things going on in here (we will discuss this in full detail in the [Model evaluation](../evaluation.md) page).
 Loosely speaking:
 
   - We need to get a value for `x` that is consistent with the distribution `Beta(2, 2)`;
