@@ -9,6 +9,17 @@ function _get_vector_tval(val, ::UntransformedValue, logjac, vn, dist)
 end
 
 # This is equivalent to `varinfo.values` where `varinfo isa VarInfo`
+"""
+    VectorValueAccumulator()
+
+An accumulator that collects `VectorValue`s and `LinkedVectorValue`s seen during model
+execution.
+
+Whether a `VectorValue` or `LinkedVectorValue` is collected depends on the transform
+strategy used when evaluating the model. For variables that are specified as being linked
+(i.e., `DynamicLink()`), a `LinkedVectorValue` will be collected. Conversely, for variables
+that are not specified as being linked, a `VectorValue` will be collected.
+"""
 VectorValueAccumulator() = VNTAccumulator{VECTORVAL_ACCNAME}(_get_vector_tval)
 
 # This is equivalent to `varinfo[:]`
