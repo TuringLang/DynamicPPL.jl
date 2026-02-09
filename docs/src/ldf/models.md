@@ -68,6 +68,45 @@ logistic(4.0)
 
 We can also do the reverse process here, which is to obtain new vectorised parameters that are consistent with this `LogDensityFunction`.
 
-!!! danger
+Suppose that we want to evaluate the `LogDensityFunction` at the new raw values `x = 5.0` and `y = 0.6`.
+The corresponding vectorised parameters should be
+
+```@example 1
+using StatsFuns: logit
+[5.0, logit(0.6)]
+```
+
+(Of course, in general you can't just write these down by hand, since it will depend on the model.)
+
+The first thing to do is to re-evaluate the model with the initialisation strategy you are interested in, and collect a new set of vector values.
+
+Note that we *must* use the same transform strategy as the one contained in the `LogDensityFunction`, since we want to collect vector values that are consistent with the `LogDensityFunction`.
+
+```@example 1
+init_strategy = InitFromParams(VarNamedTuple(; x=5.0, y=0.6))
+transform_strategy = ldf.transform_strategy
+
+accs = OnlyAccsVarInfo(VectorValueAccumulator())
+_, accs = init!!(model, accs, init_strategy, transform_strategy)
+vector_values = get_vector_values(accs)
+```
+
+You can of course also bundle any extra accumulators you like into the above if you are interested not only in the vectorised parameters but also (e.g.) the log-density.
+This allows you to obtain all the information you need with only one model evaluation.
+
+Once you have a new `VarNamedTuple` of vector values, you can use the function [`to_vector_input`](@ref):
+
+```@example 1
+new_vector = to_vector_input(vector_values, ldf)
+```
+
+!!! note "What happened to `varinfo[:]`?"
     
-    Not yet implemented. The solution is to use a VectorValueAccumulator and then loop through the ranges stored in the LDF (don't just use internal_values_as_vector on the VVA, since there's no guarantee that the order of the vector values in the VVA is the same as the order of the vector values in the LDF!).
+    Just like before, if you are familiar with older versions of DynamicPPL, you may realise that this workflow is similar to the old version of calling `varinfo[:]` to obtain a set of vectorised parameters.
+    
+    This still exists (although we prefer that you use [`internal_values_as_vector(varinfo)`](@ref internal_values_as_vector) instead, since that name is more descriptive).
+    Although `internal_values_as_vector` is not as unsafe as `unflatten!!`, it still does not perform any checks to ensure that the vectorised parameters are consistent with the `LogDensityFunction`.
+    For example, you could extract a length-2 vector of parameters from a `VarInfo`, and it would work with any `LogDensityFunction` that also expects a length-2 vector, even if the actual transformations and model are completely different.
+    
+    The approach above based on accumulators does preserve the necessary information, and `to_vector_input` will carry out the necessary checks to ensure correctness.
+    It is no less performant than before (apart from the time needed to run said checks!).

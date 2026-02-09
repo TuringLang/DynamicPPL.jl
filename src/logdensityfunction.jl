@@ -199,8 +199,19 @@ struct LogDensityFunction{
             # premature optimisation.
             LinkSome(linked_vns, UnlinkAll())
         end
-        x = internal_values_as_vector(vnt)
-        dim = length(x)
+        # Get vectorised parameters. Note that `internal_values_as_vector` just concatenates
+        # all the vectors inside in iteration order of the VNT's keys. *In principle*, the
+        # result of that should always be consistent with the ranges extracted above via
+        # `get_ranges_and_linked`, since both are based on the same underlying VNT, and both
+        # iterate over the keys in the same order. However, this is an implementation
+        # detail, and so we should probably not rely on it!
+        # Therefore, we use `to_vector_input_inner` to also perform some checks that the
+        # vectorised parameters are concatenated in the order specified by the ranges. We do
+        # need to use internal_values_as_vector here once to get the correct element type
+        # and dimension.
+        trial_x = internal_values_as_vector(vnt)
+        dim, et = length(trial_x), eltype(trial_x)
+        x = to_vector_input_inner(vnt, all_ranges, et, dim)
         # convert to AccumulatorTuple if needed
         accs = AccumulatorTuple(accs)
         # Do AD prep if needed
@@ -511,5 +522,85 @@ function InitFromVector(
 ) where {V<:AbstractVector{<:Real},L<:LogDensityFunction}
     varname_ranges = ldf._varname_ranges
     transform_strategy = ldf.transform_strategy
+    if length(vect) != ldf._dim
+        error(
+            "The length of the input vector is $(length(vect)), but the LogDensityFunction expects a vector of length $(ldf._dim) based on the ranges that were extracted when the LogDensityFunction was constructed.",
+        )
+    end
     return InitFromVector(vect, varname_ranges, transform_strategy)
+end
+
+"""
+    to_vector_input(
+        vector_values::VarNamedTuple,
+        ldf::LogDensityFunction
+    )
+
+Extract vectorised values from a `VarNamedTuple` that contains `VectorValue`s and
+`LinkedVectorValue`s, and concatenate them into a single vector that is consistent with the
+ranges specified in the `LogDensityFunction`.
+
+This is useful when you want to regenerate new vectorised parameters but using a different
+initialisation strategy.
+
+Note that the transform status of the variables in the `VarNamedTuple` must be consistent
+with the transform strategy stored in the `LogDensityFunction`. This function checks for
+that.
+"""
+function to_vector_input(vector_values::VarNamedTuple, ldf::LogDensityFunction)
+    return to_vector_input_inner(
+        vector_values, ldf._varname_ranges, eltype(_get_input_vector_type(ldf)), ldf._dim
+    )
+end
+
+function to_vector_input_inner(
+    vector_values::VarNamedTuple, ranges::VarNamedTuple, ::Type{eltype}, dim::Int
+) where {eltype}
+    template_vect = Vector{eltype}(undef, dim)
+
+    # We want to make sure that every element in `template_vect` is written to exactly once.
+    set_indices = similar(template_vect, Bool)
+    fill!(set_indices, false)
+    for (vn, tval) in pairs(vector_values)
+        ral = ranges[vn]
+
+        # check transform lines up
+        if (
+            (ral.is_linked && tval isa VectorValue) ||
+            (!ral.is_linked && tval isa LinkedVectorValue)
+        )
+            error(
+                "The LogDensityFunction specifies that `$vn` should be $(ral.is_linked ? "linked" : "unlinked"), but the vector values contain a $(tval isa LinkedVectorValue ? "linked" : "unlinked") value for that variable.",
+            )
+        end
+
+        # Get the internal vector and check its length
+        vec_val = DynamicPPL.get_internal_value(tval)
+        len = length(vec_val)
+        expected_len = length(ral.range)
+        if len != expected_len
+            error(
+                "The length of the vector value provided for `$vn` is $len, but the LogDensityFunction expects it to be $expected_len based on the ranges that were extracted when the LogDensityFunction was constructed.",
+            )
+        end
+
+        # Set it
+        # TODO(penelopeysm): can we use views? Does it make a difference?
+        if any(set_indices[ral.range])
+            error(
+                "Setting to the same indices in the output vector more than once. This likely means that the vector values provided are not consistent with the LogDensityFunction (e.g. if they were obtained from a different model.",
+            )
+        end
+        BangBang.setindex!!(template_vect, vec_val, ral.range)
+        set_indices[ral.range] .= true
+    end
+
+    # Once we're done, we should check that all values were set
+    if !all(set_indices)
+        error(
+            "Some indices in the output vector were not set. This likely means that the vector values provided are not consistent with the LogDensityFunction (e.g. if they were obtained from a different model).",
+        )
+    end
+
+    return template_vect
 end
