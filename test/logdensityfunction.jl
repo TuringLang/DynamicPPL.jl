@@ -146,6 +146,133 @@ end
     end
 end
 
+@testset "Conversions to/from vectors" begin
+    xdist, ydist = LogNormal(), Dirichlet(ones(3))
+    @model function f()
+        x ~ xdist
+        y ~ ydist
+        return nothing
+    end
+    model = f()
+
+    xraw, yraw = 0.5, [0.2, 0.3, 0.5]
+    raw_values = @vnt begin
+        x := xraw
+        y := yraw
+    end
+
+    function manual_make_vec(transform_strategy)
+        # Manually construct the vector of values that we're interested in. This function
+        # assumes that `x` will come before `y` in the LDF!
+        xvec = if target_transform(transform_strategy, @varname(x)) isa DynamicLink
+            DynamicPPL.to_linked_vec_transform(xdist)(xraw)
+        else
+            DynamicPPL.to_vec_transform(xdist)(xraw)
+        end
+        yvec = if target_transform(transform_strategy, @varname(y)) isa DynamicLink
+            DynamicPPL.to_linked_vec_transform(ydist)(yraw)
+        else
+            DynamicPPL.to_vec_transform(ydist)(yraw)
+        end
+        return vcat(xvec, yvec)
+    end
+
+    @testset "$transform_strategy" for transform_strategy in (
+        UnlinkAll(),
+        LinkAll(),
+        LinkSome((@varname(x),), UnlinkAll()),
+        UnlinkSome((@varname(x),), LinkAll()),
+    )
+        accs = OnlyAccsVarInfo(VectorValueAccumulator())
+        _, accs = init!!(model, accs, InitFromPrior(), transform_strategy)
+        vvals = get_vector_values(accs)
+        ldf = LogDensityFunction(model, getlogjoint_internal, vvals)
+
+        @testset "InitFromVector -> raw values" begin
+            # Test that initialising a model with `InitFromVector` will generate the correct
+            # raw values.
+            vec = manual_make_vec(transform_strategy)
+            init_strategy = InitFromVector(vec, ldf)
+            accs = OnlyAccsVarInfo(RawValueAccumulator(false))
+            _, accs = init!!(model, accs, init_strategy, UnlinkAll())
+            new_raw_values = get_raw_values(accs)
+            @test new_raw_values[@varname(x)] ≈ xraw
+            @test new_raw_values[@varname(y)] ≈ yraw
+
+            @testset "Throws an error if vector has wrong length" begin
+                @test_throws ArgumentError InitFromVector(randn(100), ldf)
+                @test_throws ArgumentError InitFromVector(Float64[], ldf)
+            end
+        end
+
+        @testset "Raw values -> vector" begin
+            # Test that initialising a model with raw values allows us to generate the right
+            # vector
+            init_strategy = InitFromParams(raw_values)
+            accs = OnlyAccsVarInfo(VectorValueAccumulator())
+            _, accs = init!!(model, accs, init_strategy, transform_strategy)
+            vecvals = get_vector_values(accs)
+            vec = to_vector_input(vecvals, ldf)
+            @test vec ≈ manual_make_vec(transform_strategy)
+
+            @testset "Throws an error if transform strategy doesn't line up" begin
+                if transform_strategy != UnlinkAll()
+                    _, accs = init!!(model, accs, InitFromPrior(), UnlinkAll())
+                    vecvals = get_vector_values(accs)
+                    @test_throws ArgumentError to_vector_input(vecvals, ldf)
+                end
+            end
+
+            @testset "Throws an error if there are extra variables" begin
+                @model function extra_var_model()
+                    x ~ xdist
+                    y ~ ydist
+                    return z ~ Normal()
+                end
+                extra_model = extra_var_model()
+                accs = OnlyAccsVarInfo(VectorValueAccumulator())
+                _, accs = init!!(extra_model, accs, InitFromPrior(), transform_strategy)
+                vecvals = get_vector_values(accs)
+                @test_throws ArgumentError to_vector_input(vecvals, ldf)
+            end
+
+            @testset "Throws an error if there aren't enough variables" begin
+                @model function fewer_var_model()
+                    return x ~ xdist
+                end
+                fewer_model = fewer_var_model()
+                accs = OnlyAccsVarInfo(VectorValueAccumulator())
+                _, accs = init!!(fewer_model, accs, InitFromPrior(), transform_strategy)
+                vecvals = get_vector_values(accs)
+                @test_throws ArgumentError to_vector_input(vecvals, ldf)
+            end
+
+            @testset "Throws an error if the variable lengths aren't right" begin
+                @model function different_var_model()
+                    x ~ xdist
+                    return y ~ Dirichlet(ones(4))  # as opposed to ones(3)
+                end
+                different_model = different_var_model()
+                accs = OnlyAccsVarInfo(VectorValueAccumulator())
+                _, accs = init!!(different_model, accs, InitFromPrior(), transform_strategy)
+                vecvals = get_vector_values(accs)
+                @test_throws ArgumentError to_vector_input(vecvals, ldf)
+            end
+        end
+
+        @testset "Roundtrip" begin
+            # Test that we can roundtrip from vector -> raw values -> vector
+            vec = manual_make_vec(transform_strategy)
+            init_strategy = InitFromVector(vec, ldf)
+            accs = OnlyAccsVarInfo(VectorValueAccumulator())
+            _, accs = init!!(model, accs, init_strategy, transform_strategy)
+            new_vecvals = get_vector_values(accs)
+            new_vec = to_vector_input(new_vecvals, ldf)
+            @test new_vec ≈ vec
+        end
+    end
+end
+
 @testset "LogDensityFunction: Type stability" begin
     @testset "$(m.f)" for m in DynamicPPL.TestUtils.ALL_MODELS
         @testset "$islinked" for islinked in (false, true)

@@ -523,8 +523,10 @@ function InitFromVector(
     varname_ranges = ldf._varname_ranges
     transform_strategy = ldf.transform_strategy
     if length(vect) != ldf._dim
-        error(
-            "The length of the input vector is $(length(vect)), but the LogDensityFunction expects a vector of length $(ldf._dim) based on the ranges that were extracted when the LogDensityFunction was constructed.",
+        throw(
+            ArgumentError(
+                "The length of the input vector is $(length(vect)), but the LogDensityFunction expects a vector of length $(ldf._dim) based on the ranges that were extracted when the LogDensityFunction was constructed.",
+            ),
         )
     end
     return InitFromVector(vect, varname_ranges, transform_strategy)
@@ -562,6 +564,13 @@ function to_vector_input_inner(
     set_indices = similar(template_vect, Bool)
     fill!(set_indices, false)
     for (vn, tval) in pairs(vector_values)
+        if !haskey(ranges, vn)
+            throw(
+                ArgumentError(
+                    "The variable `$vn` is present in the provided VarNamedTuple of vector values, but there is no record of this in the LogDensityFunction. Thi likely means that the vector values provided are not consistent with the LogDensityFunction (e.g. if they were obtained from a different model).",
+                ),
+            )
+        end
         ral = ranges[vn]
 
         # check transform lines up
@@ -569,8 +578,10 @@ function to_vector_input_inner(
             (ral.is_linked && tval isa VectorValue) ||
             (!ral.is_linked && tval isa LinkedVectorValue)
         )
-            error(
-                "The LogDensityFunction specifies that `$vn` should be $(ral.is_linked ? "linked" : "unlinked"), but the vector values contain a $(tval isa LinkedVectorValue ? "linked" : "unlinked") value for that variable.",
+            throw(
+                ArgumentError(
+                    "The LogDensityFunction specifies that `$vn` should be $(ral.is_linked ? "linked" : "unlinked"), but the vector values contain a $(tval isa LinkedVectorValue ? "linked" : "unlinked") value for that variable.",
+                ),
             )
         end
 
@@ -579,16 +590,20 @@ function to_vector_input_inner(
         len = length(vec_val)
         expected_len = length(ral.range)
         if len != expected_len
-            error(
-                "The length of the vector value provided for `$vn` is $len, but the LogDensityFunction expects it to be $expected_len based on the ranges that were extracted when the LogDensityFunction was constructed.",
+            throw(
+                ArgumentError(
+                    "The length of the vector value provided for `$vn` is $len, but the LogDensityFunction expects it to be $expected_len based on the ranges that were extracted when the LogDensityFunction was constructed.",
+                ),
             )
         end
 
         # Set it
         # TODO(penelopeysm): can we use views? Does it make a difference?
         if any(set_indices[ral.range])
-            error(
-                "Setting to the same indices in the output vector more than once. This likely means that the vector values provided are not consistent with the LogDensityFunction (e.g. if they were obtained from a different model.",
+            throw(
+                ArgumentError(
+                    "Setting to the same indices in the output vector more than once. This likely means that the vector values provided are not consistent with the LogDensityFunction (e.g. if they were obtained from a different model.",
+                ),
             )
         end
         BangBang.setindex!!(template_vect, vec_val, ral.range)
@@ -597,8 +612,10 @@ function to_vector_input_inner(
 
     # Once we're done, we should check that all values were set
     if !all(set_indices)
-        error(
-            "Some indices in the output vector were not set. This likely means that the vector values provided are not consistent with the LogDensityFunction (e.g. if they were obtained from a different model).",
+        throw(
+            ArgumentError(
+                "Some indices in the output vector were not set. This likely means that the vector values provided are not consistent with the LogDensityFunction (e.g. if they were obtained from a different model).",
+            ),
         )
     end
 
