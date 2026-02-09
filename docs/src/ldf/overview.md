@@ -73,5 +73,51 @@ LogDensityFunction(model, logdensityfunc, vector_values; adtype)
     _, accs = init!!(model, accs, InitFromPrior(), LinkAll())
     vector_values = get_vector_values(accs)
     
-    LogDensityFunction(model, getlogjoint_internal, vector_values)
+    ldf = LogDensityFunction(model, getlogjoint_internal, vector_values)
     ```
+  - If you need to also obtain gradients with respect to the vectorised parameters, you can pass `adtype::ADTypes.AbstractADType` as a keyword argument.
+    If gradients are not needed, you can omit this.
+
+## The LogDensityProblems.jl interface
+
+Once you have constructed a `LogDensityFunction`, it will obey [the LogDensityProblems.jl interface](https://www.tamaspapp.eu/LogDensityProblems.jl/stable/).
+The most important part of this is
+
+```@example 1
+using LogDensityProblems
+
+LogDensityProblems.logdensity(ldf, [3.0, 4.0])
+```
+
+We can verify quickly that this is what we expect by running the model manually:
+
+```@example 1
+using StatsFuns: logistic
+
+x = 3.0
+y = logistic(4.0)
+params = VarNamedTuple(; x=x, y=y)
+_, accs = init!!(model, OnlyAccsVarInfo(), InitFromParams(params), LinkAll())
+accs
+```
+
+and we see that the log-prior minus the log-Jacobian is indeed the same as what `LogDensityProblems.logdensity` returns.
+
+If you created the `LogDensityFunction` with an `adtype`, you can also obtain gradients via
+
+```julia
+LogDensityProblems.logdensity_and_gradient(ldf, [3.0, 4.0])
+```
+
+(although that is not demonstrated here since it requires an AD backend to be loaded).
+
+Other functions such as `LogDensityProblems.capabilities` and `LogDensityProblems.dimension` will also work as expected with `LogDensityFunction`.
+
+## Is `LogDensityFunction` less powerful than model evaluation?
+
+Given that the core purpose of `LogDensityFunction` is to evaluate a function mapping from vectors to log-densities, it might seem that it contains less information than the original model itself.
+
+However, this is not true!
+As alluded to above, the `LogDensityFunction` is a convenient wrapper that knows how to generate an initialisation strategy, and also contains a transform strategy.
+
+On the next page we'll see how we can access these ourselves and use them to re-evaluate the model with the vectorised parameters.
