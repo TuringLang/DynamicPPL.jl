@@ -73,18 +73,3 @@ function get_vector_values(vnt::VarNamedTuple)
     return mapfoldl(pair -> _as_vector(pair.second), vcat, vnt; init=Union{}[])
 end
 get_vector_values(acc::VNTAccumulator{VECTORVAL_ACCNAME}) = get_vector_values(acc.values)
-
-"""
-    get_vector_values(accs::OnlyAccsVarInfo)
-
-Get the vectorised values from `accs`. This will error if `accs` does not contain a
-`VectorValueAccumulator`.
-
-Note that this function is implemented for `OnlyAccsVarInfo`, but not `VarInfo` since that
-could be ambiguous (VarInfo stores its own vectorised values!). If you want to extract the
-vectorised values from `varinfo.values` where `varinfo isa VarInfo`, you should use
-[`DynamicPPL.internal_values_as_vector(varinfo)`](@ref internal_values_as_vector).
-"""
-function get_vector_values(oavi::OnlyAccsVarInfo)
-    return get_vector_values(getacc(oavi, Val(VECTORVAL_ACCNAME)).values)
-end

@@ -24,7 +24,7 @@ using Mooncake: Mooncake
             else
                 unlinked_vi
             end
-            ranges = DynamicPPL.get_ranges_and_linked(vi)
+            ranges = DynamicPPL.get_ranges_and_linked(vi.values)
             params = [x for x in vi[:]]
             # Iterate over all variables
             for vn in keys(vi)

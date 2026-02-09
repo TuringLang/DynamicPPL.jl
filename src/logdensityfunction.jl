@@ -31,7 +31,7 @@ using Random: Random
     DynamicPPL.LogDensityFunction(
         model::Model,
         getlogdensity::Any=getlogjoint_internal,
-        varinfo::AbstractVarInfo=VarInfo(model)
+        vnt_or_vi::Union{VarNamedTuple,VarInfo,OnlyAccsVarInfo}=VarInfo(model).values,
         accs::Union{NTuple{<:Any,AbstractAccumulator},AccumulatorTuple}=DynamicPPL.ldf_accs(getlogdensity);
         adtype::Union{ADTypes.AbstractADType,Nothing}=nothing,
     )
@@ -46,9 +46,9 @@ using `LogDensityProblems.logdensity` and `LogDensityProblems.logdensity_and_gra
 `adtype` is nothing, then only `logdensity` is implemented. If `adtype` is a concrete AD
 backend type, then `logdensity_and_gradient` is also implemented.
 
-`getlogdensity` should be a callable which takes a single argument: a `VarInfo`, and returns
-a `Real` corresponding to the log density of interest. There are several functions in
-DynamicPPL that are 'supported' out of the box:
+`getlogdensity` should be a callable which takes a single argument: an `OnlyAccsVarInfo`,
+and returns a `Real` corresponding to the log density of interest. There are several
+functions in DynamicPPL that are 'supported' out of the box:
 
 - [`getlogjoint_internal`](@ref): calculate the log joint, including the log-Jacobian term
   for any variables that have been linked in the provided VarInfo.
@@ -67,13 +67,16 @@ DynamicPPL that are 'supported' out of the box:
     was created with a linked or unlinked VarInfo. This is done primarily to ease
     interoperability with MCMC samplers.
 
-If you provide one of these functions, a `VarInfo` will be automatically created for you. If
-you provide a different function, you have to manually create a VarInfo and pass it as the
-third argument.
+`vnt` is a `VarNamedTuple` which contains vectorised representations of all the random variables
+in the model. You can create one manually, but for this argument, it is easier to pass either:
+
+- an `oavi::OnlyAccsVarInfo` which contains a `VectorValueAccumulator`, in which case the values
+  are taken from that accumulator (**this approach is recommended going forward**);
+- a `vi::VarInfo`, in which case the `vi.values` field is used.
 
 `accs` allows you to specify an `AccumulatorTuple` or a tuple of `AbstractAccumulator`s
-which will be used _when evaluating the log density_`. (Note that the accumulators from the
-`VarInfo` argument are discarded.) By default, this uses an internal function,
+which will be used _when evaluating the log density_`. (Note that any accumulators from the
+previous argument are discarded.) By default, this uses an internal function,
 `DynamicPPL.ldf_accs`, which attempts to choose an appropriate set of accumulators based on
 which kind of log-density is being calculated.
 
@@ -167,17 +170,13 @@ struct LogDensityFunction{
     function LogDensityFunction(
         model::Model,
         getlogdensity::Any=getlogjoint_internal,
-        # TODO(penelopeysm): It is a bit redundant to pass a VarInfo, as well as the
-        # accumulators, into here. The truth is that the VarInfo is used ONLY for generating
-        # the ranges and link status, so arguably we should only pass in a metadata; or when
-        # VNT is done, we should pass in only a VNT.
-        varinfo::AbstractVarInfo=VarInfo(model),
+        vnt::VarNamedTuple=_default_vnt(model, UnlinkAll()),
         accs::Union{NTuple{<:Any,AbstractAccumulator},AccumulatorTuple}=ldf_accs(
             getlogdensity
         );
         adtype::Union{ADTypes.AbstractADType,Nothing}=nothing,
     )
-        all_ranges = get_ranges_and_linked(varinfo)
+        all_ranges = get_ranges_and_linked(vnt)
         # Figure out if all variables are linked, unlinked, or mixed
         linked_vns = Set{VarName}()
         unlinked_vns = Set{VarName}()
@@ -201,7 +200,7 @@ struct LogDensityFunction{
             # premature optimisation.
             LinkSome(linked_vns, UnlinkAll())
         end
-        x = [val for val in varinfo[:]]
+        x = get_vector_values(vnt)
         dim = length(x)
         # convert to AccumulatorTuple if needed
         accs = AccumulatorTuple(accs)
@@ -210,7 +209,7 @@ struct LogDensityFunction{
             nothing
         else
             # Make backend-specific tweaks to the adtype
-            adtype = DynamicPPL.tweak_adtype(adtype, model, varinfo)
+            adtype = DynamicPPL.tweak_adtype(adtype, model, x)
             args = (model, getlogdensity, all_ranges, transform_strategy, accs)
             if _use_closure(adtype)
                 DI.prepare_gradient(LogDensityAt(args...), adtype, x)
@@ -231,6 +230,38 @@ struct LogDensityFunction{
             model, adtype, transform_strategy, getlogdensity, all_ranges, prep, dim, accs
         )
     end
+end
+function LogDensityFunction(
+    model::Model,
+    getlogdensity::Any,
+    vi::VarInfo,
+    accs::Union{NTuple{<:Any,AbstractAccumulator},AccumulatorTuple}=ldf_accs(getlogdensity);
+    adtype::Union{ADTypes.AbstractADType,Nothing}=nothing,
+)
+    return LogDensityFunction(model, getlogdensity, vi.values, accs; adtype=adtype)
+end
+function LogDensityFunction(
+    model::Model,
+    getlogdensity::Any,
+    oavi::OnlyAccsVarInfo,
+    accs::Union{NTuple{<:Any,AbstractAccumulator},AccumulatorTuple}=ldf_accs(getlogdensity);
+    adtype::Union{ADTypes.AbstractADType,Nothing}=nothing,
+)
+    if !hasacc(oavi, Val(VECTORVAL_ACCNAME))
+        error(
+            "When constructing a LogDensityFunction with an OnlyAccsVarInfo, you must include a VectorValueAccumulator as one of the accumulators, so that the parameter vector can be extracted from the VarInfo. The provided OnlyAccsVarInfo does not have a VectorValueAccumulator.",
+        )
+    end
+    vnt = getacc(oavi, Val(VECTORVAL_ACCNAME)).values
+    return LogDensityFunction(model, getlogdensity, vnt, accs; adtype=adtype)
+end
+
+function _default_vnt(model::Model, transform_strategy::AbstractTransformStrategy)
+    _, vi = init!!(model, VarInfo(), InitFromPrior(), transform_strategy)
+    return vi.values
+    # oavi = OnlyAccsVarInfo(VectorValueAccumulator())
+    # _, oavi = DynamicPPL.init!!(model, oavi, InitFromPrior(), transform_strategy)
+    # return getacc(oavi, Val(VECTORVAL_ACCNAME)).values
 end
 
 function _get_input_vector_type(::LogDensityFunction{M,A,L,G,R,P,X}) where {M,A,L,G,R,P,X}
@@ -386,18 +417,17 @@ end
     tweak_adtype(
         adtype::ADTypes.AbstractADType,
         model::Model,
-        varinfo::AbstractVarInfo,
+        params::AbstractVector
     )
 
-Return an 'optimised' form of the adtype. This is useful for doing
-backend-specific optimisation of the adtype (e.g., for ForwardDiff, calculating
-the chunk size: see the method override in `ext/DynamicPPLForwardDiffExt.jl`).
-The model is passed as a parameter in case the optimisation depends on the
-model.
+Return an 'optimised' form of the adtype. This is useful for doing backend-specific
+optimisation of the adtype (e.g., for ForwardDiff, calculating the chunk size: see the
+method override in `ext/DynamicPPLForwardDiffExt.jl`). The model is passed as a parameter in
+case the optimisation depends on the model.
 
 By default, this just returns the input unchanged.
 """
-tweak_adtype(adtype::ADTypes.AbstractADType, ::Model, ::AbstractVarInfo) = adtype
+tweak_adtype(adtype::ADTypes.AbstractADType, ::Model, ::AbstractVector) = adtype
 
 """
     _use_closure(adtype::ADTypes.AbstractADType)
@@ -441,29 +471,31 @@ _use_closure(::ADTypes.AbstractADType) = false
 ######################################################
 
 """
-    get_ranges_and_linked(varinfo::VarInfo)
+    get_ranges_and_linked(vnt::VarNamedTuple)
 
-Given a `VarInfo`, extract the ranges of each variable in the vectorised parameter
-representation, along with whether each variable is linked or unlinked.
+Given a `VarNamedTuple` that contains `VectorValue`s and `LinkedVectorValue`s, extract the
+ranges of each variable in the vectorised parameter representation, along with whether each
+variable is linked or unlinked.
 
 This function returns a VarNamedTuple mapping all VarNames to their corresponding
 `RangeAndLinked`.
 """
-function get_ranges_and_linked(vi::VarInfo)
-    vnt, _ = mapreduce(
+function get_ranges_and_linked(vnt::VarNamedTuple)
+    # Note: can't use map_values!! here as that might mutate the VNT itself!
+    ranges_vnt, _ = mapreduce(
         identity,
-        function ((vnt, offset), pair)
+        function ((ranges_vnt, offset), pair)
             vn, tv = pair
             val = tv.val
             range = offset:(offset + length(val) - 1)
             offset += length(val)
             ral = RangeAndLinked(range, tv isa LinkedVectorValue, tv.size)
-            template = vi.values.data[AbstractPPL.getsym(vn)]
-            vnt = templated_setindex!!(vnt, ral, vn, template)
-            return vnt, offset
+            template = vnt.data[AbstractPPL.getsym(vn)]
+            ranges_vnt = templated_setindex!!(ranges_vnt, ral, vn, template)
+            return ranges_vnt, offset
         end,
-        vi.values;
+        vnt;
         init=(VarNamedTuple(), 1),
     )
-    return vnt
+    return ranges_vnt
 end
