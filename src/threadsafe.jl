@@ -67,8 +67,6 @@ function map_accumulators!!(func::Function, vi::ThreadSafeVarInfo)
     return vi
 end
 
-setval!(vi::ThreadSafeVarInfo, val, vn::VarName) = setval!(vi.varinfo, val, vn)
-
 keys(vi::ThreadSafeVarInfo) = keys(vi.varinfo)
 haskey(vi::ThreadSafeVarInfo, vn::VarName) = haskey(vi.varinfo, vn)
 
@@ -100,8 +98,6 @@ function setindex_with_dist!!(
     vi_inner = setindex_with_dist!!(vi.varinfo, tval, dist, vn, template)
     return Accessors.@set(vi.varinfo = vi_inner)
 end
-
-vector_length(vi::ThreadSafeVarInfo) = vector_length(vi.varinfo)
 
 isempty(vi::ThreadSafeVarInfo) = isempty(vi.varinfo)
 function BangBang.empty!!(vi::ThreadSafeVarInfo)
@@ -144,10 +140,6 @@ function Base.merge(varinfo_left::ThreadSafeVarInfo, varinfo_right::ThreadSafeVa
     return Accessors.@set varinfo_left.varinfo = merge(
         varinfo_left.varinfo, varinfo_right.varinfo
     )
-end
-
-function invlink_with_logpdf(vi::ThreadSafeVarInfo, vn::VarName, dist, y)
-    return invlink_with_logpdf(vi.varinfo, vn, dist, y)
 end
 
 function from_internal_transform(varinfo::ThreadSafeVarInfo, vn::VarName)

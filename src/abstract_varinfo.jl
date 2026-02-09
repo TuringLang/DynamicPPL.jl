@@ -836,27 +836,6 @@ function from_maybe_linked_internal(vi::AbstractVarInfo, vn::VarName, dist, val)
 end
 
 """
-    invlink_with_logpdf(varinfo::AbstractVarInfo, vn::VarName, dist[, x])
-
-Invlink `x` and compute the logpdf under `dist` including correction from
-the invlink-transformation.
-
-If `x` is not provided, `getindex_internal(vi, vn)` will be used.
-
-!!! warning
-    The input value `x` should be according to the internal representation of
-    `varinfo`, e.g. the value returned by `getindex_internal(vi, vn)`.
-"""
-function invlink_with_logpdf(vi::AbstractVarInfo, vn::VarName, dist)
-    return invlink_with_logpdf(vi, vn, dist, getindex_internal(vi, vn))
-end
-function invlink_with_logpdf(vi::AbstractVarInfo, vn::VarName, dist, y)
-    f = from_maybe_linked_internal_transform(vi, vn, dist)
-    x, logjac = with_logabsdet_jacobian(f, y)
-    return x, logpdf(dist, x) + logjac
-end
-
-"""
     from_internal_transform(varinfo::AbstractVarInfo, vn::VarName[, dist])
 
 Return a transformation that transforms from the internal representation of `vn` with `dist`
