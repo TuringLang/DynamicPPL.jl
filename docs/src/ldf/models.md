@@ -41,6 +41,11 @@ ldf.transform_strategy
 With these two pieces of information, we can add whatever accumulators we like to the mix, and then evaluate using `init!!` as shown before.
 For example, let's say we'd like to know what raw values the vector `[3.0, 4.0]` corresponds to.
 
+!!! note "Extracting the model"
+    
+    If you only have access to `ldf` and not the original `model`, you can just extract it via `ldf.model`.
+    See the [`LogDensityFunction`](@ref) docstring for more details.
+
 ```@example 1
 accs = OnlyAccsVarInfo(RawValueAccumulator(false))
 _, accs = init!!(model, accs, init_strategy, ldf.transform_strategy)
