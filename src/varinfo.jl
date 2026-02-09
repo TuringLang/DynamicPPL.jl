@@ -360,7 +360,19 @@ function from_linked_internal_transform(vi::VarInfo, vn::VarName)
     return DynamicPPL.get_transform(getindex(vi.values, vn))
 end
 
-internal_values_as_vector(vi::VarInfo) = get_vector_values(vi.values)
+"""
+    internal_values_as_vector(vi::VarInfo)
+
+Convert `vi.values` into a single vector by concatenating the internal (vectorised) values
+of all variables in `vi`. The order of concatenation is determined by the order of
+`keys(vi.values)`.
+
+Note that this is a lossy operation as it discards all information about the transformations
+and variable names in `vi`.
+
+This is the inverse of [`unflatten!!`](@ref).
+"""
+internal_values_as_vector(vi::VarInfo) = internal_values_as_vector(vi.values)
 
 function _update_link_status!!(
     orig_vi::VarInfo,

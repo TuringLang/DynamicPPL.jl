@@ -22,13 +22,8 @@ that are not specified as being linked, a `VectorValue` will be collected.
 """
 VectorValueAccumulator() = VNTAccumulator{VECTORVAL_ACCNAME}(_get_vector_tval)
 
-# This is equivalent to `varinfo[:]`
-_as_vector(val::VectorValue) = DynamicPPL.get_internal_value(val)
-_as_vector(val::LinkedVectorValue) = DynamicPPL.get_internal_value(val)
-_as_vector(val) = error("don't know how to convert $(typeof(val)) to a vector value")
-
 """
-    get_vector_values(vnt::VarNamedTuple)
+    internal_values_as_vector(vnt::VarNamedTuple)
 
 Concatenate all the `VectorValue`s and `LinkedVectorValue`s in `vnt` into a single vector.
 This will error if any of the values in `vnt` are not `VectorValue`s or
@@ -46,7 +41,7 @@ VarNamedTuple
 ├─ x => VectorValue{Vector{Float64}, Nothing, Nothing}([1.0, 2.0], nothing, nothing)
 └─ y => LinkedVectorValue{Vector{Float64}, Nothing, Nothing}([3.0], nothing, nothing)
 
-julia> get_vector_values(vnt)
+julia> internal_values_as_vector(vnt)
 3-element Vector{Float64}:
  1.0
  2.0
@@ -73,14 +68,22 @@ julia> # note InitFromParams provides parameters in untransformed space
        _, accs = init!!(f(), accs, InitFromParams((x = [1.0, 2.0], y = 0.5)), LinkAll());
 
 julia> # but because we specified LinkAll(), the vectorised values are transformed
-       get_vector_values(getacc(accs, Val(accumulator_name(vector_acc))))
+       vector_vals = get_vector_values(accs)
+VarNamedTuple
+├─ x => LinkedVectorValue{Vector{Float64}, ComposedFunction{typeof(identity), typeof(identity)}, Tuple{Int64}}([1.0, 2.0], identity ∘ identity, (2,))
+└─ y => LinkedVectorValue{Vector{Float64}, ComposedFunction{DynamicPPL.UnwrapSingletonTransform{Tuple{}}, ComposedFunction{Bijectors.Inverse{Bijectors.Logit{Float64, Float64}}, DynamicPPL.ReshapeTransform{Tuple{Int64}, Tuple{}}}}, Tuple{}}([0.0], DynamicPPL.UnwrapSingletonTransform{Tuple{}}(()) ∘ (Bijectors.Inverse{Bijectors.Logit{Float64, Float64}}(Bijectors.Logit{Float64, Float64}(0.0, 1.0)) ∘ DynamicPPL.ReshapeTransform{Tuple{Int64}, Tuple{}}((1,), ())), ())
+
+julia> # we can extract the internal values as a single vector
+       internal_values_as_vector(vector_vals)
 3-element Vector{Float64}:
  1.0
  2.0
  0.0
 ```
 """
-function get_vector_values(vnt::VarNamedTuple)
+function internal_values_as_vector(vnt::VarNamedTuple)
     return mapfoldl(pair -> _as_vector(pair.second), vcat, vnt; init=Union{}[])
 end
-get_vector_values(acc::VNTAccumulator{VECTORVAL_ACCNAME}) = get_vector_values(acc.values)
+_as_vector(val::VectorValue) = DynamicPPL.get_internal_value(val)
+_as_vector(val::LinkedVectorValue) = DynamicPPL.get_internal_value(val)
+_as_vector(val) = error("don't know how to convert $(typeof(val)) to a vector value")

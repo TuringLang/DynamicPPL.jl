@@ -200,7 +200,7 @@ struct LogDensityFunction{
             # premature optimisation.
             LinkSome(linked_vns, UnlinkAll())
         end
-        x = get_vector_values(vnt)
+        x = internal_values_as_vector(vnt)
         dim = length(x)
         # convert to AccumulatorTuple if needed
         accs = AccumulatorTuple(accs)

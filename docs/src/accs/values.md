@@ -5,12 +5,17 @@
     This page describes design decisions in DynamicPPL, and is primarily intended for developers of DynamicPPL.
     If you are a user of DynamicPPL, you do not need to understand this in detail to use DynamicPPL effectively.
 
+In the [Existing accumulators](@ref existing-accumulators) page, we mentioned that there are two accumulators that store values, namely `RawValueAccumulator` and `VectorValueAccumulator`.
+This page attempts to explain the rationale behind this, when each of these needs to be used, and how we could potentially remove the need for `VectorValueAccumulator` in the future.
+
+Before we go into this, we need to start by talking about `VarInfo`, which we have not covered at all yet.
+
 ## The role of VarInfo
 
 As described in the [model evaluation documentation page](../evaluation.md), each tilde-statement is split up into three parts:
 
  1. Initialisation;
- 2. Computation; and
+ 2. Transformation; and
  3. Accumulation.
 
 Unfortunately, not everything in DynamicPPL follows this clean structure yet.
@@ -54,7 +59,7 @@ In a `VarInfo`, the `accs` field is responsible for the accumulation step, just 
 
 However, `values` serves three purposes in one:
 
-  - it is sometimes used for initialisation (when the model's leaf context is `DefaultContext`, the `AbstractTransformedValue` to be used in the computation step is read from it)
+  - it is sometimes used for initialisation (when the model's leaf context is `DefaultContext`, the `AbstractTransformedValue` to be used in the transformation step is read from it)
   - it also determines whether the log-Jacobian term should be included or not (if the value is a `LinkedVectorValue`, the log-Jacobian is included)
   - it is sometimes also used for accumulation (when evaluating a model with a VarInfo, we will potentially store a new `AbstractTransformedValue` in it!).
 

@@ -53,8 +53,8 @@ end
 """
     get_vector_values(accs::OnlyAccsVarInfo)
 
-Get the vectorised values from `accs`. This will error if `accs` does not contain a
-`VectorValueAccumulator`.
+Get a `VarNamedTuple` containing vectorised values from `accs`. This will error if `accs`
+does not contain a `VectorValueAccumulator`.
 
 Note that this function is implemented for `OnlyAccsVarInfo`, but not `VarInfo` since that
 could be ambiguous (VarInfo stores its own vectorised values!). If you want to extract the
@@ -62,5 +62,5 @@ vectorised values from `varinfo.values` where `varinfo isa VarInfo`, you should 
 [`DynamicPPL.internal_values_as_vector(varinfo)`](@ref internal_values_as_vector).
 """
 function get_vector_values(oavi::OnlyAccsVarInfo)
-    return get_vector_values(getacc(oavi, Val(VECTORVAL_ACCNAME)).values)
+    return getacc(oavi, Val(VECTORVAL_ACCNAME)).values
 end

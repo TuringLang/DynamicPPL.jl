@@ -807,11 +807,28 @@ function invlink(t::AbstractTransformation, vi::AbstractVarInfo, model::Model)
     return invlink!!(t, deepcopy(vi), model)
 end
 
-# Utilities
 """
     unflatten!!(vi::AbstractVarInfo, x::AbstractVector)
 
-Return a new instance of `vi` with the values of `x` assigned to the variables.
+Return a new instance of `vi` where the internal values stored in `vi.values` have been
+overwritten with the values in `x`.
+
+This is the inverse operation of [`internal_values_as_vector`](@ref).
+
+!!! warning "The VarInfo will be in an invalid state"
+    Note that this does not re-evaluate the model (indeed it cannot!) so the contents of any
+    accumulators in the `VarInfo` will almost certainly be inconsistent with the new values.
+
+    On top of that, it does not update the *transformations* stored inside the
+    `LinkedVectorValue`s and `VectorValue`s. If these transformations themselves depend on
+    the values of the variables, this can lead to incorrect results when trying to access
+    untransformed values, e.g. using `getindex(vi, vn)`.
+
+    **Because of these issues, we strongly recommend against using this function, unless
+    absolutely necessary.** In many cases, usage of `unflatten!!(vi, x)` can be replaced
+    with `InitFromParams(x, ldf::LogDensityFunction)`: please see the [DynamicPPL
+    documentation](@ref ldf-model) for more information. If you are unsure how to adapt your
+    code to avoid using `unflatten!!`, please open an issue.
 """
 function unflatten!! end
 
