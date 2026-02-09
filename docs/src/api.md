@@ -383,14 +383,7 @@ DynamicPPL.split
 DynamicPPL.combine
 ```
 
-DynamicPPL provides a number of default accumulators.
-
 ```@docs
-LogPriorAccumulator
-LogJacobianAccumulator
-LogLikelihoodAccumulator
-RawValueAccumulator
-PriorDistributionAccumulator
 VNTAccumulator
 DoNotAccumulate
 ```
@@ -424,12 +417,6 @@ acclogprior!!
 getloglikelihood
 setloglikelihood!!
 accloglikelihood!!
-```
-
-#### Raw values
-
-```@docs
-get_raw_values
 ```
 
 #### Variables and their realizations
@@ -490,7 +477,6 @@ Base.merge(::AbstractVarInfo)
 DynamicPPL.subset
 unflatten!!
 internal_values_as_vector
-get_vector_values
 ```
 
 ### Evaluation Contexts

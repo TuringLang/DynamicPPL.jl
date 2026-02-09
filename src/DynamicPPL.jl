@@ -55,12 +55,6 @@ export AbstractVarInfo,
     empty!!,
     subset,
     getlogp,
-    getlogjoint,
-    getlogprior,
-    getloglikelihood,
-    getlogjac,
-    getlogjoint_internal,
-    getlogprior_internal,
     setlogp!!,
     setlogprior!!,
     setlogjac!!,
@@ -74,29 +68,39 @@ export AbstractVarInfo,
     set_transformed!!,
     # Accumulators
     AbstractAccumulator,
-    LogLikelihoodAccumulator,
-    LogPriorAccumulator,
-    LogJacobianAccumulator,
-    RawValueAccumulator,
-    VectorValueAccumulator,
-    get_raw_values,
-    PriorDistributionAccumulator,
     accumulate_assume!!,
     accumulate_observe!!,
     accumulator_name,
     reset,
     split,
     combine,
-    VNTAccumulator,
-    DoNotAccumulate,
     getacc,
     setacc!!,
     setaccs!!,
     deleteacc!!,
+    VNTAccumulator,
+    DoNotAccumulate,
+    # Accumulators - logp
+    LogLikelihoodAccumulator,
+    LogPriorAccumulator,
+    LogJacobianAccumulator,
+    getlogjoint,
+    getlogprior,
+    getloglikelihood,
+    getlogjac,
+    getlogjoint_internal,
+    getlogprior_internal,
+    # Accumulators - values
+    RawValueAccumulator,
+    VectorValueAccumulator,
+    get_raw_values,
+    get_vector_values,
+    # Accumulators - miscellany
+    PriorDistributionAccumulator,
+    BijectorAccumulator,
     # Working with internal values as vectors
     unflatten!!,
     internal_values_as_vector,
-    get_vector_values,
     # VarName (reexport from AbstractPPL)
     VarName,
     subsumes,
@@ -256,6 +260,7 @@ include("accumulators/vnt.jl")
 include("accumulators/vector_values.jl")
 include("accumulators/priors.jl")
 include("accumulators/raw_values.jl")
+include("accumulators/bijector.jl")
 include("accumulators/pointwise_logdensities.jl")
 include("abstract_varinfo.jl")
 include("threadsafe.jl")
@@ -265,7 +270,6 @@ include("compiler.jl")
 include("logdensityfunction.jl")
 include("model_utils.jl")
 include("chains.jl")
-include("bijector.jl")
 
 include("debug_utils.jl")
 using .DebugUtils

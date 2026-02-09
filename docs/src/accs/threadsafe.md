@@ -74,4 +74,5 @@ In other words, full thread safety in DynamicPPL is possible as long as all the 
 The main situation where this is not yet true is when using a full `VarInfo`, which stores a VarNamedTuple in its `varinfo.values` field.
 Modifications to this field are currently not thread-safe.
 However, the `values` VNT is entirely equivalent to a `VectorValueAccumulator`.
-In the near future it should be possible to use a `OnlyAccsVarInfo` with a `VectorValueAccumulator` instead of a full `VarInfo`, which would allow DynamicPPL to be fully thread-safe.
+
+In the near future it should hopefully be possible to use a `OnlyAccsVarInfo` with a `VectorValueAccumulator` instead of a full `VarInfo`, which would allow DynamicPPL to be fully thread-safe (though see also [this issue](https://github.com/TuringLang/DynamicPPL.jl/issues/1266) for another caveat).
