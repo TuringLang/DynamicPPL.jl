@@ -1,159 +1,273 @@
-# How data flows through a model
+# Model evaluation
 
-This page aims to show how data can enter a model, how we use it to perform computations, and how the results are extracted.
+Once you have defined a DynamicPPL model, let's say,
 
-As a high-level summary:
+```@example 1
+using DynamicPPL, Distributions
 
-  - **initialisation strategies** are responsible for generating parameter values
-  - **transform strategies** are responsible for telling the model how to interpret those values (i.e., what log-Jacobian needs to be computed)
-  - **accumulators** are responsible for aggregating the outputs of the model (e.g. log probabilities, transformed values, etc.)
-
-In this model, there is a clear separation between the *inputs* to the model, and the *outputs* of the model.
-
-!!! note "DefaultContext"
-    
-    While `VarInfo` and `DefaultContext` still exist, this is mostly a historical remnant.
-    `DefaultContext` means that the inputs should come from the values of the provided `VarInfo`, and the outputs are stored in the accumulators of the provided `VarInfo`.
-    However, this can easily be refactored such that the values are provided directly as an initialisation strategy.
-    See [this issue](https://github.com/TuringLang/DynamicPPL.jl/issues/1184) for more details.
-
-There are three stages to every tilde-statement:
-
- 1. Initialisation: get an `AbstractTransformedValue` from the initialisation strategy.
- 2. Computation: figure out the untransformed (raw) value and the transformed value (where necessary); compute the relevant log-Jacobian.
- 3. Accumulation: pass all the relevant information to the accumulators, which individually decide what to do with it.
-
-In fact this (more or less) directly translates into three lines of code: see e.g. the method for `tilde_assume!!` in `src/contexts/init.jl`, which (as of the time of writing) looks like:
-
-```julia
-function DynamicPPL.tilde_assume!!(ctx::InitContext, dist, vn, template, vi)
-    # 1. Initialisation
-    init_tval = DynamicPPL.init(ctx.rng, vn, dist, ctx.strategy)
-
-    # 2. Computation
-    x, tval, logjac = apply_transform_strategy(ctx.transform_strategy, init_tval, vn, dist)
-
-    # 3. Accumulation
-    vi = DynamicPPL.setindex_with_dist!!(vi, tval, dist, vn, template)
-    vi = DynamicPPL.accumulate_assume!!(vi, x, tval, logjac, vn, dist, template)
-    return x, vi
+@model function f()
+    x ~ Normal()
+    y ~ Beta(2, 2)
+    return (x=x, y=y)
 end
+
+model = f();
 ```
 
-For `tilde_observe!!`, the code is very similar, but even easier: the value can be read directly from the data provided to the model, so there is no need for an initialisation step.
-Since the value is already untransformed, we can skip the second step.
-Finally, accumulators must behave differently: e.g. incrementing the likelihood instead of the prior.
-That is accomplished by calling `accumulate_observe!!` instead of `accumulate_assume!!`.
+you will want to be able to evaluate it in some way.
 
-In the following sections, we stick to the three sections of `tilde_assume!!`.
+Much like how a typical Julia function specifies some computation that involves variables and operations, the model definition defines a generative process, its random variables, and the relationships between them.
+However, it still leaves open many questions.
+For example,
 
-## Initialisation
+  - what values of `x` and `y` should be used?
+
+  - should those values be somehow transformed, e.g., do we want to constrain `y` to be in its original interval `(0, 1)`, or do we want to treat it as an unconstrained variable in `ℝ` (which possibly requires a Jacobian term to correct for the probability density)?
+  - what information do we want to know about the model? Do we want to know the values of `x` and `y`, the log-probability of the model, ...?
+
+DynamicPPL offers a powerful and modular evaluation framework which lets you control each of these aspects individually.
+
+The following table offers a high-level summary of each of these different parts.
+Each of these are described in more detail on the linked pages; this page shows some examples of how they can be composed.
+
+| Concept                 | Subtype                             | Purpose                                                                             |
+|:----------------------- |:----------------------------------- |:----------------------------------------------------------------------------------- |
+| Initialisation strategy | [`AbstractInitStrategy`](@ref)      | Specifies how parameter values are generated                                        |
+| Transform strategy      | [`AbstractTransformStrategy`](@ref) | Specifies how parameter values are transformed and how the log-Jacobian is computed |
+| Accumulators            | [`AbstractAccumulator`](@ref)       | Specifies how the outputs of the model are aggregated                               |
+
+To evaluate a model with these three components, you can use the method [`DynamicPPL.init!!`](@ref):
 
 ```julia
-init_tval = DynamicPPL.init(ctx.rng, vn, dist, ctx.strategy)
+retval, accs = DynamicPPL.init!!(
+    [rng::Random.AbstractRNG]model::DynamicPPL.Model,
+    accs::DynamicPPL.OnlyAccsVarInfo,
+    init_strategy::DynamicPPL.AbstractInitStrategy,
+    transform_strategy::DynamicPPL.AbstractTransformStrategy,
+)
 ```
 
-The initialisation step is handled by the `init` function, which dispatches on the initialisation strategy.
-For example, if `ctx.strategy` is `InitFromPrior()`, then `init()` samples a value from the distribution `dist`.
+which returns a tuple of the model's return value (the NamedTuple `(x=x, y=y)` in the example above) and the accumulators after evaluation.
 
-!!! note "DefaultContext"
+!!! note "OnlyAccsVarInfo"
     
-    For `DefaultContext`, initialisation is handled by looking for the value stored inside `vi`.
-
-As discussed in the [Initialisation strategies](./init.md) page, this step, in general, does not return just the raw value (like `rand(dist)`).
-It returns an [`DynamicPPL.AbstractTransformedValue`](@ref), which represents a value that _may_ have been transformed.
-In the case of `InitFromPrior()`, the value is of course not transformed; we return a [`DynamicPPL.UntransformedValue`](@ref) wrapping the sampled value.
-
-However, consider the case where we are using parameters stored inside a `VarInfo`: the value may have been stored either as a vectorised form, or as a linked vectorised form.
-In this case, `init()` will return either a [`DynamicPPL.VectorValue`](@ref) or a [`DynamicPPL.LinkedVectorValue`](@ref).
-
-The reason why we return this wrapped value is because we want to avoid having to perform transformations multiple times.
-Each step is responsible for only performing the transformations it needs to.
-At this stage, there has not yet been any need for the raw value, so we do not perform any transformations yet.
-Thus, the `AbstractTransformedValue` is passed straight through and is used by both the computation and accumulation steps.
-
-!!! note "The return type of init() doesn't matter"
+    `OnlyAccsVarInfo` is a thin wrapper around a set of accumulators.
+    You can construct it using `OnlyAccsVarInfo(acc1, acc2, ...)`, where `acc1`, `acc2`, ... are the accumulators that you want to use during evaluation.
     
-    The _type_ of `AbstractTransformedValue` returned by `init()`, in general, has no impact on whether the value is considered to be transformed or not.
-    That is determined solely by the transform strategy (see below).
-    This separation allows us to perform the minimum amount of transformations necessary inside `init()`.
-    If we were to eagerly transform the value inside `init()`, we could easily end up performing the same transformation multiple times across the different steps.
+    The main reason why `OnlyAccsVarInfo` exists is that it acts as a bridge between older code that expects a `VarInfo` and the new evaluation framework that is described above.
+    `OnlyAccsVarInfo` contains only accumulators (as its name suggests), but implements a subset of the `AbstractVarInfo` interface, which allows it to be used in places where a `VarInfo` is expected.
+    
+    In the future it is likely that this will be removed, and you can directly pass the tuple of accumulators itself without having to wrap it.
 
-## Computation
+!!! note "What's happening to VarInfo?"
+    
+    If you have been using DynamicPPL in the past, you may be familiar with the general idea of `VarInfo`.
+    (If that sounds completely foreign to you, you can ignore this!)
+    
+    While this still exists, we **strongly** encourage you to not work with it directly.
+    The reason for this is because `VarInfo` conflates all three of the concepts described above into a single stateful object, which makes evaluation difficult to control and to reason about.
+    In the long term we would like to remove `VarInfo` entirely.
+    
+    If you are using DynamicPPL internals and are unsure how to adapt your old code that uses `VarInfo` to the new evaluation framework, please check out the [Migration guide](./migration.md), or [open an issue on DynamicPPL](https://github.com/TuringLang/DynamicPPL.jl/issues).
+    We are happy to help!
 
-```julia
-x, tval, logjac = apply_transform_strategy(ctx.transform_strategy, init_tval, vn, dist)
+## Accumulators
+
+We will talk about accumulators first, since we will need to use them to demonstrate the other concepts.
+
+Accumulators are used to collect information during the evaluation of a model.
+Each accumulator has a different function: there is a [`LogPriorAccumulator`](@ref) for accumulating the log-probability of the prior, a [`LogLikelihoodAccumulator`](@ref) for accumulating the log-probability of the likelihood, a [`RawValueAccumulator`](@ref) for collecting raw (i.e. untransformed) parameter values, and so on.
+
+The beauty of accumulators is that they are completely separate from one another; that means that you can mix and match them as needed, and avoid computing any information that you don't need.
+For example, if you don't need to know the likelihood, you can drop the `LogLikelihoodAccumulator`, which will avoid unnecessary calls to `logpdf(dist, x)` for any observed `x`.
+
+You can specify which accumulators you want to use by passing them as arguments to `OnlyAccsVarInfo`.
+If no arguments are passed, a set of default accumulators (log-prior, log-likelihood, and log-Jacobian) are used.
+
+```@example 1
+# Here, we set up an `OnlyAccsVarInfo` that only contains one accumulator.
+accs = OnlyAccsVarInfo(LogPriorAccumulator())
+
+# When calling init!!, we need to specify all three components. For now, just
+# focus on the accumulators, and we'll talk about the other two components later.
+init_strategy = InitFromPrior()
+transform_strategy = UnlinkAll()
+
+retval, accs = DynamicPPL.init!!(model, accs, init_strategy, transform_strategy)
+accs
 ```
 
-There are three return values in this step, and they correspond to the three things that this step needs to do.
-They are all interconnected, which is why they are computed together inside `apply_transform_strategy()`: by doing so we can ensure that `with_logabsdet_jacobian` is only called a maximum of once per tilde-statement.
+There are a number of functions that you can call on an `OnlyAccsVarInfo` to extract the information.
+The most low-level one is `getacc`, which given an accumulator name (a `Symbol`) returns a specific accumulator; see the [accumulator docs](@ref accumulators-overview) for more details on this function.
 
- 1. **Get the raw (untransformed) value `x`**
-    
-    At *some* point, we do need to perform the transformation to get the actual raw value.
-    This is because DynamicPPL promises in the model that the variables on the left-hand side of the tilde are actual raw values.
-    
-    ```julia
-    @model function f()
-        x ~ dist
-        # Here, `x` _must_ be the actual raw value.
-        @show x
-    end
-    ```
-    
-    Thus, regardless of what we are accumulating, we will have to unwrap the transformed value provided by `init()`.
-
- 2. **Get the (possibly transformed) value `tval`**
-    
-    In addition to the raw value, if the transform strategy indicates that we should treat `vn` as being in transformed space, we also need to compute the transformed value.
-    This is because some accumulators may need to work with the transformed value instead of the raw value.
-    
-    (If there is a full VarInfo being used, the transformed value will also have to be set inside the VarInfo.)
- 3. **Compute the log-Jacobian `logjac`**
-    
-    `logjac` is accumulated according to the transform specified by the transform strategy.
-    The convention in DynamicPPL is that the log-Jacobian is always computed with respect to the forward transformation.
-
-It is worth emphasising that whether a value is transformed or not is determined by the *transform strategy* provided to the model (i.e., `ctx.link_strategy`), not the initialisation strategy (`ctx.strategy`).
-The reason for this is to allow a separation between the source of the values (initialisation) and how those values are to be interpreted (transform strategy).
-
-This allows us to, for example, generate values from the (unlinked) prior but also calculate their log-density in transformed space and accumulate transformed values by combining `InitFromPrior()` with `LinkAll()`.
-It also allows us to read values from an existing `VarInfo` but interpret them as being in a different space by combining `InitFromParams()` with a different transform strategy: this corresponds exactly to the act of 'linking' a VarInfo.
-
-!!! note "DefaultContext"
-    
-    For DefaultContext, whether or not the variable is transformed will depend on the `VarInfo` used for evaluation. If the variable is stored as transformed in the `VarInfo`, then it will be treated as transformed here.
-    Notice that both the initialisation strategy as well as the transform strategy are effectively determined by the `VarInfo` in this case.
-    The separation described above is not possible when using `DefaultContext`.
-    
-    The move away from `DefaultContext` and towards `InitContext` is motivated by the desire to separate these two concerns, and to enable a more modular and declarative way of specifying how a model is to be evaluated.
-
-!!! note "Log-Jacobian computation"
-    
-    In principle, if the log-Jacobian is not of interest to any of the accumulators, we _could_ skip computing it here.
-    However, that is not easy to determine in practice.
-    We also cannot defer the log-Jacobian computation to the accumulator, since it is often more efficient to compute it at the same time as the transformation (i.e., using `with_logabsdet_jacobian`).
-    The current situation of computing it once here is the most sensible compromise (for now).
-    
-    One could envision a future where accumulators declare upfront (via their type) whether they need the log-Jacobian or not. We could then skip computing it if no accumulator needs it.
-
-## Accumulation
-
-```julia
-vi = DynamicPPL.setindex_with_dist!!(vi, tval, dist, vn, template)
-vi = DynamicPPL.accumulate_assume!!(vi, x, tval, logjac, vn, dist, template)
+```@example 1
+getacc(accs, Val(:LogPrior)).logp
 ```
 
-!!! note
-    
-    The first line, `setindex_with_dist!!`, is only necessary when using a full `VarInfo`.
-    It essentially stores the value `tval` inside the `VarInfo`, but makes sure to store a vectorised form (i.e., if `tval` is an `UntransformedValue`, it will be converted to a `VectorValue` before being stored).
-    This is entirely equivalent to using a `VectorValueAccumulator` to store the values; it's just that when using a full `VarInfo` that accumulator is 'built-in' as `vi.values`.
-    
-    Since conceptually this is the same as an accumulator, we will not discuss it further here.
+It is often more convenient though to work with higher-level functions which directly extract the information that you need.
+For example, `getlogprior` will extract the log-prior from the `LogPriorAccumulator` (if one exists):
 
-Here, we pass all of the information we have gathered so far for this tilde-statement to the accumulators.
-`accumulate_assume!!(vi::AbstractVarInfo, ...)` will loop over all accumulators stored inside `vi`, and call each of their individual `accumulate_assume!!` methods.
-This method is responsible for deciding how to combine the information provided.
+```@example 1
+getlogprior(accs)
+```
 
-Accumulators are described in much more detail on the [Accumulators](./accs/design.md) page; please read that for more information!
+The [page on existing accumulators](@ref existing-accumulators) describes the ones that are provided in DynamicPPL.
+Many of these will come with higher-level convenience functions: currently we define (and export) [`getlogprior`](@ref), [`getloglikelihood`](@ref), [`getlogjac`](@ref), [`getlogjoint`](@ref), [`getlogprior_internal`](@ref), [`getlogjoint_internal`](@ref), [`get_raw_values`](@ref), and [`get_vector_values`](@ref).
+
+DynamicPPL also allows you to add your own custom accumulators, which can be used to extract (or process) information obtained during model evaluation.
+This often means that you can avoid running the model multiple times just to extract different pieces of information.
+
+## Initialisation strategies
+
+When evaluating a model, we need to assign values to the random variables in the model.
+An *initialisation strategy* specifies how these values are generated.
+
+As a very simple example, let's say we want to generate values for `x` and `y` by sampling
+from the prior.
+DynamicPPL provides [`InitFromPrior()`](@ref) for this purpose:
+
+```@example 1
+accs = OnlyAccsVarInfo()
+init_strategy = InitFromPrior()
+transform_strategy = UnlinkAll()
+
+retval, accs = DynamicPPL.init!!(model, accs, init_strategy, transform_strategy)
+retval
+```
+
+In the return value, we see that both `x` and `y` have been drawn from the prior.
+This is an inherently random process; if you run the above code multiple times, you will get
+different values for `x` and `y` each time.
+Initialisation strategies that involve randomness can be controlled by passing an `rng` object as the first argument to `DynamicPPL.init!!`:
+
+```@example 1
+using Random
+
+retval1 = first(init!!(Xoshiro(468), model, accs, init_strategy, transform_strategy))
+retval2 = first(init!!(Xoshiro(468), model, accs, init_strategy, transform_strategy))
+retval1 == retval2
+```
+
+Apart from `InitFromPrior()`, the main initialisation strategy that you are likely to use is [`InitFromParams()`](@ref), where you can manually specify the values of the parameters that you are interested in.
+
+```@example 1
+# See the VarNamedTuple docs for examples.
+params = @vnt begin
+    x := 1.0
+    y := 0.5
+end
+
+init_strategy = InitFromParams(params)
+retval, accs = DynamicPPL.init!!(model, accs, init_strategy, transform_strategy)
+
+retval
+```
+
+How do we know that the values of `x` and `y` that we specified in `params` are actually being used?
+We can determine this by inspecting the data inside the accumulators.
+Because both `x` and `y` are random variables (i.e., not conditioned data), their log-probabilities fall under the prior.
+(Note that specifying `InitFromParams` is not the same as conditioning the model on those values!)
+
+```@example 1
+getlogprior(accs)
+```
+
+We can compare this to what we would get if we were to manually evaluate the log-probability:
+
+```@example 1
+logpdf(Normal(), 1.0) + logpdf(Beta(2, 2), 0.5)
+```
+
+## Transform strategies
+
+Let's finally turn our attention to the transform strategy argument.
+In the example above, we used `UnlinkAll()`, which means that the model is to be evaluated in 'unlinked' space: in DynamicPPL this refers to the original space of the parameters, without any transformations.
+
+Often it is necessary to evaluate the model in a different space.
+For example, we might be using an optimisation algorithm to find the maximum likelihood estimate.
+In such cases it is often more convenient to work in unconstrained Euclidean space, where we pass in a value `transformed_y` which can be any real number, and the actual value of `y` in the model is obtained by `raw_y = logistic(transformed_y)`, which maps real numbers to the interval `(0, 1)`.
+
+```@example 1
+using StatsFuns: logistic, logit
+
+transformed_y = 3.0
+raw_y = logistic(transformed_y)
+```
+
+The use of transformations also means that we need to be careful about computing log-probabilities, because the probability associated with `transformed_y` is *not* equivalent to
+
+```@example 1
+logpdf(Beta(2, 2), raw_y)
+```
+
+but rather
+
+```@example 1
+using ChangesOfVariables: with_logabsdet_jacobian
+
+logpdf(Beta(2, 2), raw_y) + last(with_logabsdet_jacobian(logistic, transformed_y))
+```
+
+where the Jacobian term accounts for the change of variables.
+(If you aren't familiar with this concept, the [main Turing docs have an introduction on it](https://turinglang.org/docs/developers/transforms/distributions/).)
+
+The transform strategy allows you to specify which variables are to be transformed to Euclidean space, which in turn determines whether the Jacobian term is accumulated or not.
+
+**Importantly, the transform strategy is separate from the initialisation strategy**: this means that the initialisation strategy can provide values in untransformed space, and the transform strategy can 'reinterpret' them as being in transformed space, and then apply the necessary transformations and Jacobian corrections.
+
+For example:
+
+```@example 1
+params = @vnt begin
+    # These are always in untransformed space.
+    x := 1.0
+    y := 0.5
+end
+init_strategy = InitFromParams(params)
+
+# This transform strategy specifies that all variables should be linked.
+transform_strategy = LinkAll()
+
+_, accs = DynamicPPL.init!!(model, accs, init_strategy, transform_strategy)
+accs
+```
+
+We see that the prior term is unchanged from the `UnlinkAll()` evaluation before.
+However, in constrast, the `LogJacobianAccumulator` is no longer empty; it contains the log-Jacobian term for the *forward* transform (to unconstrained space).
+Since `x` is already unconstrained, this term is zero for `x`, but for `y` it is non-zero, and it is equal to
+
+```@example 1
+# `logit` is the *forward* transform from (0, 1) to ℝ.
+last(with_logabsdet_jacobian(logit, 0.5))
+```
+
+That means that the log-probability in the transformed space is given by
+
+```@example 1
+getlogprior(accs) - getlogjac(accs)
+```
+
+You might ask: given that we specified parameters in untransformed space, how do we then retrieve the parameters in transformed space?
+The answer to this is to use an accumulator (no surprises there!) that collects the transformed values.
+Specifically, a `VectorValueAccumulator` collects vectorised forms of the parameters, which may either be [`VectorValue`](@ref)s or [`LinkedVectorValue`](@ref)s.
+
+```@example 1
+accs = OnlyAccsVarInfo(VectorValueAccumulator())
+_, accs = DynamicPPL.init!!(model, accs, init_strategy, transform_strategy)
+accs
+```
+
+Of course, in an actual application you should probably use all the accumulators at the same time so that you only run the model once.
+
+If you need to extract a concatenated vector of parameters from this, e.g. to pass to an optimisation algorithm, you can use
+
+```@example 1
+get_vector_values(accs)
+```
+
+If you are thinking of doing something like this, you *probably* also want to use [`LogDensityFunction`](@ref ldf) instead, and should skip ahead to that page.
+
+## Further reading
+
+The rest of the DynamicPPL documentation goes into these three components in much more detail.
+We also show you there how you can create your own custom initialisation strategies, transform strategies, and accumulators, so that you can extend the evaluation framework to suit your own needs.

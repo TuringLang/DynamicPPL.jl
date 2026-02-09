@@ -1,3 +1,3 @@
-# Existing accumulators in DynamicPPL
+# [Existing accumulators in DynamicPPL](@id existing-accumulators)
 
-Blah
+TODO

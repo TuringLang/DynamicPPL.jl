@@ -1,4 +1,4 @@
-# Accumulators
+# [Overview](@id accumulators-overview)
 
 Accumulators are objects in DynamicPPL which collect the results of computations in each tilde-statement.
 
@@ -100,11 +100,15 @@ end
 In this implementation, our `accumulate_...!!` methods actually mutate the accumulator in place.
 This is not mandatory; you can return a new accumulator if you prefer an immutable style.
 
-To use this accumulator in a model evaluation, we need to add it into a VarInfo.
-We can either do this by creating a `VarInfo` from scratch, or by modifying an existing one (see the next section for details).
-In this example, we'll create a `VarInfo` from scratch using only our new accumulator.
-To minimise the computational overhead, we use an `OnlyAccsVarInfo`, which is a slimmed down version of a `VarInfo` that only contains accumulators.
-(This is a minor detail; don't worry about it if you aren't familiar with `VarInfo` types.)
+To use this accumulator in a model evaluation, we need to wrap it in an `OnlyAccsVarInfo`.
+
+!!! note "OnlyAccsVarInfo"
+    
+    As described on the [Model evaluation](../evaluation.md) page, an `OnlyAccsVarInfo` is just a wrapper around a set of accumulators.
+    Don't worry about the name; it's mostly a historical artifact.
+
+We can either do this by creating it from scratch, or by modifying an existing one (see the next section for details).
+In this example, we'll create an `OnlyAccsVarInfo` from scratch using only our new accumulator.
 Once we've evaluated the model, we can access the accumulated log-densities by reading it back from the accumulator:
 
 ```@example 1
@@ -114,11 +118,11 @@ Once we've evaluated the model, we can access the accumulated log-densities by r
 end
 model = f(2.0)
 
-vi = DynamicPPL.OnlyAccsVarInfo((VarNameLogpAccumulator(),))
-_, vi = DynamicPPL.init!!(model, vi, InitFromParams((; x=1.0)), UnlinkAll())
+accs = DynamicPPL.OnlyAccsVarInfo(VarNameLogpAccumulator())
+_, accs = DynamicPPL.init!!(model, accs, InitFromParams((; x=1.0)), UnlinkAll())
 
 # This is why we used a const.
-output_acc = DynamicPPL.getacc(vi, Val(VARNAMELOGP_NAME))
+output_acc = DynamicPPL.getacc(accs, Val(VARNAMELOGP_NAME))
 ```
 
 Since we specified that `x` should be initialised to `1.0`, we should have that
@@ -135,25 +139,24 @@ output_acc.logps[@varname(y)] == (true, logpdf(Normal(1.0), 2.0))
 
 (Notice that because here we used an `OrderedDict`, the accumulation process is not commutative.)
 
-## Working with accumulators in VarInfos
+## Working with `OnlyAccsVarInfo`
 
 As shown above, users can choose exactly which accumulators to use during model evaluation in order to control what information is collected.
 This section explains how to specify which accumulators to use, and how to extract the information again afterwards.
 
-When creating a `VarInfo`, there is a set of _default accumulators_ that are used:
+When creating an `OnlyAccsVarInfo`, if no accumulators are specified, there is a set of _default accumulators_ that are used:
 
 ```@example 1
-VarInfo()
+OnlyAccsVarInfo()
 ```
 
-As alluded to above, one can control this by passing a tuple of accumulators to the `VarInfo` constructor:
+As alluded to above, one can control this by passing the accumulators to the `OnlyAccsVarInfo` constructor:
 
 ```@example 1
-# the `false` controls the linking
-vi = VarInfo{false}(VarNamedTuple(), (LogLikelihoodAccumulator(),))
+accs = OnlyAccsVarInfo(LogLikelihoodAccumulator())
 ```
 
-If you then use this `VarInfo` to evaluate a model, only the specified accumulators will be used.
+If you then use this `OnlyAccsVarInfo` to evaluate a model, only the specified accumulators will be used.
 
 ```@example 1
 @model function demo_likelihood()
@@ -161,18 +164,18 @@ If you then use this `VarInfo` to evaluate a model, only the specified accumulat
     return 1.0 ~ Normal(x)
 end
 model = demo_likelihood()
-_, new_vi = init!!(model, vi)
-new_vi
+_, new_accs = init!!(model, accs, InitFromPrior(), UnlinkAll())
+new_accs
 ```
 
-Instead of creating a `VarInfo` from scratch, one can also add accumulators to an existing `VarInfo` using [`setacc!!`](@ref) and [`setaccs!!`](@ref).
+Instead of creating an `OnlyAccsVarInfo` from scratch, one can also add accumulators to an existing `OnlyAccsVarInfo` using [`setacc!!`](@ref) and [`setaccs!!`](@ref).
 Note that these functions have very similar names!
-`setacc!!` adds a single accumulator to a `VarInfo`, while `setaccs!!` replaces the entire set of accumulators with a new set.
+`setacc!!` adds a single accumulator, while `setaccs!!` replaces the entire set of accumulators with a new set.
 
 ```@example 1
-vi = VarInfo()
+accs = OnlyAccsVarInfo()
 # Add a new accumulator
-vi = setacc!!(vi, RawValueAccumulator(false))
+accs = setacc!!(accs, RawValueAccumulator(false))
 ```
 
 In the case of `setacc!!`, the accumulator will be _added_ to the existing set if it has a name (as defined by [`accumulator_name`](@ref)) that is not already present.
@@ -189,91 +192,30 @@ Turing.jl uses this mechanism in SMC inference to replace the default log-likeli
 It takes a tuple of accumulators as input.
 
 ```@example 1
-vi = VarInfo()
+# This will create a set of default accumulators.
+accs = OnlyAccsVarInfo()
+```
+
+```@example 1
 # Replace all accumulators with just a RawValueAccumulator
-acc = RawValueAccumulator(false)
-vi = setaccs!!(vi, (acc,))
+new_acc = RawValueAccumulator(false)
+accs = setaccs!!(accs, (new_acc,))
 ```
 
-Once you have evaluated a model with a `VarInfo` containing your desired accumulators, you can extract the accumulated results using [`getacc`](@ref).
+Once you have evaluated a model with your desired accumulators, you can extract the accumulated results using [`getacc`](@ref).
 
 ```@example 1
-_, vi = init!!(model, vi)
-output_acc = getacc(vi, Val(accumulator_name(acc)))
+_, accs = init!!(model, accs, InitFromPrior(), UnlinkAll())
+
+# `getacc` returns the accumulator itself; `.values` accesses the actual values inside it.
+raw_values = getacc(accs, Val(accumulator_name(new_acc))).values
 ```
 
-For the default accumulators, there are convenience functions [`getlogprior`](@ref), [`getloglikelihood`](@ref), and [`getlogprior`](@ref) that extract the corresponding accumulators' wrapped values directly from the `VarInfo`.
-
-## Thread-safe accumulation
-
-DynamicPPL contains a 'thread-safe model evaluation mode', which can be accessed by calling [`DynamicPPL.setthreadsafe`](@ref) on a model.
+There are convenience functions [`getlogprior`](@ref), [`getloglikelihood`](@ref), [`getlogprior`](@ref), and [`get_raw_values`](@ref) that extract the corresponding accumulators' wrapped values directly from the `OnlyAccsVarInfo`.
+Note that these functions will throw an error if the corresponding accumulator is not present in the `OnlyAccsVarInfo`.
 
 ```@example 1
-@model function g(y)
-    x ~ Normal()
-    Threads.@threads for i in eachindex(y)
-        y[i] ~ Normal(x)
-    end
-end
-y = [2.0, 3.0, 4.0]
-model = setthreadsafe(g(y), true)
+get_raw_values(accs)
 ```
 
-This is accomplished by creating one copy of each accumulator per thread (using `DynamicPPL.split`), and then after the model evaluation is complete, merging the result of each thread's accumulator with `DynamicPPL.combine`.
-
-Each accumulator sees only the tilde-statements that were executed on its own thread.
-However, the intent is that after merging the results from all threads, the final accumulator should be equivalent to what would have been obtained by a single-threaded evaluation (modulo ordering).
-Because the accumulation process is not always commutative, you may in general end up with a different ordering of results.
-However, for many accumulators such as log-probability accumulators, this is not an issue.
-
-We can see this in action if we step through the internal DynamicPPL calls.
-(Note that calling `DynamicPPL.init!!` on a model where thread-safe mode has been enabled will automatically perform these steps for you.)
-
-```@example 1
-Threads.nthreads()
-```
-
-```@example 1
-vi = DynamicPPL.OnlyAccsVarInfo((DynamicPPL.LogLikelihoodAccumulator(),))
-tsvi = DynamicPPL.ThreadSafeVarInfo(vi)
-tsvi.accs_by_thread
-```
-
-(Here it actually creates a vector of length `maxthreadid()`.
-This is slightly hacky, see the warning below and links therein for more discussion.)
-
-```@example 1
-x = 1.0
-model = setleafcontext(model, DynamicPPL.InitContext(InitFromParams((; x=x)), UnlinkAll()))
-_, tsvi = DynamicPPL._evaluate!!(model, tsvi)
-tsvi.accs_by_thread
-```
-
-In the above output, the accumulators that have non-zero log-likelihoods are the ones corresponding to the threads that executed tilde-statements.
-
-Finally, to collapse the per-thread accumulators into a single accumulator, we can call `getacc`.
-This does the `combine` step for us.
-
-```@example 1
-output_acc = DynamicPPL.getacc(tsvi, Val(:LogLikelihood))
-```
-
-We can check whether this is correct:
-
-```@example 1
-output_acc.logp ≈ sum(logpdf.(Normal(x), y))
-```
-
-!!! warning
-    
-    The current implementation of thread safety, with one accumulator per thread, is not fully safe since it relies on indexing into a vector with `threadid()`. See [this issue](https://github.com/TuringLang/DynamicPPL.jl/issues/924) for details. In practice, though, we have not observed any problems with the current approach.
-    
-    There is also a possibility that DynamicPPL may shift to using 'atomic' accumulators in the future, where only one set of accumulators is maintained, but modifications to it must be performed atomically. See [this draft PR](https://github.com/TuringLang/DynamicPPL.jl/pull/1137) for details.
-
-Ignoring the caveats above, it can be generally said that **any output that is obtained from an accumulator can be accumulated correctly in a thread-safe manner**.
-In other words, full thread safety in DynamicPPL is possible as long as all the outputs you need are obtained from accumulators.
-
-The main situation where this is not yet true is when using a full `VarInfo`, which stores a VarNamedTuple in its `varinfo.values` field.
-Modifications to this field are currently not thread-safe.
-However, the `values` VNT is entirely equivalent to a `VectorValueAccumulator`.
-In the near future it should be possible to use a `OnlyAccsVarInfo` with a `VectorValueAccumulator` instead of a full `VarInfo`, which would allow DynamicPPL to be fully thread-safe.
+[The next page](./existing.md) gives an overview of the existing accumulators in DynamicPPL; these provide common functionality which you can make use of, without having to write your own accumulators from scratch.

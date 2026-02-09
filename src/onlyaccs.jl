@@ -1,16 +1,16 @@
 """
-    OnlyAccsVarInfo
+    OnlyAccsVarInfo(accs...)
 
-This is a wrapper around an `AccumulatorTuple` that implements the minimal `AbstractVarInfo`
-interface to work with the `tilde_assume!!` and `tilde_observe!!` functions for
-`InitContext`.
+`OnlyAccsVarInfo` is a wrapper around a tuple of accumulators.
+
+Its name stems from the fact that it implements the minimal `AbstractVarInfo` interface to
+work with the `tilde_assume!!` and `tilde_observe!!` functions for `InitContext`.
 
 Note that this does not implement almost every other AbstractVarInfo interface function, and
 so using this with a different leaf context such as `DefaultContext` will result in errors.
 
-Conceptually, one can also think of this as a VarInfo that doesn't contain a metadata field.
-This is also why it only works with `InitContext`: in this case, the parameters used for
-evaluation are supplied by the context instead of the metadata.
+For more information about accumulators, please see the [DynamicPPL documentation on
+accumulators](@ref accumulators-overview).
 """
 struct OnlyAccsVarInfo{Accs<:AccumulatorTuple} <: AbstractVarInfo
     accs::Accs
@@ -18,6 +18,17 @@ end
 OnlyAccsVarInfo() = OnlyAccsVarInfo(default_accumulators())
 function OnlyAccsVarInfo(accs::NTuple{N,AbstractAccumulator}) where {N}
     return OnlyAccsVarInfo(AccumulatorTuple(accs))
+end
+function OnlyAccsVarInfo(accs::Vararg{AbstractAccumulator})
+    return OnlyAccsVarInfo(AccumulatorTuple(accs))
+end
+
+function Base.show(io::IO, ::MIME"text/plain", oavi::OnlyAccsVarInfo)
+    printstyled(io, "OnlyAccsVarInfo"; bold=true)
+    println(io)
+    print(io, " └─ ")
+    DynamicPPL.pretty_print(io, oavi.accs, "    ")
+    return nothing
 end
 
 # Minimal AbstractVarInfo interface

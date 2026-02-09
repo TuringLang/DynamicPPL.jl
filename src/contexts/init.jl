@@ -30,8 +30,8 @@ function init end
 Return the element type of the parameters generated from the given initialisation strategy.
 
 The default implementation returns `Any`. However, for `InitFromParams` which provides known
-parameters for evaluating the model, methods are implemented in order to return more specific
-types.
+parameters for evaluating the model, methods are sometimes implemented in order to return
+more specific types.
 
 In general, if you are implementing a custom `AbstractInitStrategy`, correct behaviour can
 only be guaranteed if you implement this method as well. However, quite often, the default
@@ -44,9 +44,10 @@ help (see `??DynamicPPL.get_param_eltype` in the REPL).
 There are a few edge cases in DynamicPPL where the element type is needed. These largely
 relate to determining the element type of accumulators ahead of time (_before_ evaluation),
 as well as promoting type parameters in model arguments. The classic case is when evaluating
-a model with ForwardDiff: the accumulators must be set to `Dual`s, and any `Vector{Float64}`
-arguments must be promoted to `Vector{Dual}`. Other tracer types, for example those in
-SparseConnectivityTracer.jl, also require similar treatment.
+a model with ForwardDiff: the log-probability accumulators must be promoted to contain
+`Dual`s, and any `Vector{Float64}` arguments must be promoted to `Vector{Dual}`. Other
+tracer types, for example those in SparseConnectivityTracer.jl, also require similar
+treatment.
 
 If the `AbstractInitStrategy` is never used in combination with tracer types, then it is
 perfectly safe to return `Any`. This does not lead to type instability downstream because
@@ -82,18 +83,15 @@ end
     InitFromUniform()
     InitFromUniform(lower, upper)
 
-Obtain new values by first transforming the distribution of the random variable
-to unconstrained space, then sampling a value uniformly between `lower` and
-`upper`, and transforming that value back to the original space.
+Obtain new values by first transforming the distribution of the random variable to
+unconstrained space, then sampling a value uniformly between `lower` and `upper`.
 
-If `lower` and `upper` are unspecified, they default to `(-2, 2)`, which mimics
-Stan's default initialisation strategy.
+If `lower` and `upper` are unspecified, they default to `(-2, 2)`, which mimics Stan's
+default initialisation strategy (see the [Stan reference manual page on
+initialisation](https://mc-stan.org/docs/reference-manual/execution.html#initialization) for
+more details).
 
 Requires that `lower <= upper`.
-
-# References
-
-[Stan reference manual page on initialization](https://mc-stan.org/docs/reference-manual/execution.html#initialization)
 """
 struct InitFromUniform{T<:AbstractFloat} <: AbstractInitStrategy
     lower::T
@@ -125,9 +123,9 @@ end
 
 Obtain new values by extracting them from the given set of `params`.
 
-The most common use case is to provide a `NamedTuple` or `AbstractDict{<:VarName}`, which
-provides a mapping from variable names to values. However, we leave the type of `params`
-open in order to allow for custom parameter storage types.
+The most common use case is to provide a `VarNamedTuple`, which provides a mapping from
+variable names to values. However, we leave the type of `params` open in order to allow for
+custom parameter storage types.
 
 ## Custom parameter storage types
 
@@ -141,12 +139,9 @@ This tells you how to obtain values for the random variable `vn` from `p.params`
 the last argument is `InitFromParams(params)`, not just `params` itself. Please see the
 docstring of [`DynamicPPL.init`](@ref) for more information on the expected behaviour.
 
-If you only use `InitFromParams` with `DynamicPPL.OnlyAccsVarInfo`, as is usually the case,
-then you will not need to implement anything else. So far, this is the same as you would do
-for creating any new `AbstractInitStrategy` subtype.
-
-However, to use `InitFromParams` with a full `DynamicPPL.VarInfo`, you *may* also need to
-implement
+In some cases (specifically, when you expect that the type of log-probabilities will need to
+be expanded: the most common example is when running AD with ForwardDiff.jl), you *may* also
+need to implement:
 
 ```julia
 DynamicPPL.get_param_eltype(p::InitFromParams{P}) where {P}

@@ -1,6 +1,7 @@
-# Initialisation strategies
+# [Initialisation strategies](@id init-strategies)
 
 In DynamicPPL, *initialisation strategies* are used to determine the parameters used to evaluate a model.
+Every time an *assume* tilde-statement is seen (i.e., a random variable), the initialisation strategy is used to generate a value for that variable.
 
 !!! note
     
@@ -8,15 +9,31 @@ In DynamicPPL, *initialisation strategies* are used to determine the parameters 
     Even the name *initialisation* is a bit of a historical misnomer (the original intent was that they would be used to populate an empty VarInfo with some values).
     However, over time, it has become clear that these are general enough to describe essentially any way of choosing parameters to evaluate a model with.
 
-Currently, initialisation strategies are stored inside a model: specifically, if a model's `context` field is an `InitContext`, that context will contain a [`DynamicPPL.AbstractInitStrategy`](@ref).
+DynamicPPL provides three initialisation strategies out of the box.
+For many purposes you should be able to get away with only using these.
 
-Every time an *assume* tilde-statement is seen (i.e., a random variable), the initialisation strategy is used to generate a value for that variable.
+  - [`InitFromPrior`](@ref): samples from the prior distribution.
+  - [`InitFromParams`](@ref): reads from a set of given parameters. The parameters may be supplied in many different forms, but a `VarNamedTuple` is the most robust.
+  - [`InitFromUniform`](@ref): samples from a uniform distribution in linked space.
+
+```@docs
+InitFromPrior
+InitFromParams
+InitFromUniform
+```
+
+However, sometimes you will need to implement your own initialisation strategy.
+The subsequent sections will demonstrate how this can be done.
+
+## The required interface
+
+Each initialisation strategy must subtype `AbstractInitStrategy`, and implement `DynamicPPL.init(rng, vn, dist, strategy)`, which must return an `AbstractTransformedValue`.
 
 ```@docs; canonical=false
 AbstractInitStrategy
+init
+DynamicPPL.AbstractTransformedValue
 ```
-
-Each initialisation strategy must implement `DynamicPPL.init(rng, vn, dist, strategy)`, which must return an `AbstractTransformedValue`.
 
 ## An example
 
@@ -78,22 +95,22 @@ Furthermore, we can read off the associated log-probability from the newly retur
 DynamicPPL.getlogjoint(new_vi) ≈ logpdf(Normal(), new_x)
 ```
 
-(From this log-probability, we can compute the acceptance ratio for the Metropolis–Hastings step.)
+From this log-probability, we can compute the acceptance ratio for the Metropolis–Hastings step, and thereby create a valid MCMC sampler.
 
 In this case, we have defined an initialisation strategy that is random (and thus uses the `rng` argument for reproducibility).
 However, initialisation strategies can also be fully deterministic, in which case the `rng` argument is not needed.
-For example, [`DynamicPPL.InitFromParams`](@ref) reads from a set of given parameters.
+For example, [`DynamicPPL.InitFromParams`](@ref) reads from a set of parameters which are known ahead of time.
 
 ## The returned `AbstractTransformedValue`
 
 As mentioned above, the `init` function must return an `AbstractTransformedValue`.
 The subtype of `AbstractTransformedValue` used does not affect the result of the model evaluation, but it may have performance implications.
-**In particular, the returned subtype does not determine whether the log-Jacobian term is accumulated or not: that is determined by a separate _transform strategy_.**
+**In particular, the returned subtype does not determine whether the log-Jacobian term is accumulated or not: that is determined by a separate [_transform strategy_](@ref transform-strategies).**
 
 What this means is that initialisation strategies should always choose the laziest possible subtype of `AbstractTransformedValue`.
 
 For example, in the above example, we used `UntransformedValue`, which is the simplest possible choice.
-If a linked value is required by a later step inside `tilde_assume!!`, it is the responsibility of that step to perform the linking.
+If a linked value is required by a later step inside `tilde_assume!!` (either the transformation or accumulation steps), it is the responsibility of that step to perform the linking.
 
 Conversely, [`DynamicPPL.InitFromUniform`](@ref) samples inside linked space.
 Instead of performing the inverse link transform and returning an `UntransformedValue`, it directly returns a `LinkedVectorValue`: this means that if a linked value is required by a later step, it is not necessary to link it again.

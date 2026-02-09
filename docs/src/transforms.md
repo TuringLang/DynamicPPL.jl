@@ -1,4 +1,4 @@
-# Transform strategies
+# [Transform strategies](@id transform-strategies)
 
 Often it is useful to evaluate the log-probability of a model in a different space to the original one that it is defined in.
 

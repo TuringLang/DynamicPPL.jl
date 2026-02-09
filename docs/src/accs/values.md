@@ -1,5 +1,10 @@
 # Storing vectorised vs. raw values
 
+!!! warning
+    
+    This page describes design decisions in DynamicPPL, and is primarily intended for developers of DynamicPPL.
+    If you are a user of DynamicPPL, you do not need to understand this in detail to use DynamicPPL effectively.
+
 ## The role of VarInfo
 
 As described in the [model evaluation documentation page](../evaluation.md), each tilde-statement is split up into three parts:
@@ -84,8 +89,7 @@ Additionally, since `UntransformedValue`s must always correspond exactly to the 
 This is the role of `RawValueAccumulator`.
 
 ```@example 1
-oavi = DynamicPPL.OnlyAccsVarInfo()
-oavi = DynamicPPL.setaccs!!(oavi, (DynamicPPL.RawValueAccumulator(false),))
+oavi = DynamicPPL.OnlyAccsVarInfo(DynamicPPL.RawValueAccumulator(false))
 _, oavi = DynamicPPL.init!!(dirichlet_model, oavi, InitFromPrior(), UnlinkAll())
 raw_vals = get_raw_values(oavi)
 ```

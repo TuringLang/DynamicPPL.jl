@@ -360,14 +360,7 @@ function from_linked_internal_transform(vi::VarInfo, vn::VarName)
     return DynamicPPL.get_transform(getindex(vi.values, vn))
 end
 
-function internal_values_as_vector(vi::VarInfo)
-    return mapfoldl(
-        pair -> tovec(DynamicPPL.get_internal_value(pair.second)),
-        vcat,
-        vi.values;
-        init=Union{}[],
-    )
-end
+internal_values_as_vector(vi::VarInfo) = get_vector_values(vi.values)
 
 function _update_link_status!!(
     orig_vi::VarInfo,
