@@ -9,17 +9,19 @@ Every time an *assume* tilde-statement is seen (i.e., a random variable), the in
     Even the name *initialisation* is a bit of a historical misnomer (the original intent was that they would be used to populate an empty VarInfo with some values).
     However, over time, it has become clear that these are general enough to describe essentially any way of choosing parameters to evaluate a model with.
 
-DynamicPPL provides three initialisation strategies out of the box.
+DynamicPPL provides four initialisation strategies out of the box.
 For many purposes you should be able to get away with only using these.
 
   - [`InitFromPrior`](@ref): samples from the prior distribution.
   - [`InitFromParams`](@ref): reads from a set of given parameters. The parameters may be supplied in many different forms, but a `VarNamedTuple` is the most robust.
   - [`InitFromUniform`](@ref): samples from a uniform distribution in linked space.
+  - [`InitFromVector`](@ref): reads from a set of vectorised parameters. This also needs a `LogDensityFunction` to provide the necessary information about how the vectorised parameters map to the model variables.
 
 ```@docs
 InitFromPrior
 InitFromParams
 InitFromUniform
+InitFromVector
 ```
 
 However, sometimes you will need to implement your own initialisation strategy.

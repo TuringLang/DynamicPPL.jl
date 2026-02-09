@@ -282,11 +282,16 @@ end
 VarNamedTuples.vnt_size(ral::RangeAndLinked) = ral.original_size
 
 """
-    VectorWithRanges(
-        varname_ranges::VarNamedTuple,
+    InitFromVector(
         vect::AbstractVector{<:Real},
-        transform_strategy::AbstractTransformStrategy,
-    )
+        varname_ranges::VarNamedTuple,
+        transform_strategy::AbstractTransformStrategy
+    ) <: AbstractInitStrategy
+
+!!! warning
+    This constructor is only meant for internal use. Please use `InitFromVector(vect,
+    ldf::LogDensityFunction)` instead, which will automatically construct the
+    `varname_ranges` and `transform_strategy` arguments for you.
 
 A struct that wraps a vector of parameter values, plus information about how random
 variables map to ranges in that vector.
@@ -299,42 +304,36 @@ However, storing `transform_strategy` here is a way to communicate at the type l
 variables are linked or unlinked, which provides much better performance in the case where
 all variables are linked or unlinked, due to improved type stability.
 """
-struct VectorWithRanges{
-    VNT<:VarNamedTuple,T<:AbstractVector{<:Real},L<:AbstractTransformStrategy
-}
-    # Ranges for all VarNames
-    varname_ranges::VNT
+struct InitFromVector{
+    T<:AbstractVector{<:Real},V<:VarNamedTuple,L<:AbstractTransformStrategy
+} <: AbstractInitStrategy
     # The full parameter vector which we index into to get variable values
     vect::T
-    # Link strategy. The main reason why this is stored is to allow for greater type
+    # Ranges for all VarNames
+    varname_ranges::V
+    # Transform strategy. The main reason why this is stored is to allow for greater type
     # stability: in the case where `transform_strategy` is `LinkAll()` or `UnlinkAll()`, we can
     # statically know that the transforms to be used are always linked or unlinked.
     transform_strategy::L
 end
 
-function _get_range_and_linked(vr::VectorWithRanges, vn::VarName)
-    # The type assertion does nothing if VectorWithRanges has concrete element types, as is
+function _get_range_and_linked(ifv::InitFromVector, vn::VarName)
+    # The type assertion does nothing if `varname_ranges` has concrete element types, as is
     # the case for all type stable models. However, if the model is not type stable,
     # vr.varname_ranges[vn] may infer to have type `Any`. In this case it is helpful to
-    # assert that it is a RangeAndLinked, because even though it remains non-concrete,
-    # it'll allow the compiler to infer the types of `range` and `is_linked`.
-    return vr.varname_ranges[vn]::RangeAndLinked
+    # assert that it is a RangeAndLinked, because even though it remains non-concrete, it'll
+    # allow the compiler to infer the types of `range` and `is_linked`.
+    return ifv.varname_ranges[vn]::RangeAndLinked
 end
-function init(
-    ::Random.AbstractRNG,
-    vn::VarName,
-    dist::Distribution,
-    p::InitFromParams{<:VectorWithRanges},
-)
-    vr = p.params
-    range_and_linked = _get_range_and_linked(vr, vn)
-    vect = view(vr.vect, range_and_linked.range)
+function init(::Random.AbstractRNG, vn::VarName, dist::Distribution, ifv::InitFromVector)
+    range_and_linked = _get_range_and_linked(ifv, vn)
+    vect = view(ifv.vect, range_and_linked.range)
     sz = range_and_linked.original_size
-    # This block here is why we store transform_strategy in VectorWithRanges, as it
+    # This block here is why we store transform_strategy inside the InitFromVector, as it
     # allows for type stability.
-    return if vr.transform_strategy isa LinkAll
+    return if ifv.transform_strategy isa LinkAll
         LinkedVectorValue(vect, from_linked_vec_transform(dist), sz)
-    elseif vr.transform_strategy isa UnlinkAll
+    elseif ifv.transform_strategy isa UnlinkAll
         VectorValue(vect, from_vec_transform(dist), sz)
     elseif range_and_linked.is_linked
         LinkedVectorValue(vect, from_linked_vec_transform(dist), sz)
@@ -342,8 +341,8 @@ function init(
         VectorValue(vect, from_vec_transform(dist), sz)
     end
 end
-function get_param_eltype(strategy::InitFromParams{<:VectorWithRanges})
-    return eltype(strategy.params.vect)
+function get_param_eltype(strategy::InitFromVector)
+    return eltype(strategy.vect)
 end
 
 """

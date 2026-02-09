@@ -2,7 +2,7 @@ using DynamicPPL:
     AbstractVarInfo,
     AccumulatorTuple,
     InitContext,
-    InitFromParams,
+    InitFromVector,
     AbstractInitStrategy,
     LogJacobianAccumulator,
     LogLikelihoodAccumulator,
@@ -12,7 +12,6 @@ using DynamicPPL:
     VarInfo,
     OnlyAccsVarInfo,
     RangeAndLinked,
-    VectorWithRanges,
     default_accumulators,
     float_type_with_fallback,
     getlogjoint,
@@ -137,8 +136,8 @@ LogDensityFunction, we store a mapping from VarNames to ranges in that vector, a
 link status.
 
 When evaluating the model, this allows us to combine the parameter vector together with
-those ranges to create an `InitFromParams{VectorWithRanges}`, which lets us very quickly
-read parameter values from the vector.
+those ranges to create an `InitFromVector, which lets us very quickly read parameter values
+from the vector.
 
 Note that this assumes that the ranges and link status are static throughout the lifetime of
 the `LogDensityFunction` object. Therefore, a `LogDensityFunction` object cannot handle
@@ -309,9 +308,7 @@ function logdensity_at(
     transform_strategy::AbstractTransformStrategy,
     accs::AccumulatorTuple,
 )
-    init_strategy = InitFromParams(
-        VectorWithRanges(varname_ranges, params, transform_strategy), nothing
-    )
+    init_strategy = InitFromVector(params, varname_ranges, transform_strategy)
     _, vi = DynamicPPL.init!!(
         model, OnlyAccsVarInfo(accs), init_strategy, transform_strategy
     )
@@ -498,4 +495,21 @@ function get_ranges_and_linked(vnt::VarNamedTuple)
         init=(VarNamedTuple(), 1),
     )
     return ranges_vnt
+end
+
+"""
+    InitFromVector(
+        vect::AbstractVector{<:Real},
+        ldf::LogDensityFunction
+    )
+
+Convenience constructor for `InitFromVector` that extracts the `varname_ranges` and
+`transform_strategy` from the given `LogDensityFunction`.
+"""
+function InitFromVector(
+    vect::V, ldf::L
+) where {V<:AbstractVector{<:Real},L<:LogDensityFunction}
+    varname_ranges = ldf._varname_ranges
+    transform_strategy = ldf.transform_strategy
+    return InitFromVector(vect, varname_ranges, transform_strategy)
 end

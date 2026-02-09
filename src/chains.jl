@@ -128,9 +128,7 @@ function ParamsWithStats(
     include_colon_eq::Bool=true,
     include_log_probs::Bool=true,
 )
-    strategy = InitFromParams(
-        VectorWithRanges(ldf._varname_ranges, param_vector, ldf.transform_strategy), nothing
-    )
+    strategy = InitFromVector(param_vector, ldf)
     accs = if include_log_probs
         (
             DynamicPPL.LogPriorAccumulator(),

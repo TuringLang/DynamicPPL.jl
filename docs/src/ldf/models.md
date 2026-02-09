@@ -26,16 +26,10 @@ ldf = LogDensityFunction(model, getlogjoint_internal, vector_values)
 
 ## Evaluating models using vectorised parameters
 
-You can regenerate the initialisation strategy using the constructor
+You can regenerate the initialisation strategy using the constructor `InitFromVector(vect, ldf)`:
 
-!!! danger
-    
-    Not yet implemented.
-
-```@repl 1
-# init_strategy = InitFromParams([3.0, 4.0], ldf)
-
-init_strategy = InitFromPrior()
+```@example 1
+init_strategy = InitFromVector([3.0, 4.0], ldf)
 ```
 
 and access the transform strategy via
@@ -53,7 +47,22 @@ _, accs = init!!(model, accs, init_strategy, ldf.transform_strategy)
 get_raw_values(accs)
 ```
 
-Unsurprisingly, `x` is 3.0, and `y` is `logistic(4.0)`.
+Unsurprisingly, the raw (i.e., untransformed) value of `x` is 3.0, and `y` is equal to:
+
+```@example 1
+using StatsFuns: logistic
+logistic(4.0)
+```
+
+!!! note "What happened to `unflatten!!`?"
+    
+    If you are familiar with older versions of DynamicPPL, you may realise that this workflow is similar to the old version of calling `unflatten(varinfo, vector)`, and then re-evaluating the model.
+    
+    [`unflatten!!`](@ref) still exists (albeit with a double exclamation mark now), and it still does the same thing as before, but we **strongly recommend against using it**.
+    The reason is because `unflatten!!` leaves the VarInfo in an inconsistent state, since the parameters are updated but the log-density and transformations are not.
+    Using this invalid VarInfo without reevaluating the model can lead to incorrect results.
+    
+    It is much safer to use `InitFromVector`, which encapsulates all the information needed to rerun the model, but does not pretend to also contain other information that is not actually updated.
 
 ## Obtaining new vectorised parameters
 

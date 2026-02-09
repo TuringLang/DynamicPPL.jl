@@ -143,6 +143,7 @@ export AbstractVarInfo,
     InitFromPrior,
     InitFromUniform,
     InitFromParams,
+    InitFromVector,
     get_param_eltype,
     init,
     # Transformed values

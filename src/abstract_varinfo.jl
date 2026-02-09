@@ -826,7 +826,7 @@ This is the inverse operation of [`internal_values_as_vector`](@ref).
 
     **Because of these issues, we strongly recommend against using this function, unless
     absolutely necessary.** In many cases, usage of `unflatten!!(vi, x)` can be replaced
-    with `InitFromParams(x, ldf::LogDensityFunction)`: please see the [DynamicPPL
+    with `InitFromVector(x, ldf::LogDensityFunction)`: please see the [DynamicPPL
     documentation](@ref ldf-model) for more information. If you are unsure how to adapt your
     code to avoid using `unflatten!!`, please open an issue.
 """
