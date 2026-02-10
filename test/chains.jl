@@ -86,7 +86,7 @@ _safe_length(c::LinearAlgebra.Cholesky) = length(c.UL)
             continue
         end
         @testset "$transform_strategy" for transform_strategy in (UnlinkAll(), LinkAll())
-            vi = VarInfo(m, transform_strategy, InitFromPrior())
+            vi = VarInfo(m, InitFromPrior(), transform_strategy)
             params = [x for x in vi[:]]
 
             # Get the ParamsWithStats using LogDensityFunction

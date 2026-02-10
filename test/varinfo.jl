@@ -349,7 +349,7 @@ end
             expected_linked_vns::Set{<:VarName},
         )
             # Test that the variables are linked according to the transform strategy
-            vi = VarInfo(Xoshiro(468), model, transform_strategy)
+            vi = VarInfo(Xoshiro(468), model, InitFromPrior(), transform_strategy)
             for vn in keys(vi)
                 if vn in expected_linked_vns
                     @test DynamicPPL.get_transformed_value(vi, vn) isa
@@ -485,17 +485,17 @@ end
         )
 
         model = internal_values()
-        @testset for link_strategy in [
+        @testset for transform_strategy in [
             UnlinkAll(),
             LinkAll(),
             LinkSome((@varname(y),), UnlinkAll()),
             LinkSome((@varname(x), @varname(z)), UnlinkAll()),
         ]
-            vi = VarInfo(model, link_strategy, InitFromParams(unlinked_values))
+            vi = VarInfo(model, InitFromParams(unlinked_values), transform_strategy)
 
             expected_vector_values = Float64[]
             for (vn, dist) in distributions
-                target = target_transform(link_strategy, vn)
+                target = target_transform(transform_strategy, vn)
                 vn_vec_val = if target isa DynamicLink
                     DynamicPPL.to_linked_vec_transform(dist)(unlinked_values[vn])
                 elseif target isa Unlink

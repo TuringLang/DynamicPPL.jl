@@ -61,8 +61,8 @@ VarInfo() = VarInfo{false}(VarNamedTuple(), default_accumulators())
     VarInfo(
        [rng::AbstractRNG,]
        model::Model,
-       link::AbstractTransformStrategy=UnlinkAll(),
-       init::AbstractInitStrategy=InitFromPrior()
+       init_strategy::AbstractInitStrategy=InitFromPrior()
+       transform_strategy::AbstractTransformStrategy=UnlinkAll(),
     )
 
 Create a fresh `VarInfo` for the given model by running the model and populating it
@@ -74,12 +74,12 @@ be linked or unlinked according to the given linking strategy.
 - `rng::AbstractRNG`: An optional random number generator to use for any stochastic
   initialisation. If not provided, `Random.default_rng()` is used.
 - `model::Model`: The model for which to create the `VarInfo`.
-- `link::AbstractTransformStrategy`: An optional linking strategy (see
-  [`AbstractTransformStrategy`](@ref)). Defaults to [`UnlinkAll()`](@ref), i.e., all
-  variables are vectorised but not linked.
-- `init::AbstractInitStrategy`: An optional initialisation strategy (see
+- `init_strategy::AbstractInitStrategy`: An optional initialisation strategy (see
   [`AbstractInitStrategy`](@ref)). Defaults to `InitFromPrior()`, i.e., all variables are
   initialised by sampling from their prior distributions.
+- `transform_strategy::AbstractTransformStrategy`: An optional linking strategy (see
+  [`AbstractTransformStrategy`](@ref)). Defaults to [`UnlinkAll()`](@ref), i.e., all
+  variables are vectorised but not linked.
 
 # Extended help
 
@@ -101,26 +101,26 @@ both methods for the specific model in question.
 function DynamicPPL.VarInfo(
     rng::Random.AbstractRNG,
     model::Model,
+    init_strategy::AbstractInitStrategy,
     ::Union{UnlinkAll,UnlinkSome},
-    initstrat::AbstractInitStrategy,
 )
     # In this case, no variables are to be linked. We can optimise performance by directly
     # calling init!! and not faffing about with accumulators. (This does lead to significant
     # performance improvements for the typical use case of generating an unlinked VarInfo.)
-    return last(init!!(rng, model, VarInfo(), initstrat, UnlinkAll()))
+    return last(init!!(rng, model, VarInfo(), init_strategy, UnlinkAll()))
 end
 function DynamicPPL.VarInfo(
     rng::Random.AbstractRNG,
     model::Model,
-    linkstrat::AbstractTransformStrategy,
-    initstrat::AbstractInitStrategy=InitFromPrior(),
+    init_strategy::AbstractInitStrategy,
+    transform_strategy::AbstractTransformStrategy,
 )
     vi = OnlyAccsVarInfo((VectorValueAccumulator(), default_accumulators()...))
-    vi = last(init!!(rng, model, vi, initstrat, linkstrat))
+    vi = last(init!!(rng, model, vi, init_strategy, transform_strategy))
     # Now we just need to shuffle the VectorValueAccumulator values into the VarInfo.
     # Extract the vectorised values values.
     vec_val_acc = getacc(vi, Val(VECTORVAL_ACCNAME))
-    new_vi_is_linked = if linkstrat isa LinkAll
+    new_vi_is_linked = if transform_strategy isa LinkAll
         true
     else
         # TODO(penelopeysm): We can definitely do better here. The linking accumulator can
@@ -133,23 +133,21 @@ function DynamicPPL.VarInfo(
     )
 end
 function DynamicPPL.VarInfo(
+    rng::Random.AbstractRNG,
     model::Model,
-    linkstrat::AbstractTransformStrategy,
-    initstrat::AbstractInitStrategy=InitFromPrior(),
+    init_strategy::AbstractInitStrategy=InitFromPrior(),
 )
-    return DynamicPPL.VarInfo(Random.default_rng(), model, linkstrat, initstrat)
+    return VarInfo(rng, model, init_strategy, UnlinkAll())
 end
-function VarInfo(
-    rng::Random.AbstractRNG, model::Model, initstrat::AbstractInitStrategy=InitFromPrior()
+function DynamicPPL.VarInfo(
+    model::Model,
+    init_strategy::AbstractInitStrategy=InitFromPrior(),
+    transform_strategy::AbstractTransformStrategy=UnlinkAll(),
 )
-    return VarInfo(rng, model, UnlinkAll(), initstrat)
-end
-function VarInfo(model::Model, initstrat::AbstractInitStrategy=InitFromPrior())
-    return VarInfo(Random.default_rng(), model, initstrat)
+    return VarInfo(Random.default_rng(), model, init_strategy, transform_strategy)
 end
 
 get_values(vi::VarInfo) = vi.values
-
 getaccs(vi::VarInfo) = vi.accs
 function setaccs!!(vi::VarInfo{Linked}, accs::AccumulatorTuple) where {Linked}
     return VarInfo{Linked}(vi.values, accs)
