@@ -14,6 +14,7 @@ using DynamicPPL.VarNamedTuples:
     map_pairs!!,
     map_values!!,
     apply!!,
+    densify!!,
     templated_setindex!!,
     GrowableArray,
     grow_to_indices!!,
