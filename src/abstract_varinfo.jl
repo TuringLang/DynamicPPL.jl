@@ -335,12 +335,12 @@ function accumulate_observe!!(vi::AbstractVarInfo, right, left, vn)
 end
 
 """
-    map_accumulators!!(func::Function, vi::AbstractVarInfo)
+    map_accumulators!!(func, vi::AbstractVarInfo)
 
 Update all accumulators of `vi` by calling `func` on them and replacing them with the return
 values.
 """
-function map_accumulators!!(func::Function, vi::AbstractVarInfo)
+function map_accumulators!!(func, vi::AbstractVarInfo)
     return setaccs!!(vi, map(func, getaccs(vi)))
 end
 
@@ -354,23 +354,21 @@ function resetaccs!!(vi::AbstractVarInfo)
 end
 
 """
-    map_accumulator!!(func::Function, vi::AbstractVarInfo, ::Val{accname}) where {accname}
+    map_accumulator!!(func, vi::AbstractVarInfo, ::Val{accname}) where {accname}
 
 Update the accumulator `accname` of `vi` by calling `func` on it and replacing it with the
 return value.
 """
-function map_accumulator!!(func::Function, vi::AbstractVarInfo, accname::Val)
+function map_accumulator!!(func, vi::AbstractVarInfo, accname::Val)
     return setaccs!!(vi, map_accumulator(func, getaccs(vi), accname))
 end
 
-function map_accumulator!!(func::Function, vi::AbstractVarInfo, accname::Symbol)
-    return error(
-        """
-        The method map_accumulator!!(func::Function, vi::AbstractVarInfo, accname::Symbol)
-        does not exist. For type stability reasons use
-        map_accumulator!!(func::Function, vi::AbstractVarInfo, ::Val{accname}) instead.
-        """
-    )
+function map_accumulator!!(::Any, ::AbstractVarInfo, ::Symbol)
+    return error("""
+                 The method map_accumulator!!(func, vi::AbstractVarInfo, accname::Symbol)
+                 does not exist. For type stability reasons use
+                 map_accumulator!!(func, vi::AbstractVarInfo, ::Val{accname}) instead.
+                 """)
 end
 
 """
@@ -378,21 +376,37 @@ end
 
 Add `logp` to the value of the log of the prior probability in `vi`.
 
+Errors if `vi` does not have a `LogPriorAccumulator`, unless `ignore_missing_accumulator`
+is set to `true`, in which case this is silently ignored instead.
+
 See also: [`accloglikelihood!!`](@ref), [`acclogp!!`](@ref), [`getlogprior`](@ref), [`setlogprior!!`](@ref).
 """
-function acclogprior!!(vi::AbstractVarInfo, logp)
-    return map_accumulator!!(acc -> acclogp(acc, logp), vi, Val(:LogPrior))
+function acclogprior!!(vi::AbstractVarInfo, logp; ignore_missing_accumulator=false)
+    acc_name = Val(:LogPrior)
+    return if ignore_missing_accumulator && !hasacc(vi, acc_name)
+        vi
+    else
+        map_accumulator!!(acc -> acclogp(acc, logp), vi, acc_name)
+    end
 end
 
 """
-    acclogjac!!(vi::AbstractVarInfo, logjac)
+    acclogjac!!(vi::AbstractVarInfo, logjac; ignore_missing_accumulator::Bool=false)
 
 Add `logjac` to the value of the log Jacobian in `vi`.
 
+Errors if `vi` does not have a `LogJacobianAccumulator`, unless `ignore_missing_accumulator`
+is set to `true`, in which case this is silently ignored instead.
+
 See also: [`getlogjac`](@ref), [`setlogjac!!`](@ref).
 """
-function acclogjac!!(vi::AbstractVarInfo, logjac)
-    return map_accumulator!!(acc -> acclogp(acc, logjac), vi, Val(:LogJacobian))
+function acclogjac!!(vi::AbstractVarInfo, logjac; ignore_missing_accumulator=false)
+    acc_name = Val(:LogJacobian)
+    return if ignore_missing_accumulator && !hasacc(vi, acc_name)
+        vi
+    else
+        map_accumulator!!(acc -> acclogp(acc, logjac), vi, acc_name)
+    end
 end
 
 """
@@ -400,10 +414,19 @@ end
 
 Add `logp` to the value of the log of the likelihood in `vi`.
 
-See also: [`accloglikelihood!!`](@ref), [`acclogp!!`](@ref), [`getloglikelihood`](@ref), [`setloglikelihood!!`](@ref).
+Errors if `vi` does not have a `LogLikelihoodAccumulator`, unless `ignore_missing_accumulator`
+is set to `true`, in which case this is silently ignored instead.
+
+See also: [`accloglikelihood!!`](@ref), [`acclogp!!`](@ref), [`getloglikelihood`](@ref),
+[`setloglikelihood!!`](@ref).
 """
-function accloglikelihood!!(vi::AbstractVarInfo, logp)
-    return map_accumulator!!(acc -> acclogp(acc, logp), vi, Val(:LogLikelihood))
+function accloglikelihood!!(vi::AbstractVarInfo, logp; ignore_missing_accumulator=false)
+    acc_name = Val(:LogLikelihood)
+    return if ignore_missing_accumulator && !hasacc(vi, acc_name)
+        vi
+    else
+        map_accumulator!!(acc -> acclogp(acc, logp), vi, acc_name)
+    end
 end
 
 """
@@ -427,23 +450,13 @@ function acclogp!!(
     )
         error("logp must have fields logprior and/or loglikelihood and no other fields.")
     end
-    if haskey(logp, :logprior) &&
-        (!ignore_missing_accumulator || hasacc(vi, Val(:LogPrior)))
-        vi = acclogprior!!(vi, logp.logprior)
+    if haskey(logp, :logprior)
+        vi = acclogprior!!(vi, logp.logprior; ignore_missing_accumulator)
     end
-    if haskey(logp, :loglikelihood) &&
-        (!ignore_missing_accumulator || hasacc(vi, Val(:LogLikelihood)))
-        vi = accloglikelihood!!(vi, logp.loglikelihood)
+    if haskey(logp, :loglikelihood)
+        vi = accloglikelihood!!(vi, logp.loglikelihood; ignore_missing_accumulator)
     end
     return vi
-end
-
-function acclogp!!(vi::AbstractVarInfo, logp::Number)
-    Base.depwarn(
-        "`acclogp!!(vi::AbstractVarInfo, logp::Number)` is deprecated. Use `accloglikelihood!!(vi, logp)` instead.",
-        :acclogp,
-    )
-    return accloglikelihood!!(vi, logp)
 end
 
 # Variables and their realizations.

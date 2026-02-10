@@ -198,26 +198,11 @@ export AbstractVarInfo,
     check_model,
     check_model_and_trace,
     # Deprecated.
-    @logprob_str,
-    @prob_str,
     generated_quantities
 
 # Reexport
 using Distributions: loglikelihood
 export loglikelihood
-
-# TODO: Remove once we feel comfortable people aren't using it anymore.
-macro logprob_str(str)
-    return :(error(
-        "The `@logprob_str` macro is no longer supported. See https://turinglang.org/dev/docs/using-turing/guide/#querying-probabilities-from-model-or-chain for information on how to query probabilities, and https://github.com/TuringLang/DynamicPPL.jl/issues/356 for information regarding its removal.",
-    ))
-end
-
-macro prob_str(str)
-    return :(error(
-        "The `@prob_str` macro is no longer supported. See https://turinglang.org/dev/docs/using-turing/guide/#querying-probabilities-from-model-or-chain for information on how to query probabilities, and https://github.com/TuringLang/DynamicPPL.jl/issues/356 for information regarding its removal.",
-    ))
-end
 
 # TODO(mhauru) We should write down the list of methods that any subtype of AbstractVarInfo
 # has to implement. Not sure what the full list is for parameters values, but for
