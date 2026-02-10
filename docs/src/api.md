@@ -352,6 +352,7 @@ DynamicPPL.VarNamedTuples.VarNamedTuple
 DynamicPPL.VarNamedTuples.@vnt
 DynamicPPL.VarNamedTuples.vnt_size
 DynamicPPL.VarNamedTuples.apply!!
+DynamicPPL.VarNamedTuples.densify!!
 DynamicPPL.VarNamedTuples.map_pairs!!
 DynamicPPL.VarNamedTuples.map_values!!
 DynamicPPL.VarNamedTuples.PartialArray

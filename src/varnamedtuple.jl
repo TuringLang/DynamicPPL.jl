@@ -13,6 +13,7 @@ export VarNamedTuple,
     map_values!!,
     apply!!,
     templated_setindex!!,
+    densify!!,
     NoTemplate,
     SkipTemplate,
     @vnt

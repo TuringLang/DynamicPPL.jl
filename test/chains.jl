@@ -85,13 +85,8 @@ _safe_length(c::LinearAlgebra.Cholesky) = length(c.UL)
             @test false broken = true
             continue
         end
-        @testset "$islinked" for islinked in (false, true)
-            unlinked_vi = VarInfo(m)
-            vi = if islinked
-                DynamicPPL.link!!(unlinked_vi, m)
-            else
-                unlinked_vi
-            end
+        @testset "$transform_strategy" for transform_strategy in (UnlinkAll(), LinkAll())
+            vi = VarInfo(m, transform_strategy, InitFromPrior())
             params = [x for x in vi[:]]
 
             # Get the ParamsWithStats using LogDensityFunction
@@ -105,6 +100,9 @@ _safe_length(c::LinearAlgebra.Cholesky) = length(c.UL)
             # then `ps.params` will have keys `x[4]` and `x[5]` (since it just contains a
             # PartialArray with those two elements unmasked), whereas `vi` will have the key
             # `x[4:5]` which stores an ArrayLikeBlock with two elements.
+            # 
+            # On top of that, the ParamsWithStats VNT will also have been `densify!!`-ed, so
+            # it may well just store a single vector `x` rather than individual `x[i]`'s.
             #
             # What we CAN do, though, is to check the size of the thing obtained by
             # indexing into the keys. For `ps.params`, indexing into `x[4]` and `x[5]` will
