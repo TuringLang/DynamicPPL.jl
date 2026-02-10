@@ -125,6 +125,7 @@ export AbstractVarInfo,
     # LogDensityFunction
     LogDensityFunction,
     OnlyAccsVarInfo,
+    to_vector_input,
     # Leaf contexts
     AbstractContext,
     contextualize,
@@ -144,6 +145,7 @@ export AbstractVarInfo,
     InitFromPrior,
     InitFromUniform,
     InitFromParams,
+    InitFromVector,
     get_param_eltype,
     init,
     # Transformed values
