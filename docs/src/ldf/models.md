@@ -75,6 +75,8 @@ In fact, this is exactly what calling `LogDensityProblems.logdensity(ldf, [3.0, 
 For example, in the above `ldf`, we used `getlogjoint_internal`, which is equal to `logprior + loglikelihood - logjacobian`:
 
 ```@example 1
+using LogDensityProblems
+
 LogDensityProblems.logdensity(ldf, [3.0, 4.0])
 ```
 
