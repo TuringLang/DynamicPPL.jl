@@ -136,7 +136,7 @@ LogDensityFunction, we store a mapping from VarNames to ranges in that vector, a
 link status.
 
 When evaluating the model, this allows us to combine the parameter vector together with
-those ranges to create an `InitFromVector, which lets us very quickly read parameter values
+those ranges to create an `InitFromVector`, which lets us very quickly read parameter values
 from the vector.
 
 Note that this assumes that the ranges and link status are static throughout the lifetime of
@@ -567,7 +567,7 @@ function to_vector_input_inner(
         if !haskey(ranges, vn)
             throw(
                 ArgumentError(
-                    "The variable `$vn` is present in the provided VarNamedTuple of vector values, but there is no record of this in the LogDensityFunction. Thi likely means that the vector values provided are not consistent with the LogDensityFunction (e.g. if they were obtained from a different model).",
+                    "The variable `$vn` is present in the provided VarNamedTuple of vector values, but there is no record of this in the LogDensityFunction. This likely means that the vector values provided are not consistent with the LogDensityFunction (e.g. if they were obtained from a different model).",
                 ),
             )
         end
@@ -602,7 +602,7 @@ function to_vector_input_inner(
         if any(set_indices[ral.range])
             throw(
                 ArgumentError(
-                    "Setting to the same indices in the output vector more than once. This likely means that the vector values provided are not consistent with the LogDensityFunction (e.g. if they were obtained from a different model.",
+                    "Setting to the same indices in the output vector more than once. This likely means that the vector values provided are not consistent with the LogDensityFunction (e.g. if they were obtained from a different model).",
                 ),
             )
         end
