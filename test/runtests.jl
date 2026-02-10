@@ -50,10 +50,6 @@ Random.seed!(100)
             include("ext/DynamicPPLForwardDiffExt.jl")
             include("ext/DynamicPPLMooncakeExt.jl")
         end
-        @testset "prob and logprob macro" begin
-            @test_throws ErrorException DynamicPPL.prob"..."
-            @test_throws ErrorException DynamicPPL.logprob"..."
-        end
     end
 
     if GROUP == "All" || GROUP == "Doctests"
