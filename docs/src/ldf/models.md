@@ -59,6 +59,28 @@ using StatsFuns: logistic
 logistic(4.0)
 ```
 
+Notice that you can include all the necessary log-density accumulators in the above:
+
+```@example 1
+accs = OnlyAccsVarInfo(
+    LogPriorAccumulator(), LogLikelihoodAccumulator(), LogJacobianAccumulator()
+)
+_, accs = init!!(model, accs, init_strategy, ldf.transform_strategy)
+accs
+```
+
+and from this you can, in one fell swoop, obtain the log-prior, log-likelihood, and log-Jacobian corresponding to the vector `[3.0, 4.0]`.
+
+In fact, this is exactly what calling `LogDensityProblems.logdensity(ldf, [3.0, 4.0]` does, except that it also collapses this information into a single number based on which log-density getter you specified when creating the `LogDensityFunction`.
+For example, in the above `ldf`, we used `getlogjoint_internal`, which is equal to `logprior + loglikelihood - logjacobian`:
+
+```@example 1
+LogDensityProblems.logdensity(ldf, [3.0, 4.0])
+```
+
+This represents a loss of information since we no longer know the individual components of the log-density.
+`LogDensityFunction` itself must do this to obey the LogDensityProblems interface, but as a user of DynamicPPL you need not be limited to it; you can use `InitFromVector` to obtain all the information you need.
+
 !!! note "What happened to `unflatten!!`?"
     
     If you are familiar with older versions of DynamicPPL, you may realise that this workflow is similar to the old version of calling `unflatten(varinfo, vector)`, and then re-evaluating the model.
