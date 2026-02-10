@@ -1824,6 +1824,59 @@ Base.size(st::SizedThing) = st.size
             @test vnt == expected_vnt
         end
     end
+
+    @testset "densify!!" begin
+        vnt = @vnt begin
+            @template x = zeros(2)
+            x[1] := 1.0
+            x[2] := 2.0
+        end
+        @test densify!!(vnt) == VarNamedTuple(; x=[1.0, 2.0])
+
+        # Nested
+        vnt = @vnt begin
+            @template x = fill(zeros(2), 2)
+            x[1][1] := 1.0
+            x[2][1] := 2.0
+            x[1][2] := 3.0
+            x[2][2] := 4.0
+        end
+        @test densify!!(vnt) == VarNamedTuple(; x=[[1.0, 3.0], [2.0, 4.0]])
+
+        # Check that it's type stable when there are no PAs.
+        vnt = @vnt begin
+            x := [1.0, 2.0]
+            y := 3.0
+            z := "a"
+        end
+        @test @inferred(densify!!(vnt)) == vnt
+
+        # Check that it doesn't densify GrowableArrays (and that failing to do so is type
+        # stable).
+        vnt = @vnt begin
+            x[1] := 1.0
+            x[2] := 2.0
+        end
+        @test @inferred(densify!!(vnt)) == vnt
+
+        # Check that it doesn't densify PAs that have VNTs (and that failing to do so is
+        # type stable).
+        vnt = @vnt begin
+            @template x = zeros(2)
+            x[1].a := 1.0
+            x[2].b := 2.0
+        end
+        @test @inferred(densify!!(vnt)) == vnt
+
+        # Check that it doesn't densify PAs that have ALBs (and that failing to do so is
+        # type stable).
+        vnt = @vnt begin
+            @template x = zeros(3)
+            x[1] := 1.0
+            x[2:3] := SizedThing((2,))
+        end
+        @test @inferred(densify!!(vnt)) == vnt
+    end
 end
 
 @info "Completed $(@__FILE__) in $(now() - __now__)."

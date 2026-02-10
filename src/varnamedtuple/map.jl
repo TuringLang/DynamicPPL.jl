@@ -468,6 +468,63 @@ function _mapreduce_recursive(f, op, pa::PartialArray, vn, init)
     return result
 end
 
+"""
+    densify!!(vnt::VarNamedTuple)
+
+Convert any `PartialArray`s in `vnt` where all elements are filled to just normal arrays.
+"""
+@generated function densify!!(vnt::VarNamedTuple{Names}) where {Names}
+    exs = Expr[]
+    for name in Names
+        push!(exs, :(densify!!(vnt.data.$name)))
+    end
+    return :(VarNamedTuple(NamedTuple{Names}(($(exs...),))))
+end
+# The method on PartialArrays is inherently type unstable because it has to check
+# `all(pa.mask)`, which cannot be inferred at compile time.
+function densify!!(pa::PartialArray)
+    # Don't densify GrowableArrays, since we can't be sure that that's what the user really
+    # intended.
+    if pa.data isa GrowableArray
+        return pa
+    end
+
+    # The ALB case here is easier to understand. But if there are any VNTs, we also can't
+    # densify it without changing the semantics. For example, if vnt.data.x isa (densified)
+    # Vector of VNTs, then you can't access vnt[@varname(x[i].a)] anymore. In contrast if
+    # vnt.data.x isa PartialArray that holds VNTs then you can access vnt[@varname(x[i].a)].
+    # TODO(penelopeysm): Is this a bug?
+    et = eltype(pa)
+    has_albs = (et <: ArrayLikeBlock || ArrayLikeBlock <: et)
+    has_vnts = (et <: VarNamedTuple || VarNamedTuple <: et)
+    if has_albs || has_vnts
+        return pa
+    end
+
+    # If the mask is not all true, then it's not dense. The function past this point is no
+    # longer type stable.
+    if !all(pa.mask)
+        return pa
+    end
+
+    # If we reach here, then we can make a serious attempt at densifying.
+    has_nested_pas = (et <: PartialArray || PartialArray <: et)
+    return if has_nested_pas
+        # Attempt to recursively densify the elements.
+        new_data = map(densify!!, pa.data)
+        if !(any(x -> x isa PartialArray, new_data))
+            # Inner PAs were densified successfully, so we can densify this PA too
+            new_data
+        else
+            pa
+        end
+    else
+        # No nested PAs, so we can just densify this PA directly.
+        pa.data
+    end
+end
+@inline densify!!(@nospecialize(x::Any)) = x
+
 # TODO(mhauru) We could try to keep the return types of these more tight, rather than always
 # return the same, abstract element type. Would that be better? It would be faster in some
 # cases, but would be less consistent, and could result in a lot of allocations in the

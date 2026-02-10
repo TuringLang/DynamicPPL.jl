@@ -50,7 +50,7 @@ function ParamsWithStats(
     oavi = OnlyAccsVarInfo(accs)
     init = InitFromParams(varinfo.values, nothing)
     oavi = last(DynamicPPL.init!!(model, oavi, init, UnlinkAll()))
-    params = get_raw_values(oavi)
+    params = densify!!(get_raw_values(oavi))
     if include_log_probs
         stats = merge(
             stats,
@@ -84,7 +84,7 @@ joint) are added to the resulting statistics NamedTuple.
 function ParamsWithStats(
     varinfo::AbstractVarInfo, stats::NamedTuple=NamedTuple(); include_log_probs::Bool=true
 )
-    params = get_raw_values(varinfo)
+    params = densify!!(get_raw_values(varinfo))
     if include_log_probs
         has_prior_acc = DynamicPPL.hasacc(varinfo, Val(:LogPrior))
         has_likelihood_acc = DynamicPPL.hasacc(varinfo, Val(:LogLikelihood))
@@ -146,7 +146,7 @@ function ParamsWithStats(
     _, vi = DynamicPPL.init!!(
         ldf.model, OnlyAccsVarInfo(AccumulatorTuple(accs)), strategy, UnlinkAll()
     )
-    params = get_raw_values(vi)
+    params = densify!!(get_raw_values(vi))
     if include_log_probs
         stats = merge(
             stats,
