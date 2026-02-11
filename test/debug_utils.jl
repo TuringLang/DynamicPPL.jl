@@ -120,6 +120,48 @@ using LinearAlgebra: I
         end
     end
 
+    @testset "discrete distribution check" begin
+        @testset "univariate discrete" begin
+            @model function demo_discrete()
+                x ~ Poisson(3)
+                return y ~ Normal()
+            end
+            model = demo_discrete()
+            # Without fail_if_discrete, the model should pass.
+            @test check_model(model; error_on_failure=true)
+            # With fail_if_discrete, it should fail.
+            @test_throws ErrorException check_model(
+                model; error_on_failure=true, fail_if_discrete=true
+            )
+            # Without error_on_failure, it should warn but issuccess is
+            # currently not affected by the discrete check (only by varname
+            # checks). TODO: issuccess should ideally be false here.
+            issuccess, trace = check_model_and_trace(model; fail_if_discrete=true)
+            @test_broken !issuccess
+        end
+
+        @testset "multivariate discrete" begin
+            @model function demo_mv_discrete()
+                x ~ product_distribution(fill(Poisson(3), 3))
+                return y ~ Normal()
+            end
+            model = demo_mv_discrete()
+            @test check_model(model; error_on_failure=true)
+            @test_throws ErrorException check_model(
+                model; error_on_failure=true, fail_if_discrete=true
+            )
+        end
+
+        @testset "all continuous should pass" begin
+            @model function demo_all_continuous()
+                x ~ Normal()
+                return y ~ Gamma(2, 1)
+            end
+            model = demo_all_continuous()
+            @test check_model(model; error_on_failure=true, fail_if_discrete=true)
+        end
+    end
+
     @testset "printing statements" begin
         @testset "assume" begin
             @model demo_assume() = x ~ Normal()

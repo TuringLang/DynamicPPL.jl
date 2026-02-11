@@ -145,10 +145,14 @@ struct DebugAccumulator <: AbstractAccumulator
     statements::Vector{Stmt}
     "whether to throw an error if we encounter errors in the model"
     error_on_failure::Bool
+    "whether to check for discrete distributions (incompatible with differentiation)"
+    check_discrete::Bool
 end
 
-function DebugAccumulator(error_on_failure=false)
-    return DebugAccumulator(OrderedDict{VarName,Int}(), Vector{Stmt}(), error_on_failure)
+function DebugAccumulator(error_on_failure=false, check_discrete=false)
+    return DebugAccumulator(
+        OrderedDict{VarName,Int}(), Vector{Stmt}(), error_on_failure, check_discrete
+    )
 end
 
 const _DEBUG_ACC_NAME = :Debug
@@ -158,13 +162,14 @@ function Base.:(==)(acc1::DebugAccumulator, acc2::DebugAccumulator)
     return (
         acc1.varnames_seen == acc2.varnames_seen &&
         acc1.statements == acc2.statements &&
-        acc1.error_on_failure == acc2.error_on_failure
+        acc1.error_on_failure == acc2.error_on_failure &&
+        acc1.check_discrete == acc2.check_discrete
     )
 end
 
 function _zero(acc::DebugAccumulator)
     return DebugAccumulator(
-        OrderedDict{VarName,Int}(), Vector{Stmt}(), acc.error_on_failure
+        OrderedDict{VarName,Int}(), Vector{Stmt}(), acc.error_on_failure, acc.check_discrete
     )
 end
 DynamicPPL.reset(acc::DebugAccumulator) = _zero(acc)
@@ -174,6 +179,7 @@ function DynamicPPL.combine(acc1::DebugAccumulator, acc2::DebugAccumulator)
         merge(acc1.varnames_seen, acc2.varnames_seen),
         vcat(acc1.statements, acc2.statements),
         acc1.error_on_failure || acc2.error_on_failure,
+        acc1.check_discrete || acc2.check_discrete,
     )
 end
 
@@ -245,6 +251,29 @@ function DynamicPPL.accumulate_assume!!(
     acc::DebugAccumulator, val, tval, logjac, vn::VarName, right::Distribution, template
 )
     record_varname!(acc, vn, right)
+
+    # Check for discrete distributions if requested.
+    # NOTE: This uses the `ValueSupport` from the type of `right`, which may not
+    # be accurate for composite distributions (e.g. `ProductDistribution`) that
+    # mix discrete and continuous components. As of Distributions.jl v0.25,
+    # such mixed products are typed as `Continuous`, so a discrete component
+    # inside one would not be caught here. This is arguably a bug in
+    # Distributions.jl rather than something to work around here.
+    if acc.check_discrete
+        if right isa Distributions.DiscreteDistribution
+            msg =
+                "Variable $(vn) is sampled from a discrete distribution " *
+                "($(typeof(right).name.wrapper)). Discrete distributions are not " *
+                "differentiable, and thus not compatible with approaches that " *
+                "require gradient information, e.g. HMC / NUTS or optimisation."
+            if acc.error_on_failure
+                error(msg)
+            else
+                @warn msg
+            end
+        end
+    end
+
     stmt = AssumeStmt(; varname=vn, right=right, value=val)
     push!(acc.statements, stmt)
     return acc
@@ -335,7 +364,7 @@ function check_model_post_evaluation(acc::DebugAccumulator)
 end
 
 """
-    check_model_and_trace([rng::Random.AbstractRNG,] model::Model; error_on_failure=false)
+    check_model_and_trace([rng::Random.AbstractRNG,] model::Model; error_on_failure=false, fail_if_discrete=false)
 
 Check that sampling from the prior of `model`, warning about any potential issues.
 
@@ -343,13 +372,19 @@ This will check the model for the following issues:
 
 1. Repeated usage of the same varname in a model.
 2. `NaN` on the left-hand side of observe statements.
+3. (If `fail_if_discrete` is set) Usage of discrete distributions, which are not
+   differentiable and thus incompatible with gradient-based approaches.
 
 # Arguments
 - `model::Model`: The model to check.
 - `varinfo::AbstractVarInfo`: The varinfo to use when evaluating the model.
 
-# Keyword Argument
+# Keyword Arguments
 - `error_on_failure::Bool`: Whether to throw an error if the model check fails. Default: `false`.
+- `fail_if_discrete::Bool`: Whether to warn (or error, if `error_on_failure` is set) when
+  the model contains discrete distributions. Discrete distributions are not differentiable
+  and are incompatible with gradient-based approaches such as HMC / NUTS or optimisation.
+  Default: `false`.
 
 # Returns
 - `issuccess::Bool`: Whether the model check succeeded.
@@ -406,7 +441,7 @@ ERROR: varname x used multiple times in model
 ```
 """
 function check_model_and_trace(
-    rng::Random.AbstractRNG, model::Model; error_on_failure=false
+    rng::Random.AbstractRNG, model::Model; error_on_failure=false, fail_if_discrete=false
 )
     # Perform checks before evaluating the model.
     issuccess = check_model_pre_evaluation(model)
@@ -414,7 +449,9 @@ function check_model_and_trace(
     # TODO(penelopeysm): Implement merge, etc. for DebugAccumulator, and then perform a
     # check on the merged accumulator, rather than checking it in the accumulate_assume
     # calls. That way we can also correctly support multi-threaded evaluation.
-    oavi = DynamicPPL.OnlyAccsVarInfo((DebugAccumulator(error_on_failure),))
+    oavi = DynamicPPL.OnlyAccsVarInfo((
+        DebugAccumulator(error_on_failure, fail_if_discrete),
+    ))
     init_strategy = InitFromPrior()
     _, oavi = DynamicPPL.init!!(rng, model, oavi, init_strategy, UnlinkAll())
 
@@ -429,25 +466,40 @@ function check_model_and_trace(
     trace = debug_acc.statements
     return issuccess, trace
 end
-function check_model_and_trace(model::Model; error_on_failure=false)
+function check_model_and_trace(model::Model; error_on_failure=false, fail_if_discrete=false)
     return check_model_and_trace(
-        Random.default_rng(), model; error_on_failure=error_on_failure
+        Random.default_rng(),
+        model;
+        error_on_failure=error_on_failure,
+        fail_if_discrete=fail_if_discrete,
     )
 end
 
 """
-    check_model(model::Model; error_on_failure=false)
+    check_model(model::Model; error_on_failure=false, fail_if_discrete=false)
 
 Check that `model` is valid, warning about any potential issues (or erroring if
 `error_on_failure` is `true`).
 
+See [`check_model_and_trace`](@ref) for details on the keyword arguments.
+
 # Returns
 - `issuccess::Bool`: Whether the model check succeeded.
 """
-check_model(rng::Random.AbstractRNG, model::Model; error_on_failure=false) =
-    first(check_model_and_trace(rng, model; error_on_failure=error_on_failure))
-function check_model(model::Model; error_on_failure=false)
-    return check_model(Random.default_rng(), model; error_on_failure=error_on_failure)
+check_model(
+    rng::Random.AbstractRNG, model::Model; error_on_failure=false, fail_if_discrete=false
+) = first(
+    check_model_and_trace(
+        rng, model; error_on_failure=error_on_failure, fail_if_discrete=fail_if_discrete
+    ),
+)
+function check_model(model::Model; error_on_failure=false, fail_if_discrete=false)
+    return check_model(
+        Random.default_rng(),
+        model;
+        error_on_failure=error_on_failure,
+        fail_if_discrete=fail_if_discrete,
+    )
 end
 
 # Convenience method used to check if all elements in a list are the same.
