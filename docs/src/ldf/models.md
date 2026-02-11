@@ -141,7 +141,7 @@ This allows you to obtain all the information you need with only one model evalu
     you can convert `vec_vals::VarNamedTuple` to a single vector using
     
     ```@example 1
-    to_vector_input(vec_vals, ldf)
+    to_vector_params(vec_vals, ldf)
     ```
     
     which is equivalent.
@@ -155,5 +155,5 @@ This allows you to obtain all the information you need with only one model evalu
     Although `internal_values_as_vector` is not as unsafe as `unflatten!!`, it still does not perform any checks to ensure that the vectorised parameters are consistent with the `LogDensityFunction`.
     For example, you could extract a length-2 vector of parameters from a `VarInfo`, and it would work with any `LogDensityFunction` that also expects a length-2 vector, even if the actual transformations and model are completely different.
     
-    The approach above based on `VectorParamAccumulator` does preserve the necessary information, and `to_vector_input` will carry out the necessary checks to ensure correctness.
+    The approach above based on `VectorParamAccumulator` does preserve the necessary information, and `to_vector_params` will carry out the necessary checks to ensure correctness.
     It is no less performant than before (apart from the time needed to run said checks!).

@@ -205,13 +205,13 @@ struct LogDensityFunction{
         # `get_ranges_and_linked`, since both are based on the same underlying VNT, and both
         # iterate over the keys in the same order. However, this is an implementation
         # detail, and so we should probably not rely on it!
-        # Therefore, we use `to_vector_input_inner` to also perform some checks that the
+        # Therefore, we use `to_vector_params_inner` to also perform some checks that the
         # vectorised parameters are concatenated in the order specified by the ranges. We do
         # need to use internal_values_as_vector here once to get the correct element type
         # and dimension.
         trial_x = internal_values_as_vector(vnt)
         dim, et = length(trial_x), eltype(trial_x)
-        x = to_vector_input_inner(vnt, all_ranges, et, dim)
+        x = to_vector_params_inner(vnt, all_ranges, et, dim)
         # convert to AccumulatorTuple if needed
         accs = AccumulatorTuple(accs)
         # Do AD prep if needed
@@ -533,7 +533,7 @@ function InitFromVector(
 end
 
 """
-    to_vector_input(
+    to_vector_params(
         vector_values::VarNamedTuple,
         ldf::LogDensityFunction
     )
@@ -549,13 +549,13 @@ Note that the transform status of the variables in the `VarNamedTuple` must be c
 with the transform strategy stored in the `LogDensityFunction`. This function checks for
 that.
 """
-function to_vector_input(vector_values::VarNamedTuple, ldf::LogDensityFunction)
-    return to_vector_input_inner(
+function to_vector_params(vector_values::VarNamedTuple, ldf::LogDensityFunction)
+    return to_vector_params_inner(
         vector_values, ldf._varname_ranges, eltype(_get_input_vector_type(ldf)), ldf._dim
     )
 end
 
-function to_vector_input_inner(
+function to_vector_params_inner(
     vector_values::VarNamedTuple, ranges::VarNamedTuple, ::Type{eltype}, dim::Int
 ) where {eltype}
     template_vect = Vector{eltype}(undef, dim)

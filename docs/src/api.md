@@ -78,7 +78,7 @@ Internally, this is accomplished using [`init!!`](@ref) on:
 
 ```@docs
 OnlyAccsVarInfo
-to_vector_input
+to_vector_params
 ```
 
 ## Condition and decondition

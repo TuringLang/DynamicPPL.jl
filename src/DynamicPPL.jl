@@ -126,7 +126,7 @@ export AbstractVarInfo,
     # LogDensityFunction
     LogDensityFunction,
     OnlyAccsVarInfo,
-    to_vector_input,
+    to_vector_params,
     # Leaf contexts
     AbstractContext,
     contextualize,

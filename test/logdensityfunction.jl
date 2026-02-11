@@ -207,14 +207,14 @@ end
 
         @testset "Raw values -> vector" begin
             # Test that initialising a model with raw values allows us to generate the right
-            # vector (either indirectly via VectorValueAccumulator and to_vector_input, or
+            # vector (either indirectly via VectorValueAccumulator and to_vector_params, or
             # directly via VectorParamAccumulator).
             init_strategy = InitFromParams(raw_values)
             accs = OnlyAccsVarInfo(VectorValueAccumulator(), VectorParamAccumulator(ldf))
             _, accs = init!!(model, accs, init_strategy, transform_strategy)
 
             vecvals = get_vector_values(accs)
-            vec = to_vector_input(vecvals, ldf)
+            vec = to_vector_params(vecvals, ldf)
             @test vec ≈ manual_make_vec(transform_strategy)
 
             vecparams = get_vector_params(accs)
@@ -225,7 +225,7 @@ end
                     accs = OnlyAccsVarInfo(VectorValueAccumulator())
                     _, accs = init!!(model, accs, InitFromPrior(), UnlinkAll())
                     vecvals = get_vector_values(accs)
-                    @test_throws ArgumentError to_vector_input(vecvals, ldf)
+                    @test_throws ArgumentError to_vector_params(vecvals, ldf)
 
                     accs = OnlyAccsVarInfo(VectorParamAccumulator(ldf))
                     @test_throws ArgumentError init!!(
@@ -245,7 +245,7 @@ end
                 accs = OnlyAccsVarInfo(VectorValueAccumulator())
                 _, accs = init!!(extra_model, accs, InitFromPrior(), transform_strategy)
                 vecvals = get_vector_values(accs)
-                @test_throws ArgumentError to_vector_input(vecvals, ldf)
+                @test_throws ArgumentError to_vector_params(vecvals, ldf)
 
                 accs = OnlyAccsVarInfo(VectorParamAccumulator(ldf))
                 @test_throws ErrorException init!!(
@@ -262,7 +262,7 @@ end
                 accs = OnlyAccsVarInfo(VectorValueAccumulator())
                 _, accs = init!!(fewer_model, accs, InitFromPrior(), transform_strategy)
                 vecvals = get_vector_values(accs)
-                @test_throws ArgumentError to_vector_input(vecvals, ldf)
+                @test_throws ArgumentError to_vector_params(vecvals, ldf)
 
                 accs = OnlyAccsVarInfo(VectorParamAccumulator(ldf))
                 _, accs = init!!(fewer_model, accs, InitFromPrior(), transform_strategy)
@@ -279,7 +279,7 @@ end
                 accs = OnlyAccsVarInfo(VectorValueAccumulator())
                 _, accs = init!!(different_model, accs, InitFromPrior(), transform_strategy)
                 vecvals = get_vector_values(accs)
-                @test_throws ArgumentError to_vector_input(vecvals, ldf)
+                @test_throws ArgumentError to_vector_params(vecvals, ldf)
 
                 accs = OnlyAccsVarInfo(VectorParamAccumulator(ldf))
                 @test_throws ArgumentError init!!(
@@ -296,7 +296,7 @@ end
             accs = OnlyAccsVarInfo(VectorValueAccumulator(), VectorParamAccumulator(ldf))
             _, accs = init!!(model, accs, init_strategy, transform_strategy)
             new_vecvals = get_vector_values(accs)
-            new_vec = to_vector_input(new_vecvals, ldf)
+            new_vec = to_vector_params(new_vecvals, ldf)
             @test new_vec ≈ vec
 
             new_vec_params = get_vector_params(accs)
