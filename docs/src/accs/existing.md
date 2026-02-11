@@ -26,6 +26,7 @@ getlogjac
 ```@docs
 RawValueAccumulator
 VectorValueAccumulator
+VectorParamAccumulator
 ```
 
 and their associated convenience functions:
@@ -33,6 +34,7 @@ and their associated convenience functions:
 ```@docs
 get_raw_values
 get_vector_values
+get_vector_params
 ```
 
 ## Miscellaneous

@@ -94,8 +94,10 @@ export AbstractVarInfo,
     # Accumulators - values
     RawValueAccumulator,
     VectorValueAccumulator,
+    VectorParamAccumulator,
     get_raw_values,
     get_vector_values,
+    get_vector_params,
     # Accumulators - miscellany
     PriorDistributionAccumulator,
     BijectorAccumulator,
@@ -118,7 +120,6 @@ export AbstractVarInfo,
     setthreadsafe,
     requires_threadsafe,
     extract_priors,
-    PriorDistributionAccumulator,
     # evaluation
     evaluate!!,
     init!!,
@@ -257,6 +258,7 @@ include("varinfo.jl")
 include("onlyaccs.jl")
 include("compiler.jl")
 include("logdensityfunction.jl")
+include("accumulators/vector_params.jl")
 include("model_utils.jl")
 include("chains.jl")
 
