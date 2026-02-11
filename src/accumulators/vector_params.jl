@@ -40,10 +40,22 @@ function DynamicPPL.accumulate_assume!!(
     tval::AbstractTransformedValue,
     logjac,
     vn::VarName,
-    ::Distribution,
-    template,
+    dist::Distribution,
+    ::Any,
 )
     ral = acc.vn_ranges[vn]
+    # sometimes you might get UntransformedValue... _get_vector_tval is in
+    # src/accumulators/vector_values.jl.
+    vectorised_tval = _get_vector_tval(val, tval, logjac, vn, dist)
+    return _update_acc(acc, vectorised_tval, ral, vn)
+end
+
+function _update_acc(
+    acc::VectorParamAccumulator,
+    tval::Union{LinkedVectorValue,VectorValue},
+    ral::RangeAndLinked,
+    vn::VarName,
+)
     if (
         (ral.is_linked && tval isa VectorValue) ||
         (!ral.is_linked && tval isa LinkedVectorValue)

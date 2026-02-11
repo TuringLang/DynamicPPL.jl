@@ -248,7 +248,7 @@ end
                 @test_throws ArgumentError to_vector_input(vecvals, ldf)
 
                 accs = OnlyAccsVarInfo(VectorParamAccumulator(ldf))
-                @test_throws ArgumentError init!!(
+                @test_throws ErrorException init!!(
                     extra_model, accs, InitFromPrior(), transform_strategy
                 )
             end
@@ -265,9 +265,8 @@ end
                 @test_throws ArgumentError to_vector_input(vecvals, ldf)
 
                 accs = OnlyAccsVarInfo(VectorParamAccumulator(ldf))
-                @test_throws ArgumentError init!!(
-                    fewer_model, accs, InitFromPrior(), transform_strategy
-                )
+                _, accs = init!!(fewer_model, accs, InitFromPrior(), transform_strategy)
+                @test_throws ArgumentError get_vector_params(accs)
             end
 
             @testset "Throws an error if the variable lengths aren't right" begin
