@@ -312,7 +312,7 @@ function build_model_definition(input_expr)
 end
 
 """
-    generate_mainbody(mod, expr, warn)
+    generate_mainbody(mod, expr, warn, warn_threads)
 
 Generate the body of the main evaluation function from expression `expr` and arguments
 `args`.
@@ -344,7 +344,7 @@ function generate_mainbody!(mod, found, expr::Expr, warn, warn_threads)
     # Do we don't want escaped expressions because we unfortunately
     # escape the entire body afterwards.
     Meta.isexpr(expr, :escape) &&
-        return generate_mainbody(mod, found, expr.args[1], warn, warn_threads)
+        return generate_mainbody!(mod, found, expr.args[1], warn, warn_threads)
 
     # If it's a macro, we expand it
     if Meta.isexpr(expr, :macrocall)

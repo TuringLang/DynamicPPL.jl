@@ -107,27 +107,45 @@ using StatsFuns: logit
 
 (Of course, in general you can't just write these down by hand, since it will depend on the model.)
 
-The first thing to do is to re-evaluate the model with the initialisation strategy you are interested in, and collect a new set of vector values.
+Naturally, we need to re-evaluate the model with the initialisation strategy we are interested in.
+We can use a special accumulator, `VectorParamAccumulator`, to get the newly vectorised set of parameters.
+This accumulator must take the `LogDensityFunction` as an argument, since it uses the information stored in there to ensure that the values it collects are consistent with the `LogDensityFunction`.
 
-Note that we *must* use the same transform strategy as the one contained in the `LogDensityFunction`, since we want to collect vector values that are consistent with the `LogDensityFunction`.
+Note that we *must* use the same transform strategy as the one contained in the `LogDensityFunction`, or else we will be generating vectorised parameters that are inconsistent with the `LogDensityFunction` (an error will be thrown if that happens).
 
 ```@example 1
 init_strategy = InitFromParams(VarNamedTuple(; x=5.0, y=0.6))
 transform_strategy = ldf.transform_strategy
 
-accs = OnlyAccsVarInfo(VectorValueAccumulator())
+accs = OnlyAccsVarInfo(VectorParamAccumulator(ldf))
 _, accs = init!!(model, accs, init_strategy, transform_strategy)
-vector_values = get_vector_values(accs)
+vec = get_vector_params(accs)
 ```
 
 You can of course also bundle any extra accumulators you like into the above if you are interested not only in the vectorised parameters but also (e.g.) the log-density.
 This allows you to obtain all the information you need with only one model evaluation.
 
-Once you have a new `VarNamedTuple` of vector values, you can use the function [`to_vector_input`](@ref):
-
-```@example 1
-new_vector = to_vector_input(vector_values, ldf)
-```
+!!! note
+    
+    Note that `VectorParamAccumulator` is not the same as `VectorValueAccumulator`.
+    The former collects *a single vector of parameters*, whereas the latter collects a VarNamedTuple of vectorised parameters for each variable.
+    
+    If you used the latter instead, e.g.,
+    
+    ```@example 1
+    accs = OnlyAccsVarInfo(VectorValueAccumulator())
+    _, accs = init!!(model, accs, init_strategy, transform_strategy)
+    vec_vals = get_vector_values(accs)
+    ```
+    
+    you can convert `vec_vals::VarNamedTuple` to a single vector using
+    
+    ```@example 1
+    to_vector_input(vec_vals, ldf)
+    ```
+    
+    which is equivalent.
+    However, this is slower since it has to generate an intermediate VarNamedTuple.
 
 !!! note "What happened to `varinfo[:]`?"
     
@@ -137,5 +155,5 @@ new_vector = to_vector_input(vector_values, ldf)
     Although `internal_values_as_vector` is not as unsafe as `unflatten!!`, it still does not perform any checks to ensure that the vectorised parameters are consistent with the `LogDensityFunction`.
     For example, you could extract a length-2 vector of parameters from a `VarInfo`, and it would work with any `LogDensityFunction` that also expects a length-2 vector, even if the actual transformations and model are completely different.
     
-    The approach above based on accumulators does preserve the necessary information, and `to_vector_input` will carry out the necessary checks to ensure correctness.
+    The approach above based on `VectorParamAccumulator` does preserve the necessary information, and `to_vector_input` will carry out the necessary checks to ensure correctness.
     It is no less performant than before (apart from the time needed to run said checks!).
