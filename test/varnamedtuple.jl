@@ -1073,9 +1073,26 @@ Base.size(st::SizedThing) = st.size
         test_invariants(vnt1)
         test_invariants(vnt2)
         =#
+    end
 
-        # TODO(penelopeysm): Test that merging partial arrays of different types/sizes
-        # fails.
+    @testset "merging PartialArrays errors with different axes" begin
+        @testset "different sizes" begin
+            vnt1 = templated_setindex!!(VarNamedTuple(), 1.0, @varname(x[1]), zeros(1))
+            vnt2 = templated_setindex!!(VarNamedTuple(), 2.0, @varname(x[1]), zeros(2))
+            @test_throws ArgumentError merge(vnt1, vnt2)
+
+            vnt1 = templated_setindex!!(VarNamedTuple(), 1.0, @varname(x[1]), zeros(1))
+            vnt2 = templated_setindex!!(VarNamedTuple(), 2.0, @varname(x[1]), zeros(1, 1))
+            @test_throws ArgumentError merge(vnt1, vnt2)
+        end
+
+        @testset "different types" begin
+            vnt1 = templated_setindex!!(VarNamedTuple(), 1.0, @varname(x[1]), zeros(1))
+            vnt2 = templated_setindex!!(
+                VarNamedTuple(), 2.0, @varname(x[0]), OA.OffsetArray(zeros(1), 0:0)
+            )
+            @test_throws ArgumentError merge(vnt1, vnt2)
+        end
     end
 
     @testset "subset" begin

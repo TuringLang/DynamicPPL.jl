@@ -1,19 +1,19 @@
 function Base.merge(a::VarNamedTuple, b::VarNamedTuple, cs::VarNamedTuple...)
     return merge(merge(a, b), cs...)
 end
-Base.merge(x1::VarNamedTuple, x2::VarNamedTuple) = _merge_recursive(x1, x2)
+Base.merge(x1::VarNamedTuple, x2::VarNamedTuple) = _merge(x1, x2, Val(true))
 Base.merge(x1::VarNamedTuple) = x1
 
 # This needs to be a generated function for type stability.
-@generated function _merge_recursive(
-    vnt1::VarNamedTuple{names1}, vnt2::VarNamedTuple{names2}
+@generated function _merge(
+    vnt1::VarNamedTuple{names1}, vnt2::VarNamedTuple{names2}, ::Val{true}
 ) where {names1,names2}
     all_names = union(names1, names2)
     exs = Expr[]
     push!(exs, :(data = (;)))
     for name in all_names
         val_expr = if name in names1 && name in names2
-            :(_merge_recursive(vnt1.data.$name, vnt2.data.$name))
+            :(_merge(vnt1.data.$name, vnt2.data.$name, Val(true)))
         elseif name in names1
             :(vnt1.data.$name)
         else
@@ -85,7 +85,7 @@ function apply!!(func, vnt::VarNamedTuple, name::VarName)
         new_subdata,
         AbstractPPL.varname_to_optic(name),
         NoTemplate(),
-        MustNotOverwrite(),
+        MustNotOverwrite(name),
     )
 end
 

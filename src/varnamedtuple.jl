@@ -74,9 +74,10 @@ Allow the creation of new values, and also allow the overwriting of old values.
 """
 struct AllowAll <: SetPermissions end
 """
-    MustOverwrite <: SetPermissions
+    MustOverwrite(target_vn) <: SetPermissions
 
-Disallow the creation of new values, but allow the overwriting of old values.
+Disallow the creation of a new value for `target_vn`, but allow the overwriting of an old
+value.
 
 This subtype is a performance optimisation: if it is set to `MustOverwrite`, the function
 can assume that the key being set already exists in `collection`. This allows skipping some
@@ -88,13 +89,17 @@ added. It only gives the implementation of `_setindex_optic!!` the permission to
 the key already exists. Setting it to `MustOverwrite` should be done only when the caller is
 sure that the key already exists; anything else is undefined behaviour.
 """
-struct MustOverwrite <: SetPermissions end
-struct MustOverwriteError <: Exception end
-function Base.showerror(io::IO, ::MustOverwriteError)
+struct MustOverwrite{V<:VarName} <: SetPermissions
+    target_vn::V
+end
+struct MustOverwriteError{V<:VarName} <: Exception
+    target_vn::V
+end
+function Base.showerror(io::IO, e::MustOverwriteError)
     # Key doesn't exist yet, so we tried to create it, but we aren't allowed to.
     return print(
         io,
-        "Attempted to set a value at a key that does not exist, but" *
+        "Attempted to set a value for $(e.target_vn), but" *
         " `permissions=MustOverwrite` was specified. If you did not attempt" *
         " to call this function yourself, this likely indicates a bug in" *
         " DynamicPPL. Please file an issue at" *
@@ -107,14 +112,19 @@ end
 
 Allow the creation of new values, but disallow the overwriting of old values.
 """
-struct MustNotOverwrite <: SetPermissions end
-struct MustNotOverwriteError <: Exception end
-function Base.showerror(io::IO, ::MustNotOverwriteError)
+struct MustNotOverwrite{V<:VarName} <: SetPermissions
+    target_vn::V
+end
+struct MustNotOverwriteError{V<:VarName} <: Exception
+    target_vn::V
+end
+function Base.showerror(io::IO, e::MustNotOverwriteError)
     # Key exists already, and we tried to overwrite it, but we aren't allowed to.
     return print(
         io,
-        "Attempted to set a value at a key that already exists, but" *
-        " `permissions=MustNotOverwrite` was specified.",
+        "Attempted to set a value for $(e.target_vn), but a value already" *
+        " existed. This indicates that a value is being set twice (e.g. if" *
+        " the same variable occurs in a model twice).",
     )
 end
 

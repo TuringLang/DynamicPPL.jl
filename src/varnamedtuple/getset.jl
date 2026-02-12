@@ -207,7 +207,7 @@ function _setindex_optic!!(
             # No new data but we are allowed to create it.
             make_leaf(value, coptic.child, child_template)
         elseif permissions isa MustOverwrite
-            throw(MustOverwriteError())
+            throw(MustOverwriteError(permissions.target_vn))
         else
             # permissions isa MustNotOverwrite
             _unimplemented()
@@ -226,7 +226,7 @@ function _setindex_optic!!(
 
     return if need_merge
         new_pa = BangBang.setindex!!(copy(pa), grown_sub_value, coptic.ix...; coptic.kw...)
-        _merge_norecurse(pa, new_pa)
+        _merge(pa, new_pa, Val(false))
     else
         BangBang.setindex!!(pa, grown_sub_value, coptic.ix...; coptic.kw...)
     end
@@ -251,7 +251,7 @@ function _setindex_optic!!(
             # No new data but we are allowed to create it.
             make_leaf(value, optic.child, child_template)
         elseif permissions isa MustOverwrite
-            throw(MustOverwriteError())
+            throw(MustOverwriteError(permissions.target_vn))
         else
             # permissions isa MustNotOverwrite
             _unimplemented()
