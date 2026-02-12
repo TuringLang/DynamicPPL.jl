@@ -1168,14 +1168,10 @@ Base.size(st::SizedThing) = st.size
             )
             test_must_not_overwrite(vnt, 2.0, @varname(x.a[end]), (; a=zeros(2)))
 
-            # https://github.com/TuringLang/DynamicPPL.jl/issues/1276
             vnt = templated_setindex!!(
                 VarNamedTuple(), (; a=1.0), @varname(x), NoTemplate()
             )
-            # test_must_not_overwrite(vnt, 2.0, @varname(x.a), NoTemplate())
-            @test_throws MethodError templated_setindex!!(
-                vnt, 2.0, @varname(x.a), NoTemplate()
-            )
+            test_must_not_overwrite(vnt, 2.0, @varname(x.a), NoTemplate())
         end
     end
 
