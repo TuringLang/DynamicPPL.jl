@@ -4,8 +4,6 @@ using ..DynamicPPL
 
 using Random: Random
 using InteractiveUtils: InteractiveUtils
-
-using DocStringExtensions: TYPEDFIELDS
 using Distributions
 
 export check_model, has_static_constraints
@@ -13,109 +11,62 @@ export check_model, has_static_constraints
 """
     DebugAccumulator <: AbstractAccumulator
 
-An accumulator which collects enough information to potentially catch errors in the model.
+An accumulator which checks calls at each tilde-statement for potential errors.
 
-# Fields
-$(TYPEDFIELDS)
+Right now this accumulator only checks for `NaN` values on the left-hand side of observe
+statements, and partially `missing` values on the left-hand side of observe statements.
+
+Other checks in `check_model` are accomplished via different accumulators.
 """
 struct DebugAccumulator <: AbstractAccumulator
-    "mapping from varnames to the number of times they have been seen"
-    varnames_seen::OrderedDict{VarName,Int}
-    "whether to throw an error if we encounter errors in the model"
-    error_on_failure::Bool
-    "whether to check for discrete distributions (incompatible with differentiation)"
-    check_discrete::Bool
+    "A flag indicating whether this accumulator has found any issues with the model"
+    failed::Bool
 end
-
-function DebugAccumulator(error_on_failure=false, check_discrete=false)
-    return DebugAccumulator(OrderedDict{VarName,Int}(), error_on_failure, check_discrete)
-end
+DebugAccumulator() = DebugAccumulator(false)
 
 const _DEBUG_ACC_NAME = :Debug
 DynamicPPL.accumulator_name(::Type{<:DebugAccumulator}) = _DEBUG_ACC_NAME
 
-function Base.:(==)(acc1::DebugAccumulator, acc2::DebugAccumulator)
-    return (
-        acc1.varnames_seen == acc2.varnames_seen &&
-        acc1.error_on_failure == acc2.error_on_failure &&
-        acc1.check_discrete == acc2.check_discrete
-    )
-end
-
-function _zero(acc::DebugAccumulator)
-    return DebugAccumulator(
-        OrderedDict{VarName,Int}(), acc.error_on_failure, acc.check_discrete
-    )
-end
+_zero(::DebugAccumulator) = DebugAccumulator(false)
 DynamicPPL.reset(acc::DebugAccumulator) = _zero(acc)
 DynamicPPL.split(acc::DebugAccumulator) = _zero(acc)
+
 function DynamicPPL.combine(acc1::DebugAccumulator, acc2::DebugAccumulator)
-    return DebugAccumulator(
-        merge(acc1.varnames_seen, acc2.varnames_seen),
-        acc1.error_on_failure || acc2.error_on_failure,
-        acc1.check_discrete || acc2.check_discrete,
-    )
+    return DebugAccumulator(acc1.failed || acc2.failed)
 end
 
-function record_varname!(acc::DebugAccumulator, varname::VarName, dist)
-    if haskey(acc.varnames_seen, varname)
-        if acc.error_on_failure
-            error("varname $varname used multiple times in model")
-        else
-            @warn "varname $varname used multiple times in model"
-        end
-        acc.varnames_seen[varname] += 1
-    else
-        # We need to check:
-        # 1. Does this `varname` subsume any of the other keys.
-        # 2. Does any of the other keys subsume `varname`.
-        vns = collect(keys(acc.varnames_seen))
-        # Is `varname` subsumed by any of the other keys?
-        idx_parent = findfirst(Base.Fix2(subsumes, varname), vns)
-        if idx_parent !== nothing
-            varname_parent = vns[idx_parent]
-            if acc.error_on_failure
-                error(
-                    "varname $(varname_parent) used multiple times in model (subsumes $varname)",
-                )
-            else
-                @warn "varname $(varname_parent) used multiple times in model (subsumes $varname)"
-            end
-            # Update count of parent.
-            acc.varnames_seen[varname_parent] += 1
-        else
-            # Does `varname` subsume any of the other keys?
-            idx_child = findfirst(Base.Fix1(subsumes, varname), vns)
-            if idx_child !== nothing
-                varname_child = vns[idx_child]
-                if acc.error_on_failure
-                    error(
-                        "varname $(varname_child) used multiple times in model (subsumed by $varname)",
-                    )
-                else
-                    @warn "varname $(varname_child) used multiple times in model (subsumed by $varname)"
-                end
+"""
+    _has_partial_missings(x, dist)
 
-                # Update count of child.
-                acc.varnames_seen[varname_child] += 1
-            end
-        end
-
-        acc.varnames_seen[varname] = 1
-    end
-end
-
-_has_missings(x) = ismissing(x)
-function _has_missings(x::AbstractArray)
-    # Can't just use `any` because `x` might contain `undef`.
+Check if `x` is a container that contains partial `missing` values.
+"""
+_has_partial_missings(x, dist) = false
+function _has_partial_missings(x::AbstractArray, ::MultivariateDistribution)
     for i in eachindex(x)
-        if isassigned(x, i) && _has_missings(x[i])
+        if isassigned(x, i) && ismissing(x[i])
+            return true
+        end
+    end
+    return false
+end
+function _has_partial_missings(
+    x::NamedTuple{names}, dists::Distributions.ProductNamedTupleDistribution
+) where {names}
+    for name in names
+        sub_value = x[name]
+        sub_dist = dists.dists[name]
+        if _has_partial_missings(sub_value, sub_dist)
             return true
         end
     end
     return false
 end
 
+"""
+    _has_nans(x)
+
+Check if `x` is `NaN`, or contains any `NaN` values.
+"""
 _has_nans(x::NamedTuple) = any(_has_nans, x)
 _has_nans(x::AbstractArray) = any(_has_nans, x)
 _has_nans(x) = isnan(x)
@@ -124,54 +75,26 @@ _has_nans(::Missing) = false
 function DynamicPPL.accumulate_assume!!(
     acc::DebugAccumulator, val, tval, logjac, vn::VarName, right::Distribution, template
 )
-    record_varname!(acc, vn, right)
-    # Check for discrete distributions if requested.
-    # NOTE: This uses the `ValueSupport` from the type of `right`, which may not
-    # be accurate for composite distributions (e.g. `ProductDistribution`) that
-    # mix discrete and continuous components. As of Distributions.jl v0.25,
-    # such mixed products are typed as `Continuous`, so a discrete component
-    # inside one would not be caught here. This is arguably a bug in
-    # Distributions.jl rather than something to work around here.
-    if acc.check_discrete
-        if right isa Distributions.DiscreteDistribution
-            msg =
-                "Variable $(vn) is sampled from a discrete distribution " *
-                "($(typeof(right).name.wrapper)). Discrete distributions are not " *
-                "differentiable, and thus not compatible with approaches that " *
-                "require gradient information, e.g. HMC / NUTS or optimisation."
-            if acc.error_on_failure
-                error(msg)
-            else
-                @warn msg
-            end
-        end
-    end
     return acc
 end
 
 function DynamicPPL.accumulate_observe!!(
     acc::DebugAccumulator, right::Distribution, val, vn::Union{VarName,Nothing}
 )
-    if _has_missings(val)
-        # If `val` itself is a missing, that's a bug because that should cause
-        # us to go down the assume path.
-        val === missing && error(
-            "Encountered `missing` value on the left-hand side of an observe" *
-            " statement. This should not happen. Please open an issue at" *
-            " https://github.com/TuringLang/DynamicPPL.jl.",
-        )
-        # Otherwise it's an array with some missing values.
-        msg =
-            "Encountered a container with one or more `missing` value(s) on the" *
-            " left-hand side of an observe statement. To treat the variable on" *
-            " the left-hand side as a random variable, you should specify a single" *
-            " `missing` rather than a vector of `missing`s. It is not possible to" *
-            " set part but not all of a distribution to be `missing`."
-        if acc.error_on_failure
-            error(msg)
+    if _has_partial_missings(val, right)
+        msg = if vn === nothing
+            "on the left-hand side of an observe statement"
         else
-            @warn msg
+            "for variable $(vn) on the left-hand side of an observe statement"
         end
+        full_msg =
+            "Encountered a container with one or more `missing` value(s) $msg." *
+            " To treat the variable on the left-hand side as a random variable, you" *
+            " should specify a single `missing` rather than a vector of `missing`s." *
+            " It is not currently possible to set part but not all of a distribution" *
+            " to be `missing`."
+        @warn full_msg
+        acc.failed = true
     end
     # Check for NaN's as well
     if _has_nans(val)
@@ -179,56 +102,10 @@ function DynamicPPL.accumulate_observe!!(
             "Encountered a NaN value on the left-hand side of an" *
             " observe statement; this may indicate that your data" *
             " contain NaN values."
-        if acc.error_on_failure
-            error(msg)
-        else
-            @warn msg
-        end
+        @warn msg
+        acc.failed = true
     end
     return acc
-end
-
-function check_varnames_seen(varnames_seen::AbstractDict{VarName,Int})
-    if isempty(varnames_seen)
-        @warn "The model does not contain any parameters."
-        return true
-    end
-
-    issuccess = true
-    for (varname, count) in varnames_seen
-        if count == 0
-            @warn "varname $varname was never seen"
-            issuccess = false
-        elseif count > 1
-            @warn "varname $varname was seen $count times; it should only be seen once!"
-            issuccess = false
-        end
-    end
-
-    return issuccess
-end
-
-# A check we run on the model before evaluating it.
-function check_model_pre_evaluation(model::Model)
-    issuccess = true
-    # If something is in the model arguments, then it should NOT be in `condition`,
-    # nor should there be any symbol present in `condition` that has the same symbol.
-    conditioned_vns = keys(DynamicPPL.conditioned(model.context))
-    for vn in conditioned_vns
-        if DynamicPPL.inargnames(vn, model)
-            @warn "Variable $(vn) is both in the model arguments and in the conditioning!\n" *
-                "Please use either conditioning through the model arguments, or through " *
-                "`condition` / `|`, not both."
-
-            issuccess = false
-        end
-    end
-
-    return issuccess
-end
-
-function check_model_post_evaluation(acc::DebugAccumulator)
-    return check_varnames_seen(acc.varnames_seen)
 end
 
 """
@@ -286,7 +163,7 @@ julia> cond_model = model | (x = 1.0,);
 julia> # Empty models will issue a warning, but not a failure
        check_model(cond_model)
 ┌ Warning: The model does not contain any parameters.
-└ @ DynamicPPL.DebugUtils DynamicPPL.jl/src/debug_utils.jl:342
+└ @ DynamicPPL.DebugUtils DynamicPPL.jl/src/debug_utils.jl:215
 true
 ```
 
@@ -312,27 +189,63 @@ ERROR: varname x used multiple times in model
 function check_model(
     rng::Random.AbstractRNG, model::Model; error_on_failure=false, fail_if_discrete=false
 )
-    # Perform checks before evaluating the model.
-    issuccess = check_model_pre_evaluation(model)
+    failed = false
 
-    # TODO(penelopeysm): Implement merge, etc. for DebugAccumulator, and then perform a
-    # check on the merged accumulator, rather than checking it in the accumulate_assume
-    # calls. That way we can also correctly support multi-threaded evaluation.
+    # Check that a variable in the model arguments is neither conditioned nor fixed.
+    conditioned_vns = keys(DynamicPPL.conditioned(model.context))
+    for vn in conditioned_vns
+        if DynamicPPL.inargnames(vn, model)
+            @warn "Variable $(vn) is both in the model arguments and in the conditioning!\n" *
+                "Please use either conditioning through the model arguments, or through " *
+                "`condition` / `|`, not both."
+            failed = true
+        end
+    end
+
+    # Run the model and collect the data we need
     oavi = DynamicPPL.OnlyAccsVarInfo((
-        DebugAccumulator(error_on_failure, fail_if_discrete),
+        DebugAccumulator(), PriorDistributionAccumulator(), RawValueAccumulator(false)
     ))
     init_strategy = InitFromPrior()
     _, oavi = DynamicPPL.init!!(rng, model, oavi, init_strategy, UnlinkAll())
 
-    # Perform checks after evaluating the model.
-    debug_acc = DynamicPPL.getacc(oavi, Val(_DEBUG_ACC_NAME))
-    issuccess = issuccess && check_model_post_evaluation(debug_acc)
-
-    if !issuccess && error_on_failure
-        error("model check failed")
+    # If there are no raw values, then there are no parameters, so we can skip the rest of
+    # the checks (but we will warn).
+    if isempty(get_raw_values(oavi))
+        @warn "The model does not contain any parameters."
+        return true
     end
 
-    return issuccess
+    # Check if the DebugAccumulator found any issues with the model.
+    debug_acc = DynamicPPL.getacc(oavi, Val(_DEBUG_ACC_NAME))
+    failed = failed || debug_acc.failed
+
+    # Check for discrete distributions if requested.
+    # NOTE: This uses the `ValueSupport` from the type of `dist`, which may not
+    # be accurate for composite distributions (e.g. `ProductDistribution`) that
+    # mix discrete and continuous components. As of Distributions.jl v0.25,
+    # such mixed products are typed as `Continuous`, so a discrete component
+    # inside one would not be caught here.
+    if fail_if_discrete
+        prior_acc = DynamicPPL.getacc(oavi, DynamicPPL.PRIOR_ACCNAME).values
+        for (vn, dist) in pairs(prior_acc)
+            if dist isa Distributions.DiscreteDistribution
+                msg =
+                    "Variable $(vn) is sampled from a discrete distribution " *
+                    "($(typeof(dist).name.wrapper)). Discrete distributions are not " *
+                    "differentiable, and thus not compatible with approaches that " *
+                    "require gradient information, e.g. HMC / NUTS or optimisation."
+                @warn msg
+                failed = true
+            end
+        end
+    end
+
+    if failed && error_on_failure
+        error("Model check failed; please see the warnings above for details.")
+    end
+
+    return !failed
 end
 function check_model(model::Model; error_on_failure=false, fail_if_discrete=false)
     return check_model(
