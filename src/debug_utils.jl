@@ -5,135 +5,15 @@ using ..DynamicPPL
 using Random: Random
 using InteractiveUtils: InteractiveUtils
 
-using DocStringExtensions
+using DocStringExtensions: TYPEDFIELDS
 using Distributions
 
-export check_model, check_model_and_trace, has_static_constraints
-
-# Statements
-abstract type Stmt end
-
-function Base.show(io::IO, statements::Vector{Stmt})
-    for stmt in statements
-        println(io, stmt)
-    end
-end
-
-const RESULT_SYMBOL = "⟼"
-
-add_io_context(io::IO) = IOContext(io, :compact => true, :limit => true)
-
-show_varname(io::IO, varname::VarName) = print(io, varname)
-function show_varname(io::IO, varname::Array{<:VarName,N}) where {N}
-    # Attempt to make the type concrete in case the symbol is shared.
-    return _show_varname(io, [vn for vn in varname])
-end
-function _show_varname(io::IO, varname::Array{<:VarName,N}) where {N}
-    # Print the first and last element of the array.
-    print(io, "[")
-    show_varname(io, varname[1])
-    print(io, ", ..., ")
-    show_varname(io, varname[end])
-    print(io, "]")
-    # And the size.
-    print(io, " ", size(varname))
-
-    return nothing
-end
-function _show_varname(io::IO, varname::Array{<:VarName{sym},N}) where {N,sym}
-    print(io, sym, "[...]", " ", size(varname))
-    return nothing
-end
-
-function show_right(io::IO, d::Distribution)
-    pnames = fieldnames(typeof(d))
-    _, namevals = Distributions._use_multline_show(d, pnames)
-    return Distributions.show_oneline(io, d, namevals)
-end
-
-function show_right(io::IO, d::Distributions.ReshapedDistribution)
-    print(io, "reshape(")
-    show_right(io, d.dist)
-    return print(io, ")")
-end
-
-function show_right(io::IO, d::Distributions.Product)
-    print(io, "product(")
-    for (i, dist) in enumerate(d.v)
-        if i > 1
-            print(io, ", ")
-        end
-        show_right(io, dist)
-    end
-    return print(io, ")")
-end
-
-show_right(io::IO, d) = show(io, d)
-
-Base.@kwdef struct AssumeStmt <: Stmt
-    varname
-    right
-    value
-end
-
-function Base.show(io::IO, stmt::AssumeStmt)
-    io = add_io_context(io)
-    print(io, " assume: ")
-    show_varname(io, stmt.varname)
-    print(io, " ~ ")
-    show_right(io, stmt.right)
-    print(io, " ")
-    print(io, RESULT_SYMBOL)
-    print(io, " ")
-    print(io, stmt.value)
-    return nothing
-end
-
-Base.@kwdef struct ObserveStmt <: Stmt
-    varname
-    right
-    value
-end
-
-function Base.show(io::IO, stmt::ObserveStmt)
-    io = add_io_context(io)
-    print(io, " observe: ")
-    if stmt.varname === nothing
-        print(io, stmt.value)
-    else
-        show_varname(io, stmt.varname)
-        print(io, " (= ")
-        print(io, stmt.value)
-        print(io, ")")
-    end
-    print(io, " ~ ")
-    show_right(io, stmt.right)
-    return nothing
-end
-
-# Some utility methods for extracting information from a trace.
-"""
-    varnames_in_trace(trace)
-
-Return all the varnames present in the trace.
-"""
-varnames_in_trace(trace::AbstractVector) = mapreduce(varnames_in_stmt, vcat, trace)
-
-varnames_in_stmt(stmt::AssumeStmt) = [stmt.varname]
-varnames_in_stmt(::ObserveStmt) = []
-
-function distributions_in_trace(trace::AbstractVector)
-    return mapreduce(distributions_in_stmt, vcat, trace)
-end
-
-distributions_in_stmt(stmt::AssumeStmt) = [stmt.right]
-distributions_in_stmt(stmt::ObserveStmt) = [stmt.right]
+export check_model, has_static_constraints
 
 """
     DebugAccumulator <: AbstractAccumulator
 
-An accumulator which captures tilde-statements inside a model and attempts to catch
-errors in the model.
+An accumulator which collects enough information to potentially catch errors in the model.
 
 # Fields
 $(TYPEDFIELDS)
@@ -141,8 +21,6 @@ $(TYPEDFIELDS)
 struct DebugAccumulator <: AbstractAccumulator
     "mapping from varnames to the number of times they have been seen"
     varnames_seen::OrderedDict{VarName,Int}
-    "tilde statements that have been executed"
-    statements::Vector{Stmt}
     "whether to throw an error if we encounter errors in the model"
     error_on_failure::Bool
     "whether to check for discrete distributions (incompatible with differentiation)"
@@ -150,9 +28,7 @@ struct DebugAccumulator <: AbstractAccumulator
 end
 
 function DebugAccumulator(error_on_failure=false, check_discrete=false)
-    return DebugAccumulator(
-        OrderedDict{VarName,Int}(), Vector{Stmt}(), error_on_failure, check_discrete
-    )
+    return DebugAccumulator(OrderedDict{VarName,Int}(), error_on_failure, check_discrete)
 end
 
 const _DEBUG_ACC_NAME = :Debug
@@ -161,7 +37,6 @@ DynamicPPL.accumulator_name(::Type{<:DebugAccumulator}) = _DEBUG_ACC_NAME
 function Base.:(==)(acc1::DebugAccumulator, acc2::DebugAccumulator)
     return (
         acc1.varnames_seen == acc2.varnames_seen &&
-        acc1.statements == acc2.statements &&
         acc1.error_on_failure == acc2.error_on_failure &&
         acc1.check_discrete == acc2.check_discrete
     )
@@ -169,7 +44,7 @@ end
 
 function _zero(acc::DebugAccumulator)
     return DebugAccumulator(
-        OrderedDict{VarName,Int}(), Vector{Stmt}(), acc.error_on_failure, acc.check_discrete
+        OrderedDict{VarName,Int}(), acc.error_on_failure, acc.check_discrete
     )
 end
 DynamicPPL.reset(acc::DebugAccumulator) = _zero(acc)
@@ -177,7 +52,6 @@ DynamicPPL.split(acc::DebugAccumulator) = _zero(acc)
 function DynamicPPL.combine(acc1::DebugAccumulator, acc2::DebugAccumulator)
     return DebugAccumulator(
         merge(acc1.varnames_seen, acc2.varnames_seen),
-        vcat(acc1.statements, acc2.statements),
         acc1.error_on_failure || acc2.error_on_failure,
         acc1.check_discrete || acc2.check_discrete,
     )
@@ -251,7 +125,6 @@ function DynamicPPL.accumulate_assume!!(
     acc::DebugAccumulator, val, tval, logjac, vn::VarName, right::Distribution, template
 )
     record_varname!(acc, vn, right)
-
     # Check for discrete distributions if requested.
     # NOTE: This uses the `ValueSupport` from the type of `right`, which may not
     # be accurate for composite distributions (e.g. `ProductDistribution`) that
@@ -273,9 +146,6 @@ function DynamicPPL.accumulate_assume!!(
             end
         end
     end
-
-    stmt = AssumeStmt(; varname=vn, right=right, value=val)
-    push!(acc.statements, stmt)
     return acc
 end
 
@@ -315,8 +185,6 @@ function DynamicPPL.accumulate_observe!!(
             @warn msg
         end
     end
-    stmt = ObserveStmt(; varname=vn, right=right, value=val)
-    push!(acc.statements, stmt)
     return acc
 end
 
@@ -364,69 +232,71 @@ function check_model_post_evaluation(acc::DebugAccumulator)
 end
 
 """
-    check_model_and_trace([rng::Random.AbstractRNG,] model::Model; error_on_failure=false, fail_if_discrete=false)
+    DynamicPPL.DebugUtils.check_model(
+        [rng::Random.AbstractRNG,]
+        model::Model;
+        error_on_failure=false,
+        fail_if_discrete=false
+    )
 
-Check that sampling from the prior of `model`, warning about any potential issues.
+Check `model` for potential issues. Returns `true` if the model check succeeded, `false`
+otherwise.
 
-This will check the model for the following issues:
+The model is only evaluated a single time, so if the model contains any indeterminism,
+results may differ across runs. The `rng` argument can be used to control reproducibility if
+needed.
 
-1. Repeated usage of the same varname in a model.
-2. `NaN` on the left-hand side of observe statements.
-3. (If `fail_if_discrete` is set) Usage of discrete distributions, which are not
-   differentiable and thus incompatible with gradient-based approaches.
+# Issues that this function checks for
 
-# Arguments
-- `model::Model`: The model to check.
-- `varinfo::AbstractVarInfo`: The varinfo to use when evaluating the model.
+- Repeated usage of the same or overlapping VarNames
 
-# Keyword Arguments
-- `error_on_failure::Bool`: Whether to throw an error if the model check fails. Default: `false`.
-- `fail_if_discrete::Bool`: Whether to warn (or error, if `error_on_failure` is set) when
-  the model contains discrete distributions. Discrete distributions are not differentiable
-  and are incompatible with gradient-based approaches such as HMC / NUTS or optimisation.
-  Default: `false`.
+- `NaN` on the left-hand side of observe statements
 
-# Returns
-- `issuccess::Bool`: Whether the model check succeeded.
-- `trace::Vector{Stmt}`: The trace of statements executed during the model check.
+- (if `fail_if_discrete` is set) Usage of discrete distributions
+
+- Empty models emit a warning, but do not fail (since they are not incorrect *per se*)
+
+# Keyword arguments
+
+- `error_on_failure::Bool`: Whether to throw an error (instead of just returning `false`) if
+  the model check fails.
+
+- `fail_if_discrete::Bool`: Whether to fail (i.e., return `false` or throw an error,
+   depending on `error_on_failure`) when the model contains discrete distributions. Discrete
+   distributions do not have a differentiable log-density and are incompatible with
+   gradient-based approaches such as HMC / NUTS or optimisation.
 
 # Examples
+
 ## Correct model
 
-```jldoctest check-model-and-tracecheck-model-and-trace; setup=:(using Distributions)
-julia> using StableRNGs; rng = StableRNG(42);
+```jldoctest
+julia> using DynamicPPL.DebugUtils: check_model; using Distributions
 
 julia> @model demo_correct() = x ~ Normal()
 demo_correct (generic function with 2 methods)
 
 julia> model = demo_correct();
 
-julia> issuccess, trace = check_model_and_trace(rng, model);
-
-julia> issuccess
+julia> check_model(model)
 true
-
-julia> print(trace)
- assume: x ~ Normal{Float64}(μ=0.0, σ=1.0) ⟼ -0.670252
 
 julia> cond_model = model | (x = 1.0,);
 
-julia> issuccess, trace = check_model_and_trace(cond_model);
+julia> # Empty models will issue a warning, but not a failure
+       check_model(cond_model)
 ┌ Warning: The model does not contain any parameters.
 └ @ DynamicPPL.DebugUtils DynamicPPL.jl/src/debug_utils.jl:342
-
-julia> issuccess
 true
-
-julia> print(trace)
- observe: x (= 1.0) ~ Normal{Float64}(μ=0.0, σ=1.0)
 ```
 
 ## Incorrect model
 
-```jldoctest check-model-and-tracecheck-model-and-trace; setup=:(using Distributions)
+```jldoctest; setup=:(using Distributions)
+julia> using DynamicPPL.DebugUtils: check_model; using Distributions
+
 julia> @model function demo_incorrect()
-           # (×) Sampling `x` twice will lead to incorrect log-probabilities!
+           # Sampling `x` twice.
            x ~ Normal()
            x ~ Exponential()
        end
@@ -436,11 +306,10 @@ julia> # Notice that VarInfo(model_incorrect) evaluates the model, but doesn't a
        # alert us to the issue of `x` being sampled twice.
        model = demo_incorrect(); varinfo = VarInfo(model);
 
-julia> issuccess, trace = check_model_and_trace(model; error_on_failure=true);
+julia> check_model(model; error_on_failure=true)
 ERROR: varname x used multiple times in model
-```
 """
-function check_model_and_trace(
+function check_model(
     rng::Random.AbstractRNG, model::Model; error_on_failure=false, fail_if_discrete=false
 )
     # Perform checks before evaluating the model.
@@ -463,36 +332,8 @@ function check_model_and_trace(
         error("model check failed")
     end
 
-    trace = debug_acc.statements
-    return issuccess, trace
+    return issuccess
 end
-function check_model_and_trace(model::Model; error_on_failure=false, fail_if_discrete=false)
-    return check_model_and_trace(
-        Random.default_rng(),
-        model;
-        error_on_failure=error_on_failure,
-        fail_if_discrete=fail_if_discrete,
-    )
-end
-
-"""
-    check_model(model::Model; error_on_failure=false, fail_if_discrete=false)
-
-Check that `model` is valid, warning about any potential issues (or erroring if
-`error_on_failure` is `true`).
-
-See [`check_model_and_trace`](@ref) for details on the keyword arguments.
-
-# Returns
-- `issuccess::Bool`: Whether the model check succeeded.
-"""
-check_model(
-    rng::Random.AbstractRNG, model::Model; error_on_failure=false, fail_if_discrete=false
-) = first(
-    check_model_and_trace(
-        rng, model; error_on_failure=error_on_failure, fail_if_discrete=fail_if_discrete
-    ),
-)
 function check_model(model::Model; error_on_failure=false, fail_if_discrete=false)
     return check_model(
         Random.default_rng(),
@@ -502,59 +343,43 @@ function check_model(model::Model; error_on_failure=false, fail_if_discrete=fals
     )
 end
 
-# Convenience method used to check if all elements in a list are the same.
-function all_the_same(xs)
-    issuccess = true
-    for i in 2:length(xs)
-        if xs[1] != xs[i]
-            issuccess = false
-            break
-        end
-    end
-
-    return issuccess
-end
-
 """
-    has_static_constraints([rng, ]model::Model; num_evals=5, error_on_failure=false)
+    has_static_constraints([rng, ]model::Model; num_evals=5)
 
-Return `true` if the model has static constraints, `false` otherwise.
+Attempts to detect whether `model` has static constraints (i.e., the support of all variables
+is the same regardless of what their values are). Returns `true` if the model has static
+constraints, `false` otherwise.
 
 Note that this is a heuristic check based on sampling from the model multiple times
 and checking if the model is consistent across runs.
 
 # Arguments
+
 - `rng::Random.AbstractRNG`: The random number generator to use when evaluating the model.
 - `model::Model`: The model to check.
 
 # Keyword Arguments
 - `num_evals::Int`: The number of evaluations to perform. Default: `5`.
-- `error_on_failure::Bool`: Whether to throw an error if any of the `num_evals` model
-  checks fail. Default: `false`.
 """
-function has_static_constraints(
-    rng::Random.AbstractRNG, model::Model; num_evals::Int=5, error_on_failure::Bool=false
-)
-    results = map(1:num_evals) do _
-        check_model_and_trace(rng, model; error_on_failure=error_on_failure)
+function has_static_constraints(rng::Random.AbstractRNG, model::Model; num_evals::Int=5)
+    prior_vnts = map(1:num_evals) do _
+        accs = DynamicPPL.OnlyAccsVarInfo(PriorDistributionAccumulator())
+        _, accs = DynamicPPL.init!!(rng, model, accs, InitFromPrior(), UnlinkAll())
+        return only(DynamicPPL.getaccs(accs))
     end
-
-    # Extract the distributions and the corresponding bijectors for each run.
-    traces = map(last, results)
-    dists_per_trace = map(distributions_in_trace, traces)
-    transforms = map(dists_per_trace) do dists
-        map(DynamicPPL.link_transform, dists)
+    all_vns = mapreduce(keys, vcat, prior_vnts)
+    for vn in all_vns
+        # Check that the bijector for `vn` is the same across all runs. (Note that
+        # the distribution can vary, as long as the bijector doesn't change)
+        bijectors = map(vnts -> DynamicPPL.link_transform(vnts[vn]), prior_vnts)
+        if !isempty(bijectors) && any(b -> b != bijectors[1], bijectors)
+            return false
+        end
     end
-
-    # Check if the distributions are the same across all runs.
-    return all_the_same(transforms)
+    return true
 end
-function has_static_constraints(
-    model::Model; num_evals::Int=5, error_on_failure::Bool=false
-)
-    return has_static_constraints(
-        Random.default_rng(), model; num_evals=num_evals, error_on_failure=error_on_failure
-    )
+function has_static_constraints(model::Model; num_evals::Int=5)
+    return has_static_constraints(Random.default_rng(), model; num_evals=num_evals)
 end
 
 """

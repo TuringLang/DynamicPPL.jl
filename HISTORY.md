@@ -127,9 +127,15 @@ In particular
 
 ### `DynamicPPL.DebugUtils`
 
-The signature of `DynamicPPL.DebugUtils.check_model` and `DynamicPPL.DebugUtils.check_model_and_trace` are now changed.
-Instead of taking a `VarInfo` as the second argument, they now do not need a `VarInfo` at all; they simply sample from the prior of the model.
+`DynamicPPL.DebugUtils.check_model_and_trace` is removed; use `DynamicPPL.DebugUtils.check_model` instead.
+
+The signature of `DynamicPPL.DebugUtils.check_model` itself is also changed.
+Instead of taking a `VarInfo` as the second argument, it does need a `VarInfo` at all; it simply samples from the prior of the model.
 To make this reproducible you can optionally pass `rng` as a first argument (before the model).
+
+`DynamicPPL.DebugUtils.has_static_constraints` no longer accepts an `error_on_failure` keyword argument.
+It now only checks for static constraints and does not otherwise perform model checks.
+If you want to perform model checks, call `check_model` on top of this.
 
 ### Overhaul of `VarInfo`
 
