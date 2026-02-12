@@ -204,7 +204,9 @@ function check_model(
 
     # Run the model and collect the data we need
     oavi = DynamicPPL.OnlyAccsVarInfo((
-        DebugAccumulator(), PriorDistributionAccumulator(), RawValueAccumulator(false)
+        DebugAccumulator(),
+        PriorDistributionAccumulator(),
+        DynamicPPL.DebugRawValueAccumulator(),
     ))
     init_strategy = InitFromPrior()
     _, oavi = DynamicPPL.init!!(rng, model, oavi, init_strategy, UnlinkAll())
@@ -219,6 +221,19 @@ function check_model(
     # Check if the DebugAccumulator found any issues with the model.
     debug_acc = DynamicPPL.getacc(oavi, Val(_DEBUG_ACC_NAME))
     failed = failed || debug_acc.failed
+
+    # Check the DebugRawValueAccumulator
+    debug_raw_value_acc = DynamicPPL.getacc(oavi, Val(DynamicPPL.RAW_VALUE_ACCNAME))
+    repeated_vns = debug_raw_value_acc.f.repeated_vns
+    if !isempty(repeated_vns)
+        for vn in repeated_vns
+            @warn (
+                "Assigning to the variable $(vn) led to a previous value being overwritten." *
+                " This indicates that a value is being set twice (e.g. if the same variable occurs in a model twice)."
+            )
+        end
+        failed = true
+    end
 
     # Check for discrete distributions if requested.
     # NOTE: This uses the `ValueSupport` from the type of `dist`, which may not

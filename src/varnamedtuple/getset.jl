@@ -100,7 +100,7 @@ function _haskey_optic(arr::AbstractArray, optic::IndexWithoutChild)
 end
 
 """
-    _setindex_optic!!(collection, value, optic, template, permissions=AllowAll()
+    _setindex_optic!!(collection, value, optic, template, permissions)
 
 Like `setindex!!`, but special-cased for `VarNamedTuple` and `PartialArray` to recurse into
 nested structures.
@@ -114,17 +114,15 @@ and `MustNotOverwrite` for details.
     value,
     ::AbstractPPL.Iden,
     @nospecialize(::Any),
-    permissions::SetPermissions=AllowAll(),
+    perms::SetPermissions,
 )
+    perms isa MustOverwrite && throw(MustOverwriteError(perms))
     return value
 end
 function _setindex_optic!!(
-    arr::AbstractArray,
-    value,
-    optic::IndexWithoutChild,
-    template,
-    ::SetPermissions=AllowAll(),
+    arr::AbstractArray, value, optic::IndexWithoutChild, template, perms::SetPermissions
 )
+    perms isa MustNotOverwrite && throw(MustNotOverwriteError(perms))
     return BangBang.setindex!!(arr, value, optic.ix...; optic.kw...)
 end
 
@@ -142,7 +140,7 @@ end
 (::SharedGetProperty{S})(x) where {S} = getproperty(x, S)
 
 function _setindex_optic!!(
-    pa::PartialArray, value, optic::AbstractPPL.Index, template, permissions=AllowAll()
+    pa::PartialArray, value, optic::AbstractPPL.Index, template, permissions::SetPermissions
 )
     need_merge = false
     coptic = AbstractPPL.concretize_top_level(optic, pa.data)
@@ -155,6 +153,12 @@ function _setindex_optic!!(
     else
         isempty(coptic.kw) || throw_kw_error()
         _is_multiindex_static(coptic.ix)
+    end
+
+    if permissions isa MustNotOverwrite
+        if any(view(pa.mask, coptic.ix...; coptic.kw...))
+            throw(MustNotOverwriteError(permissions))
+        end
     end
 
     sub_value = if optic.child isa AbstractPPL.Iden
@@ -174,6 +178,12 @@ function _setindex_optic!!(
         else
             NoTemplate()
         end
+
+        # TODO(penelopeysm): This check to haskey() will check *all* the indices, it only
+        # returns true if they are all filled. This is probably not really correct, and is
+        # why we need to have the hacky need_merge workaround just below this (because that
+        # catches the case where *some* of the indices are filled). We should rethink the
+        # logic in this section.
         if Base.haskey(pa, coptic.ix...; coptic.kw...)
             # The PartialArray already contains an unmasked value at this index. We need to
             # set that value in place there.
@@ -184,7 +194,13 @@ function _setindex_optic!!(
                 child_template,
                 permissions,
             )
-        elseif permissions isa AllowAll
+        else
+            # No existing value. 
+            # If we aren't allowed to make one, we should error.
+            if permissions isa MustOverwrite
+                throw(MustOverwriteError(permissions))
+            end
+            # Otherwise we can go ahead and make it
             if any(view(pa.mask, coptic.ix...; coptic.kw...))
                 # NOTE: This is a VERY subtle case, which can happen when you are setting
                 # multiple indices at once, but some of them were masked. When they are
@@ -206,11 +222,6 @@ function _setindex_optic!!(
             end
             # No new data but we are allowed to create it.
             make_leaf(value, coptic.child, child_template)
-        elseif permissions isa MustOverwrite
-            throw(MustOverwriteError(permissions.target_vn))
-        else
-            # permissions isa MustNotOverwrite
-            _unimplemented()
         end
     end
 
@@ -239,6 +250,9 @@ function _setindex_optic!!(
     template,
     permissions=AllowAll(),
 ) where {names,S}
+    if S in names && permissions isa MustNotOverwrite
+        throw(MustNotOverwriteError(permissions))
+    end
     sub_value = if optic.child isa AbstractPPL.Iden
         # Skip recursion
         value
@@ -247,14 +261,11 @@ function _setindex_optic!!(
         if S in names
             # Data already exists; we need to recurse into it
             _setindex_optic!!(vnt.data[S], value, optic.child, child_template, permissions)
-        elseif permissions isa AllowAll
-            # No new data but we are allowed to create it.
-            make_leaf(value, optic.child, child_template)
         elseif permissions isa MustOverwrite
-            throw(MustOverwriteError(permissions.target_vn))
+            throw(MustOverwriteError(permissions))
         else
-            # permissions isa MustNotOverwrite
-            _unimplemented()
+            # AllowAll or MustNotOverwrite -- in either case we can just create a new leaf
+            make_leaf(value, optic.child, child_template)
         end
     end
     return VarNamedTuple(merge(vnt.data, NamedTuple{(S,)}((sub_value,))))

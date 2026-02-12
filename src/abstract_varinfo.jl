@@ -256,7 +256,7 @@ Note that this function is not public.
 """
 function is_extracting_colon_eq_values(vi::AbstractVarInfo)
     return hasacc(vi, Val(RAW_VALUE_ACCNAME)) &&
-           getacc(vi, Val(RAW_VALUE_ACCNAME)).f.include_colon_eq
+           is_extracting_colon_eq_values(getacc(vi, Val(RAW_VALUE_ACCNAME)).f)
 end
 
 """

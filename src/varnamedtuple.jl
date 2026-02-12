@@ -94,12 +94,15 @@ struct MustOverwrite{V<:VarName} <: SetPermissions
 end
 struct MustOverwriteError{V<:VarName} <: Exception
     target_vn::V
+    function MustOverwriteError(perm::MustOverwrite)
+        return new{typeof(perm.target_vn)}(perm.target_vn)
+    end
 end
 function Base.showerror(io::IO, e::MustOverwriteError)
     # Key doesn't exist yet, so we tried to create it, but we aren't allowed to.
     return print(
         io,
-        "Attempted to set a value for $(e.target_vn), but" *
+        "MustOverwriteError: Attempted to set a value for $(e.target_vn), but" *
         " `permissions=MustOverwrite` was specified. If you did not attempt" *
         " to call this function yourself, this likely indicates a bug in" *
         " DynamicPPL. Please file an issue at" *
@@ -117,12 +120,15 @@ struct MustNotOverwrite{V<:VarName} <: SetPermissions
 end
 struct MustNotOverwriteError{V<:VarName} <: Exception
     target_vn::V
+    function MustNotOverwriteError(perm::MustNotOverwrite)
+        return new{typeof(perm.target_vn)}(perm.target_vn)
+    end
 end
 function Base.showerror(io::IO, e::MustNotOverwriteError)
     # Key exists already, and we tried to overwrite it, but we aren't allowed to.
     return print(
         io,
-        "Attempted to set a value for $(e.target_vn), but a value already" *
+        "MustNotOverwriteError: Attempted to set a value for $(e.target_vn), but a value already" *
         " existed. This indicates that a value is being set twice (e.g. if" *
         " the same variable occurs in a model twice).",
     )

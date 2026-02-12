@@ -119,6 +119,26 @@ function templated_setindex!!(vnt::VarNamedTuple, value, vn::VarName, template)
 end
 
 """
+    templated_setindex_no_overwrite!!(vnt, value, vn, template)
+
+This is the same as `templated_setindex!!`, but throws an error if the location specified by
+`vn` already has a value in `vnt`. This is useful for ensuring that values in a `VarNamedTuple`
+are not set multiple times.
+
+!!! note
+    This function is entirely internal to DynamicPPL.
+"""
+function templated_setindex_no_overwrite!!(vnt::VarNamedTuple, value, vn::VarName, template)
+    return _setindex_optic!!(
+        vnt,
+        value,
+        AbstractPPL.varname_to_optic(vn),
+        SkipTemplate{1}(template),
+        MustNotOverwrite(vn),
+    )
+end
+
+"""
     BangBang.setindex!!(vnt::VarNamedTuple, value, vn::VarName)
 
 This is similar to `templated_setindex!!`, but does not take a `template` argument. In
