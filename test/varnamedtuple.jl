@@ -7,7 +7,7 @@ __now__ = now()
 using Combinatorics: Combinatorics
 using OrderedCollections: OrderedDict
 using Test: @inferred, @test, @test_throws, @testset, @test_broken, @test_logs
-using DynamicPPL: DynamicPPL, @varname, VarNamedTuple, subset
+using DynamicPPL: DynamicPPL, @varname, VarNamedTuple, subset, @vnt
 using DynamicPPL.VarNamedTuples:
     PartialArray,
     ArrayLikeBlock,
@@ -18,7 +18,10 @@ using DynamicPPL.VarNamedTuples:
     templated_setindex!!,
     GrowableArray,
     grow_to_indices!!,
-    @vnt
+    MustNotOverwrite,
+    MustNotOverwriteError,
+    NoTemplate,
+    templated_setindex_no_overwrite!!
 using AbstractPPL: AbstractPPL, VarName, concretize, prefix, @opticof
 using BangBang: setindex!!, empty!!
 using DimensionalData: DimensionalData as DD
@@ -1092,6 +1095,87 @@ Base.size(st::SizedThing) = st.size
                 VarNamedTuple(), 2.0, @varname(x[0]), OA.OffsetArray(zeros(1), 0:0)
             )
             @test_throws ArgumentError merge(vnt1, vnt2)
+        end
+    end
+
+    @testset "_setindex_optic!! with MustNotOverwrite" begin
+        function test_must_not_overwrite(vnt, value, vn, template)
+            # Check that calling `_setindex_optic!!` with `MustNotOverwrite` errors if the
+            # variable already exists, and that it works if it doesn't.
+            @test_throws MustNotOverwriteError templated_setindex_no_overwrite!!(
+                vnt, value, vn, template
+            )
+            @inferred(templated_setindex!!(vnt, value, vn, template))
+            return nothing
+        end
+
+        @testset "same variable" begin
+            vnt = templated_setindex!!(VarNamedTuple(), 1.0, @varname(x), NoTemplate())
+            test_must_not_overwrite(vnt, 2.0, @varname(x), NoTemplate())
+
+            vnt = templated_setindex!!(VarNamedTuple(), 1.0, @varname(x.a), NoTemplate())
+            test_must_not_overwrite(vnt, 2.0, @varname(x.a), NoTemplate())
+
+            vnt = templated_setindex!!(VarNamedTuple(), 1.0, @varname(x[1]), zeros(2))
+            test_must_not_overwrite(vnt, 2.0, @varname(x[1]), zeros(2))
+
+            # Different indices, but the same slot
+            vnt = templated_setindex!!(VarNamedTuple(), 1.0, @varname(x[1]), zeros(2, 2))
+            test_must_not_overwrite(vnt, 2.0, @varname(x[1, 1]), zeros(2, 2))
+        end
+
+        @testset "setting a superset of an old variable" begin
+            vnt = templated_setindex!!(VarNamedTuple(), 1.0, @varname(x.a), NoTemplate())
+            test_must_not_overwrite(vnt, 2.0, @varname(x), NoTemplate())
+
+            vnt = templated_setindex!!(VarNamedTuple(), 1.0, @varname(x[1]), zeros(2))
+            test_must_not_overwrite(vnt, 2.0, @varname(x), zeros(2))
+
+            vnt = templated_setindex!!(VarNamedTuple(), 1.0, @varname(x[1]), zeros(2))
+            test_must_not_overwrite(vnt, [2.0, 3.0], @varname(x[1:2]), zeros(2))
+
+            vnt = templated_setindex!!(VarNamedTuple(), 1.0, @varname(x[1]), zeros(2))
+            test_must_not_overwrite(vnt, [2.0, 3.0], @varname(x[:]), zeros(2))
+        end
+
+        @testset "setting a subset of an old variable" begin
+            vnt = templated_setindex!!(VarNamedTuple(), [1.0, 2.0], @varname(x), zeros(2))
+            test_must_not_overwrite(vnt, 2.0, @varname(x[1]), zeros(2))
+
+            vnt = templated_setindex!!(VarNamedTuple(), [1.0, 2.0], @varname(x), zeros(2))
+            test_must_not_overwrite(vnt, 2.0, @varname(x[end]), zeros(2))
+
+            vnt = templated_setindex!!(VarNamedTuple(), [1.0, 2.0], @varname(x), zeros(2))
+            test_must_not_overwrite(vnt, [1.0, 2.0], @varname(x[1:2]), zeros(2))
+
+            vnt = templated_setindex!!(
+                VarNamedTuple(), [1.0, 2.0], @varname(x[1, :]), zeros(2, 2)
+            )
+            test_must_not_overwrite(vnt, [1.0, 2.0], @varname(x[:, 1]), zeros(2, 2))
+
+            vnt = templated_setindex!!(
+                VarNamedTuple(), [1.0, 2.0], @varname(x.a), (; a=zeros(2))
+            )
+            test_must_not_overwrite(vnt, [1.0, 2.0], @varname(x.a[1:2]), (; a=zeros(2)))
+
+            vnt = templated_setindex!!(
+                VarNamedTuple(), [1.0, 2.0], @varname(x.a), (; a=zeros(2))
+            )
+            test_must_not_overwrite(vnt, 2.0, @varname(x.a[1]), (; a=zeros(2)))
+
+            vnt = templated_setindex!!(
+                VarNamedTuple(), [1.0, 2.0], @varname(x.a), (; a=zeros(2))
+            )
+            test_must_not_overwrite(vnt, 2.0, @varname(x.a[end]), (; a=zeros(2)))
+
+            # https://github.com/TuringLang/DynamicPPL.jl/issues/1276
+            vnt = templated_setindex!!(
+                VarNamedTuple(), (; a=1.0), @varname(x), NoTemplate()
+            )
+            # test_must_not_overwrite(vnt, 2.0, @varname(x.a), NoTemplate())
+            @test_throws MethodError templated_setindex!!(
+                vnt, 2.0, @varname(x.a), NoTemplate()
+            )
         end
     end
 

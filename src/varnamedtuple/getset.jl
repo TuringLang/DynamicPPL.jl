@@ -7,6 +7,7 @@
 # 2. We would want `haskey` to fall back onto `checkbounds` when called on Base.Arrays.
 
 const IndexWithoutChild = AbstractPPL.Index{<:Tuple,<:NamedTuple,AbstractPPL.Iden}
+const PropertyWithoutChild = AbstractPPL.Property{<:Any,AbstractPPL.Iden}
 
 _unimplemented() = error("Not implemented")
 
@@ -123,8 +124,11 @@ function _setindex_optic!!(
     arr::AbstractArray, value, optic::IndexWithoutChild, template, perms::SetPermissions
 )
     perms isa MustNotOverwrite && throw(MustNotOverwriteError(perms))
-    return BangBang.setindex!!(arr, value, optic.ix...; optic.kw...)
+    coptic = AbstractPPL.concretize_top_level(optic, arr)
+    return BangBang.setindex!!(arr, value, coptic.ix...; coptic.kw...)
 end
+# TODO(penelopeysm): we should also have methods for PropertyWithoutChild on e.g.
+# NamedTuples and other structs? Just have to watch out for method ambiguities
 
 struct SharedGetProperty{S} end
 (::SharedGetProperty)(::NoTemplate) = NoTemplate()
