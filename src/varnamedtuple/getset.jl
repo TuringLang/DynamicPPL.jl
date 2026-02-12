@@ -8,6 +8,8 @@
 
 const IndexWithoutChild = AbstractPPL.Index{<:Tuple,<:NamedTuple,AbstractPPL.Iden}
 
+_unimplemented() = error("Not implemented")
+
 """
     DynamicPPL._getindex_optic(collection, optic::AbstractPPL.Optic)
     DynamicPPL._getindex_optic(collection, vn::VarName)
@@ -98,69 +100,49 @@ function _haskey_optic(arr::AbstractArray, optic::IndexWithoutChild)
 end
 
 """
-    _setindex_optic!!(collection, value, optic, template; allow_new=Val(true))
+    _setindex_optic!!(collection, value, optic, template, permissions=AllowAll()
 
-Like `setindex!!`, but special-cased for `VarNamedTuple` and `PartialArray` to recurse
-into nested structures.
+Like `setindex!!`, but special-cased for `VarNamedTuple` and `PartialArray` to recurse into
+nested structures.
 
-The `allow_new` keyword argument is a performance optimisation: If it is set to
-`Val(false)`, the function can assume that the key being set already exists in `collection`.
-This allows skipping some code paths, which may have a minor benefit at runtime, but more
-importantly, allows for better constant propagation and type stability at compile time.
-
-`allow_new` being set to `Val(false)` does _not_ guarantee that no new keys will be added.
-It only gives the implementation of `_setindex!!` the permission to assume that the key
-already exists. Setting it to `Val(false)` should be done only when the caller is sure that
-the key already exists, anything else is a bug in the caller.
-
-Most methods of _setindex!! ignore the `allow_new` keyword argument, as they have no use for
-it. See the method for setting values in a `VarNamedTuple` with a `ComposedFunction` for
-when it is useful.
+The `permissions` argument controls the behaviour depending on whether `optic` already
+exists in `vnt` or does not yet exist. See the docstrings of `AllowAll`, `MustOverwrite`,
+and `MustNotOverwrite` for details.
 """
 @inline function _setindex_optic!!(
     @nospecialize(::Any),
     value,
     ::AbstractPPL.Iden,
     @nospecialize(::Any),
-    ;
-    allow_new=Val(true),
+    permissions::SetPermissions=AllowAll(),
 )
     return value
 end
 function _setindex_optic!!(
-    arr::AbstractArray, value, optic::IndexWithoutChild, template; allow_new=Val(true)
+    arr::AbstractArray,
+    value,
+    optic::IndexWithoutChild,
+    template,
+    ::SetPermissions=AllowAll(),
 )
     return BangBang.setindex!!(arr, value, optic.ix...; optic.kw...)
 end
 
-function throw_setindex_allow_new_error()
-    return error(
-        "Attempted to set a value at a key that does not exist, but" *
-        " `allow_new=Val(false)` was specified. If you did not attempt" *
-        " to call this function yourself, this likely indicates a bug in" *
-        " DynamicPPL. Please file an issue at" *
-        " https://github.com/TuringLang/DynamicPPL.jl/issues.",
-    )
-end
-
 struct SharedGetProperty{S} end
-# TODO(penelopeysm): The check on hasproperty can be type unstable! This avoids erroring
-# when an incorrect template is passed (e.g. trying to set `x.a.b` on something that doesn't
-# have a field `a`) -- but is it worth it?
-(::SharedGetProperty{S})(x) where {S} = hasproperty(x, S) ? getproperty(x, S) : NoTemplate()
 (::SharedGetProperty)(::NoTemplate) = NoTemplate()
 (::SharedGetProperty)(t::SkipTemplate{N}) where {N} = decrease_skip(t)
-# Unsure if this needs to be a generated function, but it's not too complex.
 @generated function (::SharedGetProperty{S})(x::VarNamedTuple{names}) where {S,names}
-    return if S in names
-        :(x.data.$S)
-    else
-        :(NoTemplate())
-    end
+    return (S in names) ? :(x.data.$S) : :(NoTemplate())
 end
+@generated function (::SharedGetProperty{S})(x::NamedTuple{names}) where {S,names}
+    return (S in names) ? :(x.$S) : :(NoTemplate())
+end
+# This method handles other structs. We can assume that the property must exist, since
+# `x.a ~ dist` would error if `x` did not have a property `a`.
+(::SharedGetProperty{S})(x) where {S} = getproperty(x, S)
 
 function _setindex_optic!!(
-    pa::PartialArray, value, optic::AbstractPPL.Index, template; allow_new=Val(true)
+    pa::PartialArray, value, optic::AbstractPPL.Index, template, permissions=AllowAll()
 )
     need_merge = false
     coptic = AbstractPPL.concretize_top_level(optic, pa.data)
@@ -199,10 +181,10 @@ function _setindex_optic!!(
                 Base.getindex(pa, coptic.ix...; coptic.kw...),
                 value,
                 coptic.child,
-                child_template;
-                allow_new=allow_new,
+                child_template,
+                permissions,
             )
-        elseif allow_new isa Val{true}
+        elseif permissions isa AllowAll
             if any(view(pa.mask, coptic.ix...; coptic.kw...))
                 # NOTE: This is a VERY subtle case, which can happen when you are setting
                 # multiple indices at once, but some of them were masked. When they are
@@ -224,8 +206,11 @@ function _setindex_optic!!(
             end
             # No new data but we are allowed to create it.
             make_leaf(value, coptic.child, child_template)
+        elseif permissions isa MustOverwrite
+            throw(MustOverwriteError())
         else
-            throw_setindex_allow_new_error()
+            # permissions isa MustNotOverwrite
+            _unimplemented()
         end
     end
 
@@ -251,8 +236,8 @@ function _setindex_optic!!(
     vnt::VarNamedTuple{names},
     value,
     optic::AbstractPPL.Property{S},
-    template;
-    allow_new=Val(true),
+    template,
+    permissions=AllowAll(),
 ) where {names,S}
     sub_value = if optic.child isa AbstractPPL.Iden
         # Skip recursion
@@ -261,14 +246,15 @@ function _setindex_optic!!(
         child_template = SharedGetProperty{S}()(template)
         if S in names
             # Data already exists; we need to recurse into it
-            _setindex_optic!!(
-                vnt.data[S], value, optic.child, child_template; allow_new=allow_new
-            )
-        elseif allow_new isa Val{true}
+            _setindex_optic!!(vnt.data[S], value, optic.child, child_template, permissions)
+        elseif permissions isa AllowAll
             # No new data but we are allowed to create it.
             make_leaf(value, optic.child, child_template)
+        elseif permissions isa MustOverwrite
+            throw(MustOverwriteError())
         else
-            throw_setindex_allow_new_error()
+            # permissions isa MustNotOverwrite
+            _unimplemented()
         end
     end
     return VarNamedTuple(merge(vnt.data, NamedTuple{(S,)}((sub_value,))))

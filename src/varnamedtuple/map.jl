@@ -78,14 +78,14 @@ function apply!!(func, vnt::VarNamedTuple, name::VarName)
     end
     subdata = _getindex_optic(vnt, name)
     new_subdata = func(subdata)
-    # The allow_new=Val(false) is a performance optimisation: Since we've already checked
-    # that the key exists, we know that no new fields will be created.
+    # The MustNotOverwrite is a performance optimisation: Since we've already checked that
+    # the key exists, we know that no new fields will be created.
     return _setindex_optic!!(
         vnt,
         new_subdata,
         AbstractPPL.varname_to_optic(name),
-        NoTemplate();
-        allow_new=Val(false),
+        NoTemplate(),
+        MustNotOverwrite(),
     )
 end
 

@@ -114,7 +114,7 @@ call.
 """
 function templated_setindex!!(vnt::VarNamedTuple, value, vn::VarName, template)
     return _setindex_optic!!(
-        vnt, value, AbstractPPL.varname_to_optic(vn), SkipTemplate{1}(template)
+        vnt, value, AbstractPPL.varname_to_optic(vn), SkipTemplate{1}(template), AllowAll()
     )
 end
 

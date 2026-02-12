@@ -236,31 +236,6 @@ Base.size(st::SizedThing) = st.size
             )
         end
 
-        @testset "Wrong templates" begin
-            # We want to check that even if the template provided is wrong, we still can do
-            # something meaningful. Essentially, this checks the fallback behaviour in
-            # make_leaf: if the template does not have the right property, we can
-            # just fall back to NoTemplate.
-            @testset "Properties" begin
-                test_get_set(GetSetTestCase(@varname(x.a), 1.0, nothing, []))
-                test_get_set(GetSetTestCase(@varname(x.a.b), 1.0, nothing, []))
-                test_get_set(GetSetTestCase(@varname(x.a.b.c), 1.0, nothing, []))
-                test_get_set(GetSetTestCase(@varname(x.a.b.c.d), 1.0, nothing, []))
-            end
-
-            @testset "Indices" begin
-                # Note that all of these would actually error if you tried to use them in a
-                # model. That's why I don't care about the type stability of
-                # templated_setindex!! below.
-                test_get_set(GetSetTestCase(@varname(x[1]), 1.0, nothing, []))
-                test_get_set(GetSetTestCase(@varname(x[1, 1]), 1.0, nothing, []))
-                test_get_set(
-                    GetSetTestCase(@varname(x[1, 1:3]), rand(3), nothing, []);
-                    templated_unstable=true,
-                )
-            end
-        end
-
         @testset "Heavily nested optics" begin
             # TODO(penelopeysm): This is the only combination of things I can find for which
             # templated_setindex!! is not type stable. It needs to at least have property ->

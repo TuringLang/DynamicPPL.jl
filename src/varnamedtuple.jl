@@ -60,6 +60,64 @@ end
 SkipTemplate{N}(v::SkipTemplate{M}) where {N,M} = SkipTemplate{N + M}(v.value)
 SkipTemplate{0}(v::SkipTemplate{M}) where {M} = SkipTemplate{M}(v.value)
 
+"""
+    abstract type SetPermissions end
+
+An abstract type, passed to `_setindex_optic!!`, that controls whether it is allowed to
+create a new value or overwrite an old value in a VarNamedTuple.
+"""
+abstract type SetPermissions end
+"""
+    AllowAll <: SetPermissions
+
+Allow the creation of new values, and also allow the overwriting of old values.
+"""
+struct AllowAll <: SetPermissions end
+"""
+    MustOverwrite <: SetPermissions
+
+Disallow the creation of new values, but allow the overwriting of old values.
+
+This subtype is a performance optimisation: if it is set to `MustOverwrite`, the function
+can assume that the key being set already exists in `collection`. This allows skipping some
+code paths, which may have a minor benefit at runtime, but more importantly, allows for
+better constant propagation and type stability at compile time.
+
+`permissions` being set to `MustOverwrite` does _not_ guarantee that no new keys will be
+added. It only gives the implementation of `_setindex_optic!!` the permission to assume that
+the key already exists. Setting it to `MustOverwrite` should be done only when the caller is
+sure that the key already exists; anything else is undefined behaviour.
+"""
+struct MustOverwrite <: SetPermissions end
+struct MustOverwriteError <: Exception end
+function Base.showerror(io::IO, ::MustOverwriteError)
+    # Key doesn't exist yet, so we tried to create it, but we aren't allowed to.
+    return print(
+        io,
+        "Attempted to set a value at a key that does not exist, but" *
+        " `permissions=MustOverwrite` was specified. If you did not attempt" *
+        " to call this function yourself, this likely indicates a bug in" *
+        " DynamicPPL. Please file an issue at" *
+        " https://github.com/TuringLang/DynamicPPL.jl/issues.",
+    )
+end
+
+"""
+    MustNotOverwrite <: SetPermissions
+
+Allow the creation of new values, but disallow the overwriting of old values.
+"""
+struct MustNotOverwrite <: SetPermissions end
+struct MustNotOverwriteError <: Exception end
+function Base.showerror(io::IO, ::MustNotOverwriteError)
+    # Key exists already, and we tried to overwrite it, but we aren't allowed to.
+    return print(
+        io,
+        "Attempted to set a value at a key that already exists, but" *
+        " `permissions=MustNotOverwrite` was specified.",
+    )
+end
+
 include("varnamedtuple/partial_array.jl")
 include("varnamedtuple/vnt.jl")
 include("varnamedtuple/getset.jl")
