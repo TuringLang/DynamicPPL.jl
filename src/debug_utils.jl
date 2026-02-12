@@ -365,7 +365,7 @@ function has_static_constraints(rng::Random.AbstractRNG, model::Model; num_evals
     prior_vnts = map(1:num_evals) do _
         accs = DynamicPPL.OnlyAccsVarInfo(PriorDistributionAccumulator())
         _, accs = DynamicPPL.init!!(rng, model, accs, InitFromPrior(), UnlinkAll())
-        return only(DynamicPPL.getaccs(accs))
+        return only(DynamicPPL.getaccs(accs)).values
     end
     all_vns = mapreduce(keys, vcat, prior_vnts)
     for vn in all_vns
