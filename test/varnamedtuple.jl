@@ -7,7 +7,7 @@ __now__ = now()
 using Combinatorics: Combinatorics
 using OrderedCollections: OrderedDict
 using Test: @inferred, @test, @test_throws, @testset, @test_broken, @test_logs
-using DynamicPPL: DynamicPPL, @varname, VarNamedTuple, subset
+using DynamicPPL: DynamicPPL, @varname, VarNamedTuple, subset, @vnt
 using DynamicPPL.VarNamedTuples:
     PartialArray,
     ArrayLikeBlock,
@@ -18,7 +18,10 @@ using DynamicPPL.VarNamedTuples:
     templated_setindex!!,
     GrowableArray,
     grow_to_indices!!,
-    @vnt
+    MustNotOverwrite,
+    MustNotOverwriteError,
+    NoTemplate,
+    templated_setindex_no_overwrite!!
 using AbstractPPL: AbstractPPL, VarName, concretize, prefix, @opticof
 using BangBang: setindex!!, empty!!
 using DimensionalData: DimensionalData as DD
@@ -42,7 +45,10 @@ function test_get_set(
     @testset "Templated setindex $(c.vn)" begin
         vnt = VarNamedTuple()
         vnt = if templated_unstable
-            @test_broken false
+            vnt_copy = deepcopy(vnt)
+            @test_throws ErrorException @inferred(
+                DynamicPPL.templated_setindex!!(vnt_copy, c.val, c.vn, c.template)
+            )
             DynamicPPL.templated_setindex!!(vnt, c.val, c.vn, c.template)
         else
             @inferred(DynamicPPL.templated_setindex!!(vnt, c.val, c.vn, c.template))
@@ -59,7 +65,10 @@ function test_get_set(
         @testset "setindex $(c.vn)" begin
             vnt = VarNamedTuple()
             vnt = if unstable
-                @test_broken false
+                vnt_copy = deepcopy(vnt)
+                @test_throws ErrorException (@inferred(
+                    DynamicPPL.setindex!!(vnt_copy, c.val, c.vn)
+                ))
                 DynamicPPL.setindex!!(vnt, c.val, c.vn)
             else
                 @inferred(DynamicPPL.setindex!!(vnt, c.val, c.vn))
@@ -234,31 +243,6 @@ Base.size(st::SizedThing) = st.size
                     [@opticof(_[1]), @opticof(_[2]), @opticof(_[:]), @opticof(_[1:2])],
                 ),
             )
-        end
-
-        @testset "Wrong templates" begin
-            # We want to check that even if the template provided is wrong, we still can do
-            # something meaningful. Essentially, this checks the fallback behaviour in
-            # make_leaf: if the template does not have the right property, we can
-            # just fall back to NoTemplate.
-            @testset "Properties" begin
-                test_get_set(GetSetTestCase(@varname(x.a), 1.0, nothing, []))
-                test_get_set(GetSetTestCase(@varname(x.a.b), 1.0, nothing, []))
-                test_get_set(GetSetTestCase(@varname(x.a.b.c), 1.0, nothing, []))
-                test_get_set(GetSetTestCase(@varname(x.a.b.c.d), 1.0, nothing, []))
-            end
-
-            @testset "Indices" begin
-                # Note that all of these would actually error if you tried to use them in a
-                # model. That's why I don't care about the type stability of
-                # templated_setindex!! below.
-                test_get_set(GetSetTestCase(@varname(x[1]), 1.0, nothing, []))
-                test_get_set(GetSetTestCase(@varname(x[1, 1]), 1.0, nothing, []))
-                test_get_set(
-                    GetSetTestCase(@varname(x[1, 1:3]), rand(3), nothing, []);
-                    templated_unstable=true,
-                )
-            end
         end
 
         @testset "Heavily nested optics" begin
@@ -1092,9 +1076,103 @@ Base.size(st::SizedThing) = st.size
         test_invariants(vnt1)
         test_invariants(vnt2)
         =#
+    end
 
-        # TODO(penelopeysm): Test that merging partial arrays of different types/sizes
-        # fails.
+    @testset "merging PartialArrays errors with different axes" begin
+        @testset "different sizes" begin
+            vnt1 = templated_setindex!!(VarNamedTuple(), 1.0, @varname(x[1]), zeros(1))
+            vnt2 = templated_setindex!!(VarNamedTuple(), 2.0, @varname(x[1]), zeros(2))
+            @test_throws ArgumentError merge(vnt1, vnt2)
+
+            vnt1 = templated_setindex!!(VarNamedTuple(), 1.0, @varname(x[1]), zeros(1))
+            vnt2 = templated_setindex!!(VarNamedTuple(), 2.0, @varname(x[1]), zeros(1, 1))
+            @test_throws ArgumentError merge(vnt1, vnt2)
+        end
+
+        @testset "different types" begin
+            vnt1 = templated_setindex!!(VarNamedTuple(), 1.0, @varname(x[1]), zeros(1))
+            vnt2 = templated_setindex!!(
+                VarNamedTuple(), 2.0, @varname(x[0]), OA.OffsetArray(zeros(1), 0:0)
+            )
+            @test_throws ArgumentError merge(vnt1, vnt2)
+        end
+    end
+
+    @testset "_setindex_optic!! with MustNotOverwrite" begin
+        function test_must_not_overwrite(vnt, value, vn, template)
+            # Check that calling `_setindex_optic!!` with `MustNotOverwrite` errors if the
+            # variable already exists, and that it works if it doesn't.
+            @test_throws MustNotOverwriteError templated_setindex_no_overwrite!!(
+                vnt, value, vn, template
+            )
+            @inferred(templated_setindex!!(vnt, value, vn, template))
+            return nothing
+        end
+
+        @testset "same variable" begin
+            vnt = templated_setindex!!(VarNamedTuple(), 1.0, @varname(x), NoTemplate())
+            test_must_not_overwrite(vnt, 2.0, @varname(x), NoTemplate())
+
+            vnt = templated_setindex!!(VarNamedTuple(), 1.0, @varname(x.a), NoTemplate())
+            test_must_not_overwrite(vnt, 2.0, @varname(x.a), NoTemplate())
+
+            vnt = templated_setindex!!(VarNamedTuple(), 1.0, @varname(x[1]), zeros(2))
+            test_must_not_overwrite(vnt, 2.0, @varname(x[1]), zeros(2))
+
+            # Different indices, but the same slot
+            vnt = templated_setindex!!(VarNamedTuple(), 1.0, @varname(x[1]), zeros(2, 2))
+            test_must_not_overwrite(vnt, 2.0, @varname(x[1, 1]), zeros(2, 2))
+        end
+
+        @testset "setting a superset of an old variable" begin
+            vnt = templated_setindex!!(VarNamedTuple(), 1.0, @varname(x.a), NoTemplate())
+            test_must_not_overwrite(vnt, 2.0, @varname(x), NoTemplate())
+
+            vnt = templated_setindex!!(VarNamedTuple(), 1.0, @varname(x[1]), zeros(2))
+            test_must_not_overwrite(vnt, 2.0, @varname(x), zeros(2))
+
+            vnt = templated_setindex!!(VarNamedTuple(), 1.0, @varname(x[1]), zeros(2))
+            test_must_not_overwrite(vnt, [2.0, 3.0], @varname(x[1:2]), zeros(2))
+
+            vnt = templated_setindex!!(VarNamedTuple(), 1.0, @varname(x[1]), zeros(2))
+            test_must_not_overwrite(vnt, [2.0, 3.0], @varname(x[:]), zeros(2))
+        end
+
+        @testset "setting a subset of an old variable" begin
+            vnt = templated_setindex!!(VarNamedTuple(), [1.0, 2.0], @varname(x), zeros(2))
+            test_must_not_overwrite(vnt, 2.0, @varname(x[1]), zeros(2))
+
+            vnt = templated_setindex!!(VarNamedTuple(), [1.0, 2.0], @varname(x), zeros(2))
+            test_must_not_overwrite(vnt, 2.0, @varname(x[end]), zeros(2))
+
+            vnt = templated_setindex!!(VarNamedTuple(), [1.0, 2.0], @varname(x), zeros(2))
+            test_must_not_overwrite(vnt, [1.0, 2.0], @varname(x[1:2]), zeros(2))
+
+            vnt = templated_setindex!!(
+                VarNamedTuple(), [1.0, 2.0], @varname(x[1, :]), zeros(2, 2)
+            )
+            test_must_not_overwrite(vnt, [1.0, 2.0], @varname(x[:, 1]), zeros(2, 2))
+
+            vnt = templated_setindex!!(
+                VarNamedTuple(), [1.0, 2.0], @varname(x.a), (; a=zeros(2))
+            )
+            test_must_not_overwrite(vnt, [1.0, 2.0], @varname(x.a[1:2]), (; a=zeros(2)))
+
+            vnt = templated_setindex!!(
+                VarNamedTuple(), [1.0, 2.0], @varname(x.a), (; a=zeros(2))
+            )
+            test_must_not_overwrite(vnt, 2.0, @varname(x.a[1]), (; a=zeros(2)))
+
+            vnt = templated_setindex!!(
+                VarNamedTuple(), [1.0, 2.0], @varname(x.a), (; a=zeros(2))
+            )
+            test_must_not_overwrite(vnt, 2.0, @varname(x.a[end]), (; a=zeros(2)))
+
+            vnt = templated_setindex!!(
+                VarNamedTuple(), (; a=1.0), @varname(x), NoTemplate()
+            )
+            test_must_not_overwrite(vnt, 2.0, @varname(x.a), NoTemplate())
+        end
     end
 
     @testset "subset" begin

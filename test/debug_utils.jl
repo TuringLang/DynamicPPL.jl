@@ -6,24 +6,11 @@ __now__ = now()
 
 using DynamicPPL, Distributions, Test
 using LinearAlgebra: I
+using Random: Xoshiro
 
 @testset "check_model" begin
     @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
-        issuccess, trace = check_model_and_trace(model)
-        # These models should all work.
-        @test issuccess
-
-        # Check that the trace contains all the variables in the model.
-        varnames_in_trace = DynamicPPL.DebugUtils.varnames_in_trace(trace)
-        for vn in DynamicPPL.TestUtils.varnames(model)
-            @test vn in varnames_in_trace
-        end
-
-        # Quick checks for `show` of trace.
-        @test occursin("assume: ", string(trace))
-        @test occursin("observe: ", string(trace))
-
-        # All these models should have static constraints.
+        @test check_model(model)
         @test DynamicPPL.has_static_constraints(model)
     end
 
@@ -120,49 +107,52 @@ using LinearAlgebra: I
         end
     end
 
-    @testset "printing statements" begin
-        @testset "assume" begin
-            @model demo_assume() = x ~ Normal()
-            model = demo_assume()
-            issuccess, trace = check_model_and_trace(model)
-            @test issuccess
-            @test startswith(string(trace), r" assume: x ~ (Distributions\.)?Normal")
+    @testset "discrete distribution check" begin
+        @testset "univariate discrete" begin
+            @model function demo_discrete()
+                x ~ Poisson(3)
+                return y ~ Normal()
+            end
+            model = demo_discrete()
+            # Without fail_if_discrete, the model should pass.
+            @test check_model(model; error_on_failure=true)
+            # With fail_if_discrete, it should fail.
+            @test !check_model(model; fail_if_discrete=true)
+            @test_throws ErrorException check_model(
+                model; error_on_failure=true, fail_if_discrete=true
+            )
         end
 
-        @testset "observe" begin
-            @model demo_observe(x) = x ~ Normal()
-            model = demo_observe(1.0)
-            issuccess, trace = check_model_and_trace(model)
-            @test issuccess
-            @test occursin(
-                r"observe: x \(= \d+\.\d+\) ~ (Distributions\.)?Normal", string(trace)
+        @testset "multivariate discrete" begin
+            @model function demo_mv_discrete()
+                x ~ product_distribution(fill(Poisson(3), 3))
+                return y ~ Normal()
+            end
+            model = demo_mv_discrete()
+            @test check_model(model; error_on_failure=true)
+            @test_throws ErrorException check_model(
+                model; error_on_failure=true, fail_if_discrete=true
             )
+        end
+
+        @testset "all continuous should pass" begin
+            @model function demo_all_continuous()
+                x ~ Normal()
+                return y ~ Gamma(2, 1)
+            end
+            model = demo_all_continuous()
+            @test check_model(model; fail_if_discrete=true)
         end
     end
 
-    @testset "comparing multiple traces" begin
+    @testset "with dynamic constraints" begin
         # Run the same model but with different VarInfos.
         model = DynamicPPL.TestUtils.demo_dynamic_constraint()
-        issuccess_1, trace_1 = check_model_and_trace(model)
-        issuccess_2, trace_2 = check_model_and_trace(model)
-        @test issuccess_1 && issuccess_2
-
-        # Should have the same varnames present.
-        varnames_1 = DynamicPPL.DebugUtils.varnames_in_trace(trace_1)
-        varnames_2 = DynamicPPL.DebugUtils.varnames_in_trace(trace_2)
-        @info varnames_1 == varnames_2
-
-        # But will have different distributions.
-        dists_1 = DynamicPPL.DebugUtils.distributions_in_trace(trace_1)
-        dists_2 = DynamicPPL.DebugUtils.distributions_in_trace(trace_2)
-        @test dists_1[1] == dists_2[1]
-        @test dists_1[2] != dists_2[2]
-
+        @test check_model(Xoshiro(1), model) && check_model(Xoshiro(2), model)
         @test !DynamicPPL.has_static_constraints(model)
     end
 
-    @testset "vector with `undef`" begin
-        # Source: https://github.com/TuringLang/Turing.jl/pull/2218
+    @testset "Do not error when vector has uninitialised data" begin
         @model function demo_undef(ns...)
             x = Array{Real}(undef, ns...)
             @. x ~ Normal(0, 2)

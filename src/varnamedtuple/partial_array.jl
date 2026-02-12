@@ -15,21 +15,17 @@
 end
 
 """
-    _merge_recursive(x1, x2)
+    _merge(x1, x2, recursive=Val(true))
 
-Recursively merge two values `x1` and `x2`.
+Merge two values `x1` and `x2`. If `recursive isa Val{true}`, additionally recurses into
+elements of `x1` and `x2` to merge those.
 
 Unlike `Base.merge`, this function is defined for all types, and by default returns the
 second argument. It is overridden for `PartialArray` and `VarNamedTuple`, since they are
-nested containers, and calls itself recursively on all elements that are found in both
-`x1` and `x2`.
-
-In other words, if both `x` and `y` are collections with the key `a`, `Base.merge(x, y)[a]`
-is `y[a]`, whereas `_merge_recursive(x, y)[a]` will be `_merge_recursive(x[a], y[a])`,
-unless no specific method is defined for the type of `x` and `y`, in which case
-`_merge_recursive(x, y) === y`.
+nested containers, and the `recursive` argument allows us to control whether we want to
+merge its nested values as well.
 """
-_merge_recursive(_, x2) = x2
+_merge(_, x2, _) = x2
 
 """
     vnt_size(x)
@@ -651,29 +647,65 @@ function _subset_partialarray(pa::PartialArray, inds::Vararg{Any}; kw...)
     return PartialArray(new_data, new_mask)
 end
 
-Base.merge(x1::PartialArray, x2::PartialArray) = _merge_recursive(x1, x2)
+Base.merge(x1::PartialArray, x2::PartialArray) = _merge(x1, x2, Val(true))
+function _merge(pa1::PartialArray, pa2::PartialArray, recurse::Val)
+    # If both `pa1` and `pa2` are GrowableArrays, we can grow them before merging
+    if pa1.data isa GrowableArray && pa2.data isa GrowableArray && ndims(pa1) == ndims(pa2)
+        size1 = size(pa1.data)
+        size2 = size(pa2.data)
+        new_size = map(max, size1, size2)
+        pa1 = grow_to_indices!!(pa1, new_size...)
+        pa2 = grow_to_indices!!(pa2, new_size...)
+    end
 
-function _merge_element_recursive(x1::PartialArray, x2::PartialArray, ind)
+    # TODO(penelopeysm) In general, we should like to catch more cases (e.g. where the
+    # underlying Array type is different). However I don't know how to reliably check for
+    # that.
+    if axes(pa1.data) != axes(pa2.data)
+        throw(ArgumentError("Cannot merge PartialArrays with different axes"))
+    end
+    result = copy(pa2)
+    new_data, new_mask = result.data, result.mask
+    for i in eachindex(pa1.mask)
+        if pa1.mask[i]
+            new_elem, new_mask_val = _merge_element(pa1, pa2, i, recurse)
+            new_mask[i] = new_mask_val
+            if new_mask_val
+                new_data = setindex!!(new_data, new_elem, i)
+            end
+        end
+    end
+    return _concretise_eltype!!(PartialArray(new_data, new_mask))
+end
+
+"""
+    _merge_element(x1::PartialArray, x2::PartialArray, ind, ::Val{true})
+
+Performs an elementwise merge of two `PartialArray`s. If both `x1` and `x2` have the element
+at `ind` set, this function will attempt to merge the values recursively.
+
+Returns the value to be set at `ind`, plus the value of the mask at `ind`.
+"""
+function _merge_element(x1::PartialArray, x2::PartialArray, ind, ::Val{true})
     m1 = x1.mask[ind]
     m2 = x2.mask[ind]
     return if m1 && m2
-        _merge_recursive(x1.data[ind], x2.data[ind]), true
+        _merge(x1.data[ind], x2.data[ind], Val(true)), true
     else
-        _merge_element_norecurse(x1, x2, ind)
+        _merge_element(x1, x2, ind, Val(false))
     end
 end
 
 """
-    _merge_element_norecurse(x1::PartialArray, x2::PartialArray, ind)
+    _merge_element(x1::PartialArray, x2::PartialArray, ind, ::Val{false})
 
 Performs an elementwise merge of two `PartialArray`s, but does not attempt to recurse into
 nested values to merge those as well. In particular, if both `x1` and `x2` have the element
-at `ind` set, the value from `x2` is taken directly (whereas `_merge_element_recursive`
-would attempt to merge the values from both arrays).
+at `ind` set, the value from `x2` is taken directly.
 
 Returns the value to be set at `ind`, plus the value of the mask at `ind`.
 """
-function _merge_element_norecurse(x1::PartialArray, x2::PartialArray, ind)
+function _merge_element(x1::PartialArray, x2::PartialArray, ind, ::Val{false})
     m1 = x1.mask[ind]
     m2 = x2.mask[ind]
     return if m1 && !m2
@@ -704,71 +736,6 @@ function _merge_element_norecurse(x1::PartialArray, x2::PartialArray, ind)
     else
         x2.data[ind], true
     end
-end
-
-function _merge_recursive(pa1::PartialArray, pa2::PartialArray)
-    return _merge_recursive_nogrow(pa1, pa2)
-end
-function _merge_recursive(
-    pa1::PartialArray{T1,ndims,A1}, pa2::PartialArray{T2,ndims,A2}
-) where {T1,T2,ndims,A1<:GrowableArray,A2<:GrowableArray}
-    # If they are both GrowableArrays we should expand them before merging.
-    size1 = size(pa1.data)
-    size2 = size(pa2.data)
-    new_size = map(max, size1, size2)
-    pa1 = grow_to_indices!!(pa1, new_size...)
-    pa2 = grow_to_indices!!(pa2, new_size...)
-    return _merge_recursive_nogrow(pa1, pa2)
-end
-function _merge_recursive_nogrow(pa1::PartialArray, pa2::PartialArray)
-    if size(pa1.data) != size(pa2.data)
-        throw(ArgumentError("Cannot merge PartialArrays with different sizes"))
-    end
-    result = copy(pa2)
-    new_data, new_mask = result.data, result.mask
-    for i in eachindex(pa1.mask)
-        if pa1.mask[i]
-            new_elem, new_mask_val = _merge_element_recursive(pa1, pa2, i)
-            new_mask[i] = new_mask_val
-            if new_mask_val
-                new_data = setindex!!(new_data, new_elem, i)
-            end
-        end
-    end
-    return _concretise_eltype!!(PartialArray(new_data, new_mask))
-end
-
-# TODO(penelopeysm): Clean this up.
-function _merge_norecurse(pa1::PartialArray, pa2::PartialArray)
-    return _merge_norecurse_nogrow(pa1, pa2)
-end
-function _merge_norecurse(
-    pa1::PartialArray{T1,ndims,A1}, pa2::PartialArray{T2,ndims,A2}
-) where {T1,T2,ndims,A1<:GrowableArray,A2<:GrowableArray}
-    # If they are both GrowableArrays we should expand them before merging.
-    size1 = size(pa1.data)
-    size2 = size(pa2.data)
-    new_size = map(max, size1, size2)
-    pa1 = grow_to_indices!!(pa1, new_size...)
-    pa2 = grow_to_indices!!(pa2, new_size...)
-    return _merge_norecurse_nogrow(pa1, pa2)
-end
-function _merge_norecurse_nogrow(pa1::PartialArray, pa2::PartialArray)
-    if size(pa1.data) != size(pa2.data)
-        throw(ArgumentError("Cannot merge PartialArrays with different sizes"))
-    end
-    result = copy(pa2)
-    new_data, new_mask = result.data, result.mask
-    for i in eachindex(pa1.mask)
-        if pa1.mask[i]
-            new_elem, new_mask_val = _merge_element_norecurse(pa1, pa2, i)
-            new_mask[i] = new_mask_val
-            if new_mask_val
-                new_data = setindex!!(new_data, new_elem, i)
-            end
-        end
-    end
-    return _concretise_eltype!!(PartialArray(new_data, new_mask))
 end
 
 """

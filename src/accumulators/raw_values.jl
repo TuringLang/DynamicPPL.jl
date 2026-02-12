@@ -5,9 +5,10 @@ struct GetRawValues
     include_colon_eq::Bool
 end
 # TODO(mhauru) The deepcopy here is quite unfortunate. It is needed so that the model body
-# can go mutating the object without that reactively affecting the value in the accumulator,
-# which should be as it was at `~` time. Could there be a way around this?
+# can go mutating the object without that in turn mutating the value stored in the
+# accumulator, which should be as it was at `~` time. Could there be a way around this?
 (g::GetRawValues)(val, tval, logjac, vn, dist) = deepcopy(val)
+is_extracting_colon_eq_values(g::GetRawValues) = g.include_colon_eq
 
 """
     RawValueAccumulator(include_colon_eq)::Bool <: AbstractAccumulator
@@ -26,9 +27,62 @@ end
 # We need a separate function for the colon-eq case since that function doesn't give us tval
 # and logjac, and we don't want to have to pass in dummy values for those.
 function store_colon_eq!!(
-    acc::VNTAccumulator{RAW_VALUE_ACCNAME}, vn::VarName, val, template
+    acc::VNTAccumulator{RAW_VALUE_ACCNAME,GetRawValues}, vn::VarName, val, template
 )
     new_val = deepcopy(val)
     new_values = DynamicPPL.templated_setindex!!(acc.values, new_val, vn, template)
+    return VNTAccumulator{RAW_VALUE_ACCNAME}(acc.f, new_values)
+end
+
+#################################################################
+
+# Debug version of RawValueAcc: it does the same thing as RawValueAcc, but additionally
+# errors if a value is set twice. This is used in check_model. To catch cases where `:=`
+# clashes with a tilde statement, we always include the colon-eq values in the accumulator.
+struct DebugGetRawValues
+    repeated_vns::Set{VarName}
+end
+is_extracting_colon_eq_values(g::DebugGetRawValues) = true
+function DebugRawValueAccumulator()
+    return VNTAccumulator{RAW_VALUE_ACCNAME}(DebugGetRawValues(Set{VarName}()))
+end
+
+# Unfortunately we have to overload accumulate_assume!! since we need to use the
+# templated_setindex_no_overwrite!! function
+function accumulate_assume!!(
+    acc::VNTAccumulator{RAW_VALUE_ACCNAME,DebugGetRawValues},
+    val,
+    tval,
+    logjac,
+    vn,
+    dist,
+    template,
+)
+    new_val = deepcopy(val)
+    # The exception catching is probably slow, but it's ok since it only happens inside
+    # check_model.
+    new_vnt = try
+        DynamicPPL.VarNamedTuples.templated_setindex_no_overwrite!!(
+            acc.values, new_val, vn, template
+        )
+    catch e
+        # Don't error immediately, save it for later.
+        if e isa DynamicPPL.VarNamedTuples.MustNotOverwriteError
+            push!(acc.f.repeated_vns, e.target_vn)
+            DynamicPPL.templated_setindex!!(acc.values, new_val, vn, template)
+        else
+            rethrow(e)
+        end
+    end
+    return VNTAccumulator{RAW_VALUE_ACCNAME}(acc.f, new_vnt)
+end
+
+function store_colon_eq!!(
+    acc::VNTAccumulator{RAW_VALUE_ACCNAME,DebugGetRawValues}, vn::VarName, val, template
+)
+    new_val = deepcopy(val)
+    new_values = DynamicPPL.VarNamedTuples.templated_setindex_no_overwrite!!(
+        acc.values, new_val, vn, template
+    )
     return VNTAccumulator{RAW_VALUE_ACCNAME}(acc.f, new_values)
 end
