@@ -42,7 +42,10 @@ function test_get_set(
     @testset "Templated setindex $(c.vn)" begin
         vnt = VarNamedTuple()
         vnt = if templated_unstable
-            @test_broken false
+            vnt_copy = deepcopy(vnt)
+            @test_throws ErrorException @inferred(
+                DynamicPPL.templated_setindex!!(vnt_copy, c.val, c.vn, c.template)
+            )
             DynamicPPL.templated_setindex!!(vnt, c.val, c.vn, c.template)
         else
             @inferred(DynamicPPL.templated_setindex!!(vnt, c.val, c.vn, c.template))
@@ -59,7 +62,10 @@ function test_get_set(
         @testset "setindex $(c.vn)" begin
             vnt = VarNamedTuple()
             vnt = if unstable
-                @test_broken false
+                vnt_copy = deepcopy(vnt)
+                @test_throws ErrorException (@inferred(
+                    DynamicPPL.setindex!!(vnt_copy, c.val, c.vn)
+                ))
                 DynamicPPL.setindex!!(vnt, c.val, c.vn)
             else
                 @inferred(DynamicPPL.setindex!!(vnt, c.val, c.vn))
