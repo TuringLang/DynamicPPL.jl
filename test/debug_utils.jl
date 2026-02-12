@@ -117,13 +117,10 @@ using Random: Xoshiro
             # Without fail_if_discrete, the model should pass.
             @test check_model(model; error_on_failure=true)
             # With fail_if_discrete, it should fail.
+            @test !check_model(model; fail_if_discrete=true)
             @test_throws ErrorException check_model(
                 model; error_on_failure=true, fail_if_discrete=true
             )
-            # Without error_on_failure, it should warn but issuccess is
-            # currently not affected by the discrete check (only by varname
-            # checks). TODO: issuccess should ideally be false here.
-            @test_broken !check_model(model; fail_if_discrete=true)
         end
 
         @testset "multivariate discrete" begin
@@ -144,7 +141,7 @@ using Random: Xoshiro
                 return y ~ Gamma(2, 1)
             end
             model = demo_all_continuous()
-            @test check_model(model; error_on_failure=true, fail_if_discrete=true)
+            @test check_model(model; fail_if_discrete=true)
         end
     end
 
@@ -155,8 +152,7 @@ using Random: Xoshiro
         @test !DynamicPPL.has_static_constraints(model)
     end
 
-    @testset "vector with `undef`" begin
-        # Source: https://github.com/TuringLang/Turing.jl/pull/2218
+    @testset "Do not error when vector has uninitialised data" begin
         @model function demo_undef(ns...)
             x = Array{Real}(undef, ns...)
             @. x ~ Normal(0, 2)

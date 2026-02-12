@@ -250,7 +250,7 @@ function _setindex_optic!!(
     template,
     permissions=AllowAll(),
 ) where {names,S}
-    if S in names && permissions isa MustNotOverwrite
+    if S in names && optic.child isa AbstractPPL.Iden && permissions isa MustNotOverwrite
         throw(MustNotOverwriteError(permissions))
     end
     sub_value = if optic.child isa AbstractPPL.Iden

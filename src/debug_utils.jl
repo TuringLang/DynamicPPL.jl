@@ -195,9 +195,11 @@ function check_model(
     conditioned_vns = keys(DynamicPPL.conditioned(model.context))
     for vn in conditioned_vns
         if DynamicPPL.inargnames(vn, model)
-            @warn "Variable $(vn) is both in the model arguments and in the conditioning!\n" *
-                "Please use either conditioning through the model arguments, or through " *
-                "`condition` / `|`, not both."
+            @warn (
+                "Variable $(vn) is specified in both the model arguments and conditioned values." *
+                " Please either specify observed data via the model arguments, or through" *
+                " `condition` / `|`, not both."
+            )
             failed = true
         end
     end
@@ -211,16 +213,18 @@ function check_model(
     init_strategy = InitFromPrior()
     _, oavi = DynamicPPL.init!!(rng, model, oavi, init_strategy, UnlinkAll())
 
-    # If there are no raw values, then there are no parameters, so we can skip the rest of
-    # the checks (but we will warn).
+    # If there are no raw values, then there are no parameters. We just warn in this case.
+    # (But don't `return` early, because there might be other things that are wrong with the
+    # model.)
     if isempty(get_raw_values(oavi))
         @warn "The model does not contain any parameters."
-        return true
     end
 
     # Check if the DebugAccumulator found any issues with the model.
     debug_acc = DynamicPPL.getacc(oavi, Val(_DEBUG_ACC_NAME))
-    failed = failed || debug_acc.failed
+    if debug_acc.failed
+        failed = true
+    end
 
     # Check the DebugRawValueAccumulator
     debug_raw_value_acc = DynamicPPL.getacc(oavi, Val(DynamicPPL.RAW_VALUE_ACCNAME))
@@ -242,7 +246,7 @@ function check_model(
     # such mixed products are typed as `Continuous`, so a discrete component
     # inside one would not be caught here.
     if fail_if_discrete
-        prior_acc = DynamicPPL.getacc(oavi, DynamicPPL.PRIOR_ACCNAME).values
+        prior_acc = DynamicPPL.getacc(oavi, Val(DynamicPPL.PRIOR_ACCNAME)).values
         for (vn, dist) in pairs(prior_acc)
             if dist isa Distributions.DiscreteDistribution
                 msg =
