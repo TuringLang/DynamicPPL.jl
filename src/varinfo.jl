@@ -1,11 +1,11 @@
 """
-    VarInfo{Linked,T<:VarNamedTuple,Accs<:AccumulatorTuple} <: AbstractVarInfo
+    VarInfo{
+        Tfm<:AbstractTransformStrategy,
+        T<:VarNamedTuple,
+        Accs<:AccumulatorTuple
+    } <: AbstractVarInfo
 
 The default implementation of `AbstractVarInfo`, storing variable values and accumulators.
-
-The `Linked` type parameter is either `true` or `false` to mark that all variables in this
-`VarInfo` are linked, or `nothing` to indicate that some variables may be linked and some
-not, and a runtime check is needed.
 
 `VarInfo` is quite a thin wrapper around a `VarNamedTuple` storing the variable values, and
 a tuple of accumulators. The only really noteworthy thing about it is that it stores the
@@ -14,6 +14,10 @@ it stores each value as a special vector with a flag indicating whether it is ju
 vectorised value ([`VectorValue`](@ref)), or whether it is also linked
 ([`LinkedVectorValue`](@ref)). It also stores the size of the actual post-transformation
 value. These are all accessible via [`AbstractTransformedValue`](@ref).
+
+`VarInfo` additionally stores a transform strategy, which reflects the linked status of
+variables inside the `VarInfo`. For example, a `VarInfo{LinkAll}` should contain only
+`LinkedVectorValue`s in its `values` field.
 
 Because the job of `VarInfo` is to store transformed values, there is no generic
 `setindex!!` implementation on `VarInfo` itself. Instead, all storage must go via
@@ -32,30 +36,36 @@ For more details on the internal storage, see documentation of
 $(TYPEDFIELDS)
 
 """
-struct VarInfo{Linked,T<:VarNamedTuple,Accs<:AccumulatorTuple} <: AbstractVarInfo
+struct VarInfo{Tfm<:AbstractTransformStrategy,T<:VarNamedTuple,Accs<:AccumulatorTuple} <:
+       AbstractVarInfo
+    transform_strategy::Tfm
     values::T
     accs::Accs
 
-    function VarInfo{Linked}(
-        values::T, accs::Accs
-    ) where {Linked,T<:VarNamedTuple,Accs<:AccumulatorTuple}
-        return new{Linked,T,Accs}(values, accs)
+    function VarInfo(
+        tfm_strategy::Tfm, values::T, accs::Accs
+    ) where {Tfm<:AbstractTransformStrategy,T<:VarNamedTuple,Accs<:AccumulatorTuple}
+        return new{Tfm,T,Accs}(tfm_strategy, values, accs)
     end
-    function VarInfo{Linked}(
-        values::T, accs::NTuple{N,AbstractAccumulator}
-    ) where {Linked,T<:VarNamedTuple,N}
-        return VarInfo{Linked}(values, AccumulatorTuple(accs))
+    function VarInfo(
+        tfm_strategy::Tfm, values::T, accs::NTuple{N,AbstractAccumulator}
+    ) where {Tfm<:AbstractTransformStrategy,T<:VarNamedTuple,N}
+        return VarInfo(tfm_strategy, values, AccumulatorTuple(accs))
     end
 end
 
 function Base.:(==)(vi1::VarInfo, vi2::VarInfo)
-    return (vi1.values == vi2.values) & (vi1.accs == vi2.accs)
+    return (vi1.transform_strategy == vi2.transform_strategy) &
+           (vi1.values == vi2.values) &
+           (vi1.accs == vi2.accs)
 end
 function Base.isequal(vi1::VarInfo, vi2::VarInfo)
-    return isequal(vi1.values, vi2.values) && isequal(vi1.accs, vi2.accs)
+    return isequal(vi1.transform_strategy, vi2.transform_strategy) &&
+           isequal(vi1.values, vi2.values) &&
+           isequal(vi1.accs, vi2.accs)
 end
 
-VarInfo() = VarInfo{false}(VarNamedTuple(), default_accumulators())
+VarInfo() = VarInfo(UnlinkAll(), VarNamedTuple(), default_accumulators())
 
 """
     VarInfo(
@@ -120,16 +130,10 @@ function DynamicPPL.VarInfo(
     # Now we just need to shuffle the VectorValueAccumulator values into the VarInfo.
     # Extract the vectorised values values.
     vec_val_acc = getacc(vi, Val(VECTORVAL_ACCNAME))
-    new_vi_is_linked = if transform_strategy isa LinkAll
-        true
-    else
-        # TODO(penelopeysm): We can definitely do better here. The linking accumulator can
-        # keep track of whether any variables were linked or unlinked, and we can use that
-        # here. It won't be type-stable, but that's fine, right now it isn't either.
-        nothing
-    end
-    return VarInfo{new_vi_is_linked}(
-        vec_val_acc.values, DynamicPPL.deleteacc!!(vi.accs, Val(VECTORVAL_ACCNAME))
+    return VarInfo(
+        transform_strategy,
+        vec_val_acc.values,
+        DynamicPPL.deleteacc!!(vi.accs, Val(VECTORVAL_ACCNAME)),
     )
 end
 function DynamicPPL.VarInfo(
@@ -149,14 +153,14 @@ end
 
 get_values(vi::VarInfo) = vi.values
 getaccs(vi::VarInfo) = vi.accs
-function setaccs!!(vi::VarInfo{Linked}, accs::AccumulatorTuple) where {Linked}
-    return VarInfo{Linked}(vi.values, accs)
+function setaccs!!(vi::VarInfo, accs::AccumulatorTuple)
+    return VarInfo(vi.transform_strategy, vi.values, accs)
 end
 
 transformation(::VarInfo) = DynamicTransformation()
 
-function Base.copy(vi::VarInfo{Linked}) where {Linked}
-    return VarInfo{Linked}(copy(vi.values), copy(getaccs(vi)))
+function Base.copy(vi::VarInfo)
+    return VarInfo(vi.transform_strategy, copy(vi.values), copy(getaccs(vi)))
 end
 Base.haskey(vi::VarInfo, vn::VarName) = haskey(vi.values, vn)
 Base.length(vi::VarInfo) = length(vi.values)
@@ -175,9 +179,12 @@ function Base.values(vi::VarInfo)
     )
 end
 
-function Base.show(io::IO, ::MIME"text/plain", vi::VarInfo{link}) where {link}
+function Base.show(io::IO, ::MIME"text/plain", vi::VarInfo)
     printstyled(io, "VarInfo"; bold=true)
-    print(io, " {linked=$link}\n")
+    print(io, "\n ├─ ")
+    printstyled(io, "transform_strategy: "; bold=true)
+    print(io, vi.transform_strategy)
+    println(io)
     print(io, " ├─ ")
     if isempty(vi.values)
         printstyled(io, "values"; bold=true)
@@ -204,8 +211,10 @@ function Base.getindex(vi::VarInfo, vns::AbstractVector{<:VarName})
 end
 
 Base.isempty(vi::VarInfo) = isempty(vi.values)
-Base.empty(vi::VarInfo) = VarInfo{false}(empty(vi.values), map(reset, vi.accs))
-BangBang.empty!!(vi::VarInfo) = VarInfo{false}(empty!!(vi.values), map(reset, vi.accs))
+Base.empty(vi::VarInfo) = VarInfo(UnlinkAll(), empty(vi.values), map(reset, vi.accs))
+function BangBang.empty!!(vi::VarInfo)
+    return VarInfo(UnlinkAll(), empty!!(vi.values), map(reset, vi.accs))
+end
 
 """
     setindex_internal!!(vi::VarInfo, val, vn::VarName)
@@ -214,11 +223,50 @@ Set the internal (vectorised) value of variable `vn` in `vi` to `val`.
 
 This does not change the transformation or linked status of the variable.
 """
-function setindex_internal!!(vi::VarInfo{Linked}, val, vn::VarName) where {Linked}
+function setindex_internal!!(vi::VarInfo, val, vn::VarName)
     old_tv = getindex(vi.values, vn)
     new_tv = set_internal_value(old_tv, val)
     new_values = setindex!!(vi.values, new_tv, vn)
-    return VarInfo{Linked}(new_values, vi.accs)
+    return VarInfo(vi.transform_strategy, new_values, vi.accs)
+end
+
+"""
+    update_transform_strategy(
+        tfm_strategy::AbstractTransformStrategy,
+        vi_is_empty::Bool,
+        new_vn::VarName,
+        new_vn_is_linked::Bool
+    )
+
+Given an old transform strategy `tfm_strategy`, and the linked status of a new variable
+`new_vn` to be added to a `VarInfo` with that transform strategy, return an updated
+transform strategy that accounts for the addition of `new_vn`.
+"""
+function update_transform_strategy(
+    tfm_strategy::AbstractTransformStrategy,
+    vi_is_empty::Bool,
+    new_vn::VarName,
+    new_vn_is_linked::Bool,
+)
+    if new_vn_is_linked
+        if tfm_strategy isa LinkAll || vi_is_empty
+            LinkAll()
+        elseif target_transform(tfm_strategy, new_vn) isa DynamicLink
+            # can reuse
+            tfm_strategy
+        else
+            # have to wrap
+            LinkSome(Set([new_vn]), tfm_strategy)
+        end
+    else
+        if tfm_strategy isa UnlinkAll || vi_is_empty
+            UnlinkAll()
+        elseif target_transform(tfm_strategy, new_vn) isa Unlink
+            tfm_strategy
+        else
+            UnlinkSome(Set([new_vn]), tfm_strategy)
+        end
+    end
 end
 
 """
@@ -235,20 +283,18 @@ to update according to what `tval` is. That means that whether or not a variable
 considered to be 'linked' is determined by `tval` rather than the previous status of `vi`.
 """
 function setindex_with_dist!!(
-    vi::VarInfo{Linked},
+    vi::VarInfo,
     tval::Union{VectorValue,LinkedVectorValue},
     ::Distribution,
     vn::VarName,
     template::Any,
-) where {Linked}
-    NewLinked = if tval isa LinkedVectorValue && ((Linked == true) || isempty(vi))
-        true
-    elseif tval isa VectorValue && ((Linked == false) || isempty(vi))
-        false
-    else
-        nothing
-    end
-    return VarInfo{NewLinked}(templated_setindex!!(vi.values, tval, vn, template), vi.accs)
+)
+    new_transform_strategy = update_transform_strategy(
+        vi.transform_strategy, isempty(vi), vn, tval isa LinkedVectorValue
+    )
+    return VarInfo(
+        new_transform_strategy, templated_setindex!!(vi.values, tval, vn, template), vi.accs
+    )
 end
 
 """
@@ -265,8 +311,8 @@ receives an `UntransformedValue`, the variable is always considered unlinked, si
 were to be linked, `apply_transform_strategy` will already have done so.)
 """
 function setindex_with_dist!!(
-    vi::VarInfo{Linked}, tval::UntransformedValue, dist::Distribution, vn::VarName, template
-) where {Linked}
+    vi::VarInfo, tval::UntransformedValue, dist::Distribution, vn::VarName, template
+)
     raw_value = DynamicPPL.get_internal_value(tval)
     sz = hasmethod(size, (typeof(raw_value),)) ? size(raw_value) : ()
     tval = VectorValue(to_vec_transform(dist)(raw_value), from_vec_transform(dist), sz)
@@ -281,7 +327,7 @@ Set the linked status of variable `vn` in `vi` to `linked`.
 Note that this function is potentially unsafe as it does not change the value or
 transformation of the variable!
 """
-function set_transformed!!(vi::VarInfo{Linked}, linked::Bool, vn::VarName) where {Linked}
+function set_transformed!!(vi::VarInfo, linked::Bool, vn::VarName)
     old_tv = getindex(vi.values, vn)
     new_tv = if linked
         LinkedVectorValue(old_tv.val, old_tv.transform, old_tv.size)
@@ -289,8 +335,10 @@ function set_transformed!!(vi::VarInfo{Linked}, linked::Bool, vn::VarName) where
         VectorValue(old_tv.val, old_tv.transform, old_tv.size)
     end
     new_values = setindex!!(vi.values, new_tv, vn)
-    new_linked = Linked == linked ? Linked : nothing
-    return VarInfo{new_linked}(new_values, vi.accs)
+    new_transform_strategy = update_transform_strategy(
+        vi.transform_strategy, isempty(vi), vn, linked
+    )
+    return VarInfo(new_transform_strategy, new_values, vi.accs)
 end
 
 # VarInfo does not care whether the transformation was Static or Dynamic, it just tracks
@@ -312,7 +360,8 @@ function set_transformed!!(vi::VarInfo, linked::Bool)
     new_values = map_values!!(vi.values) do tv
         ctor(tv.val, tv.transform, tv.size)
     end
-    return VarInfo{linked}(new_values, vi.accs)
+    new_transform_strategy = linked ? LinkAll() : UnlinkAll()
+    return VarInfo(new_transform_strategy, new_values, vi.accs)
 end
 
 """
@@ -331,11 +380,13 @@ Get the entire `AbstractTransformedValue` for variable `vn` in `vi`.
 """
 get_transformed_value(vi::VarInfo, vn::VarName) = getindex(vi.values, vn)
 
-function is_transformed(vi::VarInfo{Linked}, vn::VarName) where {Linked}
-    return if Linked === nothing
-        getindex(vi.values, vn) isa LinkedVectorValue
+function is_transformed(vi::VarInfo, vn::VarName)
+    return if vi.transform_strategy isa LinkAll
+        true
+    elseif vi.transform_strategy isa UnlinkAll
+        false
     else
-        Linked
+        getindex(vi.values, vn) isa LinkedVectorValue
     end
 end
 
@@ -372,12 +423,17 @@ This is the inverse of [`unflatten!!`](@ref).
 """
 internal_values_as_vector(vi::VarInfo) = internal_values_as_vector(vi.values)
 
-function _update_link_status!!(
-    orig_vi::VarInfo,
-    transform_strategy::AbstractTransformStrategy,
-    model::Model,
-    ::Val{link},
-) where {link}
+"""
+    DynamicPPL.update_link_status!!(
+        orig_vi::VarInfo, transform_strategy::AbstractTransformStrategy, model::Model
+    )
+
+Given an original `VarInfo` `orig_vi`, update the link status of its variables according to
+the new `transform_strategy`.
+"""
+function update_link_status!!(
+    orig_vi::VarInfo, transform_strategy::AbstractTransformStrategy, model::Model
+)
     # We'll just recalculate logjac from the start, rather than trying to adjust the old
     # one.
     new_vi = OnlyAccsVarInfo((VectorValueAccumulator(), LogJacobianAccumulator()))
@@ -388,27 +444,7 @@ function _update_link_status!!(
     if hasacc(orig_vi, Val(:LogJacobian))
         orig_vi = setlogjac!!(orig_vi, getlogjac(new_vi))
     end
-    return VarInfo{link}(new_vector_vals.values, orig_vi.accs)
-end
-
-"""
-    DynamicPPL.update_link_status!!(
-        orig_vi::VarInfo, linker::AbstractTransformStrategy, model::Model,
-    )::VarInfo
-
-Create a new VarInfo based on `orig_vi`, but with the link statuses of variables updated
-according to `linker`.
-"""
-function update_link_status!!(vi::VarInfo, ::LinkAll, model::Model)
-    return _update_link_status!!(vi, LinkAll(), model, Val(true))
-end
-function update_link_status!!(vi::VarInfo, ::UnlinkAll, model::Model)
-    return _update_link_status!!(vi, UnlinkAll(), model, Val(false))
-end
-function update_link_status!!(vi::VarInfo, l::AbstractTransformStrategy, model::Model)
-    # In other cases, we can't (easily) infer anything about the overall linked status of
-    # the VarInfo.
-    return _update_link_status!!(vi, l, model, Val(nothing))
+    return VarInfo(transform_strategy, new_vector_vals.values, orig_vi.accs)
 end
 
 function link!!(::DynamicTransformation, vi::VarInfo, vns, model::Model)
@@ -471,29 +507,7 @@ variable inside a `VarInfo`.
 This function acts as the bridge between the two: it extracts an appropriate
 `AbstractTransformStrategy` from the current status of variables in a `VarInfo`.
 """
-get_transform_strategy(::VarInfo{true}) = LinkAll()
-get_transform_strategy(::VarInfo{false}) = UnlinkAll()
-function get_transform_strategy(vi::VarInfo{nothing})
-    all_vns = keys(vi)
-    linked_vns = Set{VarName}()
-    unlinked_vns = Set{VarName}()
-    for vn in all_vns
-        if is_transformed(vi, vn)
-            push!(linked_vns, vn)
-        else
-            push!(unlinked_vns, vn)
-        end
-    end
-    return if isempty(linked_vns)
-        UnlinkAll()
-    elseif isempty(unlinked_vns)
-        LinkAll()
-    else
-        # Link exactly those that are linked, unlink exactly those that are unlinked,
-        # and for everything that is completely new, link it.
-        LinkSome(linked_vns, UnlinkSome(unlinked_vns, LinkAll()))
-    end
-end
+get_transform_strategy(vi::VarInfo) = vi.transform_strategy
 
 """
     VectorChunkIterator{T<:AbstractVector}
@@ -518,10 +532,10 @@ for T in (:VectorValue, :LinkedVectorValue)
         end
     end
 end
-function unflatten!!(vi::VarInfo{Linked}, vec::AbstractVector) where {Linked}
+function unflatten!!(vi::VarInfo, vec::AbstractVector)
     vci = VectorChunkIterator!(vec, 1)
     new_values = map_values!!(vci, vi.values)
-    return VarInfo{Linked}(new_values, vi.accs)
+    return VarInfo(vi.transform_strategy, new_values, vi.accs)
 end
 
 """
@@ -531,9 +545,11 @@ Create a new `VarInfo` containing only the variables in `vns`.
 
 `vns` can be almost any collection of `VarName`s, e.g. a `Set`, `Vector`, or `Tuple`.
 """
-function subset(varinfo::VarInfo{Linked}, vns) where {Linked}
+function subset(varinfo::VarInfo, vns)
     new_values = subset(varinfo.values, vns)
-    return VarInfo{Linked}(new_values, map(copy, getaccs(varinfo)))
+    # TODO(penelopeysm): We could potentially be smarter here and see whether the transform
+    # strategy can be updated to be LinkAll or UnlinkAll.
+    return VarInfo(varinfo.transform_strategy, new_values, map(copy, getaccs(varinfo)))
 end
 
 """
@@ -546,19 +562,33 @@ The accumulators are taken exclusively from `varinfo_right`.
 If a variable exists in both `varinfo_left` and `varinfo_right`, the value from
 `varinfo_right` is used.
 """
-function Base.merge(
-    varinfo_left::VarInfo{LinkedLeft}, varinfo_right::VarInfo{LinkedRight}
-) where {LinkedLeft,LinkedRight}
+function Base.merge(varinfo_left::VarInfo, varinfo_right::VarInfo)
     new_values = merge(varinfo_left.values, varinfo_right.values)
     new_accs = map(copy, getaccs(varinfo_right))
-    new_linked = if LinkedLeft == LinkedRight
-        LinkedLeft
-    else
-        # TODO(mhauru) Consider doing something more clever here, e.g. checking whether
-        # either varinfo_left or varinfo_right is empty, or actually iterating over all the
-        # values to check their linked status. Needs to balance keeping the type parameter
-        # alive vs runtime costs.
-        nothing
-    end
-    return VarInfo{new_linked}(new_values, new_accs)
+    new_transform_strategy =
+        if varinfo_left.transform_strategy isa LinkAll &&
+            varinfo_right.transform_strategy isa LinkAll
+            LinkAll()
+        elseif varinfo_left.transform_strategy isa UnlinkAll &&
+            varinfo_right.transform_strategy isa UnlinkAll
+            UnlinkAll()
+        else
+            linked_vns = Set{VarName}()
+            unlinked_vns = Set{VarName}()
+            for (vn, tval) in pairs(new_values)
+                if tval isa LinkedVectorValue
+                    push!(linked_vns, vn)
+                else
+                    push!(unlinked_vns, vn)
+                end
+            end
+            if isempty(linked_vns)
+                UnlinkAll()
+            elseif isempty(unlinked_vns)
+                LinkAll()
+            else
+                LinkSome(linked_vns, UnlinkSome(unlinked_vns, LinkAll()))
+            end
+        end
+    return VarInfo(new_transform_strategy, new_values, new_accs)
 end

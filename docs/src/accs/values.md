@@ -22,14 +22,15 @@ Unfortunately, not everything in DynamicPPL follows this clean structure yet.
 In particular, there is a struct, called `VarInfo`:
 
 ```julia
-struct VarInfo{linked,V<:VarNamedTuple,A<:AccumulatorTuple}
+struct VarInfo{Tfm<:AbstractTransformStrategy,V<:VarNamedTuple,A<:AccumulatorTuple}
+    transform_strategy::Tfm
     values::V
     accs::A
 end
 ```
 
 The `values` field stores either [`LinkedVectorValue`](@ref)s or [`VectorValue`](@ref)s.
-The `link` type parameter can either be `true` or `false`, which indicates that _all values stored_ are linked or unlinked, respectively; or it can be `nothing`, which indicates that it is not known whether the values are linked or unlinked, and must be checked on a case-by-case basis.
+The `transform_strategy` field stores an `AbstractTransformStrategy` which is (as far as possible) consistent with the type of values stored in `values`.
 
 Here is an example:
 
