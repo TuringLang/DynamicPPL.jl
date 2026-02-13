@@ -123,7 +123,7 @@ end
             ::ErrorAccumulator, ::Any, ::Any, ::Any, ::VarName, ::Distribution, ::Any
         ) = throw(ErrorAccumulatorException())
         DynamicPPL.accumulate_observe!!(
-            ::ErrorAccumulator, ::Distribution, ::Any, ::Union{VarName,Nothing}
+            ::ErrorAccumulator, ::Distribution, ::Any, ::Union{VarName,Nothing}, ::Any
         ) = throw(ErrorAccumulatorException())
         DynamicPPL.reset(ea::ErrorAccumulator) = ea
         Base.copy(ea::ErrorAccumulator) = ea

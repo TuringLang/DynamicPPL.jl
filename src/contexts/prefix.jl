@@ -128,6 +128,7 @@ function tilde_observe!!(
     right::Distribution,
     left,
     vn::Union{VarName,Nothing},
+    template::Any,
     vi::AbstractVarInfo,
 )
     # In the observe case, unlike assume, `vn` may be `nothing` if the LHS is a literal
@@ -138,7 +139,8 @@ function tilde_observe!!(
     else
         vn, childcontext(context)
     end
-    return tilde_observe!!(new_context, right, left, new_vn, vi)
+    n = optic_skip_length(AbstractPPL.getoptic(context.vn_prefix)) + 1
+    return tilde_observe!!(new_context, right, left, new_vn, SkipTemplate{n}(template), vi)
 end
 
 function store_coloneq_value!!(

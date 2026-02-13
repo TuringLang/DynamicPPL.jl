@@ -26,11 +26,13 @@ begin
 
     elseif is_conditioned(vn)
         conditioned_x = get_conditioned_value(vn)
-        raw_x, __varinfo__ = tilde_observe!!(ctx, dist, conditioned_x, vn, __varinfo__)
+        raw_x, __varinfo__ = tilde_observe!!(
+            ctx, dist, conditioned_x, vn, template, __varinfo__
+        )
 
     elseif is_model_argument(vn)
         arg_x = x
-        raw_x, __varinfo__ = tilde_observe!!(ctx, dist, arg_x, vn, __varinfo__)
+        raw_x, __varinfo__ = tilde_observe!!(ctx, dist, arg_x, vn, template, __varinfo__)
 
     else
         raw_x, __varinfo__ = tilde_assume!!(ctx, dist, vn, template, __varinfo__)

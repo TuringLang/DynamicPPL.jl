@@ -9,81 +9,61 @@ the variable names and the values are log-probabilities.
 `whichlogprob` is a symbol that can be `:both`, `:prior`, or `:likelihood`, and specifies
 which log-probabilities to store in the accumulator.
 """
-struct PointwiseLogProbAccumulator{whichlogprob} <: AbstractAccumulator
-    logps::OrderedDict{VarName,LogProbType}
 
-    function PointwiseLogProbAccumulator{whichlogprob}(
-        d::OrderedDict{VarName,LogProbType}=OrderedDict{VarName,LogProbType}()
-    ) where {whichlogprob}
-        return new{whichlogprob}(d)
+struct PointwiseLogProb{Prior,Likelihood} end
+function (plp::PointwiseLogProb{Prior,Likelihood})(
+    val, tval, logjac, vn, dist
+) where {Prior,Likelihood}
+    if Prior
+        return logpdf(dist, val)
+    else
+        return DoNotAccumulate()
     end
 end
+const POINTWISE_ACCNAME = :PointwiseLogProbAccumulator
 
-function Base.:(==)(
-    acc1::PointwiseLogProbAccumulator{wlp1}, acc2::PointwiseLogProbAccumulator{wlp2}
-) where {wlp1,wlp2}
-    return (wlp1 == wlp2 && acc1.logps == acc2.logps)
+# Not exported
+function get_pointwise_logprobs(varinfo::AbstractVarInfo)
+    return getacc(varinfo, Val(POINTWISE_ACCNAME)).values
 end
 
-function Base.copy(acc::PointwiseLogProbAccumulator{whichlogprob}) where {whichlogprob}
-    return PointwiseLogProbAccumulator{whichlogprob}(copy(acc.logps))
-end
-
-function accumulator_name(
-    ::Type{<:PointwiseLogProbAccumulator{whichlogprob}}
-) where {whichlogprob}
-    return Symbol("PointwiseLogProbAccumulator{$whichlogprob}")
-end
-
-function _zero(::PointwiseLogProbAccumulator{whichlogprob}) where {whichlogprob}
-    return PointwiseLogProbAccumulator{whichlogprob}()
-end
-reset(acc::PointwiseLogProbAccumulator) = _zero(acc)
-split(acc::PointwiseLogProbAccumulator) = _zero(acc)
-function combine(
-    acc::PointwiseLogProbAccumulator{whichlogprob},
-    acc2::PointwiseLogProbAccumulator{whichlogprob},
-) where {whichlogprob}
-    return PointwiseLogProbAccumulator{whichlogprob}(mergewith(+, acc.logps, acc2.logps))
-end
-
-function accumulate_assume!!(
-    acc::PointwiseLogProbAccumulator{whichlogprob}, val, tval, logjac, vn, right, template
-) where {whichlogprob}
-    if whichlogprob == :both || whichlogprob == :prior
-        acc.logps[vn] = logpdf(right, val)
-    end
-    return acc
-end
-
+# Have to overload accumulate_assume!! since VNTAccumulator by default does not track
+# observe statements.
 function accumulate_observe!!(
-    acc::PointwiseLogProbAccumulator{whichlogprob}, right, left, vn
-) where {whichlogprob}
-    # If `vn` is nothing the LHS of ~ is a literal and we don't have a name to attach this
-    # acc to, and thus do nothing.
-    if vn === nothing
-        return acc
+    acc::VNTAccumulator{POINTWISE_ACCNAME,PointwiseLogProb{Prior,Likelihood}},
+    right,
+    left,
+    vn,
+    template,
+) where {Prior,Likelihood}
+    # vn could be `nothing`, in which case we can't store it in a VNT.
+    return if Likelihood && vn isa VarName
+        logp = logpdf(right, left)
+        new_values = DynamicPPL.templated_setindex!!(acc.values, logp, vn, template)
+        return VNTAccumulator{POINTWISE_ACCNAME}(acc.f, new_values)
+    else
+        # No need to accumulate likelihoods.
+        acc
     end
-    if whichlogprob == :both || whichlogprob == :likelihood
-        acc.logps[vn] = loglikelihood(right, left)
-    end
-    return acc
 end
 
 function pointwise_logdensities(
-    model::Model, varinfo::AbstractVarInfo, ::Val{whichlogprob}=Val(:both)
-) where {whichlogprob}
-    AccType = PointwiseLogProbAccumulator{whichlogprob}
-    oavi = OnlyAccsVarInfo((AccType(),))
+    model::Model,
+    varinfo::AbstractVarInfo,
+    ::Val{Prior}=Val(true),
+    ::Val{Likelihood}=Val(true),
+) where {Prior,Likelihood}
+    acc = VNTAccumulator{POINTWISE_ACCNAME}(PointwiseLogProb{Prior,Likelihood}())
+    oavi = OnlyAccsVarInfo(acc)
     init_strategy = InitFromParams(varinfo.values, nothing)
     oavi = last(init!!(model, oavi, init_strategy, UnlinkAll()))
-    return getacc(oavi, Val(accumulator_name(AccType))).logps
+    return get_pointwise_logprobs(oavi)
 end
 
 function pointwise_loglikelihoods(model::Model, varinfo::AbstractVarInfo)
-    return pointwise_logdensities(model, varinfo, Val(:likelihood))
+    return pointwise_logdensities(model, varinfo, Val(false), Val(true))
 end
 
 function pointwise_prior_logdensities(model::Model, varinfo::AbstractVarInfo)
-    return pointwise_logdensities(model, varinfo, Val(:prior))
+    return pointwise_logdensities(model, varinfo, Val(true), Val(false))
 end

@@ -68,4 +68,4 @@ function accumulate_assume!!(
         VNTAccumulator{AccName}(acc.f, new_values)
     end
 end
-accumulate_observe!!(acc::VNTAccumulator, right, left, vn) = acc
+accumulate_observe!!(acc::VNTAccumulator, right, left, vn, template) = acc

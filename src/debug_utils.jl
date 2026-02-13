@@ -79,7 +79,7 @@ function DynamicPPL.accumulate_assume!!(
 end
 
 function DynamicPPL.accumulate_observe!!(
-    acc::DebugAccumulator, right::Distribution, val, vn::Union{VarName,Nothing}
+    acc::DebugAccumulator, right::Distribution, val, vn::Union{VarName,Nothing}, template
 )
     if _has_partial_missings(val, right)
         msg = if vn === nothing
