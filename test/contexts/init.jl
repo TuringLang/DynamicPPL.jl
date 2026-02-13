@@ -98,10 +98,10 @@ using Test
             @testset "$transform_strategy" for transform_strategy in (
                 LinkAll(),
                 UnlinkAll(),
-                LinkSome((@varname(a),), UnlinkAll()),
-                LinkSome((@varname(b),), UnlinkAll()),
-                UnlinkSome((@varname(a),), LinkAll()),
-                UnlinkSome((@varname(b),), LinkAll()),
+                LinkSome(Set([@varname(a)]), UnlinkAll()),
+                LinkSome(Set([@varname(b)]), UnlinkAll()),
+                UnlinkSome(Set([@varname(a)]), LinkAll()),
+                UnlinkSome(Set([@varname(b)]), LinkAll()),
             )
                 # Generate a VarInfo with that strategy
                 vi = last(

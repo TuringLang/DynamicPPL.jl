@@ -274,19 +274,16 @@ struct UnlinkAll <: AbstractTransformStrategy end
 target_transform(::UnlinkAll, ::VarName) = Unlink()
 
 """
-    LinkSome(vns, fallback) <: AbstractTransformStrategy
+    LinkSome(vns::Set{<:VarName}, fallback) <: AbstractTransformStrategy
 
 Indicate that the variables in `vns` must be linked. The link statuses of other variables
 are determined by the `fallback` strategy.
-
-`vns` should be some iterable collection of `VarName`s, although there is no strict type
-requirement.
 """
-struct LinkSome{V,L<:AbstractTransformStrategy} <: AbstractTransformStrategy
-    # TODO(penelopeysm): Should this be a tuple for maximum type stability?
+struct LinkSome{V<:Set{<:VarName},L<:AbstractTransformStrategy} <: AbstractTransformStrategy
     vns::V
     fallback::L
 end
+LinkSome(::Set{<:VarName}, ::LinkAll) = LinkAll()
 function target_transform(linker::LinkSome, vn::VarName)
     return if any(linker_vn -> subsumes(linker_vn, vn), linker.vns)
         DynamicLink()
@@ -294,23 +291,25 @@ function target_transform(linker::LinkSome, vn::VarName)
         target_transform(linker.fallback, vn)
     end
 end
-# If the fallback is to link everything, then we can simplify.
-LinkSome(::Any, ::LinkAll) = LinkAll()
+function Base.:(==)(ls1::LinkSome, ls2::LinkSome)
+    return (ls1.vns == ls2.vns) & (ls1.fallback == ls2.fallback)
+end
+function Base.isequal(ls1::LinkSome, ls2::LinkSome)
+    return isequal(ls1.vns, ls2.vns) && isequal(ls1.fallback, ls2.fallback)
+end
 
 """
-    UnlinkSome(vns, fallback) <: AbstractTransformStrategy
+    UnlinkSome(vns::Set{<:VarName}, fallback) <: AbstractTransformStrategy
 
 Indicate that the variables in `vns` must not be linked. The link statuses of other
 variables are determined by the `fallback` strategy.
-
-`vns` should be some iterable collection of `VarName`s, although there is no strict type
-requirement.
 """
-struct UnlinkSome{V,L<:AbstractTransformStrategy} <: AbstractTransformStrategy
-    # TODO(penelopeysm): Should this be a tuple for maximum type stability?
+struct UnlinkSome{V<:Set{<:VarName},L<:AbstractTransformStrategy} <:
+       AbstractTransformStrategy
     vns::V
     fallback::L
 end
+UnlinkSome(::Set{<:VarName}, ::UnlinkAll) = UnlinkAll()
 function target_transform(linker::UnlinkSome, vn::VarName)
     return if any(linker_vn -> subsumes(linker_vn, vn), linker.vns)
         Unlink()
@@ -319,6 +318,12 @@ function target_transform(linker::UnlinkSome, vn::VarName)
     end
 end
 UnlinkSome(::Any, ::UnlinkAll) = UnlinkAll()
+function Base.:(==)(us1::UnlinkSome, us2::UnlinkSome)
+    return (us1.vns == us2.vns) & (us1.fallback == us2.fallback)
+end
+function Base.isequal(us1::UnlinkSome, us2::UnlinkSome)
+    return isequal(us1.vns, us2.vns) && isequal(us1.fallback, us2.fallback)
+end
 
 """
     DynamicPPL.apply_transform_strategy(

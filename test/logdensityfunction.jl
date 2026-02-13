@@ -180,8 +180,8 @@ end
     @testset "$transform_strategy" for transform_strategy in (
         UnlinkAll(),
         LinkAll(),
-        LinkSome((@varname(x),), UnlinkAll()),
-        UnlinkSome((@varname(x),), LinkAll()),
+        LinkSome(Set([@varname(x)]), UnlinkAll()),
+        UnlinkSome(Set([@varname(x)]), LinkAll()),
     )
         accs = OnlyAccsVarInfo(VectorValueAccumulator())
         _, accs = init!!(model, accs, InitFromPrior(), transform_strategy)
