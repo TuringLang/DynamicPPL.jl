@@ -263,27 +263,12 @@ function _map_values_recursive_pa_noalb!!(func, pa::PartialArray)
     end
 end
 
-function _check_size(new_block, old_block)
-    sz_new = vnt_size(new_block)
-    sz_old = vnt_size(old_block)
-    if sz_new != sz_old
-        throw(
-            DimensionMismatch(
-                "map_pairs!! can't change the size of a block. Tried to change " *
-                "from $(sz_old) to $(sz_new).",
-            ),
-        )
-    end
-end
 function _map_pairs_recursive!!(pairfunc, alb::ArrayLikeBlock, vn)
-    # new_block = _map_pairs_recursive!!(pairfunc, alb.block, vn)
     new_block = pairfunc(vn => alb.block)
-    _check_size(new_block, alb.block)
     return ArrayLikeBlock(new_block, alb.ix, alb.kw, alb.index_size)
 end
 function _map_values_recursive!!(func, alb::ArrayLikeBlock)
     new_block = _map_values_recursive!!(func, alb.block)
-    _check_size(new_block, alb.block)
     return ArrayLikeBlock(new_block, alb.ix, alb.kw, alb.index_size)
 end
 

@@ -8,7 +8,6 @@ using BangBang
 using DynamicPPL: DynamicPPL
 
 export VarNamedTuple,
-    vnt_size,
     map_pairs!!,
     map_values!!,
     apply!!,

@@ -112,7 +112,7 @@ function init(rng::Random.AbstractRNG, ::VarName, dist::Distribution, u::InitFro
     # sample.
     real_sz = prod(sz)
     y = u.lower .+ ((u.upper - u.lower) .* rand(rng, real_sz))
-    return LinkedVectorValue(y, from_linked_vec_transform(dist), get_size_for_vnt(dist))
+    return LinkedVectorValue(y, from_linked_vec_transform(dist))
 end
 
 """
@@ -188,10 +188,10 @@ function init(
             # In this case, we can't trust the transform stored in x because the _value_
             # in x may have been changed via unflatten!! without the transform being
             # updated. Therefore, we always recompute the transform here.
-            VectorValue(x.val, from_vec_transform(dist), x.size)
+            VectorValue(x.val, from_vec_transform(dist))
         elseif x isa LinkedVectorValue
             # Same as above.
-            LinkedVectorValue(x.val, from_linked_vec_transform(dist), x.size)
+            LinkedVectorValue(x.val, from_linked_vec_transform(dist))
         elseif x isa UntransformedValue
             x
         else
@@ -230,10 +230,10 @@ function init(
             # In this case, we can't trust the transform stored in x because the _value_
             # in x may have been changed via unflatten!! without the transform being
             # updated. Therefore, we always recompute the transform here.
-            VectorValue(x.val, from_vec_transform(dist), x.size)
+            VectorValue(x.val, from_vec_transform(dist))
         elseif x isa LinkedVectorValue
             # Same as above.
-            LinkedVectorValue(x.val, from_linked_vec_transform(dist), x.size)
+            LinkedVectorValue(x.val, from_linked_vec_transform(dist))
         elseif x isa UntransformedValue
             x
         else
@@ -270,16 +270,12 @@ an unlinked value.
 
 $(TYPEDFIELDS)
 """
-struct RangeAndLinked{T<:Tuple}
+struct RangeAndLinked
     # indices that the variable corresponds to in the vectorised parameter
     range::UnitRange{Int}
     # whether the variable is linked or unlinked
     is_linked::Bool
-    # original size of the variable before vectorisation
-    original_size::T
 end
-
-VarNamedTuples.vnt_size(ral::RangeAndLinked) = ral.original_size
 
 """
     InitFromVector(
@@ -328,17 +324,16 @@ end
 function init(::Random.AbstractRNG, vn::VarName, dist::Distribution, ifv::InitFromVector)
     range_and_linked = _get_range_and_linked(ifv, vn)
     vect = view(ifv.vect, range_and_linked.range)
-    sz = range_and_linked.original_size
     # This block here is why we store transform_strategy inside the InitFromVector, as it
     # allows for type stability.
     return if ifv.transform_strategy isa LinkAll
-        LinkedVectorValue(vect, from_linked_vec_transform(dist), sz)
+        LinkedVectorValue(vect, from_linked_vec_transform(dist))
     elseif ifv.transform_strategy isa UnlinkAll
-        VectorValue(vect, from_vec_transform(dist), sz)
+        VectorValue(vect, from_vec_transform(dist))
     elseif range_and_linked.is_linked
-        LinkedVectorValue(vect, from_linked_vec_transform(dist), sz)
+        LinkedVectorValue(vect, from_linked_vec_transform(dist))
     else
-        VectorValue(vect, from_vec_transform(dist), sz)
+        VectorValue(vect, from_vec_transform(dist))
     end
 end
 function get_param_eltype(strategy::InitFromVector)

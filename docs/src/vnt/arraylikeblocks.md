@@ -1,4 +1,4 @@
-# Array-like blocks
+# [Array-like blocks](@id array-like-blocks)
 
 In a number of VNT use cases, it is necessary to associate multiple indices in a `VarNamedTuple` with an object that is not necessarily the same number of elements.
 
@@ -86,30 +86,6 @@ Furthermore, if you set a value into any of the indices covered by the block, th
 ```@example 1
 vnt = DynamicPPL.templated_setindex!!(vnt, Normal(), @varname(x[2]), x)
 ```
-
-## Size checks
-
-Currently, when setting any object `val` as an `ArrayLikeBlock`, there is a size check: we make sure that the range of indices being set to has the same size as `DynamicPPL.VarNamedTuples.vnt_size(val)`.
-By default, `vnt_size(x)` returns `Base.size(x)`.
-
-```@example 1
-DynamicPPL.VarNamedTuples.vnt_size(Dirichlet(ones(3)))
-```
-
-This is what allows us to set a `Dirichlet` distribution to three indices.
-However, trying to set the same distribution to two indices will fail:
-
-```@repl 1
-vnt = DynamicPPL.templated_setindex!!(
-    VarNamedTuple(), Dirichlet(ones(3)), @varname(x[1:2]), zeros(5)
-)
-```
-
-!!! note
-    
-    In principle, these checks can be removed since if `Dirichlet(ones(3))` is set as the prior of `x[1:2]`, then model evaluation will error anyway.
-    Furthermore, if at any point we need to know the size of the block, we can always retrieve it via `size(view(parent_array, alb.ix...; alb.kw...))`.
-    However, the checks are still here for now.
 
 ## Which parts of DynamicPPL use array-like blocks?
 

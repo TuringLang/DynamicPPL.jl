@@ -64,9 +64,6 @@ Subtypes of this should implement the following functions:
 - `DynamicPPL.set_internal_value(tv::AbstractTransformedValue, new_val)`: Create a new
   `AbstractTransformedValue` with the same transformation as `tv`, but with internal value
   `new_val`.
-
-- `DynamicPPL.VarNamedTuples.vnt_size(tv::AbstractTransformedValue)`: Get the size of the
-  original value before transformation.
 """
 abstract type AbstractTransformedValue end
 
@@ -102,14 +99,14 @@ internal value `new_val`.
 function set_internal_value end
 
 """
-    VectorValue{V<:AbstractVector,T,S}
+    VectorValue{V<:AbstractVector,T}
 
 A transformed value that stores its internal value as a vectorised form. This is what
 VarInfo sees as an "unlinked value".
 
 These values can be generated when using `InitFromParams` with a VarInfo's internal values.
 """
-struct VectorValue{V<:AbstractVector,T,S} <: AbstractTransformedValue
+struct VectorValue{V<:AbstractVector,T} <: AbstractTransformedValue
     "The internal (vectorised) value."
     val::V
     """The unvectorisation transform required to convert `val` back to the original space.
@@ -120,23 +117,20 @@ struct VectorValue{V<:AbstractVector,T,S} <: AbstractTransformedValue
     evaluation occurs, the correct transform is determined from the distribution associated
     with the variable."""
     transform::T
-    """The size of the original value before transformation. This is needed when a
-    `TransformedValue` is stored as a block in an array."""
-    size::S
-    function VectorValue(val::V, tfm::T, size::S) where {V<:AbstractVector,T,S}
-        return new{V,T,S}(val, tfm, size)
+    function VectorValue(val::V, tfm::T) where {V<:AbstractVector,T}
+        return new{V,T}(val, tfm)
     end
 end
 
 """
-    LinkedVectorValue{V<:AbstractVector,T,S}
+    LinkedVectorValue{V<:AbstractVector,T}
 
-A transformed value that stores its internal value as a linked andvectorised form. This is
+A transformed value that stores its internal value as a linked and vectorised form. This is
 what VarInfo sees as a "linked value".
 
 These values can be generated when using `InitFromParams` with a VarInfo's internal values.
 """
-struct LinkedVectorValue{V<:AbstractVector,T,S} <: AbstractTransformedValue
+struct LinkedVectorValue{V<:AbstractVector,T} <: AbstractTransformedValue
     "The internal (linked + vectorised) value."
     val::V
     """The unlinking transform required to convert `val` back to the original space.
@@ -147,33 +141,25 @@ struct LinkedVectorValue{V<:AbstractVector,T,S} <: AbstractTransformedValue
     evaluation occurs, the correct transform is determined from the distribution associated
     with the variable."""
     transform::T
-    """The size of the original value before transformation. This is needed when a
-    `TransformedValue` is stored as a block in an array."""
-    size::S
-    function LinkedVectorValue(val::V, tfm::T, size::S) where {V<:AbstractVector,T,S}
-        return new{V,T,S}(val, tfm, size)
+    function LinkedVectorValue(val::V, tfm::T) where {V<:AbstractVector,T}
+        return new{V,T}(val, tfm)
     end
 end
 
 for T in (:VectorValue, :LinkedVectorValue)
     @eval begin
         function Base.:(==)(tv1::$T, tv2::$T)
-            return (tv1.val == tv2.val) &
-                   (tv1.transform == tv2.transform) &
-                   (tv1.size == tv2.size)
+            return (tv1.val == tv2.val) & (tv1.transform == tv2.transform)
         end
         function Base.isequal(tv1::$T, tv2::$T)
-            return isequal(tv1.val, tv2.val) &&
-                   isequal(tv1.transform, tv2.transform) &&
-                   isequal(tv1.size, tv2.size)
+            return isequal(tv1.val, tv2.val) && isequal(tv1.transform, tv2.transform)
         end
-        VarNamedTuples.vnt_size(tv::$T) = tv.size
 
         get_transform(tv::$T) = tv.transform
         get_internal_value(tv::$T) = tv.val
 
         function set_internal_value(tv::$T, new_val)
-            return $T(new_val, tv.transform, tv.size)
+            return $T(new_val, tv.transform)
         end
     end
 end
@@ -191,14 +177,11 @@ struct UntransformedValue{V} <: AbstractTransformedValue
     val::V
     UntransformedValue(val::V) where {V} = new{V}(val)
 end
-VarNamedTuples.vnt_size(tv::UntransformedValue) = vnt_size(tv.val)
 Base.:(==)(tv1::UntransformedValue, tv2::UntransformedValue) = tv1.val == tv2.val
 Base.isequal(tv1::UntransformedValue, tv2::UntransformedValue) = isequal(tv1.val, tv2.val)
 get_transform(::UntransformedValue) = typed_identity
 get_internal_value(tv::UntransformedValue) = tv.val
 set_internal_value(::UntransformedValue, new_val) = UntransformedValue(new_val)
-
-get_size_for_vnt(val) = hasmethod(size, Tuple{typeof(val)}) ? size(val) : ()
 
 """
     abstract type AbstractTransform end
@@ -396,7 +379,7 @@ function apply_transform_strategy(
         flink = DynamicPPL.to_linked_vec_transform(dist)
         linked_value, logjac = with_logabsdet_jacobian(flink, raw_value)
         finvlink = DynamicPPL.from_linked_vec_transform(dist)
-        linked_tv = LinkedVectorValue(linked_value, finvlink, get_size_for_vnt(raw_value))
+        linked_tv = LinkedVectorValue(linked_value, finvlink)
         (raw_value, linked_tv, logjac)
     elseif target isa Unlink
         # No need to transform further
@@ -419,7 +402,7 @@ function apply_transform_strategy(
         flink = DynamicPPL.to_linked_vec_transform(dist)
         linked_value, logjac = with_logabsdet_jacobian(flink, raw_value)
         finvlink = DynamicPPL.from_linked_vec_transform(dist)
-        linked_tv = LinkedVectorValue(linked_value, finvlink, get_size_for_vnt(raw_value))
+        linked_tv = LinkedVectorValue(linked_value, finvlink)
         (raw_value, linked_tv, logjac)
     elseif target isa Unlink
         # No need to transform further

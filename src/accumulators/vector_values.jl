@@ -1,11 +1,10 @@
 const VECTORVAL_ACCNAME = :VectorValue
 _get_vector_tval(val, tval::Union{VectorValue,LinkedVectorValue}, logjac, vn, dist) = tval
 function _get_vector_tval(val, ::UntransformedValue, logjac, vn, dist)
-    original_val_size = hasmethod(size, Tuple{typeof(val)}) ? size(val) : ()
     f = to_vec_transform(dist)
     new_val, logjac = with_logabsdet_jacobian(f, val)
     @assert iszero(logjac) # otherwise we're in trouble...
-    return VectorValue(new_val, inverse(f), original_val_size)
+    return VectorValue(new_val, inverse(f))
 end
 
 # This is equivalent to `varinfo.values` where `varinfo isa VarInfo`
@@ -34,12 +33,12 @@ julia> using DynamicPPL
 
 julia> # In a real setting the other fields would be filled in with meaningful values.
        vnt = @vnt begin
-           x := VectorValue([1.0, 2.0], nothing, nothing)
-           y := LinkedVectorValue([3.0], nothing, nothing)
+           x := VectorValue([1.0, 2.0], nothing)
+           y := LinkedVectorValue([3.0], nothing)
        end
 VarNamedTuple
-├─ x => VectorValue{Vector{Float64}, Nothing, Nothing}([1.0, 2.0], nothing, nothing)
-└─ y => LinkedVectorValue{Vector{Float64}, Nothing, Nothing}([3.0], nothing, nothing)
+├─ x => VectorValue{Vector{Float64}, Nothing}([1.0, 2.0], nothing)
+└─ y => LinkedVectorValue{Vector{Float64}, Nothing}([3.0], nothing)
 
 julia> internal_values_as_vector(vnt)
 3-element Vector{Float64}:
@@ -70,8 +69,8 @@ julia> # note InitFromParams provides parameters in untransformed space
 julia> # but because we specified LinkAll(), the vectorised values are transformed
        vector_vals = get_vector_values(accs)
 VarNamedTuple
-├─ x => LinkedVectorValue{Vector{Float64}, ComposedFunction{typeof(identity), typeof(identity)}, Tuple{Int64}}([1.0, 2.0], identity ∘ identity, (2,))
-└─ y => LinkedVectorValue{Vector{Float64}, ComposedFunction{DynamicPPL.UnwrapSingletonTransform{Tuple{}}, ComposedFunction{Bijectors.Inverse{Bijectors.Logit{Float64, Float64}}, DynamicPPL.ReshapeTransform{Tuple{Int64}, Tuple{}}}}, Tuple{}}([0.0], DynamicPPL.UnwrapSingletonTransform{Tuple{}}(()) ∘ (Bijectors.Inverse{Bijectors.Logit{Float64, Float64}}(Bijectors.Logit{Float64, Float64}(0.0, 1.0)) ∘ DynamicPPL.ReshapeTransform{Tuple{Int64}, Tuple{}}((1,), ())), ())
+├─ x => LinkedVectorValue{Vector{Float64}, ComposedFunction{typeof(identity), typeof(identity)}}([1.0, 2.0], identity ∘ identity)
+└─ y => LinkedVectorValue{Vector{Float64}, ComposedFunction{DynamicPPL.UnwrapSingletonTransform{Tuple{}}, ComposedFunction{Bijectors.Inverse{Bijectors.Logit{Float64, Float64}}, DynamicPPL.ReshapeTransform{Tuple{Int64}, Tuple{}}}}}([0.0], DynamicPPL.UnwrapSingletonTransform{Tuple{}}(()) ∘ (Bijectors.Inverse{Bijectors.Logit{Float64, Float64}}(Bijectors.Logit{Float64, Float64}(0.0, 1.0)) ∘ DynamicPPL.ReshapeTransform{Tuple{Int64}, Tuple{}}((1,), ())))
 
 julia> # we can extract the internal values as a single vector
        internal_values_as_vector(vector_vals)
