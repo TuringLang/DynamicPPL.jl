@@ -314,8 +314,7 @@ function setindex_with_dist!!(
     vi::VarInfo, tval::UntransformedValue, dist::Distribution, vn::VarName, template
 )
     raw_value = DynamicPPL.get_internal_value(tval)
-    sz = hasmethod(size, (typeof(raw_value),)) ? size(raw_value) : ()
-    tval = VectorValue(to_vec_transform(dist)(raw_value), from_vec_transform(dist), sz)
+    tval = VectorValue(to_vec_transform(dist)(raw_value), from_vec_transform(dist))
     return setindex_with_dist!!(vi, tval, dist, vn, template)
 end
 
@@ -330,9 +329,9 @@ transformation of the variable!
 function set_transformed!!(vi::VarInfo, linked::Bool, vn::VarName)
     old_tv = getindex(vi.values, vn)
     new_tv = if linked
-        LinkedVectorValue(old_tv.val, old_tv.transform, old_tv.size)
+        LinkedVectorValue(old_tv.val, old_tv.transform)
     else
-        VectorValue(old_tv.val, old_tv.transform, old_tv.size)
+        VectorValue(old_tv.val, old_tv.transform)
     end
     new_values = setindex!!(vi.values, new_tv, vn)
     new_transform_strategy = update_transform_strategy(
@@ -358,7 +357,7 @@ set_transformed!!(vi::VarInfo, ::NoTransformation) = set_transformed!!(vi, false
 function set_transformed!!(vi::VarInfo, linked::Bool)
     ctor = linked ? LinkedVectorValue : VectorValue
     new_values = map_values!!(vi.values) do tv
-        ctor(tv.val, tv.transform, tv.size)
+        ctor(tv.val, tv.transform)
     end
     new_transform_strategy = linked ? LinkAll() : UnlinkAll()
     return VarInfo(new_transform_strategy, new_values, vi.accs)
@@ -528,7 +527,7 @@ for T in (:VectorValue, :LinkedVectorValue)
             len = length(old_val)
             new_val = @view vci.vec[(vci.index):(vci.index + len - 1)]
             vci.index += len
-            return $T(new_val, tv.transform, tv.size)
+            return $T(new_val, tv.transform)
         end
     end
 end

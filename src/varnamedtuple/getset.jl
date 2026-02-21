@@ -162,12 +162,7 @@ function _setindex_optic!!(
     # doesn't yet have enough indices for that slice. Expand it if so.
     pa = grow_to_indices!!(pa, coptic.ix...; coptic.kw...)
 
-    is_multiindex = if template isa AbstractArray || template isa PartialArray
-        _is_multiindex(template, coptic.ix...; coptic.kw...)
-    else
-        isempty(coptic.kw) || throw_kw_error()
-        _is_multiindex_static(coptic.ix)
-    end
+    is_multiindex = _is_multiindex(template, coptic.ix...; coptic.kw...)
 
     if permissions isa MustNotOverwrite
         if any(view(pa.mask, coptic.ix...; coptic.kw...))
@@ -285,15 +280,6 @@ function _setindex_optic!!(
     return VarNamedTuple(merge(vnt.data, NamedTuple{(S,)}((sub_value,))))
 end
 
-@generated function _is_multiindex_static(::T) where {T<:Tuple}
-    for x in T.parameters
-        if x <: AbstractVector{<:Int} || x <: Colon
-            return :(return true)
-        end
-    end
-    return :(return false)
-end
-
 """
     make_leaf(value, optic, template)
 
@@ -332,16 +318,7 @@ function make_leaf(value, optic::AbstractPPL.Index, template)
     # them. This also helpfully catches errors if there is a dynamic index and a suitable
     # template is not provided (e.g., if someone tries to set `x[end]` without a template).
     coptic = AbstractPPL.concretize_top_level(optic, template)
-    is_multiindex = if template isa AbstractArray || template isa PartialArray
-        _is_multiindex(template, coptic.ix...; coptic.kw...)
-    else
-        # This handles the case where no template is provided, or a nonsense template is
-        # provided.
-        isempty(coptic.kw) || throw_kw_error()
-        # This will error if there are things like colons.
-        _is_multiindex_static(coptic.ix)
-    end
-    return if is_multiindex
+    return if _is_multiindex(template, coptic.ix...; coptic.kw...)
         make_leaf_multiindex(value, coptic, template)
     else
         make_leaf_singleindex(value, coptic, template)
@@ -423,12 +400,8 @@ function make_leaf_multiindex(value, coptic::AbstractPPL.Index, template)
     pa_eltype = if sub_value isa AbstractArray || sub_value isa PartialArray
         eltype(sub_value)
     else
-        ArrayLikeBlock{
-            typeof(sub_value),
-            typeof(coptic.ix),
-            typeof(coptic.kw),
-            typeof(vnt_size(value)),
-        }
+        idx_size_type = Dims{_ndims(template, coptic.ix...; coptic.kw...)}
+        ArrayLikeBlock{typeof(sub_value),typeof(coptic.ix),typeof(coptic.kw),idx_size_type}
     end
 
     # The rest is the same as the single-index case.

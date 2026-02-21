@@ -28,17 +28,6 @@ merge its nested values as well.
 _merge(_, x2, _) = x2
 
 """
-    vnt_size(x)
-
-Get the size of an object `x` for use in `VarNamedTuple` and `PartialArray`.
-
-By default, this falls back onto `Base.size`, but can be overloaded for custom types.
-This notion of type is used to determine whether a value can be set into a `PartialArray`
-as a block, see the docstring of `PartialArray` and `ArrayLikeBlock` for details.
-"""
-vnt_size(x) = size(x)
-
-"""
     ArrayLikeBlock{T,I,N,S}
 
 A wrapper for non-array blocks stored in `PartialArray`s.
@@ -162,13 +151,14 @@ end
 An array-like like structure that may only have some of its elements defined.
 
 One can set values in a `PartialArray` either element-by-element, or with ranges like
-`arr[1:3,2] = [5,10,15]`. When setting values over a range of indices, the value being set
-must either be an `AbstractArray` or otherwise something for which `vnt_size(value)` or
-`Base.size(value)` (which `vnt_size` falls back onto) is defined, and the size matches the
-range. If the value is an `AbstractArray`, the elements are copied individually, but if it
-is not, the value is stored as a block, that takes up the whole range, e.g. `[1:3,2]`, but
-is only a single object. Getting such a block-value must be done with the exact same range
-of indices, otherwise an error is thrown.
+`arr[1:3,2] = [5,10,15]`. 
+
+When setting values over a range of indices, the value being set can be an `AbstractArray`
+whose size matches the range (in which case the values are set elementwise). If the value is
+some other object, it can still be stored as an `ArrayLikeBlock`. Retrieving such a
+block-value must be done with the exact same range of indices, otherwise an error is thrown.
+Please see [the DynamicPPL documentation](@ref array-like-blocks) for more information on
+this.
 
 If the element type of a `PartialArray` is not concrete, any call to `setindex!!` will check
 if, after the new value has been set, the element type can be made more concrete. If so,
@@ -213,14 +203,6 @@ Base.eltype(::PartialArray{ElType}) where {ElType} = ElType
 
 Base.size(pa::PartialArray) = size(pa.data)
 Base.isassigned(pa::PartialArray, ix...; kw...) = isassigned(pa.data, ix...; kw...)
-
-# Even though a PartialArray may have its own size, we still allow it to be used as an
-# ArrayLikeBlock. This enables setting values for keys like @varname(x[1:3][1]), which will
-# be stored as a PartialArray wrapped in an ArrayLikeBlock, stored in another PartialArray.
-# Note that this bypasses _any_ size checks, so that e.g. @varname(x[1:3][1,15]) is also a
-# valid key.
-# TODO(penelopeysm) check if this is still needed.
-vnt_size(pa::PartialArray) = size(pa)
 
 function Base.copy(pa::PartialArray)
     # Make a shallow copy of pa, except for any VarNamedTuple elements, which we recursively
@@ -485,11 +467,39 @@ function _remove_partial_blocks!!(
     return pa_data, pa_mask
 end
 
-function _is_multiindex(f::AbstractArray, ix...; kw...)
-    return ndims(view(f, ix...; kw...)) > 0
+@inline function _ndims(f::AbstractArray, ix...; kw...)
+    return ndims(view(f, ix...; kw...))
 end
-function _is_multiindex(f::PartialArray, ix...; kw...)
-    return ndims(view(f.data, ix...; kw...)) > 0
+@inline function _ndims(f::PartialArray, ix...; kw...)
+    return ndims(view(f.data, ix...; kw...))
+end
+@inline function _ndims(::Any, ix...; kw...)
+    isempty(kw) || throw_kw_error()
+    return _ndims_static(ix)
+end
+@generated function _ndims_static(::T) where {T<:Tuple}
+    i = 0
+    for x in T.parameters
+        if x <: AbstractVector{<:Int} || x <: Colon
+            i += 1
+        end
+    end
+    return :(return $i)
+end
+@inline function _is_multiindex(f::Union{AbstractArray,PartialArray}, ix...; kw...)
+    return _ndims(f, ix...; kw...) > 0
+end
+@inline function _is_multiindex(::Any, ix...; kw...)
+    isempty(kw) || throw_kw_error()
+    return _is_multiindex_static(ix)
+end
+@generated function _is_multiindex_static(::T) where {T<:Tuple}
+    for x in T.parameters
+        if x <: AbstractVector{<:Int} || x <: Colon
+            return :(return true)
+        end
+    end
+    return :(return false)
 end
 
 """
@@ -503,7 +513,6 @@ The value only depends on the types of the arguments, and should be constant pro
 function _needs_arraylikeblock(pa_data::AbstractArray, value, inds::Vararg{Any}; kw...)
     return !isa(value, AbstractArray) &&
            !isa(value, PartialArray) &&
-           hasmethod(vnt_size, Tuple{typeof(value)}) &&
            _is_multiindex(pa_data, inds...; kw...)
 end
 
@@ -569,18 +578,7 @@ function BangBang.setindex!!(pa::PartialArray, value, inds::Vararg{Any}; kw...)
     new_data, new_mask = _remove_partial_blocks!!(new_data, new_mask, inds...; kw...)
 
     if _needs_arraylikeblock(new_data, value, inds...; kw...)
-        # Check that we're trying to set a block that has the right size.
         idx_sz = size(@view new_data[inds..., kw...])
-
-        # vnt_sz = vnt_size(value)
-        # if vnt_sz != idx_sz
-        #     throw(
-        #         DimensionMismatch(
-        #             "Assigned value has size $(vnt_sz), which does not match " *
-        #             "the size implied by the indices $(idx_sz).",
-        #         ),
-        #     )
-        # end
         alb = ArrayLikeBlock(value, inds, NamedTuple(kw), idx_sz)
         new_data = setindex!!(new_data, fill(alb, idx_sz...), inds...; kw...)
         fill!(view(new_mask, inds...; kw...), true)

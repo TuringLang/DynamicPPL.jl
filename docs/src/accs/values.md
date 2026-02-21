@@ -46,7 +46,7 @@ vi = VarInfo(dirichlet_model)
 vi
 ```
 
-In `VarInfo`, it is mandatory to store `LinkedVectorValue`s or `VectorValue`s as `ArrayLikeBlock`s (see the [Array-like blocks](@ref) documentation for information on this).
+In `VarInfo`, it is mandatory to store `LinkedVectorValue`s or `VectorValue`s as `ArrayLikeBlock`s (see the [Array-like blocks](@ref array-like-blocks) documentation for information on this).
 The reason is because, if the value is linked, it may have a different size than the number of indices in the `VarName`.
 This means that when retrieving the keys, we obtain each block as a single key:
 

@@ -497,7 +497,7 @@ function get_ranges_and_linked(vnt::VarNamedTuple)
             val = tv.val
             range = offset:(offset + length(val) - 1)
             offset += length(val)
-            ral = RangeAndLinked(range, tv isa LinkedVectorValue, tv.size)
+            ral = RangeAndLinked(range, tv isa LinkedVectorValue)
             template = vnt.data[AbstractPPL.getsym(vn)]
             ranges_vnt = templated_setindex!!(ranges_vnt, ral, vn, template)
             return ranges_vnt, offset

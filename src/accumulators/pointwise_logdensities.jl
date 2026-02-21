@@ -22,7 +22,7 @@ function (plp::PointwiseLogProb{Prior,Likelihood})(
         return DoNotAccumulate()
     end
 end
-const POINTWISE_ACCNAME = :PointwiseLogProbAccumulator
+const POINTWISE_ACCNAME = :PointwiseLogProb
 
 # Not exported
 function get_pointwise_logprobs(varinfo::AbstractVarInfo)

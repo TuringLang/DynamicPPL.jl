@@ -168,6 +168,7 @@ function tilde_observe!!(
     ::Distribution,
     ::Any,
     ::Union{VarName,Nothing},
+    ::Any,
     ::AbstractVarInfo,
 )
     return error("tilde_observe!! not implemented for context of type $(typeof(context))")
