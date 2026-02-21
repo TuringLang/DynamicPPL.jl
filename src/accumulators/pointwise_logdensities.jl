@@ -49,7 +49,18 @@ function accumulate_observe!!(
     end
 end
 
-function pointwise_logdensities(
+"""
+    _pointwise_logdensities(
+        model::Model,
+        varinfo::AbstractVarInfo,
+        ::Val{Prior}=Val(true),
+        ::Val{Likelihood}=Val(true),
+    ) where {Prior,Likelihood}
+
+Shared internal function that computes pointwise log-densities (either priors, likelihoods,
+or both).
+"""
+function _pointwise_logdensities(
     model::Model,
     varinfo::AbstractVarInfo,
     ::Val{Prior}=Val(true),
@@ -62,10 +73,14 @@ function pointwise_logdensities(
     return get_pointwise_logprobs(oavi)
 end
 
+function pointwise_logdensities(model::Model, varinfo::AbstractVarInfo)
+    return _pointwise_logdensities(model, varinfo, Val(true), Val(true))
+end
+
 function pointwise_loglikelihoods(model::Model, varinfo::AbstractVarInfo)
-    return pointwise_logdensities(model, varinfo, Val(false), Val(true))
+    return _pointwise_logdensities(model, varinfo, Val(false), Val(true))
 end
 
 function pointwise_prior_logdensities(model::Model, varinfo::AbstractVarInfo)
-    return pointwise_logdensities(model, varinfo, Val(true), Val(false))
+    return _pointwise_logdensities(model, varinfo, Val(true), Val(false))
 end

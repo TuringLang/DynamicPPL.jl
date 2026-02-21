@@ -391,20 +391,38 @@ function DynamicPPL.returned(model::DynamicPPL.Model, chain_full::MCMCChains.Cha
 end
 
 """
+Shared internal helper function.
+"""
+function _pointwise_logdensities_chain(
+    model::DynamicPPL.Model,
+    chain::MCMCChains.Chains,
+    ::Val{Prior}=Val(true),
+    ::Val{Likelihood}=Val(true),
+) where {Prior,Likelihood}
+    acc = DynamicPPL.VNTAccumulator{DynamicPPL.POINTWISE_ACCNAME}(
+        DynamicPPL.PointwiseLogProb{Prior,Likelihood}()
+    )
+    parameter_only_chain = MCMCChains.get_sections(chain, :parameters)
+    # Reevaluating this gives us a VNT of log probs. We can densify and then wrap in
+    # ParamsWithStats so that we can easily convert back to a Chains object.
+    pointwise_logps = map(
+        reevaluate_with_chain(model, parameter_only_chain, (acc,), nothing)
+    ) do (_, oavi)
+        logprobs = DynamicPPL.get_pointwise_logprobs(oavi)
+        dense_logprobs = DynamicPPL.densify!!(logprobs)
+        DynamicPPL.ParamsWithStats(dense_logprobs, (;))
+    end
+    return AbstractMCMC.from_samples(MCMCChains.Chains, pointwise_logps)
+end
+
+"""
     DynamicPPL.pointwise_logdensities(
         model::DynamicPPL.Model,
         chain::MCMCChains.Chains,
-        ::Val{Prior}=Val(true),
-        ::Val{Likelihood}=Val(true)
     )
 
 Runs `model` on each sample in `chain`, returning a new `MCMCChains.Chains` object where
 the log-density of each variable at each sample is stored (rather than its value).
-
-The `Val`s passed as the last two arguments control which log-probabilities are included in
-the result. If both are `true`, then the log-probabilities include both the prior and
-likelihood terms. If only one of them is `true`, then only the corresponding
-log-probabilities are included.
 
 See also: [`DynamicPPL.pointwise_loglikelihoods`](@ref),
 [`DynamicPPL.pointwise_prior_logdensities`](@ref).
@@ -464,25 +482,9 @@ julia> # The above is the same as:
 ```
 """
 function DynamicPPL.pointwise_logdensities(
-    model::DynamicPPL.Model,
-    chain::MCMCChains.Chains,
-    ::Val{Prior}=Val(true),
-    ::Val{Likelihood}=Val(true),
-) where {Prior,Likelihood}
-    acc = DynamicPPL.VNTAccumulator{DynamicPPL.POINTWISE_ACCNAME}(
-        DynamicPPL.PointwiseLogProb{Prior,Likelihood}()
-    )
-    parameter_only_chain = MCMCChains.get_sections(chain, :parameters)
-    # Reevaluating this gives us a VNT of log probs. We can densify and then wrap in
-    # ParamsWithStats so that we can easily convert back to a Chains object.
-    pointwise_logps = map(
-        reevaluate_with_chain(model, parameter_only_chain, (acc,), nothing)
-    ) do (_, oavi)
-        logprobs = DynamicPPL.get_pointwise_logprobs(oavi)
-        dense_logprobs = DynamicPPL.densify!!(logprobs)
-        DynamicPPL.ParamsWithStats(dense_logprobs, (;))
-    end
-    return AbstractMCMC.from_samples(MCMCChains.Chains, pointwise_logps)
+    model::DynamicPPL.Model, chain::MCMCChains.Chains
+)
+    return _pointwise_logdensities_chain(model, chain, Val(true), Val(true))
 end
 
 """
@@ -499,7 +501,7 @@ See also: [`DynamicPPL.pointwise_logdensities`](@ref), [`DynamicPPL.pointwise_pr
 function DynamicPPL.pointwise_loglikelihoods(
     model::DynamicPPL.Model, chain::MCMCChains.Chains
 )
-    return DynamicPPL.pointwise_logdensities(model, chain, Val(false), Val(true))
+    return _pointwise_logdensities_chain(model, chain, Val(false), Val(true))
 end
 
 """
@@ -516,7 +518,7 @@ See also: [`DynamicPPL.pointwise_logdensities`](@ref), [`DynamicPPL.pointwise_lo
 function DynamicPPL.pointwise_prior_logdensities(
     model::DynamicPPL.Model, chain::MCMCChains.Chains
 )
-    return DynamicPPL.pointwise_logdensities(model, chain, Val(true), Val(false))
+    return _pointwise_logdensities_chain(model, chain, Val(true), Val(false))
 end
 
 """
