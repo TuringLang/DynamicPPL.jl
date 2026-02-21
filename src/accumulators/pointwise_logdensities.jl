@@ -1,15 +1,17 @@
 """
-    PointwiseLogProbAccumulator{whichlogprob} <: AbstractAccumulator
+    PointwiseLogProb{Prior,Likelihood}
 
-An accumulator that stores the log-probabilities of each variable in a model.
+A callable struct that computes the log probability of a given value under a distribution.
+The `Prior` and `Likelihood` type parameters are used to control whether the log probability
+is computed for prior or likelihood terms, respectively.
 
-Internally this accumulator stores the log-probabilities in a dictionary, where the keys are
-the variable names and the values are log-probabilities.
+This struct is used in conjunction with `VNTAccumulator`, via
 
-`whichlogprob` is a symbol that can be `:both`, `:prior`, or `:likelihood`, and specifies
-which log-probabilities to store in the accumulator.
+    acc = VNTAccumulator{POINTWISE_ACCNAME}(PointwiseLogProb{Prior,Likelihood}())
+
+where `Prior` and `Likelihood` are the boolean type parameters. This accumulator will then
+store the log-probabilities for all tilde-statements in the model.
 """
-
 struct PointwiseLogProb{Prior,Likelihood} end
 function (plp::PointwiseLogProb{Prior,Likelihood})(
     val, tval, logjac, vn, dist
