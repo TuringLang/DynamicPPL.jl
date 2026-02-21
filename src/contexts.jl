@@ -131,6 +131,7 @@ end
         right::Distribution,
         left,
         vn::Union{VarName, Nothing},
+        template::Any,
         vi::AbstractVarInfo
     )::Tuple{Any,AbstractVarInfo}
 
@@ -145,9 +146,9 @@ the VarInfo object `vi` (except for fixed variables, which do not contribute to 
 log-probability).
 
 `left` is the actual value that the left-hand side evaluates to. `vn` is the VarName on the
-left-hand side, or `nothing` if the left-hand side is a literal value.
-
-Observations of submodels are not yet supported in DynamicPPL.
+left-hand side, or `nothing` if the left-hand side is a literal value. `template` is the
+value of the top-level symbol in `vn`; if `vn` is `nothing`, then `template` will be
+`NoTemplate()`.
 
 This function should return a tuple `(left, vi)`, where `left` is the same as the input, and
 `vi` is the updated VarInfo.
@@ -157,9 +158,10 @@ function tilde_observe!!(
     right::Distribution,
     left,
     vn::Union{VarName,Nothing},
+    template::Any,
     vi::AbstractVarInfo,
 )
-    return tilde_observe!!(childcontext(context), right, left, vn, vi)
+    return tilde_observe!!(childcontext(context), right, left, vn, template, vi)
 end
 function tilde_observe!!(
     context::AbstractContext,

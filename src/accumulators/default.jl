@@ -96,7 +96,7 @@ function accumulate_assume!!(
 )
     return acclogp(acc, logpdf(right, val))
 end
-accumulate_observe!!(acc::LogPriorAccumulator, right, left, vn) = acc
+accumulate_observe!!(acc::LogPriorAccumulator, right, left, vn, template) = acc
 
 """
     LogJacobianAccumulator{T<:Real} <: LogProbAccumulator{T}
@@ -142,7 +142,7 @@ function accumulate_assume!!(
 )
     return acclogp(acc, logjac)
 end
-accumulate_observe!!(acc::LogJacobianAccumulator, right, left, vn) = acc
+accumulate_observe!!(acc::LogJacobianAccumulator, right, left, vn, template) = acc
 
 """
     LogLikelihoodAccumulator{T<:Real} <: LogProbAccumulator{T}
@@ -166,7 +166,7 @@ function accumulate_assume!!(
 )
     return acc
 end
-function accumulate_observe!!(acc::LogLikelihoodAccumulator, right, left, vn)
+function accumulate_observe!!(acc::LogLikelihoodAccumulator, right, left, vn, template)
     # Note that it's important to use the loglikelihood function here, not logpdf, because
     # they handle vectors differently:
     # https://github.com/JuliaStats/Distributions.jl/issues/1972

@@ -326,12 +326,14 @@ function accumulate_assume!!(vi::AbstractVarInfo, val, tval, logjac, vn, right, 
 end
 
 """
-    accumulate_observe!!(vi::AbstractVarInfo, right, left, vn)
+    accumulate_observe!!(vi::AbstractVarInfo, right, left, vn, template)
 
 Update all the accumulators of `vi` by calling `accumulate_observe!!` on them.
 """
-function accumulate_observe!!(vi::AbstractVarInfo, right, left, vn)
-    return map_accumulators!!(acc -> accumulate_observe!!(acc, right, left, vn), vi)
+function accumulate_observe!!(vi::AbstractVarInfo, right, left, vn, template)
+    return map_accumulators!!(
+        acc -> accumulate_observe!!(acc, right, left, vn, template), vi
+    )
 end
 
 """

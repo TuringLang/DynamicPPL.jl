@@ -91,12 +91,16 @@ using DynamicPPL:
             right = Normal()
             left = 2.0
             vn = @varname(x)
-            @test accumulate_observe!!(LogPriorAccumulator(1.0), right, left, vn) ==
-                LogPriorAccumulator(1.0)
-            @test accumulate_observe!!(LogJacobianAccumulator(1.0), right, left, vn) ==
-                LogJacobianAccumulator(1.0)
-            @test accumulate_observe!!(LogLikelihoodAccumulator(1.0), right, left, vn) ==
-                LogLikelihoodAccumulator(1.0 + logpdf(right, left))
+            template = nothing
+            @test accumulate_observe!!(
+                LogPriorAccumulator(1.0), right, left, vn, template
+            ) == LogPriorAccumulator(1.0)
+            @test accumulate_observe!!(
+                LogJacobianAccumulator(1.0), right, left, vn, template
+            ) == LogJacobianAccumulator(1.0)
+            @test accumulate_observe!!(
+                LogLikelihoodAccumulator(1.0), right, left, vn, template
+            ) == LogLikelihoodAccumulator(1.0 + logpdf(right, left))
         end
     end
 

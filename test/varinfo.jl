@@ -195,9 +195,6 @@ end
         vi_orig = DynamicPPL.setacc!!(vi_orig, DynamicPPL.DebugUtils.DebugAccumulator(true))
         vi_orig = DynamicPPL.setacc!!(vi_orig, DynamicPPL.RawValueAccumulator(true))
         vi_orig = DynamicPPL.setacc!!(vi_orig, DynamicPPL.PriorDistributionAccumulator())
-        vi_orig = DynamicPPL.setacc!!(
-            vi_orig, DynamicPPL.PointwiseLogProbAccumulator{:both}()
-        )
         # And evaluate the model once so that they are populated.
         _, vi_orig = DynamicPPL.evaluate_nowarn!!(model, vi_orig)
 

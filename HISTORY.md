@@ -110,9 +110,21 @@ In its place, you should directly use the accumulator API to:
     To do so, we now export a convenience function `get_raw_values(::AbstractVarInfo)` that will get the stored `VarNamedTuple` of raw values.
     This is exactly analogous to how `getlogprior(::AbstractVarInfo)` extracts the log-prior from a `LogPriorAccumulator`.
 
+### Pointwise logdensities
+
+Calling `pointwise_logdensities(model, varinfo)` now returns a `VarNamedTuple` of log-densities rather than an `OrderedDict`.
+
+Models with implicitly broadcasted observations (e.g. `y ~ Normal()` where `y` is an observed `Array`) will now return an `Array` of log-densities, one per element of `y`.
+To recover the previous behaviour, you can sum the log-densities.
+
+The method `pointwise_logdensities(model, chain::MCMCChains.Chains)` no longer accepts a `Tout` argument to control the output type; it always returns a new `MCMCChains.Chains`.
+
+The internal argument `whichlogprob` for `pointwise_logdensities` is removed.
+As a replacement you should just directly use `pointwise_logdensities`, `pointwise_loglikelihoods`, or `pointwise_prior_logdensities` as appropriate.
+
 ### Function signature changes in tilde-pipeline
 
-`tilde_assume!!` and `accumulate_assume!!` now take extra arguments.
+`tilde_assume!!`, `tilde_observe!!`, `accumulate_assume!!`, and `accumulate_observe!!` now take extra arguments.
 
 In particular
 
@@ -120,10 +132,13 @@ In particular
     For example, if `vn` is `@varname(x[1])`, then `template` is the current value of `x` in the model.
     The DynamicPPL compiler is responsible for generating and providing this argument.
 
+  - Likewise, `tilde_observe!!(ctx, dist, left, vn, vi)` is now `tilde_observe!!(ctx, dist, left, vn, template, vi)`, where `template` is the same as above.
   - `accumulate_assume!!(acc::AbstractAccumulator, val, logjac, vn, dist)` is now `accumulate_assume!!(acc, val, tval, logjac, vn, dist, template)`.
     `template` is the same as above.
     `tval` is either the `AbstractTransformedValue` that `DynamicPPL.init` provided (for InitContext), or the `AbstractTransformedValue` found inside the VarInfo (for DefaultContext).
   - `accumulate_assume!!(vi::AbstractVarInfo, val, logjac, vn, dist)` is now `accumulate_assume!!(vi, val, tval, logjac, vn, dist, template)`.
+  - `accumulate_observe!!(acc::AbstractAccumulator, dist, left, vn)` is now `accumulate_observe!!(acc, dist, left, vn, template)`, where `template` is the same as above.
+  - `accumulate_observe!!(vi::AbstractVarInfo, dist, left, vn)` is now `accumulate_observe!!(vi, dist, left, vn, template)`.
 
 ### `DynamicPPL.DebugUtils`
 

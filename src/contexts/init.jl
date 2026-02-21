@@ -405,7 +405,8 @@ function tilde_observe!!(
     right::Distribution,
     left,
     vn::Union{VarName,Nothing},
+    template::Any,
     vi::AbstractVarInfo,
 )
-    return tilde_observe!!(DefaultContext(), right, left, vn, vi)
+    return tilde_observe!!(DefaultContext(), right, left, vn, template, vi)
 end

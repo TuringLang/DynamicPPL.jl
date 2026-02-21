@@ -37,7 +37,7 @@ function accumulate_assume!!(
     return acc
 end
 
-accumulate_observe!!(acc::BijectorAccumulator, right, left, vn) = acc
+accumulate_observe!!(acc::BijectorAccumulator, right, left, vn, template) = acc
 
 """
     bijector(model::Model, init_strategy::AbstractInitStrategy=InitFromPrior())

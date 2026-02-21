@@ -436,6 +436,7 @@ function generate_tilde_literal(left, right)
             $(DynamicPPL.check_tilde_rhs)($right),
             $left,
             nothing,
+            $(NoTemplate()),
             __varinfo__,
         )
         $value
@@ -464,6 +465,11 @@ variables.
 """
 function generate_tilde(left, right)
     isliteral(left) && return generate_tilde_literal(left, right)
+    template = if left isa Symbol  # i.e. identity optic
+        :($(NoTemplate)())
+    else
+        get_top_level_symbol(left)
+    end
 
     # Otherwise it is determined by the model or its value,
     # if the LHS represents an observation
@@ -509,6 +515,7 @@ function generate_tilde(left, right)
                 $(DynamicPPL.check_tilde_rhs)($dist),
                 $supplied_val,
                 $vn,
+                $template,
                 __varinfo__,
             )
             $(assign_or_set!!(left, value, vn))

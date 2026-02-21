@@ -210,6 +210,7 @@ function tilde_observe!!(
     right::DynamicPPL.Submodel,
     left::Any,
     vn::VarName,
+    template::Any,
     vi::AbstractVarInfo,
 )
     # TODO(penelopeysm) This is VERY BAD. See
@@ -252,7 +253,7 @@ function tilde_observe!!(
     return _evaluate!!(right, vi, context, vn)
 end
 function tilde_observe!!(
-    ::AbstractContext, ::DynamicPPL.Submodel, left, ::Nothing, ::AbstractVarInfo
+    ::AbstractContext, ::DynamicPPL.Submodel, left, ::Nothing, template, ::AbstractVarInfo
 )
     throw(ArgumentError("`x ~ to_submodel(...)` is not supported when `x` is a literal"))
 end

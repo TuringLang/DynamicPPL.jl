@@ -59,6 +59,7 @@ end
         right::Distribution,
         left,
         vn::Union{VarName,Nothing},
+        template::Any,
         vi::AbstractVarInfo,
     )
 
@@ -69,8 +70,9 @@ function tilde_observe!!(
     right::Distribution,
     left,
     vn::Union{VarName,Nothing},
+    template::Any,
     vi::AbstractVarInfo,
 )
-    vi = accumulate_observe!!(vi, right, left, vn)
+    vi = accumulate_observe!!(vi, right, left, vn, template)
     return left, vi
 end

@@ -11,7 +11,7 @@ seen so far.
 
 An accumulator type `T <: AbstractAccumulator` must implement the following methods:
 - `accumulator_name(acc::T)` or `accumulator_name(::Type{T})`
-- `accumulate_observe!!(acc::T, dist, val, vn)`
+- `accumulate_observe!!(acc::T, dist, val, vn, template)`
 - `accumulate_assume!!(acc::T, val, tval, logjac, vn, dist, template)`
 - `reset(acc::T)`
 - `Base.copy(acc::T)`
@@ -53,7 +53,7 @@ depends on the type of `acc`, not on its value.
 accumulator_name(acc::AbstractAccumulator) = accumulator_name(typeof(acc))
 
 """
-    accumulate_observe!!(acc::AbstractAccumulator, right, left, vn)
+    accumulate_observe!!(acc::AbstractAccumulator, right, left, vn, template)
 
 Update `acc` in a `tilde_observe!!` call. Returns the updated `acc`.
 

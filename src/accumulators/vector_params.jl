@@ -29,7 +29,7 @@ const VECTOR_ACC_NAME = :VectorParamAccumulator
 DynamicPPL.accumulator_name(::Type{<:VectorParamAccumulator}) = VECTOR_ACC_NAME
 
 function DynamicPPL.accumulate_observe!!(
-    acc::VectorParamAccumulator, ::Distribution, val, ::Union{VarName,Nothing}
+    acc::VectorParamAccumulator, ::Distribution, val, ::Union{VarName,Nothing}, ::Any
 )
     return acc
 end

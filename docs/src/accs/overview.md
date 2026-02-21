@@ -91,7 +91,9 @@ function DynamicPPL.accumulate_assume!!(
     return acc
 end
 
-function DynamicPPL.accumulate_observe!!(acc::VarNameLogpAccumulator, dist, val, vn)
+function DynamicPPL.accumulate_observe!!(
+    acc::VarNameLogpAccumulator, dist, val, vn, template
+)
     acc.logps[vn] = (true, logpdf(dist, val))
     return acc
 end

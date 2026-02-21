@@ -571,15 +571,16 @@ function BangBang.setindex!!(pa::PartialArray, value, inds::Vararg{Any}; kw...)
     if _needs_arraylikeblock(new_data, value, inds...; kw...)
         # Check that we're trying to set a block that has the right size.
         idx_sz = size(@view new_data[inds..., kw...])
-        vnt_sz = vnt_size(value)
-        if vnt_sz != idx_sz
-            throw(
-                DimensionMismatch(
-                    "Assigned value has size $(vnt_sz), which does not match " *
-                    "the size implied by the indices $(idx_sz).",
-                ),
-            )
-        end
+
+        # vnt_sz = vnt_size(value)
+        # if vnt_sz != idx_sz
+        #     throw(
+        #         DimensionMismatch(
+        #             "Assigned value has size $(vnt_sz), which does not match " *
+        #             "the size implied by the indices $(idx_sz).",
+        #         ),
+        #     )
+        # end
         alb = ArrayLikeBlock(value, inds, NamedTuple(kw), idx_sz)
         new_data = setindex!!(new_data, fill(alb, idx_sz...), inds...; kw...)
         fill!(view(new_mask, inds...; kw...), true)
