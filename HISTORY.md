@@ -114,7 +114,13 @@ In its place, you should directly use the accumulator API to:
 
 Calling `pointwise_logdensities(model, varinfo)` now returns a `VarNamedTuple` of log-densities rather than an `OrderedDict`.
 
+Models with implicitly broadcasted observations (e.g. `y ~ Normal()` where `y` is an observed `Array`) will now return an `Array` of log-densities, one per element of `y`.
+To recover the previous behaviour, you can sum the log-densities.
+
 The method `pointwise_logdensities(model, chain::MCMCChains.Chains)` no longer accepts a `Tout` argument to control the output type; it always returns a new `MCMCChains.Chains`.
+
+The internal argument `whichlogprob` for `pointwise_logdensities` is removed.
+As a replacement you should just directly use `pointwise_logdensities`, `pointwise_loglikelihoods`, or `pointwise_prior_logdensities` as appropriate.
 
 ### Function signature changes in tilde-pipeline
 
