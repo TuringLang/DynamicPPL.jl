@@ -1,6 +1,6 @@
 name = "DynamicPPL"
 uuid = "366bfd00-2699-11ea-058f-f148b4cae6d8"
-version = "0.39.13"
+version = "0.39.14"
 
 [deps]
 ADTypes = "47edcb42-4c32-4615-8424-f2b9edc5f35b"
@@ -35,6 +35,7 @@ KernelAbstractions = "63c18a36-062a-441e-b654-da1e3ab1ce7c"
 MCMCChains = "c7f686f2-ff18-58e9-bc7b-31028e88f75d"
 MarginalLogDensities = "f0c3360a-fb8d-11e9-1194-5521fd7ee392"
 Mooncake = "da2b9cff-9c12-43a0-ae48-6db2b0edb7d6"
+ReverseDiff = "37e2e3b7-166d-5795-8a7a-e32c996b4267"
 
 [extensions]
 DynamicPPLChainRulesCoreExt = ["ChainRulesCore"]
@@ -44,6 +45,7 @@ DynamicPPLJETExt = ["JET"]
 DynamicPPLMCMCChainsExt = ["MCMCChains"]
 DynamicPPLMarginalLogDensitiesExt = ["MarginalLogDensities"]
 DynamicPPLMooncakeExt = ["Mooncake"]
+DynamicPPLReverseDiffExt = ["ReverseDiff"]
 
 [compat]
 ADTypes = "1"
@@ -73,6 +75,7 @@ Mooncake = "0.4.147, 0.5"
 OrderedCollections = "1"
 Printf = "1.10"
 Random = "1.6"
+ReverseDiff = "1"
 Statistics = "1"
 Test = "1.6"
 julia = "1.10.8"
