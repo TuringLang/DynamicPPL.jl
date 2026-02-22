@@ -1,5 +1,9 @@
 # DynamicPPL Changelog
 
+## 0.39.14
+
+Optimise AD performance with ReverseDiff.
+
 ## 0.39.13
 
 Add compatibility with Mooncake.jl 0.5.

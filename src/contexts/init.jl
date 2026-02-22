@@ -267,6 +267,18 @@ end
 function _get_range_and_linked(vr::VectorWithRanges, vn::VarName)
     return vr.varname_ranges[vn]
 end
+
+"""
+    maybe_view_ad(vect::AbstractArray, range)
+
+For the most part, this function is just `view(vect, range)`. The problem is that for
+ReverseDiff this tends to be very slow
+(https://github.com/JuliaDiff/ReverseDiff.jl/issues/281), so in the ReverseDiffExt we
+overload this for ReverseDiff's tracked arrays to just do `getindex` instead, which is much
+faster.
+"""
+@inline maybe_view_ad(vect::AbstractArray, range) = view(vect, range)
+
 function init(
     ::Random.AbstractRNG,
     vn::VarName,
@@ -284,7 +296,7 @@ function init(
     else
         from_vec_transform(dist)
     end
-    return (@view vr.vect[range_and_linked.range]), transform
+    return maybe_view_ad(vr.vect, range_and_linked.range), transform
 end
 function get_param_eltype(strategy::InitFromParams{<:VectorWithRanges})
     return eltype(strategy.params.vect)
