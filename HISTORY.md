@@ -283,6 +283,10 @@ This is no longer the case; linking should thus be safer to do.
 The cost to pay is that calls to `link!!` and `invlink!!` (and the non-mutating versions) now trigger a model evaluation, to determine the correct priors to use.
 (However, even with a model evaluation, in many cases linking is still substantially faster than the old implementation.)
 
+# 0.39.14
+
+Optimise AD performance with ReverseDiff.
+
 # 0.39.13
 
 Add compatibility with Mooncake.jl 0.5.

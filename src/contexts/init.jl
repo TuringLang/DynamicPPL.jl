@@ -313,6 +313,17 @@ struct InitFromVector{
     transform_strategy::L
 end
 
+"""
+    maybe_view_ad(vect::AbstractArray, range)
+
+For the most part, this function is just `view(vect, range)`. The problem is that for
+ReverseDiff this tends to be very slow
+(https://github.com/JuliaDiff/ReverseDiff.jl/issues/281), so in the ReverseDiffExt we
+overload this for ReverseDiff's tracked arrays to just do `getindex` instead, which is much
+faster.
+"""
+@inline maybe_view_ad(vect::AbstractArray, range) = view(vect, range)
+
 function _get_range_and_linked(ifv::InitFromVector, vn::VarName)
     # The type assertion does nothing if `varname_ranges` has concrete element types, as is
     # the case for all type stable models. However, if the model is not type stable,
@@ -323,7 +334,7 @@ function _get_range_and_linked(ifv::InitFromVector, vn::VarName)
 end
 function init(::Random.AbstractRNG, vn::VarName, dist::Distribution, ifv::InitFromVector)
     range_and_linked = _get_range_and_linked(ifv, vn)
-    vect = view(ifv.vect, range_and_linked.range)
+    vect = maybe_view_ad(ifv.vect, range_and_linked.range)
     # This block here is why we store transform_strategy inside the InitFromVector, as it
     # allows for type stability.
     return if ifv.transform_strategy isa LinkAll
