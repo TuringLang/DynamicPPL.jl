@@ -71,7 +71,7 @@ VarInfo() = VarInfo(UnlinkAll(), VarNamedTuple(), default_accumulators())
     VarInfo(
        [rng::AbstractRNG,]
        model::Model,
-       init_strategy::AbstractInitStrategy=InitFromPrior()
+       init_strategy::AbstractInitStrategy=InitFromPrior(),
        transform_strategy::AbstractTransformStrategy=UnlinkAll(),
     )
 
