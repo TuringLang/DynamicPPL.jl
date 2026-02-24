@@ -1,3 +1,7 @@
+# v0.41
+
+...
+
 # v0.40
 
 v0.40 of DynamicPPL brings with it a complete rewrite of DynamicPPL's core data structure, `VarInfo`.
