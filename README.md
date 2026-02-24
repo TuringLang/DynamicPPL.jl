@@ -1,38 +1,80 @@
-# DynamicPPL.jl
+<h1 align="center">DynamicPPL.jl</h1>
+<p align="center"><i>A domain-specific language and backend for probabilistic programming, used by <a href="https://github.com/TuringLang/Turing.jl">Turing.jl</a>.</i></p>
+<p align="center">
+<a href="https://turinglang.github.io/DynamicPPL.jl/stable"><img src="https://img.shields.io/badge/docs-stable-blue.svg" alt="Docs" /></a>
+<a href="https://github.com/TuringLang/DynamicPPL.jl/actions?query=workflow%3ACI+branch%3Amain"><img src="https://github.com/TuringLang/DynamicPPL.jl/workflows/CI/badge.svg?branch=main" alt="CI" /></a>
+<a href="https://codecov.io/gh/TuringLang/DynamicPPL.jl"><img src="https://codecov.io/gh/TuringLang/DynamicPPL.jl/branch/main/graph/badge.svg" alt="Code Coverage" /></a>
+</p>
 
-[![Stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://turinglang.github.io/DynamicPPL.jl/stable)
-[![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://turinglang.github.io/DynamicPPL.jl/dev)
-[![CI](https://github.com/TuringLang/DynamicPPL.jl/workflows/CI/badge.svg?branch=main)](https://github.com/TuringLang/DynamicPPL.jl/actions?query=workflow%3ACI+branch%3Amain)
-[![JuliaPre](https://github.com/TuringLang/DynamicPPL.jl/workflows/JuliaPre/badge.svg?branch=main)](https://github.com/TuringLang/DynamicPPL.jl/actions?query=workflow%3AJuliaPre+branch%3Amain)
-[![IntegrationTest](https://github.com/TuringLang/DynamicPPL.jl/workflows/IntegrationTest/badge.svg?branch=main)](https://github.com/TuringLang/DynamicPPL.jl/actions?query=workflow%3AIntegrationTest+branch%3Amain)
-[![Codecov](https://codecov.io/gh/TuringLang/DynamicPPL.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/TuringLang/DynamicPPL.jl)
-[![Code Style: Blue](https://img.shields.io/badge/code%20style-blue-4495d1.svg)](https://github.com/invenia/BlueStyle)
-[![ColPrac: Contributor's Guide on Collaborative Practices for Community Packages](https://img.shields.io/badge/ColPrac-Contributor%27s%20Guide-blueviolet)](https://docs.sciml.ai/ColPrac/stable/)
+## Get started
 
-*A domain-specific language and backend for probabilistic programming, used by [Turing.jl](https://github.com/TuringLang/Turing.jl).*
+Install Julia (see [the official Julia website](https://julialang.org/install/)), then run:
 
-DynamicPPL is the part of Turing.jl that deals with defining, running, and manipulating models. DynamicPPL provides:
+```julia
+julia> using Pkg;
+       Pkg.add("DynamicPPL");
 
-  - General-purpose probabilistic programming with an intuitive syntax.
-  - The `@model` syntax and macro for easily specifying probabilistic generative models.
-  - A tracing data-structure for tracking random variables in dynamic probabilistic models.
-  - A rich contextual dispatch system allowing for tailored behaviour during model execution.
-  - A user-friendly syntax for probabilistic queries.
+```
 
-Information on how to use the DynamicPPL frontend to build Bayesian models can be found on the [Turing website](https://turinglang.org/). Tutorials explaining how to use the backend can be found [alongside the documentation](https://turinglang.github.io/DynamicPPL.jl/stable/). More information can be found in our paper [DynamicPPL: Stan-like Speed for Dynamic Probabilistic Models](https://arxiv.org/pdf/2002.02702.pdf).
+DynamicPPL is the part of Turing.jl that deals with defining, running, and manipulating probabilistic models.
+You can define models using the `@model` macro:
 
-## Do you want to contribute?
+```julia
+julia> using DynamicPPL, Distributions, LinearAlgebra, Random
 
-If you feel you have some relevant skills and are interested in contributing, please get in touch! You can find us in the #turing channel on the [Julia Slack](https://julialang.org/slack/) or [Discourse](discourse.julialang.org). If you're having any problems, please open a Github issue, even if the problem seems small (like help figuring out an error message). Every issue you open helps us improve the library!
+julia> @model function linear_regression(x)
+           α ~ Normal(0, 1)
+           β ~ Normal(0, 1)
+           σ² ~ truncated(Cauchy(0, 3); lower=0)
+           y ~ MvNormal(α .+ β .* x, σ² * I)
+           return y
+       end
+linear_regression (generic function with 2 methods)
 
-### Contributor's Guide
+julia> model = linear_regression(rand(3));
 
-This project follows the [![ColPrac: Contributor's Guide on Collaborative Practices for Community Packages](https://img.shields.io/badge/ColPrac-Contributor%27s%20Guide-blueviolet)](https://docs.sciml.ai/ColPrac/stable/).
+julia> params = rand(Xoshiro(5), model)  # Sample from the prior
+VarNamedTuple
+├─ α => 0.017205046232868317
+├─ β => 1.2623658511338067
+├─ σ² => 4.384838499382732
+└─ y => [-0.47814652896610466, -0.8131780289925821, 6.416596440508124]
 
-### Merge Queue
+julia> logjoint(model, params)  # Compute the log joint probability of the sampled parameters
+-14.083988198981105
+```
 
-This project uses a [merge queue](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/configuring-pull-request-merges/managing-a-merge-queue) for merging PRs.
-In this way, merge skew / semantic merge conflicts are prevented by testing the exact integration of pull requests before merging them.
+Most users will want to use DynamicPPL through [Turing.jl](https://github.com/TuringLang/Turing.jl), which provides inference algorithms that build on top of DynamicPPL models.
 
-When a PR is good enough for merging and has been approved by at least one reviewer, instead of merging immediately, it is added to the merge queue.
-If the CI tests pass, including downstream tests of Turing, the PR is merged into the main branch.
+You can find tutorials and general information about Turing.jl at [**https://turinglang.org**](https://turinglang.org).
+
+If you are a developer seeking to make use of DynamicPPL's functionality, API documentation as well as guides on how to extend DynamicPPL's functionality can be found at [**https://turinglang.github.io/DynamicPPL.jl/stable**](https://turinglang.github.io/DynamicPPL.jl/stable).
+
+## Contributing
+
+If you find any bugs or unintuitive behaviour, please do [open an issue](https://github.com/TuringLang/DynamicPPL.jl/issues)!
+We are also very happy to receive pull requests.
+Non-breaking changes (as defined by [SemVer](https://semver.org)) should target the `main` branch; breaking changes should target the `breaking` branch.
+
+You can find us in the `#turing` channel on [Julia Slack](https://julialang.org/slack/) or on [Julia Discourse](https://discourse.julialang.org).
+
+## Citing
+
+DynamicPPL.jl can be cited with the following (although if you used Turing.jl generally, you should probably use [the Turing citations](https://github.com/TuringLang/Turing.jl?tab=readme-ov-file#citing-turingjl) instead):
+
+[**DynamicPPL: Stan-like Speed for Dynamic Probabilistic Models**](https://arxiv.org/abs/2002.02702)
+Hong Ge, Kai Xu, Zoubin Ghahramani
+arXiv preprint, 2020.
+
+<details>
+<summary>Expand for BibTeX</summary>
+```bibtex
+@article{ge2020dynamicppl,
+  title={DynamicPPL: Stan-like Speed for Dynamic Probabilistic Models},
+  author={Ge, Hong and Xu, Kai and Ghahramani, Zoubin},
+  journal={arXiv preprint arXiv:2002.02702},
+  year={2020}
+}
+```
+
+</details>
