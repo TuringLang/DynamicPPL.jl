@@ -54,7 +54,7 @@ function ThreadSafeVarInfo(varinfo::AbstractVarInfo, param_eltype::Type{T}) wher
     # convert to into an intermediate variable makes this unstable (constant propagation
     # fails). Take care when editing.
     accs = map(DynamicPPL.getaccs(varinfo)) do acc
-        DynamicPPL.convert_eltype(float_type_with_fallback(param_eltype), acc)
+        DynamicPPL.promote_for_threadsafe_eval(acc, param_eltype)
     end
     varinfo = DynamicPPL.setaccs!!(varinfo, accs)
     return ThreadSafeVarInfo(resetaccs!!(varinfo))
