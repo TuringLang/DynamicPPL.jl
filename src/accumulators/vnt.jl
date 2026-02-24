@@ -37,8 +37,10 @@ struct DoNotAccumulate end
 """
     TSVNTAccumulator{AccName}(f::F, values::VarNamedTuple)
 
-The same as `VNTAccumulator`, but with an abstract type parameter for the values.
-This is required for threadsafe evaluation with VNT-based accumulators.
+The same as `VNTAccumulator`, but with an abstractly typed field for the values. This is
+required for threadsafe evaluation with VNT-based accumulators, since if it were a type
+parameter, the different threads could have different types for the accumulators, leading to
+type instability.
 """
 struct TSVNTAccumulator{AccName,F} <: AbstractAccumulator
     f::F
