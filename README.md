@@ -29,17 +29,18 @@ julia> @model function linear_regression(x)
        end
 linear_regression (generic function with 2 methods)
 
-julia> model = linear_regression(rand(3));
+julia> model = linear_regression([1.0, 2.0, 3.0]); # Create a model instance
+
+julia> model = model | VarNamedTuple(y=[4.0, 5.0, 6.0]);  # Condition on observed data
 
 julia> params = rand(Xoshiro(5), model)  # Sample from the prior
 VarNamedTuple
 ├─ α => 0.017205046232868317
 ├─ β => 1.2623658511338067
-├─ σ² => 4.384838499382732
-└─ y => [-0.47814652896610466, -0.8131780289925821, 6.416596440508124]
+└─ σ² => 4.384838499382732
 
 julia> logjoint(model, params)  # Compute the log joint probability of the sampled parameters
--14.083988198981105
+-12.384715307629321
 ```
 
 Most users will want to use DynamicPPL through [Turing.jl](https://github.com/TuringLang/Turing.jl), which provides inference algorithms that build on top of DynamicPPL models.
