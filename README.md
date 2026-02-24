@@ -44,10 +44,19 @@ julia> logjoint(model, params)  # Compute the log joint probability of the sampl
 ```
 
 Most users will want to use DynamicPPL through [Turing.jl](https://github.com/TuringLang/Turing.jl), which provides inference algorithms that build on top of DynamicPPL models.
-
 You can find tutorials and general information about Turing.jl at [**https://turinglang.org**](https://turinglang.org).
 
-If you are a developer seeking to make use of DynamicPPL's functionality, API documentation as well as guides on how to extend DynamicPPL's functionality can be found at [**https://turinglang.github.io/DynamicPPL.jl/stable**](https://turinglang.github.io/DynamicPPL.jl/stable).
+## For inference algorithm developers
+
+DynamicPPL is intentionally designed to be extensible, and allows you to define custom behaviour for how inputs are supplied to models, and outputs collected from models.
+If you are developing inference algorithms or other tools that work with probabilistic models, DynamicPPL provides several interfaces you can use and extend:
+
+  - [**Initialisation strategies**](https://turinglang.github.io/DynamicPPL.jl/stable/init/) control how parameter values are generated (e.g. from the prior, or from a fixed set of parameters).
+  - [**Transform strategies**](https://turinglang.github.io/DynamicPPL.jl/stable/transforms/) control whether parameters, and log-densities, are interpreted as being in transformed or untransformed space.
+  - [**Accumulators**](https://turinglang.github.io/DynamicPPL.jl/stable/accs/overview/) collect information during model execution, such as log-densities and raw parameter values. You can define your own accumulators to gather custom information.
+  - [**`LogDensityFunction`**](https://turinglang.github.io/DynamicPPL.jl/stable/ldf/overview/) wraps a model for use with [LogDensityProblems.jl](https://github.com/tpapp/LogDensityProblems.jl), providing efficient log-density and gradient evaluation for use with samplers.
+
+Full API documentation and guides can be found at [**https://turinglang.github.io/DynamicPPL.jl/stable**](https://turinglang.github.io/DynamicPPL.jl/stable).
 
 ## Contributing
 
