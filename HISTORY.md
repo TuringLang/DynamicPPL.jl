@@ -1,5 +1,9 @@
 # DynamicPPL Changelog
 
+## 0.39.15
+
+Fix AD performance with ReverseDiff (v0.39.9 inadvertently introduced a bug that did not cause any correctness issues, but did cause severe slowdowns with ReverseDiff -- this patch reverts that).
+
 ## 0.39.14
 
 Optimise AD performance with ReverseDiff.

@@ -446,7 +446,7 @@ _use_closure(::ADTypes.AutoMooncakeForward) = false
 # For ReverseDiff, with the compiled tape, you _must_ use a closure because otherwise with
 # DI.Constant arguments the tape will always be recompiled upon each call to
 # value_and_gradient. For non-compiled ReverseDiff, it is faster to not use a closure.
-_use_closure(::ADTypes.AutoReverseDiff{compile}) where {compile} = !compile
+_use_closure(::ADTypes.AutoReverseDiff{compile}) where {compile} = compile
 # For AutoEnzyme it allows us to avoid setting function_annotation
 _use_closure(::ADTypes.AutoEnzyme) = false
 # Since for most backends it's faster to not use a closure, we set that as the default
