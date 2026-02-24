@@ -123,6 +123,19 @@ const gdemo_default = gdemo_d()
 
         vi = OnlyAccsVarInfo(RawValueAccumulator(false))
         _, vi = DynamicPPL.init!!(model, vi, InitFromPrior(), UnlinkAll())
+        vnt = get_raw_values(vi)
+        @test vnt[@varname(x)] isa Vector{Float64}
+    end
+
+    @testset "check_model with threadsafe" begin
+        # This is a partial test for https://github.com/TuringLang/DynamicPPL.jl/issues/1157
+        @model function f()
+            Threads.@threads for _ in 1:10
+                x ~ Normal()
+            end
+        end
+        model = setthreadsafe(f(), true)
+        @test !check_model(model)
     end
 
     @testset "logprob correctness" begin

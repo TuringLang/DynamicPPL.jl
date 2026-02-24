@@ -50,7 +50,10 @@ end
 # Unfortunately we have to overload accumulate_assume!! since we need to use the
 # templated_setindex_no_overwrite!! function
 function accumulate_assume!!(
-    acc::VNTAccumulator{RAW_VALUE_ACCNAME,DebugGetRawValues},
+    acc::Union{
+        VNTAccumulator{RAW_VALUE_ACCNAME,DebugGetRawValues},
+        TSVNTAccumulator{RAW_VALUE_ACCNAME,DebugGetRawValues},
+    },
     val,
     tval,
     logjac,
@@ -74,15 +77,21 @@ function accumulate_assume!!(
             rethrow(e)
         end
     end
-    return VNTAccumulator{RAW_VALUE_ACCNAME}(acc.f, new_vnt)
+    return update_values(acc, new_vnt)
 end
 
 function store_colon_eq!!(
-    acc::VNTAccumulator{RAW_VALUE_ACCNAME,DebugGetRawValues}, vn::VarName, val, template
+    acc::Union{
+        VNTAccumulator{RAW_VALUE_ACCNAME,DebugGetRawValues},
+        TSVNTAccumulator{RAW_VALUE_ACCNAME,DebugGetRawValues},
+    },
+    vn::VarName,
+    val,
+    template,
 )
     new_val = deepcopy(val)
     new_values = DynamicPPL.VarNamedTuples.templated_setindex_no_overwrite!!(
         acc.values, new_val, vn, template
     )
-    return VNTAccumulator{RAW_VALUE_ACCNAME}(acc.f, new_values)
+    return update_values(acc, new_values)
 end
