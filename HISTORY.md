@@ -1,4 +1,8 @@
-# v0.40
+# 0.40.1
+
+Fix AD performance with ReverseDiff (v0.39.9 inadvertently introduced a bug that did not cause any correctness issues, but did cause severe slowdowns with ReverseDiff -- this patch reverts that).
+
+# 0.40
 
 v0.40 of DynamicPPL brings with it a complete rewrite of DynamicPPL's core data structure, `VarInfo`.
 
@@ -292,6 +296,12 @@ In this release, to reduce code duplication, they have been merged into a single
   - `Bijectors.bijector(::Model)`, which creates a bijector from the vectorised variable space of the model to the linked variable space of the model, now has slightly different optional arguments. See the docstring for details.
   - `NamedDist` no longer allows variable names with `Colon`s in them, such as `x[:]`.
   - `value_iterator_from_chain` is removed; please use `AbstractMCMC.to_samples(DynamicPPL.ParamsWithStats, chain, model)` instead.
+
+# 0.39.15
+
+Fix AD performance with ReverseDiff (v0.39.9 inadvertently introduced a bug that did not cause any correctness issues, but did cause severe slowdowns with ReverseDiff -- this patch reverts that).
+
+This is a backport of the same patch in v0.40.1.
 
 # 0.39.14
 
