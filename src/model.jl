@@ -881,21 +881,8 @@ function evaluate_nowarn!!(model::Model, varinfo::AbstractVarInfo)
     return if requires_threadsafe(model)
         # Use of float_type_with_fallback(eltype(x)) is necessary to deal with cases where x is
         # a gradient type of some AD backend.
-        # TODO(mhauru) How could we do this more cleanly? The problem case is map_accumulator!!
-        # for ThreadSafeVarInfo. In that one, if the map produces e.g a ForwardDiff.Dual, but
-        # the accumulators in the VarInfo are plain floats, we error since we can't change the
-        # element type of ThreadSafeVarInfo.accs_by_thread. However, doing this conversion here
-        # messes with cases like using Float32 of logprobs and Float64 for x. Also, this is just
-        # plain ugly and hacky.
-        # The below line is finicky for type stability. For instance, assigning the eltype to
-        # convert to into an intermediate variable makes this unstable (constant propagation
-        # fails). Take care when editing.
         param_eltype = DynamicPPL.get_param_eltype(varinfo, model.context)
-        accs = map(DynamicPPL.getaccs(varinfo)) do acc
-            DynamicPPL.convert_eltype(float_type_with_fallback(param_eltype), acc)
-        end
-        varinfo = DynamicPPL.setaccs!!(varinfo, accs)
-        wrapper = ThreadSafeVarInfo(resetaccs!!(varinfo))
+        wrapper = ThreadSafeVarInfo(varinfo, param_eltype)
         result, wrapper_new = _evaluate!!(model, wrapper)
         # TODO(penelopeysm): If seems that if you pass a TSVI to this method, it
         # will return the underlying VI, which is a bit counterintuitive (because
