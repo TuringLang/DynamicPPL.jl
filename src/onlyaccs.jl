@@ -41,6 +41,18 @@ function DynamicPPL.get_transform_strategy(::OnlyAccsVarInfo)
         "get_transform_strategy cannot be implemented for OnlyAccsVarInfo; please specify a transform strategy manually in your call to `init!!`",
     )
 end
+function DynamicPPL.tilde_assume!!(
+    ::DefaultContext,
+    ::Distribution,
+    ::VarName,
+    ::Any,
+    ::Union{OnlyAccsVarInfo,ThreadSafeVarInfo{<:OnlyAccsVarInfo}},
+)
+    # Helpful guardrail for developers.
+    return error(
+        "tilde_assume!! is not implemented for DefaultContext when using OnlyAccsVarInfo. OnlyAccsVarInfo is only compatible with InitContext.",
+    )
+end
 
 # This allows us to make use of the main tilde_assume!!(::InitContext) method without
 # having to duplicate the code here

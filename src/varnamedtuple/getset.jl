@@ -313,7 +313,9 @@ function make_leaf(value, optic::AbstractPPL.Index, template::PartialArray)
     # If the template is a PA, use its data as the template.
     return make_leaf(value, optic, template.data)
 end
-function make_leaf(value, optic::AbstractPPL.Index, template)
+function make_leaf(
+    value, optic::AbstractPPL.Index, template::Union{AbstractArray,NoTemplate,SkipTemplate}
+)
     # First we need to resolve any dynamic indices, since _is_multiindex doesn't work with
     # them. This also helpfully catches errors if there is a dynamic index and a suitable
     # template is not provided (e.g., if someone tries to set `x[end]` without a template).
@@ -323,6 +325,13 @@ function make_leaf(value, optic::AbstractPPL.Index, template)
     else
         make_leaf_singleindex(value, coptic, template)
     end
+end
+function make_leaf(value, ::AbstractPPL.Index, template::Any)
+    # Fallback method; this is hit for other indexable things that we don't know how to deal
+    # with.
+    return error(
+        "DynamicPPL currently does not support random variables within any container that is not an `AbstractArray` (got type $(typeof(template))). For example, if `x` is a `Dict` and you have `x[\"a\"] ~ dist`, this will fail.",
+    )
 end
 
 function make_sub_value(value, coptic::AbstractPPL.Index, template)
