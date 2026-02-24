@@ -11,9 +11,7 @@
 Install Julia (see [the official Julia website](https://julialang.org/install/)), then run:
 
 ```julia
-julia> using Pkg;
-       Pkg.add("DynamicPPL");
-
+julia> using Pkg; Pkg.add("DynamicPPL");
 ```
 
 DynamicPPL is the part of Turing.jl that deals with defining, running, and manipulating probabilistic models.
