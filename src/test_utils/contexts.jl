@@ -36,16 +36,15 @@ function test_leaf_context(context::DynamicPPL.AbstractContext, model::DynamicPP
     # varinfos.) Thus we only test evaluation with VarInfos that are already
     # filled with values.
     @testset "evaluation" begin
-        # Generate a new filled untyped varinfo
-        _, untyped_vi = DynamicPPL.init!!(model, DynamicPPL.VarInfo())
-        typed_vi = DynamicPPL.typed_varinfo(untyped_vi)
+        # Generate a new filled varinfo
+        vi = DynamicPPL.VarInfo(model)
         # Set the test context as the new leaf context
         new_model = DynamicPPL.setleafcontext(model, context)
-        # Check that evaluation works
-        for vi in [untyped_vi, typed_vi]
-            _, vi = DynamicPPL.evaluate!!(new_model, vi)
-            @test vi isa DynamicPPL.VarInfo
-        end
+        # It might seem a bit ugly that we have to use `evaluate_nowarn!!` here. Essentially
+        # we want to test that low-level evaluation works with the context, so this is the
+        # right thing to do.
+        _, vi = DynamicPPL.evaluate_nowarn!!(new_model, vi)
+        @test vi isa DynamicPPL.VarInfo
     end
 end
 
@@ -53,7 +52,7 @@ function test_parent_context(context::DynamicPPL.AbstractContext, model::Dynamic
     @testset "get/set leaf and child contexts" begin
         # Ensure we're using a different leaf context than the current.
         leafcontext_new = if DynamicPPL.leafcontext(context) isa DefaultContext
-            DynamicPPL.DynamicTransformationContext{false}()
+            DynamicPPL.InitContext(Random.MersenneTwister(1234), InitFromPrior(), UnlinkAll())
         else
             DefaultContext()
         end
@@ -73,13 +72,17 @@ function test_parent_context(context::DynamicPPL.AbstractContext, model::Dynamic
 
     @testset "initialisation and evaluation" begin
         new_model = contextualize(model, context)
-        for vi in [DynamicPPL.VarInfo(), DynamicPPL.typed_varinfo(DynamicPPL.VarInfo())]
-            # Initialisation
-            _, vi = DynamicPPL.init!!(new_model, DynamicPPL.VarInfo())
-            @test vi isa DynamicPPL.VarInfo
-            # Evaluation
-            _, vi = DynamicPPL.evaluate!!(new_model, vi)
-            @test vi isa DynamicPPL.VarInfo
-        end
+        vi = DynamicPPL.VarInfo()
+        # Initialisation
+        _, vi = DynamicPPL.init!!(
+            new_model,
+            DynamicPPL.VarInfo(),
+            DynamicPPL.InitFromPrior(),
+            DynamicPPL.UnlinkAll(),
+        )
+        @test vi isa DynamicPPL.VarInfo
+        # Evaluation. See above regarding note about evaluate_nowarn!!.
+        _, vi = DynamicPPL.evaluate_nowarn!!(new_model, vi)
+        @test vi isa DynamicPPL.VarInfo
     end
 end

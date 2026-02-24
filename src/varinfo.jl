@@ -1,1810 +1,593 @@
-####
-#### Types for typed and untyped VarInfo
-####
+"""
+    VarInfo{
+        Tfm<:AbstractTransformStrategy,
+        T<:VarNamedTuple,
+        Accs<:AccumulatorTuple
+    } <: AbstractVarInfo
 
-####################
-# VarInfo metadata #
-####################
+The default implementation of `AbstractVarInfo`, storing variable values and accumulators.
+
+`VarInfo` is quite a thin wrapper around a `VarNamedTuple` storing the variable values, and
+a tuple of accumulators. The only really noteworthy thing about it is that it stores the
+values of variables vectorised as instances of [`AbstractTransformedValue`](@ref). That is,
+it stores each value as a special vector with a flag indicating whether it is just a
+vectorised value ([`VectorValue`](@ref)), or whether it is also linked
+([`LinkedVectorValue`](@ref)). It also stores the size of the actual post-transformation
+value. These are all accessible via [`AbstractTransformedValue`](@ref).
+
+`VarInfo` additionally stores a transform strategy, which reflects the linked status of
+variables inside the `VarInfo`. For example, a `VarInfo{LinkAll}` should contain only
+`LinkedVectorValue`s in its `values` field.
+
+Because the job of `VarInfo` is to store transformed values, there is no generic
+`setindex!!` implementation on `VarInfo` itself. Instead, all storage must go via
+[`setindex_with_dist!!`](@ref), which takes care of storing the value in the correct
+transformed form. This in turn means that the distribution on the right-hand side of a
+tilde-statement must be available when modifying a VarInfo.
+
+You can use `getindex` on `VarInfo` to obtain values in the support of the original
+distribution. To directly get access to the internal vectorised values, use
+[`getindex_internal`](@ref), [`setindex_internal!!`](@ref), and [`unflatten!!`](@ref).
+
+For more details on the internal storage, see documentation of
+[`AbstractTransformedValue`](@ref) and [`VarNamedTuple`](@ref).
+
+# Fields
+$(TYPEDFIELDS)
 
 """
-The `Metadata` struct stores some metadata about the parameters of the model. This helps
-query certain information about a variable, such as its distribution, which samplers
-sample this variable, its value and whether this value is transformed to real space or
-not.
-
-Let `md` be an instance of `Metadata`:
-- `md.vns` is the vector of all `VarName` instances.
-- `md.idcs` is the dictionary that maps each `VarName` instance to its index in
- `md.vns`, `md.ranges` `md.dists`, and `md.is_transformed`.
-- `md.vns[md.idcs[vn]] == vn`.
-- `md.dists[md.idcs[vn]]` is the distribution of `vn`.
-- `md.ranges[md.idcs[vn]]` is the index range of `vn` in `md.vals`.
-- `md.vals[md.ranges[md.idcs[vn]]]` is the vector of values of corresponding to `vn`.
-- `md.is_transformed` is a BitVector of true/false flags for whether a variable has been
-    transformed. `md.is_transformed[md.idcs[vn]]` is the value corresponding to `vn`.
-
-To make `md::Metadata` type stable, all the `md.vns` must have the same symbol
-and distribution type. However, one can have a Julia variable, say `x`, that is a
-matrix or a hierarchical array sampled in partitions, e.g.
-`x[1][:] ~ MvNormal(zeros(2), I); x[2][:] ~ MvNormal(ones(2), I)`, and is managed by
-a single `md::Metadata` so long as all the distributions on the RHS of `~` are of the
-same type. Type unstable `Metadata` will still work but will have inferior performance.
-When sampling, the first iteration uses a type unstable `Metadata` for all the
-variables then a specialized `Metadata` is used for each symbol along with a function
-barrier to make the rest of the sampling type stable.
-"""
-struct Metadata{
-    TIdcs<:Dict{<:VarName,Int},
-    TDists<:AbstractVector{<:Distribution},
-    TVN<:AbstractVector{<:VarName},
-    TVal<:AbstractVector{<:Real},
-}
-    # Mapping from the `VarName` to its integer index in `vns`, `ranges` and `dists`
-    idcs::TIdcs # Dict{<:VarName,Int}
-
-    # Vector of identifiers for the random variables, where `vns[idcs[vn]] == vn`
-    vns::TVN # AbstractVector{<:VarName}
-
-    # Vector of index ranges in `vals` corresponding to `vns`
-    # Each `VarName` `vn` has a single index or a set of contiguous indices in `vals`
-    ranges::Vector{UnitRange{Int}}
-
-    # Vector of values of all the univariate, multivariate and matrix variables
-    # The value(s) of `vn` is/are `vals[ranges[idcs[vn]]]`
-    vals::TVal # AbstractVector{<:Real}
-
-    # Vector of distributions correpsonding to `vns`
-    dists::TDists # AbstractVector{<:Distribution}
-
-    is_transformed::BitVector
-end
-
-function Base.:(==)(md1::Metadata, md2::Metadata)
-    return (
-        md1.idcs == md2.idcs &&
-        md1.vns == md2.vns &&
-        md1.ranges == md2.ranges &&
-        md1.vals == md2.vals &&
-        md1.dists == md2.dists &&
-        md1.is_transformed == md2.is_transformed
-    )
-end
-
-###########
-# VarInfo #
-###########
-
-"""
-    struct VarInfo{Tmeta,Accs<:AccumulatorTuple} <: AbstractVarInfo
-        metadata::Tmeta
-        accs::Accs
-    end
-
-A light wrapper over some kind of metadata.
-
-The type of the metadata can be one of a number of options. It may either be a
-`Metadata` or a `VarNamedVector`, _or_, it may be a `NamedTuple` which maps
-symbols to `Metadata` or `VarNamedVector` instances. Here, a _symbol_ refers
-to a Julia variable and may consist of one or more `VarName`s which appear on
-the left-hand side of tilde statements. For example, `x[1]` and `x[2]` both
-have the same symbol `x`.
-
-Several type aliases are provided for these forms of VarInfos:
-- `VarInfo{<:Metadata}` is `UntypedVarInfo`
-- `VarInfo{<:VarNamedVector}` is `UntypedVectorVarInfo`
-- `VarInfo{<:NamedTuple}` is `NTVarInfo`
-
-The NamedTuple form, i.e. `NTVarInfo`, is useful for maintaining type stability
-of model evaluation. However, the element type of NamedTuples are not contained
-in its type itself: thus, there is no way to use the type system to determine
-whether the elements of the NamedTuple are `Metadata` or `VarNamedVector`.
-
-Note that for NTVarInfo, it is the user's responsibility to ensure that each
-symbol is visited at least once during model evaluation, regardless of any
-stochastic branching.
-"""
-struct VarInfo{Tmeta,Accs<:AccumulatorTuple} <: AbstractVarInfo
-    metadata::Tmeta
+struct VarInfo{Tfm<:AbstractTransformStrategy,T<:VarNamedTuple,Accs<:AccumulatorTuple} <:
+       AbstractVarInfo
+    transform_strategy::Tfm
+    values::T
     accs::Accs
+
+    function VarInfo(
+        tfm_strategy::Tfm, values::T, accs::Accs
+    ) where {Tfm<:AbstractTransformStrategy,T<:VarNamedTuple,Accs<:AccumulatorTuple}
+        return new{Tfm,T,Accs}(tfm_strategy, values, accs)
+    end
+    function VarInfo(
+        tfm_strategy::Tfm, values::T, accs::NTuple{N,AbstractAccumulator}
+    ) where {Tfm<:AbstractTransformStrategy,T<:VarNamedTuple,N}
+        return VarInfo(tfm_strategy, values, AccumulatorTuple(accs))
+    end
 end
-function VarInfo(meta=Metadata())
-    return VarInfo(meta, default_accumulators())
+
+function Base.:(==)(vi1::VarInfo, vi2::VarInfo)
+    return (vi1.transform_strategy == vi2.transform_strategy) &
+           (vi1.values == vi2.values) &
+           (vi1.accs == vi2.accs)
 end
+function Base.isequal(vi1::VarInfo, vi2::VarInfo)
+    return isequal(vi1.transform_strategy, vi2.transform_strategy) &&
+           isequal(vi1.values, vi2.values) &&
+           isequal(vi1.accs, vi2.accs)
+end
+
+VarInfo() = VarInfo(UnlinkAll(), VarNamedTuple(), default_accumulators())
 
 """
     VarInfo(
-        [rng::Random.AbstractRNG],
-        model,
-        [init_strategy::AbstractInitStrategy]
+       [rng::AbstractRNG,]
+       model::Model,
+       init_strategy::AbstractInitStrategy=InitFromPrior(),
+       transform_strategy::AbstractTransformStrategy=UnlinkAll(),
     )
 
-Generate a `VarInfo` object for the given `model`, by initialising it with the
-given `rng` and `init_strategy`.
+Create a fresh `VarInfo` for the given model by running the model and populating it
+according to the given initialisation strategy. The resulting variables in the `VarInfo` can
+be linked or unlinked according to the given linking strategy.
 
-!!! warning
+# Arguments
 
-    This function currently returns a `VarInfo` with its metadata field set to
-    a `NamedTuple` of `Metadata`. This is an implementation detail. In general,
-    this function may return any kind of object that satisfies the
-    `AbstractVarInfo` interface. If you require precise control over the type
-    of `VarInfo` returned, use the internal functions `untyped_varinfo`,
-    `typed_varinfo`, `untyped_vector_varinfo`, or `typed_vector_varinfo`
-    instead.
+- `rng::AbstractRNG`: An optional random number generator to use for any stochastic
+  initialisation. If not provided, `Random.default_rng()` is used.
+- `model::Model`: The model for which to create the `VarInfo`.
+- `init_strategy::AbstractInitStrategy`: An optional initialisation strategy (see
+  [`AbstractInitStrategy`](@ref)). Defaults to `InitFromPrior()`, i.e., all variables are
+  initialised by sampling from their prior distributions.
+- `transform_strategy::AbstractTransformStrategy`: An optional linking strategy (see
+  [`AbstractTransformStrategy`](@ref)). Defaults to [`UnlinkAll()`](@ref), i.e., all
+  variables are vectorised but not linked.
+
+# Extended help
+
+## Performance characteristics of linked VarInfo
+
+This method allows the immediate generation of a linked VarInfo, which was not possible in
+previous versions of DynamicPPL. It is guaranteed that `link!!(VarInfo(rng, model), model)`
+(the old way of instantiating a linked `VarInfo`) is equivalent to `VarInfo(rng, model,
+LinkAll())`.
+
+Depending on the model, each of these two methods may be more performant, although the
+reasons for this are still somewhat unclear. Small models tend to do better with
+instantiating an unlinked `VarInfo` and then linking it, while large models tend to do
+better with directly instantiating a linked `VarInfo`. The hope is that this generally does
+not impact usage since linking is not typically something done in performance-critical
+sections of Turing.jl. If linking performance is critical, it is recommended to benchmark
+both methods for the specific model in question.
 """
-function VarInfo(
+function DynamicPPL.VarInfo(
+    rng::Random.AbstractRNG,
+    model::Model,
+    init_strategy::AbstractInitStrategy,
+    ::Union{UnlinkAll,UnlinkSome},
+)
+    # In this case, no variables are to be linked. We can optimise performance by directly
+    # calling init!! and not faffing about with accumulators. (This does lead to significant
+    # performance improvements for the typical use case of generating an unlinked VarInfo.)
+    return last(init!!(rng, model, VarInfo(), init_strategy, UnlinkAll()))
+end
+function DynamicPPL.VarInfo(
+    rng::Random.AbstractRNG,
+    model::Model,
+    init_strategy::AbstractInitStrategy,
+    transform_strategy::AbstractTransformStrategy,
+)
+    vi = OnlyAccsVarInfo((VectorValueAccumulator(), default_accumulators()...))
+    vi = last(init!!(rng, model, vi, init_strategy, transform_strategy))
+    # Now we just need to shuffle the VectorValueAccumulator values into the VarInfo.
+    # Extract the vectorised values values.
+    vec_val_acc = getacc(vi, Val(VECTORVAL_ACCNAME))
+    return VarInfo(
+        transform_strategy,
+        vec_val_acc.values,
+        DynamicPPL.deleteacc!!(vi.accs, Val(VECTORVAL_ACCNAME)),
+    )
+end
+function DynamicPPL.VarInfo(
     rng::Random.AbstractRNG,
     model::Model,
     init_strategy::AbstractInitStrategy=InitFromPrior(),
 )
-    return typed_varinfo(rng, model, init_strategy)
+    return VarInfo(rng, model, init_strategy, UnlinkAll())
 end
-function VarInfo(model::Model, init_strategy::AbstractInitStrategy=InitFromPrior())
-    return VarInfo(Random.default_rng(), model, init_strategy)
-end
-
-const UntypedVectorVarInfo = VarInfo{<:VarNamedVector}
-const UntypedVarInfo = VarInfo{<:Metadata}
-# TODO: NTVarInfo carries no information about the type of the actual metadata
-# i.e. the elements of the NamedTuple. It could be Metadata or it could be
-# VarNamedVector.
-# Resolving this ambiguity would likely require us to replace NamedTuple with
-# something which carried both its keys as well as its values' types as type
-# parameters.
-const NTVarInfo = VarInfo{<:NamedTuple}
-const VarInfoOrThreadSafeVarInfo{Tmeta} = Union{
-    VarInfo{Tmeta},ThreadSafeVarInfo{<:VarInfo{Tmeta}}
-}
-
-function Base.:(==)(vi1::VarInfo, vi2::VarInfo)
-    return (vi1.metadata == vi2.metadata && vi1.accs == vi2.accs)
+function DynamicPPL.VarInfo(
+    model::Model,
+    init_strategy::AbstractInitStrategy=InitFromPrior(),
+    transform_strategy::AbstractTransformStrategy=UnlinkAll(),
+)
+    return VarInfo(Random.default_rng(), model, init_strategy, transform_strategy)
 end
 
-# NOTE: This is kind of weird, but it effectively preserves the "old"
-# behavior where we're allowed to call `link!` on the same `VarInfo`
-# multiple times.
+get_values(vi::VarInfo) = vi.values
+getaccs(vi::VarInfo) = vi.accs
+function setaccs!!(vi::VarInfo, accs::AccumulatorTuple)
+    return VarInfo(vi.transform_strategy, vi.values, accs)
+end
+
 transformation(::VarInfo) = DynamicTransformation()
 
-# No-op if we're already working with a `VarNamedVector`.
-metadata_to_varnamedvector(vnv::VarNamedVector) = vnv
-function metadata_to_varnamedvector(md::Metadata)
-    idcs = copy(md.idcs)
-    vns = copy(md.vns)
-    ranges = copy(md.ranges)
-    vals = copy(md.vals)
-    is_trans = map(Base.Fix1(is_transformed, md), md.vns)
-    transforms = map(md.dists, is_trans) do dist, trans
-        if trans
-            return from_linked_vec_transform(dist)
-        else
-            return from_vec_transform(dist)
-        end
-    end
-
-    return VarNamedVector(
-        OrderedDict{eltype(keys(idcs)),Int}(idcs), vns, ranges, vals, transforms, is_trans
-    )
+function Base.copy(vi::VarInfo)
+    return VarInfo(vi.transform_strategy, copy(vi.values), copy(getaccs(vi)))
 end
-
-function has_varnamedvector(vi::VarInfo)
-    return vi.metadata isa VarNamedVector ||
-           (vi isa NTVarInfo && any(Base.Fix2(isa, VarNamedVector), values(vi.metadata)))
-end
-
-########################
-# VarInfo constructors #
-########################
-
-"""
-    untyped_varinfo([rng, ]model[, init_strategy])
-
-Construct a VarInfo object for the given `model`, which has just a single
-`Metadata` as its metadata field.
-
-# Arguments
-- `rng::Random.AbstractRNG`: The random number generator to use during model evaluation
-- `model::Model`: The model for which to create the varinfo object
-- `init_strategy::AbstractInitStrategy`: How the values are to be initialised. Defaults to `InitFromPrior()`.
-"""
-function untyped_varinfo(
-    rng::Random.AbstractRNG,
-    model::Model,
-    init_strategy::AbstractInitStrategy=InitFromPrior(),
-)
-    return last(init!!(rng, model, VarInfo(Metadata()), init_strategy))
-end
-function untyped_varinfo(model::Model, init_strategy::AbstractInitStrategy=InitFromPrior())
-    return untyped_varinfo(Random.default_rng(), model, init_strategy)
-end
-
-"""
-    typed_varinfo(vi::UntypedVarInfo)
-
-This function finds all the unique `sym`s from the instances of `VarName{sym}` found in
-`vi.metadata.vns`. It then extracts the metadata associated with each symbol from the
-global `vi.metadata` field. Finally, a new `VarInfo` is created with a new `metadata` as
-a `NamedTuple` mapping from symbols to type-stable `Metadata` instances, one for each
-symbol.
-"""
-function typed_varinfo(vi::UntypedVarInfo)
-    meta = vi.metadata
-    new_metas = Metadata[]
-    # Symbols of all instances of `VarName{sym}` in `vi.vns`
-    syms_tuple = Tuple(syms(vi))
-    for s in syms_tuple
-        # Find all indices in `vns` with symbol `s`
-        inds = findall(vn -> getsym(vn) === s, meta.vns)
-        n = length(inds)
-        # New `vns`
-        sym_vns = getindex.((meta.vns,), inds)
-        # New idcs
-        sym_idcs = Dict(a => i for (i, a) in enumerate(sym_vns))
-        # New dists
-        sym_dists = getindex.((meta.dists,), inds)
-        # New is_transformed
-        sym_is_transformed = meta.is_transformed[inds]
-
-        # Extract new ranges and vals
-        _ranges = getindex.((meta.ranges,), inds)
-        # `copy.()` is a workaround to reduce the eltype from Real to Int or Float64
-        _vals = [copy.(meta.vals[_ranges[i]]) for i in 1:n]
-        sym_ranges = Vector{eltype(_ranges)}(undef, n)
-        start = 0
-        for i in 1:n
-            sym_ranges[i] = (start + 1):(start + length(_vals[i]))
-            start += length(_vals[i])
-        end
-        sym_vals = foldl(vcat, _vals)
-
-        push!(
-            new_metas,
-            Metadata(
-                sym_idcs, sym_vns, sym_ranges, sym_vals, sym_dists, sym_is_transformed
-            ),
-        )
-    end
-    nt = NamedTuple{syms_tuple}(Tuple(new_metas))
-    return VarInfo(nt, copy(vi.accs))
-end
-function typed_varinfo(vi::NTVarInfo)
-    # This function preserves the behaviour of typed_varinfo(vi) where vi is
-    # already a NTVarInfo
-    has_varnamedvector(vi) && error(
-        "Cannot convert VarInfo with NamedTuple of VarNamedVector to VarInfo with NamedTuple of Metadata",
-    )
-    return vi
-end
-"""
-    typed_varinfo([rng, ]model[, init_strategy])
-
-Return a VarInfo object for the given `model`, which has a NamedTuple of
-`Metadata` structs as its metadata field.
-
-# Arguments
-- `rng::Random.AbstractRNG`: The random number generator to use during model evaluation
-- `model::Model`: The model for which to create the varinfo object
-- `init_strategy::AbstractInitStrategy`: How the values are to be initialised. Defaults to `InitFromPrior()`.
-"""
-function typed_varinfo(
-    rng::Random.AbstractRNG,
-    model::Model,
-    init_strategy::AbstractInitStrategy=InitFromPrior(),
-)
-    return typed_varinfo(untyped_varinfo(rng, model, init_strategy))
-end
-function typed_varinfo(model::Model, init_strategy::AbstractInitStrategy=InitFromPrior())
-    return typed_varinfo(Random.default_rng(), model, init_strategy)
-end
-
-"""
-    untyped_vector_varinfo([rng, ]model[, init_strategy])
-
-Return a VarInfo object for the given `model`, which has just a single
-`VarNamedVector` as its metadata field.
-
-# Arguments
-- `rng::Random.AbstractRNG`: The random number generator to use during model evaluation
-- `model::Model`: The model for which to create the varinfo object
-- `init_strategy::AbstractInitStrategy`: How the values are to be initialised. Defaults to `InitFromPrior()`.
-"""
-function untyped_vector_varinfo(vi::UntypedVarInfo)
-    md = metadata_to_varnamedvector(vi.metadata)
-    return VarInfo(md, copy(vi.accs))
-end
-function untyped_vector_varinfo(
-    rng::Random.AbstractRNG,
-    model::Model,
-    init_strategy::AbstractInitStrategy=InitFromPrior(),
-)
-    return last(init!!(rng, model, VarInfo(VarNamedVector()), init_strategy))
-end
-function untyped_vector_varinfo(
-    model::Model, init_strategy::AbstractInitStrategy=InitFromPrior()
-)
-    return untyped_vector_varinfo(Random.default_rng(), model, init_strategy)
-end
-
-"""
-    typed_vector_varinfo([rng, ]model[, init_strategy])
-
-Return a VarInfo object for the given `model`, which has a NamedTuple of
-`VarNamedVector`s as its metadata field.
-
-# Arguments
-- `rng::Random.AbstractRNG`: The random number generator to use during model evaluation
-- `model::Model`: The model for which to create the varinfo object
-- `init_strategy::AbstractInitStrategy`: How the values are to be initialised. Defaults to `InitFromPrior()`.
-"""
-function typed_vector_varinfo(vi::NTVarInfo)
-    md = map(metadata_to_varnamedvector, vi.metadata)
-    return VarInfo(md, copy(vi.accs))
-end
-function typed_vector_varinfo(vi::UntypedVectorVarInfo)
-    new_metas = group_by_symbol(vi.metadata)
-    nt = NamedTuple(new_metas)
-    return VarInfo(nt, copy(vi.accs))
-end
-function typed_vector_varinfo(
-    rng::Random.AbstractRNG,
-    model::Model,
-    init_strategy::AbstractInitStrategy=InitFromPrior(),
-)
-    return typed_vector_varinfo(untyped_vector_varinfo(rng, model, init_strategy))
-end
-function typed_vector_varinfo(
-    model::Model, init_strategy::AbstractInitStrategy=InitFromPrior()
-)
-    return typed_vector_varinfo(Random.default_rng(), model, init_strategy)
-end
-
-"""
-    vector_length(varinfo::VarInfo)
-
-Return the length of the vector representation of `varinfo`.
-"""
-vector_length(varinfo::VarInfo) = length(varinfo.metadata)
-vector_length(varinfo::NTVarInfo) = sum(length, varinfo.metadata)
-vector_length(md::Metadata) = sum(length, md.ranges)
-
-function unflatten(vi::VarInfo, x::AbstractVector)
-    md = unflatten_metadata(vi.metadata, x)
-    return VarInfo(md, vi.accs)
-end
-
-# We would call this `unflatten` if not for `unflatten` having a method for NamedTuples in
-# utils.jl.
-@generated function unflatten_metadata(
-    metadata::NamedTuple{names}, x::AbstractVector
-) where {names}
-    exprs = []
-    offset = :(0)
-    for f in names
-        mdf = :(metadata.$f)
-        len = :(sum(length, $mdf.ranges))
-        push!(exprs, :($f = unflatten_metadata($mdf, x[($offset + 1):($offset + $len)])))
-        offset = :($offset + $len)
-    end
-    length(exprs) == 0 && return :(NamedTuple())
-    return :($(exprs...),)
-end
-
-function unflatten_metadata(md::Metadata, x::AbstractVector)
-    return Metadata(md.idcs, md.vns, md.ranges, x, md.dists, md.is_transformed)
-end
-
-unflatten_metadata(vnv::VarNamedVector, x::AbstractVector) = unflatten(vnv, x)
-
-####
-#### Internal functions
-####
-
-"""
-    Metadata()
-
-Construct an empty type unstable instance of `Metadata`.
-"""
-function Metadata()
-    vals = Vector{Real}()
-    is_transformed = BitVector()
-
-    return Metadata(
-        Dict{VarName,Int}(),
-        Vector{VarName}(),
-        Vector{UnitRange{Int}}(),
-        vals,
-        Vector{Distribution}(),
-        is_transformed,
-    )
-end
-
-"""
-    empty!(meta::Metadata)
-
-Empty the fields of `meta`.
-
-This is useful when using a sampling algorithm that assumes an empty `meta`, e.g. `SMC`.
-"""
-function empty!(meta::Metadata)
-    empty!(meta.idcs)
-    empty!(meta.vns)
-    empty!(meta.ranges)
-    empty!(meta.vals)
-    empty!(meta.dists)
-    empty!(meta.is_transformed)
-    return meta
-end
-
-# Removes the first element of a NamedTuple. The pairs in a NamedTuple are ordered, so this is well-defined.
-if VERSION < v"1.1"
-    _tail(nt::NamedTuple{names}) where {names} = NamedTuple{Base.tail(names)}(nt)
-else
-    _tail(nt::NamedTuple) = Base.tail(nt)
-end
-
-function subset(varinfo::VarInfo, vns::AbstractVector{<:VarName})
-    metadata = subset(varinfo.metadata, vns)
-    return VarInfo(metadata, map(copy, getaccs(varinfo)))
-end
-
-function subset(metadata::NamedTuple, vns::AbstractVector{<:VarName})
-    vns_syms = Set(unique(map(getsym, vns)))
-    syms = filter(Base.Fix2(in, vns_syms), keys(metadata))
-    metadatas = map(syms) do sym
-        subset(getfield(metadata, sym), filter(==(sym) ∘ getsym, vns))
-    end
-    return NamedTuple{syms}(metadatas)
-end
-
-# The above method is type unstable since we don't know which symbols are in `vns`.
-# In the below special case, when all `vns` have the same symbol, we can write a type stable
-# version.
-
-@generated function subset(
-    metadata::NamedTuple{names}, vns::AbstractVector{<:VarName{sym}}
-) where {names,sym}
-    return if (sym in names)
-        # TODO(mhauru) Note that this could still generate an empty metadata object if none
-        # of the lenses in `vns` are in `metadata`. Not sure if that's okay. Checking for
-        # emptiness would make this type unstable again.
-        :((; $sym=subset(metadata.$sym, vns)))
-    else
-        :(NamedTuple{}())
-    end
-end
-
-function subset(metadata::Metadata, vns_given::AbstractVector{VN}) where {VN<:VarName}
-    # TODO: Should we error if `vns` contains a variable that is not in `metadata`?
-    # Find all the vns in metadata that are subsumed by one of the given vns.
-    vns = filter(vn -> any(subsumes(vn_given, vn) for vn_given in vns_given), metadata.vns)
-    indices_for_vns = map(Base.Fix1(getindex, metadata.idcs), vns)
-    indices = if isempty(vns)
-        Dict{VarName,Int}()
-    else
-        Dict(vn => i for (i, vn) in enumerate(vns))
-    end
-    # Construct new `vals` and `ranges`.
-    vals_original = metadata.vals
-    ranges_original = metadata.ranges
-    # Allocate the new `vals`. and `ranges`.
-    vals = similar(metadata.vals, sum(length, ranges_original[indices_for_vns]; init=0))
-    ranges = similar(ranges_original, length(vns))
-    # The new range `r` for `vns[i]` is offset by `offset` and
-    # has the same length as the original range `r_original`.
-    # The new `indices` (from above) ensures ordering according to `vns`.
-    # NOTE: This means that the order of the variables in `vns` defines the order
-    # in the resulting `varinfo`! This can have performance implications, e.g.
-    # if in the model we have something like
-    #
-    #     for i = 1:N
-    #         x[i] ~ Normal()
-    #     end
-    #
-    # and we then we do
-    #
-    #    subset(varinfo, [@varname(x[i]) for i in shuffle(keys(varinfo))])
-    #
-    # the resulting `varinfo` will have `vals` ordered differently from the
-    # original `varinfo`, which can have performance implications.
-    offset = 0
-    for (idx, idx_original) in enumerate(indices_for_vns)
-        r_original = ranges_original[idx_original]
-        r = (offset + 1):(offset + length(r_original))
-        vals[r] = vals_original[r_original]
-        ranges[idx] = r
-        offset = r[end]
-    end
-
-    dists = metadata.dists[indices_for_vns]
-    is_transformed = metadata.is_transformed[indices_for_vns]
-    return Metadata(indices, vns, ranges, vals, dists, is_transformed)
-end
-
-function Base.merge(varinfo_left::VarInfo, varinfo_right::VarInfo)
-    return _merge(varinfo_left, varinfo_right)
-end
-
-function _merge(varinfo_left::VarInfo, varinfo_right::VarInfo)
-    metadata = merge_metadata(varinfo_left.metadata, varinfo_right.metadata)
-    accs = map(copy, getaccs(varinfo_right))
-    return VarInfo(metadata, accs)
-end
-
-function merge_metadata(vnv_left::VarNamedVector, vnv_right::VarNamedVector)
-    return merge(vnv_left, vnv_right)
-end
-
-@generated function merge_metadata(
-    metadata_left::NamedTuple{names_left}, metadata_right::NamedTuple{names_right}
-) where {names_left,names_right}
-    names = Expr(:tuple)
-    vals = Expr(:tuple)
-    # Loop over `names_left` first because we want to preserve the order of the variables.
-    for sym in names_left
-        push!(names.args, QuoteNode(sym))
-        if sym in names_right
-            push!(vals.args, :(merge_metadata(metadata_left.$sym, metadata_right.$sym)))
-        else
-            push!(vals.args, :(metadata_left.$sym))
-        end
-    end
-    # Loop over remaining variables in `names_right`.
-    names_right_only = filter(∉(names_left), names_right)
-    for sym in names_right_only
-        push!(names.args, QuoteNode(sym))
-        push!(vals.args, :(metadata_right.$sym))
-    end
-
-    return :(NamedTuple{$names}($vals))
-end
-
-function merge_metadata(metadata_left::Metadata, metadata_right::Metadata)
-    # Extract the varnames.
-    vns_left = metadata_left.vns
-    vns_right = metadata_right.vns
-    vns_both = union(vns_left, vns_right)
-
-    # Determine `eltype` of `vals`.
-    T_left = eltype(metadata_left.vals)
-    T_right = eltype(metadata_right.vals)
-    T = promote_type(T_left, T_right)
-    # TODO: Is this necessary?
-    if !(T <: Real)
-        T = Real
-    end
-
-    # Determine `eltype` of `dists`.
-    D_left = eltype(metadata_left.dists)
-    D_right = eltype(metadata_right.dists)
-    D = promote_type(D_left, D_right)
-    # TODO: Is this necessary?
-    if !(D <: Distribution)
-        D = Distribution
-    end
-
-    # Initialize required fields for `metadata`.
-    vns = eltype(vns_both)[]
-    idcs = Dict{eltype(vns_both),Int}()
-    ranges = Vector{UnitRange{Int}}()
-    vals = T[]
-    dists = D[]
-    transformed = BitVector()
-
-    # Range offset.
-    offset = 0
-
-    for (idx, vn) in enumerate(vns_both)
-        idcs[vn] = idx
-        push!(vns, vn)
-        metadata_for_vn = vn in vns_right ? metadata_right : metadata_left
-
-        val = getindex_internal(metadata_for_vn, vn)
-        append!(vals, val)
-        r = (offset + 1):(offset + length(val))
-        push!(ranges, r)
-        offset = r[end]
-        dist = getdist(metadata_for_vn, vn)
-        push!(dists, dist)
-        push!(transformed, is_transformed(metadata_for_vn, vn))
-    end
-
-    return Metadata(idcs, vns, ranges, vals, dists, transformed)
-end
-
-const VarView = Union{Int,UnitRange,Vector{Int}}
-
-"""
-    setval!(vi::UntypedVarInfo, val, vview::Union{Int, UnitRange, Vector{Int}})
-
-Set the value of `vi.vals[vview]` to `val`.
-"""
-setval!(vi::UntypedVarInfo, val, vview::VarView) = vi.metadata.vals[vview] = val
-
-"""
-    getmetadata(vi::VarInfo, vn::VarName)
-
-Return the metadata in `vi` that belongs to `vn`.
-"""
-getmetadata(vi::VarInfo, vn::VarName) = vi.metadata
-getmetadata(vi::NTVarInfo, vn::VarName) = getfield(vi.metadata, getsym(vn))
-
-"""
-    getidx(vi::VarInfo, vn::VarName)
-
-Return the index of `vn` in the metadata of `vi` corresponding to `vn`.
-"""
-getidx(vi::VarInfo, vn::VarName) = getidx(getmetadata(vi, vn), vn)
-getidx(md::Metadata, vn::VarName) = md.idcs[vn]
-
-"""
-    getrange(vi::VarInfo, vn::VarName)
-
-Return the index range of `vn` in the metadata of `vi`.
-"""
-getrange(vi::VarInfo, vn::VarName) = getrange(getmetadata(vi, vn), vn)
-getrange(md::Metadata, vn::VarName) = md.ranges[getidx(md, vn)]
-
-"""
-    setrange!(vi::VarInfo, vn::VarName, range)
-
-Set the index range of `vn` in the metadata of `vi` to `range`.
-"""
-setrange!(vi::VarInfo, vn::VarName, range) = setrange!(getmetadata(vi, vn), vn, range)
-setrange!(md::Metadata, vn::VarName, range) = md.ranges[getidx(md, vn)] = range
-
-"""
-    getdist(vi::VarInfo, vn::VarName)
-
-Return the distribution from which `vn` was sampled in `vi`.
-"""
-getdist(vi::VarInfo, vn::VarName) = getdist(getmetadata(vi, vn), vn)
-getdist(md::Metadata, vn::VarName) = md.dists[getidx(md, vn)]
-# TODO(mhauru) Remove this once the old Gibbs sampler stuff is gone.
-function getdist(::VarNamedVector, ::VarName)
-    throw(ErrorException("getdist does not exist for VarNamedVector"))
-end
-
-getindex_internal(vi::VarInfo, vn::VarName) = getindex_internal(getmetadata(vi, vn), vn)
-# TODO(torfjelde): Use `view` instead of `getindex`. Requires addressing type-stability issues though,
-# since then we might be returning a `SubArray` rather than an `Array`, which is typically
-# what a bijector would result in, even if the input is a view (`SubArray`).
-# TODO(torfjelde): An alternative is to implement `view` directly instead.
-getindex_internal(md::Metadata, vn::VarName) = getindex(md.vals, getrange(md, vn))
-function getindex_internal(vi::VarInfo, vns::Vector{<:VarName})
-    return mapreduce(Base.Fix1(getindex_internal, vi), vcat, vns)
-end
-getindex_internal(vi::VarInfo, ::Colon) = getindex_internal(vi.metadata, Colon())
-# NOTE: `mapreduce` over `NamedTuple` results in worse type-inference.
-# See for example https://github.com/JuliaLang/julia/pull/46381.
-function getindex_internal(vi::NTVarInfo, ::Colon)
-    return reduce(vcat, map(Base.Fix2(getindex_internal, Colon()), vi.metadata))
-end
-function getindex_internal(vi::VarInfo{NamedTuple{(),Tuple{}}}, ::Colon)
-    return float(Real)[]
-end
-function getindex_internal(md::Metadata, ::Colon)
+Base.haskey(vi::VarInfo, vn::VarName) = haskey(vi.values, vn)
+Base.length(vi::VarInfo) = length(vi.values)
+Base.keys(vi::VarInfo) = keys(vi.values)
+# TODO(penelopeysm): Right now, this returns Vector{Any}. We could use init=Union{} and
+# BangBang.push!! instead of push!, which would give the resulting vector as concrete an
+# eltype as possible. However, that is type unstable since it is inferred as
+# Union{Vector{Union{}}, Vector{Float64}} (I suppose this is because it can't tell whether
+# the result will be empty or not...? Not sure).
+function Base.values(vi::VarInfo)
     return mapreduce(
-        Base.Fix1(getindex_internal, md), vcat, md.vns; init=similar(md.vals, 0)
+        p -> DynamicPPL.get_transform(p.second)(DynamicPPL.get_internal_value(p.second)),
+        push!,
+        vi.values;
+        init=Any[],
+    )
+end
+
+function Base.show(io::IO, ::MIME"text/plain", vi::VarInfo)
+    printstyled(io, "VarInfo"; bold=true)
+    print(io, "\n ├─ ")
+    printstyled(io, "transform_strategy: "; bold=true)
+    print(io, vi.transform_strategy)
+    println(io)
+    print(io, " ├─ ")
+    if isempty(vi.values)
+        printstyled(io, "values"; bold=true)
+        println(io, " (empty)")
+    else
+        printstyled(io, "values"; bold=true)
+        print(io, "\n │  ")
+        DynamicPPL.VarNamedTuples.vnt_pretty_print(io, vi.values, " │  ", 0)
+        println(io)
+    end
+    print(io, " └─ ")
+    printstyled(io, "accs"; bold=true)
+    print(io, "\n    ")
+    DynamicPPL.pretty_print(io, vi.accs, "    ")
+    return nothing
+end
+
+function Base.getindex(vi::VarInfo, vn::VarName)
+    tv = getindex(vi.values, vn)
+    return DynamicPPL.get_transform(tv)(DynamicPPL.get_internal_value(tv))
+end
+function Base.getindex(vi::VarInfo, vns::AbstractVector{<:VarName})
+    return [getindex(vi, vn) for vn in vns]
+end
+
+Base.isempty(vi::VarInfo) = isempty(vi.values)
+Base.empty(vi::VarInfo) = VarInfo(UnlinkAll(), empty(vi.values), map(reset, vi.accs))
+function BangBang.empty!!(vi::VarInfo)
+    return VarInfo(UnlinkAll(), empty!!(vi.values), map(reset, vi.accs))
+end
+
+"""
+    setindex_internal!!(vi::VarInfo, val, vn::VarName)
+
+Set the internal (vectorised) value of variable `vn` in `vi` to `val`.
+
+This does not change the transformation or linked status of the variable.
+"""
+function setindex_internal!!(vi::VarInfo, val, vn::VarName)
+    old_tv = getindex(vi.values, vn)
+    new_tv = set_internal_value(old_tv, val)
+    new_values = setindex!!(vi.values, new_tv, vn)
+    return VarInfo(vi.transform_strategy, new_values, vi.accs)
+end
+
+"""
+    update_transform_strategy(
+        tfm_strategy::AbstractTransformStrategy,
+        vi_is_empty::Bool,
+        new_vn::VarName,
+        new_vn_is_linked::Bool
+    )
+
+Given an old transform strategy `tfm_strategy`, and the linked status of a new variable
+`new_vn` to be added to a `VarInfo` with that transform strategy, return an updated
+transform strategy that accounts for the addition of `new_vn`.
+"""
+function update_transform_strategy(
+    tfm_strategy::AbstractTransformStrategy,
+    vi_is_empty::Bool,
+    new_vn::VarName,
+    new_vn_is_linked::Bool,
+)
+    if new_vn_is_linked
+        if tfm_strategy isa LinkAll || vi_is_empty
+            LinkAll()
+        elseif target_transform(tfm_strategy, new_vn) isa DynamicLink
+            # can reuse
+            tfm_strategy
+        else
+            # have to wrap
+            LinkSome(Set([new_vn]), tfm_strategy)
+        end
+    else
+        if tfm_strategy isa UnlinkAll || vi_is_empty
+            UnlinkAll()
+        elseif target_transform(tfm_strategy, new_vn) isa Unlink
+            tfm_strategy
+        else
+            UnlinkSome(Set([new_vn]), tfm_strategy)
+        end
+    end
+end
+
+"""
+    setindex_with_dist!!(
+        vi::VarInfo,
+        tval::Union{VectorValue,LinkedVectorValue},
+        dist::Distribution,
+        vn::VarName,
+        template::Any,
+    )
+
+Set the value of `vn` in `vi` to `tval`. Note that this will cause the linked status of `vi`
+to update according to what `tval` is. That means that whether or not a variable is
+considered to be 'linked' is determined by `tval` rather than the previous status of `vi`.
+"""
+function setindex_with_dist!!(
+    vi::VarInfo,
+    tval::Union{VectorValue,LinkedVectorValue},
+    ::Distribution,
+    vn::VarName,
+    template::Any,
+)
+    new_transform_strategy = update_transform_strategy(
+        vi.transform_strategy, isempty(vi), vn, tval isa LinkedVectorValue
+    )
+    return VarInfo(
+        new_transform_strategy, templated_setindex!!(vi.values, tval, vn, template), vi.accs
     )
 end
 
 """
-    setval!(vi::VarInfo, val, vn::VarName)
+    setindex_with_dist!!(
+        vi::VarInfo,
+        tval::UntransformedValue,
+        dist::Distribution,
+        vn::VarName,
+        template::Any
+    )
 
-Set the value(s) of `vn` in the metadata of `vi` to `val`.
-
-The values may or may not be transformed to Euclidean space.
+Vectorise `tval` (into a `VectorValue`) and store it. (Note that if `setindex_with_dist!!`
+receives an `UntransformedValue`, the variable is always considered unlinked, since if it
+were to be linked, `apply_transform_strategy` will already have done so.)
 """
-setval!(vi::VarInfo, val, vn::VarName) = setval!(getmetadata(vi, vn), val, vn)
-function setval!(md::Metadata, val::AbstractVector, vn::VarName)
-    return md.vals[getrange(md, vn)] = val
-end
-function setval!(md::Metadata, val, vn::VarName)
-    return md.vals[getrange(md, vn)] = tovec(val)
-end
-
-function set_transformed!!(vi::NTVarInfo, val::Bool, vn::VarName)
-    md = set_transformed!!(getmetadata(vi, vn), val, vn)
-    return Accessors.@set vi.metadata[getsym(vn)] = md
+function setindex_with_dist!!(
+    vi::VarInfo, tval::UntransformedValue, dist::Distribution, vn::VarName, template
+)
+    raw_value = DynamicPPL.get_internal_value(tval)
+    tval = VectorValue(to_vec_transform(dist)(raw_value), from_vec_transform(dist))
+    return setindex_with_dist!!(vi, tval, dist, vn, template)
 end
 
-function set_transformed!!(vi::VarInfo, val::Bool, vn::VarName)
-    md = set_transformed!!(getmetadata(vi, vn), val, vn)
-    return VarInfo(md, vi.accs)
-end
+"""
+    set_transformed!!(vi::VarInfo, linked::Bool, vn::VarName)
 
-function set_transformed!!(metadata::Metadata, val::Bool, vn::VarName)
-    metadata.is_transformed[getidx(metadata, vn)] = val
-    return metadata
-end
+Set the linked status of variable `vn` in `vi` to `linked`.
 
-function set_transformed!!(vi::VarInfo, val::Bool)
-    for vn in keys(vi)
-        vi = set_transformed!!(vi, val, vn)
+Note that this function is potentially unsafe as it does not change the value or
+transformation of the variable!
+"""
+function set_transformed!!(vi::VarInfo, linked::Bool, vn::VarName)
+    old_tv = getindex(vi.values, vn)
+    new_tv = if linked
+        LinkedVectorValue(old_tv.val, old_tv.transform)
+    else
+        VectorValue(old_tv.val, old_tv.transform)
     end
+    new_values = setindex!!(vi.values, new_tv, vn)
+    new_transform_strategy = update_transform_strategy(
+        vi.transform_strategy, isempty(vi), vn, linked
+    )
+    return VarInfo(new_transform_strategy, new_values, vi.accs)
+end
 
-    return vi
+# VarInfo does not care whether the transformation was Static or Dynamic, it just tracks
+# whether one was applied at all.
+function set_transformed!!(vi::VarInfo, ::AbstractTransformation, vn::VarName)
+    return set_transformed!!(vi, true, vn)
+end
+
+set_transformed!!(vi::VarInfo, ::AbstractTransformation) = set_transformed!!(vi, true)
+
+function set_transformed!!(vi::VarInfo, ::NoTransformation, vn::VarName)
+    return set_transformed!!(vi, false, vn)
 end
 
 set_transformed!!(vi::VarInfo, ::NoTransformation) = set_transformed!!(vi, false)
-# HACK: This is necessary to make something like `link!!(transformation, vi, model)`
-# work properly, which will transform the variables according to `transformation`
-# and then call `set_transformed!!(vi, transformation)`. An alternative would be to add
-# the `transformation` to the `VarInfo` object, but at the moment doesn't seem
-# worth it as `VarInfo` has its own way of handling transformations.
-set_transformed!!(vi::VarInfo, ::AbstractTransformation) = set_transformed!!(vi, true)
+
+function set_transformed!!(vi::VarInfo, linked::Bool)
+    ctor = linked ? LinkedVectorValue : VectorValue
+    new_values = map_values!!(vi.values) do tv
+        ctor(tv.val, tv.transform)
+    end
+    new_transform_strategy = linked ? LinkAll() : UnlinkAll()
+    return VarInfo(new_transform_strategy, new_values, vi.accs)
+end
 
 """
-    syms(vi::VarInfo)
+    getindex_internal(vi::VarInfo, vn::VarName)
 
-Returns a tuple of the unique symbols of random variables in `vi`.
+Get the internal (vectorised) value of variable `vn` in `vi`.
 """
-syms(vi::UntypedVarInfo) = Tuple(unique!(map(getsym, vi.metadata.vns)))  # get all symbols
-syms(vi::NTVarInfo) = keys(vi.metadata)
-
-_getidcs(vi::UntypedVarInfo) = 1:length(vi.metadata.idcs)
-_getidcs(vi::NTVarInfo) = _getidcs(vi.metadata)
-
-@generated function _getidcs(metadata::NamedTuple{names}) where {names}
-    exprs = []
-    for f in names
-        push!(exprs, :($f = findinds(metadata.$f)))
-    end
-    length(exprs) == 0 && return :(NamedTuple())
-    return :($(exprs...),)
-end
-
-@inline findinds(f_meta::Metadata) = eachindex(f_meta.vns)
-findinds(vnv::VarNamedVector) = 1:length(vnv.varnames)
+getindex_internal(vi::VarInfo, vn::VarName) = getindex(vi.values, vn).val
+# TODO(mhauru) The below should be removed together with unflatten!!.
+getindex_internal(vi::VarInfo, ::Colon) = internal_values_as_vector(vi)
 
 """
-    all_varnames_grouped_by_symbol(vi::NTVarInfo)
+    get_transformed_value(vi::VarInfo, vn::VarName)
 
-Return a `NamedTuple` of the variables in `vi` grouped by symbol.
+Get the entire `AbstractTransformedValue` for variable `vn` in `vi`.
 """
-all_varnames_grouped_by_symbol(vi::NTVarInfo) = all_varnames_grouped_by_symbol(vi.metadata)
+get_transformed_value(vi::VarInfo, vn::VarName) = getindex(vi.values, vn)
 
-@generated function all_varnames_grouped_by_symbol(md::NamedTuple{names}) where {names}
-    expr = Expr(:tuple)
-    for f in names
-        push!(expr.args, :($f = keys(md.$f)))
-    end
-    return expr
-end
-
-####
-#### APIs for typed and untyped VarInfo
-####
-
-function BangBang.empty!!(vi::VarInfo)
-    _empty!(vi.metadata)
-    vi = resetaccs!!(vi)
-    return vi
-end
-
-_empty!(metadata) = empty!(metadata)
-@generated function _empty!(metadata::NamedTuple{names}) where {names}
-    expr = Expr(:block)
-    for f in names
-        push!(expr.args, :(empty!(metadata.$f)))
-    end
-    return expr
-end
-
-# `keys`
-Base.keys(md::Metadata) = md.vns
-Base.keys(vi::VarInfo) = Base.keys(vi.metadata)
-
-# HACK: Necessary to avoid returning `Any[]` which won't dispatch correctly
-# on other methods in the codebase which requires `Vector{<:VarName}`.
-Base.keys(vi::NTVarInfo{<:NamedTuple{()}}) = VarName[]
-@generated function Base.keys(vi::NTVarInfo{<:NamedTuple{names}}) where {names}
-    expr = Expr(:call)
-    push!(expr.args, :vcat)
-
-    for n in names
-        push!(expr.args, :(keys(vi.metadata.$n)))
-    end
-
-    return expr
-end
-
-is_transformed(vi::VarInfo, vn::VarName) = is_transformed(getmetadata(vi, vn), vn)
-is_transformed(md::Metadata, vn::VarName) = md.is_transformed[getidx(md, vn)]
-
-getaccs(vi::VarInfo) = vi.accs
-setaccs!!(vi::VarInfo, accs::AccumulatorTuple) = Accessors.@set vi.accs = accs
-
-# Need to introduce the _isempty to avoid type piracy of isempty(::NamedTuple).
-isempty(vi::VarInfo) = _isempty(vi.metadata)
-_isempty(metadata::Metadata) = isempty(metadata.idcs)
-_isempty(vnv::VarNamedVector) = isempty(vnv)
-@generated function _isempty(metadata::NamedTuple{names}) where {names}
-    return Expr(:&&, (:(_isempty(metadata.$f)) for f in names)...)
-end
-
-function link!!(::DynamicTransformation, vi::NTVarInfo, model::Model)
-    vns = all_varnames_grouped_by_symbol(vi)
-    # If we're working with a `VarNamedVector`, we always use immutable.
-    has_varnamedvector(vi) && return _link(model, vi, vns)
-    vi = _link!!(vi, vns)
-    return vi
-end
-
-function link!!(::DynamicTransformation, vi::VarInfo, model::Model)
-    vns = keys(vi)
-    # If we're working with a `VarNamedVector`, we always use immutable.
-    has_varnamedvector(vi) && return _link(model, vi, vns)
-    vi = _link!!(vi, vns)
-    return vi
-end
-
-function link!!(t::DynamicTransformation, vi::ThreadSafeVarInfo{<:VarInfo}, model::Model)
-    # By default this will simply evaluate the model with `DynamicTransformationContext`,
-    # and so we need to specialize to avoid this.
-    return Accessors.@set vi.varinfo = DynamicPPL.link!!(t, vi.varinfo, model)
-end
-
-function link!!(::DynamicTransformation, vi::VarInfo, vns::VarNameTuple, model::Model)
-    # If we're working with a `VarNamedVector`, we always use immutable.
-    has_varnamedvector(vi) && return _link(model, vi, vns)
-    vi = _link!!(vi, vns)
-    return vi
-end
-
-function link!!(
-    t::DynamicTransformation,
-    vi::ThreadSafeVarInfo{<:VarInfo},
-    vns::VarNameTuple,
-    model::Model,
-)
-    # By default this will simply evaluate the model with `DynamicTransformationContext`,
-    # and so we need to specialize to avoid this.
-    return Accessors.@set vi.varinfo = DynamicPPL.link!!(t, vi.varinfo, vns, model)
-end
-
-function _link!!(vi::UntypedVarInfo, vns)
-    # TODO: Change to a lazy iterator over `vns`
-    if ~is_transformed(vi, vns[1])
-        for vn in vns
-            f = internal_to_linked_internal_transform(vi, vn)
-            vi = _inner_transform!(vi, vn, f)
-            vi = set_transformed!!(vi, true, vn)
-        end
-        return vi
+function is_transformed(vi::VarInfo, vn::VarName)
+    return if vi.transform_strategy isa LinkAll
+        true
+    elseif vi.transform_strategy isa UnlinkAll
+        false
     else
-        @warn("[DynamicPPL] attempt to link a linked vi")
+        getindex(vi.values, vn) isa LinkedVectorValue
     end
 end
 
-# If we try to _link!! a NTVarInfo with a Tuple of VarNames, first convert it to a
-# NamedTuple that matches the structure of the NTVarInfo.
-function _link!!(vi::NTVarInfo, vns::VarNameTuple)
-    return _link!!(vi, group_varnames_by_symbol(vns))
-end
-
-function _link!!(vi::NTVarInfo, vns::NamedTuple)
-    return _link!!(vi.metadata, vi, vns)
-end
-
-"""
-    filter_subsumed(filter_vns, filtered_vns)
-
-Return the subset of `filtered_vns` that are subsumed by any variable in `filter_vns`.
-"""
-function filter_subsumed(filter_vns, filtered_vns)
-    return filter(x -> any(subsumes(y, x) for y in filter_vns), filtered_vns)
-end
-
-@generated function _link!!(
-    ::NamedTuple{metadata_names}, vi, varnames::NamedTuple{vns_names}
-) where {metadata_names,vns_names}
-    expr = Expr(:block)
-    for f in metadata_names
-        if !(f in vns_names)
-            continue
-        end
-        push!(
-            expr.args,
-            quote
-                f_vns = vi.metadata.$f.vns
-                f_vns = filter_subsumed(varnames.$f, f_vns)
-                if !isempty(f_vns)
-                    if !is_transformed(vi, f_vns[1])
-                        # Iterate over all `f_vns` and transform
-                        for vn in f_vns
-                            f = internal_to_linked_internal_transform(vi, vn)
-                            vi = _inner_transform!(vi, vn, f)
-                            vi = set_transformed!!(vi, true, vn)
-                        end
-                    else
-                        @warn("[DynamicPPL] attempt to link a linked vi")
-                    end
-                end
-            end,
-        )
-    end
-    push!(expr.args, :(return vi))
-    return expr
-end
-
-function invlink!!(::DynamicTransformation, vi::NTVarInfo, model::Model)
-    vns = all_varnames_grouped_by_symbol(vi)
-    # If we're working with a `VarNamedVector`, we always use immutable.
-    has_varnamedvector(vi) && return _invlink(model, vi, vns)
-    vi = _invlink!!(vi, vns)
-    return vi
-end
-
-function invlink!!(::DynamicTransformation, vi::VarInfo, model::Model)
-    vns = keys(vi)
-    # If we're working with a `VarNamedVector`, we always use immutable.
-    has_varnamedvector(vi) && return _invlink(model, vi, vns)
-    vi = _invlink!!(vi, vns)
-    return vi
-end
-
-function invlink!!(t::DynamicTransformation, vi::ThreadSafeVarInfo{<:VarInfo}, model::Model)
-    # By default this will simply evaluate the model with `DynamicTransformationContext`,
-    # and so we need to specialize to avoid this.
-    return Accessors.@set vi.varinfo = DynamicPPL.invlink!!(t, vi.varinfo, model)
-end
-
-function invlink!!(::DynamicTransformation, vi::VarInfo, vns::VarNameTuple, model::Model)
-    # If we're working with a `VarNamedVector`, we always use immutable.
-    has_varnamedvector(vi) && return _invlink(model, vi, vns)
-    vi = _invlink!!(vi, vns)
-    return vi
-end
-
-function invlink!!(
-    ::DynamicTransformation,
-    vi::ThreadSafeVarInfo{<:VarInfo},
-    vns::VarNameTuple,
-    model::Model,
-)
-    # By default this will simply evaluate the model with `DynamicTransformationContext`, and so
-    # we need to specialize to avoid this.
-    return Accessors.@set vi.varinfo = DynamicPPL.invlink!!(vi.varinfo, vns, model)
-end
-
-function maybe_invlink_before_eval!!(vi::VarInfo, model::Model)
-    # Because `VarInfo` does not contain any information about what the transformation
-    # other than whether or not it has actually been transformed, the best we can do
-    # is just assume that `default_transformation` is the correct one if
-    # `is_transformed(vi)`.
-    t = is_transformed(vi) ? default_transformation(model, vi) : NoTransformation()
-    return maybe_invlink_before_eval!!(t, vi, model)
-end
-
-function _invlink!!(vi::UntypedVarInfo, vns)
-    if is_transformed(vi, vns[1])
-        for vn in vns
-            f = linked_internal_to_internal_transform(vi, vn)
-            vi = _inner_transform!(vi, vn, f)
-            vi = set_transformed!!(vi, false, vn)
-        end
-        return vi
-    else
-        @warn("[DynamicPPL] attempt to invlink an invlinked vi")
-    end
-end
-
-# If we try to _invlink!! a NTVarInfo with a Tuple of VarNames, first convert it to a
-# NamedTuple that matches the structure of the NTVarInfo.
-function _invlink!!(vi::NTVarInfo, vns::VarNameTuple)
-    return _invlink!!(vi.metadata, vi, group_varnames_by_symbol(vns))
-end
-
-function _invlink!!(vi::NTVarInfo, vns::NamedTuple)
-    return _invlink!!(vi.metadata, vi, vns)
-end
-
-@generated function _invlink!!(
-    ::NamedTuple{metadata_names}, vi, vns::NamedTuple{vns_names}
-) where {metadata_names,vns_names}
-    expr = Expr(:block)
-    for f in metadata_names
-        if !(f in vns_names)
-            continue
-        end
-
-        push!(
-            expr.args,
-            quote
-                f_vns = vi.metadata.$f.vns
-                f_vns = filter_subsumed(vns.$f, f_vns)
-                if is_transformed(vi, f_vns[1])
-                    # Iterate over all `f_vns` and transform
-                    for vn in f_vns
-                        f = linked_internal_to_internal_transform(vi, vn)
-                        vi = _inner_transform!(vi, vn, f)
-                        vi = set_transformed!!(vi, false, vn)
-                    end
-                else
-                    @warn("[DynamicPPL] attempt to invlink an invlinked vi")
-                end
-            end,
-        )
-    end
-    push!(expr.args, :(return vi))
-    return expr
-end
-
-function _inner_transform!(vi::VarInfo, vn::VarName, f)
-    return _inner_transform!(getmetadata(vi, vn), vi, vn, f)
-end
-
-function _inner_transform!(md::Metadata, vi::VarInfo, vn::VarName, f)
-    # TODO: Use inplace versions to avoid allocations
-    yvec, logjac = with_logabsdet_jacobian(f, getindex_internal(md, vn))
-    # Determine the new range.
-    start = first(getrange(md, vn))
-    # NOTE: `length(yvec)` should never be longer than `getrange(vi, vn)`.
-    setrange!(md, vn, start:(start + length(yvec) - 1))
-    # Set the new value.
-    setval!(md, yvec, vn)
-    if hasacc(vi, Val(:LogJacobian))
-        vi = acclogjac!!(vi, logjac)
-    end
-    return vi
-end
-
-function link(::DynamicTransformation, vi::NTVarInfo, model::Model)
-    return _link(model, vi, all_varnames_grouped_by_symbol(vi))
-end
-
-function link(::DynamicTransformation, varinfo::VarInfo, model::Model)
-    return _link(model, varinfo, keys(varinfo))
-end
-
-function link(::DynamicTransformation, varinfo::ThreadSafeVarInfo{<:VarInfo}, model::Model)
-    # By default this will simply evaluate the model with `DynamicTransformationContext`, and so
-    # we need to specialize to avoid this.
-    return Accessors.@set varinfo.varinfo = link(varinfo.varinfo, model)
-end
-
-function link(::DynamicTransformation, varinfo::VarInfo, vns::VarNameTuple, model::Model)
-    return _link(model, varinfo, vns)
-end
-
-function link(
-    ::DynamicTransformation,
-    varinfo::ThreadSafeVarInfo{<:VarInfo},
-    vns::VarNameTuple,
-    model::Model,
-)
-    # By default this will simply evaluate the model with `DynamicTransformationContext`,
-    # and so we need to specialize to avoid this.
-    return Accessors.@set varinfo.varinfo = link(varinfo.varinfo, vns, model)
-end
-
-function _link(model::Model, varinfo::VarInfo, vns)
-    varinfo = deepcopy(varinfo)
-    md, logjac = _link_metadata!!(model, varinfo, varinfo.metadata, vns)
-    new_varinfo = VarInfo(md, varinfo.accs)
-    if hasacc(new_varinfo, Val(:LogJacobian))
-        new_varinfo = acclogjac!!(new_varinfo, logjac)
-    end
-    return new_varinfo
-end
-
-# If we try to _link a NTVarInfo with a Tuple of VarNames, first convert it to a
-# NamedTuple that matches the structure of the NTVarInfo.
-function _link(model::Model, varinfo::NTVarInfo, vns::VarNameTuple)
-    return _link(model, varinfo, group_varnames_by_symbol(vns))
-end
-
-function _link(model::Model, varinfo::NTVarInfo, vns::NamedTuple)
-    varinfo = deepcopy(varinfo)
-    md, logjac = _link_metadata!(model, varinfo, varinfo.metadata, vns)
-    new_varinfo = VarInfo(md, varinfo.accs)
-    if hasacc(new_varinfo, Val(:LogJacobian))
-        new_varinfo = acclogjac!!(new_varinfo, logjac)
-    end
-    return new_varinfo
-end
-
-@generated function _link_metadata!(
-    model::Model,
-    varinfo::VarInfo,
-    metadata::NamedTuple{metadata_names},
-    vns::NamedTuple{vns_names},
-) where {metadata_names,vns_names}
-    expr = quote
-        cumulative_logjac = zero(LogProbType)
-    end
-    mds = Expr(:tuple)
-    for f in metadata_names
-        if f in vns_names
-            push!(
-                mds.args,
-                quote
-                    begin
-                        md, logjac = _link_metadata!!(model, varinfo, metadata.$f, vns.$f)
-                        cumulative_logjac += logjac
-                        md
-                    end
-                end,
-            )
-        else
-            push!(mds.args, :(metadata.$f))
-        end
-    end
-
-    push!(
-        expr.args,
-        quote
-            NamedTuple{$metadata_names}($mds), cumulative_logjac
-        end,
-    )
-    return expr
-end
-
-function _link_metadata!!(::Model, varinfo::VarInfo, metadata::Metadata, target_vns)
-    vns = metadata.vns
-    cumulative_logjac = zero(LogProbType)
-
-    # Construct the new transformed values, and keep track of their lengths.
-    vals_new = map(vns) do vn
-        # Return early if we're already in unconstrained space.
-        # HACK: if `target_vns` is `nothing`, we ignore the `target_vns` check.
-        if is_transformed(varinfo, vn) || (target_vns !== nothing && vn ∉ target_vns)
-            return metadata.vals[getrange(metadata, vn)]
-        end
-
-        # Transform to constrained space.
-        x = getindex_internal(metadata, vn)
-        dist = getdist(metadata, vn)
-        f = internal_to_linked_internal_transform(varinfo, vn, dist)
-        y, logjac = with_logabsdet_jacobian(f, x)
-        # Vectorize value.
-        yvec = tovec(y)
-        # Accumulate the log-abs-det jacobian correction.
-        cumulative_logjac += logjac
-        # Mark as transformed.
-        set_transformed!!(varinfo, true, vn)
-        # Return the vectorized transformed value.
-        return yvec
-    end
-
-    # Determine new ranges.
-    ranges_new = similar(metadata.ranges)
-    offset = 0
-    for (i, v) in enumerate(vals_new)
-        r_start, r_end = offset + 1, length(v) + offset
-        offset = r_end
-        ranges_new[i] = r_start:r_end
-    end
-
-    # Now we just create a new metadata with the new `vals` and `ranges`.
-    return Metadata(
-        metadata.idcs,
-        metadata.vns,
-        ranges_new,
-        reduce(vcat, vals_new),
-        metadata.dists,
-        metadata.is_transformed,
-    ),
-    cumulative_logjac
-end
-
-function _link_metadata!!(
-    model::Model, varinfo::VarInfo, metadata::VarNamedVector, target_vns
-)
-    vns = target_vns === nothing ? keys(metadata) : target_vns
-    dists = extract_priors(model, varinfo)
-    cumulative_logjac = zero(LogProbType)
-    for vn in vns
-        # First transform from however the variable is stored in vnv to the model
-        # representation.
-        transform_to_orig = gettransform(metadata, vn)
-        val_old = getindex_internal(metadata, vn)
-        val_orig, logjac1 = with_logabsdet_jacobian(transform_to_orig, val_old)
-        # Then transform from the model representation to the linked representation.
-        transform_from_linked = from_linked_vec_transform(dists[vn])
-        transform_to_linked = inverse(transform_from_linked)
-        val_new, logjac2 = with_logabsdet_jacobian(transform_to_linked, val_orig)
-        # TODO(mhauru) We are calling a !! function but ignoring the return value.
-        # Fix this when attending to issue #653.
-        cumulative_logjac += logjac1 + logjac2
-        metadata = setindex_internal!!(metadata, val_new, vn, transform_from_linked)
-        set_transformed!(metadata, true, vn)
-    end
-    # Linking can often change the sizes of variables, causing inactive elements. We don't
-    # want to keep them around, since typically linking is done once and then the VarInfo
-    # is evaluated multiple times. Hence we contiguify here.
-    metadata = contiguify!(metadata)
-    return metadata, cumulative_logjac
-end
-
-function invlink(::DynamicTransformation, vi::NTVarInfo, model::Model)
-    return _invlink(model, vi, all_varnames_grouped_by_symbol(vi))
-end
-
-function invlink(::DynamicTransformation, vi::VarInfo, model::Model)
-    return _invlink(model, vi, keys(vi))
-end
-
-function invlink(
-    ::DynamicTransformation, varinfo::ThreadSafeVarInfo{<:VarInfo}, model::Model
-)
-    # By default this will simply evaluate the model with `DynamicTransformationContext`, and so
-    # we need to specialize to avoid this.
-    return Accessors.@set varinfo.varinfo = invlink(varinfo.varinfo, model)
-end
-
-function invlink(::DynamicTransformation, varinfo::VarInfo, vns::VarNameTuple, model::Model)
-    return _invlink(model, varinfo, vns)
-end
-
-function invlink(
-    ::DynamicTransformation,
-    varinfo::ThreadSafeVarInfo{<:VarInfo},
-    vns::VarNameTuple,
-    model::Model,
-)
-    # By default this will simply evaluate the model with `DynamicTransformationContext`, and so
-    # we need to specialize to avoid this.
-    return Accessors.@set varinfo.varinfo = invlink(varinfo.varinfo, vns, model)
-end
-
-function _invlink(model::Model, varinfo::VarInfo, vns)
-    varinfo = deepcopy(varinfo)
-    md, inv_logjac = _invlink_metadata!!(model, varinfo, varinfo.metadata, vns)
-    new_varinfo = VarInfo(md, varinfo.accs)
-    if hasacc(new_varinfo, Val(:LogJacobian))
-        # Mildly confusing: we need to _add_ the logjac of the inverse transform,
-        # because we are trying to remove the logjac of the forward transform
-        # that was previously accumulated when linking.
-        new_varinfo = acclogjac!!(new_varinfo, inv_logjac)
-    end
-    return new_varinfo
-end
-
-# If we try to _invlink a NTVarInfo with a Tuple of VarNames, first convert it to a
-# NamedTuple that matches the structure of the NTVarInfo.
-function _invlink(model::Model, varinfo::NTVarInfo, vns::VarNameTuple)
-    return _invlink(model, varinfo, group_varnames_by_symbol(vns))
-end
-
-function _invlink(model::Model, varinfo::NTVarInfo, vns::NamedTuple)
-    varinfo = deepcopy(varinfo)
-    md, inv_logjac = _invlink_metadata!(model, varinfo, varinfo.metadata, vns)
-    new_varinfo = VarInfo(md, varinfo.accs)
-    if hasacc(new_varinfo, Val(:LogJacobian))
-        # Mildly confusing: we need to _add_ the logjac of the inverse transform,
-        # because we are trying to remove the logjac of the forward transform
-        # that was previously accumulated when linking.
-        new_varinfo = acclogjac!!(new_varinfo, inv_logjac)
-    end
-    return new_varinfo
-end
-
-@generated function _invlink_metadata!(
-    model::Model,
-    varinfo::VarInfo,
-    metadata::NamedTuple{metadata_names},
-    vns::NamedTuple{vns_names},
-) where {metadata_names,vns_names}
-    expr = quote
-        cumulative_inv_logjac = zero(LogProbType)
-    end
-    mds = Expr(:tuple)
-    for f in metadata_names
-        if (f in vns_names)
-            push!(
-                mds.args,
-                quote
-                    begin
-                        md, inv_logjac = _invlink_metadata!!(
-                            model, varinfo, metadata.$f, vns.$f
-                        )
-                        cumulative_inv_logjac += inv_logjac
-                        md
-                    end
-                end,
-            )
-        else
-            push!(mds.args, :(metadata.$f))
-        end
-    end
-
-    push!(
-        expr.args,
-        quote
-            (NamedTuple{$metadata_names}($mds), cumulative_inv_logjac)
-        end,
-    )
-    return expr
-end
-
-function _invlink_metadata!!(::Model, varinfo::VarInfo, metadata::Metadata, target_vns)
-    vns = metadata.vns
-    cumulative_inv_logjac = zero(LogProbType)
-
-    # Construct the new transformed values, and keep track of their lengths.
-    vals_new = map(vns) do vn
-        # Return early if we're already in constrained space OR if we're not
-        # supposed to touch this `vn`.
-        # HACK: if `target_vns` is `nothing`, we ignore the `target_vns` check.
-        if !is_transformed(varinfo, vn) || (target_vns !== nothing && vn ∉ target_vns)
-            return metadata.vals[getrange(metadata, vn)]
-        end
-
-        # Transform to constrained space.
-        y = getindex_internal(varinfo, vn)
-        dist = getdist(varinfo, vn)
-        f = from_linked_internal_transform(varinfo, vn, dist)
-        x, inv_logjac = with_logabsdet_jacobian(f, y)
-        # Vectorize value.
-        xvec = tovec(x)
-        # Accumulate the log-abs-det jacobian correction.
-        cumulative_inv_logjac += inv_logjac
-        # Mark as no longer transformed.
-        set_transformed!!(varinfo, false, vn)
-        # Return the vectorized transformed value.
-        return xvec
-    end
-
-    # Determine new ranges.
-    ranges_new = similar(metadata.ranges)
-    offset = 0
-    for (i, v) in enumerate(vals_new)
-        r_start, r_end = offset + 1, length(v) + offset
-        offset = r_end
-        ranges_new[i] = r_start:r_end
-    end
-
-    # Now we just create a new metadata with the new `vals` and `ranges`.
-    return Metadata(
-        metadata.idcs,
-        metadata.vns,
-        ranges_new,
-        reduce(vcat, vals_new),
-        metadata.dists,
-        metadata.is_transformed,
-    ),
-    cumulative_inv_logjac
-end
-
-function _invlink_metadata!!(
-    ::Model, varinfo::VarInfo, metadata::VarNamedVector, target_vns
-)
-    vns = target_vns === nothing ? keys(metadata) : target_vns
-    cumulative_inv_logjac = zero(LogProbType)
-    for vn in vns
-        transform = gettransform(metadata, vn)
-        old_val = getindex_internal(metadata, vn)
-        new_val, inv_logjac = with_logabsdet_jacobian(transform, old_val)
-        # TODO(mhauru) We are calling a !! function but ignoring the return value.
-        cumulative_inv_logjac += inv_logjac
-        new_transform = from_vec_transform(new_val)
-        metadata = setindex_internal!!(metadata, tovec(new_val), vn, new_transform)
-        set_transformed!(metadata, false, vn)
-    end
-    # Linking can often change the sizes of variables, causing inactive elements. We don't
-    # want to keep them around, since typically linking is done once and then the VarInfo
-    # is evaluated multiple times. Hence we contiguify here.
-    metadata = contiguify!(metadata)
-    return metadata, cumulative_inv_logjac
-end
-
-# TODO(mhauru) The treatment of the case when some variables are transformed and others are
-# not should be revised. It used to be the case that for UntypedVarInfo `is_transformed`
-# returned whether the first variable was linked. For NTVarInfo we did an OR over the first
-# variables under each symbol. We now more consistently use OR, but I'm not convinced this
-# is really the right thing to do.
-"""
-    is_transformed(vi::VarInfo)
-
-Check whether `vi` is in the transformed space.
-
-Turing's Hamiltonian samplers use the `link` and `invlink` functions from
-[Bijectors.jl](https://github.com/TuringLang/Bijectors.jl) to map a constrained variable
-(for example, one bounded to the space `[0, 1]`) from its constrained space to the set of
-real numbers. `is_transformed` checks if the number is in the constrained space or the real
-space.
-
-If some but only some of the variables in `vi` are transformed, this function will return
-`true`. This behavior will likely change in the future.
-"""
-function is_transformed(vi::VarInfo)
-    return any(is_transformed(vi, vn) for vn in keys(vi))
-end
-
-# The default getindex & setindex!() for get & set values
-# NOTE: vi[vn] will always transform the variable to its original space and Julia type
-function getindex(vi::VarInfo, vn::VarName)
-    return from_maybe_linked_internal_transform(vi, vn)(getindex_internal(vi, vn))
-end
-
-function getindex(vi::VarInfo, vn::VarName, dist::Distribution)
-    @assert haskey(vi, vn) "[DynamicPPL] attempted to replay unexisting variables in VarInfo"
-    val = getindex_internal(vi, vn)
-    return from_maybe_linked_internal(vi, vn, dist, val)
-end
-
-function getindex(vi::VarInfo, vns::Vector{<:VarName})
-    vals = map(vn -> getindex(vi, vn), vns)
-
-    et = eltype(vals)
-    # This will catch type unstable cases, where vals has mixed types.
-    if !isconcretetype(et)
-        throw(ArgumentError("All variables must have the same type."))
-    end
-
-    if et <: Vector
-        all_of_equal_dimension = all(x -> length(x) == length(vals[1]), vals)
-        if !all_of_equal_dimension
-            throw(ArgumentError("All variables must have the same dimension."))
-        end
-    end
-
-    # TODO(mhauru) I'm not very pleased with the return type varying like this, even though
-    # this should be type stable.
-    vec_vals = reduce(vcat, vals)
-    if et <: Vector
-        # The individual variables are multivariate, and thus we return the values as a
-        # matrix.
-        return reshape(vec_vals, (:, length(vns)))
-    else
-        # The individual variables are univariate, and thus we return a vector of scalars.
-        return vec_vals
-    end
-end
-
-function getindex(vi::VarInfo, vns::Vector{<:VarName}, dist::Distribution)
-    @assert haskey(vi, vns[1]) "[DynamicPPL] attempted to replay unexisting variables in VarInfo"
-    vals_linked = mapreduce(vcat, vns) do vn
-        getindex(vi, vn, dist)
-    end
-    return recombine(dist, vals_linked, length(vns))
-end
-
-# Recursively builds a tuple of the `vals` of all the symbols
-@generated function _getindex(metadata, ranges::NamedTuple{names}) where {names}
-    expr = Expr(:tuple)
-    for f in names
-        push!(expr.args, :(metadata.$f.vals[ranges.$f]))
-    end
-    return expr
-end
-
-# TODO(mhauru) I think the below implementation of setindex! is a mistake. It should be
-# called setindex_internal! since it directly writes to the `vals` field of the metadata.
-"""
-    setindex!(vi::VarInfo, val, vn::VarName)
-
-Set the current value(s) of the random variable `vn` in `vi` to `val`.
-
-The value(s) may or may not be transformed to Euclidean space.
-"""
-setindex!(vi::VarInfo, val, vn::VarName) = (setval!(vi, val, vn); return vi)
-function BangBang.setindex!!(vi::VarInfo, val, vn::VarName)
-    setindex!(vi, val, vn)
-    return vi
-end
-
-@inline function findvns(vi, f_vns)
-    if length(f_vns) == 0
-        throw("Unidentified error, please report this error in an issue.")
-    end
-    return map(vn -> vi[vn], f_vns)
-end
-
-Base.haskey(metadata::Metadata, vn::VarName) = haskey(metadata.idcs, vn)
-
-"""
-    haskey(vi::VarInfo, vn::VarName)
-
-Check whether `vn` has a value in `vi`.
-"""
-Base.haskey(vi::VarInfo, vn::VarName) = haskey(getmetadata(vi, vn), vn)
-function Base.haskey(vi::NTVarInfo, vn::VarName)
-    md_haskey = map(vi.metadata) do metadata
-        haskey(metadata, vn)
-    end
-    return any(md_haskey)
-end
-
-function Base.show(io::IO, ::MIME"text/plain", vi::UntypedVarInfo)
-    lines = Tuple{String,Any}[
-        ("VarNames", vi.metadata.vns),
-        ("Range", vi.metadata.ranges),
-        ("Vals", vi.metadata.vals),
-    ]
-    for accname in acckeys(vi)
-        push!(lines, (string(accname), getacc(vi, Val(accname))))
-    end
-    push!(lines, ("is_transformed", vi.metadata.is_transformed))
-    max_name_length = maximum(map(length ∘ first, lines))
-    fmt = Printf.Format("%-$(max_name_length)s")
-    vi_str = (
-        """
-        /=======================================================================
-        | VarInfo
-        |-----------------------------------------------------------------------
-        """ *
-        prod(
-            map(lines) do (name, value)
-                """
-                | $(Printf.format(fmt, name)) : $(value)
-                """
-            end,
-        ) *
-        """
-        \\=======================================================================
-        """
-    )
-    return print(io, vi_str)
-end
-
-const _MAX_VARS_SHOWN = 4
-
-function _show_varnames(io::IO, vi)
-    md = vi.metadata
-    vns = keys(md)
-
-    vns_by_name = Dict{Symbol,Vector{VarName}}()
-    for vn in vns
-        group = get!(() -> Vector{VarName}(), vns_by_name, getsym(vn))
-        push!(group, vn)
-    end
-
-    L = length(vns_by_name)
-    if L == 0
-        print(io, "0 variables, dimension 0")
-    else
-        (L == 1) ? print(io, "1 variable (") : print(io, L, " variables (")
-        join(io, Iterators.take(keys(vns_by_name), _MAX_VARS_SHOWN), ", ")
-        (L > _MAX_VARS_SHOWN) && print(io, ", ...")
-        print(io, "), dimension ", length(md.vals))
-    end
-end
-
-function Base.show(io::IO, vi::UntypedVarInfo)
-    print(io, "VarInfo (")
-    _show_varnames(io, vi)
-    print(io, "; accumulators: ")
-    # TODO(mhauru) This uses "text/plain" because we are doing quite a condensed repretation
-    # of vi anyway. However, technically `show(io, x)` should give full details of x and
-    # preferably output valid Julia code.
-    show(io, MIME"text/plain"(), getaccs(vi))
-    return print(io, ")")
-end
-
-"""
-    push!!(vi::VarInfo, vn::VarName, r, dist::Distribution)
-
-Push a new random variable `vn` with a sampled value `r` from a distribution `dist` to
-the `VarInfo` `vi`, mutating if it makes sense.
-"""
-function BangBang.push!!(vi::VarInfo, vn::VarName, val, dist::Distribution)
-    @assert ~(vn in keys(vi)) "[push!!] attempt to add an existing variable $(getsym(vn)) ($(vn)) to VarInfo (keys=$(keys(vi))) with dist=$dist"
-    md = push!!(getmetadata(vi, vn), vn, val, dist)
-    return VarInfo(md, vi.accs)
-end
-
-function BangBang.push!!(vi::NTVarInfo, vn::VarName, val, dist::Distribution)
-    @assert ~(haskey(vi, vn)) "[push!!] attempt to add an existing variable $(getsym(vn)) ($(vn)) to NTVarInfo of syms $(syms(vi)) with dist=$dist"
-    sym = getsym(vn)
-    meta = if ~haskey(vi.metadata, sym)
-        # The NamedTuple doesn't have an entry for this variable, let's add one.
-        _new_submetadata(vi, vn, val, dist)
-    else
-        push!!(getmetadata(vi, vn), vn, val, dist)
-    end
-    vi = Accessors.@set vi.metadata[sym] = meta
-    return vi
-end
-
-"""
-    _new_submetadata(vi::VarInfo{NamedTuple{Names,SubMetas}}, args...) where {Names,SubMetas}
-
-Create a new sub-metadata for an NTVarInfo. The type is chosen by the types of existing
-SubMetas.
-"""
-@generated function _new_submetadata(
-    vi::VarInfo{NamedTuple{Names,SubMetas}}, vn, r, dist
-) where {Names,SubMetas}
-    has_vnv = any(s -> s <: VarNamedVector, SubMetas.parameters)
-    return if has_vnv
-        :(return _new_vnv_submetadata(vn, r, dist))
-    else
-        :(return _new_metadata_submetadata(vn, r, dist))
-    end
-end
-
-_new_vnv_submetadata(vn, r, _) = VarNamedVector([vn], [r])
-
-function _new_metadata_submetadata(vn, r, dist)
-    val = tovec(r)
-    return Metadata(Dict(vn => 1), [vn], [1:length(val)], val, [dist], BitVector([false]))
-end
-
-function Base.push!(vi::UntypedVectorVarInfo, pair::Pair, args...)
-    vn, val = pair
-    return push!(vi, vn, val, args...)
-end
-
-# TODO(mhauru) push! can't be implemented in-place for NTVarInfo if the symbol doesn't
-# exist in the NTVarInfo already. We could implement it in the cases where it it does
-# exist, but that feels a bit pointless. I think we should rather rely on `push!!`.
-
-function Base.push!(meta::Metadata, vn, r, dist)
-    val = tovec(r)
-    meta.idcs[vn] = length(meta.idcs) + 1
-    push!(meta.vns, vn)
-    l = length(meta.vals)
-    n = length(val)
-    push!(meta.ranges, (l + 1):(l + n))
-    append!(meta.vals, val)
-    push!(meta.dists, dist)
-    push!(meta.is_transformed, false)
-    return meta
-end
-
-function BangBang.push!!(meta::Metadata, vn, r, dist)
-    push!(meta, vn, r, dist)
-    return meta
-end
-
-function Base.delete!(vi::VarInfo, vn::VarName)
-    delete!(getmetadata(vi, vn), vn)
-    return vi
-end
-
-#######################################
-# Rand & replaying method for VarInfo #
-#######################################
-
-# TODO: Maybe rename or something?
-"""
-    _apply!(kernel!, vi::VarInfo, values, keys)
-
-Calls `kernel!(vi, vn, values, keys)` for every `vn` in `vi`.
-"""
-function _apply!(kernel!, vi::VarInfoOrThreadSafeVarInfo, values, keys)
-    keys_strings = map(string, collect_maybe(keys))
-    num_indices_seen = 0
-
-    for vn in Base.keys(vi)
-        indices_found = kernel!(vi, vn, values, keys_strings)
-        if indices_found !== nothing
-            num_indices_seen += length(indices_found)
-        end
-    end
-
-    if length(keys) > num_indices_seen
-        # Some keys have not been seen, i.e. attempted to set variables which
-        # we were not able to locate in `vi`.
-        # Find the ones we missed so we can warn the user.
-        unused_keys = _find_missing_keys(vi, keys_strings)
-        @warn "the following keys were not found in `vi`, and thus `kernel!` was not applied to these: $(unused_keys)"
-    end
-
-    return vi
-end
-
-function _apply!(kernel!, vi::NTVarInfo, values, keys)
-    return _typed_apply!(kernel!, vi, vi.metadata, values, collect_maybe(keys))
-end
-
-@generated function _typed_apply!(
-    kernel!, vi::NTVarInfo, metadata::NamedTuple{names}, values, keys
-) where {names}
-    updates = map(names) do n
-        quote
-            for vn in Base.keys(metadata.$n)
-                indices_found = kernel!(vi, vn, values, keys_strings)
-                if indices_found !== nothing
-                    num_indices_seen += length(indices_found)
-                end
-            end
-        end
-    end
-
-    return quote
-        keys_strings = map(string, keys)
-        num_indices_seen = 0
-
-        $(updates...)
-
-        if length(keys) > num_indices_seen
-            # Some keys have not been seen, i.e. attempted to set variables which
-            # we were not able to locate in `vi`.
-            # Find the ones we missed so we can warn the user.
-            unused_keys = _find_missing_keys(vi, keys_strings)
-            @warn "the following keys were not found in `vi`, and thus `kernel!` was not applied to these: $(unused_keys)"
-        end
-
-        return vi
-    end
-end
-
-function _find_missing_keys(vi::VarInfoOrThreadSafeVarInfo, keys)
-    string_vns = map(string, collect_maybe(Base.keys(vi)))
-    # If `key` isn't subsumed by any element of `string_vns`, it is not present in `vi`.
-    missing_keys = filter(keys) do key
-        !any(Base.Fix2(subsumes_string, key), string_vns)
-    end
-
-    return missing_keys
-end
-
-values_as(vi::VarInfo) = vi.metadata
-values_as(vi::VarInfo, ::Type{Vector}) = copy(getindex_internal(vi, Colon()))
-function values_as(vi::UntypedVarInfo, ::Type{NamedTuple})
-    iter = values_from_metadata(vi.metadata)
-    return NamedTuple(map(p -> Symbol(p.first) => p.second, iter))
-end
-function values_as(vi::UntypedVarInfo, ::Type{D}) where {D<:AbstractDict}
-    return ConstructionBase.constructorof(D)(values_from_metadata(vi.metadata))
-end
-
-function values_as(vi::VarInfo{<:NamedTuple{names}}, ::Type{NamedTuple}) where {names}
-    iter = Iterators.flatten(values_from_metadata(getfield(vi.metadata, n)) for n in names)
-    return NamedTuple(map(p -> Symbol(p.first) => p.second, iter))
-end
-
-function values_as(
-    vi::VarInfo{<:NamedTuple{names}}, ::Type{D}
-) where {names,D<:AbstractDict}
-    iter = Iterators.flatten(values_from_metadata(getfield(vi.metadata, n)) for n in names)
-    return ConstructionBase.constructorof(D)(iter)
-end
-
-values_as(vi::UntypedVectorVarInfo, args...) = values_as(vi.metadata, args...)
-values_as(vi::UntypedVectorVarInfo, T::Type{Vector}) = values_as(vi.metadata, T)
-
-function values_from_metadata(md::Metadata)
-    return (
-        # `copy` to avoid accidentally mutation of internal representation.
-        vn => copy(
-            from_internal_transform(md, vn, getdist(md, vn))(getindex_internal(md, vn))
-        ) for vn in md.vns
-    )
-end
-
-values_from_metadata(md::VarNamedVector) = pairs(md)
-
-# Transforming from internal representation to distribution representation.
-# Without `dist` argument: base on `dist` extracted from self.
-function from_internal_transform(vi::VarInfo, vn::VarName)
-    return from_internal_transform(getmetadata(vi, vn), vn)
-end
-function from_internal_transform(md::Metadata, vn::VarName)
-    return from_internal_transform(md, vn, getdist(md, vn))
-end
-function from_internal_transform(md::VarNamedVector, vn::VarName)
-    return gettransform(md, vn)
-end
-# With both `vn` and `dist` arguments: base on provided `dist`.
-function from_internal_transform(vi::VarInfo, vn::VarName, dist)
-    return from_internal_transform(getmetadata(vi, vn), vn, dist)
-end
-from_internal_transform(::Metadata, ::VarName, dist) = from_vec_transform(dist)
-function from_internal_transform(::VarNamedVector, ::VarName, dist)
+function from_internal_transform(::VarInfo, ::VarName, dist::Distribution)
     return from_vec_transform(dist)
 end
 
-# Without `dist` argument: base on `dist` extracted from self.
+function from_linked_internal_transform(::VarInfo, ::VarName, dist::Distribution)
+    return from_linked_vec_transform(dist)
+end
+
+function from_internal_transform(vi::VarInfo, vn::VarName)
+    return DynamicPPL.get_transform(getindex(vi.values, vn))
+end
+
 function from_linked_internal_transform(vi::VarInfo, vn::VarName)
-    return from_linked_internal_transform(getmetadata(vi, vn), vn)
+    if !is_transformed(vi, vn)
+        error("Variable $vn is not linked; cannot get linked transformation.")
+    end
+    return DynamicPPL.get_transform(getindex(vi.values, vn))
 end
-function from_linked_internal_transform(md::Metadata, vn::VarName)
-    return from_linked_internal_transform(md, vn, getdist(md, vn))
+
+"""
+    internal_values_as_vector(vi::VarInfo)
+
+Convert `vi.values` into a single vector by concatenating the internal (vectorised) values
+of all variables in `vi`. The order of concatenation is determined by the order of
+`keys(vi.values)`.
+
+Note that this is a lossy operation as it discards all information about the transformations
+and variable names in `vi`.
+
+This is the inverse of [`unflatten!!`](@ref).
+"""
+internal_values_as_vector(vi::VarInfo) = internal_values_as_vector(vi.values)
+
+"""
+    DynamicPPL.update_link_status!!(
+        orig_vi::VarInfo, transform_strategy::AbstractTransformStrategy, model::Model
+    )
+
+Given an original `VarInfo` `orig_vi`, update the link status of its variables according to
+the new `transform_strategy`.
+"""
+function update_link_status!!(
+    orig_vi::VarInfo, transform_strategy::AbstractTransformStrategy, model::Model
+)
+    # We'll just recalculate logjac from the start, rather than trying to adjust the old
+    # one.
+    new_vi = OnlyAccsVarInfo((VectorValueAccumulator(), LogJacobianAccumulator()))
+    new_vi = last(
+        init!!(model, new_vi, InitFromParamsUnsafe(orig_vi.values), transform_strategy)
+    )
+    new_vector_vals = getacc(new_vi, Val(VECTORVAL_ACCNAME))
+    if hasacc(orig_vi, Val(:LogJacobian))
+        orig_vi = setlogjac!!(orig_vi, getlogjac(new_vi))
+    end
+    return VarInfo(transform_strategy, new_vector_vals.values, orig_vi.accs)
 end
-function from_linked_internal_transform(md::VarNamedVector, vn::VarName)
-    return gettransform(md, vn)
+
+function link!!(::DynamicTransformation, vi::VarInfo, vns, model::Model)
+    return update_link_status!!(vi, LinkSome(Set(vns), get_transform_strategy(vi)), model)
 end
-# With both `vn` and `dist` arguments: base on provided `dist`.
-function from_linked_internal_transform(vi::VarInfo, vn::VarName, dist)
-    # Dispatch to metadata in case this alters the behavior.
-    return from_linked_internal_transform(getmetadata(vi, vn), vn, dist)
+function invlink!!(::DynamicTransformation, vi::VarInfo, vns, model::Model)
+    return update_link_status!!(vi, UnlinkSome(Set(vns), get_transform_strategy(vi)), model)
 end
-function from_linked_internal_transform(::Metadata, ::VarName, dist)
-    return from_linked_vec_transform(dist)
+function link!!(::DynamicTransformation, vi::VarInfo, model::Model)
+    return update_link_status!!(vi, LinkAll(), model)
 end
-function from_linked_internal_transform(::VarNamedVector, ::VarName, dist)
-    return from_linked_vec_transform(dist)
+function invlink!!(::DynamicTransformation, vi::VarInfo, model::Model)
+    return update_link_status!!(vi, UnlinkAll(), model)
+end
+
+function link!!(t::StaticTransformation{<:Bijectors.Transform}, vi::VarInfo, ::Model)
+    # TODO(mhauru) This assumes that the user has defined the bijector using the same
+    # variable ordering as what `vi[:]` and `unflatten!!(vi, x)` use. This is a bad user
+    # interface.
+    b = inverse(t.bijector)
+    x = vi[:]
+    y, logjac = with_logabsdet_jacobian(b, x)
+    # TODO(mhauru) This doesn't set the transforms of `vi`. With the old Metadata that meant
+    # that getindex(vi, vn) would apply the default link transform of the distribution. With
+    # the new VarNamedTuple-based VarInfo it means that getindex(vi, vn) won't apply any
+    # link transform. Neither is correct, rather the transform should be the inverse of b.
+    vi = unflatten!!(vi, y)
+    if hasacc(vi, Val(:LogJacobian))
+        vi = acclogjac!!(vi, logjac)
+    end
+    return set_transformed!!(vi, t)
+end
+
+function invlink!!(t::StaticTransformation{<:Bijectors.Transform}, vi::VarInfo, ::Model)
+    b = t.bijector
+    y = vi[:]
+    x, inv_logjac = with_logabsdet_jacobian(b, y)
+
+    # Mildly confusing: we need to _add_ the logjac of the inverse transform,
+    # because we are trying to remove the logjac of the forward transform
+    # that was previously accumulated when linking.
+    vi = unflatten!!(vi, x)
+    if hasacc(vi, Val(:LogJacobian))
+        vi = acclogjac!!(vi, inv_logjac)
+    end
+    return set_transformed!!(vi, NoTransformation())
+end
+
+"""
+    get_transform_strategy(vi::VarInfo)
+
+In `tilde_assume!!(::InitContext, ...)`, we use a transform strategy to determine whether
+variables should be considered to be in linked space or unlinked space. This allows us to
+determine whether `logjac` should be accumulated or not.
+
+However, there are still a number of places in DynamicPPL where we want to make this
+decision as to whether a variable is linked or unlinked based on the current status of the
+variable inside a `VarInfo`.
+
+This function acts as the bridge between the two: it extracts an appropriate
+`AbstractTransformStrategy` from the current status of variables in a `VarInfo`.
+"""
+get_transform_strategy(vi::VarInfo) = vi.transform_strategy
+
+"""
+    VectorChunkIterator{T<:AbstractVector}
+
+A tiny struct for getting chunks of a vector sequentially.
+
+The only function provided is `get_next_chunk!`, which takes a length and returns
+a view into the next chunk of that length, updating the internal index.
+"""
+mutable struct VectorChunkIterator!{T<:AbstractVector}
+    vec::T
+    index::Int
+end
+for T in (:VectorValue, :LinkedVectorValue)
+    @eval begin
+        function (vci::VectorChunkIterator!)(tv::$T)
+            old_val = tv.val
+            len = length(old_val)
+            new_val = @view vci.vec[(vci.index):(vci.index + len - 1)]
+            vci.index += len
+            return $T(new_val, tv.transform)
+        end
+    end
+end
+function unflatten!!(vi::VarInfo, vec::AbstractVector)
+    vci = VectorChunkIterator!(vec, 1)
+    new_values = map_values!!(vci, vi.values)
+    return VarInfo(vi.transform_strategy, new_values, vi.accs)
+end
+
+"""
+    subset(varinfo::VarInfo, vns)
+
+Create a new `VarInfo` containing only the variables in `vns`.
+
+`vns` can be almost any collection of `VarName`s, e.g. a `Set`, `Vector`, or `Tuple`.
+"""
+function subset(varinfo::VarInfo, vns)
+    new_values = subset(varinfo.values, vns)
+    # TODO(penelopeysm): We could potentially be smarter here and see whether the transform
+    # strategy can be updated to be LinkAll or UnlinkAll.
+    return VarInfo(varinfo.transform_strategy, new_values, map(copy, getaccs(varinfo)))
+end
+
+"""
+    merge(varinfo_left::VarInfo, varinfo_right::VarInfo)
+
+Merge two `VarInfo`s into a new `VarInfo` containing all variables from both.
+
+The accumulators are taken exclusively from `varinfo_right`.
+
+If a variable exists in both `varinfo_left` and `varinfo_right`, the value from
+`varinfo_right` is used.
+"""
+function Base.merge(varinfo_left::VarInfo, varinfo_right::VarInfo)
+    new_values = merge(varinfo_left.values, varinfo_right.values)
+    new_accs = map(copy, getaccs(varinfo_right))
+    new_transform_strategy =
+        if varinfo_left.transform_strategy isa LinkAll &&
+            varinfo_right.transform_strategy isa LinkAll
+            LinkAll()
+        elseif varinfo_left.transform_strategy isa UnlinkAll &&
+            varinfo_right.transform_strategy isa UnlinkAll
+            UnlinkAll()
+        else
+            linked_vns = Set{VarName}()
+            unlinked_vns = Set{VarName}()
+            for (vn, tval) in pairs(new_values)
+                if tval isa LinkedVectorValue
+                    push!(linked_vns, vn)
+                else
+                    push!(unlinked_vns, vn)
+                end
+            end
+            if isempty(linked_vns)
+                UnlinkAll()
+            elseif isempty(unlinked_vns)
+                LinkAll()
+            else
+                LinkSome(linked_vns, UnlinkSome(unlinked_vns, LinkAll()))
+            end
+        end
+    return VarInfo(new_transform_strategy, new_values, new_accs)
 end

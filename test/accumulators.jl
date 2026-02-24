@@ -1,5 +1,9 @@
 module AccumulatorTests
 
+using Dates: now
+@info "Testing $(@__FILE__)..."
+__now__ = now()
+
 using Test
 using Distributions
 using DynamicPPL
@@ -10,7 +14,7 @@ using DynamicPPL:
     accumulate_assume!!,
     accumulate_observe!!,
     combine,
-    convert_eltype,
+    promote_for_threadsafe_eval,
     getacc,
     map_accumulator,
     reset,
@@ -59,23 +63,27 @@ using DynamicPPL:
                 LogLikelihoodAccumulator{Float32}, LogLikelihoodAccumulator(1.0)
             ) == LogLikelihoodAccumulator{Float32}(1.0f0)
 
-            @test convert_eltype(Float32, LogPriorAccumulator(1.0)) ==
+            @test promote_for_threadsafe_eval(LogPriorAccumulator(1.0), Float32) ==
                 LogPriorAccumulator{Float32}(1.0f0)
-            @test convert_eltype(Float32, LogLikelihoodAccumulator(1.0)) ==
+            @test promote_for_threadsafe_eval(LogLikelihoodAccumulator(1.0), Float32) ==
                 LogLikelihoodAccumulator{Float32}(1.0f0)
         end
 
         @testset "accumulate_assume" begin
             val = 2.0
+            tval = DynamicPPL.UntransformedValue(nothing)
             logjac = pi
             vn = @varname(x)
             dist = Normal()
-            @test accumulate_assume!!(LogPriorAccumulator(1.0), val, logjac, vn, dist) ==
-                LogPriorAccumulator(1.0 + logpdf(dist, val))
-            @test accumulate_assume!!(LogJacobianAccumulator(2.0), val, logjac, vn, dist) ==
-                LogJacobianAccumulator(2.0 + logjac)
+            template = nothing
             @test accumulate_assume!!(
-                LogLikelihoodAccumulator(1.0), val, logjac, vn, dist
+                LogPriorAccumulator(1.0), val, tval, logjac, vn, dist, template
+            ) == LogPriorAccumulator(1.0 + logpdf(dist, val))
+            @test accumulate_assume!!(
+                LogJacobianAccumulator(2.0), val, tval, logjac, vn, dist, template
+            ) == LogJacobianAccumulator(2.0 + logjac)
+            @test accumulate_assume!!(
+                LogLikelihoodAccumulator(1.0), val, tval, logjac, vn, dist, template
             ) == LogLikelihoodAccumulator(1.0)
         end
 
@@ -83,12 +91,16 @@ using DynamicPPL:
             right = Normal()
             left = 2.0
             vn = @varname(x)
-            @test accumulate_observe!!(LogPriorAccumulator(1.0), right, left, vn) ==
-                LogPriorAccumulator(1.0)
-            @test accumulate_observe!!(LogJacobianAccumulator(1.0), right, left, vn) ==
-                LogJacobianAccumulator(1.0)
-            @test accumulate_observe!!(LogLikelihoodAccumulator(1.0), right, left, vn) ==
-                LogLikelihoodAccumulator(1.0 + logpdf(right, left))
+            template = nothing
+            @test accumulate_observe!!(
+                LogPriorAccumulator(1.0), right, left, vn, template
+            ) == LogPriorAccumulator(1.0)
+            @test accumulate_observe!!(
+                LogJacobianAccumulator(1.0), right, left, vn, template
+            ) == LogJacobianAccumulator(1.0)
+            @test accumulate_observe!!(
+                LogLikelihoodAccumulator(1.0), right, left, vn, template
+            ) == LogLikelihoodAccumulator(1.0 + logpdf(right, left))
         end
     end
 
@@ -143,17 +155,19 @@ using DynamicPPL:
             @test accs == AccumulatorTuple(lp_f32, ll_f32)
 
             # A map with a closure that changes the types of the accumulators.
-            @test map(acc -> convert_eltype(Float64, acc), accs) ==
+            @test map(acc -> promote_for_threadsafe_eval(acc, Float64), accs) ==
                 AccumulatorTuple(LogPriorAccumulator(1.0), LogLikelihoodAccumulator(1.0))
 
             # only apply to a particular accumulator
             @test map_accumulator(DynamicPPL.reset, accs, Val(:LogLikelihood)) ==
                 AccumulatorTuple(lp_f32, LogLikelihoodAccumulator(0.0f0))
             @test map_accumulator(
-                acc -> convert_eltype(Float64, acc), accs, Val(:LogLikelihood)
+                acc -> promote_for_threadsafe_eval(acc, Float64), accs, Val(:LogLikelihood)
             ) == AccumulatorTuple(lp_f32, LogLikelihoodAccumulator(1.0))
         end
     end
 end
 
-end
+@info "Completed $(@__FILE__) in $(now() - __now__)."
+
+end # module

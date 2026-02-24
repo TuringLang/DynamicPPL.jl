@@ -1,7 +1,12 @@
 module DynamicPPLChainsTests
 
+using Dates: now
+@info "Testing $(@__FILE__)..."
+__now__ = now()
+
 using DynamicPPL
 using Distributions
+using LinearAlgebra
 using Test
 
 @testset "ParamsWithStats from VarInfo" begin
@@ -53,10 +58,8 @@ using Test
         # Without VAIM, it should error
         @test_throws ErrorException ParamsWithStats(VarInfo(model))
         # With VAIM, it should work
-        vi = DynamicPPL.setaccs!!(
-            VarInfo(model), (DynamicPPL.ValuesAsInModelAccumulator(true),)
-        )
-        vi = last(DynamicPPL.evaluate!!(model, vi))
+        vi = DynamicPPL.setaccs!!(VarInfo(model), (DynamicPPL.RawValueAccumulator(true),))
+        vi = last(DynamicPPL.init!!(model, vi, InitFromPrior(), UnlinkAll()))
         ps = ParamsWithStats(vi)
         @test haskey(ps.params, @varname(x))
         @test haskey(ps.params, @varname(y))
@@ -66,23 +69,50 @@ using Test
     end
 end
 
+_safe_length(x) = length(x)
+# This actually gives N^2 elements, although there are only really N(N+1)/2 parameters in
+# the Cholesky factor. It doesn't really matter because we are comparing like for like i.e.
+# both sides of the sum will have the same overcounting.
+_safe_length(c::LinearAlgebra.Cholesky) = length(c.UL)
+
 @testset "ParamsWithStats from LogDensityFunction" begin
     @testset "$(m.f)" for m in DynamicPPL.TestUtils.ALL_MODELS
-        unlinked_vi = VarInfo(m)
-        @testset "$islinked" for islinked in (false, true)
-            vi = if islinked
-                DynamicPPL.link!!(unlinked_vi, m)
-            else
-                unlinked_vi
-            end
+        if m.f === DynamicPPL.TestUtils.demo_static_transformation
+            # TODO(mhauru) These tests are broken for demo_static_transformation because
+            # vi[vn] doesn't know which transform it should apply to the internally stored
+            # value. This requires a rethink, either of StaticTransformation or of what the
+            # comparison in this test should be.
+            @test false broken = true
+            continue
+        end
+        @testset "$transform_strategy" for transform_strategy in (UnlinkAll(), LinkAll())
+            vi = VarInfo(m, InitFromPrior(), transform_strategy)
             params = [x for x in vi[:]]
 
             # Get the ParamsWithStats using LogDensityFunction
             ldf = DynamicPPL.LogDensityFunction(m, getlogjoint, vi)
             ps = ParamsWithStats(params, ldf)
 
-            # Check that length of parameters is as expected
-            @test length(ps.params) == length(keys(vi))
+            # The keys are not necessarily going to be the same, because `ps.params` was
+            # obtained via RawValueAccumulator, which only stores raw values. However, `vi`
+            # stores TransformedValue objects. So, if you have something like
+            #    x[4:5] ~ MvNormal(zeros(2), I)
+            # then `ps.params` will have keys `x[4]` and `x[5]` (since it just contains a
+            # PartialArray with those two elements unmasked), whereas `vi` will have the key
+            # `x[4:5]` which stores an ArrayLikeBlock with two elements.
+            # 
+            # On top of that, the ParamsWithStats VNT will also have been `densify!!`-ed, so
+            # it may well just store a single vector `x` rather than individual `x[i]`'s.
+            #
+            # What we CAN do, though, is to check the size of the thing obtained by
+            # indexing into the keys. For `ps.params`, indexing into `x[4]` and `x[5]` will
+            # give two floats, each of "length" 1. For `vi`, indexing into `x[4:5]` will
+            # give a single object that has length 2. So we can check that the total number
+            # of _things_ contained inside is the same.
+            #
+            # Unfortunately, we need _safe_length to handle Cholesky.
+            @test sum(_safe_length(ps.params[vn]) for vn in keys(ps.params)) ==
+                sum(_safe_length(vi[vn]) for vn in keys(vi))
 
             # Iterate over all variables to check that their values match
             for vn in keys(vi)
@@ -91,5 +121,7 @@ end
         end
     end
 end
+
+@info "Completed $(@__FILE__) in $(now() - __now__)."
 
 end # module

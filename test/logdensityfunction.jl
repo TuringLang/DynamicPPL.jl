@@ -17,35 +17,24 @@ using Mooncake: Mooncake
 
 @testset "LogDensityFunction: Correctness" begin
     @testset "$(m.f)" for m in DynamicPPL.TestUtils.ALL_MODELS
-        @testset "$varinfo_func" for varinfo_func in [
-            DynamicPPL.untyped_varinfo,
-            DynamicPPL.typed_varinfo,
-            DynamicPPL.untyped_vector_varinfo,
-            DynamicPPL.typed_vector_varinfo,
-        ]
-            unlinked_vi = varinfo_func(m)
-            @testset "$islinked" for islinked in (false, true)
-                vi = if islinked
-                    DynamicPPL.link!!(unlinked_vi, m)
-                else
-                    unlinked_vi
-                end
-                nt_ranges, dict_ranges = DynamicPPL.get_ranges_and_linked(vi)
-                params = [x for x in vi[:]]
-                # Iterate over all variables
-                for vn in keys(vi)
-                    # Check that `getindex_internal` returns the same thing as using the ranges
-                    # directly
-                    range_with_linked = if AbstractPPL.getoptic(vn) === identity
-                        nt_ranges[AbstractPPL.getsym(vn)]
-                    else
-                        dict_ranges[vn]
-                    end
-                    @test params[range_with_linked.range] ==
-                        DynamicPPL.getindex_internal(vi, vn)
-                    # Check that the link status is correct
-                    @test range_with_linked.is_linked == islinked
-                end
+        @testset "$islinked" for islinked in (false, true)
+            unlinked_vi = DynamicPPL.VarInfo(m)
+            vi = if islinked
+                DynamicPPL.link!!(unlinked_vi, m)
+            else
+                unlinked_vi
+            end
+            ranges = DynamicPPL.get_ranges_and_linked(vi.values)
+            params = [x for x in vi[:]]
+            # Iterate over all variables
+            for vn in keys(vi)
+                # Check that `getindex_internal` returns the same thing as using the ranges
+                # directly
+                range_with_linked = ranges[vn]
+                @test params[range_with_linked.range] ==
+                    DynamicPPL.tovec(DynamicPPL.getindex_internal(vi, vn))
+                # Check that the link status is correct
+                @test range_with_linked.is_linked == islinked
             end
         end
     end
@@ -131,10 +120,10 @@ end
         struct ErrorAccumulator <: DynamicPPL.AbstractAccumulator end
         DynamicPPL.accumulator_name(::ErrorAccumulator) = :ERROR
         DynamicPPL.accumulate_assume!!(
-            ::ErrorAccumulator, ::Any, ::Any, ::VarName, ::Distribution
+            ::ErrorAccumulator, ::Any, ::Any, ::Any, ::VarName, ::Distribution, ::Any
         ) = throw(ErrorAccumulatorException())
         DynamicPPL.accumulate_observe!!(
-            ::ErrorAccumulator, ::Distribution, ::Any, ::Union{VarName,Nothing}
+            ::ErrorAccumulator, ::Distribution, ::Any, ::Union{VarName,Nothing}, ::Any
         ) = throw(ErrorAccumulatorException())
         DynamicPPL.reset(ea::ErrorAccumulator) = ea
         Base.copy(ea::ErrorAccumulator) = ea
@@ -157,10 +146,169 @@ end
     end
 end
 
+@testset "Conversions to/from vectors" begin
+    xdist, ydist = LogNormal(), Dirichlet(ones(3))
+    @model function f()
+        x ~ xdist
+        y ~ ydist
+        return nothing
+    end
+    model = f()
+
+    xraw, yraw = 0.5, [0.2, 0.3, 0.5]
+    raw_values = @vnt begin
+        x := xraw
+        y := yraw
+    end
+
+    function manual_make_vec(transform_strategy)
+        # Manually construct the vector of values that we're interested in. This function
+        # assumes that `x` will come before `y` in the LDF!
+        xvec = if target_transform(transform_strategy, @varname(x)) isa DynamicLink
+            DynamicPPL.to_linked_vec_transform(xdist)(xraw)
+        else
+            DynamicPPL.to_vec_transform(xdist)(xraw)
+        end
+        yvec = if target_transform(transform_strategy, @varname(y)) isa DynamicLink
+            DynamicPPL.to_linked_vec_transform(ydist)(yraw)
+        else
+            DynamicPPL.to_vec_transform(ydist)(yraw)
+        end
+        return vcat(xvec, yvec)
+    end
+
+    @testset "$transform_strategy" for transform_strategy in (
+        UnlinkAll(),
+        LinkAll(),
+        LinkSome(Set([@varname(x)]), UnlinkAll()),
+        UnlinkSome(Set([@varname(x)]), LinkAll()),
+    )
+        accs = OnlyAccsVarInfo(VectorValueAccumulator())
+        _, accs = init!!(model, accs, InitFromPrior(), transform_strategy)
+        vvals = get_vector_values(accs)
+        ldf = LogDensityFunction(model, getlogjoint_internal, vvals)
+
+        @testset "InitFromVector -> raw values" begin
+            # Test that initialising a model with `InitFromVector` will generate the correct
+            # raw values.
+            vec = manual_make_vec(transform_strategy)
+            init_strategy = InitFromVector(vec, ldf)
+            accs = OnlyAccsVarInfo(RawValueAccumulator(false))
+            _, accs = init!!(model, accs, init_strategy, UnlinkAll())
+            new_raw_values = get_raw_values(accs)
+            @test new_raw_values[@varname(x)] ≈ xraw
+            @test new_raw_values[@varname(y)] ≈ yraw
+
+            @testset "Throws an error if vector has wrong length" begin
+                @test_throws ArgumentError InitFromVector(randn(100), ldf)
+                @test_throws ArgumentError InitFromVector(Float64[], ldf)
+            end
+        end
+
+        @testset "Raw values -> vector" begin
+            # Test that initialising a model with raw values allows us to generate the right
+            # vector (either indirectly via VectorValueAccumulator and to_vector_params, or
+            # directly via VectorParamAccumulator).
+            init_strategy = InitFromParams(raw_values)
+            accs = OnlyAccsVarInfo(VectorValueAccumulator(), VectorParamAccumulator(ldf))
+            _, accs = init!!(model, accs, init_strategy, transform_strategy)
+
+            vecvals = get_vector_values(accs)
+            vec = to_vector_params(vecvals, ldf)
+            @test vec ≈ manual_make_vec(transform_strategy)
+
+            vecparams = get_vector_params(accs)
+            @test vecparams ≈ manual_make_vec(transform_strategy)
+
+            @testset "Throws an error if transform strategy doesn't line up" begin
+                if transform_strategy != UnlinkAll()
+                    accs = OnlyAccsVarInfo(VectorValueAccumulator())
+                    _, accs = init!!(model, accs, InitFromPrior(), UnlinkAll())
+                    vecvals = get_vector_values(accs)
+                    @test_throws ArgumentError to_vector_params(vecvals, ldf)
+
+                    accs = OnlyAccsVarInfo(VectorParamAccumulator(ldf))
+                    @test_throws ArgumentError init!!(
+                        model, accs, InitFromPrior(), UnlinkAll()
+                    )
+                end
+            end
+
+            @testset "Throws an error if there are extra variables" begin
+                @model function extra_var_model()
+                    x ~ xdist
+                    y ~ ydist
+                    return z ~ Normal()
+                end
+                extra_model = extra_var_model()
+
+                accs = OnlyAccsVarInfo(VectorValueAccumulator())
+                _, accs = init!!(extra_model, accs, InitFromPrior(), transform_strategy)
+                vecvals = get_vector_values(accs)
+                @test_throws ArgumentError to_vector_params(vecvals, ldf)
+
+                accs = OnlyAccsVarInfo(VectorParamAccumulator(ldf))
+                @test_throws ErrorException init!!(
+                    extra_model, accs, InitFromPrior(), transform_strategy
+                )
+            end
+
+            @testset "Throws an error if there aren't enough variables" begin
+                @model function fewer_var_model()
+                    return x ~ xdist
+                end
+                fewer_model = fewer_var_model()
+
+                accs = OnlyAccsVarInfo(VectorValueAccumulator())
+                _, accs = init!!(fewer_model, accs, InitFromPrior(), transform_strategy)
+                vecvals = get_vector_values(accs)
+                @test_throws ArgumentError to_vector_params(vecvals, ldf)
+
+                accs = OnlyAccsVarInfo(VectorParamAccumulator(ldf))
+                _, accs = init!!(fewer_model, accs, InitFromPrior(), transform_strategy)
+                @test_throws ArgumentError get_vector_params(accs)
+            end
+
+            @testset "Throws an error if the variable lengths aren't right" begin
+                @model function different_var_model()
+                    x ~ xdist
+                    return y ~ Dirichlet(ones(4))  # as opposed to ones(3)
+                end
+                different_model = different_var_model()
+
+                accs = OnlyAccsVarInfo(VectorValueAccumulator())
+                _, accs = init!!(different_model, accs, InitFromPrior(), transform_strategy)
+                vecvals = get_vector_values(accs)
+                @test_throws ArgumentError to_vector_params(vecvals, ldf)
+
+                accs = OnlyAccsVarInfo(VectorParamAccumulator(ldf))
+                @test_throws ArgumentError init!!(
+                    different_model, accs, InitFromPrior(), transform_strategy
+                )
+            end
+        end
+
+        @testset "Roundtrip" begin
+            # Test that we can roundtrip from vector -> raw values -> vector
+            vec = manual_make_vec(transform_strategy)
+            init_strategy = InitFromVector(vec, ldf)
+
+            accs = OnlyAccsVarInfo(VectorValueAccumulator(), VectorParamAccumulator(ldf))
+            _, accs = init!!(model, accs, init_strategy, transform_strategy)
+            new_vecvals = get_vector_values(accs)
+            new_vec = to_vector_params(new_vecvals, ldf)
+            @test new_vec ≈ vec
+
+            new_vec_params = get_vector_params(accs)
+            @test new_vec_params ≈ vec
+        end
+    end
+end
+
 @testset "LogDensityFunction: Type stability" begin
     @testset "$(m.f)" for m in DynamicPPL.TestUtils.ALL_MODELS
-        unlinked_vi = DynamicPPL.VarInfo(m)
         @testset "$islinked" for islinked in (false, true)
+            unlinked_vi = DynamicPPL.VarInfo(m)
             vi = if islinked
                 DynamicPPL.link!!(unlinked_vi, m)
             else
@@ -168,7 +316,12 @@ end
             end
             ldf = DynamicPPL.LogDensityFunction(m, DynamicPPL.getlogjoint_internal, vi)
             x = vi[:]
-            @inferred LogDensityProblems.logdensity(ldf, x)
+            # The below type inference fails on v1.10.
+            skip = (VERSION < v"1.11.0" && m.f === DynamicPPL.TestUtils.demo_nested_colons)
+            @test begin
+                @inferred LogDensityProblems.logdensity(ldf, x)
+                true
+            end skip = skip
         end
     end
 end

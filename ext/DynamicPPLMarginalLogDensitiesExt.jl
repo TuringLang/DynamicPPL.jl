@@ -1,6 +1,6 @@
 module DynamicPPLMarginalLogDensitiesExt
 
-using DynamicPPL: DynamicPPL, LogDensityProblems, VarName
+using DynamicPPL: DynamicPPL, LogDensityProblems, VarName, RangeAndLinked
 using MarginalLogDensities: MarginalLogDensities
 
 # A thin wrapper to adapt a DynamicPPL.LogDensityFunction to the interface expected by
@@ -105,11 +105,9 @@ function DynamicPPL.marginalize(
     ldf = DynamicPPL.LogDensityFunction(model, getlogprob, varinfo)
     # Determine the indices for the variables to marginalise out.
     varindices = mapreduce(vcat, marginalized_varnames) do vn
-        if DynamicPPL.getoptic(vn) === identity
-            ldf._iden_varname_ranges[DynamicPPL.getsym(vn)].range
-        else
-            ldf._varname_ranges[vn].range
-        end
+        # The type assertion helps in cases where the model is type unstable and thus
+        # `varname_ranges` may have an abstract element type.
+        (ldf._varname_ranges[vn]::RangeAndLinked).range
     end
     mld = MarginalLogDensities.MarginalLogDensity(
         LogDensityFunctionWrapper(ldf, varinfo),
@@ -145,9 +143,21 @@ VarInfo used in the marginalisation.
 !!! note
 
     The other fields of the VarInfo, e.g. accumulated log-probabilities, will not be
-    updated. If you wish to have a fully consistent VarInfo, you should re-evaluate the
-    model with the returned VarInfo (e.g. using `vi = last(DynamicPPL.evaluate!!(model,
-    vi))`).
+    updated. If you wish to obtain updated log-probabilities, you should re-evaluate the
+    model with the values inside the returned VarInfo, for example using:
+
+    ```julia
+    init_strategy = DynamicPPL.InitFromParams(varinfo.values, nothing)
+    oavi = DynamicPPL.OnlyAccsVarInfo((
+        DynamicPPL.LogPriorAccumulator(),
+        DynamicPPL.LogLikelihoodAccumulator(),
+        DynamicPPL.RawValueAccumulator(false),
+        # ... whatever else you need
+    ))
+    _, oavi = DynamicPPL.init!!(rng, model, oavi, init_strategy, DynamicPPL.UnlinkAll())
+    ```
+
+    You can then extract all the updated data from `oavi`.
 
 ## Example
 
@@ -214,7 +224,7 @@ function DynamicPPL.VarInfo(
     if unmarginalized_params !== nothing
         full_params[MarginalLogDensities.ijoint(mld)] = unmarginalized_params
     end
-    return DynamicPPL.unflatten(original_vi, full_params)
+    return DynamicPPL.unflatten!!(original_vi, full_params)
 end
 
 end

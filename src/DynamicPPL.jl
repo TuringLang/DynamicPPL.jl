@@ -46,21 +46,16 @@ import Base:
 # VarInfo
 export AbstractVarInfo,
     VarInfo,
-    SimpleVarInfo,
-    AbstractAccumulator,
-    LogLikelihoodAccumulator,
-    LogPriorAccumulator,
-    LogJacobianAccumulator,
+    VarNamedTuple,
+    @vnt,
+    map_pairs!!,
+    map_values!!,
+    apply!!,
+    densify!!,
     push!!,
     empty!!,
     subset,
     getlogp,
-    getlogjoint,
-    getlogprior,
-    getloglikelihood,
-    getlogjac,
-    getlogjoint_internal,
-    getlogprior_internal,
     setlogp!!,
     setlogprior!!,
     setlogjac!!,
@@ -72,11 +67,43 @@ export AbstractVarInfo,
     accloglikelihood!!,
     is_transformed,
     set_transformed!!,
-    link,
-    link!!,
-    invlink,
-    invlink!!,
-    values_as,
+    # Accumulators
+    AbstractAccumulator,
+    accumulate_assume!!,
+    accumulate_observe!!,
+    accumulator_name,
+    reset,
+    split,
+    combine,
+    getacc,
+    setacc!!,
+    setaccs!!,
+    deleteacc!!,
+    VNTAccumulator,
+    DoNotAccumulate,
+    # Accumulators - logp
+    LogLikelihoodAccumulator,
+    LogPriorAccumulator,
+    LogJacobianAccumulator,
+    getlogjoint,
+    getlogprior,
+    getloglikelihood,
+    getlogjac,
+    getlogjoint_internal,
+    getlogprior_internal,
+    # Accumulators - values
+    RawValueAccumulator,
+    VectorValueAccumulator,
+    VectorParamAccumulator,
+    get_raw_values,
+    get_vector_values,
+    get_vector_params,
+    # Accumulators - miscellany
+    PriorDistributionAccumulator,
+    BijectorAccumulator,
+    # Working with internal values as vectors
+    unflatten!!,
+    internal_values_as_vector,
     # VarName (reexport from AbstractPPL)
     VarName,
     subsumes,
@@ -93,13 +120,13 @@ export AbstractVarInfo,
     setthreadsafe,
     requires_threadsafe,
     extract_priors,
-    values_as_in_model,
     # evaluation
     evaluate!!,
     init!!,
     # LogDensityFunction
     LogDensityFunction,
     OnlyAccsVarInfo,
+    to_vector_params,
     # Leaf contexts
     AbstractContext,
     contextualize,
@@ -119,8 +146,32 @@ export AbstractVarInfo,
     InitFromPrior,
     InitFromUniform,
     InitFromParams,
-    init,
+    InitFromVector,
     get_param_eltype,
+    init,
+    # Transformed values
+    VectorValue,
+    LinkedVectorValue,
+    UntransformedValue,
+    get_transform,
+    get_internal_value,
+    set_internal_value,
+    # Linking
+    link,
+    link!!,
+    invlink,
+    invlink!!,
+    update_link_status!!,
+    AbstractTransformStrategy,
+    LinkAll,
+    UnlinkAll,
+    LinkSome,
+    UnlinkSome,
+    target_transform,
+    apply_transform_strategy,
+    AbstractTransform,
+    DynamicLink,
+    Unlink,
     # Pseudo distributions
     NamedDist,
     NoDist,
@@ -131,8 +182,10 @@ export AbstractVarInfo,
     pointwise_logdensities,
     pointwise_loglikelihoods,
     condition,
+    conditioned,
     decondition,
     fix,
+    fixed,
     unfix,
     predict,
     marginalize,
@@ -143,30 +196,13 @@ export AbstractVarInfo,
     ParamsWithStats,
     # Convenience macros
     @addlogprob!,
-    value_iterator_from_chain,
     check_model,
-    check_model_and_trace,
     # Deprecated.
-    @logprob_str,
-    @prob_str,
     generated_quantities
 
 # Reexport
 using Distributions: loglikelihood
 export loglikelihood
-
-# TODO: Remove once we feel comfortable people aren't using it anymore.
-macro logprob_str(str)
-    return :(error(
-        "The `@logprob_str` macro is no longer supported. See https://turinglang.org/dev/docs/using-turing/guide/#querying-probabilities-from-model-or-chain for information on how to query probabilities, and https://github.com/TuringLang/DynamicPPL.jl/issues/356 for information regarding its removal.",
-    ))
-end
-
-macro prob_str(str)
-    return :(error(
-        "The `@prob_str` macro is no longer supported. See https://turinglang.org/dev/docs/using-turing/guide/#querying-probabilities-from-model-or-chain for information on how to query probabilities, and https://github.com/TuringLang/DynamicPPL.jl/issues/356 for information regarding its removal.",
-    ))
-end
 
 # TODO(mhauru) We should write down the list of methods that any subtype of AbstractVarInfo
 # has to implement. Not sure what the full list is for parameters values, but for
@@ -178,39 +214,52 @@ Abstract supertype for data structures that capture random variables when execut
 probabilistic model and accumulate log densities such as the log likelihood or the
 log joint probability of the model.
 
-See also: [`VarInfo`](@ref), [`SimpleVarInfo`](@ref).
+See also: [`VarInfo`](@ref), [`OnlyAccsVarInfo`](@ref).
 """
 abstract type AbstractVarInfo <: AbstractModelTrace end
 
 # Necessary forward declarations
 include("utils.jl")
+include("varnamedtuple.jl")
+using .VarNamedTuples:
+    VarNamedTuples,
+    VarNamedTuple,
+    map_pairs!!,
+    map_values!!,
+    apply!!,
+    densify!!,
+    templated_setindex!!,
+    NoTemplate,
+    SkipTemplate,
+    @vnt
+
+include("transformed_values.jl")
 include("contexts.jl")
 include("contexts/default.jl")
 include("contexts/init.jl")
-include("contexts/transformation.jl")
 include("contexts/prefix.jl")
 include("contexts/conditionfix.jl")  # Must come after contexts/prefix.jl
 include("model.jl")
 include("varname.jl")
 include("distribution_wrappers.jl")
 include("submodel.jl")
-include("varnamedvector.jl")
 include("accumulators.jl")
-include("default_accumulators.jl")
+include("accumulators/default.jl")
+include("accumulators/vnt.jl")
+include("accumulators/vector_values.jl")
+include("accumulators/priors.jl")
+include("accumulators/raw_values.jl")
+include("accumulators/bijector.jl")
+include("accumulators/pointwise_logdensities.jl")
 include("abstract_varinfo.jl")
 include("threadsafe.jl")
 include("varinfo.jl")
-include("simple_varinfo.jl")
 include("onlyaccs.jl")
 include("compiler.jl")
-include("pointwise_logdensities.jl")
 include("logdensityfunction.jl")
+include("accumulators/vector_params.jl")
 include("model_utils.jl")
-include("extract_priors.jl")
-include("values_as_in_model.jl")
-include("experimental.jl")
 include("chains.jl")
-include("bijector.jl")
 
 include("debug_utils.jl")
 using .DebugUtils
@@ -220,27 +269,6 @@ include("deprecated.jl")
 
 if isdefined(Base.Experimental, :register_error_hint)
     function __init__()
-        # Better error message if users forget to load JET.jl
-        Base.Experimental.register_error_hint(MethodError) do io, exc, argtypes, _
-            requires_jet =
-                exc.f === DynamicPPL.Experimental._determine_varinfo_jet &&
-                length(argtypes) >= 2 &&
-                argtypes[1] <: Model &&
-                argtypes[2] <: AbstractContext
-            requires_jet |=
-                exc.f === DynamicPPL.Experimental.is_suitable_varinfo &&
-                length(argtypes) >= 3 &&
-                argtypes[1] <: Model &&
-                argtypes[2] <: AbstractContext &&
-                argtypes[3] <: AbstractVarInfo
-            if requires_jet
-                print(
-                    io,
-                    "\n$(exc.f) requires JET.jl to be loaded. Please run `using JET` before calling $(exc.f).",
-                )
-            end
-        end
-
         # Same for MarginalLogDensities.jl
         Base.Experimental.register_error_hint(MethodError) do io, exc, argtypes, _
             requires_mld =
@@ -254,21 +282,6 @@ if isdefined(Base.Experimental, :register_error_hint)
                     "\n\n    `$(exc.f)` requires MarginalLogDensities.jl to be loaded.\n    Please run `using MarginalLogDensities` before calling `$(exc.f)`.\n";
                     color=:cyan,
                     bold=true,
-                )
-            end
-        end
-
-        Base.Experimental.register_error_hint(MethodError) do io, exc, argtypes, _
-            is_evaluate_three_arg =
-                exc.f === AbstractPPL.evaluate!! &&
-                length(argtypes) == 3 &&
-                argtypes[1] <: Model &&
-                argtypes[2] <: AbstractVarInfo &&
-                argtypes[3] <: AbstractContext
-            if is_evaluate_three_arg
-                print(
-                    io,
-                    "\n\nThe method `evaluate!!(model, varinfo, new_ctx)` has been removed. Instead, you should store the `new_ctx` in the `model.context` field using `new_model = contextualize(model, new_ctx)`, and then call `evaluate!!(new_model, varinfo)` on the new model. (Note that, if the model already contained a non-default context, you will need to wrap the existing context.)",
                 )
             end
         end

@@ -1,0 +1,160 @@
+# [Array-like blocks](@id array-like-blocks)
+
+In a number of VNT use cases, it is necessary to associate multiple indices in a `VarNamedTuple` with an object that is not necessarily the same number of elements.
+
+Consider, for example, this model:
+
+```julia
+@model function f()
+    x = zeros(3)
+    return x[1:3] ~ Dirichlet(ones(3))
+end
+```
+
+and suppose we want to store the prior distribution associated with each variable in a `VarNamedTuple`.
+With a `Dict{VarName,Distribution}`, we can do this:
+
+```julia
+d = Dict{VarName,Distribution}(@varname(x[1:3]) => Dirichlet(ones(3)))
+```
+
+but we incur all the costs associated with the use of a `Dict`, as described before.
+
+With a `VarNamedTuple`, we cannot store this directly:
+
+```julia
+vnt.data.x = ... # some array
+vnt.data.x[1:3] = Dirichlet(ones(3))  # will error
+```
+
+because `Dirichlet` is not an array, and `setindex!` will fail.
+Nor can we write
+
+```julia
+vnt.data.x = ... # some array
+vnt.data.x[1:3] .= Dirichlet(ones(3))
+```
+
+because although this will not error, it is semantically different: this means that every element `x[1]`, `x[2]`, and `x[3]` will be assigned the same `Dirichlet(ones(3))` object, which is not what we want.
+
+The current solution to this is to use `ArrayLikeBlock`s, which are thin wrappers around the actual value, but additionally also store the indices used to set the value.
+The second and third arguments here are the indices (positional and keyword) used to set the value, and the fourth argument is the size of the block.
+
+```@example 1
+using DynamicPPL, Distributions
+using DynamicPPL.VarNamedTuples: ArrayLikeBlock
+
+alb = ArrayLikeBlock(Dirichlet(ones(3)), 1:3, (;), (3,))
+```
+
+We then set this `ArrayLikeBlock` in all the relevant indices.
+The extra information in the `ArrayLikeBlock` allows us to forbid partial indexing into it later on.
+In particular, we want to ensure that users can only retrieve the entire block at once, and not e.g. just `x[1]` or `x[2:3]`.
+
+## Getting and setting: in practice
+
+As a user you should not have to deal with `ArrayLikeBlock`s directly.
+Under the hood, `templated_setindex!!` will automatically wrap values in `ArrayLikeBlock`s when necessary:
+
+```@example 1
+x = zeros(5)
+vnt = DynamicPPL.templated_setindex!!(
+    VarNamedTuple(), Dirichlet(ones(3)), @varname(x[1:3]), x
+)
+```
+
+You can access the value again as long as you refer to the full range:
+
+```@example 1
+vnt[@varname(x[1:3])]
+```
+
+Because we provided template information, you can access this via any other combination of indexing, as long as it refers to all three indices:
+
+```@example 1
+vnt[@varname(x[begin:(end - 2)])]
+```
+
+However, if you try to access only part of the block, you will get an error:
+
+```@repl 1
+vnt[@varname(x[1])]
+```
+
+Furthermore, if you set a value into any of the indices covered by the block, the entire block is invalidated and thus removed:
+
+```@example 1
+vnt = DynamicPPL.templated_setindex!!(vnt, Normal(), @varname(x[2]), x)
+```
+
+## Which parts of DynamicPPL use array-like blocks?
+
+Simply put, anywhere where we don't store raw values.
+Some examples follow.
+(This list is meant to only be illustrative, not exhaustive!)
+
+### VarInfo
+
+In `VarInfo`, we need to be able to store either linked or unlinked values (in general, `AbstractTransformedValue`s).
+These are always vectorised values, and the linked and unlinked vectors may have different sizes (this is indeed the case for Dirichlet distributions).
+This means that we have to collectively assign multiple indices in the `VarNamedTuple` to a single vector, which may or may not have the same size as the indices.
+
+```@example 1
+@model function dirichlet()
+    x = zeros(3)
+    return x[1:3] ~ Dirichlet(ones(3))
+end
+dirichlet_model = dirichlet()
+vi = VarInfo(dirichlet_model)
+vi.values
+```
+
+This means that in the actual `VarInfo` we do not have a notion of what `x[1]` is:
+
+```@repl 1
+vi[@varname(x[1])]
+```
+
+See the [documentation on storing values](../accs/values.md) for more details.
+
+### Prior distributions
+
+In `extract_priors` we use a VNT to store the prior distributions seen at each point in the model.
+This is exactly the same use case as in the introduction.
+
+```@example 1
+DynamicPPL.extract_priors(dirichlet_model)
+```
+
+### LogDensityFunction
+
+`DynamicPPL.LogDensityFunction` has to retain information about whether each `VarName`s is linked or not, and the indices in the vectorised parameters that correspond to each variable.
+
+For example, consider creating a linked `LogDensityFunction` for (a slightly expanded version of) the Dirichlet model above:
+
+```@example 1
+@model function expanded_dirichlet()
+    x = zeros(4)
+    x[1] ~ Normal()
+    return x[2:4] ~ Dirichlet(ones(3))
+end
+model = expanded_dirichlet()
+
+vi = VarInfo(model)
+linked_vi = DynamicPPL.link!!(vi, model)
+ldf = LogDensityFunction(model, DynamicPPL.getlogjoint_internal, linked_vi)
+nothing # hide
+```
+
+When linking a `Dirichlet(ones(3))`, the resulting vector will have length 2.
+So, the `LogDensityFunction` takes in a vector of length 3, for which the first index belongs to `x[1]`, and the next two indices belong to the linked parameters for `x[2:4]`.
+Furthermore, it needs to remember that all the variables have been linked.
+We can see that this is exactly how the `LogDensityFunction` has stored the information:
+
+```@example 1
+ldf._varname_ranges
+```
+
+!!! note
+    
+    From the example above, we can see that indexing into this `PartialArray` is necessarily type-unstable (since the element type is `Any`). This immediately suggests a performance optimisation for the user: do not mix and match different kinds of distributions within the same vector. For example, if all the `x[i]`'s were distributed according to univariate distributions, this would not be an issue.

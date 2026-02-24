@@ -1,6 +1,7 @@
 module DynamicPPLMCMCChainsExt
 
 using DynamicPPL: DynamicPPL, AbstractPPL, AbstractMCMC, Random
+using BangBang: setindex!!
 using MCMCChains: MCMCChains
 
 function getindex_varname(
@@ -29,7 +30,7 @@ end
 """
     AbstractMCMC.from_samples(
         ::Type{MCMCChains.Chains},
-        params_and_stats::AbstractMatrix{<:ParamsWithStats}
+        params_and_stats::AbstractMatrix{<:DynamicPPL.ParamsWithStats}
     )
 
 Convert an array of `DynamicPPL.ParamsWithStats` to an `MCMCChains.Chains` object.
@@ -94,7 +95,8 @@ end
 """
     AbstractMCMC.to_samples(
         ::Type{DynamicPPL.ParamsWithStats},
-        chain::MCMCChains.Chains
+        chain::MCMCChains.Chains,
+        model::DynamicPPL.Model
     )
 
 Convert an `MCMCChains.Chains` object to an array of `DynamicPPL.ParamsWithStats`.
@@ -102,16 +104,29 @@ Convert an `MCMCChains.Chains` object to an array of `DynamicPPL.ParamsWithStats
 For this to work, `chain` must contain the `varname_to_symbol` mapping in its `info` field.
 """
 function AbstractMCMC.to_samples(
-    ::Type{DynamicPPL.ParamsWithStats}, chain::MCMCChains.Chains
+    ::Type{DynamicPPL.ParamsWithStats}, chain::MCMCChains.Chains, model::DynamicPPL.Model
 )
+    # Run model once to get templates for parameters. Note that the chain may include
+    # variables stored with `:=`, so we need to pick those up as well.
+    vi = DynamicPPL.OnlyAccsVarInfo((DynamicPPL.RawValueAccumulator(true),))
+    _, vi = DynamicPPL.init!!(model, vi, DynamicPPL.InitFromPrior(), DynamicPPL.UnlinkAll())
+    template_vnt = DynamicPPL.get_raw_values(vi)
+    # Now we can iterate over the chain
     idxs = Iterators.product(1:size(chain, 1), 1:size(chain, 3))
     # Get parameters
     params_matrix = map(idxs) do (sample_idx, chain_idx)
-        d = DynamicPPL.OrderedCollections.OrderedDict{DynamicPPL.VarName,Any}()
+        vnt = DynamicPPL.VarNamedTuple()
         for vn in get_varnames(chain)
-            d[vn] = getindex_varname(chain, sample_idx, vn, chain_idx)
+            top_sym = AbstractPPL.getsym(vn)
+            val = getindex_varname(chain, sample_idx, vn, chain_idx)
+            # This call to get() is type unstable, but I tried writing a generated function
+            # that was type stable and it's really no different in terms of performance.
+            # Presumably this is minimal compared to the rest of the work we do in this
+            # function
+            template = get(template_vnt.data, top_sym, DynamicPPL.NoTemplate())
+            vnt = DynamicPPL.templated_setindex!!(vnt, val, vn, template)
         end
-        d
+        vnt
     end
     # Statistics
     stats_matrix = if :internals in MCMCChains.sections(chain)
@@ -176,8 +191,8 @@ end
         fallback=nothing,
     )
 
-Re-evaluate `model` for each sample in `chain` using the accumulators provided in `at`,
-returning an matrix of `(retval, updated_at)` tuples.
+Re-evaluate `model` for each sample in `chain` using the accumulators provided in `accs`,
+returning a matrix of `(retval, updated_at)` tuples.
 
 This loops over all entries in the chain and uses `DynamicPPL.InitFromParams` as the
 initialisation strategy when re-evaluating the model. For many usecases the fallback should
@@ -192,10 +207,16 @@ function reevaluate_with_chain(
     accs::NTuple{N,DynamicPPL.AbstractAccumulator},
     fallback::Union{DynamicPPL.AbstractInitStrategy,Nothing}=nothing,
 ) where {N}
-    params_with_stats = AbstractMCMC.to_samples(DynamicPPL.ParamsWithStats, chain)
+    params_with_stats = AbstractMCMC.to_samples(DynamicPPL.ParamsWithStats, chain, model)
     vi = DynamicPPL.OnlyAccsVarInfo(DynamicPPL.AccumulatorTuple(accs))
     return map(params_with_stats) do ps
-        DynamicPPL.init!!(rng, model, vi, DynamicPPL.InitFromParams(ps.params, fallback))
+        DynamicPPL.init!!(
+            rng,
+            model,
+            vi,
+            DynamicPPL.InitFromParams(ps.params, fallback),
+            DynamicPPL.UnlinkAll(),
+        )
     end
 end
 function reevaluate_with_chain(
@@ -278,7 +299,7 @@ function DynamicPPL.predict(
     accs = (
         DynamicPPL.LogPriorAccumulator(),
         DynamicPPL.LogLikelihoodAccumulator(),
-        DynamicPPL.ValuesAsInModelAccumulator(false),
+        DynamicPPL.RawValueAccumulator(true),
     )
     predictions = map(
         DynamicPPL.ParamsWithStats ∘ last,
@@ -370,21 +391,38 @@ function DynamicPPL.returned(model::DynamicPPL.Model, chain_full::MCMCChains.Cha
 end
 
 """
+Shared internal helper function.
+"""
+function _pointwise_logdensities_chain(
+    model::DynamicPPL.Model,
+    chain::MCMCChains.Chains,
+    ::Val{Prior}=Val(true),
+    ::Val{Likelihood}=Val(true),
+) where {Prior,Likelihood}
+    acc = DynamicPPL.VNTAccumulator{DynamicPPL.POINTWISE_ACCNAME}(
+        DynamicPPL.PointwiseLogProb{Prior,Likelihood}()
+    )
+    parameter_only_chain = MCMCChains.get_sections(chain, :parameters)
+    # Reevaluating this gives us a VNT of log probs. We can densify and then wrap in
+    # ParamsWithStats so that we can easily convert back to a Chains object.
+    pointwise_logps = map(
+        reevaluate_with_chain(model, parameter_only_chain, (acc,), nothing)
+    ) do (_, oavi)
+        logprobs = DynamicPPL.get_pointwise_logprobs(oavi)
+        dense_logprobs = DynamicPPL.densify!!(logprobs)
+        DynamicPPL.ParamsWithStats(dense_logprobs, (;))
+    end
+    return AbstractMCMC.from_samples(MCMCChains.Chains, pointwise_logps)
+end
+
+"""
     DynamicPPL.pointwise_logdensities(
         model::DynamicPPL.Model,
         chain::MCMCChains.Chains,
-        ::Type{Tout}=MCMCChains.Chains
-        ::Val{whichlogprob}=Val(:both),
     )
 
 Runs `model` on each sample in `chain`, returning a new `MCMCChains.Chains` object where
 the log-density of each variable at each sample is stored (rather than its value).
-
-`whichlogprob` specifies which log-probabilities to compute. It can be `:both`, `:prior`, or
-`:likelihood`.
-
-You can pass `Tout=OrderedDict` to get the result as an `OrderedDict{VarName,
-Matrix{Float64}}` instead.
 
 See also: [`DynamicPPL.pointwise_loglikelihoods`](@ref),
 [`DynamicPPL.pointwise_prior_logdensities`](@ref).
@@ -442,56 +480,17 @@ julia> # The above is the same as:
  -1.3822169643436162
  -2.0986122886681096
 ```
-
-julia> # Alternatively:
-       plds_dict = pointwise_logdensities(model, chain, OrderedDict)
-OrderedDict{VarName, Matrix{Float64}} with 6 entries:
-  s     => [-0.802775; -1.38222; -2.09861;;]
-  m     => [-8.91894; -7.51551; -7.46824;;]
-  xs[1] => [-5.41894; -5.26551; -5.63491;;]
-  xs[2] => [-2.91894; -3.51551; -4.13491;;]
-  xs[3] => [-1.41894; -2.26551; -2.96824;;]
-  y     => [-0.918939; -1.51551; -2.13491;;]
 """
 function DynamicPPL.pointwise_logdensities(
-    model::DynamicPPL.Model,
-    chain::MCMCChains.Chains,
-    ::Type{Tout}=MCMCChains.Chains,
-    ::Val{whichlogprob}=Val(:both),
-) where {whichlogprob,Tout}
-    acc = DynamicPPL.PointwiseLogProbAccumulator{whichlogprob}()
-    accname = DynamicPPL.accumulator_name(acc)
-    parameter_only_chain = MCMCChains.get_sections(chain, :parameters)
-    pointwise_logps =
-        map(reevaluate_with_chain(model, parameter_only_chain, (acc,), nothing)) do (_, vi)
-            DynamicPPL.getacc(vi, Val(accname)).logps
-        end
-    # pointwise_logps is a matrix of OrderedDicts
-    all_keys = DynamicPPL.OrderedCollections.OrderedSet{DynamicPPL.VarName}()
-    for d in pointwise_logps
-        union!(all_keys, DynamicPPL.OrderedCollections.OrderedSet(keys(d)))
-    end
-    # this is a 3D array: (iterations, variables, chains)
-    new_data = [
-        get(pointwise_logps[iter, chain], k, missing) for
-        iter in 1:size(pointwise_logps, 1), k in all_keys,
-        chain in 1:size(pointwise_logps, 2)
-    ]
-
-    if Tout == MCMCChains.Chains
-        return MCMCChains.Chains(new_data, Symbol.(collect(all_keys)))
-    elseif Tout <: AbstractDict
-        return Tout{DynamicPPL.VarName,Matrix{Float64}}(
-            k => new_data[:, i, :] for (i, k) in enumerate(all_keys)
-        )
-    end
+    model::DynamicPPL.Model, chain::MCMCChains.Chains
+)
+    return _pointwise_logdensities_chain(model, chain, Val(true), Val(true))
 end
 
 """
     DynamicPPL.pointwise_loglikelihoods(
         model::DynamicPPL.Model,
         chain::MCMCChains.Chains,
-        ::Type{Tout}=MCMCChains.Chains
     )
 
 Compute the pointwise log-likelihoods of the model given the chain. This is the same as
@@ -500,9 +499,9 @@ Compute the pointwise log-likelihoods of the model given the chain. This is the 
 See also: [`DynamicPPL.pointwise_logdensities`](@ref), [`DynamicPPL.pointwise_prior_logdensities`](@ref).
 """
 function DynamicPPL.pointwise_loglikelihoods(
-    model::DynamicPPL.Model, chain::MCMCChains.Chains, ::Type{Tout}=MCMCChains.Chains
-) where {Tout}
-    return DynamicPPL.pointwise_logdensities(model, chain, Tout, Val(:likelihood))
+    model::DynamicPPL.Model, chain::MCMCChains.Chains
+)
+    return _pointwise_logdensities_chain(model, chain, Val(false), Val(true))
 end
 
 """
@@ -517,9 +516,9 @@ Compute the pointwise log-prior-densities of the model given the chain. This is 
 See also: [`DynamicPPL.pointwise_logdensities`](@ref), [`DynamicPPL.pointwise_loglikelihoods`](@ref).
 """
 function DynamicPPL.pointwise_prior_logdensities(
-    model::DynamicPPL.Model, chain::MCMCChains.Chains, ::Type{Tout}=MCMCChains.Chains
-) where {Tout}
-    return DynamicPPL.pointwise_logdensities(model, chain, Tout, Val(:prior))
+    model::DynamicPPL.Model, chain::MCMCChains.Chains
+)
+    return _pointwise_logdensities_chain(model, chain, Val(true), Val(false))
 end
 
 """

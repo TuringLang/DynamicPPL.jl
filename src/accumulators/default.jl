@@ -66,8 +66,10 @@ function Base.convert(
     return AccType(convert(T, logp(acc)))
 end
 
-function convert_eltype(::Type{T}, acc::LogProbAccumulator) where {T}
-    return basetypeof(acc)(convert(T, logp(acc)))
+function promote_for_threadsafe_eval(
+    acc::LogProbAccumulator, ::Type{Tparam_eltype}
+) where {Tparam_eltype}
+    return basetypeof(acc)(convert(Tparam_eltype, logp(acc)))
 end
 
 """
@@ -91,10 +93,12 @@ logp(acc::LogPriorAccumulator) = acc.logp
 
 accumulator_name(::Type{<:LogPriorAccumulator}) = :LogPrior
 
-function accumulate_assume!!(acc::LogPriorAccumulator, val, logjac, vn, right)
+function accumulate_assume!!(
+    acc::LogPriorAccumulator, val, tval, logjac, vn, right, template
+)
     return acclogp(acc, logpdf(right, val))
 end
-accumulate_observe!!(acc::LogPriorAccumulator, right, left, vn) = acc
+accumulate_observe!!(acc::LogPriorAccumulator, right, left, vn, template) = acc
 
 """
     LogJacobianAccumulator{T<:Real} <: LogProbAccumulator{T}
@@ -135,10 +139,12 @@ logp(acc::LogJacobianAccumulator) = acc.logjac
 
 accumulator_name(::Type{<:LogJacobianAccumulator}) = :LogJacobian
 
-function accumulate_assume!!(acc::LogJacobianAccumulator, val, logjac, vn, right)
+function accumulate_assume!!(
+    acc::LogJacobianAccumulator, val, tval, logjac, vn, right, template
+)
     return acclogp(acc, logjac)
 end
-accumulate_observe!!(acc::LogJacobianAccumulator, right, left, vn) = acc
+accumulate_observe!!(acc::LogJacobianAccumulator, right, left, vn, template) = acc
 
 """
     LogLikelihoodAccumulator{T<:Real} <: LogProbAccumulator{T}
@@ -157,8 +163,12 @@ logp(acc::LogLikelihoodAccumulator) = acc.logp
 
 accumulator_name(::Type{<:LogLikelihoodAccumulator}) = :LogLikelihood
 
-accumulate_assume!!(acc::LogLikelihoodAccumulator, val, logjac, vn, right) = acc
-function accumulate_observe!!(acc::LogLikelihoodAccumulator, right, left, vn)
+function accumulate_assume!!(
+    acc::LogLikelihoodAccumulator, val, tval, logjac, vn, right, template
+)
+    return acc
+end
+function accumulate_observe!!(acc::LogLikelihoodAccumulator, right, left, vn, template)
     # Note that it's important to use the loglikelihood function here, not logpdf, because
     # they handle vectors differently:
     # https://github.com/JuliaStats/Distributions.jl/issues/1972

@@ -47,6 +47,11 @@ end
             @addlogprob! llh_nt
             return global lp_after = getlogjoint(__varinfo__)
         end
+        varinfo = VarInfo(testmodel_nt2())
+        @test iszero(lp_before)
+        @test getlogjoint(varinfo) == lp_after == 42
+        @test getloglikelihood(varinfo) == 42
+        @test iszero(getlogprior(varinfo))
     end
 
     @testset "transformations" begin
@@ -102,11 +107,19 @@ end
             model = test()
             vi_unlinked = VarInfo(model)
             vi_linked = DynamicPPL.link!!(VarInfo(model), model)
-            @test (DynamicPPL.evaluate!!(model, vi_unlinked); true)
-            @test (DynamicPPL.evaluate!!(model, vi_linked); true)
-            model_init = DynamicPPL.setleafcontext(model, DynamicPPL.InitContext())
-            @test (DynamicPPL.evaluate!!(model_init, vi_unlinked); true)
-            @test (DynamicPPL.evaluate!!(model_init, vi_linked); true)
+            @test (DynamicPPL.evaluate_nowarn!!(model, vi_unlinked); true)
+            @test (DynamicPPL.evaluate_nowarn!!(model, vi_linked); true)
+
+            model_init = DynamicPPL.setleafcontext(
+                model,
+                DynamicPPL.InitContext(DynamicPPL.InitFromPrior(), DynamicPPL.UnlinkAll()),
+            )
+            @test (DynamicPPL.evaluate_nowarn!!(model_init, vi_unlinked); true)
+            model_init = DynamicPPL.setleafcontext(
+                model,
+                DynamicPPL.InitContext(DynamicPPL.InitFromPrior(), DynamicPPL.LinkAll()),
+            )
+            @test (DynamicPPL.evaluate_nowarn!!(model_init, vi_linked); true)
         end
 
         # Unconstrained univariate
@@ -185,29 +198,6 @@ end
 
         t = (2.0, [3.0, 4.0])
         @test DynamicPPL.tovec(t) == [2.0, 3.0, 4.0]
-    end
-
-    @testset "unique_syms" begin
-        vns = (@varname(x), @varname(y[1]), @varname(x.a), @varname(z[15]), @varname(y[2]))
-        @inferred DynamicPPL.unique_syms(vns)
-        @inferred DynamicPPL.unique_syms(())
-        @test DynamicPPL.unique_syms(vns) == (:x, :y, :z)
-        @test DynamicPPL.unique_syms(()) == ()
-    end
-
-    @testset "group_varnames_by_symbol" begin
-        vns_tuple = (
-            @varname(x), @varname(y[1]), @varname(x.a), @varname(z[15]), @varname(y[2])
-        )
-        vns_vec = collect(vns_tuple)
-        vns_nt = (;
-            x=[@varname(x), @varname(x.a)],
-            y=[@varname(y[1]), @varname(y[2])],
-            z=[@varname(z[15])],
-        )
-        vns_vec_single_symbol = [@varname(x.a), @varname(x.b), @varname(x[1])]
-        @inferred DynamicPPL.group_varnames_by_symbol(vns_tuple)
-        @test DynamicPPL.group_varnames_by_symbol(vns_tuple) == vns_nt
     end
 end
 

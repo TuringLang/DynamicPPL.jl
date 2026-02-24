@@ -1,39 +1,36 @@
+module DynamicPPLDebugUtilsTests
+
+using Dates: now
+@info "Testing $(@__FILE__)..."
+__now__ = now()
+
+using DynamicPPL, Distributions, Test
+using LinearAlgebra: I
+using Random: Xoshiro
+
 @testset "check_model" begin
     @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
-        issuccess, trace = check_model_and_trace(model, VarInfo(model))
-        # These models should all work.
-        @test issuccess
-
-        # Check that the trace contains all the variables in the model.
-        varnames_in_trace = DynamicPPL.DebugUtils.varnames_in_trace(trace)
-        for vn in DynamicPPL.TestUtils.varnames(model)
-            @test vn in varnames_in_trace
-        end
-
-        # Quick checks for `show` of trace.
-        @test occursin("assume: ", string(trace))
-        @test occursin("observe: ", string(trace))
-
-        # All these models should have static constraints.
+        @test check_model(model)
         @test DynamicPPL.has_static_constraints(model)
     end
 
     @testset "multiple usage of same variable" begin
+        function test_model_can_run_but_fails_check(model)
+            # Check that it can actually run
+            @test VarInfo(model) isa VarInfo
+            # but if you call check_model it should fail
+            issuccess = check_model(model)
+            @test !issuccess
+            @test_throws ErrorException check_model(model; error_on_failure=true)
+        end
+
         @testset "simple" begin
             @model function buggy_demo_model()
                 x ~ Normal()
                 x ~ Normal()
                 return y ~ Normal()
             end
-            buggy_model = buggy_demo_model()
-            varinfo = VarInfo(buggy_model)
-
-            @test_logs (:warn,) (:warn,) check_model(buggy_model, varinfo)
-            issuccess = check_model(buggy_model, varinfo)
-            @test !issuccess
-            @test_throws ErrorException check_model(
-                buggy_model, varinfo; error_on_failure=true
-            )
+            test_model_can_run_but_fails_check(buggy_demo_model())
         end
 
         @testset "submodel" begin
@@ -43,11 +40,7 @@
                 z ~ to_submodel(ModelInner(), false)
                 return x ~ Normal()
             end
-            model = ModelOuterBroken()
-            varinfo = VarInfo(model)
-            @test_throws ErrorException check_model(
-                model, VarInfo(model); error_on_failure=true
-            )
+            test_model_can_run_but_fails_check(ModelOuterBroken())
 
             @model function ModelOuterWorking()
                 # With automatic prefixing => `x` is not duplicated.
@@ -56,7 +49,7 @@
                 return z
             end
             model = ModelOuterWorking()
-            @test check_model(model, VarInfo(model); error_on_failure=true)
+            @test check_model(model)
 
             # With manual prefixing, https://github.com/TuringLang/DynamicPPL.jl/issues/785
             @model function ModelOuterWorking2()
@@ -65,61 +58,7 @@
                 return (x1, x2)
             end
             model = ModelOuterWorking2()
-            @test check_model(model, VarInfo(model); error_on_failure=true)
-        end
-
-        @testset "subsumes (x then x[1])" begin
-            @model function buggy_subsumes_demo_model()
-                x = Vector{Float64}(undef, 2)
-                x ~ MvNormal(zeros(2), I)
-                x[1] ~ Normal()
-                return nothing
-            end
-            buggy_model = buggy_subsumes_demo_model()
-            varinfo = VarInfo(buggy_model)
-
-            @test_logs (:warn,) (:warn,) check_model(buggy_model, varinfo)
-            issuccess = check_model(buggy_model, varinfo)
-            @test !issuccess
-            @test_throws ErrorException check_model(
-                buggy_model, varinfo; error_on_failure=true
-            )
-        end
-
-        @testset "subsumes (x[1] then x)" begin
-            @model function buggy_subsumes_demo_model()
-                x = Vector{Float64}(undef, 2)
-                x[1] ~ Normal()
-                x ~ MvNormal(zeros(2), I)
-                return nothing
-            end
-            buggy_model = buggy_subsumes_demo_model()
-            varinfo = VarInfo(buggy_model)
-
-            @test_logs (:warn,) (:warn,) check_model(buggy_model, varinfo)
-            issuccess = check_model(buggy_model, varinfo)
-            @test !issuccess
-            @test_throws ErrorException check_model(
-                buggy_model, varinfo; error_on_failure=true
-            )
-        end
-
-        @testset "subsumes (x.a then x)" begin
-            @model function buggy_subsumes_demo_model()
-                x = (a=nothing,)
-                x.a ~ Normal()
-                x ~ Normal()
-                return nothing
-            end
-            buggy_model = buggy_subsumes_demo_model()
-            varinfo = VarInfo(buggy_model)
-
-            @test_logs (:warn,) (:warn,) check_model(buggy_model, varinfo)
-            issuccess = check_model(buggy_model, varinfo)
-            @test !issuccess
-            @test_throws ErrorException check_model(
-                buggy_model, varinfo; error_on_failure=true
-            )
+            @test check_model(model)
         end
     end
 
@@ -131,14 +70,14 @@
             end
         end
         m = demo_nan_in_data([1.0, NaN])
-        @test_throws ErrorException check_model(m, VarInfo(m); error_on_failure=true)
+        @test_throws ErrorException check_model(m; error_on_failure=true)
         # Test NamedTuples with nested arrays, see #898
         @model function demo_nan_complicated(nt)
             nt ~ product_distribution((x=Normal(), y=Dirichlet([2, 4])))
             return x ~ Normal()
         end
         m = demo_nan_complicated((x=1.0, y=[NaN, 0.5]))
-        @test_throws ErrorException check_model(m, VarInfo(m); error_on_failure=true)
+        @test_throws ErrorException check_model(m; error_on_failure=true)
     end
 
     @testset "incorrect use of condition" begin
@@ -147,10 +86,7 @@
                 return x ~ MvNormal(zeros(length(x)), I)
             end
             model = demo_missing_in_multivariate([1.0, missing])
-            # Have to run this check_model call with an empty varinfo, because actually
-            # instantiating the VarInfo would cause it to throw a MethodError.
-            model = contextualize(model, InitContext())
-            @test_throws ErrorException check_model(model, VarInfo(); error_on_failure=true)
+            @test_throws ErrorException check_model(model; error_on_failure=true)
         end
 
         @testset "condition both in args and context" begin
@@ -164,62 +100,66 @@
                 OrderedDict(@varname(x[1]) => 2.0),
             ]
                 conditioned_model = DynamicPPL.condition(model, vals)
-                varinfo = VarInfo(conditioned_model)
                 @test_throws ErrorException check_model(
-                    conditioned_model, varinfo; error_on_failure=true
+                    conditioned_model; error_on_failure=true
                 )
             end
         end
     end
 
-    @testset "printing statements" begin
-        @testset "assume" begin
-            @model demo_assume() = x ~ Normal()
-            model = demo_assume()
-            issuccess, trace = check_model_and_trace(model, VarInfo(model))
-            @test issuccess
-            @test startswith(string(trace), " assume: x ~ Normal")
+    @testset "discrete distribution check" begin
+        @testset "univariate discrete" begin
+            @model function demo_discrete()
+                x ~ Poisson(3)
+                return y ~ Normal()
+            end
+            model = demo_discrete()
+            # Without fail_if_discrete, the model should pass.
+            @test check_model(model; error_on_failure=true)
+            # With fail_if_discrete, it should fail.
+            @test !check_model(model; fail_if_discrete=true)
+            @test_throws ErrorException check_model(
+                model; error_on_failure=true, fail_if_discrete=true
+            )
         end
 
-        @testset "observe" begin
-            @model demo_observe(x) = x ~ Normal()
-            model = demo_observe(1.0)
-            issuccess, trace = check_model_and_trace(model, VarInfo(model))
-            @test issuccess
-            @test occursin(r"observe: x \(= \d+\.\d+\) ~ Normal", string(trace))
+        @testset "multivariate discrete" begin
+            @model function demo_mv_discrete()
+                x ~ product_distribution(fill(Poisson(3), 3))
+                return y ~ Normal()
+            end
+            model = demo_mv_discrete()
+            @test check_model(model; error_on_failure=true)
+            @test_throws ErrorException check_model(
+                model; error_on_failure=true, fail_if_discrete=true
+            )
+        end
+
+        @testset "all continuous should pass" begin
+            @model function demo_all_continuous()
+                x ~ Normal()
+                return y ~ Gamma(2, 1)
+            end
+            model = demo_all_continuous()
+            @test check_model(model; fail_if_discrete=true)
         end
     end
 
-    @testset "comparing multiple traces" begin
+    @testset "with dynamic constraints" begin
         # Run the same model but with different VarInfos.
         model = DynamicPPL.TestUtils.demo_dynamic_constraint()
-        issuccess_1, trace_1 = check_model_and_trace(model, VarInfo(model))
-        issuccess_2, trace_2 = check_model_and_trace(model, VarInfo(model))
-        @test issuccess_1 && issuccess_2
-
-        # Should have the same varnames present.
-        varnames_1 = DynamicPPL.DebugUtils.varnames_in_trace(trace_1)
-        varnames_2 = DynamicPPL.DebugUtils.varnames_in_trace(trace_2)
-        @info varnames_1 == varnames_2
-
-        # But will have different distributions.
-        dists_1 = DynamicPPL.DebugUtils.distributions_in_trace(trace_1)
-        dists_2 = DynamicPPL.DebugUtils.distributions_in_trace(trace_2)
-        @test dists_1[1] == dists_2[1]
-        @test dists_1[2] != dists_2[2]
-
+        @test check_model(Xoshiro(1), model) && check_model(Xoshiro(2), model)
         @test !DynamicPPL.has_static_constraints(model)
     end
 
-    @testset "vector with `undef`" begin
-        # Source: https://github.com/TuringLang/Turing.jl/pull/2218
+    @testset "Do not error when vector has uninitialised data" begin
         @model function demo_undef(ns...)
             x = Array{Real}(undef, ns...)
             @. x ~ Normal(0, 2)
         end
         for ns in [(2,), (2, 2), (2, 2, 2)]
             model = demo_undef(ns...)
-            @test check_model(model, VarInfo(model); error_on_failure=true)
+            @test check_model(model; error_on_failure=true)
         end
     end
 
@@ -237,3 +177,7 @@
         end
     end
 end
+
+@info "Completed $(@__FILE__) in $(now() - __now__)."
+
+end # module

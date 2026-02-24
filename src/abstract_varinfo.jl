@@ -8,11 +8,7 @@ A concrete implementation of this should implement the following methods:
 - [`link!!`](@ref): transforms the [`AbstractVarInfo`](@ref) to the unconstrained space.
 - [`invlink!!`](@ref): transforms the [`AbstractVarInfo`](@ref) to the constrained space.
 
-And potentially:
-- [`maybe_invlink_before_eval!!`](@ref): hook to decide whether to transform _before_
-  evaluating the model.
-
-See also: [`link!!`](@ref), [`invlink!!`](@ref), [`maybe_invlink_before_eval!!`](@ref).
+See also: [`link!!`](@ref), [`invlink!!`](@ref)
 """
 abstract type AbstractTransformation end
 
@@ -32,6 +28,9 @@ in the execution of a given `Model`.
 This is in constrast to `StaticTransformation` which transforms all variables
 _before_ the execution of a given `Model`.
 
+Different VarInfo types should implement their own methods for `link!!` and `invlink!!` for
+`DynamicTransformation`.
+
 See also: [`StaticTransformation`](@ref).
 """
 struct DynamicTransformation <: AbstractTransformation end
@@ -39,11 +38,10 @@ struct DynamicTransformation <: AbstractTransformation end
 """
     $(TYPEDEF)
 
-Transformation which transforms all variables _before_ the execution of a given `Model`.
+Transformation which represents a fixed bijector to be applied to the variables, as opposed
+to deriving the bijector again at runtime.
 
-This is done through the `maybe_invlink_before_eval!!` method.
-
-See also: [`DynamicTransformation`](@ref), [`maybe_invlink_before_eval!!`](@ref).
+See also: [`DynamicTransformation`](@ref).
 
 # Fields
 $(TYPEDFIELDS)
@@ -51,23 +49,6 @@ $(TYPEDFIELDS)
 struct StaticTransformation{F} <: AbstractTransformation
     "The function, assumed to implement the `Bijectors` interface, to be applied to the variables"
     bijector::F
-end
-
-"""
-    merge_transformations(transformation_left, transformation_right)
-
-Merge two transformations.
-
-The main use of this is in [`merge(::AbstractVarInfo, ::AbstractVarInfo)`](@ref).
-"""
-function merge_transformations(::NoTransformation, ::NoTransformation)
-    return NoTransformation()
-end
-function merge_transformations(::DynamicTransformation, ::DynamicTransformation)
-    return DynamicTransformation()
-end
-function merge_transformations(left::StaticTransformation, right::StaticTransformation)
-    return StaticTransformation(merge_bijectors(left.bijector, right.bijector))
 end
 
 function merge_bijectors(left::Bijectors.NamedTransform, right::Bijectors.NamedTransform)
@@ -141,6 +122,15 @@ of `AbstractVarInfo`.
 function setaccs!!(vi::AbstractVarInfo, accs::NTuple{N,AbstractAccumulator}) where {N}
     return setaccs!!(vi, AccumulatorTuple(accs))
 end
+
+"""
+    get_values(vi::AbstractVarInfo)
+
+Return the `VarNamedTuple` in `vi` that stores the variables' values.
+
+This should be implemented by each subtype of `AbstractVarInfo`.
+"""
+function get_values end
 
 """
     getaccs(vi::AbstractVarInfo)
@@ -222,8 +212,6 @@ Add `acc` to the `AccumulatorTuple` of `vi`, mutating if it makes sense.
 
 If an accumulator with the same [`accumulator_name`](@ref) already exists, it will be
 replaced.
-
-See also: [`getaccs`](@ref).
 """
 function setacc!!(vi::AbstractVarInfo, acc::AbstractAccumulator)
     return setaccs!!(vi, setacc!!(getaccs(vi), acc))
@@ -256,6 +244,30 @@ Set the log of the likelihood probability of the observed data sampled in `vi` t
 See also: [`setlogprior!!`](@ref), [`setlogp!!`](@ref), [`getloglikelihood`](@ref).
 """
 setloglikelihood!!(vi::AbstractVarInfo, logp) = setacc!!(vi, LogLikelihoodAccumulator(logp))
+
+"""
+    DynamicPPL.is_extracting_colon_eq_values(vi::AbstractVarInfo)
+
+Return `true` if `vi` contains a `RawValueAccumulator` that is extracting values on the LHS
+of `:=`. This function is used to determine whether `store_colon_eq!!` should be called when
+encountering a `x := expr` statement in the model body.
+
+Note that this function is not public.
+"""
+function is_extracting_colon_eq_values(vi::AbstractVarInfo)
+    return hasacc(vi, Val(RAW_VALUE_ACCNAME)) &&
+           is_extracting_colon_eq_values(getacc(vi, Val(RAW_VALUE_ACCNAME)).f)
+end
+
+"""
+    get_raw_values(vi::AbstractVarInfo)
+
+Extract a `VarNamedTuple` of values from the `RawValueAccumulator` in `vi`. This is the
+'raw' values as they are seen in the model, without any transformations applied to them.
+
+If `vi` does not contain a `RawValueAccumulator`, this function will throw an error.
+"""
+get_raw_values(vi::AbstractVarInfo) = getacc(vi, Val(RAW_VALUE_ACCNAME)).values
 
 """
     setlogp!!(vi::AbstractVarInfo, logp::NamedTuple)
@@ -303,30 +315,34 @@ function getacc(vi::AbstractVarInfo, accname::Symbol)
 end
 
 """
-    accumulate_assume!!(vi::AbstractVarInfo, val, logjac, vn, right)
+    accumulate_assume!!(vi::AbstractVarInfo, val, tval, logjac, vn, right, template)
 
 Update all the accumulators of `vi` by calling `accumulate_assume!!` on them.
 """
-function accumulate_assume!!(vi::AbstractVarInfo, val, logjac, vn, right)
-    return map_accumulators!!(acc -> accumulate_assume!!(acc, val, logjac, vn, right), vi)
+function accumulate_assume!!(vi::AbstractVarInfo, val, tval, logjac, vn, right, template)
+    return map_accumulators!!(
+        acc -> accumulate_assume!!(acc, val, tval, logjac, vn, right, template), vi
+    )
 end
 
 """
-    accumulate_observe!!(vi::AbstractVarInfo, right, left, vn)
+    accumulate_observe!!(vi::AbstractVarInfo, right, left, vn, template)
 
 Update all the accumulators of `vi` by calling `accumulate_observe!!` on them.
 """
-function accumulate_observe!!(vi::AbstractVarInfo, right, left, vn)
-    return map_accumulators!!(acc -> accumulate_observe!!(acc, right, left, vn), vi)
+function accumulate_observe!!(vi::AbstractVarInfo, right, left, vn, template)
+    return map_accumulators!!(
+        acc -> accumulate_observe!!(acc, right, left, vn, template), vi
+    )
 end
 
 """
-    map_accumulators!!(func::Function, vi::AbstractVarInfo)
+    map_accumulators!!(func, vi::AbstractVarInfo)
 
 Update all accumulators of `vi` by calling `func` on them and replacing them with the return
 values.
 """
-function map_accumulators!!(func::Function, vi::AbstractVarInfo)
+function map_accumulators!!(func, vi::AbstractVarInfo)
     return setaccs!!(vi, map(func, getaccs(vi)))
 end
 
@@ -340,23 +356,21 @@ function resetaccs!!(vi::AbstractVarInfo)
 end
 
 """
-    map_accumulator!!(func::Function, vi::AbstractVarInfo, ::Val{accname}) where {accname}
+    map_accumulator!!(func, vi::AbstractVarInfo, ::Val{accname}) where {accname}
 
 Update the accumulator `accname` of `vi` by calling `func` on it and replacing it with the
 return value.
 """
-function map_accumulator!!(func::Function, vi::AbstractVarInfo, accname::Val)
+function map_accumulator!!(func, vi::AbstractVarInfo, accname::Val)
     return setaccs!!(vi, map_accumulator(func, getaccs(vi), accname))
 end
 
-function map_accumulator!!(func::Function, vi::AbstractVarInfo, accname::Symbol)
-    return error(
-        """
-        The method map_accumulator!!(func::Function, vi::AbstractVarInfo, accname::Symbol)
-        does not exist. For type stability reasons use
-        map_accumulator!!(func::Function, vi::AbstractVarInfo, ::Val{accname}) instead.
-        """
-    )
+function map_accumulator!!(::Any, ::AbstractVarInfo, ::Symbol)
+    return error("""
+                 The method map_accumulator!!(func, vi::AbstractVarInfo, accname::Symbol)
+                 does not exist. For type stability reasons use
+                 map_accumulator!!(func, vi::AbstractVarInfo, ::Val{accname}) instead.
+                 """)
 end
 
 """
@@ -364,21 +378,37 @@ end
 
 Add `logp` to the value of the log of the prior probability in `vi`.
 
+Errors if `vi` does not have a `LogPriorAccumulator`, unless `ignore_missing_accumulator`
+is set to `true`, in which case this is silently ignored instead.
+
 See also: [`accloglikelihood!!`](@ref), [`acclogp!!`](@ref), [`getlogprior`](@ref), [`setlogprior!!`](@ref).
 """
-function acclogprior!!(vi::AbstractVarInfo, logp)
-    return map_accumulator!!(acc -> acclogp(acc, logp), vi, Val(:LogPrior))
+function acclogprior!!(vi::AbstractVarInfo, logp; ignore_missing_accumulator=false)
+    acc_name = Val(:LogPrior)
+    return if ignore_missing_accumulator && !hasacc(vi, acc_name)
+        vi
+    else
+        map_accumulator!!(acc -> acclogp(acc, logp), vi, acc_name)
+    end
 end
 
 """
-    acclogjac!!(vi::AbstractVarInfo, logjac)
+    acclogjac!!(vi::AbstractVarInfo, logjac; ignore_missing_accumulator::Bool=false)
 
 Add `logjac` to the value of the log Jacobian in `vi`.
 
+Errors if `vi` does not have a `LogJacobianAccumulator`, unless `ignore_missing_accumulator`
+is set to `true`, in which case this is silently ignored instead.
+
 See also: [`getlogjac`](@ref), [`setlogjac!!`](@ref).
 """
-function acclogjac!!(vi::AbstractVarInfo, logjac)
-    return map_accumulator!!(acc -> acclogp(acc, logjac), vi, Val(:LogJacobian))
+function acclogjac!!(vi::AbstractVarInfo, logjac; ignore_missing_accumulator=false)
+    acc_name = Val(:LogJacobian)
+    return if ignore_missing_accumulator && !hasacc(vi, acc_name)
+        vi
+    else
+        map_accumulator!!(acc -> acclogp(acc, logjac), vi, acc_name)
+    end
 end
 
 """
@@ -386,10 +416,19 @@ end
 
 Add `logp` to the value of the log of the likelihood in `vi`.
 
-See also: [`accloglikelihood!!`](@ref), [`acclogp!!`](@ref), [`getloglikelihood`](@ref), [`setloglikelihood!!`](@ref).
+Errors if `vi` does not have a `LogLikelihoodAccumulator`, unless `ignore_missing_accumulator`
+is set to `true`, in which case this is silently ignored instead.
+
+See also: [`accloglikelihood!!`](@ref), [`acclogp!!`](@ref), [`getloglikelihood`](@ref),
+[`setloglikelihood!!`](@ref).
 """
-function accloglikelihood!!(vi::AbstractVarInfo, logp)
-    return map_accumulator!!(acc -> acclogp(acc, logp), vi, Val(:LogLikelihood))
+function accloglikelihood!!(vi::AbstractVarInfo, logp; ignore_missing_accumulator=false)
+    acc_name = Val(:LogLikelihood)
+    return if ignore_missing_accumulator && !hasacc(vi, acc_name)
+        vi
+    else
+        map_accumulator!!(acc -> acclogp(acc, logp), vi, acc_name)
+    end
 end
 
 """
@@ -413,23 +452,13 @@ function acclogp!!(
     )
         error("logp must have fields logprior and/or loglikelihood and no other fields.")
     end
-    if haskey(logp, :logprior) &&
-        (!ignore_missing_accumulator || hasacc(vi, Val(:LogPrior)))
-        vi = acclogprior!!(vi, logp.logprior)
+    if haskey(logp, :logprior)
+        vi = acclogprior!!(vi, logp.logprior; ignore_missing_accumulator)
     end
-    if haskey(logp, :loglikelihood) &&
-        (!ignore_missing_accumulator || hasacc(vi, Val(:LogLikelihood)))
-        vi = accloglikelihood!!(vi, logp.loglikelihood)
+    if haskey(logp, :loglikelihood)
+        vi = accloglikelihood!!(vi, logp.loglikelihood; ignore_missing_accumulator)
     end
     return vi
-end
-
-function acclogp!!(vi::AbstractVarInfo, logp::Number)
-    Base.depwarn(
-        "`acclogp!!(vi::AbstractVarInfo, logp::Number)` is deprecated. Use `accloglikelihood!!(vi, logp)` instead.",
-        :acclogp,
-    )
-    return accloglikelihood!!(vi, logp)
 end
 
 # Variables and their realizations.
@@ -455,11 +484,18 @@ If `dist` is specified, the value(s) will be massaged into the representation ex
 Return the current value(s) of `vn` (`vns`) in `vi` in the support of its (their)
 distribution(s) as a flattened `Vector`.
 
-The default implementation is to call [`values_as`](@ref) with `Vector` as the type-argument.
+The default implementation is to call [`internal_values_as_vector`](@ref).
 
 See also: [`getindex(vi::AbstractVarInfo, vn::VarName, dist::Distribution)`](@ref)
 """
-Base.getindex(vi::AbstractVarInfo, ::Colon) = values_as(vi, Vector)
+Base.getindex(vi::AbstractVarInfo, ::Colon) = internal_values_as_vector(vi)
+
+"""
+    internal_values_as_vector(vi::AbstractVarInfo)
+
+Return all internal values stored in `vi.values` as a flattened `Vector`.
+"""
+function internal_values_as_vector end
 
 """
     getindex_internal(vi::AbstractVarInfo, vn::VarName)
@@ -479,6 +515,17 @@ See also: [`getindex(vi::AbstractVarInfo, vn::VarName, dist::Distribution)`](@re
 """
 function getindex_internal end
 
+"""
+    get_transformed_value(vi::AbstractVarInfo, vn::VarName)
+
+Return the actual `AbstractTransformedValue` stored in `vi` for variable `vn`.
+
+This differs from `getindex_internal`, which obtains the `AbstractTransformedValue` and then
+directly returns `get_internal_value(tval)`; and `getindex` which returns
+`get_transform(tval)(get_internal_value(tval))`.
+"""
+function get_transformed_value end
+
 @doc """
     empty!!(vi::AbstractVarInfo)
 
@@ -492,115 +539,6 @@ This is useful when using a sampling algorithm that assumes an empty `vi`, e.g. 
 
 Return true if `vi` is empty and false otherwise.
 """ Base.isempty
-
-"""
-    values_as(varinfo[, Type])
-
-Return the values/realizations in `varinfo` as `Type`, if implemented.
-
-If no `Type` is provided, return values as stored in `varinfo`.
-
-# Examples
-
-`SimpleVarInfo` with `NamedTuple`:
-
-```jldoctest
-julia> data = (x = 1.0, m = [2.0]);
-
-julia> values_as(SimpleVarInfo(data))
-(x = 1.0, m = [2.0])
-
-julia> values_as(SimpleVarInfo(data), NamedTuple)
-(x = 1.0, m = [2.0])
-
-julia> values_as(SimpleVarInfo(data), OrderedDict)
-OrderedDict{VarName{sym, typeof(identity)} where sym, Any} with 2 entries:
-  x => 1.0
-  m => [2.0]
-
-julia> values_as(SimpleVarInfo(data), Vector)
-2-element Vector{Float64}:
- 1.0
- 2.0
-```
-
-`SimpleVarInfo` with `OrderedDict`:
-
-```jldoctest
-julia> data = OrderedDict{Any,Any}(@varname(x) => 1.0, @varname(m) => [2.0]);
-
-julia> values_as(SimpleVarInfo(data))
-OrderedDict{Any, Any} with 2 entries:
-  x => 1.0
-  m => [2.0]
-
-julia> values_as(SimpleVarInfo(data), NamedTuple)
-(x = 1.0, m = [2.0])
-
-julia> values_as(SimpleVarInfo(data), OrderedDict)
-OrderedDict{Any, Any} with 2 entries:
-  x => 1.0
-  m => [2.0]
-
-julia> values_as(SimpleVarInfo(data), Vector)
-2-element Vector{Float64}:
- 1.0
- 2.0
-```
-
-`VarInfo` with `NamedTuple` of `Metadata`:
-
-```jldoctest
-julia> # Just use an example model to construct the `VarInfo` because we're lazy.
-       vi = DynamicPPL.typed_varinfo(DynamicPPL.TestUtils.demo_assume_dot_observe());
-
-julia> vi[@varname(s)] = 1.0; vi[@varname(m)] = 2.0;
-
-julia> # For the sake of brevity, let's just check the type.
-       md = values_as(vi); md.s isa Union{DynamicPPL.Metadata, DynamicPPL.VarNamedVector}
-true
-
-julia> values_as(vi, NamedTuple)
-(s = 1.0, m = 2.0)
-
-julia> values_as(vi, OrderedDict)
-OrderedDict{VarName{sym, typeof(identity)} where sym, Float64} with 2 entries:
-  s => 1.0
-  m => 2.0
-
-julia> values_as(vi, Vector)
-2-element Vector{Float64}:
- 1.0
- 2.0
-```
-
-`VarInfo` with `Metadata`:
-
-```jldoctest
-julia> # Just use an example model to construct the `VarInfo` because we're lazy.
-       vi = DynamicPPL.untyped_varinfo(DynamicPPL.TestUtils.demo_assume_dot_observe());
-
-julia> vi[@varname(s)] = 1.0; vi[@varname(m)] = 2.0;
-
-julia> # For the sake of brevity, let's just check the type.
-       values_as(vi) isa Union{DynamicPPL.Metadata, Vector}
-true
-
-julia> values_as(vi, NamedTuple)
-(s = 1.0, m = 2.0)
-
-julia> values_as(vi, OrderedDict)
-OrderedDict{VarName{sym, typeof(identity)} where sym, Float64} with 2 entries:
-  s => 1.0
-  m => 2.0
-
-julia> values_as(vi, Vector)
-2-element Vector{Real}:
- 1.0
- 2.0
-```
-"""
-function values_as end
 
 """
     eltype(vi::AbstractVarInfo)
@@ -625,13 +563,6 @@ function Base.eltype(vi::AbstractVarInfo)
     return eltype(T)
 end
 
-"""
-    has_varnamedvector(varinfo::VarInfo)
-
-Returns `true` if `varinfo` uses `VarNamedVector` as metadata.
-"""
-has_varnamedvector(vi::AbstractVarInfo) = false
-
 # TODO: Should relax constraints on `vns` to be `AbstractVector{<:Any}` and just try to convert
 # the `eltype` to `VarName`? This might be useful when someone does `[@varname(x[1]), @varname(m)]` which
 # might result in a `Vector{Any}`.
@@ -655,80 +586,78 @@ demo (generic function with 2 methods)
 
 julia> model = demo();
 
-julia> varinfo = VarInfo(model);
+julia> params = @vnt begin
+           s := 1.0
+           m := 2.0
+           x := [3.0, 4.0]
+       end
+VarNamedTuple
+├─ s => 1.0
+├─ m => 2.0
+└─ x => [3.0, 4.0]
 
-julia> keys(varinfo)
+julia> vi = last(init!!(model, VarInfo(), InitFromParams(params), UnlinkAll()));
+
+julia> keys(vi)
 4-element Vector{VarName}:
  s
  m
  x[1]
  x[2]
 
-julia> for (i, vn) in enumerate(keys(varinfo))
-           varinfo[vn] = i
-       end
-
-julia> varinfo[[@varname(s), @varname(m), @varname(x[1]), @varname(x[2])]]
-4-element Vector{Float64}:
- 1.0
- 2.0
- 3.0
- 4.0
-
 julia> # Extract one with only `m`.
-       varinfo_subset1 = subset(varinfo, [@varname(m),]);
+       vi_subset1 = subset(vi, [@varname(m),]);
 
-
-julia> keys(varinfo_subset1)
-1-element Vector{VarName{:m, typeof(identity)}}:
+julia> keys(vi_subset1)
+1-element Vector{VarName}:
  m
 
-julia> varinfo_subset1[@varname(m)]
+julia> vi_subset1[@varname(m)]
 2.0
 
 julia> # Extract one with both `s` and `x[2]`.
-       varinfo_subset2 = subset(varinfo, [@varname(s), @varname(x[2])]);
+       vi_subset2 = subset(vi, [@varname(s), @varname(x[2])]);
 
-julia> keys(varinfo_subset2)
+julia> keys(vi_subset2)
 2-element Vector{VarName}:
  s
  x[2]
 
-julia> varinfo_subset2[[@varname(s), @varname(x[2])]]
+julia> vi_subset2[[@varname(s), @varname(x[2])]]
 2-element Vector{Float64}:
  1.0
  4.0
 ```
 
-`subset` is particularly useful when combined with [`merge(varinfo::AbstractVarInfo)`](@ref)
+`subset` is particularly useful when combined with [`merge(vi::AbstractVarInfo)`](@ref)
 
 ```jldoctest varinfo-subset
 julia> # Merge the two.
-       varinfo_subset_merged = merge(varinfo_subset1, varinfo_subset2);
+       vi_subset_merged = merge(vi_subset1, vi_subset2);
 
-julia> keys(varinfo_subset_merged)
+julia> keys(vi_subset_merged)
 3-element Vector{VarName}:
  m
  s
  x[2]
 
-julia> varinfo_subset_merged[[@varname(s), @varname(m), @varname(x[2])]]
+julia> vi_subset_merged[[@varname(s), @varname(m), @varname(x[2])]]
 3-element Vector{Float64}:
  1.0
  2.0
  4.0
 
 julia> # Merge the two with the original.
-       varinfo_merged = merge(varinfo, varinfo_subset_merged);
+       vi_merged = merge(vi, vi_subset_merged);
 
-julia> keys(varinfo_merged)
+julia> keys(vi_merged)
 4-element Vector{VarName}:
  s
  m
  x[1]
  x[2]
 
-julia> varinfo_merged[[@varname(s), @varname(m), @varname(x[1]), @varname(x[2])]]
+julia> vi_merged[[@varname(s), @varname(m), @varname(x[1]), @varname(x[2])]]
 4-element Vector{Float64}:
  1.0
  2.0
@@ -742,7 +671,7 @@ julia> varinfo_merged[[@varname(s), @varname(m), @varname(x[1]), @varname(x[2])]
 
 !!! warning
     This function is only type-stable when `vns` contains only varnames
-    with the same symbol. For exmaple, `[@varname(m[1]), @varname(m[2])]` will
+    with the same symbol. For example, `[@varname(m[1]), @varname(m[2])]` will
     be type-stable, but `[@varname(m[1]), @varname(x)]` will not be.
 """
 function subset end
@@ -824,32 +753,8 @@ See also: [`default_transformation`](@ref), [`invlink!!`](@ref).
 function link!!(vi::AbstractVarInfo, model::Model)
     return link!!(default_transformation(model, vi), vi, model)
 end
-function link!!(vi::AbstractVarInfo, vns::VarNameTuple, model::Model)
+function link!!(vi::AbstractVarInfo, vns, model::Model)
     return link!!(default_transformation(model, vi), vi, vns, model)
-end
-function link!!(t::DynamicTransformation, vi::AbstractVarInfo, model::Model)
-    # Note that in practice this method is only called for SimpleVarInfo, because VarInfo
-    # has a dedicated implementation
-    model = setleafcontext(model, DynamicTransformationContext{false}())
-    vi = last(evaluate!!(model, vi))
-    return set_transformed!!(vi, t)
-end
-function link!!(
-    t::StaticTransformation{<:Bijectors.Transform}, vi::AbstractVarInfo, ::Model
-)
-    # TODO(mhauru) This assumes that the user has defined the bijector using the same
-    # variable ordering as what `vi[:]` and `unflatten(vi, x)` use. This is a bad user
-    # interface, and it's also dangerous for any AbstractVarInfo types that may not respect
-    # a particular ordering, such as SimpleVarInfo{Dict}.
-    b = inverse(t.bijector)
-    x = vi[:]
-    y, logjac = with_logabsdet_jacobian(b, x)
-    # Set parameters and add the logjac term.
-    vi = unflatten(vi, y)
-    if hasacc(vi, Val(:LogJacobian))
-        vi = acclogjac!!(vi, logjac)
-    end
-    return set_transformed!!(vi, t)
 end
 
 """
@@ -867,7 +772,7 @@ See also: [`default_transformation`](@ref), [`invlink`](@ref).
 function link(vi::AbstractVarInfo, model::Model)
     return link(default_transformation(model, vi), vi, model)
 end
-function link(vi::AbstractVarInfo, vns::VarNameTuple, model::Model)
+function link(vi::AbstractVarInfo, vns, model::Model)
     return link(default_transformation(model, vi), vi, vns, model)
 end
 function link(t::AbstractTransformation, vi::AbstractVarInfo, model::Model)
@@ -890,31 +795,8 @@ See also: [`default_transformation`](@ref), [`link!!`](@ref).
 function invlink!!(vi::AbstractVarInfo, model::Model)
     return invlink!!(default_transformation(model, vi), vi, model)
 end
-function invlink!!(vi::AbstractVarInfo, vns::VarNameTuple, model::Model)
+function invlink!!(vi::AbstractVarInfo, vns, model::Model)
     return invlink!!(default_transformation(model, vi), vi, vns, model)
-end
-function invlink!!(::DynamicTransformation, vi::AbstractVarInfo, model::Model)
-    # Note that in practice this method is only called for SimpleVarInfo, because VarInfo
-    # has a dedicated implementation
-    model = setleafcontext(model, DynamicTransformationContext{true}())
-    vi = last(evaluate!!(model, vi))
-    return set_transformed!!(vi, NoTransformation())
-end
-function invlink!!(
-    t::StaticTransformation{<:Bijectors.Transform}, vi::AbstractVarInfo, ::Model
-)
-    b = t.bijector
-    y = vi[:]
-    x, inv_logjac = with_logabsdet_jacobian(b, y)
-
-    # Mildly confusing: we need to _add_ the logjac of the inverse transform,
-    # because we are trying to remove the logjac of the forward transform
-    # that was previously accumulated when linking.
-    vi = unflatten(vi, x)
-    if hasacc(vi, Val(:LogJacobian))
-        vi = acclogjac!!(vi, inv_logjac)
-    end
-    return set_transformed!!(vi, NoTransformation())
 end
 
 """
@@ -933,7 +815,7 @@ See also: [`default_transformation`](@ref), [`link`](@ref).
 function invlink(vi::AbstractVarInfo, model::Model)
     return invlink(default_transformation(model, vi), vi, model)
 end
-function invlink(vi::AbstractVarInfo, vns::VarNameTuple, model::Model)
+function invlink(vi::AbstractVarInfo, vns, model::Model)
     return invlink(default_transformation(model, vi), vi, vns, model)
 end
 function invlink(t::AbstractTransformation, vi::AbstractVarInfo, model::Model)
@@ -941,83 +823,29 @@ function invlink(t::AbstractTransformation, vi::AbstractVarInfo, model::Model)
 end
 
 """
-    maybe_invlink_before_eval!!([t::Transformation,] vi, model)
+    unflatten!!(vi::AbstractVarInfo, x::AbstractVector)
 
-Return a possibly invlinked version of `vi`.
+Return a new instance of `vi` where the internal values stored in `vi.values` have been
+overwritten with the values in `x`.
 
-This will be called prior to `model` evaluation, allowing one to perform a single
-`invlink!!` _before_ evaluation rather than lazyily evaluating the transforms on as-we-need
-basis as is done with [`DynamicTransformation`](@ref).
+This is the inverse operation of [`internal_values_as_vector`](@ref).
 
-See also: [`StaticTransformation`](@ref), [`DynamicTransformation`](@ref).
+!!! warning "The VarInfo will be in an invalid state"
+    Note that this does not re-evaluate the model (indeed it cannot!) so the contents of any
+    accumulators in the `VarInfo` will almost certainly be inconsistent with the new values.
 
-# Examples
-```julia-repl
-julia> using DynamicPPL, Distributions, Bijectors
+    On top of that, it does not update the *transformations* stored inside the
+    `LinkedVectorValue`s and `VectorValue`s. If these transformations themselves depend on
+    the values of the variables, this can lead to incorrect results when trying to access
+    untransformed values, e.g. using `getindex(vi, vn)`.
 
-julia> @model demo() = x ~ Normal()
-demo (generic function with 2 methods)
-
-julia> # By subtyping `Transform`, we inherit the `(inv)link!!`.
-       struct MyBijector <: Bijectors.Transform end
-
-julia> # Define some dummy `inverse` which will be used in the `link!!` call.
-       Bijectors.inverse(f::MyBijector) = identity
-
-julia> # We need to define `with_logabsdet_jacobian` for `MyBijector`
-       # (`identity` already has `with_logabsdet_jacobian` defined)
-       function Bijectors.with_logabsdet_jacobian(::MyBijector, x)
-           # Just using a large number of the logabsdet-jacobian term
-           # for demonstration purposes.
-           return (x, 1000)
-       end
-
-julia> # Change the `default_transformation` for our model to be a
-       # `StaticTransformation` using `MyBijector`.
-       function DynamicPPL.default_transformation(::Model{typeof(demo)})
-           return DynamicPPL.StaticTransformation(MyBijector())
-       end
-
-julia> model = demo();
-
-julia> vi = SimpleVarInfo(x=1.0)
-SimpleVarInfo((x = 1.0,), 0.0)
-
-julia> # Uses the `inverse` of `MyBijector`, which we have defined as `identity`
-       vi_linked = link!!(vi, model)
-Transformed SimpleVarInfo((x = 1.0,), 0.0)
-
-julia> # Now performs a single `invlink!!` before model evaluation.
-       logjoint(model, vi_linked)
--1001.4189385332047
-```
+    **Because of these issues, we strongly recommend against using this function, unless
+    absolutely necessary.** In many cases, usage of `unflatten!!(vi, x)` can be replaced
+    with `InitFromVector(x, ldf::LogDensityFunction)`: please see the [DynamicPPL
+    documentation](@ref ldf-model) for more information. If you are unsure how to adapt your
+    code to avoid using `unflatten!!`, please open an issue.
 """
-function maybe_invlink_before_eval!!(vi::AbstractVarInfo, model::Model)
-    return maybe_invlink_before_eval!!(transformation(vi), vi, model)
-end
-function maybe_invlink_before_eval!!(::NoTransformation, vi::AbstractVarInfo, model::Model)
-    return vi
-end
-function maybe_invlink_before_eval!!(
-    ::DynamicTransformation, vi::AbstractVarInfo, model::Model
-)
-    # `DynamicTransformation` is meant to _not_ do the transformation statically, hence we
-    # do nothing.
-    return vi
-end
-function maybe_invlink_before_eval!!(
-    t::StaticTransformation, vi::AbstractVarInfo, model::Model
-)
-    return invlink!!(t, vi, model)
-end
-
-# Utilities
-"""
-    unflatten(vi::AbstractVarInfo, x::AbstractVector)
-
-Return a new instance of `vi` with the values of `x` assigned to the variables.
-"""
-function unflatten end
+function unflatten!! end
 
 """
     to_maybe_linked_internal(vi::AbstractVarInfo, vn::VarName, dist, val)
@@ -1037,27 +865,6 @@ Return reconstructed `val`, possibly invlinked if `is_transformed(vi, vn)` is `t
 function from_maybe_linked_internal(vi::AbstractVarInfo, vn::VarName, dist, val)
     f = from_maybe_linked_internal_transform(vi, vn, dist)
     return f(val)
-end
-
-"""
-    invlink_with_logpdf(varinfo::AbstractVarInfo, vn::VarName, dist[, x])
-
-Invlink `x` and compute the logpdf under `dist` including correction from
-the invlink-transformation.
-
-If `x` is not provided, `getindex_internal(vi, vn)` will be used.
-
-!!! warning
-    The input value `x` should be according to the internal representation of
-    `varinfo`, e.g. the value returned by `getindex_internal(vi, vn)`.
-"""
-function invlink_with_logpdf(vi::AbstractVarInfo, vn::VarName, dist)
-    return invlink_with_logpdf(vi, vn, dist, getindex_internal(vi, vn))
-end
-function invlink_with_logpdf(vi::AbstractVarInfo, vn::VarName, dist, y)
-    f = from_maybe_linked_internal_transform(vi, vn, dist)
-    x, logjac = with_logabsdet_jacobian(f, y)
-    return x, logpdf(dist, x) + logjac
 end
 
 """

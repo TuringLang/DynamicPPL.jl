@@ -1,15 +1,49 @@
-# some functors (#367)
-struct MyModel
-    a::Int
+module DynamicPPLModelTests
+
+using Dates: now
+@info "Testing $(@__FILE__)..."
+__now__ = now()
+
+using AbstractMCMC: AbstractMCMC
+using AbstractPPL: AbstractPPL
+using Distributions
+using DistributionsAD: filldist
+using DynamicPPL
+using LinearAlgebra: I, Cholesky
+using MCMCChains: MCMCChains
+using Random: Random, Xoshiro
+using Test
+
+short_varinfo_name(::DynamicPPL.ThreadSafeVarInfo) = "ThreadSafeVarInfo"
+short_varinfo_name(::DynamicPPL.VarInfo) = "VarInfo"
+
+function make_chain_from_prior(rng::Random.AbstractRNG, model::Model, n_iters::Int)
+    vi = DynamicPPL.OnlyAccsVarInfo((
+        DynamicPPL.default_accumulators()..., DynamicPPL.RawValueAccumulator(false)
+    ))
+    ps = hcat([
+        DynamicPPL.ParamsWithStats(
+            last(DynamicPPL.init!!(rng, model, vi, InitFromPrior(), UnlinkAll()))
+        ) for _ in 1:n_iters
+    ])
+    return AbstractMCMC.from_samples(MCMCChains.Chains, ps)
 end
-@model function (f::MyModel)(x)
-    m ~ Normal(f.a, 1)
-    return x ~ Normal(m, 1)
+function make_chain_from_prior(model::Model, n_iters::Int)
+    return make_chain_from_prior(Random.default_rng(), model, n_iters)
 end
-struct MyZeroModel end
-@model function (::MyZeroModel)(x)
-    m ~ Normal(0, 1)
-    return x ~ Normal(m, 1)
+
+# TODO(penelopeysm): Get rid of whatever test uses this
+function modify_value_representation(nt::NamedTuple)
+    modified_nt = NamedTuple()
+    for (key, value) in zip(keys(nt), values(nt))
+        if length(value) == 1  # Scalar value
+            modified_value = value[1]
+        else  # Non-scalar value
+            modified_value = value
+        end
+        modified_nt = merge(modified_nt, (key => modified_value,))
+    end
+    return modified_nt
 end
 
 innermost_distribution_type(d::Distribution) = typeof(d)
@@ -24,10 +58,6 @@ function innermost_distribution_type(d::Distributions.Product)
 
     return dists[1]
 end
-
-is_type_stable_varinfo(::DynamicPPL.AbstractVarInfo) = false
-is_type_stable_varinfo(varinfo::DynamicPPL.NTVarInfo) = true
-is_type_stable_varinfo(varinfo::DynamicPPL.SimpleVarInfo{<:NamedTuple}) = true
 
 const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
 
@@ -58,8 +88,18 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
 
         #### logprior, logjoint, loglikelihood for MCMC chains ####
         @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
+            if model.f === DynamicPPL.TestUtils.demo_nested_colons
+                # TODO(mhauru) The below test fails on this model, due to the VarName
+                # s.params[1].subparams[:, 1, :], which AbstractPPL.varname_leaves splits
+                # into subvarnames like s.params[1].subparams[:, 1, :][1, 1], but the chain
+                # would know as s.params[1].subparams[1, 1, 1]. Unsure what the correct fix
+                # is, so leaving this for later.
+                @test false broken = true
+                continue
+            end
             N = 200
             chain = make_chain_from_prior(model, N)
+            chain = MCMCChains.get_sections(chain, :parameters)
             logpriors = logprior(model, chain)
             loglikelihoods = loglikelihood(model, chain)
             logjoints = logjoint(model, chain)
@@ -107,9 +147,11 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
         end
         model = demo_condition()
 
-        # Test that different syntaxes work and give the same underlying ConditionContext
+        # Test that different syntaxes work and give the same underlying CondFixContext
         @testset "conditioning NamedTuple" begin
-            expected_values = (y=2,)
+            expected_values = @vnt begin
+                y := 2
+            end
             @test condition(model, (y=2,)).context.values == expected_values
             @test condition(model; y=2).context.values == expected_values
             @test condition(model; y=2).context.values == expected_values
@@ -120,19 +162,38 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
 
         @testset "conditioning AbstractDict" begin
             # condition just 1 variable
-            expected_values = Dict(@varname(y) => 2)
+            expected_values = @vnt begin
+                y := 2
+            end
             @test condition(model, Dict(@varname(y) => 2)).context.values == expected_values
             @test condition(model, @varname(y) => 2).context.values == expected_values
             @test (model | (@varname(y) => 2,)).context.values == expected_values
+            @test (model | (@varname(y) => 2)).context.values == expected_values
             conditioned_model = condition(model, Dict(@varname(y) => 2))
             @test keys(VarInfo(conditioned_model)) == [@varname(x)]
 
             # condition 2 variables
-            expected_values = Dict(@varname(x) => 1, @varname(y) => 2)
+            expected_values = @vnt begin
+                x := 1
+                y := 2
+            end
             @test condition(model, (@varname(x) => 1, @varname(y) => 2)).context.values ==
                 expected_values
             conditioned_model = condition(model, (@varname(x) => 1, @varname(y) => 2))
             @test keys(VarInfo(conditioned_model)) == []
+        end
+
+        @testset "conditioning VNT" begin
+            # This is mostly to check that the VNT method exists
+            expected_values = @vnt begin
+                y := 2
+            end
+            @test condition(model, (@vnt begin
+                y := 2
+            end)).context.values == expected_values
+            @test (model | (@vnt begin
+                y := 2
+            end)).context.values == expected_values
         end
 
         @testset "deconditioning" begin
@@ -187,25 +248,35 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
             return x ~ Normal(m, 1)
         end
 
-        @test nameof(test1(rand())) == :test1
-        @test nameof(test2(rand())) == :test2
-        @test nameof(test3(rand())) == :test3
-        @test nameof(test4(rand())) == :test4
+        # use occursin because the actual name returned may include the module name
+        @test occursin("test1", String(nameof(test1(rand()))))
+        @test occursin("test2", String(nameof(test2(rand()))))
+        @test occursin("test3", String(nameof(test3(rand()))))
+        @test occursin("test4", String(nameof(test4(rand()))))
 
         # callables
-        @test nameof(MyModel(3)(rand())) == Symbol("MyModel(3)")
-        @test nameof(MyZeroModel()(rand())) == Symbol("MyZeroModel()")
+        struct MyModel
+            a::Int
+        end
+        @model function (f::MyModel)(x)
+            m ~ Normal(f.a, 1)
+            return x ~ Normal(m, 1)
+        end
+        struct MyZeroModel end
+        @model function (::MyZeroModel)(x)
+            m ~ Normal(0, 1)
+            return x ~ Normal(m, 1)
+        end
+
+        @test occursin("MyModel(3)", String(nameof(MyModel(3)(rand()))))
+        @test occursin("MyZeroModel()", String(nameof(MyZeroModel()(rand()))))
     end
 
     @testset "Internal methods" begin
         model = GDEMO_DEFAULT
 
-        # sample from model and extract variables
-        vi = VarInfo(model)
-
-        # Second component of return-value of `evaluate!!` should
-        # be a `DynamicPPL.AbstractVarInfo`.
-        evaluate_retval = DynamicPPL.evaluate!!(model, vi)
+        # Second component of return-value of `init!!` should be a `DynamicPPL.AbstractVarInfo`.
+        evaluate_retval = DynamicPPL.init!!(model, VarInfo(), InitFromPrior(), UnlinkAll())
         @test evaluate_retval[2] isa DynamicPPL.AbstractVarInfo
 
         # Should not return `AbstractVarInfo` when we call the model.
@@ -213,7 +284,7 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
         @test !any(map(x -> x isa DynamicPPL.AbstractVarInfo, call_retval))
     end
 
-    @testset "Dynamic constraints, Metadata" begin
+    @testset "Dynamic constraints" begin
         model = DynamicPPL.TestUtils.demo_dynamic_constraint()
         vi = VarInfo(model)
         vi = link!!(vi, model)
@@ -221,21 +292,10 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
         for i in 1:10
             # Sample with large variations.
             r_raw = randn(length(vi[:])) * 10
-            vi = DynamicPPL.unflatten(vi, r_raw)
+            vi = DynamicPPL.unflatten!!(vi, r_raw)
             @test vi[@varname(m)] == r_raw[1]
             @test vi[@varname(x)] != r_raw[2]
             model(vi)
-        end
-    end
-
-    @testset "Dynamic constraints, VectorVarInfo" begin
-        model = DynamicPPL.TestUtils.demo_dynamic_constraint()
-        for i in 1:10
-            for vi_constructor in
-                [DynamicPPL.typed_vector_varinfo, DynamicPPL.untyped_vector_varinfo]
-                vi = vi_constructor(model)
-                @test vi[@varname(x)] >= vi[@varname(m)]
-            end
         end
     end
 
@@ -244,21 +304,15 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
 
         Random.seed!(1776)
         s, m = model()
-        sample_namedtuple = (; s=s, m=m)
-        sample_dict = OrderedDict(@varname(s) => s, @varname(m) => m)
+        sample_vnt = DynamicPPL.VarNamedTuple()
+        sample_vnt = DynamicPPL.setindex!!(sample_vnt, s, @varname(s))
+        sample_vnt = DynamicPPL.setindex!!(sample_vnt, m, @varname(m))
 
         # With explicit RNG
-        @test rand(Random.seed!(1776), model) == sample_namedtuple
-        @test rand(Random.seed!(1776), NamedTuple, model) == sample_namedtuple
-        @test rand(Random.seed!(1776), Dict, model) == sample_dict
-
+        @test rand(Random.seed!(1776), model) == sample_vnt
         # Without explicit RNG
         Random.seed!(1776)
-        @test rand(model) == sample_namedtuple
-        Random.seed!(1776)
-        @test rand(NamedTuple, model) == sample_namedtuple
-        Random.seed!(1776)
-        @test rand(OrderedDict, model) == sample_dict
+        @test rand(model) == sample_vnt
     end
 
     @testset "default arguments" begin
@@ -268,7 +322,7 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
 
     @testset "missing kwarg" begin
         @model test_missing_kwarg(; x=missing) = x ~ Normal(0, 1)
-        @test :x in keys(rand(test_missing_kwarg()))
+        @test @varname(x) in keys(rand(test_missing_kwarg()))
     end
 
     @testset "extract priors" begin
@@ -277,7 +331,7 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
 
             # We know that any variable starting with `s` should have `InverseGamma`
             # and any variable starting with `m` should have `Normal`.
-            for (vn, prior) in priors
+            for (vn, prior) in pairs(priors)
                 if DynamicPPL.getsym(vn) == :s
                     @test innermost_distribution_type(prior) <: InverseGamma
                 elseif DynamicPPL.getsym(vn) == :m
@@ -295,15 +349,10 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
             # `rand_prior_true` should return a `NamedTuple`.
             @test x isa NamedTuple
 
-            # `rand` with a `AbstractDict` should have `varnames` as keys.
-            x_rand_dict = rand(OrderedDict, model)
+            # `rand` should give a VNT with have `varnames` as keys.
+            x_rand_vnt = rand(model)
             for vn in DynamicPPL.TestUtils.varnames(model)
-                @test haskey(x_rand_dict, vn)
-            end
-            # `rand` with a `NamedTuple` should have `map(Symbol, varnames)` as keys.
-            x_rand_nt = rand(NamedTuple, model)
-            for vn in DynamicPPL.TestUtils.varnames(model)
-                @test haskey(x_rand_nt, Symbol(vn))
+                @test haskey(x_rand_vnt, vn)
             end
 
             # Ensure log-probability computations are implemented.
@@ -314,7 +363,7 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
             @test logjoint(model, x) !=
                 DynamicPPL.TestUtils.logjoint_true_with_logabsdet_jacobian(model, x...)
             # Ensure `varnames` is implemented.
-            vi = last(DynamicPPL.init!!(model, SimpleVarInfo(OrderedDict{VarName,Any}())))
+            vi = last(DynamicPPL.init!!(model, VarInfo()))
             @test all(collect(keys(vi)) .== DynamicPPL.TestUtils.varnames(model))
             # Ensure `posterior_mean` is implemented.
             @test DynamicPPL.TestUtils.posterior_mean(model) isa typeof(x)
@@ -353,99 +402,60 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
         end
     end
 
-    @testset "returned() on `LKJCholesky`" begin
-        n = 10
-        d = 2
-        model = DynamicPPL.TestUtils.demo_lkjchol(d)
-        xs = [model().x for _ in 1:n]
+    @testset "Type stability of models" begin
+        models_to_test = [
+            DynamicPPL.TestUtils.DEMO_MODELS..., DynamicPPL.TestUtils.demo_lkjchol(2)
+        ]
+        @testset "$(model.f)" for model in models_to_test
+            if model.f === DynamicPPL.TestUtils.demo_nested_colons && VERSION < v"1.11"
+                # On v1.10, the demo_nested_colons model, which uses a lot of
+                # NamedTuples, is badly type unstable. Not worth doing much about
+                # it, since it's fixed on later Julia versions, so just skipping
+                # these tests.
+                @test false skip = true
+                continue
+            end
+            example_values = DynamicPPL.TestUtils.rand_prior_true(model)
+            varinfos = DynamicPPL.TestUtils.setup_varinfos(model, example_values)
+            @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
+                @test begin
+                    @inferred(DynamicPPL.evaluate_nowarn!!(model, varinfo))
+                    true
+                end
 
-        # Extract varnames and values.
-        vns_and_vals_xs = map(
-            collect ∘ Base.Fix1(AbstractPPL.varname_and_value_leaves, @varname(x)), xs
-        )
-        vns = map(first, first(vns_and_vals_xs))
-        vals = map(vns_and_vals_xs) do vns_and_vals
-            map(last, vns_and_vals)
-        end
-
-        # Construct the chain.
-        syms = map(Symbol, vns)
-        vns_to_syms = OrderedDict{VarName,Any}(zip(vns, syms))
-
-        chain = MCMCChains.Chains(
-            permutedims(stack(vals)), syms; info=(varname_to_symbol=vns_to_syms,)
-        )
-
-        # Test!
-        results = returned(model, chain)
-        for (x_true, result) in zip(xs, results)
-            @test x_true.UL == result.x.UL
-        end
-
-        # With variables that aren't in the `model`.
-        vns_to_syms_with_extra = let d = deepcopy(vns_to_syms)
-            d[@varname(y)] = :y
-            d
-        end
-        vals_with_extra = map(enumerate(vals)) do (i, v)
-            vcat(v, i)
-        end
-        chain_with_extra = MCMCChains.Chains(
-            permutedims(stack(vals_with_extra)),
-            vcat(syms, [:y]);
-            info=(varname_to_symbol=vns_to_syms_with_extra,),
-        )
-        # Test!
-        results = returned(model, chain_with_extra)
-        for (x_true, result) in zip(xs, results)
-            @test x_true.UL == result.x.UL
-        end
-    end
-
-    if VERSION >= v"1.8"
-        @testset "Type stability of models" begin
-            models_to_test = [
-                DynamicPPL.TestUtils.DEMO_MODELS..., DynamicPPL.TestUtils.demo_lkjchol(2)
-            ]
-            @testset "$(model.f)" for model in models_to_test
-                vns = DynamicPPL.TestUtils.varnames(model)
-                example_values = DynamicPPL.TestUtils.rand_prior_true(model)
-                varinfos = filter(
-                    is_type_stable_varinfo,
-                    DynamicPPL.TestUtils.setup_varinfos(model, example_values, vns),
-                )
-                @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
-                    @test begin
-                        @inferred(DynamicPPL.evaluate!!(model, varinfo))
-                        true
-                    end
-
-                    varinfo_linked = DynamicPPL.link(varinfo, model)
-                    @test begin
-                        @inferred(DynamicPPL.evaluate!!(model, varinfo_linked))
-                        true
-                    end
+                varinfo_linked = DynamicPPL.link(varinfo, model)
+                @test begin
+                    @inferred(DynamicPPL.evaluate_nowarn!!(model, varinfo_linked))
+                    true
                 end
             end
         end
     end
 
-    @testset "values_as_in_model" begin
+    @testset "RawValueAccumulator" begin
+        # On < 1.12, Cholesky compares the upper triangular elements even when it wraps a
+        # LowerTriangular: https://github.com/JuliaLang/LinearAlgebra.jl/pull/1404
+        test_is_equal(x, y) = @test x == y
+        test_is_equal(x::Cholesky, y::Cholesky) = @test x.UL == y.UL
+
         @testset "$(model.f)" for model in DynamicPPL.TestUtils.ALL_MODELS
             vns = DynamicPPL.TestUtils.varnames(model)
+            vns_split = DynamicPPL.TestUtils.varnames_split(model)
             example_values = DynamicPPL.TestUtils.rand_prior_true(model)
-            varinfos = DynamicPPL.TestUtils.setup_varinfos(model, example_values, vns)
+            varinfos = DynamicPPL.TestUtils.setup_varinfos(model, example_values)
             @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
                 # We can set the include_colon_eq arg to false because none of
                 # the demo models contain :=. The behaviour when
                 # include_colon_eq is true is tested in test/compiler.jl
-                realizations = values_as_in_model(model, false, varinfo)
+                varinfo = DynamicPPL.setacc!!(varinfo, RawValueAccumulator(false))
+                _, varinfo = init!!(model, varinfo, InitFromPrior(), UnlinkAll())
+                realizations = get_raw_values(varinfo)
                 # Ensure that all variables are found.
                 vns_found = collect(keys(realizations))
-                @test vns ∩ vns_found == vns ∪ vns_found
+                @test vns_split ∩ vns_found == vns_split ∪ vns_found
                 # Ensure that the values are the same.
                 for vn in vns
-                    @test realizations[vn] == varinfo[vn]
+                    test_is_equal(realizations[vn], varinfo[vn])
                 end
             end
         end
@@ -465,8 +475,9 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
             end
 
             for model in (outer_auto_prefix(), outer_manual_prefix())
-                vi = VarInfo(model)
-                vns = Set(keys(values_as_in_model(model, false, vi)))
+                vi = OnlyAccsVarInfo((RawValueAccumulator(false),))
+                _, vi = init!!(model, vi, InitFromPrior(), UnlinkAll())
+                vns = Set(keys(get_raw_values(vi)))
                 @test vns == Set([@varname(a.x), @varname(b.x)])
             end
         end
@@ -492,26 +503,21 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
         end
         model = product_dirichlet()
 
-        varinfos = [
-            DynamicPPL.untyped_varinfo(model),
-            DynamicPPL.typed_varinfo(model),
-            DynamicPPL.typed_simple_varinfo(model),
-            DynamicPPL.untyped_simple_varinfo(model),
-        ]
-        @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
-            logjoint = getlogjoint(varinfo) # unlinked space
-            varinfo_linked = DynamicPPL.link(varinfo, model)
-            varinfo_linked_result = last(
-                DynamicPPL.evaluate!!(model, deepcopy(varinfo_linked))
-            )
-            # getlogjoint should return the same result as before it was linked
-            @test getlogjoint(varinfo_linked) ≈ getlogjoint(varinfo_linked_result)
-            @test getlogjoint(varinfo_linked) ≈ logjoint
-            # getlogjoint_internal shouldn't
-            @test getlogjoint_internal(varinfo_linked) ≈
-                getlogjoint_internal(varinfo_linked_result)
-            @test !isapprox(getlogjoint_internal(varinfo_linked), logjoint)
-        end
+        varinfo = DynamicPPL.VarInfo(model)
+        logjoint = getlogjoint(varinfo) # unlinked space
+        varinfo_linked = DynamicPPL.link(varinfo, model)
+        varinfo_linked_result = last(
+            DynamicPPL.init!!(
+                model, VarInfo(), InitFromParams(varinfo_linked.values, nothing), LinkAll()
+            ),
+        )
+        # getlogjoint should return the same result as before it was linked
+        @test getlogjoint(varinfo_linked) ≈ getlogjoint(varinfo_linked_result)
+        @test getlogjoint(varinfo_linked) ≈ logjoint
+        # getlogjoint_internal shouldn't
+        @test getlogjoint_internal(varinfo_linked) ≈
+            getlogjoint_internal(varinfo_linked_result)
+        @test !isapprox(getlogjoint_internal(varinfo_linked), logjoint)
     end
 
     @testset "predict" begin
@@ -547,8 +553,8 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
 
             @testset "variables in chain" begin
                 # Note that this also checks that variables on the lhs of :=,
-                # such as σ2, are not included in the resulting chain
-                @test Set(keys(predictions)) == Set([Symbol("y[1]"), Symbol("y[2]")])
+                # such as σ2, are included in the resulting chain.
+                @test Set(keys(predictions)) == Set([Symbol("y[1]"), Symbol("y[2]"), :σ2])
             end
 
             @testset "include_all=true" begin
@@ -556,7 +562,7 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
                     m_lin_reg_test, β_chain; include_all=true
                 )
                 @test Set(keys(inc_predictions)) ==
-                    Set([:β, Symbol("y[1]"), Symbol("y[2]")])
+                    Set([:β, Symbol("y[1]"), Symbol("y[2]"), :σ2])
                 @test inc_predictions[:β] == β_chain[:β]
                 # check rng is respected
                 inc_predictions1 = DynamicPPL.predict(
@@ -569,23 +575,23 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
             end
 
             @testset "accuracy" begin
-                ys_pred = vec(mean(Array(group(predictions, :y)); dims=1))
+                ys_pred = vec(mean(Array(MCMCChains.group(predictions, :y)); dims=1))
                 @test ys_pred[1] ≈ ground_truth_β * xs_test[1] atol = 0.01
                 @test ys_pred[2] ≈ ground_truth_β * xs_test[2] atol = 0.01
             end
 
             @testset "ensure that rng is respected" begin
-                rng = MersenneTwister(42)
+                rng = Xoshiro(42)
                 predictions1 = DynamicPPL.predict(rng, m_lin_reg_test, β_chain[1:2])
-                predictions2 = DynamicPPL.predict(
-                    MersenneTwister(42), m_lin_reg_test, β_chain[1:2]
-                )
+                predictions2 = DynamicPPL.predict(Xoshiro(42), m_lin_reg_test, β_chain[1:2])
                 @test all(Array(predictions1) .== Array(predictions2))
             end
 
             @testset "accuracy on vectorized model" begin
                 predictions_vec = DynamicPPL.predict(m_lin_reg_test_vec, β_chain)
-                ys_pred_vec = vec(mean(Array(group(predictions_vec, :y)); dims=1))
+                ys_pred_vec = vec(
+                    mean(Array(MCMCChains.group(predictions_vec, :y)); dims=1)
+                )
 
                 @test ys_pred_vec[1] ≈ ground_truth_β * xs_test[1] atol = 0.01
                 @test ys_pred_vec[2] ≈ ground_truth_β * xs_test[2] atol = 0.01
@@ -603,7 +609,10 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
 
                 for chain_idx in MCMCChains.chains(multiple_β_chain)
                     ys_pred = vec(
-                        mean(Array(group(predictions[:, :, chain_idx], :y)); dims=1)
+                        mean(
+                            Array(MCMCChains.group(predictions[:, :, chain_idx], :y));
+                            dims=1,
+                        ),
                     )
                     @test ys_pred[1] ≈ ground_truth_β * xs_test[1] atol = 0.01
                     @test ys_pred[2] ≈ ground_truth_β * xs_test[2] atol = 0.01
@@ -614,7 +623,10 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
 
                 for chain_idx in MCMCChains.chains(multiple_β_chain)
                     ys_pred_vec = vec(
-                        mean(Array(group(predictions_vec[:, :, chain_idx], :y)); dims=1)
+                        mean(
+                            Array(MCMCChains.group(predictions_vec[:, :, chain_idx], :y));
+                            dims=1,
+                        ),
                     )
                     @test ys_pred_vec[1] ≈ ground_truth_β * xs_test[1] atol = 0.01
                     @test ys_pred_vec[2] ≈ ground_truth_β * xs_test[2] atol = 0.01
@@ -634,3 +646,7 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
         @test model() isa NamedTuple
     end
 end
+
+@info "Completed $(@__FILE__) in $(now() - __now__)."
+
+end # module

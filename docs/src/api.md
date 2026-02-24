@@ -78,6 +78,7 @@ Internally, this is accomplished using [`init!!`](@ref) on:
 
 ```@docs
 OnlyAccsVarInfo
+to_vector_params
 ```
 
 ## Condition and decondition
@@ -213,23 +214,10 @@ pointwise_loglikelihoods
 pointwise_prior_logdensities
 ```
 
-For converting a chain into a format that can more easily be fed into a `Model` again, for example using `condition`, you can use [`value_iterator_from_chain`](@ref).
-
-```@docs
-value_iterator_from_chain
-
-```
-
 Sometimes it can be useful to extract the priors of a model. This is the possible using [`extract_priors`](@ref).
 
 ```@docs
 extract_priors
-```
-
-Safe extraction of values from a given [`AbstractVarInfo`](@ref) as they are seen in the model can be done using [`values_as_in_model`](@ref).
-
-```@docs
-values_as_in_model
 ```
 
 ```@docs
@@ -291,7 +279,6 @@ Finally, the following methods can also be of use:
 DynamicPPL.TestUtils.varnames
 DynamicPPL.TestUtils.posterior_mean
 DynamicPPL.TestUtils.setup_varinfos
-DynamicPPL.TestUtils.update_values!!
 DynamicPPL.TestUtils.test_values
 ```
 
@@ -301,7 +288,6 @@ DynamicPPL provides a few methods for checking validity of a model-definition.
 
 ```@docs
 check_model
-check_model_and_trace
 ```
 
 And some which might be useful to determine certain properties of the model based on the debug trace.
@@ -333,25 +319,17 @@ Please see the documentation of [AbstractPPL.jl](https://github.com/TuringLang/A
 
 ### Data Structures of Variables
 
-DynamicPPL provides different data structures used in for storing samples and accumulation of the log-probabilities, all of which are subtypes of [`AbstractVarInfo`](@ref).
+DynamicPPL provides a data structure for storing samples and accumulation of the log-probabilities, called [`VarInfo`](@ref).
+The interface that `VarInfo` respects is described by the abstract type [`AbstractVarInfo`](@ref).
+Internally DynamicPPL also uses a couple of other subtypes of `AbstractVarInfo`.
 
 ```@docs
 AbstractVarInfo
 ```
 
-But exactly how a [`AbstractVarInfo`](@ref) stores this information can vary.
-
-#### `VarInfo`
-
 ```@docs
 VarInfo
-```
-
-```@docs
-DynamicPPL.untyped_varinfo
-DynamicPPL.typed_varinfo
-DynamicPPL.untyped_vector_varinfo
-DynamicPPL.typed_vector_varinfo
+DynamicPPL.setindex_with_dist!!
 ```
 
 One main characteristic of [`VarInfo`](@ref) is that samples are transformed to unconstrained Euclidean space and stored in a linearized form, as described in the [main Turing documentation](https://turinglang.org/docs/developers/transforms/dynamicppl/).
@@ -363,14 +341,32 @@ is_transformed
 set_transformed!!
 ```
 
+#### `VarNamedTuple`s
+
+`VarInfo` is only a thin wrapper around [`VarNamedTuple`](@ref), which stores arbitrary data keyed by `VarName`s.
+For more details on `VarNamedTuple`, see the Internals section of our documentation.
+
 ```@docs
-Base.empty!
+DynamicPPL.VarNamedTuples.VarNamedTuple
+DynamicPPL.VarNamedTuples.@vnt
+DynamicPPL.VarNamedTuples.apply!!
+DynamicPPL.VarNamedTuples.densify!!
+DynamicPPL.VarNamedTuples.map_pairs!!
+DynamicPPL.VarNamedTuples.map_values!!
+DynamicPPL.VarNamedTuples.PartialArray
+DynamicPPL.VarNamedTuples.templated_setindex!!
+DynamicPPL.VarNamedTuples.NoTemplate
+DynamicPPL.VarNamedTuples.SkipTemplate
 ```
 
-#### `SimpleVarInfo`
+VarNamedTuple provides a Dict-like interface, so you can iterate over `keys(vnt)`, `values(vnt)`, and `pairs(vnt)`.
+You can also use `getindex(vnt, key)`, but `setindex!` is not allowed: all changes to a `VarNamedTuple` must be done via `setindex!!` or `templated_setindex!!`.
+Please see the VarNamedTuple documentation for more details.
+
+You can convert a `VarNamedTuple` to a NamedTuple in the case where all keys are VarNames with identity optics.
 
 ```@docs
-SimpleVarInfo
+NamedTuple(::VarNamedTuple)
 ```
 
 ### Accumulators
@@ -379,14 +375,26 @@ The subtypes of [`AbstractVarInfo`](@ref) store the cumulative log prior and log
 
 ```@docs
 AbstractAccumulator
+accumulate_assume!!
+accumulate_observe!!
+accumulator_name
+DynamicPPL.reset
+DynamicPPL.split
+DynamicPPL.combine
 ```
 
-DynamicPPL provides the following default accumulators.
+```@docs
+VNTAccumulator
+DoNotAccumulate
+```
+
+To manipulate the accumulators in a `VarInfo`, one can use:
 
 ```@docs
-LogPriorAccumulator
-LogJacobianAccumulator
-LogLikelihoodAccumulator
+getacc
+setacc!!
+setaccs!!
+deleteacc!!
 ```
 
 ### Common API
@@ -416,23 +424,10 @@ accloglikelihood!!
 ```@docs
 keys
 getindex
-push!!
 empty!!
 isempty
 DynamicPPL.getindex_internal
-DynamicPPL.setindex_internal!
-DynamicPPL.update_internal!
-DynamicPPL.insert_internal!
-DynamicPPL.length_internal
-DynamicPPL.reset!
-DynamicPPL.update!
-DynamicPPL.insert!
-DynamicPPL.loosen_types!!
-DynamicPPL.tighten_types!!
-```
-
-```@docs
-values_as
+DynamicPPL.setindex_internal!!
 ```
 
 #### Transformations
@@ -445,15 +440,34 @@ DynamicPPL.StaticTransformation
 ```
 
 ```@docs
-DynamicPPL.transformation
 DynamicPPL.link
 DynamicPPL.invlink
 DynamicPPL.link!!
 DynamicPPL.invlink!!
+DynamicPPL.update_link_status!!
+```
+
+```@docs
+DynamicPPL.AbstractTransformStrategy
+DynamicPPL.LinkAll
+DynamicPPL.UnlinkAll
+DynamicPPL.LinkSome
+DynamicPPL.UnlinkSome
+```
+
+```@docs
+DynamicPPL.AbstractTransform
+DynamicPPL.DynamicLink
+DynamicPPL.Unlink
+DynamicPPL.target_transform
+DynamicPPL.apply_transform_strategy
+```
+
+```@docs
+DynamicPPL.transformation
 DynamicPPL.default_transformation
 DynamicPPL.link_transform
 DynamicPPL.invlink_transform
-DynamicPPL.maybe_invlink_before_eval!!
 ```
 
 #### Utils
@@ -461,7 +475,8 @@ DynamicPPL.maybe_invlink_before_eval!!
 ```@docs
 Base.merge(::AbstractVarInfo)
 DynamicPPL.subset
-DynamicPPL.unflatten
+unflatten!!
+internal_values_as_vector
 ```
 
 ### Evaluation Contexts
@@ -499,7 +514,7 @@ tilde_observe!!
 ```
 
 **Parent contexts**: These essentially act as 'modifiers' for leaf contexts.
-For example, `PrefixContext` adds a prefix to all variable names during evaluation, while `ConditionContext` marks certain variables as observed.
+For example, `PrefixContext` adds a prefix to all variable names during evaluation, while `CondFixContext` marks certain variables as being either conditioned or fixed.
 
 To implement a parent context, you have to subtype `DynamicPPL.AbstractParentContext`, and implement the `childcontext` and `setchildcontext` methods.
 If needed, you can also implement `tilde_assume!!` and `tilde_observe!!` for your context.
@@ -529,13 +544,7 @@ init!!
 ```
 
 To accomplish this, an initialisation _strategy_ is required, which defines how new values are to be obtained.
-There are three concrete strategies provided in DynamicPPL:
-
-```@docs
-InitFromPrior
-InitFromUniform
-InitFromParams
-```
+There are several concrete strategies provided in DynamicPPL: see the [initialisation strategies page](@ref init-strategies) for more information.
 
 If you wish to write your own, you have to subtype [`DynamicPPL.AbstractInitStrategy`](@ref) and implement the `init` method.
 In very rare situations, you may also need to implement `get_param_eltype`, which defines the element type of the parameters generated by the strategy.
@@ -546,13 +555,22 @@ init
 get_param_eltype
 ```
 
-### Choosing a suitable VarInfo
-
-There is also the _experimental_ [`DynamicPPL.Experimental.determine_suitable_varinfo`](@ref), which uses static checking via [JET.jl](https://github.com/aviatesk/JET.jl) to determine whether one should use [`DynamicPPL.typed_varinfo`](@ref) or [`DynamicPPL.untyped_varinfo`](@ref), depending on which supports the model:
+The function [`DynamicPPL.init`](@ref) should return an `AbstractTransformedValue`.
+There are three subtypes currently available:
 
 ```@docs
-DynamicPPL.Experimental.determine_suitable_varinfo
-DynamicPPL.Experimental.is_suitable_varinfo
+DynamicPPL.AbstractTransformedValue
+DynamicPPL.VectorValue
+DynamicPPL.LinkedVectorValue
+DynamicPPL.UntransformedValue
+```
+
+The interface for working with transformed values consists of:
+
+```@docs
+DynamicPPL.get_transform
+DynamicPPL.get_internal_value
+DynamicPPL.set_internal_value
 ```
 
 ### Converting VarInfos to/from chains
@@ -576,7 +594,8 @@ If you only have a vector you can use `hcat` to convert it into an `N×1` matrix
 Furthermore, one can convert chains back into a collection of parameter dictionaries and/or stats with:
 
 ```@docs
-AbstractMCMC.to_samples(::Type{DynamicPPL.ParamsWithStats}, ::MCMCChains.Chains)
+AbstractMCMC.to_samples(::Type{DynamicPPL.ParamsWithStats}, ::MCMCChains.Chains, ::DynamicPPL.Model)
 ```
 
+(Note that the model argument is mandatory as it provides templating information for the variables in the chains.)
 With these, you can (for example) extract the parameter dictionaries and use `InitFromParams` to re-evaluate a model at each point in the chain.

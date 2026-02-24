@@ -5,7 +5,7 @@ A struct which contains parameter values extracted from a `VarInfo`, along with 
 statistics associated with the VarInfo. The statistics are provided as a NamedTuple and are
 optional.
 """
-struct ParamsWithStats{P<:OrderedDict{<:VarName,<:Any},S<:NamedTuple}
+struct ParamsWithStats{P<:VarNamedTuple,S<:NamedTuple}
     params::P
     stats::S
 end
@@ -38,38 +38,31 @@ function ParamsWithStats(
     include_colon_eq::Bool=true,
     include_log_probs::Bool=true,
 )
-    varinfo = maybe_to_typed_varinfo(varinfo)
     accs = if include_log_probs
         (
             DynamicPPL.LogPriorAccumulator(),
             DynamicPPL.LogLikelihoodAccumulator(),
-            DynamicPPL.ValuesAsInModelAccumulator(include_colon_eq),
+            DynamicPPL.RawValueAccumulator(include_colon_eq),
         )
     else
-        (DynamicPPL.ValuesAsInModelAccumulator(include_colon_eq),)
+        (DynamicPPL.RawValueAccumulator(include_colon_eq),)
     end
-    varinfo = DynamicPPL.setaccs!!(varinfo, accs)
-    varinfo = last(DynamicPPL.evaluate!!(model, varinfo))
-    params = DynamicPPL.getacc(varinfo, Val(:ValuesAsInModel)).values
+    oavi = OnlyAccsVarInfo(accs)
+    init = InitFromParams(varinfo.values, nothing)
+    oavi = last(DynamicPPL.init!!(model, oavi, init, UnlinkAll()))
+    params = densify!!(get_raw_values(oavi))
     if include_log_probs
         stats = merge(
             stats,
             (
-                logprior=DynamicPPL.getlogprior(varinfo),
-                loglikelihood=DynamicPPL.getloglikelihood(varinfo),
-                logjoint=DynamicPPL.getlogjoint(varinfo),
+                logprior=DynamicPPL.getlogprior(oavi),
+                loglikelihood=DynamicPPL.getloglikelihood(oavi),
+                logjoint=DynamicPPL.getlogjoint(oavi),
             ),
         )
     end
     return ParamsWithStats(params, stats)
 end
-
-# Re-evaluating the model is unconscionably slow for untyped VarInfo. It's much faster to
-# convert it to a typed varinfo first, hence this method.
-# https://github.com/TuringLang/Turing.jl/issues/2604
-maybe_to_typed_varinfo(vi::UntypedVarInfo) = typed_varinfo(vi)
-maybe_to_typed_varinfo(vi::UntypedVectorVarInfo) = typed_vector_varinfo(vi)
-maybe_to_typed_varinfo(vi::AbstractVarInfo) = vi
 
 """
     ParamsWithStats(
@@ -79,10 +72,10 @@ maybe_to_typed_varinfo(vi::AbstractVarInfo) = vi
     )
 
 There is one case where re-evaluation is not necessary, which is when the VarInfos all
-already contain `DynamicPPL.ValuesAsInModelAccumulator`. This accumulator stores values
+already contain `DynamicPPL.RawValueAccumulator`. This accumulator stores values
 as seen during the model evaluation, so the values can be simply read off. In this case,
 the `model` argument can be omitted, and no re-evaluation will be performed. However, it is
-the caller's responsibility to ensure that `ValuesAsInModelAccumulator` is indeed present
+the caller's responsibility to ensure that `RawValueAccumulator` is indeed present
 inside `varinfo`.
 
 `include_log_probs` controls whether log probabilities (log prior, log likelihood, and log
@@ -91,7 +84,7 @@ joint) are added to the resulting statistics NamedTuple.
 function ParamsWithStats(
     varinfo::AbstractVarInfo, stats::NamedTuple=NamedTuple(); include_log_probs::Bool=true
 )
-    params = DynamicPPL.getacc(varinfo, Val(:ValuesAsInModel)).values
+    params = densify!!(get_raw_values(varinfo))
     if include_log_probs
         has_prior_acc = DynamicPPL.hasacc(varinfo, Val(:LogPrior))
         has_likelihood_acc = DynamicPPL.hasacc(varinfo, Val(:LogLikelihood))
@@ -121,7 +114,7 @@ Generate a `ParamsWithStats` by re-evaluating the given `ldf` with the provided
 `param_vector`.
 
 This method is intended to replace the old method of obtaining parameters and statistics
-via `unflatten` plus re-evaluation. It is faster for two reasons:
+via `unflatten!!` plus re-evaluation. It is faster for two reasons:
 
 1. It does not rely on `deepcopy`-ing the VarInfo object (this used to be mandatory as
    otherwise re-evaluation would mutate the VarInfo, rendering it unusable for subsequent
@@ -130,28 +123,28 @@ via `unflatten` plus re-evaluation. It is faster for two reasons:
 """
 function ParamsWithStats(
     param_vector::AbstractVector,
-    ldf::DynamicPPL.LogDensityFunction{Tlink},
+    ldf::DynamicPPL.LogDensityFunction,
     stats::NamedTuple=NamedTuple();
     include_colon_eq::Bool=true,
     include_log_probs::Bool=true,
-) where {Tlink}
-    strategy = InitFromParams(
-        VectorWithRanges{Tlink}(
-            ldf._iden_varname_ranges, ldf._varname_ranges, param_vector
-        ),
-        nothing,
-    )
+)
+    strategy = InitFromVector(param_vector, ldf)
     accs = if include_log_probs
         (
             DynamicPPL.LogPriorAccumulator(),
             DynamicPPL.LogLikelihoodAccumulator(),
-            DynamicPPL.ValuesAsInModelAccumulator(include_colon_eq),
+            DynamicPPL.RawValueAccumulator(include_colon_eq),
         )
     else
-        (DynamicPPL.ValuesAsInModelAccumulator(include_colon_eq),)
+        (DynamicPPL.RawValueAccumulator(include_colon_eq),)
     end
-    _, vi = DynamicPPL.init!!(ldf.model, OnlyAccsVarInfo(AccumulatorTuple(accs)), strategy)
-    params = DynamicPPL.getacc(vi, Val(:ValuesAsInModel)).values
+    # UnlinkAll() actually doesn't have any impact here, because there isn't even a
+    # LogJacobianAccumulator; consequently, it doesn't matter whether we interpret the
+    # parameters as being in linked space or not. However, we just include it for clarity.
+    _, vi = DynamicPPL.init!!(
+        ldf.model, OnlyAccsVarInfo(AccumulatorTuple(accs)), strategy, UnlinkAll()
+    )
+    params = densify!!(get_raw_values(vi))
     if include_log_probs
         stats = merge(
             stats,

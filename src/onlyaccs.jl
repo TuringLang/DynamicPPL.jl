@@ -1,16 +1,16 @@
 """
-    OnlyAccsVarInfo
+    OnlyAccsVarInfo(accs...)
 
-This is a wrapper around an `AccumulatorTuple` that implements the minimal `AbstractVarInfo`
-interface to work with the `tilde_assume!!` and `tilde_observe!!` functions for
-`InitContext`.
+`OnlyAccsVarInfo` is a wrapper around a tuple of accumulators.
+
+Its name stems from the fact that it implements the minimal `AbstractVarInfo` interface to
+work with the `tilde_assume!!` and `tilde_observe!!` functions for `InitContext`.
 
 Note that this does not implement almost every other AbstractVarInfo interface function, and
 so using this with a different leaf context such as `DefaultContext` will result in errors.
 
-Conceptually, one can also think of this as a VarInfo that doesn't contain a metadata field.
-This is also why it only works with `InitContext`: in this case, the parameters used for
-evaluation are supplied by the context instead of the metadata.
+For more information about accumulators, please see the [DynamicPPL documentation on
+accumulators](@ref accumulators-overview).
 """
 struct OnlyAccsVarInfo{Accs<:AccumulatorTuple} <: AbstractVarInfo
     accs::Accs
@@ -19,24 +19,60 @@ OnlyAccsVarInfo() = OnlyAccsVarInfo(default_accumulators())
 function OnlyAccsVarInfo(accs::NTuple{N,AbstractAccumulator}) where {N}
     return OnlyAccsVarInfo(AccumulatorTuple(accs))
 end
+function OnlyAccsVarInfo(accs::Vararg{AbstractAccumulator})
+    return OnlyAccsVarInfo(AccumulatorTuple(accs))
+end
+
+function Base.show(io::IO, ::MIME"text/plain", oavi::OnlyAccsVarInfo)
+    printstyled(io, "OnlyAccsVarInfo"; bold=true)
+    println(io)
+    print(io, " └─ ")
+    DynamicPPL.pretty_print(io, oavi.accs, "    ")
+    return nothing
+end
 
 # Minimal AbstractVarInfo interface
-DynamicPPL.maybe_invlink_before_eval!!(vi::OnlyAccsVarInfo, ::Model) = vi
 DynamicPPL.getaccs(vi::OnlyAccsVarInfo) = vi.accs
 DynamicPPL.setaccs!!(::OnlyAccsVarInfo, accs::AccumulatorTuple) = OnlyAccsVarInfo(accs)
-
-# Ideally, we'd define this together with InitContext, but alas that file comes way before
-# this one, and sorting out the include order is a pain.
-function tilde_assume!!(
-    ctx::InitContext,
-    dist::Distribution,
-    vn::VarName,
-    vi::Union{OnlyAccsVarInfo,ThreadSafeVarInfo{<:OnlyAccsVarInfo}},
+function DynamicPPL.get_transform_strategy(::OnlyAccsVarInfo)
+    # OAVI doesn't contain this info, we can't return a sensible value. Hopefully this
+    # method doesn't ever get called though.
+    return error(
+        "get_transform_strategy cannot be implemented for OnlyAccsVarInfo; please specify a transform strategy manually in your call to `init!!`",
+    )
+end
+function DynamicPPL.tilde_assume!!(
+    ::DefaultContext,
+    ::Distribution,
+    ::VarName,
+    ::Any,
+    ::Union{OnlyAccsVarInfo,ThreadSafeVarInfo{<:OnlyAccsVarInfo}},
 )
-    # For OnlyAccsVarInfo, since we don't need to write into the VarInfo, we can 
-    # cut out a lot of the code above.
-    val, transform = init(ctx.rng, vn, dist, ctx.strategy)
-    x, inv_logjac = with_logabsdet_jacobian(transform, val)
-    vi = accumulate_assume!!(vi, x, -inv_logjac, vn, dist)
-    return x, vi
+    # Helpful guardrail for developers.
+    return error(
+        "tilde_assume!! is not implemented for DefaultContext when using OnlyAccsVarInfo. OnlyAccsVarInfo is only compatible with InitContext.",
+    )
+end
+
+# This allows us to make use of the main tilde_assume!!(::InitContext) method without
+# having to duplicate the code here
+@inline function DynamicPPL.setindex_with_dist!!(
+    vi::OnlyAccsVarInfo, ::AbstractTransformedValue, ::Distribution, ::VarName, ::Any
+)
+    return vi
+end
+
+"""
+    get_vector_values(accs::OnlyAccsVarInfo)
+
+Get a `VarNamedTuple` containing vectorised values from `accs`. This will error if `accs`
+does not contain a `VectorValueAccumulator`.
+
+Note that this function is implemented for `OnlyAccsVarInfo`, but not `VarInfo` since that
+could be ambiguous (VarInfo stores its own vectorised values!). If you want to extract the
+vectorised values from `varinfo.values` where `varinfo isa VarInfo`, you should use
+[`DynamicPPL.internal_values_as_vector(varinfo)`](@ref internal_values_as_vector).
+"""
+function get_vector_values(oavi::OnlyAccsVarInfo)
+    return getacc(oavi, Val(VECTORVAL_ACCNAME)).values
 end

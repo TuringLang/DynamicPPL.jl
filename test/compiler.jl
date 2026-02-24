@@ -1,3 +1,16 @@
+module DynamicPPLCompilerTests
+
+using Dates: now
+@info "Testing $(@__FILE__)..."
+__now__ = now()
+
+using Distributions
+using DynamicPPL
+using ForwardDiff: ForwardDiff
+using LinearAlgebra: I
+using Random: Random
+using Test
+
 macro custom(expr)
     (Meta.isexpr(expr, :call, 3) && expr.args[1] === :~) || error("incorrect macro usage")
     quote
@@ -236,9 +249,11 @@ module Issue537 end
 
         # https://github.com/TuringLang/Turing.jl/issues/1464#issuecomment-731153615
         vi = VarInfo(gdemo(x))
-        @test haskey(vi.metadata, :x)
+        @test !haskey(vi, @varname(x[1]))
+        @test haskey(vi, @varname(x[2]))
         vi = VarInfo(gdemo(x))
-        @test haskey(vi.metadata, :x)
+        @test !haskey(vi, @varname(x[1]))
+        @test haskey(vi, @varname(x[2]))
 
         # Non-array variables
         @model function testmodel_nonarray(x, y)
@@ -269,6 +284,19 @@ module Issue537 end
         @test !any(ismissing, result.x.a)
         @test result.y.a !== missing
         @test result.x.a[end] > 10
+        @test Set(keys(VarInfo(m_nonarray))) == Set([
+            @varname(m),
+            @varname(s),
+            @varname(x.a[1]),
+            @varname(y.a),
+            # this is the x.a[end]
+            @varname(x.a[2]),
+            # this is z[1:2] but dot-tilde'd
+            @varname(z[1]),
+            @varname(z[2]),
+            # this is z[end:end]
+            @varname(z[3])
+        ])
 
         # Ensure that we can work with `Vector{Real}(undef, N)` which is the
         # reason why we're using `BangBang.prefermutation` in `src/compiler.jl`
@@ -339,32 +367,30 @@ module Issue537 end
         varinfo = VarInfo(model)
         @test getlogjoint(varinfo) == lp
     end
+
     @testset "user-defined variable name" begin
         @model f1() = x ~ NamedDist(Normal(), :y)
-        @model f2() = x ~ NamedDist(Normal(), @varname(y[2][:, 1]))
-        @model f3() = x ~ NamedDist(Normal(), @varname(y[1]))
+        @model f2() = x ~ NamedDist(Normal(), @varname(z))
+        @model f3() = x ~ NamedDist(Normal(), @varname(w.x))
         vi1 = VarInfo(f1())
         vi2 = VarInfo(f2())
         vi3 = VarInfo(f3())
-        @test haskey(vi1.metadata, :y)
-        @test first(Base.keys(vi1.metadata.y)) == @varname(y)
-        @test haskey(vi2.metadata, :y)
-        @test first(Base.keys(vi2.metadata.y)) == @varname(y[2][:, 1])
-        @test haskey(vi3.metadata, :y)
-        @test first(Base.keys(vi3.metadata.y)) == @varname(y[1])
+        @test only(Base.keys(vi1)) == @varname(y)
+        @test only(Base.keys(vi2)) == @varname(z)
+        @test only(Base.keys(vi3)) == @varname(w.x)
 
         # Conditioning
         f1_c = f1() | (y=1,)
-        f2_c = f2() | NamedTuple((Symbol(@varname(y[2][:, 1])) => 1,))
-        f3_c = f3() | NamedTuple((Symbol(@varname(y[1])) => 1,))
+        f2_c = f2() | Dict(@varname(z) => 1)
+        f3_c = f3() | Dict(@varname(w.x) => 1)
         @test f1_c() == 1
-        # TODO(torfjelde): We need conditioning for `Dict`.
-        @test_broken f2_c() == 1
-        @test_broken f3_c() == 1
-        @test_broken getlogjoint(VarInfo(f1_c)) ==
+        @test f2_c() == 1
+        @test f3_c() == 1
+        @test getlogjoint(VarInfo(f1_c)) ==
             getlogjoint(VarInfo(f2_c)) ==
             getlogjoint(VarInfo(f3_c))
     end
+
     @testset "custom tilde" begin
         @model demo() = begin
             $(@custom m ~ Normal())
@@ -604,9 +630,9 @@ module Issue537 end
         # Even if the return-value is `AbstractVarInfo`, we should return
         # a `Tuple` with `AbstractVarInfo` in the second component too.
         @model demo() = return __varinfo__
-        retval, svi = DynamicPPL.init!!(demo(), SimpleVarInfo())
-        @test svi == SimpleVarInfo()
-        @test retval == svi
+        retval, vi = DynamicPPL.init!!(demo(), VarInfo())
+        @test vi == VarInfo()
+        @test retval == vi
 
         # We should not be altering return-values other than at top-level.
         @model function demo()
@@ -615,11 +641,11 @@ module Issue537 end
             f(x) = return x^2
             return f(1.0)
         end
-        retval, svi = DynamicPPL.init!!(demo(), SimpleVarInfo())
+        retval, vi = DynamicPPL.init!!(demo(), VarInfo())
         @test retval isa Float64
 
         @model demo() = x ~ Normal()
-        retval, svi = DynamicPPL.init!!(demo(), SimpleVarInfo())
+        retval, vi = DynamicPPL.init!!(demo(), VarInfo())
 
         # Return-value when using `to_submodel`
         @model inner() = x ~ Normal()
@@ -736,15 +762,19 @@ module Issue537 end
             @test haskey(varinfo, @varname(x))
             @test !haskey(varinfo, @varname(y))
 
-            # While `values_as_in_model` should contain both `x` and `y`, if
-            # include_colon_eq is set to `true`.
-            values = values_as_in_model(model, true, deepcopy(varinfo))
+            # A `RawValueAccumulator` should contain both `x` and `y`, if include_colon_eq
+            # is set to `true`.
+            vi = OnlyAccsVarInfo((RawValueAccumulator(true),))
+            _, vi = init!!(model, vi, InitFromPrior(), UnlinkAll())
+            values = get_raw_values(vi)
             @test haskey(values, @varname(x))
             @test haskey(values, @varname(y))
 
-            # And if include_colon_eq is set to `false`, then `values` should
-            # only contain `x`.
-            values = values_as_in_model(model, false, deepcopy(varinfo))
+            # And if include_colon_eq is set to `false`, then `values` should only contain
+            # `x`.
+            vi = OnlyAccsVarInfo((RawValueAccumulator(false),))
+            _, vi = init!!(model, vi, InitFromPrior(), UnlinkAll())
+            values = get_raw_values(vi)
             @test haskey(values, @varname(x))
             @test !haskey(values, @varname(y))
         end
@@ -766,13 +796,15 @@ module Issue537 end
         @test haskey(varinfo, @varname(b.a.x))
         @test length(keys(varinfo)) == 1
 
-        values = values_as_in_model(model, true, deepcopy(varinfo))
+        vi = OnlyAccsVarInfo((RawValueAccumulator(true),))
+        _, vi = init!!(model, vi, InitFromPrior(), UnlinkAll())
+        values = get_raw_values(vi)
         @test haskey(values, @varname(b.a.x))
         @test haskey(values, @varname(b.a.y))
 
-        # And if include_colon_eq is set to `false`, then `values` should
-        # only contain `x`.
-        values = values_as_in_model(model, false, deepcopy(varinfo))
+        vi = OnlyAccsVarInfo((RawValueAccumulator(false),))
+        _, vi = init!!(model, vi, InitFromPrior(), UnlinkAll())
+        values = get_raw_values(vi)
         @test haskey(values, @varname(b.a.x))
         @test length(keys(varinfo)) == 1
     end
@@ -880,3 +912,7 @@ module Issue537 end
         end
     end
 end
+
+@info "Completed $(@__FILE__) in $(now() - __now__)."
+
+end # module

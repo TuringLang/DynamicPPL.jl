@@ -1,3 +1,14 @@
+module DynamicPPLContextImplementationTests
+
+using Dates: now
+@info "Testing $(@__FILE__)..."
+__now__ = now()
+
+using DynamicPPL
+using Distributions
+using LinearAlgebra: I, norm
+using Test
+
 @testset "context_implementations.jl" begin
     # https://github.com/TuringLang/DynamicPPL.jl/issues/129
     @testset "#129" begin
@@ -47,4 +58,8 @@
             end
         end
     end
+end
+
+@info "Completed $(@__FILE__) in $(now() - __now__)."
+
 end

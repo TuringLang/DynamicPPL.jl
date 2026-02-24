@@ -3,16 +3,16 @@
 
 An abstract type for accumulators.
 
-An accumulator is an object that may change its value at every tilde_assume!! or
-tilde_observe!! call based on the random variable in question. The obvious examples of
+An accumulator is an object that may change its value at every `tilde_assume!!` or
+`tilde_observe!!` call based on the random variable in question. The obvious examples of
 accumulators are the log prior and log likelihood. Other examples might be a variable that
 counts the number of observations in a trace, or a list of the names of random variables
 seen so far.
 
 An accumulator type `T <: AbstractAccumulator` must implement the following methods:
 - `accumulator_name(acc::T)` or `accumulator_name(::Type{T})`
-- `accumulate_observe!!(acc::T, dist, val, vn)`
-- `accumulate_assume!!(acc::T, val, logjac, vn, dist)`
+- `accumulate_observe!!(acc::T, dist, val, vn, template)`
+- `accumulate_assume!!(acc::T, val, tval, logjac, vn, dist, template)`
 - `reset(acc::T)`
 - `Base.copy(acc::T)`
 
@@ -20,12 +20,18 @@ In these functions:
 - `val` is the new value of the random variable sampled from a distribution (always in
   the original unlinked space), or the value on the left-hand side of an observe
   statement.
+- `tval` is the original `AbstractTransformedValue` that was obtained from the
+  initialisation strategy. This is passed through unchanged to `accumulate_assume!!` since
+  it can be reused for some accumulators (e.g. when storing linked values, if the linked
+  value was already provided, it is faster to reuse it than to re-link `val`).
 - `dist` is the distribution on the RHS of the tilde statement.
 - `vn` is the `VarName` that is on the left-hand side of the tilde-statement. If the
   tilde-statement is a literal observation like `0.0 ~ Normal()`, then `vn` is `nothing`.
 - `logjac` is the log determinant of the Jacobian of the link transformation, _if_ the
   variable is stored as a linked value in the VarInfo. If the variable is stored in its
   original, unlinked form, then `logjac` is zero.
+- `template` is a value that conveys the shape of the top-level symbol in `vn`, and is
+  used specifically for accumulators that carry VarNamedTuples.
 
 To be able to work with multi-threading, it should also implement:
 - `split(acc::T)`
@@ -47,7 +53,7 @@ depends on the type of `acc`, not on its value.
 accumulator_name(acc::AbstractAccumulator) = accumulator_name(typeof(acc))
 
 """
-    accumulate_observe!!(acc::AbstractAccumulator, right, left, vn)
+    accumulate_observe!!(acc::AbstractAccumulator, right, left, vn, template)
 
 Update `acc` in a `tilde_observe!!` call. Returns the updated `acc`.
 
@@ -60,7 +66,7 @@ See also: [`accumulate_assume!!`](@ref)
 function accumulate_observe!! end
 
 """
-    accumulate_assume!!(acc::AbstractAccumulator, val, logjac, vn, right)
+    accumulate_assume!!(acc::AbstractAccumulator, val, tval, logjac, vn, right, template)
 
 Update `acc` in a `tilde_assume!!` call. Returns the updated `acc`.
 
@@ -118,18 +124,15 @@ See also: [`split`](@ref)
 """
 function combine end
 
-# TODO(mhauru) The existence of this function makes me sad. See comment in unflatten in
-# src/varinfo.jl.
 """
-    convert_eltype(::Type{T}, acc::AbstractAccumulator)
+    promote_for_threadsafe_eval(acc::AbstractAccumulator, ::Type{T}) where {T}
 
-Convert `acc` to use element type `T`.
+Convert `acc` to a new accumulator that works with threadsafe evaluation. The type parameter
+`T` is the element type of the parameters that will be used for model evaluation.
 
-What "element type" means depends on the type of `acc`. By default this function does
-nothing. Accumulator types that need to hold differentiable values, such as dual numbers
-used by various AD backends, should implement a method for this function.
+See the docstring of `ThreadSafeVarInfo(vi, ::Type{T})` for more details.
 """
-convert_eltype(::Type, acc::AbstractAccumulator) = acc
+promote_for_threadsafe_eval(acc::AbstractAccumulator, ::Type) = acc
 
 """
     AccumulatorTuple{N,T<:NamedTuple}
@@ -159,8 +162,33 @@ AccumulatorTuple(accs::Vararg{AbstractAccumulator}) = AccumulatorTuple(accs)
 AccumulatorTuple(nt::NamedTuple) = AccumulatorTuple(tuple(nt...))
 AccumulatorTuple(at::AccumulatorTuple) = at
 
-# When showing with text/plain, leave out information about the wrapper AccumulatorTuple.
-Base.show(io::IO, mime::MIME"text/plain", at::AccumulatorTuple) = show(io, mime, at.nt)
+function pretty_print(io::IO, at::AccumulatorTuple, prefix::String)
+    naccs = length(at)
+    if isempty(at.nt)
+        print(io, "AccumulatorTuple with 0 accumulators")
+        return nothing
+    end
+    println(
+        io, "AccumulatorTuple with ", naccs, naccs == 1 ? " accumulator:" : " accumulators"
+    )
+    for (i, (name, acc)) in enumerate(pairs(at.nt))
+        tree_symbol = i == naccs ? "└─ " : "├─ "
+        key_name = string(name)
+        print(io, prefix * tree_symbol)
+        printstyled(io, key_name; color=:cyan)
+        print(io, " => ")
+        show(io, acc)
+        if i < naccs
+            println(io)
+        end
+    end
+    return nothing
+end
+
+function Base.show(io::IO, ::MIME"text/plain", at::AccumulatorTuple)
+    pretty_print(io, at, "")
+    return nothing
+end
 Base.getindex(at::AccumulatorTuple, idx) = at.nt[idx]
 Base.length(::AccumulatorTuple{N}) where {N} = N
 Base.iterate(at::AccumulatorTuple, args...) = iterate(at.nt, args...)
@@ -199,6 +227,17 @@ Get the accumulator with name `accname` from `at`.
 """
 function getacc(at::AccumulatorTuple, ::Val{accname}) where {accname}
     return at[accname]
+end
+
+"""
+    deleteacc!!(at::AccumulatorTuple, ::Val{accname})
+
+Delete the accumulator with name `accname` from `at`. Returns a new `AccumulatorTuple`.
+"""
+function deleteacc!!(
+    accs::AccumulatorTuple{N,<:NamedTuple{names}}, ::Val{T}
+) where {N,names,T}
+    return AccumulatorTuple(NamedTuple{filter(x -> x != T, names)}(accs.nt))
 end
 
 function Base.map(func::Function, at::AccumulatorTuple)

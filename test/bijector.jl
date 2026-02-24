@@ -1,3 +1,13 @@
+module DynamicPPLBijectorTests
+
+using Dates: now
+@info "Testing $(@__FILE__)..."
+__now__ = now()
+
+using Distributions
+using DynamicPPL
+using Bijectors: bijector, inverse
+using Test
 
 @testset "bijector.jl" begin
     @testset "bijector" begin
@@ -26,3 +36,7 @@
         @test all(sum(zs[3:4, :]; dims=1) .≈ 1.0)
     end
 end
+
+@info "Completed $(@__FILE__) in $(now() - __now__)."
+
+end # module

@@ -1,8 +1,30 @@
+# NOTE: These tests use `@everywhere`, which makes it impossible to put the tests inside a
+# module. They will just have to live in the `Main` scope.
+
+using Dates: now
+@info "Testing $(@__FILE__)..."
+__now__ = now()
+
+using DynamicPPL
+using Serialization: serialize, deserialize
+using Distributions
+using Distributed: addprocs, nworkers, rmprocs, @everywhere, pmap
+using Test
+
+@model function gdemo_d()
+    s ~ InverseGamma(2, 3)
+    m ~ Normal(0, sqrt(s))
+    1.5 ~ Normal(m, sqrt(s))
+    2.0 ~ Normal(m, sqrt(s))
+    return s, m
+end
+gdemo_def = gdemo_d()
+
 @testset "serialization.jl" begin
     @testset "saving and loading" begin
         # Save model.
         file = joinpath(mktempdir(), "gdemo_default.jls")
-        serialize(file, gdemo_default)
+        serialize(file, gdemo_def)
 
         # Sample from deserialized model.
         gdemo_default_copy = deserialize(file)
@@ -13,6 +35,7 @@
         @test mean(samples_s) ≈ 3 atol = 0.2
         @test mean(samples_m) ≈ 0 atol = 0.15
     end
+
     @testset "pmap" begin
         # Add worker processes.
         pids = addprocs()
@@ -51,3 +74,5 @@
         rmprocs(pids...)
     end
 end
+
+@info "Completed $(@__FILE__) in $(now() - __now__)."

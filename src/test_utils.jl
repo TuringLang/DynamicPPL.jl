@@ -1,6 +1,7 @@
 module TestUtils
 
 using AbstractMCMC
+using AbstractPPL: AbstractPPL
 using DynamicPPL
 using LinearAlgebra
 using Distributions
@@ -9,9 +10,6 @@ using Test
 using Random: Random
 using Bijectors: Bijectors
 using Accessors: Accessors
-
-# For backwards compat.
-using DynamicPPL: update_values!!
 
 include("test_utils/model_interface.jl")
 include("test_utils/models.jl")

@@ -196,6 +196,108 @@ end
         vi = VarInfo(g(missing))
         @test Set(keys(vi)) == Set([@varname(a.x), @varname(a.y)])
     end
+
+    @testset ":= in submodels" begin
+        @testset "basic" begin
+            @model function inner1()
+                a ~ Normal()
+                b := a + 1.0
+                return a
+            end
+            @model function outer1()
+                x ~ to_submodel(inner1())
+                return x
+            end
+
+            model = outer1()
+            a, vi = DynamicPPL.init!!(model, VarInfo())
+            @test only(keys(vi)) == @varname(x.a)
+
+            vi = OnlyAccsVarInfo((RawValueAccumulator(true),))
+            _, vi = init!!(model, vi, InitFromPrior(), UnlinkAll())
+            vnt = get_raw_values(vi)
+            @test vnt[@varname(x.a)] == a
+            @test vnt[@varname(x.b)] == vnt[@varname(x.a)] + 1.0
+        end
+
+        @testset "with sub-VarNames" begin
+            # This test set also checks that templating is happening correctly for := calls
+            # inside submodels. See https://github.com/TuringLang/DynamicPPL.jl/issues/1215.
+            @model function inner2()
+                a ~ Normal()
+                b = zeros(1)
+                b[1] := a + 1.0
+                return a
+            end
+            @model function outer2()
+                x ~ to_submodel(inner2())
+                return x
+            end
+
+            model = outer2()
+            a, vi = DynamicPPL.init!!(model, VarInfo())
+            @test only(keys(vi)) == @varname(x.a)
+
+            vi = OnlyAccsVarInfo((RawValueAccumulator(true),))
+            _, vi = init!!(model, vi, InitFromPrior(), UnlinkAll())
+            vnt = get_raw_values(vi)
+            @test vnt[@varname(x.a)] == a
+            @test vnt[@varname(x.b[1])] == vnt[@varname(x.a)] + 1.0
+            # If the templating fails, then x.b will be stored as a GrowableArray, and
+            # trying to access the entire array will fail.
+            @test vnt[@varname(x.b)] isa Vector{Float64}
+            @test vnt[@varname(x.b)] == [a + 1.0]
+            # For good measure.
+            @test vnt[@varname(x.b[:])] == [a + 1.0]
+        end
+    end
+
+    @testset "deconditioning a submodel from outside" begin
+        @testset "$op" for (op, deop) in [(condition, decondition), (fix, unfix)]
+            @model inner() = x ~ Normal()
+            @model function outer()
+                return a ~ to_submodel(inner())
+            end
+
+            model = outer()
+            @test only(keys(VarInfo(model))) == @varname(a.x)
+            op_model = op(model, (@varname(a.x) => 1.0))
+            @test isempty(keys(VarInfo(op_model)))
+
+            deop_model = deop(op_model)
+            @test only(keys(VarInfo(deop_model))) == @varname(a.x)
+            deop_model2 = deop(op_model, @varname(a))
+            @test only(keys(VarInfo(deop_model2))) == @varname(a.x)
+            deop_model3 = deop(op_model, @varname(a.x))
+            @test only(keys(VarInfo(deop_model3))) == @varname(a.x)
+        end
+    end
+
+    @testset "submodels with indexed prefixes" begin
+        # These submodels briefly failed when VNT was implemented, due to GrowableArray
+        # issues (see example in https://github.com/TuringLang/DynamicPPL.jl/issues/1221).
+        # They're included here to prevent regressions.
+        #
+        @model function inner()
+            return a ~ Normal()
+        end
+        @model function outer()
+            x = zeros(4)
+            for i in eachindex(x)
+                x[i] ~ to_submodel(inner())
+            end
+        end
+        model = outer()
+        vi = VarInfo(model)
+        @test Set(keys(vi)) == Set([@varname(x[i].a) for i in 1:4])
+        for i in 1:4
+            # Need to be careful about what we're testing here. If we do vi[vn], then
+            # it expects that vi.values[vn] isa AbstractTransformedValue. That is true
+            # of the inner keys (x[i].a), but x[i] is not itself a key.
+            @test vi.values[@varname(x[i])] isa VarNamedTuple
+            @test vi[@varname(x[i].a)] isa Float64
+        end
+    end
 end
 
 end

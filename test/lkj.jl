@@ -1,3 +1,14 @@
+module DynamicPPLLKJTests
+
+using Dates: now
+@info "Testing $(@__FILE__)..."
+__now__ = now()
+
+using Distributions: LKJCholesky, LKJ, mean
+using DynamicPPL
+using LinearAlgebra
+using Test
+
 function pd_from_triangular(X::AbstractMatrix, uplo::Char)
     # Pre-allocation fixes a problem with abstract element types in Julia 1.10
     # Ref https://github.com/TuringLang/DynamicPPL.jl/pull/570#issue-2092729916
@@ -37,9 +48,13 @@ end
             last(DynamicPPL.init!!(model, VarInfo(), init_strategy)) for _ in 1:n_samples
         ]
         corr_matrices = map(samples) do s
-            M = reshape(s.metadata.vals, (2, 2))
+            M = reshape(DynamicPPL.getindex_internal(s, @varname(x)), (2, 2))
             pd_from_triangular(M, uplo)
         end
         @test vec(mean(corr_matrices)) ≈ target_mean atol = _lkj_atol
     end
 end
+
+@info "Completed $(@__FILE__) in $(now() - __now__)."
+
+end # module

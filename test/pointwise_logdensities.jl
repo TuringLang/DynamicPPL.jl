@@ -1,12 +1,22 @@
+module DynamicPPLPointwiseLogDensitiesTests
+
+using Dates: now
+@info "Testing $(@__FILE__)..."
+__now__ = now()
+
+using AbstractMCMC: AbstractMCMC
+using AbstractPPL: AbstractPPL
+using Distributions: Normal, Exponential
+using DynamicPPL
+using MCMCChains: MCMCChains
+using Test
+
 @testset "pointwise_logdensities.jl" begin
     @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
         example_values = DynamicPPL.TestUtils.rand_prior_true(model)
 
         # Instantiate a `VarInfo` with the example values.
-        vi = VarInfo(model)
-        for vn in DynamicPPL.TestUtils.varnames(model)
-            vi = DynamicPPL.setindex!!(vi, get(example_values, vn), vn)
-        end
+        vi = last(init!!(model, VarInfo(), InitFromParams(example_values), UnlinkAll()))
 
         loglikelihood_true = DynamicPPL.TestUtils.loglikelihood_true(
             model, example_values...
@@ -46,7 +56,7 @@ end
     vals = [DynamicPPL.TestUtils.rand_prior_true(model) for _ in 1:num_iters]
     # Concatenate the vector representations and create a `Chains` from it.
     vals_arr = reduce(hcat, mapreduce(DynamicPPL.tovec, vcat, values(nt)) for nt in vals)
-    chain = Chains(
+    chain = MCMCChains.Chains(
         permutedims(vals_arr),
         map(Symbol, vns);
         info=(varname_to_symbol=Dict(vn => Symbol(vn) for vn in vns),),
@@ -103,7 +113,10 @@ end
         model_m_only = m_only()
         chain_m_only = AbstractMCMC.from_samples(
             MCMCChains.Chains,
-            hcat([ParamsWithStats(VarInfo(model_m_only), model_m_only) for _ in 1:50]),
+            hcat([
+                DynamicPPL.ParamsWithStats(VarInfo(model_m_only), model_m_only) for
+                _ in 1:50
+            ]),
         )
 
         # Define a model that needs both `m` and `s`.
@@ -120,3 +133,7 @@ end
         )
     end
 end
+
+@info "Completed $(@__FILE__) in $(now() - __now__)."
+
+end # module

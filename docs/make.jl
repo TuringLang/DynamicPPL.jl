@@ -1,6 +1,7 @@
 using Documenter
+using DocumenterInterLinks
 using DynamicPPL
-using DynamicPPL: AbstractPPL
+using AbstractPPL
 # NOTE: This is necessary to ensure that if we print something from
 # Distributions.jl in a doctest, then the shown value will not include
 # a qualifier; that is, we don't want `Distributions.Normal{Float64}`
@@ -22,6 +23,8 @@ DocMeta.setdocmeta!(
     DynamicPPL, :DocTestSetup, :(using DynamicPPL, MCMCChains); recursive=true
 )
 
+links = InterLinks("AbstractPPL" => "https://turinglang.org/AbstractPPL.jl/stable/")
+
 makedocs(;
     sitename="DynamicPPL",
     # The API index.html page is fairly large, and violates the default HTML page size
@@ -36,11 +39,28 @@ makedocs(;
     ],
     pages=[
         "Home" => "index.md",
+        "Conditioning and fixing" => "conditionfix.md",
+        "VarNamedTuple" => [
+            "vnt/motivation.md",
+            "vnt/design.md",
+            "vnt/implementation.md",
+            "vnt/arraylikeblocks.md",
+        ],
+        "Model evaluation" => "evaluation.md",
+        "Tilde-statements" => "tilde.md",
+        "Initialisation strategies" => "init.md",
+        "Transform strategies" => "transforms.md",
+        "Accumulators" => [
+            "accs/overview.md",
+            "accs/existing.md",
+            "accs/threadsafe.md",
+            "accs/values.md",
+        ],
+        "LogDensityFunction" => ["ldf/overview.md", "ldf/models.md"],
+        "Migrating old VarInfo code" => "migration.md",
         "API" => "api.md",
-        # TODO(mhauru) The varinfo.md has fallen badly out of date. Update it and add it
-        # back in.
-        #"Internals" => ["internals/varinfo.md"],
     ],
     checkdocs=:exports,
     doctest=false,
+    plugins=[links],
 )

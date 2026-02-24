@@ -1,13 +1,7 @@
-# singleton for indicating if no default arguments are present
-struct NoDefault end
-const NO_DEFAULT = NoDefault()
+# subset is defined here to avoid circular dependencies between files. Methods for it are
+# defined in other files.
+function subset end
 
-# A short-hand for a type commonly used in type signatures for VarInfo methods.
-VarNameTuple = NTuple{N,VarName} where {N}
-
-# TODO(mhauru) This is currently used in the transformation functions of NoDist,
-# ReshapeTransform, and UnwrapSingletonTransform, and in VarInfo. We should also use it in
-# SimpleVarInfo and maybe other places.
 """
 The type for all log probability variables.
 
@@ -49,6 +43,7 @@ function typed_identity end
 @inline typed_identity(x) = x
 @inline Bijectors.with_logabsdet_jacobian(::typeof(typed_identity), x) =
     (x, zero(LogProbType))
+@inline Bijectors.inverse(::typeof(typed_identity)) = typed_identity
 
 """
     @addlogprob!(ex)
@@ -401,7 +396,7 @@ from_vec_transform(dist::Distribution) = from_vec_transform_for_size(size(dist))
 from_vec_transform(::UnivariateDistribution) = UnwrapSingletonTransform()
 from_vec_transform(dist::LKJCholesky) = ToChol(dist.uplo) ∘ ReshapeTransform(size(dist))
 
-struct ProductNamedTupleUnvecTransform{names,T<:NamedTuple{names}}
+struct ProductNamedTupleUnvecTransform{names,T<:NamedTuple{names}} <: Bijectors.Bijector
     dists::T
     # The `i`-th input range corresponds to the segment of the input vector
     # that belongs to the `i`-th distribution.
@@ -434,11 +429,28 @@ end
     return expr
 end
 
+@generated function (inv_trf::Bijectors.Inverse{<:ProductNamedTupleUnvecTransform{names}})(
+    x::NamedTuple{names}
+) where {names}
+    exprs = Expr[]
+    for name in names
+        push!(exprs, :(to_vec_transform(inv_trf.orig.dists.$name)(x.$name)))
+    end
+    return :(vcat($(exprs...)))
+end
+
 function from_vec_transform(dist::Distributions.ProductNamedTupleDistribution)
     return ProductNamedTupleUnvecTransform(dist)
 end
+
 function Bijectors.with_logabsdet_jacobian(f::ProductNamedTupleUnvecTransform, x)
     return f(x), zero(LogProbType)
+end
+
+function Bijectors.with_logabsdet_jacobian(
+    inv_f::Bijectors.Inverse{<:ProductNamedTupleUnvecTransform}, x
+)
+    return inv_f(x), zero(LogProbType)
 end
 
 # This function returns the length of the vector that the function from_vec_transform
@@ -484,8 +496,6 @@ end
 # UnivariateDistributions need to be handled as a special case, because size(dist) is (),
 # which makes the usual machinery think we are dealing with a 0-dim array, whereas in
 # actuality we are dealing with a scalar.
-# TODO(mhauru) Hopefully all this can go once the old Gibbs sampler is removed and
-# VarNamedVector takes over from Metadata.
 function from_linked_vec_transform(dist::UnivariateDistribution)
     f_invlink = invlink_transform(dist)
     f_vec = from_vec_transform(inverse(f_invlink), size(dist))
@@ -529,287 +539,6 @@ tovec(nt::NamedTuple) = mapreduce(tovec, vcat, values(nt))
 tovec(C::Cholesky) = tovec(Matrix(C.UL))
 
 """
-    recombine(dist::Union{UnivariateDistribution,MultivariateDistribution}, vals::AbstractVector, n::Int)
-
-Recombine `vals`, representing a batch of samples from `dist`, so that it's a compatible with `dist`.
-
-!!! warning
-    This only supports `UnivariateDistribution` and `MultivariateDistribution`, which are the only two
-    distribution types which are allowed on the right-hand side of a `.~` statement in a model.
-"""
-function recombine(::UnivariateDistribution, val::AbstractVector, ::Int)
-    # This is just a no-op, since we're trying to convert a vector into a vector.
-    return copy(val)
-end
-function recombine(d::MultivariateDistribution, val::AbstractVector, n::Int)
-    # Here `val` is of the length `length(d) * n` and so we need to reshape it.
-    return copy(reshape(val, length(d), n))
-end
-
-#######################
-# Convenience methods #
-#######################
-"""
-    collect_maybe(x)
-
-Return `x` if `x` is an array, otherwise return `collect(x)`.
-"""
-collect_maybe(x) = collect(x)
-collect_maybe(x::AbstractArray) = x
-
-#######################
-# BangBang.jl related #
-#######################
-function set!!(obj, optic::AbstractPPL.ALLOWED_OPTICS, value)
-    opticmut = BangBang.prefermutation(optic)
-    return Accessors.set(obj, opticmut, value)
-end
-function set!!(obj, vn::VarName{sym}, value) where {sym}
-    optic = BangBang.prefermutation(
-        AbstractPPL.getoptic(vn) ∘ Accessors.PropertyLens{sym}()
-    )
-    return Accessors.set(obj, optic, value)
-end
-
-#############################
-# AbstractPPL.jl extensions #
-#############################
-# This is preferable to `haskey` because the order of arguments is different, and
-# we're more likely to specialize on the key in these settings rather than the container.
-# TODO: I'm not sure about this name.
-"""
-    canview(optic, container)
-
-Return `true` if `optic` can be used to view `container`, and `false` otherwise.
-
-# Examples
-```jldoctest; setup=:(using Accessors; using DynamicPPL: canview)
-julia> canview(@o(_.a), (a = 1.0, ))
-true
-
-julia> canview(@o(_.a), (b = 1.0, )) # property `a` does not exist
-false
-
-julia> canview(@o(_.a[1]), (a = [1.0, 2.0], ))
-true
-
-julia> canview(@o(_.a[3]), (a = [1.0, 2.0], )) # out of bounds
-false
-```
-"""
-canview(optic, container) = false
-canview(::typeof(identity), _) = true
-function canview(optic::Accessors.PropertyLens{field}, x) where {field}
-    return hasproperty(x, field)
-end
-
-# `IndexLens`: only relevant if `x` supports indexing.
-canview(optic::Accessors.IndexLens, x) = false
-function canview(optic::Accessors.IndexLens, x::AbstractArray)
-    return checkbounds(Bool, x, optic.indices...)
-end
-
-# `ComposedOptic`: check that we can view `.inner` and `.outer`, but using
-# value extracted using `.inner`.
-function canview(optic::Accessors.ComposedOptic, x)
-    return canview(optic.inner, x) && canview(optic.outer, optic.inner(x))
-end
-
-"""
-    parent(vn::VarName)
-
-Return the parent `VarName`.
-
-# Examples
-```julia-repl; setup=:(using DynamicPPL: parent)
-julia> parent(@varname(x.a[1]))
-x.a
-
-julia> (parent ∘ parent)(@varname(x.a[1]))
-x
-
-julia> (parent ∘ parent ∘ parent)(@varname(x.a[1]))
-x
-```
-"""
-function parent(vn::VarName)
-    p = parent(getoptic(vn))
-    return p === nothing ? VarName{getsym(vn)}(identity) : VarName{getsym(vn)}(p)
-end
-
-"""
-    parent(optic)
-
-Return the parent optic. If `optic` doesn't have a parent,
-`nothing` is returned.
-
-See also: [`parent_and_child`].
-
-# Examples
-```jldoctest; setup=:(using Accessors; using DynamicPPL: parent)
-julia> parent(@o(_.a[1]))
-(@o _.a)
-
-julia> # Parent of optic without parents results in `nothing`.
-       (parent ∘ parent)(@o(_.a[1])) === nothing
-true
-```
-"""
-parent(optic::AbstractPPL.ALLOWED_OPTICS) = first(parent_and_child(optic))
-
-"""
-    parent_and_child(optic)
-
-Return a 2-tuple of optics `(parent, child)` where `parent` is the
-parent optic of `optic` and `child` is the child optic of `optic`.
-
-If `optic` does not have a parent, we return `(nothing, optic)`.
-
-See also: [`parent`].
-
-# Examples
-```jldoctest; setup=:(using Accessors; using DynamicPPL: parent_and_child)
-julia> parent_and_child(@o(_.a[1]))
-((@o _.a), (@o _[1]))
-
-julia> parent_and_child(@o(_.a))
-(nothing, (@o _.a))
-```
-"""
-parent_and_child(optic::AbstractPPL.ALLOWED_OPTICS) = (nothing, optic)
-function parent_and_child(optic::Accessors.ComposedOptic)
-    p, child = parent_and_child(optic.outer)
-    parent = p === nothing ? optic.inner : p ∘ optic.inner
-    return parent, child
-end
-
-"""
-    splitoptic(condition, optic)
-
-Return a 3-tuple `(parent, child, issuccess)` where, if `issuccess` is `true`,
-`parent` is a optic such that `condition(parent)` is `true` and `child ∘ parent == optic`.
-
-If `issuccess` is `false`, then no such split could be found.
-
-# Examples
-```jldoctest; setup=:(using Accessors; using DynamicPPL: splitoptic)
-julia> p, c, issucesss = splitoptic(@o(_.a[1])) do parent
-           # Succeeds!
-           parent == @o(_.a)
-       end
-((@o _.a), (@o _[1]), true)
-
-julia> c ∘ p
-(@o _.a[1])
-
-julia> splitoptic(@o(_.a[1])) do parent
-           # Fails!
-           parent == @o(_.b)
-       end
-(nothing, (@o _.a[1]), false)
-```
-"""
-function splitoptic(condition, optic)
-    current_parent, current_child = parent_and_child(optic)
-    # We stop if either a) `condition` is satisfied, or b) we reached the root.
-    while !condition(current_parent) && current_parent !== nothing
-        current_parent, c = parent_and_child(current_parent)
-        current_child = current_child ∘ c
-    end
-
-    return current_parent, current_child, condition(current_parent)
-end
-
-"""
-    remove_parent_optic(vn_parent::VarName, vn_child::VarName)
-
-Remove the parent optic `vn_parent` from `vn_child`.
-
-# Examples
-```jldoctest; setup = :(using Accessors; using DynamicPPL: remove_parent_optic)
-julia> remove_parent_optic(@varname(x), @varname(x.a))
-(@o _.a)
-
-julia> remove_parent_optic(@varname(x), @varname(x.a[1]))
-(@o _.a[1])
-
-julia> remove_parent_optic(@varname(x.a), @varname(x.a[1]))
-(@o _[1])
-
-julia> remove_parent_optic(@varname(x.a), @varname(x.a[1].b))
-(@o _[1].b)
-
-julia> remove_parent_optic(@varname(x.a), @varname(x.a))
-ERROR: Could not find x.a in x.a
-
-julia> remove_parent_optic(@varname(x.a[2]), @varname(x.a[1]))
-ERROR: Could not find x.a[2] in x.a[1]
-```
-"""
-function remove_parent_optic(vn_parent::VarName{sym}, vn_child::VarName{sym}) where {sym}
-    _, child, issuccess = splitoptic(getoptic(vn_child)) do optic
-        o = optic === nothing ? identity : optic
-        o == getoptic(vn_parent)
-    end
-
-    issuccess || error("Could not find $vn_parent in $vn_child")
-    return child
-end
-
-# HACK(torfjelde): This makes it so it works on iterators, etc. by default.
-# TODO(torfjelde): Do better.
-"""
-    unflatten(original, x::AbstractVector)
-
-Return instance of `original` constructed from `x`.
-"""
-function unflatten(original, x::AbstractVector)
-    lengths = map(length, original)
-    end_indices = cumsum(lengths)
-    return map(zip(original, lengths, end_indices)) do (v, l, end_idx)
-        start_idx = end_idx - l + 1
-        return unflatten(v, @view(x[start_idx:end_idx]))
-    end
-end
-
-unflatten(::Real, x::Real) = x
-unflatten(::Real, x::AbstractVector) = only(x)
-unflatten(::AbstractVector{<:Real}, x::Real) = vcat(x)
-unflatten(::AbstractVector{<:Real}, x::AbstractVector) = x
-unflatten(original::AbstractArray{<:Real}, x::AbstractVector) = reshape(x, size(original))
-
-function unflatten(original::Tuple, x::AbstractVector)
-    lengths = map(length, original)
-    end_indices = cumsum(lengths)
-    return ntuple(length(original)) do i
-        v = original[i]
-        l = lengths[i]
-        end_idx = end_indices[i]
-        start_idx = end_idx - l + 1
-        return unflatten(v, @view(x[start_idx:end_idx]))
-    end
-end
-function unflatten(original::NamedTuple{names}, x::AbstractVector) where {names}
-    return NamedTuple{names}(unflatten(values(original), x))
-end
-function unflatten(original::AbstractDict, x::AbstractVector)
-    D = ConstructionBase.constructorof(typeof(original))
-    return D(zip(keys(original), unflatten(collect(values(original)), x)))
-end
-
-"""
-    update_values!!(vi::AbstractVarInfo, vals::NamedTuple, vns)
-
-Return instance similar to `vi` but with `vns` set to values from `vals`.
-"""
-function update_values!!(vi::AbstractVarInfo, vals::NamedTuple, vns)
-    for vn in vns
-        vi = DynamicPPL.setindex!!(vi, get(vals, vn), vn)
-    end
-    return vi
-end
-
-"""
     float_type_with_fallback(T::DataType)
 
 Return `float(T)` if possible; otherwise return `float(Real)`.
@@ -819,133 +548,26 @@ float_type_with_fallback(::Type{Union{}}) = float(Real)
 float_type_with_fallback(::Type{T}) where {T<:Real} = float(T)
 
 """
-    infer_nested_eltype(x::Type)
-
-Recursively unwrap the type, returning the first type where `eltype(x) === typeof(x)`.
-
-This is useful for obtaining a reasonable default `eltype` in deeply nested types.
-
-# Examples
-```jldoctest
-julia> # `AbstractArrary`
-       DynamicPPL.infer_nested_eltype(typeof([1.0]))
-Float64
-
-julia> # `NamedTuple` with `Float32`
-       DynamicPPL.infer_nested_eltype(typeof((x = [1f0], )))
-Float32
-
-julia> # `AbstractDict`
-       DynamicPPL.infer_nested_eltype(typeof(Dict(:x => [1.0, ])))
-Float64
-
-julia> # Nesting of containers.
-       DynamicPPL.infer_nested_eltype(typeof([Dict(:x => 1.0,) ]))
-Float64
-
-julia> DynamicPPL.infer_nested_eltype(typeof([Dict(:x => [1.0,],) ]))
-Float64
-
-julia> # Empty `Tuple`.
-       DynamicPPL.infer_nested_eltype(typeof(()))
-Any
-
-julia> # Empty `Dict`.
-       DynamicPPL.infer_nested_eltype(typeof(Dict()))
-Any
-```
-"""
-function infer_nested_eltype(::Type{T}) where {T}
-    ET = eltype(T)
-    return ET === T ? T : infer_nested_eltype(ET)
-end
-
-# We can do a better job than just `Any` with `Union`.
-infer_nested_eltype(::Type{Union{}}) = Any
-function infer_nested_eltype(::Type{U}) where {U<:Union}
-    return promote_type(U.a, infer_nested_eltype(U.b))
-end
-
-# Handle `NamedTuple` and `Tuple` specially given how prolific they are.
-function infer_nested_eltype(::Type{<:NamedTuple{<:Any,V}}) where {V}
-    return infer_nested_eltype(V)
-end
-
-# Recursively deal with `Tuple` so it has the potential of being compiled away.
-infer_nested_eltype(::Type{Tuple{T}}) where {T} = infer_nested_eltype(T)
-function infer_nested_eltype(::Type{T}) where {T<:Tuple{<:Any,Vararg{Any}}}
-    return promote_type(
-        infer_nested_eltype(Base.tuple_type_tail(T)),
-        infer_nested_eltype(Base.tuple_type_head(T)),
-    )
-end
-
-# Handle `AbstractDict` differently since `eltype` results in a `Pair`.
-infer_nested_eltype(::Type{<:AbstractDict{<:Any,ET}}) where {ET} = infer_nested_eltype(ET)
-
-# Convert (x=1,) to Dict(@varname(x) => 1)
-function to_varname_dict(nt::NamedTuple)
-    return Dict{VarName,Any}(VarName{k}() => v for (k, v) in pairs(nt))
-end
-to_varname_dict(d::AbstractDict) = d
-# Version of `merge` used by `conditioned` and `fixed` to handle
-# the scenario where we might try to merge a dict with an empty
-# tuple.
-# TODO: Maybe replace the default of returning `NamedTuple` with `nothing`?
-_merge(left::NamedTuple, right::NamedTuple) = merge(left, right)
-_merge(left::AbstractDict, right::AbstractDict) = merge(left, right)
-_merge(left::AbstractDict, ::NamedTuple{()}) = left
-_merge(left::AbstractDict, right::NamedTuple) = merge(left, to_varname_dict(right))
-_merge(::NamedTuple{()}, right::AbstractDict) = right
-_merge(left::NamedTuple, right::AbstractDict) = merge(to_varname_dict(left), right)
-
-"""
-    unique_syms(vns::T) where {T<:NTuple{N,VarName}}
-
-Return the unique symbols of the variables in `vns`.
-
-Note that `unique_syms` is only defined for `Tuple`s of `VarName`s and, unlike
-`Base.unique`, returns a `Tuple`. The point of `unique_syms` is that it supports constant
-propagating the result, which is possible only when the argument and the return value are
-`Tuple`s.
-"""
-@generated function unique_syms(::T) where {T<:VarNameTuple}
-    retval = Expr(:tuple)
-    syms = [first(vn.parameters) for vn in T.parameters]
-    for sym in unique(syms)
-        push!(retval.args, QuoteNode(sym))
-    end
-    return retval
-end
-
-"""
-    group_varnames_by_symbol(vns::NTuple{N,VarName}) where {N}
-
-Return a `NamedTuple` of the variables in `vns` grouped by symbol.
-
-Note that `group_varnames_by_symbol` only accepts a `Tuple` of `VarName`s. This allows it to
-be type stable.
-
-Example:
-```julia
-julia> vns_tuple = (@varname(x), @varname(y[1]), @varname(x.a), @varname(z[15]), @varname(y[2]))
-(x, y[1], x.a, z[15], y[2])
-
-julia> vns_nt = (; x=[@varname(x), @varname(x.a)], y=[@varname(y[1]), @varname(y[2])], z=[@varname(z[15])])
-(x = VarName{:x}[x, x.a], y = VarName{:y, IndexLens{Tuple{Int64}}}[y[1], y[2]], z = VarName{:z, IndexLens{Tuple{Int64}}}[z[15]])
-
-julia> group_varnames_by_symbol(vns_tuple) == vns_nt
-```
-"""
-function group_varnames_by_symbol(vns::VarNameTuple)
-    syms = unique_syms(vns)
-    elements = map(collect, tuple((filter(vn -> getsym(vn) == s, vns) for s in syms)...))
-    return NamedTuple{syms}(elements)
-end
-
-"""
     basetypeof(x)
 
 Return `typeof(x)` stripped of its type parameters.
 """
-basetypeof(x::T) where {T} = Base.typename(T).wrapper
+basetypeof(::T) where {T} = Base.typename(T).wrapper
+
+const MaybeTypedIdentity = Union{typeof(typed_identity),typeof(identity)}
+
+# TODO(mhauru) Might add another specialisation to _compose_no_identity, where if
+# ReshapeTransforms are composed with each other or with a an UnwrapSingeltonTransform, only
+# the latter one would be kept.
+"""
+    _compose_no_identity(f, g)
+
+Like `f ∘ g`, but if `f` or `g` is `identity` it is omitted.
+
+This helps avoid trivial cases of `ComposedFunction` that would cause unnecessary type
+conflicts.
+"""
+_compose_no_identity(f, g) = f ∘ g
+_compose_no_identity(::MaybeTypedIdentity, g) = g
+_compose_no_identity(f, ::MaybeTypedIdentity) = f
+_compose_no_identity(::MaybeTypedIdentity, ::MaybeTypedIdentity) = typed_identity

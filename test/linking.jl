@@ -1,4 +1,19 @@
-using Bijectors
+module DynamicPPLLinkingTests
+
+using Dates: now
+@info "Testing $(@__FILE__)..."
+__now__ = now()
+
+using DynamicPPL
+using Distributions
+using DistributionsAD: filldist
+using LinearAlgebra
+using Bijectors: Bijectors, inverse
+using Random: Random, randn!
+using Test
+
+short_varinfo_name(::DynamicPPL.ThreadSafeVarInfo) = "ThreadSafeVarInfo"
+short_varinfo_name(::DynamicPPL.VarInfo) = "VarInfo"
 
 # Simple transformations which alters the "dimension" of the variable.
 struct TrilToVec{S}
@@ -74,11 +89,11 @@ end
         @model demo() = m ~ dist
         model = demo()
 
-        example_values = rand(NamedTuple, model)
-        vis = DynamicPPL.TestUtils.setup_varinfos(model, example_values, (@varname(m),))
+        example_values = NamedTuple(rand(model))
+        # subset to m only
+        example_values_m_only = (m=example_values.m,)
+        vis = DynamicPPL.TestUtils.setup_varinfos(model, example_values_m_only)
         @testset "$(short_varinfo_name(vi))" for vi in vis
-            # Evaluate once to ensure we have `logp` value.
-            vi = last(DynamicPPL.evaluate!!(model, vi))
             vi_linked = if mutable
                 DynamicPPL.link!!(deepcopy(vi), model)
             else
@@ -89,7 +104,7 @@ end
                   DynamicPPL.getlogjoint_internal(vi_linked) ≈ log(2)
             # The non-internal logjoint should be the same since it doesn't depend on linking.
             @test DynamicPPL.getlogjoint(vi) ≈ DynamicPPL.getlogjoint(vi_linked)
-            @test vi_linked[@varname(m), dist] == LowerTriangular(vi[@varname(m), dist])
+            @test vi_linked[@varname(m)] == LowerTriangular(vi[@varname(m)])
             # Linked one should be working with a lower-dimensional representation.
             @test length(vi_linked[:]) < length(vi[:])
             @test length(vi_linked[:]) == length(y)
@@ -100,7 +115,7 @@ end
                 DynamicPPL.invlink(vi_linked, model)
             end
             @test length(vi_invlinked[:]) == length(vi[:])
-            @test vi_invlinked[@varname(m), dist] ≈ LowerTriangular(vi[@varname(m), dist])
+            @test vi_invlinked[@varname(m)] ≈ LowerTriangular(vi[@varname(m)])
             # The non-internal logjoint should still be the same, again since
             # it doesn't depend on linking.
             @test DynamicPPL.getlogjoint(vi_invlinked) ≈ DynamicPPL.getlogjoint(vi)
@@ -116,12 +131,11 @@ end
             @testset "d=$d" for d in [2, 3, 5]
                 model = demo_lkj(d)
                 dist = LKJCholesky(d, 1.0, uplo)
-                values_original = rand(NamedTuple, model)
-                vis = DynamicPPL.TestUtils.setup_varinfos(
-                    model, values_original, (@varname(x),)
-                )
+                values_original = NamedTuple(rand(model))
+                values_original_x_only = (x=values_original.x,)
+                vis = DynamicPPL.TestUtils.setup_varinfos(model, values_original_x_only)
                 @testset "$(short_varinfo_name(vi))" for vi in vis
-                    val = vi[@varname(x), dist]
+                    val = vi[@varname(x)]
                     # Ensure that `reconstruct` works as intended.
                     @test val isa Cholesky
                     @test val.uplo == uplo
@@ -157,8 +171,9 @@ end
         @model demo_dirichlet(d::Int) = x ~ Dirichlet(d, 1.0)
         @testset "d=$d" for d in [2, 3, 5]
             model = demo_dirichlet(d)
-            example_values = rand(NamedTuple, model)
-            vis = DynamicPPL.TestUtils.setup_varinfos(model, example_values, (@varname(x),))
+            example_values = NamedTuple(rand(model))
+            example_values_x_only = (x=example_values.x,)
+            vis = DynamicPPL.TestUtils.setup_varinfos(model, example_values_x_only)
             @testset "$(short_varinfo_name(vi))" for vi in vis
                 lp = logpdf(Dirichlet(d, 1.0), vi[:])
                 @test length(vi[:]) == d
@@ -196,8 +211,9 @@ end
             # (3, 4), (3, 4, 5)
         ]
             model = demo_highdim_dirichlet(ns...)
-            example_values = rand(NamedTuple, model)
-            vis = DynamicPPL.TestUtils.setup_varinfos(model, example_values, (@varname(x),))
+            example_values = NamedTuple(rand(model))
+            example_values_x_only = (x=example_values.x,)
+            vis = DynamicPPL.TestUtils.setup_varinfos(model, example_values_x_only)
             @testset "$(short_varinfo_name(vi))" for vi in vis
                 # Linked.
                 vi_linked = if mutable
@@ -210,3 +226,7 @@ end
         end
     end
 end
+
+@info "Completed $(@__FILE__) in $(now() - __now__)."
+
+end # module
