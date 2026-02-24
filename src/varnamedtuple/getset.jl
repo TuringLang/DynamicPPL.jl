@@ -314,7 +314,9 @@ function make_leaf(value, optic::AbstractPPL.Index, template::PartialArray)
     return make_leaf(value, optic, template.data)
 end
 function make_leaf(
-    value, optic::AbstractPPL.Index, template::Union{AbstractArray,NoTemplate,SkipTemplate}
+    value,
+    optic::AbstractPPL.Index,
+    template::Union{AbstractArray,NoTemplate,SkipTemplate,Missing},
 )
     # First we need to resolve any dynamic indices, since _is_multiindex doesn't work with
     # them. This also helpfully catches errors if there is a dynamic index and a suitable
