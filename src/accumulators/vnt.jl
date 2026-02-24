@@ -27,29 +27,6 @@ function VNTAccumulator{AccName}(
     return VNTAccumulator{AccName,F,typeof(values)}(f, values)
 end
 
-function Base.copy(acc::VNTAccumulator{AccName}) where {AccName}
-    return VNTAccumulator{AccName}(acc.f, copy(acc.values))
-end
-
-accumulator_name(::VNTAccumulator{AccName}) where {AccName} = AccName
-
-# TODO(mhauru) We could start using reset!!, which could call empty!! on the VarNamedTuple.
-# This would create VarNamedTuples that share memory with the original one, saving
-# allocations but also making them not capable of taking in any arbitrary VarName.
-function _zero(acc::VNTAccumulator{AccName}) where {AccName}
-    return VNTAccumulator{AccName}(acc.f, empty(acc.values))
-end
-reset(acc::VNTAccumulator{AccName}) where {AccName} = _zero(acc)
-split(acc::VNTAccumulator{AccName}) where {AccName} = _zero(acc)
-function combine(
-    acc1::VNTAccumulator{AccName}, acc2::VNTAccumulator{AccName}
-) where {AccName}
-    if acc1.f != acc2.f
-        throw(ArgumentError("Cannot combine VNTAccumulators with different functions"))
-    end
-    return VNTAccumulator{AccName}(acc2.f, merge(acc1.values, acc2.values))
-end
-
 """
     DoNotAccumulate()
 
@@ -57,15 +34,66 @@ Sentinel value indicating that no accumulation should be performed for a given v
 """
 struct DoNotAccumulate end
 
-function accumulate_assume!!(
-    acc::VNTAccumulator{AccName}, val, tval, logjac, vn, dist, template
-) where {AccName}
-    new_val = acc.f(val, tval, logjac, vn, dist)
-    return if new_val isa DoNotAccumulate
-        acc
-    else
-        new_values = DynamicPPL.templated_setindex!!(acc.values, new_val, vn, template)
-        VNTAccumulator{AccName}(acc.f, new_values)
+"""
+    TSVNTAccumulator{AccName}(f::F, values::VarNamedTuple)
+
+The same as `VNTAccumulator`, but with an abstractly typed field for the values. This is
+required for threadsafe evaluation with VNT-based accumulators, since if it were a type
+parameter, the different threads could have different types for the accumulators, leading to
+type instability.
+"""
+struct TSVNTAccumulator{AccName,F} <: AbstractAccumulator
+    f::F
+    values::VarNamedTuple
+
+    function TSVNTAccumulator{AccName}(f::F, values::VarNamedTuple) where {AccName,F}
+        return new{AccName,F}(f, values)
     end
 end
-accumulate_observe!!(acc::VNTAccumulator, right, left, vn, template) = acc
+function promote_for_threadsafe_eval(
+    acc::VNTAccumulator{AccName,F}, ::Type
+) where {AccName,F}
+    return TSVNTAccumulator{AccName}(acc.f, acc.values)
+end
+
+for acc_type in (:VNTAccumulator, :TSVNTAccumulator)
+    @eval begin
+        function Base.copy(acc::$acc_type{AccName}) where {AccName}
+            return $acc_type{AccName}(acc.f, copy(acc.values))
+        end
+        accumulator_name(::$acc_type{AccName}) where {AccName} = AccName
+
+        function update_values(
+            acc::$acc_type{AccName}, new_values::VarNamedTuple
+        ) where {AccName}
+            return $acc_type{AccName}(acc.f, new_values)
+        end
+
+        function accumulate_assume!!(
+            acc::$acc_type{AccName}, val, tval, logjac, vn, dist, template
+        ) where {AccName}
+            new_val = acc.f(val, tval, logjac, vn, dist)
+            return if new_val isa DoNotAccumulate
+                acc
+            else
+                new_values = DynamicPPL.templated_setindex!!(
+                    acc.values, new_val, vn, template
+                )
+                update_values(acc, new_values)
+            end
+        end
+        accumulate_observe!!(acc::$acc_type, right, left, vn, template) = acc
+
+        function _zero(acc::$acc_type)
+            return update_values(acc, empty(acc.values))
+        end
+        reset(acc::$acc_type) = _zero(acc)
+        split(acc::$acc_type) = _zero(acc)
+        function combine(acc1::$acc_type{AccName}, acc2::$acc_type{AccName}) where {AccName}
+            if acc1.f != acc2.f
+                throw(ArgumentError("Cannot combine $acc_type with different functions"))
+            end
+            return update_values(acc1, merge(acc1.values, acc2.values))
+        end
+    end
+end

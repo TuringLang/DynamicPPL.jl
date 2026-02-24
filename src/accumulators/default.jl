@@ -66,8 +66,10 @@ function Base.convert(
     return AccType(convert(T, logp(acc)))
 end
 
-function convert_eltype(::Type{T}, acc::LogProbAccumulator) where {T}
-    return basetypeof(acc)(convert(T, logp(acc)))
+function promote_for_threadsafe_eval(
+    acc::LogProbAccumulator, ::Type{Tparam_eltype}
+) where {Tparam_eltype}
+    return basetypeof(acc)(convert(Tparam_eltype, logp(acc)))
 end
 
 """

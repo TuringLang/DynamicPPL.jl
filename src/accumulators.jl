@@ -124,17 +124,15 @@ See also: [`split`](@ref)
 """
 function combine end
 
-# TODO(mhauru) The existence of this function makes me sad. See comment in src/model.jl.
 """
-    convert_eltype(::Type{T}, acc::AbstractAccumulator)
+    promote_for_threadsafe_eval(acc::AbstractAccumulator, ::Type{T}) where {T}
 
-Convert `acc` to use element type `T`.
+Convert `acc` to a new accumulator that works with threadsafe evaluation. The type parameter
+`T` is the element type of the parameters that will be used for model evaluation.
 
-What "element type" means depends on the type of `acc`. By default this function does
-nothing. Accumulator types that need to hold differentiable values, such as dual numbers
-used by various AD backends, should implement a method for this function.
+See the docstring of `ThreadSafeVarInfo(vi, ::Type{T})` for more details.
 """
-convert_eltype(::Type, acc::AbstractAccumulator) = acc
+promote_for_threadsafe_eval(acc::AbstractAccumulator, ::Type) = acc
 
 """
     AccumulatorTuple{N,T<:NamedTuple}

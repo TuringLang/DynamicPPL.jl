@@ -88,6 +88,56 @@ const gdemo_default = gdemo_d()
         @test vi isa DynamicPPL.VarInfo
     end
 
+    @testset "Type stability of getlogjoint" begin
+        # init!!(...) itself is not type stable (unclear exactly why, but it has to do with
+        # __varinfo__ being boxed since Threads.@threads creates a closure). It fails to
+        # infer the type of AbstractVarInfo returned. However we expect that getlogjoint
+        # should be type stable since regardless of what kind of AbstractVarInfo is passed
+        # in, it should always return a Float64.
+        @model function f(y)
+            x ~ Normal()
+            Threads.@threads for i in eachindex(y)
+                y[i] ~ Normal(x)
+            end
+            return nothing
+        end
+        y = fill(1.0, 10)
+        model = setthreadsafe(f(y), true)
+
+        @testset for vi in (VarInfo(), VarInfo(model), OnlyAccsVarInfo())
+            @inferred getlogjoint(
+                last(DynamicPPL.init!!(model, vi, InitFromPrior(), UnlinkAll()))
+            )
+        end
+    end
+
+    @testset "promotion of VNT accumulators in TSVI" begin
+        # See https://github.com/TuringLang/DynamicPPL.jl/pull/1284.
+        @model function f()
+            x = zeros(10)
+            for i in eachindex(x)
+                x[i] ~ Normal()
+            end
+        end
+        model = setthreadsafe(f(), true)
+
+        vi = OnlyAccsVarInfo(RawValueAccumulator(false))
+        _, vi = DynamicPPL.init!!(model, vi, InitFromPrior(), UnlinkAll())
+        vnt = get_raw_values(vi)
+        @test vnt[@varname(x)] isa Vector{Float64}
+    end
+
+    @testset "check_model with threadsafe" begin
+        # This is a partial test for https://github.com/TuringLang/DynamicPPL.jl/issues/1157
+        @model function f()
+            Threads.@threads for _ in 1:10
+                x ~ Normal()
+            end
+        end
+        model = setthreadsafe(f(), true)
+        @test !check_model(model)
+    end
+
     @testset "logprob correctness" begin
         x = rand(10_000)
 

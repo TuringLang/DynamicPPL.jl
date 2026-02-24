@@ -18,6 +18,48 @@ function ThreadSafeVarInfo(vi::AbstractVarInfo)
 end
 ThreadSafeVarInfo(vi::ThreadSafeVarInfo) = vi
 
+"""
+    ThreadSafeVarInfo(varinfo::AbstractVarInfo, param_eltype::Type{T})
+
+Construct a `ThreadSafeVarInfo` that promotes any accumulators in `varinfo` to their
+versions for use in TSVI.
+
+This method also resets the accumulators' contents.
+
+# Extended help
+
+The reason why this is needed in general is to ensure that the function call
+`map_accumulator!!(tsvi::ThreadSafeVarInfo, ...)` does not fail. Suppose first that
+`accs_by_thread` contains an array of `AccumulatorTuple`s, which in turn contain
+`LogLikelihoodAccumulator(::Float64)`.
+
+Now, consider a situation where we evaluate the gradient of the log-probability with
+ForwardDiff. This would cause the wrapped log-likelihood to be promoted to
+`ForwardDiff.Dual`. If there were only one accumulator, this would be fine. However, since
+`accs_by_thread` is a *vector* of accumulators, we cannot set this back into
+`accs_by_thread` (`setindex!` will fail, and using something like `BangBang` is type
+unstable).
+
+This means that *before* model evaluation even begins, the eltype of *all* log-probability
+accumulators must be promoted to `ForwardDiff.Dual`.
+
+For log-probability accumulators, construction of the thread-safe versions therefore
+requires knowledge of `param_eltype`, which is the type of the parameters about to be used
+for model evaluation. See the docstring of `get_param_eltype` for more information about
+this. For accumulators that wrap `VarNamedTuple`s, thread safety is accomplished by removing
+the VNT type parameter from its type.
+"""
+function ThreadSafeVarInfo(varinfo::AbstractVarInfo, param_eltype::Type{T}) where {T}
+    # The below line is finicky for type stability. For instance, assigning the eltype to
+    # convert to into an intermediate variable makes this unstable (constant propagation
+    # fails). Take care when editing.
+    accs = map(DynamicPPL.getaccs(varinfo)) do acc
+        DynamicPPL.promote_for_threadsafe_eval(acc, param_eltype)
+    end
+    varinfo = DynamicPPL.setaccs!!(varinfo, accs)
+    return ThreadSafeVarInfo(resetaccs!!(varinfo))
+end
+
 transformation(vi::ThreadSafeVarInfo) = transformation(vi.varinfo)
 
 # Set the accumulator in question in vi.varinfo, and set the thread-specific

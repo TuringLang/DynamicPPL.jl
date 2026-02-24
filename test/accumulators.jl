@@ -14,7 +14,7 @@ using DynamicPPL:
     accumulate_assume!!,
     accumulate_observe!!,
     combine,
-    convert_eltype,
+    promote_for_threadsafe_eval,
     getacc,
     map_accumulator,
     reset,
@@ -63,9 +63,9 @@ using DynamicPPL:
                 LogLikelihoodAccumulator{Float32}, LogLikelihoodAccumulator(1.0)
             ) == LogLikelihoodAccumulator{Float32}(1.0f0)
 
-            @test convert_eltype(Float32, LogPriorAccumulator(1.0)) ==
+            @test promote_for_threadsafe_eval(LogPriorAccumulator(1.0), Float32) ==
                 LogPriorAccumulator{Float32}(1.0f0)
-            @test convert_eltype(Float32, LogLikelihoodAccumulator(1.0)) ==
+            @test promote_for_threadsafe_eval(LogLikelihoodAccumulator(1.0), Float32) ==
                 LogLikelihoodAccumulator{Float32}(1.0f0)
         end
 
@@ -155,14 +155,14 @@ using DynamicPPL:
             @test accs == AccumulatorTuple(lp_f32, ll_f32)
 
             # A map with a closure that changes the types of the accumulators.
-            @test map(acc -> convert_eltype(Float64, acc), accs) ==
+            @test map(acc -> promote_for_threadsafe_eval(acc, Float64), accs) ==
                 AccumulatorTuple(LogPriorAccumulator(1.0), LogLikelihoodAccumulator(1.0))
 
             # only apply to a particular accumulator
             @test map_accumulator(DynamicPPL.reset, accs, Val(:LogLikelihood)) ==
                 AccumulatorTuple(lp_f32, LogLikelihoodAccumulator(0.0f0))
             @test map_accumulator(
-                acc -> convert_eltype(Float64, acc), accs, Val(:LogLikelihood)
+                acc -> promote_for_threadsafe_eval(acc, Float64), accs, Val(:LogLikelihood)
             ) == AccumulatorTuple(lp_f32, LogLikelihoodAccumulator(1.0))
         end
     end
