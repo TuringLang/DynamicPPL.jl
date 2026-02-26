@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Overview · DynamicPPL</title><meta name="title" content="Overview · DynamicPPL"/><meta property="og:title" content="Overview · DynamicPPL"/><meta property="twitter:title" content="Overview · DynamicPPL"/><meta name="description" content="Documentation for DynamicPPL."/><meta property="og:description" content="Documentation for DynamicPPL."/><meta property="twitter:description" content="Documentation for DynamicPPL."/><script data-outdated-warner src="../../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.050/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL="../.."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../../assets/documenter.js"></script><script src="../../search_index.js"></script><script src="../../siteinfo.js"></script><script src="../../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../../assets/themeswap.js"></script></head><body>
+<!-- NAVBAR START -->
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Source+Sans+Pro&display=swap');
+
+    /* Documenter.jl CSS Overrides */
+    html {
+        scroll-padding-top: calc(var(--navbar-height) + 1rem);
+    }
+    .docs-sidebar, #documenter {
+        margin-top: var(--navbar-height);
+    }
+    .docs-version-selector {
+        margin-bottom: 60px !important;
+    }
+    @media screen and (max-width: 1056px) {
+        .docs-version-selector {
+            margin-bottom: 60px !important;
+        }
+        .docs-sidebar {
+            margin-top: 0 !important;
+        }
+    }
+    /* End of Documenter.jl Tweaks */
+
+    /* Color and Font Variables */
+    :root {
+        --heading-color: #6c757d;
+        --item-color: rgb(165, 165, 165);
+        --primary-bg: white;
+        --hover-color: #8faad2;
+        --deprecated-bg: #ff4d4d;
+        --deprecated-text: white;
+        --icon-color: #6c757d;
+        --shadow-color: rgba(0, 0, 0, 0.1);
+        --dropdown-hover-bg: #e9ecef;
+        
+        /* Typography */
+        --font-family: "Source Sans Pro", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+        --nav-link-font-size: 1.0625rem;
+        --turing-title-font-size: 21.25px;
+        --icon-font-size: 1.25rem;
+        --dropdown-arrow-font-size: 0.6875rem;
+        --badge-font-size: 0.75rem;
+
+        /* Sizing and Spacing */
+        --navbar-height: 3.75rem;
+        --logo-height: 31px;
+        --logo-width: auto;
+        --logo-padding-top: 7px;
+        --logo-margin-left: 0.8rem;
+        --title-margin-left: 0.4px;
+        --title-nav-spacing: 1.1rem;
+        --nav-item-margin-left: 1.3rem;
+        --icon-margin-left: 1rem;
+        --dropdown-padding: 1.875rem;
+        --dropdown-item-width: 12.5rem;
+        --dropdown-subitem-width: 15.625rem;
+        --dropdown-subitem-padding: 0.125rem 0.625rem;
+    }
+
+    /* Dark Theme Variable Overrides */
+    html.theme--documenter-dark {
+        --heading-color: #e0e0e0;
+        --item-color: #bdbdbd;
+        --primary-bg: #1f2424;
+        --hover-color: #ffffff;
+        --icon-color: #e0e0e0;
+        --shadow-color: rgba(255, 255, 255, 0.1);
+        --dropdown-hover-bg: #424242;
+    }
+
+    /* Catppuccin Theme Overrides */
+    html.theme--catppuccin-latte {
+        --heading-color: #4c4f69;
+        --primary-bg: #eff1f5;
+        --icon-color: #4c4f69;
+        --shadow-color: rgba(0, 0, 0, 0.1);
+        --dropdown-hover-bg: #e6e9ef;
+    }
+    html.theme--catppuccin-frappe {
+        --heading-color: #c6d0f5;
+        --primary-bg: #303446;
+        --icon-color: #c6d0f5;
+        --shadow-color: rgba(255, 255, 255, 0.1);
+        --dropdown-hover-bg: #51576d;
+    }
+    html.theme--catppuccin-macchiato {
+        --heading-color: #cad3f5;
+        --primary-bg: #24273a;
+        --icon-color: #cad3f5;
+        --shadow-color: rgba(255, 255, 255, 0.1);
+        --dropdown-hover-bg: #494d64;
+    }
+    html.theme--catppuccin-mocha {
+        --heading-color: #cad3f5;
+        --primary-bg: #1e1e2e;
+        --icon-color: #cad3f5;
+        --shadow-color: rgba(255, 255, 255, 0.1);
+        --dropdown-hover-bg: #45475a;
+    }
+
+
+    /* Main Navigation Bar */
+    .ext-navigation {
+        font-family: var(--font-family);
+        position: fixed;
+        height: var(--navbar-height);
+        top: 0;
+        width: 100%;
+        background-color: var(--primary-bg);
+        z-index: 1000;
+        box-shadow: 0 2px 4px var(--shadow-color);
+        display: flex;
+        align-items: center;
+        padding: 0 1.0625rem;
+        transition: transform 0.3s, background-color 0.3s;
+    }
+
+    nav.ext-navigation .ext-navbar-logo {
+        margin-left: var(--logo-margin-left);
+        height: auto;
+        max-height: var(--logo-height);
+        width: auto;
+        padding-top: var(--logo-padding-top);
+    }
+    
+    /* Theme-aware logo text color */
+    .ext-navbar-logo .logo-text {
+        fill: var(--heading-color);
+    }
+    
+    .ext-navbar-title {
+        color: var(--heading-color) !important;
+        font-size: var(--turing-title-font-size) !important;
+        margin-left: var(--title-margin-left);
+        text-decoration: none;
+        transition: color 0.2s ease;
+    }
+    
+    .ext-navbar-title:hover {
+        color: var(--hover-color) !important;
+    }
+
+    .ext-nav-links {
+        display: flex;
+        align-items: center;
+        list-style-type: none;
+        margin: 0;
+        padding: 0;
+        flex-grow: 1;
+        margin-left: var(--title-nav-spacing);
+    }
+
+    .ext-nav-links li:first-child {
+        margin-left: 0 !important;
+    }
+
+    .ext-nav-links li {
+        margin-left: var(--nav-item-margin-left) !important;
+    }
+
+    .ext-nav-link {
+        color: var(--heading-color) !important;
+        text-decoration: none;
+        font-size: var(--nav-link-font-size) !important;
+        transition: color 0.2s ease;
+        cursor: pointer;
+    }
+
+    .ext-nav-link:hover,
+    .ext-navbar-item-single a:hover,
+    .ext-navbar-icons a:hover {
+        color: var(--hover-color) !important;
+    }
+
+    .ext-navbar-item-single a {
+        color: var(--heading-color) !important;
+    }
+    
+    .ext-navbar-icons {
+        display: flex;
+        align-items: center;
+    }
+
+    .ext-navbar-icons a {
+        color: var(--icon-color) !important;
+        font-size: var(--icon-font-size) !important;
+        transition: color 0.2s ease;
+        margin-left: var(--icon-margin-left);
+    }
+
+    .ext-menu-toggle {
+        display: none;
+        font-size: 1.5rem;
+        color: var(--heading-color);
+        cursor: pointer;
+    }
+
+    .ext-dropdown {
+        display: none;
+        grid-template-columns: 1fr 1fr 1fr 1fr;
+        padding: var(--dropdown-padding);
+        position: absolute;
+        top: var(--navbar-height);
+        width: 100%;
+        left: 0;
+        background-color: var(--primary-bg);
+        line-height: 1.875rem;
+        opacity: 0;
+        transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out, background-color 0.3s;
+        transform: translateY(-0.625rem);
+        box-shadow: 0 4px 6px var(--shadow-color);
+    }
+
+    #library-handler::after {
+        content: "▼";
+        font-size: var(--dropdown-arrow-font-size);
+        margin-left: 0.3125rem;
+        transition: transform 0.3s ease-in-out;
+    }
+
+    #library-handler.open::after {
+        content: "▲";
+    }
+
+    .ext-dropdown.show {
+        display: grid;
+        opacity: 1;
+        transform: translateY(0);
+    }
+
+    .ext-dropdown ul {
+        width: var(--dropdown-item-width);
+        margin-bottom: 1.25rem;
+    }
+
+    .ext-dropdown ul li {
+        text-align: left;
+        display: flex;
+        align-items: center;
+    }
+
+    .ext-dropdown ul a li {
+        color: var(--item-color);
+        width: var(--dropdown-subitem-width);
+        border-radius: 3px;
+        padding: var(--dropdown-subitem-padding);
+        transition: background-color 0.2s ease;
+    }
+
+    .ext-dropdown ul a li:hover {
+        background-color: var(--dropdown-hover-bg);
+    }
+
+    .ext-dropdown-item-heading {
+        color: var(--heading-color);
+        text-align: center;
+    }
+
+    .deprecated-badge {
+        background-color: var(--deprecated-bg);
+        color: var(--deprecated-text);
+        font-size: var(--badge-font-size);
+        padding: .1rem;
+        border-radius: 3px;
+        margin-left: 0.5rem;
+        line-height: 1;
+    }
+
+    @media (max-width: 966px) {
+        .ext-dropdown {
+            grid-template-columns: 1fr 1fr 1fr;
+        }
+    }
+
+    @media (max-width: 768px) {
+        .ext-nav-links {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            width: 100%;
+            background-color: var(--primary-bg);
+            position: absolute;
+            top: var(--navbar-height);
+            left: 0;
+            padding: 0.625rem 0;
+            height: auto;
+            overflow-y: auto;
+            box-shadow: 0 4px 6px var(--shadow-color);
+            margin-left: 0;
+        }
+
+        .ext-nav-links.show {
+            display: flex;
+        }
+
+        .ext-nav-links li {
+            margin: 0.625rem 0 !important;
+            text-align: center;
+        }
+        
+        .ext-menu-toggle {
+            display: block;
+            margin-left: auto;
+        }
+
+        .ext-navigation.hide {
+            transform: translateY(calc(-1 * var(--navbar-height)));
+        }
+
+        .ext-dropdown {
+            position: static;
+            display: block;
+            opacity: 1;
+            transform: none;
+            box-shadow: none;
+            grid-template-columns: 1fr;
+            padding: 0.625rem;
+            text-align: center;
+        }
+
+        .ext-dropdown ul {
+            width: auto;
+            display: inline-block;
+            margin: 0 auto 0.3125rem;
+            text-align: left;
+        }
+    }
+</style>
+<nav class="ext-navigation">
+    <a href="https://turinglang.org/">
+        <svg width="4333" height="1145" viewBox="0 0 4333 1145" fill="none" xmlns="http://www.w3.org/2000/svg" class="ext-navbar-logo">
+            <path class="logo-text" d="M0.44603 193.181V66.9868H663.471V193.181H406.62V898H257.297V193.181H0.44603ZM1097.24 635.874V274.74H1244.13V898H1101.7V787.225H1095.21C1081.14 822.121 1058.01 850.66 1025.82 872.842C993.902 895.024 954.542 906.115 907.744 906.115C866.896 906.115 830.783 897.053 799.403 878.929C768.295 860.534 743.948 833.889 726.365 798.993C708.782 763.826 699.99 721.356 699.99 671.581V274.74H846.878V648.858C846.878 688.353 857.699 719.733 879.34 742.997C900.981 766.261 929.385 777.893 964.551 777.893C986.192 777.893 1007.16 772.618 1027.45 762.068C1047.73 751.518 1064.37 735.828 1077.35 714.999C1090.61 693.899 1097.24 667.524 1097.24 635.874ZM1395.17 898V274.74H1537.6V378.617H1544.09C1555.45 342.639 1574.93 314.911 1602.52 295.434C1630.38 275.687 1662.17 265.813 1697.88 265.813C1705.99 265.813 1715.05 266.219 1725.06 267.031C1735.34 267.572 1743.86 268.518 1750.63 269.871V404.992C1744.4 402.828 1734.53 400.934 1721 399.311C1707.75 397.417 1694.9 396.471 1682.46 396.471C1655.68 396.471 1631.6 402.287 1610.23 413.919C1589.13 425.28 1572.49 441.105 1560.32 461.393C1548.15 481.682 1542.06 505.081 1542.06 531.591V898H1395.17ZM1848.21 898V274.74H1995.1V898H1848.21ZM1922.06 186.283C1898.8 186.283 1878.78 178.573 1862.01 163.154C1845.24 147.464 1836.85 128.664 1836.85 106.752C1836.85 84.5701 1845.24 65.7695 1862.01 50.3503C1878.78 34.6606 1898.8 26.8158 1922.06 26.8158C1945.6 26.8158 1965.61 34.6606 1982.12 50.3503C1998.89 65.7695 2007.27 84.5701 2007.27 106.752C2007.27 128.664 1998.89 147.464 1982.12 163.154C1965.61 178.573 1945.6 186.283 1922.06 186.283ZM2293.04 532.809V898H2146.15V274.74H2286.54V380.646H2293.85C2308.18 345.75 2331.04 318.022 2362.42 297.463C2394.07 276.904 2433.16 266.625 2479.69 266.625C2522.7 266.625 2560.17 275.822 2592.09 294.217C2624.28 312.612 2649.17 339.257 2666.75 374.153C2684.6 409.049 2693.39 451.385 2693.12 501.159V898H2546.24V523.882C2546.24 482.223 2535.41 449.626 2513.77 426.092C2492.4 402.557 2462.78 390.79 2424.91 390.79C2399.21 390.79 2376.35 396.471 2356.34 407.832C2336.59 418.923 2321.03 435.019 2309.67 456.119C2298.58 477.218 2293.04 502.782 2293.04 532.809ZM3113.5 1144.71C3060.75 1144.71 3015.44 1137.54 2977.57 1123.2C2939.7 1109.13 2909.26 1090.2 2886.27 1066.39C2863.28 1042.59 2847.32 1016.21 2838.39 987.269L2970.67 955.213C2976.62 967.386 2985.28 979.424 2996.64 991.327C3008 1003.5 3023.28 1013.51 3042.49 1021.35C3061.97 1029.47 3086.45 1033.53 3115.93 1033.53C3157.59 1033.53 3192.08 1023.38 3219.4 1003.09C3246.73 983.076 3260.39 950.074 3260.39 904.087V786.008H3253.08C3245.51 801.157 3234.42 816.711 3219.81 832.671C3205.47 848.632 3186.4 862.022 3162.6 872.842C3139.06 883.663 3109.44 889.073 3073.73 889.073C3025.85 889.073 2982.44 877.847 2943.48 855.394C2904.8 832.671 2873.96 798.857 2850.97 753.952C2828.24 708.777 2816.88 652.24 2816.88 584.341C2816.88 515.902 2828.24 458.147 2850.97 411.078C2873.96 363.739 2904.93 327.896 2943.89 303.55C2982.84 278.933 3026.26 266.625 3074.14 266.625C3110.66 266.625 3140.69 272.847 3164.22 285.29C3188.03 297.463 3206.96 312.206 3221.03 329.519C3235.09 346.561 3245.78 362.657 3253.08 377.805H3261.2V274.74H3406.06V908.144C3406.06 961.435 3393.34 1005.53 3367.92 1040.42C3342.49 1075.32 3307.73 1101.43 3263.63 1118.74C3219.54 1136.05 3169.5 1144.71 3113.5 1144.71ZM3114.72 773.835C3145.83 773.835 3172.34 766.261 3194.25 751.112C3216.16 735.963 3232.79 714.187 3244.16 685.783C3255.52 657.379 3261.2 623.295 3261.2 583.53C3261.2 544.305 3255.52 509.95 3244.16 480.465C3233.07 450.979 3216.56 428.12 3194.65 411.89C3173.01 395.389 3146.37 387.138 3114.72 387.138C3081.98 387.138 3054.66 395.659 3032.75 412.701C3010.84 429.744 2994.34 453.143 2983.25 482.899C2972.16 512.385 2966.61 545.929 2966.61 583.53C2966.61 621.672 2972.16 655.08 2983.25 683.754C2994.61 712.158 3011.25 734.34 3033.16 750.3C3055.34 765.99 3082.53 773.835 3114.72 773.835ZM3647.08 906.927C3622.47 906.927 3601.37 898.271 3583.78 880.958C3566.2 863.645 3557.54 842.545 3557.82 817.658C3557.54 793.312 3566.2 772.482 3583.78 755.17C3601.37 737.857 3622.47 729.2 3647.08 729.2C3670.89 729.2 3691.58 737.857 3709.17 755.17C3727.02 772.482 3736.08 793.312 3736.35 817.658C3736.08 834.159 3731.75 849.173 3723.37 862.698C3715.25 876.224 3704.43 887.044 3690.91 895.16C3677.65 903.004 3663.04 906.927 3647.08 906.927ZM3888.01 274.74H4034.9V933.708C4034.9 978.613 4026.38 1015.67 4009.33 1044.89C3992.29 1074.1 3967.67 1095.88 3935.48 1110.22C3903.29 1124.55 3864.2 1131.72 3818.22 1131.72C3812.81 1131.72 3807.8 1131.59 3803.2 1131.32C3798.6 1131.32 3793.6 1131.18 3788.19 1130.91V1011.21C3792.25 1011.48 3795.9 1011.62 3799.15 1011.62C3802.39 1011.89 3805.77 1012.02 3809.29 1012.02C3837.42 1012.02 3857.58 1005.12 3869.75 991.327C3881.92 977.801 3888.01 957.918 3888.01 931.679V274.74ZM3961.05 186.283C3937.51 186.283 3917.36 178.573 3900.59 163.154C3884.09 147.464 3875.84 128.664 3875.84 106.752C3875.84 84.5701 3884.09 65.7695 3900.59 50.3503C3917.36 34.6606 3937.51 26.8158 3961.05 26.8158C3984.31 26.8158 4004.19 34.6606 4020.7 50.3503C4037.47 65.7695 4045.85 84.5701 4045.85 106.752C4045.85 128.664 4037.47 147.464 4020.7 163.154C4004.19 178.573 3984.31 186.283 3961.05 186.283ZM4332.83 66.9868V898H4185.94V66.9868H4332.83Z" fill="currentColor"/>
+            <path d="M4076 108.5C4076 168.424 4027.42 217 3967.5 217C3907.58 217 3859 168.424 3859 108.5C3859 48.5762 3907.58 0 3967.5 0C4027.42 0 4076 48.5762 4076 108.5Z" fill="#389725"/>
+            <path d="M3755 814.5C3755 874.424 3706.42 923 3646.5 923C3586.58 923 3538 874.424 3538 814.5C3538 754.576 3586.58 706 3646.5 706C3706.42 706 3755 754.576 3755 814.5Z" fill="#9457B1"/>
+            <path d="M2030 108.5C2030 168.424 1981.42 217 1921.5 217C1861.58 217 1813 168.424 1813 108.5C1813 48.5762 1861.58 0 1921.5 0C1981.42 0 2030 48.5762 2030 108.5Z" fill="#CA3B33"/>
+        </svg>
+    </a>
+    <!-- <a class="ext-navbar-title" href="https://turinglang.org/">Turing.jl</a> -->
+    
+    <ul class="ext-nav-links">
+        <li><a class="ext-nav-link" href="https://turinglang.org/docs/getting-started/">Get Started</a></li>
+        <li><a class="ext-nav-link" href="https://turinglang.org/docs/tutorials/">Tutorials</a></li>
+        <li><a class="ext-nav-link" href="https://turinglang.org/docs/faq/">FAQ</a></li>
+        <li>
+            <p class="ext-nav-link" id="library-handler">Libraries</p>
+            <div class="ext-dropdown" id="ext-dropdown-items">
+                <ul>
+                    <li class="ext-dropdown-item-heading">Modelling Languages</li>
+                    <a href="https://turinglang.org/DynamicPPL.jl/"><li>DynamicPPL</li></a>
+                    <a href="https://turinglang.org/JuliaBUGS.jl/"><li>JuliaBUGS</li></a>
+                    <a href="https://turinglang.org/TuringGLM.jl/"><li>TuringGLM</li></a>
+                </ul>
+                <ul>
+                    <li class="ext-dropdown-item-heading">MCMC</li>
+                    <a href="https://turinglang.org/AdvancedHMC.jl/"><li>AdvancedHMC</li></a>
+                    <a href="https://turinglang.org/AbstractMCMC.jl/"><li>AbstractMCMC</li></a>
+                    <a href="https://github.com/theogf/ThermodynamicIntegration.jl"><li>ThermodynamicIntegration</li></a>
+                    <a href="https://turinglang.org/AdvancedPS.jl/"><li>AdvancedPS</li></a>
+                    <a href="https://turinglang.org/SliceSampling.jl/"><li>SliceSampling</li></a>
+                    <a href="https://turinglang.org/EllipticalSliceSampling.jl/"><li>EllipticalSliceSampling</li></a>
+                </ul>
+                <ul>
+                    <li class="ext-dropdown-item-heading">Diagnostics</li>
+                    <a href="https://turinglang.org/MCMCChains.jl/"><li>MCMCChains</li></a>
+                    <a href="https://turinglang.org/MCMCDiagnosticTools.jl/"><li>MCMCDiagnosticTools</li></a>
+                    <a href="https://chalk-lab.github.io/ParetoSmooth.jl/"><li>ParetoSmooth</li></a>
+                </ul>
+                <ul>
+                    <li class="ext-dropdown-item-heading">Gaussian Processes</li>
+                    <a href="https://juliagaussianprocesses.github.io/AbstractGPs.jl/"><li>AbstractGPs</li></a>
+                    <a href="https://juliagaussianprocesses.github.io/KernelFunctions.jl/"><li>KernelFunctions</li></a>
+                    <a href="https://juliagaussianprocesses.github.io/ApproximateGPs.jl/"><li>ApproximateGPs</li></a>
+                </ul>
+                <ul><li class="ext-dropdown-item-heading ext-navbar-item-single"><a href="https://turinglang.org/Bijectors.jl/">Bijectors</a></li></ul>
+                <ul><li class="ext-dropdown-item-heading ext-navbar-item-single"><a href="https://turinglang.org/TuringCallbacks.jl/">TuringCallbacks</a></li></ul>
+                <ul><li class="ext-dropdown-item-heading ext-navbar-item-single"><a href="https://turinglang.org/Deprecated/TuringBenchmarking/">TuringBenchmarking</a><span class="deprecated-badge">Deprecated</span></li></ul>
+            </div>
+        </li>
+        <li><a class="ext-nav-link" href="https://turinglang.org/news/">News</a></li>
+        <li><a class="ext-nav-link" href="https://turinglang.org/team/">Team</a></li>
+    </ul>
+
+    <div class="ext-navbar-icons">
+        <a href="https://x.com/TuringLang" aria-label="Turing on X"><i class="fa-brands fa-x-twitter"></i></a>
+        <a href="https://discourse.julialang.org/c/domain/probprog/48" aria-label="Turing on Discourse"><i class="fa-brands fa-discourse"></i></a>
+        <a href="https://julialang.slack.com/archives/CCYDC34A0" aria-label="Turing on Slack"><i class="fa-brands fa-slack"></i></a>
+        <a href="https://github.com/TuringLang/" aria-label="Turing.jl on GitHub"><i class="fa-brands fa-github"></i></a>
+    </div>
+
+    <span class="ext-menu-toggle"><i class="fa-solid fa-bars"></i></span>
+</nav>
+
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        const menuToggle = document.querySelector(".ext-menu-toggle");
+        const navLinks = document.querySelector(".ext-nav-links");
+        const nav = document.querySelector(".ext-navigation");
+        const libraryHandler = document.getElementById("library-handler");
+        const dropdownContainer = document.getElementById("ext-dropdown-items");
+        let lastScrollY = window.scrollY;
+
+        function closeDropdown() {
+            if (dropdownContainer.classList.contains("show")) {
+                libraryHandler.classList.remove("open");
+                dropdownContainer.classList.remove("show");
+                setTimeout(() => {
+                    if (!dropdownContainer.classList.contains("show")) {
+                        dropdownContainer.style.display = "none";
+                    }
+                }, 300);
+            }
+        }
+
+        function openDropdown() {
+            dropdownContainer.style.display = "grid";
+            libraryHandler.classList.add("open");
+            setTimeout(() => {
+                dropdownContainer.classList.add("show");
+            }, 10);
+        }
+
+        function setAppropriateHeight() {
+            if (window.innerWidth <= 768) {
+                const viewportHeight = window.innerHeight;
+                const navHeight = nav.offsetHeight;
+                navLinks.style.maxHeight = `${viewportHeight - navHeight}px`;
+                navLinks.style.overflowY = "auto";
+            } else {
+                navLinks.style.maxHeight = "";
+                navLinks.style.overflowY = "";
+            }
+        }
+
+        menuToggle.addEventListener("click", (event) => {
+            event.stopPropagation();
+            navLinks.classList.toggle("show");
+            if (navLinks.classList.contains("show")) {
+                setAppropriateHeight();
+                closeDropdown();
+                dropdownContainer.style.display = "none";
+            }
+        });
+
+        libraryHandler.addEventListener("click", (event) => {
+            event.stopPropagation();
+            event.preventDefault();
+            if (dropdownContainer.classList.contains("show")) {
+                closeDropdown();
+            } else {
+                openDropdown();
+            }
+            setAppropriateHeight();
+        });
+
+        // Close all menus if a click is registered outside the navigation bar.
+        document.addEventListener("click", (event) => {
+            if (!nav.contains(event.target)) {
+                navLinks.classList.remove("show");
+                closeDropdown();
+            }
+        });
+
+        // Hide navigation bar on scroll down in mobile view.
+        window.addEventListener("scroll", () => {
+            if (window.innerWidth <= 768) {
+                if (window.scrollY > lastScrollY && window.scrollY > nav.offsetHeight){
+                    nav.classList.add("hide");
+                } else {
+                    nav.classList.remove("hide");
+                }
+                lastScrollY = window.scrollY;
+            }
+        });
+
+        window.addEventListener("resize", setAppropriateHeight);
+    });
+</script>
+<!-- NAVBAR END -->
+
+
+<div id="documenter"><nav class="docs-sidebar"><a class="docs-logo" href="../../"><img src="../../assets/logo.svg" alt="DynamicPPL logo"/></a><div class="docs-package-name"><span class="docs-autofit"><a href="../../">DynamicPPL</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><a class="tocitem" href="../../">Home</a></li><li><a class="tocitem" href="../../conditionfix/">Conditioning and fixing</a></li><li><span class="tocitem">VarNamedTuple</span><ul><li><a class="tocitem" href="../../vnt/motivation/">Motivation</a></li><li><a class="tocitem" href="../../vnt/design/">Design</a></li><li><a class="tocitem" href="../../vnt/implementation/">Implementation</a></li><li><a class="tocitem" href="../../vnt/arraylikeblocks/">Array-like blocks</a></li></ul></li><li><a class="tocitem" href="../../evaluation/">Model evaluation</a></li><li><a class="tocitem" href="../../tilde/">Tilde-statements</a></li><li><a class="tocitem" href="../../init/">Initialisation strategies</a></li><li><a class="tocitem" href="../../transforms/">Transform strategies</a></li><li><span class="tocitem">Accumulators</span><ul><li class="is-active"><a class="tocitem" href>Overview</a><ul class="internal"><li><a class="tocitem" href="#The-AbstractAccumulator-API"><span>The <code>AbstractAccumulator</code> API</span></a></li><li><a class="tocitem" href="#An-example"><span>An example</span></a></li><li><a class="tocitem" href="#Working-with-OnlyAccsVarInfo"><span>Working with <code>OnlyAccsVarInfo</code></span></a></li></ul></li><li><a class="tocitem" href="../existing/">Existing accumulators in DynamicPPL</a></li><li><a class="tocitem" href="../threadsafe/">Thread-safe accumulation</a></li><li><a class="tocitem" href="../values/">Storing vectorised vs. raw values</a></li></ul></li><li><span class="tocitem">LogDensityFunction</span><ul><li><a class="tocitem" href="../../ldf/overview/">Overview</a></li><li><a class="tocitem" href="../../ldf/models/">Using LDFs in model evaluation</a></li></ul></li><li><a class="tocitem" href="../../migration/">Migrating old VarInfo code</a></li><li><a class="tocitem" href="../../api/">API</a></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li><a class="is-disabled">Accumulators</a></li><li class="is-active"><a href>Overview</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Overview</a></li></ul></nav><div class="docs-right"><a class="docs-navbar-link" href="https://github.com/TuringLang/DynamicPPL.jl" title="View the repository on GitHub"><span class="docs-icon fa-brands"></span><span class="docs-label is-hidden-touch">GitHub</span></a><a class="docs-navbar-link" href="https://github.com/TuringLang/DynamicPPL.jl/blob/main/docs/src/accs/overview.md" title="Edit source on GitHub"><span class="docs-icon fa-solid"></span></a><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="accumulators-overview"><a class="docs-heading-anchor" href="#accumulators-overview">Overview</a><a id="accumulators-overview-1"></a><a class="docs-heading-anchor-permalink" href="#accumulators-overview" title="Permalink"></a></h1><p>Accumulators are objects in DynamicPPL which collect the results of computations in each tilde-statement.</p><p>Consider a tilde-statement <code>x ~ Beta(2, 2)</code>. There are several things going on in here (we will discuss this in full detail in the <a href="../../evaluation/">Model evaluation</a> page). Loosely speaking:</p><ul><li>We need to get a value for <code>x</code> that is consistent with the distribution <code>Beta(2, 2)</code>;</li><li>That value may or may not be transformed to linked space;</li><li>We need to calculate the log-density of that value.</li></ul><p>On top of that, we may want to store other information, such as:</p><ul><li>The <code>VarName</code> itself, i.e. <code>@varname(x)</code>;</li><li>The distribution;</li></ul><p>and so on.</p><p>These pieces of information are collected by accumulators. Each different accumulator is responsible for a different piece of information: thus, for example, log-likelihoods and log-priors are collected in separate accumulators. By choosing the right set of accumulators, we can control what information is collected during model evaluation. This allows us to perform exactly the necessary amount of computation we need to do.</p><p>Furthermore, accumulators are completely independent: inside the <code>accumulate_...!!</code> method of an accumulator, it is not possible to access the state of other accumulators. This creates a modular design, where new accumulators can be defined and added without worrying about potential interactions with existing ones.</p><h2 id="The-AbstractAccumulator-API"><a class="docs-heading-anchor" href="#The-AbstractAccumulator-API">The <code>AbstractAccumulator</code> API</a><a id="The-AbstractAccumulator-API-1"></a><a class="docs-heading-anchor-permalink" href="#The-AbstractAccumulator-API" title="Permalink"></a></h2><p>Accumulators must subtype <a href="../../api/#DynamicPPL.AbstractAccumulator"><code>DynamicPPL.AbstractAccumulator</code></a>, whose docstring explains the required interface:</p><article><details class="docstring" open="true"><summary id="DynamicPPL.AbstractAccumulator-accs-overview"><a class="docstring-binding" href="#DynamicPPL.AbstractAccumulator-accs-overview"><code>DynamicPPL.AbstractAccumulator</code></a> — <span class="docstring-category">Type</span></summary><section><div><pre><code class="language-julia hljs">AbstractAccumulator</code></pre><p>An abstract type for accumulators.</p><p>An accumulator is an object that may change its value at every <code>tilde_assume!!</code> or <code>tilde_observe!!</code> call based on the random variable in question. The obvious examples of accumulators are the log prior and log likelihood. Other examples might be a variable that counts the number of observations in a trace, or a list of the names of random variables seen so far.</p><p>An accumulator type <code>T &lt;: AbstractAccumulator</code> must implement the following methods:</p><ul><li><code>accumulator_name(acc::T)</code> or <code>accumulator_name(::Type{T})</code></li><li><code>accumulate_observe!!(acc::T, dist, val, vn, template)</code></li><li><code>accumulate_assume!!(acc::T, val, tval, logjac, vn, dist, template)</code></li><li><code>reset(acc::T)</code></li><li><code>Base.copy(acc::T)</code></li></ul><p>In these functions:</p><ul><li><code>val</code> is the new value of the random variable sampled from a distribution (always in the original unlinked space), or the value on the left-hand side of an observe statement.</li><li><code>tval</code> is the original <code>AbstractTransformedValue</code> that was obtained from the initialisation strategy. This is passed through unchanged to <code>accumulate_assume!!</code> since it can be reused for some accumulators (e.g. when storing linked values, if the linked value was already provided, it is faster to reuse it than to re-link <code>val</code>).</li><li><code>dist</code> is the distribution on the RHS of the tilde statement.</li><li><code>vn</code> is the <code>VarName</code> that is on the left-hand side of the tilde-statement. If the tilde-statement is a literal observation like <code>0.0 ~ Normal()</code>, then <code>vn</code> is <code>nothing</code>.</li><li><code>logjac</code> is the log determinant of the Jacobian of the link transformation, <em>if</em> the variable is stored as a linked value in the VarInfo. If the variable is stored in its original, unlinked form, then <code>logjac</code> is zero.</li><li><code>template</code> is a value that conveys the shape of the top-level symbol in <code>vn</code>, and is used specifically for accumulators that carry VarNamedTuples.</li></ul><p>To be able to work with multi-threading, it should also implement:</p><ul><li><code>split(acc::T)</code></li><li><code>combine(acc::T, acc2::T)</code></li></ul><p>See the documentation for each of these functions for more details.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/TuringLang/DynamicPPL.jl/blob/7dc653cd80d43fc6e06a36f71d6ffd5a33e27117/src/accumulators.jl#L1-L41">source</a></section></details></article><p>The reason each accumulator must have a different name is because (for type stability reasons) accumulators are stored in a <code>NamedTuple</code>, and Julia requires that the names of fields in a <code>NamedTuple</code> be unique.</p><p><code>reset</code> is called when starting a new model evaluation, to ensure that previously accumulated results do not affect the current evaluation.</p><p>The central two methods though are <code>accumulate_assume!!</code> and <code>accumulate_observe!!</code>. These two methods are called whenever a tilde-statement is encountered during model evaluation. As can be seen from their signatures, they receive all the information that we have discussed above about tilde-statements.</p><p>Formally, accumulators can be seen as <a href="https://en.wikipedia.org/wiki/Monoid#Monoids_in_computer_science">a monoidal structure</a> where:</p><ul><li><code>reset</code> specifies the identity (indeed for some accumulators in DynamicPPL we define a function called <code>zero</code>);</li><li><code>accumulate_assume!!</code> and <code>accumulate_observe!!</code> collectively specify the binary operation;</li><li>the accumulated result is a fold over all tilde-statements in the model.</li></ul><p>Note that there is no guarantee that the binary operation be commutative (although in practice for many accumulators it is).</p><h2 id="An-example"><a class="docs-heading-anchor" href="#An-example">An example</a><a id="An-example-1"></a><a class="docs-heading-anchor-permalink" href="#An-example" title="Permalink"></a></h2><p>As an example, let&#39;s consider an accumulator that associates <code>VarNames</code> with their log-densities. We will store these in an <code>OrderedDict{VarName,Tuple{Bool,Float64}}</code> where the <code>Bool</code> indicates whether the variable was observed (<code>true</code>) or assumed (<code>false</code>), and the <code>Float64</code> is the log-density.</p><div class="admonition is-info" id="Note-6013a4d85af8b1d9"><header class="admonition-header">Note<a class="admonition-anchor" href="#Note-6013a4d85af8b1d9" title="Permalink"></a></header><div class="admonition-body"><p>This is very similar to the <code>pointwise_logdensities</code> functionality in DynamicPPL.</p></div></div><p>We define the accumulator as follows. As one may have guessed from the above, much of the definition is really just boilerplate to make things run smoothly. The interesting behaviour is in the two <code>accumulate_...!!</code> methods, where we compute the log-density and store it in the <code>OrderedDict</code>.</p><pre><code class="language-julia hljs">using DynamicPPL, OrderedCollections, Distributions
+
+struct VarNameLogpAccumulator &lt;: DynamicPPL.AbstractAccumulator
+    logps::OrderedDict{VarName,Tuple{Bool,Float64}}
+
+    VarNameLogpAccumulator() = new(OrderedDict{VarName,Tuple{Bool,Float64}}())
+end
+
+# Note, it&#39;s a good idea to define the symbol as a top-level `const`, since it&#39;s often
+# necessary to refer to it elsewhere. We&#39;ll see this happen later.
+const VARNAMELOGP_NAME = :VarNameLogp
+DynamicPPL.accumulator_name(::VarNameLogpAccumulator) = VARNAMELOGP_NAME
+DynamicPPL.reset(acc::VarNameLogpAccumulator) = VarNameLogpAccumulator()
+DynamicPPL.copy(acc::VarNameLogpAccumulator) = VarNameLogpAccumulator(copy(acc.logps))
+
+function DynamicPPL.accumulate_assume!!(
+    acc::VarNameLogpAccumulator,
+    val,
+    tval,
+    logjac,
+    vn::VarName,
+    dist::Distribution,
+    template,
+)
+    acc.logps[vn] = (false, logpdf(dist, val))
+    return acc
+end
+
+function DynamicPPL.accumulate_observe!!(
+    acc::VarNameLogpAccumulator, dist, val, vn, template
+)
+    acc.logps[vn] = (true, logpdf(dist, val))
+    return acc
+end</code></pre><p>In this implementation, our <code>accumulate_...!!</code> methods actually mutate the accumulator in place. This is not mandatory; you can return a new accumulator if you prefer an immutable style.</p><p>To use this accumulator in a model evaluation, we need to wrap it in an <code>OnlyAccsVarInfo</code>.</p><div class="admonition is-info" id="OnlyAccsVarInfo-f77c4f841c867ce2"><header class="admonition-header">OnlyAccsVarInfo<a class="admonition-anchor" href="#OnlyAccsVarInfo-f77c4f841c867ce2" title="Permalink"></a></header><div class="admonition-body"><p>As described on the <a href="../../evaluation/">Model evaluation</a> page, an <code>OnlyAccsVarInfo</code> is just a wrapper around a set of accumulators. Don&#39;t worry about the name; it&#39;s mostly a historical artifact.</p></div></div><p>We can either do this by creating it from scratch, or by modifying an existing one (see the next section for details). In this example, we&#39;ll create an <code>OnlyAccsVarInfo</code> from scratch using only our new accumulator. Once we&#39;ve evaluated the model, we can access the accumulated log-densities by reading it back from the accumulator:</p><pre><code class="language-julia hljs">@model function f(y)
+    x ~ Normal()
+    return y ~ Normal(x)
+end
+model = f(2.0)
+
+accs = DynamicPPL.OnlyAccsVarInfo(VarNameLogpAccumulator())
+_, accs = DynamicPPL.init!!(model, accs, InitFromParams((; x=1.0)), UnlinkAll())
+
+# This is why we used a const.
+output_acc = DynamicPPL.getacc(accs, Val(VARNAMELOGP_NAME))</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Main.VarNameLogpAccumulator(OrderedDict{VarName, Tuple{Bool, Float64}}(x =&gt; (false, -1.4189385332046727), y =&gt; (true, -1.4189385332046727)))</code></pre><p>Since we specified that <code>x</code> should be initialised to <code>1.0</code>, we should have that</p><pre><code class="language-julia hljs">output_acc.logps[@varname(x)] == (false, logpdf(Normal(), 1.0))</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">true</code></pre><p>and</p><pre><code class="language-julia hljs">output_acc.logps[@varname(y)] == (true, logpdf(Normal(1.0), 2.0))</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">true</code></pre><p>(Notice that because here we used an <code>OrderedDict</code>, the accumulation process is not commutative.)</p><h2 id="Working-with-OnlyAccsVarInfo"><a class="docs-heading-anchor" href="#Working-with-OnlyAccsVarInfo">Working with <code>OnlyAccsVarInfo</code></a><a id="Working-with-OnlyAccsVarInfo-1"></a><a class="docs-heading-anchor-permalink" href="#Working-with-OnlyAccsVarInfo" title="Permalink"></a></h2><p>As shown above, users can choose exactly which accumulators to use during model evaluation in order to control what information is collected. This section explains how to specify which accumulators to use, and how to extract the information again afterwards.</p><p>When creating an <code>OnlyAccsVarInfo</code>, if no accumulators are specified, there is a set of <em>default accumulators</em> that are used:</p><pre><code class="language-julia hljs">OnlyAccsVarInfo()</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi"><span class="sgr1">OnlyAccsVarInfo</span>
+ └─ AccumulatorTuple with 3 accumulators
+    ├─ <span class="sgr36">LogPrior</span> =&gt; LogPriorAccumulator(0.0)
+    ├─ <span class="sgr36">LogJacobian</span> =&gt; LogJacobianAccumulator(0.0)
+    └─ <span class="sgr36">LogLikelihood</span> =&gt; LogLikelihoodAccumulator(0.0)</code></pre><p>As alluded to above, one can control this by passing the accumulators to the <code>OnlyAccsVarInfo</code> constructor:</p><pre><code class="language-julia hljs">accs = OnlyAccsVarInfo(LogLikelihoodAccumulator())</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi"><span class="sgr1">OnlyAccsVarInfo</span>
+ └─ AccumulatorTuple with 1 accumulator:
+    └─ <span class="sgr36">LogLikelihood</span> =&gt; LogLikelihoodAccumulator(0.0)</code></pre><p>If you then use this <code>OnlyAccsVarInfo</code> to evaluate a model, only the specified accumulators will be used.</p><pre><code class="language-julia hljs">@model function demo_likelihood()
+    x ~ Normal()
+    return 1.0 ~ Normal(x)
+end
+model = demo_likelihood()
+_, new_accs = init!!(model, accs, InitFromPrior(), UnlinkAll())
+new_accs</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi"><span class="sgr1">OnlyAccsVarInfo</span>
+ └─ AccumulatorTuple with 1 accumulator:
+    └─ <span class="sgr36">LogLikelihood</span> =&gt; LogLikelihoodAccumulator(-0.9796678116708258)</code></pre><p>Instead of creating an <code>OnlyAccsVarInfo</code> from scratch, one can also add accumulators to an existing <code>OnlyAccsVarInfo</code> using <a href="../../api/#DynamicPPL.setacc!!"><code>setacc!!</code></a> and <a href="../../api/#DynamicPPL.setaccs!!"><code>setaccs!!</code></a>. Note that these functions have very similar names! <code>setacc!!</code> adds a single accumulator, while <code>setaccs!!</code> replaces the entire set of accumulators with a new set.</p><pre><code class="language-julia hljs">accs = OnlyAccsVarInfo()
+# Add a new accumulator
+accs = setacc!!(accs, RawValueAccumulator(false))</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi"><span class="sgr1">OnlyAccsVarInfo</span>
+ └─ AccumulatorTuple with 4 accumulators
+    ├─ <span class="sgr36">LogPrior</span> =&gt; LogPriorAccumulator(0.0)
+    ├─ <span class="sgr36">LogJacobian</span> =&gt; LogJacobianAccumulator(0.0)
+    ├─ <span class="sgr36">LogLikelihood</span> =&gt; LogLikelihoodAccumulator(0.0)
+    └─ <span class="sgr36">RawValues</span> =&gt; VNTAccumulator{:RawValues, DynamicPPL.GetRawValues, VarNamedTuple{(), Tuple{}}}(DynamicPPL.GetRawValues(false), VarNamedTuple())</code></pre><p>In the case of <code>setacc!!</code>, the accumulator will be <em>added</em> to the existing set if it has a name (as defined by <a href="../../api/#DynamicPPL.accumulator_name"><code>accumulator_name</code></a>) that is not already present. If an accumulator with the same name is already present, it will be <em>replaced</em>!</p><p>This means that you have to be careful to not accidentally create a name clash with an existing accumulator. If you are defining your own accumulator, it is a good idea to define its name with a prefix that is unique to your package.</p><p>However, it does <em>also</em> mean that you can customise the behaviour of existing accumulators. For example, if you intentionally define an accumulator with the same name as an existing one, you can use <code>setacc!!</code> to replace it. Turing.jl uses this mechanism in SMC inference to replace the default log-likelihood accumulator with one that triggers particle reweighting each time the likelihood is incremented (i.e., each time a new observation is made).</p><p><code>setaccs!!</code> is simpler; it replaces whatever came before it. It takes a tuple of accumulators as input.</p><pre><code class="language-julia hljs"># This will create a set of default accumulators.
+accs = OnlyAccsVarInfo()</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi"><span class="sgr1">OnlyAccsVarInfo</span>
+ └─ AccumulatorTuple with 3 accumulators
+    ├─ <span class="sgr36">LogPrior</span> =&gt; LogPriorAccumulator(0.0)
+    ├─ <span class="sgr36">LogJacobian</span> =&gt; LogJacobianAccumulator(0.0)
+    └─ <span class="sgr36">LogLikelihood</span> =&gt; LogLikelihoodAccumulator(0.0)</code></pre><pre><code class="language-julia hljs"># Replace all accumulators with just a RawValueAccumulator
+new_acc = RawValueAccumulator(false)
+accs = setaccs!!(accs, (new_acc,))</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi"><span class="sgr1">OnlyAccsVarInfo</span>
+ └─ AccumulatorTuple with 1 accumulator:
+    └─ <span class="sgr36">RawValues</span> =&gt; VNTAccumulator{:RawValues, DynamicPPL.GetRawValues, VarNamedTuple{(), Tuple{}}}(DynamicPPL.GetRawValues(false), VarNamedTuple())</code></pre><p>Once you have evaluated a model with your desired accumulators, you can extract the accumulated results using <a href="../../api/#DynamicPPL.getacc"><code>getacc</code></a>.</p><pre><code class="language-julia hljs">_, accs = init!!(model, accs, InitFromPrior(), UnlinkAll())
+
+# `getacc` returns the accumulator itself; `.values` accesses the actual values inside it.
+raw_values = getacc(accs, Val(accumulator_name(new_acc))).values</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">VarNamedTuple
+└─ <span class="sgr36">x</span> =&gt; -1.7816395836427206</code></pre><p>There are convenience functions <a href="../../api/#DynamicPPL.getlogprior"><code>getlogprior</code></a>, <a href="../../api/#DynamicPPL.getloglikelihood"><code>getloglikelihood</code></a>, <a href="../../api/#DynamicPPL.getlogprior"><code>getlogprior</code></a>, and <a href="../existing/#DynamicPPL.get_raw_values"><code>get_raw_values</code></a> that extract the corresponding accumulators&#39; wrapped values directly from the <code>OnlyAccsVarInfo</code>. Note that these functions will throw an error if the corresponding accumulator is not present in the <code>OnlyAccsVarInfo</code>.</p><pre><code class="language-julia hljs">get_raw_values(accs)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">VarNamedTuple
+└─ <span class="sgr36">x</span> =&gt; -1.7816395836427206</code></pre><p><a href="../existing/">The next page</a> gives an overview of the existing accumulators in DynamicPPL; these provide common functionality which you can make use of, without having to write your own accumulators from scratch.</p><script type="module">import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+mermaid.initialize({
+    startOnLoad: true,
+    theme: "neutral"
+});
+</script></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../../transforms/">« Transform strategies</a><a class="docs-footer-nextpage" href="../existing/">Existing accumulators in DynamicPPL »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.17.0 on <span class="colophon-date" title="Thursday 26 February 2026 22:21">Thursday 26 February 2026</span>. Using Julia version 1.12.5.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
