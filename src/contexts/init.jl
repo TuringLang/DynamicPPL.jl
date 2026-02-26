@@ -112,7 +112,7 @@ function init(rng::Random.AbstractRNG, ::VarName, dist::Distribution, u::InitFro
     # sample.
     real_sz = prod(sz)
     y = u.lower .+ ((u.upper - u.lower) .* rand(rng, real_sz))
-    return LinkedVectorValue(y, from_linked_vec_transform(dist))
+    return LinkedVectorValue(y, dist)
 end
 
 """
@@ -172,35 +172,26 @@ function InitFromParams(
     return InitFromParams(VarNamedTuple(pairs(params)), fallback)
 end
 
+function init(::Random.AbstractRNG, vn::VarName, ::Distribution, ::Nothing)
+    error("No value was provided for the variable `$(vn)`.")
+end
+
 function init(
     rng::Random.AbstractRNG,
     vn::VarName,
     dist::Distribution,
     p::InitFromParams{<:VarNamedTuple},
 )
-    return if hasvalue(p.params, vn, dist)
+    if hasvalue(p.params, vn, dist)
         x = getvalue(p.params, vn, dist)
-        if x === missing
-            p.fallback === nothing &&
-                error("A `missing` value was provided for the variable `$(vn)`.")
-            init(rng, vn, dist, p.fallback)
-        elseif x isa VectorValue
-            # In this case, we can't trust the transform stored in x because the _value_
-            # in x may have been changed via unflatten!! without the transform being
-            # updated. Therefore, we always recompute the transform here.
-            VectorValue(x.val, from_vec_transform(dist))
-        elseif x isa LinkedVectorValue
-            # Same as above.
-            LinkedVectorValue(x.val, from_linked_vec_transform(dist))
-        elseif x isa UntransformedValue
-            x
-        else
-            UntransformedValue(x)
-        end
-    else
-        p.fallback === nothing && error("No value was provided for the variable `$(vn)`.")
-        init(rng, vn, dist, p.fallback)
+        x !== missing && return init_transform(x, dist)
     end
+    return init(rng, vn, dist, p.fallback)
+end
+
+init_transform(x, ::Distribution) = UntransformedValue(x)
+function init_transform(x::XT, dist::Distribution) where {XT<:AbstractTransformedValue}
+    return set_internal_transform(x, dist)
 end
 
 """
@@ -226,19 +217,7 @@ function init(
 )
     return if haskey(p.params, vn)
         x = p.params[vn]
-        if x isa VectorValue
-            # In this case, we can't trust the transform stored in x because the _value_
-            # in x may have been changed via unflatten!! without the transform being
-            # updated. Therefore, we always recompute the transform here.
-            VectorValue(x.val, from_vec_transform(dist))
-        elseif x isa LinkedVectorValue
-            # Same as above.
-            LinkedVectorValue(x.val, from_linked_vec_transform(dist))
-        elseif x isa UntransformedValue
-            x
-        else
-            UntransformedValue(x)
-        end
+        return init_transform(x, dist)
     else
         error("No value was provided for the variable `$(vn)`.")
     end
@@ -332,20 +311,32 @@ function _get_range_and_linked(ifv::InitFromVector, vn::VarName)
     # allow the compiler to infer the types of `range` and `is_linked`.
     return ifv.varname_ranges[vn]::RangeAndLinked
 end
+
+function transform_vector(
+    vect::AbstractVector, dist::Distribution, ::RangeAndLinked, ::UnlinkAll
+)
+    return VectorValue(vect, dist)
+end
+function transform_vector(
+    vect::AbstractVector, dist::Distribution, ::RangeAndLinked, ::LinkAll
+)
+    return LinkedVectorValue(vect, dist)
+end
+function transform_vector(
+    vect::AbstractVector,
+    dist::Distribution,
+    ral::RangeAndLinked,
+    ::AbstractTransformStrategy
+)
+    return ral.is_linked ? LinkedVectorValue(vect, dist) : VectorValue(vect, dist)
+end
+
 function init(::Random.AbstractRNG, vn::VarName, dist::Distribution, ifv::InitFromVector)
     range_and_linked = _get_range_and_linked(ifv, vn)
     vect = maybe_view_ad(ifv.vect, range_and_linked.range)
     # This block here is why we store transform_strategy inside the InitFromVector, as it
     # allows for type stability.
-    return if ifv.transform_strategy isa LinkAll
-        LinkedVectorValue(vect, from_linked_vec_transform(dist))
-    elseif ifv.transform_strategy isa UnlinkAll
-        VectorValue(vect, from_vec_transform(dist))
-    elseif range_and_linked.is_linked
-        LinkedVectorValue(vect, from_linked_vec_transform(dist))
-    else
-        VectorValue(vect, from_vec_transform(dist))
-    end
+    return transform_vector(vect, dist, range_and_linked, ifv.transform_strategy)
 end
 function get_param_eltype(strategy::InitFromVector)
     return eltype(strategy.vect)
