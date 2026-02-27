@@ -173,7 +173,7 @@ function InitFromParams(
 end
 
 function init(::Random.AbstractRNG, vn::VarName, ::Distribution, ::Nothing)
-    error("No value was provided for the variable `$(vn)`.")
+    return error("No value was provided for the variable `$(vn)`.")
 end
 
 function init(
@@ -326,7 +326,7 @@ function transform_vector(
     vect::AbstractVector,
     dist::Distribution,
     ral::RangeAndLinked,
-    ::AbstractTransformStrategy
+    ::AbstractTransformStrategy,
 )
     return ral.is_linked ? LinkedVectorValue(vect, dist) : VectorValue(vect, dist)
 end

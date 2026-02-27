@@ -358,7 +358,7 @@ function apply_transform_strategy(
     strategy::AbstractTransformStrategy,
     tv::AbstractTransformedValue,
     vn::VarName,
-    dist::Distribution
+    dist::Distribution,
 )
     target = target_transform(strategy, vn)
     raw_value = get_raw_value(tv, dist)
