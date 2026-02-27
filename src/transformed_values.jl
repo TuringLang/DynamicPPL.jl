@@ -121,6 +121,9 @@ struct VectorValue{V<:AbstractVector,T} <: AbstractTransformedValue
         return new{V,T}(val, tfm)
     end
 end
+function VectorValue(val::AbstractVector, dist::Distribution)
+    return VectorValue(val, from_vec_transform(dist))
+end
 
 """
     LinkedVectorValue{V<:AbstractVector,T}
@@ -145,6 +148,9 @@ struct LinkedVectorValue{V<:AbstractVector,T} <: AbstractTransformedValue
         return new{V,T}(val, tfm)
     end
 end
+function LinkedVectorValue(val::AbstractVector, dist::Distribution)
+    return LinkedVectorValue(val, from_linked_vec_transform(dist))
+end
 
 for T in (:VectorValue, :LinkedVectorValue)
     @eval begin
@@ -160,6 +166,9 @@ for T in (:VectorValue, :LinkedVectorValue)
 
         function set_internal_value(tv::$T, new_val)
             return $T(new_val, tv.transform)
+        end
+        function set_internal_transform(tv::$T, dist::Distribution)
+            return $T(tv.val, dist)
         end
     end
 end
@@ -182,6 +191,7 @@ Base.isequal(tv1::UntransformedValue, tv2::UntransformedValue) = isequal(tv1.val
 get_transform(::UntransformedValue) = typed_identity
 get_internal_value(tv::UntransformedValue) = tv.val
 set_internal_value(::UntransformedValue, new_val) = UntransformedValue(new_val)
+set_internal_transform(tv::UntransformedValue, ::Distribution) = tv
 
 """
     abstract type AbstractTransform end
@@ -346,68 +356,53 @@ This function returns a tuple of `(raw_value, new_tv, logjac)`.
 """
 function apply_transform_strategy(
     strategy::AbstractTransformStrategy,
-    tv::LinkedVectorValue,
+    tv::AbstractTransformedValue,
     vn::VarName,
     dist::Distribution,
 )
-    # tval is already linked. We need to get the raw value plus logjac
-    finvlink = DynamicPPL.from_linked_vec_transform(dist)
-    raw_value, inv_logjac = with_logabsdet_jacobian(finvlink, get_internal_value(tv))
     target = target_transform(strategy, vn)
-    return if target isa DynamicLink
-        # No need to transform further
-        (raw_value, tv, -inv_logjac)
-    elseif target isa Unlink
-        # Need to return an unlinked value. We _could_ generate a VectorValue here, with the
-        # vectorisation transform. However, sometimes that's not needed (e.g. when
-        # evaluating with an OnlyAccsVarInfo). So we just return an UntransformedValue. If a
-        # downstream function requires a VectorValue, it's on them to generate it.
-        (raw_value, UntransformedValue(raw_value), zero(LogProbType))
-    else
-        error("unknown target transform $target")
-    end
+    raw_value = get_raw_value(tv, dist)
+    return apply_transform(raw_value, target, tv, dist)
 end
 
-function apply_transform_strategy(
-    strategy::AbstractTransformStrategy, tv::VectorValue, vn::VarName, dist::Distribution
+function apply_transform(
+    ::Any, target::AbstractTransform, ::AbstractTransformedValue, ::Distribution
 )
-    invlink = DynamicPPL.from_vec_transform(dist)
-    raw_value = invlink(get_internal_value(tv))
-    target = target_transform(strategy, vn)
-    return if target isa DynamicLink
-        # Need to link the value. We calculate the logjac
-        flink = DynamicPPL.to_linked_vec_transform(dist)
-        linked_value, logjac = with_logabsdet_jacobian(flink, raw_value)
-        finvlink = DynamicPPL.from_linked_vec_transform(dist)
-        linked_tv = LinkedVectorValue(linked_value, finvlink)
-        (raw_value, linked_tv, logjac)
-    elseif target isa Unlink
-        # No need to transform further
-        (raw_value, tv, zero(LogProbType))
-    else
-        error("unknown target transform $target")
-    end
+    return error("unknown target transform $target")
 end
 
-function apply_transform_strategy(
-    strategy::AbstractTransformStrategy,
-    tv::UntransformedValue,
-    vn::VarName,
-    dist::Distribution,
+function get_raw_value(tv::Union{LinkedVectorValue,UntransformedValue}, ::Distribution)
+    return get_internal_value(tv)
+end
+function get_raw_value(tv::VectorValue, dist::Distribution)
+    invlink = from_vec_transform(dist)
+    return invlink(get_internal_value(tv))
+end
+
+function apply_transform(
+    raw_value, ::Unlink, tv::Union{VectorValue,UntransformedValue}, dist::Distribution
 )
-    raw_value = get_internal_value(tv)
-    target = target_transform(strategy, vn)
-    return if target isa DynamicLink
-        # Need to link the value. We calculate the logjac
-        flink = DynamicPPL.to_linked_vec_transform(dist)
-        linked_value, logjac = with_logabsdet_jacobian(flink, raw_value)
-        finvlink = DynamicPPL.from_linked_vec_transform(dist)
-        linked_tv = LinkedVectorValue(linked_value, finvlink)
-        (raw_value, linked_tv, logjac)
-    elseif target isa Unlink
-        # No need to transform further
-        (raw_value, tv, zero(LogProbType))
-    else
-        error("unknown target transform $target")
-    end
+    return (raw_value, tv, zero(LogProbType))
+end
+function apply_transform(raw_value, ::Unlink, ::LinkedVectorValue, dist::Distribution)
+    finvlink = from_linked_vec_transform(dist)
+    linked_value = finvlink(raw_value)
+    return (linked_value, UntransformedValue(linked_value), zero(LogProbType))
+end
+
+function apply_transform(
+    raw_value, ::DynamicLink, tv::Union{VectorValue,UntransformedValue}, dist::Distribution
+)
+    flink = to_linked_vec_transform(dist)
+    linked_value, logjac = with_logabsdet_jacobian(flink, raw_value)
+    finvlink = from_linked_vec_transform(dist)
+    linked_tv = LinkedVectorValue(linked_value, finvlink)
+    return (raw_value, linked_tv, logjac)
+end
+function apply_transform(
+    raw_value, ::DynamicLink, tv::LinkedVectorValue, dist::Distribution
+)
+    finvlink = from_linked_vec_transform(dist)
+    unlinked_value, inv_logjac = with_logabsdet_jacobian(finvlink, raw_value)
+    return (unlinked_value, tv, -inv_logjac)
 end
