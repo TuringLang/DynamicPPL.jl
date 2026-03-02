@@ -220,7 +220,11 @@ Sometimes it can be useful to extract the priors of a model. This is the possibl
 extract_priors
 ```
 
+## Distribution wrappers
+
 ```@docs
+filldist
+arraydist
 NamedDist
 ```
 

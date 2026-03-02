@@ -176,6 +176,8 @@ export AbstractVarInfo,
     # Pseudo distributions
     NamedDist,
     NoDist,
+    filldist,
+    arraydist,
     # Convenience functions
     logprior,
     logjoint,
