@@ -314,7 +314,10 @@ function setindex_with_dist!!(
     vi::VarInfo, tval::UntransformedValue, dist::Distribution, vn::VarName, template
 )
     raw_value = DynamicPPL.get_internal_value(tval)
-    tval = VectorValue(to_vec_transform(dist)(raw_value), from_vec_transform(dist))
+    tval = VectorValue(
+        Bijectors.VectorBijectors.to_vec(dist)(raw_value),
+        Bijectors.VectorBijectors.from_vec(dist),
+    )
     return setindex_with_dist!!(vi, tval, dist, vn, template)
 end
 
@@ -390,11 +393,11 @@ function is_transformed(vi::VarInfo, vn::VarName)
 end
 
 function from_internal_transform(::VarInfo, ::VarName, dist::Distribution)
-    return from_vec_transform(dist)
+    return Bijectors.VectorBijectors.from_vec(dist)
 end
 
 function from_linked_internal_transform(::VarInfo, ::VarName, dist::Distribution)
-    return from_linked_vec_transform(dist)
+    return Bijectors.VectorBijectors.from_linked_vec(dist)
 end
 
 function from_internal_transform(vi::VarInfo, vn::VarName)

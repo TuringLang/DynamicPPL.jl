@@ -11,6 +11,21 @@ using DynamicPPL
 using MCMCChains: MCMCChains
 using Test
 
+function make_chain_from_prior(rng::Random.AbstractRNG, model::Model, n_iters::Int)
+    vi = DynamicPPL.OnlyAccsVarInfo((
+        DynamicPPL.default_accumulators()..., DynamicPPL.RawValueAccumulator(false)
+    ))
+    ps = hcat([
+        DynamicPPL.ParamsWithStats(
+            last(DynamicPPL.init!!(rng, model, vi, InitFromPrior(), UnlinkAll()))
+        ) for _ in 1:n_iters
+    ])
+    return AbstractMCMC.from_samples(MCMCChains.Chains, ps)
+end
+function make_chain_from_prior(model::Model, n_iters::Int)
+    return make_chain_from_prior(Random.default_rng(), model, n_iters)
+end
+
 @testset "pointwise_logdensities.jl" begin
     @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
         example_values = DynamicPPL.TestUtils.rand_prior_true(model)
@@ -50,17 +65,7 @@ end
 
 @testset "pointwise_logdensities chain" begin
     model = DynamicPPL.TestUtils.demo_assume_index_observe()
-    vns = DynamicPPL.TestUtils.varnames(model)
-    # Get some random `NamedTuple` samples from the prior.
-    num_iters = 3
-    vals = [DynamicPPL.TestUtils.rand_prior_true(model) for _ in 1:num_iters]
-    # Concatenate the vector representations and create a `Chains` from it.
-    vals_arr = reduce(hcat, mapreduce(DynamicPPL.tovec, vcat, values(nt)) for nt in vals)
-    chain = MCMCChains.Chains(
-        permutedims(vals_arr),
-        map(Symbol, vns);
-        info=(varname_to_symbol=Dict(vn => Symbol(vn) for vn in vns),),
-    )
+    chain = make_chain_from_prior(model, 10)
 
     # Compute the different pointwise logdensities.
     logjoints_pointwise = pointwise_logdensities(model, chain)

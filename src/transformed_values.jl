@@ -45,10 +45,10 @@ Current subtypes are [`VectorValue`](@ref), [`LinkedVectorValue`](@ref), and
     Even though the subtypes listed above are public, this abstract type is not itself part
     of the public API and should not be subtyped by end users. Much of DynamicPPL's model
     evaluation methods depends on these subtypes having predictable behaviour, i.e., their
-    transforms should always be `from_linked_vec_transform(dist)`,
-    `from_vec_transform(dist)`, or their inverse. If you create a new subtype of
-    `AbstractTransformedValue` and use it, DynamicPPL will not know how to handle it and may
-    either error or silently give incorrect results.
+    transforms should always be `Bijectors.VectorBijectors.from_linked_vec(dist)`,
+    `Bijectors.VectorBijectors.from_vec(dist)`, or their inverse. If you create a new
+    subtype of `AbstractTransformedValue` and use it, DynamicPPL will not know how to handle
+    it and may either error or silently give incorrect results.
 
     In principle, it should be possible to subtype this and allow for custom transformations
     to be used (not just the 'default' ones). However, this is not currently implemented.
@@ -351,7 +351,7 @@ function apply_transform_strategy(
     dist::Distribution,
 )
     # tval is already linked. We need to get the raw value plus logjac
-    finvlink = DynamicPPL.from_linked_vec_transform(dist)
+    finvlink = Bijectors.VectorBijectors.from_linked_vec(dist)
     raw_value, inv_logjac = with_logabsdet_jacobian(finvlink, get_internal_value(tv))
     target = target_transform(strategy, vn)
     return if target isa DynamicLink
@@ -371,14 +371,14 @@ end
 function apply_transform_strategy(
     strategy::AbstractTransformStrategy, tv::VectorValue, vn::VarName, dist::Distribution
 )
-    invlink = DynamicPPL.from_vec_transform(dist)
+    invlink = Bijectors.VectorBijectors.from_vec(dist)
     raw_value = invlink(get_internal_value(tv))
     target = target_transform(strategy, vn)
     return if target isa DynamicLink
         # Need to link the value. We calculate the logjac
-        flink = DynamicPPL.to_linked_vec_transform(dist)
+        flink = Bijectors.VectorBijectors.to_linked_vec(dist)
         linked_value, logjac = with_logabsdet_jacobian(flink, raw_value)
-        finvlink = DynamicPPL.from_linked_vec_transform(dist)
+        finvlink = Bijectors.inverse(flink)
         linked_tv = LinkedVectorValue(linked_value, finvlink)
         (raw_value, linked_tv, logjac)
     elseif target isa Unlink
@@ -399,9 +399,9 @@ function apply_transform_strategy(
     target = target_transform(strategy, vn)
     return if target isa DynamicLink
         # Need to link the value. We calculate the logjac
-        flink = DynamicPPL.to_linked_vec_transform(dist)
+        flink = Bijectors.VectorBijectors.to_linked_vec(dist)
         linked_value, logjac = with_logabsdet_jacobian(flink, raw_value)
-        finvlink = DynamicPPL.from_linked_vec_transform(dist)
+        finvlink = Bijectors.inverse(flink)
         linked_tv = LinkedVectorValue(linked_value, finvlink)
         (raw_value, linked_tv, logjac)
     elseif target isa Unlink

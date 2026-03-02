@@ -1,7 +1,7 @@
 const VECTORVAL_ACCNAME = :VectorValue
 _get_vector_tval(val, tval::Union{VectorValue,LinkedVectorValue}, logjac, vn, dist) = tval
 function _get_vector_tval(val, ::UntransformedValue, logjac, vn, dist)
-    f = to_vec_transform(dist)
+    f = Bijectors.VectorBijectors.to_vec(dist)
     new_val, logjac = with_logabsdet_jacobian(f, val)
     @assert iszero(logjac) # otherwise we're in trouble...
     return VectorValue(new_val, inverse(f))

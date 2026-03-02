@@ -7,7 +7,7 @@ __now__ = now()
 using DynamicPPL
 using Distributions
 using LinearAlgebra
-using Bijectors: Bijectors, inverse
+using Bijectors: Bijectors
 using Random: Random, randn!
 using Test
 
@@ -58,19 +58,8 @@ function Distributions._logpdf(::MyMatrixDistribution, x::AbstractMatrix{<:Real}
 end
 
 # Skip reconstruction in the inverse-map since it's no longer needed.
-function DynamicPPL.from_linked_vec_transform(dist::MyMatrixDistribution)
+function Bijectors.VectorBijectors.from_linked_vec(dist::MyMatrixDistribution)
     return TrilFromVec((dist.dim, dist.dim))
-end
-
-# Specify the link-transform to use.
-Bijectors.bijector(dist::MyMatrixDistribution) = TrilToVec((dist.dim, dist.dim))
-function Bijectors.logpdf_with_trans(dist::MyMatrixDistribution, x, is_transformed::Bool)
-    lp = logpdf(dist, x)
-    if is_transformed
-        lp = lp - logabsdetjac(bijector(dist), x)
-    end
-
-    return lp
 end
 
 @testset "Linking (mutable=$mutable)" for mutable in [false, true]
@@ -204,11 +193,7 @@ end
         @model function demo_highdim_dirichlet(ns...)
             return x ~ filldist(Dirichlet(ones(2)), ns...)
         end
-        @testset "ns=$ns" for ns in [
-            (3,),
-            # TODO: Uncomment once we have https://github.com/TuringLang/Bijectors.jl/pull/304
-            # (3, 4), (3, 4, 5)
-        ]
+        @testset "ns=$ns" for ns in [(3,), (3, 4), (3, 4, 5)]
             model = demo_highdim_dirichlet(ns...)
             example_values = NamedTuple(rand(model))
             example_values_x_only = (x=example_values.x,)
