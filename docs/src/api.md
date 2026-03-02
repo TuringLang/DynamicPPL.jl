@@ -470,8 +470,6 @@ DynamicPPL.apply_transform_strategy
 ```@docs
 DynamicPPL.transformation
 DynamicPPL.default_transformation
-DynamicPPL.link_transform
-DynamicPPL.invlink_transform
 ```
 
 #### Utils

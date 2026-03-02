@@ -69,8 +69,8 @@ julia> # note InitFromParams provides parameters in untransformed space
 julia> # but because we specified LinkAll(), the vectorised values are transformed
        vector_vals = get_vector_values(accs)
 VarNamedTuple
-├─ x => LinkedVectorValue{Vector{Float64}, ComposedFunction{typeof(identity), typeof(identity)}}([1.0, 2.0], identity ∘ identity)
-└─ y => LinkedVectorValue{Vector{Float64}, ComposedFunction{DynamicPPL.UnwrapSingletonTransform{Tuple{}}, ComposedFunction{Bijectors.Inverse{Bijectors.Logit{Float64, Float64}}, DynamicPPL.ReshapeTransform{Tuple{Int64}, Tuple{}}}}}([0.0], DynamicPPL.UnwrapSingletonTransform{Tuple{}}(()) ∘ (Bijectors.Inverse{Bijectors.Logit{Float64, Float64}}(Bijectors.Logit{Float64, Float64}(0.0, 1.0)) ∘ DynamicPPL.ReshapeTransform{Tuple{Int64}, Tuple{}}((1,), ())))
+├─ x => LinkedVectorValue{Vector{Float64}, Bijectors.VectorBijectors.TypedIdentity}([1.0, 2.0], Bijectors.VectorBijectors.TypedIdentity())
+└─ y => LinkedVectorValue{Vector{Float64}, Bijectors.VectorBijectors.OnlyWrap{Bijectors.VectorBijectors.Truncate{Float64, Float64}}}([0.0], Bijectors.VectorBijectors.OnlyWrap{Bijectors.VectorBijectors.Truncate{Float64, Float64}}(Bijectors.VectorBijectors.Truncate{Float64, Float64}(0.0, 1.0)))
 
 julia> # we can extract the internal values as a single vector
        internal_values_as_vector(vector_vals)
