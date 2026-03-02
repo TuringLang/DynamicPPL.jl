@@ -61,6 +61,9 @@ end
 function Bijectors.VectorBijectors.from_linked_vec(dist::MyMatrixDistribution)
     return TrilFromVec((dist.dim, dist.dim))
 end
+function Bijectors.VectorBijectors.to_linked_vec(dist::MyMatrixDistribution)
+    return TrilToVec((dist.dim, dist.dim))
+end
 
 @testset "Linking (mutable=$mutable)" for mutable in [false, true]
     @testset "simple matrix distribution" begin
