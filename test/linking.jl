@@ -67,7 +67,7 @@ end
         # Just making sure the transformations are okay.
         x = randn(3, 3)
         f = TrilToVec((3, 3))
-        f_inv = inverse(f)
+        f_inv = Bijectors.inverse(f)
         y = f(x)
         @test y isa AbstractVector
         @test f_inv(f(x)) == LowerTriangular(x)
@@ -128,7 +128,7 @@ end
                     @test val isa Cholesky
                     @test val.uplo == uplo
 
-                    @test length(vi[:]) == d^2
+                    @test length(vi[:]) == d * (d + 1) ÷ 2
                     lp = logpdf(dist, val)
                     lp_model = logjoint(model, vi)
                     @test lp_model ≈ lp
@@ -147,7 +147,7 @@ end
                     else
                         DynamicPPL.invlink(vi_linked, model)
                     end
-                    @test length(vi_invlinked[:]) == d^2
+                    @test length(vi_invlinked[:]) == d * (d + 1) ÷ 2
                     @test getlogjoint_internal(vi_invlinked) ≈ lp
                 end
             end

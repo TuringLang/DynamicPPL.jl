@@ -6,6 +6,7 @@ __now__ = now()
 
 using AbstractMCMC: AbstractMCMC
 using BangBang: setindex!!
+using Bijectors: Bijectors
 using DynamicPPL
 using Distributions
 using LinearAlgebra: I

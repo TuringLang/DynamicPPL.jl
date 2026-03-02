@@ -9,6 +9,7 @@ using AbstractPPL: AbstractPPL
 using Distributions: Normal, Exponential
 using DynamicPPL
 using MCMCChains: MCMCChains
+using Random: Random
 using Test
 
 function make_chain_from_prior(rng::Random.AbstractRNG, model::Model, n_iters::Int)

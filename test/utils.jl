@@ -92,10 +92,7 @@ end
         test_transformation(Binomial(10, 0.5))
         # Multivariate
         test_transformation(MvNormal(zeros(3), LinearAlgebra.I))
-        test_transformation(
-            product_distribution([Normal(), LogNormal()]);
-            test_bijector_type_stability=false,
-        )
+        test_transformation(product_distribution([Normal(), LogNormal()]))
         test_transformation(product_distribution([LogNormal(), LogNormal()]))
         # Matrixvariate
         test_transformation(LKJ(3, 0.5))

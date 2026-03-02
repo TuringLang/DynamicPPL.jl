@@ -33,23 +33,23 @@ _lkj_atol = 0.05
 @testset "Sample from x ~ LKJ(2, 1)" begin
     model = lkj_prior_demo()
     for init_strategy in [InitFromPrior(), InitFromUniform()]
-        samples = [
-            last(DynamicPPL.init!!(model, VarInfo(), init_strategy)) for _ in 1:n_samples
-        ]
-        @test mean(map(Base.Fix2(getindex, Colon()), samples)) ≈ target_mean atol =
-            _lkj_atol
+        corr_matrices = map(1:n_samples) do _
+            accs = DynamicPPL.OnlyAccsVarInfo(RawValueAccumulator(false))
+            _, accs = DynamicPPL.init!!(model, accs, init_strategy, UnlinkAll())
+            corr_sample = DynamicPPL.get_raw_values(accs)[@varname(x)]
+        end
+        @test vec(mean(corr_matrices)) ≈ target_mean atol = _lkj_atol
     end
 end
 
 @testset "Sample from x ~ LKJCholesky(2, 1, $(uplo))" for uplo in ['U', 'L']
     model = lkj_chol_prior_demo(uplo)
     for init_strategy in [InitFromPrior(), InitFromUniform()]
-        samples = [
-            last(DynamicPPL.init!!(model, VarInfo(), init_strategy)) for _ in 1:n_samples
-        ]
-        corr_matrices = map(samples) do s
-            M = reshape(DynamicPPL.getindex_internal(s, @varname(x)), (2, 2))
-            pd_from_triangular(M, uplo)
+        corr_matrices = map(1:n_samples) do _
+            accs = DynamicPPL.OnlyAccsVarInfo(RawValueAccumulator(false))
+            _, accs = DynamicPPL.init!!(model, accs, init_strategy, UnlinkAll())
+            chol_sample = DynamicPPL.get_raw_values(accs)[@varname(x)]
+            pd_from_triangular(chol_sample.UL.data, uplo)
         end
         @test vec(mean(corr_matrices)) ≈ target_mean atol = _lkj_atol
     end
