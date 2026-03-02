@@ -4,7 +4,6 @@ using AbstractPPL: AbstractPPL
 using Chairmarks
 using DynamicPPL
 using Distributions
-using DistributionsAD: filldist
 using ADTypes
 using DynamicPPL.TestUtils.AD: run_ad, WithExpectedResult, NoTest
 using LinearAlgebra: I

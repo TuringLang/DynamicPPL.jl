@@ -7,7 +7,6 @@ __now__ = now()
 using AbstractMCMC: AbstractMCMC
 using AbstractPPL: AbstractPPL
 using Distributions
-using DistributionsAD: filldist
 using DynamicPPL
 using LinearAlgebra: I, Cholesky
 using MCMCChains: MCMCChains

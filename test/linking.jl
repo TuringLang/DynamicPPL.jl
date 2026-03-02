@@ -6,7 +6,6 @@ __now__ = now()
 
 using DynamicPPL
 using Distributions
-using DistributionsAD: filldist
 using LinearAlgebra
 using Bijectors: Bijectors, inverse
 using Random: Random, randn!
