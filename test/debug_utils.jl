@@ -8,6 +8,18 @@ using DynamicPPL, Distributions, Test
 using LinearAlgebra: I
 using Random: Xoshiro
 
+function test_model_fails_check(model)
+    issuccess = check_model(model)
+    @test !issuccess
+    @test_throws ErrorException check_model(model; error_on_failure=true)
+end
+function test_model_can_run_but_fails_check(model)
+    # Check that it can actually run
+    @test VarInfo(model) isa VarInfo
+    # but if you call check_model it should fail
+    return test_model_fails_check(model)
+end
+
 @testset "check_model" begin
     @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
         @test check_model(model)
@@ -15,15 +27,6 @@ using Random: Xoshiro
     end
 
     @testset "multiple usage of same variable" begin
-        function test_model_can_run_but_fails_check(model)
-            # Check that it can actually run
-            @test VarInfo(model) isa VarInfo
-            # but if you call check_model it should fail
-            issuccess = check_model(model)
-            @test !issuccess
-            @test_throws ErrorException check_model(model; error_on_failure=true)
-        end
-
         @testset "simple" begin
             @model function buggy_demo_model()
                 x ~ Normal()
@@ -86,7 +89,7 @@ using Random: Xoshiro
                 return x ~ MvNormal(zeros(length(x)), I)
             end
             model = demo_missing_in_multivariate([1.0, missing])
-            @test_throws ErrorException check_model(model; error_on_failure=true)
+            test_model_fails_check(model)
         end
 
         @testset "condition both in args and context" begin

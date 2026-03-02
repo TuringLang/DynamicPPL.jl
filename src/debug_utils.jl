@@ -81,6 +81,7 @@ end
 function DynamicPPL.accumulate_observe!!(
     acc::DebugAccumulator, right::Distribution, val, vn::Union{VarName,Nothing}, template
 )
+    failed = acc.failed
     if _has_partial_missings(val, right)
         msg = if vn === nothing
             "on the left-hand side of an observe statement"
@@ -94,7 +95,7 @@ function DynamicPPL.accumulate_observe!!(
             " It is not currently possible to set part but not all of a distribution" *
             " to be `missing`."
         @warn full_msg
-        acc.failed = true
+        failed = true
     end
     # Check for NaN's as well
     if _has_nans(val)
@@ -103,9 +104,9 @@ function DynamicPPL.accumulate_observe!!(
             " observe statement; this may indicate that your data" *
             " contain NaN values."
         @warn msg
-        acc.failed = true
+        failed = true
     end
-    return acc
+    return DebugAccumulator(failed)
 end
 
 """
