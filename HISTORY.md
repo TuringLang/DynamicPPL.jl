@@ -1,3 +1,7 @@
+# 0.40.2
+
+Fix a bug where `DebugAccumulator` was being improperly mutated during model checks.
+
 # 0.40.1
 
 Fix AD performance with ReverseDiff (v0.39.9 inadvertently introduced a bug that did not cause any correctness issues, but did cause severe slowdowns with ReverseDiff -- this patch reverts that).
