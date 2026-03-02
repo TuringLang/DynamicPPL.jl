@@ -64,18 +64,18 @@ function Distributions.logpdf(::NoDist{<:Matrixvariate}, x::AbstractMatrix{<:Rea
 end
 
 for f in (
-    Bijectors.VectorBijectors.from_linked_vec,
-    Bijectors.VectorBijectors.to_linked_vec,
-    Bijectors.VectorBijectors.from_vec,
-    Bijectors.VectorBijectors.to_vec,
-    Bijectors.VectorBijectors.vec_length,
-    Bijectors.VectorBijectors.linked_vec_length,
-    Bijectors.VectorBijectors.optic_vec,
-    Bijectors.VectorBijectors.linked_optic_vec,
-    Base.length,
-    Base.size,
-    Distributions.minimum,
-    Distributions.maximum,
+    :(Bijectors.VectorBijectors.from_linked_vec),
+    :(Bijectors.VectorBijectors.to_linked_vec),
+    :(Bijectors.VectorBijectors.from_vec),
+    :(Bijectors.VectorBijectors.to_vec),
+    :(Bijectors.VectorBijectors.vec_length),
+    :(Bijectors.VectorBijectors.linked_vec_length),
+    :(Bijectors.VectorBijectors.optic_vec),
+    :(Bijectors.VectorBijectors.linked_optic_vec),
+    :(Base.length),
+    :(Base.size),
+    :(Distributions.minimum),
+    :(Distributions.maximum),
 )
     @eval $f(d::NoDist) = $f(d.dist)
     @eval $f(d::NamedDist) = $f(d.dist)
