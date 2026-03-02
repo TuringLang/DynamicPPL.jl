@@ -1,3 +1,7 @@
+# 0.40.3
+
+Added a convenience function, `get_priors(::AbstractVarInfo)`, which extracts the `VarNamedTuple` of prior distributions from a VarInfo that contains a `PriorDistributionAccumulator`.
+
 # 0.40.2
 
 Fix a bug where `DebugAccumulator` was being improperly mutated during model checks.
