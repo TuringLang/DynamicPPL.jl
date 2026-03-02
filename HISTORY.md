@@ -1,3 +1,7 @@
+# 0.40.4
+
+Moved `filldist` and `arraydist` from DistributionsAD.jl to DynamicPPL.jl (with greatly simplified definitions).
+
 # 0.40.3
 
 Added a convenience function, `get_priors(::AbstractVarInfo)`, which extracts the `VarNamedTuple` of prior distributions from a VarInfo that contains a `PriorDistributionAccumulator`.

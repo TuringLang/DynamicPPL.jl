@@ -1,6 +1,12 @@
-using Distributions: Distributions
 using Bijectors: Bijectors
-using Distributions: Univariate, Multivariate, Matrixvariate
+using Distributions:
+    Distributions,
+    Univariate,
+    Multivariate,
+    Matrixvariate,
+    product_distribution,
+    UnivariateDistribution
+using FillArrays: Fill
 
 """
 A named distribution that carries the name of the random variable with it.
@@ -89,3 +95,46 @@ function Bijectors.logpdf_with_trans(
 end
 
 Bijectors.bijector(d::NoDist) = Bijectors.bijector(d.dist)
+
+"""
+    filldist(d::Distribution, ns...)
+
+Create a product distribution from a single distribution and a list of dimension sizes. If
+`size(d)` is `(d1, d2, ...)` and `ns` is `(n1, n2, ...)`, then the resulting distribution
+will have size `(d1, d2, ..., n1, n2, ...)`.
+
+When sampling from the resulting distribution, the output will be an array where each
+element is sampled from the original distribution `d`.
+
+This is a convenient wrapper around `product_distribution(FillArrays.Fill(d, ns...))`.
+
+!!! note
+    `filldist` used to be defined in DistributionsAD.jl. The definition here is semantically
+    equivalent, but removes a lot of custom code that is no longer needed nowadays.
+"""
+function filldist(dist::Distribution, dim::Int, dims::Int...)
+    return product_distribution(Fill(dist, dim, dims...))
+end
+
+"""
+    arraydist(dists::AbstractArray{<:Distribution})
+
+Create a product distribution from an array of sub-distributions. Each element of `dists`
+should have the same size. If the size of each element is `(d1, d2, ...)`, and `size(dists)`
+is `(n1, n2, ...)`, then the resulting distribution will have size `(d1, d2, ..., n1, n2,
+...)`.
+
+This is equivalent to `product_distribution(dists)`, but can be more performant in some
+instances (specifically when `dists` is a vector of `Normal`s).
+
+!!! note
+    `arraydist` used to be defined in DistributionsAD.jl. The definition here is
+    semantically equivalent, but removes a lot of custom code that is no longer needed
+    nowadays.
+"""
+function arraydist(dists::AbstractArray{<:Distribution})
+    return product_distribution(dists)
+end
+function arraydist(dists::AbstractVector{<:UnivariateDistribution})
+    return Product(dists)
+end
