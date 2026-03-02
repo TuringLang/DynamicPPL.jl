@@ -2,6 +2,7 @@ module DebugUtils
 
 using ..DynamicPPL
 
+using Bijectors: Bijectors
 using Random: Random
 using InteractiveUtils: InteractiveUtils
 using Distributions
