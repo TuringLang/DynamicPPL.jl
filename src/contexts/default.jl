@@ -42,7 +42,7 @@ function tilde_assume!!(
     trf = if tval isa LinkedVectorValue
         # Note that we can't rely on the stored transform being correct (e.g. if new values
         # were placed in `vi` via `unflatten!!`, so we regenerate the transforms.
-        Bijectors.VectorBijectors.grom_linked_vec(right)
+        Bijectors.VectorBijectors.from_linked_vec(right)
     elseif tval isa VectorValue
         Bijectors.VectorBijectors.from_vec(right)
     else
