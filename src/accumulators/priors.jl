@@ -9,6 +9,16 @@ An accumulator that stores the prior distributions of every variable seen in a m
 PriorDistributionAccumulator() = VNTAccumulator{PRIOR_ACCNAME}(_get_dist)
 
 """
+    get_priors(vi::DynamicPPL.AbstractVarInfo)
+
+Extract the priors stored in the `PriorDistributionAccumulator` of an AbstractVarInfo.
+Errors if the AbstractVarInfo does not have a `PriorDistributionAccumulator`.
+"""
+function get_priors(vi::DynamicPPL.AbstractVarInfo)
+    return DynamicPPL.getacc(vi, Val(PRIOR_ACCNAME)).values
+end
+
+"""
     extract_priors([rng::Random.AbstractRNG, ]model::Model)
 
 Extract the priors from a model. This is done by sampling from the model and recording the
