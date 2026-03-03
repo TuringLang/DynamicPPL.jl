@@ -35,9 +35,6 @@ MarginalLogDensities = "f0c3360a-fb8d-11e9-1194-5521fd7ee392"
 Mooncake = "da2b9cff-9c12-43a0-ae48-6db2b0edb7d6"
 ReverseDiff = "37e2e3b7-166d-5795-8a7a-e32c996b4267"
 
-[sources]
-Bijectors = {url = "https://github.com/TuringLang/Bijectors.jl", rev = "py/vec2"}
-
 [extensions]
 DynamicPPLEnzymeCoreExt = ["EnzymeCore"]
 DynamicPPLForwardDiffExt = ["ForwardDiff"]
