@@ -119,10 +119,9 @@ end
             return nothing
         end
         model = m2()
-        ldf = DynamicPPL.LogDensityFunction(model)
+        ldf = DynamicPPL.LogDensityFunction(model, getlogjoint_internal, UnlinkAll())
         @test LogDensityProblems.dimension(ldf) == 5
-        linked_vi = DynamicPPL.link!!(VarInfo(model), model)
-        ldf = DynamicPPL.LogDensityFunction(model, getlogjoint_internal, linked_vi)
+        ldf = DynamicPPL.LogDensityFunction(model, getlogjoint_internal, LinkAll())
         @test LogDensityProblems.dimension(ldf) == 4
     end
 
@@ -151,10 +150,9 @@ end
             return sll.scale * getloglikelihood(vi)
         end
         model = f()
-        vi = VarInfo(model)
         sll = ScaledLogLike(2.0)
-        ldf = DynamicPPL.LogDensityFunction(model, sll, vi)
-        x = vi[:]
+        ldf = DynamicPPL.LogDensityFunction(model, sll)
+        x = [0.5]
         @test LogDensityProblems.logdensity(ldf, x) == sll.scale * logpdf(Normal(x[1]), 1.0)
     end
 
@@ -178,14 +176,11 @@ end
         end
         model = demo_error()
         # check that passing accs as a tuple works
-        ldf = LogDensityFunction(model, getlogjoint, VarInfo(model), (ErrorAccumulator(),))
+        ldf = LogDensityFunction(model, getlogjoint, UnlinkAll(), (ErrorAccumulator(),))
         @test_throws ErrorAccumulatorException LogDensityProblems.logdensity(ldf, [0.0])
         # check that passing accs as AccumulatorTuple also works
         ldf = LogDensityFunction(
-            model,
-            getlogjoint,
-            VarInfo(model),
-            DynamicPPL.AccumulatorTuple(ErrorAccumulator()),
+            model, getlogjoint, UnlinkAll(), DynamicPPL.AccumulatorTuple(ErrorAccumulator())
         )
         @test_throws ErrorAccumulatorException LogDensityProblems.logdensity(ldf, [0.0])
     end
@@ -256,10 +251,7 @@ end
         LinkSome(Set([@varname(x)]), UnlinkAll()),
         UnlinkSome(Set([@varname(x)]), LinkAll()),
     )
-        accs = OnlyAccsVarInfo(VectorValueAccumulator())
-        _, accs = init!!(model, accs, InitFromPrior(), transform_strategy)
-        vvals = get_vector_values(accs)
-        ldf = LogDensityFunction(model, getlogjoint_internal, vvals)
+        ldf = LogDensityFunction(model, getlogjoint_internal, transform_strategy)
 
         @testset "InitFromVector -> raw values" begin
             # Test that initialising a model with `InitFromVector` will generate the correct
@@ -384,15 +376,11 @@ end
 
 @testset "LogDensityFunction: Type stability" begin
     @testset "$(m.f)" for m in DynamicPPL.TestUtils.ALL_MODELS
-        @testset "$islinked" for islinked in (false, true)
-            unlinked_vi = DynamicPPL.VarInfo(m)
-            vi = if islinked
-                DynamicPPL.link!!(unlinked_vi, m)
-            else
-                unlinked_vi
-            end
-            ldf = DynamicPPL.LogDensityFunction(m, DynamicPPL.getlogjoint_internal, vi)
-            x = vi[:]
+        @testset "$tfm_strategy" for tfm_strategy in (UnlinkAll(), LinkAll())
+            ldf = DynamicPPL.LogDensityFunction(
+                m, DynamicPPL.getlogjoint_internal, tfm_strategy
+            )
+            x = rand(ldf)
             # The below type inference fails on v1.10.
             skip = (VERSION < v"1.11.0" && m.f === DynamicPPL.TestUtils.demo_nested_colons)
             @test begin
@@ -425,11 +413,12 @@ end
     end
     @testset for model in
                  (f(), submodel_inner() | (; s=0.0), submodel_outer(submodel_inner()))
-        vi = VarInfo(model)
-        ldf = DynamicPPL.LogDensityFunction(model, DynamicPPL.getlogjoint_internal, vi)
-        x = vi[:]
-        bench = median(@be LogDensityProblems.logdensity($ldf, $x))
-        @test iszero(bench.allocs)
+        @testset for tfm_strategy in (UnlinkAll(), LinkAll())
+            ldf = DynamicPPL.LogDensityFunction(model, getlogjoint_internal, tfm_strategy)
+            x = rand(ldf)
+            bench = median(@be LogDensityProblems.logdensity($ldf, $x))
+            @test iszero(bench.allocs)
+        end
     end
 end
 
@@ -445,10 +434,11 @@ end
 
     @testset "Correctness" begin
         @testset "$(m.f)" for m in DynamicPPL.TestUtils.ALL_MODELS
-            varinfo = VarInfo(m)
-            linked_varinfo = DynamicPPL.link(varinfo, m)
+            # TODO: remove generation of linked_varinfo directly once run_ad takes a
+            # transform argument instead of varinfo
+            linked_varinfo = link!!(VarInfo(m), m)
             f = LogDensityFunction(m, getlogjoint_internal, linked_varinfo)
-            x = [p for p in linked_varinfo[:]]
+            x = linked_varinfo[:]
 
             # Calculate reference logp + gradient of logp using ForwardDiff
             ref_ad_result = run_ad(m, ref_adtype; varinfo=linked_varinfo, test=NoTest())

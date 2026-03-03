@@ -62,19 +62,17 @@ The new pattern recognises that in practice you are likely using `vi[:]` [in con
 So we make one first:
 
 ```@example 1
-accs = OnlyAccsVarInfo(VectorValueAccumulator())
-_, vi = init!!(Xoshiro(468), model, accs, InitFromPrior(), LinkAll())
-ldf = LogDensityFunction(model, getlogjoint_internal, vi)
+ldf = LogDensityFunction(model, getlogjoint_internal, LinkAll())
 nothing # hide
 ```
 
 Then you can do:
 
 ```@example 1
-vec = to_vector_params(get_vector_values(vi), ldf)
+rand(Xoshiro(468), ldf)
 ```
 
-(Note that to generate unlinked parameters, just replace `LinkAll()` with `UnlinkAll()` in the call to `init!!` above.)
+This gives you a set of parameters, but if you want to *also* obtain the log-density at the new parameters, you can do this in a single call to `init!!`; please see the [documentation on `LogDensityFunction`](@ref ldf-model) for more details on how to do this.
 
 ## Re-evaluating log density at new parameters
 
@@ -93,7 +91,10 @@ vi
 The new path *also* assumes that you are using a `LogDensityFunction`:
 
 ```@example 1
-ldf = LogDensityFunction(model, getlogjoint_internal, vi)
+# Note that we use `UnlinkAll()` here to match the VarInfo above.
+# If your VarInfo was linked, you should use `LinkAll()` instead.
+
+ldf = LogDensityFunction(model, getlogjoint_internal, UnlinkAll())
 ```
 
 Then you can do:

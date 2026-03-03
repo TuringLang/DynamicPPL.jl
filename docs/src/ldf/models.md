@@ -17,11 +17,7 @@ using DynamicPPL, Distributions
 end
 model = f()
 
-accs = OnlyAccsVarInfo(VectorValueAccumulator())
-_, accs = init!!(model, accs, InitFromPrior(), LinkAll())
-vector_values = get_vector_values(accs)
-
-ldf = LogDensityFunction(model, getlogjoint_internal, vector_values)
+ldf = LogDensityFunction(model, getlogjoint_internal, LinkAll())
 ```
 
 ## Evaluating models using vectorised parameters

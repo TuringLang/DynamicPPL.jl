@@ -140,9 +140,7 @@ For example, consider creating a linked `LogDensityFunction` for (a slightly exp
 end
 model = expanded_dirichlet()
 
-vi = VarInfo(model)
-linked_vi = DynamicPPL.link!!(vi, model)
-ldf = LogDensityFunction(model, DynamicPPL.getlogjoint_internal, linked_vi)
+ldf = LogDensityFunction(model, DynamicPPL.getlogjoint_internal, LinkAll())
 nothing # hide
 ```
 
