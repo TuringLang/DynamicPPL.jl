@@ -104,15 +104,9 @@ struct InitFromUniform{T<:AbstractFloat} <: AbstractInitStrategy
     InitFromUniform() = InitFromUniform(-2.0, 2.0)
 end
 function init(rng::Random.AbstractRNG, ::VarName, dist::Distribution, u::InitFromUniform)
-    b = Bijectors.bijector(dist)
-    sz = Bijectors.output_size(b, dist)
-    # TODO(penelopeysm): This is stupid, and is really just because `output_size` doesn't
-    # give us **exactly** the info that we want. VectorBijectors will solve this since we
-    # get `linked_vec_length(dist)` which directly tells us how many elements we need to
-    # sample.
-    real_sz = prod(sz)
-    y = u.lower .+ ((u.upper - u.lower) .* rand(rng, real_sz))
-    return LinkedVectorValue(y, from_linked_vec_transform(dist))
+    sz = Bijectors.VectorBijectors.linked_vec_length(dist)
+    y = u.lower .+ ((u.upper - u.lower) .* rand(rng, sz))
+    return LinkedVectorValue(y, Bijectors.VectorBijectors.from_linked_vec(dist))
 end
 
 """
@@ -188,10 +182,10 @@ function init(
             # In this case, we can't trust the transform stored in x because the _value_
             # in x may have been changed via unflatten!! without the transform being
             # updated. Therefore, we always recompute the transform here.
-            VectorValue(x.val, from_vec_transform(dist))
+            VectorValue(x.val, Bijectors.VectorBijectors.from_vec(dist))
         elseif x isa LinkedVectorValue
             # Same as above.
-            LinkedVectorValue(x.val, from_linked_vec_transform(dist))
+            LinkedVectorValue(x.val, Bijectors.VectorBijectors.from_linked_vec(dist))
         elseif x isa UntransformedValue
             x
         else
@@ -230,10 +224,10 @@ function init(
             # In this case, we can't trust the transform stored in x because the _value_
             # in x may have been changed via unflatten!! without the transform being
             # updated. Therefore, we always recompute the transform here.
-            VectorValue(x.val, from_vec_transform(dist))
+            VectorValue(x.val, Bijectors.VectorBijectors.from_vec(dist))
         elseif x isa LinkedVectorValue
             # Same as above.
-            LinkedVectorValue(x.val, from_linked_vec_transform(dist))
+            LinkedVectorValue(x.val, Bijectors.VectorBijectors.from_linked_vec(dist))
         elseif x isa UntransformedValue
             x
         else
@@ -249,15 +243,7 @@ function DynamicPPL.get_param_eltype(p::InitFromParamsUnsafe)
     # ADTypeCheckContext tests. However, when we stop using DefaultContext and start using
     # this as its replacement, we will need this function so that we can promote the
     # accumulators' eltype accordingly (unless we find a better solution than eltypes).
-    # 
-    # Note that pair.second returns internal values.
-    vals = mapfoldl(
-        pair -> tovec(DynamicPPL.get_internal_value(pair.second)),
-        vcat,
-        p.params;
-        init=Union{}[],
-    )
-    return eltype(vals)
+    return eltype(DynamicPPL.internal_values_as_vector(p.params))
 end
 
 """
@@ -338,13 +324,13 @@ function init(::Random.AbstractRNG, vn::VarName, dist::Distribution, ifv::InitFr
     # This block here is why we store transform_strategy inside the InitFromVector, as it
     # allows for type stability.
     return if ifv.transform_strategy isa LinkAll
-        LinkedVectorValue(vect, from_linked_vec_transform(dist))
+        LinkedVectorValue(vect, Bijectors.VectorBijectors.from_linked_vec(dist))
     elseif ifv.transform_strategy isa UnlinkAll
-        VectorValue(vect, from_vec_transform(dist))
+        VectorValue(vect, Bijectors.VectorBijectors.from_vec(dist))
     elseif range_and_linked.is_linked
-        LinkedVectorValue(vect, from_linked_vec_transform(dist))
+        LinkedVectorValue(vect, Bijectors.VectorBijectors.from_linked_vec(dist))
     else
-        VectorValue(vect, from_vec_transform(dist))
+        VectorValue(vect, Bijectors.VectorBijectors.from_vec(dist))
     end
 end
 function get_param_eltype(strategy::InitFromVector)

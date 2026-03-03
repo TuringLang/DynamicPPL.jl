@@ -9,7 +9,23 @@ using AbstractPPL: AbstractPPL
 using Distributions: Normal, Exponential
 using DynamicPPL
 using MCMCChains: MCMCChains
+using Random: Random
 using Test
+
+function make_chain_from_prior(rng::Random.AbstractRNG, model::Model, n_iters::Int)
+    vi = DynamicPPL.OnlyAccsVarInfo((
+        DynamicPPL.default_accumulators()..., DynamicPPL.RawValueAccumulator(false)
+    ))
+    ps = hcat([
+        DynamicPPL.ParamsWithStats(
+            last(DynamicPPL.init!!(rng, model, vi, InitFromPrior(), UnlinkAll()))
+        ) for _ in 1:n_iters
+    ])
+    return AbstractMCMC.from_samples(MCMCChains.Chains, ps)
+end
+function make_chain_from_prior(model::Model, n_iters::Int)
+    return make_chain_from_prior(Random.default_rng(), model, n_iters)
+end
 
 @testset "pointwise_logdensities.jl" begin
     @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
@@ -49,60 +65,50 @@ using Test
 end
 
 @testset "pointwise_logdensities chain" begin
-    model = DynamicPPL.TestUtils.demo_assume_index_observe()
-    vns = DynamicPPL.TestUtils.varnames(model)
-    # Get some random `NamedTuple` samples from the prior.
-    num_iters = 3
-    vals = [DynamicPPL.TestUtils.rand_prior_true(model) for _ in 1:num_iters]
-    # Concatenate the vector representations and create a `Chains` from it.
-    vals_arr = reduce(hcat, mapreduce(DynamicPPL.tovec, vcat, values(nt)) for nt in vals)
-    chain = MCMCChains.Chains(
-        permutedims(vals_arr),
-        map(Symbol, vns);
-        info=(varname_to_symbol=Dict(vn => Symbol(vn) for vn in vns),),
-    )
+    @testset "correctness" begin
+        model = DynamicPPL.TestUtils.demo_assume_index_observe()
+        vns = DynamicPPL.TestUtils.varnames(model)
+        num_iters = 10
+        chain = make_chain_from_prior(model, num_iters)
 
-    # Compute the different pointwise logdensities.
-    logjoints_pointwise = pointwise_logdensities(model, chain)
-    logpriors_pointwise = pointwise_prior_logdensities(model, chain)
-    loglikelihoods_pointwise = pointwise_loglikelihoods(model, chain)
+        # Compute the different pointwise logdensities.
+        logjoints_pointwise = pointwise_logdensities(model, chain)
+        logpriors_pointwise = pointwise_prior_logdensities(model, chain)
+        loglikelihoods_pointwise = pointwise_loglikelihoods(model, chain)
 
-    # Check output type
-    @test logjoints_pointwise isa MCMCChains.Chains
-    @test logpriors_pointwise isa MCMCChains.Chains
-    @test loglikelihoods_pointwise isa MCMCChains.Chains
+        # Check output type
+        @test logjoints_pointwise isa MCMCChains.Chains
+        @test logpriors_pointwise isa MCMCChains.Chains
+        @test loglikelihoods_pointwise isa MCMCChains.Chains
 
-    # Check that they contain the correct variables.
-    @test all(Symbol(vn) in keys(logjoints_pointwise) for vn in vns)
-    @test all(Symbol(vn) in keys(logpriors_pointwise) for vn in vns)
-    @test !any(Base.Fix1(startswith, "x"), String.(keys(logpriors_pointwise)))
-    @test !any(Symbol(vn) in keys(loglikelihoods_pointwise) for vn in vns)
-    @test all(Base.Fix1(startswith, "x"), String.(keys(loglikelihoods_pointwise)))
+        # Check that they contain the correct variables.
+        @test all(Symbol(vn) in keys(logjoints_pointwise) for vn in vns)
+        @test all(Symbol(vn) in keys(logpriors_pointwise) for vn in vns)
+        @test !any(Base.Fix1(startswith, "x"), String.(keys(logpriors_pointwise)))
+        @test !any(Symbol(vn) in keys(loglikelihoods_pointwise) for vn in vns)
+        @test all(Base.Fix1(startswith, "x"), String.(keys(loglikelihoods_pointwise)))
 
-    # Get the sum of the logjoints for each of the iterations.
-    logjoints = [
-        sum(logjoints_pointwise[vn][idx] for vn in keys(logjoints_pointwise)) for
-        idx in 1:num_iters
-    ]
-    logpriors = [
-        sum(logpriors_pointwise[vn][idx] for vn in keys(logpriors_pointwise)) for
-        idx in 1:num_iters
-    ]
-    loglikelihoods = [
-        sum(loglikelihoods_pointwise[vn][idx] for vn in keys(loglikelihoods_pointwise)) for
-        idx in 1:num_iters
-    ]
+        # Get the sum of the logjoints for each of the iterations.
+        logjoints = [
+            sum(logjoints_pointwise[vn][idx] for vn in keys(logjoints_pointwise)) for
+            idx in 1:num_iters
+        ]
+        logpriors = [
+            sum(logpriors_pointwise[vn][idx] for vn in keys(logpriors_pointwise)) for
+            idx in 1:num_iters
+        ]
+        loglikelihoods = [
+            sum(loglikelihoods_pointwise[vn][idx] for vn in keys(loglikelihoods_pointwise))
+            for idx in 1:num_iters
+        ]
 
-    for (val, logjoint, logprior, loglikelihood) in
-        zip(vals, logjoints, logpriors, loglikelihoods)
-        # Compare true logjoint with the one obtained from `pointwise_logdensities`.
-        logjoint_true = DynamicPPL.TestUtils.logjoint_true(model, val...)
-        logprior_true = DynamicPPL.TestUtils.logprior_true(model, val...)
-        loglikelihood_true = DynamicPPL.TestUtils.loglikelihood_true(model, val...)
+        expected_logjoints = logjoint(model, chain)
+        expected_logpriors = logprior(model, chain)
+        expected_loglikelihoods = loglikelihood(model, chain)
 
-        @test logjoint ≈ logjoint_true
-        @test logprior ≈ logprior_true
-        @test loglikelihood ≈ loglikelihood_true
+        @test logjoints ≈ expected_logjoints
+        @test logpriors ≈ expected_logpriors
+        @test loglikelihoods ≈ expected_loglikelihoods
     end
 
     @testset "errors when variables are missing" begin

@@ -55,51 +55,7 @@ end
     end
 
     @testset "transformations" begin
-        function test_transformation(
-            dist::Distribution; test_bijector_type_stability::Bool=true
-        )
-            unlinked = rand(dist)
-            unlinked_vec = DynamicPPL.tovec(unlinked)
-            @test unlinked_vec isa AbstractVector
-
-            from_vec_trfm = DynamicPPL.from_vec_transform(dist)
-            unlinked_again, logjac = Bijectors.with_logabsdet_jacobian(
-                from_vec_trfm, unlinked_vec
-            )
-            @test isapprox_nested(unlinked, unlinked_again)
-            @test iszero(logjac)
-            # Type stability
-            @inferred DynamicPPL.from_vec_transform(dist)
-            @inferred Bijectors.with_logabsdet_jacobian(from_vec_trfm, unlinked_vec)
-
-            # Typically the same as `bijector(dist)`, but technically a different
-            # function
-            b = DynamicPPL.link_transform(dist)
-            @test (b(unlinked); true)
-            linked, logjac = Bijectors.with_logabsdet_jacobian(b, unlinked)
-            @test logjac isa Real
-
-            binv = DynamicPPL.invlink_transform(dist)
-            unlinked_again, logjac_inv = Bijectors.with_logabsdet_jacobian(binv, linked)
-            @test isapprox_nested(unlinked, unlinked_again)
-            @test isapprox(logjac, -logjac_inv)
-
-            linked_vec = DynamicPPL.tovec(linked)
-            @test linked_vec isa AbstractVector
-            from_linked_vec_trfm = DynamicPPL.from_linked_vec_transform(dist)
-            unlinked_again_again = from_linked_vec_trfm(linked_vec)
-            @test isapprox_nested(unlinked, unlinked_again_again)
-
-            # Sometimes the bijector itself is not type stable. In this case there is not
-            # much we can do in DynamicPPL except skip these tests (it has to be fixed
-            # upstream in Bijectors.)
-            if test_bijector_type_stability
-                @inferred DynamicPPL.from_linked_vec_transform(dist)
-                @inferred Bijectors.with_logabsdet_jacobian(
-                    from_linked_vec_trfm, linked_vec
-                )
-            end
-
+        function test_transformation(dist::Distribution)
             # Create a model and check that we can evaluate it with both unlinked and linked
             # VarInfo. This relies on the transformations working correctly so is more of an
             # 'end to end' test
@@ -136,10 +92,7 @@ end
         test_transformation(Binomial(10, 0.5))
         # Multivariate
         test_transformation(MvNormal(zeros(3), LinearAlgebra.I))
-        test_transformation(
-            product_distribution([Normal(), LogNormal()]);
-            test_bijector_type_stability=false,
-        )
+        test_transformation(product_distribution([Normal(), LogNormal()]))
         test_transformation(product_distribution([LogNormal(), LogNormal()]))
         # Matrixvariate
         test_transformation(LKJ(3, 0.5))
@@ -186,18 +139,6 @@ end
         @test DynamicPPL.getargs_tilde(:(@. x ~ Normal(μ, $(Expr(:$, :(sqrt(v))))))) ===
             nothing
         @test DynamicPPL.getargs_tilde(:(@~ Normal.(μ, σ))) === nothing
-    end
-
-    @testset "tovec" begin
-        dist = LKJCholesky(2, 1)
-        x = rand(dist)
-        @test DynamicPPL.tovec(x) == vec(x.UL)
-
-        nt = (a=[1, 2], b=3.0)
-        @test DynamicPPL.tovec(nt) == [1, 2, 3.0]
-
-        t = (2.0, [3.0, 4.0])
-        @test DynamicPPL.tovec(t) == [2.0, 3.0, 4.0]
     end
 end
 

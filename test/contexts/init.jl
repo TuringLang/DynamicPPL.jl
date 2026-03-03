@@ -88,7 +88,7 @@ using Test
         # precedence when determining whether variables are linked or not.
         @testset "check that transform strategy is respected: $(typeof(strategy))" begin
             dist = LogNormal()
-            from_linked_vec = DynamicPPL.from_linked_vec_transform(dist)
+            from_linked_vec = Bijectors.VectorBijectors.from_linked_vec(dist)
             @model function logn()
                 a ~ dist
                 return b ~ dist

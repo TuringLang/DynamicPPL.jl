@@ -1,6 +1,7 @@
 module DynamicPPLLDFTests
 
 using AbstractPPL: AbstractPPL
+using Bijectors: Bijectors
 using Chairmarks
 using DynamicPPL
 using Distributions
@@ -15,29 +16,6 @@ using ReverseDiff: ReverseDiff
 using Mooncake: Mooncake
 
 @testset "LogDensityFunction: Correctness" begin
-    @testset "$(m.f)" for m in DynamicPPL.TestUtils.ALL_MODELS
-        @testset "$islinked" for islinked in (false, true)
-            unlinked_vi = DynamicPPL.VarInfo(m)
-            vi = if islinked
-                DynamicPPL.link!!(unlinked_vi, m)
-            else
-                unlinked_vi
-            end
-            ranges = DynamicPPL.get_ranges_and_linked(vi.values)
-            params = [x for x in vi[:]]
-            # Iterate over all variables
-            for vn in keys(vi)
-                # Check that `getindex_internal` returns the same thing as using the ranges
-                # directly
-                range_with_linked = ranges[vn]
-                @test params[range_with_linked.range] ==
-                    DynamicPPL.tovec(DynamicPPL.getindex_internal(vi, vn))
-                # Check that the link status is correct
-                @test range_with_linked.is_linked == islinked
-            end
-        end
-    end
-
     @testset "Threaded observe" begin
         @model function threaded(y)
             x ~ Normal()
@@ -164,14 +142,14 @@ end
         # Manually construct the vector of values that we're interested in. This function
         # assumes that `x` will come before `y` in the LDF!
         xvec = if target_transform(transform_strategy, @varname(x)) isa DynamicLink
-            DynamicPPL.to_linked_vec_transform(xdist)(xraw)
+            Bijectors.VectorBijectors.to_linked_vec(xdist)(xraw)
         else
-            DynamicPPL.to_vec_transform(xdist)(xraw)
+            Bijectors.VectorBijectors.to_vec(xdist)(xraw)
         end
         yvec = if target_transform(transform_strategy, @varname(y)) isa DynamicLink
-            DynamicPPL.to_linked_vec_transform(ydist)(yraw)
+            Bijectors.VectorBijectors.to_linked_vec(ydist)(yraw)
         else
-            DynamicPPL.to_vec_transform(ydist)(yraw)
+            Bijectors.VectorBijectors.to_vec(ydist)(yraw)
         end
         return vcat(xvec, yvec)
     end

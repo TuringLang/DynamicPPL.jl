@@ -29,11 +29,11 @@ end
 function accumulate_assume!!(
     acc::BijectorAccumulator, val, tval, logjac, vn, right, template
 )
-    bijector = _compose_no_identity(
-        to_linked_vec_transform(right), from_vec_transform(right)
-    )
+    bijector =
+        Bijectors.VectorBijectors.to_linked_vec(right) ∘
+        Bijectors.VectorBijectors.from_vec(right)
     push!(acc.bijectors, bijector)
-    push!(acc.sizes, prod(output_size(to_vec_transform(right), right); init=1))
+    push!(acc.sizes, Bijectors.VectorBijectors.vec_length(right))
     return acc
 end
 

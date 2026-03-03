@@ -2,6 +2,7 @@ module DebugUtils
 
 using ..DynamicPPL
 
+using Bijectors: Bijectors
 using Random: Random
 using InteractiveUtils: InteractiveUtils
 using Distributions
@@ -304,7 +305,9 @@ function has_static_constraints(rng::Random.AbstractRNG, model::Model; num_evals
     for vn in all_vns
         # Check that the bijector for `vn` is the same across all runs. (Note that
         # the distribution can vary, as long as the bijector doesn't change)
-        bijectors = map(vnts -> DynamicPPL.link_transform(vnts[vn]), prior_vnts)
+        bijectors = map(
+            vnts -> Bijectors.VectorBijectors.from_linked_vec(vnts[vn]), prior_vnts
+        )
         if !isempty(bijectors) && any(b -> b != bijectors[1], bijectors)
             return false
         end
