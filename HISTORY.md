@@ -1,7 +1,6 @@
 # 0.40.6
 
 Add an extra constructor for `LogDensityFunction(::Model, logdensity_function, ::AbstractTransformStrategy[, accs; adtype])`, which is a shorthand for generating the vectorised values according to the given transform strategy, and then calling the existing constructor with those values.
-
 This allows you to conveniently construct a linked `LogDensityFunction` in one line via
 
 ```julia
@@ -9,6 +8,12 @@ ldf = LogDensityFunction(model, logdensity_function, LinkAll())
 ```
 
 instead of the old route where you had to create a `VarInfo` or `VectorValueAccumulator` first.
+
+Added a method `rand([rng,] ::LogDensityFunction[, init_strategy])` which allows you to sample new parameter vectors from a `LogDensityFunction` directly.
+
+Added a `transform_strategy` keyword argument to `DynamicPPL.TestUtils.run_ad`.
+It is intended to (eventually) replace the `varinfo` keyword argument; however, for now both are still supported for backwards compatibility.
+If both `varinfo` and `transform_strategy` are passed, then `varinfo` takes precedence.
 
 # 0.40.5
 
