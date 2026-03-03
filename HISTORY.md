@@ -1,3 +1,12 @@
+# 0.40.5
+
+Remove DynamicPPL's internal variable transformation code and replace it directly with the new `Bijectors.VectorBijectors` module.
+There should be no difference for end-users, _apart from_ increased performance in many cases.
+
+If you were extending the internal `from_vec_transform`, `to_vec_transform`, `from_linked_vec_transform`, `to_linked_vec_transform`, or `tovec` methods, please note that these have been removed.
+In place of this, you should implement the `Bijectors.VectorBijectors` interface, which is public and is guaranteed to be semver-compliant now onwards.
+Please see [the Bijectors documentation](https://turinglang.org/Bijectors.jl/stable/vector/) for more information.
+
 # 0.40.4
 
 Moved `filldist` and `arraydist` from DistributionsAD.jl to DynamicPPL.jl (with greatly simplified definitions).
