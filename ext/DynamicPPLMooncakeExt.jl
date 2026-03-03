@@ -13,4 +13,16 @@ Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
     typeof(Base.haskey),DynamicPPL.VarInfo,DynamicPPL.VarName
 }
 
+using DynamicPPL: @model, LinkAll, getlogjoint_internal, LogDensityFunction
+using ADTypes: AutoMooncake
+import DifferentiationInterface
+using Distributions: Normal
+using PrecompileTools: @setup_workload, @compile_workload
+@setup_workload begin
+    @model f() = x ~ Normal()
+    @compile_workload begin
+        LogDensityFunction(f(), getlogjoint_internal, LinkAll(); adtype=AutoMooncake())
+    end
+end
+
 end # module

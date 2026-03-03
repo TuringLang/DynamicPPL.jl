@@ -15,6 +15,8 @@ Added a `transform_strategy` keyword argument to `DynamicPPL.TestUtils.run_ad`.
 It is intended to (eventually) replace the `varinfo` keyword argument; however, for now both are still supported for backwards compatibility.
 If both `varinfo` and `transform_strategy` are passed, then `varinfo` takes precedence.
 
+Added a small precompilation workload to DynamicPPLMooncakeExt, which should reduce the time to first gradient down on Turing models.
+
 # 0.40.5
 
 Remove DynamicPPL's internal variable transformation code and replace it directly with the new `Bijectors.VectorBijectors` module.
