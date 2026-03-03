@@ -1,6 +1,6 @@
 module DynamicPPLBenchmarks
 
-using DynamicPPL: VarInfo, VarName
+using DynamicPPL: VarInfo, VarName, LinkAll, UnlinkAll
 using DynamicPPL: DynamicPPL
 using DynamicPPL.TestUtils.AD: run_ad, NoTest
 using ADTypes: ADTypes
@@ -62,14 +62,15 @@ The AD backend should be specified as a Symbol (e.g. `:forwarddiff`, `:reversedi
 `islinked` determines whether to link the VarInfo for evaluation.
 """
 function benchmark(model, adbackend::Symbol, islinked::Bool)
-    rng = StableRNG(23)
-    vi = VarInfo(rng, model)
-    adbackend = to_backend(adbackend)
-    if islinked
-        vi = DynamicPPL.link(vi, model)
-    end
+    transform_strategy = islinked ? LinkAll() : UnlinkAll()
     return run_ad(
-        model, adbackend; varinfo=vi, benchmark=true, test=NoTest(), verbose=false
+        model,
+        to_backend(adbackend);
+        rng=StableRNG(23),
+        transform_strategy=transform_strategy,
+        benchmark=true,
+        test=NoTest(),
+        verbose=false,
     )
 end
 
