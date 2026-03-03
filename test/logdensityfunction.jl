@@ -434,24 +434,18 @@ end
 
     @testset "Correctness" begin
         @testset "$(m.f)" for m in DynamicPPL.TestUtils.ALL_MODELS
-            # TODO: remove generation of linked_varinfo directly once run_ad takes a
-            # transform argument instead of varinfo
-            linked_varinfo = link!!(VarInfo(m), m)
-            f = LogDensityFunction(m, getlogjoint_internal, linked_varinfo)
-            x = linked_varinfo[:]
+            f = LogDensityFunction(m, getlogjoint_internal, LinkAll())
+            x = rand(f)
 
             # Calculate reference logp + gradient of logp using ForwardDiff
-            ref_ad_result = run_ad(m, ref_adtype; varinfo=linked_varinfo, test=NoTest())
+            ref_ad_result = run_ad(m, ref_adtype; params=x, test=NoTest())
             ref_logp, ref_grad = ref_ad_result.value_actual, ref_ad_result.grad_actual
 
             @testset "$adtype" for adtype in test_adtypes
                 @info "Testing AD on: $(m.f) - $adtype"
 
                 @test run_ad(
-                    m,
-                    adtype;
-                    varinfo=linked_varinfo,
-                    test=WithExpectedResult(ref_logp, ref_grad),
+                    m, adtype; params=x, test=WithExpectedResult(ref_logp, ref_grad)
                 ) isa Any
             end
         end

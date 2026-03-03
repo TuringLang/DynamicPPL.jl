@@ -10,8 +10,16 @@ using DynamicPPL:
     LogDensityFunction,
     VarInfo,
     AbstractVarInfo,
+    AbstractTransformStrategy,
+    LinkAll,
     getlogjoint_internal,
-    link
+    to_vector_params,
+    get_vector_values,
+    unflatten!!,
+    OnlyAccsVarInfo,
+    VectorValueAccumulator,
+    InitFromPrior
+
 using LinearAlgebra: norm
 using LogDensityProblems: logdensity, logdensity_and_gradient
 using Random: AbstractRNG, default_rng
@@ -144,7 +152,7 @@ struct ADResult{Tparams<:AbstractFloat,Tresult<:AbstractFloat,Ttol<:AbstractFloa
     "The function used to extract the log density from the model"
     getlogdensity::Function
     "The VarInfo that was used"
-    varinfo::AbstractVarInfo
+    varinfo::Union{Nothing,AbstractVarInfo}
     "The values at which the model was evaluated"
     params::Vector{Tparams}
     "The AD backend that was tested"
@@ -193,7 +201,8 @@ end
         rtol::AbstractFloat=sqrt(eps()),
         getlogdensity::Function=getlogjoint_internal,
         rng::Random.AbstractRNG=Random.default_rng(),
-        varinfo::AbstractVarInfo=link(VarInfo(model), model),
+        varinfo::Union{Nothing,AbstractVarInfo}=nothing,
+        transform_strategy::AbstractTransformStrategy=LinkAll(),
         params::Union{Nothing,Vector{<:AbstractFloat}}=nothing,
         verbose=true,
     )::ADResult
@@ -219,32 +228,35 @@ There are two positional arguments, which absolutely must be provided:
 
 Everything else is optional, and can be categorised into several groups:
 
-1. _How to specify the VarInfo._
+1. _Whether to evaluate in linked space or not._
 
-   DynamicPPL contains several different types of VarInfo objects which change
-   the way model evaluation occurs. If you want to use a specific type of
-   VarInfo, pass it as the `varinfo` argument. Otherwise, it will default to
-   using a linked `TypedVarInfo` generated from the model. Here, _linked_
-   means that the parameters in the VarInfo have been transformed to
-   unconstrained Euclidean space if they aren't already in that space.
+   If requested, DynamicPPL internally transforms the model parameters to unconstrained
+   Euclidean space before evaluating the log density in that transformed space.
 
-1. _How to specify the parameters._
+   You can control whether this transformation happens or not by passing the
+   `transform_strategy` keyword argument. The default is `LinkAll()`, which means that all
+   parameters will be transformed to unconstrained space. However, if you want to evaluate
+   in the original space, you can use `UnlinkAll()`; you can also specify mixed linking
+   strategies if desired (see [the DynamicPPL documentation](@ref transform-strategies) for
+   more information.
 
-   For maximum control over this, generate a vector of parameters yourself and
-   pass this as the `params` argument. If you don't specify this, it will be
-   taken from the contents of the VarInfo.
+   Instead of passing the `transform_strategy`, you can also directly pass the `varinfo`
+   keyword argument, which expects a VarInfo object that has been generated with the desired
+   transformation. If both `varinfo` and `transform_strategy` are passed, then `varinfo`
+   takes precedence, and `transform_strategy` is ignored.
 
-   Note that if the VarInfo is not specified (and thus automatically generated)
-   the parameters in it will have been sampled from the prior of the model. If
-   you want to seed the parameter generation for the VarInfo, you can pass the
-   `rng` keyword argument, which will then be used to create the VarInfo.
+1. _How to specify the parameters to be used for evaluation._
 
-   Finally, note that these only reflect the parameters used for _evaluating_
-   the gradient. If you also want to control the parameters used for
-   _preparing_ the gradient, then you need to manually set these parameters in
-   the VarInfo object, for example using `vi = DynamicPPL.unflatten!!(vi,
-   prep_params)`. You could then evaluate the gradient at a different set of
-   parameters using the `params` keyword argument.
+   For maximum control over this, generate a vector of parameters yourself and pass this as
+   the `params` argument. If you don't specify this, it will be generated randomly from the
+   prior of the model. If you want to seed the parameter generation, you can pass the `rng`
+   keyword argument, which will then be used to generate the parameters.
+
+   Note that these only reflect the parameters used for _evaluating_ the gradient. If you
+   also want to control the parameters used for _preparing_ the gradient, then you need to
+   manually set these parameters inside the `varinfo` keyword argument, for example using
+   `vi = DynamicPPL.unflatten!!(vi, prep_params)`. You could then evaluate the gradient at a
+   different set of parameters using the `params` keyword argument.
 
 1. _Which type of logp is being calculated._
 
@@ -322,7 +334,8 @@ function run_ad(
     rtol::AbstractFloat=sqrt(eps()),
     getlogdensity::Function=getlogjoint_internal,
     rng::AbstractRNG=default_rng(),
-    varinfo::AbstractVarInfo=link(VarInfo(rng, model), model),
+    varinfo::Union{Nothing,AbstractVarInfo}=nothing,
+    transform_strategy::AbstractTransformStrategy=LinkAll(),
     params::Union{Nothing,Vector{<:AbstractFloat}}=nothing,
     verbose=true,
 )::ADResult
@@ -331,17 +344,26 @@ function run_ad(
         test = test ? WithBackend() : NoTest()
     end
 
-    # Extract parameters
+    verbose && @info "Running AD on $(model.f) with $(adtype)\n"
+
+    # Generate initial parameters
+    vvals = if isnothing(varinfo)
+        accs = OnlyAccsVarInfo(VectorValueAccumulator())
+        _, accs = DynamicPPL.init!!(rng, model, accs, InitFromPrior(), transform_strategy)
+        get_vector_values(accs)
+    elseif varinfo isa VarInfo
+        varinfo.values
+    elseif varinfo isa OnlyAccsVarInfo
+        get_vector_values(varinfo)
+    end
+    ldf = LogDensityFunction(model, getlogdensity, vvals; adtype=adtype)
     if isnothing(params)
-        params = varinfo[:]
+        params = to_vector_params(vvals, ldf)
     end
     params = [p for p in params]  # Concretise
+    verbose && println("       params : $(params)")
 
     # Calculate log-density and gradient with the backend of interest
-    verbose && @info "Running AD on $(model.f) with $(adtype)\n"
-    verbose && println("       params : $(params)")
-    ldf = LogDensityFunction(model, getlogdensity, varinfo; adtype=adtype)
-
     value, grad = logdensity_and_gradient(ldf, params)
     # collect(): https://github.com/JuliaDiff/DifferentiationInterface.jl/issues/754
     grad = collect(grad)
