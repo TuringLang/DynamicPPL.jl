@@ -14,6 +14,7 @@ using DocumenterMermaid
 using MCMCChains
 using AbstractMCMC: AbstractMCMC
 using MarginalLogDensities: MarginalLogDensities
+using Random
 
 # Need this to document a method which uses a type inside the extension...
 DPPLMLDExt = Base.get_extension(DynamicPPL, :DynamicPPLMarginalLogDensitiesExt)

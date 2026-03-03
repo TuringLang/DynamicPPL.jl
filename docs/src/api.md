@@ -81,6 +81,14 @@ OnlyAccsVarInfo
 to_vector_params
 ```
 
+You can also draw vectorised samples from a `LogDensityFunction` via
+
+```@docs
+Base.rand(::Random.AbstractRNG, ::LogDensityFunction, ::AbstractInitStrategy)
+```
+
+(although note that this is a limited interface as it only generates parameters; please see [the documentation](@ref ldf-model) for more information on how to combine `LogDensityFunction` with `init!!` more generally.)
+
 ## Condition and decondition
 
 A [`Model`](@ref) can be conditioned on a set of observations with [`AbstractPPL.condition`](@ref) or its alias [`|`](@ref).
