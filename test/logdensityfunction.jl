@@ -1,6 +1,7 @@
 module DynamicPPLLDFTests
 
 using AbstractPPL: AbstractPPL
+using Bijectors: Bijectors
 using Chairmarks
 using DynamicPPL
 using Distributions
@@ -146,9 +147,9 @@ end
             Bijectors.VectorBijectors.to_vec(xdist)(xraw)
         end
         yvec = if target_transform(transform_strategy, @varname(y)) isa DynamicLink
-            Bijectors.VectorBijectors.to_linked_vec(xdist)(xraw)
+            Bijectors.VectorBijectors.to_linked_vec(ydist)(yraw)
         else
-            Bijectors.VectorBijectors.to_vec(xdist)(xraw)
+            Bijectors.VectorBijectors.to_vec(ydist)(yraw)
         end
         return vcat(xvec, yvec)
     end
