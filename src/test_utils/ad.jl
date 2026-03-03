@@ -380,7 +380,7 @@ function run_ad(
             grad_true = test.grad
         elseif test isa WithBackend
             ldf_reference = LogDensityFunction(
-                model, getlogdensity, varinfo; adtype=test.adtype
+                model, getlogdensity, vvals; adtype=test.adtype
             )
             value_true, grad_true = logdensity_and_gradient(ldf_reference, params)
             # collect(): https://github.com/JuliaDiff/DifferentiationInterface.jl/issues/754
