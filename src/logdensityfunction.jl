@@ -241,6 +241,7 @@ struct LogDensityFunction{
         )
     end
 end
+
 function LogDensityFunction(
     model::Model,
     getlogdensity::Any,
@@ -265,13 +266,21 @@ function LogDensityFunction(
     vnt = getacc(oavi, Val(VECTORVAL_ACCNAME)).values
     return LogDensityFunction(model, getlogdensity, vnt, accs; adtype=adtype)
 end
+function LogDensityFunction(
+    model::Model,
+    getlogdensity::Any,
+    link_strat::AbstractTransformStrategy,
+    accs::Union{NTuple{<:Any,AbstractAccumulator},AccumulatorTuple}=ldf_accs(getlogdensity);
+    adtype::Union{ADTypes.AbstractADType,Nothing}=nothing,
+)
+    vnt = _default_vnt(model, link_strat)
+    return LogDensityFunction(model, getlogdensity, vnt, accs; adtype=adtype)
+end
 
 function _default_vnt(model::Model, transform_strategy::AbstractTransformStrategy)
-    _, vi = init!!(model, VarInfo(), InitFromPrior(), transform_strategy)
-    return vi.values
-    # oavi = OnlyAccsVarInfo(VectorValueAccumulator())
-    # _, oavi = DynamicPPL.init!!(model, oavi, InitFromPrior(), transform_strategy)
-    # return getacc(oavi, Val(VECTORVAL_ACCNAME)).values
+    oavi = OnlyAccsVarInfo(VectorValueAccumulator())
+    _, oavi = DynamicPPL.init!!(model, oavi, InitFromPrior(), transform_strategy)
+    return getacc(oavi, Val(VECTORVAL_ACCNAME)).values
 end
 
 function _get_input_vector_type(::LogDensityFunction{M,A,L,G,R,P,X}) where {M,A,L,G,R,P,X}

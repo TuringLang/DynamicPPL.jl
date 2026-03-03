@@ -15,6 +15,54 @@ using ForwardDiff: ForwardDiff
 using ReverseDiff: ReverseDiff
 using Mooncake: Mooncake
 
+@testset "LogDensityFunction: constructors" begin
+    dist = Beta(2, 2)
+    @model f() = x ~ dist
+    expected_ral_unlinked = @vnt begin
+        x := DynamicPPL.RangeAndLinked(1:1, false)
+    end
+    expected_ral_linked = @vnt begin
+        x := DynamicPPL.RangeAndLinked(1:1, true)
+    end
+    vecvals_unlinked = begin
+        accs = OnlyAccsVarInfo(VectorValueAccumulator())
+        _, accs = init!!(f(), accs, InitFromPrior(), UnlinkAll())
+        get_vector_values(accs)
+    end
+    vecvals_linked = begin
+        accs = OnlyAccsVarInfo(VectorValueAccumulator())
+        _, accs = init!!(f(), accs, InitFromPrior(), LinkAll())
+        get_vector_values(accs)
+    end
+
+    # Check that you can construct an LDF from a VarInfo, a VNT of vector values,
+    # or a transform strategy itself.
+    for ldf in (
+        LogDensityFunction(f(), getlogjoint_internal, VarInfo(f())),
+        LogDensityFunction(f(), getlogjoint_internal, VarInfo(f()).values),
+        LogDensityFunction(f(), getlogjoint_internal, vecvals_unlinked),
+        LogDensityFunction(f(), getlogjoint_internal, UnlinkAll()),
+    )
+        @test ldf._varname_ranges == expected_ral_unlinked
+        @test ldf.transform_strategy == UnlinkAll()
+        @test LogDensityProblems.logdensity(ldf, [0.5]) ≈ logpdf(Beta(2, 2), 0.5)
+    end
+    for ldf in (
+        LogDensityFunction(f(), getlogjoint_internal, link!!(VarInfo(f()), f())),
+        LogDensityFunction(f(), getlogjoint_internal, link!!(VarInfo(f()), f()).values),
+        LogDensityFunction(f(), getlogjoint_internal, vecvals_linked),
+        LogDensityFunction(f(), getlogjoint_internal, LinkAll()),
+    )
+        @test ldf._varname_ranges == expected_ral_linked
+        @test ldf.transform_strategy == LinkAll()
+        y = [0.5]
+        x, logjac = Bijectors.with_logabsdet_jacobian(
+            Bijectors.VectorBijectors.from_linked_vec(dist), y
+        )
+        @test LogDensityProblems.logdensity(ldf, y) ≈ logpdf(Beta(2, 2), x) + logjac
+    end
+end
+
 @testset "LogDensityFunction: Correctness" begin
     @testset "Threaded observe" begin
         @model function threaded(y)
