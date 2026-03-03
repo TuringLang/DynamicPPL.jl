@@ -147,6 +147,14 @@ This allows you to obtain all the information you need with only one model evalu
     which is equivalent.
     However, this is slower since it has to generate an intermediate VarNamedTuple.
 
+If you **only** need vectorised parameters, and not other information such as log-densities, then you can use `rand()` on a `LogDensityFunction` to directly get this:
+
+```@example 1
+using Random: Xoshiro
+
+rand(Xoshiro(468), ldf)
+```
+
 !!! note "What happened to `varinfo[:]`?"
     
     Just like before, if you are familiar with older versions of DynamicPPL, you may realise that this workflow is similar to the old version of calling `varinfo[:]` to obtain a set of vectorised parameters.

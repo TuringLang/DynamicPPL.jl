@@ -10,6 +10,8 @@ using DynamicPPL.TestUtils.AD: run_ad, WithExpectedResult, NoTest
 using LinearAlgebra: I
 using Test
 using LogDensityProblems: LogDensityProblems
+using Random: Xoshiro
+using StableRNGs: StableRNG
 
 using ForwardDiff: ForwardDiff
 using ReverseDiff: ReverseDiff
@@ -24,42 +26,60 @@ using Mooncake: Mooncake
     expected_ral_linked = @vnt begin
         x := DynamicPPL.RangeAndLinked(1:1, true)
     end
-    vecvals_unlinked = begin
+    oavi_unlinked = begin
         accs = OnlyAccsVarInfo(VectorValueAccumulator())
         _, accs = init!!(f(), accs, InitFromPrior(), UnlinkAll())
-        get_vector_values(accs)
+        accs
     end
-    vecvals_linked = begin
+    oavi_linked = begin
         accs = OnlyAccsVarInfo(VectorValueAccumulator())
         _, accs = init!!(f(), accs, InitFromPrior(), LinkAll())
-        get_vector_values(accs)
+        accs
     end
 
     # Check that you can construct an LDF from a VarInfo, a VNT of vector values,
     # or a transform strategy itself.
-    for ldf in (
-        LogDensityFunction(f(), getlogjoint_internal, VarInfo(f())),
-        LogDensityFunction(f(), getlogjoint_internal, VarInfo(f()).values),
-        LogDensityFunction(f(), getlogjoint_internal, vecvals_unlinked),
-        LogDensityFunction(f(), getlogjoint_internal, UnlinkAll()),
+    for arg in (
+        VarInfo(f()),
+        VarInfo(f()).values,
+        oavi_unlinked,
+        get_vector_values(oavi_unlinked),
+        UnlinkAll(),
     )
-        @test ldf._varname_ranges == expected_ral_unlinked
-        @test ldf.transform_strategy == UnlinkAll()
-        @test LogDensityProblems.logdensity(ldf, [0.5]) ≈ logpdf(Beta(2, 2), 0.5)
+        for adtype in (nothing, AutoForwardDiff())
+            ldf = LogDensityFunction(f(), getlogjoint_internal, arg; adtype=adtype)
+            @test ldf._varname_ranges == expected_ral_unlinked
+            @test ldf.transform_strategy == UnlinkAll()
+            @test LogDensityProblems.logdensity(ldf, [0.5]) ≈ logpdf(Beta(2, 2), 0.5)
+            if adtype === nothing
+                @test ldf.adtype === nothing
+            else
+                @test ldf.adtype isa AutoForwardDiff
+            end
+        end
     end
-    for ldf in (
-        LogDensityFunction(f(), getlogjoint_internal, link!!(VarInfo(f()), f())),
-        LogDensityFunction(f(), getlogjoint_internal, link!!(VarInfo(f()), f()).values),
-        LogDensityFunction(f(), getlogjoint_internal, vecvals_linked),
-        LogDensityFunction(f(), getlogjoint_internal, LinkAll()),
+    for arg in (
+        link!!(VarInfo(f()), f()),
+        link!!(VarInfo(f()), f()).values,
+        oavi_linked,
+        get_vector_values(oavi_linked),
+        LinkAll(),
     )
-        @test ldf._varname_ranges == expected_ral_linked
-        @test ldf.transform_strategy == LinkAll()
-        y = [0.5]
-        x, logjac = Bijectors.with_logabsdet_jacobian(
-            Bijectors.VectorBijectors.from_linked_vec(dist), y
-        )
-        @test LogDensityProblems.logdensity(ldf, y) ≈ logpdf(Beta(2, 2), x) + logjac
+        for adtype in (nothing, AutoForwardDiff())
+            ldf = LogDensityFunction(f(), getlogjoint_internal, arg; adtype=adtype)
+            @test ldf._varname_ranges == expected_ral_linked
+            @test ldf.transform_strategy == LinkAll()
+            y = [0.5]
+            x, logjac = Bijectors.with_logabsdet_jacobian(
+                Bijectors.VectorBijectors.from_linked_vec(dist), y
+            )
+            @test LogDensityProblems.logdensity(ldf, y) ≈ logpdf(Beta(2, 2), x) + logjac
+            if adtype === nothing
+                @test ldf.adtype === nothing
+            else
+                @test ldf.adtype isa AutoForwardDiff
+            end
+        end
     end
 end
 
@@ -171,6 +191,34 @@ end
     end
 end
 
+@testset "rand() on LogDensityFunction interface" begin
+    # Check that we can call rand
+    @model function f()
+        return x ~ Normal()
+    end
+
+    isa_single_float_vector(r) = r isa Vector{Float64} && length(r) == 1
+
+    # It's hard to really *test* the output of rand
+    @testset for init_strategy in (InitFromPrior(), InitFromUniform())
+        @testset for tfm_strategy in (UnlinkAll(), LinkAll())
+            rng = StableRNG(468)
+            model = f()
+            ldf = LogDensityFunction(model, getlogjoint_internal, tfm_strategy)
+            rands = [Base.rand(rng, ldf, init_strategy) for _ in 1:1000]
+            @test all(isa_single_float_vector, rands)
+            @test mean(stack(rands)) ≈ 0.0 atol = 0.1
+        end
+    end
+
+    # Check function interface
+    ldf = LogDensityFunction(f())
+    @test isa_single_float_vector(rand(ldf))
+    @test isa_single_float_vector(rand(ldf, InitFromPrior()))
+    @test isa_single_float_vector(rand(Xoshiro(468), ldf))
+    @test isa_single_float_vector(rand(Xoshiro(468), ldf, InitFromPrior()))
+end
+
 @testset "Conversions to/from vectors" begin
     xdist, ydist = LogNormal(), Dirichlet(ones(3))
     @model function f()
@@ -244,6 +292,10 @@ end
 
             vecparams = get_vector_params(accs)
             @test vecparams ≈ manual_make_vec(transform_strategy)
+
+            # This isn't really 'random' since the init strategy fully determines the
+            # output, but we can check it
+            @test Base.rand(ldf, init_strategy) ≈ manual_make_vec(transform_strategy)
 
             @testset "Throws an error if transform strategy doesn't line up" begin
                 if transform_strategy != UnlinkAll()
