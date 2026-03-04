@@ -16,7 +16,7 @@ Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
 using DynamicPPL: @model, LinkAll, getlogjoint_internal, LogDensityFunction
 using ADTypes: AutoMooncake
 import DifferentiationInterface
-using Distributions: Normal
+using Distributions: Normal, InverseGamma, Beta
 using PrecompileTools: @setup_workload, @compile_workload
 @setup_workload begin
     @compile_workload begin
@@ -25,7 +25,7 @@ using PrecompileTools: @setup_workload, @compile_workload
             ldf = LogDensityFunction(
                 f(), getlogjoint_internal, LinkAll(); adtype=AutoMooncake()
             )
-            LogDensityProblems.logdensity_and_gradient(ldf, [0.5])
+            DynamicPPL.LogDensityProblems.logdensity_and_gradient(ldf, [0.5])
         end
     end
 end
