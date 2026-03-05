@@ -1,3 +1,7 @@
+# 0.40.7
+
+Expanded DynamicPPLMooncakeExt precompilation workload.
+
 # 0.40.6
 
 Add an extra constructor for `LogDensityFunction(::Model, logdensity_function, ::AbstractTransformStrategy[, accs; adtype])`, which is a shorthand for generating the vectorised values according to the given transform strategy, and then calling the existing constructor with those values.
