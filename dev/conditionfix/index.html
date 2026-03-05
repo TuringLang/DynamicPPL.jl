@@ -495,58 +495,58 @@ end</code></pre><pre class="documenter-example-output"><code class="nohighlight 
 
 x = 0:0.1:0.5
 y_data = true_m .* x .+ true_c .+ randn(length(x))</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">6-element Vector{Float64}:
- 3.19116478472948
- 4.077220187558914
- 3.021407974726033
- 5.152925832134626
- 5.000811364498932
- 5.861029117009833</code></pre><p>If we run the model before conditioning on <code>y</code>, we will find that all of <code>m</code>, <code>c</code>, and <code>y</code> are drawn from the prior distribution.</p><pre><code class="language-julia hljs">model = linear_regression(x)
+ 2.732146608802513
+ 3.973178309115334
+ 4.003200062601558
+ 3.3569127210190213
+ 3.5113271916087383
+ 6.8106967352192065</code></pre><p>If we run the model before conditioning on <code>y</code>, we will find that all of <code>m</code>, <code>c</code>, and <code>y</code> are drawn from the prior distribution.</p><pre><code class="language-julia hljs">model = linear_regression(x)
 
 # Here, `rand(model())` samples from the prior distribution and returns a
 # VarNamedTuple of latent variables.
 rand(model)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">VarNamedTuple
-├─ <span class="sgr36">m</span> =&gt; 0.2461795475370208
-├─ <span class="sgr36">c</span> =&gt; 1.0533630607368234
+├─ <span class="sgr36">m</span> =&gt; 1.360533557673469
+├─ <span class="sgr36">c</span> =&gt; -0.6810534804519461
 └─ <span class="sgr36">y</span> =&gt; PartialArray size=(6,) data::Vector{Float64}
-        ├─ <span class="sgr31">(1,)</span> =&gt; 0.9985439525050587
-        ├─ <span class="sgr31">(2,)</span> =&gt; 0.7531758286325138
-        ├─ <span class="sgr31">(3,)</span> =&gt; 4.045736603964403
-        ├─ <span class="sgr31">(4,)</span> =&gt; 1.0494920139457398
-        ├─ <span class="sgr31">(5,)</span> =&gt; 2.945890960039433
-        └─ <span class="sgr31">(6,)</span> =&gt; 1.582738858839754</code></pre><p>We could, for example, do this many times, and compute the prior mean of <code>y</code>. This is analogous to using Turing&#39;s <code>Prior()</code> sampler.</p><pre><code class="language-julia hljs">vnts = [rand(model) for _ in 1:1000]
+        ├─ <span class="sgr31">(1,)</span> =&gt; -1.7494161785269162
+        ├─ <span class="sgr31">(2,)</span> =&gt; -1.0868699596253575
+        ├─ <span class="sgr31">(3,)</span> =&gt; -0.9836479406130293
+        ├─ <span class="sgr31">(4,)</span> =&gt; -0.28432607109655483
+        ├─ <span class="sgr31">(5,)</span> =&gt; -1.5958345471678772
+        └─ <span class="sgr31">(6,)</span> =&gt; -0.3569395559479916</code></pre><p>We could, for example, do this many times, and compute the prior mean of <code>y</code>. This is analogous to using Turing&#39;s <code>Prior()</code> sampler.</p><pre><code class="language-julia hljs">vnts = [rand(model) for _ in 1:1000]
 mean(vnt[@varname(y)] for vnt in vnts)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">6-element Vector{Float64}:
-  0.00023757921825035954
-  0.042227279912904155
-  0.014483779176553994
- -0.04308061554304404
-  0.054561313835767136
- -0.004929693288929795</code></pre><p>This is useful for prior predictive checks, for example.</p><h2 id="Conditioning"><a class="docs-heading-anchor" href="#Conditioning">Conditioning</a><a id="Conditioning-1"></a><a class="docs-heading-anchor-permalink" href="#Conditioning" title="Permalink"></a></h2><p>To condition the model on observed data, we can use the <code>condition</code> function, or its alias <code>|</code>. The most robust way of conditioning is to provide a <code>VarNamedTuple</code> that holds the values to condition on.</p><pre><code class="language-julia hljs"># Construct a `VarNamedTuple` that holds the conditioning values.
+  0.005369594404410337
+  0.03044735434646952
+  0.012693196251669042
+ -0.035914970543333945
+  0.002432959035184359
+  0.01912034265914565</code></pre><p>This is useful for prior predictive checks, for example.</p><h2 id="Conditioning"><a class="docs-heading-anchor" href="#Conditioning">Conditioning</a><a id="Conditioning-1"></a><a class="docs-heading-anchor-permalink" href="#Conditioning" title="Permalink"></a></h2><p>To condition the model on observed data, we can use the <code>condition</code> function, or its alias <code>|</code>. The most robust way of conditioning is to provide a <code>VarNamedTuple</code> that holds the values to condition on.</p><pre><code class="language-julia hljs"># Construct a `VarNamedTuple` that holds the conditioning values.
 observations = @vnt begin
     y := y_data
 end
 
 # Equivalently: conditioned_model = condition(model, observations).
-cond_model = model | observations</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Model{typeof(Main.linear_regression), (:x,), (), (), Tuple{StepRangeLen{Float64, Base.TwicePrecision{Float64}, Base.TwicePrecision{Float64}, Int64}}, Tuple{}, DynamicPPL.CondFixContext{DynamicPPL.Condition, VarNamedTuple{(:y,), Tuple{Vector{Float64}}}, DefaultContext}, false}(Main.linear_regression, (x = 0.0:0.1:0.5,), NamedTuple(), CondFixContext{DynamicPPL.Condition}(VarNamedTuple(y = [3.19116478472948, 4.077220187558914, 3.021407974726033, 5.152925832134626, 5.000811364498932, 5.861029117009833],), DefaultContext()))</code></pre><p>We can inspect the values that have been conditioned on, using the <code>conditioned</code> function:</p><pre><code class="language-julia hljs">conditioned(cond_model)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">VarNamedTuple
-└─ <span class="sgr36">y</span> =&gt; [3.19116478472948, 4.077220187558914, 3.021407974726033, 5.152925832134626, 5.000811364498932, 5.861029117009833]</code></pre><p>If we were to run this model, we would now find that <code>y</code> is an observed variable, and thus it is not sampled:</p><pre><code class="language-julia hljs">parameters = rand(cond_model)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">VarNamedTuple
-├─ <span class="sgr36">m</span> =&gt; 0.300964756271496
-└─ <span class="sgr36">c</span> =&gt; 0.35857319685102756</code></pre><p>We can&#39;t directly draw from the posterior using DynamicPPL (<code>rand</code> still draws from the prior). However, since this is now an observed variable, the log-likelihood associated with the newly provided <code>y</code> will be computed:</p><pre><code class="language-julia hljs">loglikelihood(cond_model, parameters)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">-55.324483126528406</code></pre><p>and this quantity can be used by MCMC algorithms to draw samples from the posterior distribution.</p><h2 id="Fixing"><a class="docs-heading-anchor" href="#Fixing">Fixing</a><a id="Fixing-1"></a><a class="docs-heading-anchor-permalink" href="#Fixing" title="Permalink"></a></h2><p>Fixing is exactly the same as conditioning, except that instead of incrementing the log-likelihood, there is no log-probability contribution from the fixed variables.</p><p>In essence, fixing a variable <code>x ~ dist</code> to a value <code>x_val</code> is equivalent to replacing the statement with <code>x = x_val</code>, which removes it from the model entirely.</p><p>We can illustrate this by fixing the intercept <code>c</code> to its true value:</p><pre><code class="language-julia hljs"># Construct a `VarNamedTuple` that holds the fixed values.
+cond_model = model | observations</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Model{typeof(Main.linear_regression), (:x,), (), (), Tuple{StepRangeLen{Float64, Base.TwicePrecision{Float64}, Base.TwicePrecision{Float64}, Int64}}, Tuple{}, DynamicPPL.CondFixContext{DynamicPPL.Condition, VarNamedTuple{(:y,), Tuple{Vector{Float64}}}, DefaultContext}, false}(Main.linear_regression, (x = 0.0:0.1:0.5,), NamedTuple(), CondFixContext{DynamicPPL.Condition}(VarNamedTuple(y = [2.732146608802513, 3.973178309115334, 4.003200062601558, 3.3569127210190213, 3.5113271916087383, 6.8106967352192065],), DefaultContext()))</code></pre><p>We can inspect the values that have been conditioned on, using the <code>conditioned</code> function:</p><pre><code class="language-julia hljs">conditioned(cond_model)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">VarNamedTuple
+└─ <span class="sgr36">y</span> =&gt; [2.732146608802513, 3.973178309115334, 4.003200062601558, 3.3569127210190213, 3.5113271916087383, 6.8106967352192065]</code></pre><p>If we were to run this model, we would now find that <code>y</code> is an observed variable, and thus it is not sampled:</p><pre><code class="language-julia hljs">parameters = rand(cond_model)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">VarNamedTuple
+├─ <span class="sgr36">m</span> =&gt; 1.2989167834769417
+└─ <span class="sgr36">c</span> =&gt; -0.878737927792243</code></pre><p>We can&#39;t directly draw from the posterior using DynamicPPL (<code>rand</code> still draws from the prior). However, since this is now an observed variable, the log-likelihood associated with the newly provided <code>y</code> will be computed:</p><pre><code class="language-julia hljs">loglikelihood(cond_model, parameters)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">-73.53056557862561</code></pre><p>and this quantity can be used by MCMC algorithms to draw samples from the posterior distribution.</p><h2 id="Fixing"><a class="docs-heading-anchor" href="#Fixing">Fixing</a><a id="Fixing-1"></a><a class="docs-heading-anchor-permalink" href="#Fixing" title="Permalink"></a></h2><p>Fixing is exactly the same as conditioning, except that instead of incrementing the log-likelihood, there is no log-probability contribution from the fixed variables.</p><p>In essence, fixing a variable <code>x ~ dist</code> to a value <code>x_val</code> is equivalent to replacing the statement with <code>x = x_val</code>, which removes it from the model entirely.</p><p>We can illustrate this by fixing the intercept <code>c</code> to its true value:</p><pre><code class="language-julia hljs"># Construct a `VarNamedTuple` that holds the fixed values.
 fix_values = VarNamedTuple(; c=true_c)
 
 fixed_model = fix(model, fix_values)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Model{typeof(Main.linear_regression), (:x,), (), (), Tuple{StepRangeLen{Float64, Base.TwicePrecision{Float64}, Base.TwicePrecision{Float64}, Int64}}, Tuple{}, DynamicPPL.CondFixContext{DynamicPPL.Fix, VarNamedTuple{(:c,), Tuple{Float64}}, DefaultContext}, false}(Main.linear_regression, (x = 0.0:0.1:0.5,), NamedTuple(), CondFixContext{DynamicPPL.Fix}(VarNamedTuple(c = 3.0,), DefaultContext()))</code></pre><p>and sampling from the prior again:</p><pre><code class="language-julia hljs">parameters_fixed = rand(fixed_model)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">VarNamedTuple
-├─ <span class="sgr36">m</span> =&gt; 1.5410890931996108
+├─ <span class="sgr36">m</span> =&gt; 0.4146869996040884
 └─ <span class="sgr36">y</span> =&gt; PartialArray size=(6,) data::Vector{Float64}
-        ├─ <span class="sgr31">(1,)</span> =&gt; 2.7632761194043267
-        ├─ <span class="sgr31">(2,)</span> =&gt; 4.167869179325262
-        ├─ <span class="sgr31">(3,)</span> =&gt; 3.7181967570204653
-        ├─ <span class="sgr31">(4,)</span> =&gt; 3.4438623830808957
-        ├─ <span class="sgr31">(5,)</span> =&gt; 3.5164065600855365
-        └─ <span class="sgr31">(6,)</span> =&gt; 3.4319636448879702</code></pre><p>If we were to repeat this many times, we would find that <code>y</code> is drawn from its prior, but because <code>c</code> is fixed, the samples will reflect that:</p><pre><code class="language-julia hljs">mean(vnt[@varname(y)] for vnt in [rand(fixed_model) for _ in 1:1000])</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">6-element Vector{Float64}:
- 2.9384168434063804
- 2.9629482231472934
- 2.9789260086860545
- 2.979122846525464
- 3.0375036893795566
- 3.00064299324288</code></pre><h2 id="Supplying-parameters-to-condition-or-fix-on"><a class="docs-heading-anchor" href="#Supplying-parameters-to-condition-or-fix-on">Supplying parameters to condition or fix on</a><a id="Supplying-parameters-to-condition-or-fix-on-1"></a><a class="docs-heading-anchor-permalink" href="#Supplying-parameters-to-condition-or-fix-on" title="Permalink"></a></h2><p>In the above examples we have provided the conditioning and fixing values as <code>VarNamedTuple</code>s. Internally, DynamicPPL stores the values as <code>VarNamedTuple</code>s, and it is strongly recommended that you construct them this way.</p><p>For convenience, both <code>condition</code> and <code>fix</code> also accept a variety of different input formats:</p><pre><code class="language-julia hljs"># NamedTuple
+        ├─ <span class="sgr31">(1,)</span> =&gt; 3.1151926184458234
+        ├─ <span class="sgr31">(2,)</span> =&gt; 2.047442586190293
+        ├─ <span class="sgr31">(3,)</span> =&gt; 2.8118224962845737
+        ├─ <span class="sgr31">(4,)</span> =&gt; 2.1186960234633565
+        ├─ <span class="sgr31">(5,)</span> =&gt; 4.649538162193238
+        └─ <span class="sgr31">(6,)</span> =&gt; 2.1909519970946825</code></pre><p>If we were to repeat this many times, we would find that <code>y</code> is drawn from its prior, but because <code>c</code> is fixed, the samples will reflect that:</p><pre><code class="language-julia hljs">mean(vnt[@varname(y)] for vnt in [rand(fixed_model) for _ in 1:1000])</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">6-element Vector{Float64}:
+ 2.975926334141432
+ 2.9168349710339436
+ 3.0198652228683334
+ 2.975507257967786
+ 2.9812875132294545
+ 2.999454774532169</code></pre><h2 id="Supplying-parameters-to-condition-or-fix-on"><a class="docs-heading-anchor" href="#Supplying-parameters-to-condition-or-fix-on">Supplying parameters to condition or fix on</a><a id="Supplying-parameters-to-condition-or-fix-on-1"></a><a class="docs-heading-anchor-permalink" href="#Supplying-parameters-to-condition-or-fix-on" title="Permalink"></a></h2><p>In the above examples we have provided the conditioning and fixing values as <code>VarNamedTuple</code>s. Internally, DynamicPPL stores the values as <code>VarNamedTuple</code>s, and it is strongly recommended that you construct them this way.</p><p>For convenience, both <code>condition</code> and <code>fix</code> also accept a variety of different input formats:</p><pre><code class="language-julia hljs"># NamedTuple
 model | (; y=y_data)
 
 # AbstractDict{VarName}
@@ -557,21 +557,21 @@ model | (@varname(y) =&gt; y_data)</code></pre><p><strong>Note, however, that th
     y[1] := y_data[1]
 end</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">VarNamedTuple
 └─ <span class="sgr36">y</span> =&gt; PartialArray size=(1,) data::DynamicPPL.VarNamedTuples.GrowableArray{Float64, 1}
-        └─ <span class="sgr31">(1,)</span> =&gt; 3.19116478472948</code></pre><p>Note that in this case since the <code>VarNamedTuple</code> has no knowledge of the length or shape of <code>y</code>, DynamicPPL will assume that <code>y</code> is a <code>Base.Vector</code> of unknown length (hence the <code>GrowableArray</code> above).</p><p>This will work fine as long as <code>y</code> is indeed a <code>Base.Vector</code>. However, if you want to avoid this, you should provide the full shape of <code>y</code> when defining the <code>VarNamedTuple</code>:</p><pre><code class="language-julia hljs">vnt = @vnt begin
+        └─ <span class="sgr31">(1,)</span> =&gt; 2.732146608802513</code></pre><p>Note that in this case since the <code>VarNamedTuple</code> has no knowledge of the length or shape of <code>y</code>, DynamicPPL will assume that <code>y</code> is a <code>Base.Vector</code> of unknown length (hence the <code>GrowableArray</code> above).</p><p>This will work fine as long as <code>y</code> is indeed a <code>Base.Vector</code>. However, if you want to avoid this, you should provide the full shape of <code>y</code> when defining the <code>VarNamedTuple</code>:</p><pre><code class="language-julia hljs">vnt = @vnt begin
     @template y = y_data
     y[1] := y_data[1]
 end</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">VarNamedTuple
 └─ <span class="sgr36">y</span> =&gt; PartialArray <span class="sgr90">size=(6,)</span> data::Vector{Float64}
-        └─ <span class="sgr31">(1,)</span> =&gt; 3.19116478472948</code></pre><p>Now, the variable <code>y</code> is known to have the same shape and type as <code>y_data</code>.</p><div class="admonition is-warning" id="Warning-427d8c0492733867"><header class="admonition-header">Warning<a class="admonition-anchor" href="#Warning-427d8c0492733867" title="Permalink"></a></header><div class="admonition-body"><p>If you use custom array types in DynamicPPL that have different indexing semantics from <code>Base.Array</code>, then the templating shown here becomes mandatory. For example, <code>OffsetArray</code>s may behave incorrectly if templates are not supplied.</p></div></div><p>If we run the model again, we should find that <code>y[1]</code> is no longer sampled:</p><pre><code class="language-julia hljs">cond_model_partial = model | vnt
+        └─ <span class="sgr31">(1,)</span> =&gt; 2.732146608802513</code></pre><p>Now, the variable <code>y</code> is known to have the same shape and type as <code>y_data</code>.</p><div class="admonition is-warning" id="Warning-427d8c0492733867"><header class="admonition-header">Warning<a class="admonition-anchor" href="#Warning-427d8c0492733867" title="Permalink"></a></header><div class="admonition-body"><p>If you use custom array types in DynamicPPL that have different indexing semantics from <code>Base.Array</code>, then the templating shown here becomes mandatory. For example, <code>OffsetArray</code>s may behave incorrectly if templates are not supplied.</p></div></div><p>If we run the model again, we should find that <code>y[1]</code> is no longer sampled:</p><pre><code class="language-julia hljs">cond_model_partial = model | vnt
 rand(cond_model_partial)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">VarNamedTuple
-├─ <span class="sgr36">m</span> =&gt; -0.40552049658050726
-├─ <span class="sgr36">c</span> =&gt; -0.7674930314127371
+├─ <span class="sgr36">m</span> =&gt; 0.7059632487154072
+├─ <span class="sgr36">c</span> =&gt; 0.7077364357126826
 └─ <span class="sgr36">y</span> =&gt; PartialArray <span class="sgr90">size=(6,)</span> data::Vector{Float64}
-        ├─ <span class="sgr31">(2,)</span> =&gt; 0.350658657959829
-        ├─ <span class="sgr31">(3,)</span> =&gt; -1.977894764181461
-        ├─ <span class="sgr31">(4,)</span> =&gt; 1.0943114179233064
-        ├─ <span class="sgr31">(5,)</span> =&gt; -1.561382455847029
-        └─ <span class="sgr31">(6,)</span> =&gt; -0.6040529707040997</code></pre><h2 id="Missing-data"><a class="docs-heading-anchor" href="#Missing-data">Missing data</a><a id="Missing-data-1"></a><a class="docs-heading-anchor-permalink" href="#Missing-data" title="Permalink"></a></h2><div class="admonition is-warning" id="Warning-6285dc39874b9aec"><header class="admonition-header">Warning<a class="admonition-anchor" href="#Warning-6285dc39874b9aec" title="Permalink"></a></header><div class="admonition-body"><p>The details in this section are tied closely to internal DynamicPPL details and we recommend that you use the above methods on conditioning on subsets of data. This is merely documented for completeness, and to avoid confusion since these details have been discussed in previous issues and Discourse threads.</p></div></div><p>Sometimes, in order to condition on a part of <code>y</code>, you can in fact condition on a vector <code>y</code> that has some of its entries missing.</p><p>For this to work, it is mandatory that each <code>y[i]</code> is individually on the left-hand side of a tilde-statement, as in the linear regression example above. That means that you can write</p><pre><code class="language-julia hljs">for i in eachindex(x)
+        ├─ <span class="sgr31">(2,)</span> =&gt; 1.5885468488187642
+        ├─ <span class="sgr31">(3,)</span> =&gt; 1.1952372717858641
+        ├─ <span class="sgr31">(4,)</span> =&gt; 2.190804712803124
+        ├─ <span class="sgr31">(5,)</span> =&gt; 0.10120197898513705
+        └─ <span class="sgr31">(6,)</span> =&gt; 0.6838722408563521</code></pre><h2 id="Missing-data"><a class="docs-heading-anchor" href="#Missing-data">Missing data</a><a id="Missing-data-1"></a><a class="docs-heading-anchor-permalink" href="#Missing-data" title="Permalink"></a></h2><div class="admonition is-warning" id="Warning-6285dc39874b9aec"><header class="admonition-header">Warning<a class="admonition-anchor" href="#Warning-6285dc39874b9aec" title="Permalink"></a></header><div class="admonition-body"><p>The details in this section are tied closely to internal DynamicPPL details and we recommend that you use the above methods on conditioning on subsets of data. This is merely documented for completeness, and to avoid confusion since these details have been discussed in previous issues and Discourse threads.</p></div></div><p>Sometimes, in order to condition on a part of <code>y</code>, you can in fact condition on a vector <code>y</code> that has some of its entries missing.</p><p>For this to work, it is mandatory that each <code>y[i]</code> is individually on the left-hand side of a tilde-statement, as in the linear regression example above. That means that you can write</p><pre><code class="language-julia hljs">for i in eachindex(x)
     y[i] ~ Normal(m * x[i] + c, 1.0)
 end</code></pre><p>but not</p><pre><code class="language-julia hljs">y ~ MvNormal(m .* x .+ c, I)</code></pre><p>The reason why this works is if DynamicPPL finds a conditioned value of <code>missing</code>, it will treat the variable as not <em>actually</em> being conditioned. When each <code>y[i]</code> is individually on the left-hand side of a tilde-statement, this means that DynamicPPL can identify individual <code>y[i]</code>&#39;s that are <code>missing</code>, and treat them as latent variables.</p><pre><code class="language-julia hljs">vnt = @vnt begin
     y := [missing, missing, 1.0, missing, 2.0, missing]
@@ -579,15 +579,15 @@ end
 cond_model_missing = model | vnt
 
 rand(cond_model_missing)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">VarNamedTuple
-├─ <span class="sgr36">m</span> =&gt; -0.17652126559129094
-├─ <span class="sgr36">c</span> =&gt; -0.29282366472905713
+├─ <span class="sgr36">m</span> =&gt; -1.9500881307805873
+├─ <span class="sgr36">c</span> =&gt; -0.27787309608077926
 └─ <span class="sgr36">y</span> =&gt; PartialArray <span class="sgr90">size=(6,)</span> data::Vector{Float64}
-        ├─ <span class="sgr31">(1,)</span> =&gt; -0.48671558505670015
-        ├─ <span class="sgr31">(2,)</span> =&gt; -0.43567273404387763
-        ├─ <span class="sgr31">(4,)</span> =&gt; 0.3271868398013438
-        └─ <span class="sgr31">(6,)</span> =&gt; -0.9606620728989359</code></pre><p>On the other hand, if the entire <code>y</code> vector is on the left-hand side of a single tilde-statement, DynamicPPL cannot separate it into its missing and non-missing parts.</p><script type="module">import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+        ├─ <span class="sgr31">(1,)</span> =&gt; -0.4426090521616223
+        ├─ <span class="sgr31">(2,)</span> =&gt; -1.4357409571951154
+        ├─ <span class="sgr31">(4,)</span> =&gt; -0.11718769791397332
+        └─ <span class="sgr31">(6,)</span> =&gt; -0.6369447148737896</code></pre><p>On the other hand, if the entire <code>y</code> vector is on the left-hand side of a single tilde-statement, DynamicPPL cannot separate it into its missing and non-missing parts.</p><script type="module">import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
 mermaid.initialize({
     startOnLoad: true,
     theme: "neutral"
 });
-</script></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../">« Home</a><a class="docs-footer-nextpage" href="../vnt/motivation/">Motivation »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.17.0 on <span class="colophon-date" title="Tuesday 3 March 2026 20:05">Tuesday 3 March 2026</span>. Using Julia version 1.12.5.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+</script></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../">« Home</a><a class="docs-footer-nextpage" href="../vnt/motivation/">Motivation »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.17.0 on <span class="colophon-date" title="Thursday 5 March 2026 02:14">Thursday 5 March 2026</span>. Using Julia version 1.12.5.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
