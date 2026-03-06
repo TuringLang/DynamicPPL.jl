@@ -1,3 +1,7 @@
+# v0.41
+
+...
+
 # 0.40.7
 
 Expanded DynamicPPLMooncakeExt precompilation workload.
