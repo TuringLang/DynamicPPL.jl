@@ -100,6 +100,7 @@ export AbstractVarInfo,
     get_vector_params,
     # Accumulators - miscellany
     PriorDistributionAccumulator,
+    get_priors,
     BijectorAccumulator,
     # Working with internal values as vectors
     unflatten!!,
@@ -175,6 +176,8 @@ export AbstractVarInfo,
     # Pseudo distributions
     NamedDist,
     NoDist,
+    filldist,
+    arraydist,
     # Convenience functions
     logprior,
     logjoint,

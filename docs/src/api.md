@@ -81,6 +81,14 @@ OnlyAccsVarInfo
 to_vector_params
 ```
 
+You can also draw vectorised samples from a `LogDensityFunction` via
+
+```@docs
+Base.rand(::Random.AbstractRNG, ::LogDensityFunction, ::AbstractInitStrategy)
+```
+
+(although note that this is a limited interface as it only generates parameters; please see [the documentation](@ref ldf-model) for more information on how to combine `LogDensityFunction` with `init!!` more generally.)
+
 ## Condition and decondition
 
 A [`Model`](@ref) can be conditioned on a set of observations with [`AbstractPPL.condition`](@ref) or its alias [`|`](@ref).
@@ -220,7 +228,11 @@ Sometimes it can be useful to extract the priors of a model. This is the possibl
 extract_priors
 ```
 
+## Distribution wrappers
+
 ```@docs
+filldist
+arraydist
 NamedDist
 ```
 
@@ -466,8 +478,6 @@ DynamicPPL.apply_transform_strategy
 ```@docs
 DynamicPPL.transformation
 DynamicPPL.default_transformation
-DynamicPPL.link_transform
-DynamicPPL.invlink_transform
 ```
 
 #### Utils

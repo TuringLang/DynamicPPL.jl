@@ -114,10 +114,11 @@ However, `DynamicLink()` is a bit more subtle.
 In particular, for `DynamicLink()`, the actual transformation used is obtained at runtime from the distribution on the right-hand side of the tilde-statement, using:
 
 ```@example 1
-DynamicPPL.from_linked_vec_transform(LogNormal())
+using Bijectors: Bijectors
+
+Bijectors.VectorBijectors.from_linked_vec(LogNormal())
 ```
 
-(which ultimately calls functions from Bijectors.jl).
 This means that the transformation is recalculated on every model evaluation.
 
 One might question why this is necessary: for example, in this simple model, we know that `x` and `y` are always `LogNormal`, so why not just store use the log-transform directly?

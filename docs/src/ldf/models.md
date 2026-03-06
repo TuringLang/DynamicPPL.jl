@@ -17,11 +17,7 @@ using DynamicPPL, Distributions
 end
 model = f()
 
-accs = OnlyAccsVarInfo(VectorValueAccumulator())
-_, accs = init!!(model, accs, InitFromPrior(), LinkAll())
-vector_values = get_vector_values(accs)
-
-ldf = LogDensityFunction(model, getlogjoint_internal, vector_values)
+ldf = LogDensityFunction(model, getlogjoint_internal, LinkAll())
 ```
 
 ## Evaluating models using vectorised parameters
@@ -146,6 +142,14 @@ This allows you to obtain all the information you need with only one model evalu
     
     which is equivalent.
     However, this is slower since it has to generate an intermediate VarNamedTuple.
+
+If you **only** need vectorised parameters, and not other information such as log-densities, then you can use `rand()` on a `LogDensityFunction` to directly get this:
+
+```@example 1
+using Random: Xoshiro
+
+rand(Xoshiro(468), ldf)
+```
 
 !!! note "What happened to `varinfo[:]`?"
     

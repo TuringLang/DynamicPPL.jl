@@ -41,6 +41,5 @@ get_vector_params
 
 ```@docs
 PriorDistributionAccumulator
+get_priors
 ```
-
-(No convenience function for this one yet.)

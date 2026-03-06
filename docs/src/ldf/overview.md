@@ -51,10 +51,10 @@ The actual implementation of `LogDensityFunction` is a bit more complex than thi
 
 ## Creating a `LogDensityFunction`
 
-The constructor for `LogDensityFunction` is
+The main constructor for `LogDensityFunction` is
 
 ```julia
-LogDensityFunction(model, logdensityfunc, vector_values; adtype)
+LogDensityFunction(model, logdensityfunc, transform_strategy; adtype)
 ```
 
 `model` is of course the model itself, but the other arguments deserve more explanation.
@@ -63,20 +63,23 @@ LogDensityFunction(model, logdensityfunc, vector_values; adtype)
     For example, it could be `getlogjoint_internal` (most of the time that is what you will want!).
     This is the argument that makes `LogDensityFunction` actually obey the interface that e.g. optimisers expect.
 
-  - `vector_values` is a `VarNamedTuple` that contains `VectorValue`s and `LinkedVectorValue`s.
-    DynamicPPL will automatically infer from this the transform strategy as well as the ranges for each `VarName`.
+  - `transform_strategy` is an `AbstractTransformStrategy` that specifies whether the
+    `LogDensityFunction` belongs in linked space or not.
+
+!!! note "Passing a set of vectorised values yourself"
     
-    The easiest way to supply one is to use a `VectorValueAccumulator`:
-    
-    ```@example 1
-    accs = OnlyAccsVarInfo(VectorValueAccumulator())
-    _, accs = init!!(model, accs, InitFromPrior(), LinkAll())
-    vector_values = get_vector_values(accs)
-    
-    ldf = LogDensityFunction(model, getlogjoint_internal, vector_values)
-    ```
+        When using an `AbstractTransformStrategy` as the third argument, the model will be evaluated once to generate a set of vectorised values.
+        If you want to avoid the cost of this model evaluation, you can instead directly pass a `VarNamedTuple` or `VarInfo` object that contains these vectorised values as the third argument.
+        Please see the docstring of `LogDensityFunction` for more details.
+
   - If you need to also obtain gradients with respect to the vectorised parameters, you can pass `adtype::ADTypes.AbstractADType` as a keyword argument.
     If gradients are not needed, you can omit this.
+
+So, to make our `LogDensityFunction` for the model above, we can do
+
+```@example 1
+ldf = LogDensityFunction(model, getlogjoint_internal, LinkAll())
+```
 
 ## The LogDensityProblems.jl interface
 

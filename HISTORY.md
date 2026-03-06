@@ -2,7 +2,55 @@
 
 ...
 
-# v0.40
+# 0.40.7
+
+Expanded DynamicPPLMooncakeExt precompilation workload.
+
+# 0.40.6
+
+Add an extra constructor for `LogDensityFunction(::Model, logdensity_function, ::AbstractTransformStrategy[, accs; adtype])`, which is a shorthand for generating the vectorised values according to the given transform strategy, and then calling the existing constructor with those values.
+This allows you to conveniently construct a linked `LogDensityFunction` in one line via
+
+```julia
+ldf = LogDensityFunction(model, logdensity_function, LinkAll())
+```
+
+instead of the old route where you had to create a `VarInfo` or `VectorValueAccumulator` first.
+
+Added a method `rand([rng,] ::LogDensityFunction[, init_strategy])` which allows you to sample new parameter vectors from a `LogDensityFunction` directly.
+
+Added a `transform_strategy` keyword argument to `DynamicPPL.TestUtils.run_ad`.
+It is intended to (eventually) replace the `varinfo` keyword argument; however, for now both are still supported for backwards compatibility.
+If both `varinfo` and `transform_strategy` are passed, then `varinfo` takes precedence.
+
+Added a small precompilation workload to DynamicPPLMooncakeExt, which should reduce the time to first gradient down on Turing models.
+
+# 0.40.5
+
+Remove DynamicPPL's internal variable transformation code and replace it directly with the new `Bijectors.VectorBijectors` module.
+There should be no difference for end-users, _apart from_ increased performance in many cases.
+
+If you were extending the internal `from_vec_transform`, `to_vec_transform`, `from_linked_vec_transform`, `to_linked_vec_transform`, or `tovec` methods, please note that these have been removed.
+In place of this, you should implement the `Bijectors.VectorBijectors` interface, which is public and is guaranteed to be semver-compliant now onwards.
+Please see [the Bijectors documentation](https://turinglang.org/Bijectors.jl/stable/vector/) for more information.
+
+# 0.40.4
+
+Moved `filldist` and `arraydist` from DistributionsAD.jl to DynamicPPL.jl (with greatly simplified definitions).
+
+# 0.40.3
+
+Added a convenience function, `get_priors(::AbstractVarInfo)`, which extracts the `VarNamedTuple` of prior distributions from a VarInfo that contains a `PriorDistributionAccumulator`.
+
+# 0.40.2
+
+Fix a bug where `DebugAccumulator` was being improperly mutated during model checks.
+
+# 0.40.1
+
+Fix AD performance with ReverseDiff (v0.39.9 inadvertently introduced a bug that did not cause any correctness issues, but did cause severe slowdowns with ReverseDiff -- this patch reverts that).
+
+# 0.40
 
 v0.40 of DynamicPPL brings with it a complete rewrite of DynamicPPL's core data structure, `VarInfo`.
 
@@ -296,6 +344,12 @@ In this release, to reduce code duplication, they have been merged into a single
   - `Bijectors.bijector(::Model)`, which creates a bijector from the vectorised variable space of the model to the linked variable space of the model, now has slightly different optional arguments. See the docstring for details.
   - `NamedDist` no longer allows variable names with `Colon`s in them, such as `x[:]`.
   - `value_iterator_from_chain` is removed; please use `AbstractMCMC.to_samples(DynamicPPL.ParamsWithStats, chain, model)` instead.
+
+# 0.39.15
+
+Fix AD performance with ReverseDiff (v0.39.9 inadvertently introduced a bug that did not cause any correctness issues, but did cause severe slowdowns with ReverseDiff -- this patch reverts that).
+
+This is a backport of the same patch in v0.40.1.
 
 # 0.39.14
 

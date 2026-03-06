@@ -6,6 +6,7 @@ __now__ = now()
 
 using AbstractMCMC: AbstractMCMC
 using BangBang: setindex!!
+using Bijectors: Bijectors
 using DynamicPPL
 using Distributions
 using LinearAlgebra: I
@@ -496,9 +497,9 @@ end
             for (vn, dist) in distributions
                 target = target_transform(transform_strategy, vn)
                 vn_vec_val = if target isa DynamicLink
-                    DynamicPPL.to_linked_vec_transform(dist)(unlinked_values[vn])
+                    Bijectors.VectorBijectors.to_linked_vec(dist)(unlinked_values[vn])
                 elseif target isa Unlink
-                    DynamicPPL.to_vec_transform(dist)(unlinked_values[vn])
+                    Bijectors.VectorBijectors.to_vec(dist)(unlinked_values[vn])
                 else
                     error("don't know how to handle transform type $target")
                 end

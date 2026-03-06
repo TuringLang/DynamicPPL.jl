@@ -3,8 +3,13 @@ using DynamicPPL: DynamicPPL
 using Random: Random
 using Test: @testset, @test_throws
 
+const TEST_GROUP_ALL = "All"
+const TEST_GROUP_GROUP1 = "Group1"
+const TEST_GROUP_GROUP2 = "Group2"
+const TEST_GROUP_DOCTESTS = "Doctests"
+
 # These flags are set in CI
-const GROUP = get(ENV, "GROUP", "All")
+const GROUP = get(ENV, "GROUP", TEST_GROUP_ALL)
 const AQUA = get(ENV, "AQUA", "true") == "true"
 
 Random.seed!(100)
@@ -13,7 +18,7 @@ Random.seed!(100)
     # The tests are split into two groups so that CI can run in parallel. The
     # groups are chosen to make both groups take roughly the same amount of
     # time, but beyond that there is no particular reason for the split.
-    if GROUP == "All" || GROUP == "Group1"
+    if GROUP in [TEST_GROUP_ALL, TEST_GROUP_GROUP1]
         if AQUA
             include("Aqua.jl")
         end
@@ -39,7 +44,7 @@ Random.seed!(100)
         include("chains.jl")
     end
 
-    if GROUP == "All" || GROUP == "Group2"
+    if GROUP in [TEST_GROUP_ALL, TEST_GROUP_GROUP2]
         include("bijector.jl")
         include("logdensityfunction.jl")
         @testset "extensions" begin
@@ -52,7 +57,7 @@ Random.seed!(100)
         end
     end
 
-    if GROUP == "All" || GROUP == "Doctests"
+    if GROUP in [TEST_GROUP_ALL, TEST_GROUP_DOCTESTS]
         Documenter.DocMeta.setdocmeta!(
             DynamicPPL, :DocTestSetup, :(using DynamicPPL, Distributions); recursive=true
         )
@@ -67,5 +72,11 @@ Random.seed!(100)
         using Distributions: Normal
         using DynamicPPL: DefaultContext, Condition, Fix
         Documenter.doctest(DynamicPPL; manual=false, doctestfilters=doctestfilters)
+    end
+
+    if !(
+        GROUP in [TEST_GROUP_ALL, TEST_GROUP_GROUP1, TEST_GROUP_GROUP2, TEST_GROUP_DOCTESTS]
+    )
+        @warn "The \$GROUP environment variable was set to an Unknown value '$GROUP'. No tests were run."
     end
 end

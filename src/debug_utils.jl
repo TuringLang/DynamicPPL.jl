@@ -2,6 +2,7 @@ module DebugUtils
 
 using ..DynamicPPL
 
+using Bijectors: Bijectors
 using Random: Random
 using InteractiveUtils: InteractiveUtils
 using Distributions
@@ -81,6 +82,7 @@ end
 function DynamicPPL.accumulate_observe!!(
     acc::DebugAccumulator, right::Distribution, val, vn::Union{VarName,Nothing}, template
 )
+    failed = acc.failed
     if _has_partial_missings(val, right)
         msg = if vn === nothing
             "on the left-hand side of an observe statement"
@@ -94,7 +96,7 @@ function DynamicPPL.accumulate_observe!!(
             " It is not currently possible to set part but not all of a distribution" *
             " to be `missing`."
         @warn full_msg
-        acc.failed = true
+        failed = true
     end
     # Check for NaN's as well
     if _has_nans(val)
@@ -103,9 +105,9 @@ function DynamicPPL.accumulate_observe!!(
             " observe statement; this may indicate that your data" *
             " contain NaN values."
         @warn msg
-        acc.failed = true
+        failed = true
     end
-    return acc
+    return DebugAccumulator(failed)
 end
 
 """
@@ -303,7 +305,9 @@ function has_static_constraints(rng::Random.AbstractRNG, model::Model; num_evals
     for vn in all_vns
         # Check that the bijector for `vn` is the same across all runs. (Note that
         # the distribution can vary, as long as the bijector doesn't change)
-        bijectors = map(vnts -> DynamicPPL.link_transform(vnts[vn]), prior_vnts)
+        bijectors = map(
+            vnts -> Bijectors.VectorBijectors.from_linked_vec(vnts[vn]), prior_vnts
+        )
         if !isempty(bijectors) && any(b -> b != bijectors[1], bijectors)
             return false
         end

@@ -19,7 +19,10 @@ using DynamicPPL:
     map_accumulator,
     reset,
     setacc!!,
-    split
+    split,
+    PriorDistributionAccumulator,
+    get_priors,
+    @varname
 
 @testset "accumulators" begin
     @testset "individual accumulator types" begin
@@ -165,6 +168,21 @@ using DynamicPPL:
                 acc -> promote_for_threadsafe_eval(acc, Float64), accs, Val(:LogLikelihood)
             ) == AccumulatorTuple(lp_f32, LogLikelihoodAccumulator(1.0))
         end
+    end
+
+    @testset "PriorDistributionAccumulator" begin
+        accs = DynamicPPL.OnlyAccsVarInfo(
+            PriorDistributionAccumulator(), RawValueAccumulator(false)
+        )
+        @model function f()
+            x ~ Normal()
+            return y ~ Normal(x)
+        end
+        _, accs = DynamicPPL.init!!(f(), accs, InitFromPrior(), UnlinkAll())
+        vals = get_raw_values(accs)
+        priors = get_priors(accs)
+        @test priors[@varname(x)] == Normal()
+        @test priors[@varname(y)] == Normal(vals[@varname(x)])
     end
 end
 

@@ -30,7 +30,7 @@ using Random: Random
     DynamicPPL.LogDensityFunction(
         model::Model,
         getlogdensity::Any=getlogjoint_internal,
-        vnt_or_vi::Union{VarNamedTuple,VarInfo,OnlyAccsVarInfo}=VarInfo(model).values,
+        vi_vnt_or_tfm_strategy=_default_vnt(model, UnlinkAll()),
         accs::Union{NTuple{<:Any,AbstractAccumulator},AccumulatorTuple}=DynamicPPL.ldf_accs(getlogdensity);
         adtype::Union{ADTypes.AbstractADType,Nothing}=nothing,
     )
@@ -45,9 +45,13 @@ using `LogDensityProblems.logdensity` and `LogDensityProblems.logdensity_and_gra
 `adtype` is nothing, then only `logdensity` is implemented. If `adtype` is a concrete AD
 backend type, then `logdensity_and_gradient` is also implemented.
 
-`getlogdensity` should be a callable which takes a single argument: an `OnlyAccsVarInfo`,
-and returns a `Real` corresponding to the log density of interest. There are several
-functions in DynamicPPL that are 'supported' out of the box:
+## Positional arguments
+
+The first argument is the DynamicPPL model.
+
+The second argument, `getlogdensity` should be a callable which takes a single argument: an
+`OnlyAccsVarInfo`, and returns a `Real` corresponding to the log density of interest. There
+are several functions in DynamicPPL that are 'supported' out of the box:
 
 - [`getlogjoint_internal`](@ref): calculate the log joint, including the log-Jacobian term
   for any variables that have been linked in the provided VarInfo.
@@ -66,18 +70,40 @@ functions in DynamicPPL that are 'supported' out of the box:
     was created with a linked or unlinked VarInfo. This is done primarily to ease
     interoperability with MCMC samplers.
 
-`vnt` is a `VarNamedTuple` which contains vectorised representations of all the random variables
-in the model. You can create one manually, but for this argument, it is easier to pass either:
+**The third argument** can take many forms, but it essentially specifies a set of vectorised
+parameters to be used for constructing the single vectorised representation of the model.
+The parameters stored in this argument determine whether the resulting `LogDensityFunction`
+will be linked, unlinked, or mixed. For example, if you pass a `VarNamedTuple` consisting
+entirely of `LinkedVectorValue`s, then the resulting `LogDensityFunction` will be fully
+linked.
 
-- an `oavi::OnlyAccsVarInfo` which contains a `VectorValueAccumulator`, in which case the values
-  are taken from that accumulator (**this approach is recommended going forward**);
-- a `vi::VarInfo`, in which case the `vi.values` field is used.
+You can pass either:
 
-`accs` allows you to specify an `AccumulatorTuple` or a tuple of `AbstractAccumulator`s
-which will be used _when evaluating the log density_`. (Note that any accumulators from the
-previous argument are discarded.) By default, this uses an internal function,
-`DynamicPPL.ldf_accs`, which attempts to choose an appropriate set of accumulators based on
-which kind of log-density is being calculated.
+- **`vnt`**: a `VarNamedTuple` which contains vectorised representations of all the random
+  variables in the model. This is useful if you already have one, either by creating a full
+  `VarInfo` and accessing its `values` field, or by creating a `OnlyAccsVarInfo` with a
+  `VectorValueAccumulator` and calling `get_vector_values` on it.
+
+- **`vi`**: a `VarInfo`, in which case the `vi.values` field is used.
+
+- **`oavi`**: an [`OnlyAccsVarInfo`](@ref), in which case the [`get_vector_values`](@ref)
+  function is used to extract a VarNamedTuple of vector values from the
+  [`VectorValueAccumulator`](@ref) inside it. If the `OnlyAccsVarInfo` does not contain a
+  `VectorValueAccumulator`, then an error is thrown.
+
+**But by far the most convenient way to specify this argument is to just pass a transform
+strategy.** In this case, the transform strategy will be first used to generate a set of
+vectorised parameters, from which the relevant information will be extracted. This does come
+at the cost of doing one extra model evaluation. Whilst `LogDensityFunction` construction is
+unlikely to occur in performance-sensitive code paths, if you absolutely cannot pay this
+price, then you should generate the vectorised parameters yourself and pass them here
+instead.
+
+The last argument, `accs`, allows you to specify an `AccumulatorTuple` or a tuple of
+`AbstractAccumulator`s which will be used _when evaluating the log density_`. (Note that any
+accumulators from the previous argument are discarded.) By default, this uses an internal
+function, `DynamicPPL.ldf_accs`, which attempts to choose an appropriate set of accumulators
+based on which kind of log-density is being calculated.
 
 If the `adtype` keyword argument is provided, then this struct will also store the adtype
 along with other information for efficient calculation of the gradient of the log density.
@@ -241,6 +267,7 @@ struct LogDensityFunction{
         )
     end
 end
+
 function LogDensityFunction(
     model::Model,
     getlogdensity::Any,
@@ -265,13 +292,21 @@ function LogDensityFunction(
     vnt = getacc(oavi, Val(VECTORVAL_ACCNAME)).values
     return LogDensityFunction(model, getlogdensity, vnt, accs; adtype=adtype)
 end
+function LogDensityFunction(
+    model::Model,
+    getlogdensity::Any,
+    link_strat::AbstractTransformStrategy,
+    accs::Union{NTuple{<:Any,AbstractAccumulator},AccumulatorTuple}=ldf_accs(getlogdensity);
+    adtype::Union{ADTypes.AbstractADType,Nothing}=nothing,
+)
+    vnt = _default_vnt(model, link_strat)
+    return LogDensityFunction(model, getlogdensity, vnt, accs; adtype=adtype)
+end
 
 function _default_vnt(model::Model, transform_strategy::AbstractTransformStrategy)
-    _, vi = init!!(model, VarInfo(), InitFromPrior(), transform_strategy)
-    return vi.values
-    # oavi = OnlyAccsVarInfo(VectorValueAccumulator())
-    # _, oavi = DynamicPPL.init!!(model, oavi, InitFromPrior(), transform_strategy)
-    # return getacc(oavi, Val(VECTORVAL_ACCNAME)).values
+    oavi = OnlyAccsVarInfo(VectorValueAccumulator())
+    _, oavi = DynamicPPL.init!!(model, oavi, InitFromPrior(), transform_strategy)
+    return getacc(oavi, Val(VECTORVAL_ACCNAME)).values
 end
 
 function _get_input_vector_type(::LogDensityFunction{M,A,L,G,R,P,X}) where {M,A,L,G,R,P,X}
@@ -467,7 +502,7 @@ _use_closure(::ADTypes.AutoMooncakeForward) = false
 # For ReverseDiff, with the compiled tape, you _must_ use a closure because otherwise with
 # DI.Constant arguments the tape will always be recompiled upon each call to
 # value_and_gradient. For non-compiled ReverseDiff, it is faster to not use a closure.
-_use_closure(::ADTypes.AutoReverseDiff{compile}) where {compile} = !compile
+_use_closure(::ADTypes.AutoReverseDiff{compile}) where {compile} = compile
 # For AutoEnzyme it allows us to avoid setting function_annotation
 _use_closure(::ADTypes.AutoEnzyme) = false
 # Since for most backends it's faster to not use a closure, we set that as the default
@@ -620,4 +655,37 @@ function to_vector_params_inner(
     end
 
     return template_vect
+end
+
+"""
+    Base.rand(
+        [rng::AbstractRNG,]
+        ldf::LogDensityFunction,
+        init_strategy::AbstractInitStrategy=InitFromPrior(),
+    )
+
+Generate a random vector of parameters that is consistent with the given
+`LogDensityFunction`, using the provided initialisation strategy.
+
+Note that this function only generates parameters, and does not return the log density. If
+you also need the log density, instead of calling `rand` and then
+`LogDensityProblems.logdensity` separately (which will incur two separate model
+evaluations), you can directly call `DynamicPPL.init!!` with a
+[`VectorParamAccumulator`](@ref) plus the log-probability accumulators that you need, and
+extract both the parameters and the log density from the resulting `OnlyAccsVarInfo`. See
+[the DynamicPPL documentation](@ref ldf-model) for an example of this.
+"""
+function Base.rand(
+    rng::Random.AbstractRNG,
+    ldf::LogDensityFunction,
+    init_strategy::AbstractInitStrategy=InitFromPrior(),
+)
+    accs = OnlyAccsVarInfo(VectorParamAccumulator(ldf))
+    _, accs = DynamicPPL.init!!(rng, ldf.model, accs, init_strategy, ldf.transform_strategy)
+    return get_vector_params(accs)
+end
+function Base.rand(
+    ldf::LogDensityFunction, init_strategy::AbstractInitStrategy=InitFromPrior()
+)
+    return rand(Random.default_rng(), ldf, init_strategy)
 end
