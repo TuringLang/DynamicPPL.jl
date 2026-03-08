@@ -228,10 +228,12 @@ Everything else is optional, and can be categorised into several groups:
 
    You can control whether this transformation happens or not by passing the
    `transform_strategy` keyword argument. The default is `LinkAll()`, which means that all
-   parameters will be transformed to unconstrained space. However, if you want to evaluate
-   in the original space, you can use `UnlinkAll()`; you can also specify mixed linking
-   strategies if desired (see [the DynamicPPL documentation](@ref transform-strategies) for more information. 
+   parameters will be transformed to unconstrained space. This is the most relevant setting
+   for testing AD.
 
+   However, if you want to evaluate in the original space, you can use `UnlinkAll()`; you
+   can also specify mixed linking strategies if desired (see [the DynamicPPL
+   documentation](@ref transform-strategies) for more information). 
 
 1. _How to specify the parameters to be used for evaluation._
 
