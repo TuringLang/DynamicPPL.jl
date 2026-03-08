@@ -8,14 +8,11 @@ using DynamicPPL:
     DynamicPPL,
     Model,
     LogDensityFunction,
-    VarInfo,
-    AbstractVarInfo,
     AbstractTransformStrategy,
     LinkAll,
     getlogjoint_internal,
     to_vector_params,
     get_vector_values,
-    unflatten!!,
     OnlyAccsVarInfo,
     VectorValueAccumulator,
     InitFromPrior
@@ -151,8 +148,9 @@ struct ADResult{Tparams<:AbstractFloat,Tresult<:AbstractFloat,Ttol<:AbstractFloa
     model::Model
     "The function used to extract the log density from the model"
     getlogdensity::Function
-    "The VarInfo that was used"
-    varinfo::Union{Nothing,AbstractVarInfo}
+    
+    "The LogDensityFunction that was used"
+    ldf::LogDensityFunction
     "The values at which the model was evaluated"
     params::Vector{Tparams}
     "The AD backend that was tested"
@@ -201,7 +199,6 @@ end
         rtol::AbstractFloat=sqrt(eps()),
         getlogdensity::Function=getlogjoint_internal,
         rng::Random.AbstractRNG=Random.default_rng(),
-        varinfo::Union{Nothing,AbstractVarInfo}=nothing,
         transform_strategy::AbstractTransformStrategy=LinkAll(),
         params::Union{Nothing,Vector{<:AbstractFloat}}=nothing,
         verbose=true,
@@ -238,12 +235,8 @@ Everything else is optional, and can be categorised into several groups:
    parameters will be transformed to unconstrained space. However, if you want to evaluate
    in the original space, you can use `UnlinkAll()`; you can also specify mixed linking
    strategies if desired (see [the DynamicPPL documentation](@ref transform-strategies) for
-   more information.
+   more information. Note that the `varinfo` argument has been removed; pass `transform_strategy` directly instead.
 
-   Instead of passing the `transform_strategy`, you can also directly pass the `varinfo`
-   keyword argument, which expects a VarInfo object that has been generated with the desired
-   transformation. If both `varinfo` and `transform_strategy` are passed, then `varinfo`
-   takes precedence, and `transform_strategy` is ignored.
 
 1. _How to specify the parameters to be used for evaluation._
 
@@ -251,12 +244,6 @@ Everything else is optional, and can be categorised into several groups:
    the `params` argument. If you don't specify this, it will be generated randomly from the
    prior of the model. If you want to seed the parameter generation, you can pass the `rng`
    keyword argument, which will then be used to generate the parameters.
-
-   Note that these only reflect the parameters used for _evaluating_ the gradient. If you
-   also want to control the parameters used for _preparing_ the gradient, then you need to
-   manually set these parameters inside the `varinfo` keyword argument, for example using
-   `vi = DynamicPPL.unflatten!!(vi, prep_params)`. You could then evaluate the gradient at a
-   different set of parameters using the `params` keyword argument.
 
 1. _Which type of logp is being calculated._
 
@@ -334,7 +321,6 @@ function run_ad(
     rtol::AbstractFloat=sqrt(eps()),
     getlogdensity::Function=getlogjoint_internal,
     rng::AbstractRNG=default_rng(),
-    varinfo::Union{Nothing,AbstractVarInfo}=nothing,
     transform_strategy::AbstractTransformStrategy=LinkAll(),
     params::Union{Nothing,Vector{<:AbstractFloat}}=nothing,
     verbose=true,
@@ -347,15 +333,10 @@ function run_ad(
     verbose && @info "Running AD on $(model.f) with $(adtype)\n"
 
     # Generate initial parameters
-    vvals = if isnothing(varinfo)
-        accs = OnlyAccsVarInfo(VectorValueAccumulator())
-        _, accs = DynamicPPL.init!!(rng, model, accs, InitFromPrior(), transform_strategy)
-        get_vector_values(accs)
-    elseif varinfo isa VarInfo
-        varinfo.values
-    elseif varinfo isa OnlyAccsVarInfo
-        get_vector_values(varinfo)
-    end
+    accs = OnlyAccsVarInfo(VectorValueAccumulator())
+    _, accs = DynamicPPL.init!!(rng, model, accs, InitFromPrior(), transform_strategy)
+    vvals = get_vector_values(accs)
+
     ldf = LogDensityFunction(model, getlogdensity, vvals; adtype=adtype)
     if isnothing(params)
         params = to_vector_params(vvals, ldf)
@@ -417,7 +398,7 @@ function run_ad(
     return ADResult(
         model,
         getlogdensity,
-        varinfo,
+        ldf,
         params,
         adtype,
         atol,
