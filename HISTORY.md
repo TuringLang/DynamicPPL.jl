@@ -77,7 +77,7 @@ Fix AD performance with ReverseDiff (v0.39.9 inadvertently introduced a bug that
 
 # v0.41
 
-...
+Removed the `varinfo` keyword argument from `DynamicPPL.TestUtils.AD.run_ad` and replaced the `varinfo` field in `ADResult` with `ldf::LogDensityFunction`.
 
 # v0.40
 
