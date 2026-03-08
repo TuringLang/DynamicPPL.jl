@@ -11,10 +11,6 @@ using DynamicPPL:
     AbstractTransformStrategy,
     LinkAll,
     getlogjoint_internal,
-    to_vector_params,
-    get_vector_values,
-    OnlyAccsVarInfo,
-    VectorValueAccumulator,
     InitFromPrior
 
 using LinearAlgebra: norm
@@ -234,8 +230,7 @@ Everything else is optional, and can be categorised into several groups:
    `transform_strategy` keyword argument. The default is `LinkAll()`, which means that all
    parameters will be transformed to unconstrained space. However, if you want to evaluate
    in the original space, you can use `UnlinkAll()`; you can also specify mixed linking
-   strategies if desired (see [the DynamicPPL documentation](@ref transform-strategies) for
-   more information. Note that the `varinfo` argument has been removed; pass `transform_strategy` directly instead.
+   strategies if desired (see [the DynamicPPL documentation](@ref transform-strategies) for more information. 
 
 
 1. _How to specify the parameters to be used for evaluation._
@@ -333,14 +328,11 @@ function run_ad(
     verbose && @info "Running AD on $(model.f) with $(adtype)\n"
 
     # Generate initial parameters
-    accs = OnlyAccsVarInfo(VectorValueAccumulator())
-    _, accs = DynamicPPL.init!!(rng, model, accs, InitFromPrior(), transform_strategy)
-    vvals = get_vector_values(accs)
-
-    ldf = LogDensityFunction(model, getlogdensity, vvals; adtype=adtype)
+    ldf = LogDensityFunction(model, getlogdensity, transform_strategy; adtype=adtype)
     if isnothing(params)
-        params = to_vector_params(vvals, ldf)
+        params = rand(rng, ldf, InitFromPrior())
     end
+
     params = [p for p in params]  # Concretise
     verbose && println("       params : $(params)")
 
@@ -361,7 +353,7 @@ function run_ad(
             grad_true = test.grad
         elseif test isa WithBackend
             ldf_reference = LogDensityFunction(
-                model, getlogdensity, vvals; adtype=test.adtype
+                model, getlogdensity, transform_strategy; adtype=test.adtype
             )
             value_true, grad_true = logdensity_and_gradient(ldf_reference, params)
             # collect(): https://github.com/JuliaDiff/DifferentiationInterface.jl/issues/754
