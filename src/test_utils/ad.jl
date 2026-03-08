@@ -148,7 +148,7 @@ struct ADResult{Tparams<:AbstractFloat,Tresult<:AbstractFloat,Ttol<:AbstractFloa
     model::Model
     "The function used to extract the log density from the model"
     getlogdensity::Function
-    
+
     "The LogDensityFunction that was used"
     ldf::LogDensityFunction
     "The values at which the model was evaluated"
