@@ -89,7 +89,7 @@ This approach was somewhat successful and was used for many years: it is also de
 
 While this fixed many performance problems with `Dict`, at its very core, it is still a mapping of `VarName`s to values, and therefore suffers from a lack of what we call *'constructiveness'*.
 
-## Constructiveness
+## [Constructiveness](@id constructiveness)
 
 This is a very subtle issue, but caused a number of headaches with DynamicPPL.
 As we will soon see, this is the main motivation behind VNT, and even so VNT does not fully solve it.

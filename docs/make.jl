@@ -46,6 +46,7 @@ makedocs(;
             "vnt/design.md",
             "vnt/implementation.md",
             "vnt/arraylikeblocks.md",
+            "vnt/manipulation.md",
         ],
         "Model evaluation" => "evaluation.md",
         "Tilde-statements" => "tilde.md",
