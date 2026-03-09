@@ -143,6 +143,10 @@ end
 struct SharedGetProperty{S} end
 (::SharedGetProperty)(::NoTemplate) = NoTemplate()
 (::SharedGetProperty)(t::SkipTemplate{N}) where {N} = decrease_skip(t)
+# These two are unlikely to be hit unless someone manually specifies nothing or missing as a
+# template, but we can handle them gracefully anyway
+(::SharedGetProperty)(::Nothing) = NoTemplate()
+(::SharedGetProperty)(::Missing) = NoTemplate()
 @generated function (::SharedGetProperty{S})(x::VarNamedTuple{names}) where {S,names}
     return (S in names) ? :(x.data.$S) : :(NoTemplate())
 end

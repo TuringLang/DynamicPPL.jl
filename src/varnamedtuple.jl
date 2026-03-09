@@ -139,6 +139,7 @@ include("varnamedtuple/getset.jl")
 include("varnamedtuple/map.jl")
 include("varnamedtuple/show.jl")
 include("varnamedtuple/macro.jl")
+include("varnamedtuple/skeleton.jl")
 
 """
     NamedTuple(vnt::VarNamedTuple)

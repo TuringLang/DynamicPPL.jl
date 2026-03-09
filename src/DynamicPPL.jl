@@ -52,6 +52,7 @@ export AbstractVarInfo,
     map_values!!,
     apply!!,
     densify!!,
+    skeleton,
     push!!,
     empty!!,
     subset,
@@ -234,7 +235,8 @@ using .VarNamedTuples:
     templated_setindex!!,
     NoTemplate,
     SkipTemplate,
-    @vnt
+    @vnt,
+    skeleton
 
 include("transformed_values.jl")
 include("contexts.jl")
