@@ -20,6 +20,8 @@ end
 _element_needs_skeleton(::Type{<:PartialArray}) = true
 _element_needs_skeleton(::Type{T}) where {T} = VarNamedTuple <: T || PartialArray <: T
 
+# For some reason this has to be @generated, because sometimes the compiler doesn't figure
+# out _element_needs_skeleton
 @generated function skeleton(pa::PartialArray{T}) where {T}
     if isconcretetype(T)
         # We can decide from the eltype whether we need to recurse
@@ -29,8 +31,9 @@ _element_needs_skeleton(::Type{T}) where {T} = VarNamedTuple <: T || PartialArra
             # determined in the type.
             # We need to be careful about this because some values in the PA may be unset.
             return quote
-                example_data = pa.data[findfirst(pa.mask)]
-                example_skeleton = skeleton(example_data)
+                idx = findfirst(pa.mask)
+                idx === nothing && error("Unexpected PartialArray with no data")
+                example_skeleton = skeleton(pa.data[idx])
                 new_data = similar(pa.data, typeof(example_skeleton))
                 fill!(new_data, example_skeleton)
                 return new_data
@@ -44,12 +47,16 @@ _element_needs_skeleton(::Type{T}) where {T} = VarNamedTuple <: T || PartialArra
         return quote
             new_data = similar(pa.data)
             for i in eachindex(pa.data)
-                di = pa.data[i]
                 # Need to use setindex!! here because the original eltype of pa.data might
                 # not be broad enough to hold the skeletons themselves (which may have
                 # different concrete types from pa.data[i]).
-                if pa.mask[i] && _element_needs_skeleton(typeof(di))
-                    BangBang.setindex!!(new_data, skeleton(di), i)
+                if pa.mask[i]
+                    di = pa.data[i]
+                    if _element_needs_skeleton(typeof(di))
+                        BangBang.setindex!!(new_data, skeleton(di), i)
+                    else
+                        BangBang.setindex!!(new_data, nothing, i)
+                    end
                 else
                     BangBang.setindex!!(new_data, nothing, i)
                 end
