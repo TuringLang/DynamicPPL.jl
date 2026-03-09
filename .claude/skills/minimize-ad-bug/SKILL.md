@@ -194,20 +194,20 @@ At this point you should have a plain Julia function `f(θ::Vector) -> scalar`. 
   - Remove branches that aren't taken for the test input
   - Simplify math expressions
 
-Compare against finite differences to verify correctness:
-
-```julia
-using FiniteDifferences
-fd_grad = FiniteDifferences.grad(central_fdm(5, 1), f, params)[1]
-```
-
 ## Checking the bug at each step
 
 For **numerical inaccuracy**, compare against finite differences or a known-good backend.
 
+For **performance regressions**, benchmark the AD call using Chairmarks:
+
+```julia
+using Chairmarks
+@b Enzyme.gradient(args...)
+```
+
 For **hard errors**, catch and compare the exception type and message. If the error type or message changes meaningfully after a simplification, stop and report to the user.
 
-For either case, always pin `params` to specific values once you have a reproducer, so results are deterministic.
+For all cases, always pin `params` to specific values once you have a reproducer, so results are deterministic.
 
 ## Reporting
 
