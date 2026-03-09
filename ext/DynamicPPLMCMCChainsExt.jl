@@ -108,9 +108,7 @@ function AbstractMCMC.to_samples(
 )
     # Run model once to get templates for parameters. Note that the chain may include
     # variables stored with `:=`, so we need to pick those up as well.
-    vi = DynamicPPL.OnlyAccsVarInfo((DynamicPPL.RawValueAccumulator(true),))
-    _, vi = DynamicPPL.init!!(model, vi, DynamicPPL.InitFromPrior(), DynamicPPL.UnlinkAll())
-    template_vnt = DynamicPPL.get_raw_values(vi)
+    template_vnt = rand(model)
     # Now we can iterate over the chain
     idxs = Iterators.product(1:size(chain, 1), 1:size(chain, 3))
     # Get parameters
