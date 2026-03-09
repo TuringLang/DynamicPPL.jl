@@ -15,6 +15,7 @@ using DynamicPPL.VarNamedTuples:
     map_values!!,
     apply!!,
     densify!!,
+    skeleton,
     templated_setindex!!,
     GrowableArray,
     grow_to_indices!!,
@@ -1955,6 +1956,11 @@ Base.size(st::SizedThing) = st.size
             x[2:3] := SizedThing((2,))
         end
         @test @inferred(densify!!(vnt)) == vnt
+    end
+
+    @testset "skeleton" begin
+        # TODO
+        @test true
     end
 end
 
