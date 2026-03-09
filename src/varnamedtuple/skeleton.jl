@@ -1,3 +1,30 @@
+"""
+    DynamicPPL.skeleton(vnt::VarNamedTuple)
+
+Create a skeleton of the given `VarNamedTuple`, which holds enough template information to
+reconstruct the original `vnt` from an ordered set of (VarName, value) pairs.
+
+Specifically, we require that for any input `orig_vnt` that the following holds true:
+
+```julia
+skel = skeleton(orig_vnt)
+# Check roundtrip reconstruction
+new_vnt = VarNamedTuple()
+for (vn, val) in pairs(orig_vnt)
+    top_sym = AbstractPPL.getsym(vn)
+    template = get(skel.data, top_sym, DynamicPPL.NoTemplate())
+    new_vnt = DynamicPPL.templated_setindex!!(new_vnt, val, vn, template)
+end
+@assert new_vnt == orig_vnt
+```
+
+This is accomplished by recursively traversing `vnt` and dropping any elements that do not
+contain `PartialArray`s. `PartialArray`s on the other hand are replaced with arrays of the
+same shape and array type, but with the elements replaced with `nothing` (since that is
+space-efficient). This does not cause any issues with reconstruction type stability, since
+`templated_setindex!!` does not use the array's element type when creating a new entry (it
+infers the element type to use from the value that is being set).
+"""
 @generated function skeleton(vnt::VarNamedTuple{names,types}) where {names,types}
     nms_to_include = Symbol[]
     for (n, t) in zip(names, types.parameters)
