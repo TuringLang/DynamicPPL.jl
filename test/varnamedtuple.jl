@@ -1960,7 +1960,7 @@ Base.size(st::SizedThing) = st.size
 
     @testset "skeleton" begin
         function test_skeleton(orig_vnt, expected_skeleton)
-            @test (@inferred skeleton(orig_vnt) == expected_skeleton)
+            @test (@inferred skeleton(orig_vnt)) == expected_skeleton
             skel = skeleton(orig_vnt)
             # Check roundtrip reconstruction
             new_vnt = VarNamedTuple()
@@ -2041,6 +2041,39 @@ Base.size(st::SizedThing) = st.size
         end
         v8s = VarNamedTuple(; x=fill(VarNamedTuple(; y=fill(nothing, 2)), 3))
         test_skeleton(v8, v8s)
+
+        # VNT -> PA[Any]
+        v9 = @vnt begin
+            @template x = zeros(3)
+            x[1] := 1.0
+            x[2] := "wut"
+        end
+        v9s = VarNamedTuple(; x=fill(nothing, 3))
+        test_skeleton(v9, v9s)
+
+        # VNT -> PA with some entries needing to recurse
+        v10 = @vnt begin
+            @template x = fill((; y=zeros(2)), 3)
+            x[3].y[2] := 2.0
+            x[1] := 1.0
+        end
+        v10s = VarNamedTuple(; x=[nothing, nothing, VarNamedTuple(; y=fill(nothing, 2))])
+        test_skeleton(v10, v10s)
+
+        # VNT -> PA with different types of arrays
+        v11 = @vnt begin
+            @template x = OffsetArray(zeros(3), -4:-2)
+            x[-2] := 2.0
+        end
+        v11s = VarNamedTuple(; x=OffsetArray(fill(nothing, 3), -4:-2))
+        test_skeleton(v11, v11s)
+
+        v12 = @vnt begin
+            @template x = DimArray(zeros(2, 3), (:a, :b))
+            x[1, 2] := 2.0
+        end
+        v12s = VarNamedTuple(; x=DimArray(fill(nothing, 2, 3), (:a, :b)))
+        test_skeleton(v12, v12s)
     end
 end
 
