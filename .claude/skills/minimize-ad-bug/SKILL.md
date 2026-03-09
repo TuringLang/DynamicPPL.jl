@@ -32,6 +32,20 @@ The general order of simplifications (from outermost to innermost) is:
  3. **Desugar `@model`** (replace with hand-written evaluation function, expand tilde_assume!! calls)
  4. **Minimize the pure function** (inline, simplify, reduce until the root cause is bare)
 
+## Phase 0: Determine the adtype to use
+
+The user might not always provide a specific `AbstractADType`. Use the following list:
+
+  - "Enzyme reverse" -> `AutoEnzyme(; mode=Enzyme.set_runtime_activity(Enzyme.Reverse))`
+  - "Enzyme forward" -> `AutoEnzyme(; mode=Enzyme.set_runtime_activity(Enzyme.Forward))`
+  - "ReverseDiff compiled" -> `AutoReverseDiff(; compile=true)`
+  - "ReverseDiff" -> `AutoReverseDiff(; compile=false)`
+  - "ForwardDiff" -> `AutoForwardDiff()`
+  - "Mooncake forward" -> `AutoMooncakeForward()`
+  - "Mooncake reverse" -> `AutoMooncake()`
+
+Note that to run AD you will always have to import the relevant package (e.g. `import Enzyme`).
+
 ## Phase 1: Simplify the model
 
 Before desugaring anything, try to make the model as small as possible while still reproducing the bug.
