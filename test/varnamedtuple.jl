@@ -2062,17 +2062,17 @@ Base.size(st::SizedThing) = st.size
 
         # VNT -> PA with different types of arrays
         v11 = @vnt begin
-            @template x = OffsetArray(zeros(3), -4:-2)
+            @template x = OA.OffsetArray(zeros(3), -4:-2)
             x[-2] := 2.0
         end
-        v11s = VarNamedTuple(; x=OffsetArray(fill(nothing, 3), -4:-2))
+        v11s = VarNamedTuple(; x=OA.OffsetArray(fill(nothing, 3), -4:-2))
         test_skeleton(v11, v11s)
 
         v12 = @vnt begin
-            @template x = DimArray(zeros(2, 3), (:a, :b))
+            @template x = DD.DimArray(zeros(2, 3), (:a, :b))
             x[1, 2] := 2.0
         end
-        v12s = VarNamedTuple(; x=DimArray(fill(nothing, 2, 3), (:a, :b)))
+        v12s = VarNamedTuple(; x=DD.DimArray(fill(nothing, 2, 3), (:a, :b)))
         test_skeleton(v12, v12s)
     end
 end
