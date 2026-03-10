@@ -189,3 +189,10 @@ function Base.show(io::IO, ::MIME"text/plain", pws::ParamsWithStats)
     end
     return nothing
 end
+
+function Base.:(==)(pws1::ParamsWithStats, pws2::ParamsWithStats)
+    return (pws1.params == pws2.params) & (pws1.stats == pws2.stats)
+end
+function Base.isequal(pws1::ParamsWithStats, pws2::ParamsWithStats)
+    return isequal(pws1.params, pws2.params) && isequal(pws1.stats, pws2.stats)
+end
