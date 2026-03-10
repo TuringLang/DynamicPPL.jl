@@ -1,3 +1,7 @@
+# 0.40.9
+
+Added more docs on special VNT operations, namely `densify!!` and `skeleton`.
+
 # 0.40.8
 
 Added the `skeleton(::VarNamedTuple)` function, which creates a completely blank VarNamedTuple except for any PartialArrays, which are retained with their original shape and type but with all elements set to `nothing`.
