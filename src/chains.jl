@@ -9,7 +9,6 @@ struct ParamsWithStats{P<:VarNamedTuple,S<:NamedTuple}
     params::P
     stats::S
 end
-InitFromParams(ps::ParamsWithStats) = InitFromParams(ps.params)
 
 """
     ParamsWithStats(
@@ -196,4 +195,19 @@ function Base.:(==)(pws1::ParamsWithStats, pws2::ParamsWithStats)
 end
 function Base.isequal(pws1::ParamsWithStats, pws2::ParamsWithStats)
     return isequal(pws1.params, pws2.params) && isequal(pws1.stats, pws2.stats)
+end
+
+"""
+    InitFromParams(
+        ps::ParamsWithStats,
+        fallback::Union{Nothing,AbstractInitStrategy}=InitFromPrior()
+    )
+
+Initialise a model using the parameters stored in `ps`. The stats are ignored. `fallback` is
+used if the model requires the value of a parameter which is not present in `ps.params`.
+"""
+function InitFromParams(
+    ps::ParamsWithStats, fallback::Union{Nothing,AbstractInitStrategy}=InitFromPrior()
+)
+    return InitFromParams(ps.params, fallback)
 end

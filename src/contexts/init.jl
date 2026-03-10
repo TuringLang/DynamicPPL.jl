@@ -111,7 +111,7 @@ end
 
 """
     InitFromParams(
-        params::Any
+        params::Any,
         fallback::Union{AbstractInitStrategy,Nothing}=InitFromPrior()
     )
 
