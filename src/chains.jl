@@ -9,6 +9,7 @@ struct ParamsWithStats{P<:VarNamedTuple,S<:NamedTuple}
     params::P
     stats::S
 end
+InitFromParams(ps::ParamsWithStats) = InitFromParams(ps.params)
 
 """
     ParamsWithStats(

@@ -302,6 +302,14 @@ using Test
                 )
             end
         end
+
+        @testset "ParamsWithStats promotion" begin
+            model = test_init_model()
+            vi = VarInfo(model)
+            ps = ParamsWithStats(vi, model)
+            ifp = InitFromParams(ps)
+            @test ifp.params === ps.params
+        end
     end
 end
 
