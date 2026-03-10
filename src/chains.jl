@@ -157,3 +157,35 @@ function ParamsWithStats(
     end
     return ParamsWithStats(params, stats)
 end
+
+function Base.show(io::IO, ::MIME"text/plain", pws::ParamsWithStats)
+    printstyled(io, "ParamsWithStats"; bold=true)
+    print(io, "\n ├─ ")
+    if isempty(pws.params)
+        printstyled(io, "params"; bold=true)
+        println(io, " (empty)")
+    else
+        printstyled(io, "params"; bold=true)
+        print(io, "\n │  ")
+        DynamicPPL.VarNamedTuples.vnt_pretty_print(io, pws.params, " │  ", 0)
+        println(io)
+    end
+    print(io, " └─ ")
+    printstyled(io, "stats"; bold=true)
+    if isempty(pws.stats)
+        println(io, " (empty)")
+    else
+        n = length(pws.stats)
+        for (i, (k, v)) in enumerate(pairs(pws.stats))
+            if i == n
+                print(io, "\n    └─ ")
+            else
+                print(io, "\n    ├─ ")
+            end
+            printstyled(io, k; color=:blue)
+            print(io, " = ")
+            show(io, v)
+        end
+    end
+    return nothing
+end
