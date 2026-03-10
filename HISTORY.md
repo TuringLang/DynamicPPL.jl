@@ -1,3 +1,7 @@
+# 0.40.12
+
+Added the `InitFromParams(::ParamsWithStats)` method, which delegates to `InitFromParams(::VarNamedTuple)`.
+
 # 0.40.11
 
 Fixed the implementations of `Base.:(==)` and `Base.isequal` for `DynamicPPL.ParamsWithStats` to not require triple-equality of the fields.
