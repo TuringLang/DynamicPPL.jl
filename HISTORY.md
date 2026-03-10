@@ -1,3 +1,7 @@
+# 0.40.10
+
+Added pretty-printing for `DynamicPPL.ParamsWithStats`.
+
 # 0.40.9
 
 Added more docs on special VNT operations, namely `densify!!` and `skeleton`.
