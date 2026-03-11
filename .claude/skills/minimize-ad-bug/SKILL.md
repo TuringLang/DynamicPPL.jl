@@ -18,8 +18,17 @@ The bug may manifest in different ways:
   - **Numerical inaccuracy**: the AD gradient disagrees with finite differences or another backend
   - **Hard error**: the AD call throws an exception
   - **Unexpected type/value**: e.g. returns `NaN`, `Inf`, or wrong-shaped output
+  - **Nondeterministic crash**: segfault or MethodError that varies between runs (see below)
 
 At each step, you need to check that **the same bug** is still present. If the error changes character (e.g. a numerical inaccuracy becomes a different exception, or the error message changes substantially), stop and report this to the user before continuing. The user will decide whether the new error is related or whether you've gone down the wrong path.
+
+### Schrödinger's bugs (Enzyme)
+
+Some Enzyme bugs are **compilation-order-sensitive**: if you compile a working `Enzyme.gradient` call first, a previously failing call may start working due to cached compilation artifacts. The exact failure mode (segfault vs MethodError) can also be nondeterministic between runs.
+
+**Critical rule for Enzyme bugs: restart the Julia session between each `Enzyme.gradient` call.** Do not test multiple gradient calls in the same session — the second call may succeed only because the first call's compilation cached something. When using the Julia MCP tool, call `mcp__julia__julia_restart` between each test.
+
+If a standalone MWE works but the same code fails inside DynamicPPL, this is likely a Schrödinger's bug — the different compilation context changes behavior. In this case, try to reproduce outside DynamicPPL by adding complexity (more struct fields, branches, closures) rather than assuming the bug disappeared.
 
 ## Overall strategy
 
@@ -193,11 +202,17 @@ x, tval, logjac = DynamicPPL.apply_transform_strategy(
 )
 
 # 3. Accumulate: update accumulators (logprior, loglikelihood, etc.)
-vi = DynamicPPL.setindex_with_dist!!(vi, tval, dist, vn, template)
 vi = DynamicPPL.accumulate_assume!!(vi, x, tval, logjac, vn, dist, template)
 ```
 
-Expand these one at a time, inlining each call, to narrow down which step causes the AD failure. Since you've already hardcoded `transform_strategy` to `LinkAll()`, you can inline only the linked branch of `apply_transform_strategy`.
+You don't always need to faithfully inline these functions. Often you can **stub them with the simplest thing that preserves the bug**:
+
+  - **`init()`**: Usually just reads a slice of the params vector. Replace with `view(params, range)` or `params[range]` directly.
+  - **`apply_transform_strategy()`**: If the bug isn't in the transform, replace the whole thing with the identity: use the params slice as `x` directly and set `logjac = 0.0`. This avoids pulling in Bijectors entirely.
+  - **`logjac`**: Try setting it to zero. If the bug persists, the transform/Jacobian isn't involved and you've eliminated a major source of complexity.
+  - **Accumulators**: If you only care about `logprior`, the accumulate step is just `logpdf(dist, x)`. Replace the entire accumulator machinery with a direct `logpdf` call.
+
+The goal is to find the **minimal computation path** that still triggers the bug, not to faithfully reproduce every intermediate step. Only expand a function fully if stubbing it makes the bug disappear.
 
 ## Phase 4: Minimize the pure function
 
@@ -207,6 +222,16 @@ At this point you should have a plain Julia function `f(θ::Vector) -> scalar`. 
   - Replace library calls with their implementations
   - Remove branches that aren't taken for the test input
   - Simplify math expressions
+
+## Phase 5: Remove external dependencies
+
+If the bug is in the AD backend itself (not in DynamicPPL), the final goal is a reproducer with as few dependencies as possible — ideally just the AD package + Base Julia. This makes it easy to file upstream.
+
+  - **Remove Distributions.jl**: Replace distribution types with custom structs that have the same field layout. Inline the relevant `logpdf` implementation. The key structural features to preserve are: field types (especially `Vector` fields), branching patterns (e.g. support checks), and the overall computation shape.
+  - **Remove Bijectors.jl**: Replace bijector calls with their mathematical implementations (e.g. `exp`, `log`, `logabsdet`).
+  - **Remove other packages**: Replace any remaining library calls with hand-written equivalents.
+
+At each step, verify the bug still reproduces in a fresh session. If removing a dependency makes the bug disappear, the bug may depend on specific type structures or compilation paths from that package — report this to the user as a useful finding even if you can't fully eliminate the dependency.
 
 ## Checking the bug at each step
 
@@ -221,13 +246,17 @@ using Chairmarks
 
 For **hard errors**, catch and compare the exception type and message. If the error type or message changes meaningfully after a simplification, stop and report to the user.
 
+For **nondeterministic crashes** (common with Enzyme): the same code may segfault on one run and throw a MethodError on another, or fail to reproduce entirely. If you see different error types or unreproducible errors for the *same* code, this is characteristic of Schrödinger's bugs (see above). Always test in a fresh Julia session.
+
 For all cases, always pin `params` to specific values once you have a reproducer, so results are deterministic.
 
 ## Reporting
 
+The goal is always an upstream MWE for the AD backend (usually Enzyme). If the primal computation works correctly, the bug is in the AD backend, not in DynamicPPL. Do not suggest fixes in DynamicPPL — focus on producing the smallest possible reproducer to file upstream.
+
 Once minimized, summarize:
 
- 1. **Minimal reproducer** — the smallest code that demonstrates the bug
+ 1. **Minimal reproducer** — the smallest code that demonstrates the bug, with as few dependencies as possible
  2. **Which AD backend** is affected
  3. **Expected vs actual** gradient values (or error message)
  4. **Root cause** — which operation/function the AD backend handles incorrectly
