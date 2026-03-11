@@ -1,3 +1,23 @@
+# 0.40.12
+
+Added the `InitFromParams(::ParamsWithStats)` method, which delegates to `InitFromParams(::VarNamedTuple)`.
+
+# 0.40.11
+
+Fixed the implementations of `Base.:(==)` and `Base.isequal` for `DynamicPPL.ParamsWithStats` to not require triple-equality of the fields.
+
+# 0.40.10
+
+Added pretty-printing for `DynamicPPL.ParamsWithStats`.
+
+# 0.40.9
+
+Added more docs on special VNT operations, namely `densify!!` and `skeleton`.
+
+# 0.40.8
+
+Added the `skeleton(::VarNamedTuple)` function, which creates a completely blank VarNamedTuple except for any PartialArrays, which are retained with their original shape and type but with all elements set to `nothing`.
+
 # 0.40.7
 
 Expanded DynamicPPLMooncakeExt precompilation workload.

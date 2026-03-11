@@ -363,6 +363,7 @@ DynamicPPL.VarNamedTuples.VarNamedTuple
 DynamicPPL.VarNamedTuples.@vnt
 DynamicPPL.VarNamedTuples.apply!!
 DynamicPPL.VarNamedTuples.densify!!
+DynamicPPL.VarNamedTuples.skeleton
 DynamicPPL.VarNamedTuples.map_pairs!!
 DynamicPPL.VarNamedTuples.map_values!!
 DynamicPPL.VarNamedTuples.PartialArray

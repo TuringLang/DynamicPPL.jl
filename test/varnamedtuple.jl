@@ -15,6 +15,7 @@ using DynamicPPL.VarNamedTuples:
     map_values!!,
     apply!!,
     densify!!,
+    skeleton,
     templated_setindex!!,
     GrowableArray,
     grow_to_indices!!,
@@ -1955,6 +1956,124 @@ Base.size(st::SizedThing) = st.size
             x[2:3] := SizedThing((2,))
         end
         @test @inferred(densify!!(vnt)) == vnt
+    end
+
+    @testset "skeleton" begin
+        function test_skeleton(orig_vnt, expected_skeleton)
+            @test (@inferred skeleton(orig_vnt)) == expected_skeleton
+            skel = skeleton(orig_vnt)
+            # Check roundtrip reconstruction
+            new_vnt = VarNamedTuple()
+            for (vn, val) in pairs(orig_vnt)
+                top_sym = AbstractPPL.getsym(vn)
+                template = get(skel.data, top_sym, DynamicPPL.NoTemplate())
+                new_vnt = DynamicPPL.templated_setindex!!(new_vnt, val, vn, template)
+            end
+            @test new_vnt == orig_vnt
+        end
+
+        # Empty
+        v0 = VarNamedTuple()
+        v0s = VarNamedTuple()
+        test_skeleton(v0, v0s)
+
+        # VNT
+        v1 = @vnt begin
+            y := 2.0
+        end
+        v1s = VarNamedTuple()
+        test_skeleton(v1, v1s)
+
+        # VNT -> VNT -> VNT -> ... but only VNTs
+        v2 = @vnt begin
+            y := 2.0
+            z.a := 3.0
+            a.b.c.d.e.f := [1.0, 2.0, 3.0]
+            c := "string"
+        end
+        v2s = VarNamedTuple()
+        test_skeleton(v2, v2s)
+
+        # VNT -> PA[Float]
+        v3 = @vnt begin
+            @template x = zeros(2)
+            x[1] := 1.0
+        end
+        v3s = VarNamedTuple(; x=fill(nothing, 2))
+        test_skeleton(v3, v3s)
+
+        # VNT -> VNT -> PA
+        v4 = @vnt begin
+            @template x = (; y=zeros(2))
+            x.y[2] := 2.0
+        end
+        v4s = VarNamedTuple(; x=VarNamedTuple(; y=fill(nothing, 2)))
+        test_skeleton(v4, v4s)
+
+        # VNT -> PA -> VNT
+        v5 = @vnt begin
+            @template x = zeros(2)
+            x[1].y := 2.0
+        end
+        v5s = VarNamedTuple(; x=fill(nothing, 2))
+        test_skeleton(v5, v5s)
+
+        # VNT -> PA -> VNT -> VNT
+        v6 = @vnt begin
+            @template x = fill((; y=3.0), 2)
+            x[1].y.z := "wut"
+        end
+        v6s = VarNamedTuple(; x=fill(nothing, 2))
+        test_skeleton(v6, v6s)
+
+        # VNT -> PA -> PA
+        v7 = @vnt begin
+            @template x = fill(zeros(2), 3)
+            x[3][2] := 2.0
+        end
+        v7s = VarNamedTuple(; x=fill(fill(nothing, 2), 3))
+        test_skeleton(v7, v7s)
+
+        # VNT -> PA -> VNT -> PA
+        v8 = @vnt begin
+            @template x = fill((; y=zeros(2)), 3)
+            x[3].y[2] := 2.0
+        end
+        v8s = VarNamedTuple(; x=fill(VarNamedTuple(; y=fill(nothing, 2)), 3))
+        test_skeleton(v8, v8s)
+
+        # VNT -> PA[Any]
+        v9 = @vnt begin
+            @template x = zeros(3)
+            x[1] := 1.0
+            x[2] := "wut"
+        end
+        v9s = VarNamedTuple(; x=fill(nothing, 3))
+        test_skeleton(v9, v9s)
+
+        # VNT -> PA with some entries needing to recurse
+        v10 = @vnt begin
+            @template x = fill((; y=zeros(2)), 3)
+            x[3].y[2] := 2.0
+            x[1] := 1.0
+        end
+        v10s = VarNamedTuple(; x=[nothing, nothing, VarNamedTuple(; y=fill(nothing, 2))])
+        test_skeleton(v10, v10s)
+
+        # VNT -> PA with different types of arrays
+        v11 = @vnt begin
+            @template x = OA.OffsetArray(zeros(3), -4:-2)
+            x[-2] := 2.0
+        end
+        v11s = VarNamedTuple(; x=OA.OffsetArray(fill(nothing, 3), -4:-2))
+        test_skeleton(v11, v11s)
+
+        v12 = @vnt begin
+            @template x = DD.DimArray(zeros(2, 3), (:a, :b))
+            x[1, 2] := 2.0
+        end
+        v12s = VarNamedTuple(; x=DD.DimArray(fill(nothing, 2, 3), (:a, :b)))
+        test_skeleton(v12, v12s)
     end
 end
 

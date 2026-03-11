@@ -50,8 +50,9 @@ VarNamedTuple(; kwargs...) = VarNamedTuple((; kwargs...))
 Create a `VarNamedTuple` from a collection or a `NamedTuple`.
 
 Any collection `d` is assumed to be an iterable of key-value pairs, where the keys are
-`VarName`s. This could be a an `AbstractDict`, a vector of `Pair`s or `Tuple`s, etc. The
-only exception is `NamedTuple`s, for which the `Symbol` keys are converted to `VarName`s.
+`VarName`s. This could be a an `AbstractDict`, a vector of `Pair`s or `Tuple`s, etc.
+Alternatively, a `NamedTuple` can be passed, in which case the keys (i.e., `Symbol`s) are
+converted to `VarName`s.
 
 Note that `VarNamedTuple` has an ordering to its elements, and two `VarNamedTuple`s with the
 same keys and values but in different orders are considered different. If `d` does not
