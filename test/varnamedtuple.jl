@@ -1190,6 +1190,12 @@ Base.size(st::SizedThing) = st.size
                 VarNamedTuple(), 1.0, @varname(x[1:2][1]), x
             )
             test_must_not_overwrite(vnt2, 2.0, @varname(x[1:2][1]), x)
+            # Also try with indices of different slices
+            x3 = zeros(3)
+            vnt2 = templated_setindex_no_overwrite!!(
+                VarNamedTuple(), [1.0, 2.0], @varname(x[1:2]), x3
+            )
+            test_must_not_overwrite(vnt2, 3.0, @varname(x[2:3][2]), x)
 
             # Also test with a larger array and different slices.
             y = zeros(4)
