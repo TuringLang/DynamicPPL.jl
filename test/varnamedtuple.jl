@@ -1174,6 +1174,36 @@ Base.size(st::SizedThing) = st.size
             )
             test_must_not_overwrite(vnt, 2.0, @varname(x.a), NoTemplate())
         end
+
+        @testset "different sub-indices of the same slice" begin
+            # Setting different sub-indices of the same slice should NOT error.
+            # This is the bug from issue #1321.
+            x = zeros(2)
+            vnt = templated_setindex_no_overwrite!!(
+                VarNamedTuple(), 1.0, @varname(x[1:2][1]), x
+            )
+            vnt = templated_setindex_no_overwrite!!(vnt, 2.0, @varname(x[1:2][2]), x)
+            @test vnt[@varname(x)] == [1.0, 2.0]
+
+            # But setting the SAME sub-index twice should still error.
+            vnt2 = templated_setindex_no_overwrite!!(
+                VarNamedTuple(), 1.0, @varname(x[1:2][1]), x
+            )
+            test_must_not_overwrite(vnt2, 2.0, @varname(x[1:2][1]), x)
+
+            # Also test with a larger array and different slices.
+            y = zeros(4)
+            vnt3 = templated_setindex_no_overwrite!!(
+                VarNamedTuple(), 1.0, @varname(y[1:3][1]), y
+            )
+            vnt3 = templated_setindex_no_overwrite!!(vnt3, 2.0, @varname(y[1:3][2]), y)
+            test_must_not_overwrite(vnt3, [3.0, 4.0], @varname(y[1:3][2:3]), y)
+            vnt3 = templated_setindex_no_overwrite!!(vnt3, 3.0, @varname(y[1:3][3]), y)
+            @test vnt3[@varname(y[1:3])] == [1.0, 2.0, 3.0]
+            # Setting an already-set sub-index, or slice, should error.
+            test_must_not_overwrite(vnt3, 4.0, @varname(y[1:3][2]), y)
+            test_must_not_overwrite(vnt3, [4.0, 5.0], @varname(y[2:3][1:2]), y)
+        end
     end
 
     @testset "subset" begin

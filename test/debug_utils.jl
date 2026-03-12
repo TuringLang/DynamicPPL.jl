@@ -36,6 +36,34 @@ end
             test_model_can_run_but_fails_check(buggy_demo_model())
         end
 
+        @testset "different sub-indices of the same slice" begin
+            # https://github.com/TuringLang/DynamicPPL.jl/issues/1321
+            @model function demo_slice_subindices()
+                x = Vector{Float64}(undef, 2)
+                x[1:2] .~ Normal()
+                return x
+            end
+            @test check_model(demo_slice_subindices(); error_on_failure=true)
+
+            # Same sub-index twice should still fail
+            @model function buggy_slice_subindices()
+                x = Vector{Float64}(undef, 2)
+                x[1:2][1] ~ Normal()
+                x[1:2][1] ~ Normal()
+                return x
+            end
+            test_model_can_run_but_fails_check(buggy_slice_subindices())
+
+            # Slices of slices
+            @model function buggy_slice_subindices2()
+                x = Vector{Float64}(undef, 3)
+                x[1:3][1:2] ~ MvNormal(zeros(2), I)
+                x[1:3][2:3] ~ MvNormal(zeros(2), I)
+                return x
+            end
+            test_model_can_run_but_fails_check(buggy_slice_subindices2())
+        end
+
         @testset "submodel" begin
             @model ModelInner() = x ~ Normal()
             @model function ModelOuterBroken()

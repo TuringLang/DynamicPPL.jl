@@ -168,7 +168,7 @@ function _setindex_optic!!(
 
     is_multiindex = _is_multiindex(template, coptic.ix...; coptic.kw...)
 
-    if permissions isa MustNotOverwrite
+    if permissions isa MustNotOverwrite && optic.child isa AbstractPPL.Iden
         if any(view(pa.mask, coptic.ix...; coptic.kw...))
             throw(MustNotOverwriteError(permissions))
         end
@@ -246,6 +246,16 @@ function _setindex_optic!!(
         grow_to_indices!!(sub_value, coptic.ix...; coptic.kw...)
     else
         sub_value
+    end
+
+    # In the merge path, some indices in the slice already have data but not all of them
+    # (haskey returned false but any(mask) was true). If MustNotOverwrite is set, check
+    # that the new sub-value doesn't overlap with existing data at the specific sub-indices.
+    if need_merge && permissions isa MustNotOverwrite && grown_sub_value isa PartialArray
+        existing_mask = view(pa.mask, coptic.ix...; coptic.kw...)
+        if any(existing_mask .& grown_sub_value.mask)
+            throw(MustNotOverwriteError(permissions))
+        end
     end
 
     return if need_merge
