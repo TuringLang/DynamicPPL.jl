@@ -1939,23 +1939,43 @@ Base.size(st::SizedThing) = st.size
         end
         @test @inferred(densify!!(vnt)) == vnt
 
-        # Check that it doesn't densify PAs that have VNTs (and that failing to do so is
-        # type stable).
+        # Check that it doesn't densify PAs that have VNTs. Note that this is not type
+        # stable because it needs to recurse into the VNT to determine whether the VNT
+        # itself has PAs that need to be densified.
         vnt = @vnt begin
             @template x = zeros(2)
             x[1].a := 1.0
             x[2].b := 2.0
         end
-        @test @inferred(densify!!(vnt)) == vnt
+        @test densify!!(vnt) == vnt
 
-        # Check that it doesn't densify PAs that have ALBs (and that failing to do so is
-        # type stable).
+        # Check that densify!! recurses into VNTs inside PAs (VNT -> PA -> VNT -> PA)
+        vnt = @vnt begin
+            @template x = fill((; y=zeros(2)), 1)
+            x[1].y[1] := 1.0
+            x[1].y[2] := 2.0
+        end
+        result = densify!!(vnt)
+        # Outer PA (holding VNTs) should remain a PartialArray
+        @test result.data.x isa PartialArray
+        # Inner PA (holding Floats, fully filled) should be densified to a plain Vector
+        @test result.data.x[1].data.y == [1.0, 2.0]
+        @test !(result.data.x[1].data.y isa PartialArray)
+
+        # Check that it doesn't densify PAs that have ALBs.
+        # Note: this isn't type stable because it must recurse into each element of the PA
+        # to check for densification opportunities.
+        # This might seem silly, because neither Float64 and ALBs can be densified. The
+        # problem here is that `eltype(pa.data)` (a mixture of Float64 and ALBs) is not
+        # Union{Float64,ALB}, but rather just Any. Because of that, the compiler can't
+        # statically determine that there aren't any e.g. VNTs that might themselves contain
+        # PAs that need to be densified.
         vnt = @vnt begin
             @template x = zeros(3)
             x[1] := 1.0
             x[2:3] := SizedThing((2,))
         end
-        @test @inferred(densify!!(vnt)) == vnt
+        @test densify!!(vnt) == vnt
     end
 
     @testset "skeleton" begin

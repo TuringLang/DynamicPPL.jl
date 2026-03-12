@@ -1,3 +1,8 @@
+# 0.40.13
+
+Fixed `densify!!` not recursing into `VarNamedTuple`s or `ArrayLikeBlock`s inside `PartialArray`s.
+Previously, nested `PartialArray`s buried inside these types were never visited, so they were not densified even when fully filled.
+
 # 0.40.12
 
 Added the `InitFromParams(::ParamsWithStats)` method, which delegates to `InitFromParams(::VarNamedTuple)`.
