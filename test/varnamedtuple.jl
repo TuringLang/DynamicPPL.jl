@@ -1948,6 +1948,19 @@ Base.size(st::SizedThing) = st.size
         end
         @test @inferred(densify!!(vnt)) == vnt
 
+        # Check that densify!! recurses into VNTs inside PAs (VNT -> PA -> VNT -> PA)
+        vnt = @vnt begin
+            @template x = fill((; y=zeros(2)), 1)
+            x[1].y[1] := 1.0
+            x[1].y[2] := 2.0
+        end
+        result = densify!!(vnt)
+        # Outer PA (holding VNTs) should remain a PartialArray
+        @test result.data.x isa PartialArray
+        # Inner PA (holding Floats, fully filled) should be densified to a plain Vector
+        @test result.data.x[1].data.y == [1.0, 2.0]
+        @test !(result.data.x[1].data.y isa PartialArray)
+
         # Check that it doesn't densify PAs that have ALBs (and that failing to do so is
         # type stable).
         vnt = @vnt begin
