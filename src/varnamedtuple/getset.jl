@@ -192,11 +192,9 @@ function _setindex_optic!!(
             NoTemplate()
         end
 
-        # TODO(penelopeysm): This check to haskey() will check *all* the indices, it only
-        # returns true if they are all filled. This is probably not really correct, and is
-        # why we need to have the hacky need_merge workaround just below this (because that
-        # catches the case where *some* of the indices are filled). We should rethink the
-        # logic in this section.
+        # haskey returns true only if *all* indices in the slice are filled. When only
+        # some are filled, we fall through to the else branch and use need_merge +
+        # _setindex_keep_existing!! to preserve the existing partial data.
         if Base.haskey(pa, coptic.ix...; coptic.kw...)
             # The PartialArray already contains an unmasked value at this index. We need to
             # set that value in place there.
@@ -213,24 +211,11 @@ function _setindex_optic!!(
             if permissions isa MustOverwrite
                 throw(MustOverwriteError(permissions))
             end
-            # Otherwise we can go ahead and make it
-            if any(view(pa.mask, coptic.ix...; coptic.kw...))
-                # NOTE: This is a VERY subtle case, which can happen when you are setting
-                # multiple indices at once, but some of them were masked. When they are
-                # masked, it will cause haskey to return false, so we can't go into the
-                # previous branch. However, if we naively call make_leaf to create the 
-                # sub-value and then setindex it inside the PartialArray, it will overwrite
-                # ALL the indices with the new leaf value, which will overwrite any
-                # previously active values! To avoid this, we will set a flag to indicate
-                # that we can create a new leaf, but at the end of the function we need to
-                # MERGE the new leaf into the existing PartialArray instead of overwriting
-                # it.
-                # This situation can happen e.g. with
-                #     using DynamicPPL
-                #     vnt = VarNamedTuple()
-                #     x = zeros(2)
-                #     vnt = DynamicPPL.templated_setindex!!(vnt, 1.0, @varname(x[1:2][1]), x)
-                #     vnt = DynamicPPL.templated_setindex!!(vnt, 2.0, @varname(x[1:2][2]), x)
+            # Otherwise we can go ahead and make it.
+            # Some indices in the slice may already have data (haskey returned false
+            # because not ALL are filled, but some are). We track this so we can use
+            # _setindex_keep_existing!! later, which preserves existing elements.
+            if is_multiindex && any(view(pa.mask, coptic.ix...; coptic.kw...))
                 need_merge = true
             end
             # No new data but we are allowed to create it.
@@ -251,16 +236,18 @@ function _setindex_optic!!(
     # In the merge path, some indices in the slice already have data but not all of them
     # (haskey returned false but any(mask) was true). If MustNotOverwrite is set, check
     # that the new sub-value doesn't overlap with existing data at the specific sub-indices.
-    if need_merge && permissions isa MustNotOverwrite && grown_sub_value isa PartialArray
+    if is_multiindex &&
+        permissions isa MustNotOverwrite &&
+        need_merge &&
+        grown_sub_value isa PartialArray
         existing_mask = view(pa.mask, coptic.ix...; coptic.kw...)
         if any(existing_mask .& grown_sub_value.mask)
             throw(MustNotOverwriteError(permissions))
         end
     end
 
-    return if need_merge
-        new_pa = BangBang.setindex!!(copy(pa), grown_sub_value, coptic.ix...; coptic.kw...)
-        _merge(pa, new_pa, Val(false))
+    return if is_multiindex && need_merge
+        _setindex_keep_existing!!(pa, grown_sub_value, coptic.ix...; coptic.kw...)
     else
         BangBang.setindex!!(pa, grown_sub_value, coptic.ix...; coptic.kw...)
     end
