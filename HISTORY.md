@@ -1,6 +1,6 @@
 # 0.40.14
 
-Fixed `check_model()` erroneously failing for models such as `x[1:2] .~ univariate_dist`.`
+Fixed `check_model()` erroneously failing for models such as `x[1:2] .~ univariate_dist`.
 
 # 0.40.13
 
