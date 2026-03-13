@@ -1,3 +1,7 @@
+# 0.40.14
+
+Fixed `check_model()` erroneously failing for models such as `x[1:2] .~ univariate_dist`.`
+
 # 0.40.13
 
 Fixed `densify!!` not recursing into `VarNamedTuple`s or `ArrayLikeBlock`s inside `PartialArray`s.
