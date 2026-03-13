@@ -1101,6 +1101,8 @@ Base.size(st::SizedThing) = st.size
 
     @testset "_setindex_optic!! with MustNotOverwrite" begin
         function test_must_not_overwrite(vnt, value, vn, template)
+            # Avoid mutating
+            vnt = deepcopy(vnt)
             # Check that calling `_setindex_optic!!` with `MustNotOverwrite` errors if the
             # variable already exists, and that it works if it doesn't.
             @test_throws MustNotOverwriteError templated_setindex_no_overwrite!!(
@@ -1191,15 +1193,6 @@ Base.size(st::SizedThing) = st.size
             )
             test_must_not_overwrite(vnt2, 2.0, @varname(x[1:2][1]), x)
 
-            # Also try with indices of different slices
-            x3 = zeros(3)
-            vnt2 = templated_setindex_no_overwrite!!(
-                VarNamedTuple(), [1.0, 2.0], @varname(x[1:2]), x3
-            )
-            test_must_not_overwrite(vnt2, 3.0, @varname(x[2:3][1]), x)
-            # but you can set it if it's not overlapping
-            templated_setindex_no_overwrite!!(vnt2, 3.0, @varname(x[2:3][2]), x)
-
             # Also test with a larger array and different slices.
             y = zeros(4)
             vnt3 = templated_setindex_no_overwrite!!(
@@ -1212,6 +1205,15 @@ Base.size(st::SizedThing) = st.size
             # Setting an already-set sub-index, or slice, should error.
             test_must_not_overwrite(vnt3, 4.0, @varname(y[1:3][2]), y)
             test_must_not_overwrite(vnt3, [4.0, 5.0], @varname(y[2:3][1:2]), y)
+
+            # Also try with indices of different slices
+            z = zeros(3)
+            vnt4 = templated_setindex_no_overwrite!!(
+                VarNamedTuple(), [1.0, 2.0], @varname(z[1:2]), z
+            )
+            test_must_not_overwrite(vnt4, 3.0, @varname(z[2:3][1]), z)
+            # but you can set it if it's not overlapping
+            templated_setindex_no_overwrite!!(vnt4, 3.0, @varname(z[2:3][2]), z)
         end
     end
 
