@@ -636,6 +636,56 @@ function BangBang.setindex!!(pa::PartialArray, value, inds::Vararg{Any}; kw...)
     return _concretise_eltype!!(PartialArray(new_data, new_mask))
 end
 
+"""
+    _setindex_keep_existing!!(pa::PartialArray, value::PartialArray, inds...; kw...)
+
+Set elements from `value` into `pa` at positions `inds`, but only where `value.mask` is
+`true`. Existing elements in `pa` at positions where `value.mask` is `false` are preserved.
+
+This is used when setting sub-indices of a slice that already has partial data. For example,
+when setting `x[1:2][2]` after `x[1:2][1]` has already been set, we want to add the new
+value at index 2 without disturbing the existing value at index 1.
+
+This differs from `BangBang.setindex!!(pa, value::PartialArray, inds...)` in that the latter
+calls `_remove_partial_blocks!!`, which can destroy `ArrayLikeBlock`s that only partially
+overlap with `inds`. Here we handle ALBs more carefully: only the specific elements being
+overwritten (where `value.mask` is `true`) trigger ALB removal.
+"""
+function _setindex_keep_existing!!(
+    pa::PartialArray, value::PartialArray, inds::Vararg{Any}; kw...
+)
+    # Step 1: Remove any ArrayLikeBlocks that would be partially overwritten.
+    # An ALB spans multiple indices; if we overwrite only some of those indices, the
+    # remaining references become inconsistent. So we must remove the entire block.
+    et = eltype(pa.data)
+    if et <: ArrayLikeBlock || ArrayLikeBlock <: et
+        data_view = view(pa.data, inds...; kw...)
+        mask_view = view(pa.mask, inds...; kw...)
+        for i in eachindex(value.mask)
+            if value.mask[i] && mask_view[i] && data_view[i] isa ArrayLikeBlock
+                alb = data_view[i]
+                fill!(view(pa.mask, alb.ix...; alb.kw...), false)
+            end
+        end
+    end
+
+    # Step 2: Copy only the elements where value.mask is true.
+    # We mutate pa.data and pa.mask in place via views — this is safe because this
+    # function follows the `!!` convention (try to mutate, return the result).
+    # We do not do upfront type promotion here: the elements of `value` should have the
+    # same type as the elements of `pa`, since both originate from the same container.
+    data_view = view(pa.data, inds...; kw...)
+    mask_view = view(pa.mask, inds...; kw...)
+    for i in eachindex(value.mask)
+        if value.mask[i]
+            data_view[i] = value.data[i]
+            mask_view[i] = true
+        end
+    end
+
+    return pa
+end
+
 function _subset_partialarray(pa::PartialArray, inds::Vararg{Any}; kw...)
     if pa.data isa GrowableArray &&
         any(ind -> ind isa AbstractPPL.DynamicIndex || ind isa Colon, inds)
