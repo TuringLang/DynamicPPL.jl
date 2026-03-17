@@ -445,13 +445,6 @@ DynamicPPL.setindex_internal!!
 #### Transformations
 
 ```@docs
-DynamicPPL.AbstractTransformation
-DynamicPPL.NoTransformation
-DynamicPPL.DynamicTransformation
-DynamicPPL.StaticTransformation
-```
-
-```@docs
 DynamicPPL.link
 DynamicPPL.invlink
 DynamicPPL.link!!

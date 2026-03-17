@@ -677,8 +677,8 @@ function link(vi::AbstractVarInfo, vns, model::Model)
 end
 
 """
-    invlink([t::AbstractTransformation, ]vi::AbstractVarInfo, model::Model)
-    invlink([t::AbstractTransformation, ]vi::AbstractVarInfo, vns::NTuple{N,VarName}, model::Model)
+    invlink(vi::AbstractVarInfo, model::Model)
+    invlink(vi::AbstractVarInfo, vns::NTuple{N,VarName}, model::Model)
 
 Transform all variables in `vi` to the original space without mutating `vi` (i.e., replace
 all the `TransformedValue`s in `vi.values` with the corresponding
