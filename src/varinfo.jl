@@ -311,13 +311,26 @@ linked, `apply_transform_strategy` will already have done so.)
 function setindex_with_dist!!(
     vi::VarInfo,
     tval::TransformedValue{V,NoTransform},
-    dist::Distribution,
+    ::Distribution,
     vn::VarName,
     template,
 ) where {V}
     raw_value = DynamicPPL.get_internal_value(tval)
     vectorised_value = Bijectors.VectorBijectors.to_vec(dist)(raw_value)
     tval = TransformedValue(vectorised_value, Unlink())
+    return setindex_with_dist!!(vi, tval, dist, vn, template)
+end
+function setindex_with_dist!!(
+    vi::VarInfo,
+    tval::TransformedValue{V,NoTransform},
+    ::Distribution,
+    vn::VarName,
+    template,
+) where {V<:AbstractVector{<:Real}}
+    # This method is needed for resolving ambiguities. It does the same thing as
+    # above, but skipping the vectorisation step, since to_vec(dist) for a vector
+    # is always identity.
+    tval = TransformedValue(DynamicPPL.get_internal_value(tval), Unlink())
     return setindex_with_dist!!(vi, tval, dist, vn, template)
 end
 
