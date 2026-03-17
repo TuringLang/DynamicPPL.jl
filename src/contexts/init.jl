@@ -14,13 +14,13 @@ abstract type AbstractInitStrategy end
 
 Generate a new value for a random variable with the given distribution.
 
-This function must return an `AbstractTransformedValue`.
+This function must return an `TransformedValue`.
 
 If `strategy` provides values that are already untransformed (e.g., a Float64 within (0, 1)
-for `dist::Beta`, then you should return an `UntransformedValue`.
+for `dist::Beta`, then you should return a `TransformedValue` with a `NoTransform()`.
 
-Otherwise, often there are cases where this will return either a `VectorValue` or a
-`LinkedVectorValue`, for example, if the strategy is reading from an existing `VarInfo`.
+Otherwise, often there are cases where this will return a transformed value; for example, if
+the strategy is reading from an existing `VarInfo`.
 """
 function init end
 
@@ -76,7 +76,7 @@ Obtain new values by sampling from the prior distribution.
 """
 struct InitFromPrior <: AbstractInitStrategy end
 function init(rng::Random.AbstractRNG, ::VarName, dist::Distribution, ::InitFromPrior)
-    return UntransformedValue(rand(rng, dist))
+    return TransformedValue(rand(rng, dist), NoTransform())
 end
 
 """
@@ -106,7 +106,7 @@ end
 function init(rng::Random.AbstractRNG, ::VarName, dist::Distribution, u::InitFromUniform)
     sz = Bijectors.VectorBijectors.linked_vec_length(dist)
     y = u.lower .+ ((u.upper - u.lower) .* rand(rng, sz))
-    return LinkedVectorValue(y, Bijectors.VectorBijectors.from_linked_vec(dist))
+    return TransformedValue(y, DynamicLink())
 end
 
 """
@@ -178,18 +178,10 @@ function init(
             p.fallback === nothing &&
                 error("A `missing` value was provided for the variable `$(vn)`.")
             init(rng, vn, dist, p.fallback)
-        elseif x isa VectorValue
-            # In this case, we can't trust the transform stored in x because the _value_
-            # in x may have been changed via unflatten!! without the transform being
-            # updated. Therefore, we always recompute the transform here.
-            VectorValue(x.val, Bijectors.VectorBijectors.from_vec(dist))
-        elseif x isa LinkedVectorValue
-            # Same as above.
-            LinkedVectorValue(x.val, Bijectors.VectorBijectors.from_linked_vec(dist))
-        elseif x isa UntransformedValue
+        elseif x isa TransformedValue
             x
         else
-            UntransformedValue(x)
+            TransformedValue(x, NoTransform())
         end
     else
         p.fallback === nothing && error("No value was provided for the variable `$(vn)`.")
@@ -220,18 +212,10 @@ function init(
 )
     return if haskey(p.params, vn)
         x = p.params[vn]
-        if x isa VectorValue
-            # In this case, we can't trust the transform stored in x because the _value_
-            # in x may have been changed via unflatten!! without the transform being
-            # updated. Therefore, we always recompute the transform here.
-            VectorValue(x.val, Bijectors.VectorBijectors.from_vec(dist))
-        elseif x isa LinkedVectorValue
-            # Same as above.
-            LinkedVectorValue(x.val, Bijectors.VectorBijectors.from_linked_vec(dist))
-        elseif x isa UntransformedValue
+        if x isa TransformedValue
             x
         else
-            UntransformedValue(x)
+            TransformedValue(x, NoTransform())
         end
     else
         error("No value was provided for the variable `$(vn)`.")
@@ -247,7 +231,7 @@ function DynamicPPL.get_param_eltype(p::InitFromParamsUnsafe)
 end
 
 """
-    RangeAndLinked
+    RangeAndTransform
 
 Suppose we have vectorised parameters `params::AbstractVector{<:Real}`. Each random variable
 in the model will in general correspond to a sub-vector of `params`. This struct stores
@@ -256,12 +240,12 @@ an unlinked value.
 
 $(TYPEDFIELDS)
 """
-struct RangeAndLinked
+struct RangeAndTransform{T}
     # indices that the variable corresponds to in the vectorised parameter
     range::UnitRange{Int}
-    # whether the variable is linked or unlinked
-    is_linked::Bool
+    transform::T
 end
+DynamicPPL.get_transform(rat::RangeAndTransform) = rat.transform
 
 """
     InitFromVector(
@@ -279,7 +263,7 @@ A struct that wraps a vector of parameter values, plus information about how ran
 variables map to ranges in that vector.
 
 The `transform_strategy` argument in fact duplicates information stored inside `varname_ranges`.
-For example, if every `RangeAndLinked` in `varname_ranges` has `is_linked == true`, then
+For example, if every `RangeAndTransform` in `varname_ranges` has `is_linked == true`, then
 `transform_strategy` will be `LinkAll()`.
 
 However, storing `transform_strategy` here is a way to communicate at the type level whether all
@@ -310,28 +294,28 @@ faster.
 """
 @inline maybe_view_ad(vect::AbstractArray, range) = view(vect, range)
 
-function _get_range_and_linked(ifv::InitFromVector, vn::VarName)
+function _get_range_and_transform(ifv::InitFromVector, vn::VarName)
     # The type assertion does nothing if `varname_ranges` has concrete element types, as is
     # the case for all type stable models. However, if the model is not type stable,
     # vr.varname_ranges[vn] may infer to have type `Any`. In this case it is helpful to
-    # assert that it is a RangeAndLinked, because even though it remains non-concrete, it'll
-    # allow the compiler to infer the types of `range` and `is_linked`.
-    return ifv.varname_ranges[vn]::RangeAndLinked
+    # assert that it is a RangeAndTransform, because even though it remains non-concrete,
+    # it'll allow the compiler to infer the types of `range`.
+    # TODO(penelopeysm): Investigate if this is still necessary
+    return ifv.varname_ranges[vn]::RangeAndTransform
 end
 function init(::Random.AbstractRNG, vn::VarName, dist::Distribution, ifv::InitFromVector)
-    range_and_linked = _get_range_and_linked(ifv, vn)
-    vect = maybe_view_ad(ifv.vect, range_and_linked.range)
+    rat = _get_range_and_transform(ifv, vn)
+    vect = maybe_view_ad(ifv.vect, rat.range)
     # This block here is why we store transform_strategy inside the InitFromVector, as it
     # allows for type stability.
-    return if ifv.transform_strategy isa LinkAll
-        LinkedVectorValue(vect, Bijectors.VectorBijectors.from_linked_vec(dist))
+    tfm = if ifv.transform_strategy isa LinkAll
+        DynamicLink()
     elseif ifv.transform_strategy isa UnlinkAll
-        VectorValue(vect, Bijectors.VectorBijectors.from_vec(dist))
-    elseif range_and_linked.is_linked
-        LinkedVectorValue(vect, Bijectors.VectorBijectors.from_linked_vec(dist))
+        Unlink()
     else
-        VectorValue(vect, Bijectors.VectorBijectors.from_vec(dist))
+        rat.transform
     end
+    return TransformedValue(vect, tfm)
 end
 function get_param_eltype(strategy::InitFromVector)
     return eltype(strategy.vect)

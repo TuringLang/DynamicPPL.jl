@@ -39,14 +39,14 @@ function tilde_assume!!(
     #     value is supposed to be linked or not.
     # This can definitely be unified in the future.
     tval = get_transformed_value(vi, vn)
-    trf = if tval isa LinkedVectorValue
-        # Note that we can't rely on the stored transform being correct (e.g. if new values
-        # were placed in `vi` via `unflatten!!`, so we regenerate the transforms.
+    trf = if tval.transform isa DynamicLink
         Bijectors.VectorBijectors.from_linked_vec(right)
-    elseif tval isa VectorValue
+    elseif tval.transform isa Unlink
         Bijectors.VectorBijectors.from_vec(right)
+    elseif tval.transform isa FixedTransform
+        tval.transform.transform
     else
-        error("Expected transformed value to be a VectorValue or LinkedVectorValue")
+        error("Expected transformed value to be a vectorised value")
     end
     x, inv_logjac = with_logabsdet_jacobian(trf, get_internal_value(tval))
     vi = accumulate_assume!!(vi, x, tval, -inv_logjac, vn, right, template)

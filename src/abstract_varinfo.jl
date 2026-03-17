@@ -518,9 +518,9 @@ function getindex_internal end
 """
     get_transformed_value(vi::AbstractVarInfo, vn::VarName)
 
-Return the actual `AbstractTransformedValue` stored in `vi` for variable `vn`.
+Return the actual `TransformedValue` stored in `vi` for variable `vn`.
 
-This differs from `getindex_internal`, which obtains the `AbstractTransformedValue` and then
+This differs from `getindex_internal`, which obtains the `TransformedValue` and then
 directly returns `get_internal_value(tval)`; and `getindex` which returns
 `get_transform(tval)(get_internal_value(tval))`.
 """
@@ -833,11 +833,6 @@ This is the inverse operation of [`internal_values_as_vector`](@ref).
 !!! warning "The VarInfo will be in an invalid state"
     Note that this does not re-evaluate the model (indeed it cannot!) so the contents of any
     accumulators in the `VarInfo` will almost certainly be inconsistent with the new values.
-
-    On top of that, it does not update the *transformations* stored inside the
-    `LinkedVectorValue`s and `VectorValue`s. If these transformations themselves depend on
-    the values of the variables, this can lead to incorrect results when trying to access
-    untransformed values, e.g. using `getindex(vi, vn)`.
 
     **Because of these issues, we strongly recommend against using this function, unless
     absolutely necessary.** In many cases, usage of `unflatten!!(vi, x)` can be replaced

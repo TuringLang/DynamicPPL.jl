@@ -37,39 +37,34 @@ end
 function DynamicPPL.accumulate_assume!!(
     acc::VectorParamAccumulator,
     val,
-    tval::AbstractTransformedValue,
+    tval::TransformedValue,
     logjac,
     vn::VarName,
     dist::Distribution,
     ::Any,
 )
-    ral = acc.vn_ranges[vn]
-    # sometimes you might get UntransformedValue... _get_vector_tval is in
-    # src/accumulators/vector_values.jl.
+    rat = acc.vn_ranges[vn]
     vectorised_tval = _get_vector_tval(val, tval, logjac, vn, dist)
-    return _update_acc(acc, vectorised_tval, ral, vn)
+    return _update_acc(acc, vectorised_tval, rat, vn)
 end
 
 function _update_acc(
     acc::VectorParamAccumulator,
-    tval::Union{LinkedVectorValue,VectorValue},
-    ral::RangeAndLinked,
+    tval::TransformedValue{V,T},
+    rat::RangeAndTransform,
     vn::VarName,
-)
-    if (
-        (ral.is_linked && tval isa VectorValue) ||
-        (!ral.is_linked && tval isa LinkedVectorValue)
-    )
+) where {V<:AbstractVector,T}
+    if rat.transform != tval.transform
         throw(
             ArgumentError(
-                "The LogDensityFunction specifies that `$vn` should be $(ral.is_linked ? "linked" : "unlinked"), but the vector values contain a $(tval isa LinkedVectorValue ? "linked" : "unlinked") value for that variable.",
+                "The transform associated with the VarName `$vn` in the LogDensityFunction is not the same as the transform of the TransformedValue provided for that VarName. This likely means that the vector values provided are not consistent with the LogDensityFunction (e.g. if they were obtained from a different model).",
             ),
         )
     end
 
     vec_val = DynamicPPL.get_internal_value(tval)
     len = length(vec_val)
-    expected_len = length(ral.range)
+    expected_len = length(rat.range)
     if len != expected_len
         throw(
             ArgumentError(
@@ -78,15 +73,15 @@ function _update_acc(
         )
     end
 
-    if any(acc.set_indices[ral.range])
+    if any(acc.set_indices[rat.range])
         throw(
             ArgumentError(
                 "Setting to the same indices in the output vector more than once. This likely means that the vector values provided are not consistent with the LogDensityFunction (e.g. if they were obtained from a different model).",
             ),
         )
     end
-    Accessors.@set acc.vals = BangBang.setindex!!(acc.vals, vec_val, ral.range)
-    acc.set_indices[ral.range] .= true
+    Accessors.@set acc.vals = BangBang.setindex!!(acc.vals, vec_val, rat.range)
+    acc.set_indices[rat.range] .= true
 
     return acc
 end

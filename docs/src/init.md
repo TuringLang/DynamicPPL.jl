@@ -115,7 +115,7 @@ For example, in the above example, we used `UntransformedValue`, which is the si
 If a linked value is required by a later step inside `tilde_assume!!` (either the transformation or accumulation steps), it is the responsibility of that step to perform the linking.
 
 Conversely, [`DynamicPPL.InitFromUniform`](@ref) samples inside linked space.
-Instead of performing the inverse link transform and returning an `UntransformedValue`, it directly returns a `LinkedVectorValue`: this means that if a linked value is required by a later step, it is not necessary to link it again.
+Instead of performing the inverse link transform and returning an `UntransformedValue`, it directly returns a `TransformedValue(val, DynamicLink())`, where `val` is *already* the linked vector: this means that if a linked value is required by a later step, it is not necessary to link it again.
 Even if no linked value is required, this lazy approach does not hurt performance, as it just defers the inverse linking to the later step.
 
 In both cases, only one linking operation is performed (at most).

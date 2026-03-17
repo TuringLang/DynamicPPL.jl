@@ -7,7 +7,7 @@ using Mooncake: Mooncake
 # _get_range_and_linked).
 Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{typeof(is_transformed),Vararg}
 Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
-    typeof(DynamicPPL._get_range_and_linked),Vararg
+    typeof(DynamicPPL._get_range_and_transform),Vararg
 }
 Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
     typeof(Base.haskey),DynamicPPL.VarInfo,DynamicPPL.VarName

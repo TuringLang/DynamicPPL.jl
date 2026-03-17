@@ -34,7 +34,7 @@ end
 # Minimal AbstractVarInfo interface
 DynamicPPL.getaccs(vi::OnlyAccsVarInfo) = vi.accs
 DynamicPPL.setaccs!!(::OnlyAccsVarInfo, accs::AccumulatorTuple) = OnlyAccsVarInfo(accs)
-function DynamicPPL.get_transform_strategy(::OnlyAccsVarInfo)
+function DynamicPPL.infer_transform_strategy(::OnlyAccsVarInfo)
     # OAVI doesn't contain this info, we can't return a sensible value. Hopefully this
     # method doesn't ever get called though.
     return error(
@@ -57,7 +57,7 @@ end
 # This allows us to make use of the main tilde_assume!!(::InitContext) method without
 # having to duplicate the code here
 @inline function DynamicPPL.setindex_with_dist!!(
-    vi::OnlyAccsVarInfo, ::AbstractTransformedValue, ::Distribution, ::VarName, ::Any
+    vi::OnlyAccsVarInfo, ::TransformedValue, ::Distribution, ::VarName, ::Any
 )
     return vi
 end
