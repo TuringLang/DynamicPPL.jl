@@ -99,10 +99,10 @@ For example, if `ctx.strategy` is `InitFromPrior()`, then `init()` samples a val
 
 As discussed in the [Initialisation strategies](./init.md) page, this step, in general, does not return just the raw value (like `rand(dist)`).
 It returns an [`DynamicPPL.AbstractTransformedValue`](@ref), which represents a value that _may_ have been transformed.
-In the case of `InitFromPrior()`, the value is of course not transformed; we return a [`DynamicPPL.UntransformedValue`](@ref) wrapping the sampled value.
+In the case of `InitFromPrior()`, the value is of course not transformed; we return a [`DynamicPPL.TransformedValue(..., NoTransform())`](@ref TransformedValue) wrapping the sampled value.
 
 However, consider the case where we are using parameters stored inside a `VarInfo`: the value may have been stored either as a vectorised form, or as a linked vectorised form.
-In this case, `init()` will return either a [`DynamicPPL.VectorValue`](@ref) or a [`DynamicPPL.LinkedVectorValue`](@ref).
+In this case, `init()` will return a `TransformedValue` wrapping the vectorised value, whose transform is either `Unlink()` (i.e., vectorised but not linked), or `DynamicLink()` (i.e., vectorised and linked).
 
 The reason why we return this wrapped value is because we want to avoid having to perform transformations multiple times.
 Each step is responsible for only performing the transformations it needs to.
@@ -184,7 +184,7 @@ vi = DynamicPPL.accumulate_assume!!(vi, x, tval, logjac, vn, dist, template)
 !!! note
     
     The first line, `setindex_with_dist!!`, is only necessary when using a full `VarInfo`.
-    It essentially stores the value `tval` inside the `VarInfo`, but makes sure to store a vectorised form (i.e., if `tval` is an `UntransformedValue`, it will be converted to a `VectorValue` before being stored).
+    It essentially stores the value `tval` inside the `VarInfo`, but makes sure to store a vectorised form (i.e., if `tval` is not vectorised, it will be).
     This is entirely equivalent to using a `VectorValueAccumulator` to store the values; it's just that when using a full `VarInfo` that accumulator is 'built-in' as `vi.values`.
     
     Since conceptually this is the same as an accumulator, we will not discuss it further here.

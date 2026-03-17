@@ -202,7 +202,7 @@ struct LogDensityFunction{
         adtype::Union{ADTypes.AbstractADType,Nothing}=nothing,
     )
         all_ranges = get_rangeandtransforms(vnt)
-        transform_strategy = infer_transform_strategy(vnt)
+        transform_strategy = infer_transform_strategy_from_values(vnt)
 
         # Get vectorised parameters. Note that `internal_values_as_vector` just concatenates
         # all the vectors inside in iteration order of the VNT's keys. *In principle*, the

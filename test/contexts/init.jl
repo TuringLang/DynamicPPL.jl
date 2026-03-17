@@ -48,14 +48,14 @@ using Test
             old_x, old_y = 100000.00, [300000.00, 500000.00]
             vi = DynamicPPL.setindex_with_dist!!(
                 vi,
-                UntransformedValue(old_x),
+                TransformedValue(old_x, NoTransform()),
                 Normal(),
                 @varname(x),
                 DynamicPPL.NoTemplate(),
             )
             vi = DynamicPPL.setindex_with_dist!!(
                 vi,
-                UntransformedValue(old_y),
+                TransformedValue(old_y, NoTransform(g)),
                 MvNormal(fill(old_x, 2), I),
                 @varname(y),
                 DynamicPPL.NoTemplate(),

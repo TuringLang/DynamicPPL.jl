@@ -372,13 +372,13 @@ function apply_transform_strategy(
 end
 
 """
-    infer_transform_strategy(vnt::VarNamedTuple)
+    infer_transform_strategy_from_values(vnt::VarNamedTuple)
 
 Takes a VNT of things with transforms, and infers a transform strategy that is consistent
 with the transforms specified in the VNT. For all values `v` in the VNT, `get_transform(v)`
 should return an `AbstractTransform`.
 """
-function infer_transform_strategy(vnt::VarNamedTuple)
+function infer_transform_strategy_from_values(vnt::VarNamedTuple)
     # map_values!! might mutate the VNT, so deepcopy to avoid this
     transforms_vnt = map_values!!(get_transform, deepcopy(vnt))
     tfms = values(transforms_vnt)

@@ -262,13 +262,13 @@ DynamicPPL.get_transform(rat::RangeAndTransform) = rat.transform
 A struct that wraps a vector of parameter values, plus information about how random
 variables map to ranges in that vector.
 
-The `transform_strategy` argument in fact duplicates information stored inside `varname_ranges`.
-For example, if every `RangeAndTransform` in `varname_ranges` has `is_linked == true`, then
-`transform_strategy` will be `LinkAll()`.
+The `transform_strategy` argument in fact duplicates information stored inside
+`varname_ranges`. For example, if every `RangeAndTransform` in `varname_ranges` has
+`transform == DynamicLink()`, then `transform_strategy` will be `LinkAll()`.
 
-However, storing `transform_strategy` here is a way to communicate at the type level whether all
-variables are linked or unlinked, which provides much better performance in the case where
-all variables are linked or unlinked, due to improved type stability.
+However, storing `transform_strategy` here is a way to communicate at the type level whether
+all variables are linked or unlinked, which provides much better performance in the case
+where all variables are linked or unlinked, due to improved type stability.
 """
 struct InitFromVector{
     T<:AbstractVector{<:Real},V<:VarNamedTuple,L<:AbstractTransformStrategy

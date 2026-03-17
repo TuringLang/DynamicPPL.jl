@@ -60,7 +60,9 @@ end
         @test !haskey(vi, vn)
         @test !(vn in keys(vi))
 
-        vi = DynamicPPL.setindex_with_dist!!(vi, UntransformedValue(x), Normal(), vn, x)
+        vi = DynamicPPL.setindex_with_dist!!(
+            vi, TransformedValue(x, NoTransform()), Normal(), vn, x
+        )
         @test !isempty(vi)
         @test haskey(vi, vn)
         @test vn in keys(vi)
@@ -68,13 +70,17 @@ end
         @test length(vi[vn]) == 1
         @test vi[vn] == x
         @test vi[:] == [x]
-        vi = DynamicPPL.setindex_with_dist!!(vi, UntransformedValue(2 * x), Normal(), vn, x)
+        vi = DynamicPPL.setindex_with_dist!!(
+            vi, TransformedValue(2 * x, NoTransform()), Normal(), vn, x
+        )
         @test vi[vn] == 2 * x
         @test vi[:] == [2 * x]
 
         vi = empty!!(vi)
         @test isempty(vi)
-        vi = DynamicPPL.setindex_with_dist!!(vi, UntransformedValue(x), Normal(), vn, x)
+        vi = DynamicPPL.setindex_with_dist!!(
+            vi, TransformedValue(x, NoTransform()), Normal(), vn, x
+        )
         @test !isempty(vi)
     end
 
@@ -250,7 +256,9 @@ end
         vn_x = @varname x
         x = rand()
 
-        vi = DynamicPPL.setindex_with_dist!!(vi, UntransformedValue(x), Normal(), vn_x, x)
+        vi = DynamicPPL.setindex_with_dist!!(
+            vi, TransformedValue(x, NoTransform()), Normal(), vn_x, x
+        )
 
         # is_transformed is unset by default
         @test !is_transformed(vi, vn_x)
@@ -702,10 +710,14 @@ end
     @testset "merge different dimensions" begin
         vn = @varname(x)
         vi_single = DynamicPPL.setindex_with_dist!!(
-            VarInfo(), UntransformedValue(1.0), Normal(), vn, 1.0
+            VarInfo(), TransformedValue(1.0, NoTransform()), Normal(), vn, 1.0
         )
         vi_double = DynamicPPL.setindex_with_dist!!(
-            VarInfo(), UntransformedValue([0.5, 0.6]), MvNormal(zeros(2), I), vn, [0.5, 0.6]
+            VarInfo(),
+            TransformedValue([0.5, 0.6], NoTransform()),
+            MvNormal(zeros(2), I),
+            vn,
+            [0.5, 0.6],
         )
         @test merge(vi_single, vi_double)[vn] == [0.5, 0.6]
         @test merge(vi_double, vi_single)[vn] == 1.0

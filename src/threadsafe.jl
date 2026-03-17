@@ -121,7 +121,7 @@ end
 function invlink!!(t::AbstractTransformation, vi::ThreadSafeVarInfo, args...)
     return Accessors.@set vi.varinfo = invlink!!(t, vi.varinfo, args...)
 end
-infer_transform_strategy(vi::ThreadSafeVarInfo) = infer_transform_strategy(vi.varinfo)
+get_transform_strategy(vi::ThreadSafeVarInfo) = get_transform_strategy(vi.varinfo)
 
 # `getindex`
 getindex(vi::ThreadSafeVarInfo, ::Colon) = getindex(vi.varinfo, Colon())

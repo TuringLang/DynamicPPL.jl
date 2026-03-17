@@ -64,7 +64,7 @@ function DynamicPPL.init(rng, vn::VarName, ::Distribution, strategy::InitRandomW
     new_x = rand(rng, Normal(strategy.x_prev, strategy.step_size))
     # Insert some printing to see when this is called.
     @info "init() is returning: $new_x"
-    return DynamicPPL.UntransformedValue(new_x)
+    return DynamicPPL.TransformedValue(new_x, DynamicPPL.NoTransform())
 end
 ```
 
@@ -109,13 +109,13 @@ As mentioned above, the `init` function must return an `AbstractTransformedValue
 The subtype of `AbstractTransformedValue` used does not affect the result of the model evaluation, but it may have performance implications.
 **In particular, the returned subtype does not determine whether the log-Jacobian term is accumulated or not: that is determined by a separate [_transform strategy_](@ref transform-strategies).**
 
-What this means is that initialisation strategies should always choose the laziest possible subtype of `AbstractTransformedValue`.
+What this means is that initialisation strategies should always choose the laziest possible subtype of `TransformedValue`.
 
-For example, in the above example, we used `UntransformedValue`, which is the simplest possible choice.
+For example, in the above example, we simply wrapped the untransformed value in `TransformedValue(..., NoTransform())`, which is the simplest possible choice.
 If a linked value is required by a later step inside `tilde_assume!!` (either the transformation or accumulation steps), it is the responsibility of that step to perform the linking.
 
 Conversely, [`DynamicPPL.InitFromUniform`](@ref) samples inside linked space.
-Instead of performing the inverse link transform and returning an `UntransformedValue`, it directly returns a `TransformedValue(val, DynamicLink())`, where `val` is *already* the linked vector: this means that if a linked value is required by a later step, it is not necessary to link it again.
+Instead of performing the inverse link transform eagerly, it directly returns a `TransformedValue(val, DynamicLink())`, where `val` is *already* the linked vector: this means that if a linked value is required by a later step, it is not necessary to link it again.
 Even if no linked value is required, this lazy approach does not hurt performance, as it just defers the inverse linking to the later step.
 
 In both cases, only one linking operation is performed (at most).

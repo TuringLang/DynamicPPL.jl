@@ -278,7 +278,7 @@ end
 Store a transformed value that has already been vectorised. This might include dynamically
 transformed variables (which have `tval.transform` as a `DynamicLink` or `Unlink`), or
 statically transformed variables (which have `tval.transform` as a `FixedTransform`).
-However, in either case, it is mandatory that `tval.internal_value` is a vector.
+However, in either case, it is mandatory that `tval.value` is a vector.
 
 Note that this will cause the linked status of `vi` to update according to what `tval` is.
 That means that whether or not a variable is considered to be 'linked' is determined by
@@ -311,7 +311,7 @@ linked, `apply_transform_strategy` will already have done so.)
 function setindex_with_dist!!(
     vi::VarInfo,
     tval::TransformedValue{V,NoTransform},
-    ::Distribution,
+    dist::Distribution,
     vn::VarName,
     template,
 ) where {V}
@@ -323,7 +323,7 @@ end
 function setindex_with_dist!!(
     vi::VarInfo,
     tval::TransformedValue{V,NoTransform},
-    ::Distribution,
+    dist::Distribution,
     vn::VarName,
     template,
 ) where {V<:AbstractVector{<:Real}}
@@ -348,10 +348,11 @@ to be `Unlink()`). This will also update the transform strategy of `vi` accordin
 function set_transformed!!(vi::VarInfo, linked::Bool, vn::VarName)
     # TODO!(penelopeysm): Why do we still need this?
     old_tv = getindex(vi.values, vn)
-    new_tv = TransformedValue(old_tv.value, linked ? DynamicLink() : Unlink())
+    new_transform = linked ? DynamicLink() : Unlink()
+    new_tv = TransformedValue(old_tv.value, new_transform)
     new_values = setindex!!(vi.values, new_tv, vn)
     new_transform_strategy = update_transform_strategy(
-        vi.transform_strategy, isempty(vi), vn, linked
+        vi.transform_strategy, isempty(vi), vn, new_transform
     )
     return VarInfo(new_transform_strategy, new_values, vi.accs)
 end
@@ -370,7 +371,7 @@ end
 
 Get the internal (vectorised) value of variable `vn` in `vi`.
 """
-getindex_internal(vi::VarInfo, vn::VarName) = getindex(vi.values, vn).val
+getindex_internal(vi::VarInfo, vn::VarName) = get_internal_value(getindex(vi.values, vn))
 
 """
     get_transformed_value(vi::VarInfo, vn::VarName)
@@ -385,7 +386,7 @@ function is_transformed(vi::VarInfo, vn::VarName)
     elseif vi.transform_strategy isa UnlinkAll
         false
     else
-        getindex_internal(vi, vn).transform isa DynamicLink
+        get_transformed_value(vi, vn).transform isa DynamicLink
     end
 end
 
@@ -430,12 +431,12 @@ end
 # These are mostly convenience functions
 function link!!(vi::VarInfo, vns, model::Model)
     return update_transform_status!!(
-        vi, LinkSome(Set(vns), infer_transform_strategy(vi)), model
+        vi, LinkSome(Set(vns), get_transform_strategy(vi)), model
     )
 end
 function invlink!!(vi::VarInfo, vns, model::Model)
     return update_transform_status!!(
-        vi, UnlinkSome(Set(vns), infer_transform_strategy(vi)), model
+        vi, UnlinkSome(Set(vns), get_transform_strategy(vi)), model
     )
 end
 function link!!(vi::VarInfo, model::Model)
@@ -459,7 +460,7 @@ variable inside a `VarInfo`.
 This function acts as the bridge between the two: it extracts an appropriate
 `AbstractTransformStrategy` from the current status of variables in a `VarInfo`.
 """
-infer_transform_strategy(vi::VarInfo) = vi.transform_strategy
+get_transform_strategy(vi::VarInfo) = vi.transform_strategy
 
 """
     VectorChunkIterator{T<:AbstractVector}
@@ -524,7 +525,7 @@ function Base.merge(varinfo_left::VarInfo, varinfo_right::VarInfo)
             varinfo_right.transform_strategy isa UnlinkAll
             UnlinkAll()
         else
-            infer_transform_strategy(new_values)
+            infer_transform_strategy_from_values(new_values)
         end
     return VarInfo(new_transform_strategy, new_values, new_accs)
 end

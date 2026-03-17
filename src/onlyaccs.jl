@@ -34,7 +34,7 @@ end
 # Minimal AbstractVarInfo interface
 DynamicPPL.getaccs(vi::OnlyAccsVarInfo) = vi.accs
 DynamicPPL.setaccs!!(::OnlyAccsVarInfo, accs::AccumulatorTuple) = OnlyAccsVarInfo(accs)
-function DynamicPPL.infer_transform_strategy(::OnlyAccsVarInfo)
+function DynamicPPL.get_transform_strategy(::OnlyAccsVarInfo)
     # OAVI doesn't contain this info, we can't return a sensible value. Hopefully this
     # method doesn't ever get called though.
     return error(

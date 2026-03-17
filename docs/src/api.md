@@ -465,12 +465,15 @@ DynamicPPL.LinkAll
 DynamicPPL.UnlinkAll
 DynamicPPL.LinkSome
 DynamicPPL.UnlinkSome
+DynamicPPL.WithTransforms
 ```
 
 ```@docs
 DynamicPPL.AbstractTransform
 DynamicPPL.DynamicLink
 DynamicPPL.Unlink
+DynamicPPL.FixedTransform
+DynamicPPL.NoTransform
 DynamicPPL.target_transform
 DynamicPPL.apply_transform_strategy
 ```
@@ -565,14 +568,10 @@ init
 get_param_eltype
 ```
 
-The function [`DynamicPPL.init`](@ref) should return an `AbstractTransformedValue`.
-There are three subtypes currently available:
+The function [`DynamicPPL.init`](@ref) should return a `TransformedValue`.
 
 ```@docs
-DynamicPPL.AbstractTransformedValue
-DynamicPPL.VectorValue
-DynamicPPL.LinkedVectorValue
-DynamicPPL.UntransformedValue
+DynamicPPL.TransformedValue
 ```
 
 The interface for working with transformed values consists of:
@@ -580,7 +579,6 @@ The interface for working with transformed values consists of:
 ```@docs
 DynamicPPL.get_transform
 DynamicPPL.get_internal_value
-DynamicPPL.set_internal_value
 ```
 
 ### Converting VarInfos to/from chains

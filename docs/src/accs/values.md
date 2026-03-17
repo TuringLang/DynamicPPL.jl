@@ -29,8 +29,10 @@ struct VarInfo{Tfm<:AbstractTransformStrategy,V<:VarNamedTuple,A<:AccumulatorTup
 end
 ```
 
-The `values` field stores either [`LinkedVectorValue`](@ref)s or [`VectorValue`](@ref)s.
-The `transform_strategy` field stores an `AbstractTransformStrategy` which is (as far as possible) consistent with the type of values stored in `values`.
+The `values` field stores `DynamicPPL.TransformedValue`s, but it is mandatory that these transformed values are vectorised.
+That is, it is permissible to store (for example) `TransformedValue([1.0], Unlink())`, but not `TransformedValue(1.0, NoTransform())`.
+
+Furthermore, the `transform_strategy` field stores an `AbstractTransformStrategy` which is (as far as possible) consistent with the type of values stored in `values`.
 
 Here is an example:
 
@@ -46,7 +48,7 @@ vi = VarInfo(dirichlet_model)
 vi
 ```
 
-In `VarInfo`, it is mandatory to store `LinkedVectorValue`s or `VectorValue`s as `ArrayLikeBlock`s (see the [Array-like blocks](@ref array-like-blocks) documentation for information on this).
+In `vi.values`, it is mandatory to store `TransformedValue`s as `ArrayLikeBlock`s (see the [Array-like blocks](@ref array-like-blocks) documentation for information on this).
 The reason is because, if the value is linked, it may have a different size than the number of indices in the `VarName`.
 This means that when retrieving the keys, we obtain each block as a single key:
 
@@ -86,11 +88,11 @@ The path to removing `VarInfo` is essentially to separate these three roles:
 
 ## `RawValueAccumulator`
 
-Earlier we said that `VectorValueAccumulator` stores only two subtypes of `AbstractTransformedValue`: `LinkedVectorValue` and `VectorValue`.
-One might therefore ask about the third subtype, namely, `UntransformedValue`.
+Earlier we said that `VectorValueAccumulator` stores only values that have been vectorised.
+One might therefore ask about unvectorised values — and in particular, values that have *not* been transformed at all, i.e., `TransformedValue(val, NoTransform())`.
 
-It turns out that it is very often useful to store [`UntransformedValue`](@ref)s.
-Additionally, since `UntransformedValue`s must always correspond exactly to the indices they are assigned to, we can unwrap them and do not need to store them as array-like blocks!
+It turns out that it is very often useful to store such untransformed values.
+Additionally, since the values must always correspond exactly to the indices they are assigned to, we can unwrap them and do not need to store them as array-like blocks!
 
 This is the role of `RawValueAccumulator`.
 
@@ -100,7 +102,7 @@ _, oavi = DynamicPPL.init!!(dirichlet_model, oavi, InitFromPrior(), UnlinkAll())
 raw_vals = get_raw_values(oavi)
 ```
 
-Note that when we unwrap `UntransformedValue`s, we also lose the block structure that was present in the model.
+Note that when we unwrap `TransformedValue`s, we also lose the block structure that was present in the model.
 That means that in `RawValueAccumulator`, there is no longer any notion that `x[1:3]` was set together, so the keys correspond to the individual indices.
 
 ```@example 1
@@ -135,5 +137,5 @@ If we do not store the vectorised form of the values, we will not know how many 
 Removing upstream usage of `unflatten!!` would allow us to completely get rid of `TransformedValueAccumulator` and only ever use `RawValueAccumulator`.
 See [this DynamicPPL issue](https://github.com/TuringLang/DynamicPPL.jl/issues/836) for more information.
 
-One possibility for removing `unflatten!!` is to turn it into a function that, instead of generating a new VarInfo, instead generates a tuple of new initialisation and link strategies which returns `LinkedVectorValue`s or `VectorValue`s containing views into the input vector.
+One possibility for removing `unflatten!!` is to turn it into a function that, instead of generating a new VarInfo, instead generates a tuple of new initialisation and transform strategies similar to `InitFromVector`.
 This would be conceptually very similar to how `LogDensityFunction` currently works.
