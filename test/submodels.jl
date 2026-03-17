@@ -291,9 +291,9 @@ end
         vi = VarInfo(model)
         @test Set(keys(vi)) == Set([@varname(x[i].a) for i in 1:4])
         for i in 1:4
-            # Need to be careful about what we're testing here. If we do vi[vn], then
-            # it expects that vi.values[vn] isa AbstractTransformedValue. That is true
-            # of the inner keys (x[i].a), but x[i] is not itself a key.
+            # Need to be careful about what we're testing here. If we do vi[vn], then it
+            # expects that vi.values[vn] isa TransformedValue. That is true of the inner
+            # keys (x[i].a), but x[i] is not itself a key.
             @test vi.values[@varname(x[i])] isa VarNamedTuple
             @test vi[@varname(x[i].a)] isa Float64
         end

@@ -62,21 +62,21 @@ In a `VarInfo`, the `accs` field is responsible for the accumulation step, just 
 
 However, `values` serves three purposes in one:
 
-  - it is sometimes used for initialisation (when the model's leaf context is `DefaultContext`, the `AbstractTransformedValue` to be used in the transformation step is read from it)
+  - it is sometimes used for initialisation (when the model's leaf context is `DefaultContext`, the `TransformedValue` to be used in the transformation step is read from it)
   - it also determines whether the log-Jacobian term should be included or not (if the value is a `LinkedVectorValue`, the log-Jacobian is included)
-  - it is sometimes also used for accumulation (when evaluating a model with a VarInfo, we will potentially store a new `AbstractTransformedValue` in it!).
+  - it is sometimes also used for accumulation (when evaluating a model with a VarInfo, we will potentially store a new `TransformedValue` in it!).
 
 The path to removing `VarInfo` is essentially to separate these three roles:
 
  1. The initialisation role of `varinfo.values` can be taken over by an initialisation strategy that wraps it.
-    Recall that the only role of an initialisation strategy is to provide an `AbstractTransformedValue` via [`DynamicPPL.init`](@ref).
+    Recall that the only role of an initialisation strategy is to provide an `TransformedValue` via [`DynamicPPL.init`](@ref).
     This can be trivially done by indexing into the `VarNamedTuple` stored in the strategy.
 
  2. Whether the log-Jacobian term should be included or not can be determined by a transform strategy.
     Much like how we can have an initialisation strategy that takes values from a `VarInfo`, we can also have a transform strategy that is defined by the existing status of a `VarInfo`.
     This is implemented in the `DynamicPPL.get_link_strategy(::AbstractVarInfo)` function.
  3. The accumulation role of `varinfo.values` can be taken over by a new accumulator, which we call `VectorValueAccumulator`.
-    This name is chosen because it does not store generic `AbstractTransformedValue`s, but only two subtypes of it, `LinkedVectorValue` and `VectorValue`.
+    This name is chosen because it does not store generic `TransformedValue`s, but only two subtypes of it, `LinkedVectorValue` and `VectorValue`.
     `VectorValueAccumulator` is implemented inside `src/accs/vector_value.jl`.
 
 !!! note
@@ -118,7 +118,7 @@ This is why indices of keys like `x[1:3] ~ dist` end up being split up in chains
 
 ## Why do we still need to store `TransformedValue`s?
 
-Given that `RawValueAccumulator` exists, one may wonder why we still need to store the other `AbstractTransformedValue`s at all, i.e. what the purpose of `VectorValueAccumulator` is.
+Given that `RawValueAccumulator` exists, one may wonder why we still need to store the other `TransformedValue`s at all, i.e. what the purpose of `VectorValueAccumulator` is.
 
 Currently, the only remaining reason for transformed values is the fact that we may sometimes need to perform [`DynamicPPL.unflatten!!`](@ref) on a `VarInfo`, to insert new values into it from a vector.
 

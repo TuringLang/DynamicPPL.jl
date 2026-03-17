@@ -29,12 +29,12 @@ The subsequent sections will demonstrate how this can be done.
 
 ## The required interface
 
-Each initialisation strategy must subtype `AbstractInitStrategy`, and implement `DynamicPPL.init(rng, vn, dist, strategy)`, which must return an `AbstractTransformedValue`.
+Each initialisation strategy must subtype `AbstractInitStrategy`, and implement `DynamicPPL.init(rng, vn, dist, strategy)`, which must return a `TransformedValue`.
 
 ```@docs; canonical=false
 AbstractInitStrategy
 init
-DynamicPPL.AbstractTransformedValue
+DynamicPPL.TransformedValue
 ```
 
 ## An example
@@ -103,13 +103,13 @@ In this case, we have defined an initialisation strategy that is random (and thu
 However, initialisation strategies can also be fully deterministic, in which case the `rng` argument is not needed.
 For example, [`DynamicPPL.InitFromParams`](@ref) reads from a set of parameters which are known ahead of time.
 
-## The returned `AbstractTransformedValue`
+## The returned `TransformedValue`
 
-As mentioned above, the `init` function must return an `AbstractTransformedValue`.
-The subtype of `AbstractTransformedValue` used does not affect the result of the model evaluation, but it may have performance implications.
+As mentioned above, the `init` function must return an `TransformedValue`.
+The transform stored inside this does not affect the result of the model evaluation, but it may have performance implications.
 **In particular, the returned subtype does not determine whether the log-Jacobian term is accumulated or not: that is determined by a separate [_transform strategy_](@ref transform-strategies).**
 
-What this means is that initialisation strategies should always choose the laziest possible subtype of `TransformedValue`.
+What this means is that initialisation strategies should always choose the laziest possible version of `TransformedValue`, electing to do as few transformations as possible inside `init`.
 
 For example, in the above example, we simply wrapped the untransformed value in `TransformedValue(..., NoTransform())`, which is the simplest possible choice.
 If a linked value is required by a later step inside `tilde_assume!!` (either the transformation or accumulation steps), it is the responsibility of that step to perform the linking.
