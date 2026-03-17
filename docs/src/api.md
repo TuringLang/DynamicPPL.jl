@@ -471,11 +471,6 @@ DynamicPPL.target_transform
 DynamicPPL.apply_transform_strategy
 ```
 
-```@docs
-DynamicPPL.transformation
-DynamicPPL.default_transformation
-```
-
 #### Utils
 
 ```@docs

@@ -77,14 +77,6 @@ _safe_length(c::LinearAlgebra.Cholesky) = length(c.UL)
 
 @testset "ParamsWithStats from LogDensityFunction" begin
     @testset "$(m.f)" for m in DynamicPPL.TestUtils.ALL_MODELS
-        if m.f === DynamicPPL.TestUtils.demo_static_transformation
-            # TODO(mhauru) These tests are broken for demo_static_transformation because
-            # vi[vn] doesn't know which transform it should apply to the internally stored
-            # value. This requires a rethink, either of StaticTransformation or of what the
-            # comparison in this test should be.
-            @test false broken = true
-            continue
-        end
         @testset "$transform_strategy" for transform_strategy in (UnlinkAll(), LinkAll())
             vi = VarInfo(m, InitFromPrior(), transform_strategy)
             params = [x for x in vi[:]]
