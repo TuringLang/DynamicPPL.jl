@@ -164,50 +164,6 @@ function rand_prior_true(rng::Random.AbstractRNG, model::Model{typeof(demo_lkjch
     return (x=x,)
 end
 
-# Model to test `StaticTransformation` with.
-"""
-    demo_static_transformation()
-
-Simple model for which [`default_transformation`](@ref) returns a [`StaticTransformation`](@ref).
-"""
-@model function demo_static_transformation()
-    s ~ InverseGamma(2, 3)
-    m ~ Normal(0, sqrt(s))
-    1.5 ~ Normal(m, sqrt(s))
-    2.0 ~ Normal(m, sqrt(s))
-
-    return (; s, m, x=[1.5, 2.0])
-end
-
-function DynamicPPL.default_transformation(::Model{typeof(demo_static_transformation)})
-    b = Bijectors.Stacked(Bijectors.elementwise(exp), identity)
-    return DynamicPPL.StaticTransformation(b)
-end
-
-posterior_mean(::Model{typeof(demo_static_transformation)}) = (s=49 / 24, m=7 / 6)
-function logprior_true(::Model{typeof(demo_static_transformation)}, s, m)
-    return logpdf(InverseGamma(2, 3), s) + logpdf(Normal(0, sqrt(s)), m)
-end
-function loglikelihood_true(::Model{typeof(demo_static_transformation)}, s, m)
-    return logpdf(Normal(m, sqrt(s)), 1.5) + logpdf(Normal(m, sqrt(s)), 2.0)
-end
-function varnames(::Model{typeof(demo_static_transformation)})
-    return [@varname(s), @varname(m)]
-end
-function logprior_true_with_logabsdet_jacobian(
-    model::Model{typeof(demo_static_transformation)}, s, m
-)
-    return _demo_logprior_true_with_logabsdet_jacobian(model, s, m)
-end
-
-function rand_prior_true(
-    rng::Random.AbstractRNG, model::Model{typeof(demo_static_transformation)}
-)
-    s = rand(rng, InverseGamma(2, 3))
-    m = rand(rng, Normal(0, sqrt(s)))
-    return (s=s, m=m)
-end
-
 # A collection of models for which the posterior should be "similar".
 # Some utility methods for these.
 function _demo_logprior_true_with_logabsdet_jacobian(model, s, m)
@@ -889,5 +845,4 @@ const ALL_MODELS = (
     demo_dynamic_constraint(),
     demo_one_variable_multiple_constraints(),
     demo_lkjchol(),
-    demo_static_transformation(),
 )

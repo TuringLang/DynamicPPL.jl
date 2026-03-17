@@ -1,6 +1,91 @@
 # 0.41
 
-Removed the `varinfo` keyword argument from `DynamicPPL.TestUtils.AD.run_ad` and replaced the `varinfo` field in `ADResult` with `ldf::LogDensityFunction`.
+## Breaking changes
+
+### Unification of transformed values
+
+Previously, there were separate types `UntransformedValue`, `VectorValue`, and `LinkedVectorValue`, which were all subtypes of `AbstractTransformedValue`.
+The abstract type has been removed, and all of these have been unified in a single `TransformedValue` struct, which wraps the (maybe transformed) value, plus an `AbstractTransform` that describes the inverse transformation (to get back to the raw value).
+
+Concretely,
+
+  - `UntransformedValue(val)` is now `TransformedValue(val, NoTransform())`
+  - `VectorValue(vec, tfm)` is now `TransformedValue(vec, Unlink())`
+  - `LinkedVectorValue(vec, tfm)` is now `TransformedValue(vec, DynamicLink())`
+
+**Note that this means for `VectorValue` and `LinkedVectorValue`, the transform is no longer stored on the value itself.**
+This means that given one of these values, you *cannot* access the raw value without running the model.
+
+The reason why this is done is that the transform may in principle change between model executions.
+This can happen if the prior distribution of a variable depends on the value of another variable.
+Previously, in DynamicPPL, we *always* made sure to recompute the transform during model evaluation; however, this was not enforced by the data structure.
+The current implementation makes it impossible to accidentally use an outdated transform, and is therefore more robust.
+
+### Addition of `FixedTransform`
+
+The above unification allows us to introduce a new transform subtype, `FixedTransform{F}`, which wraps a known function `F` that is assumed to always be static, allowing the transform to be cached and reused across model executions.
+**This should only be used when it is known ahead of time that the transform will never change between model executions.**
+It is the user's responsibility to ensure that this is the case.
+Using `FixedTransform` when the transform does change between model executions can lead to incorrect results.
+
+For many simple distributions, this in fact saves absolutely no time, because deriving the transform from the distribution takes almost negligible time (~ 1 ns!).
+However, there are some edge cases for which this is not the case: for example, `product_distribution([Beta(2, 2), Normal()])` is quite slow (~ 3 µs).
+In such cases, using `FixedTransform` can lead to substantial performance improvements.
+
+To use `FixedTransform` with `LogDensityFunction`, you need to:
+
+ 1. Create a `VarNamedTuple` mapping `VarName`s to `FixedTransform`s for the variables in your model.
+    This can be done using `get_linked_vec_transforms(model)`, which automatically calculates `Bijectors.VectorBijectors.from_linked_vec(dist)` for each variable in the model.
+    TODO: Control whether it's linked or not????
+
+ 2. Wrap the `VarNamedTuple` inside `WithTransforms(vnt, UnlinkAll())`.
+    `WithTransforms` is a subtype of `AbstractTransformStrategy`, much like `LinkAll()`.
+    However, `WithTransforms` specifies that *these exact transforms are to be used*, whereas `LinkAll` says 'derive the transforms again at model runtime'.
+ 3. Construct a `LogDensityFunction(model, getlogjoint_internal, WithTransforms(...)); adtype=adtype`.
+
+### Removal of `getindex(vi::VarInfo, vn::VarName)`
+
+The main role of `VarInfo` was to store vectorised transformed values.
+Previously, these were stored as `VectorValue`s or `LinkedVectorValue`s: these used to carry the inverse transform with them, which allowed you to access the raw value via `vi[vn]`, or equivalently `getindex(vi, vn)`.
+
+The problem with this is that (as described above) the correct transform may depend on the values of the variables themselves.
+That means that if we update the vectorised value without changing the transform, we could end up with an inconsistent state and incorrect results.
+In particular, this is *exactly* what the function `unflatten!!` does: it updates the vectorised values but does not touch the transform.
+
+In the current version, we have removed this method to prevent the possibility of obtaining incorrect results.
+(Our hands are also forced by the fact that the new `TransformedValue`s do not store the actual transform with them.)
+
+*In place of using `VarInfo`, we strongly recommend that you migrate to using `OnlyAccsVarInfo`.*
+In particular, to access raw (untransformed) values, you should use an `OnlyAccsVarInfo` with a `RawValueAccumulator`.
+There is [a migration guide available on the DynamicPPL documentation](https://turinglang.org/DynamicPPL.jl/stable/migration/) and we are very happy to add more examples to this if you run into something that is not covered.
+
+### LinkedVecTransformAccumulator
+
+TODO, this part is still being worked on.
+
+  - `BijectorAccumulator` → `LinkedVecTransformAccumulator`
+  - `get_linked_vec_transforms(::VarInfo)`
+  - `get_linked_vec_transforms(::Model)`
+
+## Miscellaneous breaking changes
+
+  - Removed the `varinfo` keyword argument from `DynamicPPL.TestUtils.AD.run_ad`, and replaced the `varinfo` field in the returned `ADResult` with `ldf::LogDensityFunction`.
+
+## Internal changes
+
+The following functions were not exported; we document changes in them for completeness.
+
+  - Given the above changes, the old framework of `AbstractTransformation`, `StaticTransformation`, and `DynamicTransformation` are no longer needed, and have been removed.
+    The (rarely used) methods of `link`, `link!!`, `invlink`, and `invlink!!` that took an `AbstractTransformation` as the first argument have been removed.
+    The same is true of the functions `default_transformation` and `transformation`.
+
+  - `RangeAndLinked` has been expanded to `RangeAndTransform`: instead of just carrying a Boolean indicating whether the transform is `DynamicLink` or `Unlink`, it now stores the full transform.
+    This is done in order to accommodate `FixedTransform`.
+  - Consequently, `get_ranges_and_linked` has been renamed to `get_rangeandtransforms`.
+    Its function is still to return a `VarNamedTuple` of `RangeAndTransform`s.
+  - `update_link_status!!` has been renamed to `update_transform_status!!`.
+  - `get_transform_strategy` has been renamed to `infer_transform_strategy`.
+  - `from_internal_transform` and `from_linked_internal_transform` have been removed, since the new `TransformedValue`s do not store the transform with them.
 
 Removed `getargnames`, `getmissings`, and `Base.nameof(::Model)` from the public API (export and documentation) as they are considered internal implementation details.
 

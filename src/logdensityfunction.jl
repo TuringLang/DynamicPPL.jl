@@ -11,7 +11,7 @@ using DynamicPPL:
     ThreadSafeVarInfo,
     VarInfo,
     OnlyAccsVarInfo,
-    RangeAndLinked,
+    RangeAndTransform,
     default_accumulators,
     float_type_with_fallback,
     getlogjoint,
@@ -74,8 +74,8 @@ are several functions in DynamicPPL that are 'supported' out of the box:
 parameters to be used for constructing the single vectorised representation of the model.
 The parameters stored in this argument determine whether the resulting `LogDensityFunction`
 will be linked, unlinked, or mixed. For example, if you pass a `VarNamedTuple` consisting
-entirely of `LinkedVectorValue`s, then the resulting `LogDensityFunction` will be fully
-linked.
+entirely of `TransformedValue{T,DynamicLink}`s, then the resulting `LogDensityFunction` will
+be fully linked.
 
 You can pass either:
 
@@ -201,34 +201,13 @@ struct LogDensityFunction{
         );
         adtype::Union{ADTypes.AbstractADType,Nothing}=nothing,
     )
-        all_ranges = get_ranges_and_linked(vnt)
-        # Figure out if all variables are linked, unlinked, or mixed
-        linked_vns = Set{VarName}()
-        unlinked_vns = Set{VarName}()
-        for vn in keys(all_ranges)
-            if all_ranges[vn].is_linked
-                push!(linked_vns, vn)
-            else
-                push!(unlinked_vns, vn)
-            end
-        end
-        transform_strategy = if isempty(unlinked_vns)
-            LinkAll()
-        elseif isempty(linked_vns)
-            UnlinkAll()
-        else
-            # We could have a marginal performance optimisation here by checking whether
-            # linked_vns or unlinked_vns is smaller, and then using LinkSome or UnlinkSome
-            # accordingly, so that there are fewer `subsumes` checks. However, in practice,
-            # the mixed linking case performance is going to be a lot worse than in the
-            # fully linked or fully unlinked cases anyway, so this would be a bit of a
-            # premature optimisation.
-            LinkSome(linked_vns, UnlinkAll())
-        end
+        all_ranges = get_rangeandtransforms(vnt)
+        transform_strategy = infer_transform_strategy_from_values(vnt)
+
         # Get vectorised parameters. Note that `internal_values_as_vector` just concatenates
         # all the vectors inside in iteration order of the VNT's keys. *In principle*, the
         # result of that should always be consistent with the ranges extracted above via
-        # `get_ranges_and_linked`, since both are based on the same underlying VNT, and both
+        # `get_rangeandtransforms`, since both are based on the same underlying VNT, and both
         # iterate over the keys in the same order. However, this is an implementation
         # detail, and so we should probably not rely on it!
         # Therefore, we use `to_vector_params_inner` to also perform some checks that the
@@ -524,25 +503,25 @@ _use_closure(::ADTypes.AbstractADType) = false
 ######################################################
 
 """
-    get_ranges_and_linked(vnt::VarNamedTuple)
+    get_rangeandtransforms(vnt::VarNamedTuple)
 
-Given a `VarNamedTuple` that contains `VectorValue`s and `LinkedVectorValue`s, extract the
-ranges of each variable in the vectorised parameter representation, along with whether each
-variable is linked or unlinked.
+Given a `VarNamedTuple` that contains vectorised values (i.e.,
+`TransformedValue{<:AbstractVector}`), extract the ranges of each variable in the vectorised
+parameter representation, along with the transform status of each variable.
 
 This function returns a VarNamedTuple mapping all VarNames to their corresponding
-`RangeAndLinked`.
+`RangeAndTransform`.
 """
-function get_ranges_and_linked(vnt::VarNamedTuple)
+function get_rangeandtransforms(vnt::VarNamedTuple)
     # Note: can't use map_values!! here as that might mutate the VNT itself!
     ranges_vnt, _ = mapreduce(
         identity,
         function ((ranges_vnt, offset), pair)
             vn, tv = pair
-            val = tv.val
+            val = get_internal_value(tv)
             range = offset:(offset + length(val) - 1)
             offset += length(val)
-            ral = RangeAndLinked(range, tv isa LinkedVectorValue)
+            ral = RangeAndTransform(range, tv.transform)
             template = vnt.data[AbstractPPL.getsym(vn)]
             ranges_vnt = templated_setindex!!(ranges_vnt, ral, vn, template)
             return ranges_vnt, offset
@@ -583,9 +562,8 @@ end
         ldf::LogDensityFunction
     )
 
-Extract vectorised values from a `VarNamedTuple` that contains `VectorValue`s and
-`LinkedVectorValue`s, and concatenate them into a single vector that is consistent with the
-ranges specified in the `LogDensityFunction`.
+Extract vectorised values from a `VarNamedTuple`, and concatenate them into a single vector
+that is consistent with the ranges specified in the `LogDensityFunction`.
 
 This is useful when you want to regenerate new vectorised parameters but using a different
 initialisation strategy.
@@ -619,13 +597,10 @@ function to_vector_params_inner(
         ral = ranges[vn]
 
         # check transform lines up
-        if (
-            (ral.is_linked && tval isa VectorValue) ||
-            (!ral.is_linked && tval isa LinkedVectorValue)
-        )
+        if ral.transform != tval.transform
             throw(
                 ArgumentError(
-                    "The LogDensityFunction specifies that `$vn` should be $(ral.is_linked ? "linked" : "unlinked"), but the vector values contain a $(tval isa LinkedVectorValue ? "linked" : "unlinked") value for that variable.",
+                    "The variable `$vn` has transform status $(ral.transform) in the LogDensityFunction, but the provided VarNamedTuple has transform status $(tval.transform) for this variable. This likely means that the vector values provided are not consistent with the LogDensityFunction (e.g. if they were obtained from a different model).",
                 ),
             )
         end

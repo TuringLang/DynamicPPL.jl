@@ -116,7 +116,7 @@ TEST_ACCUMULATORS = (
 
         @testset "accumulate_assume" begin
             val = 2.0
-            tval = DynamicPPL.UntransformedValue(nothing)
+            tval = DynamicPPL.TransformedValue(nothing, NoTransform())
             logjac = pi
             vn = @varname(x)
             dist = Normal()
