@@ -1,75 +1,3 @@
-# Transformation related.
-"""
-    $(TYPEDEF)
-
-Represents a transformation to be used in `link!!` and `invlink!!`, amongst others.
-
-A concrete implementation of this should implement the following methods:
-- [`link!!`](@ref): transforms the [`AbstractVarInfo`](@ref) to the unconstrained space.
-- [`invlink!!`](@ref): transforms the [`AbstractVarInfo`](@ref) to the constrained space.
-
-See also: [`link!!`](@ref), [`invlink!!`](@ref)
-"""
-abstract type AbstractTransformation end
-
-"""
-    $(TYPEDEF)
-
-Transformation which applies the identity function.
-"""
-struct NoTransformation <: AbstractTransformation end
-
-"""
-    $(TYPEDEF)
-
-Transformation which transforms the variables on a per-need-basis
-in the execution of a given `Model`.
-
-This is in constrast to `StaticTransformation` which transforms all variables
-_before_ the execution of a given `Model`.
-
-Different VarInfo types should implement their own methods for `link!!` and `invlink!!` for
-`DynamicTransformation`.
-
-See also: [`StaticTransformation`](@ref).
-"""
-struct DynamicTransformation <: AbstractTransformation end
-
-"""
-    $(TYPEDEF)
-
-Transformation which represents a fixed bijector to be applied to the variables, as opposed
-to deriving the bijector again at runtime.
-
-See also: [`DynamicTransformation`](@ref).
-
-# Fields
-$(TYPEDFIELDS)
-"""
-struct StaticTransformation{F} <: AbstractTransformation
-    "The function, assumed to implement the `Bijectors` interface, to be applied to the variables"
-    bijector::F
-end
-
-function merge_bijectors(left::Bijectors.NamedTransform, right::Bijectors.NamedTransform)
-    return Bijectors.NamedTransform(merge_bijector(left.bs, right.bs))
-end
-
-"""
-    default_transformation(model::Model[, vi::AbstractVarInfo])
-
-Return the `AbstractTransformation` currently related to `model` and, potentially, `vi`.
-"""
-default_transformation(model::Model, ::AbstractVarInfo) = default_transformation(model)
-default_transformation(::Model) = DynamicTransformation()
-
-"""
-    transformation(vi::AbstractVarInfo)
-
-Return the `AbstractTransformation` related to `vi`.
-"""
-function transformation end
-
 # Accumulation of log-probabilities.
 """
     getlogjoint(vi::AbstractVarInfo)
@@ -696,7 +624,6 @@ function Base.merge(
     return merge(Base.merge(varinfo1, varinfo2), varinfo3, varinfo_others...)
 end
 
-# Transformations
 """
     is_transformed(vi::AbstractVarInfo[, vns::Union{VarName, AbstractVector{<:Varname}}])
 
@@ -731,95 +658,41 @@ If `vn` is not specified, then `is_transformed(vi)` evaluates to `true` for all 
 """
 function set_transformed!! end
 
-# For link!!, invlink!!, link, and invlink, we deliberately do not provide a fallback
-# method for the case when no `vns` is provided, that would get all the keys from the
-# `VarInfo`. Hence each subtype of `AbstractVarInfo` needs to implement separately the case
-# where `vns` is provided and the one where it is not. This is because having separate
-# implementations is typically much more performant, and because not all AbstractVarInfo
-# types support partial linking.
-
 """
-    link!!([t::AbstractTransformation, ]vi::AbstractVarInfo, model::Model)
-    link!!([t::AbstractTransformation, ]vi::AbstractVarInfo, vns::NTuple{N,VarName}, model::Model)
+    link(vi::AbstractVarInfo, model::Model)
+    link(vi::AbstractVarInfo, vns::NTuple{N,VarName}, model::Model)
 
-Transform variables in `vi` to their linked space, mutating `vi` if possible.
+Transform all variables in `vi` to their linked space without mutating `vi` (i.e., replace
+all the `TransformedValue`s in `vi.values` with the corresponding
+`TransformedValue(linked_value, DynamicLink())`. If `vns` is provided, then only transform
+the variables in `vns`.
 
-Either transform all variables, or only ones specified in `vns`.
-
-Use the  transformation `t`, or `default_transformation(model, vi)` if one is not provided.
-
-See also: [`default_transformation`](@ref), [`invlink!!`](@ref).
-"""
-function link!!(vi::AbstractVarInfo, model::Model)
-    return link!!(default_transformation(model, vi), vi, model)
-end
-function link!!(vi::AbstractVarInfo, vns, model::Model)
-    return link!!(default_transformation(model, vi), vi, vns, model)
-end
-
-"""
-    link([t::AbstractTransformation, ]vi::AbstractVarInfo, model::Model)
-    link([t::AbstractTransformation, ]vi::AbstractVarInfo, vns::NTuple{N,VarName}, model::Model)
-
-Transform variables in `vi` to their linked space without mutating `vi`.
-
-Either transform all variables, or only ones specified in `vns`.
-
-Use the  transformation `t`, or `default_transformation(model, vi)` if one is not provided.
-
-See also: [`default_transformation`](@ref), [`invlink`](@ref).
+See also: [`invlink`](@ref).
 """
 function link(vi::AbstractVarInfo, model::Model)
-    return link(default_transformation(model, vi), vi, model)
+    return link!!(deepcopy(vi), model)
 end
 function link(vi::AbstractVarInfo, vns, model::Model)
-    return link(default_transformation(model, vi), vi, vns, model)
-end
-function link(t::AbstractTransformation, vi::AbstractVarInfo, model::Model)
-    return link!!(t, deepcopy(vi), model)
-end
-
-"""
-    invlink!!([t::AbstractTransformation, ]vi::AbstractVarInfo, model::Model)
-    invlink!!([t::AbstractTransformation, ]vi::AbstractVarInfo, vns::NTuple{N,VarName}, model::Model)
-
-Transform variables in `vi` to their constrained space, mutating `vi` if possible.
-
-Either transform all variables, or only ones specified in `vns`.
-
-Use the (inverse of) transformation `t`, or `default_transformation(model, vi)` if one is
-not provided.
-
-See also: [`default_transformation`](@ref), [`link!!`](@ref).
-"""
-function invlink!!(vi::AbstractVarInfo, model::Model)
-    return invlink!!(default_transformation(model, vi), vi, model)
-end
-function invlink!!(vi::AbstractVarInfo, vns, model::Model)
-    return invlink!!(default_transformation(model, vi), vi, vns, model)
+    return link!!(deepcopy(vi), vns, model)
 end
 
 """
     invlink([t::AbstractTransformation, ]vi::AbstractVarInfo, model::Model)
     invlink([t::AbstractTransformation, ]vi::AbstractVarInfo, vns::NTuple{N,VarName}, model::Model)
 
-Transform variables in `vi` to their constrained space without mutating `vi`.
+Transform all variables in `vi` to the original space without mutating `vi` (i.e., replace
+all the `TransformedValue`s in `vi.values` with the corresponding
+`TransformedValue(unlinked_value, Unlink())`. Note that the unlinked values are still
+vectorised (that is a requirement of `vi.values`). If `vns` is provided, then only transform
+the variables in `vns`.
 
-Either transform all variables, or only ones specified in `vns`.
-
-Use the (inverse of) transformation `t`, or `default_transformation(model, vi)` if one is
-not provided.
-
-See also: [`default_transformation`](@ref), [`link`](@ref).
+See also: [`link`](@ref).
 """
 function invlink(vi::AbstractVarInfo, model::Model)
-    return invlink(default_transformation(model, vi), vi, model)
+    return invlink!!(deepcopy(vi), model)
 end
 function invlink(vi::AbstractVarInfo, vns, model::Model)
-    return invlink(default_transformation(model, vi), vi, vns, model)
-end
-function invlink(t::AbstractTransformation, vi::AbstractVarInfo, model::Model)
-    return invlink!!(t, deepcopy(vi), model)
+    return invlink!!(deepcopy(vi), vns, model)
 end
 
 """
