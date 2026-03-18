@@ -449,7 +449,7 @@ DynamicPPL.link
 DynamicPPL.invlink
 DynamicPPL.link!!
 DynamicPPL.invlink!!
-DynamicPPL.update_link_status!!
+DynamicPPL.update_transform_status!!
 ```
 
 ```@docs
@@ -567,6 +567,7 @@ The interface for working with transformed values consists of:
 ```@docs
 DynamicPPL.get_transform
 DynamicPPL.get_internal_value
+DynamicPPL.set_internal_value
 ```
 
 ### Converting VarInfos to/from chains

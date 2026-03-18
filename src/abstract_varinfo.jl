@@ -665,6 +665,14 @@ function link(vi::AbstractVarInfo, vns, model::Model)
 end
 
 """
+    link!!(vi::AbstractVarInfo, model::Model)
+    link!!(vi::AbstractVarInfo, vns::NTuple{N,VarName}, model::Model)
+
+Like `link`, but might mutate `vi` in-place if it is possible to do so.
+"""
+function link!! end
+
+"""
     invlink(vi::AbstractVarInfo, model::Model)
     invlink(vi::AbstractVarInfo, vns::NTuple{N,VarName}, model::Model)
 
@@ -682,6 +690,14 @@ end
 function invlink(vi::AbstractVarInfo, vns, model::Model)
     return invlink!!(deepcopy(vi), vns, model)
 end
+
+"""
+    invlink!!(vi::AbstractVarInfo, model::Model)
+    invlink!!(vi::AbstractVarInfo, vns::NTuple{N,VarName}, model::Model)
+
+Like `invlink`, but might mutate `vi` in-place if it is possible to do so.
+"""
+function invlink!! end
 
 """
     unflatten!!(vi::AbstractVarInfo, x::AbstractVector)

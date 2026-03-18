@@ -124,12 +124,12 @@ Currently, the only remaining reason for transformed values is the fact that we 
 
 ```@example 1
 vi = VarInfo(dirichlet_model)
-vi[@varname(x[1:3])]
+DynamicPPL.getindex_internal(vi, @varname(x[1:3]))
 ```
 
 ```@example 1
 vi = DynamicPPL.unflatten!!(vi, [0.2, 0.5, 0.3])
-vi[@varname(x[1:3])]
+DynamicPPL.getindex_internal(vi, @varname(x[1:3]))
 ```
 
 If we do not store the vectorised form of the values, we will not know how many values to read from the input vector for each key.
