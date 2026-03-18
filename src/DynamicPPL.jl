@@ -168,6 +168,8 @@ export AbstractVarInfo,
     AbstractTransform,
     DynamicLink,
     Unlink,
+    FixedTransform,
+    NoTransform,
     # Linking
     link,
     link!!,

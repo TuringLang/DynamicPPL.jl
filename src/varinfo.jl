@@ -182,12 +182,7 @@ Base.keys(vi::VarInfo) = keys(vi.values)
 # Union{Vector{Union{}}, Vector{Float64}} (I suppose this is because it can't tell whether
 # the result will be empty or not...? Not sure).
 function Base.values(vi::VarInfo)
-    return mapreduce(
-        p -> DynamicPPL.get_transform(p.second)(DynamicPPL.get_internal_value(p.second)),
-        push!,
-        vi.values;
-        init=Any[],
-    )
+    return mapreduce(p -> p.second, push!, vi.values; init=Any[])
 end
 
 function Base.show(io::IO, ::MIME"text/plain", vi::VarInfo)
@@ -251,6 +246,22 @@ end
 function update_transform_strategy(::LinkAll, vi_is_empty::Bool, new_vn::VarName, ::Unlink)
     return vi_is_empty ? UnlinkAll() : UnlinkSome(Set([new_vn]), LinkAll())
 end
+
+function update_transform_strategy(ls::LinkSome, ::Bool, vn::VarName, ::DynamicLink)
+    return if vn in ls.vns
+        ls
+    else
+        LinkSome(Set([vn]) ∪ ls.vns, ls.fallback)
+    end
+end
+function update_transform_strategy(ls::LinkSome, ::Bool, vn::VarName, ::Unlink)
+    return if vn in ls.vns
+        LinkSome(setdiff(ls.vns, Set([vn])), ls.fallback)
+    else
+        ls
+    end
+end
+
 function update_transform_strategy(::UnlinkAll, ::Bool, ::VarName, ::Unlink)
     return UnlinkAll()
 end
@@ -259,11 +270,20 @@ function update_transform_strategy(
 )
     return vi_is_empty ? LinkAll() : LinkSome(Set([new_vn]), UnlinkAll())
 end
-function update_transform_strategy(
-    ::AbstractTransformStrategy, ::Bool, ::VarName, ::FixedTransform
-)
-    # TODO!
-    return error("not implemented")
+
+function update_transform_strategy(ls::UnlinkSome, ::Bool, vn::VarName, ::Unlink)
+    return if vn in ls.vns
+        ls
+    else
+        UnlinkSome(Set([vn]) ∪ ls.vns, ls.fallback)
+    end
+end
+function update_transform_strategy(ls::UnlinkSome, ::Bool, vn::VarName, ::DynamicLink)
+    return if vn in ls.vns
+        UnlinkSome(setdiff(ls.vns, Set([vn])), ls.fallback)
+    else
+        ls
+    end
 end
 
 """
