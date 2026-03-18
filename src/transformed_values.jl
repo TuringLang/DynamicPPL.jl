@@ -92,6 +92,15 @@ Get the internal value stored in `tv`.
 get_internal_value(tv::TransformedValue) = tv.value
 
 """
+    set_internal_value(tv::TransformedValue, new_val)
+
+Create a new `TransformedValue` with the same transformation as `tv`, but with
+internal value `new_val`.
+"""
+set_internal_value(tv::TransformedValue, new_val) =
+    TransformedValue(new_val, get_transform(tv))
+
+"""
     abstract type AbstractTransformStrategy end
 
 An abstract type for strategies that determine how each variable should be transformed.

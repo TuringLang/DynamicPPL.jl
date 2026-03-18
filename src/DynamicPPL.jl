@@ -155,6 +155,7 @@ export AbstractVarInfo,
     TransformedValue,
     get_transform,
     get_internal_value,
+    set_internal_value,
     # Transform strategies
     update_transform_status!!,
     AbstractTransformStrategy,
