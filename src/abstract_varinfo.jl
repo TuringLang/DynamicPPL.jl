@@ -502,15 +502,15 @@ Subset a `varinfo` to only contain the variables `vns`.
 The ordering of variables in the return value will be the same as in `varinfo`.
 
 # Examples
-```jldoctest varinfo-subset; setup = :(using Distributions, DynamicPPL)
+julia> using DynamicPPL, Distributions
+
 julia> @model function demo()
            s ~ InverseGamma(2, 3)
            m ~ Normal(0, sqrt(s))
            x = Vector{Float64}(undef, 2)
            x[1] ~ Normal(m, sqrt(s))
            x[2] ~ Normal(m, sqrt(s))
-       end
-demo (generic function with 2 methods)
+       end;
 
 julia> model = demo();
 
@@ -526,7 +526,7 @@ VarNamedTuple
 
 julia> vi = last(init!!(model, VarInfo(), InitFromParams(params), UnlinkAll()));
 
-julia> keys(vi)
+julia> vi.values
 4-element Vector{VarName}:
  s
  m
@@ -540,8 +540,9 @@ julia> keys(vi_subset1)
 1-element Vector{VarName}:
  m
 
-julia> vi_subset1[@varname(m)]
-2.0
+julia> DynamicPPL.getindex_internal(vi_subset1, @varname(m))
+1-element Vector{Float64}:
+ 2.0
 
 julia> # Extract one with both `s` and `x[2]`.
        vi_subset2 = subset(vi, [@varname(s), @varname(x[2])]);
@@ -551,9 +552,12 @@ julia> keys(vi_subset2)
  s
  x[2]
 
-julia> vi_subset2[[@varname(s), @varname(x[2])]]
-2-element Vector{Float64}:
+julia> DynamicPPL.getindex_internal(vi_subset2, @varname(s))
+1-element Vector{Float64}:
  1.0
+
+julia> DynamicPPL.getindex_internal(vi_subset2, @varname(x[2]))
+1-element Vector{Float64}:
  4.0
 ```
 
@@ -584,23 +588,7 @@ julia> keys(vi_merged)
  m
  x[1]
  x[2]
-
-julia> vi_merged[[@varname(s), @varname(m), @varname(x[1]), @varname(x[2])]]
-4-element Vector{Float64}:
- 1.0
- 2.0
- 3.0
- 4.0
 ```
-
-# Notes
-
-## Type-stability
-
-!!! warning
-    This function is only type-stable when `vns` contains only varnames
-    with the same symbol. For example, `[@varname(m[1]), @varname(m[2])]` will
-    be type-stable, but `[@varname(m[1]), @varname(x)]` will not be.
 """
 function subset end
 
