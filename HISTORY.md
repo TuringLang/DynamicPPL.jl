@@ -61,16 +61,11 @@ There is [a migration guide available on the DynamicPPL documentation](https://t
 
 ### LinkedVecTransformAccumulator
 
-TODO
+TODO, this part is still being worked on.
 
   - `BijectorAccumulator` → `LinkedVecTransformAccumulator`
   - `get_linked_vec_transforms(::VarInfo)`
   - `get_linked_vec_transforms(::Model)`
-
-### Changed signatures
-
-  - `link!!` / `invlink!!` no longer take an `AbstractTransformation` first argument
-  - `setindex_with_dist!!` for vectorised `TransformedValue`s no longer takes `dist`
 
 ## Miscellaneous breaking changes
 
