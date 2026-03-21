@@ -17,7 +17,7 @@ model = setthreadsafe(g(y), true)
 
 This is accomplished by creating one copy of each accumulator per thread (using `DynamicPPL.split`), and then after the model evaluation is complete, merging the result of each thread's accumulator with `DynamicPPL.combine`.
 
-**This means that if you are implementing your own accumulator, you will need to implement the `split` and `combine` methods for it in order for it work correctly in thread-safe mode.**
+**This means that if you are implementing your own accumulator, you will need to implement the `split` and `combine` methods for it in order for it to work correctly in thread-safe mode.**
 
 Each accumulator sees only the tilde-statements that were executed on its own thread.
 However, the intent is that after merging the results from all threads, the final accumulator should be equivalent to what would have been obtained by a single-threaded evaluation (modulo ordering).
