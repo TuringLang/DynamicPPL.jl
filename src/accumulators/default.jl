@@ -32,9 +32,8 @@ struct NoLogProb <: Real end
 Base.zero(::Type{NoLogProb}) = NoLogProb()
 Base.convert(::Type{T}, ::NoLogProb) where {T<:Number} = zero(T)
 Base.promote_rule(::Type{NoLogProb}, ::Type{T}) where {T<:Number} = T
-Base.promote_rule(::Type{T}, ::Type{NoLogProb}) where {T<:Number} = T
 Base.iszero(::NoLogProb) = true
-Base.hash(::NoLogProb, h::UInt) = hash(:NoLogProb, h)
+Base.hash(::NoLogProb, h::UInt) = hash(0.0, h)
 Base.:(+)(::NoLogProb, ::NoLogProb) = NoLogProb()
 
 """
