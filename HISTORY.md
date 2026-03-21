@@ -1,3 +1,13 @@
+# 0.40.15
+
+DynamicPPL now allows you to set the type that log-probabilities are initialised with, using the `set_logprob_type!` function.
+This records a compile-time preference so requires restarting Julia to take effect.
+
+This allows model log-probability accumulation to work with different numerical precisions.
+For example, if your model is defined using distributions that are parameterised by `Float32` only (and avoid promoting them to `Float64` elsewhere in the model), and you call `DynamicPPL.set_logprob_type!(Float32)`, the resulting log-probabilities will also be `Float32`.
+
+Previously, DynamicPPL would automatically choose a `Float64` log-probability, causing any lower-precision model to be promoted.
+
 # 0.40.14
 
 Fixed `check_model()` erroneously failing for models such as `x[1:2] .~ univariate_dist`.

@@ -114,7 +114,6 @@ export AbstractVarInfo,
     @model,
     # Utilities
     OrderedDict,
-    typed_identity,
     # Model
     Model,
     getmissings,
