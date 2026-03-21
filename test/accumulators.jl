@@ -42,9 +42,12 @@ using DynamicPPL:
                 DynamicPPL.reset(LogLikelihoodAccumulator(1.0))
             # However, `NoLogProb() !== 0.0`.
             @test LogPriorAccumulator(NoLogProb()) !== LogPriorAccumulator(0.0)
-            @test LogPriorAccumulator() ===
-                LogPriorAccumulator(NoLogProb()) ===
-                DynamicPPL.reset(LogPriorAccumulator(1.0))
+            @test LogPriorAccumulator() === LogPriorAccumulator(NoLogProb())
+        end
+
+        @testset "reset" begin
+            @test DynamicPPL.reset(LogPriorAccumulator(1.0)) === LogPriorAccumulator(0.0)
+            @test DynamicPPL.reset(LogPriorAccumulator()) === LogPriorAccumulator()
         end
 
         @testset "addition and incrementation" begin

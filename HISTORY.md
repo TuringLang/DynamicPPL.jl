@@ -12,6 +12,7 @@ Previously, DynamicPPL would automatically choose a `Float64` log-probability, c
 ## Miscellaneous
 
   - Removed the `varinfo` keyword argument from `DynamicPPL.TestUtils.AD.run_ad` and replaced the `varinfo` field in `ADResult` with `ldf::LogDensityFunction`.
+  - Removed `DynamicPPL.typed_identity`; you can use `Bijectors.VectorBijectors.TypedIdentity()` instead which has the exact same behaviour.
 
 # 0.40.14
 
