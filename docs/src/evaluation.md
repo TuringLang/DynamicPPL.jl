@@ -249,7 +249,7 @@ getlogprior(accs) - getlogjac(accs)
 
 You might ask: given that we specified parameters in untransformed space, how do we then retrieve the parameters in transformed space?
 The answer to this is to use an accumulator (no surprises there!) that collects the transformed values.
-Specifically, a `VectorValueAccumulator` collects vectorised forms of the parameters, which may either be [`VectorValue`](@ref)s or [`LinkedVectorValue`](@ref)s.
+Specifically, a `VectorValueAccumulator` collects vectorised forms of the parameters: that is, `TransformedValue{V,T}` where `V<:AbstractVector`.
 
 ```@example 1
 accs = OnlyAccsVarInfo(VectorValueAccumulator())

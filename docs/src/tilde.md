@@ -47,7 +47,7 @@ Every tilde-statement `vn ~ dist` (where `vn` represents a random variable) is t
 
 As described on the [Model evaluation page](./evaluation.md), there are three stages to every tilde-statement:
 
- 1. Initialisation: get an `AbstractTransformedValue` from the initialisation strategy.
+ 1. Initialisation: get an `TransformedValue` from the initialisation strategy.
  2. Transformation: figure out the untransformed (raw) value and the transformed value (where necessary); compute the relevant log-Jacobian.
  3. Accumulation: pass all the relevant information to the accumulators, which individually decide what to do with it.
 
@@ -98,20 +98,20 @@ For example, if `ctx.strategy` is `InitFromPrior()`, then `init()` samples a val
     For `DefaultContext`, initialisation is handled by looking for the value stored inside `vi`.
 
 As discussed in the [Initialisation strategies](./init.md) page, this step, in general, does not return just the raw value (like `rand(dist)`).
-It returns an [`DynamicPPL.AbstractTransformedValue`](@ref), which represents a value that _may_ have been transformed.
-In the case of `InitFromPrior()`, the value is of course not transformed; we return a [`DynamicPPL.UntransformedValue`](@ref) wrapping the sampled value.
+It returns an [`DynamicPPL.TransformedValue`](@ref), which represents a value that _may_ have been transformed.
+In the case of `InitFromPrior()`, the value is of course not transformed; we return a [`DynamicPPL.TransformedValue(..., NoTransform())`](@ref TransformedValue) wrapping the sampled value.
 
 However, consider the case where we are using parameters stored inside a `VarInfo`: the value may have been stored either as a vectorised form, or as a linked vectorised form.
-In this case, `init()` will return either a [`DynamicPPL.VectorValue`](@ref) or a [`DynamicPPL.LinkedVectorValue`](@ref).
+In this case, `init()` will return a `TransformedValue` wrapping the vectorised value, whose transform is either `Unlink()` (i.e., vectorised but not linked), or `DynamicLink()` (i.e., vectorised and linked).
 
 The reason why we return this wrapped value is because we want to avoid having to perform transformations multiple times.
 Each step is responsible for only performing the transformations it needs to.
 At this stage, there has not yet been any need for the raw value, so we do not perform any transformations yet.
-Thus, the `AbstractTransformedValue` is passed straight through and is used by the transformation step.
+Thus, the `TransformedValue` is passed straight through and is used by the transformation step.
 
 !!! note "The return type of init() doesn't matter"
     
-    The exact subtype of `AbstractTransformedValue` returned by `init()` has no impact on whether the value is considered to be transformed or not.
+    The exact `TransformedValue` returned by `init()` has no impact on whether the value is considered to be transformed or not.
     That is determined solely by the transform strategy (see below).
     This separation allows us to perform the minimum amount of transformations necessary inside `init()`.
     If we were to eagerly transform the value inside `init()`, we could easily end up performing the same transformation multiple times across the different steps.
@@ -184,7 +184,7 @@ vi = DynamicPPL.accumulate_assume!!(vi, x, tval, logjac, vn, dist, template)
 !!! note
     
     The first line, `setindex_with_dist!!`, is only necessary when using a full `VarInfo`.
-    It essentially stores the value `tval` inside the `VarInfo`, but makes sure to store a vectorised form (i.e., if `tval` is an `UntransformedValue`, it will be converted to a `VectorValue` before being stored).
+    It essentially stores the value `tval` inside the `VarInfo`, but makes sure to store a vectorised form (i.e., if `tval` is not vectorised, it will be).
     This is entirely equivalent to using a `VectorValueAccumulator` to store the values; it's just that when using a full `VarInfo` that accumulator is 'built-in' as `vi.values`.
     
     Since conceptually this is the same as an accumulator, we will not discuss it further here.

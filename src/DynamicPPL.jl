@@ -102,7 +102,8 @@ export AbstractVarInfo,
     # Accumulators - miscellany
     PriorDistributionAccumulator,
     get_priors,
-    BijectorAccumulator,
+    LinkedVecTransformAccumulator,
+    get_linked_vec_transforms,
     # Working with internal values as vectors
     unflatten!!,
     internal_values_as_vector,
@@ -152,28 +153,30 @@ export AbstractVarInfo,
     get_param_eltype,
     init,
     # Transformed values
-    VectorValue,
-    LinkedVectorValue,
-    UntransformedValue,
+    TransformedValue,
     get_transform,
     get_internal_value,
     set_internal_value,
-    # Linking
-    link,
-    link!!,
-    invlink,
-    invlink!!,
-    update_link_status!!,
+    # Transform strategies
+    update_transform_status!!,
     AbstractTransformStrategy,
     LinkAll,
     UnlinkAll,
     LinkSome,
     UnlinkSome,
+    WithTransforms,
     target_transform,
     apply_transform_strategy,
     AbstractTransform,
     DynamicLink,
     Unlink,
+    FixedTransform,
+    NoTransform,
+    # Linking
+    link,
+    link!!,
+    invlink,
+    invlink!!,
     # Pseudo distributions
     NamedDist,
     NoDist,
@@ -254,7 +257,7 @@ include("accumulators/vnt.jl")
 include("accumulators/vector_values.jl")
 include("accumulators/priors.jl")
 include("accumulators/raw_values.jl")
-include("accumulators/bijector.jl")
+include("accumulators/linked_vec_transforms.jl")
 include("accumulators/pointwise_logdensities.jl")
 include("abstract_varinfo.jl")
 include("threadsafe.jl")

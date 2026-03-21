@@ -21,10 +21,10 @@ using Mooncake: Mooncake
     dist = Beta(2, 2)
     @model f() = x ~ dist
     expected_ral_unlinked = @vnt begin
-        x := DynamicPPL.RangeAndLinked(1:1, false)
+        x := DynamicPPL.RangeAndTransform(1:1, Unlink())
     end
     expected_ral_linked = @vnt begin
-        x := DynamicPPL.RangeAndLinked(1:1, true)
+        x := DynamicPPL.RangeAndTransform(1:1, DynamicLink())
     end
     oavi_unlinked = begin
         accs = OnlyAccsVarInfo(VectorValueAccumulator())

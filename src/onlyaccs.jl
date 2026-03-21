@@ -57,7 +57,7 @@ end
 # This allows us to make use of the main tilde_assume!!(::InitContext) method without
 # having to duplicate the code here
 @inline function DynamicPPL.setindex_with_dist!!(
-    vi::OnlyAccsVarInfo, ::AbstractTransformedValue, ::Distribution, ::VarName, ::Any
+    vi::OnlyAccsVarInfo, ::TransformedValue, ::Distribution, ::VarName, ::Any
 )
     return vi
 end
