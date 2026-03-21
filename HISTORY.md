@@ -75,7 +75,11 @@ Fix a bug where `DebugAccumulator` was being improperly mutated during model che
 
 Fix AD performance with ReverseDiff (v0.39.9 inadvertently introduced a bug that did not cause any correctness issues, but did cause severe slowdowns with ReverseDiff -- this patch reverts that).
 
-# 0.40
+# v0.41
+
+...
+
+# v0.40
 
 v0.40 of DynamicPPL brings with it a complete rewrite of DynamicPPL's core data structure, `VarInfo`.
 
