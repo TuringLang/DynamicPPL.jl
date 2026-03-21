@@ -474,16 +474,15 @@ function densify!!(pa::PartialArray)
         return pa
     end
 
-    # The ALB case here is easier to understand. But if there are any VNTs, we also can't
-    # densify it without changing the semantics. For example, if vnt.data.x isa (densified)
-    # Vector of VNTs, then you can't access vnt[@varname(x[i].a)] anymore. In contrast if
-    # vnt.data.x isa PartialArray that holds VNTs then you can access vnt[@varname(x[i].a)].
-    # TODO(penelopeysm): Is this a bug?
+    # We can't densify a PA whose elements are ALBs or VNTs (densifying would lose
+    # VNT-based indexing / ALB semantics). But we still recursively densify the elements
+    # themselves, so that any nested PAs inside VNTs get densified.
     et = eltype(pa)
     has_albs = (et <: ArrayLikeBlock || ArrayLikeBlock <: et)
     has_vnts = (et <: VarNamedTuple || VarNamedTuple <: et)
     if has_albs || has_vnts
-        return pa
+        new_data = map(densify!!, pa.data)
+        return PartialArray(new_data, pa.mask)
     end
 
     # If the mask is not all true, then it's not dense. The function past this point is no

@@ -15,6 +15,7 @@ using DynamicPPL.VarNamedTuples:
     map_values!!,
     apply!!,
     densify!!,
+    skeleton,
     templated_setindex!!,
     GrowableArray,
     grow_to_indices!!,
@@ -1100,6 +1101,8 @@ Base.size(st::SizedThing) = st.size
 
     @testset "_setindex_optic!! with MustNotOverwrite" begin
         function test_must_not_overwrite(vnt, value, vn, template)
+            # Avoid mutating
+            vnt = deepcopy(vnt)
             # Check that calling `_setindex_optic!!` with `MustNotOverwrite` errors if the
             # variable already exists, and that it works if it doesn't.
             @test_throws MustNotOverwriteError templated_setindex_no_overwrite!!(
@@ -1172,6 +1175,45 @@ Base.size(st::SizedThing) = st.size
                 VarNamedTuple(), (; a=1.0), @varname(x), NoTemplate()
             )
             test_must_not_overwrite(vnt, 2.0, @varname(x.a), NoTemplate())
+        end
+
+        @testset "different sub-indices of the same slice" begin
+            # Setting different sub-indices of the same slice should NOT error.
+            # This is the bug from issue #1321.
+            x = zeros(2)
+            vnt = templated_setindex_no_overwrite!!(
+                VarNamedTuple(), 1.0, @varname(x[1:2][1]), x
+            )
+            vnt = templated_setindex_no_overwrite!!(vnt, 2.0, @varname(x[1:2][2]), x)
+            @test vnt[@varname(x)] == [1.0, 2.0]
+
+            # But setting the SAME sub-index twice should still error.
+            vnt2 = templated_setindex_no_overwrite!!(
+                VarNamedTuple(), 1.0, @varname(x[1:2][1]), x
+            )
+            test_must_not_overwrite(vnt2, 2.0, @varname(x[1:2][1]), x)
+
+            # Also test with a larger array and different slices.
+            y = zeros(4)
+            vnt3 = templated_setindex_no_overwrite!!(
+                VarNamedTuple(), 1.0, @varname(y[1:3][1]), y
+            )
+            vnt3 = templated_setindex_no_overwrite!!(vnt3, 2.0, @varname(y[1:3][2]), y)
+            test_must_not_overwrite(vnt3, [3.0, 4.0], @varname(y[1:3][2:3]), y)
+            vnt3 = templated_setindex_no_overwrite!!(vnt3, 3.0, @varname(y[1:3][3]), y)
+            @test vnt3[@varname(y[1:3])] == [1.0, 2.0, 3.0]
+            # Setting an already-set sub-index, or slice, should error.
+            test_must_not_overwrite(vnt3, 4.0, @varname(y[1:3][2]), y)
+            test_must_not_overwrite(vnt3, [4.0, 5.0], @varname(y[2:3][1:2]), y)
+
+            # Also try with indices of different slices
+            z = zeros(3)
+            vnt4 = templated_setindex_no_overwrite!!(
+                VarNamedTuple(), [1.0, 2.0], @varname(z[1:2]), z
+            )
+            test_must_not_overwrite(vnt4, 3.0, @varname(z[2:3][1]), z)
+            # but you can set it if it's not overlapping
+            templated_setindex_no_overwrite!!(vnt4, 3.0, @varname(z[2:3][2]), z)
         end
     end
 
@@ -1938,23 +1980,161 @@ Base.size(st::SizedThing) = st.size
         end
         @test @inferred(densify!!(vnt)) == vnt
 
-        # Check that it doesn't densify PAs that have VNTs (and that failing to do so is
-        # type stable).
+        # Check that it doesn't densify PAs that have VNTs. Note that this is not type
+        # stable because it needs to recurse into the VNT to determine whether the VNT
+        # itself has PAs that need to be densified.
         vnt = @vnt begin
             @template x = zeros(2)
             x[1].a := 1.0
             x[2].b := 2.0
         end
-        @test @inferred(densify!!(vnt)) == vnt
+        @test densify!!(vnt) == vnt
 
-        # Check that it doesn't densify PAs that have ALBs (and that failing to do so is
-        # type stable).
+        # Check that densify!! recurses into VNTs inside PAs (VNT -> PA -> VNT -> PA)
+        vnt = @vnt begin
+            @template x = fill((; y=zeros(2)), 1)
+            x[1].y[1] := 1.0
+            x[1].y[2] := 2.0
+        end
+        result = densify!!(vnt)
+        # Outer PA (holding VNTs) should remain a PartialArray
+        @test result.data.x isa PartialArray
+        # Inner PA (holding Floats, fully filled) should be densified to a plain Vector
+        @test result.data.x[1].data.y == [1.0, 2.0]
+        @test !(result.data.x[1].data.y isa PartialArray)
+
+        # Check that it doesn't densify PAs that have ALBs.
+        # Note: this isn't type stable because it must recurse into each element of the PA
+        # to check for densification opportunities.
+        # This might seem silly, because neither Float64 and ALBs can be densified. The
+        # problem here is that `eltype(pa.data)` (a mixture of Float64 and ALBs) is not
+        # Union{Float64,ALB}, but rather just Any. Because of that, the compiler can't
+        # statically determine that there aren't any e.g. VNTs that might themselves contain
+        # PAs that need to be densified.
         vnt = @vnt begin
             @template x = zeros(3)
             x[1] := 1.0
             x[2:3] := SizedThing((2,))
         end
-        @test @inferred(densify!!(vnt)) == vnt
+        @test densify!!(vnt) == vnt
+    end
+
+    @testset "skeleton" begin
+        function test_skeleton(orig_vnt, expected_skeleton)
+            @test (@inferred skeleton(orig_vnt)) == expected_skeleton
+            skel = skeleton(orig_vnt)
+            # Check roundtrip reconstruction
+            new_vnt = VarNamedTuple()
+            for (vn, val) in pairs(orig_vnt)
+                top_sym = AbstractPPL.getsym(vn)
+                template = get(skel.data, top_sym, DynamicPPL.NoTemplate())
+                new_vnt = DynamicPPL.templated_setindex!!(new_vnt, val, vn, template)
+            end
+            @test new_vnt == orig_vnt
+        end
+
+        # Empty
+        v0 = VarNamedTuple()
+        v0s = VarNamedTuple()
+        test_skeleton(v0, v0s)
+
+        # VNT
+        v1 = @vnt begin
+            y := 2.0
+        end
+        v1s = VarNamedTuple()
+        test_skeleton(v1, v1s)
+
+        # VNT -> VNT -> VNT -> ... but only VNTs
+        v2 = @vnt begin
+            y := 2.0
+            z.a := 3.0
+            a.b.c.d.e.f := [1.0, 2.0, 3.0]
+            c := "string"
+        end
+        v2s = VarNamedTuple()
+        test_skeleton(v2, v2s)
+
+        # VNT -> PA[Float]
+        v3 = @vnt begin
+            @template x = zeros(2)
+            x[1] := 1.0
+        end
+        v3s = VarNamedTuple(; x=fill(nothing, 2))
+        test_skeleton(v3, v3s)
+
+        # VNT -> VNT -> PA
+        v4 = @vnt begin
+            @template x = (; y=zeros(2))
+            x.y[2] := 2.0
+        end
+        v4s = VarNamedTuple(; x=VarNamedTuple(; y=fill(nothing, 2)))
+        test_skeleton(v4, v4s)
+
+        # VNT -> PA -> VNT
+        v5 = @vnt begin
+            @template x = zeros(2)
+            x[1].y := 2.0
+        end
+        v5s = VarNamedTuple(; x=fill(nothing, 2))
+        test_skeleton(v5, v5s)
+
+        # VNT -> PA -> VNT -> VNT
+        v6 = @vnt begin
+            @template x = fill((; y=3.0), 2)
+            x[1].y.z := "wut"
+        end
+        v6s = VarNamedTuple(; x=fill(nothing, 2))
+        test_skeleton(v6, v6s)
+
+        # VNT -> PA -> PA
+        v7 = @vnt begin
+            @template x = fill(zeros(2), 3)
+            x[3][2] := 2.0
+        end
+        v7s = VarNamedTuple(; x=fill(fill(nothing, 2), 3))
+        test_skeleton(v7, v7s)
+
+        # VNT -> PA -> VNT -> PA
+        v8 = @vnt begin
+            @template x = fill((; y=zeros(2)), 3)
+            x[3].y[2] := 2.0
+        end
+        v8s = VarNamedTuple(; x=fill(VarNamedTuple(; y=fill(nothing, 2)), 3))
+        test_skeleton(v8, v8s)
+
+        # VNT -> PA[Any]
+        v9 = @vnt begin
+            @template x = zeros(3)
+            x[1] := 1.0
+            x[2] := "wut"
+        end
+        v9s = VarNamedTuple(; x=fill(nothing, 3))
+        test_skeleton(v9, v9s)
+
+        # VNT -> PA with some entries needing to recurse
+        v10 = @vnt begin
+            @template x = fill((; y=zeros(2)), 3)
+            x[3].y[2] := 2.0
+            x[1] := 1.0
+        end
+        v10s = VarNamedTuple(; x=[nothing, nothing, VarNamedTuple(; y=fill(nothing, 2))])
+        test_skeleton(v10, v10s)
+
+        # VNT -> PA with different types of arrays
+        v11 = @vnt begin
+            @template x = OA.OffsetArray(zeros(3), -4:-2)
+            x[-2] := 2.0
+        end
+        v11s = VarNamedTuple(; x=OA.OffsetArray(fill(nothing, 3), -4:-2))
+        test_skeleton(v11, v11s)
+
+        v12 = @vnt begin
+            @template x = DD.DimArray(zeros(2, 3), (:a, :b))
+            x[1, 2] := 2.0
+        end
+        v12s = VarNamedTuple(; x=DD.DimArray(fill(nothing, 2, 3), (:a, :b)))
+        test_skeleton(v12, v12s)
     end
 end
 

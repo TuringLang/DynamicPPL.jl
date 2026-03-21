@@ -157,3 +157,57 @@ function ParamsWithStats(
     end
     return ParamsWithStats(params, stats)
 end
+
+function Base.show(io::IO, ::MIME"text/plain", pws::ParamsWithStats)
+    printstyled(io, "ParamsWithStats"; bold=true)
+    print(io, "\n ├─ ")
+    if isempty(pws.params)
+        printstyled(io, "params"; bold=true)
+        println(io, " (empty)")
+    else
+        printstyled(io, "params"; bold=true)
+        print(io, "\n │  ")
+        DynamicPPL.VarNamedTuples.vnt_pretty_print(io, pws.params, " │  ", 0)
+        println(io)
+    end
+    print(io, " └─ ")
+    printstyled(io, "stats"; bold=true)
+    if isempty(pws.stats)
+        println(io, " (empty)")
+    else
+        n = length(pws.stats)
+        for (i, (k, v)) in enumerate(pairs(pws.stats))
+            if i == n
+                print(io, "\n    └─ ")
+            else
+                print(io, "\n    ├─ ")
+            end
+            printstyled(io, k; color=:blue)
+            print(io, " = ")
+            show(io, v)
+        end
+    end
+    return nothing
+end
+
+function Base.:(==)(pws1::ParamsWithStats, pws2::ParamsWithStats)
+    return (pws1.params == pws2.params) & (pws1.stats == pws2.stats)
+end
+function Base.isequal(pws1::ParamsWithStats, pws2::ParamsWithStats)
+    return isequal(pws1.params, pws2.params) && isequal(pws1.stats, pws2.stats)
+end
+
+"""
+    InitFromParams(
+        ps::ParamsWithStats,
+        fallback::Union{Nothing,AbstractInitStrategy}=InitFromPrior()
+    )
+
+Initialise a model using the parameters stored in `ps`. The stats are ignored. `fallback` is
+used if the model requires the value of a parameter which is not present in `ps.params`.
+"""
+function InitFromParams(
+    ps::ParamsWithStats, fallback::Union{Nothing,AbstractInitStrategy}=InitFromPrior()
+)
+    return InitFromParams(ps.params, fallback)
+end

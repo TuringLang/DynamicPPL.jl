@@ -2,6 +2,37 @@
 
 Removed the `varinfo` keyword argument from `DynamicPPL.TestUtils.AD.run_ad` and replaced the `varinfo` field in `ADResult` with `ldf::LogDensityFunction`.
 
+# 0.40.14
+
+Fixed `check_model()` erroneously failing for models such as `x[1:2] .~ univariate_dist`.
+
+# 0.40.13
+
+Fixed `densify!!` not recursing into `VarNamedTuple`s or `ArrayLikeBlock`s inside `PartialArray`s.
+Previously, nested `PartialArray`s buried inside these types were never visited, so they were not densified even when fully filled.
+
+# 0.40.12
+
+Added the `InitFromParams(::ParamsWithStats)` method, which delegates to `InitFromParams(::VarNamedTuple)`.
+
+# 0.40.11
+
+Fixed the implementations of `Base.:(==)` and `Base.isequal` for `DynamicPPL.ParamsWithStats` to not require triple-equality of the fields.
+
+# 0.40.10
+
+Added pretty-printing for `DynamicPPL.ParamsWithStats`.
+
+# 0.40.9
+
+Added more docs on special VNT operations, namely `densify!!` and `skeleton`.
+
+# 0.40.8
+
+Added the `skeleton(::VarNamedTuple)` function, which creates a completely blank VarNamedTuple except for any PartialArrays, which are retained with their original shape and type but with all elements set to `nothing`.
+
+> > > > > > > main
+
 # 0.40.7
 
 Expanded DynamicPPLMooncakeExt precompilation workload.
