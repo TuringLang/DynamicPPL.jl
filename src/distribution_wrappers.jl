@@ -54,13 +54,13 @@ function Distributions.rand!(
     return Distributions.rand!(rng, d.dist, x)
 end
 function Distributions.logpdf(::NoDist{<:Univariate}, x::Real)
-    return zero(LogProbType)
+    return NoLogProb()
 end
 function Distributions.logpdf(::NoDist{<:Multivariate}, x::AbstractVector{<:Real})
-    return zero(LogProbType)
+    return NoLogProb()
 end
 function Distributions.logpdf(::NoDist{<:Matrixvariate}, x::AbstractMatrix{<:Real})
-    return zero(LogProbType)
+    return NoLogProb()
 end
 
 for f in (
