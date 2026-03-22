@@ -1,6 +1,18 @@
 # v0.41
 
-Removed the `varinfo` keyword argument from `DynamicPPL.TestUtils.AD.run_ad` and replaced the `varinfo` field in `ADResult` with `ldf::LogDensityFunction`.
+## Log-probability types
+
+`LogPriorAccumulator`, `LogLikelihoodAccumulator`, and `LogJacobianAccumulator`'s default constructors have been tweaked slightly: they now return an accumulator that wraps `DynamicPPL.NoLogProb()`.
+This is a special value that represents the absence of a log-probability, which is similar to `0.0` but avoids enforcing a type of `Float64`.
+This allows model log-probability accumulation to work with different numerical precisions.
+For example, if your model is defined using distributions that are parameterised by `Float32` only (and avoid promoting them to `Float64` elsewhere in the model), the log-probabilities will also be `Float32`.
+
+Previously, DynamicPPL would automatically choose a `Float64` log-probability, causing any lower-precision model to be promoted.
+
+## Miscellaneous
+
+  - Removed the `varinfo` keyword argument from `DynamicPPL.TestUtils.AD.run_ad` and replaced the `varinfo` field in `ADResult` with `ldf::LogDensityFunction`.
+  - Removed `DynamicPPL.typed_identity`; you can use `Bijectors.VectorBijectors.TypedIdentity()` instead which has the exact same behaviour.
 
 # 0.40.14
 

@@ -193,12 +193,6 @@ DynamicPPL.prefix
 
 ## Utilities
 
-`typed_identity` is the same as `identity`, but with an overload for `with_logabsdet_jacobian` that ensures that it never errors.
-
-```@docs
-typed_identity
-```
-
 It is possible to manually increase (or decrease) the accumulated log likelihood or prior from within a model function.
 
 ```@docs

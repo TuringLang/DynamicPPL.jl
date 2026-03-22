@@ -179,7 +179,7 @@ struct UntransformedValue{V} <: AbstractTransformedValue
 end
 Base.:(==)(tv1::UntransformedValue, tv2::UntransformedValue) = tv1.val == tv2.val
 Base.isequal(tv1::UntransformedValue, tv2::UntransformedValue) = isequal(tv1.val, tv2.val)
-get_transform(::UntransformedValue) = typed_identity
+get_transform(::UntransformedValue) = Bijectors.VectorBijectors.TypedIdentity()
 get_internal_value(tv::UntransformedValue) = tv.val
 set_internal_value(::UntransformedValue, new_val) = UntransformedValue(new_val)
 
@@ -362,7 +362,7 @@ function apply_transform_strategy(
         # vectorisation transform. However, sometimes that's not needed (e.g. when
         # evaluating with an OnlyAccsVarInfo). So we just return an UntransformedValue. If a
         # downstream function requires a VectorValue, it's on them to generate it.
-        (raw_value, UntransformedValue(raw_value), zero(LogProbType))
+        (raw_value, UntransformedValue(raw_value), NoLogProb())
     else
         error("unknown target transform $target")
     end
@@ -383,7 +383,7 @@ function apply_transform_strategy(
         (raw_value, linked_tv, logjac)
     elseif target isa Unlink
         # No need to transform further
-        (raw_value, tv, zero(LogProbType))
+        (raw_value, tv, NoLogProb())
     else
         error("unknown target transform $target")
     end
@@ -406,7 +406,7 @@ function apply_transform_strategy(
         (raw_value, linked_tv, logjac)
     elseif target isa Unlink
         # No need to transform further
-        (raw_value, tv, zero(LogProbType))
+        (raw_value, tv, NoLogProb())
     else
         error("unknown target transform $target")
     end
