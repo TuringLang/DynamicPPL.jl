@@ -35,6 +35,7 @@ Base.promote_rule(::Type{NoLogProb}, ::Type{T}) where {T<:Number} = T
 Base.iszero(::NoLogProb) = true
 Base.hash(::NoLogProb, h::UInt) = hash(0.0, h)
 Base.:(+)(::NoLogProb, ::NoLogProb) = NoLogProb()
+(::Type{T})(::NoLogProb) where {T<:Real} = zero(T)
 
 """
     LogProbAccumulator{T}()
