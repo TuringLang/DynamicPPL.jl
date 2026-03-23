@@ -425,7 +425,7 @@ function LogDensityProblems.logdensity_and_gradient(
 )
     # `params` has to be converted to the same vector type that was used for AD preparation,
     # otherwise the preparation will not be valid.
-    params = convert(_get_input_vector_type(ldf), params)
+    params = convert(get_input_vector_type(ldf), params)
     return if _use_closure(ldf.adtype)
         DI.value_and_gradient(
             LogDensityAt(
@@ -596,7 +596,7 @@ that.
 """
 function to_vector_params(vector_values::VarNamedTuple, ldf::LogDensityFunction)
     return to_vector_params_inner(
-        vector_values, ldf._varname_ranges, eltype(_get_input_vector_type(ldf)), ldf._dim
+        vector_values, ldf._varname_ranges, eltype(get_input_vector_type(ldf)), ldf._dim
     )
 end
 
