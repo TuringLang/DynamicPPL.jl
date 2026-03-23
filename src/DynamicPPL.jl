@@ -128,6 +128,7 @@ export AbstractVarInfo,
     LogDensityFunction,
     OnlyAccsVarInfo,
     to_vector_params,
+    get_input_vector_type,
     # Leaf contexts
     AbstractContext,
     contextualize,

@@ -309,7 +309,17 @@ function _default_vnt(model::Model, transform_strategy::AbstractTransformStrateg
     return getacc(oavi, Val(VECTORVAL_ACCNAME)).values
 end
 
-function _get_input_vector_type(::LogDensityFunction{M,A,L,G,R,P,X}) where {M,A,L,G,R,P,X}
+"""
+    DynamicPPL.get_input_vector_type(::LogDensityFunction)
+
+Get the type of the vector `x` that should be passed to `LogDensityProblems.logdensity(ldf,
+x)`.
+
+Note that if you pass a vector of a different type, it will be converted to the correct
+type. This allows you however to determine upfront what kind of vector should be passed in.
+It is also useful for determining e.g. whether Float32 or Float64 parameters are expected.
+"""
+function get_input_vector_type(::LogDensityFunction{M,A,L,G,R,P,X}) where {M,A,L,G,R,P,X}
     return X
 end
 
