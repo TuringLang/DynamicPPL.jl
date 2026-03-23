@@ -2,6 +2,8 @@
 
 Removed the `varinfo` keyword argument from `DynamicPPL.TestUtils.AD.run_ad` and replaced the `varinfo` field in `ADResult` with `ldf::LogDensityFunction`.
 
+Removed `getargnames`, `getmissings`, and `Base.nameof(::Model)` from the public API (export and documentation) as they are considered internal implementation details.
+
 # 0.40.14
 
 Fixed `check_model()` erroneously failing for models such as `x[1:2] .~ univariate_dist`.
