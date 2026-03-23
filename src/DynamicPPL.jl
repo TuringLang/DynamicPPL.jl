@@ -200,6 +200,7 @@ export AbstractVarInfo,
     # Convenience macros
     @addlogprob!,
     check_model,
+    set_logprob_type!,
     # Deprecated.
     generated_quantities
 

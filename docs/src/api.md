@@ -390,6 +390,14 @@ DynamicPPL.split
 DynamicPPL.combine
 ```
 
+The float type used for accumulation of log-probabilities is defined by a compile-time preference:
+
+```@docs
+DynamicPPL.LogProbType
+DynamicPPL.set_logprob_type!
+DynamicPPL.NoLogProb
+```
+
 ```@docs
 VNTAccumulator
 DoNotAccumulate

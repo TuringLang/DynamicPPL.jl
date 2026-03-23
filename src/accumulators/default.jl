@@ -18,36 +18,16 @@ types like LogPriorAccumulator, LogJacobianAccumulator, and LogLikelihoodAccumul
 abstract type LogProbAccumulator{T<:Real} <: AbstractAccumulator end
 
 """
-    NoLogProb <: Real
-
-Singleton type that represents the absence of a log probability value. This is used as the
-default type parameter for `LogProbAccumulator` when no log probability value is needed, to
-avoid defining a concrete type such as `Float64` that would cause unwanted type promotion
-when accumulating log probabilities of other types (e.g., `Float32`).
-
-Adding anything to `NoLogProb()` returns the other thing. In other words, `NoLogProb` is a
-true additive identity which additionally preserves types.
-"""
-struct NoLogProb <: Real end
-Base.zero(::Type{NoLogProb}) = NoLogProb()
-Base.convert(::Type{T}, ::NoLogProb) where {T<:Number} = zero(T)
-Base.promote_rule(::Type{NoLogProb}, ::Type{T}) where {T<:Number} = T
-Base.iszero(::NoLogProb) = true
-Base.hash(::NoLogProb, h::UInt) = hash(0.0, h)
-Base.:(+)(::NoLogProb, ::NoLogProb) = NoLogProb()
-(::Type{T})(::NoLogProb) where {T<:Real} = zero(T)
-
-"""
     LogProbAccumulator{T}()
 
 Create a new `LogProbAccumulator` accumulator with the log prior initialized to `zero(T)`.
 
     LogProbAccumulator()
 
-Create a new `LogProbAccumulator{NoLogProb}` accumulator.
+Create a new `LogProbAccumulator{DynamicPPL.LogProbType}` accumulator.
 """
 (::Type{AccType})() where {T<:Real,AccType<:LogProbAccumulator{T}} = AccType(zero(T))
-(::Type{AccType})() where {AccType<:LogProbAccumulator} = AccType{NoLogProb}(NoLogProb())
+(::Type{AccType})() where {AccType<:LogProbAccumulator} = AccType{LogProbType}()
 
 Base.copy(acc::LogProbAccumulator) = acc
 
@@ -197,7 +177,7 @@ function accumulate_observe!!(acc::LogLikelihoodAccumulator, right, left, vn, te
     return acclogp(acc, Distributions.loglikelihood(right, left))
 end
 
-function default_accumulators(::Type{FloatT}=NoLogProb) where {FloatT}
+function default_accumulators(::Type{FloatT}=LogProbType) where {FloatT}
     return AccumulatorTuple(
         LogPriorAccumulator{FloatT}(),
         LogJacobianAccumulator{FloatT}(),

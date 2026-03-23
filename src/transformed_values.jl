@@ -362,7 +362,7 @@ function apply_transform_strategy(
         # vectorisation transform. However, sometimes that's not needed (e.g. when
         # evaluating with an OnlyAccsVarInfo). So we just return an UntransformedValue. If a
         # downstream function requires a VectorValue, it's on them to generate it.
-        (raw_value, UntransformedValue(raw_value), NoLogProb())
+        (raw_value, UntransformedValue(raw_value), zero(LogProbType))
     else
         error("unknown target transform $target")
     end
@@ -383,7 +383,7 @@ function apply_transform_strategy(
         (raw_value, linked_tv, logjac)
     elseif target isa Unlink
         # No need to transform further
-        (raw_value, tv, NoLogProb())
+        (raw_value, tv, zero(LogProbType))
     else
         error("unknown target transform $target")
     end
@@ -406,7 +406,7 @@ function apply_transform_strategy(
         (raw_value, linked_tv, logjac)
     elseif target isa Unlink
         # No need to transform further
-        (raw_value, tv, NoLogProb())
+        (raw_value, tv, zero(LogProbType))
     else
         error("unknown target transform $target")
     end

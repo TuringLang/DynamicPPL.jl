@@ -28,8 +28,6 @@ using DynamicPPL:
 @testset "accumulators" begin
     @testset "individual accumulator types" begin
         @testset "constructors" begin
-            # Note that NoLogProb() == 0.0 because `NoLogProb()` gets promoted to Float64,
-            # which in turn calls `convert(Float64, NoLogProb())`, which is `zero(Float64)`.
             @test LogPriorAccumulator(0.0) ==
                 LogPriorAccumulator() ==
                 LogPriorAccumulator{Float64}() ==
@@ -40,14 +38,25 @@ using DynamicPPL:
                 LogLikelihoodAccumulator{Float64}() ==
                 LogLikelihoodAccumulator{Float64}(0.0) ==
                 DynamicPPL.reset(LogLikelihoodAccumulator(1.0))
-            # However, `NoLogProb() !== 0.0`.
-            @test LogPriorAccumulator(NoLogProb()) !== LogPriorAccumulator(0.0)
-            @test LogPriorAccumulator() === LogPriorAccumulator(NoLogProb())
         end
 
-        @testset "reset" begin
+        @testset "float types" begin
+            # f64
             @test DynamicPPL.reset(LogPriorAccumulator(1.0)) === LogPriorAccumulator(0.0)
             @test DynamicPPL.reset(LogPriorAccumulator()) === LogPriorAccumulator()
+
+            # f32
+            @test LogPriorAccumulator{Float32}() == LogPriorAccumulator(0.0f0)
+            @test DynamicPPL.reset(LogPriorAccumulator(1.0f0)) ===
+                LogPriorAccumulator(0.0f0)
+            @test DynamicPPL.reset(LogPriorAccumulator{Float32}()) ===
+                LogPriorAccumulator{Float32}()
+
+            # nologprob
+            @test LogPriorAccumulator(NoLogProb()) !== LogPriorAccumulator(0.0)
+            @test LogPriorAccumulator(NoLogProb()) === LogPriorAccumulator(NoLogProb())
+            @test DynamicPPL.reset(LogPriorAccumulator(NoLogProb())) ===
+                LogPriorAccumulator(NoLogProb())
         end
 
         @testset "addition and incrementation" begin
