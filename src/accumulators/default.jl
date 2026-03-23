@@ -26,7 +26,7 @@ abstract type LogProbAccumulator{T<:Real} <: AbstractAccumulator end
 Create a new `LogProbAccumulator` accumulator with the log prior initialized to zero.
 """
 (::Type{AccType})() where {T<:Real,AccType<:LogProbAccumulator{T}} = AccType(zero(T))
-(::Type{AccType})() where {AccType<:LogProbAccumulator} = AccType{LogProbType}()
+(::Type{AccType})() where {AccType<:LogProbAccumulator} = AccType{LogProbType[]}()
 
 Base.copy(acc::LogProbAccumulator) = acc
 
@@ -175,7 +175,7 @@ function accumulate_observe!!(acc::LogLikelihoodAccumulator, right, left, vn, te
     return acclogp(acc, Distributions.loglikelihood(right, left))
 end
 
-function default_accumulators(::Type{FloatT}=LogProbType) where {FloatT}
+function default_accumulators(::Type{FloatT}=LogProbType[]) where {FloatT}
     return AccumulatorTuple(
         LogPriorAccumulator{FloatT}(),
         LogJacobianAccumulator{FloatT}(),
