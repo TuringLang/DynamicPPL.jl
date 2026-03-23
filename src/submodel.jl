@@ -35,8 +35,9 @@ the model can be sampled from but not necessarily evaluated for its log density.
 
 # Examples
 
-## Simple example
-```jldoctest submodel-to_submodel; setup=:(using Distributions)
+```jldoctest submodel-to_submodel
+julia> using DynamicPPL, Distributions
+
 julia> @model function demo1(x)
            x ~ Normal()
            return 1 + abs(x)
@@ -48,27 +49,29 @@ julia> @model function demo2(x, y)
        end;
 ```
 
-When we sample from the model `demo2(missing, 0.4)` random variable `x` will be sampled:
-```jldoctest submodel-to_submodel
-julia> vi = VarInfo(demo2(missing, 0.4));
+When we sample from the model `demo2(missing, 0.4)` the random variable `x` will be sampled, but
+it will be prefixed with `a` (the left-hand side of the tilde):
 
-julia> @varname(a.x) in keys(vi)
+```jldoctest submodel-to_submodel
+julia> model = demo2(missing, 0.4);
+
+julia> haskey(rand(model), @varname(a.x))
 true
 ```
 
-The variable `a` is not tracked. However, it will be assigned the return value of `demo1`,
-and can be used in subsequent lines of the model, as shown above.
-```jldoctest submodel-to_submodel
-julia> @varname(a) in keys(vi)
-false
-```
+The variable `a` will be assigned the return value of `demo1`, and can be used in subsequent
+lines of the model, e.g. in the definition of `y` above.
 
-We can check that the log joint probability of the model accumulated in `vi` is correct:
+We can verify that the log joint probability of the model accumulated in `vi` is correct:
 
 ```jldoctest submodel-to_submodel
-julia> x = vi[@varname(a.x)];
+julia> accs = setacc!!(OnlyAccsVarInfo(), RawValueAccumulator(false));
 
-julia> getlogjoint(vi) ≈ logpdf(Normal(), x) + logpdf(Uniform(0, 1 + abs(x)), 0.4)
+julia> _, accs = init!!(model, accs, InitFromPrior(), UnlinkAll());
+
+julia> x = get_raw_values(accs)[@varname(a.x)];
+
+julia> getlogjoint(accs) ≈ logpdf(Normal(), x) + logpdf(Uniform(0, 1 + abs(x)), 0.4)
 true
 ```
 
@@ -87,52 +90,30 @@ julia> @model function demo2_no_prefix(x, z)
             return z ~ Uniform(-a, 1)
        end;
 
-julia> vi = VarInfo(demo2_no_prefix(missing, 0.4));
+julia> model = demo2_no_prefix(missing, 0.4);
 
-julia> @varname(x) in keys(vi)  # here we just use `x` instead of `a.x`
+julia> haskey(rand(model), @varname(x))  # here we just use `x` instead of `a.x`
 true
 ```
-However, not using prefixing is generally not recommended as it can lead to variable name clashes
-unless one is careful. For example, if we're re-using the same model twice in a model, not using prefixing
-will lead to variable name clashes: However, one can manually prefix using the [`prefix(::Model, input)`](@ref):
+However, not using prefixing is generally not recommended as it can lead to variable name
+clashes unless one is careful. For example, if the same submodel is used multiple times in a
+model, not using prefixing will lead to variable name clashes.
+
+One can manually specify a prefix using [`prefix(::Model, prefix_varname)`](@ref):
+
 ```jldoctest submodel-to_submodel-prefix
 julia> @model function demo2(x, y, z)
-            a ~ to_submodel(prefix(demo1(x), :sub1), false)
-            b ~ to_submodel(prefix(demo1(y), :sub2), false)
+            a ~ to_submodel(prefix(demo1(x), @varname(sub1)), false)
+            b ~ to_submodel(prefix(demo1(y), @varname(sub2)), false)
             return z ~ Uniform(-a, b)
        end;
 
-julia> vi = VarInfo(demo2(missing, missing, 0.4));
+julia> model = demo2(missing, missing, 0.4);
 
-julia> @varname(sub1.x) in keys(vi)
+julia> haskey(rand(model), @varname(sub1.x))
 true
 
-julia> @varname(sub2.x) in keys(vi)
-true
-```
-
-Variables `a` and `b` are not tracked, but are assigned the return values of the respective
-calls to `demo1`:
-```jldoctest submodel-to_submodel-prefix
-julia> @varname(a) in keys(vi)
-false
-
-julia> @varname(b) in keys(vi)
-false
-```
-
-We can check that the log joint probability of the model accumulated in `vi` is correct:
-
-```jldoctest submodel-to_submodel-prefix
-julia> sub1_x = vi[@varname(sub1.x)];
-
-julia> sub2_x = vi[@varname(sub2.x)];
-
-julia> logprior = logpdf(Normal(), sub1_x) + logpdf(Normal(), sub2_x);
-
-julia> loglikelihood = logpdf(Uniform(-1 - abs(sub1_x), 1 + abs(sub2_x)), 0.4);
-
-julia> getlogjoint(vi) ≈ logprior + loglikelihood
+julia> haskey(rand(model), @varname(sub2.x))
 true
 ```
 """

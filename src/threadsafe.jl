@@ -114,12 +114,12 @@ haskey(vi::ThreadSafeVarInfo, vn::VarName) = haskey(vi.varinfo, vn)
 
 is_transformed(vi::ThreadSafeVarInfo) = is_transformed(vi.varinfo)
 
-function link!!(t::AbstractTransformation, vi::ThreadSafeVarInfo, args...)
-    return Accessors.@set vi.varinfo = link!!(t, vi.varinfo, args...)
+function link!!(vi::ThreadSafeVarInfo, args...)
+    return Accessors.@set vi.varinfo = link!!(vi.varinfo, args...)
 end
 
-function invlink!!(t::AbstractTransformation, vi::ThreadSafeVarInfo, args...)
-    return Accessors.@set vi.varinfo = invlink!!(t, vi.varinfo, args...)
+function invlink!!(vi::ThreadSafeVarInfo, args...)
+    return Accessors.@set vi.varinfo = invlink!!(vi.varinfo, args...)
 end
 get_transform_strategy(vi::ThreadSafeVarInfo) = get_transform_strategy(vi.varinfo)
 

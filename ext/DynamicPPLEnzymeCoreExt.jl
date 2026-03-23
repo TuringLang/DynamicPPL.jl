@@ -8,7 +8,7 @@ using EnzymeCore
 @inline EnzymeCore.EnzymeRules.inactive(::typeof(DynamicPPL.is_transformed), args...) =
     nothing
 @inline EnzymeCore.EnzymeRules.inactive(
-    ::typeof(DynamicPPL._get_range_and_linked), args...
+    ::typeof(DynamicPPL._get_range_and_transform), args...
 ) = nothing
 # Enzyme errors on Gibbs sampling without this one.
 @inline EnzymeCore.EnzymeRules.inactive(

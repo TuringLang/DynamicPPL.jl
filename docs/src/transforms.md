@@ -78,7 +78,7 @@ vi_linked.accs
     The *transform strategy* is what determines whether the log-Jacobian is applied or not when evaluating the log-probability.
     One could think of the transform strategy as being a *re-interpretation* of the value provided by the initialisation strategy.
     
-    This frees up the initialisation strategy to return whatever kind of `AbstractTransformedValue` is most convenient for it.
+    This frees up the initialisation strategy to return whatever kind of `TransformedValue` is most convenient for it.
 
 ## Making your own transform strategy
 
@@ -197,6 +197,6 @@ Furthermore, this allows us to remove the inverse transform step inside `InitFro
 
 Essentially, having a separate transform strategy allows us to:
 
- 1. Free up the initialisation strategy to return whatever kind of `AbstractTransformedValue` is most convenient for it, without worrying about whether it needs to perform some transform.
+ 1. Free up the initialisation strategy to return whatever kind of `TransformedValue` is most convenient for it, without worrying about whether it needs to perform some transform.
 
  2. Consolidate all the actual transformation in a single function (`DynamicPPL.apply_transform_strategy`), which allows us to ensure that each tilde-statement involves at most *one* transformation.

@@ -42,4 +42,6 @@ get_vector_params
 ```@docs
 PriorDistributionAccumulator
 get_priors
+LinkedVecTransformAccumulator
+get_linked_vec_transforms
 ```

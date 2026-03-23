@@ -489,7 +489,7 @@ module Issue537 end
         end
         m = demo3(1000.0, missing)
         # Mean of `y` should be close to 1000.
-        @test abs(mean([VarInfo(m)[@varname(y)] for i in 1:10]) - 1000) ≤ 10
+        @test abs(mean([rand(m)[@varname(y)] for i in 1:10]) - 1000) ≤ 10
 
         # Prefixed submodels and usage of submodel return values.
         @model function demo_return(x)
@@ -507,7 +507,7 @@ module Issue537 end
         @test @varname(sub1.x) ∈ ks
         @test @varname(sub2.x) ∈ ks
         @test @varname(z) ∈ ks
-        @test abs(mean([VarInfo(m)[@varname(z)] for i in 1:10]) - 100) ≤ 10
+        @test abs(mean([rand(m)[@varname(z)] for i in 1:10]) - 100) ≤ 10
 
         # AR1 model. Dynamic prefixing.
         @model function AR1(num_steps, α, μ, σ, ::Type{TV}=Vector{Float64}) where {TV}
@@ -758,7 +758,7 @@ module Issue537 end
             @test model() isa NamedTuple{(:x, :y)}
 
             # `VarInfo` should only contain `x`.
-            varinfo = VarInfo(model)
+            varinfo = rand(model)
             @test haskey(varinfo, @varname(x))
             @test !haskey(varinfo, @varname(y))
 
@@ -792,21 +792,15 @@ module Issue537 end
         end
         # As above, but the variables should now have their names prefixed with `b.a`.
         model = demo_tracked_subsubmodel_prefix()
-        varinfo = VarInfo(model)
-        @test haskey(varinfo, @varname(b.a.x))
-        @test length(keys(varinfo)) == 1
+        vnt = rand(model)
+        @test haskey(vnt, @varname(b.a.x))
+        @test length(keys(vnt)) == 1
 
         vi = OnlyAccsVarInfo((RawValueAccumulator(true),))
         _, vi = init!!(model, vi, InitFromPrior(), UnlinkAll())
         values = get_raw_values(vi)
         @test haskey(values, @varname(b.a.x))
         @test haskey(values, @varname(b.a.y))
-
-        vi = OnlyAccsVarInfo((RawValueAccumulator(false),))
-        _, vi = init!!(model, vi, InitFromPrior(), UnlinkAll())
-        values = get_raw_values(vi)
-        @test haskey(values, @varname(b.a.x))
-        @test length(keys(varinfo)) == 1
     end
 
     @testset "signature parsing + TypeWrap" begin
@@ -866,7 +860,7 @@ module Issue537 end
         retval, vi = DynamicPPL.init!!(nt(data), VarInfo())
         @test retval == 5.0
         @test vi isa VarInfo
-        @test vi[@varname(m)] isa Real
+        @test only(DynamicPPL.getindex_internal(vi, @varname(m))) isa Real
     end
 
     @testset "convert_model_argument" begin
