@@ -169,10 +169,10 @@ marginalize
 ```
 
 A `MarginalLogDensity` object acts as a function which maps non-marginalised parameter values to a marginal log-probability.
-To retrieve a VarInfo object from it, you can use:
+To obtain an initialisation strategy reflecting the state of the marginalisation, you can use:
 
 ```@docs
-VarInfo(::MarginalLogDensities.MarginalLogDensity{<:DPPLMLDExt.LogDensityFunctionWrapper}, ::Union{AbstractVector,Nothing})
+InitFromVector(::MarginalLogDensities.MarginalLogDensity{<:DynamicPPL.LogDensityFunction}, ::Union{AbstractVector,Nothing})
 ```
 
 ## Models within models
