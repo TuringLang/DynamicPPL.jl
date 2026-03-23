@@ -28,14 +28,6 @@ Model
 Model()
 ```
 
-Basic properties of a model can be accessed with [`getargnames`](@ref), [`getmissings`](@ref), and [`nameof`](@ref).
-
-```@docs
-nameof(::Model)
-getargnames
-getmissings
-```
-
 The context of a model can be set using [`contextualize`](@ref):
 
 ```@docs

@@ -1,3 +1,9 @@
+# v0.41
+
+Removed the `varinfo` keyword argument from `DynamicPPL.TestUtils.AD.run_ad` and replaced the `varinfo` field in `ADResult` with `ldf::LogDensityFunction`.
+
+Removed `getargnames`, `getmissings`, and `Base.nameof(::Model)` from the public API (export and documentation) as they are considered internal implementation details.
+
 # 0.40.14
 
 Fixed `check_model()` erroneously failing for models such as `x[1:2] .~ univariate_dist`.
@@ -26,6 +32,8 @@ Added more docs on special VNT operations, namely `densify!!` and `skeleton`.
 # 0.40.8
 
 Added the `skeleton(::VarNamedTuple)` function, which creates a completely blank VarNamedTuple except for any PartialArrays, which are retained with their original shape and type but with all elements set to `nothing`.
+
+> > > > > > > main
 
 # 0.40.7
 
