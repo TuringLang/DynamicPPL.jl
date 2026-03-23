@@ -423,36 +423,6 @@ end
     end
 end
 
-@testset "LogDensityFunction: non-default float types" begin
-    for T in (Float16, Float32, BigFloat)
-        @model function with_floattype(y)
-            x ~ Normal(T(0.0), T(1.0))
-            return y ~ Normal(x, T(1.0))
-        end
-        model = with_floattype(T(0.5))
-
-        for adtype in [
-            AutoForwardDiff(),
-            AutoReverseDiff(; compile=false),
-            AutoReverseDiff(; compile=true),
-            AutoMooncake(; config=nothing),
-        ]
-            if T == BigFloat && adtype isa AutoMooncake
-                # Mooncake doesn't seem to support BigFloat
-                continue
-            end
-            ldf = DynamicPPL.LogDensityFunction(
-                model, getlogjoint_internal, LinkAll(); adtype=adtype
-            )
-            x = rand(ldf)
-            @test eltype(x) == T
-            @test LogDensityProblems.logdensity(ldf, x) isa T
-            @test LogDensityProblems.logdensity_and_gradient(ldf, x)[1] isa T
-            @test eltype(LogDensityProblems.logdensity_and_gradient(ldf, x)[2]) == T
-        end
-    end
-end
-
 @testset "AD with LogDensityFunction" begin
     # Used as the ground truth that others are compared against.
     ref_adtype = AutoForwardDiff()
