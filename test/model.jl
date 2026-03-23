@@ -61,6 +61,13 @@ end
 const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
 
 @testset "model.jl" begin
+    @testset "model internals are not exported" begin
+        exports = names(DynamicPPL)
+        @test :getargnames ∉ exports
+        @test :getmissings ∉ exports
+        @test :nameof ∉ exports
+    end
+
     @testset "convenience functions" begin
         model = GDEMO_DEFAULT
 

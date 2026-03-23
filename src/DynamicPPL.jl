@@ -117,8 +117,6 @@ export AbstractVarInfo,
     typed_identity,
     # Model
     Model,
-    getmissings,
-    getargnames,
     setthreadsafe,
     requires_threadsafe,
     extract_priors,
