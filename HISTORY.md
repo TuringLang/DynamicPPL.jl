@@ -1,8 +1,8 @@
 # 0.41
 
-Removed `LogDensityFunctionWrapper` and `VarInfo(::MarginalLogDensity, ...)` 
-from the MarginalLogDensities extension. Users should now use 
-`DynamicPPL.InitFromVector(mld, ...)` to obtain an initialisation strategy 
+Removed `LogDensityFunctionWrapper` and `VarInfo(::MarginalLogDensity, ...)`
+from the MarginalLogDensities extension. Users should now use
+`DynamicPPL.InitFromVector(mld, ...)` to obtain an initialisation strategy
 and pass it to `init!!` to get a consistent `VarInfo`.
 
 # 0.40.14
