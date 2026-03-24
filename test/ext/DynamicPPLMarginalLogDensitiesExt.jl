@@ -79,10 +79,17 @@ using ADTypes: AutoForwardDiff
 
         @testset "unlinked VarInfo" begin
             mx = marginalize(model, [@varname(x)]; varinfo=vi_unlinked)
-            mx([0.5]) # evaluate at some point to force calculation of Laplace approx
-            vi = VarInfo(mx)
+            mx([0.5]) # evaluate to force the Laplace approximation to run and cache modal values
+            strategy = DynamicPPL.InitFromVector(mx) # build init strategy from cached modal values
+            ldf = mx.logdensity
+            _, vi = DynamicPPL.init!!(
+                ldf.model, DynamicPPL.VarInfo(), strategy, ldf.transform_strategy
+            )
             @test vi[@varname(x)] ≈ mode(Normal())
-            vi = VarInfo(mx, [0.5]) # this 0.5 is unlinked
+            strategy = DynamicPPL.InitFromVector(mx, [0.5]) # same, but override the unmarginalized parameter with 0.5
+            _, vi = DynamicPPL.init!!(
+                ldf.model, DynamicPPL.VarInfo(), strategy, ldf.transform_strategy
+            )
             @test vi[@varname(x)] ≈ mode(Normal())
             @test vi[@varname(y)] ≈ 0.5
         end
@@ -90,9 +97,16 @@ using ADTypes: AutoForwardDiff
         @testset "linked VarInfo" begin
             mx = marginalize(model, [@varname(x)]; varinfo=vi_linked)
             mx([0.5]) # evaluate at some point to force calculation of Laplace approx
-            vi = VarInfo(mx)
+            strategy = DynamicPPL.InitFromVector(mx) # build init strategy from cached modal values
+            ldf = mx.logdensity
+            _, vi = DynamicPPL.init!!(
+                ldf.model, DynamicPPL.VarInfo(), strategy, ldf.transform_strategy
+            )
             @test vi[@varname(x)] ≈ mode(Normal())
-            vi = VarInfo(mx, [0.5]) # this 0.5 is linked
+            strategy = DynamicPPL.InitFromVector(mx, [0.5]) # this 0.5 is a linked value for the unmarginalized parameter y
+            _, vi = DynamicPPL.init!!(
+                ldf.model, DynamicPPL.VarInfo(), strategy, ldf.transform_strategy
+            )
             binv = Bijectors.inverse(Bijectors.bijector(Beta(2, 2)))
             @test vi[@varname(x)] ≈ mode(Normal())
             # when using getindex it always returns unlinked values
