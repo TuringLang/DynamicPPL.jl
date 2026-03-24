@@ -203,7 +203,8 @@ export AbstractVarInfo,
     check_model,
     set_logprob_type!,
     # Deprecated.
-    generated_quantities
+    generated_quantities,
+    typed_identity
 
 # Reexport
 using Distributions: loglikelihood

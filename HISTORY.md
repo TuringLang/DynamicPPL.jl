@@ -10,6 +10,8 @@ Previously, DynamicPPL would automatically choose a `Float64` log-probability, c
 
 The function `DynamicPPL.get_input_vector_type(::LogDensityFunction)` is now exported, in order to help with querying the type that log-probabilities are initialised with.
 
+`DynamicPPL.typed_identity` is deprecated; please use `Bijectors.VectorBijectors.TypedIdentity()` instead (it does the same thing).
+
 # 0.40.14
 
 Fixed `check_model()` erroneously failing for models such as `x[1:2] .~ univariate_dist`.
