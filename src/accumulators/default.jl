@@ -39,7 +39,7 @@ end
 # equality of hashes. Both of the below implementations are also different from the default
 # implementation for structs.
 function Base.:(==)(acc1::LogProbAccumulator, acc2::LogProbAccumulator)
-    return (accumulator_name(acc1) === accumulator_name(acc2)) & (logp(acc1) == logp(acc2))
+    return accumulator_name(acc1) === accumulator_name(acc2) && logp(acc1) == logp(acc2)
 end
 
 function Base.isequal(acc1::LogProbAccumulator, acc2::LogProbAccumulator)

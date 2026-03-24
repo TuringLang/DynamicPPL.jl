@@ -22,6 +22,7 @@ Base.promote_rule(::Type{NoLogProb}, ::Type{T}) where {T<:Number} = T
 Base.iszero(::NoLogProb) = true
 Base.hash(::NoLogProb, h::UInt) = hash(0.0, h)
 Base.:(+)(::NoLogProb, ::NoLogProb) = NoLogProb()
+Base.:(-)(::NoLogProb, ::NoLogProb) = NoLogProb()
 
 const FLOAT_TYPE_PREF_KEY = "floattype"
 
