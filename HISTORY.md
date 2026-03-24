@@ -1,11 +1,10 @@
-
 # 0.41
 
 Removed `LogDensityFunctionWrapper` and `VarInfo(::MarginalLogDensity, ...)`
 from the MarginalLogDensities extension. Users should now use
 `DynamicPPL.InitFromVector(mld, ...)` to obtain an initialisation strategy
 and pass it to `init!!` to get a consistent `VarInfo`.
-=======
+
 # 0.40.15
 
 DynamicPPL now allows you to set the type that log-probabilities are initialised with, using the `DynamicPPL.set_logprob_type!` function.

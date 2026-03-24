@@ -173,7 +173,7 @@ A `MarginalLogDensity` object acts as a function which maps non-marginalised par
 To obtain an initialisation strategy reflecting the state of the marginalisation, you can use:
 
 ```@docs
-InitFromVector(::MarginalLogDensities.MarginalLogDensity{<:DynamicPPL.LogDensityFunction}, ::Union{AbstractVector,Nothing})
+InitFromVector(::MarginalLogDensities.MarginalLogDensity, ::Union{AbstractVector,Nothing})
 ```
 
 ## Models within models
