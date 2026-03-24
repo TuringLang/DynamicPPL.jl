@@ -96,6 +96,7 @@ end
         ldf = DynamicPPL.LogDensityFunction(model)
 
         xs = [1.0]
+
         @test LogDensityProblems.logdensity(ldf, xs) ≈
             logpdf(Normal(), xs[1]) + N * logpdf(Normal(xs[1]), 0.0)
     end

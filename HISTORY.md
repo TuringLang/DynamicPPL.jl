@@ -1,9 +1,24 @@
+
 # 0.41
 
 Removed `LogDensityFunctionWrapper` and `VarInfo(::MarginalLogDensity, ...)`
 from the MarginalLogDensities extension. Users should now use
 `DynamicPPL.InitFromVector(mld, ...)` to obtain an initialisation strategy
 and pass it to `init!!` to get a consistent `VarInfo`.
+=======
+# 0.40.15
+
+DynamicPPL now allows you to set the type that log-probabilities are initialised with, using the `DynamicPPL.set_logprob_type!` function.
+This records a compile-time preference so requires restarting Julia to take effect.
+
+This allows model log-probability accumulation to work with different numerical precisions.
+For example, if your model is defined using distributions that are parameterised by `Float32` only (and avoid promoting them to `Float64` elsewhere in the model), and you call `DynamicPPL.set_logprob_type!(Float32)`, the resulting log-probabilities will also be `Float32`.
+
+Previously, DynamicPPL would automatically choose a `Float64` log-probability, causing any lower-precision model to be promoted.
+
+The function `DynamicPPL.get_input_vector_type(::LogDensityFunction)` is now exported, in order to help with querying the type that log-probabilities are initialised with.
+
+`DynamicPPL.typed_identity` is deprecated; please use `Bijectors.VectorBijectors.TypedIdentity()` instead (it does the same thing).
 
 # 0.40.14
 

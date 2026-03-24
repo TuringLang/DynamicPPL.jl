@@ -17,13 +17,14 @@ types like LogPriorAccumulator, LogJacobianAccumulator, and LogLikelihoodAccumul
 """
 abstract type LogProbAccumulator{T<:Real} <: AbstractAccumulator end
 
-# The first of the below methods sets AccType{T}() = AccType(zero(T)) for any
-# AccType <: LogProbAccumulator{T}. The second one sets LogProbType as the default eltype T
-# when calling AccType().
 """
     LogProbAccumulator{T}()
 
-Create a new `LogProbAccumulator` accumulator with the log prior initialized to zero.
+Create a new `LogProbAccumulator` accumulator with the log prior initialized to `zero(T)`.
+
+    LogProbAccumulator()
+
+Create a new `LogProbAccumulator{DynamicPPL.LogProbType}` accumulator.
 """
 (::Type{AccType})() where {T<:Real,AccType<:LogProbAccumulator{T}} = AccType(zero(T))
 (::Type{AccType})() where {AccType<:LogProbAccumulator} = AccType{LogProbType}()
@@ -59,6 +60,7 @@ function combine(acc::LogProbAccumulator, acc2::LogProbAccumulator)
 end
 
 acclogp(acc::LogProbAccumulator, val) = basetypeof(acc)(logp(acc) + val)
+acclogp(acc::LogProbAccumulator{NoLogProb}, val) = basetypeof(acc)(val)
 
 function Base.convert(
     ::Type{AccType}, acc::LogProbAccumulator

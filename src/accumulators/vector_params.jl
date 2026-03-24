@@ -17,7 +17,7 @@ initialisation strategy and collect the vectorised parameters corresponding to t
 strategy.
 """
 function VectorParamAccumulator(ldf::LogDensityFunction)
-    et = eltype(_get_input_vector_type(ldf))
+    et = eltype(get_input_vector_type(ldf))
     dim = ldf._dim
     vals = Vector{et}(undef, dim)
     set_indices = falses(dim)
