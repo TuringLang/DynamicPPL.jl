@@ -1,3 +1,8 @@
+# 0.40.16
+
+Fixed `Base.copy` for `VNTAccumulator` and `TSVNTAccumulator` to also copy the `acc.f` field, not just `acc.values`.
+This makes sure that the accumulator is thread-safe if `acc.f` contains some mutable state.
+
 # 0.40.15
 
 DynamicPPL now allows you to set the type that log-probabilities are initialised with, using the `DynamicPPL.set_logprob_type!` function.
