@@ -59,7 +59,7 @@ end
 for acc_type in (:VNTAccumulator, :TSVNTAccumulator)
     @eval begin
         function Base.copy(acc::$acc_type{AccName}) where {AccName}
-            return $acc_type{AccName}(acc.f, copy(acc.values))
+            return $acc_type{AccName}(copy(acc.f), copy(acc.values))
         end
         accumulator_name(::$acc_type{AccName}) where {AccName} = AccName
 
