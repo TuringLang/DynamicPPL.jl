@@ -1,3 +1,7 @@
+# 0.40.17
+
+Implemented missing methods for `Base.copy` on internal struct.
+
 # 0.40.16
 
 Fixed `Base.copy` for `VNTAccumulator` and `TSVNTAccumulator` to also copy the `acc.f` field, not just `acc.values`.
