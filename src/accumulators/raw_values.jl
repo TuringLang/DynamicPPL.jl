@@ -4,6 +4,7 @@ struct GetRawValues
     "A flag indicating whether variables on the LHS of := should also be included"
     include_colon_eq::Bool
 end
+Base.copy(g::GetRawValues) = g
 # TODO(mhauru) The deepcopy here is quite unfortunate. It is needed so that the model body
 # can go mutating the object without that in turn mutating the value stored in the
 # accumulator, which should be as it was at `~` time. Could there be a way around this?
@@ -49,6 +50,7 @@ struct DebugGetRawValues
     repeated_vns::Set{VarName}
 end
 is_extracting_colon_eq_values(g::DebugGetRawValues) = true
+Base.copy(d::DebugGetRawValues) = DebugGetRawValues(copy(d.repeated_vns))
 function DebugRawValueAccumulator()
     return VNTAccumulator{RAW_VALUE_ACCNAME}(DebugGetRawValues(Set{VarName}()))
 end

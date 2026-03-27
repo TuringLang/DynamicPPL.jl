@@ -16,6 +16,8 @@ The function `f` should have the signature:
 where `val`, `tval`, `logjac`, `vn`, and `dist` have their usual meanings in
 accumulate_assume!! (see its docstring for more details). If a value does not need to
 be accumulated, this can be signalled by returning `DoNotAccumulate()` from `f`.
+
+If `f` is a struct (and not a function), you also need to define `Base.copy` on `f`.
 """
 struct VNTAccumulator{AccName,F,VNT<:VarNamedTuple} <: AbstractAccumulator
     f::F
@@ -60,6 +62,9 @@ for acc_type in (:VNTAccumulator, :TSVNTAccumulator)
     @eval begin
         function Base.copy(acc::$acc_type{AccName}) where {AccName}
             return $acc_type{AccName}(copy(acc.f), copy(acc.values))
+        end
+        function Base.copy(acc::$acc_type{AccName,F}) where {AccName,F<:Function}
+            return $acc_type{AccName}(acc.f, copy(acc.values))
         end
         accumulator_name(::$acc_type{AccName}) where {AccName} = AccName
 

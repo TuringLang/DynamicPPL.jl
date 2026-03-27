@@ -25,6 +25,21 @@ using DynamicPPL:
     get_priors,
     @varname
 
+TEST_ACCUMULATORS = (
+    LogPriorAccumulator(1.0),
+    LogLikelihoodAccumulator(1.0),
+    LogJacobianAccumulator(1.0),
+    RawValueAccumulator(false),
+    DynamicPPL.DebugRawValueAccumulator(),
+    DynamicPPL.BijectorAccumulator(),
+    DynamicPPL.VNTAccumulator{DynamicPPL.POINTWISE_ACCNAME}(
+        DynamicPPL.PointwiseLogProb{true,true}()
+    ),
+    PriorDistributionAccumulator(),
+    DynamicPPL.VectorValueAccumulator(),
+    DynamicPPL.VectorParamAccumulator([], Bool[], VarNamedTuple()),
+)
+
 @testset "accumulators" begin
     @testset "individual accumulator types" begin
         @testset "constructors" begin
@@ -210,6 +225,13 @@ using DynamicPPL:
         priors = get_priors(accs)
         @test priors[@varname(x)] == Normal()
         @test priors[@varname(y)] == Normal(vals[@varname(x)])
+    end
+
+    @testset "Base.copy" begin
+        for acc in TEST_ACCUMULATORS
+            # just check that it works.
+            @test copy(acc) isa Any
+        end
     end
 end
 

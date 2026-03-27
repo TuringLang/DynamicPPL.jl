@@ -13,6 +13,7 @@ where `Prior` and `Likelihood` are the boolean type parameters. This accumulator
 store the log-probabilities for all tilde-statements in the model.
 """
 struct PointwiseLogProb{Prior,Likelihood} end
+Base.copy(plp::PointwiseLogProb) = plp
 function (plp::PointwiseLogProb{Prior,Likelihood})(
     val, tval, logjac, vn, dist
 ) where {Prior,Likelihood}
