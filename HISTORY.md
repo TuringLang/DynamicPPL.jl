@@ -1,6 +1,6 @@
 # 0.40.17
 
-Implemented missing methods for `Base.copy` on internal struct.
+Implemented missing methods for `Base.copy` on internal structs.
 
 # 0.40.16
 
