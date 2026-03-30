@@ -131,6 +131,7 @@ For example, consider the following model:
         y ~ Normal()
     end
 end
+nothing # hide
 ```
 
 The transform needed for `y` here depends on what value `x` takes: in one case it is the identity transform, and in another case it is the log transform.
@@ -143,6 +144,7 @@ This can also manifest in more subtle ways, especially with truncated distributi
     x ~ Normal()
     return y ~ truncated(Normal(); lower=x)
 end
+nothing # hide
 ```
 
 ## Performance
@@ -194,4 +196,36 @@ ldf_fixed = LogDensityFunction(
 @b LogDensityProblems.logdensity_and_gradient($ldf_fixed, $x)
 ```
 
-For other distributions, however, the fixed transform can be much faster.
+For some distributions, however, the fixed transform can sometimes be much faster.
+For example:
+
+```@example fixed2
+dists = (
+    Normal(),
+    Beta(2, 2),
+    MvNormal(zeros(3), I),
+    Dirichlet(ones(3)),
+    LKJCholesky(3, 0.5),
+    product_distribution([Normal(), Beta(2, 2)]),
+    product_distribution((a=Normal(), b=Beta(2, 2))),
+)
+
+function benchmark_transforms(i, dist)
+    @model m() = x ~ dist
+    model = m()
+    ldf_dynamic = LogDensityFunction(model, getlogjoint_internal, LinkAll())
+    p = rand(ldf_dynamic)
+    ldf_fixed = LogDensityFunction(
+        model, getlogjoint_internal, LinkAll(); fix_transforms=true
+    )
+
+    fixed = repr(MIME("text/plain"), (@b LogDensityProblems.logdensity($ldf_fixed, $p)))
+    dynamic = repr(MIME("text/plain"), (@b LogDensityProblems.logdensity($ldf_dynamic, $p)))
+    return println("$i      $(rpad(fixed, 35)) $(rpad(dynamic, 35))")
+end
+
+println("dist   $(rpad("fixed", 35)) $(rpad("dynamic", 35))")
+for (i, dist) in enumerate(dists)
+    benchmark_transforms(i, dist)
+end
+```
