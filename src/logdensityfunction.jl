@@ -219,7 +219,9 @@ struct LogDensityFunction{
             # previous ones, but it's fine, since it's only done once in the LDF
             # constructor.
             transforms_vnt = get_fixed_transforms(model, dynamic_transform_strategy)
-            fixed_transform_strategy = WithTransforms(transforms_vnt, UnlinkAll())
+            fixed_transform_strategy = WithTransforms(
+                transforms_vnt, dynamic_transform_strategy
+            )
             # We need to update `vnt` to be consistent with the new transform strategy.
             vnt = update_transforms!!(vnt, transforms_vnt)
             fixed_transform_strategy
