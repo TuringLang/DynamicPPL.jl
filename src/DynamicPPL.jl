@@ -102,8 +102,8 @@ export AbstractVarInfo,
     # Accumulators - miscellany
     PriorDistributionAccumulator,
     get_priors,
-    LinkedVecTransformAccumulator,
-    get_linked_vec_transforms,
+    FixedTransformAccumulator,
+    get_fixed_transforms,
     # Working with internal values as vectors
     unflatten!!,
     internal_values_as_vector,
@@ -257,7 +257,7 @@ include("accumulators/vnt.jl")
 include("accumulators/vector_values.jl")
 include("accumulators/priors.jl")
 include("accumulators/raw_values.jl")
-include("accumulators/linked_vec_transforms.jl")
+include("accumulators/fixed_transforms.jl")
 include("accumulators/pointwise_logdensities.jl")
 include("abstract_varinfo.jl")
 include("threadsafe.jl")

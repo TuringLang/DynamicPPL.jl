@@ -35,8 +35,7 @@ In such cases, using `FixedTransform` can lead to substantial performance improv
 To use `FixedTransform` with `LogDensityFunction`, you need to:
 
  1. Create a `VarNamedTuple` mapping `VarName`s to `FixedTransform`s for the variables in your model.
-    This can be done using `get_linked_vec_transforms(model)`, which automatically calculates `Bijectors.VectorBijectors.from_linked_vec(dist)` for each variable in the model.
-    TODO: Control whether it's linked or not????
+    This can be done using `DynamicPPL.FixedTransformAccumulator` (see the DynamicPPL docs for more info), but is most easily done by calling `get_fixed_transforms(model, transform_strategy)`, where `transform_strategy` says whether you want linked or unlinked transforms.
 
  2. Wrap the `VarNamedTuple` inside `WithTransforms(vnt, UnlinkAll())`.
     `WithTransforms` is a subtype of `AbstractTransformStrategy`, much like `LinkAll()`.
@@ -59,13 +58,13 @@ In the current version, we have removed this method to prevent the possibility o
 In particular, to access raw (untransformed) values, you should use an `OnlyAccsVarInfo` with a `RawValueAccumulator`.
 There is [a migration guide available on the DynamicPPL documentation](https://turinglang.org/DynamicPPL.jl/stable/migration/) and we are very happy to add more examples to this if you run into something that is not covered.
 
-### LinkedVecTransformAccumulator
+### FixedTransformAccumulator
 
 TODO, this part is still being worked on.
 
-  - `BijectorAccumulator` → `LinkedVecTransformAccumulator`
-  - `get_linked_vec_transforms(::VarInfo)`
-  - `get_linked_vec_transforms(::Model)`
+  - `BijectorAccumulator` → `FixedTransformAccumulator`
+  - `get_fixed_transforms(::VarInfo)`
+  - `get_fixed_transforms(::Model)`
 
 ## Miscellaneous breaking changes
 
