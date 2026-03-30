@@ -115,7 +115,7 @@ end
         lp_d = logpdf(Normal(), values.d)
         m = demo() | (; c=values.c, d=values.d)
 
-        vi = DynamicPPL.unflatten!!(VarInfo(m), collect(values))
+        vi = DynamicPPL.unflatten!!(VarInfo(m), [values.a, values.b])
 
         vi = last(DynamicPPL.evaluate_nowarn!!(m, deepcopy(vi)))
         @test getlogprior(vi) == lp_a + lp_b
