@@ -235,7 +235,6 @@ function target_transform(linker::UnlinkSome, vn::VarName)
         target_transform(linker.fallback, vn)
     end
 end
-UnlinkSome(::Any, ::UnlinkAll) = UnlinkAll()
 function Base.:(==)(us1::UnlinkSome, us2::UnlinkSome)
     return (us1.vns == us2.vns) & (us1.fallback == us2.fallback)
 end
@@ -374,10 +373,9 @@ function apply_transform_strategy(
     vn::VarName,
     ::Distribution,
 ) where {T,F}
-    target = tv.transform
     target = target_transform(strategy, vn)
-    # # TODO(penelopeysm): Note that in principle we could probably allow different target
-    # # transforms. However, for now let's keep it simple and error if it doesn't match.
+    # TODO(penelopeysm): Note that in principle we could probably allow different target
+    # transforms. However, for now let's keep it simple and error if it doesn't match.
     if target != tv.transform
         error(
             "Variable $vn has a fixed transform, but the transform strategy expects it to be transformed differently.",
