@@ -170,11 +170,7 @@ marginalize
 ```
 
 A `MarginalLogDensity` object acts as a function which maps non-marginalised parameter values to a marginal log-probability.
-To obtain an initialisation strategy reflecting the state of the marginalisation, you can use:
-
-```@docs
-InitFromVector(::MarginalLogDensities.MarginalLogDensity, ::Union{AbstractVector,Nothing})
-```
+To obtain an initialisation strategy reflecting the state of the marginalisation, you can use [`InitFromVector`](@ref).
 
 ## Models within models
 

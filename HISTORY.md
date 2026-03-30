@@ -5,6 +5,19 @@ from the MarginalLogDensities extension. Users should now use
 `DynamicPPL.InitFromVector(mld, ...)` to obtain an initialisation strategy
 and pass it to `init!!` to get a consistent `VarInfo`.
 
+# 0.40.18
+
+Added a check on `unflatten!!` to error if the input vector was too long.
+
+# 0.40.17
+
+Implemented missing methods for `Base.copy` on internal structs.
+
+# 0.40.16
+
+Fixed `Base.copy` for `VNTAccumulator` and `TSVNTAccumulator` to also copy the `acc.f` field, not just `acc.values`.
+This makes sure that the accumulator is thread-safe if `acc.f` contains some mutable state.
+
 # 0.40.15
 
 DynamicPPL now allows you to set the type that log-probabilities are initialised with, using the `DynamicPPL.set_logprob_type!` function.
