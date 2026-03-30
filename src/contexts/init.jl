@@ -303,7 +303,9 @@ function _get_range_and_transform(ifv::InitFromVector, vn::VarName)
     # TODO(penelopeysm): Investigate if this is still necessary
     return ifv.varname_ranges[vn]::RangeAndTransform
 end
-function init(::Random.AbstractRNG, vn::VarName, dist::Distribution, ifv::InitFromVector)
+function init(
+    ::Random.AbstractRNG, vn::VarName, dist::Distribution, ifv::InitFromVector{T,V,L}
+) where {T,V,L}
     rat = _get_range_and_transform(ifv, vn)
     vect = maybe_view_ad(ifv.vect, rat.range)
     # This block here is why we store transform_strategy inside the InitFromVector, as it
@@ -317,7 +319,7 @@ function init(::Random.AbstractRNG, vn::VarName, dist::Distribution, ifv::InitFr
     end
     return TransformedValue(vect, tfm)
 end
-function get_param_eltype(strategy::InitFromVector)
+function get_param_eltype(strategy::InitFromVector{T}) where {T}
     return eltype(strategy.vect)
 end
 

@@ -80,7 +80,7 @@ vi_linked.accs
     
     This frees up the initialisation strategy to return whatever kind of `TransformedValue` is most convenient for it.
 
-## Making your own transform strategy
+## [Making your own transform strategy](@id custom-transform-strategy)
 
 The only requirement for a subtype of an `AbstractTransformStrategy` is that it must implement [`target_transform(::AbstractTransformStrategy, vn::VarName)`](@ref DynamicPPL.target_transform), where `vn` is the variable on the left-hand side of a tilde-statement.
 
@@ -138,13 +138,6 @@ Consequently, the transformation used for `y` must be determined at runtime; if 
 
 For correctness, DynamicPPL therefore always prefers to determine the transformation at runtime when using `DynamicLink()`.
 This behaviour is encoded in (for example) Turing's HMC samplers, which use `LinkAll()` as the default transform strategy, and hence every `VarName` will have a `target_transform` of `DynamicLink()`.
-
-## Fixed transformations
-
-For some models, it may be known that the support of a variable does not change, and that the transformations should be fixed.
-This allows us to avoid the overhead of recomputing the transformation at every model evaluation.
-
-This is currently not implemented, but there is a plan for it; see [this DynamicPPL issue](https://github.com/TuringLang/DynamicPPL.jl/issues/1249) for details.
 
 ## Why not let `init()` determine the transform?
 

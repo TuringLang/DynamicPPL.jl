@@ -303,8 +303,13 @@ function apply_transform_strategy(
         # value. If a downstream function requires a vectorised value, it's on them to
         # generate it.
         (raw_value, TransformedValue(raw_value, NoTransform()), zero(LogProbType))
+    elseif target isa FixedTransform
+        fwd_transform = inverse(target.transform)
+        transformed_value, logjac = with_logabsdet_jacobian(fwd_transform, raw_value)
+        transformed_tv = TransformedValue(transformed_value, target)
+        (raw_value, transformed_tv, logjac - inv_logjac)
     else
-        error("unknown target transform $target")
+        error("unknown target transform: $target")
     end
 end
 
@@ -326,8 +331,13 @@ function apply_transform_strategy(
     elseif target isa Unlink
         # No need to transform further
         (raw_value, tv, zero(LogProbType))
+    elseif target isa FixedTransform
+        fwd_transform = inverse(target.transform)
+        transformed_value, logjac = with_logabsdet_jacobian(fwd_transform, raw_value)
+        transformed_tv = TransformedValue(transformed_value, target)
+        (raw_value, transformed_tv, logjac)
     else
-        error("unknown target transform $target")
+        error("unknown target transform: $target")
     end
 end
 
@@ -349,13 +359,12 @@ function apply_transform_strategy(
         # No need to transform further
         (raw_value, tv, zero(LogProbType))
     elseif target isa FixedTransform
-        # TODO!(penelopeysm): This relies on inverse() being defined. Is that bad?
         fwd_transform = inverse(target.transform)
         transformed_value, logjac = with_logabsdet_jacobian(fwd_transform, raw_value)
         transformed_tv = TransformedValue(transformed_value, target)
         (raw_value, transformed_tv, logjac)
     else
-        error("unknown target transform $target")
+        error("unknown target transform: $target")
     end
 end
 
@@ -365,19 +374,19 @@ function apply_transform_strategy(
     vn::VarName,
     ::Distribution,
 ) where {T,F}
-    # target = tv.transform
-    # target = target_transform(strategy, vn)
+    target = tv.transform
+    target = target_transform(strategy, vn)
     # # TODO(penelopeysm): Note that in principle we could probably allow different target
     # # transforms. However, for now let's keep it simple and error if it doesn't match.
-    # if target != tv.transform
-    #     error(
-    #         "Variable $vn has a fixed transform, but the transform strategy expects it to be transformed differently.",
-    #     )
-    # end
-    raw_value, logjac = with_logabsdet_jacobian(
+    if target != tv.transform
+        error(
+            "Variable $vn has a fixed transform, but the transform strategy expects it to be transformed differently.",
+        )
+    end
+    raw_value, inv_logjac = with_logabsdet_jacobian(
         tv.transform.transform, get_internal_value(tv)
     )
-    return (raw_value, tv, logjac)
+    return (raw_value, tv, -inv_logjac)
 end
 
 """

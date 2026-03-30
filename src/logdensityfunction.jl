@@ -110,6 +110,13 @@ along with other information for efficient calculation of the gradient of the lo
 Note that preparing a `LogDensityFunction` with an AD type `AutoBackend()` requires the AD
 backend itself to have been loaded (e.g. with `import Backend`).
 
+Finally, the `fix_transform` keyword argument allows you to specify whether the transforms
+used in the `LogDensityFunction` should be cached at the time of construction. If so, the
+model is evaluated once using the provided transform strategy, and the transforms used for
+each variable are stored in the `LogDensityFunction`. This allows you to avoid the overhead
+of recalculating transforms during each log-density evaluation. See [the documentation on
+fixed transforms](@ref fixed-transforms) for more information.
+
 ## Fields
 
 Note that it is undefined behaviour to access any of a `LogDensityFunction`'s fields, apart
@@ -118,8 +125,8 @@ from:
 - `ldf.model`: The original model from which this `LogDensityFunction` was constructed.
 - `ldf.adtype`: The AD type used for gradient calculations, or `nothing` if no AD
   type was provided.
-- `ldf.transform_strategy`: The transform strategy that specifies which variables in the
-  LogDensityFunction are linked or unlinked.
+- `ldf.transform_strategy`: The transform strategy that specifies the transforms for all
+  variables in the model.
 
 # Extended help
 
@@ -200,9 +207,27 @@ struct LogDensityFunction{
             getlogdensity
         );
         adtype::Union{ADTypes.AbstractADType,Nothing}=nothing,
+        fix_transforms::Bool=false,
     )
-        all_ranges = get_rangeandtransforms(vnt)
-        transform_strategy = infer_transform_strategy_from_values(vnt)
+        # Determine LDF transform strategy.
+        dynamic_transform_strategy = infer_transform_strategy_from_values(vnt)
+        # `dynamic_transform_strategy` might be LinkAll() or UnlinkAll(), for example. We
+        # might need to convert this to a set of fixed transforrms.
+        transform_strategy = if fix_transforms
+            # Reevaluate model again to determine the fixed transforms. This is kind of
+            # wasteful: for example, we could tie this model evaluation to one of the
+            # previous ones, but it's fine, since it's only done once in the LDF
+            # constructor.
+            transforms_vnt = get_fixed_transforms(model, dynamic_transform_strategy)
+            fixed_transform_strategy = WithTransforms(transforms_vnt, UnlinkAll())
+            # We need to update `vnt` to be consistent with the new transform strategy.
+            vnt = update_transforms!!(vnt, transforms_vnt)
+            fixed_transform_strategy
+        else
+            # No fixing; just traverse the VNT to determine both.
+            dynamic_transform_strategy
+        end
+        ranges_and_transforms = get_rangeandtransforms(vnt)
 
         # Get vectorised parameters. Note that `internal_values_as_vector` just concatenates
         # all the vectors inside in iteration order of the VNT's keys. *In principle*, the
@@ -216,7 +241,7 @@ struct LogDensityFunction{
         # and dimension.
         trial_x = internal_values_as_vector(vnt)
         dim, et = length(trial_x), eltype(trial_x)
-        x = to_vector_params_inner(vnt, all_ranges, et, dim)
+        x = to_vector_params_inner(vnt, ranges_and_transforms, et, dim)
         # convert to AccumulatorTuple if needed
         accs = AccumulatorTuple(accs)
         # Do AD prep if needed
@@ -225,7 +250,7 @@ struct LogDensityFunction{
         else
             # Make backend-specific tweaks to the adtype
             adtype = DynamicPPL.tweak_adtype(adtype, model, x)
-            args = (model, getlogdensity, all_ranges, transform_strategy, accs)
+            args = (model, getlogdensity, ranges_and_transforms, transform_strategy, accs)
             if _use_closure(adtype)
                 DI.prepare_gradient(LogDensityAt(args...), adtype, x)
             else
@@ -237,12 +262,19 @@ struct LogDensityFunction{
             typeof(adtype),
             typeof(transform_strategy),
             typeof(getlogdensity),
-            typeof(all_ranges),
+            typeof(ranges_and_transforms),
             typeof(prep),
             typeof(x),
             typeof(accs),
         }(
-            model, adtype, transform_strategy, getlogdensity, all_ranges, prep, dim, accs
+            model,
+            adtype,
+            transform_strategy,
+            getlogdensity,
+            ranges_and_transforms,
+            prep,
+            dim,
+            accs,
         )
     end
 end
@@ -253,8 +285,11 @@ function LogDensityFunction(
     vi::VarInfo,
     accs::Union{NTuple{<:Any,AbstractAccumulator},AccumulatorTuple}=ldf_accs(getlogdensity);
     adtype::Union{ADTypes.AbstractADType,Nothing}=nothing,
+    fix_transforms::Bool=false,
 )
-    return LogDensityFunction(model, getlogdensity, vi.values, accs; adtype=adtype)
+    return LogDensityFunction(
+        model, getlogdensity, vi.values, accs; adtype=adtype, fix_transforms=fix_transforms
+    )
 end
 function LogDensityFunction(
     model::Model,
@@ -262,6 +297,7 @@ function LogDensityFunction(
     oavi::OnlyAccsVarInfo,
     accs::Union{NTuple{<:Any,AbstractAccumulator},AccumulatorTuple}=ldf_accs(getlogdensity);
     adtype::Union{ADTypes.AbstractADType,Nothing}=nothing,
+    fix_transforms::Bool=false,
 )
     if !hasacc(oavi, Val(VECTORVAL_ACCNAME))
         error(
@@ -269,7 +305,9 @@ function LogDensityFunction(
         )
     end
     vnt = getacc(oavi, Val(VECTORVAL_ACCNAME)).values
-    return LogDensityFunction(model, getlogdensity, vnt, accs; adtype=adtype)
+    return LogDensityFunction(
+        model, getlogdensity, vnt, accs; adtype=adtype, fix_transforms=fix_transforms
+    )
 end
 function LogDensityFunction(
     model::Model,
@@ -277,9 +315,12 @@ function LogDensityFunction(
     link_strat::AbstractTransformStrategy,
     accs::Union{NTuple{<:Any,AbstractAccumulator},AccumulatorTuple}=ldf_accs(getlogdensity);
     adtype::Union{ADTypes.AbstractADType,Nothing}=nothing,
+    fix_transforms::Bool=false,
 )
     vnt = _default_vnt(model, link_strat)
-    return LogDensityFunction(model, getlogdensity, vnt, accs; adtype=adtype)
+    return LogDensityFunction(
+        model, getlogdensity, vnt, accs; adtype=adtype, fix_transforms=fix_transforms
+    )
 end
 
 function _default_vnt(model::Model, transform_strategy::AbstractTransformStrategy)
@@ -507,7 +548,8 @@ _use_closure(::ADTypes.AbstractADType) = false
 
 Given a `VarNamedTuple` that contains vectorised values (i.e.,
 `TransformedValue{<:AbstractVector}`), extract the ranges of each variable in the vectorised
-parameter representation, along with the transform status of each variable.
+parameter representation. Further infer the transform status of each variable from the type
+of the vectorised value.
 
 This function returns a VarNamedTuple mapping all VarNames to their corresponding
 `RangeAndTransform`.
@@ -530,6 +572,26 @@ function get_rangeandtransforms(vnt::VarNamedTuple)
         init=(VarNamedTuple(), 1),
     )
     return ranges_vnt
+end
+
+"""
+    update_transforms!!(vnt::VarNamedTuple, transforms_vnt::VarNamedTuple)
+
+Given `vnt` which contains vectorised values (i.e., `TransformedValue{<:AbstractVector}`), and a
+`transforms_vnt` which contains the transforms to be applied to each variable, update the
+vectorised values in `vnt` to have the corresponding transforms from `transforms_vnt`.
+
+This function returns a VarNamedTuple mapping all VarNames to their corresponding
+`RangeAndTransform`.
+
+!!! warning
+    This function might mutate `vnt`.
+"""
+function update_transforms!!(vnt::VarNamedTuple, transforms_vnt::VarNamedTuple)
+    return map_pairs!!(vnt) do pair
+        vn, tv = pair
+        TransformedValue(get_internal_value(tv), transforms_vnt[vn])
+    end
 end
 
 """
