@@ -83,16 +83,30 @@ using Mooncake: Mooncake
     end
 end
 
-@testset "LogDensityFunction: Correctness" begin
+@testset "LogDensityFunction: correctness with multiple threads" begin
+    @testset "Threaded assume" begin
+        @model function threaded_assume()
+            x = zeros(10)
+            Threads.@threads for i in eachindex(x)
+                x[i] ~ Normal()
+            end
+        end
+        model = setthreadsafe(threaded_assume(), true)
+        ldf = DynamicPPL.LogDensityFunction(model)
+        xs = rand(ldf)
+        @test xs isa Vector{Float64} && length(xs) == 10
+        @test LogDensityProblems.logdensity(ldf, xs) ≈ sum(logpdf.(Normal(), xs))
+    end
+
     @testset "Threaded observe" begin
-        @model function threaded(y)
+        @model function threaded_observe(y)
             x ~ Normal()
             Threads.@threads for i in eachindex(y)
                 y[i] ~ Normal(x)
             end
         end
         N = 100
-        model = setthreadsafe(threaded(zeros(N)), true)
+        model = setthreadsafe(threaded_observe(zeros(N)), true)
         ldf = DynamicPPL.LogDensityFunction(model)
 
         xs = [1.0]
