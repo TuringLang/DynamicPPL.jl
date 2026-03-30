@@ -534,4 +534,18 @@ end
     end
 end
 
+@testset "LogDensityFunction: fix_transforms correctness" begin
+    @testset "$(m.f)" for m in DynamicPPL.TestUtils.DEMO_MODELS
+        @testset "$strategy" for strategy in (UnlinkAll(), LinkAll())
+            ldf_dynamic = LogDensityFunction(m, getlogjoint_internal, strategy)
+            ldf_fixed = LogDensityFunction(
+                m, getlogjoint_internal, strategy; fix_transforms=true
+            )
+            θ = rand(ldf_dynamic)
+            @test LogDensityProblems.logdensity(ldf_fixed, θ) ≈
+                LogDensityProblems.logdensity(ldf_dynamic, θ)
+        end
+    end
+end
+
 end
