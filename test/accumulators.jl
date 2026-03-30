@@ -31,7 +31,7 @@ TEST_ACCUMULATORS = (
     LogJacobianAccumulator(1.0),
     RawValueAccumulator(false),
     DynamicPPL.DebugRawValueAccumulator(),
-    DynamicPPL.BijectorAccumulator(),
+    DynamicPPL.FixedTransformAccumulator(),
     DynamicPPL.VNTAccumulator{DynamicPPL.POINTWISE_ACCNAME}(
         DynamicPPL.PointwiseLogProb{true,true}()
     ),
