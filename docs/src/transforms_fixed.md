@@ -123,7 +123,7 @@ If you want to use this feature, we recommend benchmarking your model.
 For example:
 
 ```@example fixed2
-using DynamicPPL, Distributions, LogDensityProblems, Chairmarks, LinearAlgebra
+using DynamicPPL, Distributions, LogDensityProblems, Chairmarks, LinearAlgebra, ADTypes
 import ForwardDiff
 
 adtype = AutoForwardDiff()
@@ -143,20 +143,26 @@ model = eightsch(J, y, sigma)
 
 ldf_dynamic = LogDensityFunction(model, getlogjoint_internal, LinkAll(); adtype=adtype)
 x = rand(ldf_dynamic)
-@be LogDensityProblems.logdensity($ldf_dynamic, $x)
+
+@b LogDensityProblems.logdensity($ldf_dynamic, $x)
 ```
 
 ```@example fixed2
-@be LogDensityProblems.logdensity_and_gradient($ldf_dynamic, $x)
+@b LogDensityProblems.logdensity_and_gradient($ldf_dynamic, $x)
 ```
+
+In the following code blocks, you *should* see that the fixed transform takes almost exactly the same time as the dynamic transform (although the exact number will of course have some variance).
+This is because the distributions in the eight-schools model above are 'simple' enough that re-deriving them is essentially instantaneous.
 
 ```@example fixed2
 ldf_fixed = LogDensityFunction(
     model, getlogjoint_internal, LinkAll(); fix_transforms=true, adtype=adtype
 )
-@be LogDensityProblems.logdensity($ldf_fixed, $x)
+@b LogDensityProblems.logdensity($ldf_fixed, $x)
 ```
 
 ```@example fixed2
-@be LogDensityProblems.logdensity_and_gradient($ldf_fixed, $x)
+@b LogDensityProblems.logdensity_and_gradient($ldf_fixed, $x)
 ```
+
+For other distributions, however, the fixed transform can be much faster.
