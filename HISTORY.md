@@ -1,3 +1,7 @@
+# 0.40.18
+
+Added a check on `unflatten!!` to error if the input vector was too long.
+
 # 0.40.17
 
 Implemented missing methods for `Base.copy` on internal structs.
