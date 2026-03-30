@@ -138,6 +138,32 @@ const gdemo_default = gdemo_d()
         @test !check_model(model)
     end
 
+    @testset "assumes are threadsafe" begin
+        # Note: anything that involves VarInfo is still thread-unsafe. But anything
+        # that uses OnlyAccsVarInfo is fine
+        @model function threaded_assume()
+            x = zeros(10)
+            Threads.@threads for i in eachindex(x)
+                x[i] ~ Normal()
+            end
+        end
+        model = setthreadsafe(threaded_assume(), true)
+
+        @testset "rand" begin
+            vnt = rand(model)
+            for i in 1:10
+                @test haskey(vnt, @varname(x[i]))
+            end
+        end
+        @testset "logprob" begin
+            xfixed = rand(10)
+            params = VarNamedTuple(; x=xfixed)
+            @test logprior(model, params) ≈ sum(logpdf.(Normal(), xfixed))
+            @test iszero(loglikelihood(model, params))
+            @test logjoint(model, params) ≈ sum(logpdf.(Normal(), xfixed))
+        end
+    end
+
     @testset "logprob correctness" begin
         x = rand(10_000)
 
