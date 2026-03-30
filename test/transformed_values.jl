@@ -1,5 +1,9 @@
 module DynamicPPLTransformedValuesTests
 
+using Dates: now
+@info "Testing $(@__FILE__)..."
+__now__ = now()
+
 using AbstractPPL: AbstractPPL
 using Bijectors: Bijectors
 using DynamicPPL
@@ -40,5 +44,7 @@ using Test
         @test transforms == expected
     end
 end
+
+@info "Completed $(@__FILE__) in $(now() - __now__)."
 
 end
