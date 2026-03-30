@@ -309,7 +309,17 @@ function _default_vnt(model::Model, transform_strategy::AbstractTransformStrateg
     return getacc(oavi, Val(VECTORVAL_ACCNAME)).values
 end
 
-function _get_input_vector_type(::LogDensityFunction{M,A,L,G,R,P,X}) where {M,A,L,G,R,P,X}
+"""
+    DynamicPPL.get_input_vector_type(::LogDensityFunction)
+
+Get the type of the vector `x` that should be passed to `LogDensityProblems.logdensity(ldf,
+x)`.
+
+Note that if you pass a vector of a different type, it will be converted to the correct
+type. This allows you however to determine upfront what kind of vector should be passed in.
+It is also useful for determining e.g. whether Float32 or Float64 parameters are expected.
+"""
+function get_input_vector_type(::LogDensityFunction{M,A,L,G,R,P,X}) where {M,A,L,G,R,P,X}
     return X
 end
 
@@ -415,7 +425,7 @@ function LogDensityProblems.logdensity_and_gradient(
 )
     # `params` has to be converted to the same vector type that was used for AD preparation,
     # otherwise the preparation will not be valid.
-    params = convert(_get_input_vector_type(ldf), params)
+    params = convert(get_input_vector_type(ldf), params)
     return if _use_closure(ldf.adtype)
         DI.value_and_gradient(
             LogDensityAt(
@@ -586,7 +596,7 @@ that.
 """
 function to_vector_params(vector_values::VarNamedTuple, ldf::LogDensityFunction)
     return to_vector_params_inner(
-        vector_values, ldf._varname_ranges, eltype(_get_input_vector_type(ldf)), ldf._dim
+        vector_values, ldf._varname_ranges, eltype(get_input_vector_type(ldf)), ldf._dim
     )
 end
 

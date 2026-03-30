@@ -64,6 +64,7 @@ The [LogDensityProblems.jl](https://github.com/tpapp/LogDensityProblems.jl) inte
 
 ```@docs
 LogDensityFunction
+get_input_vector_type
 ```
 
 Internally, this is accomplished using [`init!!`](@ref) on:
@@ -184,12 +185,6 @@ DynamicPPL.prefix
 ```
 
 ## Utilities
-
-`typed_identity` is the same as `identity`, but with an overload for `with_logabsdet_jacobian` that ensures that it never errors.
-
-```@docs
-typed_identity
-```
 
 It is possible to manually increase (or decrease) the accumulated log likelihood or prior from within a model function.
 
@@ -386,6 +381,14 @@ accumulator_name
 DynamicPPL.reset
 DynamicPPL.split
 DynamicPPL.combine
+```
+
+The float type used for accumulation of log-probabilities is defined by a compile-time preference:
+
+```@docs
+DynamicPPL.LogProbType
+DynamicPPL.set_logprob_type!
+DynamicPPL.NoLogProb
 ```
 
 ```@docs

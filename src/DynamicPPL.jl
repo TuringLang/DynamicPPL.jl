@@ -114,7 +114,6 @@ export AbstractVarInfo,
     @model,
     # Utilities
     OrderedDict,
-    typed_identity,
     # Model
     Model,
     setthreadsafe,
@@ -127,6 +126,7 @@ export AbstractVarInfo,
     LogDensityFunction,
     OnlyAccsVarInfo,
     to_vector_params,
+    get_input_vector_type,
     # Leaf contexts
     AbstractContext,
     contextualize,
@@ -199,8 +199,10 @@ export AbstractVarInfo,
     # Convenience macros
     @addlogprob!,
     check_model,
+    set_logprob_type!,
     # Deprecated.
-    generated_quantities
+    generated_quantities,
+    typed_identity
 
 # Reexport
 using Distributions: loglikelihood

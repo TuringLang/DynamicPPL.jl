@@ -179,7 +179,7 @@ struct UntransformedValue{V} <: AbstractTransformedValue
 end
 Base.:(==)(tv1::UntransformedValue, tv2::UntransformedValue) = tv1.val == tv2.val
 Base.isequal(tv1::UntransformedValue, tv2::UntransformedValue) = isequal(tv1.val, tv2.val)
-get_transform(::UntransformedValue) = typed_identity
+get_transform(::UntransformedValue) = Bijectors.VectorBijectors.TypedIdentity()
 get_internal_value(tv::UntransformedValue) = tv.val
 set_internal_value(::UntransformedValue, new_val) = UntransformedValue(new_val)
 

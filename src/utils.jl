@@ -2,48 +2,106 @@
 # defined in other files.
 function subset end
 
-"""
-The type for all log probability variables.
-
-This is Float64 on 64-bit systems and Float32 on 32-bit systems.
-"""
-const LogProbType = float(Real)
+using Preferences: @load_preference, @set_preferences!
 
 """
-    typed_identity(x)
+    DynamicPPL.NoLogProb <: Real
 
-Identity function, but with an overload for `with_logabsdet_jacobian` to ensure
-that it returns a sensible zero logjac.
+Singleton type that represents the absence of a log probability value. This is used as the
+default type parameter for `LogProbAccumulator` when no log probability value is needed, to
+avoid defining a concrete type such as `Float64` that would cause unwanted type promotion
+when accumulating log probabilities of other types (e.g., `Float32`).
 
-The problem with plain old `identity` is that the default definition of
-`with_logabsdet_jacobian` for `identity` returns `zero(eltype(x))`:
-https://github.com/JuliaMath/ChangesOfVariables.jl/blob/d6a8115fc9b9419decbdb48e2c56ec9675b4c6a4/src/with_ladj.jl#L154
+Adding anything to `NoLogProb()` returns the other thing. In other words, `NoLogProb` is a
+true additive identity which additionally preserves types.
+"""
+struct NoLogProb <: Real end
+Base.zero(::Type{NoLogProb}) = NoLogProb()
+Base.convert(::Type{T}, ::NoLogProb) where {T<:Number} = zero(T)
+Base.promote_rule(::Type{NoLogProb}, ::Type{T}) where {T<:Number} = T
+Base.iszero(::NoLogProb) = true
+Base.hash(::NoLogProb, h::UInt) = hash(0.0, h)
+Base.:(+)(::NoLogProb, ::NoLogProb) = NoLogProb()
+Base.:(-)(::NoLogProb, ::NoLogProb) = NoLogProb()
 
-This is fine for most samples `x`, but if `eltype(x)` doesn't return a sensible type (e.g.
-if it's `Any`), then using `identity` will error with `zero(Any)`. This can happen with,
-for example, `ProductNamedTupleDistribution`:
+const FLOAT_TYPE_PREF_KEY = "floattype"
+
+"""
+    DynamicPPL.LogProbType
+
+The default type used for log-probabilities in DynamicPPL.jl. This is a compile-time constant
+that can be set via [`set_logprob_type!`](@ref), which under the hood uses Preferences.jl.
+
+Note that this does not prevent computations within the model from promoting the
+log-probability to a different type. In essence, `LogProbType` specifies the *lowest*
+possible type that log-probabilities can be, and DynamicPPL promises to not insert any extra
+operations that would cause this to be promoted to a higher type. However, DynamicPPL cannot
+guard against user code inside models.
+
+For example, in:
 
 ```julia
-julia> using Distributions; d = product_distribution((a = Normal(), b = LKJCholesky(3, 0.5)));
-
-julia> eltype(rand(d))
-Any
+@model f() = x ~ Normal(0.0, 1.0)
 ```
 
-The same problem precludes us from eventually broadening the scope of DynamicPPL.jl to
-support distributions with non-numeric samples.
+the log-probability of the model will always be promoted to `Float64`, regardless of the
+value of `LogProbType`, because the logpdf of `Normal(0.0, 1.0)` is a `Float64`. On the
+other hand, in:
 
-Furthermore, in principle, the type of the log-probability should be separate from the type
-of the sample. Thus, instead of using `zero(LogProbType)`, we should use the eltype of the
-LogJacobianAccumulator. There's no easy way to thread that through here, but if a way to do
-this is discovered, then `typed_identity` is what will allow us to obtain that custom
-behaviour.
+```julia
+@model f() = x ~ Normal(0.0f0, 1.0f0)
+```
+
+the log-probability of the model will be `Float32` if `LogProbType` is `Float32` or lower.
 """
-function typed_identity end
-@inline typed_identity(x) = x
-@inline Bijectors.with_logabsdet_jacobian(::typeof(typed_identity), x) =
-    (x, zero(LogProbType))
-@inline Bijectors.inverse(::typeof(typed_identity)) = typed_identity
+const LogProbType = let
+    logp_pref = @load_preference(FLOAT_TYPE_PREF_KEY, "f64")
+    if logp_pref == "f64"
+        Float64
+    elseif logp_pref == "f32"
+        Float32
+    elseif logp_pref == "f16"
+        Float16
+    elseif logp_pref == "min"
+        NoLogProb
+    else
+        error("Unsupported log probability preference: $logp_pref")
+    end
+end
+
+"""
+    set_logprob_type!(::Type{T}) where {T}
+
+Set the log probability type for DynamicPPL.jl, [`DynamicPPL.LogProbType`](@ref), to `T`.
+Permitted values are `Float64`, `Float32`, `Float16`, and `NoLogProb`. The default in
+DynamicPPL is `Float64`.
+
+`NoLogProb` is a special type that is the "lowest" possible float type. This means that the
+log probability will be promoted to whatever type the model dictates. This is a totally
+unintrusive option, which can be useful if you do not know in advance what log probability
+type you are targeting, or want to troubleshoot a model to see what type the log probability
+is being promoted to. However, this can also cause type stability issues and performance
+degradations, so we generally recommend setting a specific log probability type if you know
+what type you want to target.
+
+This function uses Preferences.jl to set a compile-time constant, so you will need to
+restart your Julia session for the change to take effect.
+"""
+function set_logprob_type!(::Type{T}) where {T}
+    new_pref = if T == Float64
+        "f64"
+    elseif T == Float32
+        "f32"
+    elseif T == Float16
+        "f16"
+    elseif T == NoLogProb
+        "min"
+    else
+        throw(ArgumentError("Unsupported log probability type: $T"))
+    end
+    @set_preferences!(FLOAT_TYPE_PREF_KEY => new_pref)
+    @info "DynamicPPL's log probability type has been set to $T.\nPlease note you will need to restart your Julia session for this change to take effect."
+end
 
 """
     @addlogprob!(ex)

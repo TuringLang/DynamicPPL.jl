@@ -11,6 +11,7 @@ using DynamicPPL:
     AccumulatorTuple,
     LogLikelihoodAccumulator,
     LogPriorAccumulator,
+    NoLogProb,
     accumulate_assume!!,
     accumulate_observe!!,
     combine,
@@ -23,6 +24,21 @@ using DynamicPPL:
     PriorDistributionAccumulator,
     get_priors,
     @varname
+
+TEST_ACCUMULATORS = (
+    LogPriorAccumulator(1.0),
+    LogLikelihoodAccumulator(1.0),
+    LogJacobianAccumulator(1.0),
+    RawValueAccumulator(false),
+    DynamicPPL.DebugRawValueAccumulator(),
+    DynamicPPL.BijectorAccumulator(),
+    DynamicPPL.VNTAccumulator{DynamicPPL.POINTWISE_ACCNAME}(
+        DynamicPPL.PointwiseLogProb{true,true}()
+    ),
+    PriorDistributionAccumulator(),
+    DynamicPPL.VectorValueAccumulator(),
+    DynamicPPL.VectorParamAccumulator([], Bool[], VarNamedTuple()),
+)
 
 @testset "accumulators" begin
     @testset "individual accumulator types" begin
@@ -39,6 +55,25 @@ using DynamicPPL:
                 DynamicPPL.reset(LogLikelihoodAccumulator(1.0))
         end
 
+        @testset "float types" begin
+            # f64
+            @test DynamicPPL.reset(LogPriorAccumulator(1.0)) === LogPriorAccumulator(0.0)
+            @test DynamicPPL.reset(LogPriorAccumulator()) === LogPriorAccumulator()
+
+            # f32
+            @test LogPriorAccumulator{Float32}() == LogPriorAccumulator(0.0f0)
+            @test DynamicPPL.reset(LogPriorAccumulator(1.0f0)) ===
+                LogPriorAccumulator(0.0f0)
+            @test DynamicPPL.reset(LogPriorAccumulator{Float32}()) ===
+                LogPriorAccumulator{Float32}()
+
+            # nologprob
+            @test LogPriorAccumulator(NoLogProb()) !== LogPriorAccumulator(0.0)
+            @test LogPriorAccumulator(NoLogProb()) === LogPriorAccumulator(NoLogProb())
+            @test DynamicPPL.reset(LogPriorAccumulator(NoLogProb())) ===
+                LogPriorAccumulator(NoLogProb())
+        end
+
         @testset "addition and incrementation" begin
             @test acclogp(LogPriorAccumulator(1.0f0), 1.0f0) == LogPriorAccumulator(2.0f0)
             @test acclogp(LogPriorAccumulator(1.0), 1.0f0) == LogPriorAccumulator(2.0)
@@ -46,6 +81,13 @@ using DynamicPPL:
                 LogLikelihoodAccumulator(2.0f0)
             @test acclogp(LogLikelihoodAccumulator(1.0), 1.0f0) ==
                 LogLikelihoodAccumulator(2.0)
+        end
+
+        @testset "addition to NoLogProb" begin
+            for val in (1.0, 1.0f0, BigFloat(1.0), 1, UInt(1), Float16(1.0))
+                @test acclogp(LogPriorAccumulator(NoLogProb()), val) ==
+                    LogPriorAccumulator(val)
+            end
         end
 
         @testset "split and combine" begin
@@ -183,6 +225,13 @@ using DynamicPPL:
         priors = get_priors(accs)
         @test priors[@varname(x)] == Normal()
         @test priors[@varname(y)] == Normal(vals[@varname(x)])
+    end
+
+    @testset "Base.copy" begin
+        for acc in TEST_ACCUMULATORS
+            # just check that it works.
+            @test copy(acc) isa Any
+        end
     end
 end
 
