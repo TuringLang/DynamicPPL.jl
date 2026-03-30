@@ -1,3 +1,9 @@
+# 0.41
+
+Removed the `varinfo` keyword argument from `DynamicPPL.TestUtils.AD.run_ad` and replaced the `varinfo` field in `ADResult` with `ldf::LogDensityFunction`.
+
+Removed `getargnames`, `getmissings`, and `Base.nameof(::Model)` from the public API (export and documentation) as they are considered internal implementation details.
+
 # 0.40.17
 
 Implemented missing methods for `Base.copy` on internal structs.

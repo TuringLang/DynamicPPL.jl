@@ -116,8 +116,6 @@ export AbstractVarInfo,
     OrderedDict,
     # Model
     Model,
-    getmissings,
-    getargnames,
     setthreadsafe,
     requires_threadsafe,
     extract_priors,
