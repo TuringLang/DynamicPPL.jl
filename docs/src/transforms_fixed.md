@@ -116,6 +116,35 @@ tfm_strategy = WithTransforms(get_fixed_transforms(model, LinkAll()), LinkAll())
 ldf2 = LogDensityFunction(model, getlogjoint_internal, tfm_strategy)
 ```
 
+## Correctness
+
+If you are thinking of using fixed transforms to speed up model evaluation, you should be aware that this can lead to incorrect results if the support of a variable changes during sampling.
+
+For example, consider the following model:
+
+```@example 1
+@model function changing_support()
+    x ~ Normal()
+    if x > 0
+        y ~ Exponential()
+    else
+        y ~ Normal()
+    end
+end
+```
+
+The transform needed for `y` here depends on what value `x` takes: in one case it is the identity transform, and in another case it is the log transform.
+If you were to use fixed transforms here, you would have to choose only one of these transforms for `y`, and this would lead to incorrect results when the other transform is needed.
+
+This can also manifest in more subtle ways, especially with truncated distributions:
+
+```@example 1
+@model function changing_support_2()
+    x ~ Normal()
+    return y ~ truncated(Normal(); lower=x)
+end
+```
+
 ## Performance
 
 It should be noted that using fixed transforms does not *always* lead to speedups, since the calculation of the transform is often very cheap and comparable to the cost of looking up the cached transform.
