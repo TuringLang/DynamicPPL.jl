@@ -1,3 +1,13 @@
+# 0.40.20
+
+Added a public function, `DynamicPPL.extract_prefixes(::AbstractContext)`, to more generally handle the removal of `PrefixContext` entries from the context stack.
+
+Also exports `SkipTemplate` and `NoTemplate` from DynamicPPL.
+
+# 0.40.19
+
+Fixed `check_model()` occasionally failing to catch duplicate `VarName` assignments correctly when using multithreading with thread-safe variables.
+
 # 0.40.18
 
 Added a check on `unflatten!!` to error if the input vector was too long.
