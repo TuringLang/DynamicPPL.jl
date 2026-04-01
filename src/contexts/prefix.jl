@@ -192,7 +192,7 @@ function tilde_observe!!(
     # value. For the need for prefix_and_strip_contexts rather than just prefix, see the
     # comment in `tilde_assume!!`.
     new_vn, new_context, new_template = if vn !== nothing
-        new_context, aggregated_prefix_vn = prefix_and_strip_contexts(context, vn)
+        new_context, aggregated_prefix_vn = extract_prefixes(context)
         n = optic_skip_length(AbstractPPL.getoptic(aggregated_prefix_vn)) + 1
         prefixed_vn = AbstractPPL.prefix(vn, aggregated_prefix_vn)
         prefixed_vn, new_context, SkipTemplate{n}(template)
