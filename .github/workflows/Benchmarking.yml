@@ -16,7 +16,7 @@ jobs:
       - uses: julia-actions/setup-julia@v2
         with:
           version: '1.11'
-      - uses: julia-actions/cache@v2
+      - uses: julia-actions/cache@v3
 
       - name: Run benchmarks
         id: benchmark
@@ -41,7 +41,7 @@ jobs:
       - uses: julia-actions/setup-julia@v2
         with:
           version: '1.11'
-      - uses: julia-actions/cache@v2
+      - uses: julia-actions/cache@v3
 
       - name: Run benchmarks
         id: benchmark
@@ -64,7 +64,7 @@ jobs:
       - uses: julia-actions/setup-julia@v2
         with:
           version: '1.11'
-      - uses: julia-actions/cache@v2
+      - uses: julia-actions/cache@v3
 
       - name: Combine benchmark results
         working-directory: ./benchmarks
