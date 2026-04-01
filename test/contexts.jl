@@ -197,6 +197,14 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
                 VarNamedTuple(; b=4), CondFixContext{Condition}(VarNamedTuple(; a=1))
             )
             @test prefixes == @varname(a)
+
+            ctx5 = DefaultContext()
+            new_vn, new_ctx = DynamicPPL.prefix_and_strip_contexts(ctx5, vn)
+            @test new_vn == vn
+            @test new_ctx == DefaultContext()
+            new_ctx, prefixes = DynamicPPL.extract_prefixes(ctx5)
+            @test new_ctx == DefaultContext()
+            @test prefixes == nothing
         end
 
         @testset "evaluation: $(model.f)" for model in DynamicPPL.TestUtils.ALL_MODELS

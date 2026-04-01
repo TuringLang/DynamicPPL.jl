@@ -106,7 +106,8 @@ at once.
 Returns a tuple of:
 
 - `ctx_without_prefixes`: the context stack with all `PrefixContext`s removed
-- `vn`: the VarName that contains all the aggregated prefixes that were removed
+- `vn`: the VarName that contains all the aggregated prefixes that were removed, or
+  `nothing` if there were no `PrefixContext`s in the stack.
 
 # Example
 
@@ -135,7 +136,11 @@ julia> extract_prefixes(ctx)
 """
 function extract_prefixes(ctx::AbstractContext)
     new_ctx, new_optic = _extract_prefixes(ctx, AbstractPPL.Iden())
-    return new_ctx, AbstractPPL.optic_to_varname(new_optic)
+    return if new_optic === AbstractPPL.Iden()
+        new_ctx, nothing
+    else
+        new_ctx, AbstractPPL.optic_to_varname(new_optic)
+    end
 end
 function _extract_prefixes(ctx::PrefixContext, optic::AbstractPPL.AbstractOptic)
     new_child_context, child_optic = _extract_prefixes(childcontext(ctx), optic)
