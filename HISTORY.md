@@ -1,3 +1,7 @@
+# 0.40.19
+
+Fixed `check_model()` occasionally failing to catch duplicate `VarName` assignments correctly when using multithreading with thread-safe variables.
+
 # 0.40.18
 
 Added a check on `unflatten!!` to error if the input vector was too long.
