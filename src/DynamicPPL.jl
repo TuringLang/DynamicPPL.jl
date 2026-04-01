@@ -140,6 +140,7 @@ export AbstractVarInfo,
     setchildcontext,
     leafcontext,
     setleafcontext,
+    extract_prefixes,
     # Tilde pipeline
     tilde_assume!!,
     tilde_observe!!,

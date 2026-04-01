@@ -1,3 +1,7 @@
+# 0.40.20
+
+Added a public function, `DynamicPPL.extract_prefixes(::AbstractContext)`, to more generally handle the removal of `PrefixContext` entries from the context stack.
+
 # 0.40.19
 
 Fixed `check_model()` occasionally failing to catch duplicate `VarName` assignments correctly when using multithreading with thread-safe variables.
