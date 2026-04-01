@@ -299,7 +299,7 @@ end
         end
     end
 
-    @testset "submodels with arrays inside" begin
+    @testset "(nested) submodels with arrays inside" begin
         # This mostly tests that templates work correctly and are propagated upwards
         # correctly.
         @model function inner()
@@ -307,14 +307,24 @@ end
             x[1] ~ Normal()
             return x
         end
-        @model function outer()
-            return a ~ to_submodel(inner())
+        @model function middle()
+            return b ~ to_submodel(inner())
         end
+        @model function outer()
+            return a ~ to_submodel(middle())
+        end
+
+        model = middle()
+        vnt = rand(model)
+        @test Set(keys(vnt)) == Set([@varname(b.x[1, 1])])
+        @test vnt.data.b.data.x.data isa Matrix{Float64}
+        @test size(vnt.data.b.data.x.data) == (2, 2)
+
         model = outer()
         vnt = rand(model)
-        @test Set(keys(vnt)) == Set([@varname(a.x[1, 1])])
-        @test vnt.data.a.data.x.data isa Matrix{Float64}
-        @test size(vnt.data.a.data.x.data) == (2, 2)
+        @test Set(keys(vnt)) == Set([@varname(a.b.x[1, 1])])
+        @test vnt.data.a.data.b.data.x.data isa Matrix{Float64}
+        @test size(vnt.data.a.data.b.data.x.data) == (2, 2)
     end
 end
 

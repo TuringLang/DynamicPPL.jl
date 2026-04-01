@@ -125,10 +125,11 @@ julia> extract_prefixes(ctx)
 !!! warning
 
     This does _not_ modify any variables in any `CondFixContext`s that may be present in the
-    context stack. This is because this function is only used in `tilde_assume!!`, which is
-    lower in the tilde-pipeline than `contextual_isassumption` and `contextual_isfixed` (the
-    functions which actually use the `CondFixContext`'s values). Thus, by this time, any
-    `CondFixContext`s present have already served their purpose.
+    context stack. This is because this function is only used in functions such as
+     `tilde_assume!!`, which are lower in the tilde-pipeline than `contextual_isassumption`
+    and `contextual_isfixed` (the functions which actually use the `CondFixContext`'s
+    values). Thus, by this time, any `CondFixContext`s present have already served their
+    purpose.
 
     If you call this function, you must therefore be careful to ensure that you _do not_
     need to modify any inner `CondFixContext`s. If you _do_ need to modify them, then you
