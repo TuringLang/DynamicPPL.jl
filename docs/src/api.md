@@ -544,6 +544,12 @@ leafcontext
 setleafcontext
 ```
 
+Sometimes it is necessary to handle all `PrefixContext`s in a context stack at one go:
+
+```@docs
+extract_prefixes
+```
+
 ### VarInfo initialisation
 
 The function `init!!` is used to initialise, or overwrite, values in a VarInfo.

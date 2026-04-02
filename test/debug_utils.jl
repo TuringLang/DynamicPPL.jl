@@ -36,6 +36,17 @@ end
             test_model_can_run_but_fails_check(buggy_demo_model())
         end
 
+        @testset "multithreaded variables overwrite (check_model)" begin
+            @model function f_threaded()
+                Threads.@threads for i in 1:2
+                    x ~ Normal()
+                end
+            end
+            model = setthreadsafe(f_threaded(), true)
+            # This should catch the error across threads
+            @test_throws ErrorException check_model(model; error_on_failure=true)
+        end
+
         @testset "different sub-indices of the same slice" begin
             # https://github.com/TuringLang/DynamicPPL.jl/issues/1321
             @model function demo_slice_subindices()
