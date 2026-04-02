@@ -6,7 +6,7 @@ function _get_fixed_transform(
     return FixedTransform(Bijectors.VectorBijectors.from_linked_vec(dist))
 end
 function _get_fixed_transform(
-    val, tv::TransformedValue{V,Unlink}, logjac, vn, dist
+    val, tv::TransformedValue{V,<:Union{Unlink,NoTransform}}, logjac, vn, dist
 ) where {V}
     return FixedTransform(Bijectors.VectorBijectors.from_vec(dist))
 end
@@ -21,9 +21,9 @@ end
 
 An accumulator that calculates and stores the 'fixed' transforms for all variables in a model.
 
-Normally, when running a model with a transform strategy such as `LinkAll`, the transforms are
-calculated *during* model execution and not cached. This ensures that the transforms are up-to-date
-with the current variable values, which can matter in cases such as
+Normally, when running a model with a transform strategy such as `LinkAll`, the transforms
+are calculated *during* model execution and not cached. This ensures that the transforms are
+up-to-date with the current variable values, which can matter in cases such as
 
 ```julia
 x ~ Normal()

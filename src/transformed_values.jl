@@ -166,26 +166,27 @@ struct UnsafePassThrough <: AbstractTransformStrategy end
 target_transform(::UnsafePassThrough, ::VarName) = error("should not be called")
 
 """
-    WithTransforms(tfms::VarNamedTuple, fallback) <: AbstractTransformStrategy
+    WithTransforms(transforms::VarNamedTuple, fallback) <: AbstractTransformStrategy
 
-Indicate that the variables in `tfms` should be transformed according to their corresponding
-values in `tfms`, which should be subtypes of `AbstractTransform`. specified in `tfms`. The
-link statuses of other variables are determined by the `fallback` strategy.
+Indicate that the variables in `transforms` should be transformed according to their
+corresponding values in `transforms`, which should be subtypes of `AbstractTransform`.
+specified in `transforms`. The link statuses of other variables are determined by the
+`fallback` strategy.
 """
 struct WithTransforms{V<:VarNamedTuple,L<:AbstractTransformStrategy} <:
        AbstractTransformStrategy
-    tfms::V
+    transforms::V
     fallback::L
 end
 function Base.:(==)(wt1::WithTransforms, wt2::WithTransforms)
-    return (wt1.tfms == wt2.tfms) & (wt1.fallback == wt2.fallback)
+    return (wt1.transforms == wt2.transforms) & (wt1.fallback == wt2.fallback)
 end
 function Base.isequal(wt1::WithTransforms, wt2::WithTransforms)
-    return isequal(wt1.tfms, wt2.tfms) && isequal(wt1.fallback, wt2.fallback)
+    return isequal(wt1.transforms, wt2.transforms) && isequal(wt1.fallback, wt2.fallback)
 end
 function target_transform(linker::WithTransforms, vn::VarName)
-    return if haskey(linker.tfms, vn)
-        linker.tfms[vn]
+    return if haskey(linker.transforms, vn)
+        linker.transforms[vn]
     else
         target_transform(linker.fallback, vn)
     end

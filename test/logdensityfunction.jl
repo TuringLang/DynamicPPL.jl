@@ -541,6 +541,14 @@ end
             ldf_fixed = LogDensityFunction(
                 m, getlogjoint_internal, strategy; fix_transforms=true
             )
+            # Check that the transform strategy does contain fixed transforms
+            tfm_strategy = ldf_fixed.transform_strategy
+            @test tfm_strategy isa WithTransforms
+            transforms_vnt = tfm_strategy.transforms
+            for v in DynamicPPL.TestUtils.varnames(m)
+                @test transforms_vnt[v] isa DynamicPPL.FixedTransform
+            end
+            # Check that log-density evaluation is correct
             θ = rand(ldf_dynamic)
             @test LogDensityProblems.logdensity(ldf_fixed, θ) ≈
                 LogDensityProblems.logdensity(ldf_dynamic, θ)
