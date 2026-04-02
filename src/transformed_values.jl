@@ -150,22 +150,6 @@ struct UnlinkAll <: AbstractTransformStrategy end
 target_transform(::UnlinkAll, ::VarName) = Unlink()
 
 """
-    UnsafePassThrough() <: AbstractTransformStrategy
-
-Indicate that the transform strategy should not be applied, and that the transform status of
-each variable should be determined only by the initialisation strategy.
-
-!!! warning
-    This is unsafe because it conflates the initialisation strategy with the transform
-    strategy: for example, the log-Jacobian accumulated is determined by the initialisation
-    strategy, which is not ideal.
-
-    As a result of this, DynamicPPL does *not* export `UnsafePassThrough`.
-"""
-struct UnsafePassThrough <: AbstractTransformStrategy end
-target_transform(::UnsafePassThrough, ::VarName) = error("should not be called")
-
-"""
     WithTransforms(transforms::VarNamedTuple, fallback) <: AbstractTransformStrategy
 
 Indicate that the variables in `transforms` should be transformed according to their
