@@ -42,4 +42,6 @@ get_vector_params
 ```@docs
 PriorDistributionAccumulator
 get_priors
+FixedTransformAccumulator
+get_fixed_transforms
 ```

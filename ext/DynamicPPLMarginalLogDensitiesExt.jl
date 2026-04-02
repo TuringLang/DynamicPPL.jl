@@ -1,6 +1,6 @@
 module DynamicPPLMarginalLogDensitiesExt
 
-using DynamicPPL: DynamicPPL, LogDensityProblems, VarName, RangeAndLinked
+using DynamicPPL: DynamicPPL, LogDensityProblems, VarName, RangeAndTransform
 using MarginalLogDensities: MarginalLogDensities
 
 # A thin wrapper to adapt a DynamicPPL.LogDensityFunction to the interface expected by
@@ -107,7 +107,7 @@ function DynamicPPL.marginalize(
     varindices = mapreduce(vcat, marginalized_varnames) do vn
         # The type assertion helps in cases where the model is type unstable and thus
         # `varname_ranges` may have an abstract element type.
-        (ldf._varname_ranges[vn]::RangeAndLinked).range
+        (ldf._varname_ranges[vn]::RangeAndTransform).range
     end
     mld = MarginalLogDensities.MarginalLogDensity(
         LogDensityFunctionWrapper(ldf, varinfo),
