@@ -81,32 +81,112 @@ end
     @test DynamicPPL.target_transform(strategy, @varname(x)) == ft
 end
 
-@testset "apply_transform_strategy: FixedTransform mismatch errors" begin
-    dist = Beta(2, 5)
-    vn = @varname(x)
-    ft = FixedTransform(Bijectors.VectorBijectors.from_linked_vec(dist))
-    wrong_ft = FixedTransform(Bijectors.VectorBijectors.from_linked_vec(InverseGamma(2, 3)))
+@testset "apply_transform_strategy" begin
+    @testset "Dynamic transforms" begin
+        vn = @varname(x)
+        @testset "$dist" for dist in
+                             [Beta(2, 5), InverseGamma(2, 3), Dirichlet([1.0, 2.0, 3.0])]
+            raw_val = rand(dist)
 
-    # Create a TransformedValue with ft
-    flink = Bijectors.VectorBijectors.to_linked_vec(dist)
-    raw_val = rand(Xoshiro(468), dist)
-    linked_val, logjac = Bijectors.with_logabsdet_jacobian(flink, raw_val)
-    tv = TransformedValue(linked_val, ft)
+            # Build TransformedValues for the same raw_val, but with different input transforms
+            flink = Bijectors.VectorBijectors.to_linked_vec(dist)
+            fvec = Bijectors.VectorBijectors.to_vec(dist)
+            linked_vec, logjac = Bijectors.with_logabsdet_jacobian(flink, raw_val)
+            unlinked_vec = fvec(raw_val)
 
-    # Matching transform should work
-    strategy_ok = DynamicPPL.WithTransforms(VarNamedTuple(; x=ft), UnlinkAll())
-    new_raw, new_tv, new_logjac = DynamicPPL.apply_transform_strategy(
-        strategy_ok, tv, vn, dist
-    )
-    @test new_raw ≈ raw_val
-    @test new_tv.transform == ft
-    @test new_logjac ≈ logjac
+            target_strategies_and_expected_link = [
+                (LinkAll(), true),
+                (UnlinkAll(), false),
+                (LinkSome(Set([vn]), UnlinkAll()), true),
+                (UnlinkSome(Set([vn]), LinkAll()), false),
+            ]
 
-    # Mismatched transform should error
-    strategy_bad = DynamicPPL.WithTransforms(VarNamedTuple(; x=wrong_ft), UnlinkAll())
-    @test_throws ErrorException DynamicPPL.apply_transform_strategy(
-        strategy_bad, tv, vn, dist
-    )
+            @testset "$strategy" for (strategy, expected_link) in
+                                     target_strategies_and_expected_link
+                @testset "Linked input" begin
+                    tv = TransformedValue(linked_vec, DynamicLink())
+                    new_raw, new_tv, new_logjac = DynamicPPL.apply_transform_strategy(
+                        strategy, tv, vn, dist
+                    )
+                    @test new_raw ≈ raw_val
+                    if expected_link
+                        @test new_tv.value == linked_vec
+                        @test new_tv.transform == DynamicLink()
+                        @test new_logjac ≈ logjac
+                    else
+                        @test new_tv.value ≈ raw_val
+                        @test new_tv.transform == NoTransform()
+                        @test iszero(new_logjac)
+                    end
+                end
+
+                @testset "Vectorised input" begin
+                    tv = TransformedValue(unlinked_vec, Unlink())
+                    new_raw, new_tv, new_logjac = DynamicPPL.apply_transform_strategy(
+                        strategy, tv, vn, dist
+                    )
+                    @test new_raw ≈ raw_val
+                    if expected_link
+                        @test new_tv.value ≈ linked_vec
+                        @test new_tv.transform == DynamicLink()
+                        @test new_logjac ≈ logjac
+                    else
+                        @test new_tv.value == unlinked_vec
+                        @test new_tv.transform == Unlink()
+                        @test iszero(new_logjac)
+                    end
+                end
+
+                @testset "Raw input" begin
+                    tv = TransformedValue(raw_val, NoTransform())
+                    new_raw, new_tv, new_logjac = DynamicPPL.apply_transform_strategy(
+                        strategy, tv, vn, dist
+                    )
+                    @test new_raw ≈ raw_val
+                    if expected_link
+                        @test new_tv.value ≈ linked_vec
+                        @test new_tv.transform == DynamicLink()
+                        @test new_logjac ≈ logjac
+                    else
+                        @test new_tv.value == raw_val
+                        @test new_tv.transform == NoTransform()
+                        @test iszero(new_logjac)
+                    end
+                end
+            end
+        end
+    end
+
+    @testset "FixedTransform" begin
+        dist = Beta(2, 2)
+        vn = @varname(x)
+        ft = FixedTransform(Bijectors.VectorBijectors.from_linked_vec(dist))
+        wrong_ft = FixedTransform(
+            Bijectors.VectorBijectors.from_linked_vec(InverseGamma(2, 3))
+        )
+
+        # Create a TransformedValue with ft
+        flink = Bijectors.VectorBijectors.to_linked_vec(dist)
+        raw_val = rand(Xoshiro(468), dist)
+        linked_val, logjac = Bijectors.with_logabsdet_jacobian(flink, raw_val)
+        tv = TransformedValue(linked_val, ft)
+
+        # Matching transform should work
+        strategy_ok = DynamicPPL.WithTransforms(VarNamedTuple(; x=ft), UnlinkAll())
+        new_raw, new_tv, new_logjac = DynamicPPL.apply_transform_strategy(
+            strategy_ok, tv, vn, dist
+        )
+        @test new_raw ≈ raw_val
+        @test new_tv.value == linked_val
+        @test new_tv.transform == ft
+        @test new_logjac ≈ logjac
+
+        # Mismatched transform should error
+        strategy_bad = DynamicPPL.WithTransforms(VarNamedTuple(; x=wrong_ft), UnlinkAll())
+        @test_throws ErrorException DynamicPPL.apply_transform_strategy(
+            strategy_bad, tv, vn, dist
+        )
+    end
 end
 
 @info "Completed $(@__FILE__) in $(now() - __now__)."
