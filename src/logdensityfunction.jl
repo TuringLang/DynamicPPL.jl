@@ -584,7 +584,7 @@ Given `vnt` which contains vectorised values (i.e., `TransformedValue{<:Abstract
 vectorised values in `vnt` to have the corresponding transforms from `transforms_vnt`.
 
 This function returns a VarNamedTuple mapping all VarNames to their corresponding
-`RangeAndTransform`.
+`TransformedValue`s.
 
 !!! warning
     This function might mutate `vnt`.
