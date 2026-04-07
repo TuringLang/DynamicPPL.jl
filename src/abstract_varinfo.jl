@@ -403,8 +403,6 @@ Return the current value(s) of `vn` (`vns`) in `vi` in the support of its (their
 distribution(s) as a flattened `Vector`.
 
 The default implementation is to call [`internal_values_as_vector`](@ref).
-
-See also: [`getindex(vi::AbstractVarInfo, vn::VarName, dist::Distribution)`](@ref)
 """
 Base.getindex(vi::AbstractVarInfo, ::Colon) = internal_values_as_vector(vi)
 
@@ -428,8 +426,6 @@ transformed to Euclidean space, depending on whether the varinfo was linked.
 
 See https://turinglang.org/docs/developers/transforms/dynamicppl/ for more
 information on how transformed variables are stored in DynamicPPL.
-
-See also: [`getindex(vi::AbstractVarInfo, vn::VarName, dist::Distribution)`](@ref)
 """
 function getindex_internal end
 
