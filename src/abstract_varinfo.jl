@@ -396,16 +396,6 @@ end
 Return an iterator over all `vns` in `vi`.
 """ Base.keys
 
-@doc """
-    getindex(vi::AbstractVarInfo, vn::VarName[, dist::Distribution])
-    getindex(vi::AbstractVarInfo, vns::Vector{<:VarName}[, dist::Distribution])
-
-Return the current value(s) of `vn` (`vns`) in `vi` in the support of its (their)
-distribution(s).
-
-If `dist` is specified, the value(s) will be massaged into the representation expected by `dist`.
-""" Base.getindex
-
 """
     getindex(vi::AbstractVarInfo, ::Colon)
 

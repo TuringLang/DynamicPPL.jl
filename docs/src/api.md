@@ -431,7 +431,6 @@ accloglikelihood!!
 
 ```@docs
 keys
-getindex
 empty!!
 isempty
 DynamicPPL.getindex_internal
