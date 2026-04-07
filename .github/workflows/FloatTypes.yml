@@ -26,7 +26,7 @@ jobs:
         with:
           version: "1"
 
-      - uses: julia-actions/cache@v2
+      - uses: julia-actions/cache@v3
 
       - name: Run float type tests
         working-directory: test/floattypes

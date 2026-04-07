@@ -126,7 +126,7 @@ end
         lp_d = logpdf(Normal(), values.d)
         m = demo() | (; c=values.c, d=values.d)
 
-        vi = DynamicPPL.unflatten!!(VarInfo(m), collect(values))
+        vi = DynamicPPL.unflatten!!(VarInfo(m), [values.a, values.b])
 
         vi = last(DynamicPPL.evaluate_nowarn!!(m, deepcopy(vi)))
         @test getlogprior(vi) == lp_a + lp_b
@@ -464,6 +464,21 @@ end
                 end
             end
         end
+    end
+
+    @testset "unflatten!! length check" begin
+        @model function demo_lc()
+            x ~ Normal()
+            return y ~ Normal(x, 1)
+        end
+        model = demo_lc() | (; y=0.0)
+        varinfo = VarInfo(model)
+        n = length(varinfo[:])
+        # Correct length should work.
+        @test DynamicPPL.unflatten!!(varinfo, zeros(n)) isa VarInfo
+        # Too many parameters should throw a DimensionMismatch.
+        @test_throws DimensionMismatch DynamicPPL.unflatten!!(varinfo, zeros(n + 1))
+        @test_throws DimensionMismatch DynamicPPL.unflatten!!(varinfo, zeros(2n))
     end
 
     @testset "unflatten!! type stability" begin

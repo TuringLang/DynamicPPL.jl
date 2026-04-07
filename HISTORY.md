@@ -88,6 +88,20 @@ The following functions were not exported; we document changes in them for compl
 
 Removed `getargnames`, `getmissings`, and `Base.nameof(::Model)` from the public API (export and documentation) as they are considered internal implementation details.
 
+# 0.40.20
+
+Added a public function, `DynamicPPL.extract_prefixes(::AbstractContext)`, to more generally handle the removal of `PrefixContext` entries from the context stack.
+
+Also exports `SkipTemplate` and `NoTemplate` from DynamicPPL.
+
+# 0.40.19
+
+Fixed `check_model()` occasionally failing to catch duplicate `VarName` assignments correctly when using multithreading with thread-safe variables.
+
+# 0.40.18
+
+Added a check on `unflatten!!` to error if the input vector was too long.
+
 # 0.40.17
 
 Implemented missing methods for `Base.copy` on internal structs.

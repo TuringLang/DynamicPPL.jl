@@ -506,6 +506,14 @@ end
 function unflatten!!(vi::VarInfo, vec::AbstractVector)
     vci = VectorChunkIterator!(vec, 1)
     new_values = map_values!!(vci, vi.values)
+    expected_len = vci.index - 1
+    if length(vec) != expected_len
+        throw(
+            DimensionMismatch(
+                "expected a vector of length $(expected_len), but got length $(length(vec))"
+            ),
+        )
+    end
     return VarInfo(vi.transform_strategy, new_values, vi.accs)
 end
 
