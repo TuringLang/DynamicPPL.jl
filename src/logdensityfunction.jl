@@ -110,7 +110,7 @@ along with other information for efficient calculation of the gradient of the lo
 Note that preparing a `LogDensityFunction` with an AD type `AutoBackend()` requires the AD
 backend itself to have been loaded (e.g. with `import Backend`).
 
-Finally, the `fix_transform` keyword argument allows you to specify whether the transforms
+Finally, the `fix_transforms` keyword argument allows you to specify whether the transforms
 used in the `LogDensityFunction` should be cached at the time of construction. If so, the
 model is evaluated once using the provided transform strategy, and the transforms used for
 each variable are stored in the `LogDensityFunction`. This allows you to avoid the overhead
