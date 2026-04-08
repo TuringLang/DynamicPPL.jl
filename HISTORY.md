@@ -85,8 +85,7 @@ The following functions were not exported; we document changes in them for compl
   - `update_link_status!!` has been renamed to `update_transform_status!!`.
   - `get_transform_strategy` has been renamed to `infer_transform_strategy`.
   - `from_internal_transform` and `from_linked_internal_transform` have been removed, since the new `TransformedValue`s do not store the transform with them.
-
-Removed `getargnames`, `getmissings`, and `Base.nameof(::Model)` from the public API (export and documentation) as they are considered internal implementation details.
+  - Removed `getargnames`, `getmissings`, and `Base.nameof(::Model)` from the public API (export and documentation) as they are considered internal implementation details.
 
 # 0.40.20
 

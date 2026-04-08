@@ -405,6 +405,13 @@ distribution(s) as a flattened `Vector`.
 The default implementation is to call [`internal_values_as_vector`](@ref).
 """
 Base.getindex(vi::AbstractVarInfo, ::Colon) = internal_values_as_vector(vi)
+function Base.getindex(::AbstractVarInfo, ::Union{VarName,AbstractVector{<:VarName}})
+    throw(
+        ArgumentError(
+            "The method `varinfo[varname(s)]` has been removed in DynamicPPL v0.41: please see https://turinglang.org/DynamicPPL.jl/stable/migration/#Getting-parameter-values for information on how to update your code if needed.",
+        ),
+    )
+end
 
 """
     internal_values_as_vector(vi::AbstractVarInfo)
