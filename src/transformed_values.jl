@@ -78,27 +78,63 @@ function Base.isequal(tv1::TransformedValue, tv2::TransformedValue)
 end
 
 """
-    get_transform(tv::TransformedValue)
+    DynamicPPL.get_transform(tv::TransformedValue)
 
-Get the function that converts the transformed value back to the raw value.
+Get the subtype of `AbstractTransform` that is stored inside `tv`. Note that this is not
+always a function that can be used to obtain the raw, untransformed value. If you need the
+    raw value, please use [`DynamicPPL.get_raw_value`](@ref).
 """
 get_transform(tv::TransformedValue) = tv.transform
 
 """
-    get_internal_value(tv::TransformedValue)
+    DynamicPPL.get_internal_value(tv::TransformedValue)
 
 Get the internal value stored in `tv`.
 """
 get_internal_value(tv::TransformedValue) = tv.value
 
 """
-    set_internal_value(tv::TransformedValue, new_val)
+    DynamicPPL.set_internal_value(tv::TransformedValue, new_val)
 
 Create a new `TransformedValue` with the same transformation as `tv`, but with
 internal value `new_val`.
 """
 set_internal_value(tv::TransformedValue, new_val) =
     TransformedValue(new_val, get_transform(tv))
+
+"""
+    DynamicPPL.get_raw_value(tv::TransformedValue)
+    DynamicPPL.get_raw_value(tv::TransformedValue, dist::Distribution)
+
+Get the raw (untransformed) value from a `TransformedValue`.
+
+The two-argument version, with a `dist::Distribution` argument, is required when the
+`TransformedValue` holds a *dynamic* transform (i.e., `tv.transform` is either
+[`DynamicLink`](@ref) or [`Unlink`](@ref).
+
+For [`FixedTransform`](@ref) or [`NoTransform`](@ref), the `dist` argument is not needed
+(and if supplied, will be ignored).
+"""
+get_raw_value(tv::TransformedValue{<:Any,NoTransform}) = get_internal_value(tv)
+get_raw_value(tv::TransformedValue{<:Any,NoTransform}, ::Distribution) = get_raw_value(tv)
+function get_raw_value(tv::TransformedValue{<:Any,<:FixedTransform})
+    return tv.transform.transform(get_internal_value(tv))
+end
+function get_raw_value(tv::TransformedValue{<:Any,<:FixedTransform}, ::Distribution)
+    return get_raw_value(tv)
+end
+function get_raw_value(
+    tv::TransformedValue{<:AbstractVector{<:Real},DynamicLink}, dist::Distribution
+)
+    finvlink = Bijectors.VectorBijectors.from_linked_vec(dist)
+    return finvlink(get_internal_value(tv))
+end
+function get_raw_value(
+    tv::TransformedValue{<:AbstractVector{<:Real},Unlink}, dist::Distribution
+)
+    invlink = Bijectors.VectorBijectors.from_vec(dist)
+    return invlink(get_internal_value(tv))
+end
 
 """
     abstract type AbstractTransformStrategy end
