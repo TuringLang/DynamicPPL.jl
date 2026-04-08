@@ -65,6 +65,11 @@ Note that, even though this method evaluates the model once, this method does *n
 an RNG argument to control that evaluation. This is because the fixed transforms are
 supposed to be *fixed*, i.e., they should not depend on random choices made during model
 execution!
+
+If you are unsure about whether the transforms for your model are fixed, you can use
+[`DynamicPPL.DebugUtils.has_static_constraints`](@ref). Note though that this relies on
+executing the model multiple times and is thus not foolproof (it may be that your transforms
+just happen to be the same each time).
 """
 function get_fixed_transforms(
     model::DynamicPPL.Model, transform_strategy::AbstractTransformStrategy
