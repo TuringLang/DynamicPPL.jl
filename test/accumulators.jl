@@ -31,7 +31,7 @@ TEST_ACCUMULATORS = (
     LogJacobianAccumulator(1.0),
     RawValueAccumulator(false),
     DynamicPPL.DebugRawValueAccumulator(),
-    DynamicPPL.BijectorAccumulator(),
+    DynamicPPL.FixedTransformAccumulator(),
     DynamicPPL.VNTAccumulator{DynamicPPL.POINTWISE_ACCNAME}(
         DynamicPPL.PointwiseLogProb{true,true}()
     ),
@@ -116,7 +116,7 @@ TEST_ACCUMULATORS = (
 
         @testset "accumulate_assume" begin
             val = 2.0
-            tval = DynamicPPL.UntransformedValue(nothing)
+            tval = DynamicPPL.TransformedValue(nothing, NoTransform())
             logjac = pi
             vn = @varname(x)
             dist = Normal()

@@ -21,10 +21,10 @@ using Mooncake: Mooncake
     dist = Beta(2, 2)
     @model f() = x ~ dist
     expected_ral_unlinked = @vnt begin
-        x := DynamicPPL.RangeAndLinked(1:1, false)
+        x := DynamicPPL.RangeAndTransform(1:1, Unlink())
     end
     expected_ral_linked = @vnt begin
-        x := DynamicPPL.RangeAndLinked(1:1, true)
+        x := DynamicPPL.RangeAndTransform(1:1, DynamicLink())
     end
     oavi_unlinked = begin
         accs = OnlyAccsVarInfo(VectorValueAccumulator())
@@ -83,16 +83,30 @@ using Mooncake: Mooncake
     end
 end
 
-@testset "LogDensityFunction: Correctness" begin
+@testset "LogDensityFunction: correctness with multiple threads" begin
+    @testset "Threaded assume" begin
+        @model function threaded_assume()
+            x = zeros(10)
+            Threads.@threads for i in eachindex(x)
+                x[i] ~ Normal()
+            end
+        end
+        model = setthreadsafe(threaded_assume(), true)
+        ldf = DynamicPPL.LogDensityFunction(model)
+        xs = rand(ldf)
+        @test xs isa Vector{Float64} && length(xs) == 10
+        @test LogDensityProblems.logdensity(ldf, xs) ≈ sum(logpdf.(Normal(), xs))
+    end
+
     @testset "Threaded observe" begin
-        @model function threaded(y)
+        @model function threaded_observe(y)
             x ~ Normal()
             Threads.@threads for i in eachindex(y)
                 y[i] ~ Normal(x)
             end
         end
         N = 100
-        model = setthreadsafe(threaded(zeros(N)), true)
+        model = setthreadsafe(threaded_observe(zeros(N)), true)
         ldf = DynamicPPL.LogDensityFunction(model)
 
         xs = [1.0]
@@ -530,6 +544,28 @@ end
             array_model_logp_and_grad = eval_logp_and_grad(array_model, test_m, adtype)
             @test array_model_logp_and_grad[1] ≈ array_model_reference[1]
             @test array_model_logp_and_grad[2] ≈ array_model_reference[2]
+        end
+    end
+end
+
+@testset "LogDensityFunction: fix_transforms correctness" begin
+    @testset "$(m.f)" for m in DynamicPPL.TestUtils.DEMO_MODELS
+        @testset "$strategy" for strategy in (UnlinkAll(), LinkAll())
+            ldf_dynamic = LogDensityFunction(m, getlogjoint_internal, strategy)
+            ldf_fixed = LogDensityFunction(
+                m, getlogjoint_internal, strategy; fix_transforms=true
+            )
+            # Check that the transform strategy does contain fixed transforms
+            tfm_strategy = ldf_fixed.transform_strategy
+            @test tfm_strategy isa WithTransforms
+            transforms_vnt = tfm_strategy.transforms
+            for v in DynamicPPL.TestUtils.varnames(m)
+                @test transforms_vnt[v] isa DynamicPPL.FixedTransform
+            end
+            # Check that log-density evaluation is correct
+            θ = rand(ldf_dynamic)
+            @test LogDensityProblems.logdensity(ldf_fixed, θ) ≈
+                LogDensityProblems.logdensity(ldf_dynamic, θ)
         end
     end
 end

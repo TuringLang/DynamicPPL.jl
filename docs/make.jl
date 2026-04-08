@@ -52,6 +52,7 @@ makedocs(;
         "Tilde-statements" => "tilde.md",
         "Initialisation strategies" => "init.md",
         "Transform strategies" => "transforms.md",
+        "Fixed transforms" => "transforms_fixed.md",
         "Accumulators" => [
             "accs/overview.md",
             "accs/existing.md",

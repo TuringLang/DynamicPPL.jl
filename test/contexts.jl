@@ -155,17 +155,23 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
             @test DynamicPPL.prefix(ctx4, vn) == @varname(b.a.x[1])
         end
 
-        @testset "prefix_and_strip_contexts" begin
+        @testset "prefix_and_strip_contexts + extract_prefixes" begin
             vn = @varname(x[1])
             ctx1 = PrefixContext(@varname(a))
             new_vn, new_ctx = DynamicPPL.prefix_and_strip_contexts(ctx1, vn)
             @test new_vn == @varname(a.x[1])
             @test new_ctx == DefaultContext()
+            new_ctx, prefixes = DynamicPPL.extract_prefixes(ctx1)
+            @test new_ctx == DefaultContext()
+            @test prefixes == @varname(a)
 
             ctx2 = CondFixContext{Fix}(VarNamedTuple(; b=4), PrefixContext(@varname(a)))
             new_vn, new_ctx = DynamicPPL.prefix_and_strip_contexts(ctx2, vn)
             @test new_vn == @varname(a.x[1])
             @test new_ctx == CondFixContext{Fix}(VarNamedTuple(; b=4))
+            new_ctx, prefixes = DynamicPPL.extract_prefixes(ctx2)
+            @test new_ctx == CondFixContext{Fix}(VarNamedTuple(; b=4))
+            @test prefixes == @varname(a)
 
             ctx3 = PrefixContext(
                 @varname(a), CondFixContext{Condition}(VarNamedTuple(; a=1))
@@ -173,6 +179,9 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
             new_vn, new_ctx = DynamicPPL.prefix_and_strip_contexts(ctx3, vn)
             @test new_vn == @varname(a.x[1])
             @test new_ctx == CondFixContext{Condition}(VarNamedTuple(; a=1))
+            new_ctx, prefixes = DynamicPPL.extract_prefixes(ctx3)
+            @test new_ctx == CondFixContext{Condition}(VarNamedTuple(; a=1))
+            @test prefixes == @varname(a)
 
             ctx4 = CondFixContext{Fix}(
                 VarNamedTuple(; b=4),
@@ -183,6 +192,19 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
             @test new_ctx == CondFixContext{Fix}(
                 VarNamedTuple(; b=4), CondFixContext{Condition}(VarNamedTuple(; a=1))
             )
+            new_ctx, prefixes = DynamicPPL.extract_prefixes(ctx4)
+            @test new_ctx == CondFixContext{Fix}(
+                VarNamedTuple(; b=4), CondFixContext{Condition}(VarNamedTuple(; a=1))
+            )
+            @test prefixes == @varname(a)
+
+            ctx5 = DefaultContext()
+            new_vn, new_ctx = DynamicPPL.prefix_and_strip_contexts(ctx5, vn)
+            @test new_vn == vn
+            @test new_ctx == DefaultContext()
+            new_ctx, prefixes = DynamicPPL.extract_prefixes(ctx5)
+            @test new_ctx == DefaultContext()
+            @test prefixes == nothing
         end
 
         @testset "evaluation: $(model.f)" for model in DynamicPPL.TestUtils.ALL_MODELS

@@ -36,7 +36,11 @@ Old:
 
 ```@example 1
 vi = VarInfo(Xoshiro(468), model)
-vi[@varname(x)], vi[@varname(y)]
+# This no longer works, but you may have used it.
+# vi[@varname(x)], vi[@varname(y)]
+
+# This still works
+DynamicPPL.getindex_internal(vi, @varname(x))
 ```
 
 New:

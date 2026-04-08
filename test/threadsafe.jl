@@ -111,22 +111,6 @@ const gdemo_default = gdemo_d()
         end
     end
 
-    @testset "promotion of VNT accumulators in TSVI" begin
-        # See https://github.com/TuringLang/DynamicPPL.jl/pull/1284.
-        @model function f()
-            x = zeros(10)
-            for i in eachindex(x)
-                x[i] ~ Normal()
-            end
-        end
-        model = setthreadsafe(f(), true)
-
-        vi = OnlyAccsVarInfo(RawValueAccumulator(false))
-        _, vi = DynamicPPL.init!!(model, vi, InitFromPrior(), UnlinkAll())
-        vnt = get_raw_values(vi)
-        @test vnt[@varname(x)] isa Vector{Float64}
-    end
-
     @testset "check_model with threadsafe" begin
         # This is a partial test for https://github.com/TuringLang/DynamicPPL.jl/issues/1157
         @model function f()
@@ -136,6 +120,34 @@ const gdemo_default = gdemo_d()
         end
         model = setthreadsafe(f(), true)
         @test !check_model(model)
+    end
+
+    @testset "assumes are threadsafe" begin
+        # See https://github.com/TuringLang/DynamicPPL.jl/pull/1284.
+        #
+        # Note: anything that involves VarInfo is still thread-unsafe. But anything
+        # that uses OnlyAccsVarInfo is fine
+        @model function threaded_assume()
+            x = zeros(10)
+            Threads.@threads for i in eachindex(x)
+                x[i] ~ Normal()
+            end
+        end
+        model = setthreadsafe(threaded_assume(), true)
+
+        @testset "rand" begin
+            vnt = rand(model)
+            for i in 1:10
+                @test haskey(vnt, @varname(x[i]))
+            end
+        end
+        @testset "logprob" begin
+            xfixed = rand(10)
+            params = VarNamedTuple(; x=xfixed)
+            @test logprior(model, params) ≈ sum(logpdf.(Normal(), xfixed))
+            @test iszero(loglikelihood(model, params))
+            @test logjoint(model, params) ≈ sum(logpdf.(Normal(), xfixed))
+        end
     end
 
     @testset "logprob correctness" begin

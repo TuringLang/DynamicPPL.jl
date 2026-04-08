@@ -103,3 +103,44 @@ function store_colon_eq!!(
     )
     return update_values(acc, new_values)
 end
+
+function DynamicPPL.combine(
+    acc1::Union{
+        VNTAccumulator{RAW_VALUE_ACCNAME,DebugGetRawValues},
+        TSVNTAccumulator{RAW_VALUE_ACCNAME,DebugGetRawValues},
+    },
+    acc2::Union{
+        VNTAccumulator{RAW_VALUE_ACCNAME,DebugGetRawValues},
+        TSVNTAccumulator{RAW_VALUE_ACCNAME,DebugGetRawValues},
+    },
+)
+    if acc1.f !== acc2.f
+        throw(ArgumentError("Cannot combine accumulators with different functions"))
+    end
+
+    new_values = acc1.values
+    for (vn, val) in pairs(acc2.values)
+        top_sym = DynamicPPL.AbstractPPL.getsym(vn)
+        template_from_acc2_values = get(
+            acc2.values.data, top_sym, DynamicPPL.VarNamedTuples.NoTemplate()
+        )
+        new_values = try
+            DynamicPPL.VarNamedTuples.templated_setindex_no_overwrite!!(
+                new_values, val, vn, template_from_acc2_values
+            )
+        catch e
+            if e isa DynamicPPL.VarNamedTuples.MustNotOverwriteError
+                push!(acc1.f.repeated_vns, e.target_vn)
+
+                # Note: if `acc1` and `acc2` have different templates
+                # `templated_setindex!!` uses the structure inside `acc1`'s values.
+                DynamicPPL.templated_setindex!!(
+                    new_values, val, vn, template_from_acc2_values
+                )
+            else
+                rethrow(e)
+            end
+        end
+    end
+    return update_values(acc1, new_values)
+end

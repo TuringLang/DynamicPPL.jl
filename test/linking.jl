@@ -95,7 +95,12 @@ end
                   DynamicPPL.getlogjoint_internal(vi_linked) ≈ log(2)
             # The non-internal logjoint should be the same since it doesn't depend on linking.
             @test DynamicPPL.getlogjoint(vi) ≈ DynamicPPL.getlogjoint(vi_linked)
-            @test vi_linked[@varname(m)] == LowerTriangular(vi[@varname(m)])
+            # The internal values should be convertible to the same thing.
+            @test Bijectors.VectorBijectors.from_linked_vec(dist)(
+                vi_linked.values[@varname(m)].value
+            ) ≈ LowerTriangular(
+                Bijectors.VectorBijectors.from_vec(dist)(vi.values[@varname(m)].value)
+            )
             # Linked one should be working with a lower-dimensional representation.
             @test length(vi_linked[:]) < length(vi[:])
             @test length(vi_linked[:]) == length(y)
@@ -106,7 +111,12 @@ end
                 DynamicPPL.invlink(vi_linked, model)
             end
             @test length(vi_invlinked[:]) == length(vi[:])
-            @test vi_invlinked[@varname(m)] ≈ LowerTriangular(vi[@varname(m)])
+            # The internal values should be convertible to the same thing.
+            @test Bijectors.VectorBijectors.from_vec(dist)(
+                vi_invlinked.values[@varname(m)].value
+            ) ≈ LowerTriangular(
+                Bijectors.VectorBijectors.from_vec(dist)(vi.values[@varname(m)].value)
+            )
             # The non-internal logjoint should still be the same, again since
             # it doesn't depend on linking.
             @test DynamicPPL.getlogjoint(vi_invlinked) ≈ DynamicPPL.getlogjoint(vi)
@@ -122,11 +132,12 @@ end
             @testset "d=$d" for d in [2, 3, 5]
                 model = demo_lkj(d)
                 dist = LKJCholesky(d, 1.0, uplo)
+                fromvec_transform = Bijectors.VectorBijectors.from_vec(dist)
                 values_original = NamedTuple(rand(model))
                 values_original_x_only = (x=values_original.x,)
                 vis = DynamicPPL.TestUtils.setup_varinfos(model, values_original_x_only)
                 @testset "$(short_varinfo_name(vi))" for vi in vis
-                    val = vi[@varname(x)]
+                    val = fromvec_transform(vi.values[@varname(x)].value)
                     # Ensure that `reconstruct` works as intended.
                     @test val isa Cholesky
                     @test val.uplo == uplo

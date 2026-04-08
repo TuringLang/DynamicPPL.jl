@@ -28,7 +28,8 @@ using Test
             this_vi = deepcopy(empty_vi)
             _, vi = DynamicPPL.init!!(model, this_vi, strategy, UnlinkAll())
             @test Set(keys(vi)) == Set([@varname(x), @varname(y)])
-            x, y = vi[@varname(x)], vi[@varname(y)]
+            x = only(DynamicPPL.getindex_internal(vi, @varname(x)))
+            y = DynamicPPL.getindex_internal(vi, @varname(y))
             @test x isa Real
             @test y isa AbstractVector{<:Real}
             @test length(y) == 2
@@ -48,21 +49,22 @@ using Test
             old_x, old_y = 100000.00, [300000.00, 500000.00]
             vi = DynamicPPL.setindex_with_dist!!(
                 vi,
-                UntransformedValue(old_x),
+                TransformedValue(old_x, NoTransform()),
                 Normal(),
                 @varname(x),
                 DynamicPPL.NoTemplate(),
             )
             vi = DynamicPPL.setindex_with_dist!!(
                 vi,
-                UntransformedValue(old_y),
+                TransformedValue(old_y, NoTransform()),
                 MvNormal(fill(old_x, 2), I),
                 @varname(y),
                 DynamicPPL.NoTemplate(),
             )
             # then overwrite it
             _, new_vi = DynamicPPL.init!!(model, vi, strategy, UnlinkAll())
-            new_x, new_y = new_vi[@varname(x)], new_vi[@varname(y)]
+            new_x = only(DynamicPPL.getindex_internal(new_vi, @varname(x)))
+            new_y = DynamicPPL.getindex_internal(new_vi, @varname(y))
             # check that the values are (presumably) different
             @test old_x != new_x
             @test old_y != new_y
@@ -72,14 +74,23 @@ using Test
     function test_rng_respected(strategy::AbstractInitStrategy)
         @testset "check that RNG is respected: $(typeof(strategy))" begin
             model = test_init_model()
-            empty_vi = VarInfo()
-            _, vi1 = DynamicPPL.init!!(Xoshiro(468), model, deepcopy(empty_vi), strategy)
-            _, vi2 = DynamicPPL.init!!(Xoshiro(468), model, deepcopy(empty_vi), strategy)
-            _, vi3 = DynamicPPL.init!!(Xoshiro(469), model, deepcopy(empty_vi), strategy)
-            @test vi1[@varname(x)] == vi2[@varname(x)]
-            @test vi1[@varname(y)] == vi2[@varname(y)]
-            @test vi1[@varname(x)] != vi3[@varname(x)]
-            @test vi1[@varname(y)] != vi3[@varname(y)]
+            accs = OnlyAccsVarInfo((RawValueAccumulator(false),))
+            _, accs1 = DynamicPPL.init!!(
+                Xoshiro(468), model, deepcopy(accs), strategy, UnlinkAll()
+            )
+            _, accs2 = DynamicPPL.init!!(
+                Xoshiro(468), model, deepcopy(accs), strategy, UnlinkAll()
+            )
+            _, accs3 = DynamicPPL.init!!(
+                Xoshiro(469), model, deepcopy(accs), strategy, UnlinkAll()
+            )
+            vnt1 = get_raw_values(accs1)
+            vnt2 = get_raw_values(accs2)
+            vnt3 = get_raw_values(accs3)
+            @test vnt1[@varname(x)] == vnt2[@varname(x)]
+            @test vnt1[@varname(y)] == vnt2[@varname(y)]
+            @test vnt1[@varname(x)] != vnt3[@varname(x)]
+            @test vnt1[@varname(y)] != vnt3[@varname(y)]
         end
     end
 
@@ -116,10 +127,10 @@ using Test
                 for vn in (@varname(a), @varname(b))
                     if DynamicPPL.target_transform(transform_strategy, vn) isa DynamicLink
                         @test DynamicPPL.is_transformed(vi, vn)
-                        # The VarInfo should hold a LinkedVectorValue
-                        lvv = vi.values[vn]
-                        @test lvv isa LinkedVectorValue
-                        linked_vec = DynamicPPL.get_internal_value(lvv)
+                        # The VarInfo should hold a linked value
+                        tv = vi.values[vn]
+                        @test tv.transform isa DynamicLink
+                        linked_vec = DynamicPPL.get_internal_value(tv)
                         val, inv_logjac = Bijectors.with_logabsdet_jacobian(
                             from_linked_vec, linked_vec
                         )
@@ -127,11 +138,11 @@ using Test
                         expected_logjac -= inv_logjac
                     else
                         @test !DynamicPPL.is_transformed(vi, vn)
-                        # The VarInfo should hold a VectorValue
-                        vv = vi.values[vn]
-                        @test vv isa VectorValue
+                        # The VarInfo should hold a non-linked value
+                        tv = vi.values[vn]
+                        @test tv.transform isa Unlink
                         # it should wrap a single value
-                        val = only(DynamicPPL.get_internal_value(vv))
+                        val = only(DynamicPPL.get_internal_value(tv))
                         expected_logprior += logpdf(dist, val)
                     end
                 end
@@ -150,9 +161,11 @@ using Test
         @testset "check that values are within support" begin
             @model just_unif() = x ~ Uniform(0.0, 1e-7)
             for _ in 1:100
-                _, vi = DynamicPPL.init!!(just_unif(), VarInfo(), InitFromPrior())
-                @test vi[@varname(x)] isa Real
-                @test 0.0 <= vi[@varname(x)] <= 1e-7
+                accs = OnlyAccsVarInfo((RawValueAccumulator(false),))
+                _, accs = DynamicPPL.init!!(just_unif(), accs, InitFromPrior(), UnlinkAll())
+                x = get_raw_values(accs)[@varname(x)]
+                @test x isa Real
+                @test 0.0 <= x <= 1e-7
             end
         end
 

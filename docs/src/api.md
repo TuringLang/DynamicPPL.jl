@@ -431,7 +431,6 @@ accloglikelihood!!
 
 ```@docs
 keys
-getindex
 empty!!
 isempty
 DynamicPPL.getindex_internal
@@ -441,18 +440,11 @@ DynamicPPL.setindex_internal!!
 #### Transformations
 
 ```@docs
-DynamicPPL.AbstractTransformation
-DynamicPPL.NoTransformation
-DynamicPPL.DynamicTransformation
-DynamicPPL.StaticTransformation
-```
-
-```@docs
 DynamicPPL.link
 DynamicPPL.invlink
 DynamicPPL.link!!
 DynamicPPL.invlink!!
-DynamicPPL.update_link_status!!
+DynamicPPL.update_transform_status!!
 ```
 
 ```@docs
@@ -461,19 +453,17 @@ DynamicPPL.LinkAll
 DynamicPPL.UnlinkAll
 DynamicPPL.LinkSome
 DynamicPPL.UnlinkSome
+DynamicPPL.WithTransforms
 ```
 
 ```@docs
 DynamicPPL.AbstractTransform
 DynamicPPL.DynamicLink
 DynamicPPL.Unlink
+DynamicPPL.FixedTransform
+DynamicPPL.NoTransform
 DynamicPPL.target_transform
 DynamicPPL.apply_transform_strategy
-```
-
-```@docs
-DynamicPPL.transformation
-DynamicPPL.default_transformation
 ```
 
 #### Utils
@@ -540,6 +530,12 @@ leafcontext
 setleafcontext
 ```
 
+Sometimes it is necessary to handle all `PrefixContext`s in a context stack at one go:
+
+```@docs
+extract_prefixes
+```
+
 ### VarInfo initialisation
 
 The function `init!!` is used to initialise, or overwrite, values in a VarInfo.
@@ -561,14 +557,10 @@ init
 get_param_eltype
 ```
 
-The function [`DynamicPPL.init`](@ref) should return an `AbstractTransformedValue`.
-There are three subtypes currently available:
+The function [`DynamicPPL.init`](@ref) should return a `TransformedValue`.
 
 ```@docs
-DynamicPPL.AbstractTransformedValue
-DynamicPPL.VectorValue
-DynamicPPL.LinkedVectorValue
-DynamicPPL.UntransformedValue
+DynamicPPL.TransformedValue
 ```
 
 The interface for working with transformed values consists of:
