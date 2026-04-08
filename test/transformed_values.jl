@@ -11,6 +11,75 @@ using Distributions
 using Random: Xoshiro
 using Test
 
+@testset "TransformedValue API" begin
+    @testset "get_transform, get_internal_value, set_internal_value" begin
+        ft = FixedTransform(nothing)
+        transforms = [DynamicLink(), Unlink(), NoTransform(), ft]
+        @testset "$tfm" for tfm in transforms
+            tv = TransformedValue([1.0, 2.0], tfm)
+            @test get_transform(tv) == tfm
+            @test get_internal_value(tv) == [1.0, 2.0]
+
+            tv2 = set_internal_value(tv, [3.0, 4.0])
+            @test get_internal_value(tv2) == [3.0, 4.0]
+            @test get_transform(tv2) == tfm
+        end
+    end
+
+    @testset "==" begin
+        tv1 = TransformedValue([1.0], NoTransform())
+        tv2 = TransformedValue([1.0], NoTransform())
+        tv3 = TransformedValue([2.0], NoTransform())
+        tv4 = TransformedValue([1.0], DynamicLink())
+        @test tv1 == tv2
+        @test tv1 != tv3
+        @test tv1 != tv4
+    end
+
+    @testset "get_raw_value" begin
+        struct DummyDist <: Distributions.ContinuousMultivariateDistribution end
+
+        @testset "NoTransform" begin
+            raw = randn(3)
+            tv = TransformedValue(raw, NoTransform())
+            @test get_raw_value(tv) == raw
+            @test get_raw_value(tv, DummyDist()) == raw
+        end
+
+        @testset "FixedTransform" begin
+            dist = Beta(2, 5)
+            ft = FixedTransform(Bijectors.VectorBijectors.from_linked_vec(dist))
+            flink = Bijectors.VectorBijectors.to_linked_vec(dist)
+            raw_val = rand(dist)
+            linked_val = flink(raw_val)
+            tv = TransformedValue(linked_val, ft)
+            @test get_raw_value(tv) ≈ raw_val
+            @test get_raw_value(tv, dist) ≈ raw_val
+        end
+
+        @testset "DynamicLink" begin
+            dist = Beta(2, 5)
+            flink = Bijectors.VectorBijectors.to_linked_vec(dist)
+            raw_val = rand(Xoshiro(468), dist)
+            linked_val = flink(raw_val)
+            tv = TransformedValue(linked_val, DynamicLink())
+            @test_throws ArgumentError get_raw_value(tv)
+            @test get_raw_value(tv, dist) ≈ raw_val
+        end
+
+        @testset "Unlink" begin
+            dist = Dirichlet([1.0, 2.0, 3.0])
+            fvec = Bijectors.VectorBijectors.to_vec(dist)
+            raw_val = rand(Xoshiro(468), dist)
+            vec_val = fvec(raw_val)
+            tv = TransformedValue(vec_val, Unlink())
+            @test_throws ArgumentError get_raw_value(tv)
+            @test_throws "dynamic transforms" get_raw_value(tv)
+            @test get_raw_value(tv, dist) ≈ raw_val
+        end
+    end
+end
+
 @testset "get_fixed_transforms" begin
     # Check that `get_fixed_transforms` does indeed return a VNT of the correct transforms.
     xdist = Beta(2, 5)

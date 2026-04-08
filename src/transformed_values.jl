@@ -123,6 +123,16 @@ end
 function get_raw_value(tv::TransformedValue{<:Any,<:FixedTransform}, ::Distribution)
     return get_raw_value(tv)
 end
+function get_raw_value(::TransformedValue{<:Any,<:Union{DynamicLink,Unlink}})
+    return throw(
+        ArgumentError(
+            "dynamic transforms including `DynamicLink` and `Unlink` must be calculated" *
+            " from the distribution of the variable: please use `get_raw_value(tv, dist)`" *
+            " instead, or alternatively fix the transforms if you know that they are" *
+            " constant.",
+        ),
+    )
+end
 function get_raw_value(
     tv::TransformedValue{<:AbstractVector{<:Real},DynamicLink}, dist::Distribution
 )
