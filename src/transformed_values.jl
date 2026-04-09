@@ -82,7 +82,7 @@ end
 
 Get the subtype of `AbstractTransform` that is stored inside `tv`. Note that this is not
 always a function that can be used to obtain the raw, untransformed value. If you need the
-    raw value, please use [`DynamicPPL.get_raw_value`](@ref).
+raw value, please use [`DynamicPPL.get_raw_value`](@ref).
 """
 get_transform(tv::TransformedValue) = tv.transform
 
@@ -199,9 +199,8 @@ target_transform(::UnlinkAll, ::VarName) = Unlink()
     WithTransforms(transforms::VarNamedTuple, fallback) <: AbstractTransformStrategy
 
 Indicate that the variables in `transforms` should be transformed according to their
-corresponding values in `transforms`, which should be subtypes of `AbstractTransform`.
-specified in `transforms`. The link statuses of other variables are determined by the
-`fallback` strategy.
+corresponding values in `transforms`, which should be subtypes of `AbstractTransform`. The
+link statuses of other variables are determined by the `fallback` strategy.
 """
 struct WithTransforms{V<:VarNamedTuple,L<:AbstractTransformStrategy} <:
        AbstractTransformStrategy

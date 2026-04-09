@@ -212,7 +212,7 @@ struct LogDensityFunction{
         # Determine LDF transform strategy.
         dynamic_transform_strategy = infer_transform_strategy_from_values(vnt)
         # `dynamic_transform_strategy` might be LinkAll() or UnlinkAll(), for example. We
-        # might need to convert this to a set of fixed transforrms.
+        # might need to convert this to a set of fixed transforms.
         transform_strategy = if fix_transforms
             # Reevaluate model again to determine the fixed transforms. This is kind of
             # wasteful: for example, we could tie this model evaluation to one of the
