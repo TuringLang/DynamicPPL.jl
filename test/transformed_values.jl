@@ -8,7 +8,6 @@ using AbstractPPL: AbstractPPL
 using Bijectors: Bijectors
 using DynamicPPL
 using Distributions
-using Random: Xoshiro
 using Test
 
 @testset "TransformedValue API" begin
@@ -60,7 +59,7 @@ using Test
         @testset "DynamicLink" begin
             dist = Beta(2, 5)
             flink = Bijectors.VectorBijectors.to_linked_vec(dist)
-            raw_val = rand(Xoshiro(468), dist)
+            raw_val = rand(dist)
             linked_val = flink(raw_val)
             tv = TransformedValue(linked_val, DynamicLink())
             @test_throws ArgumentError get_raw_value(tv)
@@ -70,7 +69,7 @@ using Test
         @testset "Unlink" begin
             dist = Dirichlet([1.0, 2.0, 3.0])
             fvec = Bijectors.VectorBijectors.to_vec(dist)
-            raw_val = rand(Xoshiro(468), dist)
+            raw_val = rand(dist)
             vec_val = fvec(raw_val)
             tv = TransformedValue(vec_val, Unlink())
             @test_throws ArgumentError get_raw_value(tv)
@@ -236,7 +235,7 @@ end
 
         # Create a TransformedValue with ft
         flink = Bijectors.VectorBijectors.to_linked_vec(dist)
-        raw_val = rand(Xoshiro(468), dist)
+        raw_val = rand(dist)
         linked_val, logjac = Bijectors.with_logabsdet_jacobian(flink, raw_val)
         tv = TransformedValue(linked_val, ft)
 
