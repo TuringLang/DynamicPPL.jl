@@ -1,3 +1,7 @@
+# 0.40.22
+
+Add a method for `AbstractMCMC.from_samples` to convert from a matrix of `VarNamedTuple`s to `MCMCChains.Chains`.
+
 # 0.40.21
 
 Improve performance on `RawValueAccumulator` with vector-valued parameters.
