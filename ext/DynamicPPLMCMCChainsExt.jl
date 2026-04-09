@@ -91,6 +91,21 @@ function AbstractMCMC.from_samples(
     symbols = vcat(param_symbols, stat_keys)
     return MCMCChains.Chains(MCMCChains.concretize(vals), symbols, name_map; info=info)
 end
+"""
+    AbstractMCMC.from_samples(
+        ::Type{MCMCChains.Chains},
+        vnts::AbstractMatrix{<:DynamicPPL.VarNamedTuple}
+    )
+
+Convert an array of `DynamicPPL.VarNamedTuple` to an `MCMCChains.Chains` object. The
+resulting chain will have no statistics (only parameters).
+"""
+function AbstractMCMC.from_samples(
+    ::Type{MCMCChains.Chains}, vnts::AbstractMatrix{<:DynamicPPL.VarNamedTuple}
+)
+    pwss = map(vnt -> DynamicPPL.ParamsWithStats(vnt, (;)), vnts)
+    return AbstractMCMC.from_samples(MCMCChains.Chains, pwss)
+end
 
 """
     AbstractMCMC.to_samples(
