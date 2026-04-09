@@ -14,12 +14,15 @@ Concretely,
   - `LinkedVectorValue(vec, tfm)` is now `TransformedValue(vec, DynamicLink())`
 
 **Note that this means for `VectorValue` and `LinkedVectorValue`, the transform is no longer stored on the value itself.**
-This means that given one of these values, you *cannot* access the raw value without running the model.
+This means that given one of these values, you *cannot* access the raw value without knowing the distribution from which it was sampled.
 
 The reason why this is done is that the transform may in principle change between model executions.
 This can happen if the prior distribution of a variable depends on the value of another variable.
 Previously, in DynamicPPL, we *always* made sure to recompute the transform during model evaluation; however, this was not enforced by the data structure.
 The current implementation makes it impossible to accidentally use an outdated transform, and is therefore more robust.
+
+The function `DynamicPPL.get_raw_value(::TransformedValue[, ::Distribution])` has been added to simplify the extraction of the raw value from a `TransformedValue`.
+The distribution argument is only needed if the transform is `DynamicLink` or `Unlink`.
 
 ### Addition of `FixedTransform`
 
@@ -32,15 +35,12 @@ For many simple distributions, this in fact saves absolutely no time, because de
 However, there are some edge cases for which this is not the case: for example, `product_distribution([Beta(2, 2), Normal()])` is quite slow (~ 3 µs).
 In such cases, using `FixedTransform` can lead to substantial performance improvements.
 
-To use `FixedTransform` with `LogDensityFunction`, you need to:
+To see how to use `FixedTransform`, please see the documentation at https://turinglang.org/DynamicPPL.jl/stable/fixed_transforms.
+The following entry points are provided:
 
- 1. Create a `VarNamedTuple` mapping `VarName`s to `FixedTransform`s for the variables in your model.
-    This can be done using `DynamicPPL.FixedTransformAccumulator` (see the DynamicPPL docs for more info), but is most easily done by calling `get_fixed_transforms(model, transform_strategy)`, where `transform_strategy` says whether you want linked or unlinked transforms.
-
- 2. Wrap the `VarNamedTuple` inside `WithTransforms(vnt, UnlinkAll())`.
-    `WithTransforms` is a subtype of `AbstractTransformStrategy`, much like `LinkAll()`.
-    However, `WithTransforms` specifies that *these exact transforms are to be used*, whereas `LinkAll` says 'derive the transforms again at model runtime'.
- 3. Construct a `LogDensityFunction(model, getlogjoint_internal, WithTransforms(...)); adtype=adtype`.
+  - `DynamicPPL.get_fixed_transforms(::Model, ::AbstractTransformStrategy)`
+  - The `fix_transforms` keyword argument to `LogDensityFunction`
+  - `FixedTransformAccumulator` for specialised use cases
 
 ### Removal of `getindex(vi::VarInfo, vn::VarName)`
 
@@ -52,23 +52,22 @@ That means that if we update the vectorised value without changing the transform
 In particular, this is *exactly* what the function `unflatten!!` does: it updates the vectorised values but does not touch the transform.
 
 In the current version, we have removed this method to prevent the possibility of obtaining incorrect results.
-(Our hands are also forced by the fact that the new `TransformedValue`s do not store the actual transform with them.)
 
-*In place of using `VarInfo`, we strongly recommend that you migrate to using `OnlyAccsVarInfo`.*
+**How do I get around this?**
+
+There are two ways of working around this.
+The first is to access the transformed value in the VarInfo, and then get the raw value from that: `DynamicPPL.get_raw_value(DynamicPPL.get_transformed_value(vi, vn)[, dist])`.
+Note that the `dist` argument corresponds to the distribution for `vn` (see above for more information).
+
+The recommended way of avoiding this, however, is to migrate to using `OnlyAccsVarInfo`.*
 In particular, to access raw (untransformed) values, you should use an `OnlyAccsVarInfo` with a `RawValueAccumulator`.
+These are guaranteed to be always up-to-date and you do not have to mess around with transforms.
 There is [a migration guide available on the DynamicPPL documentation](https://turinglang.org/DynamicPPL.jl/stable/migration/) and we are very happy to add more examples to this if you run into something that is not covered.
-
-### FixedTransformAccumulator
-
-TODO, this part is still being worked on.
-
-  - `BijectorAccumulator` → `FixedTransformAccumulator`
-  - `get_fixed_transforms(::VarInfo)`
-  - `get_fixed_transforms(::Model)`
 
 ## Miscellaneous breaking changes
 
   - Removed the `varinfo` keyword argument from `DynamicPPL.TestUtils.AD.run_ad`, and replaced the `varinfo` field in the returned `ADResult` with `ldf::LogDensityFunction`.
+  - Removed the method `Bijectors.bijector(::DynamicPPL.Model)`; equivalent information can be obtained with `get_fixed_transforms` (although it returns a `VarNamedTuple` of transforms rather than a single stacked transform).
 
 ## Internal changes
 

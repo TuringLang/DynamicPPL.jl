@@ -568,6 +568,7 @@ The interface for working with transformed values consists of:
 ```@docs
 DynamicPPL.get_transform
 DynamicPPL.get_internal_value
+DynamicPPL.get_raw_value
 DynamicPPL.set_internal_value
 ```
 

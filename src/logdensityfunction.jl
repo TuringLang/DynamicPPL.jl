@@ -189,6 +189,8 @@ struct LogDensityFunction{
     # type of the vector passed to logdensity functions
     X<:AbstractVector,
     AC<:AccumulatorTuple,
+    # whether all transforms are FixedTransforms, enabling fast parameter extraction
+    AllFixed,
 }
     model::M
     adtype::AD
@@ -212,7 +214,7 @@ struct LogDensityFunction{
         # Determine LDF transform strategy.
         dynamic_transform_strategy = infer_transform_strategy_from_values(vnt)
         # `dynamic_transform_strategy` might be LinkAll() or UnlinkAll(), for example. We
-        # might need to convert this to a set of fixed transforrms.
+        # might need to convert this to a set of fixed transforms.
         transform_strategy = if fix_transforms
             # Reevaluate model again to determine the fixed transforms. This is kind of
             # wasteful: for example, we could tie this model evaluation to one of the
@@ -230,6 +232,12 @@ struct LogDensityFunction{
             dynamic_transform_strategy
         end
         ranges_and_transforms = get_rangeandtransforms(vnt)
+
+        # Determine whether all transforms are fixed. This enables fast parameter
+        # extraction in ParamsWithStats without model re-evaluation.
+        all_fixed = all(
+            rat -> rat.transform isa FixedTransform, values(ranges_and_transforms)
+        )
 
         # Get vectorised parameters. Note that `internal_values_as_vector` just concatenates
         # all the vectors inside in iteration order of the VNT's keys. *In principle*, the
@@ -268,6 +276,7 @@ struct LogDensityFunction{
             typeof(prep),
             typeof(x),
             typeof(accs),
+            all_fixed,
         }(
             model,
             adtype,
