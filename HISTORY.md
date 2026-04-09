@@ -67,6 +67,7 @@ There is [a migration guide available on the DynamicPPL documentation](https://t
 ## Miscellaneous breaking changes
 
   - Removed the `varinfo` keyword argument from `DynamicPPL.TestUtils.AD.run_ad`, and replaced the `varinfo` field in the returned `ADResult` with `ldf::LogDensityFunction`.
+  - Removed the method `Bijectors.bijector(::DynamicPPL.Model)`; equivalent information can be obtained with `get_fixed_transforms` (although it returns a `VarNamedTuple` of transforms rather than a single stacked transform).
 
 ## Internal changes
 
