@@ -42,6 +42,13 @@ end
             @test logpdf.(Normal(), c[:x]) ≈ c[:logprior]
             @test c.info.varname_to_symbol[@varname(x)] == :x
             @test c.info.varname_to_symbol[@varname(y)] == :y
+
+            # with just VarNamedTuple
+            vnts = [p.params for p in ps]
+            c2 = AbstractMCMC.from_samples(MCMCChains.Chains, vnts)
+            @test Set(keys(c2)) == Set([:x, :y])
+            @test c2[:x] == c[:x]
+            @test c2[:y] == c[:y]
         end
     end
 
