@@ -120,8 +120,22 @@ via `unflatten!!` plus re-evaluation. It is faster for two reasons:
    otherwise re-evaluation would mutate the VarInfo, rendering it unusable for subsequent
    MCMC iterations).
 2. The re-evaluation is faster as it uses `OnlyAccsVarInfo`.
+
+Furthermore, if the `LogDensityFunction` has all fixed transforms (i.e., was constructed
+with `fix_transforms=true`), and neither `include_log_probs` nor `include_colon_eq` is
+set, then model re-evaluation is skipped entirely and the raw parameter values are
+extracted directly from the parameter vector using the cached transforms.
 """
 function ParamsWithStats(
+    param_vector::AbstractVector,
+    ldf::DynamicPPL.LogDensityFunction,
+    stats::NamedTuple=NamedTuple();
+    include_colon_eq::Bool=true,
+    include_log_probs::Bool=true,
+)
+    return pws_with_eval(param_vector, ldf, stats; include_colon_eq, include_log_probs)
+end
+function pws_with_eval(
     param_vector::AbstractVector,
     ldf::DynamicPPL.LogDensityFunction,
     stats::NamedTuple=NamedTuple();
@@ -156,6 +170,32 @@ function ParamsWithStats(
         )
     end
     return ParamsWithStats(params, stats)
+end
+
+# Specialisation for when the LDF is known to have all fixed transforms. In this case, we
+# can avoid reevaluating the model because the transformed values + their transforms are
+# all known (unless we need log probs, or `:=` results, in which case we will just have
+# to reevaluate anyway).
+function ParamsWithStats(
+    param_vector::AbstractVector,
+    ldf::LogDensityFunction{M,A,L,F,V,D,X,C,true},
+    stats::NamedTuple=NamedTuple();
+    include_colon_eq::Bool=true,
+    include_log_probs::Bool=true,
+) where {M,A,L,F,V,D,X,C}
+    return if include_log_probs || include_colon_eq
+        pws_with_eval(param_vector, ldf, stats; include_colon_eq, include_log_probs)
+    else
+        params = VarNamedTuple()
+        for (vn, rat) in pairs(ldf._varname_ranges)
+            top_sym = AbstractPPL.getsym(vn)
+            template = get(ldf._varname_ranges.data, top_sym, DynamicPPL.NoTemplate())
+            raw_val = rat.transform.transform(param_vector[rat.range])
+            params = DynamicPPL.templated_setindex!!(params, raw_val, vn, template)
+        end
+        params = densify!!(params)
+        ParamsWithStats(params, stats)
+    end
 end
 
 function Base.show(io::IO, ::MIME"text/plain", pws::ParamsWithStats)

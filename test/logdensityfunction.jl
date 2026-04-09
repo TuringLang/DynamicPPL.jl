@@ -549,12 +549,21 @@ end
 end
 
 @testset "LogDensityFunction: fix_transforms correctness" begin
+    # Helper function to check whether the AllFixed type parameter on LogDensityFunction is
+    # set correctly.
+    function has_all_fixed_transforms(
+        ::LogDensityFunction{M,A,L,F,V,D,X,C,AF}
+    ) where {M,A,L,F,V,D,X,C,AF}
+        return AF
+    end
+
     @testset "$(m.f)" for m in DynamicPPL.TestUtils.DEMO_MODELS
         @testset "$strategy" for strategy in (UnlinkAll(), LinkAll())
             ldf_dynamic = LogDensityFunction(m, getlogjoint_internal, strategy)
             ldf_fixed = LogDensityFunction(
                 m, getlogjoint_internal, strategy; fix_transforms=true
             )
+            @test has_all_fixed_transforms(ldf_fixed)
             # Check that the transform strategy does contain fixed transforms
             tfm_strategy = ldf_fixed.transform_strategy
             @test tfm_strategy isa WithTransforms

@@ -26,8 +26,8 @@ in a `VarInfo`.
 
 On top of that, `VarInfo` also stores a transform strategy, which reflects the linked status
 of variables inside the `VarInfo`. For example, a `VarInfo{LinkAll}` should contain only
-`TransformedValue{T,LinkAll}`s in its `values` field. This unfortunately leads to redundancy
-of information, but is necessary for type stability, since that allows us to have
+`TransformedValue{T,DynamicLink}`s in its `values` field. This unfortunately leads to
+redundancy of information, but is necessary for type stability, since that allows us to have
 compile-time knowledge of what transformations are applied.
 
 Because the job of `VarInfo` is to store transformed values, there is no generic

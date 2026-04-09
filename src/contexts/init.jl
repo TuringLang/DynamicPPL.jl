@@ -14,7 +14,7 @@ abstract type AbstractInitStrategy end
 
 Generate a new value for a random variable with the given distribution.
 
-This function must return an `TransformedValue`.
+This function must return a `TransformedValue`.
 
 If `strategy` provides values that are already untransformed (e.g., a Float64 within (0, 1)
 for `dist::Beta`, then you should return a `TransformedValue` with a `NoTransform()`.
