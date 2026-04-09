@@ -9,6 +9,9 @@ Base.copy(g::GetRawValues) = g
 # can go mutating the object without that in turn mutating the value stored in the
 # accumulator, which should be as it was at `~` time. Could there be a way around this?
 (g::GetRawValues)(val, tval, logjac, vn, dist) = deepcopy(val)
+# collect is much faster than deepcopy on views, and for our purposes is the same (returns a
+# copy of data that is not aliased to the original)
+(g::GetRawValues)(val::SubArray, tval, logjac, vn, dist) = collect(val)
 is_extracting_colon_eq_values(g::GetRawValues) = g.include_colon_eq
 
 """

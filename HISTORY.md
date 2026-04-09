@@ -1,3 +1,7 @@
+# 0.40.21
+
+Improve performance on `RawValueAccumulator` with vector-valued parameters.
+
 # 0.40.20
 
 Added a public function, `DynamicPPL.extract_prefixes(::AbstractContext)`, to more generally handle the removal of `PrefixContext` entries from the context stack.
