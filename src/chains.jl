@@ -172,7 +172,10 @@ function pws_with_eval(
     return ParamsWithStats(params, stats)
 end
 
-# Specialisation for when the LDF is known to have all fixed transforms
+# Specialisation for when the LDF is known to have all fixed transforms. In this case, we
+# can avoid reevaluating the model because the transformed values + their transforms are
+# all known (unless we need log probs, or `:=` results, in which case we will just have
+# to reevaluate anyway).
 function ParamsWithStats(
     param_vector::AbstractVector,
     ldf::LogDensityFunction{M,A,L,F,V,D,X,C,true},
@@ -180,20 +183,19 @@ function ParamsWithStats(
     include_colon_eq::Bool=true,
     include_log_probs::Bool=true,
 ) where {M,A,L,F,V,D,X,C}
-    if include_log_probs || include_colon_eq
-        return pws_with_eval(param_vector, ldf, stats; include_colon_eq, include_log_probs)
+    return if include_log_probs || include_colon_eq
+        pws_with_eval(param_vector, ldf, stats; include_colon_eq, include_log_probs)
+    else
+        params = VarNamedTuple()
+        for (vn, rat) in pairs(ldf._varname_ranges)
+            top_sym = AbstractPPL.getsym(vn)
+            template = get(ldf._varname_ranges.data, top_sym, DynamicPPL.NoTemplate())
+            raw_val = rat.transform.transform(param_vector[rat.range])
+            params = DynamicPPL.templated_setindex!!(params, raw_val, vn, template)
+        end
+        params = densify!!(params)
+        ParamsWithStats(params, stats)
     end
-    # Fast path: extract raw values directly from the parameter vector using the fixed
-    # transforms, without re-evaluating the model.
-    params = VarNamedTuple()
-    for (vn, rat) in pairs(ldf._varname_ranges)
-        top_sym = AbstractPPL.getsym(vn)
-        template = get(ldf._varname_ranges.data, top_sym, DynamicPPL.NoTemplate())
-        raw_val = rat.transform.transform(param_vector[rat.range])
-        params = DynamicPPL.templated_setindex!!(params, raw_val, vn, template)
-    end
-    params = densify!!(params)
-    return ParamsWithStats(params, stats)
 end
 
 function Base.show(io::IO, ::MIME"text/plain", pws::ParamsWithStats)
