@@ -120,8 +120,22 @@ via `unflatten!!` plus re-evaluation. It is faster for two reasons:
    otherwise re-evaluation would mutate the VarInfo, rendering it unusable for subsequent
    MCMC iterations).
 2. The re-evaluation is faster as it uses `OnlyAccsVarInfo`.
+
+Furthermore, if the `LogDensityFunction` has all fixed transforms (i.e., was constructed
+with `fix_transforms=true`), and neither `include_log_probs` nor `include_colon_eq` is
+set, then model re-evaluation is skipped entirely and the raw parameter values are
+extracted directly from the parameter vector using the cached transforms.
 """
 function ParamsWithStats(
+    param_vector::AbstractVector,
+    ldf::DynamicPPL.LogDensityFunction,
+    stats::NamedTuple=NamedTuple();
+    include_colon_eq::Bool=true,
+    include_log_probs::Bool=true,
+)
+    return pws_with_eval(param_vector, ldf, stats; include_colon_eq, include_log_probs)
+end
+function pws_with_eval(
     param_vector::AbstractVector,
     ldf::DynamicPPL.LogDensityFunction,
     stats::NamedTuple=NamedTuple();
@@ -155,6 +169,30 @@ function ParamsWithStats(
             ),
         )
     end
+    return ParamsWithStats(params, stats)
+end
+
+# Specialisation for when the LDF is known to have all fixed transforms
+function ParamsWithStats(
+    param_vector::AbstractVector,
+    ldf::LogDensityFunction{M,A,L,F,V,D,X,C,true},
+    stats::NamedTuple=NamedTuple();
+    include_colon_eq::Bool=true,
+    include_log_probs::Bool=true,
+) where {M,A,L,F,V,D,X,C}
+    if include_log_probs || include_colon_eq
+        return pws_with_eval(param_vector, ldf, stats; include_colon_eq, include_log_probs)
+    end
+    # Fast path: extract raw values directly from the parameter vector using the fixed
+    # transforms, without re-evaluating the model.
+    params = VarNamedTuple()
+    for (vn, rat) in pairs(ldf._varname_ranges)
+        top_sym = AbstractPPL.getsym(vn)
+        template = get(ldf._varname_ranges.data, top_sym, DynamicPPL.NoTemplate())
+        raw_val = rat.transform.transform(param_vector[rat.range])
+        params = DynamicPPL.templated_setindex!!(params, raw_val, vn, template)
+    end
+    params = densify!!(params)
     return ParamsWithStats(params, stats)
 end
 

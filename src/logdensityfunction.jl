@@ -189,6 +189,8 @@ struct LogDensityFunction{
     # type of the vector passed to logdensity functions
     X<:AbstractVector,
     AC<:AccumulatorTuple,
+    # whether all transforms are FixedTransforms, enabling fast parameter extraction
+    AllFixed,
 }
     model::M
     adtype::AD
@@ -231,6 +233,12 @@ struct LogDensityFunction{
         end
         ranges_and_transforms = get_rangeandtransforms(vnt)
 
+        # Determine whether all transforms are fixed. This enables fast parameter
+        # extraction in ParamsWithStats without model re-evaluation.
+        all_fixed = all(
+            rat -> rat.transform isa FixedTransform, values(ranges_and_transforms)
+        )
+
         # Get vectorised parameters. Note that `internal_values_as_vector` just concatenates
         # all the vectors inside in iteration order of the VNT's keys. *In principle*, the
         # result of that should always be consistent with the ranges extracted above via
@@ -268,6 +276,7 @@ struct LogDensityFunction{
             typeof(prep),
             typeof(x),
             typeof(accs),
+            all_fixed,
         }(
             model,
             adtype,
