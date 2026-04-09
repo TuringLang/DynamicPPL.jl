@@ -87,6 +87,10 @@ The following functions were not exported; we document changes in them for compl
   - `from_internal_transform` and `from_linked_internal_transform` have been removed, since the new `TransformedValue`s do not store the transform with them.
   - Removed `getargnames`, `getmissings`, and `Base.nameof(::Model)` from the public API (export and documentation) as they are considered internal implementation details.
 
+# 0.40.21
+
+Improve performance on `RawValueAccumulator` with vector-valued parameters.
+
 # 0.40.20
 
 Added a public function, `DynamicPPL.extract_prefixes(::AbstractContext)`, to more generally handle the removal of `PrefixContext` entries from the context stack.

@@ -1,14 +1,20 @@
 const RAW_VALUE_ACCNAME = :RawValues
 
+# TODO(mhauru) The deepcopy here is quite unfortunate. It is needed so that the model body
+# can go mutating the object without that in turn mutating the value stored in the
+# accumulator, which should be as it was at `~` time. Could there be a way around this?
+_safe_copy(val) = deepcopy(val)
+# collect is much faster than deepcopy on views, and for our purposes is the same (returns a
+# copy of data that is not aliased to the original).
+# See https://github.com/TuringLang/DynamicPPL.jl/pull/1350
+_safe_copy(val::SubArray) = collect(val)
+
 struct GetRawValues
     "A flag indicating whether variables on the LHS of := should also be included"
     include_colon_eq::Bool
 end
 Base.copy(g::GetRawValues) = g
-# TODO(mhauru) The deepcopy here is quite unfortunate. It is needed so that the model body
-# can go mutating the object without that in turn mutating the value stored in the
-# accumulator, which should be as it was at `~` time. Could there be a way around this?
-(g::GetRawValues)(val, tval, logjac, vn, dist) = deepcopy(val)
+(g::GetRawValues)(val, tval, logjac, vn, dist) = _safe_copy(val)
 is_extracting_colon_eq_values(g::GetRawValues) = g.include_colon_eq
 
 """
@@ -36,7 +42,7 @@ function store_colon_eq!!(
     val,
     template,
 )
-    new_val = deepcopy(val)
+    new_val = _safe_copy(val)
     new_values = DynamicPPL.templated_setindex!!(acc.values, new_val, vn, template)
     return update_values(acc, new_values)
 end
@@ -69,7 +75,7 @@ function accumulate_assume!!(
     dist,
     template,
 )
-    new_val = deepcopy(val)
+    new_val = _safe_copy(val)
     # The exception catching is probably slow, but it's ok since it only happens inside
     # check_model.
     new_vnt = try
@@ -97,7 +103,7 @@ function store_colon_eq!!(
     val,
     template,
 )
-    new_val = deepcopy(val)
+    new_val = _safe_copy(val)
     new_values = DynamicPPL.VarNamedTuples.templated_setindex_no_overwrite!!(
         acc.values, new_val, vn, template
     )
