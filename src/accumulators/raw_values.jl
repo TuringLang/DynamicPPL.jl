@@ -5,7 +5,8 @@ const RAW_VALUE_ACCNAME = :RawValues
 # accumulator, which should be as it was at `~` time. Could there be a way around this?
 _safe_copy(val) = deepcopy(val)
 # collect is much faster than deepcopy on views, and for our purposes is the same (returns a
-# copy of data that is not aliased to the original)
+# copy of data that is not aliased to the original).
+# See https://github.com/TuringLang/DynamicPPL.jl/pull/1350
 _safe_copy(val::SubArray) = collect(val)
 
 struct GetRawValues
