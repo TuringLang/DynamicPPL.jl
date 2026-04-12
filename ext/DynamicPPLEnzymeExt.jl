@@ -1,6 +1,6 @@
 module DynamicPPLEnzymeExt
 
-using DynamicPPL: ADTypes, DynamicPPL
+using DynamicPPL: ADTypes, DynamicPPL, logdensity_at
 using Enzyme: Enzyme
 
 _enzyme_gradient_mode(::ADTypes.AutoEnzyme{Nothing}) = Enzyme.ReverseWithPrimal
@@ -30,21 +30,19 @@ function DynamicPPL._value_and_gradient(
     transform_strategy::DynamicPPL.AbstractTransformStrategy,
     accs::DynamicPPL.AccumulatorTuple,
 )
-    f = DynamicPPL.LogDensityAt(
-        model, getlogdensity, varname_ranges, transform_strategy, accs
-    )
     dx = prep.dx
     fill!(dx, zero(eltype(dx)))
-    # Const(f): LogDensityAt is not being differentiated; without Const, Enzyme errors
-    # because it cannot prove the function argument is readonly.
-    # We always use reverse mode to obtain the full gradient in one pass, but preserve
-    # runtime-activity settings from `adtype.mode` when they were requested.
-    # autodiff(ReverseWithPrimal, ...) returns ((), val); dx is mutated in-place.
+    # Pass the plain function plus Const arguments; Enzyme is brittle with closure-like callables.
     _, val = Enzyme.autodiff(
         _enzyme_gradient_mode(adtype),
-        Enzyme.Const(f),
+        logdensity_at,
         Enzyme.Active,
         Enzyme.Duplicated(params, dx),
+        Enzyme.Const(model),
+        Enzyme.Const(getlogdensity),
+        Enzyme.Const(varname_ranges),
+        Enzyme.Const(transform_strategy),
+        Enzyme.Const(accs),
     )
     return val, copy(dx)
 end
