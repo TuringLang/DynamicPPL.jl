@@ -66,7 +66,8 @@ function DynamicPPL._prepare_gradient(
     return (; cache, dx=similar(x), grad=similar(x))
 end
 
-function DynamicPPL._value_and_gradient(
+# Inline this hook so the `(value, grad)` result stays as an sret tuple instead of boxing.
+@inline function DynamicPPL._value_and_gradient(
     ::AutoMooncake,
     prep,
     params::AbstractVector{<:Real},
@@ -81,7 +82,7 @@ function DynamicPPL._value_and_gradient(
     return value, copy(grad)
 end
 
-function DynamicPPL._value_and_gradient(
+@inline function DynamicPPL._value_and_gradient(
     ::AutoMooncakeForward,
     prep,
     params::AbstractVector{<:Real},
