@@ -2,7 +2,6 @@ module AD
 
 using ADTypes: AbstractADType, AutoForwardDiff
 using Chairmarks: @be
-import DifferentiationInterface as DI
 using DocStringExtensions
 using DynamicPPL:
     DynamicPPL,

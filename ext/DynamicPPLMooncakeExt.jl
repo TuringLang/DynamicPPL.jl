@@ -3,9 +3,13 @@ module DynamicPPLMooncakeExt
 using DynamicPPL: DynamicPPL, is_transformed
 using Mooncake:
     Mooncake,
+    Dual,
     NoTangent,
     prepare_derivative_cache,
     prepare_gradient_cache,
+    primal,
+    tangent,
+    value_and_derivative!!,
     value_and_gradient!!
 
 # These are purely optimisations (although quite significant ones sometimes, especially for
@@ -61,7 +65,8 @@ function DynamicPPL._prepare_gradient(
     accs::DynamicPPL.AccumulatorTuple,
 )
     f = LogDensityAt(model, getlogdensity, varname_ranges, transform_strategy, accs)
-    return prepare_derivative_cache(f, x; config=_cache_config(adtype))
+    cache = prepare_derivative_cache(f, x; config=_cache_config(adtype))
+    return (; cache, dx=similar(x), grad=similar(x))
 end
 
 function DynamicPPL._value_and_gradient(
@@ -90,7 +95,16 @@ function DynamicPPL._value_and_gradient(
     accs::DynamicPPL.AccumulatorTuple,
 )
     f = LogDensityAt(model, getlogdensity, varname_ranges, transform_strategy, accs)
-    value, grad = value_and_gradient!!(prep, f, params)
+    (; cache, dx, grad) = prep
+    value = zero(eltype(grad))
+    fill!(dx, zero(eltype(dx)))
+    @inbounds for i in eachindex(grad, dx)
+        dx[i] = one(eltype(dx))
+        result = value_and_derivative!!(cache, Dual(f, NoTangent()), Dual(params, dx))
+        value = primal(result)
+        grad[i] = tangent(result)
+        dx[i] = zero(eltype(dx))
+    end
     return value, copy(grad)
 end
 
