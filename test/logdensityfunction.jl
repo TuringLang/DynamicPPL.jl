@@ -178,12 +178,12 @@ end
         struct ErrorAccumulatorException <: Exception end
         struct ErrorAccumulator <: DynamicPPL.AbstractAccumulator end
         DynamicPPL.accumulator_name(::ErrorAccumulator) = :ERROR
-        DynamicPPL.accumulate_assume!!(::ErrorAccumulator, ::Any, ::Any, ::Any, ::VarName, ::Distribution, ::Any) = throw(
-            ErrorAccumulatorException()
-        )
-        DynamicPPL.accumulate_observe!!(::ErrorAccumulator, ::Distribution, ::Any, ::Union{VarName,Nothing}, ::Any) = throw(
-            ErrorAccumulatorException()
-        )
+        DynamicPPL.accumulate_assume!!(
+            ::ErrorAccumulator, ::Any, ::Any, ::Any, ::VarName, ::Distribution, ::Any
+        ) = throw(ErrorAccumulatorException())
+        DynamicPPL.accumulate_observe!!(
+            ::ErrorAccumulator, ::Distribution, ::Any, ::Union{VarName,Nothing}, ::Any
+        ) = throw(ErrorAccumulatorException())
         DynamicPPL.reset(ea::ErrorAccumulator) = ea
         Base.copy(ea::ErrorAccumulator) = ea
         # Construct an LDF
@@ -497,7 +497,7 @@ end
             return LogDensityProblems.logdensity_and_gradient(ldf, m[:])
         end
 
-        @model function scalar_matrix_model((::Type{T})=Float64) where {T<:Real}
+        @model function scalar_matrix_model(::Type{T}=Float64) where {T<:Real}
             m = Matrix{T}(undef, 2, 3)
             return m ~ filldist(MvNormal(zeros(2), I), 3)
         end
@@ -506,14 +506,14 @@ end
             scalar_matrix_model, test_m, ref_adtype
         )
 
-        @model function matrix_model((::Type{T})=Matrix{Float64}) where {T}
+        @model function matrix_model(::Type{T}=Matrix{Float64}) where {T}
             m = T(undef, 2, 3)
             return m ~ filldist(MvNormal(zeros(2), I), 3)
         end
 
         matrix_model_reference = eval_logp_and_grad(matrix_model, test_m, ref_adtype)
 
-        @model function scalar_array_model((::Type{T})=Float64) where {T<:Real}
+        @model function scalar_array_model(::Type{T}=Float64) where {T<:Real}
             m = Array{T}(undef, 2, 3)
             return m ~ filldist(MvNormal(zeros(2), I), 3)
         end
@@ -522,7 +522,7 @@ end
             scalar_array_model, test_m, ref_adtype
         )
 
-        @model function array_model((::Type{T})=Array{Float64}) where {T}
+        @model function array_model(::Type{T}=Array{Float64}) where {T}
             m = T(undef, 2, 3)
             return m ~ filldist(MvNormal(zeros(2), I), 3)
         end

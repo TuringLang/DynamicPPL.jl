@@ -2,6 +2,9 @@ module DynamicPPLForwardDiffExt
 
 using DynamicPPL: ADTypes, DynamicPPL, LogDensityProblems
 using ForwardDiff
+# DiffResults is a direct dependency of ForwardDiff; access it through ForwardDiff's namespace
+# rather than listing it as a separate (weak)dep of DynamicPPL.
+const DiffResults = ForwardDiff.DiffResults
 
 # check if the AD type already has a tag
 use_dynamicppl_tag(::ADTypes.AutoForwardDiff{<:Any,Nothing}) = true
@@ -40,14 +43,11 @@ function DynamicPPL._prepare_gradient(
     f = DynamicPPL.LogDensityAt(
         model, getlogdensity, varname_ranges, transform_strategy, accs
     )
-    chunk = if chunk_size == 0 || chunk_size === nothing
-        ForwardDiff.Chunk(x)
-    else
-        ForwardDiff.Chunk(length(x), chunk_size)
-    end
+    # chunk_size is already set to a concrete positive integer by tweak_adtype
+    chunk = ForwardDiff.Chunk(length(x), chunk_size)
     cfg = ForwardDiff.GradientConfig(f, x, chunk, adtype.tag)
-    grad = similar(x)
-    return (; cfg, grad)
+    result = DiffResults.GradientResult(similar(x))
+    return (; cfg, result)
 end
 
 function DynamicPPL._value_and_gradient(
@@ -65,10 +65,8 @@ function DynamicPPL._value_and_gradient(
     )
     # Val{false}() skips tag checking, since our DynamicPPLTag is reused across calls
     # with different LogDensityAt instances.
-    ForwardDiff.gradient!(prep.grad, f, params, prep.cfg, Val{false}())
-    # gradient!(::AbstractArray, ...) doesn't return the value, so evaluate separately.
-    value = f(params)
-    return value, copy(prep.grad)
+    ForwardDiff.gradient!(prep.result, f, params, prep.cfg, Val{false}())
+    return DiffResults.value(prep.result), copy(DiffResults.gradient(prep.result))
 end
 
 end # module

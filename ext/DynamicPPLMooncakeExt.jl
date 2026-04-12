@@ -24,6 +24,7 @@ Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
 
 using DynamicPPL: @model, LinkAll, LogDensityAt, getlogjoint_internal, LogDensityFunction
 using ADTypes: AutoMooncake, AutoMooncakeForward
+using Accessors: Accessors
 using Distributions: Normal, InverseGamma, Beta
 using PrecompileTools: @setup_workload, @compile_workload
 
@@ -31,12 +32,8 @@ function _cache_config(::Union{AutoMooncake{Nothing},AutoMooncakeForward{Nothing
     return Mooncake.Config(; friendly_tangents=false)
 end
 function _cache_config(adtype::Union{AutoMooncake,AutoMooncakeForward})
-    config = adtype.config
-    return Mooncake.Config(;
-        debug_mode=config.debug_mode,
-        silence_debug_messages=config.silence_debug_messages,
-        friendly_tangents=false,
-    )
+    # Use Accessors to set friendly_tangents=false while preserving all other config fields.
+    return Accessors.@set adtype.config.friendly_tangents = false
 end
 
 # LogDensityAt is a constant w.r.t. differentiation; NoTangent avoids tangent allocation.
@@ -96,6 +93,8 @@ function DynamicPPL._value_and_gradient(
 )
     f = LogDensityAt(model, getlogdensity, varname_ranges, transform_strategy, accs)
     (; cache, dx, grad) = prep
+    # Handle empty parameter vector: value_and_derivative!! loop won't execute.
+    isempty(params) && return f(params), copy(grad)
     value = zero(eltype(grad))
     fill!(dx, zero(eltype(dx)))
     @inbounds for i in eachindex(grad, dx)
@@ -110,12 +109,10 @@ end
 
 @setup_workload begin
     @compile_workload begin
-        for adtype in (AutoMooncake(),)
-            for dist in (Normal(), InverseGamma(2, 3), Beta(2, 2))
-                @model f() = x ~ dist
-                ldf = LogDensityFunction(f(), getlogjoint_internal, LinkAll(); adtype)
-                DynamicPPL.LogDensityProblems.logdensity_and_gradient(ldf, [0.5])
-            end
+        for dist in (Normal(), InverseGamma(2, 3), Beta(2, 2))
+            @model f() = x ~ dist
+            ldf = LogDensityFunction(f(), getlogjoint_internal, LinkAll(); adtype=AutoMooncake())
+            DynamicPPL.LogDensityProblems.logdensity_and_gradient(ldf, [0.5])
         end
     end
 end

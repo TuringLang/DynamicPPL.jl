@@ -407,6 +407,18 @@ end
 function _prepare_gradient end
 function _value_and_gradient end
 
+function _value_and_gradient(adtype::ADTypes.AbstractADType, args...)
+    throw(
+        ArgumentError(
+            "No gradient implementation found for AD backend $adtype. " *
+            "If you intended to use the default (ForwardDiff), ensure that ForwardDiff is " *
+            "loaded (e.g. `using ForwardDiff`). For other backends, load the corresponding " *
+            "package (e.g. `using Mooncake`, `using Enzyme`) or load " *
+            "DifferentiationInterface as a fallback.",
+        ),
+    )
+end
+
 function LogDensityProblems.logdensity(
     ldf::LogDensityFunction, params::AbstractVector{<:Real}
 )
