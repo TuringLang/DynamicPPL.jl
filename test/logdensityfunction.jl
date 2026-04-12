@@ -177,12 +177,12 @@ end
         struct ErrorAccumulatorException <: Exception end
         struct ErrorAccumulator <: DynamicPPL.AbstractAccumulator end
         DynamicPPL.accumulator_name(::ErrorAccumulator) = :ERROR
-        DynamicPPL.accumulate_assume!!(
-            ::ErrorAccumulator, ::Any, ::Any, ::Any, ::VarName, ::Distribution, ::Any
-        ) = throw(ErrorAccumulatorException())
-        DynamicPPL.accumulate_observe!!(
-            ::ErrorAccumulator, ::Distribution, ::Any, ::Union{VarName,Nothing}, ::Any
-        ) = throw(ErrorAccumulatorException())
+        DynamicPPL.accumulate_assume!!(::ErrorAccumulator, ::Any, ::Any, ::Any, ::VarName, ::Distribution, ::Any) = throw(
+            ErrorAccumulatorException()
+        )
+        DynamicPPL.accumulate_observe!!(::ErrorAccumulator, ::Distribution, ::Any, ::Union{VarName,Nothing}, ::Any) = throw(
+            ErrorAccumulatorException()
+        )
         DynamicPPL.reset(ea::ErrorAccumulator) = ea
         Base.copy(ea::ErrorAccumulator) = ea
         # Construct an LDF
@@ -445,6 +445,7 @@ end
         AutoReverseDiff(; compile=false),
         AutoReverseDiff(; compile=true),
         AutoMooncake(; config=nothing),
+        AutoMooncakeForward(; config=nothing),
     ]
 
     @testset "Correctness" begin
@@ -495,7 +496,7 @@ end
             return LogDensityProblems.logdensity_and_gradient(ldf, m[:])
         end
 
-        @model function scalar_matrix_model(::Type{T}=Float64) where {T<:Real}
+        @model function scalar_matrix_model((::Type{T})=Float64) where {T<:Real}
             m = Matrix{T}(undef, 2, 3)
             return m ~ filldist(MvNormal(zeros(2), I), 3)
         end
@@ -504,14 +505,14 @@ end
             scalar_matrix_model, test_m, ref_adtype
         )
 
-        @model function matrix_model(::Type{T}=Matrix{Float64}) where {T}
+        @model function matrix_model((::Type{T})=Matrix{Float64}) where {T}
             m = T(undef, 2, 3)
             return m ~ filldist(MvNormal(zeros(2), I), 3)
         end
 
         matrix_model_reference = eval_logp_and_grad(matrix_model, test_m, ref_adtype)
 
-        @model function scalar_array_model(::Type{T}=Float64) where {T<:Real}
+        @model function scalar_array_model((::Type{T})=Float64) where {T<:Real}
             m = Array{T}(undef, 2, 3)
             return m ~ filldist(MvNormal(zeros(2), I), 3)
         end
@@ -520,7 +521,7 @@ end
             scalar_array_model, test_m, ref_adtype
         )
 
-        @model function array_model(::Type{T}=Array{Float64}) where {T}
+        @model function array_model((::Type{T})=Array{Float64}) where {T}
             m = T(undef, 2, 3)
             return m ~ filldist(MvNormal(zeros(2), I), 3)
         end
@@ -544,6 +545,28 @@ end
             array_model_logp_and_grad = eval_logp_and_grad(array_model, test_m, adtype)
             @test array_model_logp_and_grad[1] ≈ array_model_reference[1]
             @test array_model_logp_and_grad[2] ≈ array_model_reference[2]
+        end
+    end
+
+    @testset "Mooncake friendly_tangents" begin
+        @model function f()
+            x ~ Normal()
+            return y ~ Normal(x)
+        end
+
+        params = randn(2)
+        ref_logp, ref_grad = LogDensityProblems.logdensity_and_gradient(
+            LogDensityFunction(f(); adtype=ref_adtype), params
+        )
+
+        for adtype in (
+            AutoMooncake(; config=Mooncake.Config(; friendly_tangents=true)),
+            AutoMooncakeForward(; config=Mooncake.Config(; friendly_tangents=true)),
+        )
+            ldf = LogDensityFunction(f(); adtype)
+            logp, grad = LogDensityProblems.logdensity_and_gradient(ldf, params)
+            @test logp ≈ ref_logp
+            @test grad ≈ ref_grad
         end
     end
 end
