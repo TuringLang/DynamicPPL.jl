@@ -38,6 +38,10 @@ function DynamicPPL._value_and_gradient(
     transform_strategy::DynamicPPL.AbstractTransformStrategy,
     accs::DynamicPPL.AccumulatorTuple,
 )
+    isempty(params) && return logdensity_at(
+        params, model, getlogdensity, varname_ranges, transform_strategy, accs
+    ),
+    copy(params)
     dx = prep.dx
     fill!(dx, zero(eltype(dx)))
     _, val = Enzyme.autodiff(
@@ -64,6 +68,10 @@ function DynamicPPL._value_and_gradient(
     transform_strategy::DynamicPPL.AbstractTransformStrategy,
     accs::DynamicPPL.AccumulatorTuple,
 )
+    isempty(params) && return logdensity_at(
+        params, model, getlogdensity, varname_ranges, transform_strategy, accs
+    ),
+    copy(params)
     # Pass the plain function plus Const arguments; Enzyme is brittle with closure-like callables.
     val, dx = _extract_value_and_gradient(
         Enzyme.gradient(
