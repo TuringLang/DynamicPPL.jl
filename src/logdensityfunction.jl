@@ -178,10 +178,7 @@ struct LogDensityFunction{
     L<:AbstractTransformStrategy,
     F,
     VNT<:VarNamedTuple,
-    # ADP is intentionally unconstrained: most backends store a DI.GradientPrep, but
-    # backends that override _prepare_gradient (e.g. AutoMooncakeForward) may store any
-    # prep object (e.g. a NamedTuple with cache + gradient buffers).
-    ADP,
+    ADP,  # unconstrained: backends may store any prep object via _prepare_gradient
     # type of the vector passed to logdensity functions
     X<:AbstractVector,
     AC<:AccumulatorTuple,
@@ -541,10 +538,6 @@ By default, this function returns `false`, i.e. the constant approach will be us
 # closure (see link in the docstring).
 _use_closure(::ADTypes.AutoForwardDiff) = false
 _use_closure(::ADTypes.AutoMooncake) = false
-# AutoMooncakeForward overrides _prepare_gradient/_value_and_gradient in the Mooncake
-# extension and bypasses DI entirely, so this value is never reached when Mooncake is
-# loaded. It is a defensive fallback for the (unlikely) case where AutoMooncakeForward is
-# used without the extension.
 _use_closure(::ADTypes.AutoMooncakeForward) = false
 # For ReverseDiff, with the compiled tape, you _must_ use a closure because otherwise with
 # DI.Constant arguments the tape will always be recompiled upon each call to
