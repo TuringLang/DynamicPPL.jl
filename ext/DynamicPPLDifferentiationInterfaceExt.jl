@@ -12,6 +12,7 @@ using DynamicPPL:
     logdensity_at
 using ADTypes: ADTypes
 
+# Fallback only: backend-specific extensions with more specific AD types should take precedence.
 function DynamicPPL._prepare_gradient(
     adtype::ADTypes.AbstractADType,
     x::AbstractVector{<:Real},
