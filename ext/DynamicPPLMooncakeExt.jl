@@ -96,7 +96,7 @@ end
 
 @setup_workload begin
     @compile_workload begin
-        for adtype in (AutoMooncake(), AutoMooncakeForward())
+        for adtype in (AutoMooncake(),)
             for dist in (Normal(), InverseGamma(2, 3), Beta(2, 2))
                 @model f() = x ~ dist
                 ldf = LogDensityFunction(f(), getlogjoint_internal, LinkAll(); adtype)

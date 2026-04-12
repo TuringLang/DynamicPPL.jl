@@ -177,12 +177,12 @@ end
         struct ErrorAccumulatorException <: Exception end
         struct ErrorAccumulator <: DynamicPPL.AbstractAccumulator end
         DynamicPPL.accumulator_name(::ErrorAccumulator) = :ERROR
-        DynamicPPL.accumulate_assume!!(::ErrorAccumulator, ::Any, ::Any, ::Any, ::VarName, ::Distribution, ::Any) = throw(
-            ErrorAccumulatorException()
-        )
-        DynamicPPL.accumulate_observe!!(::ErrorAccumulator, ::Distribution, ::Any, ::Union{VarName,Nothing}, ::Any) = throw(
-            ErrorAccumulatorException()
-        )
+        DynamicPPL.accumulate_assume!!(
+            ::ErrorAccumulator, ::Any, ::Any, ::Any, ::VarName, ::Distribution, ::Any
+        ) = throw(ErrorAccumulatorException())
+        DynamicPPL.accumulate_observe!!(
+            ::ErrorAccumulator, ::Distribution, ::Any, ::Union{VarName,Nothing}, ::Any
+        ) = throw(ErrorAccumulatorException())
         DynamicPPL.reset(ea::ErrorAccumulator) = ea
         Base.copy(ea::ErrorAccumulator) = ea
         # Construct an LDF
