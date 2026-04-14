@@ -69,7 +69,6 @@ export AbstractVarInfo,
     acclogprior!!,
     accloglikelihood!!,
     is_transformed,
-    set_transformed!!,
     # Accumulators
     AbstractAccumulator,
     accumulate_assume!!,

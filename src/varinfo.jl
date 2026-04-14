@@ -355,38 +355,6 @@ function setindex_with_dist!!(
 end
 
 """
-    set_transformed!!(vi::VarInfo, linked::Bool, vn::VarName)
-
-If `linked`, set the variable `vn` in `vi` to be linked (i.e., change its stored transform
-to be `DynamicLink()`). Otherwise, set it to be unlinked (i.e., change its stored transform
-to be `Unlink()`). This will also update the transform strategy of `vi` accordingly.
-
-!!! warning
-    Note that this function is potentially unsafe as it does not change the value of the
-    variable!
-"""
-function set_transformed!!(vi::VarInfo, linked::Bool, vn::VarName)
-    # TODO!(penelopeysm): Why do we still need this?
-    old_tv = getindex(vi.values, vn)
-    new_transform = linked ? DynamicLink() : Unlink()
-    new_tv = TransformedValue(old_tv.value, new_transform)
-    new_values = setindex!!(vi.values, new_tv, vn)
-    new_transform_strategy = update_transform_strategy(
-        vi.transform_strategy, isempty(vi), vn, new_transform
-    )
-    return VarInfo(new_transform_strategy, new_values, vi.accs)
-end
-
-function set_transformed!!(vi::VarInfo, linked::Bool)
-    tfm = linked ? DynamicLink() : Unlink()
-    new_values = map_values!!(vi.values) do tv
-        TransformedValue(tv.value, tfm)
-    end
-    new_transform_strategy = linked ? LinkAll() : UnlinkAll()
-    return VarInfo(new_transform_strategy, new_values, vi.accs)
-end
-
-"""
     getindex_internal(vi::VarInfo, vn::VarName)
 
 Get the internal (vectorised) value of variable `vn` in `vi`.

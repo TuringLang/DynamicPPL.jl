@@ -156,10 +156,6 @@ end
 
 internal_values_as_vector(vi::ThreadSafeVarInfo) = internal_values_as_vector(vi.varinfo)
 
-function set_transformed!!(vi::ThreadSafeVarInfo, val::Bool, vn::VarName)
-    return Accessors.@set vi.varinfo = set_transformed!!(vi.varinfo, val, vn)
-end
-
 is_transformed(vi::ThreadSafeVarInfo, vn::VarName) = is_transformed(vi.varinfo, vn)
 function is_transformed(vi::ThreadSafeVarInfo, vns::AbstractVector{<:VarName})
     return is_transformed(vi.varinfo, vns)

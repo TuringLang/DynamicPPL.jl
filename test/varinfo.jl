@@ -257,22 +257,34 @@ end
     end
 
     @testset "is_transformed flag" begin
-        vi = VarInfo()
-        vn_x = @varname x
-        x = rand()
+        @model function f()
+            x ~ Normal()
+            return y ~ Normal()
+        end
 
-        vi = DynamicPPL.setindex_with_dist!!(
-            vi, TransformedValue(x, NoTransform()), Normal(), vn_x, x
-        )
+        model = f()
+        vi = VarInfo(model)
 
         # is_transformed is unset by default
-        @test !is_transformed(vi, vn_x)
+        @test !is_transformed(vi, @varname(x))
+        @test !is_transformed(vi, @varname(y))
+        @test !is_transformed(vi)
 
-        vi = set_transformed!!(vi, true, vn_x)
-        @test is_transformed(vi, vn_x)
+        vi = DynamicPPL.link!!(vi, model)
+        @test is_transformed(vi, @varname(x))
+        @test is_transformed(vi, @varname(y))
+        @test is_transformed(vi)
 
-        vi = set_transformed!!(vi, false, vn_x)
-        @test !is_transformed(vi, vn_x)
+        vi = DynamicPPL.invlink!!(vi, model)
+        @test !is_transformed(vi, @varname(x))
+        @test !is_transformed(vi, @varname(y))
+        @test !is_transformed(vi)
+
+        # partial linking
+        vi = DynamicPPL.link!!(vi, [@varname(x)], model)
+        @test is_transformed(vi, @varname(x))
+        @test !is_transformed(vi, @varname(y))
+        @test !is_transformed(vi)
     end
 
     # TODO(mhauru) Move this to a different file.
@@ -736,7 +748,7 @@ end
 
             varinfo_left = VarInfo(model_left)
             varinfo_right = VarInfo(model_right)
-            varinfo_right = DynamicPPL.set_transformed!!(varinfo_right, true, @varname(x))
+            varinfo_right = DynamicPPL.link!!(varinfo_right, (@varname(x),), model_right)
 
             varinfo_merged = merge(varinfo_left, varinfo_right)
             vns = [@varname(x), @varname(y), @varname(z)]

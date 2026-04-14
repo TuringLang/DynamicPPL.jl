@@ -337,7 +337,6 @@ In the specific case of `VarInfo`, it keeps track of whether samples have been t
 
 ```@docs
 is_transformed
-set_transformed!!
 ```
 
 #### `VarNamedTuple`s

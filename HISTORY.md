@@ -77,6 +77,7 @@ The model-less constructor `ParamsWithStats(vi::AbstractVarInfo)` still exists: 
 
   - Removed the `varinfo` keyword argument from `DynamicPPL.TestUtils.AD.run_ad`, and replaced the `varinfo` field in the returned `ADResult` with `ldf::LogDensityFunction`.
   - Removed the method `Bijectors.bijector(::DynamicPPL.Model)`; equivalent information can be obtained with `get_fixed_transforms` (although it returns a `VarNamedTuple` of transforms rather than a single stacked transform).
+  - Removed the function `set_transformed!!`, which was not used anywhere in DynamicPPL and Turing, and is dangerous as it can lead to an inconsistent state.
 
 ## Internal changes
 
@@ -84,7 +85,7 @@ The following functions were not exported; we document changes in them for compl
 
   - Given the above changes, the old framework of `AbstractTransformation`, `StaticTransformation`, and `DynamicTransformation` are no longer needed, and have been removed.
     The (rarely used) methods of `link`, `link!!`, `invlink`, and `invlink!!` that took an `AbstractTransformation` as the first argument have been removed.
-    The same is true of the functions `default_transformation` and `transformation`.
+    The functions `default_transformation` and `transformation` have also been removed, as well as the entire family of internal functions `to_maybe_linked_internal`, `from_maybe_linked_internal`, `from_internal_transform`, `from_linked_internal_transform`, `from_maybe_linked_internal_transform`, `to_internal_transform`, `to_linked_internal_transform`, `to_maybe_linked_internal_transform`, `internal_to_linked_internal_transform`, and `linked_internal_to_internal_transform`.
 
   - `RangeAndLinked` has been expanded to `RangeAndTransform`: instead of just carrying a Boolean indicating whether the transform is `DynamicLink` or `Unlink`, it now stores the full transform.
     This is done in order to accommodate `FixedTransform`.
