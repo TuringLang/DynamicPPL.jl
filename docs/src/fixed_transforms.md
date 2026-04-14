@@ -130,6 +130,7 @@ For example, consider the following model:
     else
         y ~ Normal()
     end
+    return nothing
 end
 nothing # hide
 ```
@@ -137,12 +138,23 @@ nothing # hide
 The transform needed for `y` here depends on what value `x` takes: in one case it is the identity transform, and in another case it is the log transform.
 If you were to use fixed transforms here, you would have to choose only one of these transforms for `y`, and this would lead to incorrect results when the other transform is needed.
 
-This can also manifest in more subtle ways, especially with truncated distributions:
+This can also manifest in more subtle ways, especially with truncated or uniform distributions:
 
 ```@example 1
 @model function changing_support_2()
     x ~ Normal()
-    return y ~ truncated(Normal(); lower=x)
+    y ~ truncated(Normal(); lower=x)
+    return nothing
+end
+nothing # hide
+```
+
+```@example 1
+@model function changing_support_3()
+    x ~ Normal()
+    absx = abs(x)
+    y ~ Uniform(-absx, absx)
+    return nothing
 end
 nothing # hide
 ```
