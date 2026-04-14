@@ -64,6 +64,15 @@ In particular, to access raw (untransformed) values, you should use an `OnlyAccs
 These are guaranteed to be always up-to-date and you do not have to mess around with transforms.
 There is [a migration guide available on the DynamicPPL documentation](https://turinglang.org/DynamicPPL.jl/stable/migration/) and we are very happy to add more examples to this if you run into something that is not covered.
 
+### `ParamsWithStats`
+
+There is a new constructor added, `ParamsWithStats(::AbstractInitStrategy, ::Model[, state::NamedTuple])`.
+This rederives the parameters and statistics by re-evaluating the model with the given initialisation strategy.
+
+The constructor `ParamsWithStats(vi::AbstractVarInfo, model::Model[, state])` has been removed (its signature was in fact too broad); if `varinfo isa DynamicPPL.VarInfo`, please use `ParamsWithStats(InitFromParams(vi.values), model[, state])` instead, which is exactly equivalent.
+
+The model-less constructor `ParamsWithStats(vi::AbstractVarInfo)` still exists: it reads the parameters and statistics directly from the `VarInfo`'s accumulators without re-evaluating the model.
+
 ## Miscellaneous breaking changes
 
   - Removed the `varinfo` keyword argument from `DynamicPPL.TestUtils.AD.run_ad`, and replaced the `varinfo` field in the returned `ADResult` with `ldf::LogDensityFunction`.
