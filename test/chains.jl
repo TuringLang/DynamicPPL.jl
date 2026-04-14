@@ -18,47 +18,52 @@ using Test
     z = 1.0
     model = f(z)
 
-    @testset "with reevaluation" begin
-        ps = ParamsWithStats(VarInfo(model), model)
-        @test haskey(ps.params, @varname(x))
-        @test haskey(ps.params, @varname(y))
-        @test length(ps.params) == 2
-        @test haskey(ps.stats, :logprior)
-        @test haskey(ps.stats, :loglikelihood)
-        @test haskey(ps.stats, :logjoint)
-        @test length(ps.stats) == 3
-        @test ps.stats.logjoint ≈ ps.stats.logprior + ps.stats.loglikelihood
-        @test ps.params[@varname(y)] ≈ ps.params[@varname(x)] + 1
-        @test ps.stats.logprior ≈ logpdf(Normal(), ps.params[@varname(x)])
-        @test ps.stats.loglikelihood ≈ logpdf(Normal(ps.params[@varname(y)]), z)
-    end
+    for init_strat in (InitFromPrior(), InitFromParams(VarInfo(model).values))
+        @testset "with reevaluation" begin
+            ps = ParamsWithStats(init_strat, model)
+            @test haskey(ps.params, @varname(x))
+            @test haskey(ps.params, @varname(y))
+            @test length(ps.params) == 2
+            @test haskey(ps.stats, :logprior)
+            @test haskey(ps.stats, :loglikelihood)
+            @test haskey(ps.stats, :logjoint)
+            @test length(ps.stats) == 3
+            @test ps.stats.logjoint ≈ ps.stats.logprior + ps.stats.loglikelihood
+            @test ps.params[@varname(y)] ≈ ps.params[@varname(x)] + 1
+            @test ps.stats.logprior ≈ logpdf(Normal(), ps.params[@varname(x)])
+            @test ps.stats.loglikelihood ≈ logpdf(Normal(ps.params[@varname(y)]), z)
+        end
 
-    @testset "without colon_eq" begin
-        ps = ParamsWithStats(VarInfo(model), model; include_colon_eq=false)
-        @test haskey(ps.params, @varname(x))
-        @test length(ps.params) == 1
-        @test haskey(ps.stats, :logprior)
-        @test haskey(ps.stats, :loglikelihood)
-        @test haskey(ps.stats, :logjoint)
-        @test length(ps.stats) == 3
-        @test ps.stats.logjoint ≈ ps.stats.logprior + ps.stats.loglikelihood
-        @test ps.stats.logprior ≈ logpdf(Normal(), ps.params[@varname(x)])
-        @test ps.stats.loglikelihood ≈ logpdf(Normal(ps.params[@varname(x)] + 1), z)
-    end
+        @testset "without colon_eq" begin
+            ps = ParamsWithStats(init_strat, model; include_colon_eq=false)
+            @test haskey(ps.params, @varname(x))
+            @test length(ps.params) == 1
+            @test haskey(ps.stats, :logprior)
+            @test haskey(ps.stats, :loglikelihood)
+            @test haskey(ps.stats, :logjoint)
+            @test length(ps.stats) == 3
+            @test ps.stats.logjoint ≈ ps.stats.logprior + ps.stats.loglikelihood
+            @test ps.stats.logprior ≈ logpdf(Normal(), ps.params[@varname(x)])
+            @test ps.stats.loglikelihood ≈ logpdf(Normal(ps.params[@varname(x)] + 1), z)
+        end
 
-    @testset "without log probs" begin
-        ps = ParamsWithStats(VarInfo(model), model; include_log_probs=false)
-        @test haskey(ps.params, @varname(x))
-        @test haskey(ps.params, @varname(y))
-        @test length(ps.params) == 2
-        @test isempty(ps.stats)
+        @testset "without log probs" begin
+            ps = ParamsWithStats(init_strat, model; include_log_probs=false)
+            @test haskey(ps.params, @varname(x))
+            @test haskey(ps.params, @varname(y))
+            @test length(ps.params) == 2
+            @test isempty(ps.stats)
+        end
     end
 
     @testset "no reevaluation" begin
         # Without VAIM, it should error
-        @test_throws ErrorException ParamsWithStats(VarInfo(model))
+        vi = OnlyAccsVarInfo()
+        @test_throws ErrorException get_raw_values(vi) # sanity check that it doesn't have VAIM
+        vi = last(DynamicPPL.init!!(model, vi, InitFromPrior(), UnlinkAll()))
+        @test_throws ErrorException ParamsWithStats(vi)
         # With VAIM, it should work
-        vi = DynamicPPL.setaccs!!(VarInfo(model), (DynamicPPL.RawValueAccumulator(true),))
+        vi = OnlyAccsVarInfo(RawValueAccumulator(true))
         vi = last(DynamicPPL.init!!(model, vi, InitFromPrior(), UnlinkAll()))
         ps = ParamsWithStats(vi)
         @test haskey(ps.params, @varname(x))

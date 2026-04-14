@@ -12,18 +12,19 @@ end
 
 """
     ParamsWithStats(
-        varinfo::AbstractVarInfo,
+        init_strategy::AbstractInitStrategy,
         model::Model,
         stats::NamedTuple=NamedTuple();
         include_colon_eq::Bool=true,
         include_log_probs::Bool=true,
     )
 
-Generate a `ParamsWithStats` by re-evaluating the given `model` with the provided `varinfo`.
-Re-evaluation of the model is often necessary to obtain correct parameter values as well as
-log probabilities. This is especially true when using linked VarInfos, i.e., when variables
-have been transformed to unconstrained space, and if this is not done, subtle correctness
-bugs may arise: see, e.g., https://github.com/TuringLang/Turing.jl/issues/2195.
+Generate a `ParamsWithStats` by re-evaluating the given `model` with the provided
+`init_strategy`. Re-evaluation of the model is often necessary to obtain correct parameter
+values as well as log probabilities. This is especially true when using linked VarInfos,
+i.e., when variables have been transformed to unconstrained space, and if this is not done,
+subtle correctness bugs may arise: see, e.g.,
+https://github.com/TuringLang/Turing.jl/issues/2195.
 
 `include_colon_eq` controls whether variables on the left-hand side of `:=` are included in
 the resulting parameters.
@@ -32,7 +33,7 @@ the resulting parameters.
 joint) are added to the resulting statistics NamedTuple.
 """
 function ParamsWithStats(
-    varinfo::AbstractVarInfo,
+    init_strategy::AbstractInitStrategy,
     model::DynamicPPL.Model,
     stats::NamedTuple=NamedTuple();
     include_colon_eq::Bool=true,
@@ -48,8 +49,7 @@ function ParamsWithStats(
         (DynamicPPL.RawValueAccumulator(include_colon_eq),)
     end
     oavi = OnlyAccsVarInfo(accs)
-    init = InitFromParams(varinfo.values, nothing)
-    oavi = last(DynamicPPL.init!!(model, oavi, init, UnlinkAll()))
+    oavi = last(DynamicPPL.init!!(model, oavi, init_strategy, UnlinkAll()))
     params = densify!!(get_raw_values(oavi))
     if include_log_probs
         stats = merge(
