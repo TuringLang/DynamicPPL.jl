@@ -109,10 +109,7 @@ sections of Turing.jl. If linking performance is critical, it is recommended to 
 both methods for the specific model in question.
 """
 function DynamicPPL.VarInfo(
-    rng::Random.AbstractRNG,
-    model::Model,
-    init_strategy::AbstractInitStrategy,
-    ::Union{UnlinkAll,UnlinkSome},
+    rng::Random.AbstractRNG, model::Model, init_strategy::AbstractInitStrategy, ::UnlinkAll
 )
     # In this case, no variables are to be linked. We can optimise performance by directly
     # calling init!! and not faffing about with accumulators. (This does lead to significant
