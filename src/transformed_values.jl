@@ -336,7 +336,7 @@ function apply_transform_strategy(
     return if target isa DynamicLink
         # No need to transform further
         (raw_value, tv, -inv_logjac)
-    elseif target isa Unlink
+    elseif target isa Unlink || target isa NoTransform
         # Need to return an unlinked value. We _could_ vectorise and generate a Unlink()
         # here, with the vectorisation transform. However, sometimes that's not needed (e.g.
         # when evaluating with an OnlyAccsVarInfo). So we just return an untransformed
@@ -368,7 +368,7 @@ function apply_transform_strategy(
         linked_value, logjac = with_logabsdet_jacobian(flink, raw_value)
         linked_tv = TransformedValue(linked_value, DynamicLink())
         (raw_value, linked_tv, logjac)
-    elseif target isa Unlink
+    elseif target isa Unlink || target isa NoTransform
         # No need to transform further
         (raw_value, tv, zero(LogProbType))
     elseif target isa FixedTransform
@@ -395,7 +395,7 @@ function apply_transform_strategy(
         linked_value, logjac = with_logabsdet_jacobian(flink, raw_value)
         linked_tv = TransformedValue(linked_value, DynamicLink())
         (raw_value, linked_tv, logjac)
-    elseif target isa Unlink
+    elseif target isa Unlink || target isa NoTransform
         # No need to transform further
         (raw_value, tv, zero(LogProbType))
     elseif target isa FixedTransform
@@ -421,7 +421,7 @@ function apply_transform_strategy(
         linked_value, logjac = with_logabsdet_jacobian(flink, raw_value)
         linked_tv = TransformedValue(linked_value, DynamicLink())
         (raw_value, linked_tv, logjac)
-    elseif target isa Unlink
+    elseif target isa Unlink || target isa NoTransform
         raw_value = get_raw_value(tv)
         new_tv = TransformedValue(raw_value, NoTransform())
         (raw_value, new_tv, zero(LogProbType))
@@ -438,6 +438,8 @@ function apply_transform_strategy(
             tv.transform.transform, get_internal_value(tv)
         )
         (raw_value, tv, -inv_logjac)
+    else
+        error("unknown target transform: $target")
     end
 end
 
@@ -457,7 +459,7 @@ function infer_transform_strategy_from_values(vnt::VarNamedTuple)
     # hence the check on every element individually.
     return if all(x -> x isa DynamicLink, tfms)
         LinkAll()
-    elseif all(x -> x isa Unlink, tfms)
+    elseif all(x -> (x isa Unlink || x isa NoTransform), tfms)
         UnlinkAll()
     else
         # Bundle all the transforms into a single one, with a default fallback of
