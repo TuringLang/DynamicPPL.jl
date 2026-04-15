@@ -65,6 +65,8 @@ The [LogDensityProblems.jl](https://github.com/tpapp/LogDensityProblems.jl) inte
 ```@docs
 LogDensityFunction
 get_input_vector_type
+RangeAndTransform
+get_range_and_transform
 ```
 
 Internally, this is accomplished using [`init!!`](@ref) on:

@@ -80,6 +80,11 @@ The model-less constructor `ParamsWithStats(vi::AbstractVarInfo)` still exists: 
   - Removed the function `set_transformed!!`, which was not used anywhere in DynamicPPL and Turing, and is dangerous as it can lead to an inconsistent state.
   - The functions `pointwise_logdensities(::Model, ::AbstractVarInfo)` have been replaced with `pointwise_logdensities(::Model, ::AbstractInitStrategy)` (for the same reasons as `ParamsWithStats` explained above). The same workaround of using `InitFromParams(vi.values)` applies here if you have a `VarInfo` and want to get pointwise log-densities for it.
 
+## Non-breaking changes
+
+`RangeAndTransform` and `get_range_and_transform` are now part of DynamicPPL's public API, and allow users to access the internal representation of a LogDensityFunction.
+Please see the API docs for more information.
+
 ## Internal changes
 
 The following functions were not exported; we document changes in them for completeness.

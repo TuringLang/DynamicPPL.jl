@@ -129,6 +129,8 @@ export AbstractVarInfo,
     OnlyAccsVarInfo,
     to_vector_params,
     get_input_vector_type,
+    RangeAndTransform,
+    get_range_and_transform,
     # Leaf contexts
     AbstractContext,
     contextualize,

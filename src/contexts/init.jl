@@ -233,15 +233,14 @@ end
 """
     RangeAndTransform
 
-Suppose we have vectorised parameters `params::AbstractVector{<:Real}`. Each random variable
-in the model will in general correspond to a sub-vector of `params`. This struct stores
-information about that range, as well as whether the sub-vector represents a linked value or
-an unlinked value.
+Suppose we have a set of vectorised parameters `params::AbstractVector{<:Real}` for a Turing
+model. Each random variable in the model will in general correspond to a sub-vector of
+`params`. This struct stores information about that range, as well as the transform that was
+applied to that variable, which determines how the variable is interpreted.
 
 $(TYPEDFIELDS)
 """
 struct RangeAndTransform{T}
-    # indices that the variable corresponds to in the vectorised parameter
     range::UnitRange{Int}
     transform::T
 end

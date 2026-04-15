@@ -354,6 +354,17 @@ function get_input_vector_type(::LogDensityFunction{M,A,L,G,R,P,X}) where {M,A,L
     return X
 end
 
+"""
+    DynamicPPL.get_range_and_transform(ldf::LogDensityFunction, vn::VarName)::RangeAndTransform
+
+A `LogDensityFunction` stores a mapping from `VarName`s to their corresponding ranges in the
+vectorised parameter representation, along with their transform status. This function
+retrieves that information.
+"""
+function get_range_and_transform(ldf::LogDensityFunction, vn::VarName)
+    return ldf._varname_ranges[vn]
+end
+
 ###################################
 # LogDensityProblems.jl interface #
 ###################################
