@@ -230,28 +230,33 @@ end
         tfm_strategy::AbstractTransformStrategy,
         vi_is_empty::Bool,
         new_vn::VarName,
-        new_vn_transform::AbstractTransform
+        new_vn_transform::AbstractTransform,
+        template::Any,
     )
 
 Given an old transform strategy `tfm_strategy`, and the transformation of a new variable
 `new_vn` to be added to a `VarInfo` which has that transform strategy, return an updated
 transform strategy that accounts for the addition of `new_vn`.
 """
-function update_transform_strategy(::LinkAll, ::Bool, ::VarName, ::DynamicLink)
+function update_transform_strategy(::LinkAll, ::Bool, ::VarName, ::DynamicLink, template)
     return LinkAll()
 end
-function update_transform_strategy(::LinkAll, vi_is_empty::Bool, new_vn::VarName, ::Unlink)
+function update_transform_strategy(
+    ::LinkAll, vi_is_empty::Bool, new_vn::VarName, ::Unlink, template
+)
     return vi_is_empty ? UnlinkAll() : UnlinkSome(Set([new_vn]), LinkAll())
 end
 
-function update_transform_strategy(ls::LinkSome, ::Bool, vn::VarName, ::DynamicLink)
+function update_transform_strategy(
+    ls::LinkSome, ::Bool, vn::VarName, ::DynamicLink, template
+)
     return if vn in ls.vns
         ls
     else
         LinkSome(Set([vn]) ∪ ls.vns, ls.fallback)
     end
 end
-function update_transform_strategy(ls::LinkSome, ::Bool, vn::VarName, ::Unlink)
+function update_transform_strategy(ls::LinkSome, ::Bool, vn::VarName, ::Unlink, template)
     return if vn in ls.vns
         LinkSome(setdiff(ls.vns, Set([vn])), ls.fallback)
     else
@@ -259,28 +264,44 @@ function update_transform_strategy(ls::LinkSome, ::Bool, vn::VarName, ::Unlink)
     end
 end
 
-function update_transform_strategy(::UnlinkAll, ::Bool, ::VarName, ::Unlink)
+function update_transform_strategy(::UnlinkAll, ::Bool, ::VarName, ::Unlink, template)
     return UnlinkAll()
 end
 function update_transform_strategy(
-    ::UnlinkAll, vi_is_empty::Bool, new_vn::VarName, ::DynamicLink
+    ::UnlinkAll, vi_is_empty::Bool, new_vn::VarName, ::DynamicLink, template
 )
     return vi_is_empty ? LinkAll() : LinkSome(Set([new_vn]), UnlinkAll())
 end
 
-function update_transform_strategy(ls::UnlinkSome, ::Bool, vn::VarName, ::Unlink)
+function update_transform_strategy(ls::UnlinkSome, ::Bool, vn::VarName, ::Unlink, template)
     return if vn in ls.vns
         ls
     else
         UnlinkSome(Set([vn]) ∪ ls.vns, ls.fallback)
     end
 end
-function update_transform_strategy(ls::UnlinkSome, ::Bool, vn::VarName, ::DynamicLink)
+function update_transform_strategy(
+    ls::UnlinkSome, ::Bool, vn::VarName, ::DynamicLink, template
+)
     return if vn in ls.vns
         UnlinkSome(setdiff(ls.vns, Set([vn])), ls.fallback)
     else
         ls
     end
+end
+
+function update_transform_strategy(
+    ls::AbstractTransformStrategy, ::Bool, vn::VarName, ft::FixedTransform, template
+)
+    vnt = DynamicPPL.templated_setindex!!(VarNamedTuple(), ft, vn, template)
+    return WithTransforms(vnt, ls)
+end
+function update_transform_strategy(
+    ls::WithTransforms, ::Bool, vn::VarName, ft::FixedTransform, template
+)
+    # don't need to wrap, just add to current one
+    vnt = DynamicPPL.templated_setindex!!(ls.transforms, ft, vn, template)
+    return WithTransforms(vnt, ls.fallback)
 end
 
 """
@@ -305,7 +326,7 @@ function setindex_with_dist!!(
     vi::VarInfo, tval::TransformedValue{T,V}, ::Distribution, vn::VarName, template::Any
 ) where {T<:AbstractVector{<:Real},V}
     new_transform_strategy = update_transform_strategy(
-        vi.transform_strategy, isempty(vi), vn, tval.transform
+        vi.transform_strategy, isempty(vi), vn, tval.transform, template
     )
     return VarInfo(
         new_transform_strategy, templated_setindex!!(vi.values, tval, vn, template), vi.accs

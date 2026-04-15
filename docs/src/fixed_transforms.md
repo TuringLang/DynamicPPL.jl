@@ -93,8 +93,6 @@ To do so, you will have to run the model once with the desired transform strateg
 This is most easily done via
 
 ```@example 1
-using DynamicPPL
-
 get_fixed_transforms(model, LinkAll())
 ```
 

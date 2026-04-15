@@ -206,6 +206,17 @@ struct WithTransforms{V<:VarNamedTuple,L<:AbstractTransformStrategy} <:
        AbstractTransformStrategy
     transforms::V
     fallback::L
+    function WithTransforms(transforms::VarNamedTuple, fallback::AbstractTransformStrategy)
+        # Check that all values in transforms are subtypes of AbstractTransform
+        if !all(x -> x isa AbstractTransform, values(transforms))
+            throw(
+                ArgumentError(
+                    "All values in `transforms` must be subtypes of `AbstractTransform`."
+                ),
+            )
+        end
+        return new{typeof(transforms),typeof(fallback)}(transforms, fallback)
+    end
 end
 function Base.:(==)(wt1::WithTransforms, wt2::WithTransforms)
     return (wt1.transforms == wt2.transforms) & (wt1.fallback == wt2.fallback)

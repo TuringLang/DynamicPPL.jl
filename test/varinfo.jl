@@ -426,6 +426,24 @@ end
                 Set{VarName}(),
             )
         end
+
+        @testset "fixed transforms" begin
+            @model function fixedtransforms()
+                x ~ Beta(2, 2)
+                y ~ Exponential(1)
+                return nothing
+            end
+            tfm_strat = WithTransforms(get_fixed_transforms(model, LinkAll()), UnlinkAll())
+            _, vi = DynamicPPL.init!!(model, VarInfo(), InitFromPrior(), tfm_strat)
+            # output_tfm_strat is generated via update_transform_strategy
+            output_tfm_strat = vi.transform_strategy
+            @test vi.transform_strategy == tfm_strat
+            # check the values line up too
+            for vn in keys(vi)
+                tval = DynamicPPL.get_transformed_value(vi, vn)
+                @test tval.transform == tfm_strat.transforms[vn]
+            end
+        end
     end
 
     @testset "unflatten!! + linking" begin
