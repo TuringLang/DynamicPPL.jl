@@ -1,3 +1,7 @@
+# 0.40.23
+
+Fix incorrect behaviour when generating a new VarInfo with an `UnlinkSome` transform strategy (all variables would be instantiated as unlinked regardless of the fallback transform strategy).
+
 # 0.40.22
 
 Add a method for `AbstractMCMC.from_samples` to convert from a matrix of `VarNamedTuple`s to `MCMCChains.Chains`.
