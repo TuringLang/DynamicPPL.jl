@@ -608,8 +608,8 @@ end
 """
     is_transformed(vi::AbstractVarInfo[, vns::Union{VarName, AbstractVector{<:Varname}}])
 
-Return `true` if `vi` is working in unconstrained space, and `false`
-if `vi` is assuming realizations to be in support of the corresponding distributions.
+Return `true` if all variables in `vi` have a transform of `DynamicLink`, and false
+    otherwise.
 
 If `vns` is provided, then only check if this/these varname(s) are transformed.
 
