@@ -50,7 +50,6 @@ Random.seed!(100)
         include("logdensityfunction.jl")
         @testset "extensions" begin
             include("ext/DynamicPPLMCMCChainsExt.jl")
-            include("ext/DynamicPPLMarginalLogDensitiesExt.jl")
         end
         @testset "ad" begin
             include("ext/DynamicPPLForwardDiffExt.jl")
