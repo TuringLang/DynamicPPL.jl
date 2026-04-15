@@ -78,6 +78,7 @@ The model-less constructor `ParamsWithStats(vi::AbstractVarInfo)` still exists: 
   - Removed the `varinfo` keyword argument from `DynamicPPL.TestUtils.AD.run_ad`, and replaced the `varinfo` field in the returned `ADResult` with `ldf::LogDensityFunction`.
   - Removed the method `Bijectors.bijector(::DynamicPPL.Model)`; equivalent information can be obtained with `get_fixed_transforms` (although it returns a `VarNamedTuple` of transforms rather than a single stacked transform).
   - Removed the function `set_transformed!!`, which was not used anywhere in DynamicPPL and Turing, and is dangerous as it can lead to an inconsistent state.
+  - The functions `pointwise_logdensities(::Model, ::AbstractVarInfo)` have been replaced with `pointwise_logdensities(::Model, ::AbstractInitStrategy)` (for the same reasons as `ParamsWithStats` explained above). The same workaround of using `InitFromParams(vi.values)` applies here if you have a `VarInfo` and want to get pointwise log-densities for it.
 
 ## Internal changes
 

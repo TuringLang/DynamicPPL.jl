@@ -40,7 +40,7 @@ end
         logprior_true = logprior(model, vi)
 
         # Compute the pointwise loglikelihoods.
-        lls = pointwise_loglikelihoods(model, vi)
+        lls = pointwise_loglikelihoods(model, InitFromParams(vi.values))
         if isempty(lls)
             # One of the models with literal observations, so we'll set this to 0 for subsequent comparisons.
             loglikelihood_true = 0.0
@@ -51,14 +51,14 @@ end
         end
 
         # Compute the pointwise logdensities of the priors.
-        lps_prior = pointwise_prior_logdensities(model, vi)
+        lps_prior = pointwise_prior_logdensities(model, InitFromParams(vi.values))
         @test :x ∉ DynamicPPL.getsym.(keys(lps_prior))
         logp = sum(sum, values(lps_prior))
         @test logp ≈ logprior_true
 
         # Compute both likelihood and logdensity of prior
         # using the default DefaultContext
-        lps = pointwise_logdensities(model, vi)
+        lps = pointwise_logdensities(model, InitFromParams(vi.values))
         logp = sum(sum, values(lps))
         @test logp ≈ (logprior_true + loglikelihood_true)
     end
