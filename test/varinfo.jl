@@ -434,6 +434,7 @@ end
             y ~ Exponential(1)
             return nothing
         end
+        model = fixedtransforms()
         tfm_strat = WithTransforms(get_fixed_transforms(model, LinkAll()), UnlinkAll())
 
         @testset "initialisation" begin
