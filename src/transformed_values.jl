@@ -429,7 +429,7 @@ function apply_transform_strategy(
         # TODO(penelopeysm): Note that in principle we could probably allow different target
         # fixed transforms. However, for now let's keep it simple and error if it doesn't
         # match.
-        if target.transform != tv.transform
+        if target != tv.transform
             error(
                 "Variable $vn has a fixed transform, but the transform strategy expects it to be transformed differently.",
             )

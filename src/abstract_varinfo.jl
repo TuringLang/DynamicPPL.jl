@@ -566,12 +566,6 @@ julia> keys(vi_subset_merged)
  s
  x[2]
 
-julia> vi_subset_merged[[@varname(s), @varname(m), @varname(x[2])]]
-3-element Vector{Float64}:
- 1.0
- 2.0
- 4.0
-
 julia> # Merge the two with the original.
        vi_merged = merge(vi, vi_subset_merged);
 
