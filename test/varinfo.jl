@@ -426,14 +426,17 @@ end
                 Set{VarName}(),
             )
         end
+    end
 
-        @testset "fixed transforms" begin
-            @model function fixedtransforms()
-                x ~ Beta(2, 2)
-                y ~ Exponential(1)
-                return nothing
-            end
-            tfm_strat = WithTransforms(get_fixed_transforms(model, LinkAll()), UnlinkAll())
+    @testset "fixed transforms" begin
+        @model function fixedtransforms()
+            x ~ Beta(2, 2)
+            y ~ Exponential(1)
+            return nothing
+        end
+        tfm_strat = WithTransforms(get_fixed_transforms(model, LinkAll()), UnlinkAll())
+
+        @testset "initialisation" begin
             _, vi = DynamicPPL.init!!(model, VarInfo(), InitFromPrior(), tfm_strat)
             # output_tfm_strat is generated via update_transform_strategy
             output_tfm_strat = vi.transform_strategy
@@ -443,6 +446,28 @@ end
                 tval = DynamicPPL.get_transformed_value(vi, vn)
                 @test tval.transform == tfm_strat.transforms[vn]
             end
+        end
+
+        @testset "linking" begin
+            _, vi = DynamicPPL.init!!(model, VarInfo(), InitFromPrior(), tfm_strat)
+
+            vi_linked = DynamicPPL.link!!(deepcopy(vi), model)
+            @test vi_linked.transform_strategy == LinkAll()
+            @test all(
+                vn ->
+                    DynamicPPL.get_transformed_value(vi_linked, vn).transform isa
+                    DynamicPPL.DynamicLink,
+                keys(vi_linked),
+            )
+
+            vi_invlinked = DynamicPPL.invlink!!(deepcopy(vi), model)
+            @test vi_invlinked.transform_strategy == UnlinkAll()
+            @test all(
+                vn ->
+                    DynamicPPL.get_transformed_value(vi_invlinked, vn).transform isa
+                    DynamicPPL.Unlink,
+                keys(vi_invlinked),
+            )
         end
     end
 

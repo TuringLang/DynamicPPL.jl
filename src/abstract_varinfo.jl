@@ -639,6 +639,9 @@ all the `TransformedValue`s in `vi.values` with the corresponding
 `TransformedValue(linked_value, DynamicLink())`. If `vns` is provided, then only transform
 the variables in `vns`.
 
+Note that if `vi` contains variables that have fixed transforms, the fixed transforms will
+be overwritten.
+
 See also: [`invlink`](@ref).
 """
 function link(vi::AbstractVarInfo, model::Model)
@@ -665,6 +668,9 @@ all the `TransformedValue`s in `vi.values` with the corresponding
 `TransformedValue(unlinked_value, Unlink())`. Note that the unlinked values are still
 vectorised (that is a requirement of `vi.values`). If `vns` is provided, then only transform
 the variables in `vns`.
+
+Note that if `vi` contains variables that have fixed transforms, the fixed transforms will
+be overwritten.
 
 See also: [`link`](@ref).
 """

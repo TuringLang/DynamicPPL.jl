@@ -412,20 +412,33 @@ function apply_transform_strategy(
     strategy::AbstractTransformStrategy,
     tv::TransformedValue{T,FixedTransform{F}},
     vn::VarName,
-    ::Distribution,
+    dist::Distribution,
 ) where {T,F}
     target = target_transform(strategy, vn)
-    # TODO(penelopeysm): Note that in principle we could probably allow different target
-    # transforms. However, for now let's keep it simple and error if it doesn't match.
-    if target != tv.transform
-        error(
-            "Variable $vn has a fixed transform, but the transform strategy expects it to be transformed differently.",
+    return if target isa DynamicLink
+        raw_value = get_raw_value(tv)
+        flink = Bijectors.VectorBijectors.to_linked_vec(dist)
+        linked_value, logjac = with_logabsdet_jacobian(flink, raw_value)
+        linked_tv = TransformedValue(linked_value, DynamicLink())
+        (raw_value, linked_tv, logjac)
+    elseif target isa Unlink
+        raw_value = get_raw_value(tv)
+        new_tv = TransformedValue(raw_value, NoTransform())
+        (raw_value, new_tv, zero(LogProbType))
+    elseif target isa FixedTransform
+        # TODO(penelopeysm): Note that in principle we could probably allow different target
+        # fixed transforms. However, for now let's keep it simple and error if it doesn't
+        # match.
+        if target.transform != tv.transform
+            error(
+                "Variable $vn has a fixed transform, but the transform strategy expects it to be transformed differently.",
+            )
+        end
+        raw_value, inv_logjac = with_logabsdet_jacobian(
+            tv.transform.transform, get_internal_value(tv)
         )
+        (raw_value, tv, -inv_logjac)
     end
-    raw_value, inv_logjac = with_logabsdet_jacobian(
-        tv.transform.transform, get_internal_value(tv)
-    )
-    return (raw_value, tv, -inv_logjac)
 end
 
 """
