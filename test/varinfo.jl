@@ -411,10 +411,14 @@ end
             )
             test_transform_strategy(UnlinkAll(), model, Set{VarName}())
             test_transform_strategy(
-                UnlinkSome(Set([@varname(x)]), LinkAll()), model, Set{VarName}()
+                UnlinkSome(Set([@varname(x)]), LinkAll()),
+                model,
+                Set{VarName}([@varname(y)]),
             )
             test_transform_strategy(
-                UnlinkSome(Set([@varname(y)]), LinkAll()), model, Set{VarName}()
+                UnlinkSome(Set([@varname(y)]), LinkAll()),
+                model,
+                Set{VarName}([@varname(x)]),
             )
             test_transform_strategy(
                 UnlinkSome(Set([@varname(x), @varname(y)]), LinkAll()),
