@@ -23,7 +23,6 @@ using ADTypes: ADTypes
 using BangBang: BangBang
 using AbstractPPL: AbstractPPL, VarName
 using LogDensityProblems: LogDensityProblems
-import DifferentiationInterface as DI
 using Random: Random
 
 """
@@ -178,7 +177,7 @@ struct LogDensityFunction{
     L<:AbstractTransformStrategy,
     F,
     VNT<:VarNamedTuple,
-    ADP<:Union{Nothing,DI.GradientPrep},
+    ADP,  # unconstrained: backends may store any prep object via _prepare_gradient
     # type of the vector passed to logdensity functions
     X<:AbstractVector,
     AC<:AccumulatorTuple,
@@ -246,12 +245,9 @@ struct LogDensityFunction{
         else
             # Make backend-specific tweaks to the adtype
             adtype = DynamicPPL.tweak_adtype(adtype, model, x)
-            args = (model, getlogdensity, all_ranges, transform_strategy, accs)
-            if _use_closure(adtype)
-                DI.prepare_gradient(LogDensityAt(args...), adtype, x)
-            else
-                DI.prepare_gradient(logdensity_at, adtype, x, map(DI.Constant, args)...)
-            end
+            DynamicPPL._prepare_gradient(
+                adtype, x, model, getlogdensity, all_ranges, transform_strategy, accs
+            )
         end
         return new{
             typeof(model),
@@ -407,6 +403,22 @@ function (f::LogDensityAt)(params::AbstractVector{<:Real})
     )
 end
 
+# Extensible hooks: backends provide methods via package extensions.
+function _prepare_gradient end
+function _value_and_gradient end
+
+function _value_and_gradient(adtype::ADTypes.AbstractADType, args...)
+    throw(
+        ArgumentError(
+            "No gradient implementation found for AD backend $adtype. " *
+            "If you intended to use the default (ForwardDiff), ensure that ForwardDiff is " *
+            "loaded (e.g. `using ForwardDiff`). For other backends, load the corresponding " *
+            "package (e.g. `using Mooncake`, `using Enzyme`) or load " *
+            "DifferentiationInterface as a fallback.",
+        ),
+    )
+end
+
 function LogDensityProblems.logdensity(
     ldf::LogDensityFunction, params::AbstractVector{<:Real}
 )
@@ -426,32 +438,16 @@ function LogDensityProblems.logdensity_and_gradient(
     # `params` has to be converted to the same vector type that was used for AD preparation,
     # otherwise the preparation will not be valid.
     params = convert(get_input_vector_type(ldf), params)
-    return if _use_closure(ldf.adtype)
-        DI.value_and_gradient(
-            LogDensityAt(
-                ldf.model,
-                ldf._getlogdensity,
-                ldf._varname_ranges,
-                ldf.transform_strategy,
-                ldf._accs,
-            ),
-            ldf._adprep,
-            ldf.adtype,
-            params,
-        )
-    else
-        DI.value_and_gradient(
-            logdensity_at,
-            ldf._adprep,
-            ldf.adtype,
-            params,
-            DI.Constant(ldf.model),
-            DI.Constant(ldf._getlogdensity),
-            DI.Constant(ldf._varname_ranges),
-            DI.Constant(ldf.transform_strategy),
-            DI.Constant(ldf._accs),
-        )
-    end
+    return DynamicPPL._value_and_gradient(
+        ldf.adtype,
+        ldf._adprep,
+        params,
+        ldf.model,
+        ldf._getlogdensity,
+        ldf._varname_ranges,
+        ldf.transform_strategy,
+        ldf._accs,
+    )
 end
 
 function LogDensityProblems.capabilities(::Type{<:LogDensityFunction{M,Nothing}}) where {M}

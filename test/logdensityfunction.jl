@@ -13,9 +13,10 @@ using LogDensityProblems: LogDensityProblems
 using Random: Xoshiro
 using StableRNGs: StableRNG
 
+using Enzyme: Enzyme
 using ForwardDiff: ForwardDiff
-using ReverseDiff: ReverseDiff
 using Mooncake: Mooncake
+using ReverseDiff: ReverseDiff
 
 @testset "LogDensityFunction: constructors" begin
     dist = Beta(2, 2)
@@ -445,6 +446,7 @@ end
         AutoReverseDiff(; compile=false),
         AutoReverseDiff(; compile=true),
         AutoMooncake(; config=nothing),
+        AutoMooncakeForward(; config=nothing),
     ]
 
     @testset "Correctness" begin
