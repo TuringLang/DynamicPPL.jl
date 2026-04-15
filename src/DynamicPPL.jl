@@ -269,7 +269,6 @@ include("onlyaccs.jl")
 include("compiler.jl")
 include("logdensityfunction.jl")
 include("accumulators/vector_params.jl")
-include("model_utils.jl")
 include("chains.jl")
 
 include("debug_utils.jl")
