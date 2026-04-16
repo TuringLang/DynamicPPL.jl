@@ -96,52 +96,74 @@ end
             end
         end
     end
-end
 
-@testset "ParamsWithStats from LogDensityFunction with fixed transforms" begin
-    # Note: can't use ALL_MODELS here because that contains a model with dynamic transforms,
-    # which would yield incorrect results with fix_transforms.
-    @testset "$(m.f)" for m in DynamicPPL.TestUtils.DEMO_MODELS
-        @testset "$transform_strategy" for transform_strategy in (UnlinkAll(), LinkAll())
-            ldf_fixed = LogDensityFunction(
-                m, getlogjoint_internal, transform_strategy; fix_transforms=true
-            )
-            ldf_dynamic = LogDensityFunction(m, getlogjoint_internal, transform_strategy)
-            param_vector = rand(ldf_fixed)
+    @testset "with fixed transforms" begin
+        # Note: can't use ALL_MODELS here because that contains a model with dynamic transforms,
+        # which would yield incorrect results with fix_transforms.
+        @testset "$(m.f)" for m in DynamicPPL.TestUtils.DEMO_MODELS
+            @testset "$transform_strategy" for transform_strategy in
+                                               (UnlinkAll(), LinkAll())
+                ldf_fixed = LogDensityFunction(
+                    m, getlogjoint_internal, transform_strategy; fix_transforms=true
+                )
+                ldf_dynamic = LogDensityFunction(
+                    m, getlogjoint_internal, transform_strategy
+                )
+                param_vector = rand(ldf_fixed)
 
-            # Fast path (no log probs, no colon eq): should match the model-evaluation path
-            fast = ParamsWithStats(
-                param_vector, ldf_fixed; include_log_probs=false, include_colon_eq=false
+                # Fast path (no log probs, no colon eq): should match the model-evaluation path
+                fast = ParamsWithStats(
+                    param_vector, ldf_fixed; include_log_probs=false, include_colon_eq=false
+                )
+                slow = ParamsWithStats(
+                    param_vector,
+                    ldf_dynamic;
+                    include_log_probs=false,
+                    include_colon_eq=false,
+                )
+                @test fast == slow
+            end
+        end
+
+        @testset "check that model is actually not evaluated" begin
+            should_error = false
+            @model function prickly()
+                x ~ Normal()
+                return should_error && error("nope")
+            end
+            # need to construct LDF without erroring
+            ldf = LogDensityFunction(
+                prickly(), getlogjoint_internal, LinkAll(); fix_transforms=true
             )
-            slow = ParamsWithStats(
-                param_vector, ldf_dynamic; include_log_probs=false, include_colon_eq=false
-            )
-            @test fast == slow
+            # now make the model error
+            should_error = true
+            @test_throws ErrorException prickly()()
+            # check that ParamsWithStats doesn't error
+            @test ParamsWithStats(
+                [0.5], ldf; include_log_probs=false, include_colon_eq=false
+            ) isa Any
+            # but it does if you set either of them to true
+            for (ilp, ice) in ((true, false), (false, true), (true, true))
+                @test_throws ErrorException ParamsWithStats(
+                    [0.5], ldf; include_log_probs=ilp, include_colon_eq=ice
+                )
+            end
         end
     end
 
-    @testset "check that model is actually not evaluated" begin
-        should_error = false
-        @model function prickly()
+    @testset "errors on invalid length" begin
+        @model function f()
             x ~ Normal()
-            return should_error && error("nope")
+            y ~ Normal()
+            return nothing
         end
-        # need to construct LDF without erroring
-        ldf = LogDensityFunction(
-            prickly(), getlogjoint_internal, LinkAll(); fix_transforms=true
-        )
-        # now make the model error
-        should_error = true
-        @test_throws ErrorException prickly()()
-        # check that ParamsWithStats doesn't error
-        @test ParamsWithStats(
-            [0.5], ldf; include_log_probs=false, include_colon_eq=false
-        ) isa Any
-        # but it does if you set either of them to true
-        for (ilp, ice) in ((true, false), (false, true), (true, true))
-            @test_throws ErrorException ParamsWithStats(
-                [0.5], ldf; include_log_probs=ilp, include_colon_eq=ice
-            )
+        for fix_transforms in (false, true)
+            ldf = LogDensityFunction(f(), getlogjoint_internal, UnlinkAll(); fix_transforms)
+            for vec in (randn(1), randn(3))
+                @test_throws ArgumentError ParamsWithStats(
+                    vec, ldf; include_log_probs=false, include_colon_eq=false
+                )
+            end
         end
     end
 end

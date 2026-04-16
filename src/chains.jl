@@ -186,6 +186,15 @@ function ParamsWithStats(
     return if include_log_probs || include_colon_eq
         pws_with_eval(param_vector, ldf, stats; include_colon_eq, include_log_probs)
     else
+        actual_length = length(param_vector)
+        expected_length = LogDensityProblems.dimension(ldf)
+        if actual_length != expected_length
+            throw(
+                ArgumentError(
+                    "The length of the input vector is $(actual_length), but the LogDensityFunction expects a vector of length $(expected_length) based on the ranges that were extracted when the LogDensityFunction was constructed.",
+                ),
+            )
+        end
         params = VarNamedTuple()
         for (vn, rat) in pairs(ldf._varname_ranges)
             top_sym = AbstractPPL.getsym(vn)
