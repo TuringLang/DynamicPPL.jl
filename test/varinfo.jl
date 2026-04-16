@@ -682,7 +682,7 @@ end
                 # Should be equivalent.
                 check_varinfo_keys(varinfo_merged, vns)
                 # Values should be the same.
-                check_varinfo_values(varinfo_subset, varinfo, vns_target)
+                check_varinfo_values(varinfo_merged, varinfo, vns_target)
             end
 
             @testset "$(convert(Vector{VarName}, vns_subset)) order" for vns_subset in
