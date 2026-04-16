@@ -33,6 +33,7 @@ using Random: Random
         vi_vnt_or_tfm_strategy=_default_vnt(model, UnlinkAll()),
         accs::Union{NTuple{<:Any,AbstractAccumulator},AccumulatorTuple}=DynamicPPL.ldf_accs(getlogdensity);
         adtype::Union{ADTypes.AbstractADType,Nothing}=nothing,
+        fix_transform::Bool=false,
     )
 
 A struct which contains a model, along with all the information necessary to:

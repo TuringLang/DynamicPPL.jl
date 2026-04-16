@@ -66,13 +66,14 @@ using DynamicPPL, Distributions, LogDensityProblems
 
 @model function f()
     a ~ Exponential()
-    return b ~ Normal()
+    b ~ Normal()
+    return nothing
 end
 model = f()
 
 ldf = LogDensityFunction(model, getlogjoint_internal, tfm_strategy)
 
-# Notice that the transformed value of `x` is negative here.
+# Notice that the transformed value of `a` is negative here.
 params = [-5.0, 2.0]
 LogDensityProblems.logdensity(ldf, params)
 ```

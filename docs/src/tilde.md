@@ -151,7 +151,7 @@ They are all interconnected, which is why they are computed together inside `app
     `logjac` is accumulated according to the transform specified by the transform strategy.
     The convention in DynamicPPL is that the log-Jacobian is always computed with respect to the forward transformation.
 
-It is worth emphasising that whether a value is transformed or not is determined by the *transform strategy* provided to the model (i.e., `ctx.link_strategy`), not the initialisation strategy (`ctx.strategy`).
+It is worth emphasising that whether a value is transformed or not is determined by the *transform strategy* provided to the model (i.e., `ctx.transform_strategy`), not the initialisation strategy (`ctx.strategy`).
 The reason for this is to allow a separation between the source of the values (initialisation) and how those values are to be interpreted (transform strategy).
 
 This allows us to, for example, generate values from the (unlinked) prior but also calculate their log-density in transformed space and accumulate transformed values by combining `InitFromPrior()` with `LinkAll()`.
