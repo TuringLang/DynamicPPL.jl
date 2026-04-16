@@ -105,7 +105,7 @@ For example, [`DynamicPPL.InitFromParams`](@ref) reads from a set of parameters 
 
 ## The returned `TransformedValue`
 
-As mentioned above, the `init` function must return an `TransformedValue`.
+As mentioned above, the `init` function must return a `TransformedValue`.
 The transform stored inside this does not affect the result of the model evaluation, but it may have performance implications.
 **In particular, the returned subtype does not determine whether the log-Jacobian term is accumulated or not: that is determined by a separate [_transform strategy_](@ref transform-strategies).**
 
