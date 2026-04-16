@@ -63,7 +63,7 @@ In a `VarInfo`, the `accs` field is responsible for the accumulation step, just 
 However, `values` serves three purposes in one:
 
   - it is sometimes used for initialisation (when the model's leaf context is `DefaultContext`, the `TransformedValue` to be used in the transformation step is read from it)
-  - it also determines whether the log-Jacobian term should be included or not (if the value is a `LinkedVectorValue`, the log-Jacobian is included)
+  - it also determines whether the log-Jacobian term should be included or not (by virtue of specifying a transformation)
   - it is sometimes also used for accumulation (when evaluating a model with a VarInfo, we will potentially store a new `TransformedValue` in it!).
 
 The path to removing `VarInfo` is essentially to separate these three roles:
@@ -76,7 +76,7 @@ The path to removing `VarInfo` is essentially to separate these three roles:
     Much like how we can have an initialisation strategy that takes values from a `VarInfo`, we can also have a transform strategy that is defined by the existing status of a `VarInfo`.
     This is implemented in the `DynamicPPL.get_link_strategy(::AbstractVarInfo)` function.
  3. The accumulation role of `varinfo.values` can be taken over by a new accumulator, which we call `VectorValueAccumulator`.
-    This name is chosen because it does not store generic `TransformedValue`s, but only two subtypes of it, `LinkedVectorValue` and `VectorValue`.
+    This name is chosen because it does not store generic `TransformedValue`s, but only vectorised ones, i.e., `TransformedValue{V}` where `V <: AbstractVector`.
     `VectorValueAccumulator` is implemented inside `src/accs/vector_value.jl`.
 
 !!! note
@@ -84,7 +84,7 @@ The path to removing `VarInfo` is essentially to separate these three roles:
     Decoupling all of these components also means that we can mix and match different initialisation strategies, link strategies, and accumulators more easily.
     
     For example, previously, to create a linked VarInfo, you would need to first generate an unlinked VarInfo and then link it.
-    Now, you can directly create a linked VarInfo (i.e., accumulate `LinkedVectorValue`s) by sampling from the prior (i.e., initialise with `InitFromPrior`).
+    Now, you can directly create a linked VarInfo by initialising with `InitFromPrior()` and `LinkAll()`.
 
 ## `RawValueAccumulator`
 

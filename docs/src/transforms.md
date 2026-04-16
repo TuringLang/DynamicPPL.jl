@@ -186,7 +186,7 @@ vi_linked
 ```
 
 We can see that we have gotten exactly the same result, but with only running the model once, and only calculating the transformation once.
-Furthermore, this allows us to remove the inverse transform step inside `InitFromUniform`: it can simply return a `LinkedVectorValue` directly, and the transform strategy is then responsible for performing the inverse transform a single time.
+Furthermore, this allows us to remove the inverse transform step inside `InitFromUniform`: it can simply return a linked value directly, and the transform strategy is then responsible for performing the inverse transform a single time.
 
 Essentially, having a separate transform strategy allows us to:
 
