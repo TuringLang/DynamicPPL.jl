@@ -121,6 +121,10 @@ The most common use case is to provide a `VarNamedTuple`, which provides a mappi
 variable names to values. However, we leave the type of `params` open in order to allow for
 custom parameter storage types.
 
+DynamicPPL also provides extra implementations for `params::NamedTuple` and
+`params::AbstractDict{<:VarName}`, which both convert the input to a `VarNamedTuple`
+internally.
+
 ## Custom parameter storage types
 
 For `InitFromParams` to work correctly with a custom `params::P`, you need to implement

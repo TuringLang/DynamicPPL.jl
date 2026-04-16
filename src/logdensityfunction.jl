@@ -623,8 +623,8 @@ end
         ldf::LogDensityFunction
     )
 
-Convenience constructor for `InitFromVector` that extracts the `varname_ranges` and
-`transform_strategy` from the given `LogDensityFunction`.
+Constructor for `InitFromVector` that extracts the necessary information about VarName
+ranges and transform strategy from a pre-existing `LogDensityFunction`.
 """
 function InitFromVector(
     vect::V, ldf::L

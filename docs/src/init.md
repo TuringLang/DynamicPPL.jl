@@ -20,8 +20,11 @@ For many purposes you should be able to get away with only using these.
 ```@docs
 InitFromPrior
 InitFromParams
+InitFromParams(::ParamsWithStats, ::Union{Nothing,AbstractInitStrategy})
 InitFromUniform
 InitFromVector
+InitFromVector(::AbstractVector{<:Real}, ::LogDensityFunction)
+InitFromVector(::MarginalLogDensities.MarginalLogDensity{<:DPPLMLDExt.LogDensityFunctionWrapper}, ::Union{AbstractVector,Nothing})
 ```
 
 However, sometimes you will need to implement your own initialisation strategy.
