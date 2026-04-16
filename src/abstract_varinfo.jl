@@ -442,8 +442,7 @@ function getindex_internal end
 Return the actual `TransformedValue` stored in `vi` for variable `vn`.
 
 This differs from `getindex_internal`, which obtains the `TransformedValue` and then
-directly returns `get_internal_value(tval)`; and `getindex` which returns
-`get_transform(tval)(get_internal_value(tval))`.
+directly returns `get_internal_value(tval)`.
 """
 function get_transformed_value end
 

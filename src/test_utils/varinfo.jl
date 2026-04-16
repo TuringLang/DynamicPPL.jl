@@ -24,11 +24,8 @@ end
 """
     setup_varinfos(model::Model, example_values::NamedTuple; include_threadsafe::Bool=false)
 
-Return a tuple of instances for different implementations of `AbstractVarInfo` with
-each `vi`, supposedly, satisfying `vi[vn] == get(example_values, vn)` for `vn` in `varnames`.
-
-If `include_threadsafe` is `true`, then the returned tuple will also include thread-safe versions
-of the varinfo instances.
+Return a tuple of VarInfo (and ThreadSafeVarInfo, if `include_threadsafe=true`) where the
+values in `vi` have been obtained by evaluating the model with `example_values`.
 """
 function setup_varinfos(
     model::Model, example_values::NamedTuple; include_threadsafe::Bool=false

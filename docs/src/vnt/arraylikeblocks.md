@@ -112,7 +112,7 @@ vi.values
 This means that in the actual `VarInfo` we do not have a notion of what `x[1]` is:
 
 ```@repl 1
-vi[@varname(x[1])]
+DynamicPPL.getindex_internal(vi, @varname(x[1]))
 ```
 
 See the [documentation on storing values](../accs/values.md) for more details.
