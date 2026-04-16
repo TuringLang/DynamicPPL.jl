@@ -12,18 +12,19 @@ end
 
 """
     ParamsWithStats(
-        varinfo::AbstractVarInfo,
+        init_strategy::AbstractInitStrategy,
         model::Model,
         stats::NamedTuple=NamedTuple();
         include_colon_eq::Bool=true,
         include_log_probs::Bool=true,
     )
 
-Generate a `ParamsWithStats` by re-evaluating the given `model` with the provided `varinfo`.
-Re-evaluation of the model is often necessary to obtain correct parameter values as well as
-log probabilities. This is especially true when using linked VarInfos, i.e., when variables
-have been transformed to unconstrained space, and if this is not done, subtle correctness
-bugs may arise: see, e.g., https://github.com/TuringLang/Turing.jl/issues/2195.
+Generate a `ParamsWithStats` by re-evaluating the given `model` with the provided
+`init_strategy`. Re-evaluation of the model is often necessary to obtain correct parameter
+values as well as log probabilities. This is especially true when using linked VarInfos,
+i.e., when variables have been transformed to unconstrained space, and if this is not done,
+subtle correctness bugs may arise: see, e.g.,
+https://github.com/TuringLang/Turing.jl/issues/2195.
 
 `include_colon_eq` controls whether variables on the left-hand side of `:=` are included in
 the resulting parameters.
@@ -32,7 +33,7 @@ the resulting parameters.
 joint) are added to the resulting statistics NamedTuple.
 """
 function ParamsWithStats(
-    varinfo::AbstractVarInfo,
+    init_strategy::AbstractInitStrategy,
     model::DynamicPPL.Model,
     stats::NamedTuple=NamedTuple();
     include_colon_eq::Bool=true,
@@ -48,8 +49,7 @@ function ParamsWithStats(
         (DynamicPPL.RawValueAccumulator(include_colon_eq),)
     end
     oavi = OnlyAccsVarInfo(accs)
-    init = InitFromParams(varinfo.values, nothing)
-    oavi = last(DynamicPPL.init!!(model, oavi, init, UnlinkAll()))
+    oavi = last(DynamicPPL.init!!(model, oavi, init_strategy, UnlinkAll()))
     params = densify!!(get_raw_values(oavi))
     if include_log_probs
         stats = merge(
@@ -120,8 +120,22 @@ via `unflatten!!` plus re-evaluation. It is faster for two reasons:
    otherwise re-evaluation would mutate the VarInfo, rendering it unusable for subsequent
    MCMC iterations).
 2. The re-evaluation is faster as it uses `OnlyAccsVarInfo`.
+
+Furthermore, if the `LogDensityFunction` has all fixed transforms (i.e., was constructed
+with `fix_transforms=true`), and neither `include_log_probs` nor `include_colon_eq` is
+set, then model re-evaluation is skipped entirely and the raw parameter values are
+extracted directly from the parameter vector using the cached transforms.
 """
 function ParamsWithStats(
+    param_vector::AbstractVector,
+    ldf::DynamicPPL.LogDensityFunction,
+    stats::NamedTuple=NamedTuple();
+    include_colon_eq::Bool=true,
+    include_log_probs::Bool=true,
+)
+    return pws_with_eval(param_vector, ldf, stats; include_colon_eq, include_log_probs)
+end
+function pws_with_eval(
     param_vector::AbstractVector,
     ldf::DynamicPPL.LogDensityFunction,
     stats::NamedTuple=NamedTuple();
@@ -156,6 +170,41 @@ function ParamsWithStats(
         )
     end
     return ParamsWithStats(params, stats)
+end
+
+# Specialisation for when the LDF is known to have all fixed transforms. In this case, we
+# can avoid reevaluating the model because the transformed values + their transforms are
+# all known (unless we need log probs, or `:=` results, in which case we will just have
+# to reevaluate anyway).
+function ParamsWithStats(
+    param_vector::AbstractVector,
+    ldf::LogDensityFunction{M,A,L,F,V,D,X,C,true},
+    stats::NamedTuple=NamedTuple();
+    include_colon_eq::Bool=true,
+    include_log_probs::Bool=true,
+) where {M,A,L,F,V,D,X,C}
+    return if include_log_probs || include_colon_eq
+        pws_with_eval(param_vector, ldf, stats; include_colon_eq, include_log_probs)
+    else
+        actual_length = length(param_vector)
+        expected_length = LogDensityProblems.dimension(ldf)
+        if actual_length != expected_length
+            throw(
+                ArgumentError(
+                    "The length of the input vector is $(actual_length), but the LogDensityFunction expects a vector of length $(expected_length) based on the ranges that were extracted when the LogDensityFunction was constructed.",
+                ),
+            )
+        end
+        params = VarNamedTuple()
+        for (vn, rat) in pairs(ldf._varname_ranges)
+            top_sym = AbstractPPL.getsym(vn)
+            template = get(ldf._varname_ranges.data, top_sym, DynamicPPL.NoTemplate())
+            raw_val = rat.transform.transform(param_vector[rat.range])
+            params = DynamicPPL.templated_setindex!!(params, raw_val, vn, template)
+        end
+        params = densify!!(params)
+        ParamsWithStats(params, stats)
+    end
 end
 
 function Base.show(io::IO, ::MIME"text/plain", pws::ParamsWithStats)

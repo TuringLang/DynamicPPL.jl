@@ -69,7 +69,6 @@ export AbstractVarInfo,
     acclogprior!!,
     accloglikelihood!!,
     is_transformed,
-    set_transformed!!,
     # Accumulators
     AbstractAccumulator,
     accumulate_assume!!,
@@ -104,7 +103,8 @@ export AbstractVarInfo,
     # Accumulators - miscellany
     PriorDistributionAccumulator,
     get_priors,
-    BijectorAccumulator,
+    FixedTransformAccumulator,
+    get_fixed_transforms,
     # Working with internal values as vectors
     unflatten!!,
     internal_values_as_vector,
@@ -118,8 +118,6 @@ export AbstractVarInfo,
     OrderedDict,
     # Model
     Model,
-    getmissings,
-    getargnames,
     setthreadsafe,
     requires_threadsafe,
     extract_priors,
@@ -131,6 +129,8 @@ export AbstractVarInfo,
     OnlyAccsVarInfo,
     to_vector_params,
     get_input_vector_type,
+    RangeAndTransform,
+    get_range_and_transform,
     # Leaf contexts
     AbstractContext,
     contextualize,
@@ -155,28 +155,31 @@ export AbstractVarInfo,
     get_param_eltype,
     init,
     # Transformed values
-    VectorValue,
-    LinkedVectorValue,
-    UntransformedValue,
+    TransformedValue,
     get_transform,
     get_internal_value,
+    get_raw_value,
     set_internal_value,
-    # Linking
-    link,
-    link!!,
-    invlink,
-    invlink!!,
-    update_link_status!!,
+    # Transform strategies
+    update_transform_status!!,
     AbstractTransformStrategy,
     LinkAll,
     UnlinkAll,
     LinkSome,
     UnlinkSome,
+    WithTransforms,
     target_transform,
     apply_transform_strategy,
     AbstractTransform,
     DynamicLink,
     Unlink,
+    FixedTransform,
+    NoTransform,
+    # Linking
+    link,
+    link!!,
+    invlink,
+    invlink!!,
     # Pseudo distributions
     NamedDist,
     NoDist,
@@ -195,7 +198,6 @@ export AbstractVarInfo,
     fixed,
     unfix,
     predict,
-    marginalize,
     prefix,
     returned,
     to_submodel,
@@ -205,6 +207,7 @@ export AbstractVarInfo,
     @addlogprob!,
     check_model,
     set_logprob_type!,
+    marginalize,
     # Deprecated.
     generated_quantities,
     typed_identity
@@ -259,7 +262,7 @@ include("accumulators/vnt.jl")
 include("accumulators/vector_values.jl")
 include("accumulators/priors.jl")
 include("accumulators/raw_values.jl")
-include("accumulators/bijector.jl")
+include("accumulators/fixed_transforms.jl")
 include("accumulators/pointwise_logdensities.jl")
 include("abstract_varinfo.jl")
 include("threadsafe.jl")
@@ -268,7 +271,6 @@ include("onlyaccs.jl")
 include("compiler.jl")
 include("logdensityfunction.jl")
 include("accumulators/vector_params.jl")
-include("model_utils.jl")
 include("chains.jl")
 
 include("debug_utils.jl")
@@ -277,6 +279,8 @@ include("test_utils.jl")
 
 include("deprecated.jl")
 
+# Extended in MarginalLogDensitiesExt
+function marginalize end
 if isdefined(Base.Experimental, :register_error_hint)
     function __init__()
         # Same for MarginalLogDensities.jl
@@ -301,8 +305,5 @@ end
 # Standard tag: Improves stacktraces
 # Ref: https://www.stochasticlifestyle.com/improved-forwarddiff-jl-stacktraces-with-package-tags/
 struct DynamicPPLTag end
-
-# Extended in MarginalLogDensitiesExt
-function marginalize end
 
 end # module

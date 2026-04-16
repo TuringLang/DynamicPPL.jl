@@ -372,11 +372,12 @@ DynamicPPL.setchildcontext(::MyParentContext, child) = MyParentContext(child)
             return data.x
         end
         fixm = DynamicPPL.fix(ntfix(), (; data=(; x=5.0)))
-        retval, vi = DynamicPPL.init!!(fixm, VarInfo())
+        accs = OnlyAccsVarInfo(RawValueAccumulator(false))
+        retval, accs = DynamicPPL.init!!(fixm, accs, InitFromPrior(), UnlinkAll())
         # The fixed data should overwrite the NamedTuple that came before it
         @test retval == 5.0
-        @test vi isa VarInfo
-        @test vi[@varname(m)] isa Real
+        # `m` should still be sampled
+        @test get_raw_values(accs)[@varname(m)] isa Real
     end
 
     @testset "can condition/fix on each individual part of a multivariate" begin

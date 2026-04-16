@@ -20,8 +20,11 @@ For many purposes you should be able to get away with only using these.
 ```@docs
 InitFromPrior
 InitFromParams
+InitFromParams(::ParamsWithStats, ::Union{Nothing,AbstractInitStrategy})
 InitFromUniform
 InitFromVector
+InitFromVector(::AbstractVector{<:Real}, ::LogDensityFunction)
+InitFromVector(::MarginalLogDensities.MarginalLogDensity{<:DPPLMLDExt.LogDensityFunctionWrapper}, ::Union{AbstractVector,Nothing})
 ```
 
 However, sometimes you will need to implement your own initialisation strategy.
@@ -29,12 +32,12 @@ The subsequent sections will demonstrate how this can be done.
 
 ## The required interface
 
-Each initialisation strategy must subtype `AbstractInitStrategy`, and implement `DynamicPPL.init(rng, vn, dist, strategy)`, which must return an `AbstractTransformedValue`.
+Each initialisation strategy must subtype `AbstractInitStrategy`, and implement `DynamicPPL.init(rng, vn, dist, strategy)`, which must return a `TransformedValue`.
 
 ```@docs; canonical=false
 AbstractInitStrategy
 init
-DynamicPPL.AbstractTransformedValue
+DynamicPPL.TransformedValue
 ```
 
 ## An example
@@ -64,7 +67,7 @@ function DynamicPPL.init(rng, vn::VarName, ::Distribution, strategy::InitRandomW
     new_x = rand(rng, Normal(strategy.x_prev, strategy.step_size))
     # Insert some printing to see when this is called.
     @info "init() is returning: $new_x"
-    return DynamicPPL.UntransformedValue(new_x)
+    return DynamicPPL.TransformedValue(new_x, DynamicPPL.NoTransform())
 end
 ```
 
@@ -103,19 +106,19 @@ In this case, we have defined an initialisation strategy that is random (and thu
 However, initialisation strategies can also be fully deterministic, in which case the `rng` argument is not needed.
 For example, [`DynamicPPL.InitFromParams`](@ref) reads from a set of parameters which are known ahead of time.
 
-## The returned `AbstractTransformedValue`
+## The returned `TransformedValue`
 
-As mentioned above, the `init` function must return an `AbstractTransformedValue`.
-The subtype of `AbstractTransformedValue` used does not affect the result of the model evaluation, but it may have performance implications.
+As mentioned above, the `init` function must return a `TransformedValue`.
+The transform stored inside this does not affect the result of the model evaluation, but it may have performance implications.
 **In particular, the returned subtype does not determine whether the log-Jacobian term is accumulated or not: that is determined by a separate [_transform strategy_](@ref transform-strategies).**
 
-What this means is that initialisation strategies should always choose the laziest possible subtype of `AbstractTransformedValue`.
+What this means is that initialisation strategies should always choose the laziest possible version of `TransformedValue`, electing to do as few transformations as possible inside `init`.
 
-For example, in the above example, we used `UntransformedValue`, which is the simplest possible choice.
+For example, in the above example, we simply wrapped the untransformed value in `TransformedValue(..., NoTransform())`, which is the simplest possible choice.
 If a linked value is required by a later step inside `tilde_assume!!` (either the transformation or accumulation steps), it is the responsibility of that step to perform the linking.
 
 Conversely, [`DynamicPPL.InitFromUniform`](@ref) samples inside linked space.
-Instead of performing the inverse link transform and returning an `UntransformedValue`, it directly returns a `LinkedVectorValue`: this means that if a linked value is required by a later step, it is not necessary to link it again.
+Instead of performing the inverse link transform eagerly, it directly returns a `TransformedValue(val, DynamicLink())`, where `val` is *already* the linked vector: this means that if a linked value is required by a later step, it is not necessary to link it again.
 Even if no linked value is required, this lazy approach does not hurt performance, as it just defers the inverse linking to the later step.
 
 In both cases, only one linking operation is performed (at most).

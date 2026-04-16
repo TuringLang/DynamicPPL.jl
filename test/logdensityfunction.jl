@@ -21,10 +21,10 @@ using Mooncake: Mooncake
     dist = Beta(2, 2)
     @model f() = x ~ dist
     expected_ral_unlinked = @vnt begin
-        x := DynamicPPL.RangeAndLinked(1:1, false)
+        x := DynamicPPL.RangeAndTransform(1:1, Unlink())
     end
     expected_ral_linked = @vnt begin
-        x := DynamicPPL.RangeAndLinked(1:1, true)
+        x := DynamicPPL.RangeAndTransform(1:1, DynamicLink())
     end
     oavi_unlinked = begin
         accs = OnlyAccsVarInfo(VectorValueAccumulator())
@@ -544,6 +544,37 @@ end
             array_model_logp_and_grad = eval_logp_and_grad(array_model, test_m, adtype)
             @test array_model_logp_and_grad[1] ≈ array_model_reference[1]
             @test array_model_logp_and_grad[2] ≈ array_model_reference[2]
+        end
+    end
+end
+
+@testset "LogDensityFunction: fix_transforms correctness" begin
+    # Helper function to check whether the AllFixed type parameter on LogDensityFunction is
+    # set correctly.
+    function has_all_fixed_transforms(
+        ::LogDensityFunction{M,A,L,F,V,D,X,C,AF}
+    ) where {M,A,L,F,V,D,X,C,AF}
+        return AF
+    end
+
+    @testset "$(m.f)" for m in DynamicPPL.TestUtils.DEMO_MODELS
+        @testset "$strategy" for strategy in (UnlinkAll(), LinkAll())
+            ldf_dynamic = LogDensityFunction(m, getlogjoint_internal, strategy)
+            ldf_fixed = LogDensityFunction(
+                m, getlogjoint_internal, strategy; fix_transforms=true
+            )
+            @test has_all_fixed_transforms(ldf_fixed)
+            # Check that the transform strategy does contain fixed transforms
+            tfm_strategy = ldf_fixed.transform_strategy
+            @test tfm_strategy isa WithTransforms
+            transforms_vnt = tfm_strategy.transforms
+            for v in DynamicPPL.TestUtils.varnames(m)
+                @test transforms_vnt[v] isa DynamicPPL.FixedTransform
+            end
+            # Check that log-density evaluation is correct
+            θ = rand(ldf_dynamic)
+            @test LogDensityProblems.logdensity(ldf_fixed, θ) ≈
+                LogDensityProblems.logdensity(ldf_dynamic, θ)
         end
     end
 end

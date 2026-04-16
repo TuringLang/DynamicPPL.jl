@@ -1,75 +1,3 @@
-# Transformation related.
-"""
-    $(TYPEDEF)
-
-Represents a transformation to be used in `link!!` and `invlink!!`, amongst others.
-
-A concrete implementation of this should implement the following methods:
-- [`link!!`](@ref): transforms the [`AbstractVarInfo`](@ref) to the unconstrained space.
-- [`invlink!!`](@ref): transforms the [`AbstractVarInfo`](@ref) to the constrained space.
-
-See also: [`link!!`](@ref), [`invlink!!`](@ref)
-"""
-abstract type AbstractTransformation end
-
-"""
-    $(TYPEDEF)
-
-Transformation which applies the identity function.
-"""
-struct NoTransformation <: AbstractTransformation end
-
-"""
-    $(TYPEDEF)
-
-Transformation which transforms the variables on a per-need-basis
-in the execution of a given `Model`.
-
-This is in constrast to `StaticTransformation` which transforms all variables
-_before_ the execution of a given `Model`.
-
-Different VarInfo types should implement their own methods for `link!!` and `invlink!!` for
-`DynamicTransformation`.
-
-See also: [`StaticTransformation`](@ref).
-"""
-struct DynamicTransformation <: AbstractTransformation end
-
-"""
-    $(TYPEDEF)
-
-Transformation which represents a fixed bijector to be applied to the variables, as opposed
-to deriving the bijector again at runtime.
-
-See also: [`DynamicTransformation`](@ref).
-
-# Fields
-$(TYPEDFIELDS)
-"""
-struct StaticTransformation{F} <: AbstractTransformation
-    "The function, assumed to implement the `Bijectors` interface, to be applied to the variables"
-    bijector::F
-end
-
-function merge_bijectors(left::Bijectors.NamedTransform, right::Bijectors.NamedTransform)
-    return Bijectors.NamedTransform(merge_bijector(left.bs, right.bs))
-end
-
-"""
-    default_transformation(model::Model[, vi::AbstractVarInfo])
-
-Return the `AbstractTransformation` currently related to `model` and, potentially, `vi`.
-"""
-default_transformation(model::Model, ::AbstractVarInfo) = default_transformation(model)
-default_transformation(::Model) = DynamicTransformation()
-
-"""
-    transformation(vi::AbstractVarInfo)
-
-Return the `AbstractTransformation` related to `vi`.
-"""
-function transformation end
-
 # Accumulation of log-probabilities.
 """
     getlogjoint(vi::AbstractVarInfo)
@@ -468,16 +396,6 @@ end
 Return an iterator over all `vns` in `vi`.
 """ Base.keys
 
-@doc """
-    getindex(vi::AbstractVarInfo, vn::VarName[, dist::Distribution])
-    getindex(vi::AbstractVarInfo, vns::Vector{<:VarName}[, dist::Distribution])
-
-Return the current value(s) of `vn` (`vns`) in `vi` in the support of its (their)
-distribution(s).
-
-If `dist` is specified, the value(s) will be massaged into the representation expected by `dist`.
-""" Base.getindex
-
 """
     getindex(vi::AbstractVarInfo, ::Colon)
 
@@ -485,10 +403,15 @@ Return the current value(s) of `vn` (`vns`) in `vi` in the support of its (their
 distribution(s) as a flattened `Vector`.
 
 The default implementation is to call [`internal_values_as_vector`](@ref).
-
-See also: [`getindex(vi::AbstractVarInfo, vn::VarName, dist::Distribution)`](@ref)
 """
 Base.getindex(vi::AbstractVarInfo, ::Colon) = internal_values_as_vector(vi)
+function Base.getindex(::AbstractVarInfo, ::Union{VarName,AbstractVector{<:VarName}})
+    throw(
+        ArgumentError(
+            "The method `varinfo[varname(s)]` has been removed in DynamicPPL v0.41: please see https://turinglang.org/DynamicPPL.jl/stable/migration/#Getting-parameter-values for information on how to update your code if needed.",
+        ),
+    )
+end
 
 """
     internal_values_as_vector(vi::AbstractVarInfo)
@@ -510,19 +433,16 @@ transformed to Euclidean space, depending on whether the varinfo was linked.
 
 See https://turinglang.org/docs/developers/transforms/dynamicppl/ for more
 information on how transformed variables are stored in DynamicPPL.
-
-See also: [`getindex(vi::AbstractVarInfo, vn::VarName, dist::Distribution)`](@ref)
 """
 function getindex_internal end
 
 """
     get_transformed_value(vi::AbstractVarInfo, vn::VarName)
 
-Return the actual `AbstractTransformedValue` stored in `vi` for variable `vn`.
+Return the actual `TransformedValue` stored in `vi` for variable `vn`.
 
-This differs from `getindex_internal`, which obtains the `AbstractTransformedValue` and then
-directly returns `get_internal_value(tval)`; and `getindex` which returns
-`get_transform(tval)(get_internal_value(tval))`.
+This differs from `getindex_internal`, which obtains the `TransformedValue` and then
+directly returns `get_internal_value(tval)`.
 """
 function get_transformed_value end
 
@@ -574,15 +494,15 @@ Subset a `varinfo` to only contain the variables `vns`.
 The ordering of variables in the return value will be the same as in `varinfo`.
 
 # Examples
-```jldoctest varinfo-subset; setup = :(using Distributions, DynamicPPL)
+julia> using DynamicPPL, Distributions
+
 julia> @model function demo()
            s ~ InverseGamma(2, 3)
            m ~ Normal(0, sqrt(s))
            x = Vector{Float64}(undef, 2)
            x[1] ~ Normal(m, sqrt(s))
            x[2] ~ Normal(m, sqrt(s))
-       end
-demo (generic function with 2 methods)
+       end;
 
 julia> model = demo();
 
@@ -598,7 +518,7 @@ VarNamedTuple
 
 julia> vi = last(init!!(model, VarInfo(), InitFromParams(params), UnlinkAll()));
 
-julia> keys(vi)
+julia> vi.values
 4-element Vector{VarName}:
  s
  m
@@ -612,8 +532,9 @@ julia> keys(vi_subset1)
 1-element Vector{VarName}:
  m
 
-julia> vi_subset1[@varname(m)]
-2.0
+julia> DynamicPPL.getindex_internal(vi_subset1, @varname(m))
+1-element Vector{Float64}:
+ 2.0
 
 julia> # Extract one with both `s` and `x[2]`.
        vi_subset2 = subset(vi, [@varname(s), @varname(x[2])]);
@@ -623,9 +544,12 @@ julia> keys(vi_subset2)
  s
  x[2]
 
-julia> vi_subset2[[@varname(s), @varname(x[2])]]
-2-element Vector{Float64}:
+julia> DynamicPPL.getindex_internal(vi_subset2, @varname(s))
+1-element Vector{Float64}:
  1.0
+
+julia> DynamicPPL.getindex_internal(vi_subset2, @varname(x[2]))
+1-element Vector{Float64}:
  4.0
 ```
 
@@ -641,12 +565,6 @@ julia> keys(vi_subset_merged)
  s
  x[2]
 
-julia> vi_subset_merged[[@varname(s), @varname(m), @varname(x[2])]]
-3-element Vector{Float64}:
- 1.0
- 2.0
- 4.0
-
 julia> # Merge the two with the original.
        vi_merged = merge(vi, vi_subset_merged);
 
@@ -656,23 +574,7 @@ julia> keys(vi_merged)
  m
  x[1]
  x[2]
-
-julia> vi_merged[[@varname(s), @varname(m), @varname(x[1]), @varname(x[2])]]
-4-element Vector{Float64}:
- 1.0
- 2.0
- 3.0
- 4.0
 ```
-
-# Notes
-
-## Type-stability
-
-!!! warning
-    This function is only type-stable when `vns` contains only varnames
-    with the same symbol. For example, `[@varname(m[1]), @varname(m[2])]` will
-    be type-stable, but `[@varname(m[1]), @varname(x)]` will not be.
 """
 function subset end
 
@@ -696,12 +598,11 @@ function Base.merge(
     return merge(Base.merge(varinfo1, varinfo2), varinfo3, varinfo_others...)
 end
 
-# Transformations
 """
     is_transformed(vi::AbstractVarInfo[, vns::Union{VarName, AbstractVector{<:Varname}}])
 
-Return `true` if `vi` is working in unconstrained space, and `false`
-if `vi` is assuming realizations to be in support of the corresponding distributions.
+Return `true` if all variables in `vi` have a transform of `DynamicLink`, and false
+    otherwise.
 
 If `vns` is provided, then only check if this/these varname(s) are transformed.
 
@@ -723,104 +624,63 @@ function is_transformed(vi::AbstractVarInfo, vns::AbstractVector)
 end
 
 """
-    set_transformed!!(vi::AbstractVarInfo, trans::Bool[, vn::VarName])
+    link(vi::AbstractVarInfo, model::Model)
+    link(vi::AbstractVarInfo, vns::NTuple{N,VarName}, model::Model)
 
-Return `vi` with `is_transformed(vi, vn)` evaluating to `true`.
+Transform all variables in `vi` to their linked space without mutating `vi` (i.e., replace
+all the `TransformedValue`s in `vi.values` with the corresponding
+`TransformedValue(linked_value, DynamicLink())`. If `vns` is provided, then only transform
+the variables in `vns`.
 
-If `vn` is not specified, then `is_transformed(vi)` evaluates to `true` for all variables.
-"""
-function set_transformed!! end
+Note that if `vi` contains variables that have fixed transforms, the fixed transforms will
+be overwritten.
 
-# For link!!, invlink!!, link, and invlink, we deliberately do not provide a fallback
-# method for the case when no `vns` is provided, that would get all the keys from the
-# `VarInfo`. Hence each subtype of `AbstractVarInfo` needs to implement separately the case
-# where `vns` is provided and the one where it is not. This is because having separate
-# implementations is typically much more performant, and because not all AbstractVarInfo
-# types support partial linking.
-
-"""
-    link!!([t::AbstractTransformation, ]vi::AbstractVarInfo, model::Model)
-    link!!([t::AbstractTransformation, ]vi::AbstractVarInfo, vns::NTuple{N,VarName}, model::Model)
-
-Transform variables in `vi` to their linked space, mutating `vi` if possible.
-
-Either transform all variables, or only ones specified in `vns`.
-
-Use the  transformation `t`, or `default_transformation(model, vi)` if one is not provided.
-
-See also: [`default_transformation`](@ref), [`invlink!!`](@ref).
-"""
-function link!!(vi::AbstractVarInfo, model::Model)
-    return link!!(default_transformation(model, vi), vi, model)
-end
-function link!!(vi::AbstractVarInfo, vns, model::Model)
-    return link!!(default_transformation(model, vi), vi, vns, model)
-end
-
-"""
-    link([t::AbstractTransformation, ]vi::AbstractVarInfo, model::Model)
-    link([t::AbstractTransformation, ]vi::AbstractVarInfo, vns::NTuple{N,VarName}, model::Model)
-
-Transform variables in `vi` to their linked space without mutating `vi`.
-
-Either transform all variables, or only ones specified in `vns`.
-
-Use the  transformation `t`, or `default_transformation(model, vi)` if one is not provided.
-
-See also: [`default_transformation`](@ref), [`invlink`](@ref).
+See also: [`invlink`](@ref).
 """
 function link(vi::AbstractVarInfo, model::Model)
-    return link(default_transformation(model, vi), vi, model)
+    return link!!(deepcopy(vi), model)
 end
 function link(vi::AbstractVarInfo, vns, model::Model)
-    return link(default_transformation(model, vi), vi, vns, model)
-end
-function link(t::AbstractTransformation, vi::AbstractVarInfo, model::Model)
-    return link!!(t, deepcopy(vi), model)
+    return link!!(deepcopy(vi), vns, model)
 end
 
 """
-    invlink!!([t::AbstractTransformation, ]vi::AbstractVarInfo, model::Model)
-    invlink!!([t::AbstractTransformation, ]vi::AbstractVarInfo, vns::NTuple{N,VarName}, model::Model)
+    link!!(vi::AbstractVarInfo, model::Model)
+    link!!(vi::AbstractVarInfo, vns::NTuple{N,VarName}, model::Model)
 
-Transform variables in `vi` to their constrained space, mutating `vi` if possible.
-
-Either transform all variables, or only ones specified in `vns`.
-
-Use the (inverse of) transformation `t`, or `default_transformation(model, vi)` if one is
-not provided.
-
-See also: [`default_transformation`](@ref), [`link!!`](@ref).
+Like `link`, but might mutate `vi` in-place if it is possible to do so.
 """
-function invlink!!(vi::AbstractVarInfo, model::Model)
-    return invlink!!(default_transformation(model, vi), vi, model)
-end
-function invlink!!(vi::AbstractVarInfo, vns, model::Model)
-    return invlink!!(default_transformation(model, vi), vi, vns, model)
-end
+function link!! end
 
 """
-    invlink([t::AbstractTransformation, ]vi::AbstractVarInfo, model::Model)
-    invlink([t::AbstractTransformation, ]vi::AbstractVarInfo, vns::NTuple{N,VarName}, model::Model)
+    invlink(vi::AbstractVarInfo, model::Model)
+    invlink(vi::AbstractVarInfo, vns::NTuple{N,VarName}, model::Model)
 
-Transform variables in `vi` to their constrained space without mutating `vi`.
+Transform all variables in `vi` to the original space without mutating `vi` (i.e., replace
+all the `TransformedValue`s in `vi.values` with the corresponding
+`TransformedValue(unlinked_value, Unlink())`. Note that the unlinked values are still
+vectorised (that is a requirement of `vi.values`). If `vns` is provided, then only transform
+the variables in `vns`.
 
-Either transform all variables, or only ones specified in `vns`.
+Note that if `vi` contains variables that have fixed transforms, the fixed transforms will
+be overwritten.
 
-Use the (inverse of) transformation `t`, or `default_transformation(model, vi)` if one is
-not provided.
-
-See also: [`default_transformation`](@ref), [`link`](@ref).
+See also: [`link`](@ref).
 """
 function invlink(vi::AbstractVarInfo, model::Model)
-    return invlink(default_transformation(model, vi), vi, model)
+    return invlink!!(deepcopy(vi), model)
 end
 function invlink(vi::AbstractVarInfo, vns, model::Model)
-    return invlink(default_transformation(model, vi), vi, vns, model)
+    return invlink!!(deepcopy(vi), vns, model)
 end
-function invlink(t::AbstractTransformation, vi::AbstractVarInfo, model::Model)
-    return invlink!!(t, deepcopy(vi), model)
-end
+
+"""
+    invlink!!(vi::AbstractVarInfo, model::Model)
+    invlink!!(vi::AbstractVarInfo, vns::NTuple{N,VarName}, model::Model)
+
+Like `invlink`, but might mutate `vi` in-place if it is possible to do so.
+"""
+function invlink!! end
 
 """
     unflatten!!(vi::AbstractVarInfo, x::AbstractVector)
@@ -834,11 +694,6 @@ This is the inverse operation of [`internal_values_as_vector`](@ref).
     Note that this does not re-evaluate the model (indeed it cannot!) so the contents of any
     accumulators in the `VarInfo` will almost certainly be inconsistent with the new values.
 
-    On top of that, it does not update the *transformations* stored inside the
-    `LinkedVectorValue`s and `VectorValue`s. If these transformations themselves depend on
-    the values of the variables, this can lead to incorrect results when trying to access
-    untransformed values, e.g. using `getindex(vi, vn)`.
-
     **Because of these issues, we strongly recommend against using this function, unless
     absolutely necessary.** In many cases, usage of `unflatten!!(vi, x)` can be replaced
     with `InitFromVector(x, ldf::LogDensityFunction)`: please see the [DynamicPPL
@@ -846,150 +701,3 @@ This is the inverse operation of [`internal_values_as_vector`](@ref).
     code to avoid using `unflatten!!`, please open an issue.
 """
 function unflatten!! end
-
-"""
-    to_maybe_linked_internal(vi::AbstractVarInfo, vn::VarName, dist, val)
-
-Return reconstructed `val`, possibly linked if `is_transformed(vi, vn)` is `true`.
-"""
-function to_maybe_linked_internal(vi::AbstractVarInfo, vn::VarName, dist, val)
-    f = to_maybe_linked_internal_transform(vi, vn, dist)
-    return f(val)
-end
-
-"""
-    from_maybe_linked_internal(vi::AbstractVarInfo, vn::VarName, dist, val)
-
-Return reconstructed `val`, possibly invlinked if `is_transformed(vi, vn)` is `true`.
-"""
-function from_maybe_linked_internal(vi::AbstractVarInfo, vn::VarName, dist, val)
-    f = from_maybe_linked_internal_transform(vi, vn, dist)
-    return f(val)
-end
-
-"""
-    from_internal_transform(varinfo::AbstractVarInfo, vn::VarName[, dist])
-
-Return a transformation that transforms from the internal representation of `vn` with `dist`
-in `varinfo` to a representation compatible with `dist`.
-
-If `dist` is not present, then it is assumed that `varinfo` knows the correct output for `vn`.
-"""
-function from_internal_transform end
-
-"""
-    from_linked_internal_transform(varinfo::AbstractVarInfo, vn::VarName[, dist])
-
-Return a transformation that transforms from the linked internal representation of `vn` with `dist`
-in `varinfo` to a representation compatible with `dist`.
-
-If `dist` is not present, then it is assumed that `varinfo` knows the correct output for `vn`.
-"""
-function from_linked_internal_transform end
-
-"""
-    from_maybe_linked_internal_transform(varinfo::AbstractVarInfo, vn::VarName[, dist])
-
-Return a transformation that transforms from the possibly linked internal representation of `vn` with `dist`n
-in `varinfo` to a representation compatible with `dist`.
-
-If `dist` is not present, then it is assumed that `varinfo` knows the correct output for `vn`.
-"""
-function from_maybe_linked_internal_transform(varinfo::AbstractVarInfo, vn::VarName, dist)
-    return if is_transformed(varinfo, vn)
-        from_linked_internal_transform(varinfo, vn, dist)
-    else
-        from_internal_transform(varinfo, vn, dist)
-    end
-end
-function from_maybe_linked_internal_transform(varinfo::AbstractVarInfo, vn::VarName)
-    return if is_transformed(varinfo, vn)
-        from_linked_internal_transform(varinfo, vn)
-    else
-        from_internal_transform(varinfo, vn)
-    end
-end
-
-"""
-    to_internal_transform(varinfo::AbstractVarInfo, vn::VarName[, dist])
-
-Return a transformation that transforms from a representation compatible with `dist` to the
-internal representation of `vn` with `dist` in `varinfo`.
-
-If `dist` is not present, then it is assumed that `varinfo` knows the correct output for `vn`.
-"""
-function to_internal_transform(varinfo::AbstractVarInfo, vn::VarName, dist)
-    return inverse(from_internal_transform(varinfo, vn, dist))
-end
-function to_internal_transform(varinfo::AbstractVarInfo, vn::VarName)
-    return inverse(from_internal_transform(varinfo, vn))
-end
-
-"""
-    to_linked_internal_transform(varinfo::AbstractVarInfo, vn::VarName[, dist])
-
-Return a transformation that transforms from a representation compatible with `dist` to the
-linked internal representation of `vn` with `dist` in `varinfo`.
-
-If `dist` is not present, then it is assumed that `varinfo` knows the correct output for `vn`.
-"""
-function to_linked_internal_transform(varinfo::AbstractVarInfo, vn::VarName, dist)
-    return inverse(from_linked_internal_transform(varinfo, vn, dist))
-end
-function to_linked_internal_transform(varinfo::AbstractVarInfo, vn::VarName)
-    return inverse(from_linked_internal_transform(varinfo, vn))
-end
-
-"""
-    to_maybe_linked_internal_transform(varinfo::AbstractVarInfo, vn::VarName[, dist])
-
-Return a transformation that transforms from a representation compatible with `dist` to a
-possibly linked internal representation of `vn` with `dist` in `varinfo`.
-
-If `dist` is not present, then it is assumed that `varinfo` knows the correct output for `vn`.
-"""
-function to_maybe_linked_internal_transform(varinfo::AbstractVarInfo, vn::VarName, dist)
-    return inverse(from_maybe_linked_internal_transform(varinfo, vn, dist))
-end
-function to_maybe_linked_internal_transform(varinfo::AbstractVarInfo, vn::VarName)
-    return inverse(from_maybe_linked_internal_transform(varinfo, vn))
-end
-
-"""
-    internal_to_linked_internal_transform(varinfo::AbstractVarInfo, vn::VarName, dist)
-
-Return a transformation that transforms from the internal representation of `vn` with `dist`
-in `varinfo` to a _linked_ internal representation of `vn` with `dist` in `varinfo`.
-
-If `dist` is not present, then it is assumed that `varinfo` knows the correct output for `vn`.
-"""
-function internal_to_linked_internal_transform(varinfo::AbstractVarInfo, vn::VarName, dist)
-    f_from_internal = from_internal_transform(varinfo, vn, dist)
-    f_to_linked_internal = to_linked_internal_transform(varinfo, vn, dist)
-    return f_to_linked_internal ∘ f_from_internal
-end
-function internal_to_linked_internal_transform(varinfo::AbstractVarInfo, vn::VarName)
-    f_from_internal = from_internal_transform(varinfo, vn)
-    f_to_linked_internal = to_linked_internal_transform(varinfo, vn)
-    return f_to_linked_internal ∘ f_from_internal
-end
-
-"""
-    linked_internal_to_internal_transform(varinfo::AbstractVarInfo, vn::VarName[, dist])
-
-Return a transformation that transforms from a _linked_ internal representation of `vn` with `dist`
-in `varinfo` to the internal representation of `vn` with `dist` in `varinfo`.
-
-If `dist` is not present, then it is assumed that `varinfo` knows the correct output for `vn`.
-"""
-function linked_internal_to_internal_transform(varinfo::AbstractVarInfo, vn::VarName, dist)
-    f_from_linked_internal = from_linked_internal_transform(varinfo, vn, dist)
-    f_to_internal = to_internal_transform(varinfo, vn, dist)
-    return f_to_internal ∘ f_from_linked_internal
-end
-
-function linked_internal_to_internal_transform(varinfo::AbstractVarInfo, vn::VarName)
-    f_from_linked_internal = from_linked_internal_transform(varinfo, vn)
-    f_to_internal = to_internal_transform(varinfo, vn)
-    return f_to_internal ∘ f_from_linked_internal
-end

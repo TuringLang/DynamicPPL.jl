@@ -20,10 +20,10 @@ In these functions:
 - `val` is the new value of the random variable sampled from a distribution (always in
   the original unlinked space), or the value on the left-hand side of an observe
   statement.
-- `tval` is the original `AbstractTransformedValue` that was obtained from the
-  initialisation strategy. This is passed through unchanged to `accumulate_assume!!` since
-  it can be reused for some accumulators (e.g. when storing linked values, if the linked
-  value was already provided, it is faster to reuse it than to re-link `val`).
+- `tval` is the original `TransformedValue` that was obtained from the initialisation
+  strategy. This is passed through unchanged to `accumulate_assume!!` since it can be reused
+  for some accumulators (e.g. when storing linked values, if the linked value was already
+  provided, it is faster to reuse it than to re-link `val`).
 - `dist` is the distribution on the RHS of the tilde statement.
 - `vn` is the `VarName` that is on the left-hand side of the tilde-statement. If the
   tilde-statement is a literal observation like `0.0 ~ Normal()`, then `vn` is `nothing`.

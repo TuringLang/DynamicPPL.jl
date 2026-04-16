@@ -18,6 +18,12 @@ function check_varinfo_keys(varinfo, vns)
     vns_varinfo = keys(varinfo)
     @test union(vns_varinfo, vns) == intersect(vns_varinfo, vns)
 end
+function check_varinfo_values(varinfo1, varinfo2, vns)
+    for vn in vns
+        @test DynamicPPL.get_transformed_value(varinfo1, vn) ==
+            DynamicPPL.get_transformed_value(varinfo2, vn)
+    end
+end
 
 function check_metadata_type_equal(v1::VarInfo, v2::VarInfo)
     @test typeof(v1.values) == typeof(v2.values)
@@ -60,21 +66,26 @@ end
         @test !haskey(vi, vn)
         @test !(vn in keys(vi))
 
-        vi = DynamicPPL.setindex_with_dist!!(vi, UntransformedValue(x), Normal(), vn, x)
+        vi = DynamicPPL.setindex_with_dist!!(
+            vi, TransformedValue(x, NoTransform()), Normal(), vn, x
+        )
         @test !isempty(vi)
         @test haskey(vi, vn)
         @test vn in keys(vi)
 
-        @test length(vi[vn]) == 1
-        @test vi[vn] == x
+        @test DynamicPPL.getindex_internal(vi, vn) == [x]
         @test vi[:] == [x]
-        vi = DynamicPPL.setindex_with_dist!!(vi, UntransformedValue(2 * x), Normal(), vn, x)
-        @test vi[vn] == 2 * x
+        vi = DynamicPPL.setindex_with_dist!!(
+            vi, TransformedValue(2 * x, NoTransform()), Normal(), vn, x
+        )
+        @test DynamicPPL.getindex_internal(vi, vn) == [2 * x]
         @test vi[:] == [2 * x]
 
         vi = empty!!(vi)
         @test isempty(vi)
-        vi = DynamicPPL.setindex_with_dist!!(vi, UntransformedValue(x), Normal(), vn, x)
+        vi = DynamicPPL.setindex_with_dist!!(
+            vi, TransformedValue(x, NoTransform()), Normal(), vn, x
+        )
         @test !isempty(vi)
     end
 
@@ -246,20 +257,34 @@ end
     end
 
     @testset "is_transformed flag" begin
-        vi = VarInfo()
-        vn_x = @varname x
-        x = rand()
+        @model function f()
+            x ~ Normal()
+            return y ~ Normal()
+        end
 
-        vi = DynamicPPL.setindex_with_dist!!(vi, UntransformedValue(x), Normal(), vn_x, x)
+        model = f()
+        vi = VarInfo(model)
 
         # is_transformed is unset by default
-        @test !is_transformed(vi, vn_x)
+        @test !is_transformed(vi, @varname(x))
+        @test !is_transformed(vi, @varname(y))
+        @test !is_transformed(vi)
 
-        vi = set_transformed!!(vi, true, vn_x)
-        @test is_transformed(vi, vn_x)
+        vi = DynamicPPL.link!!(vi, model)
+        @test is_transformed(vi, @varname(x))
+        @test is_transformed(vi, @varname(y))
+        @test is_transformed(vi)
 
-        vi = set_transformed!!(vi, false, vn_x)
-        @test !is_transformed(vi, vn_x)
+        vi = DynamicPPL.invlink!!(vi, model)
+        @test !is_transformed(vi, @varname(x))
+        @test !is_transformed(vi, @varname(y))
+        @test !is_transformed(vi)
+
+        # partial linking
+        vi = DynamicPPL.link!!(vi, [@varname(x)], model)
+        @test is_transformed(vi, @varname(x))
+        @test !is_transformed(vi, @varname(y))
+        @test !is_transformed(vi)
     end
 
     # TODO(mhauru) Move this to a different file.
@@ -291,20 +316,20 @@ end
         model = gdemo([1.0, 1.5], [2.0, 2.5])
 
         all_transformed(vi) = mapreduce(
-            p -> p.second isa DynamicPPL.LinkedVectorValue, &, vi.values; init=true
+            p -> p.second.transform isa DynamicPPL.DynamicLink, &, vi.values; init=true
         )
         any_transformed(vi) = mapreduce(
-            p -> p.second isa DynamicPPL.LinkedVectorValue, |, vi.values; init=false
+            p -> p.second.transform isa DynamicPPL.DynamicLink, |, vi.values; init=false
         )
 
         # Check that linking and invlinking set the `is_transformed` flag accordingly
         vi = VarInfo(model)
-        vals = values(vi)
+        vals = vi[:]
         vi = link!!(vi, model)
         @test all_transformed(vi)
         vi = invlink!!(vi, model)
         @test !any_transformed(vi)
-        @test values(vi) ≈ vals atol = 1e-10
+        @test vi[:] ≈ vals atol = 1e-10
 
         # Transform only one variable
         all_vns = keys(vi)
@@ -325,7 +350,7 @@ end
             @test !any_transformed(subset(vi, other_vns))
             vi = invlink!!(vi, (vn,), model)
             @test !any_transformed(vi)
-            @test values(vi) ≈ vals atol = 1e-10
+            @test vi[:] ≈ vals atol = 1e-10
         end
     end
 
@@ -350,11 +375,11 @@ end
             vi = VarInfo(Xoshiro(468), model, InitFromPrior(), transform_strategy)
             for vn in keys(vi)
                 if vn in expected_linked_vns
-                    @test DynamicPPL.get_transformed_value(vi, vn) isa
-                        DynamicPPL.LinkedVectorValue
+                    @test DynamicPPL.get_transformed_value(vi, vn).transform isa
+                        DynamicPPL.DynamicLink
                 else
-                    @test DynamicPPL.get_transformed_value(vi, vn) isa
-                        DynamicPPL.VectorValue
+                    @test DynamicPPL.get_transformed_value(vi, vn).transform isa
+                        DynamicPPL.Unlink
                 end
             end
             # Test that initialising directly is the same as linking later (if rng is the
@@ -399,6 +424,50 @@ end
                 UnlinkSome(Set([@varname(x), @varname(y)]), LinkAll()),
                 model,
                 Set{VarName}(),
+            )
+        end
+    end
+
+    @testset "fixed transforms" begin
+        @model function fixedtransforms()
+            x ~ Beta(2, 2)
+            y ~ Exponential(1)
+            return nothing
+        end
+        model = fixedtransforms()
+        tfm_strat = WithTransforms(get_fixed_transforms(model, LinkAll()), UnlinkAll())
+
+        @testset "initialisation" begin
+            _, vi = DynamicPPL.init!!(model, VarInfo(), InitFromPrior(), tfm_strat)
+            # output_tfm_strat is generated via update_transform_strategy
+            output_tfm_strat = vi.transform_strategy
+            @test vi.transform_strategy == tfm_strat
+            # check the values line up too
+            for vn in keys(vi)
+                tval = DynamicPPL.get_transformed_value(vi, vn)
+                @test tval.transform == tfm_strat.transforms[vn]
+            end
+        end
+
+        @testset "linking" begin
+            _, vi = DynamicPPL.init!!(model, VarInfo(), InitFromPrior(), tfm_strat)
+
+            vi_linked = DynamicPPL.link!!(deepcopy(vi), model)
+            @test vi_linked.transform_strategy == LinkAll()
+            @test all(
+                vn ->
+                    DynamicPPL.get_transformed_value(vi_linked, vn).transform isa
+                    DynamicPPL.DynamicLink,
+                keys(vi_linked),
+            )
+
+            vi_invlinked = DynamicPPL.invlink!!(deepcopy(vi), model)
+            @test vi_invlinked.transform_strategy == UnlinkAll()
+            @test all(
+                vn ->
+                    DynamicPPL.get_transformed_value(vi_invlinked, vn).transform isa
+                    DynamicPPL.Unlink,
+                keys(vi_invlinked),
             )
         end
     end
@@ -587,7 +656,7 @@ end
                 # Should now only contain the variables in `vns_subset`.
                 check_varinfo_keys(varinfo_subset, vns_subset)
                 # Values should be the same.
-                @test [varinfo_subset[vn] for vn in vns_subset] == [varinfo[vn] for vn in vns_subset]
+                check_varinfo_values(varinfo_subset, varinfo, vns_subset)
 
                 # `merge` with the original.
                 varinfo_merged = merge(varinfo, varinfo_subset)
@@ -595,7 +664,7 @@ end
                 # Should be equivalent.
                 check_varinfo_keys(varinfo_merged, vns)
                 # Values should be the same.
-                @test [varinfo_merged[vn] for vn in vns] == [varinfo[vn] for vn in vns]
+                check_varinfo_values(varinfo_merged, varinfo, vns)
             end
 
             @testset "$(convert(Vector{VarName}, vns_subset))" for (
@@ -605,7 +674,7 @@ end
                 # Should now only contain the variables in `vns_subset`.
                 check_varinfo_keys(varinfo_subset, vns_target)
                 # Values should be the same.
-                @test [varinfo_subset[vn] for vn in vns_target] == [varinfo[vn] for vn in vns_target]
+                check_varinfo_values(varinfo_subset, varinfo, vns_target)
 
                 # `merge` with the original.
                 varinfo_merged = merge(varinfo, varinfo_subset)
@@ -613,7 +682,7 @@ end
                 # Should be equivalent.
                 check_varinfo_keys(varinfo_merged, vns)
                 # Values should be the same.
-                @test [varinfo_merged[vn] for vn in vns] == [varinfo[vn] for vn in vns]
+                check_varinfo_values(varinfo_merged, varinfo, vns_target)
             end
 
             @testset "$(convert(Vector{VarName}, vns_subset)) order" for vns_subset in
@@ -622,7 +691,9 @@ end
                 vns_subset_reversed = reverse(vns_subset)
                 varinfo_subset_reversed = subset(varinfo, vns_subset_reversed)
                 @test varinfo_subset[:] == varinfo_subset_reversed[:]
-                ground_truth = [varinfo[vn] for vn in vns_subset]
+                ground_truth = [
+                    only(DynamicPPL.getindex_internal(varinfo, vn)) for vn in vns_subset
+                ]
                 @test varinfo_subset[:] == ground_truth
             end
         end
@@ -640,8 +711,12 @@ end
                     varinfo_merged = merge(varinfo, varinfo)
                     # Varnames should be unchanged.
                     check_varinfo_keys(varinfo_merged, vns)
-                    # Values should be the same.
-                    @test [varinfo_merged[vn] for vn in vns] == [varinfo[vn] for vn in vns]
+                    # Values should be the same. (Have to use `get_values` since varinfo
+                    # might be a TSVI)
+                    for vn in keys(varinfo_merged)
+                        @test DynamicPPL.get_values(varinfo_merged)[vn] ==
+                            DynamicPPL.get_values(varinfo)[vn]
+                    end
                     # Metadata types should be exactly the same.
                     check_metadata_type_equal(varinfo_merged, varinfo)
                 end
@@ -652,7 +727,10 @@ end
                     # Varnames should be unchanged.
                     check_varinfo_keys(varinfo_merged, vns)
                     # Values should be the same.
-                    @test [varinfo_merged[vn] for vn in vns] == [varinfo[vn] for vn in vns]
+                    for vn in keys(varinfo_merged)
+                        @test DynamicPPL.get_values(varinfo_merged)[vn] ==
+                            DynamicPPL.get_values(varinfo)[vn]
+                    end
                     # Metadata types should be exactly the same.
                     check_metadata_type_equal(varinfo_merged, varinfo)
                 end
@@ -664,7 +742,10 @@ end
                     # Varnames should be unchanged.
                     check_varinfo_keys(varinfo_merged, vns)
                     # Values should be the same.
-                    @test [varinfo_merged[vn] for vn in vns] == [varinfo[vn] for vn in vns]
+                    for vn in keys(varinfo_merged)
+                        @test DynamicPPL.get_values(varinfo_merged)[vn] ==
+                            DynamicPPL.get_values(varinfo)[vn]
+                    end
 
                     # Metadata types should be exactly the same.
                     check_metadata_type_equal(varinfo_merged, varinfo)
@@ -674,7 +755,10 @@ end
                     # Varnames should be unchanged.
                     check_varinfo_keys(varinfo_merged, vns)
                     # Values should be the same.
-                    @test [varinfo_merged[vn] for vn in vns] == [varinfo[vn] for vn in vns]
+                    for vn in keys(varinfo_merged)
+                        @test DynamicPPL.get_values(varinfo_merged)[vn] ==
+                            DynamicPPL.get_values(varinfo)[vn]
+                    end
                     # Metadata types should be exactly the same.
                     check_metadata_type_equal(varinfo_merged, varinfo)
                 end
@@ -684,9 +768,16 @@ end
                     varinfo_changed = last(
                         init!!(model, deepcopy(varinfo), InitFromParams(x, nothing))
                     )
-                    # After `merge`, we should have the same values as `x`.
+                    # After `merge`, we should have the same values as `x` (or, to be
+                    # precise, we have things that will give `x` after we reevaluate with
+                    # those parameters).
                     varinfo_merged = merge(varinfo, varinfo_changed)
-                    DynamicPPL.TestUtils.test_values(varinfo_merged, x, vns)
+                    init_strat = InitFromParams(
+                        DynamicPPL.get_values(varinfo_merged), nothing
+                    )
+                    accs = OnlyAccsVarInfo(RawValueAccumulator(false))
+                    _, accs = init!!(model, accs, init_strat, UnlinkAll())
+                    DynamicPPL.TestUtils.test_values(get_raw_values(accs), x, vns)
                 end
             end
         end
@@ -705,14 +796,14 @@ end
 
             varinfo_left = VarInfo(model_left)
             varinfo_right = VarInfo(model_right)
-            varinfo_right = DynamicPPL.set_transformed!!(varinfo_right, true, @varname(x))
+            varinfo_right = DynamicPPL.link!!(varinfo_right, (@varname(x),), model_right)
 
             varinfo_merged = merge(varinfo_left, varinfo_right)
             vns = [@varname(x), @varname(y), @varname(z)]
             check_varinfo_keys(varinfo_merged, vns)
 
             # Right has precedence.
-            @test varinfo_merged[@varname(x)] == varinfo_right[@varname(x)]
+            @test varinfo_merged.values[@varname(x)] == varinfo_right.values[@varname(x)]
             @test DynamicPPL.is_transformed(varinfo_merged, @varname(x))
         end
     end
@@ -721,13 +812,17 @@ end
     @testset "merge different dimensions" begin
         vn = @varname(x)
         vi_single = DynamicPPL.setindex_with_dist!!(
-            VarInfo(), UntransformedValue(1.0), Normal(), vn, 1.0
+            VarInfo(), TransformedValue(1.0, NoTransform()), Normal(), vn, 1.0
         )
         vi_double = DynamicPPL.setindex_with_dist!!(
-            VarInfo(), UntransformedValue([0.5, 0.6]), MvNormal(zeros(2), I), vn, [0.5, 0.6]
+            VarInfo(),
+            TransformedValue([0.5, 0.6], NoTransform()),
+            MvNormal(zeros(2), I),
+            vn,
+            [0.5, 0.6],
         )
-        @test merge(vi_single, vi_double)[vn] == [0.5, 0.6]
-        @test merge(vi_double, vi_single)[vn] == 1.0
+        @test DynamicPPL.getindex_internal(merge(vi_single, vi_double), vn) == [0.5, 0.6]
+        @test DynamicPPL.getindex_internal(merge(vi_double, vi_single), vn) == [1.0]
     end
 
     @testset "issue #842" begin
