@@ -4,8 +4,6 @@ Fix a missing interpolation in the DynamicPPL compiler which would cause errors 
 
 Also fixes a bug with `predict(::Model, ::MCMCChains.Chains)` where an error would be thrown if unnecessary parameters were removed from the chain before calling `predict`.
 
-These are the same fixes as in v0.40.24 but ported forward.
-
 # 0.41.0
 
 ## Breaking changes
@@ -113,6 +111,10 @@ The following functions were not exported; we document changes in them for compl
 # 0.40.24
 
 Fix a missing interpolation in the DynamicPPL compiler which would cause errors if DynamicPPL was not loaded explicitly by the user.
+
+Also fixes a bug with `predict(::Model, ::MCMCChains.Chains)` where an error would be thrown if unnecessary parameters were removed from the chain before calling `predict`.
+
+This is a backport of v0.41.1.
 
 # 0.40.23
 
