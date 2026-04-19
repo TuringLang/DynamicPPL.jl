@@ -1,4 +1,10 @@
-# 0.41
+# 0.41.1
+
+Fix a missing interpolation in the DynamicPPL compiler which would cause errors if DynamicPPL was not loaded explicitly by the user.
+
+Also fixes a bug with `predict(::Model, ::MCMCChains.Chains)` where an error would be thrown if unnecessary parameters were removed from the chain before calling `predict`.
+
+# 0.41.0
 
 ## Breaking changes
 
@@ -101,6 +107,14 @@ The following functions were not exported; we document changes in them for compl
   - `from_internal_transform` and `from_linked_internal_transform` have been removed, since the new `TransformedValue`s do not store the transform with them.
   - Removed `getargnames`, `getmissings`, and `Base.nameof(::Model)` from the public API (export and documentation) as they are considered internal implementation details.
   - Removed the dead code for the unexported functions `varnames_in_chain`, `varnames_in_chain!`, `varname_in_chain`, `varname_in_chain!`, `values_from_chain`, and `values_from_chain!`.
+
+# 0.40.24
+
+Fix a missing interpolation in the DynamicPPL compiler which would cause errors if DynamicPPL was not loaded explicitly by the user.
+
+Also fixes a bug with `predict(::Model, ::MCMCChains.Chains)` where an error would be thrown if unnecessary parameters were removed from the chain before calling `predict`.
+
+This is a backport of v0.41.1.
 
 # 0.40.23
 
