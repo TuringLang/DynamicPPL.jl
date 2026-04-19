@@ -48,6 +48,33 @@ end
 
 module Issue537 end
 
+module NoImportDPPLTest
+    using Distributions
+    using DynamicPPL: @model, fix, condition, VarNamedTuple, to_submodel
+    using Test: @testset, @test
+    # This module tests that the compiler interpolates all necessary DynamicPPL identifiers so
+    # that the user doesn't need to `using DynamicPPL` in order to use the model macro. This can
+    # be important if e.g. the user is only loading Turing.
+    # See e.g.
+    # https://github.com/TuringLang/DynamicPPL.jl/issues/868
+    # https://github.com/TuringLang/DynamicPPL.jl/issues/1359
+    @testset "module hygiene" begin
+        @model inner() = b ~ Normal()
+        @model function f(w)
+            w ~ Normal()
+            x ~ Normal()
+            y ~ Normal(x)
+            z ~ Normal(y)
+            return a ~ to_submodel(inner())
+        end
+        @test rand(f(1.0)) isa VarNamedTuple
+        @test rand(f(missing)) isa VarNamedTuple
+        @test rand(condition(f(1.0), (; x=2.0))) isa VarNamedTuple
+        @test rand(fix(f(1.0), (; x=2.0))) isa VarNamedTuple
+        @test rand(fix(f(1.0), (; a=(; b=2.0)))) isa VarNamedTuple
+    end
+end
+
 @testset "compiler.jl" begin
     @testset "model macro" begin
         @model function testmodel_comp(x, y)

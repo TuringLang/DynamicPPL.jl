@@ -1,3 +1,7 @@
+# 0.40.24
+
+Fix a missing interpolation in the DynamicPPL compiler which would cause errors if DynamicPPL was not loaded explicitly by the user.
+
 # 0.40.23
 
 Fix incorrect behaviour when generating a new VarInfo with an `UnlinkSome` transform strategy (all variables would be instantiated as unlinked regardless of the fallback transform strategy).
