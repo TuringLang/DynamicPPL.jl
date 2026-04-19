@@ -631,6 +631,28 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
                     @test ys_pred_vec[2] ≈ ground_truth_β * xs_test[2] atol = 0.01
                 end
             end
+
+            @testset "predictions with subsetted chain" begin
+                @model function f()
+                    a ~ Normal()
+                    b ~ Normal(a)
+                    return x ~ Normal(b)
+                end
+                cmodel = f() | (; x=1.0)
+                chn = make_chain_from_prior(cmodel, 10)
+                # sanity check
+                model = f()
+                pdns = DynamicPPL.predict(model, chn)
+                @test Set(keys(pdns)) == Set([:x])
+                # now fix a and predict again
+                fmodel = fix(f(), (; a=0.5))
+                pdns = DynamicPPL.predict(fmodel, chn)
+                @test Set(keys(pdns)) == Set([:x])
+                # now subset chain to just b and predict; it should not error
+                # because the chain's values of a are unneeded
+                pdns = DynamicPPL.predict(fmodel, chn[[:b]])
+                @test Set(keys(pdns)) == Set([:x])
+            end
         end
     end
 
