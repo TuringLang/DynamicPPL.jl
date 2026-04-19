@@ -2,6 +2,10 @@
 
 Fix a missing interpolation in the DynamicPPL compiler which would cause errors if DynamicPPL was not loaded explicitly by the user.
 
+Also fixes a bug with `predict(::Model, ::MCMCChains.Chains)` where an error would be thrown if unnecessary parameters were removed from the chain before calling `predict`.
+
+This is a backport of v0.41.1.
+
 # 0.40.23
 
 Fix incorrect behaviour when generating a new VarInfo with an `UnlinkSome` transform strategy (all variables would be instantiated as unlinked regardless of the fallback transform strategy).
