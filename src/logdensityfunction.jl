@@ -23,7 +23,6 @@ using ADTypes: ADTypes
 using BangBang: BangBang
 using AbstractPPL: AbstractPPL, VarName
 using LogDensityProblems: LogDensityProblems
-import DifferentiationInterface as DI
 using Random: Random
 
 """
@@ -178,7 +177,7 @@ struct LogDensityFunction{
     L<:AbstractTransformStrategy,
     F,
     VNT<:VarNamedTuple,
-    ADP<:Union{Nothing,DI.GradientPrep},
+    ADP,
     # type of the vector passed to logdensity functions
     X<:AbstractVector,
     AC<:AccumulatorTuple,
@@ -246,12 +245,15 @@ struct LogDensityFunction{
         else
             # Make backend-specific tweaks to the adtype
             adtype = DynamicPPL.tweak_adtype(adtype, model, x)
-            args = (model, getlogdensity, all_ranges, transform_strategy, accs)
-            if _use_closure(adtype)
-                DI.prepare_gradient(LogDensityAt(args...), adtype, x)
+            lda = LogDensityAt(model, getlogdensity, all_ranges, transform_strategy, accs)
+            problem = if _use_closure(adtype)
+                lda
             else
-                DI.prepare_gradient(logdensity_at, adtype, x, map(DI.Constant, args)...)
+                let lda = lda
+                    params -> lda(params)
+                end
             end
+            AbstractPPL.prepare(adtype, problem, x)
         end
         return new{
             typeof(model),
@@ -426,32 +428,8 @@ function LogDensityProblems.logdensity_and_gradient(
     # `params` has to be converted to the same vector type that was used for AD preparation,
     # otherwise the preparation will not be valid.
     params = convert(get_input_vector_type(ldf), params)
-    return if _use_closure(ldf.adtype)
-        DI.value_and_gradient(
-            LogDensityAt(
-                ldf.model,
-                ldf._getlogdensity,
-                ldf._varname_ranges,
-                ldf.transform_strategy,
-                ldf._accs,
-            ),
-            ldf._adprep,
-            ldf.adtype,
-            params,
-        )
-    else
-        DI.value_and_gradient(
-            logdensity_at,
-            ldf._adprep,
-            ldf.adtype,
-            params,
-            DI.Constant(ldf.model),
-            DI.Constant(ldf._getlogdensity),
-            DI.Constant(ldf._varname_ranges),
-            DI.Constant(ldf.transform_strategy),
-            DI.Constant(ldf._accs),
-        )
-    end
+    # Choice between LogDensityAt and closure was fixed at prepare time.
+    return AbstractPPL.value_and_gradient(ldf._adprep, params)
 end
 
 function LogDensityProblems.capabilities(::Type{<:LogDensityFunction{M,Nothing}}) where {M}
