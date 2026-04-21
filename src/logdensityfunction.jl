@@ -416,7 +416,7 @@ It is also useful for determining e.g. whether Float32 or Float64 parameters are
 get_input_vector_type(::LogDensityFunction{M,A,L,G,R,P,X}) where {M,A,L,G,R,P,X} = X
 
 """
-    DynamicPPL.get_sample_input_vector(::LogDensityFunction)
+    DynamicPPL.get_sample_input_vector(::LogDensityFunction)::AbstractVector{<:Real}
 
 Get the sample input vector `x` used to construct the LogDensityFunction.
 """
