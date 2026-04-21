@@ -144,7 +144,7 @@ accs = DynamicPPL.OnlyAccsVarInfo((
     DynamicPPL.RawValueAccumulator(false),
     # ... whatever else you need
 ))
-_, accs = DynamicPPL.init!!(rng, model, oavi, init_strategy, DynamicPPL.UnlinkAll())
+_, accs = DynamicPPL.init!!(rng, model, accs, init_strategy, DynamicPPL.UnlinkAll())
 ```
 
 You can then extract all the updated data from `accs` using DynamicPPL's existing API (see
@@ -178,7 +178,7 @@ retcode: Success
 u: 1-element Vector{Float64}:
  4.88281250001733e-5
 
-julia> # Get the an initialisation strategy representing the mode of `y`.
+julia> # Get an initialisation strategy representing the mode of `y`.
        init_strategy = InitFromVector(mld, opt_solution.u);
 
 julia> # Evaluate the model with this initialisation strategy.

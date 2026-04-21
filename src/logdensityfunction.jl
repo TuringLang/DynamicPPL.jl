@@ -32,7 +32,7 @@ using Random: Random
         vi_vnt_or_tfm_strategy=_default_vnt(model, UnlinkAll()),
         accs::Union{NTuple{<:Any,AbstractAccumulator},AccumulatorTuple}=DynamicPPL.ldf_accs(getlogdensity);
         adtype::Union{ADTypes.AbstractADType,Nothing}=nothing,
-        fix_transform::Bool=false,
+        fix_transforms::Bool=false,
     )
 
 A struct which contains a model, along with all the information necessary to:
@@ -216,10 +216,8 @@ struct LogDensityFunction{
         # `dynamic_transform_strategy` might be LinkAll() or UnlinkAll(), for example. We
         # might need to convert this to a set of fixed transforms.
         transform_strategy = if fix_transforms
-            # Reevaluate model again to determine the fixed transforms. This is kind of
-            # wasteful: for example, we could tie this model evaluation to one of the
-            # previous ones, but it's fine, since it's only done once in the LDF
-            # constructor.
+            # One extra model evaluation to cache the fixed transforms. Only happens once
+            # at construction time.
             transforms_vnt = get_fixed_transforms(model, dynamic_transform_strategy)
             fixed_transform_strategy = WithTransforms(
                 transforms_vnt, dynamic_transform_strategy
@@ -233,8 +231,7 @@ struct LogDensityFunction{
         end
         ranges_and_transforms = get_rangeandtransforms(vnt)
 
-        # Determine whether all transforms are fixed. This enables fast parameter
-        # extraction in ParamsWithStats without model re-evaluation.
+        # All-fixed enables the model-free fast path in ParamsWithStats.
         all_fixed = all(
             rat -> rat.transform isa FixedTransform, values(ranges_and_transforms)
         )
@@ -252,7 +249,6 @@ struct LogDensityFunction{
         trial_x = internal_values_as_vector(vnt)
         dim, et = length(trial_x), eltype(trial_x)
         x = to_vector_params_inner(vnt, ranges_and_transforms, et, dim)
-        # convert to AccumulatorTuple if needed
         accs = AccumulatorTuple(accs)
         # Do AD prep if needed
         prep = if adtype === nothing
@@ -263,7 +259,9 @@ struct LogDensityFunction{
             problem = LogDensityAt(
                 model, getlogdensity, ranges_and_transforms, transform_strategy, accs
             )
-            AbstractPPL.prepare(adtype, problem, x)
+            # `x` was just constructed from the same range metadata stored in `problem`,
+            # so the AD wrapper can skip its own hot-path dimension validation.
+            AbstractPPL.prepare(adtype, problem, x; check_dims=false)
         end
         return new{
             typeof(model),
