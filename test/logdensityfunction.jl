@@ -485,6 +485,19 @@ end
         end
     end
 
+    @testset "ReverseDiff compiled prep is retained" begin
+        @model f() = x ~ Normal()
+        ldf = LogDensityFunction(
+            f(), getlogjoint_internal, LinkAll(); adtype=AutoReverseDiff(; compile=true)
+        )
+        x = rand(ldf)
+
+        @test hasfield(typeof(ldf._adprep.prep), :tape)
+        @test getfield(ldf._adprep.prep, :tape) !== nothing
+        @test LogDensityProblems.logdensity_and_gradient(ldf, x) isa Tuple
+        @test LogDensityProblems.logdensity_and_gradient(ldf, x) isa Tuple
+    end
+
     # Test that various different ways of specifying array types as arguments work with all
     # ADTypes.
     @testset "Array argument types" begin

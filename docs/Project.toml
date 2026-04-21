@@ -7,6 +7,7 @@ BangBang = "198e06fe-97b7-11e9-32a5-e1d131e6ad66"
 Bijectors = "76274a88-744f-5084-9051-94815aaf08c4"
 Chairmarks = "0ca39b1e-fe0b-4e98-acfc-b1656634c4de"
 ChangesOfVariables = "9e997f8a-9a97-42d5-a9f1-ce6bfc15e2c0"
+DifferentiationInterface = "a0c0ee7d-e4b9-4e03-894e-1c5f64a51d63"
 DimensionalData = "0703355e-b756-11e9-17c0-8b28908087d0"
 Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
 Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
@@ -22,6 +23,9 @@ OrderedCollections = "bac558e1-5e72-5ebc-8fee-abe8a469f55d"
 StableRNGs = "860ef19b-820b-49d6-a774-d7a799459cd3"
 StatsFuns = "4c63d2b9-4356-54db-8cca-17b64c39e42c"
 
+[sources]
+AbstractPPL = {url = "https://github.com/TuringLang/AbstractPPL.jl", rev = "evaluator-interface"}
+
 [compat]
 ADTypes = "1"
 AbstractMCMC = "5"
@@ -31,6 +35,7 @@ BangBang = "0.4"
 Bijectors = "0.15.17"
 Chairmarks = "1"
 ChangesOfVariables = "0.1"
+DifferentiationInterface = "0.6.41, 0.7"
 DimensionalData = "0.30"
 Distributions = "0.25"
 Documenter = "1"
