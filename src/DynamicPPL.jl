@@ -46,6 +46,7 @@ import Base:
 # VarInfo
 export AbstractVarInfo,
     VarInfo,
+    get_values,
     VarNamedTuple,
     @vnt,
     map_pairs!!,
@@ -131,6 +132,7 @@ export AbstractVarInfo,
     get_input_vector_type,
     RangeAndTransform,
     get_range_and_transform,
+    get_logdensity_callable,
     # Leaf contexts
     AbstractContext,
     contextualize,

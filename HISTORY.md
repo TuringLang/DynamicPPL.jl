@@ -1,3 +1,7 @@
+# 0.41.2
+
+Export the accessor functions `get_values(::VarInfo)` and `get_logdensity_callable(::LogDensityFunction)`, so that users do not need to access internal fields of these types directly.
+
 # 0.41.1
 
 Fix a missing interpolation in the DynamicPPL compiler which would cause errors if DynamicPPL was not loaded explicitly by the user.

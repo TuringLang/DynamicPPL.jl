@@ -67,6 +67,7 @@ LogDensityFunction
 get_input_vector_type
 RangeAndTransform
 get_range_and_transform
+get_logdensity_callable
 ```
 
 Internally, this is accomplished using [`init!!`](@ref) on:
@@ -326,6 +327,7 @@ AbstractVarInfo
 
 ```@docs
 VarInfo
+DynamicPPL.get_values
 DynamicPPL.setindex_with_dist!!
 ```
 
