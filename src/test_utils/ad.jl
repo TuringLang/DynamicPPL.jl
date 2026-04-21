@@ -339,8 +339,7 @@ function run_ad(
 
     # Calculate log-density and gradient with the backend of interest
     value, grad = logdensity_and_gradient(ldf, params)
-    # collect(): https://github.com/JuliaDiff/DifferentiationInterface.jl/issues/754
-    grad = collect(grad)
+    grad = vec(collect(grad))
     verbose && println("       actual : $((value, grad))")
 
     # Test correctness
@@ -357,8 +356,7 @@ function run_ad(
                 model, getlogdensity, transform_strategy; adtype=test.adtype
             )
             value_true, grad_true = logdensity_and_gradient(ldf_reference, params)
-            # collect(): https://github.com/JuliaDiff/DifferentiationInterface.jl/issues/754
-            grad_true = collect(grad_true)
+            grad_true = vec(collect(grad_true))
         end
         # Perform testing
         verbose && println("     expected : $((value_true, grad_true))")
