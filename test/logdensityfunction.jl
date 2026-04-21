@@ -88,9 +88,15 @@ end
     ldf = LogDensityFunction(f(), getlogprior, UnlinkAll())
     @test DynamicPPL.get_logdensity_callable(ldf) == getlogprior
     @test DynamicPPL.get_input_vector_type(ldf) == Vector{Float64}
+    @test DynamicPPL.get_sample_input_vector(ldf) isa Vector{Float64}
+    @test length(DynamicPPL.get_sample_input_vector(ldf)) == 1
     rat = DynamicPPL.get_range_and_transform(ldf, @varname(x))
     @test rat.range == 1:1
     @test rat.transform isa Unlink
+    vnt = DynamicPPL.get_all_ranges_and_transforms(ldf)
+    @test only(keys(vnt)) == @varname(x)
+    @test vnt[@varname(x)].range == 1:1
+    @test vnt[@varname(x)].transform isa Unlink
 end
 
 @testset "LogDensityFunction: correctness with multiple threads" begin
