@@ -54,7 +54,7 @@ end
 """
     get_values(vi::AbstractVarInfo)
 
-Return the `VarNamedTuple` in `vi` that stores the variables' values.
+Return the `VarNamedTuple` in `vi` that stores the variables' transformed values.
 
 This should be implemented by each subtype of `AbstractVarInfo`.
 """

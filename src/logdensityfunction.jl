@@ -366,6 +366,19 @@ function get_range_and_transform(ldf::LogDensityFunction, vn::VarName)
     return ldf._varname_ranges[vn]
 end
 
+"""
+    DynamicPPL.get_logdensity_callable(ldf::LogDensityFunction)
+
+A `LogDensityFunction` stores a callable that, given an `OnlyAccsVarInfo`, can be used to
+calculate the log density of the model at a given set of parameters. For example, most
+usecases in DynamicPPL use [`DynamicPPL.getlogjoint_internal`](@ref) for this purpose.
+
+This function retrieves that callable.
+"""
+function get_logdensity_callable(l::LogDensityFunction)
+    return l._getlogdensity
+end
+
 ###################################
 # LogDensityProblems.jl interface #
 ###################################
