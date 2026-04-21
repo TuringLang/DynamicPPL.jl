@@ -1,3 +1,121 @@
+# 0.41.1
+
+Fix a missing interpolation in the DynamicPPL compiler which would cause errors if DynamicPPL was not loaded explicitly by the user.
+
+Also fixes a bug with `predict(::Model, ::MCMCChains.Chains)` where an error would be thrown if unnecessary parameters were removed from the chain before calling `predict`.
+
+# 0.41.0
+
+## Breaking changes
+
+### Unification of transformed values
+
+Previously, there were separate types `UntransformedValue`, `VectorValue`, and `LinkedVectorValue`, which were all subtypes of `AbstractTransformedValue`.
+The abstract type has been removed, and all of these have been unified in a single `TransformedValue` struct, which wraps the (maybe transformed) value, plus an `AbstractTransform` that describes the inverse transformation (to get back to the raw value).
+
+Concretely,
+
+  - `UntransformedValue(val)` is now `TransformedValue(val, NoTransform())`
+  - `VectorValue(vec, tfm)` is now `TransformedValue(vec, Unlink())`
+  - `LinkedVectorValue(vec, tfm)` is now `TransformedValue(vec, DynamicLink())`
+
+**Note that this means for `VectorValue` and `LinkedVectorValue`, the transform is no longer stored on the value itself.**
+This means that given one of these values, you *cannot* access the raw value without knowing the distribution from which it was sampled.
+
+The reason why this is done is that the transform may in principle change between model executions.
+This can happen if the prior distribution of a variable depends on the value of another variable.
+Previously, in DynamicPPL, we *always* made sure to recompute the transform during model evaluation; however, this was not enforced by the data structure.
+The current implementation makes it impossible to accidentally use an outdated transform, and is therefore more robust.
+
+The function `DynamicPPL.get_raw_value(::TransformedValue[, ::Distribution])` has been added to simplify the extraction of the raw value from a `TransformedValue`.
+The distribution argument is only needed if the transform is `DynamicLink` or `Unlink`.
+
+### Addition of `FixedTransform`
+
+The above unification allows us to introduce a new transform subtype, `FixedTransform{F}`, which wraps a known function `F` that is assumed to always be static, allowing the transform to be cached and reused across model executions.
+**This should only be used when it is known ahead of time that the transform will never change between model executions.**
+It is the user's responsibility to ensure that this is the case.
+Using `FixedTransform` when the transform does change between model executions can lead to incorrect results.
+
+For many simple distributions, this in fact saves absolutely no time, because deriving the transform from the distribution takes almost negligible time (~ 1 ns!).
+However, there are some edge cases for which this is not the case: for example, `product_distribution([Beta(2, 2), Normal()])` is quite slow (~ 3 µs).
+In such cases, using `FixedTransform` can lead to substantial performance improvements.
+
+To see how to use `FixedTransform`, please see the documentation at https://turinglang.org/DynamicPPL.jl/stable/fixed_transforms.
+The following entry points are provided:
+
+  - `DynamicPPL.get_fixed_transforms(::Model, ::AbstractTransformStrategy)`
+  - The `fix_transforms` keyword argument to `LogDensityFunction`
+  - `FixedTransformAccumulator` for specialised use cases
+
+### Removal of `getindex(vi::VarInfo, vn::VarName)`
+
+The main role of `VarInfo` was to store vectorised transformed values.
+Previously, these were stored as `VectorValue`s or `LinkedVectorValue`s: these used to carry the inverse transform with them, which allowed you to access the raw value via `vi[vn]`, or equivalently `getindex(vi, vn)`.
+
+The problem with this is that (as described above) the correct transform may depend on the values of the variables themselves.
+That means that if we update the vectorised value without changing the transform, we could end up with an inconsistent state and incorrect results.
+In particular, this is *exactly* what the function `unflatten!!` does: it updates the vectorised values but does not touch the transform.
+
+In the current version, we have removed this method to prevent the possibility of obtaining incorrect results.
+
+**How do I get around this?**
+
+There are two ways of working around this.
+The first is to access the transformed value in the VarInfo, and then get the raw value from that: `DynamicPPL.get_raw_value(DynamicPPL.get_transformed_value(vi, vn)[, dist])`.
+Note that the `dist` argument corresponds to the distribution for `vn` (see above for more information).
+
+The recommended way of avoiding this, however, is to migrate to using `OnlyAccsVarInfo`.*
+In particular, to access raw (untransformed) values, you should use an `OnlyAccsVarInfo` with a `RawValueAccumulator`.
+These are guaranteed to be always up-to-date and you do not have to mess around with transforms.
+There is [a migration guide available on the DynamicPPL documentation](https://turinglang.org/DynamicPPL.jl/stable/migration/) and we are very happy to add more examples to this if you run into something that is not covered.
+
+### `ParamsWithStats`
+
+There is a new constructor added, `ParamsWithStats(::AbstractInitStrategy, ::Model[, state::NamedTuple])`.
+This rederives the parameters and statistics by re-evaluating the model with the given initialisation strategy.
+
+The constructor `ParamsWithStats(vi::AbstractVarInfo, model::Model[, state])` has been removed (its signature was in fact too broad); if `varinfo isa DynamicPPL.VarInfo`, please use `ParamsWithStats(InitFromParams(vi.values), model[, state])` instead, which is exactly equivalent.
+
+The model-less constructor `ParamsWithStats(vi::AbstractVarInfo)` still exists: it reads the parameters and statistics directly from the `VarInfo`'s accumulators without re-evaluating the model.
+
+## Miscellaneous breaking changes
+
+  - Removed the `varinfo` keyword argument from `DynamicPPL.TestUtils.AD.run_ad`, and replaced the `varinfo` field in the returned `ADResult` with `ldf::LogDensityFunction`.
+  - Removed the method `Bijectors.bijector(::DynamicPPL.Model)`; equivalent information can be obtained with `get_fixed_transforms` (although it returns a `VarNamedTuple` of transforms rather than a single stacked transform).
+  - Removed the function `set_transformed!!`, which was not used anywhere in DynamicPPL and Turing, and is dangerous as it can lead to an inconsistent state.
+  - The functions `pointwise_logdensities(::Model, ::AbstractVarInfo)` have been replaced with `pointwise_logdensities(::Model, ::AbstractInitStrategy)` (for the same reasons as `ParamsWithStats` explained above). The same workaround of using `InitFromParams(vi.values)` applies here if you have a `VarInfo` and want to get pointwise log-densities for it.
+
+## Non-breaking changes
+
+`RangeAndTransform` and `get_range_and_transform` are now part of DynamicPPL's public API, and allow users to access the internal representation of a LogDensityFunction.
+Please see the API docs for more information.
+
+## Internal changes
+
+The following functions were not exported; we document changes in them for completeness.
+
+  - Given the above changes, the old framework of `AbstractTransformation`, `StaticTransformation`, and `DynamicTransformation` are no longer needed, and have been removed.
+    The (rarely used) methods of `link`, `link!!`, `invlink`, and `invlink!!` that took an `AbstractTransformation` as the first argument have been removed.
+    The functions `default_transformation` and `transformation` have also been removed, as well as the entire family of internal functions `to_maybe_linked_internal`, `from_maybe_linked_internal`, `from_internal_transform`, `from_linked_internal_transform`, `from_maybe_linked_internal_transform`, `to_internal_transform`, `to_linked_internal_transform`, `to_maybe_linked_internal_transform`, `internal_to_linked_internal_transform`, and `linked_internal_to_internal_transform`.
+
+  - `RangeAndLinked` has been expanded to `RangeAndTransform`: instead of just carrying a Boolean indicating whether the transform is `DynamicLink` or `Unlink`, it now stores the full transform.
+    This is done in order to accommodate `FixedTransform`.
+  - Consequently, `get_ranges_and_linked` has been renamed to `get_rangeandtransforms`.
+    Its function is still to return a `VarNamedTuple` of `RangeAndTransform`s.
+  - `update_link_status!!` has been renamed to `update_transform_status!!`.
+  - `from_internal_transform` and `from_linked_internal_transform` have been removed, since the new `TransformedValue`s do not store the transform with them.
+  - Removed `getargnames`, `getmissings`, and `Base.nameof(::Model)` from the public API (export and documentation) as they are considered internal implementation details.
+  - Removed the dead code for the unexported functions `varnames_in_chain`, `varnames_in_chain!`, `varname_in_chain`, `varname_in_chain!`, `values_from_chain`, and `values_from_chain!`.
+
+# 0.40.24
+
+Fix a missing interpolation in the DynamicPPL compiler which would cause errors if DynamicPPL was not loaded explicitly by the user.
+
+Also fixes a bug with `predict(::Model, ::MCMCChains.Chains)` where an error would be thrown if unnecessary parameters were removed from the chain before calling `predict`.
+
+This is a backport of v0.41.1.
+
 # 0.40.23
 
 Fix incorrect behaviour when generating a new VarInfo with an `UnlinkSome` transform strategy (all variables would be instantiated as unlinked regardless of the fallback transform strategy).

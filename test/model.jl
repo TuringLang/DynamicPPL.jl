@@ -65,23 +65,27 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
         model = GDEMO_DEFAULT
 
         # sample from model and extract variables
-        vi = VarInfo(model)
-        s = vi[@varname(s)]
-        m = vi[@varname(m)]
+        accs = OnlyAccsVarInfo()
+        accs = setacc!!(accs, RawValueAccumulator(false))
+        _, accs = init!!(model, accs, InitFromPrior(), UnlinkAll())
+        raw_values = get_raw_values(accs)
+
+        s = raw_values[@varname(s)]
+        m = raw_values[@varname(m)]
 
         # extract log pdf of variable object
-        lp = getlogjoint(vi)
+        lp = getlogjoint(accs)
 
         # log prior probability
-        lprior = logprior(model, vi)
+        lprior = logprior(model, raw_values)
         @test lprior ≈ logpdf(InverseGamma(2, 3), s) + logpdf(Normal(0, sqrt(s)), m)
 
         # log likelihood
-        llikelihood = loglikelihood(model, vi)
+        llikelihood = loglikelihood(model, raw_values)
         @test llikelihood ≈ loglikelihood(Normal(m, sqrt(s)), [1.5, 2.0])
 
         # log joint probability
-        ljoint = logjoint(model, vi)
+        ljoint = logjoint(model, raw_values)
         @test ljoint ≈ lprior + llikelihood
         @test ljoint ≈ lp
 
@@ -106,11 +110,11 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
             # Construct mapping of varname symbols to varname-parent symbols.
             # Here, varname_leaves is used to ensure compatibility with the
             # variables stored in the chain
-            var_info = VarInfo(model)
+            vnt = rand(model)
             chain_sym_map = Dict{Symbol,Symbol}()
-            for vn_parent in keys(var_info)
+            for vn_parent in keys(vnt)
                 sym = DynamicPPL.getsym(vn_parent)
-                vn_children = AbstractPPL.varname_leaves(vn_parent, var_info[vn_parent])
+                vn_children = AbstractPPL.varname_leaves(vn_parent, vnt[vn_parent])
                 for vn_child in vn_children
                     chain_sym_map[Symbol(vn_child)] = sym
                 end
@@ -283,21 +287,6 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
         @test !any(map(x -> x isa DynamicPPL.AbstractVarInfo, call_retval))
     end
 
-    @testset "Dynamic constraints" begin
-        model = DynamicPPL.TestUtils.demo_dynamic_constraint()
-        vi = VarInfo(model)
-        vi = link!!(vi, model)
-
-        for i in 1:10
-            # Sample with large variations.
-            r_raw = randn(length(vi[:])) * 10
-            vi = DynamicPPL.unflatten!!(vi, r_raw)
-            @test vi[@varname(m)] == r_raw[1]
-            @test vi[@varname(x)] != r_raw[2]
-            model(vi)
-        end
-    end
-
     @testset "rand" begin
         model = GDEMO_DEFAULT
 
@@ -441,21 +430,21 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
             vns = DynamicPPL.TestUtils.varnames(model)
             vns_split = DynamicPPL.TestUtils.varnames_split(model)
             example_values = DynamicPPL.TestUtils.rand_prior_true(model)
-            varinfos = DynamicPPL.TestUtils.setup_varinfos(model, example_values)
-            @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
-                # We can set the include_colon_eq arg to false because none of
-                # the demo models contain :=. The behaviour when
-                # include_colon_eq is true is tested in test/compiler.jl
-                varinfo = DynamicPPL.setacc!!(varinfo, RawValueAccumulator(false))
-                _, varinfo = init!!(model, varinfo, InitFromPrior(), UnlinkAll())
-                realizations = get_raw_values(varinfo)
-                # Ensure that all variables are found.
-                vns_found = collect(keys(realizations))
-                @test vns_split ∩ vns_found == vns_split ∪ vns_found
-                # Ensure that the values are the same.
-                for vn in vns
-                    test_is_equal(realizations[vn], varinfo[vn])
-                end
+
+            # We can set the include_colon_eq arg to false because none of
+            # the demo models contain :=. The behaviour when
+            # include_colon_eq is true is tested in test/compiler.jl
+            accs = OnlyAccsVarInfo(RawValueAccumulator(false))
+            _, accs = init!!(
+                model, accs, InitFromParams(example_values, nothing), UnlinkAll()
+            )
+            raw_vals = get_raw_values(accs)
+            # Ensure that all variables are found.
+            vns_found = collect(keys(raw_vals))
+            @test vns_split ∩ vns_found == vns_split ∪ vns_found
+            # Ensure that the values are the same.
+            for vn in vns
+                test_is_equal(raw_vals[vn], AbstractPPL.getvalue(example_values, vn))
             end
         end
 
@@ -630,6 +619,28 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
                     @test ys_pred_vec[1] ≈ ground_truth_β * xs_test[1] atol = 0.01
                     @test ys_pred_vec[2] ≈ ground_truth_β * xs_test[2] atol = 0.01
                 end
+            end
+
+            @testset "predictions with subsetted chain" begin
+                @model function f()
+                    a ~ Normal()
+                    b ~ Normal(a)
+                    return x ~ Normal(b)
+                end
+                cmodel = f() | (; x=1.0)
+                chn = make_chain_from_prior(cmodel, 10)
+                # sanity check
+                model = f()
+                pdns = DynamicPPL.predict(model, chn)
+                @test Set(keys(pdns)) == Set([:x])
+                # now fix a and predict again
+                fmodel = fix(f(), (; a=0.5))
+                pdns = DynamicPPL.predict(fmodel, chn)
+                @test Set(keys(pdns)) == Set([:x])
+                # now subset chain to just b and predict; it should not error
+                # because the chain's values of a are unneeded
+                pdns = DynamicPPL.predict(fmodel, chn[[:b]])
+                @test Set(keys(pdns)) == Set([:x])
             end
         end
     end

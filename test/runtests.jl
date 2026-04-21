@@ -46,11 +46,11 @@ Random.seed!(100)
     end
 
     if GROUP in [TEST_GROUP_ALL, TEST_GROUP_GROUP2]
-        include("bijector.jl")
+        include("transformed_values.jl")
         include("logdensityfunction.jl")
         @testset "extensions" begin
-            include("ext/DynamicPPLMCMCChainsExt.jl")
             include("ext/DynamicPPLMarginalLogDensitiesExt.jl")
+            include("ext/DynamicPPLMCMCChainsExt.jl")
         end
         @testset "ad" begin
             include("ext/DynamicPPLForwardDiffExt.jl")

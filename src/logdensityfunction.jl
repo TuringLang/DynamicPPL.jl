@@ -11,7 +11,7 @@ using DynamicPPL:
     ThreadSafeVarInfo,
     VarInfo,
     OnlyAccsVarInfo,
-    RangeAndLinked,
+    RangeAndTransform,
     default_accumulators,
     float_type_with_fallback,
     getlogjoint,
@@ -32,6 +32,7 @@ using Random: Random
         vi_vnt_or_tfm_strategy=_default_vnt(model, UnlinkAll()),
         accs::Union{NTuple{<:Any,AbstractAccumulator},AccumulatorTuple}=DynamicPPL.ldf_accs(getlogdensity);
         adtype::Union{ADTypes.AbstractADType,Nothing}=nothing,
+        fix_transform::Bool=false,
     )
 
 A struct which contains a model, along with all the information necessary to:
@@ -73,8 +74,8 @@ are several functions in DynamicPPL that are 'supported' out of the box:
 parameters to be used for constructing the single vectorised representation of the model.
 The parameters stored in this argument determine whether the resulting `LogDensityFunction`
 will be linked, unlinked, or mixed. For example, if you pass a `VarNamedTuple` consisting
-entirely of `LinkedVectorValue`s, then the resulting `LogDensityFunction` will be fully
-linked.
+entirely of `TransformedValue{T,DynamicLink}`s, then the resulting `LogDensityFunction` will
+be fully linked.
 
 You can pass either:
 
@@ -109,6 +110,13 @@ along with other information for efficient calculation of the gradient of the lo
 Note that preparing a `LogDensityFunction` with an AD type `AutoBackend()` requires the AD
 backend itself to have been loaded (e.g. with `import Backend`).
 
+Finally, the `fix_transforms` keyword argument allows you to specify whether the transforms
+used in the `LogDensityFunction` should be cached at the time of construction. If so, the
+model is evaluated once using the provided transform strategy, and the transforms used for
+each variable are stored in the `LogDensityFunction`. This allows you to avoid the overhead
+of recalculating transforms during each log-density evaluation. See [the documentation on
+fixed transforms](@ref fixed-transforms) for more information.
+
 ## Fields
 
 Note that it is undefined behaviour to access any of a `LogDensityFunction`'s fields, apart
@@ -117,8 +125,8 @@ from:
 - `ldf.model`: The original model from which this `LogDensityFunction` was constructed.
 - `ldf.adtype`: The AD type used for gradient calculations, or `nothing` if no AD
   type was provided.
-- `ldf.transform_strategy`: The transform strategy that specifies which variables in the
-  LogDensityFunction are linked or unlinked.
+- `ldf.transform_strategy`: The transform strategy that specifies the transforms for all
+  variables in the model.
 
 # Extended help
 
@@ -181,6 +189,8 @@ struct LogDensityFunction{
     # type of the vector passed to logdensity functions
     X<:AbstractVector,
     AC<:AccumulatorTuple,
+    # whether all transforms are FixedTransforms, enabling fast parameter extraction
+    AllFixed,
 }
     model::M
     adtype::AD
@@ -199,35 +209,40 @@ struct LogDensityFunction{
             getlogdensity
         );
         adtype::Union{ADTypes.AbstractADType,Nothing}=nothing,
+        fix_transforms::Bool=false,
     )
-        all_ranges = get_ranges_and_linked(vnt)
-        # Figure out if all variables are linked, unlinked, or mixed
-        linked_vns = Set{VarName}()
-        unlinked_vns = Set{VarName}()
-        for vn in keys(all_ranges)
-            if all_ranges[vn].is_linked
-                push!(linked_vns, vn)
-            else
-                push!(unlinked_vns, vn)
-            end
-        end
-        transform_strategy = if isempty(unlinked_vns)
-            LinkAll()
-        elseif isempty(linked_vns)
-            UnlinkAll()
+        # Determine LDF transform strategy.
+        dynamic_transform_strategy = infer_transform_strategy_from_values(vnt)
+        # `dynamic_transform_strategy` might be LinkAll() or UnlinkAll(), for example. We
+        # might need to convert this to a set of fixed transforms.
+        transform_strategy = if fix_transforms
+            # Reevaluate model again to determine the fixed transforms. This is kind of
+            # wasteful: for example, we could tie this model evaluation to one of the
+            # previous ones, but it's fine, since it's only done once in the LDF
+            # constructor.
+            transforms_vnt = get_fixed_transforms(model, dynamic_transform_strategy)
+            fixed_transform_strategy = WithTransforms(
+                transforms_vnt, dynamic_transform_strategy
+            )
+            # We need to update `vnt` to be consistent with the new transform strategy.
+            vnt = update_transforms!!(vnt, transforms_vnt)
+            fixed_transform_strategy
         else
-            # We could have a marginal performance optimisation here by checking whether
-            # linked_vns or unlinked_vns is smaller, and then using LinkSome or UnlinkSome
-            # accordingly, so that there are fewer `subsumes` checks. However, in practice,
-            # the mixed linking case performance is going to be a lot worse than in the
-            # fully linked or fully unlinked cases anyway, so this would be a bit of a
-            # premature optimisation.
-            LinkSome(linked_vns, UnlinkAll())
+            # No fixing; just traverse the VNT to determine both.
+            dynamic_transform_strategy
         end
+        ranges_and_transforms = get_rangeandtransforms(vnt)
+
+        # Determine whether all transforms are fixed. This enables fast parameter
+        # extraction in ParamsWithStats without model re-evaluation.
+        all_fixed = all(
+            rat -> rat.transform isa FixedTransform, values(ranges_and_transforms)
+        )
+
         # Get vectorised parameters. Note that `internal_values_as_vector` just concatenates
         # all the vectors inside in iteration order of the VNT's keys. *In principle*, the
         # result of that should always be consistent with the ranges extracted above via
-        # `get_ranges_and_linked`, since both are based on the same underlying VNT, and both
+        # `get_rangeandtransforms`, since both are based on the same underlying VNT, and both
         # iterate over the keys in the same order. However, this is an implementation
         # detail, and so we should probably not rely on it!
         # Therefore, we use `to_vector_params_inner` to also perform some checks that the
@@ -236,7 +251,7 @@ struct LogDensityFunction{
         # and dimension.
         trial_x = internal_values_as_vector(vnt)
         dim, et = length(trial_x), eltype(trial_x)
-        x = to_vector_params_inner(vnt, all_ranges, et, dim)
+        x = to_vector_params_inner(vnt, ranges_and_transforms, et, dim)
         # convert to AccumulatorTuple if needed
         accs = AccumulatorTuple(accs)
         # Do AD prep if needed
@@ -245,7 +260,9 @@ struct LogDensityFunction{
         else
             # Make backend-specific tweaks to the adtype
             adtype = DynamicPPL.tweak_adtype(adtype, model, x)
-            lda = LogDensityAt(model, getlogdensity, all_ranges, transform_strategy, accs)
+            lda = LogDensityAt(
+                model, getlogdensity, ranges_and_transforms, transform_strategy, accs
+            )
             problem = if _use_closure(adtype)
                 lda
             else
@@ -260,12 +277,20 @@ struct LogDensityFunction{
             typeof(adtype),
             typeof(transform_strategy),
             typeof(getlogdensity),
-            typeof(all_ranges),
+            typeof(ranges_and_transforms),
             typeof(prep),
             typeof(x),
             typeof(accs),
+            all_fixed,
         }(
-            model, adtype, transform_strategy, getlogdensity, all_ranges, prep, dim, accs
+            model,
+            adtype,
+            transform_strategy,
+            getlogdensity,
+            ranges_and_transforms,
+            prep,
+            dim,
+            accs,
         )
     end
 end
@@ -276,8 +301,11 @@ function LogDensityFunction(
     vi::VarInfo,
     accs::Union{NTuple{<:Any,AbstractAccumulator},AccumulatorTuple}=ldf_accs(getlogdensity);
     adtype::Union{ADTypes.AbstractADType,Nothing}=nothing,
+    fix_transforms::Bool=false,
 )
-    return LogDensityFunction(model, getlogdensity, vi.values, accs; adtype=adtype)
+    return LogDensityFunction(
+        model, getlogdensity, vi.values, accs; adtype=adtype, fix_transforms=fix_transforms
+    )
 end
 function LogDensityFunction(
     model::Model,
@@ -285,6 +313,7 @@ function LogDensityFunction(
     oavi::OnlyAccsVarInfo,
     accs::Union{NTuple{<:Any,AbstractAccumulator},AccumulatorTuple}=ldf_accs(getlogdensity);
     adtype::Union{ADTypes.AbstractADType,Nothing}=nothing,
+    fix_transforms::Bool=false,
 )
     if !hasacc(oavi, Val(VECTORVAL_ACCNAME))
         error(
@@ -292,7 +321,9 @@ function LogDensityFunction(
         )
     end
     vnt = getacc(oavi, Val(VECTORVAL_ACCNAME)).values
-    return LogDensityFunction(model, getlogdensity, vnt, accs; adtype=adtype)
+    return LogDensityFunction(
+        model, getlogdensity, vnt, accs; adtype=adtype, fix_transforms=fix_transforms
+    )
 end
 function LogDensityFunction(
     model::Model,
@@ -300,9 +331,12 @@ function LogDensityFunction(
     link_strat::AbstractTransformStrategy,
     accs::Union{NTuple{<:Any,AbstractAccumulator},AccumulatorTuple}=ldf_accs(getlogdensity);
     adtype::Union{ADTypes.AbstractADType,Nothing}=nothing,
+    fix_transforms::Bool=false,
 )
     vnt = _default_vnt(model, link_strat)
-    return LogDensityFunction(model, getlogdensity, vnt, accs; adtype=adtype)
+    return LogDensityFunction(
+        model, getlogdensity, vnt, accs; adtype=adtype, fix_transforms=fix_transforms
+    )
 end
 
 function _default_vnt(model::Model, transform_strategy::AbstractTransformStrategy)
@@ -323,6 +357,17 @@ It is also useful for determining e.g. whether Float32 or Float64 parameters are
 """
 function get_input_vector_type(::LogDensityFunction{M,A,L,G,R,P,X}) where {M,A,L,G,R,P,X}
     return X
+end
+
+"""
+    DynamicPPL.get_range_and_transform(ldf::LogDensityFunction, vn::VarName)::RangeAndTransform
+
+A `LogDensityFunction` stores a mapping from `VarName`s to their corresponding ranges in the
+vectorised parameter representation, along with their transform status. This function
+retrieves that information.
+"""
+function get_range_and_transform(ldf::LogDensityFunction, vn::VarName)
+    return ldf._varname_ranges[vn]
 end
 
 ###################################
@@ -502,25 +547,26 @@ _use_closure(::ADTypes.AbstractADType) = false
 ######################################################
 
 """
-    get_ranges_and_linked(vnt::VarNamedTuple)
+    get_rangeandtransforms(vnt::VarNamedTuple)
 
-Given a `VarNamedTuple` that contains `VectorValue`s and `LinkedVectorValue`s, extract the
-ranges of each variable in the vectorised parameter representation, along with whether each
-variable is linked or unlinked.
+Given a `VarNamedTuple` that contains vectorised values (i.e.,
+`TransformedValue{<:AbstractVector}`), extract the ranges of each variable in the vectorised
+parameter representation. Further infer the transform status of each variable from the type
+of the vectorised value.
 
 This function returns a VarNamedTuple mapping all VarNames to their corresponding
-`RangeAndLinked`.
+`RangeAndTransform`.
 """
-function get_ranges_and_linked(vnt::VarNamedTuple)
+function get_rangeandtransforms(vnt::VarNamedTuple)
     # Note: can't use map_values!! here as that might mutate the VNT itself!
     ranges_vnt, _ = mapreduce(
         identity,
         function ((ranges_vnt, offset), pair)
             vn, tv = pair
-            val = tv.val
+            val = get_internal_value(tv)
             range = offset:(offset + length(val) - 1)
             offset += length(val)
-            ral = RangeAndLinked(range, tv isa LinkedVectorValue)
+            ral = RangeAndTransform(range, tv.transform)
             template = vnt.data[AbstractPPL.getsym(vn)]
             ranges_vnt = templated_setindex!!(ranges_vnt, ral, vn, template)
             return ranges_vnt, offset
@@ -532,13 +578,33 @@ function get_ranges_and_linked(vnt::VarNamedTuple)
 end
 
 """
+    update_transforms!!(vnt::VarNamedTuple, transforms_vnt::VarNamedTuple)
+
+Given `vnt` which contains vectorised values (i.e., `TransformedValue{<:AbstractVector}`), and a
+`transforms_vnt` which contains the transforms to be applied to each variable, update the
+vectorised values in `vnt` to have the corresponding transforms from `transforms_vnt`.
+
+This function returns a VarNamedTuple mapping all VarNames to their corresponding
+`TransformedValue`s.
+
+!!! warning
+    This function might mutate `vnt`.
+"""
+function update_transforms!!(vnt::VarNamedTuple, transforms_vnt::VarNamedTuple)
+    return map_pairs!!(vnt) do pair
+        vn, tv = pair
+        TransformedValue(get_internal_value(tv), transforms_vnt[vn])
+    end
+end
+
+"""
     InitFromVector(
         vect::AbstractVector{<:Real},
         ldf::LogDensityFunction
     )
 
-Convenience constructor for `InitFromVector` that extracts the `varname_ranges` and
-`transform_strategy` from the given `LogDensityFunction`.
+Constructor for `InitFromVector` that extracts the necessary information about VarName
+ranges and transform strategy from a pre-existing `LogDensityFunction`.
 """
 function InitFromVector(
     vect::V, ldf::L
@@ -561,9 +627,8 @@ end
         ldf::LogDensityFunction
     )
 
-Extract vectorised values from a `VarNamedTuple` that contains `VectorValue`s and
-`LinkedVectorValue`s, and concatenate them into a single vector that is consistent with the
-ranges specified in the `LogDensityFunction`.
+Extract vectorised values from a `VarNamedTuple`, and concatenate them into a single vector
+that is consistent with the ranges specified in the `LogDensityFunction`.
 
 This is useful when you want to regenerate new vectorised parameters but using a different
 initialisation strategy.
@@ -597,13 +662,10 @@ function to_vector_params_inner(
         ral = ranges[vn]
 
         # check transform lines up
-        if (
-            (ral.is_linked && tval isa VectorValue) ||
-            (!ral.is_linked && tval isa LinkedVectorValue)
-        )
+        if ral.transform != tval.transform
             throw(
                 ArgumentError(
-                    "The LogDensityFunction specifies that `$vn` should be $(ral.is_linked ? "linked" : "unlinked"), but the vector values contain a $(tval isa LinkedVectorValue ? "linked" : "unlinked") value for that variable.",
+                    "The variable `$vn` has transform status $(ral.transform) in the LogDensityFunction, but the provided VarNamedTuple has transform status $(tval.transform) for this variable. This likely means that the vector values provided are not consistent with the LogDensityFunction (e.g. if they were obtained from a different model).",
                 ),
             )
         end

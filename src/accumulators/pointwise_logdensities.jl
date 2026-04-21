@@ -53,7 +53,7 @@ end
 """
     _pointwise_logdensities(
         model::Model,
-        varinfo::AbstractVarInfo,
+        init_strat::AbstractInitStrategy,
         ::Val{Prior}=Val(true),
         ::Val{Likelihood}=Val(true),
     ) where {Prior,Likelihood}
@@ -63,25 +63,51 @@ or both).
 """
 function _pointwise_logdensities(
     model::Model,
-    varinfo::AbstractVarInfo,
+    init_strat::AbstractInitStrategy,
     ::Val{Prior}=Val(true),
     ::Val{Likelihood}=Val(true),
 ) where {Prior,Likelihood}
     acc = VNTAccumulator{POINTWISE_ACCNAME}(PointwiseLogProb{Prior,Likelihood}())
     oavi = OnlyAccsVarInfo(acc)
-    init_strategy = InitFromParams(varinfo.values, nothing)
-    oavi = last(init!!(model, oavi, init_strategy, UnlinkAll()))
+    oavi = last(init!!(model, oavi, init_strat, UnlinkAll()))
     return get_pointwise_logprobs(oavi)
 end
 
-function pointwise_logdensities(model::Model, varinfo::AbstractVarInfo)
-    return _pointwise_logdensities(model, varinfo, Val(true), Val(true))
+"""
+    DynamicPPL.pointwise_logdensities(
+        model::Model,
+        init_strat::AbstractInitStrategy
+    )
+
+Calculate the pointwise log-densities for the parameters obtained by evaluating the model
+with the given initialisation strategy. The resulting VarNamedTuple will contain both
+log-prior probabilities (for random variables) and log-likelihoods (for observed variables).
+"""
+function pointwise_logdensities(model::Model, init_strat::AbstractInitStrategy)
+    return _pointwise_logdensities(model, init_strat, Val(true), Val(true))
 end
 
-function pointwise_loglikelihoods(model::Model, varinfo::AbstractVarInfo)
-    return _pointwise_logdensities(model, varinfo, Val(false), Val(true))
+"""
+    DynamicPPL.pointwise_loglikelihoods(
+        model::Model,
+        init_strat::AbstractInitStrategy
+    )
+
+Same as `pointwise_logdensities`, but only returns the log-likelihoods for observed variables.
+"""
+function pointwise_loglikelihoods(model::Model, init_strat::AbstractInitStrategy)
+    return _pointwise_logdensities(model, init_strat, Val(false), Val(true))
 end
 
-function pointwise_prior_logdensities(model::Model, varinfo::AbstractVarInfo)
-    return _pointwise_logdensities(model, varinfo, Val(true), Val(false))
+"""
+    DynamicPPL.pointwise_prior_logdensities(
+        model::Model,
+        init_strat::AbstractInitStrategy
+    )
+
+Same as `pointwise_logdensities`, but only returns the log-densities for random variables
+(i.e. the priors).
+"""
+function pointwise_prior_logdensities(model::Model, init_strat::AbstractInitStrategy)
+    return _pointwise_logdensities(model, init_strat, Val(true), Val(false))
 end

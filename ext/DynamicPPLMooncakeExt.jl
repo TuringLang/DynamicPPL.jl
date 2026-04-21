@@ -5,10 +5,10 @@ using AbstractPPL: AbstractPPL
 using Mooncake: Mooncake
 
 # These are purely optimisations (although quite significant ones sometimes, especially for
-# _get_range_and_linked).
+# _get_range_and_transform).
 Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{typeof(is_transformed),Vararg}
 Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
-    typeof(DynamicPPL._get_range_and_linked),Vararg
+    typeof(DynamicPPL._get_range_and_transform),Vararg
 }
 Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
     typeof(Base.haskey),DynamicPPL.VarInfo,DynamicPPL.VarName

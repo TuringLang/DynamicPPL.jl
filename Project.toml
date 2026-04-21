@@ -1,6 +1,6 @@
 name = "DynamicPPL"
 uuid = "366bfd00-2699-11ea-058f-f148b4cae6d8"
-version = "0.40.23"
+version = "0.41.1"
 
 [deps]
 ADTypes = "47edcb42-4c32-4615-8424-f2b9edc5f35b"
@@ -42,8 +42,8 @@ ReverseDiff = "37e2e3b7-166d-5795-8a7a-e32c996b4267"
 [extensions]
 DynamicPPLEnzymeCoreExt = ["EnzymeCore"]
 DynamicPPLForwardDiffExt = ["ForwardDiff"]
-DynamicPPLMCMCChainsExt = ["MCMCChains"]
 DynamicPPLMarginalLogDensitiesExt = ["MarginalLogDensities"]
+DynamicPPLMCMCChainsExt = ["MCMCChains"]
 DynamicPPLMooncakeExt = ["Mooncake"]
 DynamicPPLReverseDiffExt = ["ReverseDiff"]
 
@@ -66,9 +66,9 @@ InteractiveUtils = "1"
 KernelAbstractions = "0.9.33"
 LinearAlgebra = "1.6"
 LogDensityProblems = "2"
+MarginalLogDensities = "0.4.3"
 MCMCChains = "6, 7"
 MacroTools = "0.5.6"
-MarginalLogDensities = "0.4.3"
 Mooncake = "0.4.147, 0.5"
 OrderedCollections = "1"
 PrecompileTools = "1.2.1"

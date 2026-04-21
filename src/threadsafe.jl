@@ -60,8 +60,6 @@ function ThreadSafeVarInfo(varinfo::AbstractVarInfo, param_eltype::Type{T}) wher
     return ThreadSafeVarInfo(resetaccs!!(varinfo))
 end
 
-transformation(vi::ThreadSafeVarInfo) = transformation(vi.varinfo)
-
 # Set the accumulator in question in vi.varinfo, and set the thread-specific
 # accumulators of the same type to be empty.
 function setacc!!(vi::ThreadSafeVarInfo, acc::AbstractAccumulator)
@@ -114,25 +112,16 @@ haskey(vi::ThreadSafeVarInfo, vn::VarName) = haskey(vi.varinfo, vn)
 
 is_transformed(vi::ThreadSafeVarInfo) = is_transformed(vi.varinfo)
 
-function link!!(t::AbstractTransformation, vi::ThreadSafeVarInfo, args...)
-    return Accessors.@set vi.varinfo = link!!(t, vi.varinfo, args...)
+function link!!(vi::ThreadSafeVarInfo, args...)
+    return Accessors.@set vi.varinfo = link!!(vi.varinfo, args...)
 end
 
-function invlink!!(t::AbstractTransformation, vi::ThreadSafeVarInfo, args...)
-    return Accessors.@set vi.varinfo = invlink!!(t, vi.varinfo, args...)
+function invlink!!(vi::ThreadSafeVarInfo, args...)
+    return Accessors.@set vi.varinfo = invlink!!(vi.varinfo, args...)
 end
 get_transform_strategy(vi::ThreadSafeVarInfo) = get_transform_strategy(vi.varinfo)
 
-# `getindex`
 getindex(vi::ThreadSafeVarInfo, ::Colon) = getindex(vi.varinfo, Colon())
-getindex(vi::ThreadSafeVarInfo, vn::VarName) = getindex(vi.varinfo, vn)
-getindex(vi::ThreadSafeVarInfo, vns::AbstractVector{<:VarName}) = getindex(vi.varinfo, vns)
-function getindex(vi::ThreadSafeVarInfo, vn::VarName, dist::Distribution)
-    return getindex(vi.varinfo, vn, dist)
-end
-function getindex(vi::ThreadSafeVarInfo, vns::AbstractVector{<:VarName}, dist::Distribution)
-    return getindex(vi.varinfo, vns, dist)
-end
 
 function setindex_with_dist!!(
     vi::ThreadSafeVarInfo, tval, dist::Distribution, vn::VarName, template
@@ -156,10 +145,6 @@ end
 
 internal_values_as_vector(vi::ThreadSafeVarInfo) = internal_values_as_vector(vi.varinfo)
 
-function set_transformed!!(vi::ThreadSafeVarInfo, val::Bool, vn::VarName)
-    return Accessors.@set vi.varinfo = set_transformed!!(vi.varinfo, val, vn)
-end
-
 is_transformed(vi::ThreadSafeVarInfo, vn::VarName) = is_transformed(vi.varinfo, vn)
 function is_transformed(vi::ThreadSafeVarInfo, vns::AbstractVector{<:VarName})
     return is_transformed(vi.varinfo, vns)
@@ -182,18 +167,4 @@ function Base.merge(varinfo_left::ThreadSafeVarInfo, varinfo_right::ThreadSafeVa
     return Accessors.@set varinfo_left.varinfo = merge(
         varinfo_left.varinfo, varinfo_right.varinfo
     )
-end
-
-function from_internal_transform(varinfo::ThreadSafeVarInfo, vn::VarName)
-    return from_internal_transform(varinfo.varinfo, vn)
-end
-function from_internal_transform(varinfo::ThreadSafeVarInfo, vn::VarName, dist)
-    return from_internal_transform(varinfo.varinfo, vn, dist)
-end
-
-function from_linked_internal_transform(varinfo::ThreadSafeVarInfo, vn::VarName)
-    return from_linked_internal_transform(varinfo.varinfo, vn)
-end
-function from_linked_internal_transform(varinfo::ThreadSafeVarInfo, vn::VarName, dist)
-    return from_linked_internal_transform(varinfo.varinfo, vn, dist)
 end

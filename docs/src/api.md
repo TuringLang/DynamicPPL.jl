@@ -28,14 +28,6 @@ Model
 Model()
 ```
 
-Basic properties of a model can be accessed with [`getargnames`](@ref), [`getmissings`](@ref), and [`nameof`](@ref).
-
-```@docs
-nameof(::Model)
-getargnames
-getmissings
-```
-
 The context of a model can be set using [`contextualize`](@ref):
 
 ```@docs
@@ -73,6 +65,8 @@ The [LogDensityProblems.jl](https://github.com/tpapp/LogDensityProblems.jl) inte
 ```@docs
 LogDensityFunction
 get_input_vector_type
+RangeAndTransform
+get_range_and_transform
 ```
 
 Internally, this is accomplished using [`init!!`](@ref) on:
@@ -170,11 +164,7 @@ marginalize
 ```
 
 A `MarginalLogDensity` object acts as a function which maps non-marginalised parameter values to a marginal log-probability.
-To retrieve a VarInfo object from it, you can use:
-
-```@docs
-VarInfo(::MarginalLogDensities.MarginalLogDensity{<:DPPLMLDExt.LogDensityFunctionWrapper}, ::Union{AbstractVector,Nothing})
-```
+To retrieve a VarInfo object from it, you can use [`InitFromVector`](@ref).
 
 ## Models within models
 
@@ -345,7 +335,6 @@ In the specific case of `VarInfo`, it keeps track of whether samples have been t
 
 ```@docs
 is_transformed
-set_transformed!!
 ```
 
 #### `VarNamedTuple`s
@@ -439,7 +428,6 @@ accloglikelihood!!
 
 ```@docs
 keys
-getindex
 empty!!
 isempty
 DynamicPPL.getindex_internal
@@ -449,18 +437,11 @@ DynamicPPL.setindex_internal!!
 #### Transformations
 
 ```@docs
-DynamicPPL.AbstractTransformation
-DynamicPPL.NoTransformation
-DynamicPPL.DynamicTransformation
-DynamicPPL.StaticTransformation
-```
-
-```@docs
 DynamicPPL.link
 DynamicPPL.invlink
 DynamicPPL.link!!
 DynamicPPL.invlink!!
-DynamicPPL.update_link_status!!
+DynamicPPL.update_transform_status!!
 ```
 
 ```@docs
@@ -469,19 +450,17 @@ DynamicPPL.LinkAll
 DynamicPPL.UnlinkAll
 DynamicPPL.LinkSome
 DynamicPPL.UnlinkSome
+DynamicPPL.WithTransforms
 ```
 
 ```@docs
 DynamicPPL.AbstractTransform
 DynamicPPL.DynamicLink
 DynamicPPL.Unlink
+DynamicPPL.FixedTransform
+DynamicPPL.NoTransform
 DynamicPPL.target_transform
 DynamicPPL.apply_transform_strategy
-```
-
-```@docs
-DynamicPPL.transformation
-DynamicPPL.default_transformation
 ```
 
 #### Utils
@@ -575,14 +554,10 @@ init
 get_param_eltype
 ```
 
-The function [`DynamicPPL.init`](@ref) should return an `AbstractTransformedValue`.
-There are three subtypes currently available:
+The function [`DynamicPPL.init`](@ref) should return a `TransformedValue`.
 
 ```@docs
-DynamicPPL.AbstractTransformedValue
-DynamicPPL.VectorValue
-DynamicPPL.LinkedVectorValue
-DynamicPPL.UntransformedValue
+DynamicPPL.TransformedValue
 ```
 
 The interface for working with transformed values consists of:
@@ -590,6 +565,7 @@ The interface for working with transformed values consists of:
 ```@docs
 DynamicPPL.get_transform
 DynamicPPL.get_internal_value
+DynamicPPL.get_raw_value
 DynamicPPL.set_internal_value
 ```
 

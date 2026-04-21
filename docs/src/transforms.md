@@ -78,9 +78,9 @@ vi_linked.accs
     The *transform strategy* is what determines whether the log-Jacobian is applied or not when evaluating the log-probability.
     One could think of the transform strategy as being a *re-interpretation* of the value provided by the initialisation strategy.
     
-    This frees up the initialisation strategy to return whatever kind of `AbstractTransformedValue` is most convenient for it.
+    This frees up the initialisation strategy to return whatever kind of `TransformedValue` is most convenient for it.
 
-## Making your own transform strategy
+## [Making your own transform strategy](@id custom-transform-strategy)
 
 The only requirement for a subtype of an `AbstractTransformStrategy` is that it must implement [`target_transform(::AbstractTransformStrategy, vn::VarName)`](@ref DynamicPPL.target_transform), where `vn` is the variable on the left-hand side of a tilde-statement.
 
@@ -139,13 +139,6 @@ Consequently, the transformation used for `y` must be determined at runtime; if 
 For correctness, DynamicPPL therefore always prefers to determine the transformation at runtime when using `DynamicLink()`.
 This behaviour is encoded in (for example) Turing's HMC samplers, which use `LinkAll()` as the default transform strategy, and hence every `VarName` will have a `target_transform` of `DynamicLink()`.
 
-## Fixed transformations
-
-For some models, it may be known that the support of a variable does not change, and that the transformations should be fixed.
-This allows us to avoid the overhead of recomputing the transformation at every model evaluation.
-
-This is currently not implemented, but there is a plan for it; see [this DynamicPPL issue](https://github.com/TuringLang/DynamicPPL.jl/issues/1249) for details.
-
 ## Why not let `init()` determine the transform?
 
 !!! warning
@@ -193,10 +186,10 @@ vi_linked
 ```
 
 We can see that we have gotten exactly the same result, but with only running the model once, and only calculating the transformation once.
-Furthermore, this allows us to remove the inverse transform step inside `InitFromUniform`: it can simply return a `LinkedVectorValue` directly, and the transform strategy is then responsible for performing the inverse transform a single time.
+Furthermore, this allows us to remove the inverse transform step inside `InitFromUniform`: it can simply return a linked value directly, and the transform strategy is then responsible for performing the inverse transform a single time.
 
 Essentially, having a separate transform strategy allows us to:
 
- 1. Free up the initialisation strategy to return whatever kind of `AbstractTransformedValue` is most convenient for it, without worrying about whether it needs to perform some transform.
+ 1. Free up the initialisation strategy to return whatever kind of `TransformedValue` is most convenient for it, without worrying about whether it needs to perform some transform.
 
  2. Consolidate all the actual transformation in a single function (`DynamicPPL.apply_transform_strategy`), which allows us to ensure that each tilde-statement involves at most *one* transformation.

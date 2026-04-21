@@ -95,7 +95,7 @@ Some examples follow.
 
 ### VarInfo
 
-In `VarInfo`, we need to be able to store either linked or unlinked values (in general, `AbstractTransformedValue`s).
+In `VarInfo`, we need to be able to store either linked or unlinked values (in general, `TransformedValue`s).
 These are always vectorised values, and the linked and unlinked vectors may have different sizes (this is indeed the case for Dirichlet distributions).
 This means that we have to collectively assign multiple indices in the `VarNamedTuple` to a single vector, which may or may not have the same size as the indices.
 
@@ -112,7 +112,7 @@ vi.values
 This means that in the actual `VarInfo` we do not have a notion of what `x[1]` is:
 
 ```@repl 1
-vi[@varname(x[1])]
+DynamicPPL.getindex_internal(vi, @varname(x[1]))
 ```
 
 See the [documentation on storing values](../accs/values.md) for more details.

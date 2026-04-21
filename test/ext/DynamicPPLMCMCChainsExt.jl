@@ -32,7 +32,7 @@ end
         model = f(z)
 
         @testset "matrix" begin
-            ps = [ParamsWithStats(VarInfo(model), model) for _ in 1:50, _ in 1:3]
+            ps = [ParamsWithStats(InitFromPrior(), model) for _ in 1:50, _ in 1:3]
             c = AbstractMCMC.from_samples(MCMCChains.Chains, ps)
             @test c isa MCMCChains.Chains
             @test size(c, 1) == 50
@@ -61,7 +61,7 @@ end
         # Make the chain first
         z = 1.0
         model = f(z)
-        ps = hcat([ParamsWithStats(VarInfo(model), model) for _ in 1:50])
+        ps = hcat([ParamsWithStats(InitFromPrior(), model) for _ in 1:50])
         c = AbstractMCMC.from_samples(MCMCChains.Chains, ps)
         # Then convert back to ParamsWithStats
         arr_pss = AbstractMCMC.to_samples(ParamsWithStats, c, model)
@@ -108,7 +108,7 @@ end
             model_m_only = m_only()
             chain_m_only = AbstractMCMC.from_samples(
                 MCMCChains.Chains,
-                hcat([ParamsWithStats(VarInfo(model_m_only), model_m_only) for _ in 1:50]),
+                hcat([ParamsWithStats(InitFromPrior(), model_m_only) for _ in 1:50]),
             )
 
             # Define a model that needs both `m` and `s`.

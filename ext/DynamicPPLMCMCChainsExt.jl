@@ -9,6 +9,10 @@ function getindex_varname(
 )
     return c[sample_idx, c.info.varname_to_symbol[vn], chain_idx]
 end
+function has_varname(c::MCMCChains.Chains, vn::DynamicPPL.VarName)
+    sym = c.info.varname_to_symbol[vn]
+    return sym in names(c)
+end
 function get_varnames(c::MCMCChains.Chains)
     haskey(c.info, :varname_to_symbol) ||
         error("This `Chains` object does not support indexing using `VarName`s.")
@@ -132,6 +136,12 @@ function AbstractMCMC.to_samples(
     params_matrix = map(idxs) do (sample_idx, chain_idx)
         vnt = DynamicPPL.VarNamedTuple()
         for vn in get_varnames(chain)
+            # Maybe the chain has been subsetted. If so, then `vn` might not be present
+            # anymore (but subsetting the chain does not change the varname_to_symbol dict,
+            # which is why it still pops up in get_varnames). We can check for that and skip
+            # if it's no longer there.
+            has_varname(chain, vn) || continue
+            # If it's there then we can add it into the VNT.
             top_sym = AbstractPPL.getsym(vn)
             val = getindex_varname(chain, sample_idx, vn, chain_idx)
             # This call to get() is type unstable, but I tried writing a generated function
