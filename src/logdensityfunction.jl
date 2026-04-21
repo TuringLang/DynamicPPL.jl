@@ -639,7 +639,7 @@ _use_closure(::ADTypes.AbstractADType) = false
 ######################################################
 
 """
-    get_rangeandtransforms_and_x(vnt::VarNamedTuple)
+    get_rat_and_samplevec(vnt::VarNamedTuple)
 
 Given a `VarNamedTuple` that contains vectorised values (i.e.,
 `TransformedValue{<:AbstractVector}`), extract the ranges of each variable in the vectorised
