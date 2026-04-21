@@ -261,7 +261,7 @@ end
     DynamicPPL.LogDensityFunction(
         model::Model,
         getlogdensity::Any=getlogjoint_internal,
-        arg3=UnlinkAll(),
+        vecvals_or_strategy=UnlinkAll(),
         accs::Union{NTuple{<:Any,AbstractAccumulator},AccumulatorTuple}=ldf_accs(getlogdensity);
         adtype::Union{ADTypes.AbstractADType,Nothing}=nothing,
         fix_transforms::Bool=false,
@@ -338,20 +338,7 @@ function LogDensityFunction(
             vecvals = update_transforms!!(vecvals, transforms_vnt)
         end
     end
-
-    # Get vectorised parameters. Note that `internal_values_as_vector` just concatenates
-    # all the vectors inside in iteration order of the VNT's keys. *In principle*, the
-    # result of that should always be consistent with the ranges extracted above via
-    # `get_rangeandtransforms`, since both are based on the same underlying VNT, and both
-    # iterate over the keys in the same order. However, this is an implementation
-    # detail, and so we should probably not rely on it!
-    #
-    # Therefore, we use `to_vector_params_inner` to also perform some checks that the
-    # vectorised parameters are concatenated in the order specified by the ranges. We do
-    # need to use internal_values_as_vector here once to get the correct element type
-    # and dimension.
     ranges_and_transforms, x = get_rat_and_samplevec(vecvals)
-
     return LogDensityFunction(
         model, getlogdensity, ranges_and_transforms, x, accs; adtype=adtype
     )
