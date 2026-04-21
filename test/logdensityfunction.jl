@@ -83,6 +83,16 @@ using Mooncake: Mooncake
     end
 end
 
+@testset "LogDensityFunction: accessor functions" begin
+    @model f() = x ~ Normal()
+    ldf = LogDensityFunction(f(), getlogprior, UnlinkAll())
+    @test DynamicPPL.get_logdensity_callable(ldf) == getlogprior
+    @test DynamicPPL.get_input_vector_type(ldf) == Vector{Float64}
+    rat = DynamicPPL.get_range_and_transform(ldf, @varname(x))
+    @test rat.range == 1:1
+    @test rat.transform isa Unlink
+end
+
 @testset "LogDensityFunction: correctness with multiple threads" begin
     @testset "Threaded assume" begin
         @model function threaded_assume()
