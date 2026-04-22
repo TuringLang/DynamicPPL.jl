@@ -15,6 +15,21 @@ function _maybe_pointwise_logpdf(dist::Distribution, value, ::Val{false})
     return logpdf(dist, value)
 end
 
+const _FACTORIZE_KWARG_DOC = """
+If `factorize=true`, additionally attempt to provide factorised log-densities for
+distributions that can be partitioned into blocks, using PartitionedDistributions.jl. For
+example, if `factorize=true`, then `y ~ MvNormal(...)` will return a vector of
+log-densities, one for each element of `y`. If `factorize=false`, then the log-density for
+`y ~ MvNormal(...)` will be a single scalar.
+
+Note that the sum of the factorised log-densities may not, in general, be equal to the
+log-density of the full distribution: they will only be equal if the original distribution
+can be completely factorised into independent components. For example, if `y ~ MvNormal(μ,
+Σ)` where `Σ` is diagonal, then each element of `y` is independent and the sum of the
+factorised log-densities will be equal to the log-density of the full distribution. In
+contrast, if `Σ` has off-diagonal entries, then the elements of `y` are not independent.
+"""
+
 """
     PointwiseLogProb{Prior,Likelihood}
 
@@ -97,17 +112,13 @@ end
         model::Model,
         init_strat::AbstractInitStrategy;
         factorize=false 
-    )
+    )::VarNamedTuple
 
 Calculate the pointwise log-densities for the parameters obtained by evaluating the model
 with the given initialisation strategy. The resulting VarNamedTuple will contain both
 log-prior probabilities (for random variables) and log-likelihoods (for observed variables).
 
-If `factorize=true`, additionally attempt to provide factorised log-densities for
-distributions that can be partitioned into blocks, using PartitionedDistributions.jl. For
-example, if `factorize=true`, then `y ~ MvNormal(...)` will return a vector of
-log-densities, one for each element of `y`. If `factorize=false`, then the log-density for
-`y ~ MvNormal(...)` will be a single scalar.
+$(_FACTORIZE_KWARG_DOC)
 """
 function pointwise_logdensities(
     model::Model, init_strat::AbstractInitStrategy; factorize=false
@@ -122,9 +133,12 @@ end
         model::Model,
         init_strat::AbstractInitStrategy;
         factorize=false
-    )
+    )::VarNamedTuple
 
-Same as `pointwise_logdensities`, but only returns the log-likelihoods for observed variables.
+Calculate the pointwise log-likelihoods for observed variables, using parameters obtained
+from the given initialisation strategy.
+
+$(_FACTORIZE_KWARG_DOC)
 """
 function pointwise_loglikelihoods(
     model::Model, init_strat::AbstractInitStrategy; factorize=false
@@ -139,10 +153,12 @@ end
         model::Model,
         init_strat::AbstractInitStrategy;
         factorize=false
-    )
+    )::VarNamedTuple
 
-Same as `pointwise_logdensities`, but only returns the log-densities for random variables
-(i.e. the priors).
+Calculate the pointwise log-prior probabilities for random variables, using parameters
+obtained from the given initialisation strategy.
+
+$(_FACTORIZE_KWARG_DOC)
 """
 function pointwise_prior_logdensities(
     model::Model, init_strat::AbstractInitStrategy; factorize=false
