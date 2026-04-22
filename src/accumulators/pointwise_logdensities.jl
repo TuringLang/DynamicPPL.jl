@@ -4,9 +4,9 @@ import PartitionedDistributions
 function _maybe_pointwise_logpdf(dist::D, value::V, ::Val{true}) where {D<:Distribution,V}
     return if hasmethod(
         PartitionedDistributions.pointwise_conditional_logpdfs,
-        Tuple{typeof(value),typeof(dist)},
+        Tuple{typeof(dist),typeof(value)},
     )
-        PartitionedDistributions.pointwise_conditional_logpdfs(value, dist)
+        PartitionedDistributions.pointwise_conditional_logpdfs(dist, value)
     else
         logpdf(dist, value)
     end
