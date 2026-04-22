@@ -1,3 +1,12 @@
+# 0.41.3
+
+Add a lower-level constructor for `LogDensityFunction` which directly takes a VNT of `RangeAndTransform`s plus a sample vectorised input.
+This is only intended for use in Turing: users should not need to use this directly.
+
+All other constructors are still available and unchanged in behaviour.
+
+To facilitate the functionality needed for Turing, this also adds more accessor functions for `LogDensityFunction`, namely `get_all_ranges_and_transforms`, `get_sample_input_vector`.
+
 # 0.41.2
 
 Export the accessor functions `get_values(::VarInfo)` and `get_logdensity_callable(::LogDensityFunction)`, so that users do not need to access internal fields of these types directly.
