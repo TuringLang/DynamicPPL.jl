@@ -33,7 +33,7 @@ TEST_ACCUMULATORS = (
     DynamicPPL.DebugRawValueAccumulator(),
     DynamicPPL.FixedTransformAccumulator(),
     DynamicPPL.VNTAccumulator{DynamicPPL.POINTWISE_ACCNAME}(
-        DynamicPPL.PointwiseLogProb{true,true}()
+        DynamicPPL.PointwiseLogProb{true,true,false}()
     ),
     PriorDistributionAccumulator(),
     DynamicPPL.VectorValueAccumulator(),
