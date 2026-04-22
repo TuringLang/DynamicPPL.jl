@@ -422,10 +422,11 @@ function _pointwise_logdensities_chain(
     model::DynamicPPL.Model,
     chain::MCMCChains.Chains,
     ::Val{Prior}=Val(true),
-    ::Val{Likelihood}=Val(true),
+    ::Val{Likelihood}=Val(true);
+    factorize=false,
 ) where {Prior,Likelihood}
     acc = DynamicPPL.VNTAccumulator{DynamicPPL.POINTWISE_ACCNAME}(
-        DynamicPPL.PointwiseLogProb{Prior,Likelihood}()
+        DynamicPPL.PointwiseLogProb{Prior,Likelihood,factorize}()
     )
     parameter_only_chain = MCMCChains.get_sections(chain, :parameters)
     # Reevaluating this gives us a VNT of log probs. We can densify and then wrap in
@@ -443,11 +444,18 @@ end
 """
     DynamicPPL.pointwise_logdensities(
         model::DynamicPPL.Model,
-        chain::MCMCChains.Chains,
+        chain::MCMCChains.Chains;
+        factorize=false, 
     )
 
 Runs `model` on each sample in `chain`, returning a new `MCMCChains.Chains` object where
 the log-density of each variable at each sample is stored (rather than its value).
+
+If `factorize=true`, additionally attempt to provide factorised log-densities for
+distributions that can be partitioned into blocks, using PartitionedDistributions.jl. For
+example, if `factorize=true`, then `y ~ MvNormal(...)` will return a vector of
+log-densities, one for each element of `y`. If `factorize=false`, then the log-density for
+`y ~ MvNormal(...)` will be a single scalar.
 
 See also: [`DynamicPPL.pointwise_loglikelihoods`](@ref),
 [`DynamicPPL.pointwise_prior_logdensities`](@ref).
@@ -507,15 +515,18 @@ julia> # The above is the same as:
 ```
 """
 function DynamicPPL.pointwise_logdensities(
-    model::DynamicPPL.Model, chain::MCMCChains.Chains
+    model::DynamicPPL.Model, chain::MCMCChains.Chains; factorize=false
 )
-    return _pointwise_logdensities_chain(model, chain, Val(true), Val(true))
+    return _pointwise_logdensities_chain(
+        model, chain, Val(true), Val(true); factorize=factorize
+    )
 end
 
 """
     DynamicPPL.pointwise_loglikelihoods(
         model::DynamicPPL.Model,
-        chain::MCMCChains.Chains,
+        chain::MCMCChains.Chains;
+        factorize=false,
     )
 
 Compute the pointwise log-likelihoods of the model given the chain. This is the same as
@@ -524,15 +535,18 @@ Compute the pointwise log-likelihoods of the model given the chain. This is the 
 See also: [`DynamicPPL.pointwise_logdensities`](@ref), [`DynamicPPL.pointwise_prior_logdensities`](@ref).
 """
 function DynamicPPL.pointwise_loglikelihoods(
-    model::DynamicPPL.Model, chain::MCMCChains.Chains
+    model::DynamicPPL.Model, chain::MCMCChains.Chains; factorize=false
 )
-    return _pointwise_logdensities_chain(model, chain, Val(false), Val(true))
+    return _pointwise_logdensities_chain(
+        model, chain, Val(false), Val(true); factorize=factorize
+    )
 end
 
 """
     DynamicPPL.pointwise_prior_logdensities(
         model::DynamicPPL.Model,
-        chain::MCMCChains.Chains
+        chain::MCMCChains.Chain;
+        factorize=false,
     )
 
 Compute the pointwise log-prior-densities of the model given the chain. This is the same as
@@ -541,9 +555,11 @@ Compute the pointwise log-prior-densities of the model given the chain. This is 
 See also: [`DynamicPPL.pointwise_logdensities`](@ref), [`DynamicPPL.pointwise_loglikelihoods`](@ref).
 """
 function DynamicPPL.pointwise_prior_logdensities(
-    model::DynamicPPL.Model, chain::MCMCChains.Chains
+    model::DynamicPPL.Model, chain::MCMCChains.Chains; factorize=false
 )
-    return _pointwise_logdensities_chain(model, chain, Val(true), Val(false))
+    return _pointwise_logdensities_chain(
+        model, chain, Val(true), Val(false); factorize=factorize
+    )
 end
 
 """
