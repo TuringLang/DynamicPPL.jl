@@ -141,6 +141,7 @@ function AbstractMCMC.to_samples(
             # which is why it still pops up in get_varnames). We can check for that and skip
             # if it's no longer there.
             has_varname(chain, vn) || continue
+            # If it's there then we can add it into the VNT.
             top_sym = AbstractPPL.getsym(vn)
             val = getindex_varname(chain, sample_idx, vn, chain_idx)
             # This call to get() is type unstable, but I tried writing a generated function

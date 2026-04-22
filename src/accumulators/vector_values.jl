@@ -8,7 +8,9 @@ Generate a `TransformedValue` that always has a vector as its stored value.
 function _get_vector_tval(
     val, tval::TransformedValue{V,T}, logjac, vn, dist
 ) where {V<:AbstractVector,T}
-    # `tval.transform` could be DynamicLink(), Unlink(), or a fixed vectorising transform.
+    # If it's already an AbstractVector transformed value, then we are done.
+    # `tval.transform` could be a DynamicLink(), Unlink(), or some fixed transform that
+    # vectorises; it doesn't matter.
     return tval
 end
 function _get_vector_tval(val, tval::TransformedValue{V,T}, logjac, vn, dist) where {V,T}

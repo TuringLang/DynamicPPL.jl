@@ -1,6 +1,5 @@
 using Documenter
 using DocumenterInterLinks
-using DifferentiationInterface
 using DynamicPPL
 using AbstractPPL
 # NOTE: This is necessary to ensure that if we print something from
