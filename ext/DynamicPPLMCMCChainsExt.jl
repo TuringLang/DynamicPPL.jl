@@ -451,11 +451,7 @@ end
 Runs `model` on each sample in `chain`, returning a new `MCMCChains.Chains` object where
 the log-density of each variable at each sample is stored (rather than its value).
 
-If `factorize=true`, additionally attempt to provide factorised log-densities for
-distributions that can be partitioned into blocks, using PartitionedDistributions.jl. For
-example, if `factorize=true`, then `y ~ MvNormal(...)` will return a vector of
-log-densities, one for each element of `y`. If `factorize=false`, then the log-density for
-`y ~ MvNormal(...)` will be a single scalar.
+$(DynamicPPL._FACTORIZE_KWARG_DOC)
 
 See also: [`DynamicPPL.pointwise_loglikelihoods`](@ref),
 [`DynamicPPL.pointwise_prior_logdensities`](@ref).
@@ -532,6 +528,8 @@ end
 Compute the pointwise log-likelihoods of the model given the chain. This is the same as
 `pointwise_logdensities(model, chain)`, but only including the likelihood terms.
 
+$(DynamicPPL._FACTORIZE_KWARG_DOC)
+
 See also: [`DynamicPPL.pointwise_logdensities`](@ref), [`DynamicPPL.pointwise_prior_logdensities`](@ref).
 """
 function DynamicPPL.pointwise_loglikelihoods(
@@ -551,6 +549,8 @@ end
 
 Compute the pointwise log-prior-densities of the model given the chain. This is the same as
 `pointwise_logdensities(model, chain)`, but only including the prior terms.
+
+$(DynamicPPL._FACTORIZE_KWARG_DOC)
 
 See also: [`DynamicPPL.pointwise_logdensities`](@ref), [`DynamicPPL.pointwise_loglikelihoods`](@ref).
 """
