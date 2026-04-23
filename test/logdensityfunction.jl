@@ -485,6 +485,36 @@ end
         end
     end
 
+    # Compiled ReverseDiff prep should be observable as lower repeated-call allocations.
+    @testset "ReverseDiff compiled prep reduces repeated-call allocations" begin
+        @model f() = x ~ Normal()
+        ldf_compiled = LogDensityFunction(
+            f(), getlogjoint_internal, LinkAll(); adtype=AutoReverseDiff(; compile=true)
+        )
+        ldf_uncompiled = LogDensityFunction(
+            f(), getlogjoint_internal, LinkAll(); adtype=AutoReverseDiff(; compile=false)
+        )
+        params = rand(ldf_compiled)
+
+        LogDensityProblems.logdensity_and_gradient(ldf_compiled, params)
+        LogDensityProblems.logdensity_and_gradient(ldf_uncompiled, params)
+
+        function repeated_call_allocs(ldf, params)
+            GC.gc()
+            before = Base.gc_num()
+            for _ in 1:100
+                LogDensityProblems.logdensity_and_gradient(ldf, params)
+            end
+            after = Base.gc_num()
+            return Base.GC_Diff(after, before).allocd
+        end
+
+        allocs_compiled = repeated_call_allocs(ldf_compiled, params)
+        allocs_uncompiled = repeated_call_allocs(ldf_uncompiled, params)
+
+        @test allocs_compiled < allocs_uncompiled
+    end
+
     # Test that various different ways of specifying array types as arguments work with all
     # ADTypes.
     @testset "Array argument types" begin

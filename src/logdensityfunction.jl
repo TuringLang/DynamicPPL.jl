@@ -32,7 +32,7 @@ using Random: Random
         vi_vnt_or_tfm_strategy=_default_vnt(model, UnlinkAll()),
         accs::Union{NTuple{<:Any,AbstractAccumulator},AccumulatorTuple}=DynamicPPL.ldf_accs(getlogdensity);
         adtype::Union{ADTypes.AbstractADType,Nothing}=nothing,
-        fix_transform::Bool=false,
+        fix_transforms::Bool=false,
     )
 
 A struct which contains a model, along with all the information necessary to:
@@ -260,17 +260,12 @@ struct LogDensityFunction{
         else
             # Make backend-specific tweaks to the adtype
             adtype = DynamicPPL.tweak_adtype(adtype, model, x)
-            lda = LogDensityAt(
+            problem = LogDensityAt(
                 model, getlogdensity, ranges_and_transforms, transform_strategy, accs
             )
-            problem = if _use_closure(adtype)
-                lda
-            else
-                let lda = lda
-                    params -> lda(params)
-                end
-            end
-            AbstractPPL.prepare(adtype, problem, x)
+            # `x` was just constructed from the same range metadata stored in `problem`,
+            # so the AD wrapper can skip its hot-path dimension validation.
+            AbstractPPL.prepare(adtype, problem, x; check_dims=false)
         end
         return new{
             typeof(model),
@@ -473,7 +468,6 @@ function LogDensityProblems.logdensity_and_gradient(
     # `params` has to be converted to the same vector type that was used for AD preparation,
     # otherwise the preparation will not be valid.
     params = convert(get_input_vector_type(ldf), params)
-    # Choice between LogDensityAt and closure was fixed at prepare time.
     return AbstractPPL.value_and_gradient(ldf._adprep, params)
 end
 
@@ -504,43 +498,6 @@ case the optimisation depends on the model.
 By default, this just returns the input unchanged.
 """
 tweak_adtype(adtype::ADTypes.AbstractADType, ::Model, ::AbstractVector) = adtype
-
-"""
-    _use_closure(adtype::ADTypes.AbstractADType)
-
-In LogDensityProblems, we want to calculate the derivative of `logdensity(f, x)` with
-respect to x, where f is the model (in our case LogDensityFunction or its arguments ) and is
-a constant. However, DifferentiationInterface generally expects a single-argument function
-g(x) to differentiate.
-
-There are two ways of dealing with this:
-
-1. Construct a closure over the model, i.e. let g = Base.Fix1(logdensity, f)
-
-2. Use a constant DI.Context. This lets us pass a two-argument function to DI, as long as we
-   also give it the 'inactive argument' (i.e. the model) wrapped in `DI.Constant`.
-
-The relative performance of the two approaches, however, depends on the AD backend used.
-Some benchmarks are provided here: https://github.com/TuringLang/DynamicPPL.jl/pull/1172
-
-This function is used to determine whether a given AD backend should use a closure or a
-constant. If `use_closure(adtype)` returns `true`, then the closure approach will be used.
-By default, this function returns `false`, i.e. the constant approach will be used.
-"""
-# For these AD backends both closure and no closure work, but it is just faster to not use a
-# closure (see link in the docstring).
-_use_closure(::ADTypes.AutoForwardDiff) = false
-_use_closure(::ADTypes.AutoMooncake) = false
-_use_closure(::ADTypes.AutoMooncakeForward) = false
-# For ReverseDiff, with the compiled tape, you _must_ use a closure because otherwise with
-# DI.Constant arguments the tape will always be recompiled upon each call to
-# value_and_gradient. For non-compiled ReverseDiff, it is faster to not use a closure.
-_use_closure(::ADTypes.AutoReverseDiff{compile}) where {compile} = compile
-# For AutoEnzyme it allows us to avoid setting function_annotation
-_use_closure(::ADTypes.AutoEnzyme) = false
-# Since for most backends it's faster to not use a closure, we set that as the default
-# for unknown AD backends
-_use_closure(::ADTypes.AbstractADType) = false
 
 ######################################################
 # Helper functions to extract ranges and link status #

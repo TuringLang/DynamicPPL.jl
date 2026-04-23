@@ -1,9 +1,11 @@
 [deps]
 ADTypes = "47edcb42-4c32-4615-8424-f2b9edc5f35b"
+AbstractPPL = "7a57a42e-76ec-4ea3-a279-07e840d6d9cf"
 DynamicPPL = "366bfd00-2699-11ea-058f-f148b4cae6d8"
 Enzyme = "7da242da-08ed-463a-9acd-ee780be4f1d9"
 ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [sources]
-DynamicPPL = {path = "../../../"}
+AbstractPPL = {rev = "evaluator-interface", url = "https://github.com/TuringLang/AbstractPPL.jl"}
+DynamicPPL = {path = "../../.."}
