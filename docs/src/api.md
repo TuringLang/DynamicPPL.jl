@@ -64,9 +64,12 @@ The [LogDensityProblems.jl](https://github.com/tpapp/LogDensityProblems.jl) inte
 
 ```@docs
 LogDensityFunction
-get_input_vector_type
 RangeAndTransform
 get_range_and_transform
+get_all_ranges_and_transforms
+get_logdensity_callable
+get_input_vector_type
+get_sample_input_vector
 ```
 
 Internally, this is accomplished using [`init!!`](@ref) on:
@@ -326,6 +329,7 @@ AbstractVarInfo
 
 ```@docs
 VarInfo
+DynamicPPL.get_values
 DynamicPPL.setindex_with_dist!!
 ```
 
