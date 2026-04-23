@@ -543,7 +543,7 @@ end
 """
     DynamicPPL.pointwise_prior_logdensities(
         model::DynamicPPL.Model,
-        chain::MCMCChains.Chain;
+        chain::MCMCChains.Chains;
         factorize=false,
     )
 

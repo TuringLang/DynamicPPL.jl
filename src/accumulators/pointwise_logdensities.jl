@@ -37,18 +37,19 @@ contrast, if `Σ` has off-diagonal entries, then the elements of `y` are not ind
 """
 
 """
-    PointwiseLogProb{Prior,Likelihood}
+    PointwiseLogProb{Prior,Likelihood,Factorised}
 
 A callable struct that computes the log probability of a given value under a distribution.
 The `Prior` and `Likelihood` type parameters are used to control whether the log probability
-is computed for prior or likelihood terms, respectively.
+is computed for prior or likelihood terms, respectively. The `Factorised` type parameter
+controls whether to attempt to factorise the log-densities.
 
 This struct is used in conjunction with `VNTAccumulator`, via
 
-    acc = VNTAccumulator{POINTWISE_ACCNAME}(PointwiseLogProb{Prior,Likelihood}())
+    acc = VNTAccumulator{POINTWISE_ACCNAME}(PointwiseLogProb{Prior,Likelihood,Factorised}())
 
-where `Prior` and `Likelihood` are the boolean type parameters. This accumulator will then
-store the log-probabilities for all tilde-statements in the model.
+where `Prior`, `Likelihood`, and `Factorised` are the boolean type parameters. This
+accumulator will then store the log-probabilities for all tilde-statements in the model.
 """
 struct PointwiseLogProb{Prior,Likelihood,Factorised} end
 Base.copy(plp::PointwiseLogProb) = plp
@@ -58,7 +59,7 @@ function (plp::PointwiseLogProb{Prior,Likelihood,Factorised})(
     return if Prior
         _maybe_pointwise_logpdf(dist, val, Val{Factorised}())
     else
-        return DoNotAccumulate()
+        DoNotAccumulate()
     end
 end
 const POINTWISE_ACCNAME = :PointwiseLogProb
@@ -81,7 +82,7 @@ function accumulate_observe!!(
     return if Likelihood && vn isa VarName
         logp = _maybe_pointwise_logpdf(right, left, Val{Factorised}())
         new_values = DynamicPPL.templated_setindex!!(acc.values, logp, vn, template)
-        return VNTAccumulator{POINTWISE_ACCNAME}(acc.f, new_values)
+        VNTAccumulator{POINTWISE_ACCNAME}(acc.f, new_values)
     else
         # No need to accumulate likelihoods.
         acc

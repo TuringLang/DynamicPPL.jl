@@ -82,7 +82,7 @@ end
         log_prior_densities = pointwise_prior_logdensities(
             model, InitFromPrior(); factorize=true
         )
-        @test logdensities isa DynamicPPL.VarNamedTuple
+        @test log_prior_densities isa DynamicPPL.VarNamedTuple
         @test log_prior_densities[@varname(x)] isa Vector{Float64}
         @test length(log_prior_densities[@varname(x)]) == 2
         @test !haskey(log_prior_densities, @varname(z))
@@ -200,12 +200,14 @@ end
             @test k in keys(logdensities)
         end
         log_prior_densities = pointwise_prior_logdensities(model, chn; factorize=true)
-        for k in [Symbol("x[1]"), Symbol("x[2]")]
-            @test k in keys(logdensities)
-        end
         log_likelihoods = pointwise_loglikelihoods(model, chn; factorize=true)
+        for k in [Symbol("x[1]"), Symbol("x[2]")]
+            @test k in keys(log_prior_densities)
+            @test !(k in keys(log_likelihoods))
+        end
         for k in [Symbol("z[1]"), Symbol("z[2]")]
-            @test k in keys(logdensities)
+            @test k in keys(log_likelihoods)
+            @test !(k in keys(log_prior_densities))
         end
     end
 end
