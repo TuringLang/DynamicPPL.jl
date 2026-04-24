@@ -4,68 +4,44 @@ on:
   pull_request:
 
 jobs:
-  benchmark-base:
+  benchmark:
     runs-on: ubuntu-latest
-    outputs:
-      results: ${{ steps.benchmark.outputs.results }}
-      sha: ${{ steps.benchmark.outputs.sha }}
     steps:
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: '1.11'
+      - uses: julia-actions/cache@v3
+
+      # Run base branch benchmarks
       - uses: actions/checkout@v6
         with:
           ref: ${{ github.base_ref }}
-      - uses: julia-actions/setup-julia@v2
-        with:
-          version: '1.11'
-      - uses: julia-actions/cache@v3
-
-      - name: Run benchmarks
-        id: benchmark
+      - name: Benchmark base branch
+        id: benchmark-base
         working-directory: ./benchmarks
         run: |
-          # github output can't handle more than 1 line, hence the tail
           julia --project=. -e 'using Pkg; Pkg.instantiate()'
           results=$(julia --project=. benchmarks.jl json | tail -n 1 || true)
-          echo $results
+          echo "$results"
           echo "results=$results" >> "$GITHUB_OUTPUT"
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
-  benchmark-head:
-    runs-on: ubuntu-latest
-    outputs:
-      results: ${{ steps.benchmark.outputs.results }}
-      sha: ${{ steps.benchmark.outputs.sha }}
-    steps:
+      # Run head branch benchmarks on the same runner
       - uses: actions/checkout@v6
         with:
           ref: ${{ github.event.pull_request.head.sha }}
-      - uses: julia-actions/setup-julia@v2
-        with:
-          version: '1.11'
-      - uses: julia-actions/cache@v3
-
-      - name: Run benchmarks
-        id: benchmark
+          clean: false
+      - name: Benchmark PR head
+        id: benchmark-head
         working-directory: ./benchmarks
         run: |
-          # github output can't handle more than 1 line, hence the tail
           julia --project=. -e 'using Pkg; Pkg.instantiate()'
           results=$(julia --project=. benchmarks.jl json | tail -n 1 || true)
-          echo $results
+          echo "$results"
           echo "results=$results" >> "$GITHUB_OUTPUT"
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
-  combine-results:
-    runs-on: ubuntu-latest
-    needs: [benchmark-base, benchmark-head]
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-      - uses: julia-actions/setup-julia@v2
-        with:
-          version: '1.11'
-      - uses: julia-actions/cache@v3
-
+      # Combine results and post comment
       - name: Combine benchmark results
         working-directory: ./benchmarks
         run: |
@@ -75,18 +51,9 @@ jobs:
           echo "$version_info" >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
 
-          # save outputs of previous jobs to json file
-          echo "Base results"
-          echo "--------------------------------------------------------"
-          echo '${{needs.benchmark-base.outputs.results}}'
-          echo '${{needs.benchmark-base.outputs.results}}' > base.json
-          echo "Head results"
-          echo "--------------------------------------------------------"
-          echo '${{needs.benchmark-head.outputs.results}}'
-          echo '${{needs.benchmark-head.outputs.results}}' > head.json
+          echo '${{ steps.benchmark-base.outputs.results }}' > base.json
+          echo '${{ steps.benchmark-head.outputs.results }}' > head.json
 
-          # combine them and save the output as an env var for later steps
-          julia --project=. -e 'using Pkg; Pkg.instantiate()'
           results=$(julia --project=. benchmarks.jl combine head.json base.json)
           echo "Combined results"
           echo "--------------------------------------------------------"
@@ -110,8 +77,8 @@ jobs:
           body: |
             ## Benchmark Report
 
-            - this PR's head: `${{ needs.benchmark-head.outputs.sha }}`
-            - base branch: `${{ needs.benchmark-base.outputs.sha }}`
+            - this PR's head: `${{ steps.benchmark-head.outputs.sha }}`
+            - base branch: `${{ steps.benchmark-base.outputs.sha }}`
 
             ### Computer Information
             ```
