@@ -63,6 +63,7 @@ logjoint
 The [LogDensityProblems.jl](https://github.com/tpapp/LogDensityProblems.jl) interface is also supported by wrapping a [`Model`](@ref) in a `DynamicPPL.LogDensityFunction`.
 
 ```@docs
+LogDensityFunction(::Model, ::Any, ::VarNamedTuple)
 LogDensityFunction
 RangeAndTransform
 get_range_and_transform
@@ -580,7 +581,10 @@ It is a fairly common operation to want to convert a collection of `VarInfo` obj
 This can be accomplished by first converting each `VarInfo` into a `ParamsWithStats` object:
 
 ```@docs
-DynamicPPL.ParamsWithStats
+ParamsWithStats
+ParamsWithStats(::AbstractInitStrategy, ::Model)
+ParamsWithStats(::AbstractVarInfo)
+ParamsWithStats(::AbstractVector, ::LogDensityFunction)
 ```
 
 Once you have a **matrix** of these, you can convert them into a chains object using:

@@ -1,3 +1,7 @@
+# 0.41.4
+
+Improve docs (in particular, make sure that outer constructors of structs also appear in the built docs).
+
 # 0.41.3
 
 Add a lower-level constructor for `LogDensityFunction` which directly takes a VNT of `RangeAndTransform`s plus a sample vectorised input.
