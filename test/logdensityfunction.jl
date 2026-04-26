@@ -14,7 +14,6 @@ using Random: Xoshiro
 using StableRNGs: StableRNG
 
 using ForwardDiff: ForwardDiff
-using ReverseDiff: ReverseDiff
 using Mooncake: Mooncake
 
 @testset "LogDensityFunction: constructors" begin
@@ -193,12 +192,12 @@ end
         struct ErrorAccumulatorException <: Exception end
         struct ErrorAccumulator <: DynamicPPL.AbstractAccumulator end
         DynamicPPL.accumulator_name(::ErrorAccumulator) = :ERROR
-        DynamicPPL.accumulate_assume!!(
-            ::ErrorAccumulator, ::Any, ::Any, ::Any, ::VarName, ::Distribution, ::Any
-        ) = throw(ErrorAccumulatorException())
-        DynamicPPL.accumulate_observe!!(
-            ::ErrorAccumulator, ::Distribution, ::Any, ::Union{VarName,Nothing}, ::Any
-        ) = throw(ErrorAccumulatorException())
+        DynamicPPL.accumulate_assume!!(::ErrorAccumulator, ::Any, ::Any, ::Any, ::VarName, ::Distribution, ::Any) = throw(
+            ErrorAccumulatorException()
+        )
+        DynamicPPL.accumulate_observe!!(::ErrorAccumulator, ::Distribution, ::Any, ::Union{VarName,Nothing}, ::Any) = throw(
+            ErrorAccumulatorException()
+        )
         DynamicPPL.reset(ea::ErrorAccumulator) = ea
         Base.copy(ea::ErrorAccumulator) = ea
         # Construct an LDF
@@ -457,11 +456,7 @@ end
     # Used as the ground truth that others are compared against.
     ref_adtype = AutoForwardDiff()
 
-    test_adtypes = [
-        AutoReverseDiff(; compile=false),
-        AutoReverseDiff(; compile=true),
-        AutoMooncake(; config=nothing),
-    ]
+    test_adtypes = [AutoForwardDiff(), AutoMooncake(; config=nothing)]
 
     @testset "Correctness" begin
         @testset "$(m.f)" for m in DynamicPPL.TestUtils.ALL_MODELS
@@ -501,36 +496,6 @@ end
         end
     end
 
-    # Compiled ReverseDiff prep should be observable as lower repeated-call allocations.
-    @testset "ReverseDiff compiled prep reduces repeated-call allocations" begin
-        @model f() = x ~ Normal()
-        ldf_compiled = LogDensityFunction(
-            f(), getlogjoint_internal, LinkAll(); adtype=AutoReverseDiff(; compile=true)
-        )
-        ldf_uncompiled = LogDensityFunction(
-            f(), getlogjoint_internal, LinkAll(); adtype=AutoReverseDiff(; compile=false)
-        )
-        params = rand(ldf_compiled)
-
-        LogDensityProblems.logdensity_and_gradient(ldf_compiled, params)
-        LogDensityProblems.logdensity_and_gradient(ldf_uncompiled, params)
-
-        function repeated_call_allocs(ldf, params)
-            GC.gc()
-            before = Base.gc_num()
-            for _ in 1:100
-                LogDensityProblems.logdensity_and_gradient(ldf, params)
-            end
-            after = Base.gc_num()
-            return Base.GC_Diff(after, before).allocd
-        end
-
-        allocs_compiled = repeated_call_allocs(ldf_compiled, params)
-        allocs_uncompiled = repeated_call_allocs(ldf_uncompiled, params)
-
-        @test allocs_compiled < allocs_uncompiled
-    end
-
     # Test that various different ways of specifying array types as arguments work with all
     # ADTypes.
     @testset "Array argument types" begin
@@ -541,7 +506,7 @@ end
             return LogDensityProblems.logdensity_and_gradient(ldf, m[:])
         end
 
-        @model function scalar_matrix_model(::Type{T}=Float64) where {T<:Real}
+        @model function scalar_matrix_model((::Type{T})=Float64) where {T<:Real}
             m = Matrix{T}(undef, 2, 3)
             return m ~ filldist(MvNormal(zeros(2), I), 3)
         end
@@ -550,14 +515,14 @@ end
             scalar_matrix_model, test_m, ref_adtype
         )
 
-        @model function matrix_model(::Type{T}=Matrix{Float64}) where {T}
+        @model function matrix_model((::Type{T})=Matrix{Float64}) where {T}
             m = T(undef, 2, 3)
             return m ~ filldist(MvNormal(zeros(2), I), 3)
         end
 
         matrix_model_reference = eval_logp_and_grad(matrix_model, test_m, ref_adtype)
 
-        @model function scalar_array_model(::Type{T}=Float64) where {T<:Real}
+        @model function scalar_array_model((::Type{T})=Float64) where {T<:Real}
             m = Array{T}(undef, 2, 3)
             return m ~ filldist(MvNormal(zeros(2), I), 3)
         end
@@ -566,7 +531,7 @@ end
             scalar_array_model, test_m, ref_adtype
         )
 
-        @model function array_model(::Type{T}=Array{Float64}) where {T}
+        @model function array_model((::Type{T})=Array{Float64}) where {T}
             m = T(undef, 2, 3)
             return m ~ filldist(MvNormal(zeros(2), I), 3)
         end

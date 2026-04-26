@@ -1,5 +1,4 @@
 using Documenter: Documenter
-using DifferentiationInterface
 using DynamicPPL: DynamicPPL
 using Random: Random
 using Test: @testset, @test_throws
@@ -50,7 +49,6 @@ Random.seed!(100)
         include("transformed_values.jl")
         include("logdensityfunction.jl")
         @testset "extensions" begin
-            include("ext/DynamicPPLMarginalLogDensitiesExt.jl")
             include("ext/DynamicPPLMCMCChainsExt.jl")
         end
         @testset "ad" begin

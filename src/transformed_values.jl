@@ -99,8 +99,9 @@ get_internal_value(tv::TransformedValue) = tv.value
 Create a new `TransformedValue` with the same transformation as `tv`, but with
 internal value `new_val`.
 """
-set_internal_value(tv::TransformedValue, new_val) =
+function set_internal_value(tv::TransformedValue, new_val)
     TransformedValue(new_val, get_transform(tv))
+end
 
 """
     DynamicPPL.get_raw_value(tv::TransformedValue)
@@ -347,6 +348,11 @@ function apply_transform_strategy(
         fwd_transform = inverse(target.transform)
         transformed_value, logjac = with_logabsdet_jacobian(fwd_transform, raw_value)
         transformed_tv = TransformedValue(transformed_value, target)
+        # TODO: Check whether this should return `logjac` rather than
+        # `logjac - inv_logjac`. When `tv` is already `DynamicLink` and the target is a
+        # link-equivalent `FixedTransform`, the accumulator should represent only the
+        # target transform's log-Jacobian. Subtracting the inverse-link Jacobian here may
+        # double-count the link correction.
         (raw_value, transformed_tv, logjac - inv_logjac)
     else
         error("unknown target transform: $target")
