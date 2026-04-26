@@ -367,14 +367,18 @@ function run_ad(
     grad_time, primal_time = if benchmark
         logdensity(ldf, params)  # Warm-up
         primal_benchmark = @be logdensity($ldf, $params)
-        print("   evaluation : ")
-        show(stdout, MIME("text/plain"), median(primal_benchmark))
-        println()
+        if verbose
+            print("   evaluation : ")
+            show(stdout, MIME("text/plain"), median(primal_benchmark))
+            println()
+        end
         logdensity_and_gradient(ldf, params)  # Warm-up
         grad_benchmark = @be logdensity_and_gradient($ldf, $params)
-        print("     gradient : ")
-        show(stdout, MIME("text/plain"), median(grad_benchmark))
-        println()
+        if verbose
+            print("     gradient : ")
+            show(stdout, MIME("text/plain"), median(grad_benchmark))
+            println()
+        end
         median_primal = median(primal_benchmark).time
         median_grad = median(grad_benchmark).time
         r(f) = round(f; sigdigits=4)
