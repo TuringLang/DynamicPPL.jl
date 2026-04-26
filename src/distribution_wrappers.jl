@@ -10,7 +10,14 @@ using Distributions:
 using FillArrays: Fill
 
 """
+    NamedDist{variate, support, Td, Tv}
+
 A named distribution that carries the name of the random variable with it.
+
+# Fields
+
+- `dist::Td`: The underlying distribution.
+- `name::Tv`: The name of the random variable as a `VarName`.
 """
 struct NamedDist{variate,support,Td<:Distribution{variate,support},Tv<:VarName} <:
        Distribution{variate,support}
