@@ -1,3 +1,7 @@
+# 0.41.5
+
+Make sure that `DynamicPPL.TestUtils.AD.run_ad(...; verbose=false)` _truly_ silences all messages.
+
 # 0.41.4
 
 Improve docs (in particular, make sure that outer constructors of structs also appear in the built docs).
