@@ -100,7 +100,7 @@ Create a new `TransformedValue` with the same transformation as `tv`, but with
 internal value `new_val`.
 """
 function set_internal_value(tv::TransformedValue, new_val)
-    TransformedValue(new_val, get_transform(tv))
+    return TransformedValue(new_val, get_transform(tv))
 end
 
 """
