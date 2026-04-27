@@ -12,7 +12,7 @@ function DynamicPPL.VarNamedTuples._setindex_optic!!(
     template,
     permissions::SetPermissions=AllowAll(),
 ) where {S}
-    idx = only(label2index(parent(template), String(S)))
+    idx = only(label2index(parent(template), S))
     index_optic = AbstractPPL.Index((idx,), NamedTuple(), optic.child)
     return _setindex_optic!!(pa, value, index_optic, template, permissions)
 end
