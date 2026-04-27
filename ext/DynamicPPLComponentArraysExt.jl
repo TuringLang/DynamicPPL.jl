@@ -13,7 +13,7 @@ function DynamicPPL.VarNamedTuples._setindex_optic!!(
     permissions::SetPermissions=AllowAll(),
 ) where {S}
     ax = ComponentArrays.getaxes(pa.data)[1]
-    idx = ax[S].idx
+    idx = first(ax[S].idx)
     index_optic = AbstractPPL.Index((idx,), NamedTuple(), optic.child)
     return _setindex_optic!!(pa, value, index_optic, template, permissions)
 end
