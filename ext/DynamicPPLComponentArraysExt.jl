@@ -13,9 +13,7 @@ using ComponentArrays: ComponentArray, getaxes
 using AbstractPPL
 
 function DynamicPPL.VarNamedTuples.make_leaf(
-    value,
-    optic::AbstractPPL.Index,
-    template::ComponentArray,
+    value, optic::AbstractPPL.Index, template::ComponentArray
 )
     coptic = AbstractPPL.concretize_top_level(optic, template)
     return if _is_multiindex(template, coptic.ix...; coptic.kw...)
