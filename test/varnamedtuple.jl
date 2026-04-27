@@ -310,7 +310,7 @@ Base.size(st::SizedThing) = st.size
             )
         end
         @testset "ComponentArrays" begin
-            ca = CA.ComponentArray(a=1.0, b=2.0)
+            ca = CA.ComponentArray(; a=1.0, b=2.0)
             test_get_set(GetSetTestCase(@varname(x[1]), 1.0, ca, []))
             test_get_set(GetSetTestCase(@varname(x.a), 1.0, ca, []))
             test_get_set(GetSetTestCase(@varname(x.b), 2.0, ca, []))
