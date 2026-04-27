@@ -340,6 +340,16 @@ Base.size(st::SizedThing) = st.size
             ca3 = CA.ComponentArray(; a=[1.0, 2.0], b=[3.0, 4.0])
             test_get_set(GetSetTestCase(@varname(x.a), [1.0, 2.0], ca3, []))
             test_get_set(GetSetTestCase(@varname(x.b), [3.0, 4.0], ca3, []))
+            # Array-valued field: set x.a[1], retrieve x.a[1]
+            test_get_set(GetSetTestCase(@varname(x.a[1]), 1.0, ca3, []))
+            # Set by property, retrieve by index (x.a == x[1])
+            vnt4 = VarNamedTuple()
+            vnt4 = templated_setindex!!(vnt4, 99.0, @varname(x.a), ca)
+            @test vnt4[@varname(x[1])] == 99.0
+            # Set by index, retrieve by property (x[2] == x.b)
+            vnt5 = VarNamedTuple()
+            vnt5 = templated_setindex!!(vnt5, 55.0, @varname(x[2]), ca)
+            @test vnt5[@varname(x.b)] == 55.0
         end
 
         @testset "InvertedIndices" begin
@@ -2174,3 +2184,4 @@ end
 @info "Completed $(@__FILE__) in $(now() - __now__)."
 
 end
+
