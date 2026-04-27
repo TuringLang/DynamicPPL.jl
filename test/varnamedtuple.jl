@@ -28,6 +28,7 @@ using BangBang: setindex!!, empty!!
 using DimensionalData: DimensionalData as DD
 using InvertedIndices: InvertedIndices as II
 using OffsetArrays: OffsetArrays as OA
+using ComponentArrays: ComponentArrays as CA
 
 struct GetSetTestCase
     # The VarName being set.
@@ -307,6 +308,12 @@ Base.size(st::SizedThing) = st.size
             test_get_set(
                 GetSetTestCase(@varname(oa2[11, -1]), 1.0, oa2, []); skip_setindex=true
             )
+        end
+        @testset "ComponentArrays" begin
+            ca = CA.ComponentArray(a=1.0, b=2.0)
+            test_get_set(GetSetTestCase(@varname(x[1]), 1.0, ca, []))
+            test_get_set(GetSetTestCase(@varname(x.a), 1.0, ca, []))
+            test_get_set(GetSetTestCase(@varname(x.b), 2.0, ca, []))
         end
 
         @testset "InvertedIndices" begin

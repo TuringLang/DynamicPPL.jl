@@ -7,7 +7,7 @@ __now__ = now()
 using Aqua: Aqua
 using DynamicPPL
 
-Aqua.test_all(DynamicPPL; stale_deps=false)
+Aqua.test_all(DynamicPPL)
 
 @info "Completed $(@__FILE__) in $(now() - __now__)."
 
