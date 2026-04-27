@@ -6,7 +6,7 @@ using DynamicPPL.VarNamedTuples:
     AllowAll,
     SetPermissions,
     _setindex_optic!!
-using ComponentArrays: ComponentArray, ComponentVector
+using ComponentArrays: ComponentArray, ComponentVector, label2index
 using AbstractPPL
 
 
@@ -18,7 +18,7 @@ function DynamicPPL.VarNamedTuples._setindex_optic!!(
     template,
     permissions::SetPermissions=AllowAll(),
 ) where {S}
-    idx = ComponentArrays.label2index(template, S)
+    idx = only(label2index(template, S))
     index_optic = AbstractPPL.Index((idx,), NamedTuple(), optic.child)
     return _setindex_optic!!(pa, value, index_optic, template, permissions)
 end
