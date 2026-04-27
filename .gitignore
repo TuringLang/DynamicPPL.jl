@@ -7,3 +7,7 @@ Manifest.toml
 
 benchmarks/*.json
 LocalPreferences.toml
+
+fix.py
+fix_tests.py
+test/ext/

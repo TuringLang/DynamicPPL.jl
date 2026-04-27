@@ -310,10 +310,36 @@ Base.size(st::SizedThing) = st.size
             )
         end
         @testset "ComponentArrays" begin
+            # Basic ComponentVector with scalar fields
             ca = CA.ComponentArray(; a=1.0, b=2.0)
+            # Index-based access
             test_get_set(GetSetTestCase(@varname(x[1]), 1.0, ca, []))
+            test_get_set(GetSetTestCase(@varname(x[2]), 2.0, ca, []))
+            # Property-based access
             test_get_set(GetSetTestCase(@varname(x.a), 1.0, ca, []))
             test_get_set(GetSetTestCase(@varname(x.b), 2.0, ca, []))
+            # Slice setting
+            test_get_set(GetSetTestCase(@varname(x[1:2]), [1.0, 2.0], ca, []))
+            # x[1] and x.a point to same element - property overwrites index
+            vnt = VarNamedTuple()
+            vnt = templated_setindex!!(vnt, 99.0, @varname(x[1]), ca)
+            vnt = templated_setindex!!(vnt, 42.0, @varname(x.a), ca)
+            @test vnt[@varname(x.a)] == 42.0
+            # Set by index, retrieve by index
+            vnt2 = VarNamedTuple()
+            vnt2 = templated_setindex!!(vnt2, 7.0, @varname(x[1]), ca)
+            @test vnt2[@varname(x[1])] == 7.0
+            # Mixed: index then property on same VarNamedTuple (the original bug)
+            ca2 = CA.ComponentArray(; a=1.0, b=2.0)
+            vnt3 = VarNamedTuple()
+            vnt3 = templated_setindex!!(vnt3, 1.0, @varname(x[1]), ca2)
+            vnt3 = templated_setindex!!(vnt3, 2.0, @varname(x.b), ca2)
+            @test vnt3[@varname(x[1])] == 1.0
+            @test vnt3[@varname(x.b)] == 2.0
+            # ComponentVector with array-valued fields
+            ca3 = CA.ComponentArray(; a=[1.0, 2.0], b=[3.0, 4.0])
+            test_get_set(GetSetTestCase(@varname(x.a), [1.0, 2.0], ca3, []))
+            test_get_set(GetSetTestCase(@varname(x.b), [3.0, 4.0], ca3, []))
         end
 
         @testset "InvertedIndices" begin
