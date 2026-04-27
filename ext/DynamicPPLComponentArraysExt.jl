@@ -1,15 +1,9 @@
 module DynamicPPLComponentArraysExt
 
 using DynamicPPL: DynamicPPL
-using DynamicPPL.VarNamedTuples:
-    PartialArray,
-    AllowAll,
-    SetPermissions,
-    _setindex_optic!!
+using DynamicPPL.VarNamedTuples: PartialArray, AllowAll, SetPermissions, _setindex_optic!!
 using ComponentArrays: ComponentArray, ComponentVector, label2index
 using AbstractPPL
-
-
 
 function DynamicPPL.VarNamedTuples._setindex_optic!!(
     pa::PartialArray{<:Any,<:Any,<:ComponentVector},
