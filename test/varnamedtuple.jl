@@ -326,6 +326,15 @@ Base.size(st::SizedThing) = st.size
             test_get_set(GetSetTestCase(@varname(x.b), [3.0, 4.0], ca3, []))
             # Array-valued field: set x.a[1], retrieve x.a[1]
             test_get_set(GetSetTestCase(@varname(x.a[1]), 1.0, ca3, []))
+
+            val = rand()
+            vnt = VarNamedTuple()
+            vnt = DynamicPPL.templated_setindex!!(vnt, val, @varname(x[1]), ca)
+            @test vnt[@varname(x[1])] == vnt[@varname(x.a)] == val
+
+            val2 = rand()
+            vnt = DynamicPPL.templated_setindex!!(vnt, val2, @varname(x.a), ca)
+            @test vnt[@varname(x[1])] == vnt[@varname(x.a)] == val2
         end
         @testset "InvertedIndices" begin
             # TODO(penelopeysm): Templated setindex fails for II.Not(). I really don't know

@@ -19,8 +19,7 @@ function DynamicPPL.VarNamedTuples._setindex_optic!!(
 end
 
 function DynamicPPL.VarNamedTuples._getindex_optic(
-    pa::PartialArray{<:Any,<:Any,<:ComponentVector},
-    optic::AbstractPPL.Property{S},
+    pa::PartialArray{<:Any,<:Any,<:ComponentVector}, optic::AbstractPPL.Property{S}
 ) where {S}
     ax = ComponentArrays.getaxes(pa.data)[1]
     idx = first(ax[S].idx)
