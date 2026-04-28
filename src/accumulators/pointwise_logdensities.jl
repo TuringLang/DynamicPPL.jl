@@ -52,6 +52,10 @@ where `Prior`, `Likelihood`, and `Factorised` are the boolean type parameters. T
 accumulator will then store the log-probabilities for all tilde-statements in the model.
 """
 struct PointwiseLogProb{Prior,Likelihood,Factorised} end
+function PointwiseLogProb{Prior,Likelihood}() where {Prior,Likelihood}
+    # Default definition to preserve backwards compatibility
+    return PointwiseLogProb{Prior,Likelihood,false}()
+end
 Base.copy(plp::PointwiseLogProb) = plp
 function (plp::PointwiseLogProb{Prior,Likelihood,Factorised})(
     val, tval, logjac, vn, dist
