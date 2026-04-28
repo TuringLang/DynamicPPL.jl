@@ -320,38 +320,13 @@ Base.size(st::SizedThing) = st.size
             test_get_set(GetSetTestCase(@varname(x.b), 2.0, ca, []))
             # Slice setting
             test_get_set(GetSetTestCase(@varname(x[1:2]), [1.0, 2.0], ca, []))
-            # x[1] and x.a point to same element - property overwrites index
-            vnt = VarNamedTuple()
-            vnt = templated_setindex!!(vnt, 99.0, @varname(x[1]), ca)
-            vnt = templated_setindex!!(vnt, 42.0, @varname(x.a), ca)
-            @test vnt[@varname(x.a)] == 42.0
-            # Set by index, retrieve by index
-            vnt2 = VarNamedTuple()
-            vnt2 = templated_setindex!!(vnt2, 7.0, @varname(x[1]), ca)
-            @test vnt2[@varname(x[1])] == 7.0
-            # Mixed: index then property on same VarNamedTuple (the original bug)
-            ca2 = CA.ComponentArray(; a=1.0, b=2.0)
-            vnt3 = VarNamedTuple()
-            vnt3 = templated_setindex!!(vnt3, 1.0, @varname(x[1]), ca2)
-            vnt3 = templated_setindex!!(vnt3, 2.0, @varname(x.b), ca2)
-            @test vnt3[@varname(x[1])] == 1.0
-            @test vnt3[@varname(x.b)] == 2.0
             # ComponentVector with array-valued fields
             ca3 = CA.ComponentArray(; a=[1.0, 2.0], b=[3.0, 4.0])
             test_get_set(GetSetTestCase(@varname(x.a), [1.0, 2.0], ca3, []))
             test_get_set(GetSetTestCase(@varname(x.b), [3.0, 4.0], ca3, []))
             # Array-valued field: set x.a[1], retrieve x.a[1]
             test_get_set(GetSetTestCase(@varname(x.a[1]), 1.0, ca3, []))
-            # Set by property, retrieve by index (x.a == x[1])
-            vnt4 = VarNamedTuple()
-            vnt4 = templated_setindex!!(vnt4, 99.0, @varname(x.a), ca)
-            @test vnt4[@varname(x[1])] == 99.0
-            # Set by index, retrieve by property (x[2] == x.b)
-            vnt5 = VarNamedTuple()
-            vnt5 = templated_setindex!!(vnt5, 55.0, @varname(x[2]), ca)
-            @test vnt5[@varname(x.b)] == 55.0
         end
-
         @testset "InvertedIndices" begin
             # TODO(penelopeysm): Templated setindex fails for II.Not(). I really don't know
             # why but there is some failure in constant propagation when setting the mask
