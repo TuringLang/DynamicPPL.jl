@@ -1,7 +1,15 @@
-# 0.41.4
+# 0.41.6
 
 Add a `factorize::Bool` keyword argument for `pointwise_logdensities(model, values)`, which controls whether pointwise logdensities for factorisable distributions (e.g. `MvNormal`, `product_distribution`, etc.) are returned as a single log-density for the whole distribution, or as an array of log-densities for each factor.
 The same argument is also added to `pointwise_loglikelihoods` and `pointwise_prior_logdensities`.
+
+# 0.41.5
+
+Make sure that `DynamicPPL.TestUtils.AD.run_ad(...; verbose=false)` _truly_ silences all messages.
+
+# 0.41.4
+
+Improve docs (in particular, make sure that outer constructors of structs also appear in the built docs).
 
 # 0.41.3
 
