@@ -24,8 +24,10 @@ function DynamicPPL.VarNamedTuples.make_leaf(
     else
         return invoke(
             make_leaf,
-            Tuple{Any, AbstractPPL.Property{S}, AbstractArray},
-            value, optic, template,
+            Tuple{Any,AbstractPPL.Property{S},AbstractArray},
+            value,
+            optic,
+            template,
         )
     end
 end
@@ -44,8 +46,7 @@ function DynamicPPL.VarNamedTuples._setindex_optic!!(
 end
 
 function DynamicPPL.VarNamedTuples._getindex_optic(
-    pa::PartialArray{<:Any,<:Any,<:ComponentVector},
-    optic::AbstractPPL.Property{S},
+    pa::PartialArray{<:Any,<:Any,<:ComponentVector}, optic::AbstractPPL.Property{S}
 ) where {S}
     ax = ComponentArrays.getaxes(pa.data)[1]
     idx = first(ax[S].idx)
