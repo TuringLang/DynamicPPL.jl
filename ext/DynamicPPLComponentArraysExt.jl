@@ -14,7 +14,9 @@ using ComponentArrays: ComponentArrays, ComponentArray, ComponentVector
 using AbstractPPL
 
 # Helper: convert a Property optic label S to an integer Index optic
-function _property_to_index(template::ComponentVector, optic::AbstractPPL.Property{S}) where {S}
+function _property_to_index(
+    template::ComponentVector, optic::AbstractPPL.Property{S}
+) where {S}
     ax = ComponentArrays.getaxes(template)[1]
     idx = first(ax[S].idx)
     return AbstractPPL.Index((idx,), NamedTuple(), optic.child)
