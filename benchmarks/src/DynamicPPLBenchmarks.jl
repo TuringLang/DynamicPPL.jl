@@ -53,22 +53,28 @@ function to_backend(x::Union{AbstractString,Symbol})
 end
 
 """
-    benchmark(model, adbackend::Symbol, islinked::Bool)
+    benchmark(model, adbackend::Symbol, islinked::Bool; seconds::Real=2)
 
-Benchmark evaluation and gradient calculation for `model` using the selected AD backend.
+Benchmark log-density evaluation and gradient calculation for `model` using the
+selected AD backend.
 
-The AD backend should be specified as a Symbol (e.g. `:forwarddiff`, `:reversediff`, `:zygote`).
+`adbackend` is a Symbol key into `SYMBOL_TO_BACKEND` (e.g. `:forwarddiff`,
+`:reversediff`, `:reversediff_compiled`, `:mooncake`, `:enzyme`).
 
 `islinked` determines whether to link the VarInfo for evaluation.
+
+`seconds` is the per-measurement time budget passed to Chairmarks; the default
+doubles Chairmarks' own default to tighten the median estimate.
 """
-function benchmark(model, adbackend::Symbol, islinked::Bool)
+function benchmark(model, adbackend::Symbol, islinked::Bool; seconds::Real=2)
     transform_strategy = islinked ? LinkAll() : UnlinkAll()
     return run_ad(
         model,
         to_backend(adbackend);
         rng=StableRNG(23),
-        transform_strategy=transform_strategy,
+        transform_strategy,
         benchmark=true,
+        benchmark_seconds=seconds,
         test=NoTest(),
         verbose=false,
     )

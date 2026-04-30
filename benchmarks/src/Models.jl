@@ -20,17 +20,8 @@ using Distributions:
 using DynamicPPL: DynamicPPL, @model, to_submodel
 using LinearAlgebra: cholesky
 
-export simple_assume_observe_non_model,
-    simple_assume_observe, smorgasbord, loop_univariate, multivariate, parent, dynamic, lda
-
-# This one is like simple_assume_observe, but explicitly does not use DynamicPPL.
-# Other runtimes are normalised by this one's runtime.
-function simple_assume_observe_non_model(obs)
-    x = rand(Normal())
-    logp = logpdf(Normal(), x)
-    logp += logpdf(Normal(x, 1), obs)
-    return (; logp=logp, x=x)
-end
+export simple_assume_observe,
+    smorgasbord, loop_univariate, multivariate, parent, dynamic, lda
 
 """
 A simple model that does one scalar assumption and one scalar observation.

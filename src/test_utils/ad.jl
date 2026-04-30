@@ -293,7 +293,10 @@ Everything else is optional, and can be categorised into several groups:
    When enabled, the time taken to evaluate logp as well as its gradient is
    measured using Chairmarks.jl, and the `ADResult` object returned will
    contain `grad_time` and `primal_time` fields with the median times (in
-   seconds).
+   seconds). The `benchmark_seconds` keyword (default `1`) sets the time
+   budget passed to Chairmarks for each of the two measurements; raising it
+   collects more samples and yields a tighter median estimate at the cost
+   of a longer run.
 
 1. _Whether to output extra logging information._
 
@@ -314,6 +317,7 @@ function run_ad(
     adtype::AbstractADType;
     test::Union{AbstractADCorrectnessTestSetting,Bool}=WithBackend(),
     benchmark::Bool=false,
+    benchmark_seconds::Real=1,
     atol::AbstractFloat=100 * eps(),
     rtol::AbstractFloat=sqrt(eps()),
     getlogdensity::Function=getlogjoint_internal,
@@ -370,15 +374,34 @@ function run_ad(
 
     # Benchmark
     grad_time, primal_time = if benchmark
+        # Per-sample incremental GC keeps accumulated garbage from triggering a
+        # full collection mid-sample, which would inflate that sample several-
+        # fold. Auto-tuned `evals` (not pinned to 1) batches enough calls per
+        # sample that fast log-densities clear `time_ns`'s real precision floor
+        # (tens of ns on Linux/macOS) instead of reading as zero. Pattern
+        # borrowed from Mooncake's bench harness:
+        # https://github.com/chalk-lab/Mooncake.jl/blob/main/bench/run_benchmarks.jl
         logdensity(ldf, params)  # Warm-up
-        primal_benchmark = @be logdensity($ldf, $params)
+        GC.gc(true)
+        primal_benchmark = @be(
+            _,
+            logdensity($ldf, $params),
+            _ -> GC.gc(false),
+            seconds = benchmark_seconds,
+        )
         if verbose
             print("   evaluation : ")
             show(stdout, MIME("text/plain"), median(primal_benchmark))
             println()
         end
         logdensity_and_gradient(ldf, params)  # Warm-up
-        grad_benchmark = @be logdensity_and_gradient($ldf, $params)
+        GC.gc(true)
+        grad_benchmark = @be(
+            _,
+            logdensity_and_gradient($ldf, $params),
+            _ -> GC.gc(false),
+            seconds = benchmark_seconds,
+        )
         if verbose
             print("     gradient : ")
             show(stdout, MIME("text/plain"), median(grad_benchmark))

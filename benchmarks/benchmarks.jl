@@ -1,40 +1,48 @@
-using Pkg
-
-using Chairmarks: @be, median
+using Chairmarks: median
 using DynamicPPLBenchmarks: Models, benchmark, model_dimension
-using JSON: JSON
-using PrettyTables: pretty_table, fmt__printf, EmptyCells, MultiColumn, TextTableFormat
+using PrettyTables: pretty_table
 using Printf: @sprintf
 using StableRNGs: StableRNG
 
 rng = StableRNG(23)
 
-colnames = ["Model", "Dim", "AD Backend", "Linked", "t(eval)/t(ref)", "t(grad)/t(eval)"]
-function print_results(results_table; to_json=false)
-    if to_json
-        # Print to the given file as JSON
-        results_array = [
-            Dict(colnames[i] => results_table[j][i] for i in eachindex(colnames)) for
-            j in eachindex(results_table)
-        ]
-        # do not use pretty=true, as GitHub Actions expects no linebreaks
-        JSON.json(stdout, results_array)
-        println()
-    else
-        # Pretty-print to terminal
-        table_matrix = hcat(Iterators.map(collect, zip(results_table...))...)
-        return pretty_table(
-            table_matrix;
-            column_labels=colnames,
-            backend=:text,
-            formatters=[fmt__printf("%.1f", [6, 7])],
-            fit_table_in_display_horizontally=false,
-            fit_table_in_display_vertically=false,
-        )
+# Schema follows Mooncake's bench output: absolute log-density time plus the
+# gradient/log-density ratio. We deliberately do not compare against the base
+# branch — readers eyeball regressions across the PR-comment history instead.
+# Cf. https://github.com/chalk-lab/Mooncake.jl/blob/main/bench/run_benchmarks.jl
+const COLNAMES = [
+    "Model", "Dim", "AD Backend", "Linked", "t(logdensity)", "t(grad)/t(logdensity)"
+]
+
+# Adapted from Mooncake's bench harness.
+fix_sig_fig(t) = string(round(t; sigdigits=3))
+function format_time(t::Float64)
+    t < 1e-6 && return fix_sig_fig(t * 1e9) * " ns"
+    t < 1e-3 && return fix_sig_fig(t * 1e6) * " μs"
+    t < 1 && return fix_sig_fig(t * 1e3) * " ms"
+    return fix_sig_fig(t) * " s"
+end
+format_time(::Missing) = "err"
+
+format_ratio(x::Float64) = @sprintf("%.2f", x)
+format_ratio(::Missing) = "err"
+
+function print_results(results_table)
+    isempty(results_table) && return println("No benchmark results obtained.")
+    display_rows = map(results_table) do row
+        (row[1], row[2], row[3], row[4], format_time(row[5]), format_ratio(row[6]))
     end
+    table_matrix = hcat(Iterators.map(collect, zip(display_rows...))...)
+    return pretty_table(
+        table_matrix;
+        column_labels=COLNAMES,
+        backend=:text,
+        fit_table_in_display_horizontally=false,
+        fit_table_in_display_vertically=false,
+    )
 end
 
-function run(; to_json=false)
+function run(; markdown::Bool=false)
     # Create DynamicPPL.Model instances to run benchmarks on.
     smorgasbord_instance = Models.smorgasbord(randn(rng, 100), randn(rng, 100))
     loop_univariate1k, multivariate1k = begin
@@ -55,7 +63,6 @@ function run(; to_json=false)
         Models.lda(2, d, w)
     end
 
-    # Specify the combinations to test:
     # (Model Name, model instance, AD backend, linked)
     chosen_combinations = [
         (
@@ -78,26 +85,17 @@ function run(; to_json=false)
         ("LDA", lda_instance, :reversediff, true),
     ]
 
-    # Time running a model-like function that does not use DynamicPPL, as a reference point.
-    # Eval timings will be relative to this.
-    reference_time = begin
-        obs = randn(rng)
-        median(@be Models.simple_assume_observe_non_model(obs)).time
-    end
-    @info "Reference evaluation time: $(reference_time) seconds"
-
     results_table = Tuple{
         String,Int,String,Bool,Union{Float64,Missing},Union{Float64,Missing}
     }[]
 
     for (model_name, model, adbackend, islinked) in chosen_combinations
         @info "Running benchmark for $model_name, $adbackend, $islinked"
-        relative_eval_time, relative_ad_eval_time = try
+        logdensity_time, grad_over_logdensity = try
             results = benchmark(model, adbackend, islinked)
-            @info " t(eval) = $(results.primal_time)"
-            @info " t(grad) = $(results.grad_time)"
-            (results.primal_time / reference_time),
-            (results.grad_time / results.primal_time)
+            @info " t(logdensity) = $(results.primal_time)"
+            @info " t(grad)       = $(results.grad_time)"
+            (results.primal_time, results.grad_time / results.primal_time)
         catch e
             @info "benchmark errored: $e"
             missing, missing
@@ -109,144 +107,26 @@ function run(; to_json=false)
                 model_dimension(model, islinked),
                 string(adbackend),
                 islinked,
-                relative_eval_time,
-                relative_ad_eval_time,
+                logdensity_time,
+                grad_over_logdensity,
             ),
         )
-        print_results(results_table; to_json=to_json)
     end
-    print_results(results_table; to_json=to_json)
+
+    # Markdown mode wraps the text table in a fenced block so it renders
+    # monospaced when posted as a PR comment.
+    markdown && println("```")
+    print_results(results_table)
+    markdown && println("```")
     return nothing
 end
 
-struct TestCase
-    model_name::String
-    dim::Integer
-    ad_backend::String
-    linked::Bool
-    TestCase(d::Dict{String,Any}) = new((d[c] for c in colnames[1:4])...)
-end
-function combine(head_filename::String, base_filename::String)
-    head_results = try
-        JSON.parsefile(head_filename, Vector{Dict{String,Any}})
-    catch
-        Dict{String,Any}[]
-    end
-    @info "Loaded $(length(head_results)) results from $head_filename"
-    base_results = try
-        JSON.parsefile(base_filename, Vector{Dict{String,Any}})
-    catch
-        Dict{String,Any}[]
-    end
-    @info "Loaded $(length(base_results)) results from $base_filename"
-    # Identify unique combinations of (Model, Dim, AD Backend, Linked)
-    head_testcases = Dict(
-        TestCase(d) => (d[colnames[5]], d[colnames[6]]) for d in head_results
-    )
-    base_testcases = Dict(
-        TestCase(d) => (d[colnames[5]], d[colnames[6]]) for d in base_results
-    )
-    all_testcases = union(Set(keys(head_testcases)), Set(keys(base_testcases)))
-    @info "$(length(all_testcases)) unique test cases found"
-    sorted_testcases = sort(
-        collect(all_testcases); by=(c -> (c.model_name, c.linked, c.ad_backend))
-    )
-    results_table = Tuple{
-        String,
-        Int,
-        String,
-        Bool,
-        String,
-        String,
-        String,
-        String,
-        String,
-        String,
-        String,
-        String,
-        String,
-    }[]
-    sublabels = ["base", "this PR", "speedup"]
-    results_colnames = [
-        [
-            EmptyCells(4),
-            MultiColumn(3, "t(eval) / t(ref)"),
-            MultiColumn(3, "t(grad) / t(eval)"),
-            MultiColumn(3, "t(grad) / t(ref)"),
-        ],
-        [colnames[1:4]..., sublabels..., sublabels..., sublabels...],
-    ]
-    sprint_float(x::Float64) = @sprintf("%.2f", x)
-    sprint_float(m::Missing) = "err"
-    for c in sorted_testcases
-        head_eval, head_grad = get(head_testcases, c, (missing, missing))
-        base_eval, base_grad = get(base_testcases, c, (missing, missing))
-        # If the benchmark errored, it will return `missing` in the `run()` function above.
-        # The issue with this is that JSON serialisation converts it to `null`, and then
-        # when reading back from JSON, it becomes `nothing` instead of `missing`!
-        head_eval = head_eval === nothing ? missing : head_eval
-        head_grad = head_grad === nothing ? missing : head_grad
-        base_eval = base_eval === nothing ? missing : base_eval
-        base_grad = base_grad === nothing ? missing : base_grad
-        # Finally that lets us do this division safely
-        speedup_eval = base_eval / head_eval
-        speedup_grad = base_grad / head_grad
-        # As well as this multiplication, which is t(grad) / t(ref)
-        head_grad_vs_ref = head_grad * head_eval
-        base_grad_vs_ref = base_grad * base_eval
-        speedup_grad_vs_ref = base_grad_vs_ref / head_grad_vs_ref
-        push!(
-            results_table,
-            (
-                c.model_name,
-                c.dim,
-                c.ad_backend,
-                c.linked,
-                sprint_float(base_eval),
-                sprint_float(head_eval),
-                sprint_float(speedup_eval),
-                sprint_float(base_grad),
-                sprint_float(head_grad),
-                sprint_float(speedup_grad),
-                sprint_float(base_grad_vs_ref),
-                sprint_float(head_grad_vs_ref),
-                sprint_float(speedup_grad_vs_ref),
-            ),
-        )
-    end
-    # Pretty-print to terminal
-    if isempty(results_table)
-        println("No benchmark results obtained.")
-    else
-        table_matrix = hcat(Iterators.map(collect, zip(results_table...))...)
-        println("```")
-        pretty_table(
-            table_matrix;
-            column_labels=results_colnames,
-            backend=:text,
-            fit_table_in_display_horizontally=false,
-            fit_table_in_display_vertically=false,
-            table_format=TextTableFormat(;
-                horizontal_line_at_merged_column_labels=true,
-                horizontal_lines_at_data_rows=collect(3:3:length(results_table)),
-            ),
-        )
-        println("```")
-    end
-end
-
-# The command-line arguments are used on CI purposes.
-# Run with `julia --project=. benchmarks.jl json` to run benchmarks and output JSON to
-# stdout
-# Run with `julia --project=. benchmarks.jl combine head.json base.json` to combine two JSON
-# files
-if length(ARGS) == 3 && ARGS[1] == "combine"
-    combine(ARGS[2], ARGS[3])
-elseif ARGS == ["json"]
-    run(; to_json=true)
+# Run with `julia --project=. benchmarks.jl markdown` to emit a fenced text
+# table to stdout, suitable for pasting into a PR comment. Run with no
+# arguments to pretty-print to the terminal.
+if ARGS == ["markdown"]
+    run(; markdown=true)
 elseif ARGS == []
-    # When running locally just omit the argument and it will just benchmark and print to
-    # terminal.
     run()
 else
     error("invalid arguments: $(ARGS)")
