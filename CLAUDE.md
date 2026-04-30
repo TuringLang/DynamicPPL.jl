@@ -79,6 +79,7 @@ See [accumulator docs](https://turinglang.org/DynamicPPL.jl/stable/accs/overview
 ### TransformedValue
 
   - **`get_raw_value(tv)` errors for `DynamicLink` and `Unlink`.** These transforms are derived from the distribution, so you must use `get_raw_value(tv, dist)`. The one-argument form only works for `NoTransform` and `FixedTransform`.
+  - **`DynamicLink` re-derives the bijection from `dist` every evaluation.** This is necessary because the support of a variable can depend on other variables (e.g. `y ~ truncated(Normal(); lower=x)`), so the transform cannot be cached. When the support is known to be constant, [`FixedTransform` via `WithTransforms`](https://turinglang.org/DynamicPPL.jl/stable/fixed_transforms/) is an option.
   - **`FixedTransform` must exactly match the target.** `apply_transform_strategy` errors if a `FixedTransform` doesn't match the expected `target_transform`. Fixed transforms don't compose with re-derived transforms.
 
 ### LogDensityFunction
