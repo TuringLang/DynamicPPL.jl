@@ -335,6 +335,30 @@ Base.size(st::SizedThing) = st.size
             val2 = rand()
             vnt = DynamicPPL.templated_setindex!!(vnt, val2, @varname(x.a), ca)
             @test vnt[@varname(x[1])] == vnt[@varname(x.a)] == val2
+            # Set by property first, then get by index
+            vnt2 = VarNamedTuple()
+            vnt2 = DynamicPPL.templated_setindex!!(vnt2, val, @varname(x.a), ca)
+            @test vnt2[@varname(x[1])] == vnt2[@varname(x.a)] == val
+
+            # MustNotOverwrite: all four combinations should error
+            vnt3 = DynamicPPL.VarNamedTuples.templated_setindex_no_overwrite!!(
+                VarNamedTuple(), val, @varname(x[1]), ca
+            )
+            @test_throws MustNotOverwriteError DynamicPPL.VarNamedTuples.templated_setindex_no_overwrite!!(
+                vnt3, val2, @varname(x[1]), ca
+            )
+            @test_throws MustNotOverwriteError DynamicPPL.VarNamedTuples.templated_setindex_no_overwrite!!(
+                vnt3, val2, @varname(x.a), ca
+            )
+            vnt4 = DynamicPPL.VarNamedTuples.templated_setindex_no_overwrite!!(
+                VarNamedTuple(), val, @varname(x.a), ca
+            )
+            @test_throws MustNotOverwriteError DynamicPPL.VarNamedTuples.templated_setindex_no_overwrite!!(
+                vnt4, val2, @varname(x.a), ca
+            )
+            @test_throws MustNotOverwriteError DynamicPPL.VarNamedTuples.templated_setindex_no_overwrite!!(
+                vnt4, val2, @varname(x[1]), ca
+            )
         end
         @testset "InvertedIndices" begin
             # TODO(penelopeysm): Templated setindex fails for II.Not(). I really don't know
