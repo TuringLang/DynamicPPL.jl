@@ -7,4 +7,4 @@ LogDensityProblems = "6fdf6af0-433a-55f7-b3ed-c6c6e0b8df7c"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [sources]
-DynamicPPL = {path = "../../"}
+DynamicPPL = {path = "../.."}

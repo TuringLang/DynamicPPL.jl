@@ -4,6 +4,7 @@ using DynamicPPL: VarInfo, VarName, LinkAll, UnlinkAll
 using DynamicPPL: DynamicPPL
 using DynamicPPL.TestUtils.AD: run_ad, NoTest
 using ADTypes: ADTypes
+using DifferentiationInterface: DifferentiationInterface
 using LogDensityProblems: LogDensityProblems
 
 using ForwardDiff: ForwardDiff
