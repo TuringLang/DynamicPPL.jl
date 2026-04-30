@@ -87,6 +87,19 @@ end
             vi, TransformedValue(x, NoTransform()), Normal(), vn, x
         )
         @test !isempty(vi)
+
+        @testset "KeyError for missing varname" begin
+            @model function test_model()
+                x ~ Normal()
+                return nothing
+            end
+            vi2 = VarInfo(test_model())
+            # KeyError propagates from VarNamedTuple through VarInfo
+            @test_throws KeyError DynamicPPL.getindex_internal(vi2, @varname(y))
+            @test_throws KeyError DynamicPPL.get_transformed_value(vi2, @varname(y))
+            # Direct VarNamedTuple access also throws KeyError
+            @test_throws KeyError vi2.values[@varname(y)]
+        end
     end
 
     @testset "get/set/acclogp" begin

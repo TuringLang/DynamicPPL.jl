@@ -11,7 +11,7 @@ const IndexWithoutChild = AbstractPPL.Index{<:Tuple,<:NamedTuple,AbstractPPL.Ide
 _unimplemented() = error("Not implemented")
 
 """
-    DynamicPPL._getindex_optic(collection, optic::AbstractPPL.Optic)
+    DynamicPPL._getindex_optic(collection, optic::AbstractPPL.Optic, orig_vn::VarName)
     DynamicPPL._getindex_optic(collection, vn::VarName)
 
 Access the value in `collection` at the location specified by the given `optic`. If a `VarName`
@@ -29,14 +29,23 @@ the leaf of the VNT i.e. a value, we could still handle pure `Index` optics if t
 an `AbstractArray`, but otherwise the only valid optic is `Iden`.
 """
 function _getindex_optic(vnt::VarNamedTuple, vn::VarName)
-    return _getindex_optic(vnt, AbstractPPL.varname_to_optic(vn))
+    return _getindex_optic(vnt, AbstractPPL.varname_to_optic(vn), vn)
 end
-@inline _getindex_optic(@nospecialize(x::Any), ::AbstractPPL.Iden) = x
-@inline _getindex_optic(x::Any, o::AbstractPPL.AbstractOptic) = o(x)
-function _getindex_optic(vnt::VarNamedTuple, optic::AbstractPPL.Property{S}) where {S}
-    return _getindex_optic(getindex(vnt.data, S), optic.child)
+function _getindex_optic(vnt::VarNamedTuple, vn::VarName, orig_vn)
+    return _getindex_optic(vnt, AbstractPPL.varname_to_optic(vn), orig_vn)
 end
-function _getindex_optic(pa::PartialArray, optic::AbstractPPL.Index)
+
+@inline _getindex_optic(@nospecialize(x::Any), ::AbstractPPL.Iden, orig_vn) = x
+@inline _getindex_optic(x::Any, o::AbstractPPL.AbstractOptic, orig_vn) = o(x)
+function _getindex_optic(
+    vnt::VarNamedTuple, optic::AbstractPPL.Property{S}, orig_vn
+) where {S}
+    if !haskey(vnt.data, S)
+        throw(KeyError(orig_vn))
+    end
+    return _getindex_optic(getindex(vnt.data, S), optic.child, orig_vn)
+end
+function _getindex_optic(pa::PartialArray, optic::AbstractPPL.Index, orig_vn)
     coptic = AbstractPPL.concretize_top_level(optic, pa.data)
     child_value =
         if _is_multiindex(pa, coptic.ix...; coptic.kw...) &&
@@ -49,9 +58,9 @@ function _getindex_optic(pa::PartialArray, optic::AbstractPPL.Index)
         else
             getindex(pa, coptic.ix...; coptic.kw...)
         end
-    return _getindex_optic(child_value, optic.child)
+    return _getindex_optic(child_value, optic.child, orig_vn)
 end
-function _getindex_optic(arr::AbstractArray, optic::IndexWithoutChild)
+function _getindex_optic(arr::AbstractArray, optic::IndexWithoutChild, orig_vn)
     coptic = AbstractPPL.concretize_top_level(optic, arr)
     return Base.getindex(arr, coptic.ix...; coptic.kw...)
 end
