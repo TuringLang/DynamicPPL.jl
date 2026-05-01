@@ -549,28 +549,6 @@ function _pointwise_logprobs(
     )
 end
 
-# Copied from DynamicPPL
-const _FACTORIZE_KWARG_DOC = """
-If `factorize=true`, additionally attempt to provide factorised log-densities for
-distributions that can be partitioned into blocks, using PartitionedDistributions.jl.
-
-For example, if `factorize=true`, then `y ~ MvNormal(...)` will return a vector of
-log-densities, one for each element of `y`. The `i`-th element of this vector will be the
-conditional log-probability of `y[i]` given all the other elements of `y` (often denoted
-`log p(y_{i} | y_{-i})`): in particular this is exactly the log-density required for
-leave-one-out cross-validation.
-
-In contrast, if `factorize=false`, then the log-density for `y ~ MvNormal(...)` will be a
-single scalar corresponding to `logpdf(MvNormal(...), y)`.
-
-Note that the sum of the factorised log-densities may not, in general, be equal to the
-log-density of the full distribution: they will only be equal if the original distribution
-can be completely factorised into independent components. For example, if `y ~ MvNormal(μ,
-Σ)` where `Σ` is diagonal, then each element of `y` is independent and the sum of the
-factorised log-densities will be equal to the log-density of the full distribution. In
-contrast, if `Σ` has off-diagonal entries, then the elements of `y` are not independent.
-"""
-
 """
     DynamicPPL.pointwise_logdensities(
         model::Model,
@@ -584,7 +562,7 @@ iteration in the `FlexiChain`.
 Returns a new `FlexiChain` with the same structure as the input `chain`, mapping the
 variables to their log probabilities.
 
-$(_FACTORIZE_KWARG_DOC)
+$(DynamicPPL._FACTORIZE_KWARG_DOC)
 """
 function DynamicPPL.pointwise_logdensities(
     model::DynamicPPL.Model, chain::FlexiChain{<:VarName}; factorize::Bool=false
@@ -605,7 +583,7 @@ iteration in the `FlexiChain`.
 Returns a new `FlexiChain` with the same structure as the input `chain`, mapping the
 observed variables to their log probabilities.
 
-$(_FACTORIZE_KWARG_DOC)
+$(DynamicPPL._FACTORIZE_KWARG_DOC)
 """
 function DynamicPPL.pointwise_loglikelihoods(
     model::DynamicPPL.Model, chain::FlexiChain{<:VarName}; factorize::Bool=false
@@ -626,7 +604,7 @@ iteration in the `FlexiChain`.
 Returns a new `FlexiChain` with the same structure as the input `chain`, mapping the
 observed variables to their log probabilities.
 
-$(_FACTORIZE_KWARG_DOC)
+$(DynamicPPL._FACTORIZE_KWARG_DOC)
 """
 function DynamicPPL.pointwise_prior_logdensities(
     model::DynamicPPL.Model, chain::FlexiChain{<:VarName}; factorize::Bool=false
