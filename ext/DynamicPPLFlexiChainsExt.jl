@@ -110,7 +110,7 @@ end
         params_and_stats::AbstractMatrix{<:DynamicPPL.ParamsWithStats}
     )::VNChain
 
-Convert a matrix of [`DynamicPPL.ParamsWithStats`](@extref) to a `VNChain`.
+Convert a matrix of [`DynamicPPL.ParamsWithStats`](@ref) to a `VNChain`.
 """
 function AbstractMCMC.from_samples(
     ::Type{<:VNChain}, params_and_stats::AbstractMatrix{<:DynamicPPL.ParamsWithStats}
@@ -139,8 +139,7 @@ end
         params_and_stats::AbstractMatrix{<:DynamicPPL.VarNamedTuple}
     )::VNChain
 
-Convert a matrix of [`DynamicPPL.VarNamedTuple`](@extref
-DynamicPPL.VarNamedTuples.VarNamedTuple) to a `VNChain`.
+Convert a matrix of [`DynamicPPL.VarNamedTuple`](@ref) to a `VNChain`.
 """
 function AbstractMCMC.from_samples(
     ::Type{<:VNChain}, vnts::AbstractMatrix{<:DynamicPPL.VarNamedTuple}
@@ -158,7 +157,7 @@ end
         [model::DynamicPPL.Model]
     )::DimensionalData.DimMatrix{DynamicPPL.ParamsWithStats}
 
-Convert a `VNChain` to a `DimMatrix` of [`DynamicPPL.ParamsWithStats`](@extref).
+Convert a `VNChain` to a `DimMatrix` of [`DynamicPPL.ParamsWithStats`](@ref).
 
 The axes of the `DimMatrix` are the same as those of the input `VNChain`.
 """

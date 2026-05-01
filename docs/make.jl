@@ -10,8 +10,10 @@ using AbstractPPL
 # consistent with that.
 using Distributions
 using DocumenterMermaid
+using FlexiChains: FlexiChains
 using MCMCChains
 using MarginalLogDensities
+using PosteriorStats: PosteriorStats
 using AbstractMCMC: AbstractMCMC
 using Random
 
@@ -34,6 +36,8 @@ makedocs(;
     modules=[
         DynamicPPL,
         Base.get_extension(DynamicPPL, :DynamicPPLMCMCChainsExt),
+        Base.get_extension(DynamicPPL, :DynamicPPLFlexiChainsExt),
+        Base.get_extension(DynamicPPL, :DynamicPPLFlexiChainsPosteriorStatsExt),
         Base.get_extension(DynamicPPL, :DynamicPPLMarginalLogDensitiesExt),
     ],
     pages=[
@@ -59,6 +63,7 @@ makedocs(;
         ],
         "LogDensityFunction" => ["ldf/overview.md", "ldf/models.md"],
         "Migrating old VarInfo code" => "migration.md",
+        "Chains extensions" => "chains.md",
         "API" => "api.md",
     ],
     checkdocs=:exports,

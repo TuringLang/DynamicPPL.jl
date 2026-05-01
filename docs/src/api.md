@@ -136,27 +136,11 @@ DynamicPPL.unfix
 
 DynamicPPL provides functionality for generating samples from the posterior predictive distribution through the `predict` function. This allows you to use posterior parameter samples to generate predictions for unobserved data points.
 
-The `predict` function has two main methods:
-
- 1. For `AbstractVector{<:AbstractVarInfo}` - useful when you have a collection of `VarInfo` objects representing posterior samples.
- 2. For `MCMCChains.Chains` (only available when `MCMCChains.jl` is loaded) - useful when you have posterior samples in the form of an `MCMCChains.Chains` object.
-
 ```@docs
-predict
+predict(::Random.AbstractRNG, ::DynamicPPL.Model, ::AbstractVector{<:DynamicPPL.AbstractVarInfo})
 ```
 
-### Basic Usage
-
-The typical workflow for posterior prediction involves:
-
- 1. Fitting a model to observed data to obtain posterior samples
- 2. Creating a new model instance with some variables marked as missing (unobserved)
- 3. Using `predict` to generate samples for these missing variables based on the posterior parameter samples
-
-When using `predict` with `MCMCChains.Chains`, you can control which variables are included in the output with the `include_all` parameter:
-
-  - `include_all=false` (default): Include only newly predicted variables
-  - `include_all=true`: Include both parameters from the original chain and predicted variables
+For chain-specific methods (`MCMCChains.Chains` and `FlexiChains.FlexiChain`), see [Chains extensions](@ref).
 
 ## Marginalisation
 
@@ -194,21 +178,23 @@ It is possible to manually increase (or decrease) the accumulated log likelihood
 @addlogprob!
 ```
 
-Return values of the model function can be obtained with [`returned(model, sample)`](@ref), where `sample` is either a `MCMCChains.Chains` object (which represents a collection of samples), or a single sample represented as a `NamedTuple` or a dictionary of VarNames.
+Return values of the model function can be obtained with [`returned(model, sample)`](@ref):
 
 ```@docs
-returned(::DynamicPPL.Model, ::MCMCChains.Chains)
 returned(::DynamicPPL.Model, ::Union{NamedTuple,AbstractDict{<:VarName}})
 ```
 
-For a chain of samples, one can compute the pointwise log-likelihoods of each observed random variable with [`pointwise_loglikelihoods`](@ref). Similarly, the log-densities of the priors using
-[`pointwise_prior_logdensities`](@ref) or both, i.e. all variables, using
-[`pointwise_logdensities`](@ref).
+For chain-specific methods (`returned`, `logjoint`, `loglikelihood`, `logprior`, `pointwise_logdensities`, `pointwise_loglikelihoods`, `pointwise_prior_logdensities`), see [Chains extensions](@ref).
+
+The non-chain `pointwise_logdensities` methods are documented below:
 
 ```@docs
-pointwise_logdensities
-pointwise_loglikelihoods
-pointwise_prior_logdensities
+pointwise_logdensities(::DynamicPPL.Model, ::DynamicPPL.AbstractVarInfo)
+pointwise_logdensities(::DynamicPPL.Model, ::Union{NamedTuple,AbstractDict{<:AbstractPPL.VarName}})
+pointwise_loglikelihoods(::DynamicPPL.Model, ::DynamicPPL.AbstractVarInfo)
+pointwise_loglikelihoods(::DynamicPPL.Model, ::Union{NamedTuple,AbstractDict{<:AbstractPPL.VarName}})
+pointwise_prior_logdensities(::DynamicPPL.Model, ::DynamicPPL.AbstractVarInfo)
+pointwise_prior_logdensities(::DynamicPPL.Model, ::Union{NamedTuple,AbstractDict{<:AbstractPPL.VarName}})
 ```
 
 Sometimes it can be useful to extract the priors of a model. This is the possible using [`extract_priors`](@ref).
@@ -587,19 +573,4 @@ ParamsWithStats(::AbstractVarInfo)
 ParamsWithStats(::AbstractVector, ::LogDensityFunction)
 ```
 
-Once you have a **matrix** of these, you can convert them into a chains object using:
-
-```@docs
-AbstractMCMC.from_samples(::Type{MCMCChains.Chains}, ::AbstractMatrix{<:DynamicPPL.ParamsWithStats})
-```
-
-If you only have a vector you can use `hcat` to convert it into an `N×1` matrix first.
-
-Furthermore, one can convert chains back into a collection of parameter dictionaries and/or stats with:
-
-```@docs
-AbstractMCMC.to_samples(::Type{DynamicPPL.ParamsWithStats}, ::MCMCChains.Chains, ::DynamicPPL.Model)
-```
-
-(Note that the model argument is mandatory as it provides templating information for the variables in the chains.)
-With these, you can (for example) extract the parameter dictionaries and use `InitFromParams` to re-evaluate a model at each point in the chain.
+Once you have a **matrix** of these, you can convert them into a chains object using `AbstractMCMC.from_samples`, and convert back using `AbstractMCMC.to_samples`. See [Chains extensions](@ref) for details.
