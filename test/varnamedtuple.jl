@@ -2200,6 +2200,13 @@ Base.size(st::SizedThing) = st.size
         end
         v12s = VarNamedTuple(; x=DD.DimArray(fill(nothing, 2, 3), (:a, :b)))
         test_skeleton(v12, v12s)
+
+        v13 = @vnt begin
+            @template x = CA.ComponentArray(; a=0.0, b=0.0)
+            x.a := 1.0
+        end
+        v13s = VarNamedTuple(; x=CA.ComponentArray(; a=nothing, b=nothing))
+        test_skeleton(v13, v13s)
     end
 end
 
