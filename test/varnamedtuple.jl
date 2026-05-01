@@ -309,57 +309,55 @@ Base.size(st::SizedThing) = st.size
                 GetSetTestCase(@varname(oa2[11, -1]), 1.0, oa2, []); skip_setindex=true
             )
         end
-        @testset "ComponentArrays" begin
-            # Basic ComponentVector with scalar fields
+
+        @testset "ComponentArray" begin
             ca = CA.ComponentArray(; a=1.0, b=2.0)
-            # Index-based access
             test_get_set(GetSetTestCase(@varname(x[1]), 1.0, ca, []))
             test_get_set(GetSetTestCase(@varname(x[2]), 2.0, ca, []))
-            # Property-based access
             test_get_set(GetSetTestCase(@varname(x.a), 1.0, ca, []))
             test_get_set(GetSetTestCase(@varname(x.b), 2.0, ca, []))
-            # Slice setting
             test_get_set(GetSetTestCase(@varname(x[1:2]), [1.0, 2.0], ca, []))
+
             # ComponentVector with array-valued fields
             ca3 = CA.ComponentArray(; a=[1.0, 2.0], b=[3.0, 4.0])
             test_get_set(GetSetTestCase(@varname(x.a), [1.0, 2.0], ca3, []))
             test_get_set(GetSetTestCase(@varname(x.b), [3.0, 4.0], ca3, []))
-            # Array-valued field: set x.a[1], retrieve x.a[1]
             test_get_set(GetSetTestCase(@varname(x.a[1]), 1.0, ca3, []))
 
+            # Mixed index/property access
             val = rand()
+            vns = (@varname(x[1]), @varname(x.a))
+            for set_vn in vns
+                vnt = DynamicPPL.templated_setindex!!(VarNamedTuple(), val, set_vn, ca)
+                for get_vn in vns
+                    @test vnt[get_vn] == val
+                end
+            end
+
+            # Check that setting one and overwriting with the other works
+            val = rand()
+            new_val = val + 1
             vnt = VarNamedTuple()
-            vnt = DynamicPPL.templated_setindex!!(vnt, val, @varname(x[1]), ca)
-            @test vnt[@varname(x[1])] == vnt[@varname(x.a)] == val
+            for (vn1, vn2) in
+                ((@varname(x[1]), @varname(x.a)), (@varname(x.a), @varname(x[1])))
+                vnt = VarNamedTuple()
+                vnt = DynamicPPL.templated_setindex!!(vnt, val, vn1, ca)
+                @test vnt[vn1] == vnt[vn2] == val # Sanity check.
+                vnt = DynamicPPL.templated_setindex!!(vnt, new_val, vn2, ca)
+                @test vnt[vn1] == vnt[vn2] == new_val
+            end
 
-            val2 = rand()
-            vnt = DynamicPPL.templated_setindex!!(vnt, val2, @varname(x.a), ca)
-            @test vnt[@varname(x[1])] == vnt[@varname(x.a)] == val2
-            # Set by property first, then get by index
-            vnt2 = VarNamedTuple()
-            vnt2 = DynamicPPL.templated_setindex!!(vnt2, val, @varname(x.a), ca)
-            @test vnt2[@varname(x[1])] == vnt2[@varname(x.a)] == val
-
-            # MustNotOverwrite: all four combinations should error
-            vnt3 = DynamicPPL.VarNamedTuples.templated_setindex_no_overwrite!!(
-                VarNamedTuple(), val, @varname(x[1]), ca
-            )
-            @test_throws MustNotOverwriteError DynamicPPL.VarNamedTuples.templated_setindex_no_overwrite!!(
-                vnt3, val2, @varname(x[1]), ca
-            )
-            @test_throws MustNotOverwriteError DynamicPPL.VarNamedTuples.templated_setindex_no_overwrite!!(
-                vnt3, val2, @varname(x.a), ca
-            )
-            vnt4 = DynamicPPL.VarNamedTuples.templated_setindex_no_overwrite!!(
-                VarNamedTuple(), val, @varname(x.a), ca
-            )
-            @test_throws MustNotOverwriteError DynamicPPL.VarNamedTuples.templated_setindex_no_overwrite!!(
-                vnt4, val2, @varname(x.a), ca
-            )
-            @test_throws MustNotOverwriteError DynamicPPL.VarNamedTuples.templated_setindex_no_overwrite!!(
-                vnt4, val2, @varname(x[1]), ca
-            )
+            # Check that MustNotOverwrite is respected.
+            for vn1 in vns
+                vnt = DynamicPPL.templated_setindex!!(VarNamedTuple(), val, vn1, ca)
+                for vn2 in vns
+                    @test_throws MustNotOverwriteError DynamicPPL.VarNamedTuples.templated_setindex_no_overwrite!!(
+                        vnt, new_val, vn2, ca
+                    )
+                end
+            end
         end
+
         @testset "InvertedIndices" begin
             # TODO(penelopeysm): Templated setindex fails for II.Not(). I really don't know
             # why but there is some failure in constant propagation when setting the mask
