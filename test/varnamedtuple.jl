@@ -402,6 +402,18 @@ Base.size(st::SizedThing) = st.size
         end
     end
 
+    @testset "KeyError for missing properties" begin
+        vnt = @vnt begin
+            x.a := 1.0
+        end
+        # Should throw KeyError for missing top-level symbol
+        @test_throws KeyError vnt[@varname(y)]
+        # Should throw KeyError for missing nested property
+        @test_throws KeyError vnt[@varname(x.b)]
+        # Sanity check: accessing existing property should work
+        @test vnt[@varname(x.a)] == 1.0
+    end
+
     @testset "haskey on PartialArray" begin
         @testset "no ALBs" begin
             vnt = @vnt begin
