@@ -27,6 +27,9 @@ Note that it is only valid to index into a `VarNamedTuple` with a `Property` opt
 `PartialArray` with an `Index` optic. Other combinations are not valid. When we have reached
 the leaf of the VNT i.e. a value, we could still handle pure `Index` optics if the value is
 an `AbstractArray`, but otherwise the only valid optic is `Iden`.
+
+`orig_vn` is used to keep track of the original VarName used to index into a VarNamedTuple,
+and is only for error reporting purposes.
 """
 function _getindex_optic(vnt::VarNamedTuple, vn::VarName)
     return _getindex_optic(vnt, AbstractPPL.varname_to_optic(vn), vn)
