@@ -324,6 +324,13 @@ Base.size(st::SizedThing) = st.size
             test_get_set(GetSetTestCase(@varname(x.b), [3.0, 4.0], ca3, []))
             test_get_set(GetSetTestCase(@varname(x.a[1]), 1.0, ca3, []))
 
+            # with nested fields
+            ca4 = CA.ComponentArray(; a=(; x=1.0, y=2.0))
+            test_get_set(GetSetTestCase(@varname(x.a.x), 10.0, ca4, []))
+            test_get_set(GetSetTestCase(@varname(x.a.y), 20.0, ca4, []))
+            test_get_set(GetSetTestCase(@varname(x[1]), 10.0, ca4, []))
+            test_get_set(GetSetTestCase(@varname(x[2]), 20.0, ca4, []))
+
             # Mixed index/property access
             val = rand()
             vns = (@varname(x[1]), @varname(x.a))
@@ -2066,6 +2073,15 @@ Base.size(st::SizedThing) = st.size
             x[2:3] := SizedThing((2,))
         end
         @test densify!!(vnt) == vnt
+
+        # Check with ComponentArrays
+        x = CA.ComponentArray(; a=0.0, b=0.0)
+        vnt = @vnt begin
+            @template x
+            x.a := 1.0
+            x.b := 2.0
+        end
+        @test densify!!(vnt) == VarNamedTuple(; x=CA.ComponentArray(; a=1.0, b=2.0))
     end
 
     @testset "skeleton" begin
