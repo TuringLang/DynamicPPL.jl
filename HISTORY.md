@@ -1,5 +1,7 @@
 # 0.41.7
 
+Enable usage of `ComponentVector`s on the left-hand side of tilde-statements.
+
 Accessing a nonexistent variable in a `VarNamedTuple` now throws a `KeyError` with the original `VarName`, instead of an opaque `type NamedTuple has no field ...` error.
 
 # 0.41.6

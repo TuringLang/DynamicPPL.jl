@@ -28,6 +28,7 @@ using BangBang: setindex!!, empty!!
 using DimensionalData: DimensionalData as DD
 using InvertedIndices: InvertedIndices as II
 using OffsetArrays: OffsetArrays as OA
+using ComponentArrays: ComponentArrays as CA
 
 struct GetSetTestCase
     # The VarName being set.
@@ -307,6 +308,60 @@ Base.size(st::SizedThing) = st.size
             test_get_set(
                 GetSetTestCase(@varname(oa2[11, -1]), 1.0, oa2, []); skip_setindex=true
             )
+        end
+
+        @testset "ComponentArray" begin
+            ca = CA.ComponentArray(; a=1.0, b=2.0)
+            test_get_set(GetSetTestCase(@varname(x[1]), 1.0, ca, []))
+            test_get_set(GetSetTestCase(@varname(x[2]), 2.0, ca, []))
+            test_get_set(GetSetTestCase(@varname(x.a), 1.0, ca, []))
+            test_get_set(GetSetTestCase(@varname(x.b), 2.0, ca, []))
+            test_get_set(GetSetTestCase(@varname(x[1:2]), [1.0, 2.0], ca, []))
+
+            # ComponentVector with array-valued fields
+            ca3 = CA.ComponentArray(; a=[1.0, 2.0], b=[3.0, 4.0])
+            test_get_set(GetSetTestCase(@varname(x.a), [1.0, 2.0], ca3, []))
+            test_get_set(GetSetTestCase(@varname(x.b), [3.0, 4.0], ca3, []))
+            test_get_set(GetSetTestCase(@varname(x.a[1]), 1.0, ca3, []))
+
+            # with nested fields
+            ca4 = CA.ComponentArray(; a=(; x=1.0, y=2.0))
+            test_get_set(GetSetTestCase(@varname(x.a.x), 10.0, ca4, []))
+            test_get_set(GetSetTestCase(@varname(x.a.y), 20.0, ca4, []))
+            test_get_set(GetSetTestCase(@varname(x[1]), 10.0, ca4, []))
+            test_get_set(GetSetTestCase(@varname(x[2]), 20.0, ca4, []))
+
+            # Mixed index/property access
+            val = rand()
+            vns = (@varname(x[1]), @varname(x.a))
+            for set_vn in vns
+                vnt = DynamicPPL.templated_setindex!!(VarNamedTuple(), val, set_vn, ca)
+                for get_vn in vns
+                    @test vnt[get_vn] == val
+                end
+            end
+
+            # Check that setting one and overwriting with the other works
+            val = rand()
+            new_val = val + 1
+            for (vn1, vn2) in
+                ((@varname(x[1]), @varname(x.a)), (@varname(x.a), @varname(x[1])))
+                vnt = VarNamedTuple()
+                vnt = DynamicPPL.templated_setindex!!(vnt, val, vn1, ca)
+                @test vnt[vn1] == vnt[vn2] == val # Sanity check.
+                vnt = DynamicPPL.templated_setindex!!(vnt, new_val, vn2, ca)
+                @test vnt[vn1] == vnt[vn2] == new_val
+            end
+
+            # Check that MustNotOverwrite is respected.
+            for vn1 in vns
+                vnt = DynamicPPL.templated_setindex!!(VarNamedTuple(), val, vn1, ca)
+                for vn2 in vns
+                    @test_throws MustNotOverwriteError DynamicPPL.VarNamedTuples.templated_setindex_no_overwrite!!(
+                        vnt, new_val, vn2, ca
+                    )
+                end
+            end
         end
 
         @testset "InvertedIndices" begin
@@ -2029,6 +2084,15 @@ Base.size(st::SizedThing) = st.size
             x[2:3] := SizedThing((2,))
         end
         @test densify!!(vnt) == vnt
+
+        # Check with ComponentArrays
+        x = CA.ComponentArray(; a=0.0, b=0.0)
+        vnt = @vnt begin
+            @template x
+            x.a := 1.0
+            x.b := 2.0
+        end
+        @test densify!!(vnt) == VarNamedTuple(; x=CA.ComponentArray(; a=1.0, b=2.0))
     end
 
     @testset "skeleton" begin
@@ -2147,6 +2211,13 @@ Base.size(st::SizedThing) = st.size
         end
         v12s = VarNamedTuple(; x=DD.DimArray(fill(nothing, 2, 3), (:a, :b)))
         test_skeleton(v12, v12s)
+
+        v13 = @vnt begin
+            @template x = CA.ComponentArray(; a=0.0, b=0.0)
+            x.a := 1.0
+        end
+        v13s = VarNamedTuple(; x=CA.ComponentArray(; a=nothing, b=nothing))
+        test_skeleton(v13, v13s)
     end
 end
 
