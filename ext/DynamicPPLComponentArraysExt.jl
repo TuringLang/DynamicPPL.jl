@@ -25,11 +25,15 @@ end
 function DynamicPPL.VarNamedTuples.make_leaf(
     value, optic::AbstractPPL.Property{S}, template::ComponentVector
 ) where {S}
-    if optic.child isa AbstractPPL.Iden
+    return if optic.child isa AbstractPPL.Iden
         index_optic = _property_to_index(template, optic)
-        return make_leaf(value, index_optic, template)
+        make_leaf(value, index_optic, template)
     else
-        return invoke(
+        # This branch is needed to handle nested axes in ComponentArrays: the idea is that
+        # if x is e.g. ComponentArray(a=(b=1)) and we are trying to set `x.a.b`, then we
+        # first index into `x.a` to get the slice of the ComponentArray. The easiest way to
+        # handle this is to call the default method.
+        invoke(
             make_leaf,
             Tuple{Any,AbstractPPL.Property{S},AbstractArray},
             value,
@@ -46,19 +50,15 @@ function DynamicPPL.VarNamedTuples._setindex_optic!!(
     template,
     permissions::SetPermissions=AllowAll(),
 ) where {S}
-    # Convert the property label to an integer index and delegate to the
-    # existing index-based dispatch.
     index_optic = _property_to_index(pa.data, optic)
     return _setindex_optic!!(pa, value, index_optic, template, permissions)
 end
 
 function DynamicPPL.VarNamedTuples._getindex_optic(
-    pa::PartialArray{<:Any,<:Any,<:ComponentVector}, optic::AbstractPPL.Property{S}
+    pa::PartialArray{<:Any,<:Any,<:ComponentVector}, optic::AbstractPPL.Property{S}, orig_vn
 ) where {S}
-    # Convert the property label to an integer index and delegate to the
-    # existing index-based dispatch.
     index_optic = _property_to_index(pa.data, optic)
-    return _getindex_optic(pa, index_optic)
+    return _getindex_optic(pa, index_optic, orig_vn)
 end
 
 end

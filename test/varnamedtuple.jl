@@ -344,7 +344,6 @@ Base.size(st::SizedThing) = st.size
             # Check that setting one and overwriting with the other works
             val = rand()
             new_val = val + 1
-            vnt = VarNamedTuple()
             for (vn1, vn2) in
                 ((@varname(x[1]), @varname(x.a)), (@varname(x.a), @varname(x[1])))
                 vnt = VarNamedTuple()
