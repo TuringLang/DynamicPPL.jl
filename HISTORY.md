@@ -1,3 +1,7 @@
+# 0.41.7
+
+Enable usage of `ComponentVector`s on the left-hand side of tilde-statements.
+
 # 0.41.6
 
 Add a `factorize::Bool` keyword argument for `pointwise_logdensities(model, values)`, which controls whether pointwise logdensities for factorisable distributions (e.g. `MvNormal`, `product_distribution`, etc.) are returned as a single log-density for the whole distribution, or as an array of log-densities for each factor.
