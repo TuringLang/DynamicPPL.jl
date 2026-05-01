@@ -1,13 +1,13 @@
 module DynamicPPLFlexiChainsPosteriorStatsExt
 
 using PosteriorStats: PosteriorStats
-using FlexiChains: FlexiChain
+using FlexiChains: FlexiChain, VarName
 using DynamicPPL: DynamicPPL
 
 """
     PosteriorStats.loo(
         model::DynamicPPL.Model,
-        posterior_chn::FlexiChains;
+        posterior_chn::FlexiChain{<:VarName};
         factorize::Bool=false,
         kwargs...
     )
@@ -32,7 +32,10 @@ partitioned into blocks (e.g. `MvNormal`). Please see the docstring of
 Additional keyword arguments are forwarded to [`PosteriorStats.loo`](@extref).
 """
 function PosteriorStats.loo(
-    model::DynamicPPL.Model, posterior_chn::FlexiChain; factorize::Bool=false, kwargs...
+    model::DynamicPPL.Model,
+    posterior_chn::FlexiChain{<:VarName};
+    factorize::Bool=false,
+    kwargs...,
 )
     lls_chn = DynamicPPL.pointwise_loglikelihoods(model, posterior_chn; factorize=factorize)
     return PosteriorStats.loo(lls_chn; kwargs...)

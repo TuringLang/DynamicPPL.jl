@@ -489,8 +489,6 @@ end
 
         @testset "non-parameter keys are preserved" begin
             pdns = predict(f(), chn)
-            display(chn)
-            display(pdns)
             # Check that the only new thing added was the prediction for y.
             @test only(setdiff(Set(keys(pdns)), Set(keys(chn)))) == Parameter(@varname(y))
             # Check that no other keys originally in `chn` were removed.

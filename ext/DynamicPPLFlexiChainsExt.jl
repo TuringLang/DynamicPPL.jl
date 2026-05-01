@@ -638,4 +638,4 @@ struct NotASampler <: AbstractMCMC.AbstractSampler end
     end
 end
 
-end # module FlexiChainsDynamicPPLExt
+end # module DynamicPPLFlexiChainsExt
