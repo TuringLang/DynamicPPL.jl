@@ -348,7 +348,7 @@ end
                 @test_throws ArgumentError to_vector_params(vecvals, ldf)
 
                 accs = OnlyAccsVarInfo(VectorParamAccumulator(ldf))
-                @test_throws ErrorException init!!(
+                @test_throws KeyError init!!(
                     extra_model, accs, InitFromPrior(), transform_strategy
                 )
             end
