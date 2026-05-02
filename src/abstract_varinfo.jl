@@ -399,8 +399,11 @@ Return an iterator over all `vns` in `vi`.
 """
     getindex(vi::AbstractVarInfo, ::Colon)
 
-Return the current value(s) of `vn` (`vns`) in `vi` in the support of its (their)
-distribution(s) as a flattened `Vector`.
+Return the internal value(s) stored in `vi` as a flattened `Vector`. Note that
+these values may be in transformed (linked) space if `vi` has been linked.
+
+For untransformed values, use [`getindex_internal`](@ref) after calling
+[`invlink`](@ref) on `vi`.
 
 The default implementation is to call [`internal_values_as_vector`](@ref).
 """
