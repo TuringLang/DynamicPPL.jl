@@ -1030,16 +1030,12 @@ julia> # Truth.
 -9902.33787706641
 ```
 """
-function _evaluate_and_extract(model, params, vi, extract_fn)
-    init_strategy = InitFromParams(params..., nothing)
-    return extract_fn(init!!(model, vi, init_strategy, UnlinkAll()))
-end
-
 function logjoint(model::Model, params)
     vi = OnlyAccsVarInfo(
         AccumulatorTuple(LogPriorAccumulator(), LogLikelihoodAccumulator())
     )
-    return _evaluate_and_extract(model, (params,), vi, x -> getlogjoint(last(x)))
+    init_strategy = InitFromParams(params, nothing)
+    return getlogjoint(last(init!!(model, vi, init_strategy, UnlinkAll())))
 end
 function logjoint(model::Model, varinfo::AbstractVarInfo)
     return logjoint(model, get_values(varinfo))
@@ -1082,7 +1078,8 @@ julia> # Truth.
 """
 function logprior(model::Model, params)
     vi = OnlyAccsVarInfo(AccumulatorTuple(LogPriorAccumulator()))
-    return _evaluate_and_extract(model, (params,), vi, x -> getlogprior(last(x)))
+    init_strategy = InitFromParams(params, nothing)
+    return getlogprior(last(init!!(model, vi, init_strategy, UnlinkAll())))
 end
 function logprior(model::Model, varinfo::AbstractVarInfo)
     return logprior(model, get_values(varinfo))
@@ -1121,7 +1118,8 @@ julia> # Truth.
 """
 function Distributions.loglikelihood(model::Model, params)
     vi = OnlyAccsVarInfo(AccumulatorTuple(LogLikelihoodAccumulator()))
-    return _evaluate_and_extract(model, (params,), vi, x -> getloglikelihood(last(x)))
+    init_strategy = InitFromParams(params, nothing)
+    return getloglikelihood(last(init!!(model, vi, init_strategy, UnlinkAll())))
 end
 function Distributions.loglikelihood(model::Model, varinfo::AbstractVarInfo)
     return loglikelihood(model, get_values(varinfo))
@@ -1165,5 +1163,6 @@ function returned(model::Model, parameters...)
     # Note: we can't use `fix(model, parameters)` because
     # https://github.com/TuringLang/DynamicPPL.jl/issues/1097
     vi = DynamicPPL.OnlyAccsVarInfo(DynamicPPL.AccumulatorTuple())
-    return _evaluate_and_extract(model, parameters, vi, first)
+    init_strategy = InitFromParams(parameters..., nothing)
+    return first(init!!(model, vi, init_strategy, UnlinkAll()))
 end
