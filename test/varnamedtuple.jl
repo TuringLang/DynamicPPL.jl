@@ -24,7 +24,7 @@ using DynamicPPL.VarNamedTuples:
     NoTemplate,
     templated_setindex_no_overwrite!!
 using AbstractPPL: AbstractPPL, VarName, concretize, prefix, @opticof
-using BangBang: setindex!!, empty!!
+using BangBang: setindex!!, empty!!, delete!!
 using DimensionalData: DimensionalData as DD
 using InvertedIndices: InvertedIndices as II
 using OffsetArrays: OffsetArrays as OA
@@ -2094,7 +2094,27 @@ Base.size(st::SizedThing) = st.size
         end
         @test densify!!(vnt) == VarNamedTuple(; x=CA.ComponentArray(; a=1.0, b=2.0))
     end
+    @testset "delete!!" begin
+        vnt = VarNamedTuple()
+        vnt = setindex!!(vnt, 1.0, @varname(a))
+        vnt = setindex!!(vnt, 2.0, @varname(b))
+        vnt = setindex!!(vnt, 3.0, @varname(c))
 
+        # Delete a single variable
+        vnt2 = delete!!(vnt, @varname(a))
+        @test !haskey(vnt2, @varname(a))
+        @test haskey(vnt2, @varname(b))
+        @test haskey(vnt2, @varname(c))
+
+        # Delete another variable
+        vnt3 = delete!!(vnt2, @varname(b))
+        @test !haskey(vnt3, @varname(b))
+        @test haskey(vnt3, @varname(c))
+
+        # Original is unchanged
+        @test haskey(vnt, @varname(a))
+        @test length(keys(vnt)) == 3
+    end
     @testset "skeleton" begin
         function test_skeleton(orig_vnt, expected_skeleton)
             @test (@inferred skeleton(orig_vnt)) == expected_skeleton
