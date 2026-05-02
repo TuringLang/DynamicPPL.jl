@@ -47,6 +47,36 @@ function DynamicPPL.subset(parent_vnt::VarNamedTuple, vns)
         init=VarNamedTuple(),
     )
 end
+"""
+    delete!!(vnt::VarNamedTuple, vn::VarName)
+
+Return a new `VarNamedTuple` with the variable `vn` removed.
+
+# Examples
+```jldoctest
+julia> using DynamicPPL, BangBang
+
+julia> vnt = VarNamedTuple()
+VarNamedTuple()
+
+julia> vnt = setindex!!(vnt, 1.0, @varname(a))
+VarNamedTuple
+└─ a => 1.0
+
+julia> vnt = setindex!!(vnt, 2.0, @varname(b))
+VarNamedTuple
+├─ a => 1.0
+└─ b => 2.0
+
+julia> delete!!(vnt, @varname(a))
+VarNamedTuple
+└─ b => 2.0
+```
+"""
+function BangBang.delete!!(vnt::VarNamedTuple, vn::VarName)
+    remaining_vns = filter(k -> !subsumes(vn, k), keys(vnt))
+    return DynamicPPL.subset(vnt, remaining_vns)
+end
 
 """
     apply!!(func, vnt::VarNamedTuple, name::VarName)
