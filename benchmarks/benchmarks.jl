@@ -1,6 +1,6 @@
 using Pkg
 
-using Chairmarks: @be, median
+using Chairmarks: @be
 using DynamicPPLBenchmarks: Models, benchmark, model_dimension
 using JSON: JSON
 using PrettyTables: pretty_table, fmt__printf, EmptyCells, MultiColumn, TextTableFormat
@@ -9,7 +9,7 @@ using StableRNGs: StableRNG
 
 rng = StableRNG(23)
 
-colnames = ["Model", "Dim", "AD Backend", "Linked", "t(eval)/t(ref)", "t(grad)/t(eval)"]
+colnames = ["Model", "Dim", "AD Backend", "Linked", "t(eval)/ns", "t(grad)/t(eval)"]
 function print_results(results_table; to_json=false)
     if to_json
         # Print to the given file as JSON
@@ -78,13 +78,6 @@ function run(; to_json=false)
         ("LDA", lda_instance, :reversediff, true),
     ]
 
-    # Time running a model-like function that does not use DynamicPPL, as a reference point.
-    # Eval timings will be relative to this.
-    reference_time = begin
-        obs = randn(rng)
-        median(@be Models.simple_assume_observe_non_model(obs)).time
-    end
-    @info "Reference evaluation time: $(reference_time) seconds"
 
     results_table = Tuple{
         String,Int,String,Bool,Union{Float64,Missing},Union{Float64,Missing}
@@ -96,7 +89,7 @@ function run(; to_json=false)
             results = benchmark(model, adbackend, islinked)
             @info " t(eval) = $(results.primal_time)"
             @info " t(grad) = $(results.grad_time)"
-            (results.primal_time / reference_time),
+            (results.primal_time * 1e9),
             (results.grad_time / results.primal_time)
         catch e
             @info "benchmark errored: $e"
@@ -170,7 +163,7 @@ function combine(head_filename::String, base_filename::String)
     results_colnames = [
         [
             EmptyCells(4),
-            MultiColumn(3, "t(eval) / t(ref)"),
+            MultiColumn(3, "t(eval)/ns"),
             MultiColumn(3, "t(grad) / t(eval)"),
             MultiColumn(3, "t(grad) / t(ref)"),
         ],
