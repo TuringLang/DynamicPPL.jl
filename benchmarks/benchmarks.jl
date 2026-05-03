@@ -78,7 +78,6 @@ function run(; to_json=false)
         ("LDA", lda_instance, :reversediff, true),
     ]
 
-
     results_table = Tuple{
         String,Int,String,Bool,Union{Float64,Missing},Union{Float64,Missing}
     }[]
@@ -89,8 +88,7 @@ function run(; to_json=false)
             results = benchmark(model, adbackend, islinked)
             @info " t(eval) = $(results.primal_time)"
             @info " t(grad) = $(results.grad_time)"
-            (results.primal_time * 1e9),
-            (results.grad_time / results.primal_time)
+            (results.primal_time * 1e9), (results.grad_time / results.primal_time)
         catch e
             @info "benchmark errored: $e"
             missing, missing
