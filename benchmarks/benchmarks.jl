@@ -247,10 +247,19 @@ function build_combinations(rng)
     # and inspecting one model side-by-side across backends/links is trivial.
     combos = Tuple{String,DynamicPPL.Model,Symbol,Bool}[]
     for (name, model) in models, islinked in (false, true), backend in BACKENDS
+        # LDA's discrete Categorical RVs make `linked = false` ill-defined for
+        # gradient-based AD (every backend errors), so the row is omitted.
+        name == "LDA" && !islinked && continue
         push!(combos, (name, model, backend, islinked))
     end
     return combos
 end
+
+# Representative model whose 8 rows are surfaced as the at-a-glance "gist"
+# in markdown mode. `Smorgasbord` covers the broadest set of DPPL features
+# (scalar/vector/multivariate variables, `~`, `.~`, loops, observations as
+# both arguments and literals), so it is the most informative single row band.
+const GIST_MODEL = "Smorgasbord"
 
 function run(; markdown::Bool=false)
     combinations = build_combinations(StableRNG(23))
@@ -271,9 +280,27 @@ function run(; markdown::Bool=false)
         end
         push!(results, (; name, dim, adbackend=string(adbackend), islinked, t_logd, ratio))
     end
-    markdown && println("```")
-    print_results(results)
-    markdown && println("```")
+    if markdown
+        gist = filter(r -> r.name == GIST_MODEL, results)
+        if !isempty(gist)
+            println("### Gist: ", GIST_MODEL)
+            println()
+            println("```")
+            print_results(gist)
+            println("```")
+            println()
+        end
+        println("<details>")
+        println("<summary>Full table (", length(results), " rows)</summary>")
+        println()
+        println("```")
+        print_results(results)
+        println("```")
+        println()
+        println("</details>")
+    else
+        print_results(results)
+    end
     return nothing
 end
 
