@@ -71,6 +71,7 @@ Check if `x` is `NaN`, or contains any `NaN` values.
 _has_nans(x::NamedTuple) = any(_has_nans, x)
 _has_nans(x::AbstractArray) = any(_has_nans, x)
 _has_nans(x) = isnan(x)
+_has_nans(::Missing) = false
 """
     _has_infs(x)
 
