@@ -65,7 +65,6 @@ jobs:
             ```
             ${{ env.VERSION_INFO }}
             ```
-            ### Benchmark Results
 
             ${{ env.BENCHMARK_OUTPUT }}
 
