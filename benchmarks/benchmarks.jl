@@ -9,6 +9,7 @@ using Distributions:
     Normal,
     product_distribution,
     truncated
+using DifferentiationInterface: DifferentiationInterface
 using DynamicPPL: DynamicPPL, @model, to_submodel, VarInfo, LinkAll, UnlinkAll
 using DynamicPPL.TestUtils.AD: run_ad, NoTest
 using Enzyme: Enzyme
