@@ -138,16 +138,20 @@ transform_strategy(islinked) = islinked ? LinkAll() : UnlinkAll()
 
 "Dimension of `model`, accounting for linking. Used as a fallback when `benchmark` errors."
 function model_dimension(model, islinked)
-    vi = last(
-        DynamicPPL.init!!(
-            StableRNG(23),
-            model,
-            VarInfo(),
-            DynamicPPL.InitFromPrior(),
-            transform_strategy(islinked),
-        ),
-    )
-    return length(vi[:])
+    return try
+        vi = last(
+            DynamicPPL.init!!(
+                StableRNG(23),
+                model,
+                VarInfo(),
+                DynamicPPL.InitFromPrior(),
+                transform_strategy(islinked),
+            ),
+        )
+        length(vi[:])
+    catch
+        missing
+    end
 end
 
 """
@@ -191,10 +195,20 @@ format_time(::Missing) = "err"
 format_ratio(x::Float64) = @sprintf("%.2f", x)
 format_ratio(::Missing) = "err"
 
+format_dim(d::Integer) = string(d)
+format_dim(::Missing) = "err"
+
 function print_results(results)
     isempty(results) && return println("No benchmark results obtained.")
     rows = map(results) do r
-        (r.name, r.dim, r.adbackend, r.islinked, format_time(r.t_logd), format_ratio(r.ratio))
+        (
+            r.name,
+            format_dim(r.dim),
+            r.adbackend,
+            r.islinked,
+            format_time(r.t_logd),
+            format_ratio(r.ratio),
+        )
     end
     matrix = hcat(Iterators.map(collect, zip(rows...))...)
     return pretty_table(
@@ -210,42 +224,49 @@ end
 #  Main
 #
 
+# Backends compared on every model. `:reversediff_compiled` is excluded because
+# compiled tapes are input-dependent and silently produce wrong gradients on
+# models with parameter-dependent control flow (see CLAUDE.md).
+const BACKENDS = (:forwarddiff, :reversediff, :mooncake, :enzyme)
+
 function build_combinations(rng)
     smorg = smorgasbord(randn(rng, 100), randn(rng, 100))
-    combos = [
-        ("Simple assume observe", simple_assume_observe(randn(rng)), :forwarddiff, false),
-        ("Smorgasbord", smorg, :forwarddiff, false),
-        ("Smorgasbord", smorg, :forwarddiff, true),
-        ("Smorgasbord", smorg, :reversediff, true),
-        ("Smorgasbord", smorg, :mooncake, true),
-        ("Smorgasbord", smorg, :enzyme, true),
+    models = Tuple{String,DynamicPPL.Model}[
+        ("Simple assume observe", simple_assume_observe(randn(rng))), ("Smorgasbord", smorg)
     ]
     for n in (1_000, 10_000)
         data = randn(rng, n)
-        loop = loop_univariate(n) | (; o=data)
-        multi = multivariate(n) | (; o=data)
-        push!(combos, ("Loop univariate $(n ÷ 1_000)k", loop, :mooncake, true))
-        push!(combos, ("Multivariate $(n ÷ 1_000)k", multi, :mooncake, true))
+        push!(models, ("Loop univariate $(n ÷ 1_000)k", loop_univariate(n) | (; o=data)))
+        push!(models, ("Multivariate $(n ÷ 1_000)k", multivariate(n) | (; o=data)))
     end
-    lda_inst = lda(2, [1, 1, 1, 2, 2, 2], [1, 2, 3, 2, 1, 1])
-    push!(combos, ("Dynamic", dynamic(), :mooncake, true))
-    push!(combos, ("Submodel", parent(randn(rng)), :mooncake, true))
-    push!(combos, ("LDA", lda_inst, :reversediff, true))
+    push!(models, ("Dynamic", dynamic()))
+    push!(models, ("Submodel", parent(randn(rng))))
+    push!(models, ("LDA", lda(2, [1, 1, 1, 2, 2, 2], [1, 2, 3, 2, 1, 1])))
+
+    # Order: model → linked → backend, so each model's eight rows are adjacent
+    # and inspecting one model side-by-side across backends/links is trivial.
+    combos = Tuple{String,DynamicPPL.Model,Symbol,Bool}[]
+    for (name, model) in models, islinked in (false, true), backend in BACKENDS
+        push!(combos, (name, model, backend, islinked))
+    end
     return combos
 end
 
 function run(; markdown::Bool=false)
     combinations = build_combinations(StableRNG(23))
+    total = length(combinations)
     results = []
-    for (name, model, adbackend, islinked) in combinations
-        @info "Running benchmark for $name, $adbackend, $islinked"
+    for (i, (name, model, adbackend, islinked)) in enumerate(combinations)
+        # Mooncake-style header: index/total, then model + config, then backend.
+        @info "$i / $total", name, (; linked=islinked)
+        @info adbackend
         dim, t_logd, ratio = try
             r = benchmark(model, adbackend, islinked)
-            @info " t(logdensity) = $(r.primal_time)"
-            @info " t(grad)       = $(r.grad_time)"
+            @info "  t(logdensity) = $(format_time(r.primal_time))"
+            @info "  t(grad)       = $(format_time(r.grad_time))"
             (length(r.params), r.primal_time, r.grad_time / r.primal_time)
         catch e
-            @info "benchmark errored: $e"
+            @info "  errored: $(sprint(showerror, e))"
             (model_dimension(model, islinked), missing, missing)
         end
         push!(results, (; name, dim, adbackend=string(adbackend), islinked, t_logd, ratio))

@@ -376,11 +376,14 @@ function run_ad(
         # (tens of ns on Linux/macOS) instead of reading as zero. Pattern
         # borrowed from Mooncake's bench harness:
         # https://github.com/chalk-lab/Mooncake.jl/blob/main/bench/run_benchmarks.jl
+        # Per-sample `setup` deep-copies `params` so each sample starts from a
+        # fresh input buffer, matching Mooncake's bench harness. (Setup runs
+        # before the timed window, so the copy is excluded from measurements.)
         logdensity(ldf, params)  # Warm-up
         GC.gc(true)
         primal_benchmark = @be(
-            _,
-            logdensity($ldf, $params),
+            deepcopy($params),
+            logdensity($ldf, _),
             _ -> GC.gc(false),
             seconds = benchmark_seconds,
         )
@@ -392,8 +395,8 @@ function run_ad(
         logdensity_and_gradient(ldf, params)  # Warm-up
         GC.gc(true)
         grad_benchmark = @be(
-            _,
-            logdensity_and_gradient($ldf, $params),
+            deepcopy($params),
+            logdensity_and_gradient($ldf, _),
             _ -> GC.gc(false),
             seconds = benchmark_seconds,
         )
