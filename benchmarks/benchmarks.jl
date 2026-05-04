@@ -1,20 +1,184 @@
-using Chairmarks: median
-using DynamicPPLBenchmarks: Models, benchmark, model_dimension
+using ADTypes: ADTypes
+using Distributions:
+    Categorical,
+    Dirichlet,
+    Exponential,
+    Gamma,
+    InverseWishart,
+    LKJCholesky,
+    Normal,
+    product_distribution,
+    truncated
+using DynamicPPL: DynamicPPL, @model, to_submodel, VarInfo, LinkAll, UnlinkAll
+using DynamicPPL.TestUtils.AD: run_ad, NoTest
+using Enzyme: Enzyme
+using ForwardDiff: ForwardDiff
+using LinearAlgebra: cholesky
+using Mooncake: Mooncake
 using PrettyTables: pretty_table
 using Printf: @sprintf
+using ReverseDiff: ReverseDiff
 using StableRNGs: StableRNG
 
-rng = StableRNG(23)
+#
+#  Models
+#
 
-# Schema follows Mooncake's bench output: absolute log-density time plus the
-# gradient/log-density ratio. We deliberately do not compare against the base
-# branch — readers eyeball regressions across the PR-comment history instead.
-# Cf. https://github.com/chalk-lab/Mooncake.jl/blob/main/bench/run_benchmarks.jl
+"One scalar assumption, one scalar observation."
+@model function simple_assume_observe(obs)
+    x ~ Normal()
+    obs ~ Normal(x, 1)
+    return (; x=x)
+end
+
+"""
+Covers many DynamicPPL features: scalar/vector/multivariate variables, `~`,
+`.~`, loops, allocated vectors, and observations as both arguments and literals.
+"""
+@model function smorgasbord(x, y, ::Type{TV}=Vector{Float64}) where {TV}
+    @assert length(x) == length(y)
+    m ~ truncated(Normal(); lower=0)
+    means ~ product_distribution(fill(Exponential(m), length(x)))
+    stds = TV(undef, length(x))
+    stds .~ Gamma(1, 1)
+    for i in 1:length(x)
+        x[i] ~ Normal(means[i], stds[i])
+    end
+    y ~ product_distribution(map((mean, std) -> Normal(mean, std), means, stds))
+    0.0 ~ Normal(sum(y), 1)
+    return (; m=m, means=means, stds=stds)
+end
+
+"`num_dims` univariate normals via a loop. Condition on `o` after instantiation."
+@model function loop_univariate(num_dims, ::Type{TV}=Vector{Float64}) where {TV}
+    a = TV(undef, num_dims)
+    o = TV(undef, num_dims)
+    for i in 1:num_dims
+        a[i] ~ Normal(0, 1)
+    end
+    m = sum(a)
+    for i in 1:num_dims
+        o[i] ~ Normal(m, 1)
+    end
+    return (; a=a)
+end
+
+"As `loop_univariate`, but using `product_distribution` instead of loops."
+@model function multivariate(num_dims, ::Type{TV}=Vector{Float64}) where {TV}
+    a = TV(undef, num_dims)
+    o = TV(undef, num_dims)
+    a ~ product_distribution(fill(Normal(0, 1), num_dims))
+    m = sum(a)
+    o ~ product_distribution(fill(Normal(m, 1), num_dims))
+    return (; a=a)
+end
+
+@model function _sub()
+    x ~ Normal()
+    return x
+end
+
+"As `simple_assume_observe`, but with the assumed RV inside a submodel."
+@model function parent(obs)
+    x ~ to_submodel(_sub())
+    obs ~ Normal(x, 1)
+    return (; x=x)
+end
+
+"Variables whose support varies under linking, or otherwise nontrivial bijectors."
+@model function dynamic(::Type{T}=Vector{Float64}) where {T}
+    eta ~ truncated(Normal(); lower=0.0, upper=0.1)
+    mat1 ~ LKJCholesky(4, eta)
+    mat2 ~ InverseWishart(3.2, cholesky([1.0 0.5; 0.5 1.0]))
+    return (; eta=eta, mat1=mat1, mat2=mat2)
+end
+
+"Linear Discriminant Analysis."
+@model function lda(K, d, w)
+    V = length(unique(w))
+    D = length(unique(d))
+    N = length(d)
+    @assert length(w) == N
+
+    ϕ = Vector{Vector{Real}}(undef, K)
+    for i in 1:K
+        ϕ[i] ~ Dirichlet(ones(V) / V)
+    end
+
+    θ = Vector{Vector{Real}}(undef, D)
+    for i in 1:D
+        θ[i] ~ Dirichlet(ones(K) / K)
+    end
+
+    z = zeros(Int, N)
+    for i in 1:N
+        z[i] ~ Categorical(θ[d[i]])
+        w[i] ~ Categorical(ϕ[d[i]])
+    end
+    return (; ϕ=ϕ, θ=θ, z=z)
+end
+
+#
+#  Benchmark harness
+#
+
+# Copied from TuringBenchmarking.jl.
+const SYMBOL_TO_BACKEND = Dict(
+    :forwarddiff => ADTypes.AutoForwardDiff(),
+    :reversediff => ADTypes.AutoReverseDiff(; compile=false),
+    :reversediff_compiled => ADTypes.AutoReverseDiff(; compile=true),
+    :mooncake => ADTypes.AutoMooncake(; config=nothing),
+    :enzyme => ADTypes.AutoEnzyme(;
+        mode=Enzyme.set_runtime_activity(Enzyme.Reverse),
+        function_annotation=Enzyme.Const,
+    ),
+)
+
+transform_strategy(islinked) = islinked ? LinkAll() : UnlinkAll()
+
+"Dimension of `model`, accounting for linking. Used as a fallback when `benchmark` errors."
+function model_dimension(model, islinked)
+    vi = last(
+        DynamicPPL.init!!(
+            StableRNG(23),
+            model,
+            VarInfo(),
+            DynamicPPL.InitFromPrior(),
+            transform_strategy(islinked),
+        ),
+    )
+    return length(vi[:])
+end
+
+"""
+    benchmark(model, adbackend, islinked; seconds=2)
+
+Time log-density and gradient evaluation for `model` with the given AD backend.
+`seconds` is Chairmarks' per-measurement budget (doubled from its default to
+tighten the median estimate).
+"""
+function benchmark(model, adbackend::Symbol, islinked::Bool; seconds::Real=2)
+    return run_ad(
+        model,
+        SYMBOL_TO_BACKEND[adbackend];
+        rng=StableRNG(23),
+        transform_strategy=transform_strategy(islinked),
+        benchmark=true,
+        benchmark_seconds=seconds,
+        test=NoTest(),
+        verbose=false,
+    )
+end
+
+#
+#  Reporting
+#
+
+# https://github.com/chalk-lab/Mooncake.jl/blob/main/bench/run_benchmarks.jl
 const COLNAMES = [
     "Model", "Dim", "AD Backend", "Linked", "t(logdensity)", "t(grad)/t(logdensity)"
 ]
 
-# Adapted from Mooncake's bench harness.
 fix_sig_fig(t) = string(round(t; sigdigits=3))
 function format_time(t::Float64)
     t < 1e-6 && return fix_sig_fig(t * 1e9) * " ns"
@@ -27,14 +191,14 @@ format_time(::Missing) = "err"
 format_ratio(x::Float64) = @sprintf("%.2f", x)
 format_ratio(::Missing) = "err"
 
-function print_results(results_table)
-    isempty(results_table) && return println("No benchmark results obtained.")
-    display_rows = map(results_table) do row
-        (row[1], row[2], row[3], row[4], format_time(row[5]), format_ratio(row[6]))
+function print_results(results)
+    isempty(results) && return println("No benchmark results obtained.")
+    rows = map(results) do r
+        (r.name, r.dim, r.adbackend, r.islinked, format_time(r.t_logd), format_ratio(r.ratio))
     end
-    table_matrix = hcat(Iterators.map(collect, zip(display_rows...))...)
+    matrix = hcat(Iterators.map(collect, zip(rows...))...)
     return pretty_table(
-        table_matrix;
+        matrix;
         column_labels=COLNAMES,
         backend=:text,
         fit_table_in_display_horizontally=false,
@@ -42,92 +206,62 @@ function print_results(results_table)
     )
 end
 
-function run(; markdown::Bool=false)
-    # Create DynamicPPL.Model instances to run benchmarks on.
-    smorgasbord_instance = Models.smorgasbord(randn(rng, 100), randn(rng, 100))
-    loop_univariate1k, multivariate1k = begin
-        data_1k = randn(rng, 1_000)
-        loop = Models.loop_univariate(length(data_1k)) | (; o=data_1k)
-        multi = Models.multivariate(length(data_1k)) | (; o=data_1k)
-        loop, multi
-    end
-    loop_univariate10k, multivariate10k = begin
-        data_10k = randn(rng, 10_000)
-        loop = Models.loop_univariate(length(data_10k)) | (; o=data_10k)
-        multi = Models.multivariate(length(data_10k)) | (; o=data_10k)
-        loop, multi
-    end
-    lda_instance = begin
-        w = [1, 2, 3, 2, 1, 1]
-        d = [1, 1, 1, 2, 2, 2]
-        Models.lda(2, d, w)
-    end
+#
+#  Main
+#
 
-    # (Model Name, model instance, AD backend, linked)
-    chosen_combinations = [
-        (
-            "Simple assume observe",
-            Models.simple_assume_observe(randn(rng)),
-            :forwarddiff,
-            false,
-        ),
-        ("Smorgasbord", smorgasbord_instance, :forwarddiff, false),
-        ("Smorgasbord", smorgasbord_instance, :forwarddiff, true),
-        ("Smorgasbord", smorgasbord_instance, :reversediff, true),
-        ("Smorgasbord", smorgasbord_instance, :mooncake, true),
-        ("Smorgasbord", smorgasbord_instance, :enzyme, true),
-        ("Loop univariate 1k", loop_univariate1k, :mooncake, true),
-        ("Multivariate 1k", multivariate1k, :mooncake, true),
-        ("Loop univariate 10k", loop_univariate10k, :mooncake, true),
-        ("Multivariate 10k", multivariate10k, :mooncake, true),
-        ("Dynamic", Models.dynamic(), :mooncake, true),
-        ("Submodel", Models.parent(randn(rng)), :mooncake, true),
-        ("LDA", lda_instance, :reversediff, true),
+function build_combinations(rng)
+    smorg = smorgasbord(randn(rng, 100), randn(rng, 100))
+    combos = [
+        ("Simple assume observe", simple_assume_observe(randn(rng)), :forwarddiff, false),
+        ("Smorgasbord", smorg, :forwarddiff, false),
+        ("Smorgasbord", smorg, :forwarddiff, true),
+        ("Smorgasbord", smorg, :reversediff, true),
+        ("Smorgasbord", smorg, :mooncake, true),
+        ("Smorgasbord", smorg, :enzyme, true),
     ]
+    for n in (1_000, 10_000)
+        data = randn(rng, n)
+        loop = loop_univariate(n) | (; o=data)
+        multi = multivariate(n) | (; o=data)
+        push!(combos, ("Loop univariate $(n ÷ 1_000)k", loop, :mooncake, true))
+        push!(combos, ("Multivariate $(n ÷ 1_000)k", multi, :mooncake, true))
+    end
+    lda_inst = lda(2, [1, 1, 1, 2, 2, 2], [1, 2, 3, 2, 1, 1])
+    push!(combos, ("Dynamic", dynamic(), :mooncake, true))
+    push!(combos, ("Submodel", parent(randn(rng)), :mooncake, true))
+    push!(combos, ("LDA", lda_inst, :reversediff, true))
+    return combos
+end
 
-    results_table = Tuple{
-        String,Int,String,Bool,Union{Float64,Missing},Union{Float64,Missing}
-    }[]
-
-    for (model_name, model, adbackend, islinked) in chosen_combinations
-        @info "Running benchmark for $model_name, $adbackend, $islinked"
-        logdensity_time, grad_over_logdensity = try
-            results = benchmark(model, adbackend, islinked)
-            @info " t(logdensity) = $(results.primal_time)"
-            @info " t(grad)       = $(results.grad_time)"
-            (results.primal_time, results.grad_time / results.primal_time)
+function run(; markdown::Bool=false)
+    combinations = build_combinations(StableRNG(23))
+    results = []
+    for (name, model, adbackend, islinked) in combinations
+        @info "Running benchmark for $name, $adbackend, $islinked"
+        dim, t_logd, ratio = try
+            r = benchmark(model, adbackend, islinked)
+            @info " t(logdensity) = $(r.primal_time)"
+            @info " t(grad)       = $(r.grad_time)"
+            (length(r.params), r.primal_time, r.grad_time / r.primal_time)
         catch e
             @info "benchmark errored: $e"
-            missing, missing
+            (model_dimension(model, islinked), missing, missing)
         end
-        push!(
-            results_table,
-            (
-                model_name,
-                model_dimension(model, islinked),
-                string(adbackend),
-                islinked,
-                logdensity_time,
-                grad_over_logdensity,
-            ),
-        )
+        push!(results, (; name, dim, adbackend=string(adbackend), islinked, t_logd, ratio))
     end
-
-    # Markdown mode wraps the text table in a fenced block so it renders
-    # monospaced when posted as a PR comment.
     markdown && println("```")
-    print_results(results_table)
+    print_results(results)
     markdown && println("```")
     return nothing
 end
 
-# Run with `julia --project=. benchmarks.jl markdown` to emit a fenced text
-# table to stdout, suitable for pasting into a PR comment. Run with no
-# arguments to pretty-print to the terminal.
-if ARGS == ["markdown"]
-    run(; markdown=true)
-elseif ARGS == []
-    run()
-else
-    error("invalid arguments: $(ARGS)")
+if abspath(PROGRAM_FILE) == @__FILE__
+    if ARGS == ["markdown"]
+        run(; markdown=true)
+    elseif ARGS == []
+        run()
+    else
+        error("invalid arguments: $(ARGS)")
+    end
 end
