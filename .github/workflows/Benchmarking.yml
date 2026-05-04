@@ -13,7 +13,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           ref: ${{ github.base_ref }}
-      - uses: julia-actions/setup-julia@v2
+      - uses: julia-actions/setup-julia@v3
         with:
           version: '1.11'
       - uses: julia-actions/cache@v3
@@ -38,7 +38,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           ref: ${{ github.event.pull_request.head.sha }}
-      - uses: julia-actions/setup-julia@v2
+      - uses: julia-actions/setup-julia@v3
         with:
           version: '1.11'
       - uses: julia-actions/cache@v3
@@ -61,7 +61,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           ref: ${{ github.event.pull_request.head.sha }}
-      - uses: julia-actions/setup-julia@v2
+      - uses: julia-actions/setup-julia@v3
         with:
           version: '1.11'
       - uses: julia-actions/cache@v3

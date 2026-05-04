@@ -226,7 +226,7 @@ function AbstractPPL.hasvalue(vnt::VarNamedTuple, vn::VarName, dist::LKJCholesky
     for k in keys(val)
         # VarNamedTuples have VarNames as keys, PartialArrays have Index optics.
         subvn = val isa VarNamedTuple ? prefix(k, vn) : AbstractPPL.append_optic(vn, k)
-        dval[subvn] = _getindex_optic(val, k)
+        dval[subvn] = _getindex_optic(val, k, subvn)
     end
     return AbstractPPL.hasvalue(dval, vn, dist)
 end
@@ -244,7 +244,7 @@ function AbstractPPL.getvalue(vnt::VarNamedTuple, vn::VarName, dist::LKJCholesky
     for k in keys(val)
         # VarNamedTuples have VarNames as keys, PartialArrays have Index optics.
         subvn = val isa VarNamedTuple ? prefix(k, vn) : AbstractPPL.append_optic(vn, k)
-        dval[subvn] = _getindex_optic(val, k)
+        dval[subvn] = _getindex_optic(val, k, subvn)
     end
     return AbstractPPL.getvalue(dval, vn, dist)
 end

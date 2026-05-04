@@ -1,6 +1,6 @@
 name = "DynamicPPL"
 uuid = "366bfd00-2699-11ea-058f-f148b4cae6d8"
-version = "0.41.6"
+version = "0.41.7"
 
 [deps]
 ADTypes = "47edcb42-4c32-4615-8424-f2b9edc5f35b"
@@ -32,6 +32,7 @@ Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 AbstractPPL = {url = "https://github.com/TuringLang/AbstractPPL.jl", rev = "evaluator-interface"}
 
 [weakdeps]
+ComponentArrays = "b0b7db55-cfe3-40fc-9ded-d10e2dbeff66"
 EnzymeCore = "f151be2c-9106-41f4-ab19-57ee4f262869"
 ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
 KernelAbstractions = "63c18a36-062a-441e-b654-da1e3ab1ce7c"
@@ -41,6 +42,7 @@ Mooncake = "da2b9cff-9c12-43a0-ae48-6db2b0edb7d6"
 ReverseDiff = "37e2e3b7-166d-5795-8a7a-e32c996b4267"
 
 [extensions]
+DynamicPPLComponentArraysExt = ["ComponentArrays"]
 DynamicPPLEnzymeCoreExt = ["EnzymeCore"]
 DynamicPPLForwardDiffExt = ["ForwardDiff"]
 DynamicPPLMCMCChainsExt = ["MCMCChains"]
@@ -57,6 +59,7 @@ BangBang = "0.4.1"
 Bijectors = "0.15.17"
 Chairmarks = "1.3.1"
 Compat = "4"
+ComponentArrays = "0.15"
 ConstructionBase = "1.5.4"
 Distributions = "0.25"
 DocStringExtensions = "0.9"

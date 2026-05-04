@@ -27,6 +27,7 @@ Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 Serialization = "9e88b42a-f829-5b0c-bbe9-9e923198166b"
 StableRNGs = "860ef19b-820b-49d6-a774-d7a799459cd3"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+ComponentArrays = "b0b7db55-cfe3-40fc-9ded-d10e2dbeff66"
 
 [sources]
 AbstractPPL = {rev = "evaluator-interface", url = "https://github.com/TuringLang/AbstractPPL.jl"}
@@ -39,6 +40,7 @@ AbstractMCMC = "5.10"
 AbstractPPL = "0.14"
 Accessors = "0.1"
 Aqua = "0.8"
+ComponentArrays = "0.15"
 BangBang = "0.4"
 Bijectors = "0.15.17"
 Chairmarks = "1"
