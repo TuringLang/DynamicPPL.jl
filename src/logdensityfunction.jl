@@ -541,7 +541,7 @@ function LogDensityProblems.logdensity_and_gradient(
     # `params` has to be converted to the same vector type that was used for AD preparation,
     # otherwise the preparation will not be valid.
     params = convert(get_input_vector_type(ldf), params)
-    return AbstractPPL.value_and_gradient(ldf._adprep, params)
+    return AbstractPPL.value_and_gradient!!(ldf._adprep, params)
 end
 
 function LogDensityProblems.capabilities(::Type{<:LogDensityFunction{M,Nothing}}) where {M}
