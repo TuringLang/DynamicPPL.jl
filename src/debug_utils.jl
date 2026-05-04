@@ -107,6 +107,15 @@ function DynamicPPL.accumulate_observe!!(
         @warn full_msg
         failed = true
     end
+    # Check for NaN's as well
+    if _has_nans(val)
+        msg =
+            "Encountered a NaN value on the left-hand side of an" *
+            " observe statement; this may indicate that your data" *
+            " contain NaN values."
+        @warn msg
+        failed = true
+    end
     # Check for Inf values, but only warn if the logpdf at that value is -Inf
     # (i.e., Inf is not in the support of the distribution)
     if _has_infs(val) && isinf(logpdf(right, val))
