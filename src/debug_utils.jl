@@ -71,7 +71,15 @@ Check if `x` is `NaN`, or contains any `NaN` values.
 _has_nans(x::NamedTuple) = any(_has_nans, x)
 _has_nans(x::AbstractArray) = any(_has_nans, x)
 _has_nans(x) = isnan(x)
-_has_nans(::Missing) = false
+"""
+    _has_infs(x)
+
+Check if `x` is `Inf` or `-Inf`, or contains any such values.
+"""
+_has_infs(x::NamedTuple) = any(_has_infs, x)
+_has_infs(x::AbstractArray) = any(_has_infs, x)
+_has_infs(x) = isinf(x)
+_has_infs(::Missing) = false
 
 function DynamicPPL.accumulate_assume!!(
     acc::DebugAccumulator, val, tval, logjac, vn::VarName, right::Distribution, template
@@ -98,12 +106,13 @@ function DynamicPPL.accumulate_observe!!(
         @warn full_msg
         failed = true
     end
-    # Check for NaN's as well
-    if _has_nans(val)
+    # Check for Inf values, but only warn if the logpdf at that value is -Inf
+    # (i.e., Inf is not in the support of the distribution)
+    if _has_infs(val) && isinf(logpdf(right, val))
         msg =
-            "Encountered a NaN value on the left-hand side of an" *
+            "Encountered an infinite value on the left-hand side of an" *
             " observe statement; this may indicate that your data" *
-            " contain NaN values."
+            " contain Inf or -Inf values."
         @warn msg
         failed = true
     end
