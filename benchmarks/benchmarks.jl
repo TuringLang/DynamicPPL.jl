@@ -235,10 +235,10 @@ function print_results(results)
     rows = map(pivoted) do g
         ratios = [format_ratio(g.ratios[b.key]) for b in backend_info]
         (
-            name = g.name,
-            dim = format_dim(g.dim),
-            linked = string(g.islinked),
-            primal = format_time(g.primal),
+            name=g.name,
+            dim=format_dim(g.dim),
+            linked=string(g.islinked),
+            primal=format_time(g.primal),
             ratios,
         )
     end
@@ -261,7 +261,9 @@ function print_results(results)
 
     center(s, w) = lpad(rpad(s, div(w + textwidth(s), 2)), w)
     println(repeat("=", total_w))
-    println(rpad("", stub_w) * gap * center("eval", eval_w) * gap * center("gradient", grad_w))
+    println(
+        rpad("", stub_w) * gap * center("eval", eval_w) * gap * center("gradient", grad_w)
+    )
     println(rpad("", stub_w) * gap * repeat("-", eval_w) * gap * repeat("-", grad_w))
 
     header =
