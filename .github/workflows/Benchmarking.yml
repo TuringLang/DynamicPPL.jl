@@ -53,20 +53,16 @@ jobs:
         with:
           issue-number: ${{ github.event.pull_request.number }}
           body: |
-            ## Benchmark Report
-
-            - this PR's head: `${{ github.event.pull_request.head.sha }}`
-
-            Absolute log-density times and grad/log-density ratios are
-            reported. To judge whether a PR helps or hurts, compare against
-            the latest comment on a recent main-branch PR run.
-
-            ### Computer Information
-            ```
-            ${{ env.VERSION_INFO }}
-            ```
+            ## Benchmark Report (${{ github.event.pull_request.head.sha }})
 
             ${{ env.BENCHMARK_OUTPUT }}
+
+            <details>
+            <summary><b>Computer Information</b></summary>
+            <pre>
+            ${{ env.VERSION_INFO }}
+            </pre>
+            </details>
 
           comment-id: ${{ steps.find_comment.outputs.comment-id }}
           edit-mode: replace

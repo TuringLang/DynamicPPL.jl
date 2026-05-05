@@ -284,21 +284,24 @@ function run(; markdown::Bool=false)
     if markdown
         gist = filter(r -> r.name == GIST_MODEL, results)
         if !isempty(gist)
-            println("### Gist: ", GIST_MODEL)
+            println("### ", GIST_MODEL)
             println()
             println("```")
             print_results(gist)
             println("```")
             println()
         end
-        println("<details>")
-        println("<summary>Full table (", length(results), " rows)</summary>")
+        println(
+            "Absolute log-density times and grad/log-density ratios are\n" *
+            "reported. To judge whether a PR helps or hurts, compare against\n" *
+            "the latest comment on a recent main-branch PR run.",
+        )
+        println()
+        println("### Full table (", length(results), " rows)")
         println()
         println("```")
         print_results(results)
         println("```")
-        println()
-        println("</details>")
     else
         print_results(results)
     end
