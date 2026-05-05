@@ -9,6 +9,7 @@ using Distributions:
     Normal,
     product_distribution,
     truncated
+using DifferentiationInterface: DifferentiationInterface
 using DynamicPPL: DynamicPPL, @model, to_submodel, VarInfo, LinkAll, UnlinkAll
 using DynamicPPL.TestUtils.AD: run_ad, NoTest
 using Enzyme: Enzyme
@@ -283,21 +284,18 @@ function run(; markdown::Bool=false)
     if markdown
         gist = filter(r -> r.name == GIST_MODEL, results)
         if !isempty(gist)
-            println("### Gist: ", GIST_MODEL)
+            println("### ", GIST_MODEL)
             println()
             println("```")
             print_results(gist)
             println("```")
             println()
         end
-        println("<details>")
-        println("<summary>Full table (", length(results), " rows)</summary>")
+        println("### Full table (", length(results), " rows)")
         println()
         println("```")
         print_results(results)
         println("```")
-        println()
-        println("</details>")
     else
         print_results(results)
     end
