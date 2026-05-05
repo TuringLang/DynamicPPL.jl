@@ -109,8 +109,7 @@ jobs:
               echo "**Main:** benchmark job did not succeed (\`${main_status}\`) — see workflow logs"
             fi
             echo ""
-            echo "\`t(logdensity)\`: wall-clock time per log-density evaluation."
-            echo "\`t(grad)/t(logdensity)\`: AD overhead ratio, lower is better."
+            echo "_`primal` is shared \`t(logdensity)\`; AD-backend columns are \`t(grad)/t(logdensity)\` (lower is better)._"
             echo ""
             cat head/results.md
             echo ""
