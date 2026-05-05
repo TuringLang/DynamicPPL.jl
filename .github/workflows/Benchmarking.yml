@@ -102,7 +102,7 @@ jobs:
           {
             echo "## Benchmarks @ ${head_sha}"
             echo ""
-            echo "_AD-backend columns: \`t(grad)/t(logdensity)\`, lower is better._"
+            echo "_`primal` is shared \`t(logdensity)\`; AD-backend columns are \`t(grad)/t(logdensity)\` (lower is better)._"
             echo ""
             cat head/results.md
             echo ""

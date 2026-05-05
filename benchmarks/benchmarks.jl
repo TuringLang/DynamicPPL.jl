@@ -16,7 +16,6 @@ using Enzyme: Enzyme
 using ForwardDiff: ForwardDiff
 using LinearAlgebra: cholesky
 using Mooncake: Mooncake
-using PrettyTables: pretty_table
 using Printf: @sprintf
 using ReverseDiff: ReverseDiff
 using StableRNGs: StableRNG
@@ -215,9 +214,7 @@ function pivot(results, backends)
         rows = filter(r -> r.name == name && r.islinked == islinked, results)
         primals = collect(skipmissing(r.t_logd for r in rows))
         primal = isempty(primals) ? missing : minimum(primals)
-        ratios = Dict{String,Union{Float64,Missing}}(
-            string(b) => missing for b in backends
-        )
+        ratios = Dict{String,Union{Float64,Missing}}(string(b) => missing for b in backends)
         for r in rows
             ratios[r.adbackend] = r.ratio
         end
@@ -228,25 +225,75 @@ end
 function print_results(results)
     isempty(results) && return println("No benchmark results obtained.")
     pivoted = pivot(results, BACKENDS)
-    backend_strs = [string(b) for b in BACKENDS]
-    n_cols = 4 + length(backend_strs)
-    matrix = Matrix{Any}(undef, length(pivoted), n_cols)
-    for (i, g) in enumerate(pivoted)
-        matrix[i, 1] = g.name
-        matrix[i, 2] = format_dim(g.dim)
-        matrix[i, 3] = g.islinked
-        matrix[i, 4] = format_time(g.primal)
-        for (j, b) in enumerate(backend_strs)
-            matrix[i, 4 + j] = format_ratio(g.ratios[b])
-        end
+    backend_info = [
+        (key="forwarddiff", label="FwdDiff"),
+        (key="reversediff", label="RvsDiff"),
+        (key="mooncake", label="Mooncake"),
+        (key="enzyme", label="Enzyme"),
+    ]
+
+    rows = map(pivoted) do g
+        ratios = [format_ratio(g.ratios[b.key]) for b in backend_info]
+        (
+            name=g.name,
+            dim=format_dim(g.dim),
+            linked=string(g.islinked),
+            primal=format_time(g.primal),
+            ratios,
+        )
     end
-    return pretty_table(
-        matrix;
-        column_labels=["Model", "Dim", "Linked", "t(logdensity)", backend_strs...],
-        backend=:text,
-        fit_table_in_display_horizontally=false,
-        fit_table_in_display_vertically=false,
+
+    name_w = max(length("Model"), maximum(textwidth(r.name) for r in rows)) + 1
+    dim_w = max(length("dim"), maximum(textwidth(r.dim) for r in rows)) + 2
+    linked_w = max(length("linked"), maximum(textwidth(r.linked) for r in rows)) + 2
+    primal_w = max(length("primal"), maximum(textwidth(r.primal) for r in rows)) + 2
+    ratio_ws = [
+        max(length(b.label), maximum(textwidth(r.ratios[i]) for r in rows)) + 2 for
+        (i, b) in enumerate(backend_info)
+    ]
+
+    gap = "  "
+    gap_w = textwidth(gap)
+    stub_w = name_w + dim_w + linked_w + 2 * gap_w
+    eval_w = primal_w
+    grad_w = sum(ratio_ws) + gap_w * (length(ratio_ws) - 1)
+    total_w = stub_w + gap_w + eval_w + gap_w + grad_w
+
+    center(s, w) = lpad(rpad(s, div(w + textwidth(s), 2)), w)
+    println(repeat("=", total_w))
+    println(
+        rpad("", stub_w) * gap * center("eval", eval_w) * gap * center("gradient", grad_w)
     )
+    println(rpad("", stub_w) * gap * repeat("-", eval_w) * gap * repeat("-", grad_w))
+
+    header =
+        rpad("Model", name_w) *
+        gap *
+        lpad("dim", dim_w) *
+        gap *
+        lpad("linked", linked_w) *
+        gap *
+        lpad("primal", primal_w) *
+        gap *
+        join((lpad(b.label, w) for (b, w) in zip(backend_info, ratio_ws)), gap)
+    println(header)
+    println(repeat("-", total_w))
+
+    for r in rows
+        row =
+            rpad(r.name, name_w) *
+            gap *
+            lpad(r.dim, dim_w) *
+            gap *
+            lpad(r.linked, linked_w) *
+            gap *
+            lpad(r.primal, primal_w) *
+            gap *
+            join((lpad(x, w) for (x, w) in zip(r.ratios, ratio_ws)), gap)
+        println(row)
+    end
+    println(repeat("=", total_w))
+    return nothing
 end
 
 #
