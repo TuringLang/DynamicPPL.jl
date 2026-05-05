@@ -331,12 +331,6 @@ function build_combinations(rng)
     return combos
 end
 
-# Representative model whose 8 rows are surfaced as the at-a-glance "gist"
-# in markdown mode. `Smorgasbord` covers the broadest set of DPPL features
-# (scalar/vector/multivariate variables, `~`, `.~`, loops, observations as
-# both arguments and literals), so it is the most informative single row band.
-const GIST_MODEL = "Smorgasbord"
-
 function run(; markdown::Bool=false)
     combinations = build_combinations(StableRNG(23))
     total = length(combinations)
@@ -357,17 +351,6 @@ function run(; markdown::Bool=false)
         push!(results, (; name, dim, adbackend=string(adbackend), islinked, t_logd, ratio))
     end
     if markdown
-        gist = filter(r -> r.name == GIST_MODEL, results)
-        if !isempty(gist)
-            println("### ", GIST_MODEL)
-            println()
-            println("```")
-            print_results(gist)
-            println("```")
-            println()
-        end
-        println("### Full table (", length(results), " rows)")
-        println()
         println("```")
         print_results(results)
         println("```")
