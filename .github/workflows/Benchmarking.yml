@@ -116,7 +116,7 @@ jobs:
             else
               echo "Each row times one of DynamicPPL's reference models on this PR's head. \`Dim\` is the parameter count; \`Linked\` is \`true\` when parameters have been mapped to unconstrained space. \`t(logdensity)\` is the wall-clock time for one log-density evaluation. The AD (automatic differentiation) backend columns express gradient time as a multiple of \`t(logdensity)\` — a value of \`10\` means computing the gradient takes 10× as long as the log-density. Lower is better throughout; \`err\` means the backend errored on that model."
               echo ""
-              echo "_Main benchmark job did not succeed (\`${main_status}\`) — see workflow logs._"
+              echo "Main benchmark job did not succeed (\`${main_status}\`) — see workflow logs."
               echo ""
             fi
             echo "<details><summary>Environment</summary>"
