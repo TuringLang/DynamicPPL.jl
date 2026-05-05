@@ -291,12 +291,6 @@ function run(; markdown::Bool=false)
             println("```")
             println()
         end
-        println(
-            "Absolute log-density times and grad/log-density ratios are\n" *
-            "reported. To judge whether a PR helps or hurts, compare against\n" *
-            "the latest comment on a recent main-branch PR run.",
-        )
-        println()
         println("### Full table (", length(results), " rows)")
         println()
         println("```")

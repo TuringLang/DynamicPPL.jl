@@ -3,12 +3,26 @@ name: Benchmarking
 on:
   pull_request:
 
+# Needed so `peter-evans/create-or-update-comment` can post on PRs from forks
+# (default GITHUB_TOKEN is read-only for fork pull_requests).
+permissions:
+  pull-requests: write
+
+# Cancel in-flight runs on the same PR when a new commit arrives. Benchmark
+# jobs are slow (~10min each), so back-to-back force-pushes would otherwise
+# spawn parallel runs that race to post the comment.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref || github.run_id }}
+  cancel-in-progress: ${{ startsWith(github.ref, 'refs/pull/') }}
+
 jobs:
-  benchmark:
-    # Pinned (rather than `ubuntu-latest`) so that successive runs land on the
-    # same VM family. GitHub silently rotates `latest`, which changes the noise
-    # floor between runs and makes timings hard to compare across PRs.
+  benchmark-pr:
+    # OS pinned (rather than `ubuntu-latest`) so that successive runs land on
+    # the same VM family — GitHub silently rotates `latest` and the noise
+    # floor changes between runs. Julia version pinned for the same reason:
+    # comparing timings under different compiler versions is meaningless.
     runs-on: ubuntu-22.04
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v6
         with:
@@ -22,23 +36,100 @@ jobs:
         working-directory: ./benchmarks
         run: |
           julia --project=. -e 'using Pkg; Pkg.instantiate()'
+          julia -e 'using InteractiveUtils; versioninfo()' > version_info.txt
+          # `tee` so the table also appears in the workflow log at-a-glance.
+          julia --project=. benchmarks.jl markdown | tee results.md
 
-          version_info=$(julia -e 'using InteractiveUtils; versioninfo()')
+      - uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-pr
+          path: |
+            benchmarks/results.md
+            benchmarks/version_info.txt
 
-          # Capture the markdown-mode benchmark output. The `tee` keeps it in
-          # the workflow log too, so a failure during comment posting does not
-          # lose the numbers.
-          results_file=$(mktemp)
-          julia --project=. benchmarks.jl markdown | tee "$results_file"
+  benchmark-main:
+    # Tracks main's moving HEAD — the displayed main SHA may shift between
+    # successive re-runs of the same PR if main advances in the interim.
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    outputs:
+      sha: ${{ steps.mainsha.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+      - id: mainsha
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - uses: julia-actions/setup-julia@v3
+        with:
+          version: '1.11'
+      - uses: julia-actions/cache@v3
 
+      - name: Run benchmarks
+        working-directory: ./benchmarks
+        run: |
+          julia --project=. -e 'using Pkg; Pkg.instantiate()'
+          julia --project=. benchmarks.jl markdown | tee results.md
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-main
+          path: benchmarks/results.md
+
+  post-comment:
+    needs: [benchmark-pr, benchmark-main]
+    # Post the comment as long as the PR-head bench succeeded. If the main
+    # bench failed (e.g. transitionally, before this PR's bench changes are on
+    # main), the comment still goes up with a note in place of main's numbers.
+    if: ${{ !cancelled() && needs.benchmark-pr.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: benchmark-pr
+          path: head
+      - uses: actions/download-artifact@v4
+        if: needs.benchmark-main.result == 'success'
+        with:
+          name: benchmark-main
+          path: main
+
+      - name: Build comment body
+        run: |
+          head_sha='${{ github.event.pull_request.head.sha }}'
+          main_sha='${{ needs.benchmark-main.outputs.sha }}'
+          main_status='${{ needs.benchmark-main.result }}'
           {
-            echo "VERSION_INFO<<DPPL_BENCH_EOF"
-            echo "$version_info"
-            echo "DPPL_BENCH_EOF"
-            echo "BENCHMARK_OUTPUT<<DPPL_BENCH_EOF"
-            cat "$results_file"
-            echo "DPPL_BENCH_EOF"
-          } >> "$GITHUB_ENV"
+            echo "## Benchmark Report"
+            echo ""
+            echo "**PR head:** \`${head_sha}\`  "
+            if [[ "$main_status" == "success" ]]; then
+              echo "**Main:** \`${main_sha}\` (foldout below)"
+            else
+              echo "**Main:** benchmark job did not succeed (\`${main_status}\`) — see workflow logs"
+            fi
+            echo ""
+            echo "\`t(logdensity)\`: wall-clock time per log-density evaluation."
+            echo "\`t(grad)/t(logdensity)\`: AD overhead ratio, lower is better."
+            echo ""
+            cat head/results.md
+            echo ""
+            if [[ "$main_status" == "success" ]]; then
+              echo "<details>"
+              echo "<summary><b>Main branch results</b></summary>"
+              echo ""
+              cat main/results.md
+              echo ""
+              echo "</details>"
+              echo ""
+            fi
+            echo "<details>"
+            echo "<summary><b>Computer Information</b></summary>"
+            echo "<pre>"
+            cat head/version_info.txt
+            echo "</pre>"
+            echo "</details>"
+          } > body.md
 
       - name: Find existing benchmark comment
         uses: peter-evans/find-comment@v4
@@ -52,17 +143,6 @@ jobs:
         uses: peter-evans/create-or-update-comment@v5
         with:
           issue-number: ${{ github.event.pull_request.number }}
-          body: |
-            ## Benchmark Report (${{ github.event.pull_request.head.sha }})
-
-            ${{ env.BENCHMARK_OUTPUT }}
-
-            <details>
-            <summary><b>Computer Information</b></summary>
-            <pre>
-            ${{ env.VERSION_INFO }}
-            </pre>
-            </details>
-
+          body-path: body.md
           comment-id: ${{ steps.find_comment.outputs.comment-id }}
           edit-mode: replace
