@@ -111,6 +111,8 @@ jobs:
             echo ""
             cat head/results.md
             echo ""
+            echo "Rows marked \`*\` have \`t(logdensity)\` below about 100 ns; their ratios can be dominated by timer floor, fixed overhead, and run-to-run variation. For those rows, raw \`t(grad)\` is more meaningful than \`t(grad)/t(logdensity)\`."
+            echo ""
             if [[ "$main_status" == "success" ]]; then
               echo "<details><summary>Main @ ${main_sha}</summary>"
               echo ""
