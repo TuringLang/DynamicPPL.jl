@@ -100,32 +100,24 @@ jobs:
           main_sha='${{ needs.benchmark-main.outputs.sha }}'
           main_status='${{ needs.benchmark-main.result }}'
           {
-            echo "## Benchmark Report (${head_sha})"
+            echo "## Benchmarks @ ${head_sha}"
             echo ""
-            echo "\`t(logdensity)\`: wall-clock time per log-density evaluation."
-            echo "\`t(grad)/t(logdensity)\`: AD overhead ratio, lower is better."
+            echo "_AD-backend columns: \`t(grad)/t(logdensity)\`, lower is better._"
             echo ""
             cat head/results.md
             echo ""
             if [[ "$main_status" == "success" ]]; then
-              echo "### Main branch results (${main_sha})"
-              echo ""
-              echo "<details>"
-              echo "<summary>Click to see.</summary>"
+              echo "<details><summary>Main @ ${main_sha}</summary>"
               echo ""
               cat main/results.md
               echo ""
               echo "</details>"
               echo ""
             else
-              echo "### Main branch results"
-              echo ""
-              echo "Benchmark job for main did not succeed (\`${main_status}\`) — see workflow logs."
+              echo "_Main bench did not succeed (\`${main_status}\`); see workflow logs._"
               echo ""
             fi
-            echo "### Computer Information"
-            echo "<details>"
-            echo "<summary>Click to see.</summary>"
+            echo "<details><summary>Environment</summary>"
             echo "<pre>"
             cat head/version_info.txt
             echo "</pre>"
