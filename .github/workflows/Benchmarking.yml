@@ -100,30 +100,26 @@ jobs:
           main_sha='${{ needs.benchmark-main.outputs.sha }}'
           main_status='${{ needs.benchmark-main.result }}'
           {
-            echo "## Benchmark Report"
-            echo ""
-            echo "**PR head:** \`${head_sha}\`  "
-            if [[ "$main_status" == "success" ]]; then
-              echo "**Main:** \`${main_sha}\` (foldout below)"
-            else
-              echo "**Main:** benchmark job did not succeed (\`${main_status}\`) — see workflow logs"
-            fi
-            echo ""
-            echo "_`primal` is shared \`t(logdensity)\`; AD-backend columns are \`t(grad)/t(logdensity)\` (lower is better)._"
+            echo "## Benchmarks @ ${head_sha}"
             echo ""
             cat head/results.md
             echo ""
             if [[ "$main_status" == "success" ]]; then
-              echo "<details>"
-              echo "<summary><b>Main branch results</b></summary>"
+              echo "Each row times one of DynamicPPL's reference models on this PR's head. \`Dim\` is the parameter count; \`Linked\` is \`true\` when parameters have been mapped to unconstrained space. \`t(logdensity)\` is the wall-clock time for one log-density evaluation. The AD (automatic differentiation) backend columns express gradient time as a multiple of \`t(logdensity)\` — a value of \`10\` means computing the gradient takes 10× as long as the log-density. Lower is better throughout; \`err\` means the backend errored on that model. Compare against \`main\` below to spot regressions."
+              echo ""
+              echo "<details><summary>Main @ ${main_sha}</summary>"
               echo ""
               cat main/results.md
               echo ""
               echo "</details>"
               echo ""
+            else
+              echo "Each row times one of DynamicPPL's reference models on this PR's head. \`Dim\` is the parameter count; \`Linked\` is \`true\` when parameters have been mapped to unconstrained space. \`t(logdensity)\` is the wall-clock time for one log-density evaluation. The AD (automatic differentiation) backend columns express gradient time as a multiple of \`t(logdensity)\` — a value of \`10\` means computing the gradient takes 10× as long as the log-density. Lower is better throughout; \`err\` means the backend errored on that model."
+              echo ""
+              echo "_Main benchmark job did not succeed (\`${main_status}\`) — see workflow logs._"
+              echo ""
             fi
-            echo "<details>"
-            echo "<summary><b>Computer Information</b></summary>"
+            echo "<details><summary>Environment</summary>"
             echo "<pre>"
             cat head/version_info.txt
             echo "</pre>"
