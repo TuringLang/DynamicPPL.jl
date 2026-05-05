@@ -291,11 +291,14 @@ function run(; markdown::Bool=false)
             println("```")
             println()
         end
-        println("### Full table (", length(results), " rows)")
+        println("<details>")
+        println("<summary>Full table (", length(results), " rows)</summary>")
         println()
         println("```")
         print_results(results)
         println("```")
+        println()
+        println("</details>")
     else
         print_results(results)
     end
