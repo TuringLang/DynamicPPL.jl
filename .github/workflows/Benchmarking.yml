@@ -102,11 +102,11 @@ jobs:
           {
             echo "## Benchmarks @ ${head_sha}"
             echo ""
-            echo "_`primal` is shared \`t(logdensity)\`; AD-backend columns are \`t(grad)/t(logdensity)\` (lower is better)._"
-            echo ""
             cat head/results.md
             echo ""
             if [[ "$main_status" == "success" ]]; then
+              echo "Each row times one of DynamicPPL's reference models on this PR's head. \`Dim\` is the parameter count; \`Linked\` is \`true\` when parameters have been mapped to unconstrained space. \`t(logdensity)\` is the wall-clock time for one log-density evaluation. The AD (automatic differentiation) backend columns express gradient time as a multiple of \`t(logdensity)\` — a value of \`10\` means computing the gradient takes 10× as long as the log-density. Lower is better throughout; \`err\` means the backend errored on that model. Compare against \`main\` below to spot regressions."
+              echo ""
               echo "<details><summary>Main @ ${main_sha}</summary>"
               echo ""
               cat main/results.md
@@ -114,7 +114,9 @@ jobs:
               echo "</details>"
               echo ""
             else
-              echo "_Main bench did not succeed (\`${main_status}\`); see workflow logs._"
+              echo "Each row times one of DynamicPPL's reference models on this PR's head. \`Dim\` is the parameter count; \`Linked\` is \`true\` when parameters have been mapped to unconstrained space. \`t(logdensity)\` is the wall-clock time for one log-density evaluation. The AD (automatic differentiation) backend columns express gradient time as a multiple of \`t(logdensity)\` — a value of \`10\` means computing the gradient takes 10× as long as the log-density. Lower is better throughout; \`err\` means the backend errored on that model."
+              echo ""
+              echo "Main benchmark job did not succeed (\`${main_status}\`) — see workflow logs."
               echo ""
             fi
             echo "<details><summary>Environment</summary>"
