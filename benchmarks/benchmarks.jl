@@ -179,11 +179,6 @@ end
 #  Reporting
 #
 
-# https://github.com/chalk-lab/Mooncake.jl/blob/main/bench/run_benchmarks.jl
-const COLNAMES = [
-    "Model", "Dim", "AD Backend", "Linked", "t(logdensity)", "t(grad)/t(logdensity)"
-]
-
 fix_sig_fig(t) = string(round(t; sigdigits=3))
 function format_time(t::Float64)
     t < 1e-6 && return fix_sig_fig(t * 1e9) * " ns"
@@ -199,22 +194,55 @@ format_ratio(::Missing) = "err"
 format_dim(d::Integer) = string(d)
 format_dim(::Missing) = "err"
 
+# Pivot so each (Model, Dim, Linked) row spans all backends. A long-form table
+# (one row per (model, linked, backend)) reads as four near-duplicate rows
+# differing only in the backend column; pivoting puts the backends side-by-side
+# where the ratios are actually compared. `t(logdensity)` does not depend on
+# the AD backend (it is the primal model evaluation), so the four primal
+# samples per group are noise around a common value — take the minimum, which
+# is the most stable estimate (see `run_ad`'s benchmark docstring).
+function pivot(results, backends)
+    keys_in_order = Tuple{String,Bool}[]
+    seen = Set{Tuple{String,Bool}}()
+    for r in results
+        k = (r.name, r.islinked)
+        if !(k in seen)
+            push!(seen, k)
+            push!(keys_in_order, k)
+        end
+    end
+    return map(keys_in_order) do (name, islinked)
+        rows = filter(r -> r.name == name && r.islinked == islinked, results)
+        primals = collect(skipmissing(r.t_logd for r in rows))
+        primal = isempty(primals) ? missing : minimum(primals)
+        ratios = Dict{String,Union{Float64,Missing}}(
+            string(b) => missing for b in backends
+        )
+        for r in rows
+            ratios[r.adbackend] = r.ratio
+        end
+        (; name, dim=first(rows).dim, islinked, primal, ratios)
+    end
+end
+
 function print_results(results)
     isempty(results) && return println("No benchmark results obtained.")
-    rows = map(results) do r
-        (
-            r.name,
-            format_dim(r.dim),
-            r.adbackend,
-            r.islinked,
-            format_time(r.t_logd),
-            format_ratio(r.ratio),
-        )
+    pivoted = pivot(results, BACKENDS)
+    backend_strs = [string(b) for b in BACKENDS]
+    n_cols = 4 + length(backend_strs)
+    matrix = Matrix{Any}(undef, length(pivoted), n_cols)
+    for (i, g) in enumerate(pivoted)
+        matrix[i, 1] = g.name
+        matrix[i, 2] = format_dim(g.dim)
+        matrix[i, 3] = g.islinked
+        matrix[i, 4] = format_time(g.primal)
+        for (j, b) in enumerate(backend_strs)
+            matrix[i, 4 + j] = format_ratio(g.ratios[b])
+        end
     end
-    matrix = hcat(Iterators.map(collect, zip(rows...))...)
     return pretty_table(
         matrix;
-        column_labels=COLNAMES,
+        column_labels=["Model", "Dim", "Linked", "t(logdensity)", backend_strs...],
         backend=:text,
         fit_table_in_display_horizontally=false,
         fit_table_in_display_vertically=false,
@@ -256,12 +284,6 @@ function build_combinations(rng)
     return combos
 end
 
-# Representative model whose 8 rows are surfaced as the at-a-glance "gist"
-# in markdown mode. `Smorgasbord` covers the broadest set of DPPL features
-# (scalar/vector/multivariate variables, `~`, `.~`, loops, observations as
-# both arguments and literals), so it is the most informative single row band.
-const GIST_MODEL = "Smorgasbord"
-
 function run(; markdown::Bool=false)
     combinations = build_combinations(StableRNG(23))
     total = length(combinations)
@@ -282,23 +304,9 @@ function run(; markdown::Bool=false)
         push!(results, (; name, dim, adbackend=string(adbackend), islinked, t_logd, ratio))
     end
     if markdown
-        gist = filter(r -> r.name == GIST_MODEL, results)
-        if !isempty(gist)
-            println("### ", GIST_MODEL)
-            println()
-            println("```")
-            print_results(gist)
-            println("```")
-            println()
-        end
-        println("<details>")
-        println("<summary>Full table (", length(results), " rows)</summary>")
-        println()
         println("```")
         print_results(results)
         println("```")
-        println()
-        println("</details>")
     else
         print_results(results)
     end
