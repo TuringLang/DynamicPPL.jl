@@ -190,8 +190,7 @@ one representation for named parameter collections.
   - **Use `@varname(x)`, not `:x` or `VarName(:x)`.** The macro constructs the
     correct optic for indexed access. `@varname(x[1])` creates a `VarName` with
     an index lens; constructing this manually is error-prone.
-  - **Use subsumption for containment checks.** `subsumes(@varname(x),
-    @varname(x[1]))` is `true`, but the two names are not equal. Conditioning
+  - **Use subsumption for containment checks.** `subsumes(@varname(x), @varname(x[1]))` is `true`, but the two names are not equal. Conditioning
     on `@varname(x)` matches sub-indices; conditioning on `@varname(x[1])`
     matches only that index.
   - Treat `VarName` display, sorting, prefixing, unprefixing, and serialization
