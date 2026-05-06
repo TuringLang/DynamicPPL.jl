@@ -53,7 +53,7 @@ DynamicPPLReverseDiffExt = ["ReverseDiff"]
 [compat]
 ADTypes = "1"
 AbstractMCMC = "5.14"
-AbstractPPL = "0.14.1"
+AbstractPPL = "0.15"
 Accessors = "0.1"
 BangBang = "0.4.1"
 Bijectors = "0.15.17"
