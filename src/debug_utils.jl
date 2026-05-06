@@ -14,8 +14,9 @@ export check_model, has_static_constraints
 
 An accumulator which checks calls at each tilde-statement for potential errors.
 
-Right now this accumulator only checks for `NaN` values on the left-hand side of observe
-statements, and partially `missing` values on the left-hand side of observe statements.
+Right now this accumulator checks for `NaN` and `±Inf` values on the left-hand 
+side of observe statements, and partially `missing` values on the left-hand side of observe statements.
+
 
 Other checks in `check_model` are accomplished via different accumulators.
 """
@@ -149,6 +150,7 @@ needed.
 - Repeated usage of the same or overlapping VarNames
 
 - `NaN` on the left-hand side of observe statements
+- `±Inf` on the left-hand side of observe statements (when the value is not in the support of the distribution)
 
 - (if `fail_if_discrete` is set) Usage of discrete distributions
 
