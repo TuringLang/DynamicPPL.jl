@@ -15,7 +15,8 @@ export check_model, has_static_constraints
 An accumulator which checks calls at each tilde-statement for potential errors.
 
 Right now this accumulator checks for `NaN` and `±Inf` values on the left-hand 
-side of observe statements, and partially `missing` values on the left-hand side of observe statements.
+side of observe statements, and partially `missing` values on the left-hand side
+of observe statements.
 
 
 Other checks in `check_model` are accomplished via different accumulators.
