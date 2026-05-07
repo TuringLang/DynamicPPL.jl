@@ -1,6 +1,6 @@
 # JULIA.md
 
-Day-to-day Julia practices.
+Shared day-to-day Julia practices. DynamicPPL-specific review notes live in `AGENTS.md`; newcomer context lives in `docs/src/onboarding.md`.
 
 ## Engineering
 
@@ -8,7 +8,7 @@ Day-to-day Julia practices.
   - Preserve caller types with `zero(x)`, `one(x)`, `oftype`, `promote`, `promote_type` — especially for `Float32`, `BigFloat`, AD numbers, units, and GPU scalars.
   - Struct fields should be concrete via type parameters, not `field::Number` or `field::AbstractVector`.
   - Julia doesn't specialize on `Type`, `Function`, or `Vararg` arguments. Use `f(x, ::Type{T}) where {T}` when the type itself must specialize.
-  - Check inference (`@inferred`, `@code_warntype`) when touching compiler output, VarNamedTuples, accumulators, transforms, or log-density paths.
+  - Check inference (`@inferred`, `@code_warntype`) when touching generated code, custom containers, accumulators, transforms, or log-density paths.
   - Benchmark generated functions, macro output, and hot-path refactors before assuming a simpler form is equivalent.
   - Prefer dispatch and small protocol functions over large conditional blocks.
   - Avoid broad Base overloads — they create method ambiguities and accidental API.

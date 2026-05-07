@@ -2,6 +2,7 @@
 
 This page summarizes recurring lessons from DynamicPPL and AbstractPPL history
 for contributors who are new to Julia, Turing.jl, or DynamicPPL internals.
+It is a starting point, not a checklist. For day-to-day Julia style, see `JULIA.md`; for coding-agent instructions, see `AGENTS.md`.
 
 The source pass covered GitHub history available on 2026-05-06. For
 DynamicPPL, that included 422 issues, 957 pull requests, 6,958 issue/PR
@@ -152,28 +153,11 @@ Evaluator APIs should separate structural preparation from AD-specific
 preparation. `!!` evaluator and gradient APIs may reuse internal buffers, so
 copy results before storing them long term.
 
-## Julia Engineering Practices
+## Working in Julia
 
-  - Measure performance-sensitive changes. Small edits can affect inference,
-    allocations, invalidation, and downstream packages.
-  - Check type stability with `@inferred`, `@code_warntype`, and focused tests.
-  - Benchmark generated functions, macro output, and hot-path refactors.
-  - Keep field types and collection eltypes concrete in hot paths.
-  - Avoid unnecessary static parameters. Julia specializes on most ordinary
-    argument types, but is conservative for `Type`, `Function`, and `Vararg`.
-  - Use `f(x, ::Type{T}) where {T}` when the type itself must specialize.
-  - Prefer dispatch and small protocol functions over large conditional blocks.
-  - Put backend-specific behaviour in package extensions or narrow integration
-    layers when possible.
-  - Keep interface packages lightweight. Avoid heavy dependencies unless the
-    interface truly owns them.
-  - Do not rely on transitive dependencies. Direct API use should have an
-    explicit dependency that can be version-bound and tested.
-  - Use accessors for downstream needs instead of exposing internal fields.
-  - Prefer `Base.maybeview` over eager slicing when indexed access should avoid
-    allocations but still support tuples and scalar indexing.
-  - Avoid fragile output-type prediction. When possible, compute an initial value
-    and allocate caches from the observed value.
+DynamicPPL code often sits on hot paths for inference and AD. Small edits can change inference, allocations, invalidation, or downstream package behaviour, so performance-sensitive changes need measurement rather than intuition.
+
+The general rules live in `JULIA.md`. The ones most likely to matter here are generic numeric code, concrete storage types, deterministic doctests, extension-based backend integrations, and type-stability checks for compiler output, `VarNamedTuple`s, accumulators, transforms, and log-density paths.
 
 ## Copying, Accumulators, and Threading
 
@@ -190,36 +174,11 @@ Avoid designs that depend on `Threads.threadid()` indexing. Promote accumulator
 storage when thread-safe evaluation must hold AD tracer types. Treat threaded
 assume support as subtle unless current docs and tests cover the exact case.
 
-## Documentation, Tests, and CI
+## Getting a PR Ready
 
-  - Keep test files self-contained.
-  - Use `DynamicPPL.TestUtils` models with known ground truth when possible.
-  - Add nested-submodel tests for contexts, prefixes, conditioning, or fixing.
-  - Add AD tests for log-density, transform, vector-parameter, or `run_ad`
-    changes.
-  - Add type-stability or allocation tests for hot paths.
-  - Add round-trip tests for flattening and unflattening changes.
-  - Run JuliaFormatter v1 with Blue style before submitting.
-  - Keep doctests deterministic. Use `StableRNGs` when examples print random
-    values.
-  - Use plain `julia` blocks for examples that are illustrative but should not be
-    checked.
-  - Put dependencies in the narrowest environment that owns them: runtime,
-    extension, test, or docs.
-  - Treat docs, Aqua, JET, formatting, and extension-loading failures as part of
-    the change.
+For a first contribution, scope the change by deciding whether it is user-facing, internal, or downstream-facing through Turing.jl. Add the smallest tests that exercise the behaviour, then widen coverage only where the change touches shared machinery: nested submodels for contexts and prefixes, AD backends for log-density or transform paths, round trips for flattening and unflattening, and type-stability or allocation checks for hot paths.
 
-## API and Review Norms
-
-  - Breaking changes need explicit justification and deprecation or versioning
-    plans.
-  - Internal names are not public API just because downstream packages use them,
-    but Turing.jl impact still matters.
-  - Prefer composable operators over special-case syntax.
-  - Document and test new user-facing API with examples.
-  - Generated or AI-assisted code still needs manual understanding, focused
-    tests, and a clear rationale.
-  - Include benchmark numbers for performance-sensitive changes.
+Run JuliaFormatter before submitting and treat docs, Aqua, JET, formatting, and extension-loading failures as part of the change. Put dependencies in the narrowest environment that owns them: runtime, extension, test, or docs.
 
 ## Further Reading
 
@@ -259,16 +218,3 @@ assume support as subtle unless current docs and tests cover the exact case.
     [#925](https://github.com/TuringLang/DynamicPPL.jl/pull/925),
     [#1137](https://github.com/TuringLang/DynamicPPL.jl/pull/1137),
     [#1340](https://github.com/TuringLang/DynamicPPL.jl/pull/1340).
-
-## Before Opening a PR
-
-  - Identify whether the change is user-facing, internal, or downstream-facing.
-  - Add the smallest tests that exercise the behaviour.
-  - Add nested-submodel tests for context, prefix, conditioning, or fixing
-    changes.
-  - Run relevant AD backend tests for log-density or transform changes.
-  - Check type stability and allocations for hot paths.
-  - Check dependency placement and compat bounds when touching Project files,
-    extensions, docs, or tests.
-  - Include performance numbers for performance-sensitive changes.
-  - Document and test new user-facing API.
