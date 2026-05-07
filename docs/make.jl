@@ -38,6 +38,7 @@ makedocs(;
     ],
     pages=[
         "Home" => "index.md",
+        "Contributor onboarding" => "onboarding.md",
         "Conditioning and fixing" => "conditionfix.md",
         "VarNamedTuple" => [
             "vnt/motivation.md",
