@@ -122,6 +122,22 @@ end
         @test_throws ErrorException check_model(m; error_on_failure=true)
     end
 
+    @testset "Inf in data" begin
+        @model function demo_inf_in_data(x)
+            a ~ Normal()
+            for i in eachindex(x)
+                x[i] ~ Normal(a)
+            end
+        end
+        m = demo_inf_in_data([1.0, Inf])
+        @test_throws ErrorException check_model(m; error_on_failure=true)
+        m2 = demo_inf_in_data([1.0, -Inf])
+        @test_throws ErrorException check_model(m2; error_on_failure=true)
+        # Finite data should pass
+        m3 = demo_inf_in_data([1.0, 2.0])
+        @test check_model(m3; error_on_failure=true)
+    end
+
     @testset "incorrect use of condition" begin
         @testset "missing in multivariate" begin
             @model function demo_missing_in_multivariate(x)

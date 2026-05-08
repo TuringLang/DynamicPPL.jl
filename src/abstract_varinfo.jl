@@ -219,10 +219,12 @@ function setlogp!!(vi::AbstractVarInfo, logp::NamedTuple{names}) where {names}
 end
 
 function setlogp!!(vi::AbstractVarInfo, logp::Number)
-    return error("""
-                 `setlogp!!(vi::AbstractVarInfo, logp::Number)` is no longer supported. Use
-                 `setloglikelihood!!`, `setlogjac!!`, and/or `setlogprior!!` instead.
-                 """)
+    return error(
+        """
+        `setlogp!!(vi::AbstractVarInfo, logp::Number)` is no longer supported. Use
+        `setloglikelihood!!`, `setlogjac!!`, and/or `setlogprior!!` instead.
+        """
+    )
 end
 
 """
