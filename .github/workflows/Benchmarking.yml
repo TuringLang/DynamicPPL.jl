@@ -100,6 +100,7 @@ jobs:
           main_sha='${{ needs.benchmark-main.outputs.sha }}'
           main_status='${{ needs.benchmark-main.result }}'
           {
+            echo "<!-- benchmark-report -->"
             echo "## Benchmarks @ ${head_sha}"
             echo ""
             cat head/results.md
@@ -132,7 +133,7 @@ jobs:
         with:
           issue-number: ${{ github.event.pull_request.number }}
           comment-author: github-actions[bot]
-          body-includes: Benchmark Report
+          body-includes: "<!-- benchmark-report -->"
 
       - name: Create or update benchmark comment
         uses: peter-evans/create-or-update-comment@v5
