@@ -372,12 +372,14 @@ end
             x .~ [Normal(), Normal()]
             return x
         end
-        expected_error = ArgumentError("""
-            As of v0.35, DynamicPPL does not allow arrays of distributions in `.~`. \
-            Please use `product_distribution` instead, or write a loop if necessary. \
-            See https://github.com/TuringLang/DynamicPPL.jl/releases/tag/v0.35.0 for more \
-            details.\
-            """)
+        expected_error = ArgumentError(
+            """
+As of v0.35, DynamicPPL does not allow arrays of distributions in `.~`. \
+Please use `product_distribution` instead, or write a loop if necessary. \
+See https://github.com/TuringLang/DynamicPPL.jl/releases/tag/v0.35.0 for more \
+details.\
+"""
+        )
         @test_throws expected_error (vector_dot_tilde()(); true)
     end
 

@@ -29,10 +29,7 @@ makedocs(;
     format=Documenter.HTML(;
         size_threshold=2^10 * 400, mathengine=Documenter.HTMLWriter.MathJax3()
     ),
-    modules=[
-        DynamicPPL,
-        Base.get_extension(DynamicPPL, :DynamicPPLMCMCChainsExt),
-    ],
+    modules=[DynamicPPL, Base.get_extension(DynamicPPL, :DynamicPPLMCMCChainsExt)],
     pages=[
         "Home" => "index.md",
         "Contributor onboarding" => "onboarding.md",

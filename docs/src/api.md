@@ -158,7 +158,6 @@ When using `predict` with `MCMCChains.Chains`, you can control which variables a
   - `include_all=false` (default): Include only newly predicted variables
   - `include_all=true`: Include both parameters from the original chain and predicted variables
 
-
 ## Models within models
 
 One can include models and call another model inside the model function with `left ~ to_submodel(model)`.
