@@ -34,7 +34,7 @@ are not present in `vi` an error will be thrown.
 """
 function getlogp(vi::AbstractVarInfo)
     return (;
-        logprior = getlogprior(vi), logjac = getlogjac(vi), loglikelihood = getloglikelihood(vi),
+        logprior=getlogprior(vi), logjac=getlogjac(vi), loglikelihood=getloglikelihood(vi)
     )
 end
 
@@ -47,7 +47,7 @@ Update the `AccumulatorTuple` of `vi` to `accs`, mutating if it makes sense.
 `setaccs!!(vi:AbstractVarInfo, accs::AccumulatorTuple) should be implemented by each subtype
 of `AbstractVarInfo`.
 """
-function setaccs!!(vi::AbstractVarInfo, accs::NTuple{N, AbstractAccumulator}) where {N}
+function setaccs!!(vi::AbstractVarInfo, accs::NTuple{N,AbstractAccumulator}) where {N}
     return setaccs!!(vi, AccumulatorTuple(accs))
 end
 
@@ -184,7 +184,7 @@ Note that this function is not public.
 """
 function is_extracting_colon_eq_values(vi::AbstractVarInfo)
     return hasacc(vi, Val(RAW_VALUE_ACCNAME)) &&
-        is_extracting_colon_eq_values(getacc(vi, Val(RAW_VALUE_ACCNAME)).f)
+           is_extracting_colon_eq_values(getacc(vi, Val(RAW_VALUE_ACCNAME)).f)
 end
 
 """
@@ -296,13 +296,11 @@ function map_accumulator!!(func, vi::AbstractVarInfo, accname::Val)
 end
 
 function map_accumulator!!(::Any, ::AbstractVarInfo, ::Symbol)
-    return error(
-        """
-        The method map_accumulator!!(func, vi::AbstractVarInfo, accname::Symbol)
-        does not exist. For type stability reasons use
-        map_accumulator!!(func, vi::AbstractVarInfo, ::Val{accname}) instead.
-        """
-    )
+    return error("""
+                 The method map_accumulator!!(func, vi::AbstractVarInfo, accname::Symbol)
+                 does not exist. For type stability reasons use
+                 map_accumulator!!(func, vi::AbstractVarInfo, ::Val{accname}) instead.
+                 """)
 end
 
 """
@@ -315,7 +313,7 @@ is set to `true`, in which case this is silently ignored instead.
 
 See also: [`accloglikelihood!!`](@ref), [`acclogp!!`](@ref), [`getlogprior`](@ref), [`setlogprior!!`](@ref).
 """
-function acclogprior!!(vi::AbstractVarInfo, logp; ignore_missing_accumulator = false)
+function acclogprior!!(vi::AbstractVarInfo, logp; ignore_missing_accumulator=false)
     acc_name = Val(:LogPrior)
     return if ignore_missing_accumulator && !hasacc(vi, acc_name)
         vi
@@ -334,7 +332,7 @@ is set to `true`, in which case this is silently ignored instead.
 
 See also: [`getlogjac`](@ref), [`setlogjac!!`](@ref).
 """
-function acclogjac!!(vi::AbstractVarInfo, logjac; ignore_missing_accumulator = false)
+function acclogjac!!(vi::AbstractVarInfo, logjac; ignore_missing_accumulator=false)
     acc_name = Val(:LogJacobian)
     return if ignore_missing_accumulator && !hasacc(vi, acc_name)
         vi
@@ -354,7 +352,7 @@ is set to `true`, in which case this is silently ignored instead.
 See also: [`accloglikelihood!!`](@ref), [`acclogp!!`](@ref), [`getloglikelihood`](@ref),
 [`setloglikelihood!!`](@ref).
 """
-function accloglikelihood!!(vi::AbstractVarInfo, logp; ignore_missing_accumulator = false)
+function accloglikelihood!!(vi::AbstractVarInfo, logp; ignore_missing_accumulator=false)
     acc_name = Val(:LogLikelihood)
     return if ignore_missing_accumulator && !hasacc(vi, acc_name)
         vi
@@ -374,14 +372,14 @@ By default if the necessary accumulators are not in `vi` an error is thrown. If
 `ignore_missing_accumulator` is set to `true` then this is silently ignored instead.
 """
 function acclogp!!(
-        vi::AbstractVarInfo, logp::NamedTuple{names}; ignore_missing_accumulator = false
-    ) where {names}
+    vi::AbstractVarInfo, logp::NamedTuple{names}; ignore_missing_accumulator=false
+) where {names}
     if !(
-            names == (:logprior, :loglikelihood) ||
-                names == (:loglikelihood, :logprior) ||
-                names == (:logprior,) ||
-                names == (:loglikelihood,)
-        )
+        names == (:logprior, :loglikelihood) ||
+        names == (:loglikelihood, :logprior) ||
+        names == (:logprior,) ||
+        names == (:loglikelihood,)
+    )
         error("logp must have fields logprior and/or loglikelihood and no other fields.")
     end
     if haskey(logp, :logprior)
@@ -409,7 +407,7 @@ distribution(s) as a flattened `Vector`.
 The default implementation is to call [`internal_values_as_vector`](@ref).
 """
 Base.getindex(vi::AbstractVarInfo, ::Colon) = internal_values_as_vector(vi)
-function Base.getindex(::AbstractVarInfo, ::Union{VarName, AbstractVector{<:VarName}})
+function Base.getindex(::AbstractVarInfo, ::Union{VarName,AbstractVector{<:VarName}})
     throw(
         ArgumentError(
             "The method `varinfo[varname(s)]` has been removed in DynamicPPL v0.41: please see https://turinglang.org/DynamicPPL.jl/stable/migration/#Getting-parameter-values for information on how to update your code if needed.",
@@ -594,11 +592,11 @@ See docstring of [`subset(varinfo, vns)`](@ref) for examples.
 Base.merge(varinfo::AbstractVarInfo) = varinfo
 # Define 3-argument version so 2-argument version will error if not implemented.
 function Base.merge(
-        varinfo1::AbstractVarInfo,
-        varinfo2::AbstractVarInfo,
-        varinfo3::AbstractVarInfo,
-        varinfo_others::AbstractVarInfo...,
-    )
+    varinfo1::AbstractVarInfo,
+    varinfo2::AbstractVarInfo,
+    varinfo3::AbstractVarInfo,
+    varinfo_others::AbstractVarInfo...,
+)
     return merge(Base.merge(varinfo1, varinfo2), varinfo3, varinfo_others...)
 end
 
