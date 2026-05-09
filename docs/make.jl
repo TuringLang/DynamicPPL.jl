@@ -11,7 +11,6 @@ using AbstractPPL
 using Distributions
 using DocumenterMermaid
 using MCMCChains
-using MarginalLogDensities
 using AbstractMCMC: AbstractMCMC
 using Random
 
@@ -20,7 +19,6 @@ DocMeta.setdocmeta!(
     DynamicPPL, :DocTestSetup, :(using DynamicPPL, MCMCChains); recursive=true
 )
 # Need this to document a method which uses a type inside the extension
-DPPLMLDExt = Base.get_extension(DynamicPPL, :DynamicPPLMarginalLogDensitiesExt)
 
 links = InterLinks("AbstractPPL" => "https://turinglang.org/AbstractPPL.jl/stable/")
 
@@ -34,7 +32,6 @@ makedocs(;
     modules=[
         DynamicPPL,
         Base.get_extension(DynamicPPL, :DynamicPPLMCMCChainsExt),
-        Base.get_extension(DynamicPPL, :DynamicPPLMarginalLogDensitiesExt),
     ],
     pages=[
         "Home" => "index.md",
