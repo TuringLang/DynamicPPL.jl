@@ -281,6 +281,8 @@ using .DebugUtils
 include("test_utils.jl")
 
 include("deprecated.jl")
+# Extended in MarginalLogDensities.jl
+function marginalize end
 
 # Standard tag: Improves stacktraces
 # Ref: https://www.stochasticlifestyle.com/improved-forwarddiff-jl-stacktraces-with-package-tags/
