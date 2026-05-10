@@ -24,7 +24,6 @@ InitFromParams(::ParamsWithStats, ::Union{Nothing,AbstractInitStrategy})
 InitFromUniform
 InitFromVector
 InitFromVector(::AbstractVector{<:Real}, ::LogDensityFunction)
-InitFromVector(::MarginalLogDensities.MarginalLogDensity{<:DPPLMLDExt.LogDensityFunctionWrapper}, ::Union{AbstractVector,Nothing})
 ```
 
 However, sometimes you will need to implement your own initialisation strategy.

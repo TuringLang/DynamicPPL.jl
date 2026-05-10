@@ -28,7 +28,7 @@ DynamicPPL builds on AbstractPPL.jl for shared PPL interfaces such as `VarName`,
   - `VarName` (AbstractPPL): address for model variables, including nested fields/indices.
   - `VarNamedTuple` (`src/varnamedtuple.jl`): named-tuple-like parameter storage keyed by `VarName`.
   - `LogDensityFunction` (`src/logdensityfunction.jl`): bridge from named parameters to flat `AbstractVector{<:Real}` for samplers, optimisers, and AD via LogDensityProblems.jl.
-  - `ext/`: `DynamicPPLForwardDiffExt`, `DynamicPPLMooncakeExt`, `DynamicPPLReverseDiffExt`, `DynamicPPLEnzymeCoreExt`, `DynamicPPLComponentArraysExt`, `DynamicPPLMCMCChainsExt`, and `DynamicPPLMarginalLogDensitiesExt`.
+  - `ext/`: `DynamicPPLForwardDiffExt`, `DynamicPPLMooncakeExt`, `DynamicPPLReverseDiffExt`, `DynamicPPLEnzymeCoreExt`, `DynamicPPLComponentArraysExt`, and `DynamicPPLMCMCChainsExt`.
   - `DynamicPPL.TestUtils`: analytical test models (`logprior_true`, `loglikelihood_true`, etc.), `run_ad`, `ADResult`.
 
 ## DynamicPPL Invariants

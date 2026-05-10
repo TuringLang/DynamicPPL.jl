@@ -211,7 +211,6 @@ export AbstractVarInfo,
     @addlogprob!,
     check_model,
     set_logprob_type!,
-    marginalize,
     # Deprecated.
     generated_quantities,
     typed_identity
@@ -282,29 +281,8 @@ using .DebugUtils
 include("test_utils.jl")
 
 include("deprecated.jl")
-
-# Extended in MarginalLogDensitiesExt
+# Extended in MarginalLogDensities.jl
 function marginalize end
-if isdefined(Base.Experimental, :register_error_hint)
-    function __init__()
-        # Same for MarginalLogDensities.jl
-        Base.Experimental.register_error_hint(MethodError) do io, exc, argtypes, _
-            requires_mld =
-                exc.f === DynamicPPL.marginalize &&
-                length(argtypes) == 2 &&
-                argtypes[1] <: Model &&
-                argtypes[2] <: AbstractVector{<:Union{Symbol,<:VarName}}
-            if requires_mld
-                printstyled(
-                    io,
-                    "\n\n    `$(exc.f)` requires MarginalLogDensities.jl to be loaded.\n    Please run `using MarginalLogDensities` before calling `$(exc.f)`.\n";
-                    color=:cyan,
-                    bold=true,
-                )
-            end
-        end
-    end
-end
 
 # Standard tag: Improves stacktraces
 # Ref: https://www.stochasticlifestyle.com/improved-forwarddiff-jl-stacktraces-with-package-tags/
