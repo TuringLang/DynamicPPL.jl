@@ -343,7 +343,7 @@ function run_ad(
 
     # Calculate log-density and gradient with the backend of interest
     value, grad = logdensity_and_gradient(ldf, params)
-    # collect(): some backends (e.g. Enzyme) return non-Vector gradients
+    # Some AD backends (e.g. Enzyme) return non-Vector gradients; normalise to Vector.
     grad = collect(grad)
     verbose && println("       actual : $((value, grad))")
 

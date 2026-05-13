@@ -4,8 +4,6 @@ on:
   pull_request:
 
 permissions:
-  contents: read
-  issues: write
   pull-requests: write
 
 # Cancel in-flight runs on the same PR when a new commit arrives. Benchmark
