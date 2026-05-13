@@ -522,7 +522,7 @@ function (f::LogDensityAt)(params::AbstractVector{<:Real})
     )
 end
 
-function LogDensityProblems.logdensity(
+@inline function LogDensityProblems.logdensity(
     ldf::LogDensityFunction, params::AbstractVector{<:Real}
 )
     return logdensity_at(
@@ -535,7 +535,7 @@ function LogDensityProblems.logdensity(
     )
 end
 
-function LogDensityProblems.logdensity_and_gradient(
+@inline function LogDensityProblems.logdensity_and_gradient(
     ldf::LogDensityFunction, params::AbstractVector{<:Real}
 )
     # `params` has to be converted to the same vector type that was used for AD preparation,
