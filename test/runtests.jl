@@ -49,7 +49,6 @@ Random.seed!(100)
         include("transformed_values.jl")
         include("logdensityfunction.jl")
         @testset "extensions" begin
-            include("ext/DynamicPPLMarginalLogDensitiesExt.jl")
             include("ext/DynamicPPLMCMCChainsExt.jl")
         end
         @testset "ad" begin

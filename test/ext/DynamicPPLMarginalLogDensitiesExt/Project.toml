@@ -2,13 +2,20 @@
 ADTypes = "47edcb42-4c32-4615-8424-f2b9edc5f35b"
 AbstractPPL = "7a57a42e-76ec-4ea3-a279-07e840d6d9cf"
 Bijectors = "76274a88-744f-5084-9051-94815aaf08c4"
-DifferentiationInterface = "a0c0ee7d-e4b9-4e03-894e-1c5f64a51d63"
+Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
 DynamicPPL = "366bfd00-2699-11ea-058f-f148b4cae6d8"
-Enzyme = "7da242da-08ed-463a-9acd-ee780be4f1d9"
 ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
+MarginalLogDensities = "f0c3360a-fb8d-11e9-1194-5521fd7ee392"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [sources]
 AbstractPPL = {rev = "evaluator-interface", url = "https://github.com/TuringLang/AbstractPPL.jl"}
 Bijectors = {rev = "replace-di-with-abstractppl", url = "https://github.com/TuringLang/Bijectors.jl"}
 DynamicPPL = {path = "../../.."}
+
+[compat]
+ADTypes = "1"
+Bijectors = "0.15.17"
+Distributions = "0.25"
+ForwardDiff = "0.10.12, 1"
+MarginalLogDensities = "0.4"

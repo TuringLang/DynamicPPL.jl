@@ -80,3 +80,37 @@ jobs:
           files: lcov.info
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: true
+
+  reversediff:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: julia-actions/setup-julia@v3
+        with:
+          version: "1"
+
+      - uses: julia-actions/cache@v3
+
+      - name: Run AD with ReverseDiff on demo models
+        working-directory: test/integration/reversediff
+        run: |
+          julia --project=. --color=yes -e 'using Pkg; Pkg.instantiate()'
+          julia --project=. --color=yes main.jl
+
+  marginallogdensities:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: julia-actions/setup-julia@v3
+        with:
+          version: "1"
+
+      - uses: julia-actions/cache@v3
+
+      - name: Run MarginalLogDensities integration tests
+        working-directory: test/ext/DynamicPPLMarginalLogDensitiesExt
+        run: |
+          julia --project=. --color=yes -e 'using Pkg; Pkg.instantiate()'
+          julia --project=. --color=yes ../DynamicPPLMarginalLogDensitiesExt.jl
