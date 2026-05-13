@@ -231,7 +231,16 @@ struct LogDensityFunction{
             )
             # `x` was just constructed from the same range metadata stored in `problem`,
             # so the AD wrapper can skip its hot-path dimension validation.
-            AbstractPPL.prepare(adtype, problem, x; check_dims=false)
+            contexts = (
+                model, getlogdensity, ranges_and_transforms, transform_strategy, accs
+            )
+            AbstractPPL.prepare(
+                adtype,
+                problem,
+                x;
+                check_dims=false,
+                raw_gradient_target=(logdensity_at, contexts),
+            )
         end
         return new{
             typeof(model),
