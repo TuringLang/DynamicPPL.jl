@@ -100,7 +100,7 @@ jobs:
           main_sha='${{ needs.benchmark-main.outputs.sha }}'
           main_status='${{ needs.benchmark-main.result }}'
           {
-            echo "<!-- benchmark-report:begin -->"
+            echo "<!-- benchmark-report -->"
             echo "## Benchmarks @ ${head_sha}"
             echo ""
             echo "### Performance"
@@ -129,7 +129,7 @@ jobs:
             cat head/version_info.txt
             echo "</pre>"
             echo "</details>"
-            echo "<!-- benchmark-report:end -->"
+            echo "<!-- benchmark-report -->"
           } > body.md
 
       - name: Find existing benchmark comment
@@ -138,7 +138,7 @@ jobs:
         with:
           issue-number: ${{ github.event.pull_request.number }}
           comment-author: github-actions[bot]
-          body-includes: '<!-- benchmark-report:begin -->'
+          body-includes: "<!-- benchmark-report -->"
 
       - name: Create or update benchmark comment
         uses: peter-evans/create-or-update-comment@v5
