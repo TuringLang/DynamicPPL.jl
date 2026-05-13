@@ -1,6 +1,7 @@
 using DynamicPPL.TestUtils: ALL_MODELS
 using DynamicPPL.TestUtils.AD: run_ad
 using ADTypes: AutoEnzyme
+using DifferentiationInterface: DifferentiationInterface
 using Test: @test, @testset
 import Enzyme: set_runtime_activity, Forward, Reverse, Const
 using ForwardDiff: ForwardDiff  # run_ad uses FD for correctness test

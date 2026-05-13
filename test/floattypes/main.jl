@@ -7,7 +7,8 @@
 #
 # and this should be looped over for `f64`, `f32`, `f16`, and `min`.
 
-using DynamicPPL, LogDensityProblems, ForwardDiff, Distributions, ADTypes, Test
+using DynamicPPL,
+    DifferentiationInterface, LogDensityProblems, ForwardDiff, Distributions, ADTypes, Test
 
 function floattypestr_to_type(floattypestr)
     if floattypestr == "f64"

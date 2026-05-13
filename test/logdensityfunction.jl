@@ -13,6 +13,7 @@ using LogDensityProblems: LogDensityProblems
 using Random: Xoshiro
 using StableRNGs: StableRNG
 
+using DifferentiationInterface: DifferentiationInterface
 using ForwardDiff: ForwardDiff
 using Mooncake: Mooncake
 
