@@ -30,6 +30,7 @@ Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [sources]
 AbstractPPL = {url = "https://github.com/TuringLang/AbstractPPL.jl", rev = "evaluator-interface"}
+Bijectors = {url = "https://github.com/TuringLang/Bijectors.jl", rev = "replace-di-with-abstractppl"}
 
 [weakdeps]
 ComponentArrays = "b0b7db55-cfe3-40fc-9ded-d10e2dbeff66"
