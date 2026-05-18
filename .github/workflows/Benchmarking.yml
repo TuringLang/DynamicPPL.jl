@@ -3,8 +3,6 @@ name: Benchmarking
 on:
   pull_request:
 
-# Needed so `peter-evans/create-or-update-comment` can post on PRs from forks
-# (default GITHUB_TOKEN is read-only for fork pull_requests).
 permissions:
   pull-requests: write
 
@@ -103,11 +101,17 @@ jobs:
             echo "<!-- benchmark-report -->"
             echo "## Benchmarks @ ${head_sha}"
             echo ""
+            echo "### Performance"
+            echo ""
+            echo "Performance Ratio:"
+            echo "Ratio of time to compute gradient and time to compute log-density."
+            echo "Warning: results are very approximate! See [benchmark notes](https://github.com/TuringLang/DynamicPPL.jl/tree/main/benchmarks#interpreting-results) for more context."
+            echo ""
             cat head/results.md
             echo ""
+            echo "Rows marked \`*\` have \`t(logdensity)\` below about 100 ns; their ratios can be dominated by timer floor, fixed overhead, and run-to-run variation. For those rows, raw \`t(grad)\` is more meaningful than \`t(grad)/t(logdensity)\`."
+            echo ""
             if [[ "$main_status" == "success" ]]; then
-              echo "Each row times one of DynamicPPL's reference models on this PR's head. \`Dim\` is the parameter count; \`Linked\` is \`true\` when parameters have been mapped to unconstrained space. \`t(logdensity)\` is the wall-clock time for one log-density evaluation. The AD (automatic differentiation) backend columns express gradient time as a multiple of \`t(logdensity)\` — a value of \`10\` means computing the gradient takes 10× as long as the log-density. Lower is better throughout; \`err\` means the backend errored on that model. Compare against \`main\` below to spot regressions."
-              echo ""
               echo "<details><summary>Main @ ${main_sha}</summary>"
               echo ""
               cat main/results.md
@@ -115,8 +119,6 @@ jobs:
               echo "</details>"
               echo ""
             else
-              echo "Each row times one of DynamicPPL's reference models on this PR's head. \`Dim\` is the parameter count; \`Linked\` is \`true\` when parameters have been mapped to unconstrained space. \`t(logdensity)\` is the wall-clock time for one log-density evaluation. The AD (automatic differentiation) backend columns express gradient time as a multiple of \`t(logdensity)\` — a value of \`10\` means computing the gradient takes 10× as long as the log-density. Lower is better throughout; \`err\` means the backend errored on that model."
-              echo ""
               echo "Main benchmark job did not succeed (\`${main_status}\`) — see workflow logs."
               echo ""
             fi
@@ -125,6 +127,7 @@ jobs:
             cat head/version_info.txt
             echo "</pre>"
             echo "</details>"
+            echo "<!-- benchmark-report -->"
           } > body.md
 
       - name: Find existing benchmark comment
