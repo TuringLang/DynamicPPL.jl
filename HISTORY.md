@@ -1,3 +1,7 @@
+# 0.41.8
+
+Override `MarginalLogDensities.optimize_marginal!` for `LogDensityFunctionWrapper` so the underlying `OptimizationProblem` is rebuilt with the current non-marginalised parameters on each call, rather than reusing a stale problem.
+
 # 0.41.7
 
 Enable usage of `ComponentVector`s on the left-hand side of tilde-statements.
