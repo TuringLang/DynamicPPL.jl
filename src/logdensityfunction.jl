@@ -226,26 +226,13 @@ struct LogDensityFunction{
         else
             # Make backend-specific tweaks to the adtype
             adtype = DynamicPPL.tweak_adtype(adtype, model, x)
-            problem = LogDensityAt(
+            context = (
                 model, getlogdensity, ranges_and_transforms, transform_strategy, accs
             )
-            # `x` was just constructed from the same range metadata stored in `problem`,
+            # `x` was just constructed from the same range metadata stored in `context`,
             # so the AD wrapper can skip its hot-path dimension validation.
             AbstractPPL.prepare(
-                adtype,
-                problem,
-                x;
-                check_dims=false,
-                raw_gradient_target=(
-                    logdensity_at,
-                    (
-                        problem.model,
-                        problem.getlogdensity,
-                        problem.varname_ranges,
-                        problem.transform_strategy,
-                        problem.accs,
-                    ),
-                ),
+                adtype, logdensity_internal, x; check_dims=false, context=context
             )
         end
         return new{
@@ -474,7 +461,7 @@ ldf_accs(::typeof(getlogprior)) = AccumulatorTuple((LogPriorAccumulator(),))
 ldf_accs(::typeof(getloglikelihood)) = AccumulatorTuple((LogLikelihoodAccumulator(),))
 
 """
-    logdensity_at(
+    logdensity_internal(
         params::AbstractVector{<:Real},
         model::Model,
         getlogdensity::Any,
@@ -484,9 +471,10 @@ ldf_accs(::typeof(getloglikelihood)) = AccumulatorTuple((LogLikelihoodAccumulato
     )
 
 Calculate the log density at the given `params`, using the provided information extracted
-from a `LogDensityFunction`.
+from a `LogDensityFunction`. This is the internal implementation behind
+`LogDensityProblems.logdensity(ldf, params)`.
 """
-function logdensity_at(
+function logdensity_internal(
     params::AbstractVector{<:Real},
     model::Model,
     getlogdensity::Any,
@@ -501,6 +489,9 @@ function logdensity_at(
     return getlogdensity(vi)
 end
 
+# Backwards-compatible alias for the previous name.
+const logdensity_at = logdensity_internal
+
 """
     LogDensityAt(
         model::Model,
@@ -514,6 +505,7 @@ A callable struct that behaves in the same way as `logdensity_at`, but stores th
 other information internally. Having two separate functions/structs allows for better
 performance with AD backends.
 """
+# TODO: remove this compatibility wrapper in the next breaking release.
 struct LogDensityAt{
     M<:Model,F,V<:VarNamedTuple,L<:AbstractTransformStrategy,A<:AccumulatorTuple
 }
