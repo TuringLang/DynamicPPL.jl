@@ -522,7 +522,9 @@ function LogDensityAt(
     )
     dim = mapreduce(rat -> length(rat.range), +, values(varname_ranges); init=0)
     context = (model, getlogdensity, varname_ranges, transform_strategy, accs)
-    return AbstractPPL.prepare(logdensity_internal, zeros(dim); context=context)
+    return AbstractPPL.prepare(
+        logdensity_internal, zeros(dim); check_dims=false, context=context
+    )
 end
 
 @inline function LogDensityProblems.logdensity(
