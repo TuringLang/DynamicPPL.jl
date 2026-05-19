@@ -93,7 +93,7 @@ jobs:
       - uses: julia-actions/cache@v3
 
       - name: Run AD with ReverseDiff on demo models
-        working-directory: test/integration/reversediff
+        working-directory: test/ext/DynamicPPLReverseDiffExt
         run: |
           julia --project=. --color=yes -e 'using Pkg; Pkg.instantiate()'
           julia --project=. --color=yes main.jl
@@ -113,4 +113,4 @@ jobs:
         working-directory: test/ext/DynamicPPLMarginalLogDensitiesExt
         run: |
           julia --project=. --color=yes -e 'using Pkg; Pkg.instantiate()'
-          julia --project=. --color=yes ../DynamicPPLMarginalLogDensitiesExt.jl
+          julia --project=. --color=yes main.jl
