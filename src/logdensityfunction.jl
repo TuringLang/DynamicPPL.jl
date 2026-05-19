@@ -504,9 +504,8 @@ const logdensity_at = logdensity_internal
 !!! warning "Deprecated"
     `LogDensityAt` is retained as a compatibility shim and emits a deprecation
     warning. It returns an `AbstractPPL.Evaluators.VectorEvaluator` whose call
-    forwards to [`DynamicPPL.logdensity_internal`](@ref). New code should
-    construct a `VectorEvaluator` (or `AbstractPPL.Evaluators.Prepared` via
-    `AbstractPPL.prepare`) directly.
+    forwards to [`DynamicPPL.logdensity_internal`](@ref). New code should call
+    `AbstractPPL.prepare(logdensity_internal, x; context=...)` directly.
 """
 function LogDensityAt(
     model::Model,
@@ -516,22 +515,14 @@ function LogDensityAt(
     accs::AccumulatorTuple,
 )
     Base.depwarn(
-        "`DynamicPPL.LogDensityAt` is deprecated; wrap a closure over " *
-        "`DynamicPPL.logdensity_internal` in `AbstractPPL.Evaluators.VectorEvaluator`, " *
-        "or call `AbstractPPL.prepare` on a `LogDensityFunction`.",
+        "`DynamicPPL.LogDensityAt` is deprecated; call " *
+        "`AbstractPPL.prepare(DynamicPPL.logdensity_internal, x; context=...)` " *
+        "instead.",
         :LogDensityAt,
     )
-    f =
-        let m = model,
-            g = getlogdensity,
-            r = varname_ranges,
-            t = transform_strategy,
-            a = accs
-
-            params -> logdensity_internal(params, m, g, r, t, a)
-        end
     dim = mapreduce(rat -> length(rat.range), +, values(varname_ranges); init=0)
-    return AbstractPPL.Evaluators.VectorEvaluator(f, dim)
+    context = (model, getlogdensity, varname_ranges, transform_strategy, accs)
+    return AbstractPPL.prepare(logdensity_internal, zeros(dim); context=context)
 end
 
 @inline function LogDensityProblems.logdensity(
