@@ -35,7 +35,7 @@ end
 Covers many DynamicPPL features: scalar/vector/multivariate variables, `~`,
 `.~`, loops, allocated vectors, and observations as both arguments and literals.
 """
-@model function smorgasbord(x, y, ::Type{TV}=Vector{Float64}) where {TV}
+@model function smorgasbord(x, y, (::Type{TV})=Vector{Float64}) where {TV}
     @assert length(x) == length(y)
     m ~ truncated(Normal(); lower=0)
     means ~ product_distribution(fill(Exponential(m), length(x)))
@@ -50,7 +50,7 @@ Covers many DynamicPPL features: scalar/vector/multivariate variables, `~`,
 end
 
 "`num_dims` univariate normals via a loop. Condition on `o` after instantiation."
-@model function loop_univariate(num_dims, ::Type{TV}=Vector{Float64}) where {TV}
+@model function loop_univariate(num_dims, (::Type{TV})=Vector{Float64}) where {TV}
     a = TV(undef, num_dims)
     o = TV(undef, num_dims)
     for i in 1:num_dims
@@ -64,7 +64,7 @@ end
 end
 
 "As `loop_univariate`, but using `product_distribution` instead of loops."
-@model function multivariate(num_dims, ::Type{TV}=Vector{Float64}) where {TV}
+@model function multivariate(num_dims, (::Type{TV})=Vector{Float64}) where {TV}
     a = TV(undef, num_dims)
     o = TV(undef, num_dims)
     a ~ product_distribution(fill(Normal(0, 1), num_dims))
@@ -86,7 +86,7 @@ end
 end
 
 "Variables whose support varies under linking, or otherwise nontrivial bijectors."
-@model function dynamic(::Type{T}=Vector{Float64}) where {T}
+@model function dynamic((::Type{T})=Vector{Float64}) where {T}
     eta ~ truncated(Normal(); lower=0.0, upper=0.1)
     mat1 ~ LKJCholesky(4, eta)
     mat2 ~ InverseWishart(3.2, cholesky([1.0 0.5; 0.5 1.0]))
@@ -193,6 +193,11 @@ format_ratio(::Missing) = "err"
 format_dim(d::Integer) = string(d)
 format_dim(::Missing) = "err"
 
+const TINY_PRIMAL_THRESHOLD_SECONDS = 100e-9
+
+is_tiny_primal(t::Float64) = t < TINY_PRIMAL_THRESHOLD_SECONDS
+is_tiny_primal(::Missing) = false
+
 # Pivot so each (Model, Dim, Linked) row spans all backends. A long-form table
 # (one row per (model, linked, backend)) reads as four near-duplicate rows
 # differing only in the backend column; pivoting puts the backends side-by-side
@@ -235,7 +240,7 @@ function print_results(results)
     rows = map(pivoted) do g
         ratios = [format_ratio(g.ratios[b.key]) for b in backend_info]
         (
-            name=g.name,
+            name=is_tiny_primal(g.primal) ? "$(g.name)*" : g.name,
             dim=format_dim(g.dim),
             linked=string(g.islinked),
             primal=format_time(g.primal),
