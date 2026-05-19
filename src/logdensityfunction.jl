@@ -495,38 +495,43 @@ const logdensity_at = logdensity_internal
 """
     LogDensityAt(
         model::Model,
-        getlogdensity::Any,
+        getlogdensity,
         varname_ranges::VarNamedTuple,
         transform_strategy::AbstractTransformStrategy,
         accs::AccumulatorTuple,
     )
 
-A callable struct that behaves in the same way as `logdensity_at`, but stores the model and
-other information internally. Having two separate functions/structs allows for better
-performance with AD backends.
+!!! warning "Deprecated"
+    `LogDensityAt` is retained as a compatibility shim and emits a deprecation
+    warning. It returns an `AbstractPPL.Evaluators.VectorEvaluator` whose call
+    forwards to [`DynamicPPL.logdensity_internal`](@ref). New code should
+    construct a `VectorEvaluator` (or `AbstractPPL.Evaluators.Prepared` via
+    `AbstractPPL.prepare`) directly.
 """
-# TODO: remove this compatibility wrapper in the next breaking release.
-struct LogDensityAt{
-    M<:Model,F,V<:VarNamedTuple,L<:AbstractTransformStrategy,A<:AccumulatorTuple
-}
-    model::M
-    getlogdensity::F
-    varname_ranges::V
-    transform_strategy::L
-    accs::A
-
-    function LogDensityAt(
-        model::M, getlogdensity::F, varname_ranges::V, transform_strategy::L, accs::A
-    ) where {M,F,V,L,A}
-        return new{M,F,V,L,A}(
-            model, getlogdensity, varname_ranges, transform_strategy, accs
-        )
-    end
-end
-function (f::LogDensityAt)(params::AbstractVector{<:Real})
-    return logdensity_at(
-        params, f.model, f.getlogdensity, f.varname_ranges, f.transform_strategy, f.accs
+function LogDensityAt(
+    model::Model,
+    getlogdensity,
+    varname_ranges::VarNamedTuple,
+    transform_strategy::AbstractTransformStrategy,
+    accs::AccumulatorTuple,
+)
+    Base.depwarn(
+        "`DynamicPPL.LogDensityAt` is deprecated; wrap a closure over " *
+        "`DynamicPPL.logdensity_internal` in `AbstractPPL.Evaluators.VectorEvaluator`, " *
+        "or call `AbstractPPL.prepare` on a `LogDensityFunction`.",
+        :LogDensityAt,
     )
+    f =
+        let m = model,
+            g = getlogdensity,
+            r = varname_ranges,
+            t = transform_strategy,
+            a = accs
+
+            params -> logdensity_internal(params, m, g, r, t, a)
+        end
+    dim = mapreduce(rat -> length(rat.range), +, values(varname_ranges); init=0)
+    return AbstractPPL.Evaluators.VectorEvaluator(f, dim)
 end
 
 @inline function LogDensityProblems.logdensity(
