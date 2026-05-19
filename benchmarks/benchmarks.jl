@@ -86,7 +86,7 @@ end
 end
 
 "Variables whose support varies under linking, or otherwise nontrivial bijectors."
-@model function dynamic((::Type{T})=Vector{Float64}) where {T}
+@model function dynamic(::Type{T}=Vector{Float64}) where {T}
     eta ~ truncated(Normal(); lower=0.0, upper=0.1)
     mat1 ~ LKJCholesky(4, eta)
     mat2 ~ InverseWishart(3.2, cholesky([1.0 0.5; 0.5 1.0]))

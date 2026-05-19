@@ -29,7 +29,7 @@ Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [sources]
-AbstractPPL = {url = "https://github.com/TuringLang/AbstractPPL.jl", rev = "evaluator-interface"}
+AbstractPPL = {url = "https://github.com/TuringLang/AbstractPPL.jl", rev = "main"}
 Bijectors = {url = "https://github.com/TuringLang/Bijectors.jl", rev = "replace-di-with-abstractppl"}
 
 [weakdeps]
