@@ -17,7 +17,6 @@ ReverseDiff = "37e2e3b7-166d-5795-8a7a-e32c996b4267"
 StableRNGs = "860ef19b-820b-49d6-a774-d7a799459cd3"
 
 [sources]
-AbstractPPL = {rev = "main", url = "https://github.com/TuringLang/AbstractPPL.jl"}
 Bijectors = {rev = "replace-di-with-abstractppl", url = "https://github.com/TuringLang/Bijectors.jl"}
 DynamicPPL = {path = ".."}
 

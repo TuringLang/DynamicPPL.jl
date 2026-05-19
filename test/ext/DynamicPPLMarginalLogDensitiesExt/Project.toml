@@ -9,7 +9,6 @@ MarginalLogDensities = "f0c3360a-fb8d-11e9-1194-5521fd7ee392"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [sources]
-AbstractPPL = {rev = "main", url = "https://github.com/TuringLang/AbstractPPL.jl"}
 Bijectors = {rev = "replace-di-with-abstractppl", url = "https://github.com/TuringLang/Bijectors.jl"}
 DynamicPPL = {path = "../../.."}
 

@@ -31,7 +31,6 @@ Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 ComponentArrays = "b0b7db55-cfe3-40fc-9ded-d10e2dbeff66"
 
 [sources]
-AbstractPPL = {rev = "main", url = "https://github.com/TuringLang/AbstractPPL.jl"}
 Bijectors = {rev = "replace-di-with-abstractppl", url = "https://github.com/TuringLang/Bijectors.jl"}
 DynamicPPL = {path = ".."}
 
