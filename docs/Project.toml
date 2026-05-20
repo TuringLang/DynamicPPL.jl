@@ -25,7 +25,7 @@ StatsFuns = "4c63d2b9-4356-54db-8cca-17b64c39e42c"
 [compat]
 ADTypes = "1"
 AbstractMCMC = "5"
-AbstractPPL = "0.14"
+AbstractPPL = "0.14, 0.15"
 Accessors = "0.1"
 BangBang = "0.4"
 Bijectors = "0.15.17"
