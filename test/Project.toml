@@ -31,7 +31,6 @@ Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 ComponentArrays = "b0b7db55-cfe3-40fc-9ded-d10e2dbeff66"
 
 [sources]
-Bijectors = {rev = "replace-di-with-abstractppl", url = "https://github.com/TuringLang/Bijectors.jl"}
 DynamicPPL = {path = ".."}
 
 [compat]
@@ -42,7 +41,7 @@ Accessors = "0.1"
 Aqua = "0.8"
 ComponentArrays = "0.15"
 BangBang = "0.4"
-Bijectors = "0.15.17"
+Bijectors = "0.16"
 Chairmarks = "1"
 Combinatorics = "1"
 DifferentiationInterface = "0.6.41, 0.7"

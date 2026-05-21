@@ -9,12 +9,11 @@ MarginalLogDensities = "f0c3360a-fb8d-11e9-1194-5521fd7ee392"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [sources]
-Bijectors = {rev = "replace-di-with-abstractppl", url = "https://github.com/TuringLang/Bijectors.jl"}
 DynamicPPL = {path = "../../.."}
 
 [compat]
 ADTypes = "1"
-Bijectors = "0.15.17"
+Bijectors = "0.16"
 Distributions = "0.25"
 ForwardDiff = "0.10.12, 1"
 MarginalLogDensities = "0.4"
