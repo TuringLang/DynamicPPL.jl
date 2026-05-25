@@ -101,8 +101,6 @@ jobs:
             echo "<!-- benchmark-report -->"
             echo "## Benchmarks @ ${head_sha}"
             echo ""
-            echo "### Performance"
-            echo ""
             echo "**Performance Ratio:** gradient time divided by log-density time."
             echo ""
             echo "For very small models these ratios are noisy across runs and machines; raw primal and gradient timings are more reliable. The benchmarks are aimed at DynamicPPL developers and mainly catch obvious allocation or type-stability regressions. See [benchmark notes](https://github.com/TuringLang/DynamicPPL.jl/tree/main/benchmarks#interpreting-results) for details."

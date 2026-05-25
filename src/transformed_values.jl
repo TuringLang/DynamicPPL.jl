@@ -348,11 +348,9 @@ function apply_transform_strategy(
         fwd_transform = inverse(target.transform)
         transformed_value, logjac = with_logabsdet_jacobian(fwd_transform, raw_value)
         transformed_tv = TransformedValue(transformed_value, target)
-        # TODO: Check whether this should return `logjac` rather than
-        # `logjac - inv_logjac`. When `tv` is already `DynamicLink` and the target is a
-        # link-equivalent `FixedTransform`, the accumulator should represent only the
-        # target transform's log-Jacobian. Subtracting the inverse-link Jacobian here may
-        # double-count the link correction.
+        # TODO: https://github.com/TuringLang/DynamicPPL.jl/issues/1407
+        # Likely should return `logjac` rather than `logjac - inv_logjac`; the sibling
+        # branches all return only the target's forward Jacobian.
         (raw_value, transformed_tv, logjac - inv_logjac)
     else
         error("unknown target transform: $target")
