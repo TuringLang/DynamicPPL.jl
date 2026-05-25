@@ -592,14 +592,13 @@ end
 end
 
 @testset "LogDensityAt deprecation shim" begin
-    using AbstractPPL: AbstractPPL
     @model tiny() = x ~ Normal()
     ldf = LogDensityFunction(tiny())
     vnt = DynamicPPL.get_all_ranges_and_transforms(ldf)
     ts = ldf.transform_strategy
     accs = ldf._accs
     result = @test_logs (:warn, r"deprecated") DynamicPPL.LogDensityAt(
-        tiny(), DynamicPPL.getlogjoint_internal, vnt, ts, accs,
+        ldf.model, DynamicPPL.getlogjoint_internal, vnt, ts, accs
     )
     @test result isa AbstractPPL.Evaluators.VectorEvaluator
 end
