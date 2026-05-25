@@ -33,7 +33,6 @@ using Random: Random
         x::AbstractVector{<:Real},
         accs::Union{NTuple{<:Any,AbstractAccumulator},AccumulatorTuple}=ldf_accs(getlogdensity);
         adtype::Union{ADTypes.AbstractADType,Nothing}=nothing,
-        fix_transforms::Bool=false,
     )
 
 A struct which contains a model, along with all the information necessary to:
@@ -530,7 +529,7 @@ end
 @inline function LogDensityProblems.logdensity(
     ldf::LogDensityFunction, params::AbstractVector{<:Real}
 )
-    return logdensity_at(
+    return logdensity_internal(
         params,
         ldf.model,
         ldf._getlogdensity,
@@ -546,7 +545,8 @@ end
     # `params` has to be converted to the same vector type that was used for AD preparation,
     # otherwise the preparation will not be valid.
     params = convert(get_input_vector_type(ldf), params)
-    return AbstractPPL.value_and_gradient!!(ldf._adprep, params)
+    logp, grad = AbstractPPL.value_and_gradient!!(ldf._adprep, params)
+    return (logp, copy(grad))
 end
 
 function LogDensityProblems.capabilities(::Type{<:LogDensityFunction{M,Nothing}}) where {M}
