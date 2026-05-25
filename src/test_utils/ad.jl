@@ -2,7 +2,6 @@ module AD
 
 using ADTypes: AbstractADType, AutoForwardDiff
 using Chairmarks: @be
-import DifferentiationInterface as DI
 using DocStringExtensions
 using DynamicPPL:
     DynamicPPL,
@@ -344,7 +343,7 @@ function run_ad(
 
     # Calculate log-density and gradient with the backend of interest
     value, grad = logdensity_and_gradient(ldf, params)
-    # collect(): https://github.com/JuliaDiff/DifferentiationInterface.jl/issues/754
+    # Some AD backends (e.g. Enzyme) return non-Vector gradients; normalise to Vector.
     grad = collect(grad)
     verbose && println("       actual : $((value, grad))")
 
@@ -362,7 +361,6 @@ function run_ad(
                 model, getlogdensity, transform_strategy; adtype=test.adtype
             )
             value_true, grad_true = logdensity_and_gradient(ldf_reference, params)
-            # collect(): https://github.com/JuliaDiff/DifferentiationInterface.jl/issues/754
             grad_true = collect(grad_true)
         end
         # Perform testing

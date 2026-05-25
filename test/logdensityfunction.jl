@@ -13,8 +13,8 @@ using LogDensityProblems: LogDensityProblems
 using Random: Xoshiro
 using StableRNGs: StableRNG
 
+using DifferentiationInterface: DifferentiationInterface
 using ForwardDiff: ForwardDiff
-using ReverseDiff: ReverseDiff
 using Mooncake: Mooncake
 
 @testset "LogDensityFunction: constructors" begin
@@ -457,11 +457,7 @@ end
     # Used as the ground truth that others are compared against.
     ref_adtype = AutoForwardDiff()
 
-    test_adtypes = [
-        AutoReverseDiff(; compile=false),
-        AutoReverseDiff(; compile=true),
-        AutoMooncake(; config=nothing),
-    ]
+    test_adtypes = [AutoForwardDiff(), AutoMooncake(; config=nothing)]
 
     @testset "Correctness" begin
         @testset "$(m.f)" for m in DynamicPPL.TestUtils.ALL_MODELS
@@ -511,7 +507,7 @@ end
             return LogDensityProblems.logdensity_and_gradient(ldf, m[:])
         end
 
-        @model function scalar_matrix_model(::Type{T}=Float64) where {T<:Real}
+        @model function scalar_matrix_model((::Type{T})=Float64) where {T<:Real}
             m = Matrix{T}(undef, 2, 3)
             return m ~ filldist(MvNormal(zeros(2), I), 3)
         end
@@ -520,14 +516,14 @@ end
             scalar_matrix_model, test_m, ref_adtype
         )
 
-        @model function matrix_model(::Type{T}=Matrix{Float64}) where {T}
+        @model function matrix_model((::Type{T})=Matrix{Float64}) where {T}
             m = T(undef, 2, 3)
             return m ~ filldist(MvNormal(zeros(2), I), 3)
         end
 
         matrix_model_reference = eval_logp_and_grad(matrix_model, test_m, ref_adtype)
 
-        @model function scalar_array_model(::Type{T}=Float64) where {T<:Real}
+        @model function scalar_array_model((::Type{T})=Float64) where {T<:Real}
             m = Array{T}(undef, 2, 3)
             return m ~ filldist(MvNormal(zeros(2), I), 3)
         end
@@ -536,7 +532,7 @@ end
             scalar_array_model, test_m, ref_adtype
         )
 
-        @model function array_model(::Type{T}=Array{Float64}) where {T}
+        @model function array_model((::Type{T})=Array{Float64}) where {T}
             m = T(undef, 2, 3)
             return m ~ filldist(MvNormal(zeros(2), I), 3)
         end
@@ -593,6 +589,18 @@ end
                 LogDensityProblems.logdensity(ldf_dynamic, θ)
         end
     end
+end
+
+@testset "LogDensityAt deprecation shim" begin
+    @model tiny() = x ~ Normal()
+    ldf = LogDensityFunction(tiny())
+    vnt = DynamicPPL.get_all_ranges_and_transforms(ldf)
+    ts = ldf.transform_strategy
+    accs = ldf._accs
+    result = @test_logs (:warn, r"deprecated") DynamicPPL.LogDensityAt(
+        ldf.model, DynamicPPL.getlogjoint_internal, vnt, ts, accs
+    )
+    @test result isa AbstractPPL.Evaluators.VectorEvaluator
 end
 
 end

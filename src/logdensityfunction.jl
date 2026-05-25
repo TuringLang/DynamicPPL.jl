@@ -23,7 +23,6 @@ using ADTypes: ADTypes
 using BangBang: BangBang
 using AbstractPPL: AbstractPPL, VarName
 using LogDensityProblems: LogDensityProblems
-import DifferentiationInterface as DI
 using Random: Random
 
 """
@@ -183,7 +182,7 @@ struct LogDensityFunction{
     L<:AbstractTransformStrategy,
     F,
     VNT<:VarNamedTuple,
-    ADP<:Union{Nothing,DI.GradientPrep},
+    ADP,
     # type of the vector passed to logdensity functions
     X<:AbstractVector,
     AC<:AccumulatorTuple,
@@ -226,12 +225,14 @@ struct LogDensityFunction{
         else
             # Make backend-specific tweaks to the adtype
             adtype = DynamicPPL.tweak_adtype(adtype, model, x)
-            args = (model, getlogdensity, ranges_and_transforms, transform_strategy, accs)
-            if _use_closure(adtype)
-                DI.prepare_gradient(LogDensityAt(args...), adtype, x)
-            else
-                DI.prepare_gradient(logdensity_at, adtype, x, map(DI.Constant, args)...)
-            end
+            context = (
+                model, getlogdensity, ranges_and_transforms, transform_strategy, accs
+            )
+            # `x` was just constructed from the same range metadata stored in `context`,
+            # so the AD wrapper can skip its hot-path dimension validation.
+            AbstractPPL.prepare(
+                adtype, logdensity_internal, x; check_dims=false, context=context
+            )
         end
         return new{
             typeof(model),
@@ -459,7 +460,7 @@ ldf_accs(::typeof(getlogprior)) = AccumulatorTuple((LogPriorAccumulator(),))
 ldf_accs(::typeof(getloglikelihood)) = AccumulatorTuple((LogLikelihoodAccumulator(),))
 
 """
-    logdensity_at(
+    logdensity_internal(
         params::AbstractVector{<:Real},
         model::Model,
         getlogdensity::Any,
@@ -469,9 +470,10 @@ ldf_accs(::typeof(getloglikelihood)) = AccumulatorTuple((LogLikelihoodAccumulato
     )
 
 Calculate the log density at the given `params`, using the provided information extracted
-from a `LogDensityFunction`.
+from a `LogDensityFunction`. This is the internal implementation behind
+`LogDensityProblems.logdensity(ldf, params)`.
 """
-function logdensity_at(
+function logdensity_internal(
     params::AbstractVector{<:Real},
     model::Model,
     getlogdensity::Any,
@@ -486,46 +488,48 @@ function logdensity_at(
     return getlogdensity(vi)
 end
 
+# Backwards-compatible alias for the previous name.
+const logdensity_at = logdensity_internal
+
 """
     LogDensityAt(
         model::Model,
-        getlogdensity::Any,
+        getlogdensity,
         varname_ranges::VarNamedTuple,
         transform_strategy::AbstractTransformStrategy,
         accs::AccumulatorTuple,
     )
 
-A callable struct that behaves in the same way as `logdensity_at`, but stores the model and
-other information internally. Having two separate functions/structs allows for better
-performance with AD backends.
+!!! warning "Deprecated"
+    `LogDensityAt` is retained as a compatibility shim and emits a deprecation
+    warning. It returns an `AbstractPPL.Evaluators.VectorEvaluator` whose call
+    forwards to [`DynamicPPL.logdensity_internal`](@ref). New code should call
+    `AbstractPPL.prepare(logdensity_internal, x; context=...)` directly.
 """
-struct LogDensityAt{
-    M<:Model,F,V<:VarNamedTuple,L<:AbstractTransformStrategy,A<:AccumulatorTuple
-}
-    model::M
-    getlogdensity::F
-    varname_ranges::V
-    transform_strategy::L
-    accs::A
-
-    function LogDensityAt(
-        model::M, getlogdensity::F, varname_ranges::V, transform_strategy::L, accs::A
-    ) where {M,F,V,L,A}
-        return new{M,F,V,L,A}(
-            model, getlogdensity, varname_ranges, transform_strategy, accs
-        )
-    end
-end
-function (f::LogDensityAt)(params::AbstractVector{<:Real})
-    return logdensity_at(
-        params, f.model, f.getlogdensity, f.varname_ranges, f.transform_strategy, f.accs
+function LogDensityAt(
+    model::Model,
+    getlogdensity,
+    varname_ranges::VarNamedTuple,
+    transform_strategy::AbstractTransformStrategy,
+    accs::AccumulatorTuple,
+)
+    Base.depwarn(
+        "`DynamicPPL.LogDensityAt` is deprecated; call " *
+        "`AbstractPPL.prepare(DynamicPPL.logdensity_internal, x; context=...)` " *
+        "instead.",
+        :LogDensityAt,
+    )
+    dim = mapreduce(rat -> length(rat.range), +, values(varname_ranges); init=0)
+    context = (model, getlogdensity, varname_ranges, transform_strategy, accs)
+    return AbstractPPL.prepare(
+        logdensity_internal, zeros(dim); check_dims=false, context=context
     )
 end
 
-function LogDensityProblems.logdensity(
+@inline function LogDensityProblems.logdensity(
     ldf::LogDensityFunction, params::AbstractVector{<:Real}
 )
-    return logdensity_at(
+    return logdensity_internal(
         params,
         ldf.model,
         ldf._getlogdensity,
@@ -535,38 +539,14 @@ function LogDensityProblems.logdensity(
     )
 end
 
-function LogDensityProblems.logdensity_and_gradient(
+@inline function LogDensityProblems.logdensity_and_gradient(
     ldf::LogDensityFunction, params::AbstractVector{<:Real}
 )
     # `params` has to be converted to the same vector type that was used for AD preparation,
     # otherwise the preparation will not be valid.
     params = convert(get_input_vector_type(ldf), params)
-    return if _use_closure(ldf.adtype)
-        DI.value_and_gradient(
-            LogDensityAt(
-                ldf.model,
-                ldf._getlogdensity,
-                ldf._varname_ranges,
-                ldf.transform_strategy,
-                ldf._accs,
-            ),
-            ldf._adprep,
-            ldf.adtype,
-            params,
-        )
-    else
-        DI.value_and_gradient(
-            logdensity_at,
-            ldf._adprep,
-            ldf.adtype,
-            params,
-            DI.Constant(ldf.model),
-            DI.Constant(ldf._getlogdensity),
-            DI.Constant(ldf._varname_ranges),
-            DI.Constant(ldf.transform_strategy),
-            DI.Constant(ldf._accs),
-        )
-    end
+    logp, grad = AbstractPPL.value_and_gradient!!(ldf._adprep, params)
+    return (logp, copy(grad))
 end
 
 function LogDensityProblems.capabilities(::Type{<:LogDensityFunction{M,Nothing}}) where {M}
@@ -596,43 +576,6 @@ case the optimisation depends on the model.
 By default, this just returns the input unchanged.
 """
 tweak_adtype(adtype::ADTypes.AbstractADType, ::Model, ::AbstractVector) = adtype
-
-"""
-    _use_closure(adtype::ADTypes.AbstractADType)
-
-In LogDensityProblems, we want to calculate the derivative of `logdensity(f, x)` with
-respect to x, where f is the model (in our case LogDensityFunction or its arguments ) and is
-a constant. However, DifferentiationInterface generally expects a single-argument function
-g(x) to differentiate.
-
-There are two ways of dealing with this:
-
-1. Construct a closure over the model, i.e. let g = Base.Fix1(logdensity, f)
-
-2. Use a constant DI.Context. This lets us pass a two-argument function to DI, as long as we
-   also give it the 'inactive argument' (i.e. the model) wrapped in `DI.Constant`.
-
-The relative performance of the two approaches, however, depends on the AD backend used.
-Some benchmarks are provided here: https://github.com/TuringLang/DynamicPPL.jl/pull/1172
-
-This function is used to determine whether a given AD backend should use a closure or a
-constant. If `use_closure(adtype)` returns `true`, then the closure approach will be used.
-By default, this function returns `false`, i.e. the constant approach will be used.
-"""
-# For these AD backends both closure and no closure work, but it is just faster to not use a
-# closure (see link in the docstring).
-_use_closure(::ADTypes.AutoForwardDiff) = false
-_use_closure(::ADTypes.AutoMooncake) = false
-_use_closure(::ADTypes.AutoMooncakeForward) = false
-# For ReverseDiff, with the compiled tape, you _must_ use a closure because otherwise with
-# DI.Constant arguments the tape will always be recompiled upon each call to
-# value_and_gradient. For non-compiled ReverseDiff, it is faster to not use a closure.
-_use_closure(::ADTypes.AutoReverseDiff{compile}) where {compile} = compile
-# For AutoEnzyme it allows us to avoid setting function_annotation
-_use_closure(::ADTypes.AutoEnzyme) = false
-# Since for most backends it's faster to not use a closure, we set that as the default
-# for unknown AD backends
-_use_closure(::ADTypes.AbstractADType) = false
 
 ######################################################
 # Helper functions to extract ranges and link status #

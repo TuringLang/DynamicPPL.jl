@@ -14,6 +14,7 @@ DynamicPPL builds on AbstractPPL.jl for shared PPL interfaces such as `VarName`,
 
   - CI also runs Aqua.jl quality checks and doctests.
   - Test files are self-contained: use package imports, not relative imports or `include()`, so they run individually with TestPicker.jl.
+  - Always refresh each environment (`Pkg.update()` / `up`) before tests or doc builds — a stale manifest can cause subtle resolution and loading issues.
   - Formatting is JuliaFormatter v1 (Blue style), enforced by CI:
     
     ```bash
