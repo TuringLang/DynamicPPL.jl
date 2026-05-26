@@ -1,3 +1,34 @@
+# 0.42.0
+
+`LogDensityFunction` now performs AD preparation through AbstractPPL's `prepare` / `value_and_gradient!!` interface instead of calling DifferentiationInterface directly. Internally this removes the `_use_closure` heuristic and the explicit `DI.Constant` plumbing; the choice between closure and constants now lives in AbstractPPL.
+
+`logdensity_at` has been renamed to `logdensity_internal`. The old name is kept as a `const` alias so external callers do not break.
+
+`LogDensityAt` is now a deprecation shim that emits a warning and returns an `AbstractPPL.Evaluators.VectorEvaluator` whose call forwards to `logdensity_internal`. New code should call `AbstractPPL.prepare(logdensity_internal, x; context=...)` directly.
+
+## Breaking changes
+
+`DifferentiationInterface` is no longer a hard dependency of DynamicPPL. With AbstractPPL `0.15.2`, the following backends now have native AbstractPPL extensions and only need the concrete AD package loaded:
+
+  - `AutoForwardDiff` — load `ForwardDiff`
+  - `AutoMooncake`, `AutoMooncakeForward` — load `Mooncake`
+
+For other DI-routed backends like `AutoReverseDiff`, users must load `DifferentiationInterface` together with the concrete AD package:
+
+```julia
+using DynamicPPL, ADTypes, DifferentiationInterface, ReverseDiff
+ldf = LogDensityFunction(model; adtype=AutoReverseDiff())
+```
+
+For distributed sampling the same packages must be loaded on every worker.
+
+Compatibility bounds bumped:
+
+  - `AbstractPPL` `0.14` → `0.15`
+  - `Bijectors` `0.15.17` → `0.16`
+
+The integration test suites for `MarginalLogDensities`, `ReverseDiff`, and `Enzyme` now live in their own environments under `test/ext/DynamicPPL*Ext/` and run as separate CI jobs.
+
 # 0.41.8
 
 Override `MarginalLogDensities.optimize_marginal!` for `LogDensityFunctionWrapper` so the underlying `OptimizationProblem` is rebuilt with the current non-marginalised parameters on each call, rather than reusing a stale problem.

@@ -96,7 +96,15 @@ jobs:
         working-directory: test/ext/DynamicPPLReverseDiffExt
         run: |
           julia --project=. --color=yes -e 'using Pkg; Pkg.instantiate()'
-          julia --project=. --color=yes main.jl
+          julia --project=. --color=yes --code-coverage=user main.jl
+
+      - uses: julia-actions/julia-processcoverage@v1
+
+      - uses: codecov/codecov-action@v6
+        with:
+          files: lcov.info
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: true
 
   marginallogdensities:
     runs-on: ubuntu-latest
@@ -113,4 +121,12 @@ jobs:
         working-directory: test/ext/DynamicPPLMarginalLogDensitiesExt
         run: |
           julia --project=. --color=yes -e 'using Pkg; Pkg.instantiate()'
-          julia --project=. --color=yes main.jl
+          julia --project=. --color=yes --code-coverage=user main.jl
+
+      - uses: julia-actions/julia-processcoverage@v1
+
+      - uses: codecov/codecov-action@v6
+        with:
+          files: lcov.info
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: true
