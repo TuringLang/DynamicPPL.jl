@@ -82,11 +82,11 @@ jobs:
     if: ${{ !cancelled() && needs.benchmark-pr.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: benchmark-pr
           path: head
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         if: needs.benchmark-main.result == 'success'
         with:
           name: benchmark-main
