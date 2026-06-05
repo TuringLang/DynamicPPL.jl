@@ -1,6 +1,28 @@
 version: 2
+
 updates:
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "monthly"
+      interval: "weekly"
+    groups:
+      all-github-actions-packages:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "julia"
+    directories:
+      - "/"
+      - "/benchmarks"
+      - "/docs"
+      - "/test"
+      - "/test/ext/DynamicPPLEnzymeCoreExt"
+      - "/test/ext/DynamicPPLMarginalLogDensitiesExt"
+      - "/test/ext/DynamicPPLReverseDiffExt"
+      - "/test/floattypes"
+    schedule:
+      interval: "weekly"
+    groups:
+      all-julia-packages:
+        patterns:
+          - "*"
