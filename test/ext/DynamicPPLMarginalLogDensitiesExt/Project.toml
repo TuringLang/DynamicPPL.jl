@@ -13,7 +13,9 @@ DynamicPPL = {path = "../../.."}
 
 [compat]
 ADTypes = "1"
+AbstractPPL = "0.15.2"
 Bijectors = "0.16"
 Distributions = "0.25"
+DynamicPPL = "0.42.0"
 ForwardDiff = "0.10.12, 1"
 MarginalLogDensities = "0.4"
