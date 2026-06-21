@@ -181,9 +181,31 @@ function _evaluate!!(
     # (4) Finally, we need to store that context inside the submodel.
     model = contextualize(submodel.model, eval_context)
 
-    # Once that's all set up nicely, we can just _evaluate!! the wrapped model. This
-    # returns a tuple of submodel.model's return value and the new varinfo.
-    return _evaluate!!(model, vi)
+    # Finally, evaluate the wrapped model. The two lines below are a verbatim copy of
+    # the body of `_evaluate!!(model::Model, ::AbstractVarInfo)`, and morally that is
+    # what we are doing here. The duplication is deliberate and load-bearing.
+    #
+    # DO NOT replace this with `return _evaluate!!(model, vi)`. Submodel evaluation is
+    # recursive: `model.f` runs the wrapped model, which may itself contain
+    # `~ to_submodel(...)` statements that re-enter this method. Each level of nesting
+    # wraps the evaluation context in another `PrefixContext`/leaf-context layer, so the
+    # `Ctx` type parameter of `model::Model{...,Ctx}` grows by one layer per level. If
+    # that recursion passed through the shared method `_evaluate!!(::Model, ...)`, type
+    # inference would see the *same* method recursing with an ever-growing dispatch type,
+    # trip its recursion-limiting heuristic (`limit_type_size`), and widen `model` back
+    # to `::Model`. That makes `model.f` unresolvable, collapses the return type to `Any`,
+    # and turns the whole nested evaluation into runtime dispatch -- the ~15x primal
+    # slowdown reported in https://github.com/TuringLang/Turing.jl/issues/2844.
+    #
+    # Calling `model.f` directly keeps the growing `Ctx` out of the recursion's dispatch
+    # path. `model.f` is a distinct function type per `@model`, and the only methods left
+    # in the cycle (`tilde_assume!!`/`_evaluate!!` on `::Submodel`) dispatch on the
+    # un-grown submodel type, with the growing context confined to a non-dispatched
+    # `::AbstractContext` argument that inference can safely widen. Note that `@inline`-ing
+    # `_evaluate!!(::Model, ...)` does NOT help: the recursion limit is applied during
+    # abstract interpretation, before inlining.
+    args, kwargs = make_evaluate_args_and_kwargs(model, vi)
+    return model.f(args...; kwargs...)
 end
 
 function tilde_observe!!(

@@ -17,6 +17,30 @@ using DifferentiationInterface: DifferentiationInterface
 using ForwardDiff: ForwardDiff
 using Mooncake: Mooncake
 
+@model function issue_2844_nested_inner()
+    p ~ Normal()
+    return (; p)
+end
+@model function issue_2844_nested_middle()
+    inner ~ to_submodel(issue_2844_nested_inner())
+    return (; p=inner.p)
+end
+@model function issue_2844_nested_outer()
+    middle ~ to_submodel(issue_2844_nested_middle())
+    return 0.0 ~ Normal(middle.p)
+end
+# One submodel boundary deeper than `issue_2844_nested_outer`, so the inference test
+# guards against a regression that merely pushes the recursion limit out by one level
+# rather than removing it.
+@model function issue_2844_nested_middle2()
+    middle ~ to_submodel(issue_2844_nested_middle())
+    return (; p=middle.p)
+end
+@model function issue_2844_nested_outer_deep()
+    middle2 ~ to_submodel(issue_2844_nested_middle2())
+    return 0.0 ~ Normal(middle2.p)
+end
+
 @testset "LogDensityFunction: constructors" begin
     dist = Beta(2, 2)
     @model f() = x ~ dist
@@ -420,6 +444,25 @@ end
             end skip = skip
         end
     end
+
+    # Nested submodels used to break type inference of the log density, because the
+    # recursive submodel evaluation passed through the shared `_evaluate!!(::Model, ...)`
+    # method whose `Model` dispatch type grows by one context layer per level. See
+    # https://github.com/TuringLang/Turing.jl/issues/2844 and the comment in
+    # `src/submodel.jl`.
+    @testset "nested to_submodel return values" begin
+        @testset "$(nameof(model.f))" for model in (
+            issue_2844_nested_outer(), issue_2844_nested_outer_deep()
+        )
+            @testset "$tfm_strategy" for tfm_strategy in (UnlinkAll(), LinkAll())
+                ldf = DynamicPPL.LogDensityFunction(
+                    model, DynamicPPL.getlogjoint_internal, tfm_strategy
+                )
+                x = rand(ldf)
+                @test @inferred(LogDensityProblems.logdensity(ldf, x)) isa Float64
+            end
+        end
+    end
 end
 
 @testset "LogDensityFunction: performance" begin
@@ -442,8 +485,21 @@ end
         y ~ Normal(params.m, params.s)
         return 1.0 ~ Normal(y)
     end
-    @testset for model in
-                 (f(), submodel_inner() | (; s=0.0), submodel_outer(submodel_inner()))
+    # A submodel nested inside another submodel. Before
+    # https://github.com/TuringLang/Turing.jl/issues/2844 was fixed, evaluating this
+    # model was not type-stable and allocated (and got worse with each level of
+    # nesting), because the recursive submodel evaluation passed through the shared
+    # `_evaluate!!(::Model, ...)` method. See the comment in `src/submodel.jl`.
+    @model function submodel_middle(inner)
+        mid ~ to_submodel(inner)
+        return (m=mid.m, s=mid.s)
+    end
+    @testset for model in (
+        f(),
+        submodel_inner() | (; s=0.0),
+        submodel_outer(submodel_inner()),
+        submodel_outer(submodel_middle(submodel_inner())),
+    )
         @testset for tfm_strategy in (UnlinkAll(), LinkAll())
             ldf = DynamicPPL.LogDensityFunction(model, getlogjoint_internal, tfm_strategy)
             x = rand(ldf)

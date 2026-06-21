@@ -17,6 +17,16 @@ function get_logp_and_rawval_accs(model::Model)
     return accs
 end
 
+# Models for the nested-submodel type-stability tests (issue #2844). Each level wraps the
+# previous one in a `to_submodel` and re-exports its return value, so the depth of nesting
+# can be varied. They must be defined at module scope: a model defined in local (testset)
+# scope captures that scope and is not type-inferrable, which would mask the property under
+# test. See the "type stability of nested submodels" testset below.
+@model t2844_inner() = (x ~ Normal(); return (; x))
+@model t2844_middle() = (a ~ to_submodel(t2844_inner()); return (; x=a.x))
+@model t2844_outer() = (b ~ to_submodel(t2844_middle()); return (; x=b.x))
+@model t2844_deeper() = (c ~ to_submodel(t2844_outer()); return (; x=c.x))
+
 @testset "submodels.jl" begin
     @testset "$op with AbstractPPL API" for op in [condition, fix]
         x_val = 1.0
@@ -337,6 +347,30 @@ end
         @test Set(keys(vnt)) == Set([@varname(a.b.x[1, 1])])
         @test vnt.data.a.data.b.data.x.data isa Matrix{Float64}
         @test size(vnt.data.a.data.b.data.x.data) == (2, 2)
+    end
+
+    @testset "type stability of nested submodels (issue #2844)" begin
+        # Evaluating a submodel recurses into `model.f`, which may contain further
+        # `to_submodel` statements. Each level of nesting grows the `Model`'s context
+        # type; if that recursion goes through the shared `_evaluate!!(::Model, ...)`
+        # method, Julia's recursion-limit heuristic widens the model type and the result
+        # type collapses to `Any` from the first level of nesting onwards. This made
+        # nested submodels much slower to evaluate (and to differentiate). See
+        # https://github.com/TuringLang/Turing.jl/issues/2844 and the comment in
+        # `src/submodel.jl`. These tests check that evaluation stays type stable at every
+        # level of nesting.
+        @testset "$(nameof(model.f))" for model in (
+            t2844_inner(), t2844_middle(), t2844_outer(), t2844_deeper()
+        )
+            # The fast evaluation path: `init!!` into an `OnlyAccsVarInfo`, under both
+            # transform strategies.
+            @testset "$tfm" for tfm in (UnlinkAll(), LinkAll())
+                accs = setacc!!(OnlyAccsVarInfo(), LogPriorAccumulator())
+                @test @inferred(init!!(model, accs, InitFromPrior(), tfm)) isa Tuple
+            end
+            # Evaluating a pre-populated `VarInfo` must also stay type stable.
+            @test @inferred(DynamicPPL.evaluate_nowarn!!(model, VarInfo(model))) isa Tuple
+        end
     end
 end
 

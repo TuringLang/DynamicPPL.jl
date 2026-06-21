@@ -906,6 +906,10 @@ function _evaluate!!(model::Model, varinfo::AbstractVarInfo)
     args, kwargs = make_evaluate_args_and_kwargs(model, varinfo)
     return model.f(args...; kwargs...)
 end
+# NOTE: The two lines above are intentionally duplicated in the submodel evaluation
+# path (`_evaluate!!(::Submodel, ...)` in `submodel.jl`). That path must NOT call this
+# method, because doing so reintroduces a type-inference recursion limit for nested
+# submodels. See the long comment there before refactoring either copy.
 
 is_splat_symbol(s::Symbol) = startswith(string(s), "#splat#")
 
