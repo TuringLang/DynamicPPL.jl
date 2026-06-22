@@ -181,9 +181,17 @@ function _evaluate!!(
     # (4) Finally, we need to store that context inside the submodel.
     model = contextualize(submodel.model, eval_context)
 
-    # Once that's all set up nicely, we can just _evaluate!! the wrapped model. This
-    # returns a tuple of submodel.model's return value and the new varinfo.
-    return _evaluate!!(model, vi)
+    # Evaluate the wrapped model. These two lines are a verbatim copy of the body of
+    # `_evaluate!!(model::Model, ::AbstractVarInfo)` (in `model.jl`), and the duplication is
+    # deliberate: DO NOT replace them with `return _evaluate!!(model, vi)`. Each level of
+    # submodel nesting grows the contextualised `Model`'s context type, and routing the
+    # recursion through the shared `_evaluate!!(::Model, ...)` method trips Julia's recursion
+    # limiter, which widens the `Model` argument to abstract and collapses the return type to
+    # `Any`. Calling `model.f` directly avoids that. See
+    # https://github.com/TuringLang/DynamicPPL.jl/pull/1427 and
+    # https://github.com/TuringLang/Turing.jl/issues/2844 for the full explanation.
+    args, kwargs = make_evaluate_args_and_kwargs(model, vi)
+    return model.f(args...; kwargs...)
 end
 
 function tilde_observe!!(

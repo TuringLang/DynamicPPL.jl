@@ -1,3 +1,9 @@
+# 0.42.1
+
+Fixed a type-inference failure that made nested submodels (a `~ to_submodel(...)` statement inside a model that is itself evaluated as a submodel) very slow.
+
+Previously, evaluating a submodel recursed through the shared `_evaluate!!(::Model, ::AbstractVarInfo)` method. Each level of nesting adds another context layer to the `Model` type, which tripped Julia's type-inference recursion limit: from the first level of nesting onwards the return type was inferred as `Any` and evaluation fell back to runtime dispatch, slowing down both primal and gradient evaluation (the primal slowdown was roughly 15x, growing with nesting depth). Submodel evaluation now calls the model function directly, keeping nested submodels type-stable. See [Turing.jl#2844](https://github.com/TuringLang/Turing.jl/issues/2844).
+
 # 0.42.0
 
 `LogDensityFunction` now performs AD preparation through AbstractPPL's `prepare` / `value_and_gradient!!` interface instead of calling DifferentiationInterface directly. Internally this removes the `_use_closure` heuristic and the explicit `DI.Constant` plumbing; the choice between closure and constants now lives in AbstractPPL.
