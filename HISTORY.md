@@ -2,7 +2,7 @@
 
 Fixed a type-inference failure that made nested submodels (a `~ to_submodel(...)` statement inside a model that is itself evaluated as a submodel) very slow.
 
-Previously, evaluating a submodel recursed through the shared `_evaluate!!(::Model, ::AbstractVarInfo)` method. Because each level of submodel nesting adds another context layer to the `Model` type, this tripped Julia's type-inference recursion limit: from the first level of nesting onwards the model's return type was inferred as `Any`, the evaluation fell back to runtime dispatch, and both primal and gradient evaluation slowed down (the primal slowdown was roughly 15x and grew with nesting depth). Submodel evaluation now calls the generated model function directly, which keeps nested submodels type-stable. See [Turing.jl#2844](https://github.com/TuringLang/Turing.jl/issues/2844).
+Previously, evaluating a submodel recursed through the shared `_evaluate!!(::Model, ::AbstractVarInfo)` method. Each level of nesting adds another context layer to the `Model` type, which tripped Julia's type-inference recursion limit: from the first level of nesting onwards the return type was inferred as `Any` and evaluation fell back to runtime dispatch, slowing down both primal and gradient evaluation (the primal slowdown was roughly 15x, growing with nesting depth). Submodel evaluation now calls the model function directly, keeping nested submodels type-stable. See [Turing.jl#2844](https://github.com/TuringLang/Turing.jl/issues/2844).
 
 # 0.42.0
 

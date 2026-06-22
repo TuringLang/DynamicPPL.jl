@@ -181,37 +181,15 @@ function _evaluate!!(
     # (4) Finally, we need to store that context inside the submodel.
     model = contextualize(submodel.model, eval_context)
 
-    # Finally, evaluate the wrapped model. These two lines are a verbatim copy of the body
-    # of `_evaluate!!(model::Model, ::AbstractVarInfo)`, so calling `model.f` here is
-    # behaviour-identical to `_evaluate!!(model, vi)`. The duplication is deliberate.
-    #
-    # DO NOT replace this with `return _evaluate!!(model, vi)`. Submodel evaluation is
-    # recursive: `model.f` runs the wrapped model, which may itself contain
-    # `~ to_submodel(...)` statements that re-enter this method. The recursive
-    # `_evaluate!!(::Submodel, ...)` edge itself is fine: Julia sees the edge, but the
-    # limiter keeps its signature unchanged. The problematic edge is the old intermediate
-    # call to the shared `_evaluate!!(::Model, ::AbstractVarInfo)` method.
-    #
-    # Each submodel level constructs a contextualized `Model{...,Ctx}` whose `Ctx`
-    # parameter nests one `PrefixContext` deeper. If we call `_evaluate!!(model, vi)`,
-    # inference sees a recursive `_evaluate!!(::Model, ...)` call whose argument tuple
-    # contains that growing `Model{...,Ctx}` type. Julia's recursion limiter then widens
-    # the call signature to `Tuple{typeof(_evaluate!!), Model, ...}`. Once `model` is only
-    # known as abstract `Model`, `model.f` is no longer resolvable and the return type
-    # collapses to `Any`, causing the slowdown in
-    # https://github.com/TuringLang/Turing.jl/issues/2844.
-    #
-    # Calling `model.f` directly removes only that bad `_evaluate!!(::Model, ...)` edge.
-    # The remaining recursive submodel edge still exists, but its growing context is a
-    # normal argument already present in the `tilde_assume!!` caller signature, so the
-    # limiter does not widen it.
-    #
-    # Marking `_evaluate!!(::Model, ...)` `@inline` does NOT help: the recursion limit is
-    # applied during abstract interpretation, before inlining.
-    #
-    # This keeps *distinct* nested submodels type stable to arbitrary depth. A model that
-    # recurses into the *same* submodel `@model` can still hit the limiter; that is a
-    # separate, pre-existing limitation.
+    # Evaluate the wrapped model. These two lines are a verbatim copy of the body of
+    # `_evaluate!!(model::Model, ::AbstractVarInfo)` (in `model.jl`), and the duplication is
+    # deliberate: DO NOT replace them with `return _evaluate!!(model, vi)`. Each level of
+    # submodel nesting grows the contextualised `Model`'s context type, and routing the
+    # recursion through the shared `_evaluate!!(::Model, ...)` method trips Julia's recursion
+    # limiter, which widens the `Model` argument to abstract and collapses the return type to
+    # `Any`. Calling `model.f` directly avoids that. See
+    # https://github.com/TuringLang/DynamicPPL.jl/pull/1427 and
+    # https://github.com/TuringLang/Turing.jl/issues/2844 for the full explanation.
     args, kwargs = make_evaluate_args_and_kwargs(model, vi)
     return model.f(args...; kwargs...)
 end

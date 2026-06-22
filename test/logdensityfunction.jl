@@ -445,11 +445,7 @@ end
         end
     end
 
-    # Nested submodels used to break type inference of the log density, because the
-    # recursive submodel evaluation passed through the shared `_evaluate!!(::Model, ...)`
-    # method whose `Model` dispatch type grows by one context layer per level. See
-    # https://github.com/TuringLang/Turing.jl/issues/2844 and the comment in
-    # `src/submodel.jl`.
+    # See https://github.com/TuringLang/DynamicPPL.jl/pull/1427.
     @testset "nested to_submodel return values" begin
         @testset "$(nameof(model.f))" for model in (
             issue_2844_nested_outer(), issue_2844_nested_outer_deep()
@@ -485,11 +481,8 @@ end
         y ~ Normal(params.m, params.s)
         return 1.0 ~ Normal(y)
     end
-    # A submodel nested inside another submodel. Before
-    # https://github.com/TuringLang/Turing.jl/issues/2844 was fixed, evaluating this
-    # model was not type-stable and allocated (and got worse with each level of
-    # nesting), because the recursive submodel evaluation passed through the shared
-    # `_evaluate!!(::Model, ...)` method. See the comment in `src/submodel.jl`.
+    # A submodel nested inside another submodel; see
+    # https://github.com/TuringLang/DynamicPPL.jl/pull/1427.
     @model function submodel_middle(inner)
         mid ~ to_submodel(inner)
         return (m=mid.m, s=mid.s)
