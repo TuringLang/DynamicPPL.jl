@@ -11,3 +11,13 @@ Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [sources]
 DynamicPPL = {path = "../.."}
+
+[compat]
+ADTypes = "1.22.0"
+AbstractPPL = "0.15.3"
+Bijectors = "0.16.1"
+DifferentiationInterface = "0.7.18"
+Distributions = "0.25.127"
+DynamicPPL = "0.42.0"
+ForwardDiff = "1.4.1"
+LogDensityProblems = "2.2.0"
