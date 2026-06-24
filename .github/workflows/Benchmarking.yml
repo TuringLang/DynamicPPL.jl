@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.pull_request.head.sha }}
       - uses: julia-actions/setup-julia@v3
@@ -53,7 +53,7 @@ jobs:
     outputs:
       sha: ${{ steps.mainsha.outputs.sha }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: main
       - id: mainsha
