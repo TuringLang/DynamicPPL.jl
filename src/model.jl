@@ -522,6 +522,14 @@ Return a `Model` which now treats the variables in `values` as fixed.
 
 See also: [`unfix`](@ref), [`fixed`](@ref)
 
+!!! warning "Fixing applies to whole variables"
+    Variables are treated as they occur in the model. A variable drawn from a multivariate
+    distribution in a single tilde-statement (e.g. `x ~ MvNormal(...)`) is a *single* random
+    variable, so a subset of its components cannot be fixed independently; only fixing the
+    variable in its entirety is supported. Declare components in a loop (`x[i] ~ ...`) if you
+    need to fix them individually.
+    See [TuringLang/Turing.jl#2239](https://github.com/TuringLang/Turing.jl/issues/2239).
+
 # Examples
 ## Simple univariate model
 ```jldoctest fix
