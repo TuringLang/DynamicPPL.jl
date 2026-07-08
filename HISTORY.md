@@ -1,8 +1,8 @@
 # 0.42.2
 
-`condition`, `fix`, and `predict` now raise an informative error when only part of a variable that the model samples as a single multivariate draw is supplied (e.g. `x[1:10]` when the model draws `x ~ MvNormal(zeros(20), ...)`).
+`condition`, `fix`, and `predict` now raise an informative error when given only part of a variable that the model samples as a single multivariate draw (e.g. `x[1:10]` when `x ~ MvNormal(zeros(20), ...)`).
 
-This case has never worked: `predict` silently resampled the whole variable from the prior, `fix` silently collapsed it to the supplied length, and `condition` threw an opaque `DimensionMismatch`. It is therefore not a behaviour change, only a clearer failure. To sample the components individually, declare them in a loop, e.g. `for i in eachindex(x); x[i] ~ ...; end`. See [Turing.jl#2239](https://github.com/TuringLang/Turing.jl/issues/2239).
+This is not a behaviour change: the partial case never worked, previously failing silently or with an opaque `DimensionMismatch`. To handle components individually, use a loop: `for i in eachindex(x); x[i] ~ ...; end`. See [Turing.jl#2239](https://github.com/TuringLang/Turing.jl/issues/2239).
 
 # 0.42.1
 
