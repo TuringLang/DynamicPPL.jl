@@ -188,6 +188,9 @@ function init(
             TransformedValue(x, NoTransform())
         end
     else
+        # Fail loudly if only a subset of a whole multivariate variable was supplied (#2239);
+        # otherwise fall back for a genuinely-absent variable.
+        _check_supplied_shape(dist, p.params, vn)
         p.fallback === nothing && error("No value was provided for the variable `$(vn)`.")
         init(rng, vn, dist, p.fallback)
     end
