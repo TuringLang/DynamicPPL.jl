@@ -645,14 +645,12 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
 
             @testset "errors on partial multivariate variable (#2239)" begin
                 @model function mv_partial(n)
-                    s ~ truncated(Normal(0, 1); lower=0)
-                    m ~ MvNormal(zeros(n), 1.0)
-                    return y ~ MvNormal(m, s)
+                    return m ~ MvNormal(zeros(n), 1.0)
                 end
-                # A chain from the n=10 model carries only `m[1:10]`; predicting with the
-                # n=20 model asks to fill part of the single multivariate variable `m`,
-                # which is unsupported and must error rather than silently resample it.
-                chn10 = make_chain_from_prior(mv_partial(10) | (; y=zeros(10)), 5)
+                # The n=10 chain carries only `m[1:10]`; predicting with the n=20 model
+                # asks to fill part of the single multivariate `m`, which must error
+                # rather than silently resample it.
+                chn10 = make_chain_from_prior(mv_partial(10), 5)
                 @test_throws "2239" DynamicPPL.predict(mv_partial(20), chn10)
             end
         end

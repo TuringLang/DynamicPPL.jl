@@ -130,17 +130,11 @@ end
 """
     _check_supplied_shape(dist, supplied, vn)
 
-Validate that the value(s) supplied for `vn` — whether by `condition`, `fix`, or `predict` —
-are consistent with the multivariate distribution `dist` that `vn` is `~`-tied to, and
-return `supplied`. This catches the unsupported case of supplying only part of a variable
-that the model samples as a single multivariate draw (e.g. `x[1:10]` when the model draws
-`x ~ MvNormal(zeros(20), ...)`), which would otherwise silently collapse `x` (`fix`),
-resample the whole variable (`predict`), or throw an opaque `DimensionMismatch`
-(`condition`). See https://github.com/TuringLang/Turing.jl/issues/2239.
-
-`supplied` is dispatched on to cover both callers: a materialised value (from `condition`
-/`fix`) or the parameter `VarNamedTuple` (from `predict`/`InitFromParams`). Only
-`MultivariateDistribution`s are checked; everything else is a no-op.
+Return `supplied`, but error (see TuringLang/Turing.jl#2239) if it specifies only part of a
+variable that the model samples as a single multivariate draw (e.g. `x[1:10]` for
+`x ~ MvNormal(zeros(20), ...)`). `supplied` is either a materialised value (`condition`
+/`fix`) or the parameter `VarNamedTuple` (`predict`/`InitFromParams`); non-multivariate
+`dist`s are a no-op.
 """
 _check_supplied_shape(_, supplied, _) = supplied
 function _check_supplied_shape(
