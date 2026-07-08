@@ -549,8 +549,8 @@ end
     # Supplying only part of a variable the model samples as one multivariate draw is
     # unsupported: `fix` used to silently collapse it and `condition` to throw an opaque
     # `DimensionMismatch`. Both must now raise the informative #2239 error.
-    @test_throws "declare them in a loop" fix(mvc(3), Dict(@varname(m[1]) => 1.0))()
-    @test_throws "declare them in a loop" condition(mvc(3), Dict(@varname(m[1]) => 1.0))()
+    @test_throws ArgumentError fix(mvc(3), Dict(@varname(m[1]) => 1.0))()
+    @test_throws ArgumentError condition(mvc(3), Dict(@varname(m[1]) => 1.0))()
     # A whole-variable value of the correct size is still honoured.
     @test fix(mvc(3), Dict(@varname(m) => [1.0, 2.0, 3.0]))() == [1.0, 2.0, 3.0]
 end

@@ -651,9 +651,20 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
                 # asks to fill part of the single multivariate `m`, which must error
                 # rather than silently resample it.
                 chn10 = make_chain_from_prior(mv_partial(10), 5)
-                @test_throws "declare them in a loop" DynamicPPL.predict(
-                    mv_partial(20), chn10
-                )
+                @test_throws ArgumentError DynamicPPL.predict(mv_partial(20), chn10)
+            end
+
+            @testset "per-index variables are not falsely flagged (#2239)" begin
+                @model function iid(k)
+                    x = Vector{Float64}(undef, k)
+                    x .~ Normal()
+                    return x
+                end
+                # Each `x[i]` is its own variable, so predicting with a larger model must
+                # not error; the extra indices are simply sampled from the prior.
+                chn10 = make_chain_from_prior(iid(10), 5)
+                pred = DynamicPPL.predict(iid(20), chn10)
+                @test Symbol("x[20]") in keys(pred)
             end
         end
     end

@@ -162,13 +162,15 @@ function _check_supplied_shape(
     return params
 end
 @noinline function _throw_incomplete_multivariate(vn, n, dist)
-    return error(
-        "A value with $(n) element(s) was supplied for `$(vn)`, but the model samples " *
-        "`$(vn)` as a single $(length(dist))-dimensional random variable. Supplying a " *
-        "subset of such a variable (via `condition`, `fix`, or `predict` with a chain from " *
-        "a differently-sized model) is not supported. To treat its components " *
-        "individually, declare them in a loop, e.g. " *
-        "`for i in eachindex($(vn)); $(vn)[i] ~ ...; end`.",
+    return throw(
+        ArgumentError(
+            "A value with $(n) element(s) was supplied for `$(vn)`, but the model samples " *
+            "`$(vn)` as a single $(length(dist))-dimensional random variable. Supplying a " *
+            "subset of such a variable (via `condition`, `fix`, or `predict` with a chain " *
+            "from a differently-sized model) is not supported. To treat its components " *
+            "individually, declare them in a loop, e.g. " *
+            "`for i in eachindex($(vn)); $(vn)[i] ~ ...; end`.",
+        ),
     )
 end
 
