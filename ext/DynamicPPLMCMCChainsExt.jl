@@ -276,10 +276,10 @@ predictive distribution.
 !!! warning "Variables are treated as they occur in the model"
     A variable drawn from a multivariate distribution in a single tilde-statement
     (e.g. `x ~ MvNormal(...)` or `x ~ filldist(Normal(), n)`) is a *single* random
-    variable, not a collection of i.i.d. components. `predict` cannot fix a subset of
-    such a variable's components while resampling the rest; if `chain` supplies only
-    some components, the whole variable is resampled from the prior. To treat components
-    individually, declare them in a loop, e.g. `for i in eachindex(x); x[i] ~ Normal(); end`.
+    variable, not a collection of i.i.d. components. `predict` cannot fill in a subset of
+    such a variable's components: if `chain` supplies only some of them, an error is
+    raised. To treat components individually, declare them in a loop, e.g.
+    `for i in eachindex(x); x[i] ~ Normal(); end`.
     See [TuringLang/Turing.jl#2239](https://github.com/TuringLang/Turing.jl/issues/2239).
 
 # Examples
