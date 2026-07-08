@@ -168,8 +168,7 @@ end
         "subset of such a variable (via `condition`, `fix`, or `predict` with a chain from " *
         "a differently-sized model) is not supported. To treat its components " *
         "individually, declare them in a loop, e.g. " *
-        "`for i in eachindex($(vn)); $(vn)[i] ~ ...; end`. " *
-        "See https://github.com/TuringLang/Turing.jl/issues/2239.",
+        "`for i in eachindex($(vn)); $(vn)[i] ~ ...; end`.",
     )
 end
 

@@ -651,7 +651,9 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
                 # asks to fill part of the single multivariate `m`, which must error
                 # rather than silently resample it.
                 chn10 = make_chain_from_prior(mv_partial(10), 5)
-                @test_throws "2239" DynamicPPL.predict(mv_partial(20), chn10)
+                @test_throws "declare them in a loop" DynamicPPL.predict(
+                    mv_partial(20), chn10
+                )
             end
         end
     end
