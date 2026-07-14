@@ -1,9 +1,3 @@
-# 0.42.2
-
-`condition`, `fix`, and `predict` now raise an informative error when given only part of a variable that the model samples as a single multivariate draw (e.g. `x[1:10]` when `x ~ MvNormal(zeros(20), ...)`).
-
-This is not a behaviour change: the partial case never worked, previously failing silently or with an opaque `DimensionMismatch`. To handle components individually, use a loop: `for i in eachindex(x); x[i] ~ ...; end`. See [Turing.jl#2239](https://github.com/TuringLang/Turing.jl/issues/2239).
-
 # 0.42.1
 
 Fixed a type-inference failure that made nested submodels (a `~ to_submodel(...)` statement inside a model that is itself evaluated as a submodel) very slow.

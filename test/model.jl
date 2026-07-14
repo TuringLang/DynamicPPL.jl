@@ -642,30 +642,6 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
                 pdns = DynamicPPL.predict(fmodel, chn[[:b]])
                 @test Set(keys(pdns)) == Set([:x])
             end
-
-            @testset "errors on partial multivariate variable (#2239)" begin
-                @model function mv_partial(n)
-                    return m ~ MvNormal(zeros(n), 1.0)
-                end
-                # The n=10 chain carries only `m[1:10]`; predicting with the n=20 model
-                # asks to fill part of the single multivariate `m`, which must error
-                # rather than silently resample it.
-                chn10 = make_chain_from_prior(mv_partial(10), 5)
-                @test_throws ArgumentError DynamicPPL.predict(mv_partial(20), chn10)
-            end
-
-            @testset "per-index variables are not falsely flagged (#2239)" begin
-                @model function iid(k)
-                    x = Vector{Float64}(undef, k)
-                    x .~ Normal()
-                    return x
-                end
-                # Each `x[i]` is its own variable, so predicting with a larger model must
-                # not error; the extra indices are simply sampled from the prior.
-                chn10 = make_chain_from_prior(iid(10), 5)
-                pred = DynamicPPL.predict(iid(20), chn10)
-                @test Symbol("x[20]") in keys(pred)
-            end
         end
     end
 

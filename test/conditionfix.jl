@@ -541,20 +541,6 @@ end
     end
 end
 
-@testset "partial multivariate variable errors (#2239)" begin
-    @model function mvc(n)
-        m ~ MvNormal(zeros(n), 1.0)
-        return m
-    end
-    # Supplying only part of a variable the model samples as one multivariate draw is
-    # unsupported: `fix` used to silently collapse it and `condition` to throw an opaque
-    # `DimensionMismatch`. Both must now raise the informative #2239 error.
-    @test_throws ArgumentError fix(mvc(3), Dict(@varname(m[1]) => 1.0))()
-    @test_throws ArgumentError condition(mvc(3), Dict(@varname(m[1]) => 1.0))()
-    # A whole-variable value of the correct size is still honoured.
-    @test fix(mvc(3), Dict(@varname(m) => [1.0, 2.0, 3.0]))() == [1.0, 2.0, 3.0]
-end
-
 @info "Completed $(@__FILE__) in $(now() - __now__)."
 
 end # module

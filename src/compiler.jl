@@ -127,53 +127,6 @@ function contextual_isfixed(context::AbstractContext, vn)
     end
 end
 
-"""
-    _check_supplied_shape(dist, supplied, vn)
-
-Return `supplied`, but error (see TuringLang/Turing.jl#2239) if it specifies only part of a
-variable that the model samples as a single multivariate draw (e.g. `x[1:10]` for
-`x ~ MvNormal(zeros(20), ...)`). `supplied` is either a materialised value (`condition`
-/`fix`) or the parameter `VarNamedTuple` (`predict`/`InitFromParams`); non-multivariate
-`dist`s are a no-op.
-"""
-_check_supplied_shape(_, supplied, _) = supplied
-function _check_supplied_shape(
-    dist::Distributions.MultivariateDistribution, supplied::AbstractArray, vn
-)
-    length(supplied) == length(dist) ||
-        _throw_incomplete_multivariate(vn, length(supplied), dist)
-    return supplied
-end
-function _check_supplied_shape(
-    dist::Distributions.MultivariateDistribution, params::VarNamedTuples.VarNamedTuple, vn
-)
-    # Only a reference to the *whole* variable can be partial; an absent indexed leaf
-    # (`x[i]`) is simply a new variable to be sampled from the prior.
-    AbstractPPL.getoptic(vn) isa AbstractPPL.Iden || return params
-    sym = AbstractPPL.getsym(vn)
-    haskey(params.data, sym) || return params
-    val = params.data[sym]
-    if val isa VarNamedTuples.PartialArray
-        n = count(val.mask)
-        # `n == 0` means nothing was supplied (the caller falls back to the prior); a full,
-        # correctly-sized array would already have been found by `hasvalue`.
-        (n == 0 || n == length(dist)) || _throw_incomplete_multivariate(vn, n, dist)
-    end
-    return params
-end
-@noinline function _throw_incomplete_multivariate(vn, n, dist)
-    return throw(
-        ArgumentError(
-            "A value with $(n) element(s) was supplied for `$(vn)`, but the model samples " *
-            "`$(vn)` as a single $(length(dist))-dimensional random variable. Supplying a " *
-            "subset of such a variable (via `condition`, `fix`, or `predict` with a chain " *
-            "from a differently-sized model) is not supported. To treat its components " *
-            "individually, declare them in a loop, e.g. " *
-            "`for i in eachindex($(vn)); $(vn)[i] ~ ...; end`.",
-        ),
-    )
-end
-
 # If we're working with, say, a `Symbol`, then we're not going to `view`.
 maybe_view(x) = x
 maybe_view(x::Expr) = :(@views($x))
@@ -533,12 +486,8 @@ function generate_tilde(left, right)
             # need to use Accessors.set to safely set it.
             $(assign_or_set!!(
                 left,
-                :($(DynamicPPL._check_supplied_shape)(
-                    $dist,
-                    $(DynamicPPL.getfixed_nested)(
-                        __model__.context, $(DynamicPPL.prefix)(__model__.context, $vn)
-                    ),
-                    $vn,
+                :($(DynamicPPL.getfixed_nested)(
+                    __model__.context, $(DynamicPPL.prefix)(__model__.context, $vn)
                 )),
                 vn,
             ))
@@ -556,12 +505,8 @@ function generate_tilde(left, right)
             $supplied_val = if $(DynamicPPL.inargnames)($vn, __model__)
                 $(maybe_view(left))
             else
-                $(DynamicPPL._check_supplied_shape)(
-                    $dist,
-                    $(DynamicPPL.getconditioned_nested)(
-                        __model__.context, $(DynamicPPL.prefix)(__model__.context, $vn)
-                    ),
-                    $vn,
+                $(DynamicPPL.getconditioned_nested)(
+                    __model__.context, $(DynamicPPL.prefix)(__model__.context, $vn)
                 )
             end
 
