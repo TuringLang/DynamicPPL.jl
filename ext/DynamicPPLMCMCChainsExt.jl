@@ -278,8 +278,10 @@ predictive distribution.
     (e.g. `x ~ MvNormal(...)` or `x ~ filldist(Normal(), n)`) is a *single* random
     variable, not a collection of i.i.d. components. `predict` cannot fix a subset of
     such a variable's components while resampling the rest; if `chain` supplies only
-    some components, the whole variable is resampled from the prior. To treat components
-    individually, declare them in a loop, e.g. `for i in eachindex(x); x[i] ~ Normal(); end`.
+    some components, the whole variable is silently resampled from the prior — the
+    predictions will look plausible but ignore what the chain says about that variable.
+    To treat components individually, declare them in a loop, e.g.
+    `for i in eachindex(x); x[i] ~ Normal(); end`.
     See [TuringLang/Turing.jl#2239](https://github.com/TuringLang/Turing.jl/issues/2239).
 
 # Examples
