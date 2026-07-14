@@ -13,7 +13,7 @@ DynamicPPL = {path = "../../.."}
 
 [compat]
 ADTypes = "1"
-AbstractPPL = "0.15.3"
+AbstractPPL = "0.15.4"
 Bijectors = "0.16"
 Distributions = "0.25"
 DynamicPPL = "0.42.1"
