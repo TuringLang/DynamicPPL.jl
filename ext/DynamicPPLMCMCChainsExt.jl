@@ -282,7 +282,6 @@ predictive distribution.
     predictions will look plausible but ignore what the chain says about that variable.
     To treat components individually, declare them in a loop, e.g.
     `for i in eachindex(x); x[i] ~ Normal(); end`.
-    See [TuringLang/Turing.jl#2239](https://github.com/TuringLang/Turing.jl/issues/2239).
 
 # Examples
 ```jldoctest

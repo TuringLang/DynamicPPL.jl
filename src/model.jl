@@ -532,7 +532,6 @@ See also: [`unfix`](@ref), [`fixed`](@ref)
     the variable to just the supplied components, or leave it entirely unfixed and sampled
     from the prior. Declare components in a loop (`x[i] ~ ...`) if you need to fix them
     individually.
-    See [TuringLang/Turing.jl#2239](https://github.com/TuringLang/Turing.jl/issues/2239).
 
 # Examples
 ## Simple univariate model
