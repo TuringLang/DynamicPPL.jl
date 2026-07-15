@@ -1,3 +1,7 @@
+# 0.42.2
+
+Widened the `Mooncake` compat bound to `0.4.147, 0.5, 0.6`. Mooncake 0.6 is a breaking release (forward-mode redesign), but the reverse-mode rule API `DynamicPPLMooncakeExt` uses (`Mooncake.@zero_derivative`) and the prepared-cache API it relies on via AbstractPPL are unchanged, so no code changes were needed.
+
 # 0.42.1
 
 Fixed a type-inference failure that made nested submodels (a `~ to_submodel(...)` statement inside a model that is itself evaluated as a submodel) very slow.
