@@ -187,6 +187,7 @@ julia> # Notice that VarInfo(model_incorrect) evaluates the model, but doesn't a
 
 julia> check_model(model; error_on_failure=true)
 ERROR: varname x used multiple times in model
+```
 """
 function check_model(
     rng::Random.AbstractRNG, model::Model; error_on_failure=false, fail_if_discrete=false
