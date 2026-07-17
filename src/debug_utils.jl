@@ -186,7 +186,9 @@ julia> # Notice that VarInfo(model_incorrect) evaluates the model, but doesn't a
        model = demo_incorrect(); varinfo = VarInfo(model);
 
 julia> check_model(model; error_on_failure=true)
-ERROR: varname x used multiple times in model
+┌ Warning: Assigning to the variable x led to a previous value being overwritten. This indicates that a value is being set twice (e.g. if the same variable occurs in a model twice).
+└ @ DynamicPPL.DebugUtils DynamicPPL.jl/src/debug_utils.jl:237
+ERROR: Model check failed; please see the warnings above for details.
 ```
 """
 function check_model(
