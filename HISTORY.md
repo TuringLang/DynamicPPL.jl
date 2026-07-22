@@ -1,3 +1,7 @@
+# 0.42.3
+
+Worked around an upstream Julia code-generation bug that, under concurrent allocation load, could crash the model re-evaluation performed by `ParamsWithStats`. The affected re-evaluation is now routed through an internal function barrier that avoids the miscompilation; behaviour is unchanged. The crash was originally reported in [AbstractMCMC.jl#214](https://github.com/TuringLang/AbstractMCMC.jl/issues/214).
+
 # 0.42.2
 
 Widened the `Mooncake` compat bound to `0.4.147, 0.5, 0.6`. Mooncake 0.6 is a breaking release (forward-mode redesign), but the reverse-mode rule API `DynamicPPLMooncakeExt` uses (`Mooncake.@zero_derivative`) and the prepared-cache API it relies on via AbstractPPL are unchanged, so no code changes were needed.

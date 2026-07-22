@@ -39,29 +39,21 @@ function ParamsWithStats(
     include_colon_eq::Bool=true,
     include_log_probs::Bool=true,
 )
-    accs = if include_log_probs
-        (
+    # Route through the same `@noinline _pws_eval` barrier as the vector-based method below,
+    # so the accumulator tuple -- and hence the `(retval, varinfo)` result of `init!!` -- is
+    # concretely typed at the call site rather than `Union`-typed (see `_pws_eval` for why
+    # this matters on Julia 1.12 `-O2`).
+    return if include_log_probs
+        accs = (
             DynamicPPL.LogPriorAccumulator(),
             DynamicPPL.LogLikelihoodAccumulator(),
             DynamicPPL.RawValueAccumulator(include_colon_eq),
         )
+        _pws_eval(model, accs, init_strategy, stats, true)
     else
-        (DynamicPPL.RawValueAccumulator(include_colon_eq),)
+        accs = (DynamicPPL.RawValueAccumulator(include_colon_eq),)
+        _pws_eval(model, accs, init_strategy, stats, false)
     end
-    oavi = OnlyAccsVarInfo(accs)
-    oavi = last(DynamicPPL.init!!(model, oavi, init_strategy, UnlinkAll()))
-    params = densify!!(get_raw_values(oavi))
-    if include_log_probs
-        stats = merge(
-            stats,
-            (
-                logprior=DynamicPPL.getlogprior(oavi),
-                loglikelihood=DynamicPPL.getloglikelihood(oavi),
-                logjoint=DynamicPPL.getlogjoint(oavi),
-            ),
-        )
-    end
-    return ParamsWithStats(params, stats)
 end
 
 """
@@ -143,20 +135,32 @@ function pws_with_eval(
     include_log_probs::Bool=true,
 )
     strategy = InitFromVector(param_vector, ldf)
-    accs = if include_log_probs
-        (
+    # `_pws_eval` is called separately from each branch so that `accs` -- and hence the
+    # `(retval, varinfo)` tuple returned by `init!!` inside it -- has a concrete type at each
+    # call site. If `accs` were `Union`-typed here, Julia 1.12's `-O2` optimizer would
+    # heap-box that union-typed tuple and, because `retval` is unused, leave its pointer
+    # fields uninitialized across a GC safepoint while the box is GC-rooted; a garbage
+    # collection landing there scans those fields and segfaults in `gc_mark_obj8`.
+    return if include_log_probs
+        accs = (
             DynamicPPL.LogPriorAccumulator(),
             DynamicPPL.LogLikelihoodAccumulator(),
             DynamicPPL.RawValueAccumulator(include_colon_eq),
         )
+        _pws_eval(ldf.model, accs, strategy, stats, true)
     else
-        (DynamicPPL.RawValueAccumulator(include_colon_eq),)
+        accs = (DynamicPPL.RawValueAccumulator(include_colon_eq),)
+        _pws_eval(ldf.model, accs, strategy, stats, false)
     end
+end
+@noinline function _pws_eval(
+    model::Model, accs::Tuple, strategy, stats::NamedTuple, include_log_probs::Bool
+)
     # UnlinkAll() actually doesn't have any impact here, because there isn't even a
     # LogJacobianAccumulator; consequently, it doesn't matter whether we interpret the
     # parameters as being in linked space or not. However, we just include it for clarity.
     _, vi = DynamicPPL.init!!(
-        ldf.model, OnlyAccsVarInfo(AccumulatorTuple(accs)), strategy, UnlinkAll()
+        model, OnlyAccsVarInfo(AccumulatorTuple(accs)), strategy, UnlinkAll()
     )
     params = densify!!(get_raw_values(vi))
     if include_log_probs

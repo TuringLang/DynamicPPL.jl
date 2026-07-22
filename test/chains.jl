@@ -168,6 +168,47 @@ end
     end
 end
 
+@testset "no Union-typed VarInfo across init!! (Julia 1.12 -O2 GC miscompile guard)" begin
+    # Regression guard for a Julia 1.12 `-O2` codegen/GC-rooting bug. Both `ParamsWithStats`
+    # model-reevaluation methods choose an accumulator tuple based on `include_log_probs`. If
+    # that choice is made *before* `init!!`, the resulting `(retval, varinfo)` tuple is
+    # `Union`-typed; 1.12 heap-boxes it, leaves the dead `retval` pointer fields uninitialized
+    # across a GC safepoint, and a GC landing there corrupts the heap (a `gc_mark_obj8`
+    # segfault, only reproducible under concurrent allocation load). Routing `init!!` through
+    # the `@noinline _pws_eval` barrier keeps the accumulator `VarInfo` concretely typed at
+    # every call site. The union is a type-inference fact independent of Julia version (only
+    # the crash is 1.12-specific), so assert it never reappears in the inferred IR.
+    model = DynamicPPL.TestUtils.DEMO_MODELS[1]
+    ldf = LogDensityFunction(model)
+    param_vector = rand(ldf)
+    # Compile both entry points (vector + strategy) so their method bodies are in the IR cache.
+    ParamsWithStats(param_vector, ldf)
+    ParamsWithStats(DynamicPPL.InitFromPrior(), model)
+
+    is_union_of_oavi(t) =
+        t isa Union && all(u -> u <: DynamicPPL.OnlyAccsVarInfo, Base.uniontypes(t))
+    function offending_methods(f)
+        hits = String[]
+        for m in methods(f)
+            body = try
+                Base.bodyfunction(m)
+            catch
+                nothing
+            end
+            body === nothing && continue
+            for (ci, _) in code_typed(body; optimize=true)
+                any(is_union_of_oavi, ci.ssavaluetypes) && push!(hits, string(m))
+            end
+        end
+        return hits
+    end
+    offending = [
+        offending_methods(DynamicPPL.pws_with_eval)
+        offending_methods(ParamsWithStats)
+    ]
+    @test isempty(offending)
+end
+
 @info "Completed $(@__FILE__) in $(now() - __now__)."
 
 end # module
