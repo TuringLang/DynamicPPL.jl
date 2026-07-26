@@ -129,5 +129,10 @@ function arraydist(dists::AbstractArray{<:Distribution})
     return product_distribution(dists)
 end
 function arraydist(dists::AbstractVector{<:UnivariateDistribution})
-    return Product(dists)
+    # The inner constructor skips `Product`'s deprecation warning, which `Base.depwarn`
+    # makes expensive because it walks a backtrace on every call.
+    V = typeof(dists)
+    T = eltype(dists)
+    S = Distributions.value_support(T)
+    return Product{S,T,V}(dists)
 end
