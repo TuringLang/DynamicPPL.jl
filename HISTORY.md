@@ -1,3 +1,9 @@
+# 0.42.4
+
+`arraydist` on a vector of univariate distributions now builds its `Distributions.Product` through the inner constructor instead of `Product(dists)`, which is deprecated. The outer constructor calls `Base.depwarn`, and that walks a backtrace on every call, so models with an `arraydist` likelihood paid it once per evaluation. The return type is unchanged.
+
+This restores the behaviour of the DistributionsAD implementation, which used the inner constructor for the same reason before `arraydist` moved here in 0.40.4.
+
 # 0.42.3
 
 Worked around an upstream Julia code-generation bug that, under concurrent allocation load, could crash the model re-evaluation performed by `ParamsWithStats`. The affected re-evaluation is now routed through an internal function barrier that avoids the miscompilation; behaviour is unchanged. The crash was originally reported in [AbstractMCMC.jl#214](https://github.com/TuringLang/AbstractMCMC.jl/issues/214).
