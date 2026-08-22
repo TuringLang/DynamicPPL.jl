@@ -1,3 +1,7 @@
+# 0.42.5
+
+Fixed `apply_transform_strategy` to accumulate only the target fixed transform's forward log-Jacobian when converting from `DynamicLink`. Previously, the source inverse Jacobian was also included, producing incorrect internal log densities.
+
 # 0.42.4
 
 `arraydist` on a vector of univariate distributions now builds its `Distributions.Product` through the inner constructor instead of `Product(dists)`, which is deprecated. The outer constructor calls `Base.depwarn`, and that walks a backtrace on every call, so models with an `arraydist` likelihood paid it once per evaluation. The return type is unchanged.
