@@ -241,6 +241,10 @@ end
 
         # Matching transform should work
         strategy_ok = DynamicPPL.WithTransforms(VarNamedTuple(; x=ft), UnlinkAll())
+        _, _, dynamic_to_fixed_logjac = DynamicPPL.apply_transform_strategy(
+            strategy_ok, TransformedValue(linked_val, DynamicLink()), vn, dist
+        )
+        @test dynamic_to_fixed_logjac ≈ logjac
         new_raw, new_tv, new_logjac = DynamicPPL.apply_transform_strategy(
             strategy_ok, tv, vn, dist
         )
