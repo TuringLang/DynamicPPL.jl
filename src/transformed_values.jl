@@ -303,20 +303,23 @@ Specifically, this function does a number of things:
   Otherwise, either linking or unlinking is applied as necessary. Note that this function
   does not perform vectorisation unless it is needed.
 
-  A table summarising the possible transformations is as follows:
+  A table summarising the possible transformations is as follows, writing `target` for
+  `target_transform(strategy, vn)`:
 
-  | tv.transform isa ...| `target_transform(...) isa DynamicLink` | `target_transform(...) isa Unlink` |
-  |---------------------|---------------------------------|------------------------------------|
-  | `DynamicLink`       | -> `DynamicLink`                | -> `NoTransform`                   |
-  | `Unlink`            | -> `DynamicLink`                | -> `Unlink`                        |
-  | `NoTransform`       | -> `DynamicLink`                | -> `NoTransform`                   |
-  | `FixedTransform`    | errors                          | errors                             |
+  | `tv.transform` isa | target `DynamicLink` | target `Unlink` or `NoTransform` | target `FixedTransform` |
+  |--------------------|----------------------|----------------------------------|-------------------------|
+  | `DynamicLink`      | -> `DynamicLink`     | -> `NoTransform`                 | -> `FixedTransform`     |
+  | `Unlink`           | -> `DynamicLink`     | -> `Unlink`                      | -> `FixedTransform`     |
+  | `NoTransform`      | -> `DynamicLink`     | -> `NoTransform`                 | -> `FixedTransform`     |
+  | `FixedTransform`   | -> `DynamicLink`     | -> `NoTransform`                 | -> `FixedTransform`     |
 
-  Note that, for the last row, when using `FixedTransform` we require that `target_transform`
-  exactly matches the fixed transform, otherwise an error is thrown.
+  When `tv.transform` and `target` are both `FixedTransform`s, they must be equal, otherwise
+  an error is thrown.
 
-- If `vn` is supposed to be linked, calculates the associated log-Jacobian adjustment for
-  the **forward** linking transformation (i.e., from unlinked to linked).
+- Calculates the log-Jacobian adjustment for the **forward** transformation from the raw
+  value to the new internal representation (for instance, from unlinked to linked). This
+  depends only on `target`, never on `tv`'s current transform, and is zero when the new
+  representation is untransformed.
 
 This function returns a tuple of `(raw_value, new_tv, logjac)`.
 
