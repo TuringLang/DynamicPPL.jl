@@ -229,7 +229,7 @@ end
         dist = Beta(2, 2)
         vn = @varname(x)
         ft = FixedTransform(Bijectors.VectorBijectors.from_linked_vec(dist))
-        wrong_ft = FixedTransform(
+        other_ft = FixedTransform(
             Bijectors.VectorBijectors.from_linked_vec(InverseGamma(2, 3))
         )
 
@@ -254,10 +254,32 @@ end
         @test new_logjac ≈ logjac
 
         # Mismatched transform should error
-        strategy_bad = DynamicPPL.WithTransforms(VarNamedTuple(; x=wrong_ft), UnlinkAll())
+        strategy_bad = DynamicPPL.WithTransforms(VarNamedTuple(; x=other_ft), UnlinkAll())
         @test_throws ErrorException DynamicPPL.apply_transform_strategy(
             strategy_bad, tv, vn, dist
         )
+
+        # `other_ft` is not `dist`'s own link transform, so unlike the assertion above
+        # the target's forward log-Jacobian here is distinguishable from the source's.
+        @testset "log-Jacobian depends only on the target transform" begin
+            other_logjac = last(
+                Bijectors.with_logabsdet_jacobian(
+                    Bijectors.inverse(other_ft.transform), raw_val
+                ),
+            )
+            @test !isapprox(other_logjac, logjac)
+
+            strategy = DynamicPPL.WithTransforms(VarNamedTuple(; x=other_ft), UnlinkAll())
+            vec_val = Bijectors.VectorBijectors.to_vec(dist)(raw_val)
+            @testset "from $(get_transform(src))" for src in (
+                TransformedValue(linked_val, DynamicLink()),
+                TransformedValue(vec_val, Unlink()),
+                TransformedValue(raw_val, NoTransform()),
+            )
+                _, _, lj = DynamicPPL.apply_transform_strategy(strategy, src, vn, dist)
+                @test lj ≈ other_logjac
+            end
+        end
     end
 end
 
