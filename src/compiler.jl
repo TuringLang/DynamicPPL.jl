@@ -276,14 +276,21 @@ different dimensions:
 using DynamicPPL, Distributions, LinearAlgebra, Random
 
 struct VariableLengthDistribution <: DiscreteMultivariateDistribution end
+Base.length(::VariableLengthDistribution) = 5
 function Base.rand(rng::Random.AbstractRNG, ::VariableLengthDistribution)
     return rand(rng, 0:1, rand(rng, 1:10))
+end
+function Distributions._logpdf(::VariableLengthDistribution, x::AbstractVector)
+    return -length(x) * log(2)
 end
 
 @model function invalid_variable_length()
     x ~ VariableLengthDistribution()
 end
 ```
+
+Evaluating this model throws `DimensionMismatch` unless the draw happens to match the
+declared dimension.
 
 Instead, sample the dimension separately. Each `MvNormal` instance then has a fixed sample
 dimension:
