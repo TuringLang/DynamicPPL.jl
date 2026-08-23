@@ -153,6 +153,9 @@ end
 
         @test LogDensityProblems.logdensity(ldf, xs) ≈
             logpdf(Normal(), xs[1]) + N * logpdf(Normal(xs[1]), 0.0)
+        @test ForwardDiff.derivative(
+            x -> LogDensityProblems.logdensity(ldf, [x]), only(xs)
+        ) ≈ -(N + 1) * only(xs)
     end
 end
 
