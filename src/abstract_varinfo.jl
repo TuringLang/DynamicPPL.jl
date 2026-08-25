@@ -399,10 +399,45 @@ Return an iterator over all `vns` in `vi`.
 """
     getindex(vi::AbstractVarInfo, ::Colon)
 
-Return the current value(s) of `vn` (`vns`) in `vi` in the support of its (their)
-distribution(s) as a flattened `Vector`.
+Return the values stored internally in `vi` as a flattened `Vector`.
 
-The default implementation is to call [`internal_values_as_vector`](@ref).
+For unlinked variables, these are vectorised model-space values. Linked variables are stored
+in transformed coordinates, which need not be in the support of their distributions.
+
+`vi[:]` is retained only for compatibility and will be deprecated in a future breaking
+release. Use [`internal_values_as_vector`](@ref) instead. Both forms may promote mixed
+per-variable element types when constructing the output vector.
+
+Before v0.41, `vi[vn]` for `vi::VarInfo` returned the model-space value of `vn`. Named
+indexing now throws an `ArgumentError`. Use [`getindex_internal`](@ref) for one variable's
+internal value. To obtain model-space values, evaluate the model with a
+[`RawValueAccumulator`](@ref).
+
+# Examples
+
+```jldoctest
+julia> using DynamicPPL, Distributions
+
+julia> @model f() = x ~ Beta();
+
+julia> vi = VarInfo(f(), InitFromParams((x = 0.25,)), LinkAll());
+
+julia> vi[:] == internal_values_as_vector(vi)
+true
+
+julia> DynamicPPL.getindex_internal(vi, @varname(x)) == vi[:]
+true
+
+julia> 0 < only(vi[:]) < 1
+false
+
+julia> accs = OnlyAccsVarInfo(RawValueAccumulator(false));
+
+julia> _, accs = init!!(f(), accs, InitFromParams((x = 0.25,)), LinkAll());
+
+julia> get_raw_values(accs)[@varname(x)]
+0.25
+```
 """
 Base.getindex(vi::AbstractVarInfo, ::Colon) = internal_values_as_vector(vi)
 function Base.getindex(::AbstractVarInfo, ::Union{VarName,AbstractVector{<:VarName}})
@@ -416,20 +451,25 @@ end
 """
     internal_values_as_vector(vi::AbstractVarInfo)
 
-Return all internal values stored in `vi.values` as a flattened `Vector`.
+Return all variable values stored internally in `vi` as a flattened `Vector`.
+
+!!! warning "Mixed element types"
+    A `Vector` has one element type, so concatenating variables with different element types
+    may promote their values. For example, combining an integer variable with a `Float64`
+    variable can convert the integer to `Float64`. Consequently, passing this vector to
+    [`unflatten!!`](@ref) is not guaranteed to preserve each variable's element type. See
+    [DynamicPPL#1001](https://github.com/TuringLang/DynamicPPL.jl/issues/1001).
 """
 function internal_values_as_vector end
 
 """
     getindex_internal(vi::AbstractVarInfo, vn::VarName)
-    getindex_internal(vi::AbstractVarInfo, vns::Vector{<:VarName})
-    getindex_internal(vi::AbstractVarInfo, ::Colon)
 
-Return the internal value of the varname `vn`, varnames `vns`, or all varnames
-in `vi` respectively. The internal value is the value of the variables that is
-stored in the varinfo object; this may be the actual realisation of the random
-variable (i.e. the value sampled from the distribution), or it may have been
-transformed to Euclidean space, depending on whether the varinfo was linked.
+Return the internal, vectorised value of `vn` stored in `vi`.
+
+This function does not invert transformations: a linked variable is returned in transformed
+coordinates rather than model space. Use [`internal_values_as_vector`](@ref) to concatenate
+the internal values of all variables.
 
 See https://turinglang.org/docs/developers/transforms/dynamicppl/ for more
 information on how transformed variables are stored in DynamicPPL.
