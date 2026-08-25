@@ -408,11 +408,6 @@ in transformed coordinates, which need not be in the support of their distributi
 release. Use [`internal_values_as_vector`](@ref) instead. Both forms may promote mixed
 per-variable element types when constructing the output vector.
 
-Before v0.41, `vi[vn]` for `vi::VarInfo` returned the model-space value of `vn`. Named
-indexing now throws an `ArgumentError`. Use [`getindex_internal`](@ref) for one variable's
-internal value. To obtain model-space values, evaluate the model with a
-[`RawValueAccumulator`](@ref).
-
 # Examples
 
 ```jldoctest
@@ -440,6 +435,17 @@ julia> get_raw_values(accs)[@varname(x)]
 ```
 """
 Base.getindex(vi::AbstractVarInfo, ::Colon) = internal_values_as_vector(vi)
+
+"""
+    getindex(vi::AbstractVarInfo, vn::VarName)
+    getindex(vi::AbstractVarInfo, vns::AbstractVector{<:VarName})
+
+Throw an `ArgumentError`. Named indexing was removed in DynamicPPL v0.41.
+
+Before v0.41 this returned the model-space value of `vn`. Use
+[`getindex_internal`](@ref) for one variable's internal value. To obtain model-space
+values, evaluate the model with a [`RawValueAccumulator`](@ref).
+"""
 function Base.getindex(::AbstractVarInfo, ::Union{VarName,AbstractVector{<:VarName}})
     throw(
         ArgumentError(
