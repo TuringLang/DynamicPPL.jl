@@ -5,8 +5,11 @@ A `NamedTuple`-like structure with `VarName` keys.
 
 `VarNamedTuple` is a data structure for storing arbitrary data, keyed by `VarName`s, in an
 efficient and type stable manner. It is mainly used through `getindex`, `setindex!!`,
-`templated_setindex!!`, and `haskey`, all of which only accept `VarName`s as keys. Other
-notable methods are `merge` and `subset`.
+`templated_setindex!!`, and `haskey`. `getindex` and `haskey` also accept a `Symbol` as
+shorthand for an identity `VarName`: `vnt[:x]` is equivalent to `vnt[@varname(x)]`.
+Only symbols that are valid Julia identifiers are accepted. Use a `VarName` for indexed or
+nested variables. `Symbol("x[1]")` and `Symbol("x.y")` are rejected rather than parsed.
+Other notable methods are `merge` and `subset`.
 
 `VarNamedTuple` has an ordering to its elements, and two `VarNamedTuple`s with the same keys
 and values but in different orders are considered different for equality and hashing.
@@ -25,8 +28,10 @@ equal to it. More specifically
 
 Otherwise insertion order is respected.
 
-`setindex!!` and `getindex` on `VarNamedTuple` are type stable as long as one does not store
-heterogeneous data under different indices of the same symbol. That is, if either
+`getindex` with a `Symbol` key may not be type stable because every symbol has type `Symbol`;
+the name is not encoded in the type. `setindex!!` and `getindex` with `VarName` keys are type
+stable as long as one does not store heterogeneous data under different indices of the same
+symbol. That is, if either
 
 * one sets `a[1]` and `a[2]` to be of different types, or
 * if `a[1]` and `a[2]` both exist, one sets `a[1].b` without setting `a[2].b`,
@@ -91,7 +96,27 @@ function Base.getindex(vnt::VarNamedTuple, vn::VarName)
     return unwrap_internal_array(result)
 end
 
+@inline function _check_symbol_key(sym::Symbol)
+    Base.isidentifier(sym) || throw(
+        ArgumentError(
+            "Invalid Symbol key $(repr(sym)): expected a Julia identifier such as `:x`. " *
+            "Use a `VarName` for indexed or nested variables.",
+        ),
+    )
+    return nothing
+end
+
+@inline function Base.getindex(vnt::VarNamedTuple, sym::Symbol)
+    _check_symbol_key(sym)
+    haskey(vnt.data, sym) || throw(KeyError(sym))
+    return unwrap_internal_array(getindex(vnt.data, sym))
+end
+
 Base.haskey(vnt::VarNamedTuple, vn::VarName) = _haskey_optic(vnt, vn)
+@inline function Base.haskey(vnt::VarNamedTuple, sym::Symbol)
+    _check_symbol_key(sym)
+    return haskey(vnt, VarName{sym}())
+end
 
 """
     DynamicPPL.VarNamedTuples.templated_setindex!!(vnt, value, vn, template; allow_new=Val(true))
