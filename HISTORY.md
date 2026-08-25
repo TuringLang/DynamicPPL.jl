@@ -1,3 +1,7 @@
+# 0.42.5
+
+Fixed `apply_transform_strategy` to return only the target transform's forward log-Jacobian when converting a `DynamicLink` value to a `FixedTransform` target. It previously added the source's forward Jacobian as well, so `getlogjac`, `getlogjoint_internal`, and `getlogprior_internal` were wrong whenever linked values were fed into a fixed-transform strategy. See [#1407](https://github.com/TuringLang/DynamicPPL.jl/issues/1407).
+
 # 0.42.4
 
 `arraydist` on a vector of univariate distributions now builds its `Distributions.Product` through the inner constructor instead of `Product(dists)`, which is deprecated. The outer constructor calls `Base.depwarn`, and that walks a backtrace on every call, so models with an `arraydist` likelihood paid it once per evaluation. The return type is unchanged.
