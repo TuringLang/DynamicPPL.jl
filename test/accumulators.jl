@@ -99,6 +99,12 @@ TEST_ACCUMULATORS = (
             ]
                 @test combine(acc, split(acc)) == acc
             end
+
+            acc = DynamicPPL.DebugRawValueAccumulator()
+            split_acc, other_split_acc = split(acc), split(acc)
+            @test split_acc.f.repeated_vns !== other_split_acc.f.repeated_vns
+            push!(split_acc.f.repeated_vns, @varname(x))
+            @test combine(acc, split_acc).f.repeated_vns == Set((@varname(x),))
         end
 
         @testset "conversions" begin
