@@ -529,6 +529,13 @@ end
 @inline function LogDensityProblems.logdensity(
     ldf::LogDensityFunction, params::AbstractVector{<:Real}
 )
+    if length(params) != ldf._dim
+        throw(
+            ArgumentError(
+                "The length of the input vector is $(length(params)), but the LogDensityFunction expects a vector of length $(ldf._dim) based on the ranges that were extracted when the LogDensityFunction was constructed.",
+            ),
+        )
+    end
     return logdensity_internal(
         params,
         ldf.model,
