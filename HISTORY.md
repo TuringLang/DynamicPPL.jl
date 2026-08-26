@@ -1,3 +1,7 @@
+# 0.42.6
+
+`varinfo[:]` is deprecated in favour of `internal_values_as_vector(varinfo)`. It still works and returns the same vector, but emits a deprecation warning, and will be removed in a future breaking release. See [#1454](https://github.com/TuringLang/DynamicPPL.jl/issues/1454).
+
 # 0.42.5
 
 Fixed `apply_transform_strategy` to return only the target transform's forward log-Jacobian when converting a `DynamicLink` value to a `FixedTransform` target. It previously added the source's forward Jacobian as well, so `getlogjac`, `getlogjoint_internal`, and `getlogprior_internal` were wrong whenever linked values were fed into a fixed-transform strategy. See [#1407](https://github.com/TuringLang/DynamicPPL.jl/issues/1407).
