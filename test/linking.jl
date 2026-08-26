@@ -102,15 +102,17 @@ end
                 Bijectors.VectorBijectors.from_vec(dist)(vi.values[@varname(m)].value)
             )
             # Linked one should be working with a lower-dimensional representation.
-            @test length(vi_linked[:]) < length(vi[:])
-            @test length(vi_linked[:]) == length(y)
+            @test length(internal_values_as_vector(vi_linked)) <
+                length(internal_values_as_vector(vi))
+            @test length(internal_values_as_vector(vi_linked)) == length(y)
             # Invlinked.
             vi_invlinked = if mutable
                 DynamicPPL.invlink!!(deepcopy(vi_linked), model)
             else
                 DynamicPPL.invlink(vi_linked, model)
             end
-            @test length(vi_invlinked[:]) == length(vi[:])
+            @test length(internal_values_as_vector(vi_invlinked)) ==
+                length(internal_values_as_vector(vi))
             # The internal values should be convertible to the same thing.
             @test Bijectors.VectorBijectors.from_vec(dist)(
                 vi_invlinked.values[@varname(m)].value
@@ -142,7 +144,7 @@ end
                     @test val isa Cholesky
                     @test val.uplo == uplo
 
-                    @test length(vi[:]) == d * (d + 1) ÷ 2
+                    @test length(internal_values_as_vector(vi)) == d * (d + 1) ÷ 2
                     lp = logpdf(dist, val)
                     lp_model = logjoint(model, vi)
                     @test lp_model ≈ lp
@@ -152,7 +154,7 @@ end
                     else
                         DynamicPPL.link(vi, model)
                     end
-                    @test length(vi_linked[:]) == d * (d - 1) ÷ 2
+                    @test length(internal_values_as_vector(vi_linked)) == d * (d - 1) ÷ 2
                     # Should now include the log-absdet-jacobian correction.
                     @test !(getlogjoint_internal(vi_linked) ≈ lp)
                     # Invlinked.
@@ -161,7 +163,7 @@ end
                     else
                         DynamicPPL.invlink(vi_linked, model)
                     end
-                    @test length(vi_invlinked[:]) == d * (d + 1) ÷ 2
+                    @test length(internal_values_as_vector(vi_invlinked)) == d * (d + 1) ÷ 2
                     @test getlogjoint_internal(vi_invlinked) ≈ lp
                 end
             end
@@ -177,8 +179,8 @@ end
             example_values_x_only = (x=example_values.x,)
             vis = DynamicPPL.TestUtils.setup_varinfos(model, example_values_x_only)
             @testset "$(short_varinfo_name(vi))" for vi in vis
-                lp = logpdf(Dirichlet(d, 1.0), vi[:])
-                @test length(vi[:]) == d
+                lp = logpdf(Dirichlet(d, 1.0), internal_values_as_vector(vi))
+                @test length(internal_values_as_vector(vi)) == d
                 lp_model = logjoint(model, vi)
                 @test lp_model ≈ lp
                 # Linked.
@@ -187,7 +189,7 @@ end
                 else
                     DynamicPPL.link(vi, model)
                 end
-                @test length(vi_linked[:]) == d - 1
+                @test length(internal_values_as_vector(vi_linked)) == d - 1
                 # Should now include the log-absdet-jacobian correction.
                 @test !(getlogjoint_internal(vi_linked) ≈ lp)
                 # Invlinked.
@@ -196,7 +198,7 @@ end
                 else
                     DynamicPPL.invlink(vi_linked, model)
                 end
-                @test length(vi_invlinked[:]) == d
+                @test length(internal_values_as_vector(vi_invlinked)) == d
                 @test getlogjoint_internal(vi_invlinked) ≈ lp
             end
         end
@@ -219,7 +221,7 @@ end
                 else
                     DynamicPPL.link(vi, model)
                 end
-                @test length(vi_linked[:]) == prod(ns)
+                @test length(internal_values_as_vector(vi_linked)) == prod(ns)
             end
         end
     end

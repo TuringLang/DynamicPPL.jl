@@ -404,9 +404,12 @@ Return the values stored internally in `vi` as a flattened `Vector`.
 For unlinked variables, these are vectorised model-space values. Linked variables are stored
 in transformed coordinates, which need not be in the support of their distributions.
 
-`vi[:]` is retained only for compatibility and will be deprecated in a future breaking
-release. Use [`internal_values_as_vector`](@ref) instead. Both forms may promote mixed
-per-variable element types when constructing the output vector.
+!!! warning "Deprecated"
+    `vi[:]` is deprecated. Use [`internal_values_as_vector`](@ref) instead. It will be
+    removed in a future breaking release.
+
+Both forms may promote mixed per-variable element types when constructing the output
+vector.
 
 # Examples
 
@@ -417,13 +420,12 @@ julia> @model f() = x ~ Beta();
 
 julia> vi = VarInfo(f(), InitFromParams((x = 0.25,)), LinkAll());
 
-julia> vi[:] == internal_values_as_vector(vi)
+julia> v = internal_values_as_vector(vi);
+
+julia> DynamicPPL.getindex_internal(vi, @varname(x)) == v
 true
 
-julia> DynamicPPL.getindex_internal(vi, @varname(x)) == vi[:]
-true
-
-julia> 0 < only(vi[:]) < 1
+julia> 0 < only(v) < 1
 false
 
 julia> accs = OnlyAccsVarInfo(RawValueAccumulator(false));
@@ -434,7 +436,13 @@ julia> get_raw_values(accs)[@varname(x)]
 0.25
 ```
 """
-Base.getindex(vi::AbstractVarInfo, ::Colon) = internal_values_as_vector(vi)
+function Base.getindex(vi::AbstractVarInfo, ::Colon)
+    Base.depwarn(
+        "`varinfo[:]` is deprecated, use `internal_values_as_vector(varinfo)` instead.",
+        :getindex,
+    )
+    return internal_values_as_vector(vi)
+end
 
 """
     getindex(vi::AbstractVarInfo, vn::VarName)
@@ -524,7 +532,7 @@ function Base.eltype(vi::AbstractVarInfo)
         # In this case `getindex(vi, :)` errors
         # Let us throw a more descriptive error message
         # Ref https://github.com/TuringLang/Turing.jl/issues/2151
-        return eltype(vi[:])
+        return eltype(internal_values_as_vector(vi))
     end
     return eltype(T)
 end
