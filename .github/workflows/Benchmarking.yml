@@ -14,7 +14,10 @@ concurrency:
   cancel-in-progress: ${{ startsWith(github.ref, 'refs/pull/') }}
 
 jobs:
+  # Fork PRs cannot use the write token needed to post results. Using
+  # `pull_request_target` here would execute untrusted PR code with that token.
   benchmark-pr:
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
     # OS pinned (rather than `ubuntu-latest`) so that successive runs land on
     # the same VM family — GitHub silently rotates `latest` and the noise
     # floor changes between runs. Julia version pinned for the same reason:
@@ -46,6 +49,7 @@ jobs:
             benchmarks/version_info.txt
 
   benchmark-main:
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
     # Tracks main's moving HEAD — the displayed main SHA may shift between
     # successive re-runs of the same PR if main advances in the interim.
     runs-on: ubuntu-22.04
