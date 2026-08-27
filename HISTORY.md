@@ -1,3 +1,7 @@
+# 0.42.6
+
+The `Flat`, `FlatPos`, `BinomialLogit`, `OrderedLogistic`, and `LogPoisson` distributions have moved here from Turing, where they are re-exported. This makes them available for DynamicPPL's own test models and AD testing. See [Turing#2858](https://github.com/TuringLang/Turing.jl/issues/2858).
+
 # 0.42.5
 
 Fixed `apply_transform_strategy` to return only the target transform's forward log-Jacobian when converting a `DynamicLink` value to a `FixedTransform` target. It previously added the source's forward Jacobian as well, so `getlogjac`, `getlogjoint_internal`, and `getlogprior_internal` were wrong whenever linked values were fed into a fixed-transform strategy. See [#1407](https://github.com/TuringLang/DynamicPPL.jl/issues/1407).

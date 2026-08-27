@@ -30,6 +30,7 @@ Random.seed!(100)
         include("varinfo.jl")
         include("model.jl")
         include("distribution_wrappers.jl")
+        include("distributions.jl")
         include("linking.jl")
         include("serialization.jl")
 
