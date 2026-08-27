@@ -187,6 +187,16 @@ function is_extracting_colon_eq_values(vi::AbstractVarInfo)
            is_extracting_colon_eq_values(getacc(vi, Val(RAW_VALUE_ACCNAME)).f)
 end
 
+function record_nonmissing_argument!!(vi::AbstractVarInfo, vn::VarName)
+    if hasacc(vi, Val(RAW_VALUE_ACCNAME))
+        acc = getacc(vi, Val(RAW_VALUE_ACCNAME))
+        if is_recording_nonmissing_arguments(acc.f)
+            return setacc!!(vi, record_nonmissing_argument!!(acc, vn))
+        end
+    end
+    return vi
+end
+
 """
     get_raw_values(vi::AbstractVarInfo)
 

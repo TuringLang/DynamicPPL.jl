@@ -103,12 +103,12 @@ TEST_ACCUMULATORS = (
             acc = DynamicPPL.DebugRawValueAccumulator()
             split_acc, other_split_acc = split(acc), split(acc)
             @test split_acc.f.repeated_vns !== other_split_acc.f.repeated_vns
-            @test split_acc.f.observed_vns !== other_split_acc.f.observed_vns
+            @test split_acc.f.nonmissing_arg_vns !== other_split_acc.f.nonmissing_arg_vns
             push!(split_acc.f.repeated_vns, @varname(x))
-            push!(split_acc.f.observed_vns, @varname(y))
+            push!(split_acc.f.nonmissing_arg_vns, @varname(y))
             combined_acc = combine(acc, split_acc)
             @test combined_acc.f.repeated_vns == Set((@varname(x),))
-            @test combined_acc.f.observed_vns == Set((@varname(y),))
+            @test combined_acc.f.nonmissing_arg_vns == Set((@varname(y),))
         end
 
         @testset "conversions" begin
@@ -156,10 +156,6 @@ TEST_ACCUMULATORS = (
             @test accumulate_observe!!(
                 LogLikelihoodAccumulator(1.0), right, left, vn, template
             ) == LogLikelihoodAccumulator(1.0 + logpdf(right, left))
-
-            debug_acc = DynamicPPL.DebugRawValueAccumulator()
-            debug_acc = accumulate_observe!!(debug_acc, right, left, vn, template)
-            @test debug_acc.f.observed_vns == Set((vn,))
         end
     end
 

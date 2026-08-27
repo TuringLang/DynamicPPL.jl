@@ -185,6 +185,28 @@ end
                     demo_condition_missing_field(ConditionBox(1.0)); x=ConditionBox(2.0)
                 ),
             )
+
+            @model demo_condition_missing_inner(x) = x ~ Normal()
+            @model function demo_condition_missing_outer(a)
+                return a ~ to_submodel(demo_condition_missing_inner(a))
+            end
+            @model function demo_condition_missing_outer_other_name(inner_x)
+                return a ~ to_submodel(demo_condition_missing_inner(inner_x))
+            end
+            @test check_model(
+                condition(
+                    demo_condition_missing_outer(missing), Dict(@varname(a.x) => 2.0)
+                );
+                error_on_failure=true,
+            )
+            test_model_fails_check(
+                condition(demo_condition_missing_outer(1.0), Dict(@varname(a.x) => 2.0))
+            )
+            test_model_fails_check(
+                condition(
+                    demo_condition_missing_outer_other_name(1.0), Dict(@varname(a.x) => 2.0)
+                ),
+            )
         end
     end
 

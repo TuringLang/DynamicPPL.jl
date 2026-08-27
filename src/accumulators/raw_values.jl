@@ -49,15 +49,18 @@ end
 
 #################################################################
 
-# Debug version of RawValueAcc: it records observed VarNames and errors if a value is set
-# twice. To catch clashes between `:=` and tilde statements, it includes colon-eq values.
+# Debug version of RawValueAcc: it records non-missing model arguments and errors if a value
+# is set twice. To catch clashes between `:=` and tilde statements, it includes colon-eq
+# values.
 struct DebugGetRawValues
     repeated_vns::Set{VarName}
-    observed_vns::Set{VarName}
+    nonmissing_arg_vns::Set{VarName}
 end
 is_extracting_colon_eq_values(g::DebugGetRawValues) = true
+is_recording_nonmissing_arguments(::Any) = false
+is_recording_nonmissing_arguments(::DebugGetRawValues) = true
 function Base.copy(d::DebugGetRawValues)
-    return DebugGetRawValues(copy(d.repeated_vns), copy(d.observed_vns))
+    return DebugGetRawValues(copy(d.repeated_vns), copy(d.nonmissing_arg_vns))
 end
 function DebugRawValueAccumulator()
     return VNTAccumulator{RAW_VALUE_ACCNAME}(
@@ -65,7 +68,7 @@ function DebugRawValueAccumulator()
     )
 end
 
-# Split accumulators need independent sets because repeated names are mutable state.
+# Split accumulators need independent sets because both fields contain mutable state.
 function _zero(
     acc::Union{
         VNTAccumulator{RAW_VALUE_ACCNAME,DebugGetRawValues},
@@ -74,21 +77,18 @@ function _zero(
 )
     new_acc = copy(acc)
     empty!(new_acc.f.repeated_vns)
-    empty!(new_acc.f.observed_vns)
+    empty!(new_acc.f.nonmissing_arg_vns)
     return update_values(new_acc, empty(new_acc.values))
 end
 
-function accumulate_observe!!(
+function record_nonmissing_argument!!(
     acc::Union{
         VNTAccumulator{RAW_VALUE_ACCNAME,DebugGetRawValues},
         TSVNTAccumulator{RAW_VALUE_ACCNAME,DebugGetRawValues},
     },
-    right,
-    left,
     vn,
-    template,
 )
-    vn === nothing || push!(acc.f.observed_vns, vn)
+    push!(acc.f.nonmissing_arg_vns, vn)
     return acc
 end
 
@@ -152,7 +152,7 @@ function DynamicPPL.combine(
     },
 )
     union!(acc1.f.repeated_vns, acc2.f.repeated_vns)
-    union!(acc1.f.observed_vns, acc2.f.observed_vns)
+    union!(acc1.f.nonmissing_arg_vns, acc2.f.nonmissing_arg_vns)
 
     new_values = acc1.values
     for (vn, val) in pairs(acc2.values)
