@@ -3,6 +3,9 @@
 
 An abstract context that has a child context.
 
+!!! note
+    This type will be removed after `GibbsContext` is removed from Turing.jl.
+
 Subtypes of `AbstractParentContext` must implement the following interface:
 
 - `DynamicPPL.childcontext(context::AbstractParentContext)`: Return the child context.
