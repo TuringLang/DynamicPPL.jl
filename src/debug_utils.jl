@@ -221,7 +221,15 @@ function check_model(
     # Check the DebugRawValueAccumulator
     debug_raw_value_acc = DynamicPPL.getacc(oavi, Val(DynamicPPL.RAW_VALUE_ACCNAME))
     conditioned_values = DynamicPPL.conditioned(model.context)
+    # Only addresses actually observed from an argument on this run are recorded, so this
+    # check is execution-driven: a conditioned argument the model never observes goes
+    # unreported, and for an argument behind a stochastic branch whether it warns depends on
+    # which branch ran.
     for vn in debug_raw_value_acc.f.nonmissing_arg_vns
+        # `subsumes` is false between different symbols, so skip the scan unless something
+        # under this symbol is conditioned at all. Without this, a model observing a large
+        # data array while conditioning many other variables pays one comparison per pair.
+        haskey(conditioned_values.data, DynamicPPL.getsym(vn)) || continue
         for (conditioned_vn, conditioned_value) in pairs(conditioned_values)
             if conditioned_value !== missing && (
                 DynamicPPL.subsumes(vn, conditioned_vn) ||
