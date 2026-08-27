@@ -188,13 +188,15 @@ function is_extracting_colon_eq_values(vi::AbstractVarInfo)
 end
 
 function record_nonmissing_argument!!(vi::AbstractVarInfo, vn::VarName)
-    if hasacc(vi, Val(RAW_VALUE_ACCNAME))
-        acc = getacc(vi, Val(RAW_VALUE_ACCNAME))
+    acc_name = Val(RAW_VALUE_ACCNAME)
+    hasacc(vi, acc_name) || return vi
+    return map_accumulator!!(vi, acc_name) do acc
         if is_recording_nonmissing_arguments(acc.f)
-            return setacc!!(vi, record_nonmissing_argument!!(acc, vn))
+            record_nonmissing_argument!!(acc, vn)
+        else
+            acc
         end
     end
-    return vi
 end
 
 """

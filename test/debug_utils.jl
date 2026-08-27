@@ -150,6 +150,11 @@ end
                     conditioned_model; error_on_failure=true
                 )
             end
+
+            @model demo_condition_parent(x) = x ~ MvNormal(zeros(2), I)
+            test_model_fails_check(
+                condition(demo_condition_parent(ones(2)), Dict(@varname(x[2]) => 2.0))
+            )
         end
 
         @testset "condition missing arguments" begin

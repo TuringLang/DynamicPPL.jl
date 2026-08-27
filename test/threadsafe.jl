@@ -113,12 +113,13 @@ const gdemo_default = gdemo_d()
 
     @testset "check_model with threadsafe" begin
         # This is a partial test for https://github.com/TuringLang/DynamicPPL.jl/issues/1157
-        @model function f()
-            Threads.@threads for _ in 1:10
+        @model function f(y)
+            Threads.@threads for i in eachindex(y)
                 x ~ Normal()
+                y[i] ~ Normal()
             end
         end
-        model = setthreadsafe(f(), true)
+        model = setthreadsafe(f(ones(1000)), true)
         @test !check_model(model)
     end
 

@@ -220,16 +220,21 @@ function check_model(
 
     # Check the DebugRawValueAccumulator
     debug_raw_value_acc = DynamicPPL.getacc(oavi, Val(DynamicPPL.RAW_VALUE_ACCNAME))
+    conditioned_values = DynamicPPL.conditioned(model.context)
     for vn in debug_raw_value_acc.f.nonmissing_arg_vns
-        if DynamicPPL.hasconditioned_nested(model.context, vn)
-            conditioned_value = DynamicPPL.getconditioned_nested(model.context, vn)
-            conditioned_value === missing && continue
-            @warn (
-                "Variable $(vn) is specified in both the model arguments and conditioned values." *
-                " Please either specify observed data via the model arguments, or through" *
-                " `condition` / `|`, not both."
+        for (conditioned_vn, conditioned_value) in pairs(conditioned_values)
+            if conditioned_value !== missing && (
+                DynamicPPL.subsumes(vn, conditioned_vn) ||
+                DynamicPPL.subsumes(conditioned_vn, vn)
             )
-            failed = true
+                @warn (
+                    "Variable $(vn) is specified in both the model arguments and conditioned values." *
+                    " Please either specify observed data via the model arguments, or through" *
+                    " `condition` / `|`, not both."
+                )
+                failed = true
+                break
+            end
         end
     end
 
