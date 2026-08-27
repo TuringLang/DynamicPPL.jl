@@ -51,13 +51,13 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
 @testset "contexts.jl" begin
     contexts = Dict(
         :default => DefaultContext(),
-        :testparent => DynamicPPL.TestUtils.TestParentContext(DefaultContext()),
         :prefix => PrefixContext(@varname(x)),
         :condition1 => CondFixContext{Condition}(VarNamedTuple(; x=1.0)),
         :condition2 => CondFixContext{Condition}(
             VarNamedTuple(; x=1.0),
-            DynamicPPL.TestUtils.TestParentContext(
-                CondFixContext{Condition}(VarNamedTuple(; y=2.0))
+            CondFixContext{Fix}(
+                VarNamedTuple(; z=3.0),
+                CondFixContext{Condition}(VarNamedTuple(; y=2.0)),
             ),
         ),
         :condition3 => CondFixContext{Condition}(

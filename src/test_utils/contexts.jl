@@ -3,17 +3,6 @@
 #
 # Utilities for testing contexts.
 
-# Dummy context to test nested behaviors.
-struct TestParentContext{C<:DynamicPPL.AbstractContext} <: DynamicPPL.AbstractParentContext
-    context::C
-end
-TestParentContext() = TestParentContext(DefaultContext())
-DynamicPPL.childcontext(context::TestParentContext) = context.context
-DynamicPPL.setchildcontext(::TestParentContext, child) = TestParentContext(child)
-function Base.show(io::IO, c::TestParentContext)
-    return print(io, "TestParentContext(", DynamicPPL.childcontext(c), ")")
-end
-
 """
     test_context(context::AbstractContext, model::Model)
 
@@ -58,7 +47,7 @@ function test_parent_context(context::DynamicPPL.AbstractContext, model::Dynamic
         end
         @test DynamicPPL.leafcontext(DynamicPPL.setleafcontext(context, leafcontext_new)) ==
             leafcontext_new
-        childcontext_new = TestParentContext()
+        childcontext_new = DynamicPPL.PrefixContext(Val(:test))
         @test DynamicPPL.childcontext(
             DynamicPPL.setchildcontext(context, childcontext_new)
         ) == childcontext_new
