@@ -51,21 +51,12 @@ If `vn` is specified, it will be assumed to refer to a expression which evaluate
 function isassumption(expr::Union{Expr,Symbol}, vn=make_varname_expression(expr))
     return quote
         if $(DynamicPPL.contextual_isassumption)(
-            __model__.context, $(DynamicPPL.prefix)(__model__.context, $vn)
+            __model__, $(DynamicPPL.maybe_prefix)($vn, __model__.prefix)
         )
-            # Considered an assumption by `__model__.context` which means either:
-            # 1. We hit the default implementation, e.g. using `DefaultContext`,
-            #    which in turn means that we haven't considered if it's one of
-            #    the model arguments, hence we need to check this.
-            # 2. We are working with a `CondFixContext` _and_ it's NOT in the model arguments,
-            #    i.e. we're trying to condition one of the latent variables.
-            #    In this case, the below will return `true` since the first branch
-            #    will be hit.
-            # 3. We are working with a `CondFixContext` _and_ it's in the model arguments,
-            #    i.e. we're trying to override the value. This is currently NOT supported.
-            #    TODO: Support by adding context to model, and use `model.args`
-            #    as the default conditioning. Then we no longer need to check `inargnames`
-            #    since it will all be handled by `contextual_isassumption`.
+            # Model arguments are observations unless declared missing. Conditioning model
+            # arguments is currently unsupported, so the argument value takes precedence.
+            # TODO: Store `model.args` as default conditioning. Then
+            # `contextual_isassumption` can handle model arguments too.
             if !($(DynamicPPL.inargnames)($vn, __model__)) ||
                 $(DynamicPPL.inmissings)($vn, __model__)
                 true
@@ -83,13 +74,13 @@ isassumption(expr, vn) = :(false)
 isassumption(expr) = :(false)
 
 """
-    contextual_isassumption(context, vn)
+    contextual_isassumption(model, vn)
 
-Return `true` if `vn` is considered an assumption by `context`.
+Return `true` if `vn` is considered an assumption by `model`.
 """
-function contextual_isassumption(context::AbstractContext, vn)
-    if hasconditioned_nested(context, vn)
-        val = getconditioned_nested(context, vn)
+function contextual_isassumption(model::Model, vn)
+    if hasvalue(model.conditioned, vn)
+        val = model.conditioned[vn]
         # TODO: Do we even need the `>: Missing`, i.e. does it even help the compiler?
         if eltype(val) >: Missing && val === missing
             return true
@@ -104,18 +95,18 @@ end
 isfixed(expr, vn) = false
 function isfixed(::Union{Symbol,Expr}, vn)
     return :($(DynamicPPL.contextual_isfixed)(
-        __model__.context, $(DynamicPPL.prefix)(__model__.context, $vn)
+        __model__, $(DynamicPPL.maybe_prefix)($vn, __model__.prefix)
     ))
 end
 
 """
-    contextual_isfixed(context, vn)
+    contextual_isfixed(model, vn)
 
-Return `true` if `vn` is considered fixed by `context`.
+Return `true` if `vn` is considered fixed by `model`.
 """
-function contextual_isfixed(context::AbstractContext, vn)
-    if hasfixed_nested(context, vn)
-        val = getfixed_nested(context, vn)
+function contextual_isfixed(model::Model, vn)
+    if hasvalue(model.fixed, vn)
+        val = model.fixed[vn]
         # TODO: Do we even need the `>: Missing`, i.e. does it even help the compiler?
         if eltype(val) >: Missing && val === missing
             return false
@@ -457,7 +448,7 @@ function generate_assign(left, right)
         if $(DynamicPPL.is_extracting_colon_eq_values)(__varinfo__)
             $vn = $(make_varname_expression(left))
             __varinfo__ = $(DynamicPPL.store_coloneq_value!!)(
-                __model__.context, $vn, $right_val, $template, __varinfo__
+                __model__, $vn, $right_val, $template, __varinfo__
             )
         end
         $left = $right_val
@@ -469,7 +460,7 @@ function generate_tilde_literal(left, right)
     @gensym value
     return quote
         $value, __varinfo__ = $(DynamicPPL.tilde_observe!!)(
-            __model__.context,
+            __model__,
             $(DynamicPPL.check_tilde_rhs)($right),
             $left,
             nothing,
@@ -523,9 +514,7 @@ function generate_tilde(left, right)
             # need to use Accessors.set to safely set it.
             $(assign_or_set!!(
                 left,
-                :($(DynamicPPL.getfixed_nested)(
-                    __model__.context, $(DynamicPPL.prefix)(__model__.context, $vn)
-                )),
+                :(__model__.fixed[$(DynamicPPL.maybe_prefix)($vn, __model__.prefix)]),
                 vn,
             ))
         elseif $isassumption
@@ -542,13 +531,11 @@ function generate_tilde(left, right)
             $supplied_val = if $(DynamicPPL.inargnames)($vn, __model__)
                 $(maybe_view(left))
             else
-                $(DynamicPPL.getconditioned_nested)(
-                    __model__.context, $(DynamicPPL.prefix)(__model__.context, $vn)
-                )
+                __model__.conditioned[$(DynamicPPL.maybe_prefix)($vn, __model__.prefix)]
             end
 
             $value, __varinfo__ = $(DynamicPPL.tilde_observe!!)(
-                __model__.context,
+                __model__,
                 $(DynamicPPL.check_tilde_rhs)($dist),
                 $supplied_val,
                 $vn,
@@ -585,7 +572,7 @@ function generate_tilde_assume(left, right, vn)
     end
     return quote
         $value, __varinfo__ = $(DynamicPPL.tilde_assume!!)(
-            __model__.context,
+            __model__,
             $(DynamicPPL.unwrap_right_vn)($(DynamicPPL.check_tilde_rhs)($right), $vn)...,
             $template,
             __varinfo__,

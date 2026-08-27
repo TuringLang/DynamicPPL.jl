@@ -62,7 +62,7 @@ In a `VarInfo`, the `accs` field is responsible for the accumulation step, just 
 
 However, `values` serves three purposes in one:
 
-  - it is sometimes used for initialisation (when the model's leaf context is `DefaultContext`, the `TransformedValue` to be used in the transformation step is read from it)
+  - it is sometimes used for initialisation (when the model's context is `DefaultContext`, the `TransformedValue` to be used in the transformation step is read from it)
   - it also determines whether the log-Jacobian term should be included or not (by virtue of specifying a transformation)
   - it is sometimes also used for accumulation (when evaluating a model with a VarInfo, we will potentially store a new `TransformedValue` in it!).
 

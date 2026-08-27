@@ -477,7 +477,7 @@ unflatten!!
 internal_values_as_vector
 ```
 
-### Evaluation Contexts
+### Evaluation contexts
 
 Internally, model evaluation is performed with [`AbstractPPL.evaluate!!`](@ref).
 
@@ -489,53 +489,25 @@ This method mutates the `varinfo` used for execution.
 By default, it does not perform any actual sampling: it only evaluates the model using the values of the variables that are already in the `varinfo`.
 If you wish to sample new values, see the section on [VarInfo initialisation](#VarInfo-initialisation) just below this.
 
-The behaviour of a model execution can be changed with evaluation contexts, which are a field of the model.
+The behaviour of model execution can be changed with the evaluation context stored in the model.
+Prefixing, conditioning, and fixing are separate model fields and are applied before the context handles a tilde statement.
 
 All contexts are subtypes of `AbstractPPL.AbstractContext`.
 
-Contexts are split into two kinds:
-
-**Leaf contexts**: These are the most important contexts as they ultimately decide how model evaluation proceeds.
+Contexts decide how model evaluation proceeds.
 For example, `DefaultContext` evaluates the model using values stored inside a VarInfo's metadata, whereas `InitContext` obtains new values either by sampling or from a known set of parameters.
-DynamicPPL has more leaf contexts which are used for internal purposes, but these are the two that are exported.
+DynamicPPL has more contexts for internal purposes, but these are the two that are exported.
 
 ```@docs
 DefaultContext
 InitContext
 ```
 
-To implement a leaf context, you need to subtype `AbstractPPL.AbstractContext` and implement the `tilde_assume!!` and `tilde_observe!!` methods for your context.
+To implement a context, subtype `AbstractPPL.AbstractContext` and implement the `tilde_assume!!` and `tilde_observe!!` methods for it.
 
 ```@docs
 tilde_assume!!
 tilde_observe!!
-```
-
-**Parent contexts**: These essentially act as 'modifiers' for leaf contexts.
-For example, `PrefixContext` adds a prefix to all variable names during evaluation, while `CondFixContext` marks certain variables as being either conditioned or fixed.
-
-To implement a parent context, you have to subtype `DynamicPPL.AbstractParentContext`, and implement the `childcontext` and `setchildcontext` methods.
-If needed, you can also implement `tilde_assume!!` and `tilde_observe!!` for your context.
-This is optional; the default implementation is to simply delegate to the child context.
-
-```@docs
-AbstractParentContext
-childcontext
-setchildcontext
-```
-
-Since contexts form a tree structure, these functions are automatically defined for manipulating context stacks.
-They are mainly useful for modifying the fundamental behaviour (i.e. the leaf context), without affecting any of the modifiers (i.e. parent contexts).
-
-```@docs
-leafcontext
-setleafcontext
-```
-
-Sometimes it is necessary to handle all `PrefixContext`s in a context stack at one go:
-
-```@docs
-extract_prefixes
 ```
 
 ### VarInfo initialisation

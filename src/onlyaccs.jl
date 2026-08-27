@@ -7,7 +7,7 @@ Its name stems from the fact that it implements the minimal `AbstractVarInfo` in
 work with the `tilde_assume!!` and `tilde_observe!!` functions for `InitContext`.
 
 Note that this does not implement almost every other AbstractVarInfo interface function, and
-so using this with a different leaf context such as `DefaultContext` will result in errors.
+so using this with a different context such as `DefaultContext` will result in errors.
 
 For more information about accumulators, please see the [DynamicPPL documentation on
 accumulators](@ref accumulators-overview).

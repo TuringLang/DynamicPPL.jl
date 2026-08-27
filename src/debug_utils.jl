@@ -197,7 +197,7 @@ function check_model(
     failed = false
 
     # Check that a variable in the model arguments is neither conditioned nor fixed.
-    conditioned_vns = keys(DynamicPPL.conditioned(model.context))
+    conditioned_vns = keys(DynamicPPL.conditioned(model))
     for vn in conditioned_vns
         if DynamicPPL.inargnames(vn, model)
             @warn (

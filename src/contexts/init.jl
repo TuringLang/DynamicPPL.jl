@@ -333,7 +333,7 @@ end
         transform_strategy::AbstractTransformStrategy,
     )
 
-A leaf context that indicates that new values for random variables are currently being
+An evaluation context that indicates that new values for random variables are currently being
 obtained through sampling. Used e.g. when initialising a fresh VarInfo.
 
 The `strategy` argument specifies how new values are to be obtained (see
@@ -343,7 +343,7 @@ whether values should be treated as being in linked or unlinked space. That also
 evaluating the model.
 
 !!! note
-    If `leafcontext(model.context) isa InitContext`, then `evaluate!!(model, varinfo)` will
+    If `model.context isa InitContext`, then `evaluate!!(model, varinfo)` will
     override all values in the VarInfo.
 """
 struct InitContext{

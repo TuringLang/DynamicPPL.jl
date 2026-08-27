@@ -66,12 +66,12 @@ end
             @test (DynamicPPL.evaluate_nowarn!!(model, vi_unlinked); true)
             @test (DynamicPPL.evaluate_nowarn!!(model, vi_linked); true)
 
-            model_init = DynamicPPL.setleafcontext(
+            model_init = DynamicPPL.contextualize(
                 model,
                 DynamicPPL.InitContext(DynamicPPL.InitFromPrior(), DynamicPPL.UnlinkAll()),
             )
             @test (DynamicPPL.evaluate_nowarn!!(model_init, vi_unlinked); true)
-            model_init = DynamicPPL.setleafcontext(
+            model_init = DynamicPPL.contextualize(
                 model,
                 DynamicPPL.InitContext(DynamicPPL.InitFromPrior(), DynamicPPL.LinkAll()),
             )

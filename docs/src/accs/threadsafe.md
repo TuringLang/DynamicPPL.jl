@@ -42,7 +42,7 @@ This is slightly hacky, see the warning below and links therein for more discuss
 
 ```@example 1
 x = 1.0
-model = setleafcontext(model, DynamicPPL.InitContext(InitFromParams((; x=x)), UnlinkAll()))
+model = contextualize(model, DynamicPPL.InitContext(InitFromParams((; x=x)), UnlinkAll()))
 _, tsvi = DynamicPPL._evaluate!!(model, tsvi)
 tsvi.accs_by_thread
 ```

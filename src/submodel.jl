@@ -125,66 +125,47 @@ to_submodel(m::Model, auto_prefix::Bool=true) = Submodel{typeof(m),auto_prefix}(
 
 """
     DynamicPPL.tilde_assume!!(
-        context::AbstractContext,
+        model::Model,
         right::DynamicPPL.Submodel,
         vn::VarName,
         ::Any,
         vi::AbstractVarInfo
     )
 
-Evaluate the submodel with the given context.
+Evaluate the submodel under the parent `model`.
 """
 function tilde_assume!!(
-    context::AbstractContext,
-    right::DynamicPPL.Submodel,
-    vn::VarName,
-    ::Any,
-    vi::AbstractVarInfo,
+    model::Model, right::DynamicPPL.Submodel, vn::VarName, ::Any, vi::AbstractVarInfo
 )
-    return _evaluate!!(right, vi, context, vn)
+    return _evaluate!!(right, vi, model, vn)
 end
 
 # When automatic prefixing is used, the submodel itself doesn't carry the
 # prefix, as the prefix is obtained from the LHS of `~` (whereas the submodel
 # is on the RHS). The prefix can only be obtained in `tilde_assume!!`, and then
 # passed into this function.
-#
-# `parent_context` here refers to the context of the model that contains the
-# submodel.
 function _evaluate!!(
     submodel::Submodel{M,AutoPrefix},
     vi::AbstractVarInfo,
-    parent_context::AbstractContext,
+    parent_model::Model,
     left_vn::VarName,
 ) where {M<:Model,AutoPrefix}
-    # First, we construct the context to be used when evaluating the submodel. There
-    # are several considerations here:
-    # (1) We need to apply an appropriate PrefixContext when evaluating the submodel, but
-    # _only_ if automatic prefixing is supposed to be applied.
-    submodel_context_prefixed = if AutoPrefix
-        PrefixContext(left_vn, submodel.model.context)
+    parent_prefix = parent_model.prefix
+    model = if AutoPrefix
+        prefix(submodel.model, maybe_prefix(left_vn, parent_prefix))
+    elseif parent_prefix === nothing
+        submodel.model
     else
-        submodel.model.context
+        prefix(submodel.model, parent_prefix)
     end
-
-    # (2) We need to respect the leaf-context of the parent model. This, unfortunately,
-    # means disregarding the leaf-context of the submodel.
-    submodel_context = setleafcontext(
-        submodel_context_prefixed, leafcontext(parent_context)
-    )
-
-    # (3) We need to use the parent model's context to wrap the whole thing, so that
-    # e.g. if the user conditions the parent model, the conditioned variables will be
-    # correctly picked up when evaluating the submodel.
-    eval_context = setleafcontext(parent_context, submodel_context)
-
-    # (4) Finally, we need to store that context inside the submodel.
-    model = contextualize(submodel.model, eval_context)
+    conditioned = merge(model.conditioned, parent_model.conditioned)
+    fixed = merge(model.fixed, parent_model.fixed)
+    model = _reconstruct_model(model; context=parent_model.context, conditioned, fixed)
 
     # Evaluate the wrapped model. These two lines are a verbatim copy of the body of
     # `_evaluate!!(model::Model, ::AbstractVarInfo)` (in `model.jl`), and the duplication is
     # deliberate: DO NOT replace them with `return _evaluate!!(model, vi)`. Each level of
-    # submodel nesting grows the contextualised `Model`'s context type, and routing the
+    # submodel nesting grows the contextualised `Model`'s prefix type, and routing the
     # recursion through the shared `_evaluate!!(::Model, ...)` method trips Julia's recursion
     # limiter, which widens the `Model` argument to abstract and collapses the return type to
     # `Any`. Calling `model.f` directly avoids that. See
@@ -195,7 +176,7 @@ function _evaluate!!(
 end
 
 function tilde_observe!!(
-    context::AbstractContext,
+    model::Model,
     right::DynamicPPL.Submodel,
     left::Any,
     vn::VarName,
@@ -239,10 +220,10 @@ function tilde_observe!!(
     # above correctly. The other cases USED to error; however, now they will work (and the
     # submodel will be evaluated, but the value of `x` will be ignored). That is probably
     # not what the user wants, but hey, it'll make tests pass.
-    return _evaluate!!(right, vi, context, vn)
+    return _evaluate!!(right, vi, model, vn)
 end
 function tilde_observe!!(
-    ::AbstractContext, ::DynamicPPL.Submodel, left, ::Nothing, template, ::AbstractVarInfo
+    ::Model, ::DynamicPPL.Submodel, left, ::Nothing, template, ::AbstractVarInfo
 )
     throw(ArgumentError("`x ~ to_submodel(...)` is not supported when `x` is a literal"))
 end

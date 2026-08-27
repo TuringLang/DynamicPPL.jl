@@ -54,7 +54,7 @@ SkipTemplate{0}(::NoTemplate) = NoTemplate()
 function decrease_skip(st::SkipTemplate{N}) where {N}
     return SkipTemplate{N - 1}(st.value)
 end
-# Increase the skip level: used when applying a PrefixContext (the template
+# Increase the skip level: used when applying a model prefix (the template
 # must be wrapped by the appropriate number of SkipTemplates).
 SkipTemplate{N}(v::SkipTemplate{M}) where {N,M} = SkipTemplate{N + M}(v.value)
 SkipTemplate{0}(v::SkipTemplate{M}) where {M} = SkipTemplate{M}(v.value)
