@@ -59,8 +59,8 @@ end
         @test getlogjoint(vi) == 0
         @test isempty(internal_values_as_vector(vi))
 
-        # `vi[:]` still works, but warns.
-        @test (@test_deprecated vi[:]) == internal_values_as_vector(vi)
+        # `vi[:]` still works, pending deprecation once Turing stops using it.
+        @test vi[:] == internal_values_as_vector(vi)
 
         vn = @varname(x)
         x = rand()

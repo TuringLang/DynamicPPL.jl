@@ -404,12 +404,9 @@ Return the values stored internally in `vi` as a flattened `Vector`.
 For unlinked variables, these are vectorised model-space values. Linked variables are stored
 in transformed coordinates, which need not be in the support of their distributions.
 
-!!! warning "Deprecated"
-    `vi[:]` is deprecated. Use [`internal_values_as_vector`](@ref) instead. It will be
-    removed in a future breaking release.
-
-Both forms may promote mixed per-variable element types when constructing the output
-vector.
+`vi[:]` is retained only for compatibility and will be deprecated once Turing stops using
+it. Use [`internal_values_as_vector`](@ref) instead. Both forms may promote mixed
+per-variable element types when constructing the output vector.
 
 # Examples
 
@@ -436,13 +433,7 @@ julia> get_raw_values(accs)[@varname(x)]
 0.25
 ```
 """
-function Base.getindex(vi::AbstractVarInfo, ::Colon)
-    Base.depwarn(
-        "`varinfo[:]` is deprecated, use `internal_values_as_vector(varinfo)` instead.",
-        :getindex,
-    )
-    return internal_values_as_vector(vi)
-end
+Base.getindex(vi::AbstractVarInfo, ::Colon) = internal_values_as_vector(vi)
 
 """
     getindex(vi::AbstractVarInfo, vn::VarName)
