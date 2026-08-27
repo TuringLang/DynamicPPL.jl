@@ -193,6 +193,38 @@ Base.size(st::SizedThing) = st.size
         @test vnt1 == vnt5
     end
 
+    @testset "Symbol indexing" begin
+        vnt = VarNamedTuple(; γ=0.5, x=[1.0, 2.0], nested=VarNamedTuple(; value="value"))
+
+        @test @inferred((v -> v[:γ])(vnt)) === vnt[@varname(γ)]
+        @test vnt[Symbol("γ")] === vnt[@varname(γ)]
+        @test vnt[Symbol('x')] === vnt[@varname(x)]
+        @test vnt[:nested] === vnt[@varname(nested)]
+        @test @inferred(haskey(vnt, :γ))
+        @test !haskey(vnt, :missing)
+        @test_throws KeyError vnt[:missing]
+
+        @test vnt[@varname(x[1])] == 1.0
+        @test vnt[@varname(nested.value)] == "value"
+        for invalid_key in
+            (Symbol("x[1]"), Symbol("nested.value"), Symbol("x y"), Symbol(""))
+            @test_throws ArgumentError vnt[invalid_key]
+            @test_throws ArgumentError haskey(vnt, invalid_key)
+        end
+
+        dotted = Symbol("x.y")
+        unusual_vnt = VarNamedTuple(NamedTuple{(dotted,)}((1.0,)))
+        @test unusual_vnt[VarName{dotted}()] == 1.0
+        @test_throws ArgumentError unusual_vnt[dotted]
+
+        partial = templated_setindex!!(VarNamedTuple(), 1.0, @varname(x[1]), zeros(2))
+        @test !haskey(partial, :x)
+        @test_throws ArgumentError partial[:x]
+        complete = templated_setindex!!(partial, 2.0, @varname(x[2]), zeros(2))
+        @test haskey(complete, :x)
+        @test complete[:x] == [1.0, 2.0]
+    end
+
     @testset "individual get/set" begin
         @testset "top-level" begin
             test_get_set(GetSetTestCase(@varname(a), 0.0, 0.0, []))
