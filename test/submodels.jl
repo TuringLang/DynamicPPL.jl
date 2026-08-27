@@ -219,6 +219,9 @@ end
 
         vnt = rand(g(missing))
         @test Set(keys(vnt)) == Set([@varname(a.x), @varname(a.y)])
+
+        conditioned_model = condition(g(missing), Dict(@varname(a.x) => 1.0))
+        @test Set(keys(rand(conditioned_model))) == Set([@varname(a.y)])
     end
 
     @testset ":= in submodels" begin

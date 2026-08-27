@@ -119,6 +119,30 @@ end
         @test length(methods(testmodel03)) == 4
         @test mean(f01_mm() for _ in 1:1000) ≈ 0.5 atol = 0.1
 
+        @testset "conditioning missing arguments" begin
+            @model function demo_condition_missing(x=missing)
+                return x ~ Normal()
+            end
+            conditioned_value = 2.0
+            model = condition(demo_condition_missing(); x=conditioned_value)
+            value, vi = DynamicPPL.init!!(model, VarInfo())
+            @test value == conditioned_value
+            @test isempty(keys(vi))
+            @test getlogjoint(vi) == logpdf(Normal(), conditioned_value)
+            @test condition(demo_condition_missing(1.0); x=conditioned_value)() == 1.0
+
+            @model function demo_condition_missing_element(x)
+                x[1] ~ Normal()
+                return x
+            end
+            model = condition(
+                demo_condition_missing_element([missing]); x=[conditioned_value]
+            )
+            value, vi = DynamicPPL.init!!(model, VarInfo())
+            @test value == [conditioned_value]
+            @test isempty(keys(vi))
+        end
+
         # test if we get the correct return values
         @model function testmodel1(x1, x2)
             s ~ InverseGamma(2, 3)

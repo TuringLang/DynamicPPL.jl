@@ -173,12 +173,12 @@ See also: [`decondition`](@ref), [`conditioned`](@ref)
 
 # Limitations
 
-This does currently _not_ work with variables that are
-provided to the model as arguments, e.g. `@model function demo(x) ... end`
-means that `condition` will not affect the variable `x`.
+This does not override variables provided as non-missing model arguments. For example,
+`@model function demo(x) ... end` means that `condition` will not affect `x` unless its
+argument value is `missing`.
 
 Therefore if one wants to make use of `condition` and [`decondition`](@ref)
-one should not be specifying any random variables as arguments.
+one should not specify random variables as non-missing arguments.
 
 This is done for the sake of backwards compatibility.
 

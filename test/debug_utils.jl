@@ -147,6 +147,25 @@ end
                 )
             end
         end
+
+        @testset "condition missing arguments" begin
+            @model function demo_condition_missing(x=missing)
+                x ~ Normal()
+                return y ~ Normal()
+            end
+            @test check_model(
+                condition(demo_condition_missing(); x=2.0); error_on_failure=true
+            )
+
+            @model function demo_condition_missing_element(x)
+                x[1] ~ Normal()
+                return y ~ Normal()
+            end
+            @test check_model(
+                condition(demo_condition_missing_element([missing]); x=[2.0]);
+                error_on_failure=true,
+            )
+        end
     end
 
     @testset "discrete distribution check" begin

@@ -510,7 +510,7 @@ function generate_tilde(left, right)
 
     # Otherwise it is determined by the model or its value,
     # if the LHS represents an observation
-    @gensym vn isassumption value dist supplied_val
+    @gensym vn isassumption value dist supplied_val argument_val
 
     return quote
         $dist = $right
@@ -531,21 +531,28 @@ function generate_tilde(left, right)
         elseif $isassumption
             $(generate_tilde_assume(left, dist, vn))
         else
-            # If `vn` is not in `argnames`, then it's definitely been conditioned on (if
-            # it's not in `argnames` and wasn't conditioned on, then `isassumption` would
-            # be true).
+            # A missing model argument is latent, so its conditioned value takes precedence.
             # Note that it's important to always make sure that the variable `$supplied_val`
             # is defined (by putting $supplied_val outside the if/else block), otherwise
             # Libtask can trip up with variables that are only defined in one branch. See
             # eg. https://github.com/TuringLang/DynamicPPL.jl/pull/1110 for a discussion of
             # this.
-            $supplied_val = if $(DynamicPPL.inargnames)($vn, __model__)
-                $(maybe_view(left))
-            else
-                $(DynamicPPL.getconditioned_nested)(
-                    __model__.context, $(DynamicPPL.prefix)(__model__.context, $vn)
-                )
-            end
+            $supplied_val =
+                if $(DynamicPPL.inargnames)($vn, __model__) &&
+                    !$(DynamicPPL.inmissings)($vn, __model__)
+                    $argument_val = $(maybe_view(left))
+                    if $argument_val === missing
+                        $(DynamicPPL.getconditioned_nested)(
+                            __model__.context, $(DynamicPPL.prefix)(__model__.context, $vn)
+                        )
+                    else
+                        $argument_val
+                    end
+                else
+                    $(DynamicPPL.getconditioned_nested)(
+                        __model__.context, $(DynamicPPL.prefix)(__model__.context, $vn)
+                    )
+                end
 
             $value, __varinfo__ = $(DynamicPPL.tilde_observe!!)(
                 __model__.context,

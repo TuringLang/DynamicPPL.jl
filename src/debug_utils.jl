@@ -197,9 +197,18 @@ function check_model(
     failed = false
 
     # Check that a variable in the model arguments is neither conditioned nor fixed.
-    conditioned_vns = keys(DynamicPPL.conditioned(model.context))
+    conditioned_values = DynamicPPL.conditioned(model.context)
+    conditioned_vns = Iterators.flatten(
+        DynamicPPL.AbstractPPL.varname_leaves(vn, value) for
+        (vn, value) in pairs(conditioned_values)
+    )
     for vn in conditioned_vns
-        if DynamicPPL.inargnames(vn, model)
+        if DynamicPPL.inargnames(vn, model) &&
+            !DynamicPPL.inmissings(vn, model) &&
+            conditioned_values[vn] !== missing
+            sym = DynamicPPL.getsym(vn)
+            args = hasproperty(model.args, sym) ? model.args : model.defaults
+            DynamicPPL.getoptic(vn)(getproperty(args, sym)) === missing && continue
             @warn (
                 "Variable $(vn) is specified in both the model arguments and conditioned values." *
                 " Please either specify observed data via the model arguments, or through" *
