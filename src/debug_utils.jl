@@ -196,28 +196,6 @@ function check_model(
 )
     failed = false
 
-    # Check that a variable in the model arguments is neither conditioned nor fixed.
-    conditioned_values = DynamicPPL.conditioned(model.context)
-    conditioned_vns = Iterators.flatten(
-        DynamicPPL.AbstractPPL.varname_leaves(vn, value) for
-        (vn, value) in pairs(conditioned_values)
-    )
-    for vn in conditioned_vns
-        if DynamicPPL.inargnames(vn, model) &&
-            !DynamicPPL.inmissings(vn, model) &&
-            conditioned_values[vn] !== missing
-            sym = DynamicPPL.getsym(vn)
-            args = hasproperty(model.args, sym) ? model.args : model.defaults
-            DynamicPPL.getoptic(vn)(getproperty(args, sym)) === missing && continue
-            @warn (
-                "Variable $(vn) is specified in both the model arguments and conditioned values." *
-                " Please either specify observed data via the model arguments, or through" *
-                " `condition` / `|`, not both."
-            )
-            failed = true
-        end
-    end
-
     # Run the model and collect the data we need
     oavi = DynamicPPL.OnlyAccsVarInfo((
         DebugAccumulator(),
@@ -242,6 +220,24 @@ function check_model(
 
     # Check the DebugRawValueAccumulator
     debug_raw_value_acc = DynamicPPL.getacc(oavi, Val(DynamicPPL.RAW_VALUE_ACCNAME))
+    for vn in debug_raw_value_acc.f.observed_vns
+        if DynamicPPL.inargnames(vn, model) &&
+            !DynamicPPL.inmissings(vn, model) &&
+            DynamicPPL.hasconditioned_nested(model.context, vn)
+            conditioned_value = DynamicPPL.getconditioned_nested(model.context, vn)
+            conditioned_value === missing && continue
+            sym = DynamicPPL.getsym(vn)
+            args = hasproperty(model.args, sym) ? model.args : model.defaults
+            DynamicPPL.getoptic(vn)(getproperty(args, sym)) === missing && continue
+            @warn (
+                "Variable $(vn) is specified in both the model arguments and conditioned values." *
+                " Please either specify observed data via the model arguments, or through" *
+                " `condition` / `|`, not both."
+            )
+            failed = true
+        end
+    end
+
     repeated_vns = debug_raw_value_acc.f.repeated_vns
     if !isempty(repeated_vns)
         for vn in repeated_vns

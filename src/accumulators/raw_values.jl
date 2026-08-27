@@ -49,16 +49,20 @@ end
 
 #################################################################
 
-# Debug version of RawValueAcc: it does the same thing as RawValueAcc, but additionally
-# errors if a value is set twice. This is used in check_model. To catch cases where `:=`
-# clashes with a tilde statement, we always include the colon-eq values in the accumulator.
+# Debug version of RawValueAcc: it records observed VarNames and errors if a value is set
+# twice. To catch clashes between `:=` and tilde statements, it includes colon-eq values.
 struct DebugGetRawValues
     repeated_vns::Set{VarName}
+    observed_vns::Set{VarName}
 end
 is_extracting_colon_eq_values(g::DebugGetRawValues) = true
-Base.copy(d::DebugGetRawValues) = DebugGetRawValues(copy(d.repeated_vns))
+function Base.copy(d::DebugGetRawValues)
+    return DebugGetRawValues(copy(d.repeated_vns), copy(d.observed_vns))
+end
 function DebugRawValueAccumulator()
-    return VNTAccumulator{RAW_VALUE_ACCNAME}(DebugGetRawValues(Set{VarName}()))
+    return VNTAccumulator{RAW_VALUE_ACCNAME}(
+        DebugGetRawValues(Set{VarName}(), Set{VarName}())
+    )
 end
 
 # Split accumulators need independent sets because repeated names are mutable state.
@@ -70,7 +74,22 @@ function _zero(
 )
     new_acc = copy(acc)
     empty!(new_acc.f.repeated_vns)
+    empty!(new_acc.f.observed_vns)
     return update_values(new_acc, empty(new_acc.values))
+end
+
+function accumulate_observe!!(
+    acc::Union{
+        VNTAccumulator{RAW_VALUE_ACCNAME,DebugGetRawValues},
+        TSVNTAccumulator{RAW_VALUE_ACCNAME,DebugGetRawValues},
+    },
+    right,
+    left,
+    vn,
+    template,
+)
+    vn === nothing || push!(acc.f.observed_vns, vn)
+    return acc
 end
 
 # Unfortunately we have to overload accumulate_assume!! since we need to use the
@@ -133,6 +152,7 @@ function DynamicPPL.combine(
     },
 )
     union!(acc1.f.repeated_vns, acc2.f.repeated_vns)
+    union!(acc1.f.observed_vns, acc2.f.observed_vns)
 
     new_values = acc1.values
     for (vn, val) in pairs(acc2.values)

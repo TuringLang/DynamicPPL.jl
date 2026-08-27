@@ -8,6 +8,10 @@ using DynamicPPL, Distributions, Test
 using LinearAlgebra: I
 using Random: Xoshiro
 
+struct ConditionBox{T}
+    a::T
+end
+
 function test_model_fails_check(model)
     issuccess = check_model(model)
     @test !issuccess
@@ -164,6 +168,22 @@ end
             @test check_model(
                 condition(demo_condition_missing_element([missing]); x=[2.0]);
                 error_on_failure=true,
+            )
+
+            @model function demo_condition_missing_field(x)
+                x.a ~ Normal()
+                return y ~ Normal()
+            end
+            @test check_model(
+                condition(
+                    demo_condition_missing_field(ConditionBox(missing)); x=ConditionBox(2.0)
+                );
+                error_on_failure=true,
+            )
+            test_model_fails_check(
+                condition(
+                    demo_condition_missing_field(ConditionBox(1.0)); x=ConditionBox(2.0)
+                ),
             )
         end
     end
