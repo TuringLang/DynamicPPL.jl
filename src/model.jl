@@ -244,12 +244,12 @@ See also: [`decondition`](@ref), [`conditioned`](@ref)
 
 # Limitations
 
-This does currently _not_ work with variables that are
-provided to the model as arguments, e.g. `@model function demo(x) ... end`
-means that `condition` will not affect the variable `x`.
+Non-`missing` values do not override variables provided as model arguments. For example,
+`condition(demo(1.0), x=2.0)` does not override `x` in
+`@model function demo(x) ... end`.
 
-Therefore if one wants to make use of `condition` and [`decondition`](@ref)
-one should not be specifying any random variables as arguments.
+Conditioning such a variable to `missing` does force it to be treated as latent. This also
+works for submodel arguments when the resolved, prefixed `VarName` is supplied.
 
 This is done for the sake of backwards compatibility.
 

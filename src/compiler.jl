@@ -49,14 +49,13 @@ If `vn` is specified, it will be assumed to refer to a expression which evaluate
 `(@varname \$expr)` will be used in its place.
 """
 function isassumption(expr::Union{Expr,Symbol}, vn=make_varname_expression(expr))
+    @gensym contextual_result
     return quote
-        if $(DynamicPPL.contextual_isassumption)(
+        $contextual_result = $(DynamicPPL.contextual_isassumption)(
             __model__, $(DynamicPPL.maybe_prefix)($vn, __model__.prefix)
         )
-            # Model arguments are observations unless declared missing. Conditioning model
-            # arguments is currently unsupported, so the argument value takes precedence.
-            # TODO: Store `model.args` as default conditioning. Then
-            # `contextual_isassumption` can handle model arguments too.
+        if $contextual_result === nothing
+            # Model arguments are observations unless declared missing.
             if !($(DynamicPPL.inargnames)($vn, __model__)) ||
                 $(DynamicPPL.inmissings)($vn, __model__)
                 true
@@ -64,7 +63,7 @@ function isassumption(expr::Union{Expr,Symbol}, vn=make_varname_expression(expr)
                 $(maybe_view(expr)) === missing
             end
         else
-            false
+            $contextual_result
         end
     end
 end
@@ -76,9 +75,12 @@ isassumption(expr) = :(false)
 """
     contextual_isassumption(model, vn)
 
-Return `true` if `vn` is considered an assumption by `model`.
+Return whether `model` explicitly treats `vn` as an assumption. Return `nothing` if the
+model does not override its default observation status.
 """
 function contextual_isassumption(model::Model, vn)
+    # TODO: Reject `missing` conditions on structured roots rather than treating them as
+    # absent; see https://github.com/TuringLang/DynamicPPL.jl/issues/1459.
     if hasvalue(model.conditioned, vn)
         val = model.conditioned[vn]
         # TODO: Do we even need the `>: Missing`, i.e. does it even help the compiler?
@@ -88,7 +90,7 @@ function contextual_isassumption(model::Model, vn)
             return false
         end
     else
-        return true
+        return nothing
     end
 end
 

@@ -73,6 +73,22 @@ __now__ = now()
         @test keys(VarInfo(fixed_model)) == [@varname(x), @varname(y)]
     end
 
+    @testset "issue #273: missing submodel arguments" begin
+        @model argument_model(x) = x ~ Normal()
+        @test isempty(keys(VarInfo(condition(argument_model(1.0); x=2.0))))
+        @test keys(VarInfo(condition(argument_model(1.0); x=missing))) == [@varname(x)]
+
+        @model inner(y) = y ~ Normal()
+        @model function outer(x)
+            a ~ to_submodel(inner(x))
+            b ~ to_submodel(inner(x))
+            return (; a, b)
+        end
+        transformed = condition(outer(1.0), @varname(a.y) => missing)
+        @test keys(VarInfo(transformed)) == [@varname(a.y)]
+        @test transformed().b == 1.0
+    end
+
     @testset "decondition and unfix" begin
         conditioned_model = condition(model; x=1.0, y=2.0)
         @test isempty(keys(conditioned(decondition(conditioned_model))))
