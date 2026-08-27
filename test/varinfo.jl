@@ -105,6 +105,16 @@ end
         end
     end
 
+    @testset "eltype" begin
+        @model eltype_demo() = x ~ Normal()
+        @test eltype(VarInfo(eltype_demo())) === Float64
+        # A VarInfo holding no values falls through to `internal_values_as_vector`,
+        # which it does not implement.
+        accs_only = OnlyAccsVarInfo(DynamicPPL.default_accumulators())
+        @test Base.promote_op(getindex, typeof(accs_only), Colon) === Union{}
+        @test_throws MethodError eltype(accs_only)
+    end
+
     @testset "get/set/acclogp" begin
         vi = VarInfo()
         @test DynamicPPL.getlogjoint(vi) === 0.0
