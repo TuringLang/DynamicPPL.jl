@@ -1,3 +1,7 @@
+# 0.42.6
+
+`VarNamedTuple` now accepts a `Symbol` in `getindex` and `haskey` as shorthand for an identity `VarName`, so `vnt[:x]` works like `vnt[@varname(x)]`. Symbols that are not Julia identifiers are rejected rather than parsed, so indexed or nested variables still need a `VarName`. See [#1429](https://github.com/TuringLang/DynamicPPL.jl/issues/1429).
+
 # 0.42.5
 
 Fixed `apply_transform_strategy` to return only the target transform's forward log-Jacobian when converting a `DynamicLink` value to a `FixedTransform` target. It previously added the source's forward Jacobian as well, so `getlogjac`, `getlogjoint_internal`, and `getlogprior_internal` were wrong whenever linked values were fed into a fixed-transform strategy. See [#1407](https://github.com/TuringLang/DynamicPPL.jl/issues/1407).
