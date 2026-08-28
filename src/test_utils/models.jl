@@ -518,12 +518,14 @@ end
     for j in axes(s, 2), i in axes(s, 1)
         s[i, j] ~ InverseGamma(2, 3)
     end
+    # Turing's linked MLE can underflow `s` at NLopt trial points. Without
+    # argument checks, `logpdf` returns NaN and NLopt rejects the trial.
     m = TV(undef, size(x, 1), 1)
     for j in axes(m, 2), i in axes(m, 1)
-        m[i, j] ~ Normal(0, sqrt(s[i, j]))
+        m[i, j] ~ Normal(0, sqrt(s[i, j]); check_args=false)
     end
     for j in axes(x, 2), i in axes(x, 1)
-        x[i, j] ~ Normal(m[i, 1], sqrt(s[i, 1]))
+        x[i, j] ~ Normal(m[i, 1], sqrt(s[i, 1]); check_args=false)
     end
 
     return (; s=s, m=m, x=x)
@@ -557,12 +559,14 @@ end
     for i in eachindex(s), j in eachindex(s[i])
         s[i][j] ~ InverseGamma(2, 3)
     end
+    # Turing's linked MLE can underflow `s` at NLopt trial points. Without
+    # argument checks, `logpdf` returns NaN and NLopt rejects the trial.
     m = [TV(undef, 1) for _ in x]
     for i in eachindex(m), j in eachindex(m[i])
-        m[i][j] ~ Normal(0, sqrt(s[i][j]))
+        m[i][j] ~ Normal(0, sqrt(s[i][j]); check_args=false)
     end
     for i in eachindex(x), j in eachindex(x[i])
-        x[i][j] ~ Normal(m[i][1], sqrt(s[i][1]))
+        x[i][j] ~ Normal(m[i][1], sqrt(s[i][1]); check_args=false)
     end
 
     return (; s=s, m=m, x=x)
