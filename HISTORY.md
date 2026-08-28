@@ -1,8 +1,10 @@
+# 0.42.7
+
+The `Flat`, `FlatPos`, `BinomialLogit`, `OrderedLogistic`, and `LogPoisson` distributions have moved here from Turing, where they are re-exported. This makes them available for DynamicPPL's own test models and AD testing. See [Turing#2858](https://github.com/TuringLang/Turing.jl/issues/2858).
+
 # 0.42.6
 
 `VarNamedTuple` now accepts a `Symbol` in `getindex` and `haskey` as shorthand for an identity `VarName`, so `vnt[:x]` works like `vnt[@varname(x)]`. Symbols that are not Julia identifiers are rejected rather than parsed, so indexed or nested variables still need a `VarName`. See [#1429](https://github.com/TuringLang/DynamicPPL.jl/issues/1429).
-
-The `Flat`, `FlatPos`, `BinomialLogit`, `OrderedLogistic`, and `LogPoisson` distributions have moved here from Turing, where they are re-exported. This makes them available for DynamicPPL's own test models and AD testing. See [Turing#2858](https://github.com/TuringLang/Turing.jl/issues/2858).
 
 # 0.42.5
 
