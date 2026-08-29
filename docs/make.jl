@@ -22,7 +22,10 @@ DocMeta.setdocmeta!(
 # Need this to document a method which uses a type inside the extension
 DPPLMLDExt = Base.get_extension(DynamicPPL, :DynamicPPLMarginalLogDensitiesExt)
 
-links = InterLinks("AbstractPPL" => "https://turinglang.org/AbstractPPL.jl/stable/")
+links = InterLinks(
+    "AbstractPPL" => "https://turinglang.org/AbstractPPL.jl/stable/",
+    "Distributions" => "https://juliastats.org/Distributions.jl/stable/",
+)
 
 makedocs(;
     sitename="DynamicPPL",
