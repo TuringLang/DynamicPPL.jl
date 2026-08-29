@@ -921,8 +921,17 @@ function Distributions._logpdf(d::HiddenMarkovModel, observations::AbstractMatri
         residual = (observations[:, 1] .- means) ./ scales
         -0.5log(2pi) .- log.(scales) .- 0.5 .* abs2.(residual)
     else
-        values = Matrix{Float64}(undef, T, K)
+        distribution = d.emissions isa AbstractVector ? d.emissions[1] : d.emissions[1, 1]
+        observation = if distribution isa UnivariateDistribution
+            observations[1, 1]
+        else
+            view(observations, 1, :)
+        end
+        first_value = logpdf(distribution, observation)
+        values = Matrix{typeof(first_value)}(undef, T, K)
+        values[1, 1] = first_value
         for k in 1:K, t in 1:T
+            t == 1 && k == 1 && continue
             distribution =
                 d.emissions isa AbstractVector ? d.emissions[k] : d.emissions[t, k]
             observation = if distribution isa UnivariateDistribution

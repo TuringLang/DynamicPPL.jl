@@ -702,7 +702,7 @@ unconstrained parameter space. Log densities are centered at the first draw so
 that parameter-independent normalization constants are allowed.
 """
 function verify_against_stan(posterior_name; draws=30, seed=468, scale=0.2)
-    draws >= 1 || error("draws must be positive")
+    draws >= 2 || error("draws must be at least 2")
     post = PosteriorDB.posterior(PDB, posterior_name)
     data = PosteriorDB.load(PosteriorDB.dataset(post))
     dynamicppl_model = make_model(Val(Symbol(posterior_name)), data)
@@ -1096,7 +1096,7 @@ function parse_options(args)
     (merge || verify) &&
         "--eval-only" in options &&
         error("--eval-only is only valid when benchmarking")
-    merge &&
+    (merge || verify) &&
         "--mooncake-only" in options &&
         error("--mooncake-only is only valid when benchmarking")
     return (;
