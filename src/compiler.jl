@@ -546,11 +546,11 @@ function generate_tilde(left, right)
                             __model__.context, $(DynamicPPL.prefix)(__model__.context, $vn)
                         )
                     else
-                        if !($dist isa $(DynamicPPL.Submodel))
-                            __varinfo__ = $(DynamicPPL.record_nonmissing_argument!!)(
-                                __varinfo__, $(DynamicPPL.prefix)(__model__.context, $vn)
-                            )
-                        end
+                        __varinfo__ = $(DynamicPPL.record_nonmissing_argument!!)(
+                            __varinfo__,
+                            $(DynamicPPL.prefix)(__model__.context, $vn),
+                            $dist isa $(DynamicPPL.Submodel),
+                        )
                         $argument_val
                     end
                 else

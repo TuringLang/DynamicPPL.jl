@@ -105,10 +105,10 @@ TEST_ACCUMULATORS = (
             @test split_acc.f.repeated_vns !== other_split_acc.f.repeated_vns
             @test split_acc.f.nonmissing_arg_vns !== other_split_acc.f.nonmissing_arg_vns
             push!(split_acc.f.repeated_vns, @varname(x))
-            push!(split_acc.f.nonmissing_arg_vns, @varname(y))
+            push!(split_acc.f.nonmissing_arg_vns, (@varname(y), false))
             combined_acc = combine(acc, split_acc)
             @test combined_acc.f.repeated_vns == Set((@varname(x),))
-            @test combined_acc.f.nonmissing_arg_vns == Set((@varname(y),))
+            @test combined_acc.f.nonmissing_arg_vns == Set(((@varname(y), false),))
         end
 
         @testset "conversions" begin

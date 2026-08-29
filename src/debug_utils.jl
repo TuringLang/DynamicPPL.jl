@@ -225,15 +225,24 @@ function check_model(
     # check is execution-driven: a conditioned argument the model never observes goes
     # unreported, and for an argument behind a stochastic branch whether it warns depends on
     # which branch ran.
-    for vn in debug_raw_value_acc.f.nonmissing_arg_vns
+    for (vn, exact_only) in debug_raw_value_acc.f.nonmissing_arg_vns
         # `subsumes` is false between different symbols, so skip the scan unless something
         # under this symbol is conditioned at all. Without this, a model observing a large
         # data array while conditioning many other variables pays one comparison per pair.
         haskey(conditioned_values.data, DynamicPPL.getsym(vn)) || continue
         for (conditioned_vn, conditioned_value) in pairs(conditioned_values)
-            if conditioned_value !== missing && (
-                DynamicPPL.subsumes(vn, conditioned_vn) ||
+            if conditioned_value !== missing &&
+                !exact_only &&
                 DynamicPPL.subsumes(conditioned_vn, vn)
+                conditioned_value = conditioned_values[vn]
+            end
+            if conditioned_value !== missing && (
+                if exact_only
+                    vn == conditioned_vn
+                else
+                    DynamicPPL.subsumes(vn, conditioned_vn) ||
+                        DynamicPPL.subsumes(conditioned_vn, vn)
+                end
             )
                 @warn (
                     "Variable $(vn) is specified in both the model arguments and conditioned values." *

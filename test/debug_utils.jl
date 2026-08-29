@@ -174,6 +174,10 @@ end
                 condition(demo_condition_missing_element([missing]); x=[2.0]);
                 error_on_failure=true,
             )
+            @test check_model(
+                condition(demo_condition_missing_element([1.0]); x=[missing]);
+                error_on_failure=true,
+            )
 
             @model function demo_condition_missing_field(x)
                 x.a ~ Normal()
@@ -190,7 +194,6 @@ end
                     demo_condition_missing_field(ConditionBox(1.0)); x=ConditionBox(2.0)
                 ),
             )
-
             @model demo_condition_missing_inner(x) = x ~ Normal()
             @model function demo_condition_missing_outer(a)
                 return a ~ to_submodel(demo_condition_missing_inner(a))
@@ -212,6 +215,15 @@ end
                     demo_condition_missing_outer_other_name(1.0), Dict(@varname(a.x) => 2.0)
                 ),
             )
+
+            @model function demo_condition_submodel_outer(a)
+                return a ~ to_submodel(demo_condition_missing_inner(missing))
+            end
+            @test check_model(
+                condition(demo_condition_submodel_outer(1.0), Dict(@varname(a.x) => 2.0));
+                error_on_failure=true,
+            )
+            test_model_fails_check(condition(demo_condition_submodel_outer(1.0); a=2.0))
         end
     end
 

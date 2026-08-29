@@ -49,12 +49,12 @@ end
 
 #################################################################
 
-# Debug version of RawValueAcc: it records non-missing model arguments and errors if a value
-# is set twice. To catch clashes between `:=` and tilde statements, it includes colon-eq
-# values.
+# Debug version of RawValueAcc: it records non-missing model arguments and their condition
+# matching mode, and errors if a value is set twice. To catch clashes between `:=` and tilde
+# statements, it includes colon-eq values.
 struct DebugGetRawValues
     repeated_vns::Set{VarName}
-    nonmissing_arg_vns::Set{VarName}
+    nonmissing_arg_vns::Set{Tuple{VarName,Bool}}
 end
 is_extracting_colon_eq_values(g::DebugGetRawValues) = true
 is_recording_nonmissing_arguments(::Any) = false
@@ -64,7 +64,7 @@ function Base.copy(d::DebugGetRawValues)
 end
 function DebugRawValueAccumulator()
     return VNTAccumulator{RAW_VALUE_ACCNAME}(
-        DebugGetRawValues(Set{VarName}(), Set{VarName}())
+        DebugGetRawValues(Set{VarName}(), Set{Tuple{VarName,Bool}}())
     )
 end
 
@@ -87,8 +87,9 @@ function record_nonmissing_argument!!(
         TSVNTAccumulator{RAW_VALUE_ACCNAME,DebugGetRawValues},
     },
     vn,
+    is_submodel,
 )
-    push!(acc.f.nonmissing_arg_vns, vn)
+    push!(acc.f.nonmissing_arg_vns, (vn, is_submodel))
     return acc
 end
 

@@ -187,12 +187,12 @@ function is_extracting_colon_eq_values(vi::AbstractVarInfo)
            is_extracting_colon_eq_values(getacc(vi, Val(RAW_VALUE_ACCNAME)).f)
 end
 
-function record_nonmissing_argument!!(vi::AbstractVarInfo, vn::VarName)
+function record_nonmissing_argument!!(vi::AbstractVarInfo, vn::VarName, is_submodel::Bool)
     acc_name = Val(RAW_VALUE_ACCNAME)
     hasacc(vi, acc_name) || return vi
     return map_accumulator!!(vi, acc_name) do acc
         if is_recording_nonmissing_arguments(acc.f)
-            record_nonmissing_argument!!(acc, vn)
+            record_nonmissing_argument!!(acc, vn, is_submodel)
         else
             acc
         end
