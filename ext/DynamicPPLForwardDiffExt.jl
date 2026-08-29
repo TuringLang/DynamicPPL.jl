@@ -3,6 +3,104 @@ module DynamicPPLForwardDiffExt
 using DynamicPPL: ADTypes, DynamicPPL, LogDensityProblems
 using ForwardDiff
 
+struct InputDependencyTag end
+
+struct InputDependencyAccumulator <: DynamicPPL.AbstractAccumulator
+    warned_vns::Set{DynamicPPL.VarName}
+end
+InputDependencyAccumulator() = InputDependencyAccumulator(Set{DynamicPPL.VarName}())
+
+DynamicPPL.accumulator_name(::Type{InputDependencyAccumulator}) = :InputDependency
+function Base.copy(acc::InputDependencyAccumulator)
+    return InputDependencyAccumulator(copy(acc.warned_vns))
+end
+DynamicPPL.reset(::InputDependencyAccumulator) = InputDependencyAccumulator()
+DynamicPPL.split(::InputDependencyAccumulator) = InputDependencyAccumulator()
+function DynamicPPL.combine(
+    acc1::InputDependencyAccumulator, acc2::InputDependencyAccumulator
+)
+    union!(acc1.warned_vns, acc2.warned_vns)
+    return acc1
+end
+function DynamicPPL.accumulate_assume!!(
+    acc::InputDependencyAccumulator, val, tval, logjac, vn, dist, template
+)
+    return acc
+end
+function DynamicPPL.accumulate_observe!!(
+    acc::InputDependencyAccumulator, dist, val, vn, template
+)
+    return acc
+end
+
+# We only need to know whether the model inputs affect a value, not which input does so.
+# Seed every input in the same direction to keep this to one ForwardDiff pass.
+function _dualize_input(x::T) where {T<:AbstractFloat}
+    return ForwardDiff.Dual{InputDependencyTag}(x, one(x))
+end
+_dualize_input(x::AbstractArray) = map(_dualize_input, x)
+_dualize_input(x::NamedTuple) = map(_dualize_input, x)
+_dualize_input(x::Tuple) = map(_dualize_input, x)
+_dualize_input(x) = x
+
+function _has_input_dependency(x::ForwardDiff.Dual{InputDependencyTag})
+    return any(p -> !iszero(p), ForwardDiff.partials(x))
+end
+function _has_input_dependency(xs::AbstractArray)
+    for i in eachindex(xs)
+        if isassigned(xs, i) && _has_input_dependency(xs[i])
+            return true
+        end
+    end
+    return false
+end
+_has_input_dependency(xs::Union{Tuple,NamedTuple}) = any(_has_input_dependency, xs)
+_has_input_dependency(::Any) = false
+
+function _check_input_dependency!!(vi, value, vn)
+    accname = Val(:InputDependency)
+    DynamicPPL.hasacc(vi, accname) || return vi
+    _has_input_dependency(value) || return vi
+
+    acc = DynamicPPL.getacc(vi, accname)
+    if vn ∉ acc.warned_vns
+        @warn (
+            "Variable $(vn) has a value derived from a model input before its tilde " *
+            "statement, but it is classified as latent and that value will be " *
+            "overwritten. It might be intended as an observation."
+        )
+        push!(acc.warned_vns, vn)
+    end
+    return vi
+end
+
+function DynamicPPL.check_input_dependency!!(
+    vi::DynamicPPL.AbstractVarInfo,
+    value::Union{ForwardDiff.Dual{InputDependencyTag},AbstractArray,Tuple,NamedTuple},
+    vn::DynamicPPL.VarName,
+)
+    return _check_input_dependency!!(vi, value, vn)
+end
+
+function check_input_dependencies(rng, model, params)
+    args = map(_dualize_input, model.args)
+    defaults = map(_dualize_input, model.defaults)
+    traced_model = DynamicPPL.Model{DynamicPPL.requires_threadsafe(model)}(
+        model.f, args, defaults, model.context
+    )
+    vi = DynamicPPL.OnlyAccsVarInfo((InputDependencyAccumulator(),))
+    strategy = DynamicPPL.InitFromParams(params, nothing)
+
+    try
+        DynamicPPL.init!!(rng, traced_model, vi, strategy, DynamicPPL.UnlinkAll())
+    catch err
+        err isa InterruptException && rethrow()
+        # This is a best-effort debug check. Valid models are not required to accept
+        # ForwardDiff dual numbers, so an unsupported trace must not make `check_model` fail.
+    end
+    return nothing
+end
+
 # check if the AD type already has a tag
 use_dynamicppl_tag(::ADTypes.AutoForwardDiff{<:Any,Nothing}) = true
 use_dynamicppl_tag(::ADTypes.AutoForwardDiff) = false

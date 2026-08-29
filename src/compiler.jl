@@ -529,6 +529,7 @@ function generate_tilde(left, right)
                 vn,
             ))
         elseif $isassumption
+            $(generate_input_dependency_check(left, vn))
             $(generate_tilde_assume(left, dist, vn))
         else
             # If `vn` is not in `argnames`, then it's definitely been conditioned on (if
@@ -557,6 +558,20 @@ function generate_tilde(left, right)
             )
             $(assign_or_set!!(left, value, vn))
             $value
+        end
+    end
+end
+
+# This is a no-op unless an extension implements a more specific method for the value type.
+# In particular, the ForwardDiff extension uses it while running the input-dependency check
+# from `DebugUtils.check_model`.
+check_input_dependency!!(vi::AbstractVarInfo, value, vn::VarName) = vi
+
+generate_input_dependency_check(::Any, ::Any) = nothing
+function generate_input_dependency_check(left::Symbol, vn)
+    return quote
+        if $(Expr(:isdefined, left))
+            __varinfo__ = $(DynamicPPL.check_input_dependency!!)(__varinfo__, $left, $vn)
         end
     end
 end
