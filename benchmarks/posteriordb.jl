@@ -1048,7 +1048,7 @@ function write_table(io, results; eval_only=false)
         io,
         " "^(pre_w + length(gap)) *
         center("eval", eval_w) *
-        (eval_only ? "" : gap * center("gradient", grad_w)),
+        (eval_only ? "" : gap * rstrip(center("gradient", grad_w))),
     )
     println(
         io, " "^(pre_w + length(gap)) * "-"^eval_w * (eval_only ? "" : gap * "-"^grad_w)

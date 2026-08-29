@@ -28,7 +28,7 @@ Gradient ratios are backend time divided by Stan time; lower is better. Aggregat
 ```text
 
 ==================================================================================================================
-                                             eval                                 gradient                        
+                                             eval                                 gradient
                                      --------------------  -------------------------------------------------------
 Model                           dim     Turing       Stan    FwdDiff    EzyDiff     McRvs       Stan  McRvs / Stan
 ------------------------------------------------------------------------------------------------------------------
