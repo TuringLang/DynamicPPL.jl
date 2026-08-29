@@ -110,6 +110,27 @@ function DynamicPPL.accumulate_observe!!(
     return DebugAccumulator(failed)
 end
 
+_condition_branch_may_exist(value, optic) = true
+_condition_branch_may_exist(value, ::DynamicPPL.AbstractPPL.Iden) = value !== missing
+function _condition_branch_may_exist(
+    value::DynamicPPL.VarNamedTuple, optic::DynamicPPL.AbstractPPL.Property{S}
+) where {S}
+    haskey(value.data, S) || return false
+    return _condition_branch_may_exist(getproperty(value.data, S), optic.child)
+end
+function _condition_branch_may_exist(
+    value::DynamicPPL.VarNamedTuples.PartialArray, optic::DynamicPPL.AbstractPPL.Index
+)
+    coptic = DynamicPPL.AbstractPPL.concretize_top_level(optic, value.data)
+    DynamicPPL.VarNamedTuples._is_multiindex(value, coptic.ix...; coptic.kw...) &&
+        return true
+    checkbounds(Bool, value.mask, coptic.ix...; coptic.kw...) || return false
+    Base.getindex(value.mask, coptic.ix...; coptic.kw...) || return false
+    return _condition_branch_may_exist(
+        Base.getindex(value.data, coptic.ix...; coptic.kw...), coptic.child
+    )
+end
+
 """
     DynamicPPL.DebugUtils.check_model(
         [rng::Random.AbstractRNG,]
@@ -225,16 +246,26 @@ function check_model(
     # check is execution-driven: a conditioned argument the model never observes goes
     # unreported, and for an argument behind a stochastic branch whether it warns depends on
     # which branch ran.
+    nonmissing_conditioned_vns = Set{VarName}(
+        vn for (vn, value) in pairs(conditioned_values) if value !== missing
+    )
     for (vn, exact_only) in debug_raw_value_acc.f.nonmissing_arg_vns
-        # `subsumes` is false between different symbols, so skip the scan unless something
-        # under this symbol is conditioned at all. Without this, a model observing a large
-        # data array while conditioning many other variables pays one comparison per pair.
-        haskey(conditioned_values.data, DynamicPPL.getsym(vn)) || continue
+        if exact_only
+            vn in nonmissing_conditioned_vns || continue
+        else
+            sym = DynamicPPL.getsym(vn)
+            haskey(conditioned_values.data, sym) || continue
+            _condition_branch_may_exist(
+                getproperty(conditioned_values.data, sym), DynamicPPL.getoptic(vn)
+            ) || continue
+        end
         for (conditioned_vn, conditioned_value) in pairs(conditioned_values)
             if conditioned_value !== missing &&
                 !exact_only &&
                 DynamicPPL.subsumes(conditioned_vn, vn)
-                conditioned_value = conditioned_values[vn]
+                if haskey(conditioned_values, vn)
+                    conditioned_value = conditioned_values[vn]
+                end
             end
             if conditioned_value !== missing && (
                 if exact_only

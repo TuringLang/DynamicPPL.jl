@@ -178,6 +178,9 @@ end
                 condition(demo_condition_missing_element([1.0]); x=[missing]);
                 error_on_failure=true,
             )
+            test_model_can_run_but_fails_check(
+                condition(demo_condition_missing_element([1.0]); x=Float64[])
+            )
 
             @model function demo_condition_missing_field(x)
                 x.a ~ Normal()
@@ -194,6 +197,24 @@ end
                     demo_condition_missing_field(ConditionBox(1.0)); x=ConditionBox(2.0)
                 ),
             )
+            test_model_can_run_but_fails_check(
+                condition(demo_condition_missing_field(ConditionBox(1.0)); x=2.0)
+            )
+
+            @model function demo_condition_missing_elements(x)
+                for i in eachindex(x)
+                    x[i] ~ Normal()
+                end
+                return y ~ Normal()
+            end
+            n = 20
+            x = Union{Missing,Float64}[isodd(i) ? 1.0 : missing for i in 1:n]
+            conditions = Dict(@varname(x[i]) => 2.0 for i in 2:2:n)
+            @test check_model(
+                condition(demo_condition_missing_elements(x), conditions);
+                error_on_failure=true,
+            )
+
             @model demo_condition_missing_inner(x) = x ~ Normal()
             @model function demo_condition_missing_outer(a)
                 return a ~ to_submodel(demo_condition_missing_inner(a))
