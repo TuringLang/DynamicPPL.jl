@@ -178,6 +178,17 @@ end
                 condition(demo_condition_missing_element([1.0]); x=[missing]);
                 error_on_failure=true,
             )
+            @model function demo_condition_missing_repeated(x=[missing])
+                x[1] ~ Normal()
+                x[1] ~ Normal()
+                return y ~ Normal()
+            end
+            for model in (
+                demo_condition_missing_repeated([missing]),
+                demo_condition_missing_repeated(),
+            )
+                @test check_model(condition(model; x=[2.0]); error_on_failure=true)
+            end
             test_model_can_run_but_fails_check(
                 condition(demo_condition_missing_element([1.0]); x=Float64[])
             )
@@ -214,6 +225,12 @@ end
                 condition(demo_condition_missing_elements(x), conditions);
                 error_on_failure=true,
             )
+            test_model_fails_check(
+                condition(
+                    demo_condition_missing_elements(ones(n)),
+                    Dict(@varname(x[i]) => 2.0 for i in 1:n),
+                ),
+            )
 
             @model demo_condition_missing_inner(x) = x ~ Normal()
             @model function demo_condition_missing_outer(a)
@@ -245,6 +262,20 @@ end
                 error_on_failure=true,
             )
             test_model_fails_check(condition(demo_condition_submodel_outer(1.0); a=2.0))
+
+            @model function demo_condition_submodel_indexed(a)
+                a[1] ~ to_submodel(demo_condition_missing_inner(missing))
+                return y ~ Normal()
+            end
+            @test check_model(
+                condition(
+                    demo_condition_submodel_indexed([1.0]), Dict(@varname(a[1].x) => 2.0)
+                );
+                error_on_failure=true,
+            )
+            test_model_fails_check(
+                condition(demo_condition_submodel_indexed([1.0]); a=[2.0])
+            )
         end
     end
 

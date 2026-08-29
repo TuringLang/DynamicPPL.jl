@@ -131,6 +131,46 @@ function _condition_branch_may_exist(
     )
 end
 
+function _condition_conflicts(conditioned_values, vn, exact_only)
+    sym = DynamicPPL.getsym(vn)
+    haskey(conditioned_values.data, sym) || return false
+    optic = DynamicPPL.getoptic(vn)
+    condition_root = getproperty(conditioned_values.data, sym)
+    if haskey(conditioned_values, vn)
+        conditioned_value = if optic isa DynamicPPL.AbstractPPL.Iden
+            condition_root
+        else
+            conditioned_values[vn]
+        end
+        is_subtree =
+            conditioned_value isa DynamicPPL.VarNamedTuple ||
+            conditioned_value isa DynamicPPL.VarNamedTuples.PartialArray
+        if exact_only || !is_subtree
+            return conditioned_value !== missing && !(exact_only && is_subtree)
+        end
+    end
+    _condition_branch_may_exist(condition_root, optic) || return false
+    for (conditioned_vn, conditioned_value) in pairs(conditioned_values)
+        if conditioned_value !== missing &&
+            !exact_only &&
+            DynamicPPL.subsumes(conditioned_vn, vn) &&
+            haskey(conditioned_values, vn)
+            conditioned_value = conditioned_values[vn]
+        end
+        if conditioned_value !== missing && (
+            if exact_only
+                DynamicPPL.subsumes(conditioned_vn, vn)
+            else
+                DynamicPPL.subsumes(vn, conditioned_vn) ||
+                    DynamicPPL.subsumes(conditioned_vn, vn)
+            end
+        )
+            return true
+        end
+    end
+    return false
+end
+
 """
     DynamicPPL.DebugUtils.check_model(
         [rng::Random.AbstractRNG,]
@@ -246,44 +286,14 @@ function check_model(
     # check is execution-driven: a conditioned argument the model never observes goes
     # unreported, and for an argument behind a stochastic branch whether it warns depends on
     # which branch ran.
-    nonmissing_conditioned_vns = Set{VarName}(
-        vn for (vn, value) in pairs(conditioned_values) if value !== missing
-    )
     for (vn, exact_only) in debug_raw_value_acc.f.nonmissing_arg_vns
-        if exact_only
-            vn in nonmissing_conditioned_vns || continue
-        else
-            sym = DynamicPPL.getsym(vn)
-            haskey(conditioned_values.data, sym) || continue
-            _condition_branch_may_exist(
-                getproperty(conditioned_values.data, sym), DynamicPPL.getoptic(vn)
-            ) || continue
-        end
-        for (conditioned_vn, conditioned_value) in pairs(conditioned_values)
-            if conditioned_value !== missing &&
-                !exact_only &&
-                DynamicPPL.subsumes(conditioned_vn, vn)
-                if haskey(conditioned_values, vn)
-                    conditioned_value = conditioned_values[vn]
-                end
-            end
-            if conditioned_value !== missing && (
-                if exact_only
-                    vn == conditioned_vn
-                else
-                    DynamicPPL.subsumes(vn, conditioned_vn) ||
-                        DynamicPPL.subsumes(conditioned_vn, vn)
-                end
-            )
-                @warn (
-                    "Variable $(vn) is specified in both the model arguments and conditioned values." *
-                    " Please either specify observed data via the model arguments, or through" *
-                    " `condition` / `|`, not both."
-                )
-                failed = true
-                break
-            end
-        end
+        _condition_conflicts(conditioned_values, vn, exact_only) || continue
+        @warn (
+            "Variable $(vn) is specified in both the model arguments and conditioned values." *
+            " Please either specify observed data via the model arguments, or through" *
+            " `condition` / `|`, not both."
+        )
+        failed = true
     end
 
     repeated_vns = debug_raw_value_acc.f.repeated_vns

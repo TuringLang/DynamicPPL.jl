@@ -55,20 +55,23 @@ end
 struct DebugGetRawValues
     repeated_vns::Set{VarName}
     nonmissing_arg_vns::Set{Tuple{VarName,Bool}}
+    seen_arg_vns::Set{VarName}
 end
 is_extracting_colon_eq_values(g::DebugGetRawValues) = true
 is_recording_nonmissing_arguments(::Any) = false
 is_recording_nonmissing_arguments(::DebugGetRawValues) = true
 function Base.copy(d::DebugGetRawValues)
-    return DebugGetRawValues(copy(d.repeated_vns), copy(d.nonmissing_arg_vns))
+    return DebugGetRawValues(
+        copy(d.repeated_vns), copy(d.nonmissing_arg_vns), copy(d.seen_arg_vns)
+    )
 end
 function DebugRawValueAccumulator()
     return VNTAccumulator{RAW_VALUE_ACCNAME}(
-        DebugGetRawValues(Set{VarName}(), Set{Tuple{VarName,Bool}}())
+        DebugGetRawValues(Set{VarName}(), Set{Tuple{VarName,Bool}}(), Set{VarName}())
     )
 end
 
-# Split accumulators need independent sets because both fields contain mutable state.
+# Split accumulators need independent sets because these fields contain mutable state.
 function _zero(
     acc::Union{
         VNTAccumulator{RAW_VALUE_ACCNAME,DebugGetRawValues},
@@ -78,6 +81,7 @@ function _zero(
     new_acc = copy(acc)
     empty!(new_acc.f.repeated_vns)
     empty!(new_acc.f.nonmissing_arg_vns)
+    empty!(new_acc.f.seen_arg_vns)
     return update_values(new_acc, empty(new_acc.values))
 end
 
@@ -88,8 +92,11 @@ function record_nonmissing_argument!!(
     },
     vn,
     is_submodel,
+    is_nonmissing=true,
 )
-    push!(acc.f.nonmissing_arg_vns, (vn, is_submodel))
+    vn in acc.f.seen_arg_vns && return acc
+    push!(acc.f.seen_arg_vns, vn)
+    is_nonmissing && push!(acc.f.nonmissing_arg_vns, (vn, is_submodel))
     return acc
 end
 
@@ -154,6 +161,7 @@ function DynamicPPL.combine(
 )
     union!(acc1.f.repeated_vns, acc2.f.repeated_vns)
     union!(acc1.f.nonmissing_arg_vns, acc2.f.nonmissing_arg_vns)
+    union!(acc1.f.seen_arg_vns, acc2.f.seen_arg_vns)
 
     new_values = acc1.values
     for (vn, val) in pairs(acc2.values)

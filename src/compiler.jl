@@ -541,16 +541,18 @@ function generate_tilde(left, right)
                 if $(DynamicPPL.inargnames)($vn, __model__) &&
                     !$(DynamicPPL.inmissings)($vn, __model__)
                     $argument_val = $(maybe_view(left))
+                    __varinfo__ = $(DynamicPPL.record_nonmissing_argument!!)(
+                        __varinfo__,
+                        __model__.context,
+                        $vn,
+                        $dist isa $(DynamicPPL.Submodel),
+                        $argument_val !== missing,
+                    )
                     if $argument_val === missing
                         $(DynamicPPL.getconditioned_nested)(
                             __model__.context, $(DynamicPPL.prefix)(__model__.context, $vn)
                         )
                     else
-                        __varinfo__ = $(DynamicPPL.record_nonmissing_argument!!)(
-                            __varinfo__,
-                            $(DynamicPPL.prefix)(__model__.context, $vn),
-                            $dist isa $(DynamicPPL.Submodel),
-                        )
                         $argument_val
                     end
                 else
