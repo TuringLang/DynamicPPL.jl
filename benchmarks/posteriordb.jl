@@ -20,6 +20,8 @@ using Printf, Random, LinearAlgebra
 using Chairmarks: @be
 using Statistics: median
 using ADTypes: AutoForwardDiff, AutoEnzyme, AutoMooncake
+import Enzyme
+import Enzyme_jll
 using Enzyme: Reverse, set_runtime_activity
 using DynamicPPL: LogDensityFunction, getlogjoint_internal
 import BridgeStan
@@ -81,6 +83,28 @@ function cpu_name()
     return Sys.CPU_NAME
 end
 
+function benchmark_manifest()
+    project = Base.active_project()
+    project === nothing && error("no active benchmark project")
+    path = joinpath(dirname(project), "Manifest.toml")
+    isfile(path) || error("benchmark manifest does not exist: $path")
+    return read(path, String)
+end
+
+function source_revision(package; required=false)
+    path = dirname(dirname(pathof(package)))
+    root = try
+        readchomp(pipeline(`git -C $path rev-parse --show-toplevel`; stderr=devnull))
+    catch
+        required && error("$(nameof(package)) is not in a Git checkout: $path")
+        return "manifest tree"
+    end
+    status = read(`git -C $root status --porcelain --untracked-files=no`, String)
+    isempty(status) ||
+        error("$(nameof(package)) source tree has uncommitted changes: $root")
+    return readchomp(`git -C $root rev-parse --short HEAD`)
+end
+
 struct RunMetadata
     julia_version::String
     system::String
@@ -92,6 +116,10 @@ struct RunMetadata
     blas_threads::Int
     dynamicppl_version::String
     mooncake_version::String
+    enzyme_version::String
+    enzyme_jll_version::String
+    dynamicppl_commit::String
+    mooncake_revision::String
     bridgestan_version::String
     stan_version::String
     logdensity_only::Bool
@@ -112,6 +140,8 @@ function run_metadata(
     shard_count=1,
     shard_index=1,
     seed=468,
+    dynamicppl_commit=source_revision(DynamicPPL; required=true),
+    mooncake_revision=source_revision(Mooncake),
 )
     return RunMetadata(
         string(VERSION),
@@ -124,6 +154,10 @@ function run_metadata(
         LinearAlgebra.BLAS.get_num_threads(),
         string(pkgversion(DynamicPPL)),
         string(pkgversion(Mooncake)),
+        string(pkgversion(Enzyme)),
+        string(pkgversion(Enzyme_jll)),
+        dynamicppl_commit,
+        mooncake_revision,
         string(pkgversion(BridgeStan)),
         stan_version,
         logdensity_only,
@@ -146,9 +180,13 @@ function write_environment(io, metadata::RunMetadata)
         "- Benchmark parallelism: $(metadata.shard_count) Julia process(es), $(metadata.julia_threads) Julia thread(s) each",
     )
     println(io, "- BLAS: $(metadata.blas_vendor), $(metadata.blas_threads) thread(s)")
+    println(
+        io,
+        "- Source revisions: DynamicPPL commit `$(metadata.dynamicppl_commit)`, Mooncake `$(metadata.mooncake_revision)`",
+    )
     return println(
         io,
-        "- Packages: DynamicPPL $(metadata.dynamicppl_version), Mooncake $(metadata.mooncake_version), BridgeStan $(metadata.bridgestan_version), Stan $(metadata.stan_version)",
+        "- Packages: DynamicPPL $(metadata.dynamicppl_version), Mooncake $(metadata.mooncake_version), Enzyme $(metadata.enzyme_version), Enzyme_jll $(metadata.enzyme_jll_version), BridgeStan $(metadata.bridgestan_version), Stan $(metadata.stan_version)",
     )
 end
 
@@ -199,12 +237,7 @@ function stable_ldf(model; adtype=nothing, logdensity=getlogjoint_internal)
     transforms = DynamicPPL.get_fixed_transforms(fixed_vi)
     vecvals = DynamicPPL.getacc(vi, Val(:VectorValue)).values
     vecvals = DynamicPPL.update_transforms!!(vecvals, transforms)
-    try
-        return LogDensityFunction(model, logdensity, vecvals; adtype, fix_transforms=false)
-    catch error
-        @info "using runtime transforms in benchmark" exception = typeof(error)
-        return LogDensityFunction(model, logdensity, vi; adtype, fix_transforms=false)
-    end
+    return LogDensityFunction(model, logdensity, vecvals; adtype, fix_transforms=false)
 end
 
 function bench_dynamicppl(
@@ -545,7 +578,7 @@ const RESULT_COLUMNS = (
     "mooncake_gradient_s",
     "stan_gradient_s",
 )
-const CHECKPOINT_FORMAT = "2"
+const CHECKPOINT_FORMAT = "3"
 
 function write_result(io, result)
     return println(
@@ -898,6 +931,12 @@ function benchmark_models(
     checkpoint_path="",
 )
     isempty(models) && error("no models selected")
+    dynamicppl_commit = stan_only ? "not used" : source_revision(DynamicPPL; required=true)
+    mooncake_revision = if stan_only || logdensity_only
+        "not used"
+    else
+        source_revision(Mooncake)
+    end
     results = Result[]
     metadata = nothing
     for model_name in models
@@ -915,6 +954,8 @@ function benchmark_models(
                 shard_count,
                 shard_index,
                 seed,
+                dynamicppl_commit,
+                mooncake_revision,
             )
             if !isempty(checkpoint_path)
                 open(checkpoint_path, "w") do io
@@ -1137,6 +1178,7 @@ function write_table(io, results; logdensity_only=false, stan_only=false, turing
 end
 
 function write_markdown(path, results, metadata::RunMetadata)
+    manifest = benchmark_manifest()
     open(path, "w") do io
         println(io, "# PosteriorDB benchmark results\n")
         println(
@@ -1184,7 +1226,14 @@ function write_markdown(path, results, metadata::RunMetadata)
             stan_only=metadata.stan_only,
             turing_only=metadata.turing_only,
         )
-        return println(io, "```")
+        println(io, "```\n")
+        println(io, "<details>")
+        println(io, "<summary>Full benchmark Manifest.toml</summary>\n")
+        println(io, "```toml")
+        print(io, manifest)
+        endswith(manifest, '\n') || println(io)
+        println(io, "```")
+        return println(io, "</details>")
     end
 end
 

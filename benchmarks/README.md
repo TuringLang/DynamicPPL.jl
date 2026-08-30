@@ -37,6 +37,11 @@ all 147 PosteriorDB posteriors. The model catalog and Stan-to-DynamicPPL
 coordinate mapping are vendored in this directory, so the benchmark does not
 depend on a sibling checkout or on Turing.
 
+The translations preserve each posterior but may use algebraic reductions or
+sufficient statistics that differ from the Stan implementation. The Stan and
+Turing columns therefore compare complete implementations, not identical
+instruction sequences.
+
 Run one model or the full catalog from the repository root:
 
 ```sh
@@ -51,6 +56,8 @@ regenerates `benchmarks/posteriordb.md`. Use `--logdensity-only` to omit
 gradients, `--stan-only` or `--turing-only` to time only one implementation,
 or `--mooncake-only` to omit ForwardDiff and Enzyme. `--turing-only` still uses
 BridgeStan to select the matched parameter realization and map coordinates.
+Runs that use local DynamicPPL or Mooncake checkouts require clean tracked files
+because the report records their source revisions.
 The `--logdensity-only` mode composes with either implementation-only mode. To
 choose another Markdown path and also save the raw timings as tab-separated
 data:

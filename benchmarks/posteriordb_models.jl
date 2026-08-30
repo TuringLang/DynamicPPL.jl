@@ -3,11 +3,11 @@
 #   Bijectors and Mooncake use one transform or adjoint instead of one per datum.
 # - If an algorithm needs a native rule, attach it to a public distribution or
 #   solver boundary, not a private likelihood helper or incidental array operation.
-# - Track reverse-tape allocation first; it predicts gradient time better than
-#   parameter count or primal time in this catalog.
+# - Track reverse-tape allocation first; generic pullbacks over active array
+#   pipelines can retain far more intermediate storage than Enzyme.
 # - Concretize and prepare data in `make_model`; `_FixedData` expresses a
-#   semantically fixed AD boundary (notably solver times) and avoids material
-#   data cotangents where they matter.
+#   semantically fixed AD boundary. A constant enclosing context does not stop
+#   Mooncake constructing internal tangents after unpacking its model arguments.
 # - Match representation to the AD boundary: keep homogeneous products lazy,
 #   but materialize the few active matrix-valued repeated distributions.
 # - Prefer public Stats/Distributions batch boundaries such as `logsumexp`,
