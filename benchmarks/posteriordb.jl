@@ -16,12 +16,13 @@
 #   include("posteriordb.jl")
 #   ARGS = ["sblri-blr"]; include("posteriordb.jl")
 
+using Base64: base64decode, base64encode
 using Printf, Random, LinearAlgebra
+using SHA: sha256
 using Chairmarks: @be
 using Statistics: median
 using ADTypes: AutoForwardDiff, AutoEnzyme, AutoMooncake
 import Enzyme
-import Enzyme_jll
 using Enzyme: Reverse, set_runtime_activity
 using DynamicPPL: LogDensityFunction, getlogjoint_internal
 import BridgeStan
@@ -83,12 +84,46 @@ function cpu_name()
     return Sys.CPU_NAME
 end
 
+struct BenchmarkManifest
+    content::String
+    sha256::String
+
+    function BenchmarkManifest(content::AbstractString)
+        value = String(content)
+        return new(value, bytes2hex(sha256(value)))
+    end
+end
+
+function Base.:(==)(left::BenchmarkManifest, right::BenchmarkManifest)
+    return left.sha256 == right.sha256 && left.content == right.content
+end
+Base.isequal(left::BenchmarkManifest, right::BenchmarkManifest) = left == right
+function Base.hash(manifest::BenchmarkManifest, h::UInt)
+    return hash(manifest.content, hash(manifest.sha256, h))
+end
+
+function encode_manifest(manifest::BenchmarkManifest)
+    return "$(manifest.sha256):$(base64encode(manifest.content))"
+end
+
+encode_metadata(value) = value
+encode_metadata(manifest::BenchmarkManifest) = encode_manifest(manifest)
+
+function decode_manifest(value)
+    fields = Base.split(value, ':'; limit=2)
+    length(fields) == 2 || error("malformed benchmark manifest")
+    expected_sha256, encoded = fields
+    manifest = BenchmarkManifest(String(base64decode(encoded)))
+    manifest.sha256 == expected_sha256 || error("benchmark manifest checksum mismatch")
+    return manifest
+end
+
 function benchmark_manifest()
     project = Base.active_project()
     project === nothing && error("no active benchmark project")
     path = joinpath(dirname(project), "Manifest.toml")
     isfile(path) || error("benchmark manifest does not exist: $path")
-    return read(path, String)
+    return BenchmarkManifest(read(path, String))
 end
 
 function source_revision(package; required=false)
@@ -117,9 +152,8 @@ struct RunMetadata
     dynamicppl_version::String
     mooncake_version::String
     enzyme_version::String
-    enzyme_jll_version::String
     dynamicppl_commit::String
-    mooncake_revision::String
+    manifest::BenchmarkManifest
     bridgestan_version::String
     stan_version::String
     logdensity_only::Bool
@@ -141,7 +175,7 @@ function run_metadata(
     shard_index=1,
     seed=468,
     dynamicppl_commit=source_revision(DynamicPPL; required=true),
-    mooncake_revision=source_revision(Mooncake),
+    manifest=benchmark_manifest(),
 )
     return RunMetadata(
         string(VERSION),
@@ -155,9 +189,8 @@ function run_metadata(
         string(pkgversion(DynamicPPL)),
         string(pkgversion(Mooncake)),
         string(pkgversion(Enzyme)),
-        string(pkgversion(Enzyme_jll)),
         dynamicppl_commit,
-        mooncake_revision,
+        manifest,
         string(pkgversion(BridgeStan)),
         stan_version,
         logdensity_only,
@@ -180,46 +213,14 @@ function write_environment(io, metadata::RunMetadata)
         "- Benchmark parallelism: $(metadata.shard_count) Julia process(es), $(metadata.julia_threads) Julia thread(s) each",
     )
     println(io, "- BLAS: $(metadata.blas_vendor), $(metadata.blas_threads) thread(s)")
-    println(
-        io,
-        "- Source revisions: DynamicPPL commit `$(metadata.dynamicppl_commit)`, Mooncake `$(metadata.mooncake_revision)`",
-    )
+    println(io, "- Source revision: DynamicPPL commit `$(metadata.dynamicppl_commit)`")
     return println(
         io,
-        "- Packages: DynamicPPL $(metadata.dynamicppl_version), Mooncake $(metadata.mooncake_version), Enzyme $(metadata.enzyme_version), Enzyme_jll $(metadata.enzyme_jll_version), BridgeStan $(metadata.bridgestan_version), Stan $(metadata.stan_version)",
+        "- Packages: DynamicPPL $(metadata.dynamicppl_version), Mooncake $(metadata.mooncake_version), Enzyme $(metadata.enzyme_version), BridgeStan $(metadata.bridgestan_version), Stan $(metadata.stan_version)",
     )
 end
 
 median_time(bench) = median(bench).time
-
-function abbreviate(name, prefix_length=1)
-    function shorten(part)
-        words = Base.split(part, '_')
-        if length(words) == 1
-            part
-        else
-            join(first(word, min(prefix_length, length(word))) for word in words)
-        end
-    end
-    return join(shorten.(Base.split(name, '-')), "-")
-end
-
-function unique_model_labels(names)
-    prefix_lengths = ones(Int, length(names))
-    for _ in 1:maximum(length, names)
-        labels = [abbreviate(name, prefix_lengths[index]) for (index, name) in pairs(names)]
-        allunique(labels) && return labels
-        groups = Dict{String,Vector{Int}}()
-        for (index, label) in pairs(labels)
-            push!(get!(groups, label, Int[]), index)
-        end
-        for indices in values(groups)
-            length(indices) == 1 && continue
-            prefix_lengths[indices] .+= 1
-        end
-    end
-    return collect(names)
-end
 
 const OTHER_AD_BACKENDS = (
     ("FD", AutoForwardDiff()), ("Ez", AutoEnzyme(; mode=set_runtime_activity(Reverse)))
@@ -578,7 +579,7 @@ const RESULT_COLUMNS = (
     "mooncake_gradient_s",
     "stan_gradient_s",
 )
-const CHECKPOINT_FORMAT = "3"
+const CHECKPOINT_FORMAT = "4"
 
 function write_result(io, result)
     return println(
@@ -602,13 +603,14 @@ end
 function write_checkpoint_header(io, metadata::RunMetadata)
     println(io, "# posteriordb_format\t$CHECKPOINT_FORMAT")
     for name in fieldnames(RunMetadata)
-        println(io, "# $name\t$(getfield(metadata, name))")
+        println(io, "# $name\t$(encode_metadata(getfield(metadata, name)))")
     end
     return println(io, join(RESULT_COLUMNS, '\t'))
 end
 
 parse_metadata(::Type{String}, value) = value
 parse_metadata(::Type{T}, value) where {T<:Union{Int,Float64,Bool}} = parse(T, value)
+parse_metadata(::Type{BenchmarkManifest}, value) = decode_manifest(value)
 
 function read_checkpoint(path)
     metadata_values = Dict{Symbol,String}()
@@ -931,12 +933,8 @@ function benchmark_models(
     checkpoint_path="",
 )
     isempty(models) && error("no models selected")
+    manifest = benchmark_manifest()
     dynamicppl_commit = stan_only ? "not used" : source_revision(DynamicPPL; required=true)
-    mooncake_revision = if stan_only || logdensity_only
-        "not used"
-    else
-        source_revision(Mooncake)
-    end
     results = Result[]
     metadata = nothing
     for model_name in models
@@ -955,7 +953,7 @@ function benchmark_models(
                 shard_index,
                 seed,
                 dynamicppl_commit,
-                mooncake_revision,
+                manifest,
             )
             if !isempty(checkpoint_path)
                 open(checkpoint_path, "w") do io
@@ -1059,21 +1057,27 @@ function write_summary(
     return println(io)
 end
 
-function write_table(io, results; logdensity_only=false, stan_only=false, turing_only=false)
+function write_table(
+    io, results; logdensity_only=false, stan_only=false, turing_only=false, all_ad=true
+)
     gap = "  "
-    labels = unique_model_labels([result.name for result in results])
+    labels = [result.name for result in results]
     headers = if stan_only
         logdensity_only ? ["Model", "dim", "Stan"] : ["Model", "dim", "Stan", "Stan"]
     elseif turing_only
         if logdensity_only
             ["Model", "dim", "Turing"]
-        else
+        elseif all_ad
             ["Model", "dim", "Turing", "FwdDiff", "EzyRvs", "McRvs"]
+        else
+            ["Model", "dim", "Turing", "McRvs"]
         end
     elseif logdensity_only
         ["Model", "dim", "Turing", "Stan"]
-    else
+    elseif all_ad
         ["Model", "dim", "Turing", "Stan", "FwdDiff", "EzyRvs", "McRvs", "Stan", "McRvs / Stan"]
+    else
+        ["Model", "dim", "Turing", "Stan", "McRvs", "Stan", "McRvs / Stan"]
     end
     rows = [
         if stan_only
@@ -1090,13 +1094,20 @@ function write_table(io, results; logdensity_only=false, stan_only=false, turing
         elseif turing_only
             if logdensity_only
                 [label, string(result.dim), fmt_time(result.dynamicppl_primal)]
-            else
+            elseif all_ad
                 [
                     label,
                     string(result.dim),
                     fmt_time(result.dynamicppl_primal),
                     fmt_time(result.dynamicppl_fd_grad),
                     fmt_time(result.dynamicppl_enzyme_grad),
+                    fmt_time(result.dynamicppl_mooncake_grad),
+                ]
+            else
+                [
+                    label,
+                    string(result.dim),
+                    fmt_time(result.dynamicppl_primal),
                     fmt_time(result.dynamicppl_mooncake_grad),
                 ]
             end
@@ -1107,7 +1118,7 @@ function write_table(io, results; logdensity_only=false, stan_only=false, turing
                 fmt_time(result.dynamicppl_primal),
                 fmt_time(result.stan_primal),
             ]
-        else
+        elseif all_ad
             [
                 label,
                 string(result.dim),
@@ -1115,6 +1126,16 @@ function write_table(io, results; logdensity_only=false, stan_only=false, turing
                 fmt_time(result.stan_primal),
                 fmt_time(result.dynamicppl_fd_grad),
                 fmt_time(result.dynamicppl_enzyme_grad),
+                fmt_time(result.dynamicppl_mooncake_grad),
+                fmt_time(result.stan_grad),
+                fmt_ratio(result.dynamicppl_mooncake_grad, result.stan_grad),
+            ]
+        else
+            [
+                label,
+                string(result.dim),
+                fmt_time(result.dynamicppl_primal),
+                fmt_time(result.stan_primal),
                 fmt_time(result.dynamicppl_mooncake_grad),
                 fmt_time(result.stan_grad),
                 fmt_ratio(result.dynamicppl_mooncake_grad, result.stan_grad),
@@ -1178,7 +1199,7 @@ function write_table(io, results; logdensity_only=false, stan_only=false, turing
 end
 
 function write_markdown(path, results, metadata::RunMetadata)
-    manifest = benchmark_manifest()
+    manifest = metadata.manifest.content
     open(path, "w") do io
         println(io, "# PosteriorDB benchmark results\n")
         println(
@@ -1204,18 +1225,25 @@ function write_markdown(path, results, metadata::RunMetadata)
         elseif metadata.turing_only
             if metadata.logdensity_only
                 "*Table 1. Median Turing log-density evaluation times.*\n"
-            else
+            elseif metadata.all_ad
                 "*Table 1. Median Turing log-density and gradient evaluation times. " *
                 "FwdDiff: ForwardDiff; EzyRvs: Enzyme; McRvs: Mooncake reverse mode.*\n"
+            else
+                "*Table 1. Median Turing log-density and Mooncake gradient evaluation " *
+                "times. McRvs: Mooncake reverse mode.*\n"
             end
         elseif metadata.logdensity_only
             "*Table 1. Median Turing and Stan log-density evaluation times at a " *
             "matched parameter realization.*\n"
-        else
+        elseif metadata.all_ad
             "*Table 1. Median log-density and gradient evaluation times at a matched " *
             "parameter realization. FwdDiff: ForwardDiff; EzyRvs: Enzyme; McRvs: " *
             "Mooncake reverse mode; McRvs / Stan: McRvs time divided by Stan gradient " *
             "time (lower is better).*\n"
+        else
+            "*Table 1. Median log-density and Mooncake gradient evaluation times at a " *
+            "matched parameter realization. McRvs: Mooncake reverse mode; McRvs / " *
+            "Stan: McRvs time divided by Stan gradient time (lower is better).*\n"
         end
         println(io, caption)
         println(io, "```text")
@@ -1225,6 +1253,7 @@ function write_markdown(path, results, metadata::RunMetadata)
             logdensity_only=metadata.logdensity_only,
             stan_only=metadata.stan_only,
             turing_only=metadata.turing_only,
+            all_ad=metadata.all_ad,
         )
         println(io, "```\n")
         println(io, "<details>")
@@ -1293,6 +1322,7 @@ function main(args=ARGS)
             logdensity_only=metadata.logdensity_only,
             stan_only=metadata.stan_only,
             turing_only=metadata.turing_only,
+            all_ad=metadata.all_ad,
         )
         path = get(ENV, "PDB_BENCH_MARKDOWN", joinpath(@__DIR__, "posteriordb.md"))
         write_markdown(path, results, metadata)
@@ -1336,6 +1366,7 @@ function main(args=ARGS)
         logdensity_only=metadata.logdensity_only,
         stan_only=metadata.stan_only,
         turing_only=metadata.turing_only,
+        all_ad=metadata.all_ad,
     )
 
     full_catalog = isempty(options.positional) && shard_count == 1

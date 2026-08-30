@@ -56,8 +56,8 @@ regenerates `benchmarks/posteriordb.md`. Use `--logdensity-only` to omit
 gradients, `--stan-only` or `--turing-only` to time only one implementation,
 or `--mooncake-only` to omit ForwardDiff and Enzyme. `--turing-only` still uses
 BridgeStan to select the matched parameter realization and map coordinates.
-Runs that use local DynamicPPL or Mooncake checkouts require clean tracked files
-because the report records their source revisions.
+Runs that use a local DynamicPPL checkout require clean tracked files because the
+report records its source revision.
 The `--logdensity-only` mode composes with either implementation-only mode. To
 choose another Markdown path and also save the raw timings as tab-separated
 data:
@@ -78,8 +78,10 @@ checkpoints and regenerate `posteriordb.md` with:
 julia --project=benchmarks benchmarks/posteriordb.jl --merge shard-*.tsv
 ```
 
-The merge rejects incompatible run metadata, duplicate or missing shards, and
-incomplete model coverage.
+Each checkpoint stores the manifest from its benchmark process. The merge
+requires an exact manifest match across shards and embeds that manifest in the
+report. It also rejects incompatible run metadata, duplicate or missing shards,
+and incomplete model coverage.
 
 Use `--verify` to compare relative log density and gradients with Stan at 30
 reproducible random points in Stan's unconstrained parameter space. The density

@@ -22,166 +22,166 @@ Ratios are backend time divided by the corresponding Stan time; lower is better.
   - Memory: 119.7 GiB
   - Benchmark parallelism: 16 Julia process(es), 1 Julia thread(s) each
   - BLAS: lbt, 1 thread(s)
-  - Source revisions: DynamicPPL commit `6378673`, Mooncake `unrecorded local checkout`
-  - Packages: DynamicPPL 0.42.7, Mooncake 0.5.49, Enzyme 0.13.199, Enzyme_jll 0.0.290+0, BridgeStan 2.9.0, Stan 2.39.0
+  - Source revision: DynamicPPL commit `6378673`
+  - Packages: DynamicPPL 0.42.7, Mooncake 0.5.49, Enzyme 0.13.199, BridgeStan 2.9.0, Stan 2.39.0
 
 *Table 1. Median log-density and gradient evaluation times at a matched parameter realization. FwdDiff: ForwardDiff; EzyRvs: Enzyme; McRvs: Mooncake reverse mode; McRvs / Stan: McRvs time divided by Stan gradient time (lower is better).*
 
 ```text
 
-==================================================================================================================
-                                             eval                                 gradient
-                                     --------------------  -------------------------------------------------------
-Model                           dim     Turing       Stan    FwdDiff    EzyRvs     McRvs       Stan  McRvs / Stan
-------------------------------------------------------------------------------------------------------------------
-GPd-GPm                          45   800.6 ns   712.4 ns    15.0 μs     1.9 μs    3.5 μs     2.2 μs         1.62×
-Gd-Gm                           237    35.9 μs    58.4 μs    7.06 ms   110.7 μs   89.2 μs    45.4 μs         1.96×
-GBd-GBm                           3     1.8 μs     2.0 μs     4.9 μs    26.1 μs    9.2 μs     2.7 μs         3.44×
-GPD-GPm                           4     1.6 μs     1.4 μs     3.3 μs     3.3 μs    6.1 μs     3.2 μs         1.92×
-M0da-M0mo                         2    12.9 μs    10.8 μs    25.5 μs    75.8 μs   41.1 μs    16.7 μs         2.46×
-Mbda-Mbmo                         3   127.9 ns    26.1 μs   195.2 ns   232.3 ns  584.5 ns    50.5 μs         0.01×
-Mhda-Mhmo                       388    27.3 μs    19.9 μs    2.22 ms   168.2 μs  156.3 μs    42.7 μs         3.66×
-Mtdat-Mtmod                       4    14.5 μs    20.6 μs    20.5 μs        err   87.6 μs    41.8 μs         2.10×
-Mtbdat-Mtbmod                   154    21.4 μs    19.9 μs   649.2 μs   373.2 μs   98.3 μs    44.2 μs         2.22×
-Mthdat-Mthmod                   394    50.0 μs    48.3 μs   12.46 ms    1.11 ms  224.5 μs    95.3 μs         2.36×
-R1d-R1m                           1    99.0 ns   162.7 ns   178.0 ns   400.7 ns  391.7 ns   223.6 ns         1.75×
-R2d-R2m                           2   203.1 ns   243.4 ns   331.3 ns     1.1 μs  860.2 ns   328.9 ns         2.62×
-R3d-R3m                           1   136.1 ns   403.1 ns   247.7 ns     1.1 μs  602.3 ns   522.7 ns         1.15×
-R4d-R4m                           2   155.4 ns   181.6 ns   269.9 ns   859.3 ns  702.0 ns   284.9 ns         2.46×
-R5d-R5m                           1   129.7 ns   277.9 ns   237.3 ns     1.0 μs  597.9 ns   427.8 ns         1.40×
-Sd-Sm                             1     5.0 μs   174.7 μs    13.9 μs    11.1 μs   15.8 μs   183.9 μs         0.09×
-arK-arK                           7     2.6 μs     3.8 μs     4.4 μs     5.8 μs   11.4 μs    18.3 μs         0.62×
-arma-arma11                       4     2.4 μs     1.7 μs     7.8 μs    11.1 μs   15.4 μs     8.5 μs         1.81×
-bde0-hd0                          6    54.0 μs    54.6 μs    75.4 μs   752.9 μs  411.7 μs   133.6 μs         3.08×
-bde1-hd1                          6    64.2 μs    50.1 μs    93.0 μs    1.73 ms  505.8 μs   137.7 μs         3.67×
-bd-bm                            13    19.8 μs    43.0 μs    77.7 μs    49.2 μs  179.8 μs    56.7 μs         3.17×
-butterfly-mo                    106    45.2 μs    39.7 μs   587.0 μs   337.8 μs  212.4 μs    66.3 μs         3.20×
-diamonds-diamonds                26   339.4 ns    10.9 μs     7.7 μs        err    2.7 μs    21.2 μs         0.13×
-dogs-dogs                         3     9.5 μs    72.2 μs    29.8 μs    33.0 μs   48.8 μs   128.9 μs         0.38×
-dogs-dh                           2    12.4 μs    13.3 μs    24.6 μs        err   78.1 μs    30.4 μs         2.57×
-dogs-dl                           2     8.7 μs    36.5 μs    24.4 μs    36.8 μs   31.2 μs    82.5 μs         0.38×
-dogs-dn                          65    13.8 μs    15.2 μs   435.1 μs        err   90.5 μs    40.7 μs         2.22×
-dd-dm                             4   473.1 ns   783.6 ns     1.0 μs     2.7 μs    1.9 μs     1.8 μs         1.06×
-earnings-eh                       3     1.1 μs     2.5 μs     4.0 μs        err   12.4 μs    17.2 μs         0.72×
-earnings-log1heig                 3     1.0 μs     2.5 μs     5.9 μs        err   12.8 μs    17.2 μs         0.74×
-earnings-logeheig                 3     1.1 μs     2.5 μs     3.2 μs        err   12.4 μs    11.9 μs         1.04×
-earnings-lhm                      4     1.2 μs     1.4 μs     4.9 μs        err   16.7 μs    18.2 μs         0.91×
-earnings-li                       5     5.7 μs     3.1 μs     4.3 μs        err   20.5 μs    36.4 μs         0.56×
-earnings-liz                      5     1.2 μs     1.5 μs     4.6 μs        err   20.6 μs    25.5 μs         0.81×
-earnings-llm                      4     2.0 μs     2.8 μs     4.2 μs        err   16.7 μs    26.8 μs         0.62×
-ecdc0401-cov2                    51    54.8 μs    54.7 μs    1.50 ms   580.2 μs  780.6 μs   353.5 μs         2.21×
-ecdc0401-cov3                    51    54.5 μs    54.2 μs    1.49 ms   653.3 μs   1.11 ms   365.9 μs         3.03×
-ecdc0501-cov2                    51    60.7 μs    70.2 μs    1.62 ms   627.7 μs   1.07 ms   377.2 μs         2.85×
-ecdc0501-cov3                    51    61.4 μs    71.2 μs    1.59 ms   661.5 μs   1.16 ms   383.9 μs         3.03×
-es-esc                           10   217.1 ns   207.5 ns   766.7 ns   492.1 ns    1.3 μs   470.6 ns         2.67×
-es-esn                           10   103.4 ns   554.0 ns   487.9 ns   493.3 ns  596.3 ns     1.0 μs         0.58×
-election88-ef                    90   171.1 μs   161.2 μs   17.53 ms    2.74 ms   1.87 ms    1.06 ms         1.77×
-fAJi-2lri                       531   244.2 μs   195.6 μs   33.72 ms        err   1.36 ms   299.6 μs         4.54×
-garch-garch11                     4     2.4 μs     4.5 μs     3.7 μs     7.5 μs    6.7 μs    10.4 μs         0.64×
-gpr-gpr                          13     2.3 μs   924.0 ns     7.7 μs     5.9 μs    8.6 μs     2.7 μs         3.19×
-gpr-gr                            3     2.0 μs     1.1 μs     2.5 μs     4.2 μs   10.5 μs     2.9 μs         3.60×
-he-he                             4    12.0 μs    18.7 μs    15.5 μs   272.3 μs  107.9 μs    26.5 μs         4.07×
-hgs-hg                           14    63.4 μs   171.5 μs   727.2 μs        err  464.3 μs   499.6 μs         0.93×
-hlh-lv                            8    15.8 μs     8.9 μs    22.2 μs   129.4 μs  160.8 μs    30.6 μs         5.25×
-irs-ir                           29   112.8 μs   520.7 μs   763.7 μs    2.00 ms  705.9 μs   978.1 μs         0.72×
-i2-i2                           144    23.6 μs    16.4 μs    1.93 ms   367.7 μs   95.3 μs    49.3 μs         1.94×
-kidiq-ki                          5     1.1 μs   757.3 ns     8.0 μs    10.2 μs    8.4 μs     9.6 μs         0.88×
-kidiq-kidscomomhs                 3     1.0 μs   654.3 ns     4.5 μs     8.8 μs    7.5 μs     4.7 μs         1.57×
-kidiq-kidscomomhsi                4     3.4 μs   760.0 ns     3.8 μs     3.6 μs    8.0 μs     7.4 μs         1.08×
-kidiq-kidsmomi                    3     1.9 μs     1.2 μs    11.7 μs     8.9 μs    7.4 μs     6.7 μs         1.11×
-kiwimowo-kiinc                    5     3.3 μs     1.5 μs     3.3 μs     5.2 μs    7.8 μs     9.6 μs         0.81×
-kiwimowo-kiinc2                   5   891.0 ns   758.2 ns     3.2 μs     3.8 μs    8.1 μs     9.7 μs         0.83×
-kwmw-kiz                          5   909.9 ns   739.8 ns     3.4 μs     3.7 μs    8.2 μs     9.6 μs         0.85×
-kwmw-kmw                          5     1.1 μs     1.5 μs     3.2 μs     9.3 μs    8.1 μs    10.2 μs         0.80×
-km-kilpisjarvi                    3   338.1 ns   353.7 ns     1.2 μs     1.1 μs    1.6 μs     1.3 μs         1.25×
-lc-ls                            15     1.0 μs     1.9 μs    19.6 μs     9.4 μs    9.3 μs     4.3 μs         2.15×
-ldgm-ldgm                         5    33.0 μs    37.6 μs   126.4 μs    66.7 μs   83.8 μs    93.2 μs         0.90×
-ldgmc-ldgmc                       5    32.1 μs    40.3 μs    67.2 μs   152.9 μs   81.5 μs    94.6 μs         0.86×
-ld-lm                          1006    85.2 μs    40.5 μs   33.73 ms    1.11 ms  209.6 μs   108.2 μs         1.94×
-mg-ag                            66     3.3 μs     3.0 μs    93.6 μs        err   32.7 μs    10.2 μs         3.20×
-ms-as                            82     6.7 μs     2.4 μs   177.2 μs        err   25.0 μs     9.8 μs         2.54×
-mesquite-logmesquite              8   193.1 ns   228.8 ns     1.6 μs   755.7 ns    1.7 μs     2.1 μs         0.85×
-mesquite-logmeslogva              5   525.7 ns   185.8 ns   827.5 ns   665.7 ns    1.4 μs     1.2 μs         1.16×
-mesquite-logmesqlogvas            8   600.5 ns   225.3 ns     2.6 μs   706.6 ns    2.2 μs     2.1 μs         1.04×
-mesquite-logmesqlogvash           7   588.6 ns   212.4 ns     2.2 μs   692.3 ns    1.7 μs     1.8 μs         0.97×
-mesquite-logmelogvo               3   478.1 ns   146.7 ns     1.5 μs   996.2 ns    2.1 μs   673.5 ns         3.14×
-mesquite-mesquite                 8   413.5 ns   442.4 ns     2.0 μs   938.5 ns    2.8 μs     2.8 μs         0.99×
-mnist-nr                      79411  211.42 ms  265.01 ms        err  768.46 ms   1.118 s  622.20 ms         1.80×
-m1-nr                          7951    57.5 μs    59.3 μs        err   335.2 μs  452.6 μs   394.9 μs         1.15×
-nes1972-nes                      10    11.3 μs     2.6 μs    21.2 μs    19.5 μs   80.1 μs    79.3 μs         1.01×
-nes1976-nes                      10    10.6 μs     2.0 μs    18.8 μs    27.9 μs   72.9 μs    56.8 μs         1.28×
-nes1980-nes                      10     2.9 μs     1.8 μs    29.7 μs    10.1 μs   44.1 μs    35.6 μs         1.24×
-nes1984-nes                      10     4.3 μs     2.0 μs    19.5 μs    28.7 μs   73.4 μs    60.7 μs         1.21×
-nes1988-nes                      10     3.9 μs     4.4 μs    46.3 μs    34.0 μs   67.9 μs    80.5 μs         0.84×
-nes1992-nes                      10    12.5 μs     2.2 μs    21.5 μs    32.3 μs   81.8 μs    65.5 μs         1.25×
-nes1996-nes                      10     3.7 μs     1.9 μs    16.7 μs    24.6 μs   64.4 μs    51.1 μs         1.26×
-nes2000-nes                      10     2.0 μs   959.5 ns     8.9 μs    12.1 μs   31.7 μs    22.6 μs         1.40×
-nld-nlm                           2    13.8 μs    26.2 μs    20.2 μs   293.0 μs   61.6 μs     9.9 μs         6.24×
-n2-nm                             3    25.1 μs    29.6 μs    59.0 μs    40.1 μs   59.6 μs    86.8 μs         0.69×
-n5-nmk                           14   159.9 μs   123.5 μs   906.5 μs    6.75 ms  597.0 μs   346.9 μs         1.72×
-ocmea-ocmea                       4   456.4 μs   135.1 μs   720.4 μs    1.97 ms   1.95 ms   466.2 μs         4.18×
-ovarian-lrr                    3075    61.0 μs    21.2 μs        err        err  318.1 μs   126.7 μs         2.51×
-pilots-pilots                    18   730.5 ns   348.9 ns     4.8 μs     1.0 μs    4.3 μs     1.0 μs         4.27×
-pc-ldaK5                       7714    2.75 ms    3.19 ms        err    8.86 ms  10.58 ms    6.90 ms         1.53×
-pp-ldaK5                      15570    5.25 ms    3.08 ms        err   10.63 ms  14.74 ms    6.93 ms         2.13×
-prostate-lrr                  11935   269.6 μs   129.5 μs        err        err   3.28 ms   745.0 μs         4.41×
-ra-rci                          388    56.0 μs    73.6 μs   10.87 ms    88.3 μs  196.1 μs   390.9 μs         0.50×
-ra-rhic                         391    60.3 μs    87.1 μs    9.81 ms   101.2 μs  293.7 μs   521.5 μs         0.56×
-ra-rhin                         391    60.0 μs   190.6 μs    9.94 ms   290.4 μs  346.2 μs   896.0 μs         0.39×
-ra-rppc                         389    51.9 μs    72.6 μs    8.70 ms    80.2 μs  190.3 μs   270.9 μs         0.70×
-ra-rppn                         389    51.0 μs    71.3 μs    9.69 ms    79.8 μs  190.7 μs   267.4 μs         0.71×
-ra-rp                             3     7.2 μs    62.7 μs    31.1 μs    37.4 μs  159.8 μs   343.3 μs         0.47×
-ra-rvic                         390    56.3 μs    75.7 μs   10.08 ms    87.0 μs  198.6 μs   392.9 μs         0.51×
-ra-rvin                         390    55.2 μs    75.0 μs    9.55 ms    89.0 μs  230.0 μs   389.0 μs         0.59×
-ra-rvisc                        777    42.9 μs    77.7 μs   16.91 ms    82.2 μs  254.0 μs   404.5 μs         0.63×
-ra-rvisn                        777    44.1 μs    83.6 μs  127.94 ms    85.6 μs  265.1 μs   414.0 μs         0.64×
-ra-rvsc                         390    55.9 μs    76.9 μs    9.21 ms    89.3 μs  221.8 μs   392.1 μs         0.57×
-ra-rvsn                         390    54.7 μs    82.8 μs    9.04 ms    91.7 μs  207.1 μs   408.8 μs         0.51×
-rm-rci                           87     4.2 μs    13.3 μs   162.0 μs    19.3 μs   16.7 μs    46.8 μs         0.36×
-rm-rhic                          90     4.5 μs     7.8 μs   170.2 μs     8.9 μs   22.8 μs    42.8 μs         0.53×
-rm-rhin                          90     4.5 μs     6.8 μs   178.9 μs     7.9 μs   23.8 μs    38.9 μs         0.61×
-rm-rppc                          88     3.8 μs     5.5 μs   126.0 μs     6.2 μs   14.2 μs    20.4 μs         0.70×
-rm-rppn                          88     3.8 μs    12.8 μs   371.7 μs    16.5 μs   15.7 μs    35.3 μs         0.44×
-rm-rp                             3     1.1 μs    11.6 μs     2.4 μs     5.7 μs   10.2 μs    39.6 μs         0.26×
-rm-rvic                          89     4.2 μs     5.9 μs   191.7 μs     6.8 μs   15.8 μs    28.3 μs         0.56×
-rm-rvin                          89     4.2 μs    13.7 μs   192.7 μs    19.8 μs   17.2 μs    28.1 μs         0.61×
-rm-rvisc                        175     3.6 μs     6.2 μs   341.9 μs     6.4 μs   18.4 μs    28.9 μs         0.64×
-rm-rvisn                        175     3.4 μs     6.4 μs   340.5 μs     8.3 μs   20.4 μs    31.7 μs         0.64×
-rm-rvsc                          89     4.1 μs     5.9 μs   168.4 μs     6.8 μs   15.7 μs    27.9 μs         0.56×
-rm-rvsn                          89     4.2 μs     6.1 μs   197.8 μs     8.0 μs   17.8 μs    28.7 μs         0.62×
-rm-rc                           389    58.8 μs    31.8 μs   12.12 ms        err  276.9 μs    67.4 μs         4.11×
-rd-rm                            65   827.6 ns   971.9 ns    50.2 μs     2.0 μs    5.1 μs     5.2 μs         0.98×
-rd-prophet                       62    41.2 μs    13.2 μs    2.46 ms    65.3 μs  432.1 μs    68.1 μs         6.35×
-sat-h2                          669   216.4 μs   223.0 μs  106.81 ms   915.9 μs   1.98 ms   513.0 μs         3.86×
-sblrc-blr                         6     1.2 μs   263.2 ns     1.5 μs     1.3 μs    2.9 μs   996.8 ns         2.94×
-sblri-blr                         6     1.1 μs   307.2 ns     1.5 μs     2.8 μs    4.2 μs     1.1 μs         3.70×
-si-glri                         408    62.1 μs   408.6 μs   25.32 ms        err  495.1 μs   836.3 μs         0.59×
-sd-scm                           26     1.1 μs     1.2 μs     6.9 μs    16.1 μs    7.3 μs     2.3 μs         3.20×
-seda-semo                        26     1.1 μs     1.1 μs    12.9 μs    16.2 μs    6.5 μs     2.0 μs         3.28×
-sd-ssm                           26     1.3 μs     2.5 μs    18.1 μs    29.3 μs    7.2 μs     3.9 μs         1.83×
-sd-sopa                           3     1.3 μs   400.2 ns     1.1 μs     1.4 μs    3.6 μs     2.7 μs         1.32×
-sir-sir                           4    29.8 μs    22.6 μs    38.0 μs   307.4 μs  293.7 μs   172.0 μs         1.71×
-sc-si                             6   739.6 ns    28.0 μs     2.7 μs     4.8 μs    3.9 μs    86.7 μs         0.05×
-swpv-hg                         933    10.7 μs     9.0 μs   10.28 ms   123.0 μs   94.5 μs    43.8 μs         2.16×
-suda-sumo                        14   716.0 ns   707.0 ns     3.1 μs     8.5 μs    3.4 μs     1.1 μs         3.01×
-sgRk-kg                         438   133.3 μs   101.1 μs   40.54 ms        err  173.0 μs   227.7 μs         0.76×
-td-ldaK2                          7    59.9 μs    75.6 μs    83.0 μs   133.6 μs  171.9 μs   115.5 μs         1.49×
-thremen1-ldaK2                  502   258.9 μs   383.1 μs   46.65 ms   619.9 μs  741.0 μs   612.5 μs         1.21×
-thremen2-ldaK2                  510   165.3 μs   313.3 μs   38.34 ms   514.9 μs  706.1 μs   487.8 μs         1.45×
-thremen3-ldaK2                  505   257.4 μs   319.9 μs   45.66 ms   335.4 μs  692.2 μs   494.3 μs         1.40×
-ti-glri                         530   283.4 μs   843.4 μs        err        err   1.19 ms    1.44 ms         0.82×
-tan-boo                        3845    35.7 μs    27.6 μs        err   292.6 μs  357.5 μs   136.1 μs         2.63×
-ud-ssslss                       389    13.6 μs     6.0 μs    3.88 ms        err  124.8 μs    23.6 μs         5.28×
-weldat-weldaacmod                 6    50.8 μs    22.9 μs    61.8 μs    50.2 μs  126.2 μs    27.4 μs         4.61×
-weldat-weldaecmod                 5    48.4 μs    66.1 μs    59.4 μs   116.5 μs  122.0 μs    73.2 μs         1.67×
-wd-wdim                           7    49.2 μs    24.2 μs   168.7 μs    52.5 μs  224.4 μs    28.0 μs         8.03×
-weda-wedamo                       4    48.7 μs    68.5 μs   122.0 μs   144.6 μs  120.5 μs    75.7 μs         1.59×
-wd-wd                             2    47.6 μs    21.8 μs    99.2 μs    47.3 μs  179.1 μs    59.1 μs         3.03×
-wellsdata-wellsdist100model       2    48.8 μs    65.3 μs    99.7 μs   110.2 μs  122.6 μs    70.6 μs         1.74×
-wellsdata-wellsdist100amodel      3    49.4 μs    22.5 μs    47.8 μs    48.3 μs  116.7 μs    25.7 μs         4.54×
-wd-wicm                           4    47.8 μs    22.7 μs   138.2 μs    49.0 μs  194.6 μs    26.4 μs         7.36×
-wd-wim                            4    46.4 μs    22.7 μs   144.5 μs    93.4 μs  200.5 μs    26.4 μs         7.59×
-==================================================================================================================
+===============================================================================================================================================
+                                                                          eval                                 gradient
+                                                                  --------------------  -------------------------------------------------------
+Model                                                        dim     Turing       Stan    FwdDiff    EzyRvs     McRvs       Stan  McRvs / Stan
+-----------------------------------------------------------------------------------------------------------------------------------------------
+GLMM_Poisson_data-GLMM_Poisson_model                          45   800.6 ns   712.4 ns    15.0 μs     1.9 μs    3.5 μs     2.2 μs         1.62×
+GLMM_data-GLMM1_model                                        237    35.9 μs    58.4 μs    7.06 ms   110.7 μs   89.2 μs    45.4 μs         1.96×
+GLM_Binomial_data-GLM_Binomial_model                           3     1.8 μs     2.0 μs     4.9 μs    26.1 μs    9.2 μs     2.7 μs         3.44×
+GLM_Poisson_Data-GLM_Poisson_model                             4     1.6 μs     1.4 μs     3.3 μs     3.3 μs    6.1 μs     3.2 μs         1.92×
+M0_data-M0_model                                               2    12.9 μs    10.8 μs    25.5 μs    75.8 μs   41.1 μs    16.7 μs         2.46×
+Mb_data-Mb_model                                               3   127.9 ns    26.1 μs   195.2 ns   232.3 ns  584.5 ns    50.5 μs         0.01×
+Mh_data-Mh_model                                             388    27.3 μs    19.9 μs    2.22 ms   168.2 μs  156.3 μs    42.7 μs         3.66×
+Mt_data-Mt_model                                               4    14.5 μs    20.6 μs    20.5 μs        err   87.6 μs    41.8 μs         2.10×
+Mtbh_data-Mtbh_model                                         154    21.4 μs    19.9 μs   649.2 μs   373.2 μs   98.3 μs    44.2 μs         2.22×
+Mth_data-Mth_model                                           394    50.0 μs    48.3 μs   12.46 ms    1.11 ms  224.5 μs    95.3 μs         2.36×
+Rate_1_data-Rate_1_model                                       1    99.0 ns   162.7 ns   178.0 ns   400.7 ns  391.7 ns   223.6 ns         1.75×
+Rate_2_data-Rate_2_model                                       2   203.1 ns   243.4 ns   331.3 ns     1.1 μs  860.2 ns   328.9 ns         2.62×
+Rate_3_data-Rate_3_model                                       1   136.1 ns   403.1 ns   247.7 ns     1.1 μs  602.3 ns   522.7 ns         1.15×
+Rate_4_data-Rate_4_model                                       2   155.4 ns   181.6 ns   269.9 ns   859.3 ns  702.0 ns   284.9 ns         2.46×
+Rate_5_data-Rate_5_model                                       1   129.7 ns   277.9 ns   237.3 ns     1.0 μs  597.9 ns   427.8 ns         1.40×
+Survey_data-Survey_model                                       1     5.0 μs   174.7 μs    13.9 μs    11.1 μs   15.8 μs   183.9 μs         0.09×
+arK-arK                                                        7     2.6 μs     3.8 μs     4.4 μs     5.8 μs   11.4 μs    18.3 μs         0.62×
+arma-arma11                                                    4     2.4 μs     1.7 μs     7.8 μs    11.1 μs   15.4 μs     8.5 μs         1.81×
+bball_drive_event_0-hmm_drive_0                                6    54.0 μs    54.6 μs    75.4 μs   752.9 μs  411.7 μs   133.6 μs         3.08×
+bball_drive_event_1-hmm_drive_1                                6    64.2 μs    50.1 μs    93.0 μs    1.73 ms  505.8 μs   137.7 μs         3.67×
+bones_data-bones_model                                        13    19.8 μs    43.0 μs    77.7 μs    49.2 μs  179.8 μs    56.7 μs         3.17×
+butterfly-multi_occupancy                                    106    45.2 μs    39.7 μs   587.0 μs   337.8 μs  212.4 μs    66.3 μs         3.20×
+diamonds-diamonds                                             26   339.4 ns    10.9 μs     7.7 μs        err    2.7 μs    21.2 μs         0.13×
+dogs-dogs                                                      3     9.5 μs    72.2 μs    29.8 μs    33.0 μs   48.8 μs   128.9 μs         0.38×
+dogs-dogs_hierarchical                                         2    12.4 μs    13.3 μs    24.6 μs        err   78.1 μs    30.4 μs         2.57×
+dogs-dogs_log                                                  2     8.7 μs    36.5 μs    24.4 μs    36.8 μs   31.2 μs    82.5 μs         0.38×
+dogs-dogs_nonhierarchical                                     65    13.8 μs    15.2 μs   435.1 μs        err   90.5 μs    40.7 μs         2.22×
+dugongs_data-dugongs_model                                     4   473.1 ns   783.6 ns     1.0 μs     2.7 μs    1.9 μs     1.8 μs         1.06×
+earnings-earn_height                                           3     1.1 μs     2.5 μs     4.0 μs        err   12.4 μs    17.2 μs         0.72×
+earnings-log10earn_height                                      3     1.0 μs     2.5 μs     5.9 μs        err   12.8 μs    17.2 μs         0.74×
+earnings-logearn_height                                        3     1.1 μs     2.5 μs     3.2 μs        err   12.4 μs    11.9 μs         1.04×
+earnings-logearn_height_male                                   4     1.2 μs     1.4 μs     4.9 μs        err   16.7 μs    18.2 μs         0.91×
+earnings-logearn_interaction                                   5     5.7 μs     3.1 μs     4.3 μs        err   20.5 μs    36.4 μs         0.56×
+earnings-logearn_interaction_z                                 5     1.2 μs     1.5 μs     4.6 μs        err   20.6 μs    25.5 μs         0.81×
+earnings-logearn_logheight_male                                4     2.0 μs     2.8 μs     4.2 μs        err   16.7 μs    26.8 μs         0.62×
+ecdc0401-covid19imperial_v2                                   51    54.8 μs    54.7 μs    1.50 ms   580.2 μs  780.6 μs   353.5 μs         2.21×
+ecdc0401-covid19imperial_v3                                   51    54.5 μs    54.2 μs    1.49 ms   653.3 μs   1.11 ms   365.9 μs         3.03×
+ecdc0501-covid19imperial_v2                                   51    60.7 μs    70.2 μs    1.62 ms   627.7 μs   1.07 ms   377.2 μs         2.85×
+ecdc0501-covid19imperial_v3                                   51    61.4 μs    71.2 μs    1.59 ms   661.5 μs   1.16 ms   383.9 μs         3.03×
+eight_schools-eight_schools_centered                          10   217.1 ns   207.5 ns   766.7 ns   492.1 ns    1.3 μs   470.6 ns         2.67×
+eight_schools-eight_schools_noncentered                       10   103.4 ns   554.0 ns   487.9 ns   493.3 ns  596.3 ns     1.0 μs         0.58×
+election88-election88_full                                    90   171.1 μs   161.2 μs   17.53 ms    2.74 ms   1.87 ms    1.06 ms         1.77×
+fims_Aus_Jpn_irt-2pl_latent_reg_irt                          531   244.2 μs   195.6 μs   33.72 ms        err   1.36 ms   299.6 μs         4.54×
+garch-garch11                                                  4     2.4 μs     4.5 μs     3.7 μs     7.5 μs    6.7 μs    10.4 μs         0.64×
+gp_pois_regr-gp_pois_regr                                     13     2.3 μs   924.0 ns     7.7 μs     5.9 μs    8.6 μs     2.7 μs         3.19×
+gp_pois_regr-gp_regr                                           3     2.0 μs     1.1 μs     2.5 μs     4.2 μs   10.5 μs     2.9 μs         3.60×
+hmm_example-hmm_example                                        4    12.0 μs    18.7 μs    15.5 μs   272.3 μs  107.9 μs    26.5 μs         4.07×
+hmm_gaussian_simulated-hmm_gaussian                           14    63.4 μs   171.5 μs   727.2 μs        err  464.3 μs   499.6 μs         0.93×
+hudson_lynx_hare-lotka_volterra                                8    15.8 μs     8.9 μs    22.2 μs   129.4 μs  160.8 μs    30.6 μs         5.25×
+iohmm_reg_simulated-iohmm_reg                                 29   112.8 μs   520.7 μs   763.7 μs    2.00 ms  705.9 μs   978.1 μs         0.72×
+irt_2pl-irt_2pl                                              144    23.6 μs    16.4 μs    1.93 ms   367.7 μs   95.3 μs    49.3 μs         1.94×
+kidiq-kidscore_interaction                                     5     1.1 μs   757.3 ns     8.0 μs    10.2 μs    8.4 μs     9.6 μs         0.88×
+kidiq-kidscore_momhs                                           3     1.0 μs   654.3 ns     4.5 μs     8.8 μs    7.5 μs     4.7 μs         1.57×
+kidiq-kidscore_momhsiq                                         4     3.4 μs   760.0 ns     3.8 μs     3.6 μs    8.0 μs     7.4 μs         1.08×
+kidiq-kidscore_momiq                                           3     1.9 μs     1.2 μs    11.7 μs     8.9 μs    7.4 μs     6.7 μs         1.11×
+kidiq_with_mom_work-kidscore_interaction_c                     5     3.3 μs     1.5 μs     3.3 μs     5.2 μs    7.8 μs     9.6 μs         0.81×
+kidiq_with_mom_work-kidscore_interaction_c2                    5   891.0 ns   758.2 ns     3.2 μs     3.8 μs    8.1 μs     9.7 μs         0.83×
+kidiq_with_mom_work-kidscore_interaction_z                     5   909.9 ns   739.8 ns     3.4 μs     3.7 μs    8.2 μs     9.6 μs         0.85×
+kidiq_with_mom_work-kidscore_mom_work                          5     1.1 μs     1.5 μs     3.2 μs     9.3 μs    8.1 μs    10.2 μs         0.80×
+kilpisjarvi_mod-kilpisjarvi                                    3   338.1 ns   353.7 ns     1.2 μs     1.1 μs    1.6 μs     1.3 μs         1.25×
+loss_curves-losscurve_sislob                                  15     1.0 μs     1.9 μs    19.6 μs     9.4 μs    9.3 μs     4.3 μs         2.15×
+low_dim_gauss_mix-low_dim_gauss_mix                            5    33.0 μs    37.6 μs   126.4 μs    66.7 μs   83.8 μs    93.2 μs         0.90×
+low_dim_gauss_mix_collapse-low_dim_gauss_mix_collapse          5    32.1 μs    40.3 μs    67.2 μs   152.9 μs   81.5 μs    94.6 μs         0.86×
+lsat_data-lsat_model                                        1006    85.2 μs    40.5 μs   33.73 ms    1.11 ms  209.6 μs   108.2 μs         1.94×
+mcycle_gp-accel_gp                                            66     3.3 μs     3.0 μs    93.6 μs        err   32.7 μs    10.2 μs         3.20×
+mcycle_splines-accel_splines                                  82     6.7 μs     2.4 μs   177.2 μs        err   25.0 μs     9.8 μs         2.54×
+mesquite-logmesquite                                           8   193.1 ns   228.8 ns     1.6 μs   755.7 ns    1.7 μs     2.1 μs         0.85×
+mesquite-logmesquite_logva                                     5   525.7 ns   185.8 ns   827.5 ns   665.7 ns    1.4 μs     1.2 μs         1.16×
+mesquite-logmesquite_logvas                                    8   600.5 ns   225.3 ns     2.6 μs   706.6 ns    2.2 μs     2.1 μs         1.04×
+mesquite-logmesquite_logvash                                   7   588.6 ns   212.4 ns     2.2 μs   692.3 ns    1.7 μs     1.8 μs         0.97×
+mesquite-logmesquite_logvolume                                 3   478.1 ns   146.7 ns     1.5 μs   996.2 ns    2.1 μs   673.5 ns         3.14×
+mesquite-mesquite                                              8   413.5 ns   442.4 ns     2.0 μs   938.5 ns    2.8 μs     2.8 μs         0.99×
+mnist-nn_rbm1bJ100                                         79411  211.42 ms  265.01 ms        err  768.46 ms   1.118 s  622.20 ms         1.80×
+mnist_100-nn_rbm1bJ10                                       7951    57.5 μs    59.3 μs        err   335.2 μs  452.6 μs   394.9 μs         1.15×
+nes1972-nes                                                   10    11.3 μs     2.6 μs    21.2 μs    19.5 μs   80.1 μs    79.3 μs         1.01×
+nes1976-nes                                                   10    10.6 μs     2.0 μs    18.8 μs    27.9 μs   72.9 μs    56.8 μs         1.28×
+nes1980-nes                                                   10     2.9 μs     1.8 μs    29.7 μs    10.1 μs   44.1 μs    35.6 μs         1.24×
+nes1984-nes                                                   10     4.3 μs     2.0 μs    19.5 μs    28.7 μs   73.4 μs    60.7 μs         1.21×
+nes1988-nes                                                   10     3.9 μs     4.4 μs    46.3 μs    34.0 μs   67.9 μs    80.5 μs         0.84×
+nes1992-nes                                                   10    12.5 μs     2.2 μs    21.5 μs    32.3 μs   81.8 μs    65.5 μs         1.25×
+nes1996-nes                                                   10     3.7 μs     1.9 μs    16.7 μs    24.6 μs   64.4 μs    51.1 μs         1.26×
+nes2000-nes                                                   10     2.0 μs   959.5 ns     8.9 μs    12.1 μs   31.7 μs    22.6 μs         1.40×
+nes_logit_data-nes_logit_model                                 2    13.8 μs    26.2 μs    20.2 μs   293.0 μs   61.6 μs     9.9 μs         6.24×
+normal_2-normal_mixture                                        3    25.1 μs    29.6 μs    59.0 μs    40.1 μs   59.6 μs    86.8 μs         0.69×
+normal_5-normal_mixture_k                                     14   159.9 μs   123.5 μs   906.5 μs    6.75 ms  597.0 μs   346.9 μs         1.72×
+one_comp_mm_elim_abs-one_comp_mm_elim_abs                      4   456.4 μs   135.1 μs   720.4 μs    1.97 ms   1.95 ms   466.2 μs         4.18×
+ovarian-logistic_regression_rhs                             3075    61.0 μs    21.2 μs        err        err  318.1 μs   126.7 μs         2.51×
+pilots-pilots                                                 18   730.5 ns   348.9 ns     4.8 μs     1.0 μs    4.3 μs     1.0 μs         4.27×
+prideprejudice_chapter-ldaK5                                7714    2.75 ms    3.19 ms        err    8.86 ms  10.58 ms    6.90 ms         1.53×
+prideprejudice_paragraph-ldaK5                             15570    5.25 ms    3.08 ms        err   10.63 ms  14.74 ms    6.93 ms         2.13×
+prostate-logistic_regression_rhs                           11935   269.6 μs   129.5 μs        err        err   3.28 ms   745.0 μs         4.41×
+radon_all-radon_county_intercept                             388    56.0 μs    73.6 μs   10.87 ms    88.3 μs  196.1 μs   390.9 μs         0.50×
+radon_all-radon_hierarchical_intercept_centered              391    60.3 μs    87.1 μs    9.81 ms   101.2 μs  293.7 μs   521.5 μs         0.56×
+radon_all-radon_hierarchical_intercept_noncentered           391    60.0 μs   190.6 μs    9.94 ms   290.4 μs  346.2 μs   896.0 μs         0.39×
+radon_all-radon_partially_pooled_centered                    389    51.9 μs    72.6 μs    8.70 ms    80.2 μs  190.3 μs   270.9 μs         0.70×
+radon_all-radon_partially_pooled_noncentered                 389    51.0 μs    71.3 μs    9.69 ms    79.8 μs  190.7 μs   267.4 μs         0.71×
+radon_all-radon_pooled                                         3     7.2 μs    62.7 μs    31.1 μs    37.4 μs  159.8 μs   343.3 μs         0.47×
+radon_all-radon_variable_intercept_centered                  390    56.3 μs    75.7 μs   10.08 ms    87.0 μs  198.6 μs   392.9 μs         0.51×
+radon_all-radon_variable_intercept_noncentered               390    55.2 μs    75.0 μs    9.55 ms    89.0 μs  230.0 μs   389.0 μs         0.59×
+radon_all-radon_variable_intercept_slope_centered            777    42.9 μs    77.7 μs   16.91 ms    82.2 μs  254.0 μs   404.5 μs         0.63×
+radon_all-radon_variable_intercept_slope_noncentered         777    44.1 μs    83.6 μs  127.94 ms    85.6 μs  265.1 μs   414.0 μs         0.64×
+radon_all-radon_variable_slope_centered                      390    55.9 μs    76.9 μs    9.21 ms    89.3 μs  221.8 μs   392.1 μs         0.57×
+radon_all-radon_variable_slope_noncentered                   390    54.7 μs    82.8 μs    9.04 ms    91.7 μs  207.1 μs   408.8 μs         0.51×
+radon_mn-radon_county_intercept                               87     4.2 μs    13.3 μs   162.0 μs    19.3 μs   16.7 μs    46.8 μs         0.36×
+radon_mn-radon_hierarchical_intercept_centered                90     4.5 μs     7.8 μs   170.2 μs     8.9 μs   22.8 μs    42.8 μs         0.53×
+radon_mn-radon_hierarchical_intercept_noncentered             90     4.5 μs     6.8 μs   178.9 μs     7.9 μs   23.8 μs    38.9 μs         0.61×
+radon_mn-radon_partially_pooled_centered                      88     3.8 μs     5.5 μs   126.0 μs     6.2 μs   14.2 μs    20.4 μs         0.70×
+radon_mn-radon_partially_pooled_noncentered                   88     3.8 μs    12.8 μs   371.7 μs    16.5 μs   15.7 μs    35.3 μs         0.44×
+radon_mn-radon_pooled                                          3     1.1 μs    11.6 μs     2.4 μs     5.7 μs   10.2 μs    39.6 μs         0.26×
+radon_mn-radon_variable_intercept_centered                    89     4.2 μs     5.9 μs   191.7 μs     6.8 μs   15.8 μs    28.3 μs         0.56×
+radon_mn-radon_variable_intercept_noncentered                 89     4.2 μs    13.7 μs   192.7 μs    19.8 μs   17.2 μs    28.1 μs         0.61×
+radon_mn-radon_variable_intercept_slope_centered             175     3.6 μs     6.2 μs   341.9 μs     6.4 μs   18.4 μs    28.9 μs         0.64×
+radon_mn-radon_variable_intercept_slope_noncentered          175     3.4 μs     6.4 μs   340.5 μs     8.3 μs   20.4 μs    31.7 μs         0.64×
+radon_mn-radon_variable_slope_centered                        89     4.1 μs     5.9 μs   168.4 μs     6.8 μs   15.7 μs    27.9 μs         0.56×
+radon_mn-radon_variable_slope_noncentered                     89     4.2 μs     6.1 μs   197.8 μs     8.0 μs   17.8 μs    28.7 μs         0.62×
+radon_mod-radon_county                                       389    58.8 μs    31.8 μs   12.12 ms        err  276.9 μs    67.4 μs         4.11×
+rats_data-rats_model                                          65   827.6 ns   971.9 ns    50.2 μs     2.0 μs    5.1 μs     5.2 μs         0.98×
+rstan_downloads-prophet                                       62    41.2 μs    13.2 μs    2.46 ms    65.3 μs  432.1 μs    68.1 μs         6.35×
+sat-hier_2pl                                                 669   216.4 μs   223.0 μs  106.81 ms   915.9 μs   1.98 ms   513.0 μs         3.86×
+sblrc-blr                                                      6     1.2 μs   263.2 ns     1.5 μs     1.3 μs    2.9 μs   996.8 ns         2.94×
+sblri-blr                                                      6     1.1 μs   307.2 ns     1.5 μs     2.8 μs    4.2 μs     1.1 μs         3.70×
+science_irt-grsm_latent_reg_irt                              408    62.1 μs   408.6 μs   25.32 ms        err  495.1 μs   836.3 μs         0.59×
+seeds_data-seeds_centered_model                               26     1.1 μs     1.2 μs     6.9 μs    16.1 μs    7.3 μs     2.3 μs         3.20×
+seeds_data-seeds_model                                        26     1.1 μs     1.1 μs    12.9 μs    16.2 μs    6.5 μs     2.0 μs         3.28×
+seeds_data-seeds_stanified_model                              26     1.3 μs     2.5 μs    18.1 μs    29.3 μs    7.2 μs     3.9 μs         1.83×
+sesame_data-sesame_one_pred_a                                  3     1.3 μs   400.2 ns     1.1 μs     1.4 μs    3.6 μs     2.7 μs         1.32×
+sir-sir                                                        4    29.8 μs    22.6 μs    38.0 μs   307.4 μs  293.7 μs   172.0 μs         1.71×
+soil_carbon-soil_incubation                                    6   739.6 ns    28.0 μs     2.7 μs     4.8 μs    3.9 μs    86.7 μs         0.05×
+state_wide_presidential_votes-hierarchical_gp                933    10.7 μs     9.0 μs   10.28 ms   123.0 μs   94.5 μs    43.8 μs         2.16×
+surgical_data-surgical_model                                  14   716.0 ns   707.0 ns     3.1 μs     8.5 μs    3.4 μs     1.1 μs         3.01×
+synthetic_grid_RBF_kernels-kronecker_gp                      438   133.3 μs   101.1 μs   40.54 ms        err  173.0 μs   227.7 μs         0.76×
+three_docs1200-ldaK2                                           7    59.9 μs    75.6 μs    83.0 μs   133.6 μs  171.9 μs   115.5 μs         1.49×
+three_men1-ldaK2                                             502   258.9 μs   383.1 μs   46.65 ms   619.9 μs  741.0 μs   612.5 μs         1.21×
+three_men2-ldaK2                                             510   165.3 μs   313.3 μs   38.34 ms   514.9 μs  706.1 μs   487.8 μs         1.45×
+three_men3-ldaK2                                             505   257.4 μs   319.9 μs   45.66 ms   335.4 μs  692.2 μs   494.3 μs         1.40×
+timssAusTwn_irt-gpcm_latent_reg_irt                          530   283.4 μs   843.4 μs        err        err   1.19 ms    1.44 ms         0.82×
+traffic_accident_nyc-bym2_offset_only                       3845    35.7 μs    27.6 μs        err   292.6 μs  357.5 μs   136.1 μs         2.63×
+uk_drivers-state_space_stochastic_level_stochastic_seasonal  389    13.6 μs     6.0 μs    3.88 ms        err  124.8 μs    23.6 μs         5.28×
+wells_data-wells_daae_c_model                                  6    50.8 μs    22.9 μs    61.8 μs    50.2 μs  126.2 μs    27.4 μs         4.61×
+wells_data-wells_dae_c_model                                   5    48.4 μs    66.1 μs    59.4 μs   116.5 μs  122.0 μs    73.2 μs         1.67×
+wells_data-wells_dae_inter_model                               7    49.2 μs    24.2 μs   168.7 μs    52.5 μs  224.4 μs    28.0 μs         8.03×
+wells_data-wells_dae_model                                     4    48.7 μs    68.5 μs   122.0 μs   144.6 μs  120.5 μs    75.7 μs         1.59×
+wells_data-wells_dist                                          2    47.6 μs    21.8 μs    99.2 μs    47.3 μs  179.1 μs    59.1 μs         3.03×
+wells_data-wells_dist100_model                                 2    48.8 μs    65.3 μs    99.7 μs   110.2 μs  122.6 μs    70.6 μs         1.74×
+wells_data-wells_dist100ars_model                              3    49.4 μs    22.5 μs    47.8 μs    48.3 μs  116.7 μs    25.7 μs         4.54×
+wells_data-wells_interaction_c_model                           4    47.8 μs    22.7 μs   138.2 μs    49.0 μs  194.6 μs    26.4 μs         7.36×
+wells_data-wells_interaction_model                             4    46.4 μs    22.7 μs   144.5 μs    93.4 μs  200.5 μs    26.4 μs         7.59×
+===============================================================================================================================================
 ```
 
 <details>
