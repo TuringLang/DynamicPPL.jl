@@ -844,10 +844,9 @@ function make_model(::Val{Symbol("diamonds-diamonds")}, data)
 end
 
 @model function low_dim_gauss_mix(y, N)
-    mu ~ ordered(product_distribution(Fill(Flat(), 2)))
+    mu ~ ordered(product_distribution(Fill(Normal(0, 2), 2)))
     sigma ~ product_distribution(Fill(truncated(Normal(0, 2); lower=0), 2))
     theta ~ Beta(5, 5)
-    DynamicPPL.@addlogprob! logpdf(Normal(0, 2), mu[1]) + logpdf(Normal(0, 2), mu[2])
     for n in 1:N
         component1 = log(theta) + logpdf(Normal(mu[1], sigma[1]), y[n])
         component2 = log1p(-theta) + logpdf(Normal(mu[2], sigma[2]), y[n])
@@ -1045,16 +1044,13 @@ end
 @model function lotka_volterra(N, t0, ts, y_init, fixed)
     data = fixed.value
     theta ~ product_distribution(Fill(FlatPos(0.0), 4))
-    z_init ~ product_distribution(Fill(FlatPos(0.0), 2))
+    z_init ~ product_distribution(Fill(LogNormal(log(10), 1), 2))
     sigma ~ product_distribution(Fill(LogNormal(-1, 1), 2))
 
     DynamicPPL.@addlogprob! logpdf(Normal(1, 0.5), theta[1])
     DynamicPPL.@addlogprob! logpdf(Normal(0.05, 0.05), theta[2])
     DynamicPPL.@addlogprob! logpdf(Normal(1, 0.5), theta[3])
     DynamicPPL.@addlogprob! logpdf(Normal(0.05, 0.05), theta[4])
-    DynamicPPL.@addlogprob! logpdf(
-        product_distribution(Fill(LogNormal(log(10), 1), size(z_init))), z_init
-    )
 
     lotka_volterra_rhs! = function (derivative, populations, parameters, _)
         prey, predator = populations
@@ -1191,20 +1187,13 @@ end
 # PosteriorDB Stan model: 2pl_latent_reg_irt
 @model function pdb_2pl_latent_reg_irt(I, J, N, ii, jj, y, W_adj)
     K = size(W_adj, 2)
-    alpha ~ product_distribution(Fill(FlatPos(0), I))
+    alpha ~ product_distribution(Fill(LogNormal(1, 1), I))
     beta_free ~ product_distribution(Fill(Flat(), I - 1))
     theta ~ product_distribution(Fill(Flat(), J))
-    lambda_adj ~ product_distribution(Fill(Flat(), K))
+    lambda_adj ~ product_distribution(Fill(LocationScale(0, 1, TDist(3)), K))
     beta = vcat(beta_free, -(sum(beta_free)))
     DynamicPPL.@addlogprob! logpdf(
-        product_distribution(Fill(LogNormal(1, 1), size(alpha))), alpha
-    )
-    DynamicPPL.@addlogprob! logpdf(
         product_distribution(Fill(Normal(0, 3), size(beta))), beta
-    )
-    DynamicPPL.@addlogprob! logpdf(
-        product_distribution(Fill(LocationScale(0, 1, TDist(3)), size(lambda_adj))),
-        lambda_adj,
     )
     DynamicPPL.@addlogprob! logpdf(
         product_distribution(Fill(Normal(), size(theta))), theta .- W_adj * lambda_adj
@@ -1237,12 +1226,11 @@ end
 # PosteriorDB Stan model: GLMM1_model
 @model function pdb_GLMM1_model(nsite, nobs, obs, obsyear, obssite, misyear, missite)
     alpha ~ product_distribution(Fill(Flat(), nsite))
-    mu_alpha ~ Flat()
+    mu_alpha ~ Normal(0, 10)
     sd_alpha ~ Uniform(0, 5)
     DynamicPPL.@addlogprob! logpdf(
         product_distribution(Fill(Normal(mu_alpha, sd_alpha), size(alpha))), alpha
     )
-    DynamicPPL.@addlogprob! logpdf(Normal(0, 10), mu_alpha)
     DynamicPPL.@addlogprob! logpdf(
         product_distribution(map(x -> Poisson(exp(x)), alpha[obssite])), obs
     )
@@ -1268,16 +1256,8 @@ end
     beta3 ~ Uniform(-10, 10)
     eps ~ product_distribution(Fill(Flat(), n))
     sigma ~ Uniform(0, 5)
-    log_lambda = Base.materialize(
-        Base.broadcasted(
-            +,
-            alpha,
-            Base.broadcasted(*, beta1, year),
-            Base.broadcasted(*, beta2, year_squared),
-            Base.broadcasted(*, beta3, year_cubed),
-            eps,
-        ),
-    )
+    log_lambda =
+        alpha .+ beta1 .* year .+ beta2 .* year_squared .+ beta3 .* year_cubed .+ eps
     DynamicPPL.@addlogprob! logpdf(
         product_distribution(map(x -> Poisson(exp(x)), log_lambda)), C
     )
@@ -1293,20 +1273,10 @@ end
 
 # PosteriorDB Stan model: GLM_Binomial_model
 @model function pdb_GLM_Binomial_model(nyears, C, N, year, year_squared)
-    alpha ~ Flat()
-    beta1 ~ Flat()
-    beta2 ~ Flat()
-    logit_p = Base.materialize(
-        Base.broadcasted(
-            +,
-            alpha,
-            Base.broadcasted(*, beta1, year),
-            Base.broadcasted(*, beta2, year_squared),
-        ),
-    )
-    DynamicPPL.@addlogprob! logpdf(Normal(0, 100), alpha)
-    DynamicPPL.@addlogprob! logpdf(Normal(0, 100), beta1)
-    DynamicPPL.@addlogprob! logpdf(Normal(0, 100), beta2)
+    alpha ~ Normal(0, 100)
+    beta1 ~ Normal(0, 100)
+    beta2 ~ Normal(0, 100)
+    logit_p = alpha .+ beta1 .* year .+ beta2 .* year_squared
     DynamicPPL.@addlogprob! logpdf(product_distribution(map(BinomialLogit, N, logit_p)), C)
 end
 
@@ -1321,15 +1291,7 @@ end
     beta1 ~ Uniform(-10, 10)
     beta2 ~ Uniform(-10, 10)
     beta3 ~ Uniform(-10, 10)
-    log_lambda = Base.materialize(
-        Base.broadcasted(
-            +,
-            alpha,
-            Base.broadcasted(*, beta1, year),
-            Base.broadcasted(*, beta2, year_squared),
-            Base.broadcasted(*, beta3, year_cubed),
-        ),
-    )
+    log_lambda = alpha .+ beta1 .* year .+ beta2 .* year_squared .+ beta3 .* year_cubed
     DynamicPPL.@addlogprob! logpdf(
         product_distribution(map(x -> Poisson(exp(x)), log_lambda)), C
     )
@@ -1416,15 +1378,8 @@ end
     omega ~ Uniform(0, 1)
     mean_p ~ Uniform(0, 1)
     sigma ~ Uniform(0, 5)
-    eps_raw ~ product_distribution(Fill(Flat(), M))
-    eps = Base.materialize(
-        Base.broadcasted(
-            +, Base.broadcasted(logit, mean_p), Base.broadcasted(*, sigma, eps_raw)
-        ),
-    )
-    DynamicPPL.@addlogprob! logpdf(
-        product_distribution(Fill(Normal(0, 1), size(eps_raw))), eps_raw
-    )
+    eps_raw ~ product_distribution(Fill(Normal(0, 1), M))
+    eps = logit(mean_p) .+ sigma .* eps_raw
     for i in 1:M
         if y[i] > 0
             DynamicPPL.@addlogprob! logpdf(Bernoulli(omega), 1) +
@@ -1473,23 +1428,12 @@ end
     @assert size(s) == (M,)
     omega ~ Uniform(0, 1)
     mean_p ~ product_distribution(Fill(Uniform(0, 1), T))
-    gamma ~ Flat()
+    gamma ~ Normal(0, 10)
     sigma ~ Uniform(0, 3)
-    eps_raw ~ product_distribution(Fill(Flat(), M))
-    eps = Base.materialize(Base.broadcasted(*, sigma, eps_raw))
-    alpha = Base.materialize(Base.broadcasted(logit, mean_p))
-    logit_p = hcat(
-        Base.materialize(Base.broadcasted(+, alpha[1], eps)),
-        Base.materialize(
-            Base.broadcasted(
-                +, (alpha[2:end])', eps, Base.broadcasted(*, gamma, y[:, 1:(end - 1)])
-            ),
-        ),
-    )
-    DynamicPPL.@addlogprob! logpdf(Normal(0, 10), gamma)
-    DynamicPPL.@addlogprob! logpdf(
-        product_distribution(Fill(Normal(0, 1), size(eps_raw))), eps_raw
-    )
+    eps_raw ~ product_distribution(Fill(Normal(0, 1), M))
+    eps = sigma .* eps_raw
+    alpha = logit.(mean_p)
+    logit_p = hcat(alpha[1] .+ eps, (alpha[2:end])' .+ eps .+ gamma .* y[:, 1:(end - 1)])
     for i in 1:M
         if s[i] > 0
             DynamicPPL.@addlogprob! logpdf(Bernoulli(omega), 1) + logpdf(
@@ -1517,11 +1461,8 @@ end
     omega ~ Uniform(0.0, 1.0)
     mean_p ~ product_distribution(Fill(Uniform(0.0, 1.0), T))
     sigma ~ Uniform(0.0, 5.0)
-    eps_raw ~ product_distribution(Fill(Flat(), M))
+    eps_raw ~ product_distribution(Fill(Normal(0.0, 1.0), M))
     logit_p = logit.(mean_p)' .+ sigma .* eps_raw
-    DynamicPPL.@addlogprob! logpdf(
-        product_distribution(Fill(Normal(0.0, 1.0), size(eps_raw))), eps_raw
-    )
     for i in 1:M
         if s[i] > 0
             DynamicPPL.@addlogprob! logpdf(Bernoulli(omega), 1) + logpdf(
@@ -1638,27 +1579,19 @@ end
     Zs_1_1 = Zs_1_1.value
     Xs_sigma = Xs_sigma.value
     Zs_sigma_1_1 = Zs_sigma_1_1.value
-    Intercept ~ Flat()
+    Intercept ~ LocationScale(-13, 36, TDist(3))
     bs ~ product_distribution(Fill(Flat(), Ks))
-    zs_1_1 ~ product_distribution(Fill(Flat(), knots_1))
+    zs_1_1 ~ product_distribution(Fill(Normal(0, 1), knots_1))
     sds_1_1 ~ FlatPos(0)
-    Intercept_sigma ~ Flat()
+    Intercept_sigma ~ LocationScale(0, 10, TDist(3))
     bs_sigma ~ product_distribution(Fill(Flat(), Ks_sigma))
-    zs_sigma_1_1 ~ product_distribution(Fill(Flat(), knots_sigma_1))
+    zs_sigma_1_1 ~ product_distribution(Fill(Normal(0, 1), knots_sigma_1))
     sds_sigma_1_1 ~ FlatPos(0)
-    s_1_1 = Base.materialize(Base.broadcasted(*, sds_1_1, zs_1_1))
-    s_sigma_1_1 = Base.materialize(Base.broadcasted(*, sds_sigma_1_1, zs_sigma_1_1))
+    s_1_1 = sds_1_1 .* zs_1_1
+    s_sigma_1_1 = sds_sigma_1_1 .* zs_sigma_1_1
     mu = (Intercept .+ Xs * bs) + Zs_1_1 * s_1_1
     log_sigma = (Intercept_sigma .+ Xs_sigma * bs_sigma) + Zs_sigma_1_1 * s_sigma_1_1
-    DynamicPPL.@addlogprob! logpdf(LocationScale(-13, 36, TDist(3)), Intercept)
-    DynamicPPL.@addlogprob! logpdf(
-        product_distribution(Fill(Normal(0, 1), size(zs_1_1))), zs_1_1
-    )
     DynamicPPL.@addlogprob! logpdf(LocationScale(0, 36, TDist(3)), sds_1_1)
-    DynamicPPL.@addlogprob! logpdf(LocationScale(0, 10, TDist(3)), Intercept_sigma)
-    DynamicPPL.@addlogprob! logpdf(
-        product_distribution(Fill(Normal(0, 1), size(zs_sigma_1_1))), zs_sigma_1_1
-    )
     DynamicPPL.@addlogprob! logpdf(LocationScale(0, 36, TDist(3)), sds_sigma_1_1)
     if !(prior_only == 1)
         sigma = exp.(log_sigma)
@@ -1684,10 +1617,7 @@ end
 
 # PosteriorDB Stan model: bones_model
 @model function pdb_bones_model(nChild, nInd, gamma, delta, ncat, grade)
-    theta ~ product_distribution(Fill(Flat(), nChild))
-    DynamicPPL.@addlogprob! logpdf(
-        product_distribution(Fill(Normal(0.0, 36.0), size(theta))), theta
-    )
+    theta ~ product_distribution(Fill(Normal(0.0, 36.0), nChild))
     p = zeros(typeof(theta[1]), nChild, nInd, 5)
     Q = zeros(typeof(theta[1]), nChild, nInd, 4)
     for i in 1:nChild
@@ -1720,31 +1650,18 @@ end
 
 # PosteriorDB Stan model: bym2_offset_only
 @model function pdb_bym2_offset_only(N, N_edges, node1, node2, y, log_E, scaling_factor)
-    beta0 ~ Flat()
+    beta0 ~ Normal(0, 1)
     sigma ~ FlatPos(0)
-    rho ~ Uniform(0, 1)
-    theta ~ product_distribution(Fill(Flat(), N))
+    rho ~ Beta(0.5, 0.5)
+    theta ~ product_distribution(Fill(Normal(0, 1), N))
     phi ~ product_distribution(Fill(Flat(), N))
-    convolved_re = Base.materialize(
-        Base.broadcasted(
-            +,
-            Base.broadcasted(*, Base.broadcasted(sqrt, Base.broadcasted(-, 1, rho)), theta),
-            Base.broadcasted(
-                *, Base.broadcasted(sqrt, Base.broadcasted(/, rho, scaling_factor)), phi
-            ),
-        ),
-    )
+    convolved_re = sqrt(1 - rho) .* theta .+ sqrt(rho / scaling_factor) .* phi
     log_rate = log_E .+ beta0 .+ convolved_re .* sigma
     DynamicPPL.@addlogprob! logpdf(
         product_distribution(map(x -> Poisson(exp(x)), log_rate)), y
     )
     DynamicPPL.@addlogprob! -0.5 * sum(abs2, phi[node1] - phi[node2])
-    DynamicPPL.@addlogprob! logpdf(Normal(0, 1), beta0)
-    DynamicPPL.@addlogprob! logpdf(
-        product_distribution(Fill(Normal(0, 1), size(theta))), theta
-    )
     DynamicPPL.@addlogprob! logpdf(Normal(0, 1), sigma)
-    DynamicPPL.@addlogprob! logpdf(Beta(0.5, 0.5), rho)
     DynamicPPL.@addlogprob! logpdf(Normal(0, 0.001N), sum(phi))
 end
 
@@ -1848,10 +1765,7 @@ make_model(::Val{Symbol("ecdc0501-covid19imperial_v3")}, data) = _make_covid(dat
 
 # PosteriorDB Stan model: dogs
 @model function pdb_dogs(n_dogs, n_trials, y, prev_shock, prev_avoid)
-    beta ~ product_distribution(Fill(Flat(), 3))
-    DynamicPPL.@addlogprob! logpdf(
-        product_distribution(Fill(Normal(0, 100), size(beta))), beta
-    )
+    beta ~ product_distribution(Fill(Normal(0, 100), 3))
     for i in 1:n_dogs
         for j in 1:n_trials
             p = beta[1] + beta[2] * prev_avoid[i, j] + beta[3] * prev_shock[i, j]
@@ -1875,19 +1789,7 @@ end
     a ~ Uniform(0, 1)
     b ~ Uniform(0, 1)
     DynamicPPL.@addlogprob! logpdf(
-        product_distribution(
-            map(
-                Bernoulli,
-                Base.materialize(
-                    Base.broadcasted(
-                        *,
-                        Base.broadcasted(^, a, prev_shock),
-                        Base.broadcasted(^, b, prev_avoid),
-                    ),
-                ),
-            ),
-        ),
-        y,
+        product_distribution(map(Bernoulli, a .^ prev_shock .* b .^ prev_avoid)), y
     )
 end
 
@@ -1928,36 +1830,18 @@ end
 @model function pdb_dogs_nonhierarchical(n_dogs, n_trials, y, prev_shock, prev_avoid)
     J = n_dogs
     T = n_trials
-    mu_logit_ab ~ product_distribution(Fill(Flat(), 2))
+    mu_logit_ab ~ product_distribution(Fill(Logistic(0, 1), 2))
     sigma_logit_ab ~ product_distribution(Fill(FlatPos(0), 2))
     L_logit_ab ~ LKJCholesky(2, 2.0)
-    z ~ product_distribution(Fill(Flat(), J, 2))
+    z ~ product_distribution(Fill(Normal(0, 1), J, 2))
     logit_ab = ones(J) * mu_logit_ab' + z * (Diagonal(sigma_logit_ab) * L_logit_ab.L)
     a = logistic.(logit_ab[:, 1])
     b = logistic.(logit_ab[:, 2])
     DynamicPPL.@addlogprob! logpdf(
-        product_distribution(
-            map(
-                Bernoulli,
-                Base.materialize(
-                    Base.broadcasted(
-                        *,
-                        Base.broadcasted(^, a, prev_shock),
-                        Base.broadcasted(^, b, prev_avoid),
-                    ),
-                ),
-            ),
-        ),
-        y,
-    )
-    DynamicPPL.@addlogprob! logpdf(
-        product_distribution(Fill(Logistic(0, 1), size(mu_logit_ab))), mu_logit_ab
+        product_distribution(map(Bernoulli, a .^ prev_shock .* b .^ prev_avoid)), y
     )
     DynamicPPL.@addlogprob! logpdf(
         product_distribution(Fill(Normal(0, 1), size(sigma_logit_ab))), sigma_logit_ab
-    )
-    DynamicPPL.@addlogprob! logpdf(
-        product_distribution(Fill(Normal(0, 1), length(z))), vec(z)
     )
 end
 
@@ -1972,19 +1856,16 @@ end
 # PosteriorDB Stan model: dugongs_model
 @model function pdb_dugongs_model(N, x, Y)
     x_ = x
-    alpha ~ Flat()
-    beta ~ Flat()
+    alpha ~ Normal(0.0, 1000.0)
+    beta ~ Normal(0.0, 1000.0)
     lambda ~ Uniform(0.5, 1.0)
-    tau ~ FlatPos(0.0)
+    tau ~ Gamma(0.0001, inv(0.0001))
     sigma = 1.0 / sqrt(tau)
     U3 = logit(lambda)
     for i in 1:N
         m = alpha - beta * lambda^x_[i]
         DynamicPPL.@addlogprob! logpdf(Normal(m, sigma), Y[i])
     end
-    DynamicPPL.@addlogprob! logpdf(Normal(0.0, 1000.0), alpha)
-    DynamicPPL.@addlogprob! logpdf(Normal(0.0, 1000.0), beta)
-    DynamicPPL.@addlogprob! logpdf(Gamma(0.0001, inv(0.0001)), tau)
 end
 
 function make_model(::Val{Symbol("dugongs_data-dugongs_model")}, data)
@@ -2014,27 +1895,16 @@ end
     c ~ product_distribution(Fill(Flat(), n_age_edu))
     d ~ product_distribution(Fill(Flat(), n_state))
     e ~ product_distribution(Fill(Flat(), n_region_full))
-    beta ~ product_distribution(Fill(Flat(), 5))
+    beta ~ product_distribution(Fill(Normal(0, 100), 5))
     sigma_a ~ Uniform(0, 100)
     sigma_b ~ Uniform(0, 100)
     sigma_c ~ Uniform(0, 100)
     sigma_d ~ Uniform(0, 100)
     sigma_e ~ Uniform(0, 100)
-    y_hat = Base.materialize(
-        Base.broadcasted(
-            +,
-            beta[1],
-            Base.broadcasted(*, beta[2], black),
-            Base.broadcasted(*, beta[3], female),
-            Base.broadcasted(*, beta[5], female, black),
-            Base.broadcasted(*, beta[4], v_prev_full),
-            a[age],
-            b[edu],
-            c[age_edu],
-            d[state],
-            e[region_full],
-        ),
-    )
+    y_hat =
+        beta[1] .+ beta[2] .* black .+ beta[3] .* female .+ beta[5] .* female .* black .+
+        beta[4] .* v_prev_full .+ a[age] .+ b[edu] .+ c[age_edu] .+ d[state] .+
+        e[region_full]
     DynamicPPL.@addlogprob! logpdf(
         product_distribution(Fill(Normal(0, sigma_a), size(a))), a
     )
@@ -2049,9 +1919,6 @@ end
     )
     DynamicPPL.@addlogprob! logpdf(
         product_distribution(Fill(Normal(0, sigma_e), size(e))), e
-    )
-    DynamicPPL.@addlogprob! logpdf(
-        product_distribution(Fill(Normal(0, 100), size(beta))), beta
     )
     DynamicPPL.@addlogprob! logpdf(product_distribution(map(BernoulliLogit, y_hat)), y)
 end
@@ -2197,25 +2064,18 @@ end
 
 # PosteriorDB Stan model: hier_2pl
 @model function pdb_hier_2pl(I, J, N, ii, jj, y)
-    theta ~ product_distribution(Fill(Flat(), J))
+    theta ~ product_distribution(Fill(Normal(0, 1), J))
     xi1 ~ product_distribution(Fill(Flat(), I))
     xi2 ~ product_distribution(Fill(Flat(), I))
-    mu ~ product_distribution(Fill(Flat(), 2))
-    tau ~ product_distribution(Fill(FlatPos(0), 2))
+    mu ~ product_distribution([Normal(0, 1), Normal(0, 5)])
+    tau ~ product_distribution(Fill(Exponential(inv(0.1)), 2))
     L_Omega ~ LKJCholesky(2, 4.0)
     xi = hcat(xi1, xi2)
-    alpha = Base.materialize(Base.broadcasted(exp, xi1))
+    alpha = exp.(xi1)
     beta = xi2
     L_Sigma = Diagonal(tau) * L_Omega.L
     Sigma = Distributions.PDMats.PDMat(Cholesky(Matrix(L_Sigma), 'L', 0))
     DynamicPPL.@addlogprob! loglikelihood(MvNormal(mu, Sigma), permutedims(xi))
-    DynamicPPL.@addlogprob! logpdf(
-        product_distribution(Fill(Normal(0, 1), size(theta))), theta
-    )
-    DynamicPPL.@addlogprob! logpdf(Normal(0, 1), mu[1])
-    DynamicPPL.@addlogprob! logpdf(Exponential(inv(0.1)), tau[1])
-    DynamicPPL.@addlogprob! logpdf(Normal(0, 5), mu[2])
-    DynamicPPL.@addlogprob! logpdf(Exponential(inv(0.1)), tau[2])
     logits = alpha[ii] .* (theta[jj] .- beta[ii])
     DynamicPPL.@addlogprob! -sum(log1pexp.(y .* logits))
 end
@@ -2239,24 +2099,23 @@ end
     y,
 )
     # Keep homogeneous transforms structured, then materialize only at BLAS.
-    GP_region_std ~ product_distribution(Fill(Flat(), N_years * N_regions))
-    GP_state_std ~ product_distribution(Fill(Flat(), N_years * N_states))
-    year_std ~ product_distribution(Fill(Flat(), N_years_obs))
-    state_std ~ product_distribution(Fill(Flat(), N_states))
-    region_std ~ product_distribution(Fill(Flat(), N_regions))
-    tot_var ~ FlatPos(0)
-    prop_var ~ Dirichlet(ones(17))
-    mu ~ Flat()
-    length_GP_region_long ~ FlatPos(0)
-    length_GP_state_long ~ FlatPos(0)
-    length_GP_region_short ~ FlatPos(0)
-    length_GP_state_short ~ FlatPos(0)
+    GP_region_std ~ product_distribution(Fill(Normal(0, 1), N_years * N_regions))
+    GP_state_std ~ product_distribution(Fill(Normal(0, 1), N_years * N_states))
+    year_std ~ product_distribution(Fill(Normal(0, 1), N_years_obs))
+    state_std ~ product_distribution(Fill(Normal(0, 1), N_states))
+    region_std ~ product_distribution(Fill(Normal(0, 1), N_regions))
+    tot_var ~ Gamma(3, inv(3))
+    prop_var ~ Dirichlet(fill(2, 17))
+    mu ~ Normal(0.5, 0.5)
+    length_GP_region_long ~ Weibull(30, 8)
+    length_GP_state_long ~ Weibull(30, 8)
+    length_GP_region_short ~ Weibull(30, 3)
+    length_GP_state_short ~ Weibull(30, 3)
     years = 1:N_years
-    counts = fill(2, 17)
     vars = 17 * prop_var * tot_var
     sigma_year = sqrt(vars[1])
     sigma_region = sqrt(vars[2])
-    sigma_state = Base.materialize(Base.broadcasted(sqrt, vars[3:end]))
+    sigma_state = sqrt.(vars[3:end])
     sigma_GP_region_long = sqrt(vars[13])
     sigma_GP_state_long = sqrt(vars[14])
     sigma_GP_region_short = sqrt(vars[15])
@@ -2294,28 +2153,6 @@ end
     DynamicPPL.@addlogprob! logpdf(
         product_distribution(Fill(Normal(0, sigma_error_state_2), N)), y .- obs_mu
     )
-    DynamicPPL.@addlogprob! logpdf(
-        product_distribution(Fill(Normal(0, 1), size(GP_region_std))), GP_region_std
-    )
-    DynamicPPL.@addlogprob! logpdf(
-        product_distribution(Fill(Normal(0, 1), size(GP_state_std))), GP_state_std
-    )
-    DynamicPPL.@addlogprob! logpdf(
-        product_distribution(Fill(Normal(0, 1), size(year_std))), year_std
-    )
-    DynamicPPL.@addlogprob! logpdf(
-        product_distribution(Fill(Normal(0, 1), size(state_std))), state_std
-    )
-    DynamicPPL.@addlogprob! logpdf(
-        product_distribution(Fill(Normal(0, 1), size(region_std))), region_std
-    )
-    DynamicPPL.@addlogprob! logpdf(Normal(0.5, 0.5), mu)
-    DynamicPPL.@addlogprob! logpdf(Gamma(3, inv(3)), tot_var)
-    DynamicPPL.@addlogprob! logpdf(Dirichlet(counts), prop_var)
-    DynamicPPL.@addlogprob! logpdf(Weibull(30, 8), length_GP_region_long)
-    DynamicPPL.@addlogprob! logpdf(Weibull(30, 8), length_GP_state_long)
-    DynamicPPL.@addlogprob! logpdf(Weibull(30, 3), length_GP_region_short)
-    DynamicPPL.@addlogprob! logpdf(Weibull(30, 3), length_GP_state_short)
 end
 
 function make_model(::Val{Symbol("state_wide_presidential_votes-hierarchical_gp")}, data)
@@ -2379,7 +2216,7 @@ end
     theta ~ product_distribution(Fill(Flat(), J))
     sigma_a ~ FlatPos(0)
     a ~ product_distribution(Fill(FlatPos(0), I))
-    mu_b ~ Flat()
+    mu_b ~ Normal(0, 5)
     sigma_b ~ FlatPos(0)
     b ~ product_distribution(Fill(Flat(), I))
     DynamicPPL.@addlogprob! logpdf(Cauchy(0, 2), sigma_theta)
@@ -2390,7 +2227,6 @@ end
     DynamicPPL.@addlogprob! logpdf(
         product_distribution(Fill(LogNormal(0, sigma_a), size(a))), a
     )
-    DynamicPPL.@addlogprob! logpdf(Normal(0, 5), mu_b)
     DynamicPPL.@addlogprob! logpdf(Cauchy(0, 2), sigma_b)
     DynamicPPL.@addlogprob! logpdf(
         product_distribution(Fill(Normal(mu_b, sigma_b), size(b))), b
@@ -2532,26 +2368,21 @@ end
     premium,
     loss,
 )
-    omega ~ FlatPos(0)
-    theta ~ FlatPos(0)
+    omega ~ LogNormal(0, 0.5)
+    theta ~ LogNormal(0, 0.5)
     LR ~ product_distribution(Fill(FlatPos(0), n_cohort))
-    mu_LR ~ Flat()
-    sd_LR ~ FlatPos(0)
-    loss_sd ~ FlatPos(0)
+    mu_LR ~ Normal(0, 0.5)
+    sd_LR ~ LogNormal(0, 0.5)
+    loss_sd ~ LogNormal(0, 0.7)
     gf = if growthmodel_id == 1
         1 .- exp.(-((t_value ./ theta) .^ omega))
     else
         powered_time = t_value .^ omega
         powered_time ./ (powered_time .+ theta^omega)
     end
-    DynamicPPL.@addlogprob! logpdf(Normal(0, 0.5), mu_LR)
-    DynamicPPL.@addlogprob! logpdf(LogNormal(0, 0.5), sd_LR)
     DynamicPPL.@addlogprob! logpdf(
         product_distribution(Fill(LogNormal(mu_LR, sd_LR), size(LR))), LR
     )
-    DynamicPPL.@addlogprob! logpdf(LogNormal(0, 0.7), loss_sd)
-    DynamicPPL.@addlogprob! logpdf(LogNormal(0, 0.5), omega)
-    DynamicPPL.@addlogprob! logpdf(LogNormal(0, 0.5), theta)
     scale = (loss_sd .* premium)[cohort_id]
     location = LR[cohort_id] .* premium[cohort_id] .* gf[t_idx]
     DynamicPPL.@addlogprob! logpdf(
@@ -2576,14 +2407,12 @@ end
 
 # PosteriorDB Stan model: low_dim_gauss_mix_collapse
 @model function pdb_low_dim_gauss_mix_collapse(N, y)
-    mu ~ product_distribution(Fill(Flat(), 2))
+    mu ~ product_distribution(Fill(Normal(0, 2), 2))
     sigma ~ product_distribution(Fill(FlatPos(0), 2))
-    theta ~ Uniform(0, 1)
+    theta ~ Beta(5, 5)
     DynamicPPL.@addlogprob! logpdf(
         product_distribution(Fill(Normal(0, 2), size(sigma))), sigma
     )
-    DynamicPPL.@addlogprob! logpdf(product_distribution(Fill(Normal(0, 2), size(mu))), mu)
-    DynamicPPL.@addlogprob! logpdf(Beta(5, 5), theta)
     for n in 1:N
         DynamicPPL.@addlogprob! logaddexp(
             log(theta) + logpdf(Normal(mu[1], sigma[1]), y[n]),
@@ -2600,15 +2429,9 @@ end
 
 # PosteriorDB Stan model: lsat_model
 @model function pdb_lsat_model(N, T, r)
-    alpha ~ product_distribution(Fill(Flat(), T))
-    theta ~ product_distribution(Fill(Flat(), N))
+    alpha ~ product_distribution(Fill(Normal(0, 100.0), T))
+    theta ~ product_distribution(Fill(Normal(0, 1), N))
     beta ~ FlatPos(0)
-    DynamicPPL.@addlogprob! logpdf(
-        product_distribution(Fill(Normal(0, 100.0), size(alpha))), alpha
-    )
-    DynamicPPL.@addlogprob! logpdf(
-        product_distribution(Fill(Normal(0, 1), size(theta))), theta
-    )
     DynamicPPL.@addlogprob! logpdf(Normal(0.0, 100.0), beta)
     for k in 1:T
         logits = beta .* theta .- alpha[k]
@@ -2633,18 +2456,16 @@ end
 
 # PosteriorDB Stan model: multi_occupancy
 @model function pdb_multi_occupancy(J, K, n, X, S)
-    alpha ~ Flat()
-    beta ~ Flat()
-    Omega ~ Uniform(0, 1)
+    alpha ~ Cauchy(0, 2.5)
+    beta ~ Cauchy(0, 2.5)
+    Omega ~ Beta(2, 2)
     rho_uv ~ Uniform(-1, 1)
     sigma_uv ~ product_distribution(Fill(FlatPos(0), 2))
     uv1 ~ product_distribution(Fill(Flat(), S))
     uv2 ~ product_distribution(Fill(Flat(), S))
     uv = hcat(uv1, uv2)
-    logit_psi = Base.materialize(Base.broadcasted(+, uv1, alpha))
-    logit_theta = Base.materialize(Base.broadcasted(+, uv2, beta))
-    DynamicPPL.@addlogprob! logpdf(Cauchy(0, 2.5), alpha)
-    DynamicPPL.@addlogprob! logpdf(Cauchy(0, 2.5), beta)
+    logit_psi = uv1 .+ alpha
+    logit_theta = uv2 .+ beta
     DynamicPPL.@addlogprob! logpdf(
         product_distribution(Fill(Cauchy(0, 2.5), size(sigma_uv))), sigma_uv
     )
@@ -2656,7 +2477,6 @@ end
     ]
     uv_distribution = MvNormal(zeros(2), Symmetric(covariance))
     DynamicPPL.@addlogprob! loglikelihood(uv_distribution, uv')
-    DynamicPPL.@addlogprob! logpdf(Beta(2, 2), Omega)
     for i in 1:n
         DynamicPPL.@addlogprob! logpdf(Bernoulli(Omega), 1)
         for j in 1:J
@@ -2763,10 +2583,7 @@ end
 # PosteriorDB Stan model: normal_mixture
 @model function pdb_normal_mixture(N, y)
     theta ~ Uniform(0, 1)
-    mu ~ product_distribution(Fill(Flat(), 2))
-    for k in 1:2
-        DynamicPPL.@addlogprob! logpdf(Normal(0, 10), mu[k])
-    end
+    mu ~ product_distribution(Fill(Normal(0, 10), 2))
     for n in 1:N
         DynamicPPL.@addlogprob! logaddexp(
             log(theta) + logpdf(Normal(mu[1], 1.0), y[n]),
@@ -2782,11 +2599,8 @@ end
 # PosteriorDB Stan model: normal_mixture_k
 @model function pdb_normal_mixture_k(K, N, y)
     theta ~ Dirichlet(ones(K))
-    mu ~ product_distribution(Fill(Flat(), K))
+    mu ~ product_distribution(Fill(Normal(0.0, 10.0), K))
     sigma ~ product_distribution(Fill(Uniform(0.0, 10.0), K))
-    DynamicPPL.@addlogprob! logpdf(
-        product_distribution(Fill(Normal(0.0, 10.0), size(mu))), mu
-    )
     for n in 1:N
         ps = map(
             (weight, location, scale) ->
@@ -2807,17 +2621,15 @@ end
 @model function pdb_pilots(N, n_groups, n_scenarios, group_id, scenario_id, y)
     a ~ product_distribution(Fill(Flat(), n_groups))
     b ~ product_distribution(Fill(Flat(), n_scenarios))
-    mu_a ~ Flat()
-    mu_b ~ Flat()
+    mu_a ~ Normal(0, 1)
+    mu_b ~ Normal(0, 1)
     sigma_a ~ Uniform(0, 100)
     sigma_b ~ Uniform(0, 100)
     sigma_y ~ Uniform(0, 100)
-    y_hat = Base.materialize(Base.broadcasted(+, a[group_id], b[scenario_id]))
-    DynamicPPL.@addlogprob! logpdf(Normal(0, 1), mu_a)
+    y_hat = a[group_id] .+ b[scenario_id]
     DynamicPPL.@addlogprob! logpdf(
         product_distribution(Fill(Normal(10mu_a, sigma_a), size(a))), a
     )
-    DynamicPPL.@addlogprob! logpdf(Normal(0, 1), mu_b)
     DynamicPPL.@addlogprob! logpdf(
         product_distribution(Fill(Normal(10mu_b, sigma_b), size(b))), b
     )
@@ -2841,20 +2653,12 @@ end
 @model function pdb_prophet(
     T, K, t, cap, y, S, t_change, A, A_tchange, X_a, X_m, sigmas, tau, trend_indicator
 )
-    k ~ Flat()
-    m ~ Flat()
-    delta ~ product_distribution(Fill(Flat(), S))
+    k ~ Normal(0, 5)
+    m ~ Normal(0, 5)
+    delta ~ product_distribution(Fill(Laplace(0, tau), S))
     sigma_obs ~ FlatPos(0)
-    beta ~ product_distribution(Fill(Flat(), K))
-    DynamicPPL.@addlogprob! logpdf(Normal(0, 5), k)
-    DynamicPPL.@addlogprob! logpdf(Normal(0, 5), m)
-    DynamicPPL.@addlogprob! logpdf(
-        product_distribution(Fill(Laplace(0, tau), size(delta))), delta
-    )
+    beta ~ product_distribution(map(sigma -> Normal(0, sigma), sigmas))
     DynamicPPL.@addlogprob! logpdf(Normal(0, 0.5), sigma_obs)
-    DynamicPPL.@addlogprob! logpdf(
-        product_distribution(Fill(Normal(), size(beta))), beta ./ sigmas
-    ) - sum(log, sigmas)
     if trend_indicator == 0
         trend = (k .+ A * delta) .* t .+ (m .- A_tchange * delta)
         prediction = trend .* (1 .+ X_m * beta) + X_a * beta
@@ -2918,10 +2722,9 @@ end
 # PosteriorDB Stan model: radon_county
 @model function pdb_radon_county(J, county_design, y)
     a ~ product_distribution(Fill(Flat(), J))
-    mu_a ~ Flat()
+    mu_a ~ Normal(0.0, 1.0)
     sigma_a ~ Uniform(0.0, 100.0)
     sigma_y ~ Uniform(0.0, 100.0)
-    DynamicPPL.@addlogprob! logpdf(Normal(0.0, 1.0), mu_a)
     DynamicPPL.@addlogprob! logpdf(
         product_distribution(Fill(Normal(mu_a, sigma_a), size(a))), a
     )
@@ -2938,14 +2741,10 @@ end
 
 # PosteriorDB Stan model: radon_county_intercept
 @model function pdb_radon_county_intercept(N, J, county_idx, floor_measure, log_radon)
-    alpha ~ product_distribution(Fill(Flat(), J))
-    beta ~ Flat()
+    alpha ~ product_distribution(Fill(Normal(0, 10), J))
+    beta ~ Normal(0, 10)
     sigma_y ~ FlatPos(0)
     DynamicPPL.@addlogprob! logpdf(Normal(0, 1), sigma_y)
-    DynamicPPL.@addlogprob! logpdf(
-        product_distribution(Fill(Normal(0, 10), size(alpha))), alpha
-    )
-    DynamicPPL.@addlogprob! logpdf(Normal(0, 10), beta)
     for n in 1:N
         mu = alpha[county_idx[n]] + beta * floor_measure[n]
         DynamicPPL.@addlogprob! logpdf(Normal(mu, sigma_y), log_radon[n])
@@ -2969,16 +2768,12 @@ end
     J, N, county_idx, log_uppm, floor_measure, log_radon
 )
     alpha ~ product_distribution(Fill(Flat(), J))
-    beta ~ product_distribution(Fill(Flat(), 2))
-    mu_alpha ~ Flat()
+    beta ~ product_distribution(Fill(Normal(0, 10), 2))
+    mu_alpha ~ Normal(0, 10)
     sigma_alpha ~ FlatPos(0)
     sigma_y ~ FlatPos(0)
     DynamicPPL.@addlogprob! logpdf(Normal(0, 1), sigma_alpha)
     DynamicPPL.@addlogprob! logpdf(Normal(0, 1), sigma_y)
-    DynamicPPL.@addlogprob! logpdf(Normal(0, 10), mu_alpha)
-    DynamicPPL.@addlogprob! logpdf(
-        product_distribution(Fill(Normal(0, 10), size(beta))), beta
-    )
     DynamicPPL.@addlogprob! logpdf(
         product_distribution(Fill(Normal(mu_alpha, sigma_alpha), size(alpha))), alpha
     )
@@ -3015,23 +2810,14 @@ end
 @model function pdb_radon_hierarchical_intercept_noncentered(
     J, N, county_idx, log_uppm, floor_measure, log_radon
 )
-    alpha_raw ~ product_distribution(Fill(Flat(), J))
-    beta ~ product_distribution(Fill(Flat(), 2))
-    mu_alpha ~ Flat()
+    alpha_raw ~ product_distribution(Fill(Normal(0, 1), J))
+    beta ~ product_distribution(Fill(Normal(0, 10), 2))
+    mu_alpha ~ Normal(0, 10)
     sigma_alpha ~ FlatPos(0)
     sigma_y ~ FlatPos(0)
-    alpha = Base.materialize(
-        Base.broadcasted(+, mu_alpha, Base.broadcasted(*, sigma_alpha, alpha_raw))
-    )
+    alpha = mu_alpha .+ sigma_alpha .* alpha_raw
     DynamicPPL.@addlogprob! logpdf(Normal(0, 1), sigma_alpha)
     DynamicPPL.@addlogprob! logpdf(Normal(0, 1), sigma_y)
-    DynamicPPL.@addlogprob! logpdf(Normal(0, 10), mu_alpha)
-    DynamicPPL.@addlogprob! logpdf(
-        product_distribution(Fill(Normal(0, 10), size(beta))), beta
-    )
-    DynamicPPL.@addlogprob! logpdf(
-        product_distribution(Fill(Normal(0, 1), size(alpha_raw))), alpha_raw
-    )
     for n in 1:N
         muj = alpha[county_idx[n]] + log_uppm[n] * beta[1]
         mu = muj + floor_measure[n] * beta[2]
@@ -3068,12 +2854,11 @@ end
 # PosteriorDB Stan model: radon_partially_pooled_centered
 @model function pdb_radon_partially_pooled_centered(N, J, county_idx, log_radon)
     alpha ~ product_distribution(Fill(Flat(), J))
-    mu_alpha ~ Flat()
+    mu_alpha ~ Normal(0, 10)
     sigma_alpha ~ FlatPos(0)
     sigma_y ~ FlatPos(0)
     DynamicPPL.@addlogprob! logpdf(Normal(0, 1), sigma_y)
     DynamicPPL.@addlogprob! logpdf(Normal(0, 1), sigma_alpha)
-    DynamicPPL.@addlogprob! logpdf(Normal(0, 10), mu_alpha)
     DynamicPPL.@addlogprob! logpdf(
         product_distribution(Fill(Normal(mu_alpha, sigma_alpha), size(alpha))), alpha
     )
@@ -3097,19 +2882,13 @@ end
 
 # PosteriorDB Stan model: radon_partially_pooled_noncentered
 @model function pdb_radon_partially_pooled_noncentered(N, J, county_idx, log_radon)
-    alpha_raw ~ product_distribution(Fill(Flat(), J))
-    mu_alpha ~ Flat()
+    alpha_raw ~ product_distribution(Fill(Normal(0, 1), J))
+    mu_alpha ~ Normal(0, 10)
     sigma_alpha ~ FlatPos(0)
     sigma_y ~ FlatPos(0)
-    alpha = Base.materialize(
-        Base.broadcasted(+, mu_alpha, Base.broadcasted(*, sigma_alpha, alpha_raw))
-    )
+    alpha = mu_alpha .+ sigma_alpha .* alpha_raw
     DynamicPPL.@addlogprob! logpdf(Normal(0, 1), sigma_y)
     DynamicPPL.@addlogprob! logpdf(Normal(0, 1), sigma_alpha)
-    DynamicPPL.@addlogprob! logpdf(Normal(0, 10), mu_alpha)
-    DynamicPPL.@addlogprob! logpdf(
-        product_distribution(Fill(Normal(0, 1), size(alpha_raw))), alpha_raw
-    )
     for n in 1:N
         mu = alpha[county_idx[n]]
         DynamicPPL.@addlogprob! logpdf(Normal(mu, sigma_y), log_radon[n])
@@ -3130,12 +2909,10 @@ end
 
 # PosteriorDB Stan model: radon_pooled
 @model function pdb_radon_pooled(N, floor_measure, log_radon)
-    alpha ~ Flat()
-    beta ~ Flat()
+    alpha ~ Normal(0, 10)
+    beta ~ Normal(0, 10)
     sigma_y ~ FlatPos(0)
     DynamicPPL.@addlogprob! logpdf(Normal(0, 1), sigma_y)
-    DynamicPPL.@addlogprob! logpdf(Normal(0, 10), alpha)
-    DynamicPPL.@addlogprob! logpdf(Normal(0, 10), beta)
     DynamicPPL.@addlogprob! logpdf(
         product_distribution(Fill(Normal(0, sigma_y), size(log_radon))),
         log_radon .- (alpha .+ beta .* floor_measure),
@@ -3155,14 +2932,12 @@ end
     J, N, county_idx, floor_measure, log_radon
 )
     alpha ~ product_distribution(Fill(Flat(), J))
-    beta ~ Flat()
-    mu_alpha ~ Flat()
+    beta ~ Normal(0, 10)
+    mu_alpha ~ Normal(0, 10)
     sigma_alpha ~ FlatPos(0)
     sigma_y ~ FlatPos(0)
     DynamicPPL.@addlogprob! logpdf(Normal(0, 1), sigma_y)
     DynamicPPL.@addlogprob! logpdf(Normal(0, 1), sigma_alpha)
-    DynamicPPL.@addlogprob! logpdf(Normal(0, 10), mu_alpha)
-    DynamicPPL.@addlogprob! logpdf(Normal(0, 10), beta)
     DynamicPPL.@addlogprob! logpdf(
         product_distribution(Fill(Normal(mu_alpha, sigma_alpha), size(alpha))), alpha
     )
@@ -3188,21 +2963,14 @@ end
 @model function pdb_radon_variable_intercept_noncentered(
     J, N, county_idx, floor_measure, log_radon
 )
-    alpha_raw ~ product_distribution(Fill(Flat(), J))
-    beta ~ Flat()
-    mu_alpha ~ Flat()
+    alpha_raw ~ product_distribution(Fill(Normal(0, 1), J))
+    beta ~ Normal(0, 10)
+    mu_alpha ~ Normal(0, 10)
     sigma_alpha ~ FlatPos(0)
     sigma_y ~ FlatPos(0)
-    alpha = Base.materialize(
-        Base.broadcasted(+, mu_alpha, Base.broadcasted(*, sigma_alpha, alpha_raw))
-    )
+    alpha = mu_alpha .+ sigma_alpha .* alpha_raw
     DynamicPPL.@addlogprob! logpdf(Normal(0, 1), sigma_y)
     DynamicPPL.@addlogprob! logpdf(Normal(0, 1), sigma_alpha)
-    DynamicPPL.@addlogprob! logpdf(Normal(0, 10), mu_alpha)
-    DynamicPPL.@addlogprob! logpdf(Normal(0, 10), beta)
-    DynamicPPL.@addlogprob! logpdf(
-        product_distribution(Fill(Normal(0, 1), size(alpha_raw))), alpha_raw
-    )
     for n in 1:N
         mu = alpha[county_idx[n]] + floor_measure[n] * beta
         DynamicPPL.@addlogprob! logpdf(Normal(mu, sigma_y), log_radon[n])
@@ -3230,13 +2998,11 @@ end
     sigma_beta ~ FlatPos(0)
     alpha ~ product_distribution(Fill(Flat(), J))
     beta ~ product_distribution(Fill(Flat(), J))
-    mu_alpha ~ Flat()
-    mu_beta ~ Flat()
+    mu_alpha ~ Normal(0, 10)
+    mu_beta ~ Normal(0, 10)
     DynamicPPL.@addlogprob! logpdf(Normal(0, 1), sigma_y)
     DynamicPPL.@addlogprob! logpdf(Normal(0, 1), sigma_beta)
     DynamicPPL.@addlogprob! logpdf(Normal(0, 1), sigma_alpha)
-    DynamicPPL.@addlogprob! logpdf(Normal(0, 10), mu_alpha)
-    DynamicPPL.@addlogprob! logpdf(Normal(0, 10), mu_beta)
     DynamicPPL.@addlogprob! logpdf(
         product_distribution(Fill(Normal(mu_alpha, sigma_alpha), size(alpha))), alpha
     )
@@ -3270,27 +3036,15 @@ end
     sigma_y ~ FlatPos(0)
     sigma_alpha ~ FlatPos(0)
     sigma_beta ~ FlatPos(0)
-    alpha_raw ~ product_distribution(Fill(Flat(), J))
-    beta_raw ~ product_distribution(Fill(Flat(), J))
-    mu_alpha ~ Flat()
-    mu_beta ~ Flat()
-    alpha = Base.materialize(
-        Base.broadcasted(+, mu_alpha, Base.broadcasted(*, sigma_alpha, alpha_raw))
-    )
-    beta = Base.materialize(
-        Base.broadcasted(+, mu_beta, Base.broadcasted(*, sigma_beta, beta_raw))
-    )
+    alpha_raw ~ product_distribution(Fill(Normal(0, 1), J))
+    beta_raw ~ product_distribution(Fill(Normal(0, 1), J))
+    mu_alpha ~ Normal(0, 10)
+    mu_beta ~ Normal(0, 10)
+    alpha = mu_alpha .+ sigma_alpha .* alpha_raw
+    beta = mu_beta .+ sigma_beta .* beta_raw
     DynamicPPL.@addlogprob! logpdf(Normal(0, 1), sigma_y)
     DynamicPPL.@addlogprob! logpdf(Normal(0, 1), sigma_beta)
     DynamicPPL.@addlogprob! logpdf(Normal(0, 1), sigma_alpha)
-    DynamicPPL.@addlogprob! logpdf(Normal(0, 10), mu_alpha)
-    DynamicPPL.@addlogprob! logpdf(Normal(0, 10), mu_beta)
-    DynamicPPL.@addlogprob! logpdf(
-        product_distribution(Fill(Normal(0, 1), size(alpha_raw))), alpha_raw
-    )
-    DynamicPPL.@addlogprob! logpdf(
-        product_distribution(Fill(Normal(0, 1), size(beta_raw))), beta_raw
-    )
     for n in 1:N
         mu = alpha[county_idx[n]] + floor_measure[n] * beta[county_idx[n]]
         DynamicPPL.@addlogprob! logpdf(Normal(mu, sigma_y), log_radon[n])
@@ -3317,15 +3071,13 @@ end
 @model function pdb_radon_variable_slope_centered(
     J, N, county_idx, floor_measure, log_radon
 )
-    alpha ~ Flat()
+    alpha ~ Normal(0, 10)
     beta ~ product_distribution(Fill(Flat(), J))
-    mu_beta ~ Flat()
+    mu_beta ~ Normal(0, 10)
     sigma_beta ~ FlatPos(0)
     sigma_y ~ FlatPos(0)
-    DynamicPPL.@addlogprob! logpdf(Normal(0, 10), alpha)
     DynamicPPL.@addlogprob! logpdf(Normal(0, 1), sigma_y)
     DynamicPPL.@addlogprob! logpdf(Normal(0, 1), sigma_beta)
-    DynamicPPL.@addlogprob! logpdf(Normal(0, 10), mu_beta)
     DynamicPPL.@addlogprob! logpdf(
         product_distribution(Fill(Normal(mu_beta, sigma_beta), size(beta))), beta
     )
@@ -3351,21 +3103,14 @@ end
 @model function pdb_radon_variable_slope_noncentered(
     J, N, county_idx, floor_measure, log_radon
 )
-    alpha ~ Flat()
-    beta_raw ~ product_distribution(Fill(Flat(), J))
-    mu_beta ~ Flat()
+    alpha ~ Normal(0, 10)
+    beta_raw ~ product_distribution(Fill(Normal(0, 1), J))
+    mu_beta ~ Normal(0, 10)
     sigma_beta ~ FlatPos(0)
     sigma_y ~ FlatPos(0)
-    beta = Base.materialize(
-        Base.broadcasted(+, mu_beta, Base.broadcasted(*, sigma_beta, beta_raw))
-    )
-    DynamicPPL.@addlogprob! logpdf(Normal(0, 10), alpha)
+    beta = mu_beta .+ sigma_beta .* beta_raw
     DynamicPPL.@addlogprob! logpdf(Normal(0, 1), sigma_y)
     DynamicPPL.@addlogprob! logpdf(Normal(0, 1), sigma_beta)
-    DynamicPPL.@addlogprob! logpdf(Normal(0, 10), mu_beta)
-    DynamicPPL.@addlogprob! logpdf(
-        product_distribution(Fill(Normal(0, 1), size(beta_raw))), beta_raw
-    )
     for n in 1:N
         mu = alpha + floor_measure[n] * beta[county_idx[n]]
         DynamicPPL.@addlogprob! logpdf(Normal(mu, sigma_y), log_radon[n])
@@ -3389,13 +3134,11 @@ end
     x_ = x
     alpha ~ product_distribution(Fill(Flat(), N))
     beta ~ product_distribution(Fill(Flat(), N))
-    mu_alpha ~ Flat()
-    mu_beta ~ Flat()
+    mu_alpha ~ Normal(0, 100)
+    mu_beta ~ Normal(0, 100)
     sigma_y ~ FlatPos(0)
     sigma_alpha ~ FlatPos(0)
     sigma_beta ~ FlatPos(0)
-    DynamicPPL.@addlogprob! logpdf(Normal(0, 100), mu_alpha)
-    DynamicPPL.@addlogprob! logpdf(Normal(0, 100), mu_beta)
     DynamicPPL.@addlogprob! logpdf(
         product_distribution(Fill(Normal(mu_alpha, sigma_alpha), size(alpha))), alpha
     )
@@ -3418,17 +3161,13 @@ end
 
 # PosteriorDB Stan model: seeds_centered_model
 @model function pdb_seeds_centered_model(I, n, N, x1, x2, x1x2)
-    alpha0 ~ Flat()
-    alpha1 ~ Flat()
-    alpha12 ~ Flat()
-    alpha2 ~ Flat()
+    alpha0 ~ Normal(0.0, 1.0)
+    alpha1 ~ Normal(0.0, 1.0)
+    alpha12 ~ Normal(0.0, 1.0)
+    alpha2 ~ Normal(0.0, 1.0)
     c ~ product_distribution(Fill(Flat(), I))
     sigma ~ FlatPos(0)
-    b = Base.materialize(Base.broadcasted(-, c, mean(c)))
-    DynamicPPL.@addlogprob! logpdf(Normal(0.0, 1.0), alpha0)
-    DynamicPPL.@addlogprob! logpdf(Normal(0.0, 1.0), alpha1)
-    DynamicPPL.@addlogprob! logpdf(Normal(0.0, 1.0), alpha2)
-    DynamicPPL.@addlogprob! logpdf(Normal(0.0, 1.0), alpha12)
+    b = c .- mean(c)
     DynamicPPL.@addlogprob! logpdf(Cauchy(0, 1), sigma)
     DynamicPPL.@addlogprob! logpdf(
         product_distribution(Fill(Normal(0.0, sigma), size(c))), c
@@ -3444,18 +3183,13 @@ end
 
 # PosteriorDB Stan model: seeds_model
 @model function pdb_seeds_model(I, n, N, x1, x2, x1x2)
-    alpha0 ~ Flat()
-    alpha1 ~ Flat()
-    alpha12 ~ Flat()
-    alpha2 ~ Flat()
-    tau ~ FlatPos(0)
+    alpha0 ~ Normal(0.0, 1000.0)
+    alpha1 ~ Normal(0.0, 1000.0)
+    alpha12 ~ Normal(0.0, 1000.0)
+    alpha2 ~ Normal(0.0, 1000.0)
+    tau ~ Gamma(0.001, inv(0.001))
     b ~ product_distribution(Fill(Flat(), I))
     sigma = 1.0 / sqrt(tau)
-    DynamicPPL.@addlogprob! logpdf(Normal(0.0, 1000.0), alpha0)
-    DynamicPPL.@addlogprob! logpdf(Normal(0.0, 1000.0), alpha1)
-    DynamicPPL.@addlogprob! logpdf(Normal(0.0, 1000.0), alpha2)
-    DynamicPPL.@addlogprob! logpdf(Normal(0.0, 1000.0), alpha12)
-    DynamicPPL.@addlogprob! logpdf(Gamma(0.001, inv(0.001)), tau)
     DynamicPPL.@addlogprob! logpdf(
         product_distribution(Fill(Normal(0.0, sigma), size(b))), b
     )
@@ -3470,16 +3204,12 @@ end
 
 # PosteriorDB Stan model: seeds_stanified_model
 @model function pdb_seeds_stanified_model(I, n, N, x1, x2, x1x2)
-    alpha0 ~ Flat()
-    alpha1 ~ Flat()
-    alpha12 ~ Flat()
-    alpha2 ~ Flat()
+    alpha0 ~ Normal(0.0, 1.0)
+    alpha1 ~ Normal(0.0, 1.0)
+    alpha12 ~ Normal(0.0, 1.0)
+    alpha2 ~ Normal(0.0, 1.0)
     b ~ product_distribution(Fill(Flat(), I))
     sigma ~ FlatPos(0)
-    DynamicPPL.@addlogprob! logpdf(Normal(0.0, 1.0), alpha0)
-    DynamicPPL.@addlogprob! logpdf(Normal(0.0, 1.0), alpha1)
-    DynamicPPL.@addlogprob! logpdf(Normal(0.0, 1.0), alpha2)
-    DynamicPPL.@addlogprob! logpdf(Normal(0.0, 1.0), alpha12)
     DynamicPPL.@addlogprob! logpdf(Cauchy(0, 1), sigma)
     DynamicPPL.@addlogprob! logpdf(
         product_distribution(Fill(Normal(0.0, sigma), size(b))), b
@@ -3561,7 +3291,7 @@ end
     k2 ~ FlatPos(0)
     alpha21 ~ FlatPos(0)
     alpha12 ~ FlatPos(0)
-    gamma ~ Uniform(0, 1)
+    gamma ~ Beta(10, 1)
     sigma ~ FlatPos(0)
     carbon1_t0 = gamma * totalC_t0
     carbon2_t0 = (1 - gamma) * totalC_t0
@@ -3579,7 +3309,6 @@ end
         carbon2 = common * (cosh(gap_time) * carbon2_t0 + hyperbolic * transformed2)
         totalC_t0 - carbon1 - carbon2
     end
-    DynamicPPL.@addlogprob! logpdf(Beta(10, 1), gamma)
     DynamicPPL.@addlogprob! logpdf(Normal(0, 1), k1)
     DynamicPPL.@addlogprob! logpdf(Normal(0, 1), k2)
     DynamicPPL.@addlogprob! logpdf(Normal(0, 1), alpha21)
@@ -3644,12 +3373,10 @@ end
 
 # PosteriorDB Stan model: surgical_model
 @model function pdb_surgical_model(N, r, n)
-    mu ~ Flat()
-    sigmasq ~ FlatPos(0)
+    mu ~ Normal(0.0, 1000.0)
+    sigmasq ~ InverseGamma(0.001, 0.001)
     b ~ product_distribution(Fill(Flat(), N))
     sigma = sqrt(sigmasq)
-    DynamicPPL.@addlogprob! logpdf(Normal(0.0, 1000.0), mu)
-    DynamicPPL.@addlogprob! logpdf(InverseGamma(0.001, 0.001), sigmasq)
     DynamicPPL.@addlogprob! logpdf(
         product_distribution(Fill(Normal(mu, sigma), size(b))), b
     )

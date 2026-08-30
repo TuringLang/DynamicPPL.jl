@@ -5,7 +5,9 @@
 # Usage:
 #   julia --project=. posteriordb.jl                                      # all models
 #   julia --project=. posteriordb.jl eight_schools-eight_schools_centered # one model
-#   julia --project=. posteriordb.jl --eval-only                          # skip gradients
+#   julia --project=. posteriordb.jl --logdensity-only                    # skip gradients
+#   julia --project=. posteriordb.jl --stan-only                          # skip DynamicPPL
+#   julia --project=. posteriordb.jl --turing-only                        # skip Stan timing
 #   julia --project=. posteriordb.jl --verify eight_schools-eight_schools_centered
 #
 # Stan and DynamicPPL are benchmarked at the same constrained parameter realization.
@@ -92,7 +94,9 @@ struct RunMetadata
     mooncake_version::String
     bridgestan_version::String
     stan_version::String
-    eval_only::Bool
+    logdensity_only::Bool
+    stan_only::Bool
+    turing_only::Bool
     all_ad::Bool
     shard_count::Int
     shard_index::Int
@@ -100,7 +104,14 @@ struct RunMetadata
 end
 
 function run_metadata(
-    stan_version; eval_only, all_ad, shard_count=1, shard_index=1, seed=468
+    stan_version;
+    logdensity_only,
+    stan_only,
+    turing_only,
+    all_ad,
+    shard_count=1,
+    shard_index=1,
+    seed=468,
 )
     return RunMetadata(
         string(VERSION),
@@ -115,7 +126,9 @@ function run_metadata(
         string(pkgversion(Mooncake)),
         string(pkgversion(BridgeStan)),
         stan_version,
-        eval_only,
+        logdensity_only,
+        stan_only,
+        turing_only,
         all_ad,
         shard_count,
         shard_index,
@@ -195,22 +208,22 @@ function stable_ldf(model; adtype=nothing, logdensity=getlogjoint_internal)
 end
 
 function bench_dynamicppl(
-    dynamicppl_model, model_name, params; eval_only=false, all_ad=false
+    dynamicppl_model, model_name, params; logdensity_only=false, all_ad=false
 )
-    ldf = stable_ldf(dynamicppl_model; adtype=eval_only ? nothing : AutoMooncake())
+    ldf = stable_ldf(dynamicppl_model; adtype=logdensity_only ? nothing : AutoMooncake())
     length(params) == DynamicPPL.LogDensityProblems.dimension(ldf) ||
         error("parameter dimension mismatch for $model_name")
     DynamicPPL.LogDensityProblems.logdensity(ldf, params)
     primal_time = median_time(@be DynamicPPL.LogDensityProblems.logdensity($ldf, $params))
     grad_times = Dict{String,Float64}()
-    if !eval_only
+    if !logdensity_only
         DynamicPPL.LogDensityProblems.logdensity_and_gradient(ldf, params)
         grad_times["Mc"] = median_time(
             @be DynamicPPL.LogDensityProblems.logdensity_and_gradient($ldf, $params)
         )
     end
 
-    if !eval_only && all_ad
+    if !logdensity_only && all_ad
         for (label, adtype) in OTHER_AD_BACKENDS
             if label == "FD" && length(params) > 2_000
                 grad_times[label] = Inf
@@ -532,7 +545,7 @@ const RESULT_COLUMNS = (
     "mooncake_gradient_s",
     "stan_gradient_s",
 )
-const CHECKPOINT_FORMAT = "1"
+const CHECKPOINT_FORMAT = "2"
 
 function write_result(io, result)
     return println(
@@ -809,12 +822,15 @@ function verify_against_stan(posterior_name; draws=30, seed=468, scale=0.2)
     )
 end
 
-function benchmark_one(model_name; eval_only=false, all_ad=true, seed=468)
+function benchmark_one(
+    model_name;
+    logdensity_only=false,
+    stan_only=false,
+    turing_only=false,
+    all_ad=true,
+    seed=468,
+)
     post = PosteriorDB.posterior(PDB, model_name)
-    pdb_dataset = PosteriorDB.dataset(post)
-    data = PosteriorDB.load(pdb_dataset)
-    dynamicppl_model = make_model(Val(Symbol(model_name)), data)
-    pdb_model = PosteriorDB.model(post)
     stan_model = bridge_model(post, seed)
     dimension = Int(BridgeStan.param_unc_num(stan_model))
     q = only(
@@ -823,23 +839,32 @@ function benchmark_one(model_name; eval_only=false, all_ad=true, seed=468)
         ),
     )
 
-    mapping_ldf = stable_ldf(dynamicppl_model)
-    coordinate_map = CoordinateMap(
-        stan_model,
-        BridgeStan.param_names(stan_model; include_tp=false, include_gq=false),
-        PosteriorDB.name(pdb_model),
-        DynamicPPL.get_all_ranges_and_transforms(mapping_ldf),
-    )
-    dynamicppl_params = coordinate_map(q)
-    dynamicppl = bench_dynamicppl(
-        dynamicppl_model, model_name, dynamicppl_params; eval_only, all_ad
-    )
+    dynamicppl = if stan_only
+        (primal_time=NaN, grad_times=Dict{String,Float64}(), dim=dimension)
+    else
+        data = PosteriorDB.load(PosteriorDB.dataset(post))
+        dynamicppl_model = make_model(Val(Symbol(model_name)), data)
+        mapping_ldf = stable_ldf(dynamicppl_model)
+        coordinate_map = CoordinateMap(
+            stan_model,
+            BridgeStan.param_names(stan_model; include_tp=false, include_gq=false),
+            PosteriorDB.name(PosteriorDB.model(post)),
+            DynamicPPL.get_all_ranges_and_transforms(mapping_ldf),
+        )
+        dynamicppl_params = coordinate_map(q)
+        bench_dynamicppl(
+            dynamicppl_model, model_name, dynamicppl_params; logdensity_only, all_ad
+        )
+    end
 
-    BridgeStan.log_density(stan_model, q; propto=false)
-    stan_primal = median_time(@be BridgeStan.log_density($stan_model, $q; propto=false))
+    stan_primal = NaN
+    if !turing_only
+        BridgeStan.log_density(stan_model, q; propto=false)
+        stan_primal = median_time(@be BridgeStan.log_density($stan_model, $q; propto=false))
+    end
 
     stan_gradient = NaN
-    if !eval_only
+    if !logdensity_only && !turing_only
         BridgeStan.log_density_gradient(stan_model, q; propto=false)
         stan_gradient = median_time(
             @be BridgeStan.log_density_gradient($stan_model, $q; propto=false)
@@ -863,7 +888,9 @@ end
 
 function benchmark_models(
     models;
-    eval_only=false,
+    logdensity_only=false,
+    stan_only=false,
+    turing_only=false,
     all_ad=true,
     seed=468,
     shard_count=1,
@@ -875,10 +902,19 @@ function benchmark_models(
     metadata = nothing
     for model_name in models
         println(stderr, "Running: $model_name ...")
-        result, version = benchmark_one(model_name; eval_only, all_ad, seed)
+        result, version = benchmark_one(
+            model_name; logdensity_only, stan_only, turing_only, all_ad, seed
+        )
         if metadata === nothing
             metadata = run_metadata(
-                version; eval_only, all_ad, shard_count, shard_index, seed
+                version;
+                logdensity_only,
+                stan_only,
+                turing_only,
+                all_ad,
+                shard_count,
+                shard_index,
+                seed,
             )
             if !isempty(checkpoint_path)
                 open(checkpoint_path, "w") do io
@@ -921,11 +957,11 @@ end
 
 # ── Summary and table ──
 
-function gradient_comparison(results, field)
+function time_comparison(results, backend_field, stan_field)
     ratios = Float64[]
     for result in results
-        backend_time = getfield(result, field)
-        stan_time = result.stan_grad
+        backend_time = getfield(result, backend_field)
+        stan_time = getfield(result, stan_field)
         if isfinite(backend_time) &&
             backend_time > 0 &&
             isfinite(stan_time) &&
@@ -944,28 +980,33 @@ end
 
 fmt_summary_ratio(ratio) = isfinite(ratio) ? @sprintf("%.2f×", ratio) : "n/a"
 
-function write_summary(io, results; eval_only=false, all_ad=true)
+function write_summary(
+    io, results; logdensity_only=false, stan_only=false, turing_only=false, all_ad=true
+)
     total = length(results)
     posterior = total == 1 ? "posterior" : "posteriors"
     println(io, "## Summary\n")
     println(io, "- **$total PosteriorDB $posterior** benchmarked.")
-    eval_only && return println(io)
+    (stan_only || turing_only) && return println(io)
 
     println(io)
     println(
         io,
-        "Gradient ratios are backend time divided by Stan time; lower is better. " *
-        "Aggregates exclude failed gradients.\n",
+        "Ratios are backend time divided by the corresponding Stan time; lower is " *
+        "better. Aggregates exclude failed measurements.\n",
     )
     println(
         io,
-        "| Backend | Successful gradients | Geometric mean vs Stan | Median vs Stan | Faster than Stan |",
+        "| Workload | Successful measurements | Geometric mean vs Stan | Median vs Stan | Faster than Stan |",
     )
     println(io, "|:--|--:|--:|--:|--:|")
-    backends = [("Mooncake", :dynamicppl_mooncake_grad)]
-    all_ad && push!(backends, ("Enzyme", :dynamicppl_enzyme_grad))
-    for (name, field) in backends
-        comparison = gradient_comparison(results, field)
+    workloads = [("Turing log density", :dynamicppl_primal, :stan_primal)]
+    if !logdensity_only
+        push!(workloads, ("Mooncake gradient", :dynamicppl_mooncake_grad, :stan_grad))
+        all_ad && push!(workloads, ("Enzyme gradient", :dynamicppl_enzyme_grad, :stan_grad))
+    end
+    for (name, backend_field, stan_field) in workloads
+        comparison = time_comparison(results, backend_field, stan_field)
         println(
             io,
             "| $name | $(comparison.successful) / $total | " *
@@ -977,26 +1018,48 @@ function write_summary(io, results; eval_only=false, all_ad=true)
     return println(io)
 end
 
-function write_table(io, results; eval_only=false)
+function write_table(io, results; logdensity_only=false, stan_only=false, turing_only=false)
     gap = "  "
     labels = unique_model_labels([result.name for result in results])
-    headers = if eval_only
+    headers = if stan_only
+        logdensity_only ? ["Model", "dim", "Stan"] : ["Model", "dim", "Stan", "Stan"]
+    elseif turing_only
+        if logdensity_only
+            ["Model", "dim", "Turing"]
+        else
+            ["Model", "dim", "Turing", "FwdDiff", "EzyRvs", "McRvs"]
+        end
+    elseif logdensity_only
         ["Model", "dim", "Turing", "Stan"]
     else
-        [
-            "Model",
-            "dim",
-            "Turing",
-            "Stan",
-            "FwdDiff",
-            "EzyDiff",
-            "McRvs",
-            "Stan",
-            "McRvs / Stan",
-        ]
+        ["Model", "dim", "Turing", "Stan", "FwdDiff", "EzyRvs", "McRvs", "Stan", "McRvs / Stan"]
     end
     rows = [
-        if eval_only
+        if stan_only
+            if logdensity_only
+                [label, string(result.dim), fmt_time(result.stan_primal)]
+            else
+                [
+                    label,
+                    string(result.dim),
+                    fmt_time(result.stan_primal),
+                    fmt_time(result.stan_grad),
+                ]
+            end
+        elseif turing_only
+            if logdensity_only
+                [label, string(result.dim), fmt_time(result.dynamicppl_primal)]
+            else
+                [
+                    label,
+                    string(result.dim),
+                    fmt_time(result.dynamicppl_primal),
+                    fmt_time(result.dynamicppl_fd_grad),
+                    fmt_time(result.dynamicppl_enzyme_grad),
+                    fmt_time(result.dynamicppl_mooncake_grad),
+                ]
+            end
+        elseif logdensity_only
             [
                 label,
                 string(result.dim),
@@ -1038,20 +1101,32 @@ function write_table(io, results; eval_only=false)
         lpad(rpad(value, width - left), width)
     end
 
+    eval_columns = stan_only || turing_only ? 1 : 2
+    gradient_columns = logdensity_only ? 0 : length(headers) - 2 - eval_columns
     pre_w = widths[1] + length(gap) + widths[2]
-    eval_w = widths[3] + length(gap) + widths[4]
-    grad_w = eval_only ? 0 : sum(widths[5:end]) + length(gap) * (length(widths) - 5)
+    eval_w = sum(widths[3:(2 + eval_columns)]) + length(gap) * (eval_columns - 1)
+    gradient_w = if iszero(gradient_columns)
+        0
+    else
+        first_gradient = 3 + eval_columns
+        sum(widths[first_gradient:end]) + length(gap) * (gradient_columns - 1)
+    end
 
     println(io)
     println(io, "="^total_w)
     println(
         io,
-        " "^(pre_w + length(gap)) *
-        center("eval", eval_w) *
-        (eval_only ? "" : gap * rstrip(center("gradient", grad_w))),
+        rstrip(
+            " "^(pre_w + length(gap)) *
+            center("eval", eval_w) *
+            (iszero(gradient_columns) ? "" : gap * center("gradient", gradient_w)),
+        ),
     )
     println(
-        io, " "^(pre_w + length(gap)) * "-"^eval_w * (eval_only ? "" : gap * "-"^grad_w)
+        io,
+        " "^(pre_w + length(gap)) *
+        "-"^eval_w *
+        (iszero(gradient_columns) ? "" : gap * "-"^gradient_w),
     )
     println(io, render(headers))
     println(io, "-"^total_w)
@@ -1067,25 +1142,61 @@ function write_markdown(path, results, metadata::RunMetadata)
         println(
             io, "Generated by `julia --project=benchmarks benchmarks/posteriordb.jl`.\n"
         )
-        write_summary(io, results; eval_only=metadata.eval_only, all_ad=metadata.all_ad)
+        write_summary(
+            io,
+            results;
+            logdensity_only=metadata.logdensity_only,
+            stan_only=metadata.stan_only,
+            turing_only=metadata.turing_only,
+            all_ad=metadata.all_ad,
+        )
         println(io, "## Environment\n")
         write_environment(io, metadata)
         println(io)
-        println(
-            io,
+        caption = if metadata.stan_only
+            if metadata.logdensity_only
+                "*Table 1. Median Stan log-density evaluation times.*\n"
+            else
+                "*Table 1. Median Stan log-density and gradient evaluation times.*\n"
+            end
+        elseif metadata.turing_only
+            if metadata.logdensity_only
+                "*Table 1. Median Turing log-density evaluation times.*\n"
+            else
+                "*Table 1. Median Turing log-density and gradient evaluation times. " *
+                "FwdDiff: ForwardDiff; EzyRvs: Enzyme; McRvs: Mooncake reverse mode.*\n"
+            end
+        elseif metadata.logdensity_only
+            "*Table 1. Median Turing and Stan log-density evaluation times at a " *
+            "matched parameter realization.*\n"
+        else
             "*Table 1. Median log-density and gradient evaluation times at a matched " *
-            "parameter realization. FwdDiff: ForwardDiff; EzyDiff: Enzyme; McRvs: " *
+            "parameter realization. FwdDiff: ForwardDiff; EzyRvs: Enzyme; McRvs: " *
             "Mooncake reverse mode; McRvs / Stan: McRvs time divided by Stan gradient " *
-            "time (lower is better).*\n",
-        )
+            "time (lower is better).*\n"
+        end
+        println(io, caption)
         println(io, "```text")
-        write_table(io, results; eval_only=metadata.eval_only)
+        write_table(
+            io,
+            results;
+            logdensity_only=metadata.logdensity_only,
+            stan_only=metadata.stan_only,
+            turing_only=metadata.turing_only,
+        )
         return println(io, "```")
     end
 end
 
 function parse_options(args)
-    known = Set(("--eval-only", "--mooncake-only", "--merge", "--verify"))
+    known = Set((
+        "--logdensity-only", # Skip gradients.
+        "--stan-only",       # Time only Stan.
+        "--turing-only",     # Time only Turing.
+        "--mooncake-only",   # Skip ForwardDiff and Enzyme.
+        "--merge",           # Merge shard checkpoints.
+        "--verify",          # Compare log density and gradients with Stan.
+    ))
     options = Set(argument for argument in args if startswith(argument, "--"))
     unknown = setdiff(options, known)
     isempty(unknown) || error("unknown option(s): $(join(sort!(collect(unknown)), ", "))")
@@ -1093,18 +1204,25 @@ function parse_options(args)
     merge = "--merge" in options
     verify = "--verify" in options
     merge && verify && error("--merge and --verify are mutually exclusive")
-    (merge || verify) &&
-        "--eval-only" in options &&
-        error("--eval-only is only valid when benchmarking")
-    (merge || verify) &&
+    for option in ("--logdensity-only", "--stan-only", "--turing-only", "--mooncake-only")
+        (merge || verify) &&
+            option in options &&
+            error("$option is only valid when benchmarking")
+    end
+    "--stan-only" in options &&
         "--mooncake-only" in options &&
-        error("--mooncake-only is only valid when benchmarking")
+        error("--stan-only and --mooncake-only are mutually exclusive")
+    "--stan-only" in options &&
+        "--turing-only" in options &&
+        error("--stan-only and --turing-only are mutually exclusive")
     return (;
         positional,
         merge,
         verify,
-        eval_only="--eval-only" in options,
-        all_ad=!("--mooncake-only" in options),
+        logdensity_only="--logdensity-only" in options,
+        stan_only="--stan-only" in options,
+        turing_only="--turing-only" in options,
+        all_ad=!("--mooncake-only" in options || "--stan-only" in options),
     )
 end
 
@@ -1120,7 +1238,13 @@ function main(args=ARGS)
     if options.merge
         isempty(options.positional) && error("pass checkpoint files after --merge")
         results, metadata = merge_checkpoints(options.positional)
-        write_table(stdout, results; eval_only=metadata.eval_only)
+        write_table(
+            stdout,
+            results;
+            logdensity_only=metadata.logdensity_only,
+            stan_only=metadata.stan_only,
+            turing_only=metadata.turing_only,
+        )
         path = get(ENV, "PDB_BENCH_MARKDOWN", joinpath(@__DIR__, "posteriordb.md"))
         write_markdown(path, results, metadata)
         return 0
@@ -1148,14 +1272,22 @@ function main(args=ARGS)
     seed = parse(Int, get(ENV, "PDB_BENCH_SEED", "468"))
     results, metadata = benchmark_models(
         models;
-        eval_only=options.eval_only,
-        all_ad=options.all_ad && !options.eval_only,
+        logdensity_only=options.logdensity_only,
+        stan_only=options.stan_only,
+        turing_only=options.turing_only,
+        all_ad=options.all_ad && !options.logdensity_only,
         seed,
         shard_count,
         shard_index,
         checkpoint_path,
     )
-    write_table(stdout, results; eval_only=metadata.eval_only)
+    write_table(
+        stdout,
+        results;
+        logdensity_only=metadata.logdensity_only,
+        stan_only=metadata.stan_only,
+        turing_only=metadata.turing_only,
+    )
 
     full_catalog = isempty(options.positional) && shard_count == 1
     markdown_path = get(

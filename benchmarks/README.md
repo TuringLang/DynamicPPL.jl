@@ -47,9 +47,13 @@ julia --project=benchmarks benchmarks/posteriordb.jl
 
 BridgeStan uses `BRIDGESTAN_PATH` when it is set and otherwise uses its default
 installation. The full command measures ForwardDiff, Enzyme, and Mooncake and
-regenerates `benchmarks/posteriordb.md`; use `--eval-only` to omit gradients or
-`--mooncake-only` to omit ForwardDiff and Enzyme. To choose another Markdown
-path and also save the raw timings as tab-separated data:
+regenerates `benchmarks/posteriordb.md`. Use `--logdensity-only` to omit
+gradients, `--stan-only` or `--turing-only` to time only one implementation,
+or `--mooncake-only` to omit ForwardDiff and Enzyme. `--turing-only` still uses
+BridgeStan to select the matched parameter realization and map coordinates.
+The `--logdensity-only` mode composes with either implementation-only mode. To
+choose another Markdown path and also save the raw timings as tab-separated
+data:
 
 ```sh
 PDB_BENCH_MARKDOWN=benchmarks/posteriordb-results.md \
