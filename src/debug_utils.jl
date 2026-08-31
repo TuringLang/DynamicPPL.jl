@@ -121,10 +121,9 @@ end
 Check `model` for potential issues. Returns `true` if the model check succeeded, `false`
 otherwise.
 
-The model is evaluated once, so if it contains any indeterminism, results may differ across
-runs. If ForwardDiff is loaded, an additional best-effort evaluation checks for latent
-variables derived from model inputs. The `rng` argument can be used to control
-reproducibility if needed.
+The main check evaluates `model` once, so indeterminism may produce different results across
+runs. If ForwardDiff is loaded, a second best-effort evaluation checks for latent variables
+derived from model inputs. Use `rng` to control reproducibility if needed.
 
 # Issues that this function checks for
 
@@ -132,8 +131,7 @@ reproducibility if needed.
 
 - `NaN` on the left-hand side of observe statements
 
-- Values derived from model inputs which are overwritten by latent tilde statements, if
-  ForwardDiff is loaded
+- Input-derived values overwritten by latent tilde statements, if ForwardDiff is loaded
 
 - (if `fail_if_discrete` is set) Usage of discrete distributions
 
@@ -222,9 +220,6 @@ function check_model(
     init_strategy = InitFromPrior()
     _, oavi = DynamicPPL.init!!(rng, model, oavi, init_strategy, UnlinkAll())
 
-    # ForwardDiff is an optional dependency. If its extension is loaded, perform a second,
-    # best-effort evaluation that propagates derivatives from model inputs to values which
-    # are about to be overwritten by an assume statement.
     forwarddiff_ext = Base.get_extension(DynamicPPL, :DynamicPPLForwardDiffExt)
     if forwarddiff_ext !== nothing
         forwarddiff_ext.check_input_dependencies(rng, model, get_raw_values(oavi))

@@ -6,21 +6,22 @@ using ForwardDiff
 struct InputDependencyTag end
 
 struct InputDependencyAccumulator <: DynamicPPL.AbstractAccumulator
-    warned_vns::Set{DynamicPPL.VarName}
+    vns::Set{DynamicPPL.VarName}
 end
 InputDependencyAccumulator() = InputDependencyAccumulator(Set{DynamicPPL.VarName}())
 
-DynamicPPL.accumulator_name(::Type{InputDependencyAccumulator}) = :InputDependency
+function DynamicPPL.accumulator_name(::Type{InputDependencyAccumulator})
+    return DynamicPPL.INPUT_DEPENDENCY_ACCNAME
+end
 function Base.copy(acc::InputDependencyAccumulator)
-    return InputDependencyAccumulator(copy(acc.warned_vns))
+    return InputDependencyAccumulator(copy(acc.vns))
 end
 DynamicPPL.reset(::InputDependencyAccumulator) = InputDependencyAccumulator()
 DynamicPPL.split(::InputDependencyAccumulator) = InputDependencyAccumulator()
 function DynamicPPL.combine(
     acc1::InputDependencyAccumulator, acc2::InputDependencyAccumulator
 )
-    union!(acc1.warned_vns, acc2.warned_vns)
-    return acc1
+    return InputDependencyAccumulator(union(acc1.vns, acc2.vns))
 end
 function DynamicPPL.accumulate_assume!!(
     acc::InputDependencyAccumulator, val, tval, logjac, vn, dist, template
@@ -58,20 +59,15 @@ _has_input_dependency(xs::Union{Tuple,NamedTuple}) = any(_has_input_dependency, 
 _has_input_dependency(::Any) = false
 
 function _check_input_dependency!!(vi, value, vn)
-    accname = Val(:InputDependency)
-    DynamicPPL.hasacc(vi, accname) || return vi
+    accname = Val(DynamicPPL.INPUT_DEPENDENCY_ACCNAME)
     _has_input_dependency(value) || return vi
 
-    acc = DynamicPPL.getacc(vi, accname)
-    if vn ∉ acc.warned_vns
-        @warn (
-            "Variable $(vn) has a value derived from a model input before its tilde " *
-            "statement, but it is classified as latent and that value will be " *
-            "overwritten. It might be intended as an observation."
-        )
-        push!(acc.warned_vns, vn)
+    return DynamicPPL.map_accumulator!!(vi, accname) do acc
+        vn in acc.vns && return acc
+        vns = copy(acc.vns)
+        push!(vns, vn)
+        return InputDependencyAccumulator(vns)
     end
-    return vi
 end
 
 function DynamicPPL.check_input_dependency!!(
@@ -92,11 +88,21 @@ function check_input_dependencies(rng, model, params)
     strategy = DynamicPPL.InitFromParams(params, nothing)
 
     try
-        DynamicPPL.init!!(rng, traced_model, vi, strategy, DynamicPPL.UnlinkAll())
+        _, vi = DynamicPPL.init!!(rng, traced_model, vi, strategy, DynamicPPL.UnlinkAll())
     catch err
         err isa InterruptException && rethrow()
         # This is a best-effort debug check. Valid models are not required to accept
         # ForwardDiff dual numbers, so an unsupported trace must not make `check_model` fail.
+        return nothing
+    end
+
+    acc = DynamicPPL.getacc(vi, Val(DynamicPPL.INPUT_DEPENDENCY_ACCNAME))
+    for vn in sort!(collect(acc.vns); by=string)
+        @warn (
+            "Variable $(vn) has a value derived from a model input before its tilde " *
+            "statement, but it is classified as latent and that value will be " *
+            "overwritten. It might be intended as an observation."
+        )
     end
     return nothing
 end
