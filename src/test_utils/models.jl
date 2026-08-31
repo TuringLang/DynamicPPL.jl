@@ -512,18 +512,20 @@ function varnames(model::Model{typeof(demo_dot_assume_observe_matrix_index)})
 end
 
 @model function demo_assume_matrix_index_observe_matrix_index(
-    x=transpose([1.5 2.0;]), ::Type{TV}=Matrix{Float64}
+    x=[1.0 2.0; 1.5 2.5], ::Type{TV}=Matrix{Float64}
 ) where {TV}
-    s = TV(undef, size(x))
+    s = TV(undef, size(x, 1), 1)
     for j in axes(s, 2), i in axes(s, 1)
         s[i, j] ~ InverseGamma(2, 3)
     end
-    m = TV(undef, size(x))
+    # Turing's linked MLE can underflow `s` at NLopt trial points. Without
+    # argument checks, `logpdf` returns NaN and NLopt rejects the trial.
+    m = TV(undef, size(x, 1), 1)
     for j in axes(m, 2), i in axes(m, 1)
-        m[i, j] ~ Normal(0, sqrt(s[i, j]))
+        m[i, j] ~ Normal(0, sqrt(s[i, j]); check_args=false)
     end
     for j in axes(x, 2), i in axes(x, 1)
-        x[i, j] ~ Normal(m[i, j], sqrt(s[i, j]))
+        x[i, j] ~ Normal(m[i, 1], sqrt(s[i, 1]); check_args=false)
     end
 
     return (; s=s, m=m, x=x)
@@ -545,24 +547,26 @@ function logprior_true_with_logabsdet_jacobian(
 end
 function varnames(model::Model{typeof(demo_assume_matrix_index_observe_matrix_index)})
     x = model.args.x
-    s_vns = vec([@varname(s[i, j]) for i in axes(x, 1), j in axes(x, 2)])
-    m_vns = vec([@varname(m[i, j]) for i in axes(x, 1), j in axes(x, 2)])
+    s_vns = [@varname(s[i, 1]) for i in axes(x, 1)]
+    m_vns = [@varname(m[i, 1]) for i in axes(x, 1)]
     return [s_vns; m_vns]
 end
 
 @model function demo_assume_nested_index_observe_nested_index(
-    x=[[1.5], [2.0]], ::Type{TV}=Vector{Float64}
+    x=[[1.0, 2.0], [1.5, 2.5]], ::Type{TV}=Vector{Float64}
 ) where {TV}
-    s = [TV(undef, length(xi)) for xi in x]
+    s = [TV(undef, 1) for _ in x]
     for i in eachindex(s), j in eachindex(s[i])
         s[i][j] ~ InverseGamma(2, 3)
     end
-    m = [TV(undef, length(xi)) for xi in x]
+    # Turing's linked MLE can underflow `s` at NLopt trial points. Without
+    # argument checks, `logpdf` returns NaN and NLopt rejects the trial.
+    m = [TV(undef, 1) for _ in x]
     for i in eachindex(m), j in eachindex(m[i])
-        m[i][j] ~ Normal(0, sqrt(s[i][j]))
+        m[i][j] ~ Normal(0, sqrt(s[i][j]); check_args=false)
     end
     for i in eachindex(x), j in eachindex(x[i])
-        x[i][j] ~ Normal(m[i][j], sqrt(s[i][j]))
+        x[i][j] ~ Normal(m[i][1], sqrt(s[i][1]); check_args=false)
     end
 
     return (; s=s, m=m, x=x)
@@ -579,7 +583,7 @@ function loglikelihood_true(
     model::Model{typeof(demo_assume_nested_index_observe_nested_index)}, s, m
 )
     return sum(
-        logpdf(Normal(m[i][j], sqrt(s[i][j])), model.args.x[i][j]) for
+        logpdf(Normal(m[i][1], sqrt(s[i][1])), model.args.x[i][j]) for
         i in eachindex(model.args.x) for j in eachindex(model.args.x[i])
     )
 end
@@ -593,8 +597,8 @@ function logprior_true_with_logabsdet_jacobian(
 end
 function varnames(model::Model{typeof(demo_assume_nested_index_observe_nested_index)})
     x = model.args.x
-    s_vns = [@varname(s[i][j]) for i in eachindex(x) for j in eachindex(x[i])]
-    m_vns = [@varname(m[i][j]) for i in eachindex(x) for j in eachindex(x[i])]
+    s_vns = [@varname(s[i][1]) for i in eachindex(x)]
+    m_vns = [@varname(m[i][1]) for i in eachindex(x)]
     return [s_vns; m_vns]
 end
 
@@ -776,14 +780,51 @@ function rand_prior_true(rng::Random.AbstractRNG, model::MultivariateAssumeDemoM
     return vals
 end
 
+function posterior_mean(model::Model{typeof(demo_assume_matrix_index_observe_matrix_index)})
+    vals = rand_prior_true(model)
+
+    vals.s[1, 1] = 2
+    vals.m[1, 1] = 1
+
+    vals.s[2, 1] = 55 / 24
+    vals.m[2, 1] = 4 / 3
+
+    return vals
+end
+function likelihood_optima(
+    model::Model{typeof(demo_assume_matrix_index_observe_matrix_index)}
+)
+    vals = rand_prior_true(model)
+
+    vals.s[1, 1] = 1 / 4
+    vals.s[2, 1] = 1 / 4
+
+    vals.m[1, 1] = 3 / 2
+    vals.m[2, 1] = 2
+
+    return vals
+end
+function posterior_optima(
+    model::Model{typeof(demo_assume_matrix_index_observe_matrix_index)}
+)
+    vals = rand_prior_true(model)
+
+    vals.s[1, 1] = 8 / 9
+    vals.s[2, 1] = 55 / 54
+
+    vals.m[1, 1] = 1
+    vals.m[2, 1] = 4 / 3
+
+    return vals
+end
 function posterior_mean(model::Model{typeof(demo_assume_nested_index_observe_nested_index)})
     vals = rand_prior_true(model)
 
-    vals.s[1][1] = 19 / 8
-    vals.m[1][1] = 3 / 4
+    vals.s[1][1] = 2
+    vals.m[1][1] = 1
 
-    vals.s[2][1] = 8 / 3
-    vals.m[2][1] = 1
+    vals.s[2][1] = 55 / 24
+    vals.m[2][1] = 4 / 3
 
     return vals
 end
@@ -792,11 +833,11 @@ function likelihood_optima(
 )
     vals = rand_prior_true(model)
 
-    vals.s[1][1] = floatmin()
-    vals.s[2][1] = floatmin()
+    vals.s[1][1] = 1 / 4
+    vals.s[2][1] = 1 / 4
 
-    vals.m[1][1] = 1.5
-    vals.m[2][1] = 2.0
+    vals.m[1][1] = 3 / 2
+    vals.m[2][1] = 2
 
     return vals
 end
@@ -805,10 +846,10 @@ function posterior_optima(
 )
     vals = rand_prior_true(model)
 
-    vals.s[1][1] = 0.890625
-    vals.s[2][1] = 1
-    vals.m[1][1] = 3 / 4
-    vals.m[2][1] = 1
+    vals.s[1][1] = 8 / 9
+    vals.s[2][1] = 55 / 54
+    vals.m[1][1] = 1
+    vals.m[2][1] = 4 / 3
 
     return vals
 end

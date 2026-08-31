@@ -225,6 +225,18 @@ arraydist
 NamedDist
 ```
 
+## Distributions
+
+These distributions are defined here, but not in Distributions.jl.
+
+```@docs
+Flat
+FlatPos
+BinomialLogit
+OrderedLogistic
+LogPoisson
+```
+
 ## AD testing and benchmarking utilities
 
 To test and/or benchmark the performance of an AD backend on a model, DynamicPPL provides the following utilities:
