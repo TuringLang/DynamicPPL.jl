@@ -5,6 +5,7 @@ using ADTypes: AutoForwardDiff
 using ForwardDiff: ForwardDiff
 using Distributions: MvNormal, Normal
 using LinearAlgebra: I
+using SparseArrays: nnz, sparse, sparsevec, spzeros
 using Test: @test, @test_logs, @testset
 
 mutable struct ReferenceValue{T}
@@ -33,15 +34,34 @@ end
     end
 end
 
-@testset "input dependency warning" begin
-    @model function derived_observation(y, sigma)
+@testset "input provenance warning" begin
+    @model function derived_observation(y; sigma=1.0)
         m ~ Normal(0, sigma)
         v = exp(y) + sigma
         return v ~ Normal(m, sigma)
     end
     @test_logs (:warn, r"v.*derived from a model input.*classified as latent") check_model(
-        derived_observation(1.0, 1.0)
+        derived_observation(1.0)
     )
+
+    @model function unsupported_after_finding(y)
+        v = exp(y)
+        v ~ Normal()
+        return Float64(y)
+    end
+    @test_logs (:warn, r"Variable v.*derived from a model input") check_model(
+        unsupported_after_finding(1.0)
+    )
+
+    @model function cancelling_dependencies(y)
+        v = y[1] - y[2]
+        return v ~ Normal()
+    end
+    for F in (Float32, Float64, BigFloat)
+        @test_logs (:warn, r"Variable v.*derived from a model input") check_model(
+            cancelling_dependencies(F[1, 2])
+        )
+    end
 
     @model function ordinary_latent(y)
         x ~ Normal(y)
@@ -71,13 +91,13 @@ end
         derived_property(1.0)
     )
 
-    @model function derived_dotted(y)
-        x = exp.([y, y])
-        return x .~ Normal()
+    @model function derived_vector(y)
+        x = exp.(y)
+        return x ~ MvNormal(zeros(length(y)), I)
     end
-    @test_logs (:warn, r"Variable x\[1\].*derived from a model input") (
-        :warn, r"Variable x\[2\].*derived from a model input"
-    ) check_model(derived_dotted(1.0))
+    @test_logs (:warn, r"Variable x.*derived from a model input") check_model(
+        derived_vector([1.0, 2.0])
+    )
 
     @model function unassigned_index(::Type{F}=Float64) where {F<:AbstractFloat}
         x = Vector{ReferenceValue{F}}(undef, 1)
@@ -97,14 +117,35 @@ end
     )
 
     ext = Base.get_extension(DynamicPPL, :DynamicPPLForwardDiffExt)
-    acc = ext.InputDependencyAccumulator()
+    for x in (sparse([1], [1], Float32[2], 3, 3), sparsevec([2], BigFloat[3], 4))
+        dual_x = ext._dualize_input(x)
+        @test eltype(dual_x) === typeof(ext._dualize_input(one(eltype(x))))
+        @test ndims(dual_x) == ndims(x)
+        @test nnz(dual_x) == nnz(x)
+        @test ext._has_input_provenance(dual_x)
+    end
+    dual_zeros = ext._dualize_input(spzeros(3, 3))
+    @test iszero(nnz(dual_zeros))
+    @test ext._has_input_provenance(dual_zeros)
+
+    @model function derived_structural_zero(y)
+        v = exp(y[1])
+        return v ~ Normal()
+    end
+    @test_logs (:warn, r"Variable v.*derived from a model input") check_model(
+        derived_structural_zero(spzeros(1))
+    )
+
+    acc = ext.InputProvenanceAccumulator()
     vi = DynamicPPL.ThreadSafeVarInfo(OnlyAccsVarInfo((acc,)))
-    dual = ForwardDiff.Dual{ext.InputDependencyTag}(1.0, 1.0)
-    vi = DynamicPPL.check_input_dependency!!(vi, dual, @varname(x))
-    @test isempty(vi.varinfo.accs[:InputDependency].vns)
-    @test vi.accs_by_thread[Threads.threadid()][:InputDependency].vns == Set((@varname(x),))
-    @test DynamicPPL.getacc(vi, Val(:InputDependency)).vns == Set((@varname(x),))
-    @test isempty(vi.varinfo.accs[:InputDependency].vns)
+    dual = ForwardDiff.Dual{ext.InputProvenanceTag}(1.0, 1.0)
+    @test_logs (:warn, r"Variable x.*derived from a model input") begin
+        vi = DynamicPPL.check_input_provenance!!(vi, dual, @varname(x))
+    end
+    @test isempty(vi.varinfo.accs[:InputProvenance].vns)
+    @test vi.accs_by_thread[Threads.threadid()][:InputProvenance].vns == Set((@varname(x),))
+    @test DynamicPPL.getacc(vi, Val(:InputProvenance)).vns == Set((@varname(x),))
+    @test isempty(vi.varinfo.accs[:InputProvenance].vns)
 end
 
 end

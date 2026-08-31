@@ -220,15 +220,16 @@ function check_model(
     init_strategy = InitFromPrior()
     _, oavi = DynamicPPL.init!!(rng, model, oavi, init_strategy, UnlinkAll())
 
+    params = get_raw_values(oavi)
     forwarddiff_ext = Base.get_extension(DynamicPPL, :DynamicPPLForwardDiffExt)
-    if forwarddiff_ext !== nothing
-        forwarddiff_ext.check_input_dependencies(rng, model, get_raw_values(oavi))
+    if !isempty(params) && forwarddiff_ext !== nothing
+        forwarddiff_ext.check_input_provenance(rng, model, params)
     end
 
     # If there are no raw values, then there are no parameters. We just warn in this case.
     # (But don't `return` early, because there might be other things that are wrong with the
     # model.)
-    if isempty(get_raw_values(oavi))
+    if isempty(params)
         @warn "The model does not contain any parameters."
     end
 

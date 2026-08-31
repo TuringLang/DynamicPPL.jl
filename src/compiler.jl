@@ -529,7 +529,7 @@ function generate_tilde(left, right)
                 vn,
             ))
         elseif $isassumption
-            $(generate_input_dependency_check(left, vn))
+            $(generate_input_provenance_check(left, vn))
             $(generate_tilde_assume(left, dist, vn))
         else
             # If `vn` is not in `argnames`, then it's definitely been conditioned on (if
@@ -562,18 +562,18 @@ function generate_tilde(left, right)
     end
 end
 
-const INPUT_DEPENDENCY_ACCNAME = :InputDependency
+const INPUT_PROVENANCE_ACCNAME = :InputProvenance
 
-# The ForwardDiff extension implements this hook for its input-dependency check.
-check_input_dependency!!(vi::AbstractVarInfo, value, vn::VarName) = vi
+# The ForwardDiff extension implements this hook for its input-provenance check.
+check_input_provenance!!(vi::AbstractVarInfo, value, vn::VarName) = vi
 
-generate_input_dependency_check(::Any, ::Any) = nothing
-function generate_input_dependency_check(left::Union{Expr,Symbol}, vn)
+generate_input_provenance_check(::Any, ::Any) = nothing
+function generate_input_provenance_check(left::Union{Expr,Symbol}, vn)
     @gensym value err
     top_symbol = get_top_level_symbol(left)
     # The accumulator guard prevents an extra LHS read during ordinary evaluation.
     return quote
-        if $(DynamicPPL.hasacc)(__varinfo__, $(Val(INPUT_DEPENDENCY_ACCNAME))) &&
+        if $(DynamicPPL.hasacc)(__varinfo__, $(Val(INPUT_PROVENANCE_ACCNAME))) &&
             $(Expr(:isdefined, top_symbol))
             # An indexed location can be assignable without having a readable value.
             $value = try
@@ -582,7 +582,7 @@ function generate_input_dependency_check(left::Union{Expr,Symbol}, vn)
                 $err isa $(InterruptException) && rethrow()
                 nothing
             end
-            __varinfo__ = $(DynamicPPL.check_input_dependency!!)(
+            __varinfo__ = $(DynamicPPL.check_input_provenance!!)(
                 __varinfo__, $value, $(DynamicPPL.prefix)(__model__.context, $vn)
             )
         end
