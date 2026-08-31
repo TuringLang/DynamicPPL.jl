@@ -261,6 +261,10 @@ end
                 condition(demo_condition_submodel_outer(1.0), Dict(@varname(a.x) => 2.0));
                 error_on_failure=true,
             )
+            @test check_model(
+                condition(demo_condition_submodel_outer(1.0); a=(x=2.0,));
+                error_on_failure=true,
+            )
             test_model_fails_check(condition(demo_condition_submodel_outer(1.0); a=2.0))
 
             @model function demo_condition_submodel_indexed(a)

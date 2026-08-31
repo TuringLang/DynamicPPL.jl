@@ -173,14 +173,16 @@ See also: [`decondition`](@ref), [`conditioned`](@ref)
 
 # Limitations
 
-This does not override variables provided as non-missing model arguments. For example,
-`@model function demo(x) ... end` means that `condition` will not affect `x` unless its
-argument value is `missing`.
+At each tilde statement, a non-missing value reached through a model argument takes
+precedence over a conditioned value. If the value at that statement is `missing`, a matching
+condition supplies the observation. For example, `condition` can supply `x[1]` when the
+model argument is `x = [missing]`, but it does not override `x[1]` when `x = [1.0]`.
 
-Therefore if one wants to make use of `condition` and [`decondition`](@ref)
-one should not specify random variables as non-missing arguments.
+To switch a random variable between conditioned and unconditioned states with `condition`
+and [`decondition`](@ref), ensure its value is `missing` at each corresponding tilde
+statement.
 
-This is done for the sake of backwards compatibility.
+Non-missing argument values retain precedence for backwards compatibility.
 
 # Examples
 ## Simple univariate model

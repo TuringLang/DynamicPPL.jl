@@ -110,6 +110,13 @@ function DynamicPPL.accumulate_observe!!(
     return DebugAccumulator(failed)
 end
 
+_is_condition_subtree(::Any) = false
+function _is_condition_subtree(
+    ::Union{NamedTuple,DynamicPPL.VarNamedTuple,DynamicPPL.VarNamedTuples.PartialArray}
+)
+    return true
+end
+
 _condition_branch_may_exist(value, optic) = true
 _condition_branch_may_exist(value, ::DynamicPPL.AbstractPPL.Iden) = value !== missing
 function _condition_branch_may_exist(
@@ -142,9 +149,7 @@ function _condition_conflicts(conditioned_values, vn, exact_only)
         else
             conditioned_values[vn]
         end
-        is_subtree =
-            conditioned_value isa DynamicPPL.VarNamedTuple ||
-            conditioned_value isa DynamicPPL.VarNamedTuples.PartialArray
+        is_subtree = _is_condition_subtree(conditioned_value)
         if exact_only || !is_subtree
             return conditioned_value !== missing && !(exact_only && is_subtree)
         end
