@@ -120,6 +120,12 @@ end
 _condition_branch_may_exist(value, optic) = true
 _condition_branch_may_exist(value, ::DynamicPPL.AbstractPPL.Iden) = value !== missing
 function _condition_branch_may_exist(
+    value::NamedTuple, optic::DynamicPPL.AbstractPPL.Property{S}
+) where {S}
+    haskey(value, S) || return false
+    return _condition_branch_may_exist(getproperty(value, S), optic.child)
+end
+function _condition_branch_may_exist(
     value::DynamicPPL.VarNamedTuple, optic::DynamicPPL.AbstractPPL.Property{S}
 ) where {S}
     haskey(value.data, S) || return false
@@ -129,9 +135,9 @@ function _condition_branch_may_exist(
     value::DynamicPPL.VarNamedTuples.PartialArray, optic::DynamicPPL.AbstractPPL.Index
 )
     coptic = DynamicPPL.AbstractPPL.concretize_top_level(optic, value.data)
+    checkbounds(Bool, value.mask, coptic.ix...; coptic.kw...) || return false
     DynamicPPL.VarNamedTuples._is_multiindex(value, coptic.ix...; coptic.kw...) &&
         return true
-    checkbounds(Bool, value.mask, coptic.ix...; coptic.kw...) || return false
     Base.getindex(value.mask, coptic.ix...; coptic.kw...) || return false
     return _condition_branch_may_exist(
         Base.getindex(value.data, coptic.ix...; coptic.kw...), coptic.child
