@@ -25,7 +25,7 @@ the two groups separately.
 struct RawValueAccumulator{VNT<:VarNamedTuple,CVNT<:VarNamedTuple} <: AbstractAccumulator
     include_colon_eq::Bool
     values::VNT
-    # Stores `:=` addresses as `nothing`; their values remain in `values`.
+    # Tracks which entries in `values` came from `:=`; marker values are `nothing`.
     colon_eq_markers::CVNT
 end
 
