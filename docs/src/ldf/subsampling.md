@@ -2,7 +2,8 @@
 
 `subsample` constructs a `LogDensityFunction` for one fixed minibatch and scales its
 likelihood by `N / n`, where `N` is the dataset size and `n` is the minibatch size. This is
-useful when implementing stochastic objectives in inference packages such as AdvancedVI.
+useful when implementing stochastic objectives in inference packages such as AdvancedVI
+and AdvancedHMC.
 
 Write the observation with `independent_distribution` and supply its complete dataset by
 conditioning, rather than as a model argument:

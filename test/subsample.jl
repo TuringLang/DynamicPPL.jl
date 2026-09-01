@@ -165,6 +165,8 @@ end
         @test logpdf(scalar, data) == logpdf(product, data)
         @test loglikelihood(scalar, data) == loglikelihood(product, data)
         @test insupport(scalar, data) == insupport(product, data)
+        @test_throws DimensionMismatch insupport(scalar, zeros(2, 2))
+        @test_throws ArgumentError insupport(scalar, 0.0)
 
         empty_data = Float64[]
         empty_product = product_distribution(Fill(Normal(), 0))
@@ -325,6 +327,28 @@ end
         end
         argument_model = condition(argument_observation(data), @varname(x) => data)
         @test_throws ArgumentError independent_problem(argument_model, 2)
+        prefixed_argument_model = prefix(
+            condition(argument_observation(data), @varname(x) => data), :a
+        )
+        @test_throws ArgumentError independent_problem(prefixed_argument_model, 2)
+        externally_conditioned_argument_model = condition(
+            prefix(argument_observation(data), :a), @varname(a.x) => data
+        )
+        @test_throws ArgumentError independent_problem(
+            externally_conditioned_argument_model, 2
+        )
+
+        @model function subindexed_observation()
+            μ ~ Normal()
+            x = zeros(typeof(μ), 1, 2)
+            return x[1, :] ~ independent_distribution(Normal(μ))
+        end
+        parent_model = condition(
+            subindexed_observation(), @varname(x) => reshape(data, 1, :)
+        )
+        parent_batch = subsample(StableRNG(1), parent_model, [2], 2)
+        @test LogDensityProblems.logdensity(parent_batch, [0.0]) ≈
+            logpdf(Normal(), 0.0) + 2 * logpdf(Normal(), data[2])
 
         model = condition(normal_location(), @varname(x) => data, @varname(z) => 1.0)
         @test_throws ArgumentError independent_problem(model, 2)

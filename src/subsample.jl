@@ -232,9 +232,23 @@ function Distributions.loglikelihood(
     return logpdf(dist, value)
 end
 function Distributions.insupport(
-    dist::AbstractIndependentDistribution{M}, value::AbstractArray{<:Real,M}
-) where {M}
+    dist::AbstractIndependentDistribution{N}, value::AbstractArray{<:Real,M}
+) where {N,M}
     return insupport(_independent_product(dist, value), value)
+end
+# This unreachable dimension resolves an ambiguity with Distributions' univariate fallback.
+function Distributions.insupport(
+    dist::AbstractIndependentDistribution{0}, value::AbstractArray{<:Real,0}
+)
+    return insupport(_independent_product(dist, value), value)
+end
+function Distributions.insupport(
+    dist::AbstractIndependentDistribution{1}, value::AbstractMatrix
+)
+    return insupport(_independent_product(dist, value), value)
+end
+function Distributions.insupport(dist::AbstractIndependentDistribution{1}, value::Real)
+    return _throw_invalid_independent_value(dist, value)
 end
 
 struct IndependentLogPriorAccumulator{T<:Real,V<:VarName,Evaluate} <: LogProbAccumulator{T}
@@ -390,7 +404,7 @@ function accumulate_observe!!(
             "the model contains more than one observed statement; `$(acc.observation)` must be the only observation",
         ),
     )
-    isequal(vn, acc.observation) || throw(
+    subsumes(acc.observation, vn) || throw(
         ArgumentError(
             "the model observed `$vn`, but subsampling requires `$(acc.observation)` to be the only observation",
         ),
@@ -619,6 +633,20 @@ function _strict_independent_ldf(
     )
 end
 
+_unprefix_observation(::AbstractContext, observation::VarName) = observation
+function _unprefix_observation(context::PrefixContext, observation::VarName)
+    unprefixed = try
+        AbstractPPL.unprefix(observation, context.vn_prefix)
+    catch e
+        e isa ArgumentError || rethrow()
+        observation
+    end
+    return _unprefix_observation(childcontext(context), unprefixed)
+end
+function _unprefix_observation(context::AbstractParentContext, observation::VarName)
+    return _unprefix_observation(childcontext(context), observation)
+end
+
 function _conditioned_independent_observation(model::Model)
     values = conditioned(model)
     length(values) == 1 || throw(
@@ -627,7 +655,8 @@ function _conditioned_independent_observation(model::Model)
         ),
     )
     observation = only(keys(values))
-    inargnames(observation, model) && throw(
+    unprefixed_observation = _unprefix_observation(model.context, observation)
+    inargnames(unprefixed_observation, model) && throw(
         ArgumentError(
             "the independent observation `$observation` must be supplied through `condition`, not as a model argument",
         ),
@@ -690,11 +719,18 @@ struct SubsamplingState{P,V<:VarName,D}
     full_data::D
 end
 
-struct SubsamplingShape{T,N,A<:AbstractArray{T,N}} <: AbstractArray{T,N}
+abstract type AbstractSubsamplingData{T,N} <: AbstractArray{T,N} end
+
+struct SubsamplingShape{T,N,A<:AbstractArray{T,N},R<:AbstractArray{T}} <:
+       AbstractSubsamplingData{T,N}
     data::A
+    root::R
+end
+function SubsamplingShape(data::A) where {T,N,A<:AbstractArray{T,N}}
+    return SubsamplingShape{T,N,A,A}(data, data)
 end
 
-Base.IndexStyle(::Type{<:SubsamplingShape{T,N,A}}) where {T,N,A} = IndexStyle(A)
+Base.IndexStyle(::Type{<:SubsamplingShape{T,N,A,R}}) where {T,N,A,R} = IndexStyle(A)
 function _throw_full_data_access()
     throw(
         ArgumentError(
@@ -707,9 +743,45 @@ Base.size(::SubsamplingShape, ::Integer) = _throw_full_data_access()
 Base.axes(::SubsamplingShape) = _throw_full_data_access()
 Base.axes(::SubsamplingShape, ::Integer) = _throw_full_data_access()
 Base.length(::SubsamplingShape) = _throw_full_data_access()
-Base.getindex(::SubsamplingShape, indices...) = _throw_full_data_access()
+function VarNamedTuples._haskey_optic(
+    data::SubsamplingShape, optic::VarNamedTuples.IndexWithoutChild
+)
+    return checkbounds(Bool, data.data, optic.ix...; optic.kw...)
+end
+function Base.getindex(data::SubsamplingShape, indices...)
+    return SubsamplingShape(view(data.data, indices...), data.root)
+end
 _independent_size(data::SubsamplingShape) = size(data.data)
 _independent_size(data::SubsamplingShape, dimension) = size(data.data, dimension)
+
+struct SubsampledData{T,N,A<:AbstractArray{T,N},R<:AbstractArray{T}} <:
+       AbstractSubsamplingData{T,N}
+    data::A
+    root::R
+end
+function SubsampledData(data::A) where {T,N,A<:AbstractArray{T,N}}
+    return SubsampledData{T,N,A,A}(data, data)
+end
+
+Base.IndexStyle(::Type{<:SubsampledData{T,N,A,R}}) where {T,N,A,R} = IndexStyle(A)
+Base.size(data::SubsampledData) = size(data.data)
+Base.axes(data::SubsampledData) = axes(data.data)
+function Base.getindex(data::SubsampledData, indices...)
+    value = getindex(data.data, indices...)
+    return value isa AbstractArray ? SubsampledData(value, data.root) : value
+end
+
+# Restore the conditioned parent when lowering writes a subsumed observation into a local.
+function BangBang.setindex!!(
+    data::AbstractArray, value::SubsamplingShape, indices...; kwargs...
+)
+    return SubsamplingShape(value.root)
+end
+function BangBang.setindex!!(
+    data::AbstractArray, value::SubsampledData, indices...; kwargs...
+)
+    return value.root
+end
 
 _subsampling_probe_rng() = Random.Xoshiro(0)
 
@@ -901,7 +973,7 @@ function _batch_ldf(problem::SubsamplingState, batch::AbstractVector{<:Integer})
     batch = collect(Int, batch)
     batch_model = condition(
         decondition(problem.ldf.model, problem.observation),
-        problem.observation => batch_data,
+        problem.observation => SubsampledData(batch_data),
     )
     ranges = get_all_ranges_and_transforms(problem.ldf)
     sample = get_sample_input_vector(problem.ldf)
