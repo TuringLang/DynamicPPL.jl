@@ -12,9 +12,7 @@ using Distributions, DynamicPPL, ForwardDiff, LogDensityProblems
 
 @model function location_model(scales)
     μ ~ Normal(0, 1)
-    x ~ independent_distribution(
-        i -> Normal(μ, scales[i]), length(scales)
-    )
+    return x ~ independent_distribution(i -> Normal(μ, scales[i]), length(scales))
 end
 
 scales = [0.5, 1.0, 1.5, 2.0]
@@ -26,9 +24,7 @@ ldf = subsample(model, select_first_and_third, length(data))
 
 θ = [0.25]
 logdensity = LogDensityProblems.logdensity(ldf, θ)
-gradient = ForwardDiff.gradient(
-    p -> LogDensityProblems.logdensity(ldf, p), θ
-)
+gradient = ForwardDiff.gradient(p -> LogDensityProblems.logdensity(ldf, p), θ)
 
 (; logdensity, gradient)
 ```
