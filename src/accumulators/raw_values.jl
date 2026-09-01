@@ -21,7 +21,8 @@ the two groups separately.
 struct RawValueAccumulator{VNT<:VarNamedTuple,CVNT<:VarNamedTuple} <: AbstractAccumulator
     include_colon_eq::Bool
     values::VNT
-    colon_eq_varnames::CVNT
+    # Marker keys identify `:=` values without duplicating their storage.
+    colon_eq_markers::CVNT
 end
 
 function RawValueAccumulator(include_colon_eq::Bool)
@@ -30,7 +31,7 @@ end
 
 accumulator_name(::RawValueAccumulator) = RAW_VALUE_ACCNAME
 function Base.copy(acc::RawValueAccumulator)
-    return update_values(acc, copy(acc.values), copy(acc.colon_eq_varnames))
+    return update_values(acc, copy(acc.values), copy(acc.colon_eq_markers))
 end
 accumulate_observe!!(acc::RawValueAccumulator, right, left, vn, template) = acc
 function accumulate_assume!!(
@@ -38,24 +39,24 @@ function accumulate_assume!!(
 )
     new_val = _safe_copy(val)
     new_values = DynamicPPL.templated_setindex!!(acc.values, new_val, vn, template)
-    return update_values(acc, new_values, acc.colon_eq_varnames)
+    return update_values(acc, new_values, acc.colon_eq_markers)
 end
 function update_values(
-    acc::RawValueAccumulator, values::VarNamedTuple, colon_eq_varnames::VarNamedTuple
+    acc::RawValueAccumulator, values::VarNamedTuple, colon_eq_markers::VarNamedTuple
 )
-    return RawValueAccumulator(acc.include_colon_eq, values, colon_eq_varnames)
+    return RawValueAccumulator(acc.include_colon_eq, values, colon_eq_markers)
 end
 function update_values(
     acc::RawValueAccumulator{VarNamedTuple,VarNamedTuple},
     values::VarNamedTuple,
-    colon_eq_varnames::VarNamedTuple,
+    colon_eq_markers::VarNamedTuple,
 )
     return RawValueAccumulator{VarNamedTuple,VarNamedTuple}(
-        acc.include_colon_eq, values, colon_eq_varnames
+        acc.include_colon_eq, values, colon_eq_markers
     )
 end
 function reset(acc::RawValueAccumulator)
-    return update_values(acc, empty(acc.values), empty(acc.colon_eq_varnames))
+    return update_values(acc, empty(acc.values), empty(acc.colon_eq_markers))
 end
 split(acc::RawValueAccumulator) = reset(acc)
 function combine(acc1::RawValueAccumulator, acc2::RawValueAccumulator)
@@ -66,25 +67,25 @@ function combine(acc1::RawValueAccumulator, acc2::RawValueAccumulator)
     return update_values(
         acc1,
         merge(acc1.values, acc2.values),
-        merge(acc1.colon_eq_varnames, acc2.colon_eq_varnames),
+        merge(acc1.colon_eq_markers, acc2.colon_eq_markers),
     )
 end
 function promote_for_threadsafe_eval(acc::RawValueAccumulator, ::Type)
     return RawValueAccumulator{VarNamedTuple,VarNamedTuple}(
-        acc.include_colon_eq, acc.values, acc.colon_eq_varnames
+        acc.include_colon_eq, acc.values, acc.colon_eq_markers
     )
 end
 
 function _get_parameter_values(acc::RawValueAccumulator)
-    isempty(acc.colon_eq_varnames) && return acc.values
-    colon_eq_varnames = keys(acc.colon_eq_varnames)
+    isempty(acc.colon_eq_markers) && return acc.values
+    colon_eq_varnames = keys(acc.colon_eq_markers)
     parameter_varnames = filter(keys(acc.values)) do vn
         return all(colon_eq_vn -> !subsumes(colon_eq_vn, vn), colon_eq_varnames)
     end
     return subset(acc.values, parameter_varnames)
 end
 function _get_colon_eq_values(acc::RawValueAccumulator)
-    return subset(acc.values, keys(acc.colon_eq_varnames))
+    return subset(acc.values, keys(acc.colon_eq_markers))
 end
 
 # We need a separate function for the colon-eq case since that function doesn't give us tval
@@ -92,10 +93,10 @@ end
 function store_colon_eq!!(acc::RawValueAccumulator, vn::VarName, val, template)
     new_val = _safe_copy(val)
     new_values = DynamicPPL.templated_setindex!!(acc.values, new_val, vn, template)
-    new_colon_eq_varnames = DynamicPPL.templated_setindex!!(
-        acc.colon_eq_varnames, nothing, vn, template
+    new_colon_eq_markers = DynamicPPL.templated_setindex!!(
+        acc.colon_eq_markers, nothing, vn, template
     )
-    return update_values(acc, new_values, new_colon_eq_varnames)
+    return update_values(acc, new_values, new_colon_eq_markers)
 end
 
 #################################################################

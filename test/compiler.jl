@@ -834,6 +834,7 @@ end
         values = get_raw_values(vi)
         colon_eq_values = get_colon_eq_values(vi)
         @test haskey(values, @varname(b.a.x))
+        @test haskey(values, @varname(b.a.y))
         @test haskey(colon_eq_values, @varname(b.a.y))
     end
 

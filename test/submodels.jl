@@ -240,9 +240,8 @@ end
             accs = OnlyAccsVarInfo((RawValueAccumulator(true),))
             a, accs = init!!(model, accs, InitFromPrior(), UnlinkAll())
             vnt = get_raw_values(accs)
-            colon_eq_vnt = get_colon_eq_values(accs)
             @test vnt[@varname(x.a)] == a
-            @test colon_eq_vnt[@varname(x.b)] == vnt[@varname(x.a)] + 1.0
+            @test vnt[@varname(x.b)] == vnt[@varname(x.a)] + 1.0
         end
 
         @testset "with sub-VarNames" begin
@@ -266,15 +265,14 @@ end
             accs = OnlyAccsVarInfo((RawValueAccumulator(true),))
             a, accs = init!!(model, accs, InitFromPrior(), UnlinkAll())
             vnt = get_raw_values(accs)
-            colon_eq_vnt = get_colon_eq_values(accs)
             @test vnt[@varname(x.a)] == a
-            @test colon_eq_vnt[@varname(x.b[1])] == vnt[@varname(x.a)] + 1.0
+            @test vnt[@varname(x.b[1])] == vnt[@varname(x.a)] + 1.0
             # If the templating fails, then x.b will be stored as a GrowableArray, and
             # trying to access the entire array will fail.
-            @test colon_eq_vnt[@varname(x.b)] isa Vector{Float64}
-            @test colon_eq_vnt[@varname(x.b)] == [a + 1.0]
+            @test vnt[@varname(x.b)] isa Vector{Float64}
+            @test vnt[@varname(x.b)] == [a + 1.0]
             # For good measure.
-            @test colon_eq_vnt[@varname(x.b[:])] == [a + 1.0]
+            @test vnt[@varname(x.b[:])] == [a + 1.0]
         end
     end
 
