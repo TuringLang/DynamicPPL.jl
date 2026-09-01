@@ -122,7 +122,7 @@ function is_extracting_colon_eq_values(vi::ThreadSafeVarInfo)
 end
 
 function getacc(vi::ThreadSafeVarInfo, accname::Val)
-    main_acc = getacc(vi.varinfo, accname)
+    main_acc = copy(getacc(vi.varinfo, accname))
     # Protect dictionary traversal from concurrent registration. Accumulator contents may
     # only be read after their tasks complete.
     other_accs = lock(vi.accs_lock) do

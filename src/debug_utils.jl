@@ -24,6 +24,7 @@ struct DebugAccumulator <: AbstractAccumulator
     failed::Bool
 end
 DebugAccumulator() = DebugAccumulator(false)
+Base.copy(acc::DebugAccumulator) = acc
 
 const _DEBUG_ACC_NAME = :Debug
 DynamicPPL.accumulator_name(::Type{<:DebugAccumulator}) = _DEBUG_ACC_NAME

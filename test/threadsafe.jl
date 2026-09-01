@@ -96,6 +96,28 @@ const gdemo_default = gdemo_d()
         @test length(vi.accs_by_task) == ntasks
     end
 
+    @testset "aggregation preserves mutable accumulator state" begin
+        accname = Val(:VectorParamAccumulator)
+        main_acc = DynamicPPL.VectorParamAccumulator(
+            [1.0, 0.0], [true, false], VarNamedTuple()
+        )
+        vi = DynamicPPL.ThreadSafeVarInfo(OnlyAccsVarInfo(main_acc))
+        vi = DynamicPPL.map_accumulator!!(vi, accname) do acc
+            acc.vals[2] = 2.0
+            acc.set_indices[2] = true
+            acc
+        end
+
+        @test DynamicPPL.getacc(vi, accname).vals == [1.0, 2.0]
+        @test main_acc.vals == [1.0, 0.0]
+        @test main_acc.set_indices == [true, false]
+        @test DynamicPPL.getacc(vi, accname).vals == [1.0, 2.0]
+
+        copied_vi = copy(vi)
+        @test DynamicPPL.get_vector_params(copied_vi) == [1.0, 2.0]
+        @test DynamicPPL.getacc(vi, accname).vals == [1.0, 2.0]
+    end
+
     @testset "colon-eq extraction during threaded evaluation" begin
         @model function colon_eq(n)
             x = collect(1:n)
