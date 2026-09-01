@@ -13,6 +13,7 @@ using DifferentiationInterface: DifferentiationInterface
 using DynamicPPL: DynamicPPL, @model, to_submodel, VarInfo, LinkAll, UnlinkAll
 using DynamicPPL.TestUtils.AD: run_ad, NoTest
 using Enzyme: Enzyme
+using FillArrays: Fill
 using ForwardDiff: ForwardDiff
 using LinearAlgebra: cholesky
 using Mooncake: Mooncake
@@ -24,6 +25,12 @@ using StableRNGs: StableRNG
 #  Models
 #
 
+# Keep distribution definitions in the model. For iid vector terms, prefer
+# `product_distribution(Fill(...))` to materialising identical distributions.
+# Let product distributions create concrete sample arrays; abstractly typed
+# preallocation is costly for reverse-mode AD and can prevent Enzyme compilation.
+# Observe or marginalise discrete states before benchmarking gradients.
+
 "One scalar assumption, one scalar observation."
 @model function simple_assume_observe(obs)
     x ~ Normal()
@@ -33,14 +40,14 @@ end
 
 """
 Covers many DynamicPPL features: scalar/vector/multivariate variables, `~`,
-`.~`, loops, allocated vectors, and observations as both arguments and literals.
+loops, heterogeneous product distributions, and observations as both arguments
+and literals.
 """
-@model function smorgasbord(x, y, (::Type{TV})=Vector{Float64}) where {TV}
+@model function smorgasbord(x, y)
     @assert length(x) == length(y)
     m ~ truncated(Normal(); lower=0)
-    means ~ product_distribution(fill(Exponential(m), length(x)))
-    stds = TV(undef, length(x))
-    stds .~ Gamma(1, 1)
+    means ~ product_distribution(Fill(Exponential(m), length(x)))
+    stds ~ product_distribution(Fill(Gamma(1, 1), length(x)))
     for i in 1:length(x)
         x[i] ~ Normal(means[i], stds[i])
     end
@@ -64,12 +71,10 @@ end
 end
 
 "As `loop_univariate`, but using `product_distribution` instead of loops."
-@model function multivariate(num_dims, (::Type{TV})=Vector{Float64}) where {TV}
-    a = TV(undef, num_dims)
-    o = TV(undef, num_dims)
-    a ~ product_distribution(fill(Normal(0, 1), num_dims))
+@model function multivariate(num_dims)
+    a ~ product_distribution(Fill(Normal(0, 1), num_dims))
     m = sum(a)
-    o ~ product_distribution(fill(Normal(m, 1), num_dims))
+    o ~ product_distribution(Fill(Normal(m, 1), num_dims))
     return (; a=a)
 end
 
@@ -86,34 +91,27 @@ end
 end
 
 "Variables whose support varies under linking, or otherwise nontrivial bijectors."
-@model function dynamic((::Type{T})=Vector{Float64}) where {T}
+@model function dynamic()
     eta ~ truncated(Normal(); lower=0.0, upper=0.1)
     mat1 ~ LKJCholesky(4, eta)
     mat2 ~ InverseWishart(3.2, cholesky([1.0 0.5; 0.5 1.0]))
     return (; eta=eta, mat1=mat1, mat2=mat2)
 end
 
-"Linear Discriminant Analysis."
-@model function lda(K, d, w)
-    V = length(unique(w))
-    D = length(unique(d))
+"Complete-data Linear Discriminant Analysis."
+@model function lda(K, d, w, z)
+    V = maximum(w)
+    D = maximum(d)
     N = length(d)
-    @assert length(w) == N
+    @assert length(w) == length(z) == N
 
-    ϕ = Vector{Vector{Real}}(undef, K)
-    for i in 1:K
-        ϕ[i] ~ Dirichlet(ones(V) / V)
-    end
+    ϕ ~ product_distribution(Fill(Dirichlet(Fill(inv(V), V)), K))
+    θ ~ product_distribution(Fill(Dirichlet(Fill(inv(K), K)), D))
 
-    θ = Vector{Vector{Real}}(undef, D)
-    for i in 1:D
-        θ[i] ~ Dirichlet(ones(K) / K)
-    end
-
-    z = zeros(Int, N)
+    # Dirichlet draws already satisfy the categorical parameter constraints.
     for i in 1:N
-        z[i] ~ Categorical(θ[d[i]])
-        w[i] ~ Categorical(ϕ[d[i]])
+        z[i] ~ Categorical(view(θ, :, d[i]); check_args=false)
+        w[i] ~ Categorical(view(ϕ, :, z[i]); check_args=false)
     end
     return (; ϕ=ϕ, θ=θ, z=z)
 end
@@ -322,14 +320,16 @@ function build_combinations(rng)
     end
     push!(models, ("Dynamic", dynamic()))
     push!(models, ("Submodel", parent(randn(rng))))
-    push!(models, ("LDA", lda(2, [1, 1, 1, 2, 2, 2], [1, 2, 3, 2, 1, 1])))
+    d = [1, 1, 1, 2, 2, 2]
+    w = [1, 2, 3, 2, 1, 1]
+    z = [1, 1, 2, 2, 1, 2]
+    push!(models, ("LDA", lda(2, d, w, z)))
 
     # Order: model → linked → backend, so each model's eight rows are adjacent
     # and inspecting one model side-by-side across backends/links is trivial.
     combos = Tuple{String,DynamicPPL.Model,Symbol,Bool}[]
     for (name, model) in models, islinked in (false, true), backend in BACKENDS
-        # LDA's discrete Categorical RVs make `linked = false` ill-defined for
-        # gradient-based AD (every backend errors), so the row is omitted.
+        # Only the unconstrained simplex parameterisation is relevant to gradient samplers.
         name == "LDA" && !islinked && continue
         push!(combos, (name, model, backend, islinked))
     end

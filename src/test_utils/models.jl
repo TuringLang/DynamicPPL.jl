@@ -511,6 +511,97 @@ function varnames(model::Model{typeof(demo_dot_assume_observe_matrix_index)})
     return [@varname(s[1]), @varname(s[2]), @varname(m)]
 end
 
+@model function demo_assume_matrix_index_observe_matrix_index(
+    x=[1.0 2.0; 1.5 2.5], ::Type{TV}=Matrix{Float64}
+) where {TV}
+    s = TV(undef, size(x, 1), 1)
+    for j in axes(s, 2), i in axes(s, 1)
+        s[i, j] ~ InverseGamma(2, 3)
+    end
+    # Turing's linked MLE can underflow `s` at NLopt trial points. Without
+    # argument checks, `logpdf` returns NaN and NLopt rejects the trial.
+    m = TV(undef, size(x, 1), 1)
+    for j in axes(m, 2), i in axes(m, 1)
+        m[i, j] ~ Normal(0, sqrt(s[i, j]); check_args=false)
+    end
+    for j in axes(x, 2), i in axes(x, 1)
+        x[i, j] ~ Normal(m[i, 1], sqrt(s[i, 1]); check_args=false)
+    end
+
+    return (; s=s, m=m, x=x)
+end
+function logprior_true(
+    model::Model{typeof(demo_assume_matrix_index_observe_matrix_index)}, s, m
+)
+    return loglikelihood(InverseGamma(2, 3), s) + sum(logpdf.(Normal.(0, sqrt.(s)), m))
+end
+function loglikelihood_true(
+    model::Model{typeof(demo_assume_matrix_index_observe_matrix_index)}, s, m
+)
+    return sum(logpdf.(Normal.(m, sqrt.(s)), model.args.x))
+end
+function logprior_true_with_logabsdet_jacobian(
+    model::Model{typeof(demo_assume_matrix_index_observe_matrix_index)}, s, m
+)
+    return _demo_logprior_true_with_logabsdet_jacobian(model, s, m)
+end
+function varnames(model::Model{typeof(demo_assume_matrix_index_observe_matrix_index)})
+    x = model.args.x
+    s_vns = [@varname(s[i, 1]) for i in axes(x, 1)]
+    m_vns = [@varname(m[i, 1]) for i in axes(x, 1)]
+    return [s_vns; m_vns]
+end
+
+@model function demo_assume_nested_index_observe_nested_index(
+    x=[[1.0, 2.0], [1.5, 2.5]], ::Type{TV}=Vector{Float64}
+) where {TV}
+    s = [TV(undef, 1) for _ in x]
+    for i in eachindex(s), j in eachindex(s[i])
+        s[i][j] ~ InverseGamma(2, 3)
+    end
+    # Turing's linked MLE can underflow `s` at NLopt trial points. Without
+    # argument checks, `logpdf` returns NaN and NLopt rejects the trial.
+    m = [TV(undef, 1) for _ in x]
+    for i in eachindex(m), j in eachindex(m[i])
+        m[i][j] ~ Normal(0, sqrt(s[i][j]); check_args=false)
+    end
+    for i in eachindex(x), j in eachindex(x[i])
+        x[i][j] ~ Normal(m[i][1], sqrt(s[i][1]); check_args=false)
+    end
+
+    return (; s=s, m=m, x=x)
+end
+function logprior_true(
+    model::Model{typeof(demo_assume_nested_index_observe_nested_index)}, s, m
+)
+    s_vec = [value for values in s for value in values]
+    m_vec = [value for values in m for value in values]
+    return loglikelihood(InverseGamma(2, 3), s_vec) +
+           sum(logpdf.(Normal.(0, sqrt.(s_vec)), m_vec))
+end
+function loglikelihood_true(
+    model::Model{typeof(demo_assume_nested_index_observe_nested_index)}, s, m
+)
+    return sum(
+        logpdf(Normal(m[i][1], sqrt(s[i][1])), model.args.x[i][j]) for
+        i in eachindex(model.args.x) for j in eachindex(model.args.x[i])
+    )
+end
+function logprior_true_with_logabsdet_jacobian(
+    model::Model{typeof(demo_assume_nested_index_observe_nested_index)}, s, m
+)
+    b = Bijectors.bijector(InverseGamma(2, 3))
+    s_unconstrained = [b.(values) for values in s]
+    Δlogp = sum(Bijectors.logabsdetjac(b, value) for values in s for value in values)
+    return (s=s_unconstrained, m=m), logprior_true(model, s, m) - Δlogp
+end
+function varnames(model::Model{typeof(demo_assume_nested_index_observe_nested_index)})
+    x = model.args.x
+    s_vns = [@varname(s[i][1]) for i in eachindex(x)]
+    m_vns = [@varname(m[i][1]) for i in eachindex(x)]
+    return [s_vns; m_vns]
+end
+
 @model function demo_assume_matrix_observe_matrix_index(
     x=transpose([1.5 2.0;]), ::Type{TV}=Array{Float64}
 ) where {TV}
@@ -637,6 +728,7 @@ const MultivariateAssumeDemoModels = Union{
     Model{typeof(demo_assume_submodel_observe_index_literal)},
     Model{typeof(demo_dot_assume_observe_submodel)},
     Model{typeof(demo_dot_assume_observe_matrix_index)},
+    Model{typeof(demo_assume_matrix_index_observe_matrix_index)},
 }
 function posterior_mean(model::MultivariateAssumeDemoModels)
     # Get some containers to fill.
@@ -683,6 +775,93 @@ function rand_prior_true(rng::Random.AbstractRNG, model::MultivariateAssumeDemoM
     for i in LinearIndices(vals.s)
         vals.s[i] = rand(rng, InverseGamma(2, 3))
         vals.m[i] = rand(rng, Normal(0, sqrt(vals.s[i])))
+    end
+
+    return vals
+end
+
+function posterior_mean(model::Model{typeof(demo_assume_matrix_index_observe_matrix_index)})
+    vals = rand_prior_true(model)
+
+    vals.s[1, 1] = 2
+    vals.m[1, 1] = 1
+
+    vals.s[2, 1] = 55 / 24
+    vals.m[2, 1] = 4 / 3
+
+    return vals
+end
+function likelihood_optima(
+    model::Model{typeof(demo_assume_matrix_index_observe_matrix_index)}
+)
+    vals = rand_prior_true(model)
+
+    vals.s[1, 1] = 1 / 4
+    vals.s[2, 1] = 1 / 4
+
+    vals.m[1, 1] = 3 / 2
+    vals.m[2, 1] = 2
+
+    return vals
+end
+function posterior_optima(
+    model::Model{typeof(demo_assume_matrix_index_observe_matrix_index)}
+)
+    vals = rand_prior_true(model)
+
+    vals.s[1, 1] = 8 / 9
+    vals.s[2, 1] = 55 / 54
+
+    vals.m[1, 1] = 1
+    vals.m[2, 1] = 4 / 3
+
+    return vals
+end
+function posterior_mean(model::Model{typeof(demo_assume_nested_index_observe_nested_index)})
+    vals = rand_prior_true(model)
+
+    vals.s[1][1] = 2
+    vals.m[1][1] = 1
+
+    vals.s[2][1] = 55 / 24
+    vals.m[2][1] = 4 / 3
+
+    return vals
+end
+function likelihood_optima(
+    model::Model{typeof(demo_assume_nested_index_observe_nested_index)}
+)
+    vals = rand_prior_true(model)
+
+    vals.s[1][1] = 1 / 4
+    vals.s[2][1] = 1 / 4
+
+    vals.m[1][1] = 3 / 2
+    vals.m[2][1] = 2
+
+    return vals
+end
+function posterior_optima(
+    model::Model{typeof(demo_assume_nested_index_observe_nested_index)}
+)
+    vals = rand_prior_true(model)
+
+    vals.s[1][1] = 8 / 9
+    vals.s[2][1] = 55 / 54
+    vals.m[1][1] = 1
+    vals.m[2][1] = 4 / 3
+
+    return vals
+end
+function rand_prior_true(
+    rng::Random.AbstractRNG,
+    model::Model{typeof(demo_assume_nested_index_observe_nested_index)},
+)
+    retval = model(rng)
+    vals = (s=retval.s, m=retval.m)
+    for i in eachindex(vals.s), j in eachindex(vals.s[i])
+        vals.s[i][j] = rand(rng, InverseGamma(2, 3))
+        vals.m[i][j] = rand(rng, Normal(0, sqrt(vals.s[i][j])))
     end
 
     return vals
@@ -833,6 +1012,8 @@ const DEMO_MODELS = (
     demo_assume_submodel_observe_index_literal(),
     demo_dot_assume_observe_submodel(),
     demo_dot_assume_observe_matrix_index(),
+    demo_assume_matrix_index_observe_matrix_index(),
+    demo_assume_nested_index_observe_nested_index(),
     demo_assume_matrix_observe_matrix_index(),
     demo_nested_colons(),
 )

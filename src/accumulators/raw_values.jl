@@ -61,6 +61,18 @@ function DebugRawValueAccumulator()
     return VNTAccumulator{RAW_VALUE_ACCNAME}(DebugGetRawValues(Set{VarName}()))
 end
 
+# Split accumulators need independent sets because repeated names are mutable state.
+function _zero(
+    acc::Union{
+        VNTAccumulator{RAW_VALUE_ACCNAME,DebugGetRawValues},
+        TSVNTAccumulator{RAW_VALUE_ACCNAME,DebugGetRawValues},
+    },
+)
+    new_acc = copy(acc)
+    empty!(new_acc.f.repeated_vns)
+    return update_values(new_acc, empty(new_acc.values))
+end
+
 # Unfortunately we have to overload accumulate_assume!! since we need to use the
 # templated_setindex_no_overwrite!! function
 function accumulate_assume!!(
@@ -120,9 +132,7 @@ function DynamicPPL.combine(
         TSVNTAccumulator{RAW_VALUE_ACCNAME,DebugGetRawValues},
     },
 )
-    if acc1.f !== acc2.f
-        throw(ArgumentError("Cannot combine accumulators with different functions"))
-    end
+    union!(acc1.f.repeated_vns, acc2.f.repeated_vns)
 
     new_values = acc1.values
     for (vn, val) in pairs(acc2.values)

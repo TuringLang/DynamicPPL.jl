@@ -183,6 +183,18 @@ end
         @test LogDensityProblems.dimension(ldf) == 4
     end
 
+    @testset "logdensity checks the input length" begin
+        @model function m3()
+            x ~ Normal()
+            y ~ Normal()
+            return nothing
+        end
+        ldf = DynamicPPL.LogDensityFunction(m3())
+        @test LogDensityProblems.logdensity(ldf, zeros(2)) isa Real
+        @test_throws ArgumentError LogDensityProblems.logdensity(ldf, zeros(1))
+        @test_throws ArgumentError LogDensityProblems.logdensity(ldf, zeros(3))
+    end
+
     @testset "capabilities" begin
         @model f() = x ~ Normal()
         model = f()

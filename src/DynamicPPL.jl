@@ -17,6 +17,8 @@ using Accessors: Accessors
 using LogDensityProblems: LogDensityProblems
 
 using LinearAlgebra: LinearAlgebra, Cholesky
+using LogExpFunctions: LogExpFunctions
+using SpecialFunctions: SpecialFunctions
 
 using DocStringExtensions
 
@@ -189,6 +191,12 @@ export AbstractVarInfo,
     NoDist,
     filldist,
     arraydist,
+    # Distributions
+    Flat,
+    FlatPos,
+    BinomialLogit,
+    OrderedLogistic,
+    LogPoisson,
     # Convenience functions
     logprior,
     logjoint,
@@ -259,6 +267,7 @@ include("contexts/conditionfix.jl")  # Must come after contexts/prefix.jl
 include("model.jl")
 include("varname.jl")
 include("distribution_wrappers.jl")
+include("distributions.jl")
 include("submodel.jl")
 include("accumulators.jl")
 include("accumulators/default.jl")

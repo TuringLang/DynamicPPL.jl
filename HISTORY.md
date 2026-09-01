@@ -1,3 +1,19 @@
+# 0.42.7
+
+The `Flat`, `FlatPos`, `BinomialLogit`, `OrderedLogistic`, and `LogPoisson` distributions have moved here from Turing, where they are re-exported. This makes them available for DynamicPPL's own test models and AD testing. See [Turing#2858](https://github.com/TuringLang/Turing.jl/issues/2858).
+
+# 0.42.6
+
+`VarNamedTuple` now accepts a `Symbol` in `getindex` and `haskey` as shorthand for an identity `VarName`, so `vnt[:x]` works like `vnt[@varname(x)]`. Symbols that are not Julia identifiers are rejected rather than parsed, so indexed or nested variables still need a `VarName`. See [#1429](https://github.com/TuringLang/DynamicPPL.jl/issues/1429).
+
+# 0.42.5
+
+Fixed `apply_transform_strategy` to return only the target transform's forward log-Jacobian when converting a `DynamicLink` value to a `FixedTransform` target. It previously added the source's forward Jacobian as well, so `getlogjac`, `getlogjoint_internal`, and `getlogprior_internal` were wrong whenever linked values were fed into a fixed-transform strategy. See [#1407](https://github.com/TuringLang/DynamicPPL.jl/issues/1407).
+
+`marginalize` now constructs its default marginalizer with an explicit `Optim.LBFGS()`. The previous default, `MarginalLogDensities.LaplaceApprox()`, threw an `UndefVarError` once OptimizationOptimJL 0.4.19 stopped re-exporting `LBFGS`. See [#1447](https://github.com/TuringLang/DynamicPPL.jl/issues/1447).
+
+`LogDensityProblems.logdensity(ldf, x)` now throws an `ArgumentError` when `x` does not have the dimension the `LogDensityFunction` was constructed with. A shorter vector previously threw a `BoundsError` from inside model evaluation, and a longer one silently returned the log density of the first `dimension(ldf)` elements.
+
 # 0.42.4
 
 `arraydist` on a vector of univariate distributions now builds its `Distributions.Product` through the inner constructor instead of `Product(dists)`, which is deprecated. The outer constructor calls `Base.depwarn`, and that walks a backtrace on every call, so models with an `arraydist` likelihood paid it once per evaluation. The return type is unchanged.

@@ -2,7 +2,8 @@
 
 This page summarizes recurring lessons from DynamicPPL and AbstractPPL history
 for contributors who are new to Julia, Turing.jl, or DynamicPPL internals.
-It is a starting point, not a checklist. For day-to-day Julia style, see `JULIA.md`; for coding-agent instructions, see `AGENTS.md`.
+It is a starting point, not a checklist. Coding-agent instructions live in
+`AGENTS.md`.
 
 The source pass covered GitHub history available on 2026-05-06. For
 DynamicPPL, that included 422 issues, 957 pull requests, 6,958 issue/PR
@@ -157,7 +158,9 @@ copy results before storing them long term.
 
 DynamicPPL code often sits on hot paths for inference and AD. Small edits can change inference, allocations, invalidation, or downstream package behaviour, so performance-sensitive changes need measurement rather than intuition.
 
-The general rules live in `JULIA.md`. The ones most likely to matter here are generic numeric code, concrete storage types, deterministic doctests, extension-based backend integrations, and type-stability checks for compiler output, `VarNamedTuple`s, accumulators, transforms, and log-density paths.
+Use generic numeric code, concrete storage types, deterministic doctests,
+extension-based backend integrations, and type-stability checks for compiler
+output, `VarNamedTuple`s, accumulators, transforms, and log-density paths.
 
 ## Copying, Accumulators, and Threading
 

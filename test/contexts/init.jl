@@ -322,6 +322,23 @@ using Test
             ifp = InitFromParams(ps)
             @test ifp.params === ps.params
         end
+
+        @testset "fixing the link transforms preserves the log-Jacobian" begin
+            @model function fixed_transform_model()
+                a ~ Exponential()
+                return b ~ Normal()
+            end
+            model = fixed_transform_model()
+            linked = last(DynamicPPL.init!!(model, VarInfo(), InitFromPrior(), LinkAll()))
+            # Feeding linked values into the equivalent fixed transforms must not change the
+            # log-Jacobian: it belongs to the target transforms, not to the representation
+            # the values arrived in.
+            strategy = WithTransforms(get_fixed_transforms(model, LinkAll()), LinkAll())
+            _, vi = DynamicPPL.init!!(
+                model, VarInfo(), InitFromParams(linked.values), strategy
+            )
+            @test DynamicPPL.getlogjac(vi) ≈ DynamicPPL.getlogjac(linked)
+        end
     end
 end
 

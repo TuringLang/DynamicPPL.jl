@@ -57,7 +57,10 @@ end
     @testset "Base" begin
         vi = VarInfo()
         @test getlogjoint(vi) == 0
-        @test isempty(vi[:])
+        @test isempty(internal_values_as_vector(vi))
+
+        # `vi[:]` still works, pending deprecation once Turing stops using it.
+        @test vi[:] == internal_values_as_vector(vi)
 
         vn = @varname(x)
         x = rand()
@@ -74,12 +77,12 @@ end
         @test vn in keys(vi)
 
         @test DynamicPPL.getindex_internal(vi, vn) == [x]
-        @test vi[:] == [x]
+        @test internal_values_as_vector(vi) == [x]
         vi = DynamicPPL.setindex_with_dist!!(
             vi, TransformedValue(2 * x, NoTransform()), Normal(), vn, x
         )
         @test DynamicPPL.getindex_internal(vi, vn) == [2 * x]
-        @test vi[:] == [2 * x]
+        @test internal_values_as_vector(vi) == [2 * x]
 
         vi = empty!!(vi)
         @test isempty(vi)
@@ -100,6 +103,16 @@ end
             # Direct VarNamedTuple access also throws KeyError
             @test_throws KeyError vi2.values[@varname(y)]
         end
+    end
+
+    @testset "eltype" begin
+        @model eltype_demo() = x ~ Normal()
+        @test eltype(VarInfo(eltype_demo())) === Float64
+        # A VarInfo holding no values falls through to `internal_values_as_vector`,
+        # which it does not implement.
+        accs_only = OnlyAccsVarInfo(DynamicPPL.default_accumulators())
+        @test Base.promote_op(getindex, typeof(accs_only), Colon) === Union{}
+        @test_throws MethodError eltype(accs_only)
     end
 
     @testset "get/set/acclogp" begin
@@ -337,12 +350,12 @@ end
 
         # Check that linking and invlinking set the `is_transformed` flag accordingly
         vi = VarInfo(model)
-        vals = vi[:]
+        vals = internal_values_as_vector(vi)
         vi = link!!(vi, model)
         @test all_transformed(vi)
         vi = invlink!!(vi, model)
         @test !any_transformed(vi)
-        @test vi[:] ≈ vals atol = 1e-10
+        @test internal_values_as_vector(vi) ≈ vals atol = 1e-10
 
         # Transform only one variable
         all_vns = keys(vi)
@@ -363,7 +376,7 @@ end
             @test !any_transformed(subset(vi, other_vns))
             vi = invlink!!(vi, (vn,), model)
             @test !any_transformed(vi)
-            @test vi[:] ≈ vals atol = 1e-10
+            @test internal_values_as_vector(vi) ≈ vals atol = 1e-10
         end
     end
 
@@ -505,11 +518,13 @@ end
                     for vn in keys(varinfo)
                         @test DynamicPPL.is_transformed(varinfo_linked, vn)
                     end
-                    @test length(varinfo[:]) > length(varinfo_linked[:])
+                    @test length(internal_values_as_vector(varinfo)) >
+                        length(internal_values_as_vector(varinfo_linked))
                     varinfo_linked_unflattened = DynamicPPL.unflatten!!(
-                        copy(varinfo_linked), varinfo_linked[:]
+                        copy(varinfo_linked), internal_values_as_vector(varinfo_linked)
                     )
-                    @test length(varinfo_linked_unflattened[:]) == length(varinfo_linked[:])
+                    @test length(internal_values_as_vector(varinfo_linked_unflattened)) ==
+                        length(internal_values_as_vector(varinfo_linked))
 
                     lp_true = DynamicPPL.TestUtils.logjoint_true(model, value_true...)
                     value_linked_true, lp_linked_true = DynamicPPL.TestUtils.logjoint_true_with_logabsdet_jacobian(
@@ -530,7 +545,8 @@ end
                         varinfo_invlinked = DynamicPPL.invlink(
                             varinfo_linked_unflattened, model
                         )
-                        @test length(varinfo_invlinked[:]) == length(varinfo[:])
+                        @test length(internal_values_as_vector(varinfo_invlinked)) ==
+                            length(internal_values_as_vector(varinfo))
                         @test getlogjoint(varinfo_invlinked) ≈ lp_true
                         @test getlogjoint_internal(varinfo_invlinked) ≈ lp_true
                     end
@@ -546,7 +562,7 @@ end
         end
         model = demo_lc() | (; y=0.0)
         varinfo = VarInfo(model)
-        n = length(varinfo[:])
+        n = length(internal_values_as_vector(varinfo))
         # Correct length should work.
         @test DynamicPPL.unflatten!!(varinfo, zeros(n)) isa VarInfo
         # Too many parameters should throw a DimensionMismatch.
@@ -566,7 +582,7 @@ end
             model, (; x=1.0); include_threadsafe=true
         )
         @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
-            @inferred DynamicPPL.unflatten!!(varinfo, varinfo[:])
+            @inferred DynamicPPL.unflatten!!(varinfo, internal_values_as_vector(varinfo))
         end
     end
 
@@ -703,11 +719,12 @@ end
                 varinfo_subset = subset(varinfo, vns_subset)
                 vns_subset_reversed = reverse(vns_subset)
                 varinfo_subset_reversed = subset(varinfo, vns_subset_reversed)
-                @test varinfo_subset[:] == varinfo_subset_reversed[:]
+                @test internal_values_as_vector(varinfo_subset) ==
+                    internal_values_as_vector(varinfo_subset_reversed)
                 ground_truth = [
                     only(DynamicPPL.getindex_internal(varinfo, vn)) for vn in vns_subset
                 ]
-                @test varinfo_subset[:] == ground_truth
+                @test internal_values_as_vector(varinfo_subset) == ground_truth
             end
         end
     end
@@ -842,7 +859,7 @@ end
         model = DynamicPPL.TestUtils.demo_dot_assume_observe()
         varinfo = VarInfo(model)
 
-        n = length(varinfo[:])
+        n = length(internal_values_as_vector(varinfo))
         # `Bool`.
         @test getlogjoint(DynamicPPL.unflatten!!(varinfo, fill(true, n))) isa
             typeof(float(1))

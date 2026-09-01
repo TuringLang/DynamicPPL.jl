@@ -34,7 +34,9 @@ end
         marginalized_varnames::AbstractVector{<:VarName};
         transform_strategy::DynamicPPL.AbstractTransformStrategy=DynamicPPL.LinkAll(),
         getlogprob=DynamicPPL.getlogjoint,
-        method::MarginalLogDensities.AbstractMarginalizer=MarginalLogDensities.LaplaceApprox();
+        method::MarginalLogDensities.AbstractMarginalizer=MarginalLogDensities.LaplaceApprox(
+            MarginalLogDensities.Optim.LBFGS()
+        );
         kwargs...,
     )
 
@@ -114,7 +116,9 @@ function DynamicPPL.marginalize(
     marginalized_varnames::AbstractVector{<:VarName};
     transform_strategy::DynamicPPL.AbstractTransformStrategy=DynamicPPL.LinkAll(),
     getlogprob::Function=DynamicPPL.getlogjoint,
-    method::MarginalLogDensities.AbstractMarginalizer=MarginalLogDensities.LaplaceApprox(),
+    method::MarginalLogDensities.AbstractMarginalizer=MarginalLogDensities.LaplaceApprox(
+        MarginalLogDensities.Optim.LBFGS()
+    ),
     kwargs...,
 )
     # Construct the marginal log-density model.

@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Repository guidance for coding agents. See @JULIA.md for general Julia practices and `docs/src/onboarding.md` for newcomer-oriented background.
+Repository guidance for coding agents. See `docs/src/onboarding.md` for newcomer-oriented background.
 
 ## Project Overview
 
@@ -32,9 +32,54 @@ DynamicPPL builds on AbstractPPL.jl for shared PPL interfaces such as `VarName`,
   - `ext/`: `DynamicPPLForwardDiffExt`, `DynamicPPLMooncakeExt`, `DynamicPPLReverseDiffExt`, `DynamicPPLEnzymeCoreExt`, `DynamicPPLComponentArraysExt`, `DynamicPPLMCMCChainsExt`, and `DynamicPPLMarginalLogDensitiesExt`.
   - `DynamicPPL.TestUtils`: analytical test models (`logprior_true`, `loglikelihood_true`, etc.), `run_ad`, `ADResult`.
 
+## Julia-specific guidance
+
+Engineering:
+
+  - Constrain arguments to `Float64`, `Int`, `Real`, `Array`, `Vector`, or `Matrix` only when required by the mathematics or an external API.
+  - Preserve caller types with `zero`, `one`, `oftype`, `promote`, and `promote_type`. Support `Float32`, `BigFloat`, AD numbers, units, and GPU scalars where applicable.
+  - Keep storage concrete with type parameters; avoid fields typed as `Number` or `AbstractVector`. Each type parameter should serve dispatch, storage, or an invariant.
+  - When specialization on a `Type`, `Function`, or `Vararg` argument is needed, use an explicit type parameter such as `f(x, ::Type{T}) where {T}`.
+  - Derive output containers from inputs with `similar`, or accept a destination buffer. Use `Base.maybeview` to avoid eager slices while supporting scalar and tuple indices.
+  - Prefer small, dispatch-based protocols to large conditionals. Isolate backend behaviour in package extensions or narrow integration layers.
+  - Check inference with `@inferred` or `@code_warntype` for generated code, custom containers, accumulators, transforms, and log-density paths. Benchmark generated functions, macro output, and hot paths.
+  - Use `StableRNGs` when doctests print random values.
+
+Public APIs:
+
+  - Put data first. Put a callable first only to support `do`-block syntax.
+  - Follow Julia keyword conventions: `dims=` for dimensions, `init=` for reductions, and `lt=`, `by=`, and `rev=` for sorting. Use a tuple for multiple dimensions where natural.
+  - Pair mutating and non-mutating forms when both are useful. Keep related argument orders, keyword names, and return shapes consistent.
+  - Put configuration in keywords, not positional `Bool`, small integer, or `Symbol` flags. Wrappers should forward `kwargs...`.
+  - Expose downstream state through accessors, traits, or protocol functions, not direct field access.
+  - Extend an appropriate `Base` method rather than adding a parallel name. Avoid broad overloads, which create ambiguities and accidental API.
+  - Keep `==`, `isequal`, and `hash` consistent.
+  - Give each operation one documented failure mode: an exception, `nothing`, or a sentinel.
+  - Treat exported names, constructor forms, keyword arguments, aliases, abstract supertypes, and traits as API commitments. Positional and keyword constructors are separate commitments. Mark internal names already used downstream as `public`.
+
+Probability code:
+
+  - Distinguish sample type, mathematical support, and reference measure. Distributions with floating-point samples can have atoms, and `pdf` may denote mass or density. Censoring can mix atoms and density; truncation changes support and normalization.
+  - Reject invalid distribution parameters and handle domain boundaries explicitly.
+  - Pass an RNG explicitly; never rely on the global RNG.
+
+Idioms:
+
+  - Always reassign `!!` results; these methods may mutate or replace their input.
+  - Copy `!!` results before retaining them across calls; they may alias internal state.
+  - For types that own mutable evaluation state, `copy` must not share that state unless the sharing is intentional and documented.
+  - Do not index task-owned storage by `Threads.threadid()` because tasks can migrate. Pass per-task buffers or use a thread-safe collection.
+
+Testing:
+
+  - Test generic numeric APIs with `Float32`, `BigFloat`, and a relevant AD number type; include units and GPU scalars when supported.
+  - Test generic array APIs with a static array or another non-`Array` input.
+  - For distribution-aware code, test boundaries, invalid parameters, finite densities where expected, and `logcdf(d, x) <= 0`.
+  - Test reproducible sampling with a stable RNG and gradients with respect to both observations and distribution parameters.
+
 ## DynamicPPL Invariants
 
-Evaluator methods follow BangBang `!!` semantics (see JULIA.md). `VarInfo` and `AccumulatorTuple` are immutable, so discarding a `!!` return value is a silent bug.
+Evaluator methods follow BangBang `!!` semantics. `VarInfo` and `AccumulatorTuple` are immutable, so discarding a `!!` return value is a silent bug.
 
 **`accumulate_assume!!`** — `val` is model-space (passed to `logpdf`); `tval` is transformed; `logjac` is the log-Jacobian of the forward link transform (zero if unlinked):
 
@@ -58,6 +103,7 @@ vi = accumulate_assume!!(vi, x, tval, logjac, vn, dist, template)
   - Use `VarNamedTuple` as the canonical internal representation for named parameter collections in new code. Convert user-facing `NamedTuple` and `Dict{VarName}` inputs at boundaries.
   - Preserve templates, shapes, and index structure when round-tripping between named values and flat vectors.
   - Ensure `copy(acc)` does not share mutable internal state; aliased accumulator containers corrupt results when copied for `ThreadSafeVarInfo`.
+  - Ensure `split(acc)` does not share mutable accumulation state; `combine` must merge that state even when it is stored outside the main value container.
   - Use `@varname(x)`, not `:x` or `VarName(:x)`. Use subsumption for containment checks, e.g. `subsumes(@varname(x), @varname(x[1]))`. Conditioning on `@varname(x)` covers subindices; conditioning on `@varname(x[1])` only matches that index.
 
 ## `@model` Compiler
@@ -70,7 +116,7 @@ Keep macro hygiene explicit. User variables, generated temporaries, and globals 
 
 ## Threading
 
-Implement `promote_for_threadsafe_eval(acc, T)` for accumulators with concrete float fields; the default no-op leaves them unable to hold AD tracers like ForwardDiff `Dual`s. General threading guidance lives in JULIA.md.
+Implement `promote_for_threadsafe_eval(acc, T)` for accumulators with concrete float fields; the default no-op leaves them unable to hold AD tracers like ForwardDiff `Dual`s.
 
 ## Contributing Checklist
 

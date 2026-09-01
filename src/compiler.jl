@@ -253,6 +253,10 @@ Macro to specify a probabilistic model.
 If `warn` is `true`, a warning is displayed if internal variable names are used in the model
 definition.
 
+Samples from a multivariate distribution instance on the right-hand side of `~` must all
+have the same dimension. A model may use an earlier random variable to construct instances
+with different dimensions.
+
 # Examples
 
 Model definition:
@@ -264,6 +268,39 @@ end
 ```
 
 To generate a `Model`, call `model(xvalue)` or `model(xvalue, yvalue)`.
+
+This custom distribution is invalid because samples from the same instance can have
+different dimensions:
+
+```julia
+using DynamicPPL, Distributions, LinearAlgebra, Random
+
+struct VariableLengthDistribution <: DiscreteMultivariateDistribution end
+Base.length(::VariableLengthDistribution) = 5
+function Base.rand(rng::Random.AbstractRNG, ::VariableLengthDistribution)
+    return rand(rng, 0:1, rand(rng, 1:10))
+end
+function Distributions._logpdf(::VariableLengthDistribution, x::AbstractVector)
+    return -length(x) * log(2)
+end
+
+@model function invalid_variable_length()
+    x ~ VariableLengthDistribution()
+end
+```
+
+Evaluating this model throws `DimensionMismatch` unless the draw happens to match the
+declared dimension.
+
+Instead, sample the dimension separately. Each `MvNormal` instance then has a fixed sample
+dimension:
+
+```julia
+@model function variable_dimension()
+    n ~ DiscreteUniform(1, 10)
+    x ~ MvNormal(zeros(n), I)
+end
+```
 """
 macro model(expr, warn=false)
     # include `LineNumberNode` with information about the call site in the
