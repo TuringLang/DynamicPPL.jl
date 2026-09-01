@@ -61,7 +61,7 @@ makedocs(;
             "accs/threadsafe.md",
             "accs/values.md",
         ],
-        "LogDensityFunction" => ["ldf/overview.md", "ldf/models.md"],
+        "LogDensityFunction" => ["ldf/overview.md", "ldf/models.md", "ldf/subsampling.md"],
         "Migrating old VarInfo code" => "migration.md",
         "API" => "api.md",
     ],

@@ -71,6 +71,7 @@ get_all_ranges_and_transforms
 get_logdensity_callable
 get_input_vector_type
 get_sample_input_vector
+subsample
 ```
 
 Internally, this is accomplished using [`init!!`](@ref) on:
@@ -222,6 +223,7 @@ extract_priors
 ```@docs
 filldist
 arraydist
+independent_distribution
 NamedDist
 ```
 
