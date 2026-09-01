@@ -18,6 +18,7 @@ using FillArrays: Fill
 using ForwardDiff: ForwardDiff
 using LinearAlgebra: I
 using LogDensityProblems: LogDensityProblems
+using OffsetArrays: OffsetArray
 using Random: Random
 using StableRNGs: StableRNG
 using Test
@@ -504,6 +505,19 @@ end
         view_model = normal_location() | (x=@view(storage[:]),)
         view_batch = subsample(StableRNG(1), view_model, 1, 2)
         @test isfinite(LogDensityProblems.logdensity(view_batch, [0.0]))
+
+        @model function indexed_offset_observation()
+            μ ~ Normal()
+            return x ~ independent_distribution(i -> Normal(μ + i), 3)
+        end
+        offset_data = OffsetArray([1.0, 2.0, 3.0], 0:2)
+        offset_batch = subsample(
+            StableRNG(1), indexed_offset_observation() | (x=offset_data,), [1, 3], 3
+        )
+        μ = 0.25
+        @test LogDensityProblems.logdensity(offset_batch, [μ]) ≈
+            logpdf(Normal(), μ) +
+              (3//2) * (logpdf(Normal(μ + 1), 1.0) + logpdf(Normal(μ + 3), 3.0))
     end
 
     @testset "latent layout constraints" begin

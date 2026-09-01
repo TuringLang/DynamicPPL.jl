@@ -948,7 +948,9 @@ function _select_batch(data::AbstractArray, batch::AbstractVector{<:Integer})
     n = size(data, ndims(data))
     all(i -> 1 <= i <= n, batch) ||
         throw(ArgumentError("batch indices must lie in `1:$n`; got $(collect(batch))"))
-    indices = ntuple(i -> i == ndims(data) ? batch : Colon(), ndims(data))
+    first_observation_index = firstindex(data, ndims(data))
+    observation_indices = map(i -> first_observation_index + (Int(i) - 1), batch)
+    indices = ntuple(i -> i == ndims(data) ? observation_indices : Colon(), ndims(data))
     return copy(Base.maybeview(data, indices...))
 end
 
