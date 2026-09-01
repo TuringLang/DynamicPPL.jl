@@ -12,25 +12,31 @@ _safe_copy(val::SubArray) = collect(val)
 """
     RawValueAccumulator(include_colon_eq::Bool) <: AbstractAccumulator
 
-An accumulator that keeps track of the model parameters exactly as they are seen in the
-model.
+Keep untransformed values in evaluation order while retaining their provenance.
 
-The parameter `include_colon_eq` controls whether variables on the LHS of `:=` are also
-included in the accumulator's separate `colon_eq_values` collection.
+When `include_colon_eq` is `true`, [`get_raw_values`](@ref) includes values introduced by
+both `~` and `:=`. [`get_parameter_values`](@ref) and [`get_colon_eq_values`](@ref) return
+the two groups separately.
 """
-struct RawValueAccumulator{V<:VarNamedTuple,C<:VarNamedTuple} <: AbstractAccumulator
+struct RawValueAccumulator{VNT<:VarNamedTuple,PVNT<:VarNamedTuple,CVNT<:VarNamedTuple} <:
+       AbstractAccumulator
     include_colon_eq::Bool
-    values::V
-    colon_eq_values::C
+    values::VNT
+    parameter_values::PVNT
+    colon_eq_values::CVNT
 end
 
 function RawValueAccumulator(include_colon_eq::Bool)
-    return RawValueAccumulator(include_colon_eq, VarNamedTuple(), VarNamedTuple())
+    return RawValueAccumulator(
+        include_colon_eq, VarNamedTuple(), VarNamedTuple(), VarNamedTuple()
+    )
 end
 
 accumulator_name(::RawValueAccumulator) = RAW_VALUE_ACCNAME
 function Base.copy(acc::RawValueAccumulator)
-    return update_values(acc, copy(acc.values), copy(acc.colon_eq_values))
+    return update_values(
+        acc, copy(acc.values), copy(acc.parameter_values), copy(acc.colon_eq_values)
+    )
 end
 accumulate_observe!!(acc::RawValueAccumulator, right, left, vn, template) = acc
 function accumulate_assume!!(
@@ -38,24 +44,35 @@ function accumulate_assume!!(
 )
     new_val = _safe_copy(val)
     new_values = DynamicPPL.templated_setindex!!(acc.values, new_val, vn, template)
-    return update_values(acc, new_values, acc.colon_eq_values)
+    new_parameter_values = DynamicPPL.templated_setindex!!(
+        acc.parameter_values, new_val, vn, template
+    )
+    return update_values(acc, new_values, new_parameter_values, acc.colon_eq_values)
 end
 function update_values(
-    acc::RawValueAccumulator, values::VarNamedTuple, colon_eq_values::VarNamedTuple
-)
-    return RawValueAccumulator(acc.include_colon_eq, values, colon_eq_values)
-end
-function update_values(
-    acc::RawValueAccumulator{VarNamedTuple,VarNamedTuple},
+    acc::RawValueAccumulator,
     values::VarNamedTuple,
+    parameter_values::VarNamedTuple,
     colon_eq_values::VarNamedTuple,
 )
-    return RawValueAccumulator{VarNamedTuple,VarNamedTuple}(
-        acc.include_colon_eq, values, colon_eq_values
+    return RawValueAccumulator(
+        acc.include_colon_eq, values, parameter_values, colon_eq_values
+    )
+end
+function update_values(
+    acc::RawValueAccumulator{VarNamedTuple,VarNamedTuple,VarNamedTuple},
+    values::VarNamedTuple,
+    parameter_values::VarNamedTuple,
+    colon_eq_values::VarNamedTuple,
+)
+    return RawValueAccumulator{VarNamedTuple,VarNamedTuple,VarNamedTuple}(
+        acc.include_colon_eq, values, parameter_values, colon_eq_values
     )
 end
 function reset(acc::RawValueAccumulator)
-    return update_values(acc, empty(acc.values), empty(acc.colon_eq_values))
+    return update_values(
+        acc, empty(acc.values), empty(acc.parameter_values), empty(acc.colon_eq_values)
+    )
 end
 split(acc::RawValueAccumulator) = reset(acc)
 function combine(acc1::RawValueAccumulator, acc2::RawValueAccumulator)
@@ -66,12 +83,13 @@ function combine(acc1::RawValueAccumulator, acc2::RawValueAccumulator)
     return update_values(
         acc1,
         merge(acc1.values, acc2.values),
+        merge(acc1.parameter_values, acc2.parameter_values),
         merge(acc1.colon_eq_values, acc2.colon_eq_values),
     )
 end
 function promote_for_threadsafe_eval(acc::RawValueAccumulator, ::Type)
-    return RawValueAccumulator{VarNamedTuple,VarNamedTuple}(
-        acc.include_colon_eq, acc.values, acc.colon_eq_values
+    return RawValueAccumulator{VarNamedTuple,VarNamedTuple,VarNamedTuple}(
+        acc.include_colon_eq, acc.values, acc.parameter_values, acc.colon_eq_values
     )
 end
 
@@ -79,8 +97,11 @@ end
 # and logjac, and we don't want to have to pass in dummy values for those.
 function store_colon_eq!!(acc::RawValueAccumulator, vn::VarName, val, template)
     new_val = _safe_copy(val)
-    new_values = DynamicPPL.templated_setindex!!(acc.colon_eq_values, new_val, vn, template)
-    return update_values(acc, acc.values, new_values)
+    new_values = DynamicPPL.templated_setindex!!(acc.values, new_val, vn, template)
+    new_colon_eq_values = DynamicPPL.templated_setindex!!(
+        acc.colon_eq_values, new_val, vn, template
+    )
+    return update_values(acc, new_values, acc.parameter_values, new_colon_eq_values)
 end
 
 #################################################################

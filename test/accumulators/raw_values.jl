@@ -29,8 +29,9 @@ using LinearAlgebra
         # Explicitly spelled out
         accs = OnlyAccsVarInfo(RawValueAccumulator(true))
         _, accs = init!!(model, accs, InitFromPrior(), UnlinkAll())
-        @test !any(isnan, get_raw_values(accs)[@varname(x)])
-        @test !any(isnan, get_raw_values(accs)[@varname(y)])
+        vnt = get_raw_values(accs)
+        @test !any(isnan, vnt[@varname(x)])
+        @test !any(isnan, vnt[@varname(y)])
         @test !any(isnan, get_colon_eq_values(accs)[@varname(y)])
         # with LDF
         ldf = LogDensityFunction(model)
@@ -38,6 +39,16 @@ using LinearAlgebra
         pws = ParamsWithStats(p, ldf; include_colon_eq=true)
         @test !any(isnan, pws.params[@varname(x)])
         @test !any(isnan, pws.params[@varname(y)])
+    end
+
+    @testset "evaluation order" begin
+        @model function f()
+            y := 1.0
+            return x ~ Normal()
+        end
+        accs = OnlyAccsVarInfo(RawValueAccumulator(true))
+        _, accs = init!!(f(), accs, InitFromPrior(), UnlinkAll())
+        @test collect(keys(get_raw_values(accs))) == [@varname(y), @varname(x)]
     end
 end
 

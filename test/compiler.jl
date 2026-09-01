@@ -789,8 +789,8 @@ end
             @test haskey(varinfo, @varname(x))
             @test !haskey(varinfo, @varname(y))
 
-            # A `RawValueAccumulator` should store `x` and `y` separately if
-            # `include_colon_eq` is set to `true`.
+            # A `RawValueAccumulator` should preserve the combined values and their
+            # provenance if `include_colon_eq` is set to `true`.
             vi = OnlyAccsVarInfo((RawValueAccumulator(true),))
             _, vi = init!!(model, vi, InitFromPrior(), UnlinkAll())
             values = get_raw_values(vi)
