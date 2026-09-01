@@ -194,12 +194,23 @@ end
 """
     get_raw_values(vi::AbstractVarInfo)
 
-Extract a `VarNamedTuple` of values introduced by `~` from the `RawValueAccumulator` in
-`vi`, without any transformations applied to them.
+Extract a `VarNamedTuple` of values from the `RawValueAccumulator` in `vi`, without any
+transformations applied to them. This includes values introduced by `:=` when the
+accumulator was constructed with `include_colon_eq=true`.
 
 If `vi` does not contain a `RawValueAccumulator`, this function will throw an error.
 """
-get_raw_values(vi::AbstractVarInfo) = getacc(vi, Val(RAW_VALUE_ACCNAME)).values
+get_raw_values(vi::AbstractVarInfo) = get_raw_values(getacc(vi, Val(RAW_VALUE_ACCNAME)))
+get_raw_values(acc::RawValueAccumulator) = merge(acc.values, acc.colon_eq_values)
+get_raw_values(acc::Union{VNTAccumulator,TSVNTAccumulator}) = acc.values
+
+"""
+    get_parameter_values(vi::AbstractVarInfo)
+
+Extract a `VarNamedTuple` of untransformed parameter values introduced by `~` from the
+`RawValueAccumulator` in `vi`.
+"""
+get_parameter_values(vi::AbstractVarInfo) = getacc(vi, Val(RAW_VALUE_ACCNAME)).values
 
 """
     get_colon_eq_values(vi::AbstractVarInfo)

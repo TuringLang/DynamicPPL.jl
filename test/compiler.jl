@@ -794,9 +794,12 @@ end
             vi = OnlyAccsVarInfo((RawValueAccumulator(true),))
             _, vi = init!!(model, vi, InitFromPrior(), UnlinkAll())
             values = get_raw_values(vi)
+            parameter_values = get_parameter_values(vi)
             colon_eq_values = get_colon_eq_values(vi)
             @test haskey(values, @varname(x))
-            @test !haskey(values, @varname(y))
+            @test haskey(values, @varname(y))
+            @test haskey(parameter_values, @varname(x))
+            @test !haskey(parameter_values, @varname(y))
             @test haskey(colon_eq_values, @varname(y))
 
             # And if include_colon_eq is set to `false`, then `values` should only contain

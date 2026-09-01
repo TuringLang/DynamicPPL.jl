@@ -30,6 +30,7 @@ using LinearAlgebra
         accs = OnlyAccsVarInfo(RawValueAccumulator(true))
         _, accs = init!!(model, accs, InitFromPrior(), UnlinkAll())
         @test !any(isnan, get_raw_values(accs)[@varname(x)])
+        @test !any(isnan, get_raw_values(accs)[@varname(y)])
         @test !any(isnan, get_colon_eq_values(accs)[@varname(y)])
         # with LDF
         ldf = LogDensityFunction(model)

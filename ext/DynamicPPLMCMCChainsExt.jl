@@ -129,7 +129,7 @@ function AbstractMCMC.to_samples(
     # variables stored with `:=`, so we need to pick those up as well.
     vi = DynamicPPL.OnlyAccsVarInfo((DynamicPPL.RawValueAccumulator(true),))
     _, vi = DynamicPPL.init!!(model, vi, DynamicPPL.InitFromPrior(), DynamicPPL.UnlinkAll())
-    template_vnt = merge(DynamicPPL.get_raw_values(vi), DynamicPPL.get_colon_eq_values(vi))
+    template_vnt = DynamicPPL.get_raw_values(vi)
     # Now we can iterate over the chain
     idxs = Iterators.product(1:size(chain, 1), 1:size(chain, 3))
     # Get parameters
