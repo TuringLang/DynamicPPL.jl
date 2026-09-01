@@ -9,6 +9,10 @@ _safe_copy(val) = deepcopy(val)
 # See https://github.com/TuringLang/DynamicPPL.jl/pull/1350
 _safe_copy(val::SubArray) = collect(val)
 
+# Preserve array shape so marker keys match raw keys without duplicating values.
+_raw_value_marker(::Any) = nothing
+_raw_value_marker(val::AbstractArray) = fill(nothing, size(val))
+
 """
     RawValueAccumulator(include_colon_eq::Bool) <: AbstractAccumulator
 
@@ -21,7 +25,6 @@ the two groups separately.
 struct RawValueAccumulator{VNT<:VarNamedTuple,CVNT<:VarNamedTuple} <: AbstractAccumulator
     include_colon_eq::Bool
     values::VNT
-    # Marker keys identify `:=` values without duplicating their storage.
     colon_eq_markers::CVNT
 end
 
@@ -76,16 +79,24 @@ function promote_for_threadsafe_eval(acc::RawValueAccumulator, ::Type)
     )
 end
 
+function _get_values(acc::RawValueAccumulator, colon_eq::Bool)
+    return mapfoldl(
+        identity,
+        function (values, pair)
+            vn, value = pair
+            haskey(acc.colon_eq_markers, vn) == colon_eq || return values
+            template = acc.values.data[AbstractPPL.getsym(vn)]
+            return DynamicPPL.templated_setindex!!(values, value, vn, template)
+        end,
+        acc.values;
+        init=VarNamedTuple(),
+    )
+end
 function _get_parameter_values(acc::RawValueAccumulator)
-    isempty(acc.colon_eq_markers) && return acc.values
-    colon_eq_varnames = keys(acc.colon_eq_markers)
-    parameter_varnames = filter(keys(acc.values)) do vn
-        return all(colon_eq_vn -> !subsumes(colon_eq_vn, vn), colon_eq_varnames)
-    end
-    return subset(acc.values, parameter_varnames)
+    return isempty(acc.colon_eq_markers) ? acc.values : _get_values(acc, false)
 end
 function _get_colon_eq_values(acc::RawValueAccumulator)
-    return subset(acc.values, keys(acc.colon_eq_markers))
+    return isempty(acc.colon_eq_markers) ? VarNamedTuple() : _get_values(acc, true)
 end
 
 # We need a separate function for the colon-eq case since that function doesn't give us tval
@@ -94,7 +105,7 @@ function store_colon_eq!!(acc::RawValueAccumulator, vn::VarName, val, template)
     new_val = _safe_copy(val)
     new_values = DynamicPPL.templated_setindex!!(acc.values, new_val, vn, template)
     new_colon_eq_markers = DynamicPPL.templated_setindex!!(
-        acc.colon_eq_markers, nothing, vn, template
+        acc.colon_eq_markers, _raw_value_marker(new_val), vn, template
     )
     return update_values(acc, new_values, new_colon_eq_markers)
 end

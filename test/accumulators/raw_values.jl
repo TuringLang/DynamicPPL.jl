@@ -54,12 +54,12 @@ using LinearAlgebra
     @testset "indexed provenance" begin
         acc = RawValueAccumulator(true)
         acc = DynamicPPL.accumulate_assume!!(
-            acc, 1.0, 1.0, 0.0, @varname(x[1]), Normal(), zeros(2)
+            acc, 1.0, 1.0, 0.0, @varname(x[1]), Normal(), zeros(3)
         )
-        acc = DynamicPPL.store_colon_eq!!(acc, @varname(x[2]), 2.0, zeros(2))
+        acc = DynamicPPL.store_colon_eq!!(acc, @varname(x[2:3]), [2.0, 3.0], zeros(3))
         accs = OnlyAccsVarInfo(acc)
         @test keys(get_parameter_values(accs)) == [@varname(x[1])]
-        @test keys(get_colon_eq_values(accs)) == [@varname(x[2])]
+        @test keys(get_colon_eq_values(accs)) == [@varname(x[2]), @varname(x[3])]
     end
 end
 
