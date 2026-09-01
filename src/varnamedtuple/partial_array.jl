@@ -664,7 +664,14 @@ function _grow_vector_to_axes(pa::PartialArray{T,1,<:AbstractVector}, new_axes) 
 end
 function _has_compatible_vector_axes(v1::AbstractVector, v2::AbstractVector)
     shorter, longer = length(v1) < length(v2) ? (v1, v2) : (v2, v1)
-    return axes(shorter) === axes(view(longer, Base.OneTo(length(shorter))))
+    shorter_axis = only(axes(shorter))
+    prefix_axis = only(axes(view(longer, Base.OneTo(length(shorter)))))
+    # Axis equality can ignore coordinate metadata carried by custom axes.
+    properties = propertynames(shorter_axis, true)
+    return properties == propertynames(prefix_axis, true) && all(
+        name -> isequal(getproperty(shorter_axis, name), getproperty(prefix_axis, name)),
+        properties,
+    )
 end
 function _merge(pa1::PartialArray, pa2::PartialArray, recurse::Val)
     # If both `pa1` and `pa2` are GrowableArrays, we can grow them before merging

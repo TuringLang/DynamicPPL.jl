@@ -1210,15 +1210,27 @@ Base.size(st::SizedThing) = st.size
                 VarNamedTuple(),
                 1.0,
                 @varname(x[1]),
-                DD.DimArray(zeros(1), (DD.X(10:10:10),)),
+                DD.DimArray(zeros(2), (DD.X([10, 20]),)),
             )
             coordinates2 = templated_setindex!!(
                 VarNamedTuple(),
                 2.0,
                 @varname(x[1]),
-                DD.DimArray(zeros(2), (DD.X(20:10:30),)),
+                DD.DimArray(zeros(3), (DD.X([10, 20, 30]),)),
             )
-            @test_throws ArgumentError merge(coordinates2, coordinates1)
+            coordinates2 = setindex!!(coordinates2, 3.0, @varname(x[3]))
+            merged_coordinates = @inferred merge(coordinates2, coordinates1)
+            @test merged_coordinates[@varname(x[1])] == 1.0
+            @test merged_coordinates[@varname(x[3])] == 3.0
+            @test DD.dims(merged_coordinates.data.x.data) == (DD.X([10, 20, 30]),)
+
+            incompatible_coordinates = templated_setindex!!(
+                VarNamedTuple(),
+                1.0,
+                @varname(x[1]),
+                DD.DimArray(zeros(2), (DD.X([20, 30]),)),
+            )
+            @test_throws ArgumentError merge(coordinates2, incompatible_coordinates)
         end
 
         @testset "different dimensions" begin
