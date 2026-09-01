@@ -157,6 +157,28 @@ struct SizedThing{T<:Tuple}
 end
 Base.size(st::SizedThing) = st.size
 
+struct TaggedAxis{Tag} <: AbstractUnitRange{Int}
+    stop::Int
+end
+Base.first(::TaggedAxis) = 1
+Base.last(axis::TaggedAxis) = axis.stop
+Base.length(axis::TaggedAxis) = axis.stop
+Base.getindex(axis::TaggedAxis, i::Int) = getindex(Base.OneTo(axis.stop), i)
+
+struct TaggedVector{Tag,T} <: AbstractVector{T}
+    data::Vector{T}
+end
+TaggedVector{Tag}(data::Vector{T}) where {Tag,T} = TaggedVector{Tag,T}(data)
+Base.size(vector::TaggedVector) = size(vector.data)
+Base.axes(vector::TaggedVector{Tag}) where {Tag} = (TaggedAxis{Tag}(length(vector.data)),)
+Base.getindex(vector::TaggedVector, i::Int) = vector.data[i]
+Base.setindex!(vector::TaggedVector, value, i::Int) = setindex!(vector.data, value, i)
+function Base.similar(
+    vector::TaggedVector, ::Type{T}, axes::Tuple{TaggedAxis{Tag}}
+) where {T,Tag}
+    return TaggedVector{Tag}(similar(vector.data, T, length(only(axes))))
+end
+
 @testset "VarNamedTuple" begin
     @testset "Construction" begin
         vnt1 = VarNamedTuple()
@@ -1231,6 +1253,14 @@ Base.size(st::SizedThing) = st.size
                 DD.DimArray(zeros(2), (DD.X([20, 30]),)),
             )
             @test_throws ArgumentError merge(coordinates2, incompatible_coordinates)
+
+            meters = PartialArray(
+                TaggedVector{:meters}([1.0]), TaggedVector{:meters}([true])
+            )
+            seconds = PartialArray(
+                TaggedVector{:seconds}([2.0, 3.0]), TaggedVector{:seconds}([true, true])
+            )
+            @test_throws ArgumentError merge(seconds, meters)
         end
 
         @testset "different dimensions" begin

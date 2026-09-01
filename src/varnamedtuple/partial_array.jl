@@ -663,6 +663,7 @@ function _grow_vector_to_axes(pa::PartialArray{T,1,<:AbstractVector}, new_axes) 
     return PartialArray(new_data, new_mask)
 end
 function _has_compatible_vector_axes(v1::AbstractVector, v2::AbstractVector)
+    typeof(only(axes(v1))) === typeof(only(axes(v2))) || return false
     shorter, longer = length(v1) < length(v2) ? (v1, v2) : (v2, v1)
     shorter_axis = only(axes(shorter))
     prefix_axis = only(axes(view(longer, Base.OneTo(length(shorter)))))
