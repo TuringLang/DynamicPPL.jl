@@ -813,13 +813,18 @@ end
             @test haskey(varinfo, @varname(x))
             @test !haskey(varinfo, @varname(y))
 
-            # A `RawValueAccumulator` should contain both `x` and `y`, if include_colon_eq
-            # is set to `true`.
+            # A `RawValueAccumulator` should preserve the combined values and their
+            # provenance if `include_colon_eq` is set to `true`.
             vi = OnlyAccsVarInfo((RawValueAccumulator(true),))
             _, vi = init!!(model, vi, InitFromPrior(), UnlinkAll())
             values = get_raw_values(vi)
+            parameter_values = get_parameter_values(vi)
+            colon_eq_values = get_colon_eq_values(vi)
             @test haskey(values, @varname(x))
             @test haskey(values, @varname(y))
+            @test haskey(parameter_values, @varname(x))
+            @test !haskey(parameter_values, @varname(y))
+            @test haskey(colon_eq_values, @varname(y))
 
             # And if include_colon_eq is set to `false`, then `values` should only contain
             # `x`.
@@ -828,6 +833,7 @@ end
             values = get_raw_values(vi)
             @test haskey(values, @varname(x))
             @test !haskey(values, @varname(y))
+            @test isempty(get_colon_eq_values(vi))
         end
 
         @model function demo_tracked_return_x()
@@ -850,8 +856,10 @@ end
         vi = OnlyAccsVarInfo((RawValueAccumulator(true),))
         _, vi = init!!(model, vi, InitFromPrior(), UnlinkAll())
         values = get_raw_values(vi)
+        colon_eq_values = get_colon_eq_values(vi)
         @test haskey(values, @varname(b.a.x))
         @test haskey(values, @varname(b.a.y))
+        @test haskey(colon_eq_values, @varname(b.a.y))
     end
 
     @testset "signature parsing + TypeWrap" begin
