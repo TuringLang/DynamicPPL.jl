@@ -131,6 +131,7 @@ export AbstractVarInfo,
     init!!,
     # LogDensityFunction
     LogDensityFunction,
+    subsample,
     OnlyAccsVarInfo,
     to_vector_params,
     get_input_vector_type,
@@ -193,6 +194,7 @@ export AbstractVarInfo,
     NoDist,
     filldist,
     arraydist,
+    independent_distribution,
     # Distributions
     Flat,
     FlatPos,
@@ -285,6 +287,7 @@ include("varinfo.jl")
 include("onlyaccs.jl")
 include("compiler.jl")
 include("logdensityfunction.jl")
+include("subsample.jl")
 include("accumulators/vector_params.jl")
 include("chains.jl")
 
