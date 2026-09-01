@@ -76,7 +76,7 @@ joint) are added to the resulting statistics NamedTuple.
 function ParamsWithStats(
     varinfo::AbstractVarInfo, stats::NamedTuple=NamedTuple(); include_log_probs::Bool=true
 )
-    params = densify!!(get_raw_values(varinfo))
+    params = densify!!(merge(get_raw_values(varinfo), get_colon_eq_values(varinfo)))
     if include_log_probs
         has_prior_acc = DynamicPPL.hasacc(varinfo, Val(:LogPrior))
         has_likelihood_acc = DynamicPPL.hasacc(varinfo, Val(:LogLikelihood))
@@ -162,7 +162,7 @@ end
     _, vi = DynamicPPL.init!!(
         model, OnlyAccsVarInfo(AccumulatorTuple(accs)), strategy, UnlinkAll()
     )
-    params = densify!!(get_raw_values(vi))
+    params = densify!!(merge(get_raw_values(vi), get_colon_eq_values(vi)))
     if include_log_probs
         stats = merge(
             stats,

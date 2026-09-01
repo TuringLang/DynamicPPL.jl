@@ -9,42 +9,78 @@ _safe_copy(val) = deepcopy(val)
 # See https://github.com/TuringLang/DynamicPPL.jl/pull/1350
 _safe_copy(val::SubArray) = collect(val)
 
-struct GetRawValues
-    "A flag indicating whether variables on the LHS of := should also be included"
-    include_colon_eq::Bool
-end
-Base.copy(g::GetRawValues) = g
-(g::GetRawValues)(val, tval, logjac, vn, dist) = _safe_copy(val)
-is_extracting_colon_eq_values(g::GetRawValues) = g.include_colon_eq
-
 """
-    RawValueAccumulator(include_colon_eq)::Bool <: AbstractAccumulator
+    RawValueAccumulator(include_colon_eq::Bool) <: AbstractAccumulator
 
-An accumulator that keeps tracks of the model parameters exactly as they are seen in the
+An accumulator that keeps track of the model parameters exactly as they are seen in the
 model.
 
 The parameter `include_colon_eq` controls whether variables on the LHS of `:=` are also
-included in the accumulator. If `true`, then these variables will be included; if `false`,
-they will not be included.
+included in the accumulator's separate `colon_eq_values` collection.
 """
+struct RawValueAccumulator{V<:VarNamedTuple,C<:VarNamedTuple} <: AbstractAccumulator
+    include_colon_eq::Bool
+    values::V
+    colon_eq_values::C
+end
+
 function RawValueAccumulator(include_colon_eq::Bool)
-    return VNTAccumulator{RAW_VALUE_ACCNAME}(GetRawValues(include_colon_eq))
+    return RawValueAccumulator(include_colon_eq, VarNamedTuple(), VarNamedTuple())
+end
+
+accumulator_name(::RawValueAccumulator) = RAW_VALUE_ACCNAME
+function Base.copy(acc::RawValueAccumulator)
+    return update_values(acc, copy(acc.values), copy(acc.colon_eq_values))
+end
+accumulate_observe!!(acc::RawValueAccumulator, right, left, vn, template) = acc
+function accumulate_assume!!(
+    acc::RawValueAccumulator, val, tval, logjac, vn, dist, template
+)
+    new_val = _safe_copy(val)
+    new_values = DynamicPPL.templated_setindex!!(acc.values, new_val, vn, template)
+    return update_values(acc, new_values, acc.colon_eq_values)
+end
+function update_values(
+    acc::RawValueAccumulator, values::VarNamedTuple, colon_eq_values::VarNamedTuple
+)
+    return RawValueAccumulator(acc.include_colon_eq, values, colon_eq_values)
+end
+function update_values(
+    acc::RawValueAccumulator{VarNamedTuple,VarNamedTuple},
+    values::VarNamedTuple,
+    colon_eq_values::VarNamedTuple,
+)
+    return RawValueAccumulator{VarNamedTuple,VarNamedTuple}(
+        acc.include_colon_eq, values, colon_eq_values
+    )
+end
+function reset(acc::RawValueAccumulator)
+    return update_values(acc, empty(acc.values), empty(acc.colon_eq_values))
+end
+split(acc::RawValueAccumulator) = reset(acc)
+function combine(acc1::RawValueAccumulator, acc2::RawValueAccumulator)
+    if acc1.include_colon_eq != acc2.include_colon_eq
+        msg = "Cannot combine RawValueAccumulators with different `include_colon_eq` values"
+        throw(ArgumentError(msg))
+    end
+    return update_values(
+        acc1,
+        merge(acc1.values, acc2.values),
+        merge(acc1.colon_eq_values, acc2.colon_eq_values),
+    )
+end
+function promote_for_threadsafe_eval(acc::RawValueAccumulator, ::Type)
+    return RawValueAccumulator{VarNamedTuple,VarNamedTuple}(
+        acc.include_colon_eq, acc.values, acc.colon_eq_values
+    )
 end
 
 # We need a separate function for the colon-eq case since that function doesn't give us tval
 # and logjac, and we don't want to have to pass in dummy values for those.
-function store_colon_eq!!(
-    acc::Union{
-        VNTAccumulator{RAW_VALUE_ACCNAME,GetRawValues},
-        TSVNTAccumulator{RAW_VALUE_ACCNAME,GetRawValues},
-    },
-    vn::VarName,
-    val,
-    template,
-)
+function store_colon_eq!!(acc::RawValueAccumulator, vn::VarName, val, template)
     new_val = _safe_copy(val)
-    new_values = DynamicPPL.templated_setindex!!(acc.values, new_val, vn, template)
-    return update_values(acc, new_values)
+    new_values = DynamicPPL.templated_setindex!!(acc.colon_eq_values, new_val, vn, template)
+    return update_values(acc, acc.values, new_values)
 end
 
 #################################################################

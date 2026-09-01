@@ -101,6 +101,7 @@ export AbstractVarInfo,
     VectorValueAccumulator,
     VectorParamAccumulator,
     get_raw_values,
+    get_colon_eq_values,
     get_vector_values,
     get_vector_params,
     # Accumulators - miscellany

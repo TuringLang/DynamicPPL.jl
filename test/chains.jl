@@ -87,7 +87,9 @@ end
             _, accs = DynamicPPL.init!!(
                 m, accs, InitFromVector(param_vector, ldf), transform_strategy
             )
-            expected_vnt = DynamicPPL.densify!!(get_raw_values(accs))
+            expected_vnt = DynamicPPL.densify!!(
+                merge(get_raw_values(accs), get_colon_eq_values(accs))
+            )
 
             # Iterate over all variables to check that their values match
             @test Set(keys(actual_vnt)) == Set(keys(expected_vnt))

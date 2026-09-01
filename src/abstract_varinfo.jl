@@ -184,18 +184,31 @@ Note that this function is not public.
 """
 function is_extracting_colon_eq_values(vi::AbstractVarInfo)
     return hasacc(vi, Val(RAW_VALUE_ACCNAME)) &&
-           is_extracting_colon_eq_values(getacc(vi, Val(RAW_VALUE_ACCNAME)).f)
+           is_extracting_colon_eq_values(getacc(vi, Val(RAW_VALUE_ACCNAME)))
+end
+is_extracting_colon_eq_values(acc::RawValueAccumulator) = acc.include_colon_eq
+function is_extracting_colon_eq_values(acc::Union{VNTAccumulator,TSVNTAccumulator})
+    return is_extracting_colon_eq_values(acc.f)
 end
 
 """
     get_raw_values(vi::AbstractVarInfo)
 
-Extract a `VarNamedTuple` of values from the `RawValueAccumulator` in `vi`. This is the
-'raw' values as they are seen in the model, without any transformations applied to them.
+Extract a `VarNamedTuple` of values introduced by `~` from the `RawValueAccumulator` in
+`vi`, without any transformations applied to them.
 
 If `vi` does not contain a `RawValueAccumulator`, this function will throw an error.
 """
 get_raw_values(vi::AbstractVarInfo) = getacc(vi, Val(RAW_VALUE_ACCNAME)).values
+
+"""
+    get_colon_eq_values(vi::AbstractVarInfo)
+
+Extract a `VarNamedTuple` of values introduced by `:=` from the `RawValueAccumulator` in
+`vi`.
+"""
+get_colon_eq_values(vi::AbstractVarInfo) =
+    getacc(vi, Val(RAW_VALUE_ACCNAME)).colon_eq_values
 
 """
     setlogp!!(vi::AbstractVarInfo, logp::NamedTuple)

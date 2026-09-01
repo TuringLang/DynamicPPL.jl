@@ -29,9 +29,8 @@ using LinearAlgebra
         # Explicitly spelled out
         accs = OnlyAccsVarInfo(RawValueAccumulator(true))
         _, accs = init!!(model, accs, InitFromPrior(), UnlinkAll())
-        vnt = get_raw_values(accs)
-        @test !any(isnan, vnt[@varname(x)])
-        @test !any(isnan, vnt[@varname(y)])
+        @test !any(isnan, get_raw_values(accs)[@varname(x)])
+        @test !any(isnan, get_colon_eq_values(accs)[@varname(y)])
         # with LDF
         ldf = LogDensityFunction(model)
         p = rand(ldf)
