@@ -1,3 +1,7 @@
+# 0.42.8
+
+Thread-safe model evaluation now keeps accumulator state per task, preventing lost updates when tasks yield or migrate between threads. See [#924](https://github.com/TuringLang/DynamicPPL.jl/issues/924).
+
 # 0.42.7
 
 The `Flat`, `FlatPos`, `BinomialLogit`, `OrderedLogistic`, and `LogPoisson` distributions have moved here from Turing, where they are re-exported. This makes them available for DynamicPPL's own test models and AD testing. See [Turing#2858](https://github.com/TuringLang/Turing.jl/issues/2858).
