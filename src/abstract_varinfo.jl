@@ -202,7 +202,7 @@ function record_nonmissing_argument!!(
     hasacc(vi, acc_name) || return vi
     prefixed_vn = prefix(context, vn)
     return map_accumulator!!(vi, acc_name) do acc
-        is_recording_nonmissing_arguments(acc.f) || return acc
+        is_recording_nonmissing_arguments(acc) || return acc
         record_nonmissing_argument!!(acc, prefixed_vn, is_submodel, is_nonmissing)
     end
 end

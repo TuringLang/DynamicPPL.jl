@@ -124,6 +124,9 @@ end
 is_extracting_colon_eq_values(g::DebugGetRawValues) = true
 is_recording_nonmissing_arguments(::Any) = false
 is_recording_nonmissing_arguments(::DebugGetRawValues) = true
+function is_recording_nonmissing_arguments(acc::Union{VNTAccumulator,TSVNTAccumulator})
+    return is_recording_nonmissing_arguments(acc.f)
+end
 function Base.copy(d::DebugGetRawValues)
     return DebugGetRawValues(
         copy(d.repeated_vns), copy(d.nonmissing_arg_vns), copy(d.seen_arg_vns)

@@ -51,6 +51,11 @@ using LinearAlgebra
         @test collect(keys(get_raw_values(accs))) == [@varname(y), @varname(x)]
     end
 
+    @testset "observed model argument" begin
+        @model f(x) = x ~ Normal()
+        @test isempty(rand(f(1.0)))
+    end
+
     @testset "indexed provenance" begin
         acc = RawValueAccumulator(true)
         acc = DynamicPPL.accumulate_assume!!(
