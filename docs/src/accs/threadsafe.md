@@ -15,12 +15,18 @@ y = [2.0, 3.0, 4.0]
 model = setthreadsafe(g(y), true)
 ```
 
-This is accomplished by creating one copy of each accumulator per thread (using `DynamicPPL.split`), and then after the model evaluation is complete, merging the result of each thread's accumulator with `DynamicPPL.combine`.
+This is accomplished by creating one copy of each accumulator per task (using
+`DynamicPPL.split`) and merging each task's accumulator with `DynamicPPL.combine` after
+model evaluation.
 
-**This means that if you are implementing your own accumulator, you will need to implement the `split` and `combine` methods for it in order for it to work correctly in thread-safe mode.**
+If you implement an accumulator, you must implement `split` and `combine` for it to work
+correctly in thread-safe mode.
 
-Each accumulator sees only the tilde-statements that were executed on its own thread.
-However, the intent is that after merging the results from all threads, the final accumulator should be equivalent to what would have been obtained by a single-threaded evaluation (modulo ordering).
+Each accumulator sees only the tilde-statements that were executed by its own task.
+After merging the results from all tasks, the final accumulator should be equivalent to
+one obtained by single-threaded evaluation, modulo ordering.
+Do not aggregate, copy, serialize, reset, or reconfigure the `ThreadSafeVarInfo` while its
+tasks are running because an accumulator may update mutable state in place.
 Because the accumulation process is not always commutative, you may in general end up with a different ordering of results.
 However, for many accumulators such as log-probability accumulators, this is not an issue.
 
@@ -34,23 +40,22 @@ Threads.nthreads()
 ```@example 1
 vi = DynamicPPL.OnlyAccsVarInfo(DynamicPPL.LogLikelihoodAccumulator())
 tsvi = DynamicPPL.ThreadSafeVarInfo(vi)
-tsvi.accs_by_thread
+isempty(tsvi.accs_by_task)
 ```
 
-(Here it actually creates a vector of length `maxthreadid()`.
-This is slightly hacky, see the warning below and links therein for more discussion.)
+The dictionary is initially empty. A task adds an accumulator when it first encounters a
+tilde-statement.
 
 ```@example 1
 x = 1.0
 model = setleafcontext(model, DynamicPPL.InitContext(InitFromParams((; x=x)), UnlinkAll()))
 _, tsvi = DynamicPPL._evaluate!!(model, tsvi)
-tsvi.accs_by_thread
+length(tsvi.accs_by_task)
 ```
 
-In the above output, the accumulators that have non-zero log-likelihoods are the ones corresponding to the threads that executed tilde-statements.
+The result is the number of tasks that executed at least one tilde-statement.
 
-Finally, to collapse the per-thread accumulators into a single accumulator, we can call `getacc`.
-This does the `combine` step for us.
+Finally, `getacc` combines the per-task accumulators into one accumulator.
 
 ```@example 1
 output_acc = DynamicPPL.getacc(tsvi, Val(:LogLikelihood))
@@ -62,14 +67,9 @@ We can check whether this is correct:
 output_acc.logp ≈ sum(logpdf.(Normal(x), y))
 ```
 
-!!! warning
-    
-    The current implementation of thread safety, with one accumulator per thread, is not fully safe since it relies on indexing into a vector with `threadid()`. See [this issue](https://github.com/TuringLang/DynamicPPL.jl/issues/924) for details. In practice, though, we have not observed any problems with the current approach.
-    
-    There is also a possibility that DynamicPPL may shift to using 'atomic' accumulators in the future, where only one set of accumulators is maintained, but modifications to it must be performed atomically. See [this draft PR](https://github.com/TuringLang/DynamicPPL.jl/pull/1137) for details.
-
-Ignoring the caveats above, it can be generally said that **any output that is obtained from an accumulator can be accumulated correctly in a thread-safe manner**.
-In other words, full thread safety in DynamicPPL is possible as long as all the outputs you need are obtained from accumulators.
+Any output obtained from an accumulator can be accumulated correctly in thread-safe mode.
+DynamicPPL can therefore provide full thread safety when all required outputs come from
+accumulators.
 
 The main situation where this is not yet true is when using a full `VarInfo`, which stores a VarNamedTuple in its `varinfo.values` field.
 Modifications to this field are currently not thread-safe.
