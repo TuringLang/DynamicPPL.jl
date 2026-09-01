@@ -107,7 +107,20 @@ function _indexed_product(dist::IndexedIndependentDistribution, indices)
     end
     return product_distribution(distributions)
 end
-Base.size(dist::IndexedIndependentDistribution) = size(_indexed_product(dist, 1:(dist.n)))
+Base.size(dist::IndexedIndependentDistribution) = (size(dist.prototype)..., dist.n)
+
+for f in (
+    :(Bijectors.VectorBijectors.from_linked_vec),
+    :(Bijectors.VectorBijectors.to_linked_vec),
+    :(Bijectors.VectorBijectors.from_vec),
+    :(Bijectors.VectorBijectors.to_vec),
+    :(Bijectors.VectorBijectors.vec_length),
+    :(Bijectors.VectorBijectors.linked_vec_length),
+    :(Bijectors.VectorBijectors.optic_vec),
+    :(Bijectors.VectorBijectors.linked_optic_vec),
+)
+    @eval $f(dist::IndexedIndependentDistribution) = $f(_indexed_product(dist, 1:(dist.n)))
+end
 
 function Base.rand(::Random.AbstractRNG, ::IndependentDistribution)
     throw(
@@ -456,14 +469,92 @@ function acclogp(::IndependentLogLikelihoodAccumulator, value)
     )
 end
 
-struct IndependentLogJoint end
-function (::IndependentLogJoint)(vi::AbstractVarInfo)
-    likelihood = getacc(vi, Val(:LogLikelihood))
+struct IndependentLogJoint{R}
+    reference_ranges::R
+end
+IndependentLogJoint() = IndependentLogJoint(nothing)
+
+function _check_independent_accumulators(vi::AbstractVarInfo)
+    prior = hasacc(vi, Val(:LogPrior)) ? getacc(vi, Val(:LogPrior)) : nothing
+    prior isa IndependentLogPriorAccumulator || throw(
+        ArgumentError(
+            "the subsampling log-prior accumulator was removed or replaced; got $(typeof(prior))",
+        ),
+    )
+    jacobian = hasacc(vi, Val(:LogJacobian)) ? getacc(vi, Val(:LogJacobian)) : nothing
+    jacobian isa IndependentLogJacobianAccumulator || throw(
+        ArgumentError(
+            "the subsampling log-Jacobian accumulator was removed or replaced; got $(typeof(jacobian))",
+        ),
+    )
+    likelihood = if hasacc(vi, Val(:LogLikelihood))
+        getacc(vi, Val(:LogLikelihood))
+    else
+        nothing
+    end
+    likelihood isa IndependentLogLikelihoodAccumulator || throw(
+        ArgumentError(
+            "the subsampling log-likelihood accumulator was removed or replaced; got $(typeof(likelihood))",
+        ),
+    )
+    return likelihood
+end
+
+function _check_independent_evaluation_layout(
+    reference::VarNamedTuple, candidate::VarNamedTuple
+)
+    reference_vns = keys(reference)
+    candidate_vns = keys(candidate)
+    reference_vns == candidate_vns || throw(
+        DimensionMismatch(
+            "model evaluation changed the latent variables from $(collect(reference_vns)) to $(collect(candidate_vns))",
+        ),
+    )
+    offset = 1
+    for vn in reference_vns
+        reference_rat = reference[vn]
+        candidate_value = candidate[vn]
+        candidate_length = length(get_internal_value(candidate_value))
+        candidate_range = offset:(offset + candidate_length - 1)
+        reference_rat.range == candidate_range || throw(
+            DimensionMismatch(
+                "model evaluation changed the parameter range for `$vn` from $(reference_rat.range) to $candidate_range",
+            ),
+        )
+        candidate_transform = get_transform(candidate_value)
+        isequal(reference_rat.transform, candidate_transform) || throw(
+            ArgumentError(
+                "model evaluation changed the transform for `$vn` from $(reference_rat.transform) to $candidate_transform",
+            ),
+        )
+        offset += candidate_length
+    end
+    return nothing
+end
+
+function (getlogjoint::IndependentLogJoint)(vi::AbstractVarInfo)
+    likelihood = _check_independent_accumulators(vi)
     likelihood.count == 1 || throw(
         ArgumentError(
             "the model did not encounter the conditioned independent observation `$(likelihood.observation)` exactly once",
         ),
     )
+    if getlogjoint.reference_ranges !== nothing
+        vector_values = if hasacc(vi, Val(VECTORVAL_ACCNAME))
+            getacc(vi, Val(VECTORVAL_ACCNAME))
+        else
+            nothing
+        end
+        vector_values isa VNTAccumulator{VECTORVAL_ACCNAME,typeof(_get_vector_tval)} ||
+            throw(
+                ArgumentError(
+                    "the subsampling latent-layout accumulator was removed or replaced; got $(typeof(vector_values))",
+                ),
+            )
+        _check_independent_evaluation_layout(
+            getlogjoint.reference_ranges, vector_values.values
+        )
+    end
     return getlogprior(vi) + getloglikelihood(vi) - getlogjac(vi)
 end
 
@@ -517,14 +608,14 @@ function _strict_independent_ldf(
     population_size::Int,
     indices=nothing,
 )
-    return LogDensityFunction(
-        model,
-        IndependentLogJoint(),
-        ranges,
-        sample,
+    accumulators = AccumulatorTuple((
+        VectorValueAccumulator(),
         _independent_accumulators(
             observation, scale, expected_nobs, population_size, indices
-        ),
+        )...,
+    ))
+    return LogDensityFunction(
+        model, IndependentLogJoint(ranges), ranges, sample, accumulators
     )
 end
 
@@ -641,7 +732,9 @@ function _subsampling_problem(
         ),
     )
     scale = dataset_size//dataset_size
-    probe_model = condition(model, observation => SubsamplingShape(data))
+    probe_model = condition(
+        decondition(model, observation), observation => SubsamplingShape(data)
+    )
     layout = _probe_independent_model(
         _subsampling_probe_rng(),
         probe_model,
@@ -806,7 +899,10 @@ end
 function _batch_ldf(problem::SubsamplingState, batch::AbstractVector{<:Integer})
     batch_data = _select_batch(problem.full_data, batch)
     batch = collect(Int, batch)
-    batch_model = condition(problem.ldf.model, problem.observation => batch_data)
+    batch_model = condition(
+        decondition(problem.ldf.model, problem.observation),
+        problem.observation => batch_data,
+    )
     ranges = get_all_ranges_and_transforms(problem.ldf)
     sample = get_sample_input_vector(problem.ldf)
     batch_size = length(batch)

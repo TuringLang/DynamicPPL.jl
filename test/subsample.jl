@@ -11,7 +11,8 @@ using Distributions:
     insupport,
     logpdf,
     loglikelihood,
-    product_distribution
+    product_distribution,
+    truncated
 using DynamicPPL
 using FillArrays: Fill
 using ForwardDiff: ForwardDiff
@@ -180,6 +181,27 @@ end
         @test loglikelihood(indexed, data) == loglikelihood(indexed_product, data)
         @test insupport(indexed, data) == insupport(indexed_product, data)
         @test rand(StableRNG(1), indexed) == rand(StableRNG(1), indexed_product)
+
+        calls = Ref(0)
+        large_indexed = independent_distribution(i -> (calls[] += 1; Normal(i)), 10_000)
+        calls[] = 0
+        @test size(large_indexed) == (10_000,)
+        @test calls[] == 0
+        indexed_vector = independent_distribution(i -> MvNormal(fill(i, 2), I), 3)
+        @test size(indexed_vector) == (2, 3)
+
+        @model function indexed_latent()
+            return x ~ independent_distribution(i -> Normal(i), 3)
+        end
+        @model function product_latent()
+            return x ~ product_distribution([Normal(i) for i in 1:3])
+        end
+        indexed_ldf = LogDensityFunction(indexed_latent(), getlogjoint_internal, LinkAll())
+        product_ldf = LogDensityFunction(product_latent(), getlogjoint_internal, LinkAll())
+        @test LogDensityProblems.dimension(indexed_ldf) ==
+            LogDensityProblems.dimension(product_ldf)
+        @test LogDensityProblems.logdensity(indexed_ldf, zeros(3)) ==
+            LogDensityProblems.logdensity(product_ldf, zeros(3))
     end
 
     @testset "sampling cost depends on batch size" begin
@@ -388,6 +410,33 @@ end
         model = condition(explicit_logjac_after(), @varname(x) => data)
         @test_throws ArgumentError independent_problem(model, 2)
 
+        @model function replace_prior()
+            μ ~ truncated(Normal(); lower=0)
+            x ~ independent_distribution(Normal(μ))
+            if μ < 0
+                return __varinfo__ = setlogprior!!(__varinfo__, -1.0)
+            end
+        end
+        model = condition(replace_prior(), @varname(x) => data)
+        problem = independent_problem(model, 2)
+        @test_throws ArgumentError LogDensityProblems.logdensity(problem, [-1.0])
+
+        @model function replace_logjac()
+            μ ~ Normal()
+            x ~ independent_distribution(Normal(μ))
+            return __varinfo__ = setlogjac!!(__varinfo__, -1.0)
+        end
+        model = condition(replace_logjac(), @varname(x) => data)
+        @test_throws ArgumentError independent_problem(model, 2)
+
+        @model function replace_likelihood()
+            μ ~ Normal()
+            x ~ independent_distribution(Normal(μ))
+            return __varinfo__ = setloglikelihood!!(__varinfo__, -1.0)
+        end
+        model = condition(replace_likelihood(), @varname(x) => data)
+        @test_throws ArgumentError independent_problem(model, 2)
+
         @model function no_observation()
             return μ ~ Normal()
         end
@@ -464,6 +513,26 @@ end
         @test_throws ArgumentError DynamicPPL._check_independent_layout(
             scalar, wrong_vector_type
         )
+
+        @model function parameter_dependent_layout()
+            z ~ truncated(Normal(); lower=0)
+            if z > 0
+                y ~ Normal()
+            end
+            return x ~ independent_distribution(Normal(z))
+        end
+        dynamic = subsample(parameter_dependent_layout() | (x=[0.0, 1.0],), [1], 2)
+        @test_throws DimensionMismatch LogDensityProblems.logdensity(dynamic, [-1.0, 0.0])
+    end
+
+    @testset "nested conditioning contexts" begin
+        data = zeros(100_000)
+        model = prefix(condition(normal_location(); x=data), :a)
+        problem = subsample(model, [1, 3], length(data))
+        @test Base.summarysize(problem) < Base.summarysize(data) ÷ 2
+        @test LogDensityProblems.logdensity(problem, [0.0]) ≈
+            logpdf(Normal(0, 10), 0.0) +
+              (length(data)//2) * loglikelihood(Normal(), data[[1, 3]])
     end
 
     @testset "thread-safe evaluation" begin

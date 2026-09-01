@@ -90,8 +90,10 @@ multiplicity of element ``i`` in the returned indices, unbiased scaling requires
 ``\mathbb{E}[C_i / n] = 1 / N``. For fixed ``n``, this reduces to
 ``\mathbb{E}[C_i] = n / N``.
 
-Construction neither scores nor reads the full dataset; a shape-only structural probe fails
-if the model attempts to inspect it. DynamicPPL copies only the selected minibatch, so its
-data-dependent work is `O(n)`. The model must have exactly one conditioned observation using
-`independent_distribution`, with no later probability-bearing statement. Additional
-likelihood contributions through `@addlogprob!` are rejected.
+Construction neither scores nor reads the full conditioned dataset; a shape-only structural
+probe fails if the model attempts to inspect it. DynamicPPL copies only the selected
+observations, so their likelihood requires `O(n)` work. Model arguments are retained
+unchanged and may therefore still contain dataset-sized covariates. The model must have
+exactly one conditioned observation using `independent_distribution`, with no later
+probability-bearing statement. Additional likelihood contributions through `@addlogprob!`
+are rejected.
