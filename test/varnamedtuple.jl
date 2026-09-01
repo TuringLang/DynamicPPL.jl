@@ -1178,18 +1178,25 @@ Base.size(st::SizedThing) = st.size
         =#
     end
 
-    @testset "merging PartialArrays errors with different axes" begin
-        @testset "different sizes" begin
+    @testset "merging PartialArrays with different axes" begin
+        @testset "different vector lengths" begin
             vnt1 = templated_setindex!!(VarNamedTuple(), 1.0, @varname(x[1]), zeros(1))
             vnt2 = templated_setindex!!(VarNamedTuple(), 2.0, @varname(x[1]), zeros(2))
-            @test_throws ArgumentError merge(vnt1, vnt2)
+            vnt2 = setindex!!(vnt2, 3.0, @varname(x[2]))
+            @test @inferred(merge(vnt1, vnt2)) == vnt2
 
+            expected = templated_setindex!!(VarNamedTuple(), 1.0, @varname(x[1]), zeros(2))
+            expected = setindex!!(expected, 3.0, @varname(x[2]))
+            @test @inferred(merge(vnt2, vnt1)) == expected
+        end
+
+        @testset "different dimensions" begin
             vnt1 = templated_setindex!!(VarNamedTuple(), 1.0, @varname(x[1]), zeros(1))
             vnt2 = templated_setindex!!(VarNamedTuple(), 2.0, @varname(x[1]), zeros(1, 1))
             @test_throws ArgumentError merge(vnt1, vnt2)
         end
 
-        @testset "different types" begin
+        @testset "different axis origins" begin
             vnt1 = templated_setindex!!(VarNamedTuple(), 1.0, @varname(x[1]), zeros(1))
             vnt2 = templated_setindex!!(
                 VarNamedTuple(), 2.0, @varname(x[0]), OA.OffsetArray(zeros(1), 0:0)

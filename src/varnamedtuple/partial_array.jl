@@ -647,6 +647,20 @@ function _subset_partialarray(pa::PartialArray, inds::Vararg{Any}; kw...)
 end
 
 Base.merge(x1::PartialArray, x2::PartialArray) = _merge(x1, x2, Val(true))
+function _grow_vector_to_length(pa::PartialArray{T,1,<:Vector}, new_length) where {T}
+    current_length = length(pa.data)
+    current_length == new_length && return pa
+    @assert current_length < new_length
+    new_data = similar(pa.data, new_length)
+    new_mask = fill!(similar(pa.mask, new_length), false)
+    for i in eachindex(pa.mask)
+        if pa.mask[i]
+            new_data[i] = pa.data[i]
+            new_mask[i] = true
+        end
+    end
+    return PartialArray(new_data, new_mask)
+end
 function _merge(pa1::PartialArray, pa2::PartialArray, recurse::Val)
     # If both `pa1` and `pa2` are GrowableArrays, we can grow them before merging
     if pa1.data isa GrowableArray && pa2.data isa GrowableArray && ndims(pa1) == ndims(pa2)
@@ -655,6 +669,11 @@ function _merge(pa1::PartialArray, pa2::PartialArray, recurse::Val)
         new_size = map(max, size1, size2)
         pa1 = grow_to_indices!!(pa1, new_size...)
         pa2 = grow_to_indices!!(pa2, new_size...)
+    elseif pa1.data isa Vector && pa2.data isa Vector
+        # Vector lengths may depend on earlier random variables, so merge over their union.
+        new_length = max(length(pa1.data), length(pa2.data))
+        pa1 = _grow_vector_to_length(pa1, new_length)
+        pa2 = _grow_vector_to_length(pa2, new_length)
     end
 
     # TODO(penelopeysm) In general, we should like to catch more cases (e.g. where the
