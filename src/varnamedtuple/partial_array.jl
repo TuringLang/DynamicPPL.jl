@@ -662,6 +662,10 @@ function _grow_vector_to_axes(pa::PartialArray{T,1,<:AbstractVector}, new_axes) 
     end
     return PartialArray(new_data, new_mask)
 end
+function _has_compatible_vector_axes(v1::AbstractVector, v2::AbstractVector)
+    shorter, longer = length(v1) < length(v2) ? (v1, v2) : (v2, v1)
+    return axes(shorter) === axes(view(longer, Base.OneTo(length(shorter))))
+end
 function _merge(pa1::PartialArray, pa2::PartialArray, recurse::Val)
     # If both `pa1` and `pa2` are GrowableArrays, we can grow them before merging
     if pa1.data isa GrowableArray && pa2.data isa GrowableArray && ndims(pa1) == ndims(pa2)
@@ -675,7 +679,7 @@ function _merge(pa1::PartialArray, pa2::PartialArray, recurse::Val)
         length(pa1.data) != length(pa2.data) &&
         !Base.has_offset_axes(pa1.data) &&
         !Base.has_offset_axes(pa2.data) &&
-        typeof(axes(pa1.data, 1)) === typeof(axes(pa2.data, 1))
+        _has_compatible_vector_axes(pa1.data, pa2.data)
         # Vector lengths may depend on earlier random variables, so merge over their union.
         new_axes = length(pa1.data) < length(pa2.data) ? axes(pa2.data) : axes(pa1.data)
         pa1 = _grow_vector_to_axes(pa1, new_axes)

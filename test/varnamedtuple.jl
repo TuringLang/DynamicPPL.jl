@@ -1205,6 +1205,20 @@ Base.size(st::SizedThing) = st.size
             @test merged_dims[@varname(x[1])] == 1.0
             @test merged_dims[@varname(x[2])] == 3.0
             @test typeof(merged_dims.data.x.data) === typeof(dims2.data.x.data)
+
+            coordinates1 = templated_setindex!!(
+                VarNamedTuple(),
+                1.0,
+                @varname(x[1]),
+                DD.DimArray(zeros(1), (DD.X(10:10:10),)),
+            )
+            coordinates2 = templated_setindex!!(
+                VarNamedTuple(),
+                2.0,
+                @varname(x[1]),
+                DD.DimArray(zeros(2), (DD.X(20:10:30),)),
+            )
+            @test_throws ArgumentError merge(coordinates2, coordinates1)
         end
 
         @testset "different dimensions" begin
