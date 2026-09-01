@@ -50,6 +50,17 @@ using LinearAlgebra
         _, accs = init!!(f(), accs, InitFromPrior(), UnlinkAll())
         @test collect(keys(get_raw_values(accs))) == [@varname(y), @varname(x)]
     end
+
+    @testset "indexed provenance" begin
+        acc = RawValueAccumulator(true)
+        acc = DynamicPPL.accumulate_assume!!(
+            acc, 1.0, 1.0, 0.0, @varname(x[1]), Normal(), zeros(2)
+        )
+        acc = DynamicPPL.store_colon_eq!!(acc, @varname(x[2]), 2.0, zeros(2))
+        accs = OnlyAccsVarInfo(acc)
+        @test keys(get_parameter_values(accs)) == [@varname(x[1])]
+        @test keys(get_colon_eq_values(accs)) == [@varname(x[2])]
+    end
 end
 
 @info "Completed $(@__FILE__) in $(now() - __now__)."

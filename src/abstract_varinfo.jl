@@ -209,7 +209,7 @@ Extract a `VarNamedTuple` of untransformed parameter values introduced by `~` fr
 `RawValueAccumulator` in `vi`.
 """
 get_parameter_values(vi::AbstractVarInfo) =
-    getacc(vi, Val(RAW_VALUE_ACCNAME)).parameter_values
+    _get_parameter_values(getacc(vi, Val(RAW_VALUE_ACCNAME)))
 
 """
     get_colon_eq_values(vi::AbstractVarInfo)
@@ -218,7 +218,7 @@ Extract a `VarNamedTuple` of values introduced by `:=` from the `RawValueAccumul
 `vi`.
 """
 get_colon_eq_values(vi::AbstractVarInfo) =
-    getacc(vi, Val(RAW_VALUE_ACCNAME)).colon_eq_values
+    _get_colon_eq_values(getacc(vi, Val(RAW_VALUE_ACCNAME)))
 
 """
     setlogp!!(vi::AbstractVarInfo, logp::NamedTuple)
