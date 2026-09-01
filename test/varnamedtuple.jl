@@ -1188,6 +1188,23 @@ Base.size(st::SizedThing) = st.size
             expected = templated_setindex!!(VarNamedTuple(), 1.0, @varname(x[1]), zeros(2))
             expected = setindex!!(expected, 3.0, @varname(x[2]))
             @test @inferred(merge(vnt2, vnt1)) == expected
+
+            bits1 = templated_setindex!!(VarNamedTuple(), false, @varname(x[1]), falses(1))
+            bits2 = templated_setindex!!(VarNamedTuple(), true, @varname(x[1]), falses(2))
+            bits2 = setindex!!(bits2, true, @varname(x[2]))
+            @test @inferred(merge(bits1, bits2)) == bits2
+
+            dims1 = templated_setindex!!(
+                VarNamedTuple(), 1.0, @varname(x[1]), DD.DimArray(zeros(1), (DD.X,))
+            )
+            dims2 = templated_setindex!!(
+                VarNamedTuple(), 2.0, @varname(x[1]), DD.DimArray(zeros(2), (DD.X,))
+            )
+            dims2 = setindex!!(dims2, 3.0, @varname(x[2]))
+            merged_dims = @inferred merge(dims2, dims1)
+            @test merged_dims[@varname(x[1])] == 1.0
+            @test merged_dims[@varname(x[2])] == 3.0
+            @test typeof(merged_dims.data.x.data) === typeof(dims2.data.x.data)
         end
 
         @testset "different dimensions" begin

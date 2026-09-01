@@ -647,12 +647,13 @@ function _subset_partialarray(pa::PartialArray, inds::Vararg{Any}; kw...)
 end
 
 Base.merge(x1::PartialArray, x2::PartialArray) = _merge(x1, x2, Val(true))
-function _grow_vector_to_length(pa::PartialArray{T,1,<:Vector}, new_length) where {T}
+function _grow_vector_to_axes(pa::PartialArray{T,1,<:AbstractVector}, new_axes) where {T}
     current_length = length(pa.data)
-    current_length == new_length && return pa
+    axes(pa.data) == new_axes && return pa
+    new_length = length(only(new_axes))
     @assert current_length < new_length
-    new_data = similar(pa.data, new_length)
-    new_mask = fill!(similar(pa.mask, new_length), false)
+    new_data = similar(pa.data, new_axes)
+    new_mask = fill!(similar(pa.mask, new_axes), false)
     for i in eachindex(pa.mask)
         if pa.mask[i]
             new_data[i] = pa.data[i]
@@ -669,11 +670,16 @@ function _merge(pa1::PartialArray, pa2::PartialArray, recurse::Val)
         new_size = map(max, size1, size2)
         pa1 = grow_to_indices!!(pa1, new_size...)
         pa2 = grow_to_indices!!(pa2, new_size...)
-    elseif pa1.data isa Vector && pa2.data isa Vector
+    elseif pa1.data isa AbstractVector &&
+        pa2.data isa AbstractVector &&
+        length(pa1.data) != length(pa2.data) &&
+        !Base.has_offset_axes(pa1.data) &&
+        !Base.has_offset_axes(pa2.data) &&
+        typeof(axes(pa1.data, 1)) === typeof(axes(pa2.data, 1))
         # Vector lengths may depend on earlier random variables, so merge over their union.
-        new_length = max(length(pa1.data), length(pa2.data))
-        pa1 = _grow_vector_to_length(pa1, new_length)
-        pa2 = _grow_vector_to_length(pa2, new_length)
+        new_axes = length(pa1.data) < length(pa2.data) ? axes(pa2.data) : axes(pa1.data)
+        pa1 = _grow_vector_to_axes(pa1, new_axes)
+        pa2 = _grow_vector_to_axes(pa2, new_axes)
     end
 
     # TODO(penelopeysm) In general, we should like to catch more cases (e.g. where the
