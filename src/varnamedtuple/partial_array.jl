@@ -647,6 +647,33 @@ function _subset_partialarray(pa::PartialArray, inds::Vararg{Any}; kw...)
 end
 
 Base.merge(x1::PartialArray, x2::PartialArray) = _merge(x1, x2, Val(true))
+function _grow_vector_to_axes(pa::PartialArray{T,1,<:AbstractVector}, new_axes) where {T}
+    current_length = length(pa.data)
+    axes(pa.data) == new_axes && return pa
+    new_length = length(only(new_axes))
+    @assert current_length < new_length
+    new_data = similar(pa.data, new_axes)
+    new_mask = fill!(similar(pa.mask, new_axes), false)
+    for i in eachindex(pa.mask)
+        if pa.mask[i]
+            new_data[i] = pa.data[i]
+            new_mask[i] = true
+        end
+    end
+    return PartialArray(new_data, new_mask)
+end
+function _has_compatible_vector_axes(v1::AbstractVector, v2::AbstractVector)
+    typeof(only(axes(v1))) === typeof(only(axes(v2))) || return false
+    shorter, longer = length(v1) < length(v2) ? (v1, v2) : (v2, v1)
+    shorter_axis = only(axes(shorter))
+    prefix_axis = only(axes(view(longer, Base.OneTo(length(shorter)))))
+    # Axis equality can ignore coordinate metadata carried by custom axes.
+    properties = propertynames(shorter_axis, true)
+    return properties == propertynames(prefix_axis, true) && all(
+        name -> isequal(getproperty(shorter_axis, name), getproperty(prefix_axis, name)),
+        properties,
+    )
+end
 function _merge(pa1::PartialArray, pa2::PartialArray, recurse::Val)
     # If both `pa1` and `pa2` are GrowableArrays, we can grow them before merging
     if pa1.data isa GrowableArray && pa2.data isa GrowableArray && ndims(pa1) == ndims(pa2)
@@ -655,6 +682,16 @@ function _merge(pa1::PartialArray, pa2::PartialArray, recurse::Val)
         new_size = map(max, size1, size2)
         pa1 = grow_to_indices!!(pa1, new_size...)
         pa2 = grow_to_indices!!(pa2, new_size...)
+    elseif pa1.data isa AbstractVector &&
+        pa2.data isa AbstractVector &&
+        length(pa1.data) != length(pa2.data) &&
+        !Base.has_offset_axes(pa1.data) &&
+        !Base.has_offset_axes(pa2.data) &&
+        _has_compatible_vector_axes(pa1.data, pa2.data)
+        # Vector lengths may depend on earlier random variables, so merge over their union.
+        new_axes = length(pa1.data) < length(pa2.data) ? axes(pa2.data) : axes(pa1.data)
+        pa1 = _grow_vector_to_axes(pa1, new_axes)
+        pa2 = _grow_vector_to_axes(pa2, new_axes)
     end
 
     # TODO(penelopeysm) In general, we should like to catch more cases (e.g. where the

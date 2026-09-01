@@ -157,6 +157,28 @@ struct SizedThing{T<:Tuple}
 end
 Base.size(st::SizedThing) = st.size
 
+struct TaggedAxis{Tag} <: AbstractUnitRange{Int}
+    stop::Int
+end
+Base.first(::TaggedAxis) = 1
+Base.last(axis::TaggedAxis) = axis.stop
+Base.length(axis::TaggedAxis) = axis.stop
+Base.getindex(axis::TaggedAxis, i::Int) = getindex(Base.OneTo(axis.stop), i)
+
+struct TaggedVector{Tag,T} <: AbstractVector{T}
+    data::Vector{T}
+end
+TaggedVector{Tag}(data::Vector{T}) where {Tag,T} = TaggedVector{Tag,T}(data)
+Base.size(vector::TaggedVector) = size(vector.data)
+Base.axes(vector::TaggedVector{Tag}) where {Tag} = (TaggedAxis{Tag}(length(vector.data)),)
+Base.getindex(vector::TaggedVector, i::Int) = vector.data[i]
+Base.setindex!(vector::TaggedVector, value, i::Int) = setindex!(vector.data, value, i)
+function Base.similar(
+    vector::TaggedVector, ::Type{T}, axes::Tuple{TaggedAxis{Tag}}
+) where {T,Tag}
+    return TaggedVector{Tag}(similar(vector.data, T, length(only(axes))))
+end
+
 @testset "VarNamedTuple" begin
     @testset "Construction" begin
         vnt1 = VarNamedTuple()
@@ -1178,18 +1200,76 @@ Base.size(st::SizedThing) = st.size
         =#
     end
 
-    @testset "merging PartialArrays errors with different axes" begin
-        @testset "different sizes" begin
+    @testset "merging PartialArrays with different axes" begin
+        @testset "different vector lengths" begin
             vnt1 = templated_setindex!!(VarNamedTuple(), 1.0, @varname(x[1]), zeros(1))
             vnt2 = templated_setindex!!(VarNamedTuple(), 2.0, @varname(x[1]), zeros(2))
-            @test_throws ArgumentError merge(vnt1, vnt2)
+            vnt2 = setindex!!(vnt2, 3.0, @varname(x[2]))
+            @test @inferred(merge(vnt1, vnt2)) == vnt2
 
+            expected = templated_setindex!!(VarNamedTuple(), 1.0, @varname(x[1]), zeros(2))
+            expected = setindex!!(expected, 3.0, @varname(x[2]))
+            @test @inferred(merge(vnt2, vnt1)) == expected
+
+            bits1 = templated_setindex!!(VarNamedTuple(), false, @varname(x[1]), falses(1))
+            bits2 = templated_setindex!!(VarNamedTuple(), true, @varname(x[1]), falses(2))
+            bits2 = setindex!!(bits2, true, @varname(x[2]))
+            @test @inferred(merge(bits1, bits2)) == bits2
+
+            dims1 = templated_setindex!!(
+                VarNamedTuple(), 1.0, @varname(x[1]), DD.DimArray(zeros(1), (DD.X,))
+            )
+            dims2 = templated_setindex!!(
+                VarNamedTuple(), 2.0, @varname(x[1]), DD.DimArray(zeros(2), (DD.X,))
+            )
+            dims2 = setindex!!(dims2, 3.0, @varname(x[2]))
+            merged_dims = @inferred merge(dims2, dims1)
+            @test merged_dims[@varname(x[1])] == 1.0
+            @test merged_dims[@varname(x[2])] == 3.0
+            @test typeof(merged_dims.data.x.data) === typeof(dims2.data.x.data)
+
+            coordinates1 = templated_setindex!!(
+                VarNamedTuple(),
+                1.0,
+                @varname(x[1]),
+                DD.DimArray(zeros(2), (DD.X([10, 20]),)),
+            )
+            coordinates2 = templated_setindex!!(
+                VarNamedTuple(),
+                2.0,
+                @varname(x[1]),
+                DD.DimArray(zeros(3), (DD.X([10, 20, 30]),)),
+            )
+            coordinates2 = setindex!!(coordinates2, 3.0, @varname(x[3]))
+            merged_coordinates = @inferred merge(coordinates2, coordinates1)
+            @test merged_coordinates[@varname(x[1])] == 1.0
+            @test merged_coordinates[@varname(x[3])] == 3.0
+            @test DD.dims(merged_coordinates.data.x.data) == (DD.X([10, 20, 30]),)
+
+            incompatible_coordinates = templated_setindex!!(
+                VarNamedTuple(),
+                1.0,
+                @varname(x[1]),
+                DD.DimArray(zeros(2), (DD.X([20, 30]),)),
+            )
+            @test_throws ArgumentError merge(coordinates2, incompatible_coordinates)
+
+            meters = PartialArray(
+                TaggedVector{:meters}([1.0]), TaggedVector{:meters}([true])
+            )
+            seconds = PartialArray(
+                TaggedVector{:seconds}([2.0, 3.0]), TaggedVector{:seconds}([true, true])
+            )
+            @test_throws ArgumentError merge(seconds, meters)
+        end
+
+        @testset "different dimensions" begin
             vnt1 = templated_setindex!!(VarNamedTuple(), 1.0, @varname(x[1]), zeros(1))
             vnt2 = templated_setindex!!(VarNamedTuple(), 2.0, @varname(x[1]), zeros(1, 1))
             @test_throws ArgumentError merge(vnt1, vnt2)
         end
 
-        @testset "different types" begin
+        @testset "different axis origins" begin
             vnt1 = templated_setindex!!(VarNamedTuple(), 1.0, @varname(x[1]), zeros(1))
             vnt2 = templated_setindex!!(
                 VarNamedTuple(), 2.0, @varname(x[0]), OA.OffsetArray(zeros(1), 0:0)
