@@ -1,3 +1,7 @@
+# 0.42.10
+
+Thread-safe model evaluation now keeps accumulator state per task, preventing lost updates when tasks yield or migrate between threads. See [#924](https://github.com/TuringLang/DynamicPPL.jl/issues/924).
+
 # 0.42.9
 
 Added `independent_distribution` and `subsample` for fixed-minibatch log-density functions with scaled likelihoods. This is useful when implementing stochastic objectives in inference packages such as AdvancedVI and AdvancedHMC.

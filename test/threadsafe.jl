@@ -23,12 +23,14 @@ const gdemo_default = gdemo_d()
         threadsafe_vi = @inferred DynamicPPL.ThreadSafeVarInfo(vi)
 
         @test threadsafe_vi.varinfo === vi
-        @test threadsafe_vi.accs_by_thread isa Vector{<:DynamicPPL.AccumulatorTuple}
-        @test length(threadsafe_vi.accs_by_thread) == Threads.maxthreadid()
-        expected_accs = DynamicPPL.AccumulatorTuple(
-            (DynamicPPL.split(acc) for acc in DynamicPPL.getaccs(vi))...
+        @test threadsafe_vi.accs_by_task isa IdDict{DynamicPPL.TaskId}
+        @test isempty(threadsafe_vi.accs_by_task)
+
+        vnt_acc = DynamicPPL.VNTAccumulator{:Test}(
+            (val, _...) -> val, VarNamedTuple(; x=1.0)
         )
-        @test all(accs == expected_accs for accs in threadsafe_vi.accs_by_thread)
+        threadsafe_vnt_vi = @inferred DynamicPPL.ThreadSafeVarInfo(OnlyAccsVarInfo(vnt_acc))
+        @test_nowarn DynamicPPL.map_accumulators!!(identity, threadsafe_vnt_vi)
     end
 
     @testset "setthreadsafe" begin
@@ -50,24 +52,83 @@ const gdemo_default = gdemo_d()
         @test getlogjoint(threadsafe_vi) == lp
 
         threadsafe_vi = DynamicPPL.acclogprior!!(threadsafe_vi, 42)
-        @test threadsafe_vi.accs_by_thread[Threads.threadid()][:LogPrior].logp == 42
         @test getlogjoint(vi) == lp
         # float addition might lead to rounding errors so use approx rather than ==
         @test getlogjoint(threadsafe_vi) ≈ lp + 42
 
+        copied_vi = @inferred copy(threadsafe_vi)
+        @test isempty(copied_vi.accs_by_task)
+        copied_vi = DynamicPPL.acclogprior!!(copied_vi, 1)
+        @test getlogjoint(copied_vi) ≈ lp + 43
+        @test getlogjoint(threadsafe_vi) ≈ lp + 42
+
         threadsafe_vi = DynamicPPL.resetaccs!!(threadsafe_vi)
         @test iszero(getlogjoint(threadsafe_vi))
-        expected_accs = DynamicPPL.AccumulatorTuple(
-            (DynamicPPL.split(acc) for acc in DynamicPPL.getaccs(threadsafe_vi.varinfo))...
-        )
-        @test all(accs == expected_accs for accs in threadsafe_vi.accs_by_thread)
+        @test isempty(threadsafe_vi.accs_by_task)
 
         threadsafe_vi = setlogprior!!(threadsafe_vi, 42)
         @test getlogjoint(threadsafe_vi) == 42
-        expected_accs = DynamicPPL.AccumulatorTuple(
-            (DynamicPPL.split(acc) for acc in DynamicPPL.getaccs(threadsafe_vi.varinfo))...
+        @test isempty(threadsafe_vi.accs_by_task)
+    end
+
+    @testset "tasks own accumulator state" begin
+        ntasks = 2
+        ready = Threads.Atomic{Int}(0)
+        release = Threads.Atomic{Bool}(false)
+        vi = DynamicPPL.ThreadSafeVarInfo(
+            OnlyAccsVarInfo(DynamicPPL.LogLikelihoodAccumulator())
         )
-        @test all(accs == expected_accs for accs in threadsafe_vi.accs_by_thread)
+        tasks = map(1:ntasks) do _
+            Threads.@spawn DynamicPPL.map_accumulator!!(vi, Val(:LogLikelihood)) do acc
+                Threads.atomic_add!(ready, 1)
+                while !release[]
+                    yield()
+                end
+                return DynamicPPL.acclogp(acc, 1.0)
+            end
+        end
+        status = timedwait(() -> ready[] == ntasks, 30; pollint=0.001)
+        release[] = true
+        @test status === :ok
+        fetch.(tasks)
+
+        @test getloglikelihood(vi) == ntasks
+        @test length(vi.accs_by_task) == ntasks
+    end
+
+    @testset "aggregation preserves mutable accumulator state" begin
+        accname = Val(:VectorParamAccumulator)
+        main_acc = DynamicPPL.VectorParamAccumulator(
+            [1.0, 0.0], [true, false], VarNamedTuple()
+        )
+        vi = DynamicPPL.ThreadSafeVarInfo(OnlyAccsVarInfo(main_acc))
+        vi = DynamicPPL.map_accumulator!!(vi, accname) do acc
+            acc.vals[2] = 2.0
+            acc.set_indices[2] = true
+            acc
+        end
+
+        @test DynamicPPL.getacc(vi, accname).vals == [1.0, 2.0]
+        @test main_acc.vals == [1.0, 0.0]
+        @test main_acc.set_indices == [true, false]
+        @test DynamicPPL.getacc(vi, accname).vals == [1.0, 2.0]
+
+        copied_vi = copy(vi)
+        @test DynamicPPL.get_vector_params(copied_vi) == [1.0, 2.0]
+        @test DynamicPPL.getacc(vi, accname).vals == [1.0, 2.0]
+    end
+
+    @testset "colon-eq extraction during threaded evaluation" begin
+        @model function colon_eq(n)
+            x = collect(1:n)
+            Threads.@threads for i in eachindex(x)
+                x[i] := i
+            end
+        end
+        model = setthreadsafe(colon_eq(10), true)
+        vi = OnlyAccsVarInfo(DynamicPPL.RawValueAccumulator(true))
+        _, vi = DynamicPPL.init!!(model, vi, InitFromPrior(), UnlinkAll())
+        @test length(DynamicPPL.get_raw_values(vi)) == 10
     end
 
     @testset "Check that VarInfo is wrapped during model evaluation" begin
