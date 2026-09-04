@@ -8,6 +8,26 @@ struct Submodel{M,AutoPrefix}
     model::M
 end
 
+"""
+    to_distribution(model)
+
+Convert `model` to a distribution for use on the right-hand side of `~`.
+
+In `variables ~ to_distribution(model)`, `variables` receives the latent variables
+represented by the resulting distribution. The concrete representation and density depend
+on the method for `typeof(model)`. This differs from [`to_submodel`](@ref), which assigns a
+wrapped model's return value to the left-hand side and records its latent variables
+separately.
+"""
+function to_distribution end
+
+abstract type _StanDifferentiableFunction end
+(f::_StanDifferentiableFunction)(x::AbstractArray{<:Real}) = _stan_value(f, x)
+
+function _stan_value end
+function _stan_value_and_pushforward end
+function _stan_value_and_pullback end
+
 # ----------------------
 # Constructing submodels
 # ----------------------
@@ -15,23 +35,34 @@ end
 """
     to_submodel(model::Model[, auto_prefix::Bool])
 
-Return a model wrapper indicating that it is a sampleable model over the return-values.
+Wrap `model` for use on the right-hand side of `~`.
 
-This is mainly meant to be used on the right-hand side of a `~` operator to indicate that
-the model can be sampled from but not necessarily evaluated for its log density.
+In `value ~ to_submodel(model)`, `model` is evaluated, its return value is assigned to
+`value`, and its latent variables are recorded separately in the surrounding trace. By
+default, their names are prefixed with the left-hand side: a latent variable `x` becomes
+`value.x`. This differs from [`to_distribution`](@ref), which assigns the represented latent
+variables themselves to the left-hand side.
+
+The name is retained for compatibility with the former `@submodel` API. Conceptually,
+`to_submodel(model)` is a `returned_value(model)` wrapper: its value is the model's return
+value, not its latent variables.
+
+`Submodel` is not a `Distribution`; it provides this tilde behavior but no standalone
+`logpdf` method.
 
 !!! warning
-    Note that some other operations that one typically associate with expressions of the form
-    `left ~ right` such as [`condition`](@ref), will also not work with `to_submodel`.
+    Operations normally associated with `left ~ right`, such as [`condition`](@ref), do not
+    necessarily work with `to_submodel`.
 
 !!! warning
-    To avoid variable names clashing between models, it is recommended to leave the argument `auto_prefix` equal to `true`.
-    If one does not use automatic prefixing, then it's recommended to use [`prefix(::Model, input)`](@ref) explicitly, i.e. `to_submodel(prefix(model, @varname(my_prefix)))`
+    Keep `auto_prefix=true` unless the wrapped model has been explicitly prefixed. Disabling
+    automatic prefixing can make latent-variable names collide.
 
 # Arguments
+
 - `model::Model`: the model to wrap.
-- `auto_prefix::Bool`: whether to automatically prefix the variables in the model using the left-hand
-    side of the `~` statement. Default: `true`.
+- `auto_prefix::Bool=true`: whether to prefix the model's latent variables with the
+  left-hand side of `~`.
 
 # Examples
 
@@ -49,8 +80,8 @@ julia> @model function demo2(x, y)
        end;
 ```
 
-When we sample from the model `demo2(missing, 0.4)` the random variable `x` will be sampled, but
-it will be prefixed with `a` (the left-hand side of the tilde):
+When sampling from `demo2(missing, 0.4)`, the latent variable `x` is prefixed with `a`, the
+left-hand side of the tilde:
 
 ```jldoctest submodel-to_submodel
 julia> model = demo2(missing, 0.4);
@@ -59,8 +90,8 @@ julia> haskey(rand(model), @varname(a.x))
 true
 ```
 
-The variable `a` will be assigned the return value of `demo1`, and can be used in subsequent
-lines of the model, e.g. in the definition of `y` above.
+The variable `a` receives the return value of `demo1` and can be used in subsequent lines,
+as in the definition of `y` above.
 
 We can verify that the log joint probability of the model accumulated in `vi` is correct:
 
@@ -76,9 +107,8 @@ true
 ```
 
 ## Without automatic prefixing
-As mentioned earlier, by default, the `auto_prefix` argument specifies whether to automatically
-prefix the variables in the submodel. If `auto_prefix=false`, then the variables in the submodel
-will not be prefixed.
+
+If `auto_prefix=false`, the submodel's latent-variable names are unchanged.
 ```jldoctest submodel-to_submodel-prefix; setup=:(using Distributions)
 julia> @model function demo1(x)
            x ~ Normal()
