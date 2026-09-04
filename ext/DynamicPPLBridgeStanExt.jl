@@ -435,6 +435,7 @@ function DynamicPPL.to_distribution(
     seed = convert(UInt32, seed)
     stanc_args = map(String, Tuple(stanc_args))
     make_args = map(String, Tuple(make_args))
+    # `data` and `seed` configure `StanModel` construction, so the cache includes them.
     key = (source, data, seed, stanc_args, make_args)
     return lock(_STAN_DISTRIBUTION_CACHE_LOCK) do
         return get!(_STAN_DISTRIBUTION_CACHE, key) do
@@ -488,9 +489,13 @@ function _stan_fixed_value(distribution::StanDistribution, transformed_value)
         value
     elseif transform isa DynamicPPL.Unlink
         raw_value = Bijectors.VectorBijectors.from_vec(distribution)(value)
-        _stan_unconstrain(distribution.transform, raw_value)
+        u = _stan_unconstrain_if_supported(distribution.transform, raw_value)
+        isnothing(u) && return transformed_value
+        u
     elseif transform isa DynamicPPL.NoTransform
-        _stan_unconstrain(distribution.transform, value)
+        u = _stan_unconstrain_if_supported(distribution.transform, value)
+        isnothing(u) && return transformed_value
+        u
     else
         error("unsupported Stan parameter transform $(typeof(transform))")
     end
@@ -499,12 +504,19 @@ end
 
 function _stan_assume!!(distribution::StanDistribution, vn, template, vi, transformed_value)
     transform = DynamicPPL.get_transform(transformed_value)
-    transform isa DynamicPPL.FixedTransform &&
+    value = DynamicPPL.get_internal_value(transformed_value)
+    parameters, logjac = if transform isa DynamicPPL.FixedTransform
         transform.transform === distribution.transform ||
-        error("Stan model parameters must retain their fixed transform")
-    u = DynamicPPL.get_internal_value(transformed_value)
-    parameters = distribution.transform(u)
-    logjac = -StanLogJacobian(distribution.transform)(u)
+            error("Stan model parameters have a different fixed transform")
+        distribution.transform(value), -StanLogJacobian(distribution.transform)(value)
+    elseif transform isa DynamicPPL.Unlink
+        parameters = Bijectors.VectorBijectors.from_vec(distribution)(value)
+        parameters, zero(eltype(parameters))
+    elseif transform isa DynamicPPL.NoTransform
+        value, zero(eltype(value))
+    else
+        error("unsupported Stan parameter transform $(typeof(transform))")
+    end
     vi = DynamicPPL.accumulate_assume!!(
         vi, parameters, transformed_value, logjac, vn, distribution, template
     )

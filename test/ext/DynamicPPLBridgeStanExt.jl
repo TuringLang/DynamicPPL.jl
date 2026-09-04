@@ -221,6 +221,8 @@ parameters {
     expected_unlinked =
         logpdf(distribution, constrained) + logpdf(Normal(constrained[1], 1), 0.4)
     @test logjoint(model, (; theta=constrained)) ≈ expected_unlinked
+    @test logjoint(model, (; theta=invalid)) == -Inf
+    @test logprior(model, (; theta=invalid)) == -Inf
 
     conditioned_model = condition(model, (; theta=constrained))
     @test logjoint(conditioned_model, NamedTuple()) ≈ expected_unlinked
