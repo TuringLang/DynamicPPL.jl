@@ -1,3 +1,71 @@
+#
+# Model values
+#
+
+struct Condition end
+struct Fix end
+
+struct ModelValue{R<:Union{Condition,Fix},T}
+    value::T
+end
+ModelValue{R}(value::T) where {R,T} = ModelValue{R,T}(value)
+
+function VarNamedTuples._getindex_optic(
+    value::ModelValue{R}, optic::AbstractPPL.AbstractOptic, vn
+) where {R}
+    return ModelValue{R}(VarNamedTuples._getindex_optic(value.value, optic, vn))
+end
+VarNamedTuples._getindex_optic(value::ModelValue, ::AbstractPPL.Iden, vn) = value
+function VarNamedTuples._haskey_optic(value::ModelValue, optic::AbstractPPL.AbstractOptic)
+    return VarNamedTuples._haskey_optic(value.value, optic)
+end
+VarNamedTuples._haskey_optic(::ModelValue, ::AbstractPPL.Iden) = true
+
+_model_value(value::ModelValue, ::VarName) = value
+function _model_value(values::AbstractArray, vn::VarName)
+    isempty(values) && throw(ArgumentError("Cannot determine the role of empty `$vn`"))
+    first_value = first(values)
+    first_value isa ModelValue || throw(ArgumentError("Invalid model value for `$vn`"))
+    return _model_value(values, vn, first_value)
+end
+function _model_value(values::AbstractArray, vn::VarName, ::ModelValue{R}) where {R}
+    all(value -> value isa ModelValue{R}, values) || throw(
+        ArgumentError(
+            "Cannot condition and fix different parts of the same tilde variable `$vn`"
+        ),
+    )
+    return ModelValue{R}(map(value -> value.value, values))
+end
+function _model_value(values, vn::VarName)
+    throw(ArgumentError("Invalid model value for `$vn`: $(typeof(values))"))
+end
+
+function _tag_model_values(::Type{R}, values::VarNamedTuple) where {R}
+    return map_values!!(ModelValue{R}, copy(values))
+end
+
+function _select_model_values(::Type{R}, values::VarNamedTuple) where {R}
+    return mapfoldl(
+        identity,
+        function (selected, pair)
+            vn, value = pair
+            return if value isa ModelValue{R}
+                templated_setindex!!(
+                    selected, value.value, vn, values.data[AbstractPPL.getsym(vn)]
+                )
+            else
+                selected
+            end
+        end,
+        values;
+        init=VarNamedTuple(),
+    )
+end
+
+#
+# Model definition
+#
+
 """
     struct Model{
         F,
@@ -8,8 +76,7 @@
         Tdefaults,
         Ctx<:AbstractContext,
         Prefix<:Union{VarName,Nothing},
-        Conditioned<:VarNamedTuple,
-        Fixed<:VarNamedTuple,
+        Values<:VarNamedTuple,
         Threaded,
     }
         f::F
@@ -17,14 +84,13 @@
         defaults::NamedTuple{defaultnames,Tdefaults}
         context::Ctx=DefaultContext()
         prefix::Prefix=nothing
-        conditioned::Conditioned=VarNamedTuple()
-        fixed::Fixed=VarNamedTuple()
+        values::Values=VarNamedTuple()
     end
 
 A `Model` struct with model evaluation function of type `F`, arguments of names `argnames`
 types `Targs`, default arguments of names `defaultnames` with types `Tdefaults`, missing
-arguments `missings`, and evaluation context of type `Ctx`. Prefixes, conditioned values,
-and fixed values are stored in the corresponding model fields.
+arguments `missings`, and evaluation context of type `Ctx`. Conditioned and fixed values
+share one store, with each value carrying its role.
 
 Here `argnames`, `defaultargnames`, and `missings` are tuples of symbols, e.g. `(:a, :b)`.
 `context` is by default `DefaultContext()`.
@@ -64,8 +130,7 @@ struct Model{
     Tdefaults,
     Ctx<:AbstractContext,
     Prefix<:Union{VarName,Nothing},
-    Conditioned<:VarNamedTuple,
-    Fixed<:VarNamedTuple,
+    Values<:VarNamedTuple,
     Threaded,
 } <: AbstractProbabilisticProgram
     f::F
@@ -73,8 +138,7 @@ struct Model{
     defaults::NamedTuple{defaultnames,Tdefaults}
     context::Ctx
     prefix::Prefix
-    conditioned::Conditioned
-    fixed::Fixed
+    values::Values
 
     @doc """
         Model{Threaded,missings}(f, args::NamedTuple, defaults::NamedTuple)
@@ -88,35 +152,12 @@ struct Model{
         defaults::NamedTuple{defaultnames,Tdefaults},
         context::Ctx=DefaultContext(),
         prefix::Prefix=nothing,
-        conditioned::Conditioned=VarNamedTuple(),
-        fixed::Fixed=VarNamedTuple(),
-    ) where {
-        missings,
-        F,
-        argnames,
-        Targs,
-        defaultnames,
-        Tdefaults,
-        Ctx,
-        Prefix,
-        Conditioned,
-        Fixed,
-        Threaded,
-    }
+        values::Values=VarNamedTuple(),
+    ) where {missings,F,argnames,Targs,defaultnames,Tdefaults,Ctx,Prefix,Values,Threaded}
         return new{
-            F,
-            argnames,
-            defaultnames,
-            missings,
-            Targs,
-            Tdefaults,
-            Ctx,
-            Prefix,
-            Conditioned,
-            Fixed,
-            Threaded,
+            F,argnames,defaultnames,missings,Targs,Tdefaults,Ctx,Prefix,Values,Threaded
         }(
-            f, args, defaults, context, prefix, conditioned, fixed
+            f, args, defaults, context, prefix, values
         )
     end
 end
@@ -135,8 +176,7 @@ model with different arguments.
     defaults::NamedTuple{kwargnames,Tkwargs},
     context::AbstractContext=DefaultContext(),
     prefix::Union{VarName,Nothing}=nothing,
-    conditioned::VarNamedTuple=VarNamedTuple(),
-    fixed::VarNamedTuple=VarNamedTuple(),
+    values::VarNamedTuple=VarNamedTuple(),
 ) where {Threaded,F,argnames,Targs,kwargnames,Tkwargs}
     missing_args = Tuple(
         name for (name, typ) in zip(argnames, Targs.types) if typ <: Missing
@@ -145,7 +185,7 @@ model with different arguments.
         name for (name, typ) in zip(kwargnames, Tkwargs.types) if typ <: Missing
     )
     return :(Model{Threaded,$(missing_args..., missing_kwargs...)}(
-        f, args, defaults, context, prefix, conditioned, fixed
+        f, args, defaults, context, prefix, values
     ))
 end
 
@@ -162,21 +202,18 @@ Return whether `model` has been marked as needing threadsafe evaluation (using
 `setthreadsafe`).
 """
 function requires_threadsafe(
-    ::Model{F,A,D,M,Ta,Td,Ctx,P,C,Fx,Threaded}
-) where {F,A,D,M,Ta,Td,Ctx,P,C,Fx,Threaded}
+    ::Model{F,A,D,M,Ta,Td,Ctx,P,V,Threaded}
+) where {F,A,D,M,Ta,Td,Ctx,P,V,Threaded}
     return Threaded
 end
 
 function _reconstruct_model(
-    model::Model{F,A,D,M,Ta,Td,Ctx,P,C,Fx,Threaded};
+    model::Model{F,A,D,M,Ta,Td,Ctx,P,V,Threaded};
     context::AbstractContext=model.context,
     prefix::Union{VarName,Nothing}=model.prefix,
-    conditioned::VarNamedTuple=model.conditioned,
-    fixed::VarNamedTuple=model.fixed,
-) where {F,A,D,M,Ta,Td,Ctx,P,C,Fx,Threaded}
-    return Model{Threaded,M}(
-        model.f, model.args, model.defaults, context, prefix, conditioned, fixed
-    )
+    values::VarNamedTuple=model.values,
+) where {F,A,D,M,Ta,Td,Ctx,P,V,Threaded}
+    return Model{Threaded,M}(model.f, model.args, model.defaults, context, prefix, values)
 end
 
 """
@@ -213,13 +250,7 @@ function setthreadsafe(model::Model, threadsafe::Bool)
         model
     else
         Model{threadsafe,getmissings(model)}(
-            model.f,
-            model.args,
-            model.defaults,
-            model.context,
-            model.prefix,
-            model.conditioned,
-            model.fixed,
+            model.f, model.args, model.defaults, model.context, model.prefix, model.values
         )
     end
 end
@@ -409,12 +440,13 @@ false
 ```
 """
 function AbstractPPL.condition(model::Model, values...)
-    conditioned = merge(model.conditioned, _make_condfix_values(values...))
-    return _reconstruct_model(model; conditioned)
+    values = merge(
+        model.values, _tag_model_values(Condition, _make_condfix_values(values...))
+    )
+    return _reconstruct_model(model; values)
 end
 function AbstractPPL.condition(model::Model; values...)
-    conditioned = merge(model.conditioned, VarNamedTuple(NamedTuple(values)))
-    return _reconstruct_model(model; conditioned)
+    return condition(model, NamedTuple(values))
 end
 
 """
@@ -523,15 +555,17 @@ julia> deconditioned_model()  # (×) `m[1]` is still conditioned
 ```
 """
 function AbstractPPL.decondition(model::Model, syms::Union{Symbol,VarName}...)
-    conditioned = _remove_model_values(model.conditioned, syms...)
-    return _reconstruct_model(model; conditioned)
+    values = _remove_model_values(Condition, model.values, syms...)
+    return _reconstruct_model(model; values)
 end
 
-function _remove_model_values(values::VarNamedTuple, args::Union{Symbol,VarName}...)
-    isempty(args) && return VarNamedTuple()
+function _remove_model_values(
+    ::Type{R}, values::VarNamedTuple, args::Union{Symbol,VarName}...
+) where {R}
     vns = map(arg -> arg isa VarName ? arg : VarName{arg}(), args)
     retained_keys = filter(keys(values)) do key
-        all(vn -> !subsumes(vn, key), vns)
+        !(values[key] isa ModelValue{R}) ||
+            (!isempty(args) && all(vn -> !subsumes(vn, key), vns))
     end
     return subset(values, retained_keys)
 end
@@ -589,7 +623,7 @@ julia> # Now `a.x` will be sampled.
  a.x
 ```
 """
-conditioned(model::Model) = model.conditioned
+conditioned(model::Model) = _select_model_values(Condition, model.values)
 
 """
     fix(model::Model; values...)
@@ -679,12 +713,11 @@ julia> # The difference is the missing log-probability of `m`:
 ```
 """
 function fix(model::Model, values...)
-    fixed = merge(model.fixed, _make_condfix_values(values...))
-    return _reconstruct_model(model; fixed)
+    values = merge(model.values, _tag_model_values(Fix, _make_condfix_values(values...)))
+    return _reconstruct_model(model; values)
 end
 function fix(model::Model; values...)
-    fixed = merge(model.fixed, VarNamedTuple(NamedTuple(values)))
-    return _reconstruct_model(model; fixed)
+    return fix(model, NamedTuple(values))
 end
 
 """
@@ -739,8 +772,8 @@ true
 ```
 """
 function unfix(model::Model, syms::Union{Symbol,VarName}...)
-    fixed = _remove_model_values(model.fixed, syms...)
-    return _reconstruct_model(model; fixed)
+    values = _remove_model_values(Fix, model.values, syms...)
+    return _reconstruct_model(model; values)
 end
 
 """
@@ -794,7 +827,7 @@ julia> # Now `a.x` will be sampled.
  a.x
 ```
 """
-fixed(model::Model) = model.fixed
+fixed(model::Model) = _select_model_values(Fix, model.values)
 
 function _prefix_values(values::VarNamedTuple, vn::VarName)
     isempty(values) && return values
@@ -838,9 +871,8 @@ VarNamedTuple
 """
 function prefix(model::Model, x::VarName)
     model_prefix = maybe_prefix(model.prefix, x)
-    conditioned = _prefix_values(model.conditioned, x)
-    fixed = _prefix_values(model.fixed, x)
-    return _reconstruct_model(model; prefix=model_prefix, conditioned, fixed)
+    values = _prefix_values(model.values, x)
+    return _reconstruct_model(model; prefix=model_prefix, values)
 end
 function prefix(model::Model, ::Val{sym}) where {sym}
     return prefix(model, VarName{sym}())

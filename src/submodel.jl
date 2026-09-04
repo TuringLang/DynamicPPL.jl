@@ -187,9 +187,8 @@ function _evaluate!!(
     else
         prefix(submodel.model, parent_prefix)
     end
-    conditioned = merge(model.conditioned, parent_model.conditioned)
-    fixed = merge(model.fixed, parent_model.fixed)
-    model = _reconstruct_model(model; context=parent_model.context, conditioned, fixed)
+    values = merge(model.values, parent_model.values)
+    model = _reconstruct_model(model; context=parent_model.context, values)
 
     # Evaluate the wrapped model. These two lines are a verbatim copy of the body of
     # `_evaluate!!(model::Model, ::AbstractVarInfo)` (in `model.jl`), and the duplication is

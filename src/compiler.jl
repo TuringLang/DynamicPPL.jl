@@ -81,8 +81,10 @@ model does not override its default observation status.
 function contextual_isassumption(model::Model, vn)
     # TODO: Reject `missing` conditions on structured roots rather than treating them as
     # absent; see https://github.com/TuringLang/DynamicPPL.jl/issues/1459.
-    if hasvalue(model.conditioned, vn)
-        val = model.conditioned[vn]
+    if hasvalue(model.values, vn)
+        value = _model_value(model.values[vn], vn)
+        value isa ModelValue{Fix} && return nothing
+        val = value.value
         # TODO: Do we even need the `>: Missing`, i.e. does it even help the compiler?
         if eltype(val) >: Missing && val === missing
             return true
@@ -107,8 +109,10 @@ end
 Return `true` if `vn` is considered fixed by `model`.
 """
 function contextual_isfixed(model::Model, vn)
-    if hasvalue(model.fixed, vn)
-        val = model.fixed[vn]
+    if hasvalue(model.values, vn)
+        value = _model_value(model.values[vn], vn)
+        value isa ModelValue{Condition} && return false
+        val = value.value
         # TODO: Do we even need the `>: Missing`, i.e. does it even help the compiler?
         if eltype(val) >: Missing && val === missing
             return false
@@ -508,15 +512,21 @@ function generate_tilde(left, right)
     return quote
         $dist = $right
         $vn = $(DynamicPPL.resolve_varnames)($(make_varname_expression(left)), $dist)
-        $isassumption = $(DynamicPPL.isassumption(left, vn))
+        $isassumption =
+            $dist isa $(DynamicPPL.Submodel) || $(DynamicPPL.isassumption(left, vn))
         # TODO(penelopeysm): VERY HACKY WORKAROUND FOR SUBMODELS. See src/submodel.jl
         # tilde_observe!! for more details.
-        if $(DynamicPPL.isfixed(left, vn)) && !($dist isa $(DynamicPPL.Submodel))
+        if !($dist isa $(DynamicPPL.Submodel)) && $(DynamicPPL.isfixed(left, vn))
             # $left may not be a simple varname, it might be x.a or x[1], in which case we
             # need to use Accessors.set to safely set it.
             $(assign_or_set!!(
                 left,
-                :(__model__.fixed[$(DynamicPPL.maybe_prefix)($vn, __model__.prefix)]),
+                :(
+                    $(DynamicPPL._model_value)(
+                        __model__.values[$(DynamicPPL.maybe_prefix)($vn, __model__.prefix)],
+                        $vn,
+                    ).value
+                ),
                 vn,
             ))
         elseif $isassumption
@@ -533,7 +543,10 @@ function generate_tilde(left, right)
             $supplied_val = if $(DynamicPPL.inargnames)($vn, __model__)
                 $(maybe_view(left))
             else
-                __model__.conditioned[$(DynamicPPL.maybe_prefix)($vn, __model__.prefix)]
+                $(DynamicPPL._model_value)(
+                    __model__.values[$(DynamicPPL.maybe_prefix)($vn, __model__.prefix)],
+                    $vn,
+                ).value
             end
 
             $value, __varinfo__ = $(DynamicPPL.tilde_observe!!)(

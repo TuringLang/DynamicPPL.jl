@@ -64,6 +64,15 @@ __now__ = now()
 
         @model return_x() = x ~ Normal()
         @test fix(condition(return_x(); x=1.0); x=2.0)() == 2.0
+
+        for first_op in (condition, fix), last_op in (condition, fix)
+            transformed = last_op(first_op(return_x(); x=1.0); x=2.0)
+            @test transformed() == 2.0
+            @test logjoint(transformed, VarNamedTuple()) ==
+                (last_op === condition ? logpdf(Normal(), 2.0) : 0.0)
+            @test isempty(conditioned(transformed)) == (last_op === fix)
+            @test isempty(fixed(transformed)) == (last_op === condition)
+        end
     end
 
     @testset "missing values leave variables latent" begin
@@ -106,6 +115,10 @@ __now__ = now()
             conditioned(decondition(condition(model, nested_values), @varname(a)))
         ) == [@varname(b)]
         @test keys(fixed(unfix(fix(model, nested_values), @varname(a)))) == [@varname(b)]
+
+        mixed = fix(condition(model; x=1.0); y=2.0)
+        @test fixed(decondition(mixed)) == fixed(mixed)
+        @test conditioned(unfix(mixed)) == conditioned(mixed)
     end
 
     @testset "parent model values override submodel values" begin
@@ -121,6 +134,13 @@ __now__ = now()
         fixed_inner = fix(inner(); x=1.0)
         @test outer(fixed_inner)() == 1.0
         @test fix(outer(fixed_inner), @varname(a.x) => 2.0)() == 2.0
+
+        for inner_op in (condition, fix), outer_op in (condition, fix)
+            transformed = outer_op(outer(inner_op(inner(); x=1.0)), @varname(a.x) => 2.0)
+            @test transformed() == 2.0
+            @test logjoint(transformed, VarNamedTuple()) ==
+                (outer_op === condition ? logpdf(Normal(), 2.0) : 0.0)
+        end
     end
 
     @testset "immutable data can be fixed" begin
