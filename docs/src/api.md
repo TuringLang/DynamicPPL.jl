@@ -176,6 +176,7 @@ To retrieve a VarInfo object from it, you can use [`InitFromVector`](@ref).
 One can include models and call another model inside the model function with `left ~ to_submodel(model)`.
 
 ```@docs
+to_distribution
 to_submodel
 ```
 

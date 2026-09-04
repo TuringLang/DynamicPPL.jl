@@ -43,9 +43,8 @@ default, their names are prefixed with the left-hand side: a latent variable `x`
 `value.x`. This differs from [`to_distribution`](@ref), which assigns the represented latent
 variables themselves to the left-hand side.
 
-The name is retained for compatibility with the former `@submodel` API. Conceptually,
-`to_submodel(model)` is a `returned_value(model)` wrapper: its value is the model's return
-value, not its latent variables.
+Conceptually, `to_submodel(model)` is a `returned_value(model)` wrapper: its value is the
+model's return value, not its latent variables.
 
 `Submodel` is not a `Distribution`; it provides this tilde behavior but no standalone
 `logpdf` method.
