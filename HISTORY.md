@@ -1,3 +1,7 @@
+# 0.42.11
+
+Stan programs can now be embedded as distributions in DynamicPPL models when BridgeStan is loaded, with ForwardDiff and Mooncake support. See [#1478](https://github.com/TuringLang/DynamicPPL.jl/pull/1478).
+
 # 0.42.10
 
 Thread-safe model evaluation now keeps accumulator state per task, preventing lost updates when tasks yield or migrate between threads. See [#924](https://github.com/TuringLang/DynamicPPL.jl/issues/924).

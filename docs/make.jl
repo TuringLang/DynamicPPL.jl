@@ -2,6 +2,7 @@ using Documenter
 using DocumenterInterLinks
 using DynamicPPL
 using AbstractPPL
+using BridgeStan
 # NOTE: This is necessary to ensure that if we print something from
 # Distributions.jl in a doctest, then the shown value will not include
 # a qualifier; that is, we don't want `Distributions.Normal{Float64}`
@@ -36,6 +37,7 @@ makedocs(;
     ),
     modules=[
         DynamicPPL,
+        Base.get_extension(DynamicPPL, :DynamicPPLBridgeStanExt),
         Base.get_extension(DynamicPPL, :DynamicPPLMCMCChainsExt),
         Base.get_extension(DynamicPPL, :DynamicPPLMarginalLogDensitiesExt),
     ],
@@ -55,6 +57,7 @@ makedocs(;
         "Initialisation strategies" => "init.md",
         "Transform strategies" => "transforms.md",
         "Fixed transforms" => "fixed_transforms.md",
+        "Model composition" => "to_distribution.md",
         "Accumulators" => [
             "accs/overview.md",
             "accs/existing.md",

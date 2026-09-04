@@ -217,6 +217,7 @@ export AbstractVarInfo,
     prefix,
     returned,
     to_submodel,
+    to_distribution,
     # Struct to hold model outputs
     ParamsWithStats,
     # Convenience macros
