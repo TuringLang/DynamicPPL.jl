@@ -151,8 +151,8 @@ predict
 The typical workflow for posterior prediction involves:
 
  1. Fitting a model to observed data to obtain posterior samples
- 2. Creating a new model instance with some variables marked as missing (unobserved)
- 3. Using `predict` to generate samples for these missing variables based on the posterior parameter samples
+ 2. Creating a new model instance with the prediction sites left unconditioned
+ 3. Using `predict` to sample these sites based on the posterior parameter samples
 
 When using `predict` with `MCMCChains.Chains`, you can control which variables are included in the output with the `include_all` parameter:
 
@@ -488,13 +488,12 @@ By default, it does not perform any actual sampling: it only evaluates the model
 If you wish to sample new values, see the section on [VarInfo initialisation](#VarInfo-initialisation) just below this.
 
 The behaviour of model execution can be changed with the evaluation context stored in the model.
-Prefixing, conditioning, and fixing are separate model fields and are applied before the context handles a tilde statement.
+Prefixes are stored separately from values. Conditioned and fixed values share one store, with each value carrying its role; these are resolved before the context handles a tilde statement.
 
 All contexts are subtypes of `AbstractPPL.AbstractContext`.
 
 Contexts decide how model evaluation proceeds.
 For example, `DefaultContext` evaluates the model using values stored inside a VarInfo's metadata, whereas `InitContext` obtains new values either by sampling or from a known set of parameters.
-DynamicPPL has more contexts for internal purposes, but these are the two that are exported.
 
 ```@docs
 DefaultContext

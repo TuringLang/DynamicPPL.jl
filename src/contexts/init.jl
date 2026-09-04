@@ -149,7 +149,7 @@ See the docstring of [`DynamicPPL.get_param_eltype`](@ref) for more information 
 is needed.
 
 The argument `fallback` specifies how new values are to be obtained if they cannot be found
-in `params`, or they are specified as `missing`. `fallback` can either be an initialisation
+in `params`. Omit absent parameters rather than supplying `missing`. `fallback` can either be an initialisation
 strategy itself, in which case it will be used to obtain new values, or it can be `nothing`,
 in which case an error will be thrown. The default for `fallback` is `InitFromPrior()`.
 """
@@ -178,11 +178,12 @@ function init(
 )
     return if hasvalue(p.params, vn, dist)
         x = getvalue(p.params, vn, dist)
-        if x === missing
-            p.fallback === nothing &&
-                error("A `missing` value was provided for the variable `$(vn)`.")
-            init(rng, vn, dist, p.fallback)
-        elseif x isa TransformedValue
+        _contains_missing(x) && throw(
+            ArgumentError(
+                "A `missing` value was provided for `$vn`; omit absent initial parameters instead.",
+            ),
+        )
+        if x isa TransformedValue
             x
         else
             TransformedValue(x, NoTransform())

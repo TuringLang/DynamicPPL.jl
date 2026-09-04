@@ -127,24 +127,17 @@ end
             @model function demo_missing_in_multivariate(x)
                 return x ~ MvNormal(zeros(length(x)), I)
             end
-            model = demo_missing_in_multivariate([1.0, missing])
-            test_model_fails_check(model)
+            @test_throws ArgumentError demo_missing_in_multivariate([1.0, missing])
         end
 
-        @testset "condition both in args and context" begin
+        @testset "conditioning overrides argument values" begin
             @model function demo_condition_both_in_args_and_context(x)
                 return x ~ Normal()
             end
             model = demo_condition_both_in_args_and_context(1.0)
-            for vals in [
-                (x=2.0,),
-                OrderedDict(@varname(x) => 2.0),
-                OrderedDict(@varname(x[1]) => 2.0),
-            ]
+            for vals in [(x=2.0,), OrderedDict(@varname(x) => 2.0)]
                 conditioned_model = DynamicPPL.condition(model, vals)
-                @test_throws ErrorException check_model(
-                    conditioned_model; error_on_failure=true
-                )
+                @test check_model(conditioned_model; error_on_failure=true)
             end
         end
     end

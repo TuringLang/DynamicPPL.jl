@@ -326,21 +326,23 @@ end
             μ ~ Normal()
             return x ~ independent_distribution(Normal(μ))
         end
-        argument_model = condition(argument_observation(data), @varname(x) => data)
-        @test_throws ArgumentError independent_problem(argument_model, 2)
+        argument_model = argument_observation(data)
+        @test LogDensityProblems.dimension(independent_problem(argument_model, 2)) == 1
         prefixed_argument_model = prefix(
             condition(argument_observation(data), @varname(x) => data), :a
         )
-        @test_throws ArgumentError independent_problem(prefixed_argument_model, 2)
-        @test_throws ArgumentError independent_problem(
-            prefix(prefixed_argument_model, @varname(b[1])), 2
-        )
+        @test LogDensityProblems.dimension(
+            independent_problem(prefixed_argument_model, 2)
+        ) == 1
+        @test LogDensityProblems.dimension(
+            independent_problem(prefix(prefixed_argument_model, @varname(b[1])), 2)
+        ) == 1
         externally_conditioned_argument_model = condition(
             prefix(argument_observation(data), :a), @varname(a.x) => data
         )
-        @test_throws ArgumentError independent_problem(
-            externally_conditioned_argument_model, 2
-        )
+        @test LogDensityProblems.dimension(
+            independent_problem(externally_conditioned_argument_model, 2)
+        ) == 1
 
         @model function subindexed_observation()
             μ ~ Normal()

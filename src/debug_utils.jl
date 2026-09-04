@@ -92,10 +92,9 @@ function DynamicPPL.accumulate_observe!!(
         end
         full_msg =
             "Encountered a container with one or more `missing` value(s) $msg." *
-            " To treat the variable on the left-hand side as a random variable, you" *
-            " should specify a single `missing` rather than a vector of `missing`s." *
-            " It is not currently possible to set part but not all of a distribution" *
-            " to be `missing`."
+            " Use `decondition` to make a named site latent. To observe only some" *
+            " components, declare separate scalar tilde statements and condition" *
+            " their indexed VarNames."
         @warn full_msg
         failed = true
     end
@@ -196,19 +195,6 @@ function check_model(
     rng::Random.AbstractRNG, model::Model; error_on_failure=false, fail_if_discrete=false
 )
     failed = false
-
-    # Check that a variable in the model arguments is neither conditioned nor fixed.
-    conditioned_vns = keys(DynamicPPL.conditioned(model))
-    for vn in conditioned_vns
-        if DynamicPPL.inargnames(vn, model)
-            @warn (
-                "Variable $(vn) is specified in both the model arguments and conditioned values." *
-                " Please either specify observed data via the model arguments, or through" *
-                " `condition` / `|`, not both."
-            )
-            failed = true
-        end
-    end
 
     # Run the model and collect the data we need
     oavi = DynamicPPL.OnlyAccsVarInfo((

@@ -304,12 +304,12 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
 
     @testset "default arguments" begin
         @model test_defaults(x, n=length(x)) = x ~ MvNormal(zeros(n), I)
-        @test length(test_defaults(missing, 2)()) == 2
+        @test length(decondition(test_defaults(zeros(2), 2), :x)()) == 2
     end
 
-    @testset "missing kwarg" begin
-        @model test_missing_kwarg(; x=missing) = x ~ Normal(0, 1)
-        @test @varname(x) in keys(rand(test_missing_kwarg()))
+    @testset "deconditioned kwarg" begin
+        @model test_kwarg(; x=0.0) = x ~ Normal(0, 1)
+        @test @varname(x) in keys(rand(decondition(test_kwarg())))
     end
 
     @testset "extract priors" begin
@@ -372,7 +372,7 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
             @test results.bsq == params.b^2
             # `returned` should error when not all parameters are provided
             @test_throws ErrorException returned(model, (; a=1.0))
-            @test_throws ErrorException returned(model, (a=1.0, b=missing))
+            @test_throws ArgumentError returned(model, (a=1.0, b=missing))
         end
         @testset "Dict" begin
             params = Dict{VarName,Float64}(@varname(a) => 1.0, @varname(b) => 2.0)
@@ -383,7 +383,7 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
             @test_throws ErrorException returned(
                 model, Dict{VarName,Float64}(@varname(a) => 1.0)
             )
-            @test_throws ErrorException returned(
+            @test_throws ArgumentError returned(
                 model, Dict{VarName,Any}(@varname(a) => 1.0, @varname(b) => missing)
             )
         end
@@ -528,7 +528,7 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
 
             # Generate predictions from that chain
             xs_test = [10 + 0.1, 10 + 2 * 0.1]
-            m_lin_reg_test = linear_reg(xs_test, fill(missing, length(xs_test)))
+            m_lin_reg_test = decondition(linear_reg(xs_test, zeros(length(xs_test))), :y)
             predictions = DynamicPPL.predict(m_lin_reg_test, β_chain)
 
             # Also test a vectorized model
@@ -536,7 +536,9 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
                 β ~ Normal(0, 1)
                 return y ~ MvNormal(β .* x, σ^2 * I)
             end
-            m_lin_reg_test_vec = linear_reg_vec(xs_test, missing)
+            m_lin_reg_test_vec = decondition(
+                linear_reg_vec(xs_test, zeros(length(xs_test))), :y
+            )
 
             @testset "variables in chain" begin
                 # Note that this also checks that variables on the lhs of :=,

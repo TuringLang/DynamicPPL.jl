@@ -310,9 +310,11 @@ using Test
                     x := my_x
                     y := missing
                 end
-                @test_throws ErrorException DynamicPPL.init!!(
-                    model, empty_vi, InitFromParams(vnt_missing, nothing), UnlinkAll()
-                )
+                for fallback in (nothing, InitFromPrior())
+                    @test_throws ArgumentError DynamicPPL.init!!(
+                        model, empty_vi, InitFromParams(vnt_missing, fallback), UnlinkAll()
+                    )
+                end
             end
         end
 

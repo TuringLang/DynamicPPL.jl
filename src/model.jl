@@ -5,17 +5,37 @@
 struct Condition end
 struct Fix end
 
+_contains_missing(::Any) = false
+_contains_missing(::Missing) = true
+_contains_missing(::AbstractArray{<:Number}) = false
+function _contains_missing(values::Union{AbstractArray,Tuple,NamedTuple})
+    return any(_contains_missing, values)
+end
+
 struct ModelValue{R<:Union{Condition,Fix},T}
     value::T
+    function ModelValue{R}(value::T) where {R<:Union{Condition,Fix},T}
+        (R === Condition || R === Fix) ||
+            throw(ArgumentError("A model value must have one concrete role"))
+        _contains_missing(value) && throw(
+            ArgumentError(
+                "`missing` no longer selects latent variables. Omit unobserved values from `condition` or `fix` instead.",
+            ),
+        )
+        return new{R,T}(value)
+    end
 end
-ModelValue{R}(value::T) where {R,T} = ModelValue{R,T}(value)
 
 function VarNamedTuples._getindex_optic(
     value::ModelValue{R}, optic::AbstractPPL.AbstractOptic, vn
 ) where {R}
     return ModelValue{R}(VarNamedTuples._getindex_optic(value.value, optic, vn))
 end
-VarNamedTuples._getindex_optic(value::ModelValue, ::AbstractPPL.Iden, vn) = value
+function VarNamedTuples._getindex_optic(
+    value::ModelValue{R}, ::AbstractPPL.Iden, vn
+) where {R}
+    return value
+end
 function VarNamedTuples._haskey_optic(value::ModelValue, optic::AbstractPPL.AbstractOptic)
     return VarNamedTuples._haskey_optic(value.value, optic)
 end
@@ -36,12 +56,63 @@ function _model_value(values::AbstractArray, vn::VarName, ::ModelValue{R}) where
     )
     return ModelValue{R}(map(value -> value.value, values))
 end
+function _model_value(values::VarNamedTuple, vn::VarName)
+    tagged = map(value -> _model_value(value, vn), values.data)
+    isempty(tagged) && throw(ArgumentError("Cannot determine the role of empty `$vn`"))
+    return _model_value(tagged, vn, first(tagged))
+end
+function _model_value(values::NamedTuple, vn::VarName, ::ModelValue{R}) where {R}
+    all(value -> value isa ModelValue{R}, values) || throw(
+        ArgumentError(
+            "Cannot condition and fix different parts of the same tilde variable `$vn`"
+        ),
+    )
+    return ModelValue{R}(map(value -> value.value, values))
+end
 function _model_value(values, vn::VarName)
     throw(ArgumentError("Invalid model value for `$vn`: $(typeof(values))"))
 end
 
+function _get_model_value(model, vn)
+    return hasvalue(model.values, vn) ? _model_value(model.values[vn], vn) : nothing
+end
+
 function _tag_model_values(::Type{R}, values::VarNamedTuple) where {R}
     return map_values!!(ModelValue{R}, copy(values))
+end
+
+function VarNamedTuples._merge(
+    previous::ModelValue{R,<:NamedTuple}, updates::VarNamedTuple, recurse::Val{true}
+) where {R}
+    return VarNamedTuples._merge(
+        _tag_model_values(R, VarNamedTuple(previous.value)), updates, recurse
+    )
+end
+function VarNamedTuples._merge(
+    previous::ModelValue{R}, updates::VarNamedTuple, ::Val{true}
+) where {R}
+    throw(
+        ArgumentError(
+            "Cannot partially override fields of $(typeof(previous.value)); supply fields as VarName keys instead",
+        ),
+    )
+end
+
+function VarNamedTuples._merge(
+    previous::ModelValue{R,<:AbstractArray},
+    updates::VarNamedTuples.PartialArray,
+    recurse::Val{true},
+) where {R}
+    data = map(ModelValue{R}, previous.value)
+    complete = VarNamedTuples.PartialArray(data, fill!(similar(data, Bool), true))
+    values = mapfoldl(
+        identity,
+        (values, pair) ->
+            templated_setindex!!(values, pair.second, pair.first, previous.value),
+        VarNamedTuple(; x=updates);
+        init=VarNamedTuple(),
+    )
+    return VarNamedTuples._merge(complete, values.data.x, recurse)
 end
 
 function _select_model_values(::Type{R}, values::VarNamedTuple) where {R}
@@ -66,16 +137,42 @@ end
 # Model definition
 #
 
+struct PrefixTemplate{V<:VarName,T,I}
+    prefix::V
+    template::T
+    inner::I
+end
+_apply_prefix_template(::Nothing, template) = template
+function _apply_prefix_template(prefix::VarName, template)
+    return SkipTemplate{optic_skip_length(AbstractPPL.getoptic(prefix)) + 1}(template)
+end
+function _apply_prefix_template(prefix::PrefixTemplate, template)
+    return VarNamedTuples.nested_template(
+        AbstractPPL.getoptic(prefix.prefix),
+        prefix.template,
+        _apply_prefix_template(prefix.inner, template),
+    )
+end
+_compose_prefix_templates(::Nothing, inner) = inner
+function _compose_prefix_templates(prefix::VarName, inner)
+    return PrefixTemplate(prefix, NoTemplate(), inner)
+end
+function _compose_prefix_templates(prefix::PrefixTemplate, inner)
+    return PrefixTemplate(
+        prefix.prefix, prefix.template, _compose_prefix_templates(prefix.inner, inner)
+    )
+end
+
 """
     struct Model{
         F,
         argnames,
         defaultnames,
-        missings,
         Targs,
         Tdefaults,
         Ctx<:AbstractContext,
         Prefix<:Union{VarName,Nothing},
+        PrefixTemplate,
         Values<:VarNamedTuple,
         Threaded,
     }
@@ -84,20 +181,21 @@ end
         defaults::NamedTuple{defaultnames,Tdefaults}
         context::Ctx=DefaultContext()
         prefix::Prefix=nothing
-        values::Values=VarNamedTuple()
+        prefix_template::PrefixTemplate=nothing
+        values::Values
     end
 
 A `Model` struct with model evaluation function of type `F`, arguments of names `argnames`
-types `Targs`, default arguments of names `defaultnames` with types `Tdefaults`, missing
-arguments `missings`, and evaluation context of type `Ctx`. Conditioned and fixed values
+types `Targs`, default arguments of names `defaultnames` with types `Tdefaults`,
+and evaluation context of type `Ctx`. Conditioned and fixed values
 share one store, with each value carrying its role.
 
-Here `argnames`, `defaultargnames`, and `missings` are tuples of symbols, e.g. `(:a, :b)`.
+Here `argnames` and `defaultnames` are tuples of symbols, e.g. `(:a, :b)`.
 `context` is by default `DefaultContext()`.
 
-An argument with a type of `Missing` will be in `missings` by default. However, in
-non-traditional use-cases `missings` can be defined differently. All variables in `missings`
-are treated as random variables rather than observations.
+Model arguments supply default conditioned values. `condition` replaces these observations,
+and `decondition` removes them, making the corresponding stochastic sites latent.
+Arguments not used at stochastic sites remain ordinary Julia data.
 
 The `Threaded` type parameter indicates whether the model requires threadsafe evaluation
 (i.e., whether the model contains statements which modify the internal VarInfo that are
@@ -115,21 +213,17 @@ julia> Model(f, (x = 1.0, y = 2.0)).args
 julia> Model(f, (x = 1.0, y = 2.0), (x = 42,)).defaults
 (x = 42,)
 
-julia> model = Model{(:y,)}(f, (x = 1.0, y = 2.0), (x = 42,));
-
-julia> DynamicPPL.getmissings(model)
-(:y,)
 ```
 """
 struct Model{
     F,
     argnames,
     defaultnames,
-    missings,
     Targs,
     Tdefaults,
     Ctx<:AbstractContext,
     Prefix<:Union{VarName,Nothing},
+    PT,
     Values<:VarNamedTuple,
     Threaded,
 } <: AbstractProbabilisticProgram
@@ -138,26 +232,22 @@ struct Model{
     defaults::NamedTuple{defaultnames,Tdefaults}
     context::Ctx
     prefix::Prefix
+    prefix_template::PT
     values::Values
 
-    @doc """
-        Model{Threaded,missings}(f, args::NamedTuple, defaults::NamedTuple)
-
-    Create a model with evaluation function `f` and missing arguments overwritten by
-    `missings`.
-    """
-    function Model{Threaded,missings}(
+    function Model{Threaded}(
         f::F,
         args::NamedTuple{argnames,Targs},
         defaults::NamedTuple{defaultnames,Tdefaults},
         context::Ctx=DefaultContext(),
         prefix::Prefix=nothing,
-        values::Values=VarNamedTuple(),
-    ) where {missings,F,argnames,Targs,defaultnames,Tdefaults,Ctx,Prefix,Values,Threaded}
-        return new{
-            F,argnames,defaultnames,missings,Targs,Tdefaults,Ctx,Prefix,Values,Threaded
-        }(
-            f, args, defaults, context, prefix, values
+        values::Values=_tag_model_values(Condition, VarNamedTuple(merge(args, defaults))),
+        prefix_template::PT=nothing,
+    ) where {F,argnames,Targs,defaultnames,Tdefaults,Ctx,Prefix,PT,Values,Threaded}
+        mapreduce(pair -> pair.second isa ModelValue, &, values; init=true) ||
+            throw(ArgumentError("Model values must carry a condition or fix role"))
+        return new{F,argnames,defaultnames,Targs,Tdefaults,Ctx,Prefix,PT,Values,Threaded}(
+            f, args, defaults, context, prefix, prefix_template, values
         )
     end
 end
@@ -165,30 +255,14 @@ end
 """
     Model(f, args::NamedTuple[, defaults::NamedTuple = ()])
 
-Create a model with evaluation function `f` and missing arguments deduced from `args`.
+Create a model with evaluation function `f` and arguments `args`.
+
+Arguments supply default conditioned values. Use [`decondition`](@ref) to make an
+argument-backed stochastic site latent, or [`condition`](@ref) to replace its observation.
 
 Default arguments `defaults` are used internally when constructing instances of the same
 model with different arguments.
 """
-@generated function Model{Threaded}(
-    f::F,
-    args::NamedTuple{argnames,Targs},
-    defaults::NamedTuple{kwargnames,Tkwargs},
-    context::AbstractContext=DefaultContext(),
-    prefix::Union{VarName,Nothing}=nothing,
-    values::VarNamedTuple=VarNamedTuple(),
-) where {Threaded,F,argnames,Targs,kwargnames,Tkwargs}
-    missing_args = Tuple(
-        name for (name, typ) in zip(argnames, Targs.types) if typ <: Missing
-    )
-    missing_kwargs = Tuple(
-        name for (name, typ) in zip(kwargnames, Tkwargs.types) if typ <: Missing
-    )
-    return :(Model{Threaded,$(missing_args..., missing_kwargs...)}(
-        f, args, defaults, context, prefix, values
-    ))
-end
-
 function Model{Threaded}(
     f, args::NamedTuple, context::AbstractContext=DefaultContext(); kwargs...
 ) where {Threaded}
@@ -202,18 +276,21 @@ Return whether `model` has been marked as needing threadsafe evaluation (using
 `setthreadsafe`).
 """
 function requires_threadsafe(
-    ::Model{F,A,D,M,Ta,Td,Ctx,P,V,Threaded}
-) where {F,A,D,M,Ta,Td,Ctx,P,V,Threaded}
+    ::Model{F,A,D,Ta,Td,Ctx,P,PT,V,Threaded}
+) where {F,A,D,Ta,Td,Ctx,P,PT,V,Threaded}
     return Threaded
 end
 
 function _reconstruct_model(
-    model::Model{F,A,D,M,Ta,Td,Ctx,P,V,Threaded};
+    model::Model{F,A,D,Ta,Td,Ctx,P,PT,V,Threaded};
     context::AbstractContext=model.context,
     prefix::Union{VarName,Nothing}=model.prefix,
     values::VarNamedTuple=model.values,
-) where {F,A,D,M,Ta,Td,Ctx,P,V,Threaded}
-    return Model{Threaded,M}(model.f, model.args, model.defaults, context, prefix, values)
+    prefix_template=model.prefix_template,
+) where {F,A,D,Ta,Td,Ctx,P,PT,V,Threaded}
+    return Model{Threaded}(
+        model.f, model.args, model.defaults, context, prefix, values, prefix_template
+    )
 end
 
 """
@@ -249,8 +326,14 @@ function setthreadsafe(model::Model, threadsafe::Bool)
     return if requires_threadsafe(model) == threadsafe
         model
     else
-        Model{threadsafe,getmissings(model)}(
-            model.f, model.args, model.defaults, model.context, model.prefix, model.values
+        Model{threadsafe}(
+            model.f,
+            model.args,
+            model.defaults,
+            model.context,
+            model.prefix,
+            model.values,
+            model.prefix_template,
         )
     end
 end
@@ -273,16 +356,9 @@ Return a `Model` which now treats the variables in `values` as observations.
 
 See also: [`decondition`](@ref), [`conditioned`](@ref)
 
-# Limitations
-
-Non-`missing` values do not override variables provided as model arguments. For example,
-`condition(demo(1.0), x=2.0)` does not override `x` in
-`@model function demo(x) ... end`.
-
-Conditioning such a variable to `missing` does force it to be treated as latent. This also
-works for submodel arguments when the resolved, prefixed `VarName` is supplied.
-
-This is done for the sake of backwards compatibility.
+Supplied values override model arguments and earlier conditioned or fixed values at the
+same address. Parent-model values override submodel values. Sites without supplied values
+remain latent; `missing` is not a latent-variable marker.
 
 # Examples
 ## Simple univariate model
@@ -343,8 +419,7 @@ true
 
 ## Condition only a part of a multivariate variable
 
-When conditioning on multiple variables at a time, we can use `missing` to signal that a
-part of the variable should not be conditioned on.
+Supply only the indices to observe; omitted sites remain latent.
 
 However, note that in this case each element of the multivariate random variable must be on
 its own tilde-statement. In other words, if we write `m ~ MvNormal(...)`, then we cannot
@@ -365,9 +440,14 @@ demo_mv (generic function with 4 methods)
 
 julia> model = demo_mv();
 
-julia> conditioned_model = condition(model, m = [missing, 1.0]);
+julia> observations = @vnt begin
+           @template m=zeros(2)
+           m[2] := 1.0
+       end;
 
-julia> # (✓) `m[1]` sampled while `m[2]` is fixed
+julia> conditioned_model = condition(model, observations);
+
+julia> # `m[1]` is sampled while `m[2]` is observed.
        m = conditioned_model(); (m[1] != 1.0 && m[2] == 1.0)
 true
 ```
@@ -479,9 +559,8 @@ end
 Return a `Model` for which `variables...` are _not_ conditioned on. If no `variables` are
 provided, then all conditioned variables will be removed.
 
-Note that this function cannot decondition variables that are provided as arguments to the
-model function itself; it can only decondition variables that were provided via `condition`
-or `|`.
+This also removes observations supplied as model arguments. After deconditioning, a site's
+sampled value replaces its local argument value and is used by subsequent model statements.
 
 This is essentially the inverse of [`condition`](@ref).
 
@@ -869,10 +948,16 @@ VarNamedTuple
                 └─ x => 1
 ```
 """
-function prefix(model::Model, x::VarName)
+function prefix(model::Model, x::VarName; template=NoTemplate())
     model_prefix = maybe_prefix(model.prefix, x)
     values = _prefix_values(model.values, x)
-    return _reconstruct_model(model; prefix=model_prefix, values)
+    prefix_template = if template isa NoTemplate && model.prefix_template === nothing
+        nothing
+    else
+        inner = model.prefix_template === nothing ? model.prefix : model.prefix_template
+        PrefixTemplate(x, template, inner)
+    end
+    return _reconstruct_model(model; prefix=model_prefix, values, prefix_template)
 end
 function prefix(model::Model, ::Val{sym}) where {sym}
     return prefix(model, VarName{sym}())
@@ -885,18 +970,17 @@ optic_skip_length(::AbstractPPL.Iden) = 0
 optic_skip_length(optic::AbstractPPL.Index) = 1 + optic_skip_length(optic.child)
 optic_skip_length(optic::AbstractPPL.Property) = 1 + optic_skip_length(optic.child)
 
-function _prefix_varname_and_template(
-    vn::VarName, template::Any, prefix::Union{VarName,Nothing}
-)
+function _prefix_varname_and_template(vn::VarName, template::Any, model::Model)
+    prefix = model.prefix
     prefix === nothing && return vn, template
-    n = optic_skip_length(AbstractPPL.getoptic(prefix)) + 1
-    return AbstractPPL.prefix(vn, prefix), SkipTemplate{n}(template)
+    pt = model.prefix_template === nothing ? prefix : model.prefix_template
+    return AbstractPPL.prefix(vn, prefix), _apply_prefix_template(pt, template)
 end
 
 function tilde_assume!!(
     model::Model, right::Distribution, vn::VarName, template::Any, vi::AbstractVarInfo
 )
-    vn, template = _prefix_varname_and_template(vn, template, model.prefix)
+    vn, template = _prefix_varname_and_template(vn, template, model)
     return tilde_assume!!(model.context, right, vn, template, vi)
 end
 
@@ -911,7 +995,7 @@ function tilde_observe!!(
     vn, template = if vn === nothing
         vn, NoTemplate()
     else
-        _prefix_varname_and_template(vn, template, model.prefix)
+        _prefix_varname_and_template(vn, template, model)
     end
     return tilde_observe!!(model.context, right, left, vn, template, vi)
 end
@@ -919,7 +1003,7 @@ end
 function store_coloneq_value!!(
     model::Model, vn::VarName, right::Any, template::Any, vi::AbstractVarInfo
 )
-    vn, template = _prefix_varname_and_template(vn, template, model.prefix)
+    vn, template = _prefix_varname_and_template(vn, template, model)
     return store_coloneq_value!!(model.context, vn, right, template, vi)
 end
 
@@ -1140,13 +1224,6 @@ end
 Get a tuple of the argument names of the `model`.
 """
 getargnames(model::Model{_F,argnames}) where {argnames,_F} = argnames
-
-"""
-    getmissings(model::Model)
-
-Get a tuple of the names of the missing arguments of the `model`.
-"""
-getmissings(model::Model{_F,_a,_d,missings}) where {missings,_F,_a,_d} = missings
 
 """
     nameof(model::Model)

@@ -2,8 +2,11 @@ module DynamicPPLConditionFixTests
 
 using Dates: now
 using Distributions
+using DimensionalData: DimArray, X
 using DynamicPPL
+using ForwardDiff: ForwardDiff
 using LinearAlgebra: I
+using LogDensityProblems: LogDensityProblems
 using Test
 
 @info "Testing $(@__FILE__)..."
@@ -75,17 +78,86 @@ __now__ = now()
         end
     end
 
-    @testset "missing values leave variables latent" begin
-        conditioned_model = condition(model; x=missing)
-        fixed_model = fix(model; x=missing)
-        @test keys(VarInfo(conditioned_model)) == [@varname(x), @varname(y)]
-        @test keys(VarInfo(fixed_model)) == [@varname(x), @varname(y)]
+    @testset "missing is not a stochastic role" begin
+        for op in (condition, fix), value in (missing, [1.0, missing], (; a=missing))
+            @test_throws ArgumentError op(model; x=value)
+        end
     end
 
-    @testset "issue #273: missing submodel arguments" begin
+    @testset "partial overrides preserve siblings" begin
+        @model function indexed()
+            x = zeros(2, 2)
+            x[1] ~ Normal()
+            x[2, 2] ~ Normal()
+            return x
+        end
+        @model function properties()
+            x = (; a=0.0, b=0.0)
+            x.a ~ Normal()
+            x.b ~ Normal()
+            return x
+        end
+        for first_op in (condition, fix), last_op in (condition, fix)
+            original = first_op(indexed(); x=[1.0 0.0; 0.0 2.0])
+            changed = last_op(original, @varname(x[1]) => 3.0)
+            @test changed()[1] == 3.0
+            @test changed()[2, 2] == 2.0
+            @test original()[1] == 1.0
+            @test isempty(keys(VarInfo(changed)))
+            @test logjoint(changed, VarNamedTuple()) ==
+                (first_op === condition ? logpdf(Normal(), 2.0) : 0.0) +
+                  (last_op === condition ? logpdf(Normal(), 3.0) : 0.0)
+            original = first_op(properties(); x=(; a=1.0, b=2.0))
+            changed = last_op(original, @varname(x.a) => 3.0)
+            @test changed() == (; a=3.0, b=2.0)
+            @test original() == (; a=1.0, b=2.0)
+        end
+    end
+
+    @testset "argument observations can be replaced and removed" begin
         @model argument_model(x) = x ~ Normal()
-        @test isempty(keys(VarInfo(condition(argument_model(1.0); x=2.0))))
-        @test keys(VarInfo(condition(argument_model(1.0); x=missing))) == [@varname(x)]
+        for initial in (1.0f0, 1.0, big"1.0")
+            original = argument_model(initial)
+            @test original() === initial
+            @test isempty(keys(VarInfo(original)))
+            @test conditioned(original)[@varname(x)] === initial
+            @test loglikelihood(original, VarNamedTuple()) == logpdf(Normal(), initial)
+            @test conditioned(original) == conditioned(condition(original; x=initial))
+            observed = condition(argument_model(initial); x=2.0)
+            @test observed() == 2.0
+            @test logjoint(observed, VarNamedTuple()) == logpdf(Normal(), 2.0)
+            @test keys(VarInfo(decondition(observed))) == [@varname(x)]
+            @test condition(decondition(original); x=3.0)() == 3.0
+        end
+        @test_throws ArgumentError argument_model(missing)
+
+        @model keyword_argument(; x=1.0) = x ~ Normal()
+        @test keyword_argument()() == 1.0
+        @test keyword_argument(; x=2.0)() == 2.0
+        @test keys(VarInfo(decondition(keyword_argument()))) == [@varname(x)]
+
+        @model function array_argument(x; config=missing)
+            for i in eachindex(x)
+                x[i] ~ Normal()
+            end
+            return x
+        end
+        for data in ([1.0f0, 2.0f0], BigFloat[1, 2], DimArray([1.0, 2.0], X))
+            original = array_argument(data)
+            @test keys(conditioned(original)) == [@varname(x)]
+            latent = decondition(original, :x)
+            result, _ = init!!(
+                latent, OnlyAccsVarInfo(), InitFromParams((; x=[3.0, 4.0])), UnlinkAll()
+            )
+            @test result == [3.0, 4.0]
+            @test data == [1.0, 2.0]
+            @test original() == [1.0, 2.0]
+            @test condition(latent; x=[5.0, 6.0])() == [5.0, 6.0]
+            @test data == [1.0, 2.0]
+        end
+        ldf = LogDensityFunction(decondition(array_argument(zeros(2))))
+        logdensity = p -> LogDensityProblems.logdensity(ldf, p)
+        @test ForwardDiff.gradient(logdensity, [1.0, 2.0]) ≈ [-1.0, -2.0]
 
         @model inner(y) = y ~ Normal()
         @model function outer(x)
@@ -93,9 +165,18 @@ __now__ = now()
             b ~ to_submodel(inner(x))
             return (; a, b)
         end
-        transformed = condition(outer(1.0), @varname(a.y) => missing)
-        @test keys(VarInfo(transformed)) == [@varname(a.y)]
+        transformed = condition(outer(0.0), @varname(b.y) => 1.0)
+        @test isempty(keys(VarInfo(transformed)))
+        @test transformed().a == 0.0
         @test transformed().b == 1.0
+
+        @model function reread(x)
+            x ~ Normal()
+            return x + x
+        end
+        observed = condition(reread(1.0); x=2.0)
+        @test observed() == 4.0
+        @test fix(decondition(observed); x=3.0)() == 6.0
     end
 
     @testset "decondition and unfix" begin

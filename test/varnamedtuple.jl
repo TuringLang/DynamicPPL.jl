@@ -180,6 +180,14 @@ function Base.similar(
 end
 
 @testset "VarNamedTuple" begin
+    @testset "dynamic indices into array leaves" begin
+        values = VarNamedTuple(; x=[1.0, 2.0])
+        @test haskey(values, @varname(x[begin]))
+        @test haskey(values, @varname(x[end]))
+        @test haskey(values, @varname(x[begin:end]))
+        @test values[@varname(x[begin:end])] == [1.0, 2.0]
+    end
+
     @testset "Construction" begin
         vnt1 = VarNamedTuple()
         test_invariants(vnt1)

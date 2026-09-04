@@ -19,13 +19,13 @@ using DynamicPPL, Distributions
 end
 ```
 
-This model right now does not have any observed data: the variable `y` is not part of the model arguments, nor is it conditioned on any values, so all the `y[i]`'s are treated as latent variables.
+This model has no observed data: none of its sites are conditioned, so all the `y[i]`'s are latent variables.
 
 !!! note "Why do we need to define `y` in the model?"
     
     The definition of `y` in the model is needed so that there is somewhere to assign `y[i]` to after the tilde-statement runs. If we did not define `y`, we would get an error when trying to call `setindex!` on an undefined variable.
     
-    The fact that we defined `y` within the model does not change this: all variables on the left-hand side of a tilde-statement are treated as latent variables unless explicitly conditioned on or provided as an argument to the model function.
+    Model arguments supply default observations for sites with the same name. Local storage such as `y` does not: its sites are latent until conditioned or fixed. Use `decondition(model, :x)` to remove an argument observation, and `condition(model; x=new_data)` to replace or restore it.
 
 Let's create some synthetic data to work with:
 
@@ -57,6 +57,11 @@ mean(vnt[@varname(y)] for vnt in vnts)
 This is useful for prior predictive checks, for example.
 
 ## Conditioning
+
+Arguments used on the left-hand side of `~` provide default observations. For example,
+`@model f(x) = x ~ Normal()` makes `f(1.0)` equivalent to `f(1.0) | (x=1.0,)`.
+`decondition(f(1.0), :x)` makes `x` latent, and conditioning that model on `x=2.0`
+restores an observation with the new value. Other arguments remain ordinary model inputs.
 
 To condition the model on observed data, we can use the `condition` function, or its alias `|`.
 The most robust way of conditioning is to provide a `VarNamedTuple` that holds the values to condition on.
@@ -177,37 +182,5 @@ rand(cond_model_partial)
 
 ## Missing data
 
-!!! warning
-    
-    The details in this section are tied closely to internal DynamicPPL details and we recommend that you use the above methods on conditioning on subsets of data. This is merely documented for completeness, and to avoid confusion since these details have been discussed in previous issues and Discourse threads.
-
-Sometimes, in order to condition on a part of `y`, you can in fact condition on a vector `y` that has some of its entries missing.
-
-For this to work, it is mandatory that each `y[i]` is individually on the left-hand side of a tilde-statement, as in the linear regression example above.
-That means that you can write
-
-```julia
-for i in eachindex(x)
-    y[i] ~ Normal(m * x[i] + c, 1.0)
-end
-```
-
-but not
-
-```julia
-y ~ MvNormal(m .* x .+ c, I)
-```
-
-The reason why this works is if DynamicPPL finds a conditioned value of `missing`, it will treat the variable as not _actually_ being conditioned.
-When each `y[i]` is individually on the left-hand side of a tilde-statement, this means that DynamicPPL can identify individual `y[i]`'s that are `missing`, and treat them as latent variables.
-
-```@example 1
-vnt = @vnt begin
-    y := [missing, missing, 1.0, missing, 2.0, missing]
-end
-cond_model_missing = model | vnt
-
-rand(cond_model_missing)
-```
-
-On the other hand, if the entire `y` vector is on the left-hand side of a single tilde-statement, DynamicPPL cannot separate it into its missing and non-missing parts.
+Leave unobserved sites out of the conditioned values. `missing` is not a stochastic-role marker and is rejected by `condition` and `fix`.
+For an array whose elements have separate tilde statements, condition only the observed indices, as in the examples above. A single multivariate draw cannot be partially conditioned.

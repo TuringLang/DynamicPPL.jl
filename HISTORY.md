@@ -1,3 +1,17 @@
+# Unreleased
+
+Model arguments now supply default conditioned values: `f(data)` remains equivalent to `condition(f(data); x=data)` for an argument `x`. `decondition` removes these observations, and `condition` replaces or restores them; subsequent model statements use the replacement or sampled value.
+
+`missing` no longer selects latent sites in model arguments, `condition`, `fix`, or `InitFromParams`. Use `decondition(f(template), :x)` instead of `f(missing)`. Omit absent initial parameters; use indexed `VarName` keys to condition separate scalar sites. Chain entries may still be `missing` when a site was absent from an execution.
+
+Removed parent contexts and their traversal APIs. Replace `setleafcontext(model, context)` with `contextualize(model, context)`, and `conditioned(model.context)` / `fixed(model.context)` with `conditioned(model)` / `fixed(model)`. `AbstractContext` and its evaluation hooks remain available.
+
+Conditioning and fixing now share precedence: the later operation, or the parent model at a submodel boundary, determines both value and role; partial overrides preserve untouched siblings.
+
+Submodel traces now preserve parent array templates, including mixed linear and Cartesian indexing.
+
+Condition submodels through their internal variable names; conditioning an automatically prefixed submodel's return value now errors. Decondition arguments used only as return-value buffers.
+
 # 0.42.11
 
 Stan programs can now be embedded as distributions in DynamicPPL models when BridgeStan is loaded, with ForwardDiff and Mooncake support. See [#1478](https://github.com/TuringLang/DynamicPPL.jl/pull/1478).
@@ -23,10 +37,6 @@ The `Flat`, `FlatPos`, `BinomialLogit`, `OrderedLogistic`, and `LogPoisson` dist
 # 0.42.6
 
 `VarNamedTuple` now accepts a `Symbol` in `getindex` and `haskey` as shorthand for an identity `VarName`, so `vnt[:x]` works like `vnt[@varname(x)]`. Symbols that are not Julia identifiers are rejected rather than parsed, so indexed or nested variables still need a `VarName`. See [#1429](https://github.com/TuringLang/DynamicPPL.jl/issues/1429).
-
-Removed parent contexts. Prefixes and conditioned or fixed values are now stored directly on `Model`; custom evaluation contexts must implement the tilde interface.
-
-Conditioning a model or submodel argument to `missing` now forces it to be treated as latent. Nested arguments are selected by their resolved, prefixed `VarName`, so repeated submodels can be controlled independently. See [#273](https://github.com/TuringLang/DynamicPPL.jl/issues/273).
 
 # 0.42.5
 

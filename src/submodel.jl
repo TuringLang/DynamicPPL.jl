@@ -46,6 +46,10 @@ variables themselves to the left-hand side.
 Conceptually, `to_submodel(model)` is a `returned_value(model)` wrapper: its value is the
 model's return value, not its latent variables.
 
+Condition a submodel through its internal variable names, not its return value. If an
+argument provides storage for submodel return values, remove its default observation with
+[`decondition`](@ref) before evaluation.
+
 `Submodel` is not a `Distribution`; it provides this tilde behavior but no standalone
 `logpdf` method.
 
@@ -68,22 +72,22 @@ model's return value, not its latent variables.
 ```jldoctest submodel-to_submodel
 julia> using DynamicPPL, Distributions
 
-julia> @model function demo1(x)
+julia> @model function demo1()
            x ~ Normal()
            return 1 + abs(x)
        end;
 
-julia> @model function demo2(x, y)
-            a ~ to_submodel(demo1(x))
+julia> @model function demo2(y)
+            a ~ to_submodel(demo1())
             return y ~ Uniform(0, a)
        end;
 ```
 
-When sampling from `demo2(missing, 0.4)`, the latent variable `x` is prefixed with `a`, the
+When sampling from `demo2(0.4)`, the latent variable `x` is prefixed with `a`, the
 left-hand side of the tilde:
 
 ```jldoctest submodel-to_submodel
-julia> model = demo2(missing, 0.4);
+julia> model = demo2(0.4);
 
 julia> haskey(rand(model), @varname(a.x))
 true
@@ -109,17 +113,17 @@ true
 
 If `auto_prefix=false`, the submodel's latent-variable names are unchanged.
 ```jldoctest submodel-to_submodel-prefix; setup=:(using Distributions)
-julia> @model function demo1(x)
+julia> @model function demo1()
            x ~ Normal()
            return 1 + abs(x)
        end;
 
-julia> @model function demo2_no_prefix(x, z)
-            a ~ to_submodel(demo1(x), false)
+julia> @model function demo2_no_prefix(z)
+            a ~ to_submodel(demo1(), false)
             return z ~ Uniform(-a, 1)
        end;
 
-julia> model = demo2_no_prefix(missing, 0.4);
+julia> model = demo2_no_prefix(0.4);
 
 julia> haskey(rand(model), @varname(x))  # here we just use `x` instead of `a.x`
 true
@@ -131,13 +135,13 @@ model, not using prefixing will lead to variable name clashes.
 One can manually specify a prefix using [`prefix(::Model, prefix_varname)`](@ref):
 
 ```jldoctest submodel-to_submodel-prefix
-julia> @model function demo2(x, y, z)
-            a ~ to_submodel(prefix(demo1(x), @varname(sub1)), false)
-            b ~ to_submodel(prefix(demo1(y), @varname(sub2)), false)
+julia> @model function demo2(z)
+            a ~ to_submodel(prefix(demo1(), @varname(sub1)), false)
+            b ~ to_submodel(prefix(demo1(), @varname(sub2)), false)
             return z ~ Uniform(-a, b)
        end;
 
-julia> model = demo2(missing, missing, 0.4);
+julia> model = demo2(0.4);
 
 julia> haskey(rand(model), @varname(sub1.x))
 true
@@ -164,9 +168,27 @@ to_submodel(m::Model, auto_prefix::Bool=true) = Submodel{typeof(m),auto_prefix}(
 Evaluate the submodel under the parent `model`.
 """
 function tilde_assume!!(
-    model::Model, right::DynamicPPL.Submodel, vn::VarName, ::Any, vi::AbstractVarInfo
+    model::Model, right::DynamicPPL.Submodel, vn::VarName, template, vi::AbstractVarInfo
 )
-    return _evaluate!!(right, vi, model, vn)
+    return _evaluate!!(right, vi, model, vn, template)
+end
+
+_submodel_namespace(values::VarNamedTuple) = values
+function _submodel_namespace(value::ModelValue{R,<:NamedTuple}) where {R}
+    return _tag_model_values(R, VarNamedTuple(value.value))
+end
+function _submodel_namespace(::ModelValue{R}) where {R}
+    throw(
+        ArgumentError(
+            "Cannot condition or fix a submodel's return value. Supply its internal variable names instead; decondition arguments used only as return-value buffers.",
+        ),
+    )
+end
+
+_submodel_values(values::VarNamedTuple, ::Nothing) = values
+function _submodel_values(values::VarNamedTuple, prefix::VarName)
+    hasvalue(values, prefix) || return VarNamedTuple()
+    return _prefix_values(_submodel_namespace(values[prefix]), prefix)
 end
 
 # When automatic prefixing is used, the submodel itself doesn't carry the
@@ -178,16 +200,29 @@ function _evaluate!!(
     vi::AbstractVarInfo,
     parent_model::Model,
     left_vn::VarName,
+    template,
 ) where {M<:Model,AutoPrefix}
     parent_prefix = parent_model.prefix
     model = if AutoPrefix
-        prefix(submodel.model, maybe_prefix(left_vn, parent_prefix))
+        vn, template = _prefix_varname_and_template(left_vn, template, parent_model)
+        prefix(submodel.model, vn; template)
     elseif parent_prefix === nothing
         submodel.model
     else
-        prefix(submodel.model, parent_prefix)
+        model = prefix(submodel.model, parent_prefix)
+        if parent_model.prefix_template === nothing
+            model
+        else
+            inner = if submodel.model.prefix_template === nothing
+                submodel.model.prefix
+            else
+                submodel.model.prefix_template
+            end
+            prefix_template = _compose_prefix_templates(parent_model.prefix_template, inner)
+            _reconstruct_model(model; prefix_template)
+        end
     end
-    values = merge(model.values, parent_model.values)
+    values = merge(model.values, _submodel_values(parent_model.values, model.prefix))
     model = _reconstruct_model(model; context=parent_model.context, values)
 
     # Evaluate the wrapped model. These two lines are a verbatim copy of the body of
@@ -203,53 +238,6 @@ function _evaluate!!(
     return model.f(args...; kwargs...)
 end
 
-function tilde_observe!!(
-    model::Model,
-    right::DynamicPPL.Submodel,
-    left::Any,
-    vn::VarName,
-    template::Any,
-    vi::AbstractVarInfo,
-)
-    # TODO(penelopeysm) This is VERY BAD. See
-    # https://github.com/TuringLang/DynamicPPL.jl/issues/1246.
-    #
-    # We need a much more principled way of dealing with this. The problem is that, if we
-    # have
-    #
-    # @model inner() = a ~ Normal()
-    # @model function f()
-    #    x ~ to_submodel(inner())
-    # end
-    # model = f() | (@varname(x.a) => 2.0)
-    #
-    # and a user conditions the top-level model on `x.a` (for example), then when we check
-    # whether `x` is conditioned, we will find that it indeed is (since the conditioned
-    # values will have `values.data.x` pointing to a VNT). That sends us down the path of
-    # tilde_observe!!, so we HAVE to deal with this by calling evaluate.
-    #
-    # What we actually want to forbid is conditioning on the RETURN VALUE. That is, we don't
-    # want someone to think that they can do
-    #
-    # model = f() | (@varname(x) => 3.0)
-    #
-    # or indeed
-    #
-    # @model function f2(x)
-    #     x ~ to_submodel(inner())
-    # end
-    # model2 = f2(3.0)
-    # 
-    # These are the cases that we want to ban. BUT WE HAVE NO WAY OF FIGURING OUT WHICH ONE
-    # THE USER MEANT ---- BECAUSE WE LUMP THE RETURN VALUE AND LATENTS INTO ONE THING.
-    # This is REALLY, really frustrating.
-    #
-    # What we do here is to just evaluate the submodel so that we handle the first case
-    # above correctly. The other cases USED to error; however, now they will work (and the
-    # submodel will be evaluated, but the value of `x` will be ignored). That is probably
-    # not what the user wants, but hey, it'll make tests pass.
-    return _evaluate!!(right, vi, model, vn)
-end
 function tilde_observe!!(
     ::Model, ::DynamicPPL.Submodel, left, ::Nothing, template, ::AbstractVarInfo
 )

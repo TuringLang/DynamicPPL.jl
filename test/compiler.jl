@@ -8,6 +8,7 @@ using Distributions
 using DynamicPPL
 using ForwardDiff: ForwardDiff
 using LinearAlgebra: I
+using REPL: REPL
 using Random: Random
 using Test
 
@@ -50,7 +51,7 @@ module Issue537 end
 
 module NoImportDPPLTest
     using Distributions
-    using DynamicPPL: @model, fix, condition, VarNamedTuple, to_submodel
+    using DynamicPPL: @model, fix, condition, decondition, VarNamedTuple, to_submodel
     using Test: @testset, @test
     # This module tests that the compiler interpolates all necessary DynamicPPL identifiers so
     # that the user doesn't need to `using DynamicPPL` in order to use the model macro. This can
@@ -68,7 +69,7 @@ module NoImportDPPLTest
             return a ~ to_submodel(inner())
         end
         @test rand(f(1.0)) isa VarNamedTuple
-        @test rand(f(missing)) isa VarNamedTuple
+        @test rand(decondition(f(1.0))) isa VarNamedTuple
         @test rand(condition(f(1.0), (; x=2.0))) isa VarNamedTuple
         @test rand(fix(f(1.0), (; x=2.0))) isa VarNamedTuple
         @test rand(fix(f(1.0), (; a=(; b=2.0)))) isa VarNamedTuple
@@ -90,32 +91,29 @@ end
         testmodel_comp(1.0, 1.2)
 
         # check if drawing from the prior works
-        @model function testmodel01(x=missing)
+        @model function testmodel01(x=0.0)
             x ~ Normal()
             return x
         end
         @test length(methods(testmodel01)) == 4
-        f0_mm = testmodel01()
+        f0_mm = decondition(testmodel01())
         @test mean(f0_mm() for _ in 1:1000) ≈ 0.0 atol = 0.1
 
         # Test #544
-        @model function testmodel02(x=missing)
-            if x === missing
-                x = Vector{Float64}(undef, 2)
-            end
+        @model function testmodel02(x=zeros(2))
             x[1] ~ Normal()
             x[2] ~ Normal()
             return x
         end
         @test length(methods(testmodel02)) == 4
-        f0_mm = testmodel02()
+        f0_mm = decondition(testmodel02())
         @test all(x -> isapprox(x, 0; atol=0.1), mean(f0_mm() for _ in 1:1000))
 
-        @model function testmodel03(x=missing)
+        @model function testmodel03(x=false)
             x ~ Bernoulli(0.5)
             return x
         end
-        f01_mm = testmodel03()
+        f01_mm = decondition(testmodel03())
         @test length(methods(testmodel03)) == 4
         @test mean(f01_mm() for _ in 1:1000) ≈ 0.5 atol = 0.1
 
@@ -219,7 +217,7 @@ end
             x[1] ~ Bernoulli(0.5)
             return x
         end
-        @test_throws MethodError testmodel_missing2(missing)()
+        @test_throws ArgumentError testmodel_missing2(missing)
 
         # Test use of internal names
         @model function testmodel_missing3(x)
@@ -270,15 +268,16 @@ end
                 x[i] ~ Normal(m, sqrt(s))
             end
         end
-        x = [1.0, missing]
-        VarInfo(gdemo(x))
-        @test ismissing(x[2])
+        x = [1.0, 0.0]
+        model = condition(decondition(gdemo(x)), @varname(x[1]) => 1.0)
+        VarInfo(model)
+        @test x == [1.0, 0.0]
 
         # https://github.com/TuringLang/Turing.jl/issues/1464#issuecomment-731153615
-        vi = VarInfo(gdemo(x))
+        vi = VarInfo(model)
         @test !haskey(vi, @varname(x[1]))
         @test haskey(vi, @varname(x[2]))
-        vi = VarInfo(gdemo(x))
+        vi = VarInfo(model)
         @test !haskey(vi, @varname(x[1]))
         @test haskey(vi, @varname(x[2]))
 
@@ -304,8 +303,8 @@ end
             return (; s=s, m=m, x=x, y=y, z=z)
         end
 
-        m_nonarray = testmodel_nonarray(
-            MyCoolStruct([missing, missing]), MyCoolStruct(missing)
+        m_nonarray = decondition(
+            testmodel_nonarray(MyCoolStruct(zeros(2)), MyCoolStruct(0.0))
         )
         result = m_nonarray()
         @test !any(ismissing, result.x.a)
@@ -475,46 +474,46 @@ end
 
     @testset "to_submodel" begin
         # No prefix, 1 level.
-        @model function demo1(x)
+        @model function demo1()
             return x ~ Normal()
         end
         @model function demo2(x, y)
-            _ignore ~ to_submodel(demo1(x), false)
+            _ignore ~ to_submodel(demo1(), false)
             return y ~ Uniform()
         end
         # No observation.
-        m = demo2(missing, missing)
+        m = decondition(demo2(0.0, 0.0))
         vi = VarInfo(m)
         ks = keys(vi)
         @test @varname(x) ∈ ks
         @test @varname(y) ∈ ks
 
         # Observation in top-level.
-        m = demo2(missing, 1.0)
+        m = condition(decondition(demo2(0.0, 0.0)); y=1.0)
         vi = VarInfo(m)
         ks = keys(vi)
         @test @varname(x) ∈ ks
         @test @varname(y) ∉ ks
 
         # Observation in nested model.
-        m = demo2(1000.0, missing)
+        m = condition(decondition(demo2(0.0, 0.0)); x=1000.0)
         vi = VarInfo(m)
         ks = keys(vi)
         @test @varname(x) ∉ ks
         @test @varname(y) ∈ ks
 
         # Observe all.
-        m = demo2(1000.0, 0.5)
+        m = condition(demo2(0.0, 0.0); x=1000.0, y=0.5)
         vi = VarInfo(m)
         ks = keys(vi)
         @test isempty(ks)
 
         # Check values makes sense.
         @model function demo3(x, y)
-            _ignore ~ to_submodel(demo1(x), false)
+            _ignore ~ to_submodel(demo1(), false)
             return y ~ Normal(x)
         end
-        m = demo3(1000.0, missing)
+        m = decondition(demo3(1000.0, 0.0), :y)
         # Mean of `y` should be close to 1000.
         @test abs(mean([rand(m)[@varname(y)] for i in 1:10]) - 1000) ≤ 10
 
@@ -524,11 +523,11 @@ end
             return x
         end
         @model function demo_useval(x, y)
-            sub1 ~ to_submodel(demo_return(x))
-            sub2 ~ to_submodel(demo_return(y))
+            sub1 ~ to_submodel(decondition(demo_return(x)))
+            sub2 ~ to_submodel(decondition(demo_return(y)))
             return z ~ Normal(sub1 + sub2 + 100, 1.0)
         end
-        m = demo_useval(missing, missing)
+        m = demo_useval(0.0, 0.0)
         vi = VarInfo(m)
         ks = keys(vi)
         @test @varname(sub1.x) ∈ ks
@@ -707,20 +706,6 @@ end
             end
         end
         @test demo_ret_with_ret()() === Val(1)
-    end
-
-    @testset "issue #368: hasmissing dispatch" begin
-        @test !DynamicPPL.hasmissing(typeof(Union{}[]))
-
-        # (nested) arrays with `Missing` eltypes
-        @test DynamicPPL.hasmissing(Vector{Union{Missing,Float64}})
-        @test DynamicPPL.hasmissing(Matrix{Union{Missing,Real}})
-        @test DynamicPPL.hasmissing(Vector{Matrix{Union{Missing,Float32}}})
-
-        # no `Missing`
-        @test !DynamicPPL.hasmissing(Vector{Float64})
-        @test !DynamicPPL.hasmissing(Matrix{Real})
-        @test !DynamicPPL.hasmissing(Vector{Matrix{Float32}})
     end
 
     @testset "issue #393: anonymous argument with type parameter" begin
@@ -910,11 +895,9 @@ end
             # convert_model_argument should make sure to not deepcopy arrays if not needed
             x = [1.0]
             @test DynamicPPL.convert_model_argument(Float64, x) === x
-            # but if there's a missing in the array, it should
             y = [1.0, missing]
             y_converted = DynamicPPL.convert_model_argument(Float64, y)
-            @test y_converted !== y
-            @test isequal(y_converted, y)
+            @test y_converted === y
         end
         @testset "type arguments" begin
             # These tests with types / TypeWrap as the second argument also test

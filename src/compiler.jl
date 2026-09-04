@@ -31,104 +31,6 @@ function make_varname_expression(expr)
 end
 
 """
-    isassumption(expr[, vn])
-
-Return an expression that can be evaluated to check if `expr` is an assumption in the
-model.
-
-Let `expr` be `:(x[1])`. It is an assumption in the following cases:
-    1. `x` is not among the input data to the model,
-    2. `x` is among the input data to the model but with a value `missing`, or
-    3. `x` is among the input data to the model with a value other than missing,
-       but `x[1] === missing`.
-
-When `expr` is not an expression or symbol (i.e., a literal), this expands to `false`.
-
-If `vn` is specified, it will be assumed to refer to a expression which evaluates to a
-`VarName`, and this will be used in the subsequent checks. If `vn` is not specified,
-`(@varname \$expr)` will be used in its place.
-"""
-function isassumption(expr::Union{Expr,Symbol}, vn=make_varname_expression(expr))
-    @gensym contextual_result
-    return quote
-        $contextual_result = $(DynamicPPL.contextual_isassumption)(
-            __model__, $(DynamicPPL.maybe_prefix)($vn, __model__.prefix)
-        )
-        if $contextual_result === nothing
-            # Model arguments are observations unless declared missing.
-            if !($(DynamicPPL.inargnames)($vn, __model__)) ||
-                $(DynamicPPL.inmissings)($vn, __model__)
-                true
-            else
-                $(maybe_view(expr)) === missing
-            end
-        else
-            $contextual_result
-        end
-    end
-end
-
-# failsafe: a literal is never an assumption
-isassumption(expr, vn) = :(false)
-isassumption(expr) = :(false)
-
-"""
-    contextual_isassumption(model, vn)
-
-Return whether `model` explicitly treats `vn` as an assumption. Return `nothing` if the
-model does not override its default observation status.
-"""
-function contextual_isassumption(model::Model, vn)
-    # TODO: Reject `missing` conditions on structured roots rather than treating them as
-    # absent; see https://github.com/TuringLang/DynamicPPL.jl/issues/1459.
-    if hasvalue(model.values, vn)
-        value = _model_value(model.values[vn], vn)
-        value isa ModelValue{Fix} && return nothing
-        val = value.value
-        # TODO: Do we even need the `>: Missing`, i.e. does it even help the compiler?
-        if eltype(val) >: Missing && val === missing
-            return true
-        else
-            return false
-        end
-    else
-        return nothing
-    end
-end
-
-isfixed(expr, vn) = false
-function isfixed(::Union{Symbol,Expr}, vn)
-    return :($(DynamicPPL.contextual_isfixed)(
-        __model__, $(DynamicPPL.maybe_prefix)($vn, __model__.prefix)
-    ))
-end
-
-"""
-    contextual_isfixed(model, vn)
-
-Return `true` if `vn` is considered fixed by `model`.
-"""
-function contextual_isfixed(model::Model, vn)
-    if hasvalue(model.values, vn)
-        value = _model_value(model.values[vn], vn)
-        value isa ModelValue{Condition} && return false
-        val = value.value
-        # TODO: Do we even need the `>: Missing`, i.e. does it even help the compiler?
-        if eltype(val) >: Missing && val === missing
-            return false
-        else
-            return true
-        end
-    else
-        return false
-    end
-end
-
-# If we're working with, say, a `Symbol`, then we're not going to `view`.
-maybe_view(x) = x
-maybe_view(x::Expr) = :(@views($x))
-
-"""
     isliteral(expr)
 
 Return `true` if `expr` is a literal, e.g. `1.0` or `[1.0, ]`, and `false` otherwise.
@@ -309,9 +211,10 @@ function model(mod, linenumbernode, expr, warn)
     modeldef = build_model_definition(expr)
 
     # Generate main body
-    modeldef[:body] = generate_mainbody(mod, modeldef[:body], warn, true)
+    sites = Symbol[]
+    modeldef[:body] = generate_mainbody(mod, modeldef[:body], warn, true; sites)
 
-    return build_output(modeldef, linenumbernode)
+    return build_output(modeldef, linenumbernode, sites)
 end
 
 """
@@ -354,14 +257,14 @@ Generate the body of the main evaluation function from expression `expr` and arg
 If `warn` is true, a warning is displayed if internal variables are used in the model
 definition.
 """
-generate_mainbody(mod, expr, warn, warn_threads) =
-    generate_mainbody!(mod, Symbol[], expr, warn, warn_threads)
+generate_mainbody(mod, expr, warn, warn_threads; sites=Symbol[]) =
+    generate_mainbody!(mod, (; internal=Symbol[], sites), expr, warn, warn_threads)
 
 generate_mainbody!(mod, found, x, warn, warn_threads) = x
 function generate_mainbody!(mod, found, sym::Symbol, warn, warn_threads)
-    if warn && sym in INTERNALNAMES && sym ∉ found
+    if warn && sym in INTERNALNAMES && sym ∉ found.internal
         @warn "you are using the internal variable `$sym`"
-        push!(found, sym)
+        push!(found.internal, sym)
     end
 
     return sym
@@ -414,11 +317,12 @@ function generate_mainbody!(mod, found, expr::Expr, warn, warn_threads)
     args_tilde = getargs_tilde(expr)
     if args_tilde !== nothing
         L, R = args_tilde
+        L = generate_mainbody!(mod, found, L, warn, warn_threads)
+        if !isliteral(L)
+            push!(found.sites, get_top_level_symbol(L))
+        end
         return Base.remove_linenums!(
-            generate_tilde(
-                generate_mainbody!(mod, found, L, warn, warn_threads),
-                generate_mainbody!(mod, found, R, warn, warn_threads),
-            ),
+            generate_tilde(L, generate_mainbody!(mod, found, R, warn, warn_threads))
         )
     end
 
@@ -505,49 +409,24 @@ function generate_tilde(left, right)
         get_top_level_symbol(left)
     end
 
-    # Otherwise it is determined by the model or its value,
-    # if the LHS represents an observation
-    @gensym vn isassumption value dist supplied_val
+    @gensym vn binding value dist supplied_val
 
     return quote
         $dist = $right
         $vn = $(DynamicPPL.resolve_varnames)($(make_varname_expression(left)), $dist)
-        $isassumption =
-            $dist isa $(DynamicPPL.Submodel) || $(DynamicPPL.isassumption(left, vn))
-        # TODO(penelopeysm): VERY HACKY WORKAROUND FOR SUBMODELS. See src/submodel.jl
-        # tilde_observe!! for more details.
-        if !($dist isa $(DynamicPPL.Submodel)) && $(DynamicPPL.isfixed(left, vn))
-            # $left may not be a simple varname, it might be x.a or x[1], in which case we
-            # need to use Accessors.set to safely set it.
-            $(assign_or_set!!(
-                left,
-                :(
-                    $(DynamicPPL._model_value)(
-                        __model__.values[$(DynamicPPL.maybe_prefix)($vn, __model__.prefix)],
-                        $vn,
-                    ).value
-                ),
-                vn,
-            ))
-        elseif $isassumption
+        $binding = if $dist isa $(DynamicPPL.Submodel)
+            nothing
+        else
+            $(DynamicPPL._get_model_value)(
+                __model__, $(DynamicPPL.maybe_prefix)($vn, __model__.prefix)
+            )
+        end
+        if $binding isa $(DynamicPPL.ModelValue){$(DynamicPPL.Fix)}
+            $(assign_or_set!!(left, :($binding.value), vn))
+        elseif $binding === nothing
             $(generate_tilde_assume(left, dist, vn))
         else
-            # If `vn` is not in `argnames`, then it's definitely been conditioned on (if
-            # it's not in `argnames` and wasn't conditioned on, then `isassumption` would
-            # be true).
-            # Note that it's important to always make sure that the variable `$supplied_val`
-            # is defined (by putting $supplied_val outside the if/else block), otherwise
-            # Libtask can trip up with variables that are only defined in one branch. See
-            # eg. https://github.com/TuringLang/DynamicPPL.jl/pull/1110 for a discussion of
-            # this.
-            $supplied_val = if $(DynamicPPL.inargnames)($vn, __model__)
-                $(maybe_view(left))
-            else
-                $(DynamicPPL._model_value)(
-                    __model__.values[$(DynamicPPL.maybe_prefix)($vn, __model__.prefix)],
-                    $vn,
-                ).value
-            end
+            $supplied_val = $binding.value
 
             $value, __varinfo__ = $(DynamicPPL.tilde_observe!!)(
                 __model__,
@@ -677,11 +556,6 @@ function add_return_to_last_statment(body::Expr)
     return Expr(body.head, new_args...)
 end
 
-hasmissing(::Type) = false
-hasmissing(::Type{>:Missing}) = true
-hasmissing(::Type{<:AbstractArray{TA}}) where {TA} = hasmissing(TA)
-hasmissing(::Type{Union{}}) = false # issue #368
-
 """
     TypeWrap{T}
 
@@ -732,7 +606,7 @@ end
 
 Builds the output expression.
 """
-function build_output(modeldef, linenumbernode)
+function build_output(modeldef, linenumbernode, sites)
     args = transform_args(modeldef[:args])
     kwargs = transform_args(modeldef[:kwargs])
 
@@ -778,6 +652,18 @@ function build_output(modeldef, linenumbernode)
     kwargs_split = map(MacroTools.splitarg, kwargs)
     args_nt = namedtuple_from_splitargs(args_split)
     kwargs_inclusion = map(splitarg_to_expr, kwargs_split)
+    observed_args = unique([
+        name for (name, _, _, _) in vcat(args_split, kwargs_split) if name in sites
+    ])
+    observations = Expr(:tuple, [Expr(:(=), name, name) for name in observed_args]...)
+    prepare_args = [
+        :($name = $(prepare_model_argument)(__model__, $(VarName{name}()), $name)) for
+        name in observed_args
+    ]
+    evaluatordef[:body] = MacroTools.@q begin
+        $(prepare_args...)
+        $(evaluatordef[:body])
+    end
 
     # Update the function body of the user-specified model.
     # We use `MacroTools.@q begin ... end` instead of regular `quote ... end` to ensure
@@ -785,13 +671,27 @@ function build_output(modeldef, linenumbernode)
     # to the call site
     modeldef[:body] = MacroTools.@q begin
         $(linenumbernode)
-        return $(DynamicPPL.Model){false}($name, $args_nt; $(kwargs_inclusion...))
+        return $(DynamicPPL.Model){false}(
+            $name,
+            $args_nt,
+            (; $(kwargs_inclusion...)),
+            $(DefaultContext)(),
+            nothing,
+            $(_tag_model_values)($(Condition), $(VarNamedTuple)($observations)),
+        )
     end
 
     return MacroTools.@q begin
         $(MacroTools.combinedef(evaluatordef))
         $(Base).@__doc__ $(MacroTools.combinedef(modeldef))
     end
+end
+
+function prepare_model_argument(model::Model, vn::VarName, value)
+    vn = maybe_prefix(vn, model.prefix)
+    binding = hasvalue(model.values, vn) ? model.values[vn] : nothing
+    # Assigning replacement values must not mutate the original argument observations.
+    return binding isa ModelValue && binding.value === value ? value : deepcopy(value)
 end
 
 function warn_empty(body)
@@ -804,40 +704,9 @@ end
 """
     convert_model_argument(param_eltype, model_argument)
 
-Convert `model_argument` to the correct type, given the element type of the parameters being
-used to evaluate the model. This function potentially also deep-copies `model_argument` if it
-contains `missing` values.
+Promote type arguments to the parameter element type; leave value arguments unchanged.
 """
-function convert_model_argument(param_eltype, model_argument)
-    T = typeof(model_argument)
-    # If the argument contains missing data, then we potentially need to deepcopy it. This
-    # is because the argument may be e.g. a vector of missings, and evaluating a
-    # tilde-statement like x[1] ~ Normal() would set x[1] = some_not_missing_value, thus
-    # mutating x. If you then run the model again with the same argument, x[1] would no
-    # longer be missing.
-    return if hasmissing(T)
-        # It is possible that we could skip the deepcopy, if the argument has to be promoted
-        # anyway. For example, if we are running with ForwardDiff and the argument is a
-        # Vector{Union{Missing, Float64}}, then we will convert it to a
-        # Vector{Union{Missing, ForwardDiff.Dual{...}}} anyway, which will avoid mutating
-        # the original argument. We can check for this by first converting and then only
-        # deepcopying if the converted value aliases the original.
-        # Note that indiscriminately deepcopying can not only lead to reduced performance,
-        # but sometimes also incorrect behaviour with ReverseDiff.jl, because ReverseDiff
-        # expects to be able to track array mutations. See e.g.
-        # https://github.com/TuringLang/DynamicPPL.jl/pull/1015#issuecomment-3166011534
-        converted_argument = convert(
-            promote_model_type_argument(param_eltype, T), model_argument
-        )
-        if converted_argument === model_argument
-            deepcopy(model_argument)
-        else
-            converted_argument
-        end
-    else
-        model_argument
-    end
-end
+convert_model_argument(param_eltype, model_argument) = model_argument
 # These methods handle arguments that are types rather than values.
 function convert_model_argument(param_eltype, t::Type{<:Union{Real,AbstractArray}})
     return promote_model_type_argument(param_eltype, t)
@@ -845,12 +714,7 @@ end
 function convert_model_argument(param_eltype, ::TypeWrap{T}) where {T}
     return TypeWrap{promote_model_type_argument(param_eltype, T)}()
 end
-# If the parameter element type is `Any`, then we don't need to do any conversion (but we
-# might need to deepcopy).
-function convert_model_argument(::Type{Any}, model_argument::T) where {T}
-    return hasmissing(T) ? deepcopy(model_argument) : model_argument
-end
-# Extra methods to avoid method ambiguity.
+# An unknown parameter element type must not erase concrete type arguments.
 convert_model_argument(::Type{Any}, t::Type{<:Union{Real,AbstractArray}}) = t
 convert_model_argument(::Type{Any}, t::TypeWrap{T}) where {T} = t
 

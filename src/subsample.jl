@@ -633,16 +633,6 @@ function _strict_independent_ldf(
     )
 end
 
-_unprefix_observation(::Nothing, observation::VarName) = observation
-function _unprefix_observation(prefix::VarName, observation::VarName)
-    return try
-        AbstractPPL.unprefix(observation, prefix)
-    catch e
-        e isa ArgumentError || rethrow()
-        observation
-    end
-end
-
 function _conditioned_independent_observation(model::Model)
     values = conditioned(model)
     length(values) == 1 || throw(
@@ -651,12 +641,6 @@ function _conditioned_independent_observation(model::Model)
         ),
     )
     observation = only(keys(values))
-    unprefixed_observation = _unprefix_observation(model.prefix, observation)
-    inargnames(unprefixed_observation, model) && throw(
-        ArgumentError(
-            "the independent observation `$observation` must be supplied through `condition`, not as a model argument",
-        ),
-    )
     data = values[observation]
     data isa AbstractArray{<:Real} || throw(
         ArgumentError(

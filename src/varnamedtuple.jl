@@ -59,6 +59,17 @@ end
 SkipTemplate{N}(v::SkipTemplate{M}) where {N,M} = SkipTemplate{N + M}(v.value)
 SkipTemplate{0}(v::SkipTemplate{M}) where {M} = SkipTemplate{M}(v.value)
 
+# Preserve the enclosing container until the submodel boundary, then use its local template.
+struct NestedTemplate{P<:AbstractPPL.AbstractOptic,T,C}
+    path::P
+    outer::T
+    inner::C
+end
+nested_template(path, outer, inner) = NestedTemplate(path, outer, inner)
+nested_template(::AbstractPPL.Iden, outer, inner) = SkipTemplate{1}(inner)
+template_array(template) = template
+template_array(template::NestedTemplate) = template_array(template.outer)
+
 """
     abstract type SetPermissions end
 
