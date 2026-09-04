@@ -175,7 +175,7 @@ _model_argument_value(values::AbstractArray, template) = _model_data(values)
 function _model_argument_value(values::VarNamedTuples.PartialArray, template)
     # Growable arrays describe supplied indices, not the extent of the argument.
     return if !(values.data isa VarNamedTuples.GrowableArray) &&
-              VarNamedTuples._haskey_optic(values, AbstractPPL.Iden())
+        VarNamedTuples._haskey_optic(values, AbstractPPL.Iden())
         _model_data(values)
     else
         deepcopy(template)
