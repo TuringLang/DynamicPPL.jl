@@ -418,10 +418,10 @@ RNG; it does not draw model parameters. `stanc_args` and `make_args` are forward
 BridgeStan build. The first call for each combination of these inputs compiles and patches
 the generated C++ model; subsequent calls return the cached distribution. A working
 BridgeStan toolchain is therefore required. Because BridgeStan does not provide a sampler,
-requests for prior initialization use DynamicPPL's uniform initializer in unconstrained
-space. For constraints with unidentified coordinates, such as `unit_vector`, unconstraining
-a parameter selects Stan's canonical representative; model evaluation retains the original
-unconstrained state.
+`InitFromPrior` falls back to DynamicPPL's uniform initializer in unconstrained space. For
+constraints with unidentified coordinates, such as `unit_vector`, unconstraining a parameter
+selects Stan's canonical representative; model evaluation retains the original unconstrained
+state.
 """
 function DynamicPPL.to_distribution(
     source::AbstractString;

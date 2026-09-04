@@ -1,9 +1,8 @@
 module DynamicPPLBridgeStanExtTests
 
-using ADTypes: AutoForwardDiff, AutoMooncake
+using ADTypes: AutoMooncake
 using Bijectors
 using BridgeStan
-using DifferentiationInterface
 using Distributions: Normal, insupport, logpdf
 using DynamicPPL
 using ForwardDiff
@@ -226,8 +225,9 @@ parameters {
     conditioned_model = condition(model, (; theta=constrained))
     @test logjoint(conditioned_model, NamedTuple()) ≈ expected_unlinked
 
-    ldf = LogDensityFunction(model; adtype=AutoForwardDiff())
-    value, gradient = LogDensityProblems.logdensity_and_gradient(ldf, u)
+    ldf = LogDensityFunction(model)
+    value = LogDensityProblems.logdensity(ldf, u)
+    gradient = ForwardDiff.gradient(u -> LogDensityProblems.logdensity(ldf, u), u)
     _, stan_gradient = BridgeStan.log_density_gradient(
         distribution.transform.model, u; propto=false, jacobian=true
     )
