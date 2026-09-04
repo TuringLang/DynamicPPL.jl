@@ -49,7 +49,9 @@ Random.seed!(100)
     if GROUP in [TEST_GROUP_ALL, TEST_GROUP_GROUP2]
         include("transformed_values.jl")
         include("logdensityfunction.jl")
+        include("subsample.jl")
         @testset "extensions" begin
+            include("ext/DynamicPPLBridgeStanExt.jl")
             include("ext/DynamicPPLMCMCChainsExt.jl")
         end
         @testset "ad" begin

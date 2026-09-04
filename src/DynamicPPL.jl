@@ -101,6 +101,8 @@ export AbstractVarInfo,
     VectorValueAccumulator,
     VectorParamAccumulator,
     get_raw_values,
+    get_parameter_values,
+    get_colon_eq_values,
     get_vector_values,
     get_vector_params,
     # Accumulators - miscellany
@@ -129,6 +131,7 @@ export AbstractVarInfo,
     init!!,
     # LogDensityFunction
     LogDensityFunction,
+    subsample,
     OnlyAccsVarInfo,
     to_vector_params,
     get_input_vector_type,
@@ -184,6 +187,7 @@ export AbstractVarInfo,
     NoDist,
     filldist,
     arraydist,
+    independent_distribution,
     # Distributions
     Flat,
     FlatPos,
@@ -206,6 +210,7 @@ export AbstractVarInfo,
     prefix,
     returned,
     to_submodel,
+    to_distribution,
     # Struct to hold model outputs
     ParamsWithStats,
     # Convenience macros
@@ -274,6 +279,7 @@ include("varinfo.jl")
 include("onlyaccs.jl")
 include("compiler.jl")
 include("logdensityfunction.jl")
+include("subsample.jl")
 include("accumulators/vector_params.jl")
 include("chains.jl")
 

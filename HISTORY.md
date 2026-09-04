@@ -1,3 +1,21 @@
+# 0.42.11
+
+Stan programs can now be embedded as distributions in DynamicPPL models when BridgeStan is loaded, with ForwardDiff and Mooncake support. See [#1478](https://github.com/TuringLang/DynamicPPL.jl/pull/1478).
+
+# 0.42.10
+
+Thread-safe model evaluation now keeps accumulator state per task, preventing lost updates when tasks yield or migrate between threads. See [#924](https://github.com/TuringLang/DynamicPPL.jl/issues/924).
+
+# 0.42.9
+
+Added `independent_distribution` and `subsample` for fixed-minibatch log-density functions with scaled likelihoods. This is useful when implementing stochastic objectives in inference packages such as AdvancedVI and AdvancedHMC.
+
+# 0.42.8
+
+`get_parameter_values` and `get_colon_eq_values` now distinguish parameters introduced by `~` from values introduced by `:=`, while `get_raw_values` remains unchanged. See [#1473](https://github.com/TuringLang/DynamicPPL.jl/pull/1473).
+
+`VarNamedTuple` now merges vector-backed `PartialArray`s from executions with different lengths, preserving valid tail entries and right-hand precedence on overlaps. See [#1472](https://github.com/TuringLang/DynamicPPL.jl/pull/1472).
+
 # 0.42.7
 
 The `Flat`, `FlatPos`, `BinomialLogit`, `OrderedLogistic`, and `LogPoisson` distributions have moved here from Turing, where they are re-exported. This makes them available for DynamicPPL's own test models and AD testing. See [Turing#2858](https://github.com/TuringLang/Turing.jl/issues/2858).
