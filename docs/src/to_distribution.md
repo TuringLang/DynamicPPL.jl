@@ -10,7 +10,7 @@ DynamicPPL models.
 
 ## Stan example
 
-Load BridgeStan and pass a Stan program to `to_distribution`. The first call requires a
+Load BridgeStan and pass Stan source to `to_distribution`. The first call requires a
 BridgeStan toolchain; identical calls reuse the cached distribution.
 
 ```@example to-distribution
@@ -31,7 +31,7 @@ const STAN_DISTRIBUTION = to_distribution(STAN)
 
 @model function demo(stan, y)
     theta ~ stan
-    y ~ Normal(theta[1], 1)
+    return y ~ Normal(theta[1], 1)
 end
 
 ldf = LogDensityFunction(demo(STAN_DISTRIBUTION, 0.4))
