@@ -57,7 +57,7 @@ makedocs(;
         "Initialisation strategies" => "init.md",
         "Transform strategies" => "transforms.md",
         "Fixed transforms" => "fixed_transforms.md",
-        "Model composition" => "to_distribution.md",
+        "Model composition" => "to_distribution_and_to_submodel.md",
         "Accumulators" => [
             "accs/overview.md",
             "accs/existing.md",
