@@ -10,6 +10,7 @@ using LinearAlgebra: dot
 
 const _WRITER_START = "  template <typename RNG, typename VecR, typename VecI, typename VecVar,"
 const _PARAMETER_END = "      if (stan::math::logical_negation("
+const _UNCONSTRAIN_START = "  template <typename VecVar, typename VecI,"
 const _SUPPORTED_STAN_RELEASES = ((2, 39),)
 
 function _warn_untested_versions(source::String)
@@ -26,6 +27,31 @@ function _warn_untested_versions(source::String)
     end
 end
 
+function _unconstrain_writer(source::String)
+    method = findfirst("unconstrain_array_impl(", source)
+    isnothing(method) && error("stanc3 output has no `unconstrain_array_impl`")
+    start = findprev(_UNCONSTRAIN_START, source, first(method))
+    isnothing(start) && error("unsupported stanc3 `unconstrain_array_impl` signature")
+    next_method = findnext("transform_inits_impl(", source, last(method))
+    isnothing(next_method) && error("unsupported stanc3 unconstrain writer")
+    stop = findprev("  template <", source, first(next_method))
+    isnothing(stop) && error("unsupported stanc3 unconstrain writer terminator")
+
+    helper = source[first(start):(first(stop) - 1)]
+    occursin("using local_scalar_t__ = double;", helper) ||
+        error("unsupported stanc3 unconstrain writer scalar type")
+    helper = replace(
+        helper, "unconstrain_array_impl" => "unconstrain_parameters_ad_impl"; count=1
+    )
+    helper = replace(
+        helper,
+        "using local_scalar_t__ = double;" => "using local_scalar_t__ = stan::scalar_type_t<VecVar>;";
+        count=1,
+    )
+    helper = replace(helper, "in__.read<" => "in__.template read<")
+    return replace(helper, r"\bdouble\b" => "local_scalar_t__")
+end
+
 function _parameter_writer(source::String)
     writer = findfirst("write_array_impl(", source)
     isnothing(writer) && error("stanc3 output has no `write_array_impl`")
@@ -35,7 +61,22 @@ function _parameter_writer(source::String)
     isnothing(stop) && error("unsupported stanc3 parameter writer")
 
     prefix = source[first(start):(first(stop) - 1)]
+    occursin("inline void", prefix) ||
+        error("unsupported stanc3 parameter writer return type")
+    occursin("constexpr bool jacobian__ = false;", prefix) ||
+        error("unsupported stanc3 parameter writer Jacobian flag")
+    prefix = replace(
+        prefix,
+        _WRITER_START => "  template <bool Jacobian, typename RNG, typename VecR, typename VecI, typename VecVar,";
+        count=1,
+    )
     prefix = replace(prefix, "write_array_impl" => "write_parameters_ad_impl"; count=1)
+    prefix = replace(prefix, "inline void" => "inline auto"; count=1)
+    prefix = replace(
+        prefix,
+        "constexpr bool jacobian__ = false;" => "constexpr bool jacobian__ = Jacobian;";
+        count=1,
+    )
     prefix = replace(
         prefix,
         r"stan::require_vector_like_vt<std::is_floating_point,\s*VecR>" => "stan::require_vector_like_t<VecR>",
@@ -45,6 +86,7 @@ function _parameter_writer(source::String)
     # Tuple parameter locals contain nested `double` types instead of the scalar alias.
     prefix = replace(prefix, r"\bdouble\b" => "local_scalar_t__")
     return prefix * """
+      return lp__;
     } catch (const std::exception& e) {
       stan::lang::rethrow_located(e, locations_array__[current_statement__]);
     }
@@ -89,12 +131,21 @@ struct transform {
         rng(stan::services::util::create_rng(seed, 0)) {}
 };
 
-template <typename Vec>
+template <bool Jacobian, typename Vec>
 auto constrain(transform* transform, Vec& input, int size) {
   Eigen::Matrix<stan::scalar_type_t<Vec>, Eigen::Dynamic, 1> output(size);
   std::vector<int> integers;
-  transform->model->write_parameters_ad_impl(
+  auto log_jacobian = transform->model->write_parameters_ad_impl<Jacobian>(
       transform->rng, input, integers, output, false, false, nullptr);
+  return std::make_pair(output, log_jacobian);
+}
+
+template <typename Vec>
+auto unconstrain(transform* transform, const Vec& input, int size) {
+  Eigen::Matrix<stan::scalar_type_t<Vec>, Eigen::Dynamic, 1> output(size);
+  std::vector<int> integers;
+  transform->model->unconstrain_parameters_ad_impl(
+      input, integers, output, nullptr);
   return output;
 }
 
@@ -120,22 +171,21 @@ DYNAMICPPL_BS_PUBLIC void dynamicppl_bs_transform_destruct(void* pointer) {
   delete static_cast<dynamicppl_bridgestan::transform*>(pointer);
 }
 
-DYNAMICPPL_BS_PUBLIC int dynamicppl_bs_param_constrain_jvp(
-    void* pointer, const double* u, const double* du, int n, int m,
-    double* result, char** error) {
+DYNAMICPPL_BS_PUBLIC int dynamicppl_bs_param_constrain_jacobian(
+    void* pointer, const double* u, int n, int m, double* value,
+    double* jacobian_out, char** error) {
   try {
     auto* transform = static_cast<dynamicppl_bridgestan::transform*>(pointer);
     Eigen::Map<const Eigen::VectorXd> input(u, n);
-    Eigen::Map<const Eigen::VectorXd> tangent(du, n);
     if (m == 0) return 0;
     auto constrain = [&](auto& input_ad) {
-      return dynamicppl_bridgestan::constrain(transform, input_ad, m);
+      return dynamicppl_bridgestan::constrain<false>(transform, input_ad, m).first;
     };
-    // The unit-vector fvar overload does not propagate arbitrary tangents.
-    Eigen::VectorXd value;
+    Eigen::VectorXd constrained;
     Eigen::MatrixXd jacobian;
-    stan::math::jacobian(constrain, input, value, jacobian);
-    Eigen::Map<Eigen::VectorXd>(result, m) = jacobian * tangent;
+    stan::math::jacobian(constrain, input, constrained, jacobian);
+    Eigen::Map<Eigen::VectorXd>(value, m) = constrained;
+    Eigen::Map<Eigen::MatrixXd>(jacobian_out, m, n) = jacobian;
     return 0;
   } catch (const std::exception& e) {
     dynamicppl_bridgestan::set_error(error, e.what());
@@ -151,12 +201,81 @@ DYNAMICPPL_BS_PUBLIC int dynamicppl_bs_param_constrain_vjp(
     Eigen::Map<const Eigen::VectorXd> input(u, n);
     Eigen::Map<const Eigen::VectorXd> output_cotangent(cotangent, m);
     auto objective = [&](auto& input_ad) {
-      auto output_ad = dynamicppl_bridgestan::constrain(transform, input_ad, m);
+      auto output_ad =
+          dynamicppl_bridgestan::constrain<false>(transform, input_ad, m).first;
       return stan::math::dot_product(output_ad, output_cotangent);
     };
     double value;
     Eigen::VectorXd gradient;
     stan::math::gradient(objective, input, value, gradient);
+    Eigen::Map<Eigen::VectorXd>(result, n) = gradient;
+    return 0;
+  } catch (const std::exception& e) {
+    dynamicppl_bridgestan::set_error(error, e.what());
+    return 1;
+  }
+}
+
+DYNAMICPPL_BS_PUBLIC int dynamicppl_bs_param_unconstrain_jacobian(
+    void* pointer, const double* x, int m, int n, double* value,
+    double* jacobian_out, char** error) {
+  try {
+    auto* transform = static_cast<dynamicppl_bridgestan::transform*>(pointer);
+    Eigen::Map<const Eigen::VectorXd> input(x, m);
+    if (n == 0) return 0;
+    auto unconstrain = [&](auto& input_ad) {
+      return dynamicppl_bridgestan::unconstrain(transform, input_ad, n);
+    };
+    Eigen::VectorXd unconstrained;
+    Eigen::MatrixXd jacobian;
+    stan::math::jacobian(unconstrain, input, unconstrained, jacobian);
+    Eigen::Map<Eigen::VectorXd>(value, n) = unconstrained;
+    Eigen::Map<Eigen::MatrixXd>(jacobian_out, n, m) = jacobian;
+    return 0;
+  } catch (const std::exception& e) {
+    dynamicppl_bridgestan::set_error(error, e.what());
+    return 1;
+  }
+}
+
+DYNAMICPPL_BS_PUBLIC int dynamicppl_bs_param_unconstrain_vjp(
+    void* pointer, const double* x, const double* cotangent, int m, int n,
+    double* result, char** error) {
+  try {
+    auto* transform = static_cast<dynamicppl_bridgestan::transform*>(pointer);
+    Eigen::Map<const Eigen::VectorXd> input(x, m);
+    Eigen::Map<const Eigen::VectorXd> output_cotangent(cotangent, n);
+    auto objective = [&](auto& input_ad) {
+      auto output_ad = dynamicppl_bridgestan::unconstrain(transform, input_ad, n);
+      return stan::math::dot_product(output_ad, output_cotangent);
+    };
+    double value;
+    Eigen::VectorXd gradient;
+    stan::math::gradient(objective, input, value, gradient);
+    Eigen::Map<Eigen::VectorXd>(result, m) = gradient;
+    return 0;
+  } catch (const std::exception& e) {
+    dynamicppl_bridgestan::set_error(error, e.what());
+    return 1;
+  }
+}
+
+DYNAMICPPL_BS_PUBLIC int dynamicppl_bs_param_constrain_logjac_gradient(
+    void* pointer, const double* u, int n, int m, double* value,
+    double* result, char** error) {
+  try {
+    auto* transform = static_cast<dynamicppl_bridgestan::transform*>(pointer);
+    Eigen::Map<const Eigen::VectorXd> input(u, n);
+    auto objective = [&](auto& input_ad) {
+      return dynamicppl_bridgestan::constrain<true>(transform, input_ad, m).second;
+    };
+    if (result == nullptr) {
+      Eigen::VectorXd input_value = input;
+      *value = objective(input_value);
+      return 0;
+    }
+    Eigen::VectorXd gradient;
+    stan::math::gradient(objective, input, *value, gradient);
     Eigen::Map<Eigen::VectorXd>(result, n) = gradient;
     return 0;
   } catch (const std::exception& e) {
@@ -172,9 +291,14 @@ function _patch_model(header::String)
     source = read(header, String)
     _warn_untested_versions(source)
     helper = _parameter_writer(source)
+    unconstrain_helper = _unconstrain_writer(source)
     writer = findfirst("write_array_impl(", source)::UnitRange
     start = findprev(_WRITER_START, source, first(writer))::UnitRange
-    source = source[begin:(first(start) - 1)] * helper * source[first(start):end]
+    source =
+        source[begin:(first(start) - 1)] *
+        helper *
+        unconstrain_helper *
+        source[first(start):end]
 
     source = replace(
         source,
@@ -216,8 +340,10 @@ function _compile(source::AbstractString; stanc_args=String[], make_args=String[
 end
 
 mutable struct StanTransform <: DynamicPPL._StanDifferentiableFunction
-    model::BridgeStan.StanModel
+    const model::BridgeStan.StanModel
     pointer::Ptr{Cvoid}
+    const input_dimension::Int
+    const output_dimension::Int
 
     function StanTransform(model::BridgeStan.StanModel)
         error_ref = Ref{Cstring}(C_NULL)
@@ -225,7 +351,12 @@ mutable struct StanTransform <: DynamicPPL._StanDifferentiableFunction
             model.data::Cstring, model.seed::Cuint, error_ref::Ref{Cstring}
         )::Ptr{Cvoid}
         pointer == C_NULL && _throw_error(model, error_ref)
-        transform = new(model, pointer)
+        transform = new(
+            model,
+            pointer,
+            Int(BridgeStan.param_unc_num(model)),
+            Int(BridgeStan.param_num(model)),
+        )
         finalizer(transform) do value
             if value.pointer != C_NULL
                 @ccall $(dlsym(value.model.lib, :dynamicppl_bs_transform_destruct))(
@@ -238,17 +369,20 @@ mutable struct StanTransform <: DynamicPPL._StanDifferentiableFunction
     end
 end
 
-struct StanLogDensity <: DynamicPPL._StanDifferentiableFunction
-    model::BridgeStan.StanModel
+struct StanUnconstrain <: DynamicPPL._StanDifferentiableFunction
+    transform::StanTransform
+end
+
+struct StanLogDensity{Jacobian} <: DynamicPPL._StanDifferentiableFunction
+    transform::StanTransform
+end
+
+struct StanLogJacobian <: DynamicPPL._StanDifferentiableFunction
+    transform::StanTransform
 end
 
 struct StanDistribution <: Distributions.ContinuousMultivariateDistribution
     transform::StanTransform
-    dimension::Int
-
-    function StanDistribution(transform::StanTransform)
-        return new(transform, Int(BridgeStan.param_unc_num(transform.model)))
-    end
 end
 
 const _STAN_DISTRIBUTION_CACHE = Dict{Tuple,StanDistribution}()
@@ -281,6 +415,9 @@ BridgeStan build. The first call for each combination of these inputs compiles a
 the generated C++ model; subsequent calls return the cached distribution. A working
 BridgeStan toolchain is therefore required. The adapter uses a standard-normal vector only
 to initialise the unconstrained coordinates because BridgeStan does not provide a sampler.
+For constraints with unidentified coordinates, such as `unit_vector`, unconstraining a
+parameter selects Stan's canonical representative; model evaluation retains the original
+unconstrained state.
 """
 function DynamicPPL.to_distribution(
     source::AbstractString;
@@ -306,15 +443,24 @@ function DynamicPPL.to_distribution(
     end
 end
 
-Base.length(distribution::StanDistribution) = distribution.dimension
+Base.length(distribution::StanDistribution) = distribution.transform.output_dimension
 
 function Distributions.insupport(distribution::StanDistribution, value::AbstractVector)
-    return length(value) == length(distribution) && all(isfinite, value)
+    length(value) == length(distribution) && all(isfinite, value) || return false
+    try
+        _stan_unconstrain(distribution.transform, value)
+        return true
+    catch err
+        err isa ErrorException || rethrow()
+        return false
+    end
 end
 
 function Distributions.logpdf(distribution::StanDistribution, value::AbstractVector{<:Real})
     _check_length(value, length(distribution), "value")
-    return StanLogDensity(distribution.transform.model)(value)
+    return StanLogDensity{false}(distribution.transform)(
+        StanUnconstrain(distribution.transform)(value)
+    )
 end
 
 function DynamicPPL.init(
@@ -325,20 +471,41 @@ function DynamicPPL.init(
 )
     # Stan exposes a target density but no sampler; this value is only an initial point.
     return DynamicPPL.TransformedValue(
-        randn(rng, length(distribution)), DynamicPPL.FixedTransform(distribution.transform)
+        randn(rng, distribution.transform.input_dimension),
+        DynamicPPL.FixedTransform(distribution.transform),
     )
 end
 
-function _stan_assume!!(distribution, vn, template, vi, transformed_value)
+function _stan_fixed_value(distribution::StanDistribution, transformed_value)
+    transform = DynamicPPL.get_transform(transformed_value)
+    value = DynamicPPL.get_internal_value(transformed_value)
+    u = if transform isa DynamicPPL.FixedTransform
+        transform.transform === distribution.transform ||
+            error("Stan model parameters have a different fixed transform")
+        return transformed_value
+    elseif transform isa DynamicPPL.DynamicLink
+        value
+    elseif transform isa DynamicPPL.Unlink
+        raw_value = Bijectors.VectorBijectors.from_vec(distribution)(value)
+        _stan_unconstrain(distribution.transform, raw_value)
+    elseif transform isa DynamicPPL.NoTransform
+        _stan_unconstrain(distribution.transform, value)
+    else
+        error("unsupported Stan parameter transform $(typeof(transform))")
+    end
+    return DynamicPPL.TransformedValue(u, DynamicPPL.FixedTransform(distribution.transform))
+end
+
+function _stan_assume!!(distribution::StanDistribution, vn, template, vi, transformed_value)
     transform = DynamicPPL.get_transform(transformed_value)
     transform isa DynamicPPL.FixedTransform &&
-        transform.transform === distribution.transform || error(
-        "Stan model parameters must retain their fixed unconstrained-to-constrained transform",
-    )
+        transform.transform === distribution.transform ||
+        error("Stan model parameters must retain their fixed transform")
     u = DynamicPPL.get_internal_value(transformed_value)
     parameters = distribution.transform(u)
+    logjac = -StanLogJacobian(distribution.transform)(u)
     vi = DynamicPPL.accumulate_assume!!(
-        vi, u, transformed_value, zero(DynamicPPL.LogProbType), vn, distribution, template
+        vi, parameters, transformed_value, logjac, vn, distribution, template
     )
     return parameters, vi
 end
@@ -351,6 +518,7 @@ function DynamicPPL.tilde_assume!!(
     vi::DynamicPPL.AbstractVarInfo,
 )
     transformed_value = DynamicPPL.init(context.rng, vn, distribution, context.strategy)
+    transformed_value = _stan_fixed_value(distribution, transformed_value)
     vi = DynamicPPL.setindex_with_dist!!(vi, transformed_value, distribution, vn, template)
     return _stan_assume!!(distribution, vn, template, vi, transformed_value)
 end
@@ -367,50 +535,64 @@ function DynamicPPL.tilde_assume!!(
 end
 
 function _stan_constrain(transform::StanTransform, u::AbstractVector{<:Real})
-    _check_length(u, Int(BridgeStan.param_unc_num(transform.model)), "u")
+    _check_length(u, transform.input_dimension, "u")
     return BridgeStan.param_constrain(transform.model, collect(Float64, u))
 end
 function DynamicPPL._stan_value(transform::StanTransform, u::AbstractVector{<:Real})
     return _stan_constrain(transform, u)
 end
 
-function DynamicPPL._stan_value(logdensity::StanLogDensity, u::AbstractVector{<:Real})
+function _stan_unconstrain(transform::StanTransform, value::AbstractVector{<:Real})
+    _check_length(value, transform.output_dimension, "value")
+    return BridgeStan.param_unconstrain(transform.model, collect(Float64, value))
+end
+function DynamicPPL._stan_value(unconstrain::StanUnconstrain, value::AbstractVector{<:Real})
+    return _stan_unconstrain(unconstrain.transform, value)
+end
+
+function DynamicPPL._stan_value(
+    logdensity::StanLogDensity{Jacobian}, u::AbstractVector{<:Real}
+) where {Jacobian}
+    _check_length(u, logdensity.transform.input_dimension, "u")
     return BridgeStan.log_density(
-        logdensity.model, collect(Float64, u); propto=false, jacobian=true
+        logdensity.transform.model, collect(Float64, u); propto=false, jacobian=Jacobian
     )
 end
 
-function _stan_jvp(
-    transform::StanTransform, u::AbstractVector{<:Real}, du::AbstractVector{<:Real}
-)
-    n = Int(BridgeStan.param_unc_num(transform.model))
-    m = Int(BridgeStan.param_num(transform.model))
+function _stan_constrain_jacobian(transform::StanTransform, u::AbstractVector{<:Real})
+    n = transform.input_dimension
+    m = transform.output_dimension
     _check_length(u, n, "u")
-    _check_length(du, n, "du")
+    if iszero(n) || iszero(m)
+        return transform(u), zeros(m, n)
+    end
     u_stan = collect(Float64, u)
-    du_stan = collect(Float64, du)
-    result = Vector{Float64}(undef, m)
+    value = Vector{Float64}(undef, m)
+    jacobian = Matrix{Float64}(undef, m, n)
     error_ref = Ref{Cstring}(C_NULL)
-    status = @ccall $(dlsym(transform.model.lib, :dynamicppl_bs_param_constrain_jvp))(
+    status = @ccall $(dlsym(transform.model.lib, :dynamicppl_bs_param_constrain_jacobian))(
         transform.pointer::Ptr{Cvoid},
         u_stan::Ptr{Cdouble},
-        du_stan::Ptr{Cdouble},
         n::Cint,
         m::Cint,
-        result::Ptr{Cdouble},
+        value::Ptr{Cdouble},
+        jacobian::Ptr{Cdouble},
         error_ref::Ref{Cstring},
     )::Cint
     iszero(status) || _throw_error(transform.model, error_ref)
-    return result
+    return value, jacobian
 end
 
-function _stan_vjp(
+function _stan_constrain_vjp(
     transform::StanTransform, u::AbstractVector{<:Real}, cotangent::AbstractVector{<:Real}
 )
-    n = Int(BridgeStan.param_unc_num(transform.model))
-    m = Int(BridgeStan.param_num(transform.model))
+    n = transform.input_dimension
+    m = transform.output_dimension
     _check_length(u, n, "u")
     _check_length(cotangent, m, "cotangent")
+    if iszero(n) || iszero(m)
+        return zeros(n)
+    end
     u_stan = collect(Float64, u)
     cotangent_stan = collect(Float64, cotangent)
     result = Vector{Float64}(undef, n)
@@ -431,18 +613,95 @@ end
 function DynamicPPL._stan_value_and_pushforward(
     transform::StanTransform, u, tangents::NTuple
 )
-    return transform(u), map(du -> _stan_jvp(transform, u, du), tangents)
+    value, jacobian = _stan_constrain_jacobian(transform, u)
+    return value, map(tangent -> jacobian * tangent, tangents)
 end
 
 function DynamicPPL._stan_value_and_pullback(
     transform::StanTransform, u, cotangents::NTuple
 )
-    return transform(u), map(cotangent -> _stan_vjp(transform, u, cotangent), cotangents)
+    value = transform(u)
+    input_cotangents = map(
+        cotangent -> _stan_constrain_vjp(transform, u, cotangent), cotangents
+    )
+    return value, input_cotangents
 end
 
-function _stan_logdensity_gradient(logdensity::StanLogDensity, u)
+function DynamicPPL._stan_value_and_pushforward(
+    unconstrain::StanUnconstrain, value, tangents::NTuple
+)
+    u, jacobian = _stan_unconstrain_jacobian(unconstrain.transform, value)
+    return u, map(tangent -> jacobian * tangent, tangents)
+end
+
+function DynamicPPL._stan_value_and_pullback(
+    unconstrain::StanUnconstrain, value, cotangents::NTuple
+)
+    u = unconstrain(value)
+    input_cotangents = map(
+        cotangent -> _stan_unconstrain_vjp(unconstrain.transform, value, cotangent),
+        cotangents,
+    )
+    return u, input_cotangents
+end
+
+function _stan_unconstrain_jacobian(transform::StanTransform, value::AbstractVector{<:Real})
+    m = transform.output_dimension
+    n = transform.input_dimension
+    _check_length(value, m, "value")
+    if iszero(n) || iszero(m)
+        return _stan_unconstrain(transform, value), zeros(n, m)
+    end
+    value_stan = collect(Float64, value)
+    u = Vector{Float64}(undef, n)
+    jacobian = Matrix{Float64}(undef, n, m)
+    error_ref = Ref{Cstring}(C_NULL)
+    status = @ccall $(dlsym(transform.model.lib, :dynamicppl_bs_param_unconstrain_jacobian))(
+        transform.pointer::Ptr{Cvoid},
+        value_stan::Ptr{Cdouble},
+        m::Cint,
+        n::Cint,
+        u::Ptr{Cdouble},
+        jacobian::Ptr{Cdouble},
+        error_ref::Ref{Cstring},
+    )::Cint
+    iszero(status) || _throw_error(transform.model, error_ref)
+    return u, jacobian
+end
+
+function _stan_unconstrain_vjp(
+    transform::StanTransform,
+    value::AbstractVector{<:Real},
+    cotangent::AbstractVector{<:Real},
+)
+    m = transform.output_dimension
+    n = transform.input_dimension
+    _check_length(value, m, "value")
+    _check_length(cotangent, n, "cotangent")
+    if iszero(n) || iszero(m)
+        return zeros(m)
+    end
+    value_stan = collect(Float64, value)
+    cotangent_stan = collect(Float64, cotangent)
+    result = Vector{Float64}(undef, m)
+    error_ref = Ref{Cstring}(C_NULL)
+    status = @ccall $(dlsym(transform.model.lib, :dynamicppl_bs_param_unconstrain_vjp))(
+        transform.pointer::Ptr{Cvoid},
+        value_stan::Ptr{Cdouble},
+        cotangent_stan::Ptr{Cdouble},
+        m::Cint,
+        n::Cint,
+        result::Ptr{Cdouble},
+        error_ref::Ref{Cstring},
+    )::Cint
+    iszero(status) || _throw_error(transform.model, error_ref)
+    return result
+end
+
+function _stan_logdensity_gradient(logdensity::StanLogDensity{Jacobian}, u) where {Jacobian}
+    _check_length(u, logdensity.transform.input_dimension, "u")
     return BridgeStan.log_density_gradient(
-        logdensity.model, collect(Float64, u); propto=false, jacobian=true
+        logdensity.transform.model, collect(Float64, u); propto=false, jacobian=Jacobian
     )
 end
 
@@ -460,12 +719,74 @@ function DynamicPPL._stan_value_and_pullback(
     return value, map(cotangent -> cotangent * gradient, cotangents)
 end
 
+function _stan_logjac!(logjac::StanLogJacobian, u, gradient)
+    transform = logjac.transform
+    n = transform.input_dimension
+    m = transform.output_dimension
+    _check_length(u, n, "u")
+    u_stan = collect(Float64, u)
+    value = Ref{Cdouble}()
+    gradient_pointer = isnothing(gradient) ? Ptr{Cdouble}(C_NULL) : pointer(gradient)
+    error_ref = Ref{Cstring}(C_NULL)
+    status = @ccall $(dlsym(
+        transform.model.lib, :dynamicppl_bs_param_constrain_logjac_gradient
+    ))(
+        transform.pointer::Ptr{Cvoid},
+        u_stan::Ptr{Cdouble},
+        n::Cint,
+        m::Cint,
+        value::Ref{Cdouble},
+        gradient_pointer::Ptr{Cdouble},
+        error_ref::Ref{Cstring},
+    )::Cint
+    iszero(status) || _throw_error(transform.model, error_ref)
+    return value[]
+end
+
+function DynamicPPL._stan_value(logjac::StanLogJacobian, u::AbstractVector{<:Real})
+    return _stan_logjac!(logjac, u, nothing)
+end
+
+function _stan_logjac_gradient(logjac::StanLogJacobian, u)
+    gradient = Vector{Float64}(undef, logjac.transform.input_dimension)
+    if isempty(gradient)
+        return _stan_logjac!(logjac, u, nothing), gradient
+    end
+    return _stan_logjac!(logjac, u, gradient), gradient
+end
+
+function DynamicPPL._stan_value_and_pushforward(
+    logjac::StanLogJacobian, u, tangents::NTuple
+)
+    value, gradient = _stan_logjac_gradient(logjac, u)
+    return value, map(tangent -> dot(gradient, tangent), tangents)
+end
+
+function DynamicPPL._stan_value_and_pullback(logjac::StanLogJacobian, u, cotangents::NTuple)
+    value, gradient = _stan_logjac_gradient(logjac, u)
+    return value, map(cotangent -> cotangent * gradient, cotangents)
+end
+
+Bijectors.inverse(transform::StanTransform) = StanUnconstrain(transform)
+Bijectors.inverse(unconstrain::StanUnconstrain) = unconstrain.transform
+function Bijectors.with_logabsdet_jacobian(transform::StanTransform, u)
+    return transform(u), StanLogJacobian(transform)(u)
+end
+function Bijectors.with_logabsdet_jacobian(unconstrain::StanUnconstrain, value)
+    u = unconstrain(value)
+    return u, -StanLogJacobian(unconstrain.transform)(u)
+end
+
 const VectorBijectors = Bijectors.VectorBijectors
-VectorBijectors.from_linked_vec(::StanDistribution) = VectorBijectors.TypedIdentity()
-VectorBijectors.to_linked_vec(::StanDistribution) = VectorBijectors.TypedIdentity()
-VectorBijectors.linked_vec_length(distribution::StanDistribution) = length(distribution)
+VectorBijectors.from_linked_vec(distribution::StanDistribution) = distribution.transform
+function VectorBijectors.to_linked_vec(distribution::StanDistribution)
+    return StanUnconstrain(distribution.transform)
+end
+function VectorBijectors.linked_vec_length(distribution::StanDistribution)
+    return distribution.transform.input_dimension
+end
 function VectorBijectors.linked_optic_vec(distribution::StanDistribution)
-    return VectorBijectors.optic_vec(distribution)
+    return fill(nothing, VectorBijectors.linked_vec_length(distribution))
 end
 
 end
