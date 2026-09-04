@@ -67,6 +67,19 @@ __now__ = now()
         @test isempty(keys(fixed(unfix(fixed_first, @varname(a)))))
     end
 
+    @testset "dynamic prefixes use the supplied template" begin
+        for op in (condition, fix)
+            prefixed = @inferred DynamicPPL.prefix(
+                op(model; x=2.0), @varname(a[end, end]); template=zeros(2, 3)
+            )
+            @test prefixed.prefix == @varname(a[2, 3])
+            @test prefixed().x == 2.0
+            values = op === condition ? conditioned(prefixed) : fixed(prefixed)
+            @test size(values.data.a.data) == (2, 3)
+            @test values[@varname(a[2, 3].x)] == 2.0
+        end
+    end
+
     @testset "tracked assignments" begin
         @model function tracked_assignment()
             x := 1.0

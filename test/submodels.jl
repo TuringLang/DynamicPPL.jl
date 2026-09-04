@@ -30,6 +30,39 @@ end
 @model t2844_deeper() = (c ~ to_submodel(t2844_outer()); return (; x=c.x))
 
 @testset "submodels.jl" begin
+    @testset "dynamic prefixes with stored observations" begin
+        @model observed_child(x=2.0) = x ~ Normal()
+        @model function dynamic_parent(child)
+            a = zeros(2, 3)
+            a[begin] ~ to_submodel(child)
+            a[end, end] ~ to_submodel(child)
+            return a
+        end
+        @model nested_parent(child) = b ~ to_submodel(dynamic_parent(child))
+        @model explicit_child(child) =
+            unused ~ to_submodel(prefix(child, @varname(inner)), false)
+        for op in (condition, fix), parent in (dynamic_parent, nested_parent)
+            child = op(observed_child(); x=2.0)
+            model = parent(child)
+            @test model() == [2.0 0.0 0.0; 0.0 0.0 2.0]
+            @test isempty(keys(VarInfo(model)))
+            @test logjoint(model, VarNamedTuple()) ==
+                (op === condition ? 2 * logpdf(Normal(), 2.0) : 0.0)
+            vn = parent === dynamic_parent ? @varname(a[2, 3].x) : @varname(b.a[2, 3].x)
+            changed = condition(model, vn => 3.0)
+            @test changed() == [2.0 0.0 0.0; 0.0 0.0 3.0]
+
+            model = parent(explicit_child(child))
+            vn = if parent === dynamic_parent
+                @varname(a[1].inner.x)
+            else
+                @varname(b.a[1].inner.x)
+            end
+            changed = condition(model, vn => 3.0)
+            @test changed() == [3.0 0.0 0.0; 0.0 0.0 2.0]
+        end
+    end
+
     @testset "parent array templates" begin
         @model leaf_template() = x ~ Normal()
         @model function matrix_template(a)

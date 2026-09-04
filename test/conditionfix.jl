@@ -1,6 +1,7 @@
 module DynamicPPLConditionFixTests
 
 using Dates: now
+using ComponentArrays: ComponentVector
 using Distributions
 using DimensionalData: DimArray, X
 using DynamicPPL
@@ -11,6 +12,11 @@ using Test
 
 @info "Testing $(@__FILE__)..."
 __now__ = now()
+
+struct ObservationRecord{A,B}
+    a::A
+    b::B
+end
 
 @testset "condition and fix" begin
     @model function demo_cond_fix()
@@ -177,6 +183,177 @@ __now__ = now()
         observed = condition(reread(1.0); x=2.0)
         @test observed() == 4.0
         @test fix(decondition(observed); x=3.0)() == 6.0
+    end
+
+    @testset "replacement arguments drive model execution" begin
+        @model function indexed_argument(x)
+            for i in eachindex(x)
+                x[i] ~ Normal()
+            end
+            return x
+        end
+        for op in (condition, fix),
+            data in ([1.0f0], BigFloat[1, 2, 3], DimArray([1.0, 2.0, 3.0], X))
+
+            original = indexed_argument(zeros(2))
+            changed = op(original; x=data)
+            @test changed() === data
+            @test isempty(keys(VarInfo(changed)))
+            @test logjoint(changed, VarNamedTuple()) ≈
+                (op === condition ? sum(logpdf.(Normal(), data)) : 0.0)
+            @test original() == zeros(2)
+        end
+        loglik =
+            x -> loglikelihood(condition(indexed_argument(zeros(2)); x), VarNamedTuple())
+        @test ForwardDiff.gradient(loglik, [1.0, 2.0, 3.0]) ≈ [-1.0, -2.0, -3.0]
+
+        @model function read_before_site(; x=1.0)
+            y ~ Normal(x)
+            x ~ Normal()
+            return x
+        end
+        for op in (condition, fix)
+            changed = op(read_before_site(); x=2.0)
+            @test logprior(changed, (; y=2.0)) == logpdf(Normal(2.0), 2.0)
+        end
+        logp = x -> logprior(condition(read_before_site(); x), (; y=2.0))
+        @test ForwardDiff.derivative(logp, 1.0) == 1.0
+    end
+
+    @testset "partial property overrides preserve struct fields" begin
+        @model function record_sites(x)
+            x.a ~ Normal()
+            x.b[1] ~ Normal()
+            x.b[2] ~ Normal()
+            return x
+        end
+        data = ObservationRecord(1.0, [2.0, 3.0])
+        for first_op in (condition, fix), last_op in (condition, fix)
+            original = first_op(record_sites(data); x=data)
+            changed = last_op(original, @varname(x.a) => 4.0, @varname(x.b[1]) => 5.0)
+            result = changed()
+            @test result isa ObservationRecord
+            @test result.a == 4.0
+            @test result.b == [5.0, 3.0]
+            @test isempty(keys(VarInfo(changed)))
+            @test logjoint(changed, VarNamedTuple()) ≈
+                (first_op === condition ? logpdf(Normal(), 3.0) : 0.0) +
+                  (last_op === condition ? sum(logpdf.(Normal(), [4.0, 5.0])) : 0.0)
+            @test original().a == data.a == 1.0
+            @test original().b == data.b == [2.0, 3.0]
+        end
+        @test_throws ArgumentError condition(record_sites(data), @varname(x.unknown) => 1.0)
+    end
+
+    @testset "partial updates retain complete argument replacements" begin
+        @model function indexed_replacement(x)
+            for i in eachindex(x)
+                x[i] ~ Normal()
+            end
+            return x
+        end
+        for data in (Float32[1, 2, 3], BigFloat[1, 2, 3], DimArray([1.0, 2.0, 3.0], X))
+            original = condition(indexed_replacement(zeros(2)); x=data)
+            same = condition(original, @varname(x[1]) => data[1])
+            @test same() == original() == data
+            @test typeof(same()) === typeof(data)
+            @test loglikelihood(same, VarNamedTuple()) ≈
+                loglikelihood(original, VarNamedTuple())
+            mixed = fix(same, @varname(x[1]) => data[1])
+            @test mixed() == data
+            @test isempty(keys(VarInfo(mixed)))
+            @test loglikelihood(mixed, VarNamedTuple()) ≈ sum(logpdf.(Normal(), data[2:3]))
+        end
+    end
+
+    @testset "replacement arguments bind evaluator type parameters" begin
+        @model function typed_observation(x::AbstractVector{T}) where {T}
+            x::AbstractVector{T}
+            x[1] ~ Normal()
+            return (T, x)
+        end
+        @model nested_observation(m) = a ~ to_submodel(m)
+        for op in (condition, fix), T in (Float32, BigFloat)
+            typed_model = op(typed_observation([0.0]); x=T[2])
+            @test typed_model() == (T, T[2])
+            nested = op(nested_observation(typed_observation([0.0])), @varname(a.x) => T[2])
+            @test nested() == (T, T[2])
+        end
+        @model function ordinary_input(x)
+            return y ~ Normal(x)
+        end
+        @test logprior(condition(ordinary_input(1.0); x=2.0), (; y=1.0)) ==
+            logpdf(Normal(), 0.0)
+    end
+
+    @testset "component properties and indices share observations" begin
+        @model function indexed_components()
+            x = ComponentVector(; a=0.0, b=0.0)
+            x[1] ~ Normal()
+            x.b ~ Normal()
+            return x
+        end
+        @model joint_components(n=2) = x ~ MvNormal(zeros(n), I)
+        for op in (condition, fix)
+            data = ComponentVector(; a=1.0, b=2.0)
+            original = op(indexed_components(); x=data)
+            changed = op(original, @varname(x.a) => 3.0)
+            changed = op(changed, @varname(x[2]) => 4.0)
+            changed = op(changed, @varname(x.b) => 5.0)
+            @test changed() == ComponentVector(; a=3.0, b=5.0)
+            @test isempty(keys(VarInfo(changed)))
+            @test original() == data
+            joint = op(op(joint_components(); x=data), @varname(x.a) => 1.0)
+            @test joint() == data
+            @test joint() isa ComponentVector
+            @test logjoint(joint, VarNamedTuple()) ≈
+                (op === condition ? logpdf(MvNormal(zeros(2), I), data) : 0.0)
+        end
+        for (data, vn, value, expected) in (
+                (
+                    ComponentVector(; a=[1.0, 2.0], b=3.0),
+                    @varname(x.a),
+                    [4.0, 5.0],
+                    ComponentVector(; a=[4.0, 5.0], b=3.0),
+                ),
+                (
+                    ComponentVector(; a=(b=[1.0, 2.0], c=3.0)),
+                    @varname(x.a.b[2]),
+                    4.0,
+                    ComponentVector(; a=(b=[1.0, 4.0], c=3.0)),
+                ),
+                (
+                    ComponentVector(; a=[1.0 2.0; 3.0 4.0]),
+                    @varname(x.a[2, 1]),
+                    5.0,
+                    ComponentVector(; a=[1.0 2.0; 5.0 4.0]),
+                ),
+            ),
+            op in (condition, fix)
+
+            original = op(joint_components(length(data)); x=data)
+            changed = op(original, vn => value)
+            @test changed() == expected
+            @test typeof(changed()) === typeof(data)
+            @test original() == data
+            @test logjoint(changed, VarNamedTuple()) ≈ (
+                op === condition ? logpdf(MvNormal(zeros(length(data)), I), expected) : 0.0
+            )
+            changed = op(changed, @varname(x[1]) => expected[1])
+            @test changed() == expected
+        end
+    end
+
+    @testset "joint named tuples reconstruct nested arrays" begin
+        @model joint_namedtuple() =
+            x ~ product_distribution((; a=MvNormal(zeros(2), I), b=Normal()))
+        data = (; a=[1.0, 2.0], b=3.0)
+        for op in (condition, fix)
+            original = op(joint_namedtuple(); x=data)
+            changed = op(original, @varname(x.a[1]) => 1.0)
+            @test changed() == original() == data
+            @test logjoint(changed, VarNamedTuple()) == logjoint(original, VarNamedTuple())
+        end
     end
 
     @testset "decondition and unfix" begin

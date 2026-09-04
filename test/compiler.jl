@@ -742,6 +742,37 @@ end
         @test res == (1, (), 1, Int, NamedTuple())
     end
 
+    @testset "prepared arguments dispatch within the selected model definition" begin
+        @model function typed_replacement(x::AbstractVector{T}=[0.0]) where {T}
+            x[1] ~ Normal()
+            return (T, x)
+        end
+        @model typed_replacement(x::AbstractVector{<:Integer}) = :integer_method
+        @test typed_replacement([1])() === :integer_method
+        @test condition(typed_replacement(); x=[1])() == (Int, [1])
+
+        @model function keyword_replacement(; x::T=0.0) where {T}
+            read_x() = x::T
+            x ~ Normal()
+            return (T, read_x())
+        end
+        @test condition(keyword_replacement(); x=1.0f0)() === (Float32, 1.0f0)
+
+        @model function splat_replacement(x::T, args...; kwargs...) where {T}
+            x ~ Normal()
+            return (T, x, args, NamedTuple(kwargs))
+        end
+        @test condition(splat_replacement(0.0, 2; z=3); x=1.0f0)() ===
+            (Float32, 1.0f0, (2,), (; z=3))
+
+        @model function (f::MyCoolStruct)(x::AbstractVector{T}) where {T}
+            x[1] ~ Normal(f.a)
+            return (T, x, f.a)
+        end
+        @test condition(MyCoolStruct(2.0)([0.0]); x=Float32[1])() ==
+            (Float32, Float32[1], 2.0)
+    end
+
     @testset "issue #537: model with logging" begin
         # Make sure `Module` is valid to put in a model.
         @model demo_with_module() = Issue537

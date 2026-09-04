@@ -660,9 +660,22 @@ function build_output(modeldef, linenumbernode, sites)
         :($name = $(prepare_model_argument)(__model__, $(VarName{name}()), $name)) for
         name in observed_args
     ]
-    evaluatordef[:body] = MacroTools.@q begin
-        $(prepare_args...)
-        $(evaluatordef[:body])
+    bodydef = if isempty(observed_args)
+        nothing
+    else
+        definition = copy(evaluatordef)
+        definition[:name] = gensym(:model_body)
+        callargs = Any[:__model__, :__varinfo__, map(splitarg_to_expr, args_split)...]
+        if Meta.isexpr(evaluatordef[:name], :(::))
+            definition[:args] = vcat([evaluatordef[:name]], definition[:args])
+            pushfirst!(callargs, :(__model__.f))
+        end
+        # Dispatch again after replacement so the body's type parameters match its inputs.
+        evaluatordef[:body] = MacroTools.@q begin
+            $(prepare_args...)
+            return $(definition[:name])($(callargs...); $(kwargs_inclusion...))
+        end
+        MacroTools.combinedef(definition)
     end
 
     # Update the function body of the user-specified model.
@@ -682,6 +695,7 @@ function build_output(modeldef, linenumbernode, sites)
     end
 
     return MacroTools.@q begin
+        $bodydef
         $(MacroTools.combinedef(evaluatordef))
         $(Base).@__doc__ $(MacroTools.combinedef(modeldef))
     end
@@ -689,9 +703,12 @@ end
 
 function prepare_model_argument(model::Model, vn::VarName, value)
     vn = maybe_prefix(vn, model.prefix)
-    binding = hasvalue(model.values, vn) ? model.values[vn] : nothing
-    # Assigning replacement values must not mutate the original argument observations.
-    return binding isa ModelValue && binding.value === value ? value : deepcopy(value)
+    binding = if hasvalue(model.values, vn)
+        VarNamedTuples._getindex_optic(model.values, vn)
+    else
+        nothing
+    end
+    return _model_argument_value(binding, value)
 end
 
 function warn_empty(body)

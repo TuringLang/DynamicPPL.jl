@@ -63,6 +63,11 @@ Arguments used on the left-hand side of `~` provide default observations. For ex
 `decondition(f(1.0), :x)` makes `x` latent, and conditioning that model on `x=2.0`
 restores an observation with the new value. Other arguments remain ordinary model inputs.
 
+Replacing a complete argument updates its value, shape, and dispatch type parameters before
+the model body runs. Partial updates preserve the remaining stored values and their array
+templates. Arguments with unobserved entries retain their original storage template; the
+corresponding tilde statements fill those entries during evaluation.
+
 To condition the model on observed data, we can use the `condition` function, or its alias `|`.
 The most robust way of conditioning is to provide a `VarNamedTuple` that holds the values to condition on.
 

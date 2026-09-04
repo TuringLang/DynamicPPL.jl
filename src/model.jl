@@ -42,6 +42,9 @@ end
 VarNamedTuples._haskey_optic(::ModelValue, ::AbstractPPL.Iden) = true
 
 _model_value(value::ModelValue, ::VarName) = value
+function _model_value(values::VarNamedTuples.PartialArray, vn::VarName)
+    return _model_value(VarNamedTuples.unwrap_internal_array(values), vn)
+end
 function _model_value(values::AbstractArray, vn::VarName)
     isempty(values) && throw(ArgumentError("Cannot determine the role of empty `$vn`"))
     first_value = first(values)
@@ -89,12 +92,17 @@ function VarNamedTuples._merge(
     )
 end
 function VarNamedTuples._merge(
-    previous::ModelValue{R}, updates::VarNamedTuple, ::Val{true}
+    previous::ModelValue{R}, updates::VarNamedTuple, recurse::Val{true}
 ) where {R}
-    throw(
+    all(name -> hasproperty(previous.value, name), keys(updates.data)) || throw(
         ArgumentError(
-            "Cannot partially override fields of $(typeof(previous.value)); supply fields as VarName keys instead",
+            "Cannot override nonexistent properties of $(typeof(previous.value))"
         ),
+    )
+    names = propertynames(previous.value)
+    fields = NamedTuple{names}(map(name -> getproperty(previous.value, name), names))
+    return VarNamedTuples._merge(
+        _tag_model_values(R, VarNamedTuple(fields)), updates, recurse
     )
 end
 
@@ -105,14 +113,95 @@ function VarNamedTuples._merge(
 ) where {R}
     data = map(ModelValue{R}, previous.value)
     complete = VarNamedTuples.PartialArray(data, fill!(similar(data, Bool), true))
+    return _merge_model_array(complete, updates, previous.value, recurse)
+end
+function VarNamedTuples._merge(
+    previous::ModelValue{R,<:AbstractArray}, updates::VarNamedTuple, recurse::Val{true}
+) where {R}
+    data = map(ModelValue{R}, previous.value)
+    complete = VarNamedTuples.PartialArray(data, fill!(similar(data, Bool), true))
+    return _merge_model_array(complete, updates, previous.value, recurse)
+end
+function VarNamedTuples._merge(
+    previous::VarNamedTuples.PartialArray{<:ModelValue},
+    updates::VarNamedTuple,
+    recurse::Val{true},
+)
+    return _merge_model_array(previous, updates, previous.data, recurse)
+end
+function VarNamedTuples._merge(
+    previous::VarNamedTuples.PartialArray{<:ModelValue},
+    updates::VarNamedTuples.PartialArray,
+    recurse::Val{true},
+)
+    return _merge_model_array(previous, updates, previous.data, recurse)
+end
+function _merge_model_array(previous, updates, template, recurse)
     values = mapfoldl(
         identity,
         (values, pair) ->
-            templated_setindex!!(values, pair.second, pair.first, previous.value),
+            merge(values, _template_model_value(pair.second, pair.first, template)),
         VarNamedTuple(; x=updates);
         init=VarNamedTuple(),
     )
-    return VarNamedTuples._merge(complete, values.data.x, recurse)
+    isempty(values) && return previous
+    normalized = values.data.x
+    normalized isa VarNamedTuples.PartialArray ||
+        throw(ArgumentError("Cannot apply property updates to $(typeof(template))"))
+    return invoke(
+        VarNamedTuples._merge,
+        Tuple{VarNamedTuples.PartialArray,VarNamedTuples.PartialArray,Val},
+        previous,
+        normalized,
+        recurse,
+    )
+end
+function _template_model_value(value::ModelValue{R}, vn, template) where {R}
+    return _tag_model_values(
+        R, templated_setindex!!(VarNamedTuple(), value.value, vn, template)
+    )
+end
+
+_model_data(value::ModelValue) = value.value
+_model_data(values::AbstractArray) = map(_model_data, values)
+_model_data(values::VarNamedTuple) = map(_model_data, values.data)
+function _model_data(values::VarNamedTuples.PartialArray)
+    return _model_data(VarNamedTuples.unwrap_internal_array(values))
+end
+
+_model_argument_value(::Nothing, template) = deepcopy(template)
+_model_argument_value(value::ModelValue, template) = value.value
+_model_argument_value(values::AbstractArray, template) = _model_data(values)
+function _model_argument_value(values::VarNamedTuples.PartialArray, template)
+    # Growable arrays describe supplied indices, not the extent of the argument.
+    return if !(values.data isa VarNamedTuples.GrowableArray) &&
+              VarNamedTuples._haskey_optic(values, AbstractPPL.Iden())
+        _model_data(values)
+    else
+        deepcopy(template)
+    end
+end
+@generated function _model_argument_value(
+    values::VarNamedTuple{names}, template
+) where {names}
+    updates = map(names) do name
+        :(
+            result = Accessors.set(
+                result,
+                AbstractPPL.with_mutation(AbstractPPL.Property{$(QuoteNode(name))}()),
+                _model_argument_value(
+                    values.data.$name,
+                    VarNamedTuples.SharedGetProperty{$(QuoteNode(name))}()(result),
+                ),
+            )
+        )
+    end
+    return quote
+        template isa NoTemplate && return _model_data(values)
+        result = deepcopy(template)
+        $(updates...)
+        return result
+    end
 end
 
 function _select_model_values(::Type{R}, values::VarNamedTuple) where {R}
@@ -360,6 +449,11 @@ Supplied values override model arguments and earlier conditioned or fixed values
 same address. Parent-model values override submodel values. Sites without supplied values
 remain latent; `missing` is not a latent-variable marker.
 
+A complete argument replacement supplies its value, shape, and dispatch type parameters
+from the start of the model body. Partial updates preserve the remaining stored values and
+their array templates. Arguments with unobserved entries retain their original storage
+template; the corresponding tilde statements fill those entries during evaluation.
+
 # Examples
 ## Simple univariate model
 ```jldoctest condition
@@ -511,12 +605,11 @@ julia> # If you attempt to condition on `inner` itself, it must refer to the pre
 julia> conditioned_model2()
 1.0
 
-julia> # However, if `inner` does not contain `m` inside it as a field, this will not
-       # result in any conditioning:
+julia> # Conditioning a submodel's return value is not supported.
        conditioned_model_fail = model | (inner = "something else", );
 
-julia> conditioned_model_fail == 1.0
-false
+julia> conditioned_model_fail()
+ERROR: ArgumentError: Cannot condition or fix a submodel's return value. Supply its internal variable names instead; decondition arguments used only as return-value buffers.
 ```
 """
 function AbstractPPL.condition(model::Model, values...)
@@ -908,9 +1001,27 @@ julia> # Now `a.x` will be sampled.
 """
 fixed(model::Model) = _select_model_values(Fix, model.values)
 
-function _prefix_values(values::VarNamedTuple, vn::VarName)
+function _prefix_values(values::VarNamedTuple, vn::VarName, template)
     isempty(values) && return values
-    return DynamicPPL.setindex!!(VarNamedTuple(), values, vn)
+    return templated_setindex!!(VarNamedTuple(), values, vn, template)
+end
+
+# Prefix templates can cross submodel boundaries without reading parent return values.
+function _concretize_prefix(vn::VarName{S}, template) where {S}
+    return VarName{S}(_concretize_prefix(AbstractPPL.getoptic(vn), template))
+end
+_concretize_prefix(optic::AbstractPPL.Iden, template) = optic
+function _concretize_prefix(optic::AbstractPPL.Property{S}, template) where {S}
+    AbstractPPL.is_dynamic(optic) || return optic
+    child = _concretize_prefix(optic.child, VarNamedTuples.SharedGetProperty{S}()(template))
+    return AbstractPPL.Property{S}(child)
+end
+function _concretize_prefix(optic::AbstractPPL.Index, template)
+    AbstractPPL.is_dynamic(optic) || return optic
+    optic = AbstractPPL.concretize_top_level(optic, VarNamedTuples.template_array(template))
+    AbstractPPL.is_dynamic(optic.child) || return optic
+    child = _concretize_prefix(optic.child, VarNamedTuples.index_template(template, optic))
+    return AbstractPPL.Index(optic.ix, optic.kw, child)
 end
 
 maybe_prefix(vn::VarName, ::Nothing) = vn
@@ -918,7 +1029,7 @@ maybe_prefix(::Nothing, prefix::VarName) = prefix
 maybe_prefix(vn::VarName, prefix::VarName) = AbstractPPL.prefix(vn, prefix)
 
 """
-    prefix(model::Model, x::VarName)
+    prefix(model::Model, x::VarName; template=NoTemplate())
     prefix(model::Model, x::Val{sym})
     prefix(model::Model, x::Any)
 
@@ -928,6 +1039,9 @@ Return `model` but with all random variables prefixed by `x`, where `x` is eithe
 - for any other type, `x` is converted to a Symbol and then to a `VarName`. Note that
   this will introduce runtime overheads so is not recommended unless absolutely
   necessary.
+
+For an indexed prefix, `template` supplies the enclosing container's shape and resolves
+`begin` and `end` indices.
 
 # Examples
 
@@ -949,8 +1063,9 @@ VarNamedTuple
 ```
 """
 function prefix(model::Model, x::VarName; template=NoTemplate())
+    x = _concretize_prefix(x, template)
     model_prefix = maybe_prefix(model.prefix, x)
-    values = _prefix_values(model.values, x)
+    values = _prefix_values(model.values, x, template)
     prefix_template = if template isa NoTemplate && model.prefix_template === nothing
         nothing
     else

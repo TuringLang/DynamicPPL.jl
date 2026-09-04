@@ -185,10 +185,10 @@ function _submodel_namespace(::ModelValue{R}) where {R}
     )
 end
 
-_submodel_values(values::VarNamedTuple, ::Nothing) = values
-function _submodel_values(values::VarNamedTuple, prefix::VarName)
+_submodel_values(values::VarNamedTuple, ::Nothing, template) = values
+function _submodel_values(values::VarNamedTuple, prefix::VarName, template)
     hasvalue(values, prefix) || return VarNamedTuple()
-    return _prefix_values(_submodel_namespace(values[prefix]), prefix)
+    return _prefix_values(_submodel_namespace(values[prefix]), prefix, template)
 end
 
 # When automatic prefixing is used, the submodel itself doesn't carry the
@@ -209,7 +209,11 @@ function _evaluate!!(
     elseif parent_prefix === nothing
         submodel.model
     else
-        model = prefix(submodel.model, parent_prefix)
+        model = prefix(
+            submodel.model,
+            parent_prefix;
+            template=_apply_prefix_template(parent_model.prefix_template, NoTemplate()),
+        )
         if parent_model.prefix_template === nothing
             model
         else
@@ -222,7 +226,14 @@ function _evaluate!!(
             _reconstruct_model(model; prefix_template)
         end
     end
-    values = merge(model.values, _submodel_values(parent_model.values, model.prefix))
+    values = merge(
+        model.values,
+        _submodel_values(
+            parent_model.values,
+            model.prefix,
+            _apply_prefix_template(model.prefix_template, NoTemplate()),
+        ),
+    )
     model = _reconstruct_model(model; context=parent_model.context, values)
 
     # Evaluate the wrapped model. These two lines are a verbatim copy of the body of
