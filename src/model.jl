@@ -796,6 +796,15 @@ julia> # Now `a.x` will be sampled.
 """
 fixed(model::Model) = model.fixed
 
+function _prefix_values(values::VarNamedTuple, vn::VarName)
+    isempty(values) && return values
+    return DynamicPPL.setindex!!(VarNamedTuple(), values, vn)
+end
+
+maybe_prefix(vn::VarName, ::Nothing) = vn
+maybe_prefix(::Nothing, prefix::VarName) = prefix
+maybe_prefix(vn::VarName, prefix::VarName) = AbstractPPL.prefix(vn, prefix)
+
 """
     prefix(model::Model, x::VarName)
     prefix(model::Model, x::Val{sym})
@@ -827,15 +836,6 @@ VarNamedTuple
                 └─ x => 1
 ```
 """
-function _prefix_values(values::VarNamedTuple, vn::VarName)
-    isempty(keys(values)) && return values
-    return DynamicPPL.setindex!!(VarNamedTuple(), values, vn)
-end
-
-maybe_prefix(vn::VarName, ::Nothing) = vn
-maybe_prefix(::Nothing, prefix::VarName) = prefix
-maybe_prefix(vn::VarName, prefix::VarName) = AbstractPPL.prefix(vn, prefix)
-
 function prefix(model::Model, x::VarName)
     model_prefix = maybe_prefix(model.prefix, x)
     conditioned = _prefix_values(model.conditioned, x)
