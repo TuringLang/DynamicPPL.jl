@@ -171,23 +171,6 @@ marginalize
 A `MarginalLogDensity` object acts as a function which maps non-marginalised parameter values to a marginal log-probability.
 To retrieve a VarInfo object from it, you can use [`InitFromVector`](@ref).
 
-## Models within models
-
-One can include models and call another model inside the model function with `left ~ to_submodel(model)`.
-
-```@docs
-to_distribution
-to_submodel
-```
-
-Note that a `[to_submodel](@ref)` is only sampleable; one cannot compute `logpdf` for its realizations.
-
-In the context of including models within models, it's also useful to prefix the variables in sub-models to avoid variable names clashing:
-
-```@docs
-DynamicPPL.prefix
-```
-
 ## Utilities
 
 It is possible to manually increase (or decrease) the accumulated log likelihood or prior from within a model function.
