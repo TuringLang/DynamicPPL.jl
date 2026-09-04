@@ -377,6 +377,10 @@ struct StanLogDensity{Jacobian} <: DynamicPPL._StanDifferentiableFunction
     transform::StanTransform
 end
 
+struct StanConstrainedLogDensity <: DynamicPPL._StanDifferentiableFunction
+    transform::StanTransform
+end
+
 struct StanLogJacobian <: DynamicPPL._StanDifferentiableFunction
     transform::StanTransform
 end
@@ -413,10 +417,10 @@ unconstrained vector and evaluates the Stan target with its Jacobian adjustment.
 RNG; it does not draw model parameters. `stanc_args` and `make_args` are forwarded to the
 BridgeStan build. The first call for each combination of these inputs compiles and patches
 the generated C++ model; subsequent calls return the cached distribution. A working
-BridgeStan toolchain is therefore required. The adapter uses a standard-normal vector only
-to initialise the unconstrained coordinates because BridgeStan does not provide a sampler.
-For constraints with unidentified coordinates, such as `unit_vector`, unconstraining a
-parameter selects Stan's canonical representative; model evaluation retains the original
+BridgeStan toolchain is therefore required. Because BridgeStan does not provide a sampler,
+requests for prior initialization use DynamicPPL's uniform initializer in unconstrained
+space. For constraints with unidentified coordinates, such as `unit_vector`, unconstraining
+a parameter selects Stan's canonical representative; model evaluation retains the original
 unconstrained state.
 """
 function DynamicPPL.to_distribution(
@@ -445,35 +449,32 @@ end
 
 Base.length(distribution::StanDistribution) = distribution.transform.output_dimension
 
-function Distributions.insupport(distribution::StanDistribution, value::AbstractVector)
-    length(value) == length(distribution) && all(isfinite, value) || return false
+function _stan_unconstrain_if_supported(transform::StanTransform, value::AbstractVector)
+    length(value) == transform.output_dimension && all(isfinite, value) || return nothing
     try
-        _stan_unconstrain(distribution.transform, value)
-        return true
+        return StanUnconstrain(transform)(value)
     catch err
         err isa ErrorException || rethrow()
-        return false
+        return nothing
     end
 end
 
+function Distributions.insupport(distribution::StanDistribution, value::AbstractVector)
+    return !isnothing(_stan_unconstrain_if_supported(distribution.transform, value))
+end
+
 function Distributions.logpdf(distribution::StanDistribution, value::AbstractVector{<:Real})
-    _check_length(value, length(distribution), "value")
-    return StanLogDensity{false}(distribution.transform)(
-        StanUnconstrain(distribution.transform)(value)
-    )
+    return StanConstrainedLogDensity(distribution.transform)(value)
 end
 
 function DynamicPPL.init(
     rng::Random.AbstractRNG,
-    ::DynamicPPL.VarName,
+    vn::DynamicPPL.VarName,
     distribution::StanDistribution,
     ::DynamicPPL.InitFromPrior,
 )
-    # Stan exposes a target density but no sampler; this value is only an initial point.
-    return DynamicPPL.TransformedValue(
-        randn(rng, distribution.transform.input_dimension),
-        DynamicPPL.FixedTransform(distribution.transform),
-    )
+    # BridgeStan cannot sample its target; fall back to `InitFromUniform`.
+    return DynamicPPL.init(rng, vn, distribution, DynamicPPL.InitFromUniform())
 end
 
 function _stan_fixed_value(distribution::StanDistribution, transformed_value)
@@ -557,6 +558,14 @@ function DynamicPPL._stan_value(
     return BridgeStan.log_density(
         logdensity.transform.model, collect(Float64, u); propto=false, jacobian=Jacobian
     )
+end
+
+function DynamicPPL._stan_value(
+    logdensity::StanConstrainedLogDensity, value::AbstractVector{<:Real}
+)
+    u = _stan_unconstrain_if_supported(logdensity.transform, value)
+    isnothing(u) && return -Inf
+    return StanLogDensity{false}(logdensity.transform)(u)
 end
 
 function _stan_constrain_jacobian(transform::StanTransform, u::AbstractVector{<:Real})
@@ -717,6 +726,34 @@ function DynamicPPL._stan_value_and_pullback(
 )
     value, gradient = _stan_logdensity_gradient(logdensity, u)
     return value, map(cotangent -> cotangent * gradient, cotangents)
+end
+
+function DynamicPPL._stan_value_and_pushforward(
+    logdensity::StanConstrainedLogDensity, value, tangents::NTuple
+)
+    u = _stan_unconstrain_if_supported(logdensity.transform, value)
+    isnothing(u) && return -Inf, map(_ -> 0.0, tangents)
+    _, jacobian = _stan_unconstrain_jacobian(logdensity.transform, value)
+    density, gradient = _stan_logdensity_gradient(
+        StanLogDensity{false}(logdensity.transform), u
+    )
+    return density, map(tangent -> dot(gradient, jacobian * tangent), tangents)
+end
+
+function DynamicPPL._stan_value_and_pullback(
+    logdensity::StanConstrainedLogDensity, value, cotangents::NTuple
+)
+    u = _stan_unconstrain_if_supported(logdensity.transform, value)
+    isnothing(u) && return -Inf, map(_ -> zeros(length(value)), cotangents)
+    density, gradient = _stan_logdensity_gradient(
+        StanLogDensity{false}(logdensity.transform), u
+    )
+    input_cotangents = map(
+        cotangent ->
+            _stan_unconstrain_vjp(logdensity.transform, value, cotangent * gradient),
+        cotangents,
+    )
+    return density, input_cotangents
 end
 
 function _stan_logjac!(logjac::StanLogJacobian, u, gradient)

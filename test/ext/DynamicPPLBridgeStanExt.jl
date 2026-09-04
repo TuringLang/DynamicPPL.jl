@@ -10,6 +10,7 @@ using ForwardDiff
 using LinearAlgebra: dot, norm
 using LogDensityProblems
 using Mooncake
+using Random: Xoshiro
 using Test
 
 const BridgeStanExt = Base.get_extension(DynamicPPL, :DynamicPPLBridgeStanExt)
@@ -126,6 +127,11 @@ parameters {
 
     distribution = to_distribution(STAN_SOURCE)
     @test to_distribution(STAN_SOURCE) === distribution
+    from_prior = DynamicPPL.init(Xoshiro(1), @varname(theta), distribution, InitFromPrior())
+    from_uniform = DynamicPPL.init(
+        Xoshiro(1), @varname(theta), distribution, InitFromUniform()
+    )
+    @test from_prior == from_uniform
     u = [0.3, -0.7, 0.2, 0.4, -0.1, 0.5, -0.2]
     du = [-0.2, 0.5, 0.3, -0.1, 0.2, 0.4, -0.3]
     cotangent = [1.2, -0.4, 0.8, 0.1, -0.2, 0.7, 0.3, -0.1, 0.6]
@@ -152,10 +158,13 @@ parameters {
     @test Bijectors.VectorBijectors.linked_vec_length(distribution) == length(u)
     @test insupport(distribution, constrained)
     @test !insupport(distribution, u)
+    @test logpdf(distribution, u) == -Inf
     invalid = copy(constrained)
     invalid[1] = 2
     @test !insupport(distribution, invalid)
+    @test logpdf(distribution, invalid) == -Inf
     @test !insupport(distribution, fill(NaN, length(distribution)))
+    @test logpdf(distribution, fill(NaN, length(distribution))) == -Inf
     @test norm(constrained[5:6]) ≈ 1
     @test constrained[7] > 0
     @test sum(constrained[8:9]) ≈ 1
