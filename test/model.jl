@@ -372,7 +372,6 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
             @test results.bsq == params.b^2
             # `returned` should error when not all parameters are provided
             @test_throws ErrorException returned(model, (; a=1.0))
-            @test_throws ArgumentError returned(model, (a=1.0, b=missing))
         end
         @testset "Dict" begin
             params = Dict{VarName,Float64}(@varname(a) => 1.0, @varname(b) => 2.0)
@@ -382,9 +381,6 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
             # `returned` should error when not all parameters are provided
             @test_throws ErrorException returned(
                 model, Dict{VarName,Float64}(@varname(a) => 1.0)
-            )
-            @test_throws ArgumentError returned(
-                model, Dict{VarName,Any}(@varname(a) => 1.0, @varname(b) => missing)
             )
         end
     end

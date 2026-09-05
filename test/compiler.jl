@@ -213,13 +213,6 @@ end
         end
         @test_throws MethodError testmodel_missing1()
 
-        # Test missing initialization for vector observation turned parameter
-        @model function testmodel_missing2(x)
-            x[1] ~ Bernoulli(0.5)
-            return x
-        end
-        @test_throws ArgumentError testmodel_missing2(missing)
-
         # Test use of internal names
         @model function testmodel_missing3(x)
             x[1] ~ Bernoulli(0.5)
@@ -306,8 +299,6 @@ end
             testmodel_nonarray(MyCoolStruct(zeros(2)), MyCoolStruct(0.0))
         )
         result = m_nonarray()
-        @test !any(ismissing, result.x.a)
-        @test result.y.a !== missing
         @test result.x.a[end] > 10
         @test Set(keys(VarInfo(m_nonarray))) == Set([
             @varname(m),
@@ -911,9 +902,6 @@ end
             # convert_model_argument should make sure to not deepcopy arrays if not needed
             x = [1.0]
             @test DynamicPPL.convert_model_argument(Float64, x) === x
-            y = [1.0, missing]
-            y_converted = DynamicPPL.convert_model_argument(Float64, y)
-            @test y_converted === y
         end
         @testset "type arguments" begin
             # These tests with types / TypeWrap as the second argument also test

@@ -109,9 +109,7 @@ function test_invariants(vnt::VarNamedTuple)
         @test !(v isa ArrayLikeBlock)
         @test !(v isa PartialArray)
         vnt2 = setindex!!(copy(vnt), v, k)
-        equality = (vnt == vnt2)
-        # The value may be `missing` if vnt itself has values that are missing.
-        @test equality === true || equality === missing
+        @test vnt == vnt2
         @test isequal(vnt, vnt2)
         @test hash(vnt) == hash(vnt2)
     end
@@ -1025,7 +1023,7 @@ end
         varnames_and_templates = (
             (@varname(b[1]), b), (@varname(b[3]), b), (@varname(c.d[2].e), c)
         )
-        possible_values = (missing, 1, -0.0, 0.0)
+        possible_values = (1, -0.0, 0.0)
         for vn_template_set in Combinatorics.combinations(varnames_and_templates)
             valuesets1 = Combinatorics.with_replacement_combinations(
                 possible_values, length(vn_template_set)

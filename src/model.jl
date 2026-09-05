@@ -8,7 +8,12 @@ struct Fix end
 _contains_missing(::Any) = false
 _contains_missing(::Missing) = true
 _contains_missing(::AbstractArray{<:Number}) = false
-function _contains_missing(values::Union{AbstractArray,Tuple,NamedTuple})
+function _contains_missing(values::AbstractArray)
+    return any(
+        i -> isassigned(values, i) && _contains_missing(values[i]), eachindex(values)
+    )
+end
+function _contains_missing(values::Union{Tuple,NamedTuple})
     return any(_contains_missing, values)
 end
 
@@ -238,8 +243,9 @@ end
 function VarNamedTuples._setindex_optic!!(
     tree::ModelValueTree, value, optic::AbstractPPL.Property, template, permissions
 )
+    template = template isa ModelValueTree ? template.values : tree.template
     values = VarNamedTuples._setindex_optic!!(
-        copy(tree.values), value, optic, tree.template, permissions
+        copy(tree.values), value, optic, template, permissions
     )
     return ModelValueTree(tree.template, values)
 end
@@ -256,9 +262,16 @@ function VarNamedTuples._setindex_optic!!(
     else
         previous
     end
-    updated = VarNamedTuples._setindex_optic!!(
-        previous, value, optic.child, tree.template[i], permissions
-    )
+    child_template = template isa ModelValueTree ? template.values[i] : tree.template[i]
+    updated = if previous isa NoModelBinding
+        permissions isa VarNamedTuples.MustOverwrite &&
+            throw(VarNamedTuples.MustOverwriteError(permissions))
+        VarNamedTuples.make_leaf(value, optic.child, child_template)
+    else
+        VarNamedTuples._setindex_optic!!(
+            previous, value, optic.child, child_template, permissions
+        )
+    end
     return ModelValueTree(tree.template, Base.setindex(tree.values, updated, i))
 end
 
@@ -332,22 +345,14 @@ function VarNamedTuples.make_leaf(
     value, optic::AbstractPPL.Property, template::ModelValueTree
 )
     return VarNamedTuples._setindex_optic!!(
-        _empty_model_tree(template),
-        value,
-        optic,
-        template.template,
-        VarNamedTuples.AllowAll(),
+        _empty_model_tree(template), value, optic, template, VarNamedTuples.AllowAll()
     )
 end
 function VarNamedTuples.make_leaf(
     value, optic::AbstractPPL.Index, template::ModelValueTree{<:Tuple}
 )
     return VarNamedTuples._setindex_optic!!(
-        _empty_model_tree(template),
-        value,
-        optic,
-        template.template,
-        VarNamedTuples.AllowAll(),
+        _empty_model_tree(template), value, optic, template, VarNamedTuples.AllowAll()
     )
 end
 function (::VarNamedTuples.SharedGetProperty{S})(tree::ModelValueTree) where {S}
@@ -552,8 +557,8 @@ _model_argument_value(value::ModelValue, template) = value.value
 _model_argument_value(tree::ModelValueTree, template) = _model_data(tree)
 _model_argument_value(values::AbstractArray, template) = _model_data(values)
 
-_has_complete_model_data(::ModelValue) = true
-_has_complete_model_data(::ModelValueTree) = true
+_has_complete_model_data(::Any) = true
+_has_complete_model_data(::NoModelBinding) = false
 _has_complete_model_data(values::VarNamedTuple) = all(_has_complete_model_data, values.data)
 _has_complete_model_data(::VarNamedTuples.ArrayLikeBlock) = false
 function _has_complete_model_data(values::VarNamedTuples.PartialArray)

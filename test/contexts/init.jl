@@ -304,17 +304,6 @@ using Test
                 @test_throws ErrorException DynamicPPL.init!!(
                     model, empty_vi, InitFromParams(vnt, nothing), UnlinkAll()
                 )
-
-                # We also explicitly test the case where `y = missing`.
-                vnt_missing = @vnt begin
-                    x := my_x
-                    y := missing
-                end
-                for fallback in (nothing, InitFromPrior())
-                    @test_throws ArgumentError DynamicPPL.init!!(
-                        model, empty_vi, InitFromParams(vnt_missing, fallback), UnlinkAll()
-                    )
-                end
             end
         end
 

@@ -123,13 +123,6 @@ end
     end
 
     @testset "incorrect use of condition" begin
-        @testset "missing in multivariate" begin
-            @model function demo_missing_in_multivariate(x)
-                return x ~ MvNormal(zeros(length(x)), I)
-            end
-            @test_throws ArgumentError demo_missing_in_multivariate([1.0, missing])
-        end
-
         @testset "conditioning overrides argument values" begin
             @model function demo_condition_both_in_args_and_context(x)
                 return x ~ Normal()

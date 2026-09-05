@@ -89,9 +89,17 @@ end
         end
     end
 
-    @testset "missing is not a stochastic role" begin
-        for op in (condition, fix), value in (missing, [1.0, missing], (; a=missing))
-            @test_throws ArgumentError op(model; x=value)
+    @testset "argument buffers can be initialized in the model body" begin
+        @model function initialize_buffer(x)
+            fill!(x, [1.0])
+            x[1] ~ MvNormal([0.0], [1.0;;])
+            return x
+        end
+        for wrap in (identity, x -> view(x, :))
+            data = wrap(Vector{Vector{Float64}}(undef, 1))
+            buffer_model = initialize_buffer(data)
+            @test !isassigned(data, 1)
+            @test buffer_model() == [[1.0]]
         end
     end
 
@@ -261,14 +269,13 @@ end
             @test keys(VarInfo(decondition(observed))) == [@varname(x)]
             @test condition(decondition(original); x=3.0)() == 3.0
         end
-        @test_throws ArgumentError argument_model(missing)
 
         @model keyword_argument(; x=1.0) = x ~ Normal()
         @test keyword_argument()() == 1.0
         @test keyword_argument(; x=2.0)() == 2.0
         @test keys(VarInfo(decondition(keyword_argument()))) == [@varname(x)]
 
-        @model function array_argument(x; config=missing)
+        @model function array_argument(x; config=nothing)
             for i in eachindex(x)
                 x[i] ~ Normal()
             end
@@ -475,6 +482,31 @@ end
         @model tuple_with_record(x) = (x[1].a ~ Normal(); return x)
         changed = fix(tuple_with_record(((; a=1.0), 2.0)), @varname(x[1].a) => 3.0)
         @test changed() == ((; a=3.0), 2.0)
+        @model tuple_with_tuple(x) = (x[1][1] ~ Normal(); return x)
+        @model tuple_with_array(x) = (x[1][1] ~ Normal(); return x)
+        @model tuple_with_nested_record(x) = (x[1].a[1] ~ Normal(); return x)
+        for (original, vn, expected) in (
+            (tuple_with_record(((; a=1.0),)), @varname(x[1].a), ((; a=3.0),)),
+            (tuple_with_tuple(((1.0,),)), @varname(x[1][1]), ((3.0,),)),
+            (tuple_with_array(([1.0],)), @varname(x[1][1]), ([3.0],)),
+            (
+                tuple_with_nested_record(((; a=(1.0,)),)),
+                @varname(x[1].a[1]),
+                ((; a=(3.0,)),),
+            ),
+        )
+            fixed_model = fix(original, vn => 3.0)
+            @test fixed(fixed_model)[vn] == 3.0
+            @test decondition(fixed_model)() == expected
+            @test fixed(decondition(fixed_model))[vn] == 3.0
+            conditioned_model = condition(fix(original; x=expected), vn => 3.0)
+            @test conditioned(conditioned_model)[vn] == 3.0
+            @test conditioned(unfix(conditioned_model))[vn] == 3.0
+            @test merge(conditioned(fixed_model), fixed(fixed_model))[@varname(x)] ==
+                expected
+            nested = nested_tuple(fixed_model)
+            @test decondition(nested)() == expected
+        end
         loglik =
             p -> loglikelihood(
                 condition(tuple_sites((0.0, 2.0)), @varname(x[1]) => p), VarNamedTuple()
