@@ -228,10 +228,6 @@ function init(
 end
 
 function DynamicPPL.get_param_eltype(p::InitFromParamsUnsafe)
-    # TODO(penelopeysm): Ugly hack. Currently this is not used anywhere except in Turing's
-    # ADTypeCheckContext tests. However, when we stop using DefaultContext and start using
-    # this as its replacement, we will need this function so that we can promote the
-    # accumulators' eltype accordingly (unless we find a better solution than eltypes).
     return eltype(DynamicPPL.internal_values_as_vector(p.params))
 end
 
@@ -344,8 +340,8 @@ whether values should be treated as being in linked or unlinked space. That also
 evaluating the model.
 
 !!! note
-    If `model.context isa InitContext`, then `evaluate!!(model, varinfo)` will
-    override all values in the VarInfo.
+    `evaluate!!(model, context::InitContext, varinfo)` overwrites stored parameter values
+    using the context's initialisation strategy.
 """
 struct InitContext{
     R<:Random.AbstractRNG,S<:AbstractInitStrategy,L<:AbstractTransformStrategy
@@ -380,15 +376,4 @@ function tilde_assume!!(
     # We always return the untransformed value here, as that will determine
     # what the lhs of the tilde-statement is set to.
     return x, vi
-end
-
-function tilde_observe!!(
-    ::InitContext,
-    right::Distribution,
-    left,
-    vn::Union{VarName,Nothing},
-    template::Any,
-    vi::AbstractVarInfo,
-)
-    return tilde_observe!!(DefaultContext(), right, left, vn, template, vi)
 end

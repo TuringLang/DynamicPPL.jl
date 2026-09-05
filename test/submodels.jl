@@ -475,7 +475,8 @@ end
                 @test @inferred(init!!(model, accs, InitFromPrior(), tfm)) isa Tuple
             end
             # Evaluating a pre-populated `VarInfo` must also stay type stable.
-            @test @inferred(DynamicPPL.evaluate_nowarn!!(model, VarInfo(model))) isa Tuple
+            vi = VarInfo(model)
+            @test @inferred(evaluate!!(model, DefaultContext(get_values(vi)), vi)) isa Tuple
         end
     end
 end

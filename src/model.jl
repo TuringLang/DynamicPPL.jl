@@ -259,7 +259,6 @@ end
         defaultnames,
         Targs,
         Tdefaults,
-        Ctx<:AbstractContext,
         Prefix<:Union{VarName,Nothing},
         PrefixTemplate,
         Values<:VarNamedTuple,
@@ -268,19 +267,17 @@ end
         f::F
         args::NamedTuple{argnames,Targs}
         defaults::NamedTuple{defaultnames,Tdefaults}
-        context::Ctx=DefaultContext()
         prefix::Prefix=nothing
         prefix_template::PrefixTemplate=nothing
         values::Values
     end
 
 A `Model` struct with model evaluation function of type `F`, arguments of names `argnames`
-types `Targs`, default arguments of names `defaultnames` with types `Tdefaults`,
-and evaluation context of type `Ctx`. Conditioned and fixed values
-share one store, with each value carrying its role.
+types `Targs`, and default arguments of names `defaultnames` with types `Tdefaults`.
+Conditioned and fixed values share one store, with each value carrying its role.
+The evaluation context is passed to [`evaluate!!`](@ref), not stored in the model.
 
 Here `argnames` and `defaultnames` are tuples of symbols, e.g. `(:a, :b)`.
-`context` is by default `DefaultContext()`.
 
 Model arguments supply default conditioned values. `condition` replaces these observations,
 and `decondition` removes them, making the corresponding stochastic sites latent.
@@ -310,7 +307,6 @@ struct Model{
     defaultnames,
     Targs,
     Tdefaults,
-    Ctx<:AbstractContext,
     Prefix<:Union{VarName,Nothing},
     PT,
     Values<:VarNamedTuple,
@@ -319,7 +315,6 @@ struct Model{
     f::F
     args::NamedTuple{argnames,Targs}
     defaults::NamedTuple{defaultnames,Tdefaults}
-    context::Ctx
     prefix::Prefix
     prefix_template::PT
     values::Values
@@ -328,15 +323,14 @@ struct Model{
         f::F,
         args::NamedTuple{argnames,Targs},
         defaults::NamedTuple{defaultnames,Tdefaults},
-        context::Ctx=DefaultContext(),
         prefix::Prefix=nothing,
         values::Values=_tag_model_values(Condition, VarNamedTuple(merge(args, defaults))),
         prefix_template::PT=nothing,
-    ) where {F,argnames,Targs,defaultnames,Tdefaults,Ctx,Prefix,PT,Values,Threaded}
+    ) where {F,argnames,Targs,defaultnames,Tdefaults,Prefix,PT,Values,Threaded}
         mapreduce(pair -> pair.second isa ModelValue, &, values; init=true) ||
             throw(ArgumentError("Model values must carry a condition or fix role"))
-        return new{F,argnames,defaultnames,Targs,Tdefaults,Ctx,Prefix,PT,Values,Threaded}(
-            f, args, defaults, context, prefix, prefix_template, values
+        return new{F,argnames,defaultnames,Targs,Tdefaults,Prefix,PT,Values,Threaded}(
+            f, args, defaults, prefix, prefix_template, values
         )
     end
 end
@@ -352,10 +346,8 @@ argument-backed stochastic site latent, or [`condition`](@ref) to replace its ob
 Default arguments `defaults` are used internally when constructing instances of the same
 model with different arguments.
 """
-function Model{Threaded}(
-    f, args::NamedTuple, context::AbstractContext=DefaultContext(); kwargs...
-) where {Threaded}
-    return Model{Threaded}(f, args, NamedTuple(kwargs), context)
+function Model{Threaded}(f, args::NamedTuple; kwargs...) where {Threaded}
+    return Model{Threaded}(f, args, NamedTuple(kwargs))
 end
 
 """
@@ -365,31 +357,20 @@ Return whether `model` has been marked as needing threadsafe evaluation (using
 `setthreadsafe`).
 """
 function requires_threadsafe(
-    ::Model{F,A,D,Ta,Td,Ctx,P,PT,V,Threaded}
-) where {F,A,D,Ta,Td,Ctx,P,PT,V,Threaded}
+    ::Model{F,A,D,Ta,Td,P,PT,V,Threaded}
+) where {F,A,D,Ta,Td,P,PT,V,Threaded}
     return Threaded
 end
 
 function _reconstruct_model(
-    model::Model{F,A,D,Ta,Td,Ctx,P,PT,V,Threaded};
-    context::AbstractContext=model.context,
+    model::Model{F,A,D,Ta,Td,P,PT,V,Threaded};
     prefix::Union{VarName,Nothing}=model.prefix,
     values::VarNamedTuple=model.values,
     prefix_template=model.prefix_template,
-) where {F,A,D,Ta,Td,Ctx,P,PT,V,Threaded}
+) where {F,A,D,Ta,Td,P,PT,V,Threaded}
     return Model{Threaded}(
-        model.f, model.args, model.defaults, context, prefix, values, prefix_template
+        model.f, model.args, model.defaults, prefix, values, prefix_template
     )
-end
-
-"""
-    contextualize(model::Model, context::AbstractContext)
-
-Return a new `Model` with the same evaluation function and other arguments, but
-with its underlying context set to `context`.
-"""
-function contextualize(model::Model, context::AbstractContext)
-    return _reconstruct_model(model; context)
 end
 
 """
@@ -419,7 +400,6 @@ function setthreadsafe(model::Model, threadsafe::Bool)
             model.f,
             model.args,
             model.defaults,
-            model.context,
             model.prefix,
             model.values,
             model.prefix_template,
@@ -1093,12 +1073,30 @@ function _prefix_varname_and_template(vn::VarName, template::Any, model::Model)
 end
 
 function tilde_assume!!(
-    model::Model, right::Distribution, vn::VarName, template::Any, vi::AbstractVarInfo
+    model::Model,
+    context::AbstractContext,
+    right::Distribution,
+    vn::VarName,
+    template::Any,
+    vi::AbstractVarInfo,
 )
     vn, template = _prefix_varname_and_template(vn, template, model)
-    return tilde_assume!!(model.context, right, vn, template, vi)
+    return tilde_assume!!(context, right, vn, template, vi)
 end
 
+"""
+    tilde_observe!!(model::Model, right::Distribution, left, vn, template, vi)
+
+Accumulate an observation and return `(left, vi)` with the updated varinfo.
+
+`left` is supplied by the model's conditioned values or by a literal expression. `vn` is
+the variable name before prefixing, or `nothing` for a literal. `template` describes the
+top-level variable's storage; literals use `NoTemplate()`.
+
+Apply the model's prefix and delegate to [`accumulate_observe!!`](@ref). Observation
+handling is independent of the evaluation context. Fixed sites bypass this function
+and do not contribute to the log probability.
+"""
 function tilde_observe!!(
     model::Model,
     right::Distribution,
@@ -1112,14 +1110,25 @@ function tilde_observe!!(
     else
         _prefix_varname_and_template(vn, template, model)
     end
-    return tilde_observe!!(model.context, right, left, vn, template, vi)
+    vi = accumulate_observe!!(vi, right, left, vn, template)
+    return left, vi
 end
 
+"""
+    store_coloneq_value!!(model::Model, vn::VarName, right, template, vi)
+
+Store a tracked assignment's value in the raw-value accumulator and return the updated `vi`.
+
+Apply the model's prefix to `vn` and its storage `template`. The evaluator calls this
+function only when tracked-value extraction is enabled; no context hook is involved.
+"""
 function store_coloneq_value!!(
     model::Model, vn::VarName, right::Any, template::Any, vi::AbstractVarInfo
 )
     vn, template = _prefix_varname_and_template(vn, template, model)
-    return store_coloneq_value!!(model.context, vn, right, template, vi)
+    return map_accumulator!!(
+        acc -> store_colon_eq!!(acc, vn, right, template), vi, Val(RAW_VALUE_ACCNAME)
+    )
 end
 
 """
@@ -1174,8 +1183,7 @@ function init!!(
     transform_strategy::AbstractTransformStrategy=get_transform_strategy(vi),
 )
     ctx = InitContext(rng, init_strategy, transform_strategy)
-    model = DynamicPPL.contextualize(model, ctx)
-    return DynamicPPL.evaluate_nowarn!!(model, vi)
+    return AbstractPPL.evaluate!!(model, ctx, vi)
 end
 function init!!(
     model::Model,
@@ -1187,149 +1195,111 @@ function init!!(
 end
 
 """
-    evaluate!!(model::Model, varinfo)
+    evaluate!!(model::Model, context::AbstractContext, varinfo::AbstractVarInfo)
 
-Evaluate the `model` with the given `varinfo`, wrapping it in a `ThreadSafeVarInfo` if the
-model is marked as needing threadsafe evaluation.
+Reset the accumulators and evaluate `model` using `context`, returning `(retval, varinfo)`.
 
-!!! warning
-    The semantics of this method are complicated. We **strongly** recommend that users do
-    *not* use this method unless absolutely necessary. In the future this method will be
-    deprecated and removed. As far as possible (and it should **always** be possible --
-    please open an issue if you do not know how to adapt your code!) you should use the
-    five-argument `init!!([rng,] model, ::OnlyAccsVarInfo, init_strategy,
-    transform_strategy)` method, which has more explicit semantics and allows you to have
-    more control over each part of the evaluation process.
+The context belongs to this evaluation, not to the model. The same context is passed to
+submodels and to [`tilde_assume!!`](@ref) for latent sites. Observations and tracked values
+go directly to accumulators, independently of the context. Models marked with
+[`setthreadsafe`](@ref) use a `ThreadSafeVarInfo` during evaluation.
 
-The exact semantics depend on the `model`'s context. Fundamentally, this method executes the
-model evaluation function (i.e., the function used to define the model) using the given
-`varinfo` as an argument. At each tilde-statement, `tilde_assume!!` or `tilde_observe!!` is
-called, whose behaviour depends on the model's context.
+An [`InitContext`](@ref) supplies an RNG, initialisation strategy, and transform strategy.
+Use [`OnlyAccsVarInfo`](@ref) when only accumulated outputs are needed. The convenience
+function [`init!!`](@ref) constructs an `InitContext` and calls this method.
 
-Broadly speaking, if the context is an `InitContext`, then this function:
+A [`DefaultContext`](@ref) instead holds a `VarNamedTuple` of parameter values with their
+transform information. Neither context reads latent inputs from the output `varinfo`.
 
-- uses the initialisation strategy inside the `InitContext`;
-- uses the transform strategy inside the `InitContext`;
-- uses the accumulators inside `varinfo` (resetting them before evaluation);
-- overwrites the values in `varinfo` with the new values obtained from the initialisation strategy.
+# Examples
 
-If the context is a `DefaultContext`, then this function:
+```jldoctest
+julia> using Random: Xoshiro
 
-- uses the values inside the `varinfo` as the initialisation strategy;
-- derives a transform strategy from the `varinfo`'s stored variables (if a linked variable is
-  stored, then the transform strategy will treat that variable as linked; likewise for
-  unlinked)
-- uses the accumulators inside `varinfo` (resetting them before evaluation);
-- does not overwrite the values in the `varinfo` (that is unnecessary since the values used
-  for evaluation are already stored in `varinfo`).
+julia> @model example(y) = (x ~ Normal(); y ~ Normal(x); return x + y);
 
-The long-term plan for this method is to:
+julia> ctx = InitContext(Xoshiro(1), InitFromParams((; x=1.0)), UnlinkAll());
 
-- Replace `DefaultContext` with `InitContext` by splitting up the functionality of `DefaultContext`
-  into its constituent components
-- Remove the `VarInfo` argument, and instead use only an `AccumulatorTuple`
-- Separate the initialisation and transform strategies into separate arguments, instead of storing
-  them inside the model's context.
+julia> retval, vi = evaluate!!(example(2.0), ctx, OnlyAccsVarInfo());
+
+julia> retval
+3.0
+```
 """
-function AbstractPPL.evaluate!!(model::Model, varinfo::AbstractVarInfo)
-    @warn (
-        "Calling `evaluate!!(model, varinfo)` directly is not recommended and will be" *
-        " deprecated in the future. Please switch to using `init!!([rng,] model," *
-        " ::OnlyAccsVarInfo, init_strategy, transform_strategy)` instead, which" *
-        " has more explicit semantics and allows you to have more control over each" *
-        " part of the evaluation process. Please see the DynamicPPL documentation" *
-        " for more details: https://turinglang.org/DynamicPPL.jl/stable/evaluation"
-    ) maxlog = 5
-    return DynamicPPL.evaluate_nowarn!!(model, varinfo)
-end
-
-"""
-    evaluate_nowarn!!(model::Model, varinfo)
-
-This is the same as `evaluate!!(model, varinfo)` but without the deprecation warning.
-
-!!! warning
-    This is meant for internal use in DynamicPPL.jl only! If you rely on this method in your
-    code, please note that it may break at any time.
-"""
-function evaluate_nowarn!!(model::Model, varinfo::AbstractVarInfo)
+function AbstractPPL.evaluate!!(
+    model::Model, context::AbstractContext, varinfo::AbstractVarInfo
+)
     return if requires_threadsafe(model)
-        # Use of float_type_with_fallback(eltype(x)) is necessary to deal with cases where x is
-        # a gradient type of some AD backend.
-        param_eltype = DynamicPPL.get_param_eltype(varinfo, model.context)
+        # Thread-local accumulators must accept AD values before evaluation starts.
+        param_eltype = DynamicPPL.get_param_eltype(context)
         wrapper = ThreadSafeVarInfo(varinfo, param_eltype)
-        result, wrapper_new = _evaluate!!(model, wrapper)
+        result, wrapper_new = _evaluate!!(model, context, wrapper)
         # TODO(penelopeysm): If seems that if you pass a TSVI to this method, it
         # will return the underlying VI, which is a bit counterintuitive (because
         # calling TSVI(::TSVI) returns the original TSVI, instead of wrapping it
         # again).
         return result, setaccs!!(wrapper_new.varinfo, getaccs(wrapper_new))
     else
-        _evaluate!!(model, resetaccs!!(varinfo))
+        _evaluate!!(model, context, resetaccs!!(varinfo))
     end
 end
 
 """
-    _evaluate!!(model::Model, varinfo)
+    _evaluate!!(model::Model, context::AbstractContext, varinfo)
 
-Evaluate the `model` with the given `varinfo`.
+Evaluate the `model` with the given `context` and `varinfo`.
 
 This function does not wrap the varinfo in a `ThreadSafeVarInfo`. It also does not
 reset the log probability of the `varinfo` before running.
 """
-function _evaluate!!(model::Model, varinfo::AbstractVarInfo)
-    args, kwargs = make_evaluate_args_and_kwargs(model, varinfo)
+function _evaluate!!(model::Model, context::AbstractContext, varinfo::AbstractVarInfo)
+    args, kwargs = make_evaluate_args_and_kwargs(model, context, varinfo)
     return model.f(args...; kwargs...)
 end
 
 is_splat_symbol(s::Symbol) = startswith(string(s), "#splat#")
 
 """
-    make_evaluate_args_and_kwargs(model, varinfo)
+    make_evaluate_args_and_kwargs(model, context, varinfo)
 
-Return the arguments and keyword arguments to be passed to the evaluator of the model, i.e. `model.f`e.
+Return the positional and keyword arguments for `model.f`, including the evaluation context.
+
+The positional arguments begin with `(model, context, varinfo)`, followed by the model
+arguments converted for the parameter element type. Pass the result to
+`model.f(args...; kwargs...)` when a downstream evaluator, such as a taped task, controls
+execution directly. This prepares arguments without executing the model, resetting
+accumulators, or wrapping `varinfo` for thread safety; use [`evaluate!!`](@ref) otherwise.
 """
 @generated function make_evaluate_args_and_kwargs(
-    model::Model{_F,argnames}, varinfo::AbstractVarInfo
+    model::Model{_F,argnames}, context::AbstractContext, varinfo::AbstractVarInfo
 ) where {_F,argnames}
     unwrap_args = [
         if is_splat_symbol(var)
-            :(
-                $convert_model_argument(
-                    $get_param_eltype(varinfo, model.context), model.args.$var
-                )...
-            )
+            :($convert_model_argument($get_param_eltype(context), model.args.$var)...)
         else
-            :($convert_model_argument(
-                $get_param_eltype(varinfo, model.context), model.args.$var
-            ))
+            :($convert_model_argument($get_param_eltype(context), model.args.$var))
         end for var in argnames
     ]
     return quote
-        args = (model, varinfo, $(unwrap_args...))
+        args = (model, context, varinfo, $(unwrap_args...))
         kwargs = model.defaults
         return args, kwargs
     end
 end
 
 """
-    get_param_eltype(varinfo::AbstractVarInfo, context::AbstractContext)
+    get_param_eltype(context::AbstractContext)
 
-Get the element type of the parameters being used to evaluate a model, using a `varinfo`
-under the given `context`. For example, when evaluating a model with ForwardDiff AD, this
-should return `ForwardDiff.Dual`.
+Return the parameter element type used to promote model arguments and thread-local
+accumulators, including AD types such as `ForwardDiff.Dual`.
 
-By default, this uses `eltype(varinfo)` which is slightly cursed. This relies on the fact
-that typically, before evaluation, the parameters will have been inserted into the VarInfo's
-metadata field.
-
-For `InitContext`, it's quite different: because `InitContext` is responsible for supplying
-the parameters, we can avoid using `eltype(varinfo)` and instead query the parameters inside
-it. See the docstring of `get_param_eltype(strategy::AbstractInitStrategy)` for more
-explanation.
+`DefaultContext` derives this type from its input values; `InitContext` queries its
+initialisation strategy. Custom contexts should provide the corresponding type when
+promotion is needed. The fallback returns `Any`; see
+[`get_param_eltype(::AbstractInitStrategy)`](@ref).
 """
-get_param_eltype(vi::AbstractVarInfo, ::AbstractContext) = eltype(vi)
-function get_param_eltype(::AbstractVarInfo, ctx::InitContext)
+get_param_eltype(::AbstractContext) = Any
+function get_param_eltype(ctx::InitContext)
     return get_param_eltype(ctx.strategy)
 end
 

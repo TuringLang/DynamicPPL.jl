@@ -224,6 +224,7 @@ end
             x[1] ~ Bernoulli(0.5)
             global varinfo_ = __varinfo__
             global model_ = __model__
+            global context_ = __context__
             global lp = getlogjoint(__varinfo__)
             return x
         end
@@ -231,12 +232,9 @@ end
         varinfo = VarInfo(model)
         @test getlogjoint(varinfo) == lp
         @test varinfo_ isa AbstractVarInfo
-        # During the model evaluation, its context is changed to an InitContext, so
-        # `model_` is not going to be equal to `model`. We can still check equality of `f`
-        # though.
-        @test model_.f === model.f
-        @test model_.context isa DynamicPPL.InitContext
-        @test model_.context.rng isa Random.AbstractRNG
+        @test model_ === model
+        @test context_ isa DynamicPPL.InitContext
+        @test context_.rng isa Random.AbstractRNG
 
         # disable warnings
         @model function testmodel_missing4(x)

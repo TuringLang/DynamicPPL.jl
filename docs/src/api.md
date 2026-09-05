@@ -28,12 +28,6 @@ Model
 Model()
 ```
 
-The context of a model can be set using [`contextualize`](@ref):
-
-```@docs
-contextualize
-```
-
 Some models require threadsafe evaluation (see [the Turing docs](https://turinglang.org/docs/usage/threadsafe-evaluation/) for more information on when this is necessary).
 If this is the case, one must enable threadsafe evaluation for a model:
 
@@ -483,28 +477,37 @@ Internally, model evaluation is performed with [`AbstractPPL.evaluate!!`](@ref).
 AbstractPPL.evaluate!!
 ```
 
-This method mutates the `varinfo` used for execution.
-By default, it does not perform any actual sampling: it only evaluates the model using the values of the variables that are already in the `varinfo`.
-If you wish to sample new values, see the section on [VarInfo initialisation](#VarInfo-initialisation) just below this.
+Call `evaluate!!(model, context, varinfo)` to evaluate with an explicit context and collect
+outputs in `varinfo`. Accumulators are reset before evaluation.
 
-The behaviour of model execution can be changed with the evaluation context stored in the model.
-Prefixes are stored separately from values. Conditioned and fixed values share one store, with each value carrying its role; these are resolved before the context handles a tilde statement.
+The context is an evaluation input; it is not stored in the model.
+Prefixes are stored separately from values. Conditioned and fixed values share one store, with each value carrying its role. Only latent sites reach the context; observations and tracked values go directly to accumulators.
 
 All contexts are subtypes of `AbstractPPL.AbstractContext`.
 
 Contexts decide how model evaluation proceeds.
-For example, `DefaultContext` evaluates the model using values stored inside a VarInfo's metadata, whereas `InitContext` obtains new values either by sampling or from a known set of parameters.
+For example, `DefaultContext` holds a `VarNamedTuple` of vectorised parameter values and their transforms, whereas `InitContext` obtains values through an initialisation strategy.
+The output `varinfo` does not supply latent inputs to either context.
 
 ```@docs
 DefaultContext
 InitContext
 ```
 
-To implement a context, subtype `AbstractPPL.AbstractContext` and implement the `tilde_assume!!` and `tilde_observe!!` methods for it.
+To implement a context, subtype `AbstractPPL.AbstractContext` and implement `tilde_assume!!`.
+Customise observation handling through `accumulate_observe!!` methods on accumulators,
+not through context dispatch.
 
 ```@docs
 tilde_assume!!
 tilde_observe!!
+DynamicPPL.store_coloneq_value!!
+```
+
+Downstream evaluators that control execution directly can prepare arguments for `model.f`:
+
+```@docs
+DynamicPPL.make_evaluate_args_and_kwargs
 ```
 
 ### VarInfo initialisation

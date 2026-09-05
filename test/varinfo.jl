@@ -154,7 +154,7 @@ end
 
         vi = DynamicPPL.unflatten!!(VarInfo(m), [values.a, values.b])
 
-        vi = last(DynamicPPL.evaluate_nowarn!!(m, deepcopy(vi)))
+        vi = last(evaluate!!(m, DefaultContext(get_values(vi)), deepcopy(vi)))
         @test getlogprior(vi) == lp_a + lp_b
         @test getlogjac(vi) == 0.0
         @test getloglikelihood(vi) == lp_c + lp_d
@@ -191,8 +191,10 @@ end
         @test getlogp(setlogp!!(vi, getlogp(vi))) == getlogp(vi)
 
         vi = last(
-            DynamicPPL.evaluate_nowarn!!(
-                m, DynamicPPL.setaccs!!(deepcopy(vi), (LogPriorAccumulator(),))
+            evaluate!!(
+                m,
+                DefaultContext(get_values(vi)),
+                DynamicPPL.setaccs!!(deepcopy(vi), (LogPriorAccumulator(),)),
             ),
         )
         @test getlogprior(vi) == lp_a + lp_b
@@ -211,7 +213,11 @@ end
         end
 
         # Test evaluating without any accumulators.
-        vi = last(DynamicPPL.evaluate_nowarn!!(m, DynamicPPL.setaccs!!(deepcopy(vi), ())))
+        vi = last(
+            evaluate!!(
+                m, DefaultContext(get_values(vi)), DynamicPPL.setaccs!!(deepcopy(vi), ())
+            ),
+        )
         # need regex because 1.11 and 1.12 throw different errors (in 1.12 the
         # missing field is surrounded by backticks)
         @test_throws r"has no field `?LogPrior" getlogprior(vi)
@@ -222,7 +228,7 @@ end
 
     @testset "resetaccs" begin
         # Put in a bunch of accumulators, check that they're all reset either
-        # when we call resetaccs!!, empty!!, or evaluate_nowarn!!.
+        # when we call resetaccs!!, empty!!, or evaluate!!.
         @model function demo()
             a ~ Normal()
             return x ~ Normal(a)
@@ -234,7 +240,7 @@ end
         vi_orig = DynamicPPL.setacc!!(vi_orig, DynamicPPL.RawValueAccumulator(true))
         vi_orig = DynamicPPL.setacc!!(vi_orig, DynamicPPL.PriorDistributionAccumulator())
         # And evaluate the model once so that they are populated.
-        _, vi_orig = DynamicPPL.evaluate_nowarn!!(model, vi_orig)
+        _, vi_orig = evaluate!!(model, DefaultContext(get_values(vi_orig)), vi_orig)
 
         function all_accs_empty(vi::AbstractVarInfo)
             for acc_key in keys(DynamicPPL.getaccs(vi))
@@ -278,7 +284,7 @@ end
         @test all_accs_same(vi_orig, deepcopy(vi_orig))
         # If we re-evaluate, then we expect the accs to be reset prior to evaluation.
         # Thus after re-evaluation, the accs should be exactly the same as before.
-        _, vi = DynamicPPL.evaluate_nowarn!!(model, deepcopy(vi_orig))
+        _, vi = evaluate!!(model, DefaultContext(get_values(vi_orig)), deepcopy(vi_orig))
         @test all_accs_same(vi, vi_orig)
     end
 

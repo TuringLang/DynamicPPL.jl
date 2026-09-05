@@ -3,11 +3,10 @@
 
 `OnlyAccsVarInfo` is a wrapper around a tuple of accumulators.
 
-Its name stems from the fact that it implements the minimal `AbstractVarInfo` interface to
-work with the `tilde_assume!!` and `tilde_observe!!` functions for `InitContext`.
+It implements the minimal `AbstractVarInfo` interface needed for accumulation and
+latent-value evaluation with an explicit context.
 
-Note that this does not implement almost every other AbstractVarInfo interface function, and
-so using this with a different context such as `DefaultContext` will result in errors.
+This does not store parameter values. Supply them through the evaluation context.
 
 For more information about accumulators, please see the [DynamicPPL documentation on
 accumulators](@ref accumulators-overview).
@@ -40,18 +39,6 @@ function DynamicPPL.get_transform_strategy(::OnlyAccsVarInfo)
     # method doesn't ever get called though.
     return error(
         "get_transform_strategy cannot be implemented for OnlyAccsVarInfo; please specify a transform strategy manually in your call to `init!!`",
-    )
-end
-function DynamicPPL.tilde_assume!!(
-    ::DefaultContext,
-    ::Distribution,
-    ::VarName,
-    ::Any,
-    ::Union{OnlyAccsVarInfo,ThreadSafeVarInfo{<:OnlyAccsVarInfo}},
-)
-    # Helpful guardrail for developers.
-    return error(
-        "tilde_assume!! is not implemented for DefaultContext when using OnlyAccsVarInfo. OnlyAccsVarInfo is only compatible with InitContext.",
     )
 end
 

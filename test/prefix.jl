@@ -97,9 +97,9 @@ __now__ = now()
             condition(DynamicPPL.prefix(model, @varname(a)), @varname(a.x) => 1.0),
             @varname(a.y[1]) => 2.0,
         )
-        contextualized = contextualize(transformed, DefaultContext())
+        reconstructed = DynamicPPL._reconstruct_model(transformed)
         threadsafe = setthreadsafe(transformed, true)
-        for rebuilt in (contextualized, threadsafe)
+        for rebuilt in (reconstructed, threadsafe)
             @test rebuilt.prefix == transformed.prefix
             @test conditioned(rebuilt) == conditioned(transformed)
             @test fixed(rebuilt) == fixed(transformed)

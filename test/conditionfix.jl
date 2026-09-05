@@ -60,13 +60,13 @@ end
 
     @testset "values are model fields" begin
         conditioned_model = condition(condition(model; x=1.0); x=2.0, y=3.0)
-        @test conditioned_model.context === model.context
+        @test !hasproperty(conditioned_model, :context)
         @test conditioned(conditioned_model)[@varname(x)] == 2.0
         @test conditioned(conditioned_model)[@varname(y)] == 3.0
         @test conditioned_model() == 3.0
 
         fixed_model = fix(fix(model; x=1.0); x=2.0, y=3.0)
-        @test fixed_model.context === model.context
+        @test !hasproperty(fixed_model, :context)
         @test fixed(fixed_model)[@varname(x)] == 2.0
         @test fixed(fixed_model)[@varname(y)] == 3.0
         @test fixed_model() == 3.0

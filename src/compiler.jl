@@ -1,4 +1,4 @@
-const INTERNALNAMES = (:__model__, :__varinfo__)
+const INTERNALNAMES = (:__model__, :__context__, :__varinfo__)
 
 drop_escape(x) = x
 function drop_escape(expr::Expr)
@@ -467,6 +467,7 @@ function generate_tilde_assume(left, right, vn)
     return quote
         $value, __varinfo__ = $(DynamicPPL.tilde_assume!!)(
             __model__,
+            __context__,
             $(DynamicPPL.unwrap_right_vn)($(DynamicPPL.check_tilde_rhs)($right), $vn)...,
             $template,
             __varinfo__,
@@ -619,7 +620,11 @@ function build_output(modeldef, linenumbernode, sites)
 
     # Add the internal arguments to the user-specified arguments (positional + keywords).
     evaluatordef[:args] = vcat(
-        [:(__model__::$(DynamicPPL.Model)), :(__varinfo__::$(DynamicPPL.AbstractVarInfo))],
+        [
+            :(__model__::$(DynamicPPL.Model)),
+            :(__context__::$(DynamicPPL.AbstractContext)),
+            :(__varinfo__::$(DynamicPPL.AbstractVarInfo)),
+        ],
         args,
     )
 
@@ -665,7 +670,9 @@ function build_output(modeldef, linenumbernode, sites)
     else
         definition = copy(evaluatordef)
         definition[:name] = gensym(:model_body)
-        callargs = Any[:__model__, :__varinfo__, map(splitarg_to_expr, args_split)...]
+        callargs = Any[
+            :__model__, :__context__, :__varinfo__, map(splitarg_to_expr, args_split)...
+        ]
         if Meta.isexpr(evaluatordef[:name], :(::))
             definition[:args] = vcat([evaluatordef[:name]], definition[:args])
             pushfirst!(callargs, :(__model__.f))
@@ -688,7 +695,6 @@ function build_output(modeldef, linenumbernode, sites)
             $name,
             $args_nt,
             (; $(kwargs_inclusion...)),
-            $(DefaultContext)(),
             nothing,
             $(_tag_model_values)($(Condition), $(VarNamedTuple)($observations)),
         )

@@ -6,6 +6,7 @@ __now__ = now()
 
 using Distributions
 using DynamicPPL
+using Random: Xoshiro
 using Test
 
 @model function gdemo_d()
@@ -134,6 +135,7 @@ const gdemo_default = gdemo_d()
     @testset "Check that VarInfo is wrapped during model evaluation" begin
         @model function f()
             global vi_ = __varinfo__
+            global ctx_ = __context__
             return x ~ Normal(0, 1)
         end
         model = setthreadsafe(f(), true)
@@ -143,8 +145,14 @@ const gdemo_default = gdemo_d()
         @test vi_ isa DynamicPPL.ThreadSafeVarInfo
         # But init!! should return the original VarInfo
         @test vi isa DynamicPPL.VarInfo
+        ctx = InitContext(Xoshiro(1), InitFromParams((; x=2.0)), UnlinkAll())
+        result, vi = evaluate!!(model, ctx, vi)
+        @test result == 2.0
+        @test ctx_ === ctx
+        @test vi_ isa DynamicPPL.ThreadSafeVarInfo
+        @test vi isa DynamicPPL.VarInfo
         # Same with evaluate!!
-        _, vi = DynamicPPL.evaluate_nowarn!!(model, vi)
+        _, vi = evaluate!!(model, DefaultContext(get_values(vi)), vi)
         @test vi_ isa DynamicPPL.ThreadSafeVarInfo
         @test vi isa DynamicPPL.VarInfo
     end

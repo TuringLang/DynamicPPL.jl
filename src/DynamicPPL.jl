@@ -142,7 +142,6 @@ export AbstractVarInfo,
     get_logdensity_callable,
     # Contexts
     AbstractContext,
-    contextualize,
     DefaultContext,
     InitContext,
     # Tilde pipeline
@@ -221,6 +220,8 @@ export AbstractVarInfo,
     # Deprecated.
     generated_quantities,
     typed_identity
+
+@compat public make_evaluate_args_and_kwargs, store_coloneq_value!!
 
 # Reexport
 using Distributions: loglikelihood

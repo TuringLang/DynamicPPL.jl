@@ -406,13 +406,21 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
             varinfos = DynamicPPL.TestUtils.setup_varinfos(model, example_values)
             @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
                 @test begin
-                    @inferred(DynamicPPL.evaluate_nowarn!!(model, varinfo))
+                    @inferred(
+                        evaluate!!(model, DefaultContext(get_values(varinfo)), varinfo)
+                    )
                     true
                 end
 
                 varinfo_linked = DynamicPPL.link(varinfo, model)
                 @test begin
-                    @inferred(DynamicPPL.evaluate_nowarn!!(model, varinfo_linked))
+                    @inferred(
+                        evaluate!!(
+                            model,
+                            DefaultContext(get_values(varinfo_linked)),
+                            varinfo_linked,
+                        )
+                    )
                     true
                 end
             end

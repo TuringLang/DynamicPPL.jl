@@ -159,6 +159,7 @@ to_submodel(m::Model, auto_prefix::Bool=true) = Submodel{typeof(m),auto_prefix}(
 """
     DynamicPPL.tilde_assume!!(
         model::Model,
+        context::AbstractContext,
         right::DynamicPPL.Submodel,
         vn::VarName,
         ::Any,
@@ -168,9 +169,14 @@ to_submodel(m::Model, auto_prefix::Bool=true) = Submodel{typeof(m),auto_prefix}(
 Evaluate the submodel under the parent `model`.
 """
 function tilde_assume!!(
-    model::Model, right::DynamicPPL.Submodel, vn::VarName, template, vi::AbstractVarInfo
+    model::Model,
+    context::AbstractContext,
+    right::DynamicPPL.Submodel,
+    vn::VarName,
+    template,
+    vi::AbstractVarInfo,
 )
-    return _evaluate!!(right, vi, model, vn, template)
+    return _evaluate!!(right, context, vi, model, vn, template)
 end
 
 _submodel_namespace(values::VarNamedTuple) = values
@@ -197,6 +203,7 @@ end
 # passed into this function.
 function _evaluate!!(
     submodel::Submodel{M,AutoPrefix},
+    context::AbstractContext,
     vi::AbstractVarInfo,
     parent_model::Model,
     left_vn::VarName,
@@ -234,18 +241,11 @@ function _evaluate!!(
             _apply_prefix_template(model.prefix_template, NoTemplate()),
         ),
     )
-    model = _reconstruct_model(model; context=parent_model.context, values)
+    model = _reconstruct_model(model; values)
 
-    # Evaluate the wrapped model. These two lines are a verbatim copy of the body of
-    # `_evaluate!!(model::Model, ::AbstractVarInfo)` (in `model.jl`), and the duplication is
-    # deliberate: DO NOT replace them with `return _evaluate!!(model, vi)`. Each level of
-    # submodel nesting grows the contextualised `Model`'s prefix type, and routing the
-    # recursion through the shared `_evaluate!!(::Model, ...)` method trips Julia's recursion
-    # limiter, which widens the `Model` argument to abstract and collapses the return type to
-    # `Any`. Calling `model.f` directly avoids that. See
-    # https://github.com/TuringLang/DynamicPPL.jl/pull/1427 and
-    # https://github.com/TuringLang/Turing.jl/issues/2844 for the full explanation.
-    args, kwargs = make_evaluate_args_and_kwargs(model, vi)
+    # Calling model.f directly avoids the inference recursion limit as nested prefixes
+    # change the Model type; routing through _evaluate!! widens it to Any (Turing.jl#2844).
+    args, kwargs = make_evaluate_args_and_kwargs(model, context, vi)
     return model.f(args...; kwargs...)
 end
 
