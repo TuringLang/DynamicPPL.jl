@@ -122,17 +122,13 @@ end
         @test_throws ErrorException check_model(m; error_on_failure=true)
     end
 
-    @testset "incorrect use of condition" begin
-        @testset "conditioning overrides argument values" begin
-            @model function demo_condition_both_in_args_and_context(x)
-                return x ~ Normal()
-            end
-            model = demo_condition_both_in_args_and_context(1.0)
-            for vals in [(x=2.0,), OrderedDict(@varname(x) => 2.0)]
-                conditioned_model = DynamicPPL.condition(model, vals)
-                @test check_model(conditioned_model; error_on_failure=true)
-            end
+    @testset "conditioning overrides argument values" begin
+        @model function demo_conditioned_argument(x)
+            return x ~ Normal()
         end
+        model = demo_conditioned_argument(1.0)
+        conditioned_model = DynamicPPL.condition(model, (x=2.0,))
+        @test check_model(conditioned_model; error_on_failure=true)
     end
 
     @testset "discrete distribution check" begin

@@ -65,20 +65,16 @@ end
 
     @testset "values are model fields" begin
         conditioned_model = condition(condition(model; x=1.0); x=2.0, y=3.0)
-        @test !hasproperty(conditioned_model, :context)
         @test conditioned(conditioned_model)[@varname(x)] == 2.0
         @test conditioned(conditioned_model)[@varname(y)] == 3.0
         @test conditioned_model() == 3.0
 
         fixed_model = fix(fix(model; x=1.0); x=2.0, y=3.0)
-        @test !hasproperty(fixed_model, :context)
         @test fixed(fixed_model)[@varname(x)] == 2.0
         @test fixed(fixed_model)[@varname(y)] == 3.0
         @test fixed_model() == 3.0
 
         @model return_x() = x ~ Normal()
-        @test fix(condition(return_x(); x=1.0); x=2.0)() == 2.0
-
         for first_op in (condition, fix), last_op in (condition, fix)
             transformed = last_op(first_op(return_x(); x=1.0); x=2.0)
             @test transformed() == 2.0
@@ -469,7 +465,6 @@ end
             first = first_op(original, @varname(x[1]) => T(3))
             changed = last_op(first, @varname(x[2]) => T(4))
             @test changed() == (T(3), T(4))
-            @test changed() isa Tuple
             @test merge(conditioned(changed), fixed(changed))[@varname(x)] == (T(3), T(4))
             @test original() == (T(1), T(2))
             @test first() == (T(3), T(2))
@@ -482,13 +477,12 @@ end
         @model tuple_with_record(x) = (x[1].a ~ Normal(); return x)
         changed = fix(tuple_with_record(((; a=1.0), 2.0)), @varname(x[1].a) => 3.0)
         @test changed() == ((; a=3.0), 2.0)
-        @model tuple_with_tuple(x) = (x[1][1] ~ Normal(); return x)
-        @model tuple_with_array(x) = (x[1][1] ~ Normal(); return x)
+        @model tuple_with_indexed(x) = (x[1][1] ~ Normal(); return x)
         @model tuple_with_nested_record(x) = (x[1].a[1] ~ Normal(); return x)
         for (original, vn, expected) in (
             (tuple_with_record(((; a=1.0),)), @varname(x[1].a), ((; a=3.0),)),
-            (tuple_with_tuple(((1.0,),)), @varname(x[1][1]), ((3.0,),)),
-            (tuple_with_array(([1.0],)), @varname(x[1][1]), ([3.0],)),
+            (tuple_with_indexed(((1.0,),)), @varname(x[1][1]), ((3.0,),)),
+            (tuple_with_indexed(([1.0],)), @varname(x[1][1]), ([3.0],)),
             (
                 tuple_with_nested_record(((; a=(1.0,)),)),
                 @varname(x[1].a[1]),
@@ -666,19 +660,15 @@ end
             return a ~ to_submodel(inner_model)
         end
 
-        conditioned_inner = condition(inner(); x=1.0)
-        @test outer(conditioned_inner)() == 1.0
-        @test condition(outer(conditioned_inner), @varname(a.x) => 2.0)() == 2.0
-
-        fixed_inner = fix(inner(); x=1.0)
-        @test outer(fixed_inner)() == 1.0
-        @test fix(outer(fixed_inner), @varname(a.x) => 2.0)() == 2.0
-
-        for inner_op in (condition, fix), outer_op in (condition, fix)
-            transformed = outer_op(outer(inner_op(inner(); x=1.0)), @varname(a.x) => 2.0)
-            @test transformed() == 2.0
-            @test logjoint(transformed, VarNamedTuple()) ==
-                (outer_op === condition ? logpdf(Normal(), 2.0) : 0.0)
+        for inner_op in (condition, fix)
+            inner_model = inner_op(inner(); x=1.0)
+            @test outer(inner_model)() == 1.0
+            for outer_op in (condition, fix)
+                transformed = outer_op(outer(inner_model), @varname(a.x) => 2.0)
+                @test transformed() == 2.0
+                @test logjoint(transformed, VarNamedTuple()) ==
+                    (outer_op === condition ? logpdf(Normal(), 2.0) : 0.0)
+            end
         end
     end
 

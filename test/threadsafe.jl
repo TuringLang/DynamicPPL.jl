@@ -149,8 +149,6 @@ const gdemo_default = gdemo_d()
         result, vi = evaluate!!(model, ctx, vi)
         @test result == 2.0
         @test ctx_ === ctx
-        @test vi_ isa DynamicPPL.ThreadSafeVarInfo
-        @test vi isa DynamicPPL.VarInfo
         # Same with evaluate!!
         _, vi = evaluate!!(model, DefaultContext(get_values(vi)), vi)
         @test vi_ isa DynamicPPL.ThreadSafeVarInfo

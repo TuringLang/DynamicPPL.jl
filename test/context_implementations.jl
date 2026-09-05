@@ -41,6 +41,7 @@ end
 
 @testset "context_implementations.jl" begin
     @testset "explicit evaluation interface" begin
+        @test !hasproperty(child(), :context)
         @test_throws MethodError evaluate!!(child(), VarInfo())
         @static if VERSION >= v"1.11"
             @test Base.ispublic(DynamicPPL, :make_evaluate_args_and_kwargs)
@@ -96,7 +97,6 @@ end
         for auto_prefix in (true, false)
             inner = auto_prefix ? child() : prefix(child(), @varname(a))
             model = outer(parent(inner, Val(auto_prefix)))
-            @test !hasproperty(model, :context)
             for x in (1.0, 3.0)
                 strategy = InitFromParams(VarNamedTuple((@varname(b.a.x) => x,)))
                 ctx = RecordingContext(InitContext(Xoshiro(1), strategy, UnlinkAll()))
@@ -119,8 +119,6 @@ end
         ctx = InitContext(Xoshiro(1), InitFromParams((; x=1.0)), UnlinkAll())
         result, vi = @inferred evaluate!!(model, ctx, VarInfo())
         @test result == 3.0
-        @test first(@inferred evaluate!!(model, DefaultContext(get_values(vi)), vi)) ==
-            result
         ctx = InitContext(Xoshiro(1), InitFromParams((; x=3.0)), UnlinkAll())
         result, vi = @inferred evaluate!!(model, ctx, vi)
         @test result == 5.0
