@@ -102,17 +102,15 @@ for model evaluation. See the docstring of `get_param_eltype` for more informati
 this. For accumulators that wrap `VarNamedTuple`s, thread safety is accomplished by removing
 the VNT type parameter from its type.
 """
-function ThreadSafeVarInfo(varinfo::AbstractVarInfo, param_eltype::Type{T}) where {T}
-    # The below line is finicky for type stability. For instance, assigning the eltype to
-    # convert to into an intermediate variable makes this unstable (constant propagation
-    # fails). Take care when editing.
+function ThreadSafeVarInfo(varinfo::AbstractVarInfo, ::Type{T}) where {T}
+    # Capturing a runtime type loses accumulator inference on Julia 1.10; use static T.
     accs = map(DynamicPPL.getaccs(varinfo)) do acc
         DynamicPPL.promote_for_threadsafe_eval(
             acc,
-            if param_eltype === Any || param_eltype === Union{}
+            if T === Any || T === Union{}
                 Any
             else
-                float_type_with_fallback(param_eltype)
+                float_type_with_fallback(T)
             end,
         )
     end
