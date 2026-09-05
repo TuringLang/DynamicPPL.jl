@@ -136,7 +136,7 @@ Here, `rand(2, 2)` is the template for the top-level symbol `x`, which tells `se
 that `x` should be a `PartialArray` that is backed by a matrix.
 
 The actual data inside `template` is not needed, and `template` is never mutated by this
-call.
+call. For nested indexing, intermediate containers in `template` must be initialised.
 """
 function templated_setindex!!(vnt::VarNamedTuple, value, vn::VarName, template)
     return _setindex_optic!!(

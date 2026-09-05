@@ -687,6 +687,16 @@ end
         vnt = VarNamedTuple()
         vnt = @inferred(templated_setindex!!(vnt, 1, @varname(a[1][1]), [[randn()]]))
         @test @inferred(getindex(vnt, @varname(a[1][1]))) == 1
+        vnt = @inferred(templated_setindex!!(vnt, 2, @varname(a[1][1]), [[0]]))
+        @test vnt[@varname(a[1][1])] == 2
+        @test_throws UndefRefError templated_setindex!!(
+            vnt, 3, @varname(a[1][1]), Vector{Vector{Int}}(undef, 1)
+        )
+        template = [(; data=zeros(2))]
+        vn = @varname(nested[1].data[:])
+        vnt = @inferred(templated_setindex!!(vnt, SizedThing((2,)), vn, template))
+        vnt = @inferred(templated_setindex!!(vnt, SizedThing((2,)), vn, template))
+        @test vnt[vn] == SizedThing((2,))
         vnt = @inferred(templated_setindex!!(vnt, 1, @varname(ab[1:2][1]), randn(2)))
         @test @inferred(getindex(vnt, @varname(ab[1]))) == 1
         @test @inferred(getindex(vnt, @varname(ab[1:2][1]))) == 1

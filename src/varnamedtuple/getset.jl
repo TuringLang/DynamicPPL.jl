@@ -222,7 +222,7 @@ function _setindex_optic!!(
         # Skip recursion
         value
     else
-        child_template = maybe_index_template(template, coptic)
+        child_template = index_template(template, coptic)
 
         # TODO(penelopeysm): This check to haskey() will check *all* the indices, it only
         # returns true if they are all filled. This is probably not really correct, and is
