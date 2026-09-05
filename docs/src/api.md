@@ -202,7 +202,6 @@ extract_priors
 filldist
 arraydist
 independent_distribution
-NamedDist
 ```
 
 ## Distributions

@@ -1,5 +1,7 @@
 # Unreleased
 
+Removed `NamedDist` and distribution-driven site renaming. Replace `x ~ NamedDist(dist, :y)` with `y ~ dist`, followed by `x = y` if a local alias is needed.
+
 Model arguments now supply default conditioned values: `f(data)` remains equivalent to `condition(f(data); x=data)` for an argument `x`. `decondition` removes these observations, and `condition` replaces or restores them; subsequent model statements use the replacement or sampled value.
 
 `missing` no longer selects latent sites in model arguments, `condition`, `fix`, or `InitFromParams`. Use `decondition(f(template), :x)` instead of `f(missing)`. Omit absent initial parameters; use indexed `VarName` keys to condition separate scalar sites. Chain entries may still be `missing` when a site was absent from an execution.

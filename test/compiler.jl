@@ -392,27 +392,13 @@ end
         @test getlogjoint(varinfo) == lp
     end
 
-    @testset "user-defined variable name" begin
-        @model f1() = x ~ NamedDist(Normal(), :y)
-        @model f2() = x ~ NamedDist(Normal(), @varname(z))
-        @model f3() = x ~ NamedDist(Normal(), @varname(w.x))
-        vi1 = VarInfo(f1())
-        vi2 = VarInfo(f2())
-        vi3 = VarInfo(f3())
-        @test only(Base.keys(vi1)) == @varname(y)
-        @test only(Base.keys(vi2)) == @varname(z)
-        @test only(Base.keys(vi3)) == @varname(w.x)
-
-        # Conditioning
-        f1_c = f1() | (y=1,)
-        f2_c = f2() | Dict(@varname(z) => 1)
-        f3_c = f3() | Dict(@varname(w.x) => 1)
-        @test f1_c() == 1
-        @test f2_c() == 1
-        @test f3_c() == 1
-        @test getlogjoint(VarInfo(f1_c)) ==
-            getlogjoint(VarInfo(f2_c)) ==
-            getlogjoint(VarInfo(f3_c))
+    @testset "tilde names follow the left-hand side" begin
+        @test !isdefined(DynamicPPL, :NamedDist)
+        @model named_site() = (y ~ Normal(); x = y; return x)
+        @test only(keys(VarInfo(named_site()))) == @varname(y)
+        observed = condition(named_site(); y=2.0)
+        @test observed() == 2.0
+        @test loglikelihood(observed, VarNamedTuple()) == logpdf(Normal(), 2.0)
     end
 
     @testset "custom tilde" begin

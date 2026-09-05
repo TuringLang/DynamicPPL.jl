@@ -86,60 +86,6 @@ function check_dot_tilde_rhs(::AbstractArray{<:Distribution})
 end
 check_dot_tilde_rhs(x::UnivariateDistribution) = x
 
-"""
-    unwrap_right_vn(right, vn)
-
-Return the unwrapped distribution on the right-hand side and variable name on the left-hand
-side of a `~` expression such as `x ~ Normal()`.
-
-This is used mainly to unwrap `NamedDist` distributions.
-"""
-unwrap_right_vn(right, vn) = right, vn
-unwrap_right_vn(right::NamedDist, vn) = unwrap_right_vn(right.dist, right.name)
-
-"""
-    unwrap_right_left_vns(right, left, vns)
-
-Return the unwrapped distributions on the right-hand side and values and variable names on the
-left-hand side of a `.~` expression such as `x .~ Normal()`.
-
-This is used mainly to unwrap `NamedDist` distributions and adjust the indices of the
-variables.
-
-# Example
-```jldoctest; setup=:(using Distributions, LinearAlgebra)
-julia> _, _, vns = DynamicPPL.unwrap_right_left_vns(Normal(), randn(1, 2), @varname(x)); vns[end]
-x[1, 2]
-
-julia> _, _, vns = DynamicPPL.unwrap_right_left_vns(Normal(), randn(1, 2), @varname(x[:])); vns[end]
-x[:][1, 2]
-
-julia> _, _, vns = DynamicPPL.unwrap_right_left_vns(Normal(), randn(3), @varname(x[1])); vns[end]
-x[1][3]
-```
-"""
-unwrap_right_left_vns(right, left, vns) = right, left, vns
-function unwrap_right_left_vns(right::NamedDist, left::AbstractArray, ::VarName)
-    return unwrap_right_left_vns(right.dist, left, right.name)
-end
-function unwrap_right_left_vns(right::NamedDist, left::AbstractMatrix, ::VarName)
-    return unwrap_right_left_vns(right.dist, left, right.name)
-end
-function unwrap_right_left_vns(
-    right::Union{Distribution,AbstractArray{<:Distribution}},
-    left::AbstractArray,
-    vn::VarName,
-)
-    vns = map(CartesianIndices(left)) do i
-        sym, optic = getsym(vn), getoptic(vn)
-        return VarName{sym}(AbstractPPL.Index(Tuple(i), (;), AbstractPPL.Iden()) ∘ optic)
-    end
-    return unwrap_right_left_vns(right, left, vns)
-end
-
-resolve_varnames(vn::VarName, _) = vn
-resolve_varnames(::VarName, dist::NamedDist) = dist.name
-
 #################
 # Main Compiler #
 #################
@@ -414,7 +360,7 @@ function generate_tilde(left, right)
 
     return quote
         $dist = $right
-        $vn = $(DynamicPPL.resolve_varnames)($(make_varname_expression(left)), $dist)
+        $vn = $(make_varname_expression(left))
         $binding = if $dist isa $(DynamicPPL.Submodel)
             nothing
         else
@@ -470,7 +416,8 @@ function generate_tilde_assume(left, right, vn)
         $value, __varinfo__ = $(DynamicPPL.tilde_assume!!)(
             __model__,
             __context__,
-            $(DynamicPPL.unwrap_right_vn)($(DynamicPPL.check_tilde_rhs)($right), $vn)...,
+            $(DynamicPPL.check_tilde_rhs)($right),
+            $vn,
             $template,
             __varinfo__,
         )

@@ -182,7 +182,6 @@ export AbstractVarInfo,
     invlink,
     invlink!!,
     # Pseudo distributions
-    NamedDist,
     NoDist,
     filldist,
     arraydist,
