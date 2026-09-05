@@ -1,26 +1,26 @@
 # Unreleased
 
-Removed `NamedDist` and distribution-driven site renaming. Replace `x ~ NamedDist(dist, :y)` with `y ~ dist`, followed by `x = y` if a local alias is needed.
+Removed `NamedDist` and distribution-driven site renaming. Replace `x ~ NamedDist(Normal(), :y)` with `y ~ Normal(); x = y`. The stochastic variable is `y`; `x` is a local alias.
 
-Model arguments now supply default conditioned values: `f(data)` remains equivalent to `condition(f(data); x=data)` for an argument `x`. `decondition` removes these observations, and `condition` replaces or restores them; subsequent model statements use the replacement or sampled value.
+Arguments supply default observations: for `@model f(x) = x ~ Normal()`, `f(2.0)` observes 2.0. `decondition(f(2.0), :x)` makes `x` latent; `condition(f(2.0); x=3.0)` replaces the observation. Complete replacements are available before the body runs; later statements use the computed or sampled value.
 
-Observation sites preserve computations on prepared arguments, including partial bindings; successive nested-array overrides retain their original shape.
+Observation sites preserve argument computations, including partial bindings: starting with `x=1`, `x=x+1; x~Normal()` observes 2. For a 2×2 matrix `x` of vectors, successive overrides of `x[1][1]` and `x[2][1]` retain the matrix’s shape; the second index selects a vector element.
 
-Partial overrides retain replacement record types and tuple structure; observation-role lookup no longer copies supplied slices.
+Partial overrides preserve replacement records and tuples: after replacing `x=(a=0,)` with `(a=1,b=2)`, changing `x.a` retains `b=2` and the replacement’s type. Fixing `x[1]` to 3 in `(1,2)` yields `(3,2)`. Observation-role lookup for `x[:]` avoids copying the slice merely to decide whether it is observed.
 
-`missing` no longer selects latent sites in model arguments, `condition`, `fix`, or `InitFromParams`. Use `decondition(f(template), :x)` instead of `f(missing)`. Omit absent initial parameters; use indexed `VarName` keys to condition separate scalar sites. Chain entries may still be `missing` when a site was absent from an execution.
+`missing` no longer selects latent variables in arguments, `condition`, `fix`, or `InitFromParams`. Replace `f(missing)` with `decondition(f(template), :x)`, where `template` supplies storage of the required shape; omit unavailable initial parameters. Use indexed conditioning for separate scalar sites. Missing chain cells still represent absent sites. See [#1464](https://github.com/TuringLang/DynamicPPL.jl/issues/1464).
 
-Removed parent contexts, their traversal APIs, and `Model.context`. Replace `contextualize(model, context)` and `setleafcontext(model, context)` followed by evaluation with `evaluate!!(model, context, varinfo)`; the two-argument `evaluate!!(model, varinfo)` is also removed. Replace `conditioned(model.context)` / `fixed(model.context)` with `conditioned(model)` / `fixed(model)`. `AbstractContext`, latent-value evaluation hooks, and the existing `VarInfo` types remain available.
+Removed parent contexts, traversal APIs, and `Model.context`. Replace `contextualize`/`setleafcontext` plus evaluation, or `evaluate!!(m, vi)`, with `evaluate!!(m, ctx, vi)`. Replace `conditioned(m.context)`/`fixed(m.context)` with `conditioned(m)`/`fixed(m)`. `AbstractContext`, latent hooks, and `VarInfo` remain; the broader context redesign in [#895](https://github.com/TuringLang/DynamicPPL.jl/issues/895) is incomplete.
 
-Removed context dispatch from observations and tracked assignments. Replace observation-context hooks with `accumulate_observe!!` methods on accumulators. `tilde_observe!!(model, dist, value, vn, template, vi)` and `store_coloneq_value!!(model, vn, value, template, vi)` no longer take a context.
+Observation and tracking hooks no longer dispatch on context. With supplied `y`, `y ~ Normal(x); z := x+y` scores `y` and records `z` through accumulators when requested. Literal observations follow the same path. Pass a model instead of a context to `tilde_observe!!`/`store_coloneq_value!!`; customize `accumulate_observe!!` on accumulators.
 
-`DefaultContext` now takes a `VarNamedTuple` of vectorised `TransformedValue`s. Replace `evaluate!!(model, DefaultContext(), vi)` with `evaluate!!(model, DefaultContext(get_values(vi)), outputs)`; `outputs` may be an independent `VarInfo` or `OnlyAccsVarInfo`. Custom contexts implement `get_param_eltype(context)` instead of `get_param_eltype(varinfo, context)`.
+Latent inputs now belong to `DefaultContext`: `evaluate!!(m, DefaultContext(get_values(previous)), OnlyAccsVarInfo())` reads latent values from a previous `VarInfo` and returns `(retval, outputs)`. Inputs must be vectorised `TransformedValue`s in a `VarNamedTuple`; output storage no longer supplies them. Custom contexts implement `get_param_eltype(ctx)`, replacing `get_param_eltype(vi, ctx)`.
 
-Conditioning and fixing now share precedence: the later operation, or the parent model at a submodel boundary, determines both value and role; partial overrides preserve untouched siblings.
+Argument observations have lowest precedence; later operations replace value and role: `condition(fix(m; x=1); x=2)` observes 2; `fix(condition(m; x=2); x=1)` fixes 1 without scoring it. Parent bindings override child bindings, regardless of role. Updating `x[1]` preserves untouched `x[2]`. See [#1012](https://github.com/TuringLang/DynamicPPL.jl/issues/1012).
 
-Submodel traces now preserve parent array templates, including mixed linear and Cartesian indexing.
+Submodel traces preserve parent templates: with 2×2 `a`, calls at `a[1]` and `a[2,2]` retain a 2×2 trace container, while a child’s 2×3 `x` retains its own shape. This addresses template loss in [#1221](https://github.com/TuringLang/DynamicPPL.jl/issues/1221); independent submodel evaluation remains unimplemented.
 
-Condition submodels through their internal variable names; conditioning an automatically prefixed submodel's return value now errors. Decondition arguments used only as return-value buffers.
+For `a ~ to_submodel(child())`, where `child` samples `x ~ Normal()` and returns `2x`, condition `@varname(a.x)` to 1, yielding 2. Conditioning `a` errors: it names the return value, not a stochastic variable. If argument `a` only provides return-value storage, use `decondition(parent(buffer), :a)`.
 
 # 0.42.11
 
