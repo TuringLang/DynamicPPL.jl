@@ -18,6 +18,8 @@ Condition submodels through their internal variable names; conditioning an autom
 
 # 0.42.11
 
+Partial-array merges now expand growable storage when the other array has a template, including for matrices and higher-dimensional arrays. See [#1482](https://github.com/TuringLang/DynamicPPL.jl/pull/1482).
+
 Stan programs can now be embedded as distributions in DynamicPPL models when BridgeStan is loaded, with ForwardDiff and Mooncake support. See [#1478](https://github.com/TuringLang/DynamicPPL.jl/pull/1478).
 
 # 0.42.10
