@@ -29,7 +29,42 @@ end
 @model t2844_outer() = (b ~ to_submodel(t2844_middle()); return (; x=b.x))
 @model t2844_deeper() = (c ~ to_submodel(t2844_outer()); return (; x=c.x))
 
+@model indexed_observation(y, mu) = y ~ Normal(mu, 1)
+@model function indexed_observations(y)
+    mu ~ Normal()
+    x = similar(y)
+    for i in eachindex(y)
+        x[i] ~ to_submodel(indexed_observation(y[i], mu))
+    end
+    return x
+end
+@model nested_observations(y) = a ~ to_submodel(indexed_observations(y))
+
 @testset "submodels.jl" begin
+    @testset "indexed child bindings stay local" begin
+        for n in (1_000, 2_000)
+            model = indexed_observations(zeros(n))
+            params = (; mu=0.25)
+            @test logjoint(model, params) ≈
+                logpdf(Normal(), params.mu) + n * logpdf(Normal(params.mu, 1), 0)
+            @test (@allocated logjoint(model, params)) < 64n
+        end
+
+        model = nested_observations(zeros(2))
+        model = condition(model, @varname(a.x[1].y) => 2.0)
+        model = fix(model, @varname(a.x[2].y) => 3.0)
+        params = mu -> VarNamedTuple(; a=VarNamedTuple(; mu))
+        density = mu -> logjoint(model, params(mu))
+        @test density(0.25) ≈ logpdf(Normal(), 0.25) + logpdf(Normal(0.25, 1), 2.0)
+        @test ForwardDiff.derivative(density, 0.25) ≈ 1.5
+        result, vi = init!!(model, VarInfo(), InitFromParams(params(0.25), nothing))
+        @test result == [2.0, 3.0]
+        @test getlogjoint(vi) ≈ density(0.25)
+        likelihoods = pointwise_loglikelihoods(model, InitFromParams(params(0.25), nothing))
+        @test keys(likelihoods) == [@varname(a.x[1].y)]
+        @test size(likelihoods.data.a.data.x) == (2,)
+    end
+
     @testset "dynamic prefixes with stored observations" begin
         @model observed_child(x=2.0) = x ~ Normal()
         @model function dynamic_parent(child)
@@ -49,6 +84,10 @@ end
             @test logjoint(model, VarNamedTuple()) ==
                 (op === condition ? 2 * logpdf(Normal(), 2.0) : 0.0)
             vn = parent === dynamic_parent ? @varname(a[2, 3].x) : @varname(b.a[2, 3].x)
+            if op === condition
+                likelihoods = pointwise_loglikelihoods(model, InitFromPrior())
+                @test likelihoods[vn] == logpdf(Normal(), 2.0)
+            end
             changed = condition(model, vn => 3.0)
             @test changed() == [2.0 0.0 0.0; 0.0 0.0 3.0]
 

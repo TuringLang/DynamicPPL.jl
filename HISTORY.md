@@ -1,5 +1,7 @@
 # Unreleased
 
+Indexed submodels keep child bindings local: `x[i] ~ to_submodel(child(y[i]))` no longer allocates an entire `x`-sized binding array for each child. Parent overrides, prefixes, and output templates are preserved.
+
 `LogDensityFunction(model; rng)` uses the supplied RNG for construction and evaluation. Inside a model, `rand(__context__.rng, ...)` advances it; ordinary `~` sites read the parameter vector during density evaluation. Stochastic densities still require inference and AD methods that support them. See [#721](https://github.com/TuringLang/DynamicPPL.jl/issues/721).
 
 Removed `NamedDist` and distribution-driven site renaming. Replace `x ~ NamedDist(Normal(), :y)` with `y ~ Normal(); x = y`. The stochastic variable is `y`; `x` is a local alias.

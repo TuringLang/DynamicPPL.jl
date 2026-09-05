@@ -171,11 +171,15 @@ function _submodel_namespace(::Union{ModelValue,ModelValueTree})
     )
 end
 
-_submodel_values(values::VarNamedTuple, ::Nothing, template) = values
-function _submodel_values(values::VarNamedTuple, prefix::VarName, template)
+function _submodel_values(model::Model, prefix)
+    prefix = _model_value_varname(model.values, prefix, model.prefix)
+    return _submodel_values(_model_values(model.values), prefix)
+end
+_submodel_values(values::VarNamedTuple, ::Nothing) = values
+function _submodel_values(values::VarNamedTuple, prefix::VarName)
     binding = _model_argument_binding(values, AbstractPPL.varname_to_optic(prefix))
     binding === nothing && return VarNamedTuple()
-    return _prefix_values(_submodel_namespace(binding), prefix, template)
+    return _submodel_namespace(binding)
 end
 
 """
@@ -198,17 +202,30 @@ function tilde_assume!!(
     template,
     vi::AbstractVarInfo,
 ) where {M<:Model,AutoPrefix}
+    left_vn = AutoPrefix ? _concretize_prefix(left_vn, template) : left_vn
+    local_prefix = if AutoPrefix
+        maybe_prefix(submodel.model.prefix, left_vn)
+    else
+        submodel.model.prefix
+    end
+    values = LocalModelValues(
+        _merge_model_values(
+            _submodel_values(submodel.model, nothing),
+            _submodel_values(parent_model, local_prefix),
+        ),
+    )
     parent_prefix = parent_model.prefix
     model = if AutoPrefix
         vn, template = _prefix_varname_and_template(left_vn, template, parent_model)
-        prefix(submodel.model, vn; template)
+        _prefix_model(submodel.model, vn, template, values)
     elseif parent_prefix === nothing
-        submodel.model
+        _reconstruct_model(submodel.model; values)
     else
-        model = prefix(
+        model = _prefix_model(
             submodel.model,
-            parent_prefix;
-            template=_apply_prefix_template(parent_model.prefix_template, NoTemplate()),
+            parent_prefix,
+            _apply_prefix_template(parent_model.prefix_template, NoTemplate()),
+            values,
         )
         if parent_model.prefix_template === nothing
             model
@@ -222,16 +239,6 @@ function tilde_assume!!(
             _reconstruct_model(model; prefix_template)
         end
     end
-    values = _merge_model_values(
-        model.values,
-        _submodel_values(
-            parent_model.values,
-            model.prefix,
-            _apply_prefix_template(model.prefix_template, NoTemplate()),
-        ),
-    )
-    model = _reconstruct_model(model; values)
-
     # Calling model.f directly avoids the inference recursion limit as nested prefixes
     # change the Model type; routing through _evaluate!! widens it to Any (Turing.jl#2844).
     args, kwargs = make_evaluate_args_and_kwargs(model, context, vi)

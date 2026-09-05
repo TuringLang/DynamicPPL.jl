@@ -365,28 +365,25 @@ function generate_tilde(left, right; is_argument=false)
         get_top_level_symbol(left)
     end
 
-    @gensym vn role value dist supplied_val prefixed_vn
+    @gensym vn role value dist supplied_val
     lookup_role = if is_argument
         :($(DynamicPPL._get_argument_role)(
-            __model__, $prefixed_vn, $(VarName{get_top_level_symbol(left)}())
+            __model__, $vn, $(VarName{get_top_level_symbol(left)}())
         ))
     else
-        :($(DynamicPPL._get_model_role)(__model__, $prefixed_vn))
+        :($(DynamicPPL._get_model_role)(__model__, $vn))
     end
 
     return quote
         $dist = $right
         $vn = $(make_varname_expression(left))
-        $prefixed_vn = $(DynamicPPL.maybe_prefix)($vn, __model__.prefix)
         $role = if $dist isa $(DynamicPPL.Submodel)
             nothing
         else
             $lookup_role
         end
         if $role isa $(DynamicPPL.Fix)
-            $(assign_or_set!!(
-                left, :($(DynamicPPL._get_model_data)(__model__, $prefixed_vn)), vn
-            ))
+            $(assign_or_set!!(left, :($(DynamicPPL._get_model_data)(__model__, $vn)), vn))
         elseif $role === nothing
             $(generate_tilde_assume(left, dist, vn))
         else
@@ -394,7 +391,7 @@ function generate_tilde(left, right; is_argument=false)
                 if is_argument
                     left
                 else
-                    :($(DynamicPPL._get_model_data)(__model__, $prefixed_vn))
+                    :($(DynamicPPL._get_model_data)(__model__, $vn))
                 end
             )
 
@@ -680,8 +677,10 @@ function build_output(modeldef, linenumbernode, sites)
 end
 
 function prepare_model_argument(model::Model, vn::VarName, value)
-    vn = maybe_prefix(vn, model.prefix)
-    binding = _model_argument_binding(model.values, AbstractPPL.varname_to_optic(vn))
+    vn = _model_value_varname(model.values, vn, model.prefix)
+    binding = _model_argument_binding(
+        _model_values(model.values), AbstractPPL.varname_to_optic(vn)
+    )
     return _model_argument_value(binding, value)
 end
 

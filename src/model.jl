@@ -33,6 +33,15 @@ end
 
 struct NoModelBinding end
 
+# Evaluation-local bindings avoid expanding each child into its parent's storage shape.
+struct LocalModelValues{V<:VarNamedTuple}
+    values::V
+end
+_model_values(values::VarNamedTuple) = values
+_model_values(values::LocalModelValues) = values.values
+_model_value_varname(::VarNamedTuple, vn, prefix) = maybe_prefix(vn, prefix)
+_model_value_varname(::LocalModelValues, vn, prefix) = vn
+
 # Partial bindings retain the container from which their fields or tuple elements came.
 struct ModelValueTree{T,V<:Union{VarNamedTuple,Tuple}}
     template::T
@@ -142,16 +151,20 @@ function _model_role_at(values::VarNamedTuples.PartialArray, optic::AbstractPPL.
     return _model_role_at(getindex(values.data, optic.ix...; optic.kw...), optic.child, vn)
 end
 function _get_model_role(model, vn)
-    return _model_role_at(model.values, AbstractPPL.varname_to_optic(vn), vn)
+    vn = _model_value_varname(model.values, vn, model.prefix)
+    return _model_role_at(_model_values(model.values), AbstractPPL.varname_to_optic(vn), vn)
 end
 function _get_argument_role(model, vn, argument)
-    argument = maybe_prefix(argument, model.prefix)
-    binding = _model_argument_binding(model.values, AbstractPPL.varname_to_optic(argument))
+    argument = _model_value_varname(model.values, argument, model.prefix)
+    binding = _model_argument_binding(
+        _model_values(model.values), AbstractPPL.varname_to_optic(argument)
+    )
     # A whole argument keeps its role when body computations change its shape or fields.
     return binding isa ModelValue ? _model_role(binding, vn) : _get_model_role(model, vn)
 end
 function _get_model_data(model, vn)
-    return _model_data(VarNamedTuples._getindex_optic(model.values, vn))
+    vn = _model_value_varname(model.values, vn, model.prefix)
+    return _model_data(VarNamedTuples._getindex_optic(_model_values(model.values), vn))
 end
 
 function _tag_model_values(::Type{R}, values::VarNamedTuple) where {R}
@@ -653,7 +666,7 @@ end
         Tdefaults,
         Prefix<:Union{VarName,Nothing},
         PrefixTemplate,
-        Values<:VarNamedTuple,
+        Values<:Union{VarNamedTuple,LocalModelValues},
         Threaded,
     }
         f::F
@@ -701,7 +714,7 @@ struct Model{
     Tdefaults,
     Prefix<:Union{VarName,Nothing},
     PT,
-    Values<:VarNamedTuple,
+    Values<:Union{VarNamedTuple,LocalModelValues},
     Threaded,
 } <: AbstractProbabilisticProgram
     f::F
@@ -719,8 +732,9 @@ struct Model{
         values::Values=_tag_model_values(Condition, VarNamedTuple(merge(args, defaults))),
         prefix_template::PT=nothing,
     ) where {F,argnames,Targs,defaultnames,Tdefaults,Prefix,PT,Values,Threaded}
-        mapreduce(pair -> pair.second isa ModelValue, &, values; init=true) ||
-            throw(ArgumentError("Model values must carry a condition or fix role"))
+        mapreduce(
+            pair -> pair.second isa ModelValue, &, _model_values(values); init=true
+        ) || throw(ArgumentError("Model values must carry a condition or fix role"))
         return new{F,argnames,defaultnames,Targs,Tdefaults,Prefix,PT,Values,Threaded}(
             f, args, defaults, prefix, prefix_template, values
         )
@@ -757,7 +771,7 @@ end
 function _reconstruct_model(
     model::Model{F,A,D,Ta,Td,P,PT,V,Threaded};
     prefix::Union{VarName,Nothing}=model.prefix,
-    values::VarNamedTuple=model.values,
+    values::Union{VarNamedTuple,LocalModelValues}=model.values,
     prefix_template=model.prefix_template,
 ) where {F,A,D,Ta,Td,P,PT,V,Threaded}
     return Model{Threaded}(
@@ -1399,6 +1413,7 @@ function _concretize_prefix(optic::AbstractPPL.Index, template)
 end
 
 maybe_prefix(vn::VarName, ::Nothing) = vn
+maybe_prefix(::Nothing, ::Nothing) = nothing
 maybe_prefix(::Nothing, prefix::VarName) = prefix
 maybe_prefix(vn::VarName, prefix::VarName) = AbstractPPL.prefix(vn, prefix)
 
@@ -1438,8 +1453,11 @@ VarNamedTuple
 """
 function prefix(model::Model, x::VarName; template=NoTemplate())
     x = _concretize_prefix(x, template)
-    model_prefix = maybe_prefix(model.prefix, x)
     values = _prefix_values(model.values, x, template)
+    return _prefix_model(model, x, template, values)
+end
+function _prefix_model(model::Model, x::VarName, template, values)
+    model_prefix = maybe_prefix(model.prefix, x)
     prefix_template = if template isa NoTemplate && model.prefix_template === nothing
         nothing
     else
