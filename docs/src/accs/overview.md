@@ -102,15 +102,15 @@ end
 In this implementation, our `accumulate_...!!` methods actually mutate the accumulator in place.
 This is not mandatory; you can return a new accumulator if you prefer an immutable style.
 
-To use this accumulator in a model evaluation, we need to wrap it in an `OnlyAccsVarInfo`.
+To use this accumulator in a model evaluation, we need to wrap it in a `VarInfo`.
 
-!!! note "OnlyAccsVarInfo"
+!!! note "VarInfo"
     
-    As described on the [Model evaluation](../evaluation.md) page, an `OnlyAccsVarInfo` is just a wrapper around a set of accumulators.
+    As described on the [Model evaluation](../evaluation.md) page, a `VarInfo` is just a wrapper around a set of accumulators.
     Don't worry about the name; it's mostly a historical artifact.
 
 We can either do this by creating it from scratch, or by modifying an existing one (see the next section for details).
-In this example, we'll create an `OnlyAccsVarInfo` from scratch using only our new accumulator.
+In this example, we'll create a `VarInfo` from scratch using only our new accumulator.
 Once we've evaluated the model, we can access the accumulated log-densities by reading it back from the accumulator:
 
 ```@example 1
@@ -120,7 +120,7 @@ Once we've evaluated the model, we can access the accumulated log-densities by r
 end
 model = f(2.0)
 
-accs = DynamicPPL.OnlyAccsVarInfo(VarNameLogpAccumulator())
+accs = DynamicPPL.VarInfo(VarNameLogpAccumulator())
 _, accs = DynamicPPL.init!!(model, accs, InitFromParams((; x=1.0)), UnlinkAll())
 
 # This is why we used a const.
@@ -141,24 +141,24 @@ output_acc.logps[@varname(y)] == (true, logpdf(Normal(1.0), 2.0))
 
 (Notice that because here we used an `OrderedDict`, the accumulation process is not commutative.)
 
-## Working with `OnlyAccsVarInfo`
+## Working with `VarInfo`
 
 As shown above, users can choose exactly which accumulators to use during model evaluation in order to control what information is collected.
 This section explains how to specify which accumulators to use, and how to extract the information again afterwards.
 
-When creating an `OnlyAccsVarInfo`, if no accumulators are specified, there is a set of _default accumulators_ that are used:
+When creating a `VarInfo`, if no accumulators are specified, there is a set of _default accumulators_ that are used:
 
 ```@example 1
-OnlyAccsVarInfo()
+VarInfo()
 ```
 
-As alluded to above, one can control this by passing the accumulators to the `OnlyAccsVarInfo` constructor:
+As alluded to above, one can control this by passing the accumulators to the `VarInfo` constructor:
 
 ```@example 1
-accs = OnlyAccsVarInfo(LogLikelihoodAccumulator())
+accs = VarInfo(LogLikelihoodAccumulator())
 ```
 
-If you then use this `OnlyAccsVarInfo` to evaluate a model, only the specified accumulators will be used.
+If you then use this `VarInfo` to evaluate a model, only the specified accumulators will be used.
 
 ```@example 1
 @model function demo_likelihood()
@@ -170,12 +170,12 @@ _, new_accs = init!!(model, accs, InitFromPrior(), UnlinkAll())
 new_accs
 ```
 
-Instead of creating an `OnlyAccsVarInfo` from scratch, one can also add accumulators to an existing `OnlyAccsVarInfo` using [`setacc!!`](@ref) and [`setaccs!!`](@ref).
+Instead of creating a `VarInfo` from scratch, one can also add accumulators to an existing `VarInfo` using [`setacc!!`](@ref) and [`setaccs!!`](@ref).
 Note that these functions have very similar names!
 `setacc!!` adds a single accumulator, while `setaccs!!` replaces the entire set of accumulators with a new set.
 
 ```@example 1
-accs = OnlyAccsVarInfo()
+accs = VarInfo()
 # Add a new accumulator
 accs = setacc!!(accs, RawValueAccumulator(false))
 ```
@@ -195,7 +195,7 @@ It takes a tuple of accumulators as input.
 
 ```@example 1
 # This will create a set of default accumulators.
-accs = OnlyAccsVarInfo()
+accs = VarInfo()
 ```
 
 ```@example 1
@@ -213,8 +213,8 @@ _, accs = init!!(model, accs, InitFromPrior(), UnlinkAll())
 raw_values = getacc(accs, Val(accumulator_name(new_acc))).values
 ```
 
-There are convenience functions [`getlogprior`](@ref), [`getloglikelihood`](@ref), [`getlogprior`](@ref), and [`get_raw_values`](@ref) that extract the corresponding accumulators' wrapped values directly from the `OnlyAccsVarInfo`.
-Note that these functions will throw an error if the corresponding accumulator is not present in the `OnlyAccsVarInfo`.
+There are convenience functions [`getlogprior`](@ref), [`getloglikelihood`](@ref), [`getlogprior`](@ref), and [`get_raw_values`](@ref) that extract the corresponding accumulators' wrapped values directly from the `VarInfo`.
+Note that these functions will throw an error if the corresponding accumulator is not present in the `VarInfo`.
 
 ```@example 1
 get_raw_values(accs)

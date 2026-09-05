@@ -86,7 +86,7 @@ __now__ = now()
             return x
         end
         model = DynamicPPL.prefix(tracked_assignment(), @varname(a))
-        vi = OnlyAccsVarInfo((RawValueAccumulator(true),))
+        vi = VarInfo((RawValueAccumulator(true),))
         _, vi = init!!(model, vi, InitFromPrior(), UnlinkAll())
         values = get_raw_values(vi)
         @test values[@varname(a.x)] == 1.0
@@ -109,7 +109,7 @@ __now__ = now()
     @testset "evaluation: $(model.f)" for model in DynamicPPL.TestUtils.ALL_MODELS
         prefix_vn = @varname(my_prefix)
         prefixed_model = DynamicPPL.prefix(model, prefix_vn)
-        _, varinfo = DynamicPPL.init!!(prefixed_model, DynamicPPL.VarInfo())
+        _, varinfo = DynamicPPL.init!!(prefixed_model, VarInfo(VectorValueAccumulator()))
         actual = Set(keys(varinfo))
         expected = Set([
             AbstractPPL.prefix(vn, prefix_vn) for vn in DynamicPPL.TestUtils.varnames(model)

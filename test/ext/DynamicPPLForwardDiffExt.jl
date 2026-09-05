@@ -34,7 +34,7 @@ end
 end
 @model nested_input(y) = a ~ to_submodel(observed_input(y))
 
-@testset "DefaultContext parameter types come from inputs" begin
+@testset "Context parameter types come from inputs" begin
     for T in (Float32, Float64, BigFloat)
         y = T(2)
         x = T(0.5)
@@ -44,7 +44,14 @@ end
                 m = setthreadsafe(model, threaded)
                 function density(value)
                     values = VarNamedTuple((vn => TransformedValue([value], Unlink()),))
-                    _, output = evaluate!!(m, DefaultContext(values), OnlyAccsVarInfo())
+                    _, output = evaluate!!(
+                        m,
+                        Context(
+                            InitFromParams(values, nothing),
+                            DynamicPPL.infer_transform_strategy_from_values(values),
+                        ),
+                        VarInfo(),
+                    )
                     return getlogjoint(output)
                 end
                 @test ForwardDiff.derivative(density, x) ≈ y - 3x

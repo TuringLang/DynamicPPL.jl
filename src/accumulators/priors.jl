@@ -82,7 +82,7 @@ julia> length(extract_priors(rng, model)[@varname(x)])
 ```
 """
 function extract_priors(rng::Random.AbstractRNG, model::Model)
-    varinfo = OnlyAccsVarInfo((PriorDistributionAccumulator(),))
+    varinfo = VarInfo((PriorDistributionAccumulator(),))
     varinfo = last(init!!(rng, model, varinfo, InitFromPrior(), UnlinkAll()))
     return getacc(varinfo, Val(PRIOR_ACCNAME)).values
 end
@@ -97,8 +97,8 @@ This is done by evaluating the model at the values present in `varinfo`
 and recording the distributions that are present at each tilde statement.
 """
 function extract_priors(model::Model, varinfo::AbstractVarInfo)
-    oavi = OnlyAccsVarInfo((PriorDistributionAccumulator(),))
-    init_strategy = InitFromParams(varinfo.values, nothing)
+    oavi = VarInfo((PriorDistributionAccumulator(),))
+    init_strategy = InitFromParams(get_vector_values(varinfo), nothing)
     varinfo = last(init!!(model, oavi, init_strategy, UnlinkAll()))
     return getacc(varinfo, Val(PRIOR_ACCNAME)).values
 end

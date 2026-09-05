@@ -227,7 +227,7 @@ end
         @test getlogjoint(varinfo) == lp
         @test varinfo_ isa AbstractVarInfo
         @test model_ === model
-        @test context_ isa DynamicPPL.InitContext
+        @test context_ isa DynamicPPL.Context
         @test context_.rng isa Random.AbstractRNG
 
         # disable warnings
@@ -783,7 +783,7 @@ end
 
             # A `RawValueAccumulator` should preserve the combined values and their
             # provenance if `include_colon_eq` is set to `true`.
-            vi = OnlyAccsVarInfo((RawValueAccumulator(true),))
+            vi = VarInfo((RawValueAccumulator(true),))
             _, vi = init!!(model, vi, InitFromPrior(), UnlinkAll())
             values = get_raw_values(vi)
             parameter_values = get_parameter_values(vi)
@@ -796,7 +796,7 @@ end
 
             # And if include_colon_eq is set to `false`, then `values` should only contain
             # `x`.
-            vi = OnlyAccsVarInfo((RawValueAccumulator(false),))
+            vi = VarInfo((RawValueAccumulator(false),))
             _, vi = init!!(model, vi, InitFromPrior(), UnlinkAll())
             values = get_raw_values(vi)
             @test haskey(values, @varname(x))
@@ -821,7 +821,7 @@ end
         @test haskey(vnt, @varname(b.a.x))
         @test length(keys(vnt)) == 1
 
-        vi = OnlyAccsVarInfo((RawValueAccumulator(true),))
+        vi = VarInfo((RawValueAccumulator(true),))
         _, vi = init!!(model, vi, InitFromPrior(), UnlinkAll())
         values = get_raw_values(vi)
         colon_eq_values = get_colon_eq_values(vi)
@@ -884,7 +884,7 @@ end
             return data.x ~ Normal(m, 1.0)
         end
         data = (; x=5.0)
-        retval, vi = DynamicPPL.init!!(nt(data), VarInfo())
+        retval, vi = DynamicPPL.init!!(nt(data), VarInfo(VectorValueAccumulator()))
         @test retval == 5.0
         @test vi isa VarInfo
         @test only(DynamicPPL.getindex_internal(vi, @varname(m))) isa Real

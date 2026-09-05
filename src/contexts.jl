@@ -1,24 +1,10 @@
 """
-    DynamicPPL.tilde_assume!!(
-        context::AbstractContext,
-        right::Distribution,
-        vn::VarName,
-        template::Any,
-        vi::AbstractVarInfo
-    )::Tuple{Any,AbstractVarInfo}
+    tilde_assume!!(context::Context, dist::Distribution, vn::VarName, template, vi::AbstractVarInfo)
 
-Handle latent variables, excluding conditioned and fixed sites. Accumulate their log
-probability and return the sampled value and updated `vi`.
+Obtain a latent value from the context and accumulate its outputs.
 
-`vn` is the VarName on the left-hand side of the tilde statement.
-
-`template` is the value of the top-level symbol in `vn`.
-
-This function should return a tuple `(x, vi)`, where `x` is the sampled value (which must be
-untransformed, i.e., `insupport(right, x)` must be true!) and `vi` is the updated VarInfo.
+Return the model-space value and updated `vi`. The template describes the enclosing
+variable's storage. Extend `init` for custom value selection, or accumulator methods
+for custom output handling.
 """
-function tilde_assume!!(
-    context::AbstractContext, ::Distribution, ::VarName, ::Any, ::AbstractVarInfo
-)
-    return error("tilde_assume!! not implemented for context of type $(typeof(context))")
-end
+function tilde_assume!! end

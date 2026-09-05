@@ -64,15 +64,35 @@ end
             vi_unlinked = VarInfo(model)
             vi_linked = DynamicPPL.link!!(VarInfo(model), model)
             @test (
-                evaluate!!(model, DefaultContext(get_values(vi_unlinked)), vi_unlinked); true
+                evaluate!!(
+                    model,
+                    Context(
+                        InitFromParams(get_values(vi_unlinked), nothing),
+                        DynamicPPL.infer_transform_strategy_from_values(
+                            get_values(vi_unlinked)
+                        ),
+                    ),
+                    vi_unlinked,
+                );
+                true
             )
             @test (
-                evaluate!!(model, DefaultContext(get_values(vi_linked)), vi_linked); true
+                evaluate!!(
+                    model,
+                    Context(
+                        InitFromParams(get_values(vi_linked), nothing),
+                        DynamicPPL.infer_transform_strategy_from_values(
+                            get_values(vi_linked)
+                        ),
+                    ),
+                    vi_linked,
+                );
+                true
             )
 
-            ctx = InitContext(InitFromPrior(), UnlinkAll())
+            ctx = Context(InitFromPrior(), UnlinkAll())
             @test (evaluate!!(model, ctx, vi_unlinked); true)
-            ctx = InitContext(InitFromPrior(), LinkAll())
+            ctx = Context(InitFromPrior(), LinkAll())
             @test (evaluate!!(model, ctx, vi_linked); true)
         end
 

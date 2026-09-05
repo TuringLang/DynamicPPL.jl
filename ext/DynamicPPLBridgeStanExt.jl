@@ -524,7 +524,7 @@ function _stan_assume!!(distribution::StanDistribution, vn, template, vi, transf
 end
 
 function DynamicPPL.tilde_assume!!(
-    context::DynamicPPL.InitContext,
+    context::DynamicPPL.Context,
     distribution::StanDistribution,
     vn::DynamicPPL.VarName,
     template,
@@ -532,19 +532,6 @@ function DynamicPPL.tilde_assume!!(
 )
     transformed_value = DynamicPPL.init(context.rng, vn, distribution, context.strategy)
     transformed_value = _stan_fixed_value(distribution, transformed_value)
-    vi = DynamicPPL.setindex_with_dist!!(vi, transformed_value, distribution, vn, template)
-    return _stan_assume!!(distribution, vn, template, vi, transformed_value)
-end
-
-function DynamicPPL.tilde_assume!!(
-    context::DynamicPPL.DefaultContext,
-    distribution::StanDistribution,
-    vn::DynamicPPL.VarName,
-    template,
-    vi::DynamicPPL.AbstractVarInfo,
-)
-    transformed_value = DynamicPPL.get_transformed_value(context, vn)
-    vi = DynamicPPL.setindex_with_dist!!(vi, transformed_value, distribution, vn, template)
     return _stan_assume!!(distribution, vn, template, vi, transformed_value)
 end
 

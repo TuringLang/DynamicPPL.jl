@@ -127,7 +127,7 @@ function AbstractMCMC.to_samples(
 )
     # Run model once to get templates for parameters. Note that the chain may include
     # variables stored with `:=`, so we need to pick those up as well.
-    vi = DynamicPPL.OnlyAccsVarInfo((DynamicPPL.RawValueAccumulator(true),))
+    vi = DynamicPPL.VarInfo((DynamicPPL.RawValueAccumulator(true),))
     _, vi = DynamicPPL.init!!(model, vi, DynamicPPL.InitFromPrior(), DynamicPPL.UnlinkAll())
     template_vnt = DynamicPPL.get_raw_values(vi)
     # Now we can iterate over the chain
@@ -234,7 +234,7 @@ function reevaluate_with_chain(
     fallback::Union{DynamicPPL.AbstractInitStrategy,Nothing}=nothing,
 ) where {N}
     params_with_stats = AbstractMCMC.to_samples(DynamicPPL.ParamsWithStats, chain, model)
-    vi = DynamicPPL.OnlyAccsVarInfo(DynamicPPL.AccumulatorTuple(accs))
+    vi = DynamicPPL.VarInfo(DynamicPPL.AccumulatorTuple(accs))
     return map(params_with_stats) do ps
         DynamicPPL.init!!(
             rng,

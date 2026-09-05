@@ -50,11 +50,11 @@ As described on the [Model evaluation page](./evaluation.md), there are three st
  2. Transformation: figure out the untransformed (raw) value and the transformed value (where necessary); compute the relevant log-Jacobian.
  3. Accumulation: pass all the relevant information to the accumulators, which individually decide what to do with it.
 
-The method for `tilde_assume!!` (with `InitContext`) more or less implements this logic directly with three lines of code.
-At the time of writing, this is implemented in `src/contexts/init.jl`, and looks like:
+The method for `tilde_assume!!` (with `Context`) more or less implements this logic directly with three lines of code.
+The implementation in `src/contexts/init.jl` follows this structure:
 
 ```julia
-function DynamicPPL.tilde_assume!!(ctx::InitContext, dist, vn, template, vi)
+function DynamicPPL.tilde_assume!!(ctx::Context, dist, vn, template, vi)
     # 1. Initialisation
     init_tval = DynamicPPL.init(ctx.rng, vn, dist, ctx.strategy)
 
@@ -62,7 +62,6 @@ function DynamicPPL.tilde_assume!!(ctx::InitContext, dist, vn, template, vi)
     x, tval, logjac = apply_transform_strategy(ctx.transform_strategy, init_tval, vn, dist)
 
     # 3. Accumulation
-    vi = DynamicPPL.setindex_with_dist!!(vi, tval, dist, vn, template)
     vi = DynamicPPL.accumulate_assume!!(vi, x, tval, logjac, vn, dist, template)
     return x, vi
 end
@@ -77,13 +76,7 @@ bypass accumulation, and tracked assignments (`:=`) write directly to the raw-va
 
 In the following sections, we stick to the three sections of `tilde_assume!!`.
 
-!!! note "InitContext"
-    
-    You may have noticed that we specified that the method above is for `InitContext`.
-    Different contexts can overload `tilde_assume!!` to change how latent values are obtained and transformed.
-    
-    The reason why we recommend using `InitContext` (which `init!!` calls under the hood) is because it provides this framework for model evaluation that is both extensible and powerful.
-    You *can* short-circuit all of this and define your own custom context that has completely different behaviour, but that means that it is less compatible with the rest of DynamicPPL.
+Customise value selection by implementing an initialisation strategy, not by introducing another context type.
 
 ## Initialisation
 
@@ -93,10 +86,6 @@ init_tval = DynamicPPL.init(ctx.rng, vn, dist, ctx.strategy)
 
 The initialisation step is handled by the `init` function, which dispatches on the initialisation strategy.
 For example, if `ctx.strategy` is `InitFromPrior()`, then `init()` samples a value from the distribution `dist`.
-
-!!! note "DefaultContext"
-    
-    For `DefaultContext`, the value is read from the `VarNamedTuple` held by the context.
 
 As discussed in the [Initialisation strategies](./init.md) page, this step, in general, does not return just the raw value (like `rand(dist)`).
 It returns an [`DynamicPPL.TransformedValue`](@ref), which represents a value that _may_ have been transformed.
@@ -145,8 +134,6 @@ They are all interconnected, which is why they are computed together inside `app
     
     In addition to the raw value, if the transform strategy indicates that we should treat `vn` as being in transformed space, we also need to compute the transformed value.
     This is because some accumulators may need to work with the transformed value instead of the raw value.
-    
-    (If there is a full VarInfo being used, the transformed value will also have to be set inside the VarInfo.)
  3. **Compute the log-Jacobian `logjac`**
     
     `logjac` is accumulated according to the transform specified by the transform strategy.
@@ -157,13 +144,6 @@ The reason for this is to allow a separation between the source of the values (i
 
 This allows us to, for example, generate values from the (unlinked) prior but also calculate their log-density in transformed space and accumulate transformed values by combining `InitFromPrior()` with `LinkAll()`.
 It also allows us to read values from an existing `VarInfo` but interpret them as being in a different space by combining `InitFromParams()` with a different transform strategy: this corresponds exactly to the act of 'linking' a VarInfo.
-
-!!! note "DefaultContext"
-    
-    `DefaultContext` preserves each input's transform, as stored in its value tuple.
-    Use `InitContext` when the source of the values and the requested output transforms
-    need to be specified independently. Neither context reads latent values or their
-    transform information from the output varinfo.
 
 !!! note "Log-Jacobian computation"
     
@@ -177,19 +157,9 @@ It also allows us to read values from an existing `VarInfo` but interpret them a
 ## Accumulation
 
 ```julia
-vi = DynamicPPL.setindex_with_dist!!(vi, tval, dist, vn, template)
 vi = DynamicPPL.accumulate_assume!!(vi, x, tval, logjac, vn, dist, template)
 ```
 
-!!! note
-    
-    The first line, `setindex_with_dist!!`, is only necessary when using a full `VarInfo`.
-    It essentially stores the value `tval` inside the `VarInfo`, but makes sure to store a vectorised form (i.e., if `tval` is not vectorised, it will be).
-    This is entirely equivalent to using a `VectorValueAccumulator` to store the values; it's just that when using a full `VarInfo` that accumulator is 'built-in' as `vi.values`.
-    
-    Since conceptually this is the same as an accumulator, we will not discuss it further here.
-
-Here, we pass all of the information we have gathered so far for this tilde-statement to the accumulators.
 `accumulate_assume!!(vi::AbstractVarInfo, ...)` will loop over all accumulators stored inside `vi`, and call each of their individual `accumulate_assume!!` methods.
 This method is responsible for deciding how to combine the information provided.
 

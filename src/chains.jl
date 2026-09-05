@@ -49,10 +49,10 @@ function ParamsWithStats(
             DynamicPPL.LogLikelihoodAccumulator(),
             DynamicPPL.RawValueAccumulator(include_colon_eq),
         )
-        _pws_eval(model, accs, init_strategy, stats, true)
+        _pws_eval(Random.default_rng(), model, accs, init_strategy, stats, true)
     else
         accs = (DynamicPPL.RawValueAccumulator(include_colon_eq),)
-        _pws_eval(model, accs, init_strategy, stats, false)
+        _pws_eval(Random.default_rng(), model, accs, init_strategy, stats, false)
     end
 end
 
@@ -103,7 +103,7 @@ end
     )
 
 Generate a `ParamsWithStats` by re-evaluating the given `ldf` with the provided
-`param_vector`.
+`param_vector` and `ldf.rng`.
 
 This method is intended to replace the old method of obtaining parameters and statistics
 via `unflatten!!` plus re-evaluation. It is faster for two reasons:
@@ -111,7 +111,7 @@ via `unflatten!!` plus re-evaluation. It is faster for two reasons:
 1. It does not rely on `deepcopy`-ing the VarInfo object (this used to be mandatory as
    otherwise re-evaluation would mutate the VarInfo, rendering it unusable for subsequent
    MCMC iterations).
-2. The re-evaluation is faster as it uses `OnlyAccsVarInfo`.
+2. The re-evaluation is faster as it uses `VarInfo`.
 
 Furthermore, if the `LogDensityFunction` has all fixed transforms (i.e., was constructed
 with `fix_transforms=true`), and neither `include_log_probs` nor `include_colon_eq` is
@@ -147,20 +147,25 @@ function pws_with_eval(
             DynamicPPL.LogLikelihoodAccumulator(),
             DynamicPPL.RawValueAccumulator(include_colon_eq),
         )
-        _pws_eval(ldf.model, accs, strategy, stats, true)
+        _pws_eval(ldf.rng, ldf.model, accs, strategy, stats, true)
     else
         accs = (DynamicPPL.RawValueAccumulator(include_colon_eq),)
-        _pws_eval(ldf.model, accs, strategy, stats, false)
+        _pws_eval(ldf.rng, ldf.model, accs, strategy, stats, false)
     end
 end
 @noinline function _pws_eval(
-    model::Model, accs::Tuple, strategy, stats::NamedTuple, include_log_probs::Bool
+    rng::Random.AbstractRNG,
+    model::Model,
+    accs::Tuple,
+    strategy,
+    stats::NamedTuple,
+    include_log_probs::Bool,
 )
     # UnlinkAll() actually doesn't have any impact here, because there isn't even a
     # LogJacobianAccumulator; consequently, it doesn't matter whether we interpret the
     # parameters as being in linked space or not. However, we just include it for clarity.
     _, vi = DynamicPPL.init!!(
-        model, OnlyAccsVarInfo(AccumulatorTuple(accs)), strategy, UnlinkAll()
+        rng, model, VarInfo(AccumulatorTuple(accs)), strategy, UnlinkAll()
     )
     params = densify!!(get_raw_values(vi))
     if include_log_probs

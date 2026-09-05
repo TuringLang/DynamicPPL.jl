@@ -197,7 +197,7 @@ function check_model(
     failed = false
 
     # Run the model and collect the data we need
-    oavi = DynamicPPL.OnlyAccsVarInfo((
+    oavi = DynamicPPL.VarInfo((
         DebugAccumulator(),
         PriorDistributionAccumulator(),
         DynamicPPL.DebugRawValueAccumulator(),
@@ -287,7 +287,7 @@ and checking if the model is consistent across runs.
 """
 function has_static_constraints(rng::Random.AbstractRNG, model::Model; num_evals::Int=5)
     prior_vnts = map(1:num_evals) do _
-        accs = DynamicPPL.OnlyAccsVarInfo(PriorDistributionAccumulator())
+        accs = DynamicPPL.VarInfo(PriorDistributionAccumulator())
         _, accs = DynamicPPL.init!!(rng, model, accs, InitFromPrior(), UnlinkAll())
         return only(DynamicPPL.getaccs(accs)).values
     end
@@ -309,7 +309,7 @@ function has_static_constraints(model::Model; num_evals::Int=5)
 end
 
 """
-    gen_evaluator_call_with_types(model[, varinfo]; context=DefaultContext(get_values(varinfo)))
+    gen_evaluator_call_with_types(model[, varinfo]; context=Context(InitFromParams(get_values(varinfo), nothing), get_transform_strategy(varinfo)))
 
 Generate the evaluator call and the types of the arguments.
 
@@ -326,7 +326,10 @@ A 2-tuple with the following elements:
 function gen_evaluator_call_with_types(
     model::Model,
     varinfo::AbstractVarInfo=VarInfo(model);
-    context::AbstractContext=DefaultContext(get_values(varinfo)),
+    context::Context=Context(
+        InitFromParams(get_values(varinfo), nothing),
+        DynamicPPL.get_transform_strategy(varinfo),
+    ),
 )
     args, kwargs = DynamicPPL.make_evaluate_args_and_kwargs(model, context, varinfo)
     return if isempty(kwargs)
@@ -337,7 +340,7 @@ function gen_evaluator_call_with_types(
 end
 
 """
-    model_warntype(model[, varinfo, optimize=false]; context=DefaultContext(get_values(varinfo)))
+    model_warntype(model[, varinfo, optimize=false]; context=Context(InitFromParams(get_values(varinfo), nothing), get_transform_strategy(varinfo)))
 
 Check the type stability of the model's evaluator, warning about any potential issues.
 
@@ -348,20 +351,23 @@ This simply calls `@code_warntype` on the model's evaluator, filling in internal
 - `varinfo::AbstractVarInfo`: The varinfo to use when evaluating the model. Default: `VarInfo(model)`.
 
 # Keyword Arguments
-- `context::AbstractContext`: The evaluation context. Defaults to the values supplied in `varinfo`.
+- `context::Context`: The evaluation context. Defaults to the values supplied in `varinfo`.
 """
 function model_warntype(
     model::Model,
     varinfo::AbstractVarInfo=VarInfo(model),
     optimize::Bool=false;
-    context::AbstractContext=DefaultContext(get_values(varinfo)),
+    context::Context=Context(
+        InitFromParams(get_values(varinfo), nothing),
+        DynamicPPL.get_transform_strategy(varinfo),
+    ),
 )
     ftype, argtypes = gen_evaluator_call_with_types(model, varinfo; context)
     return InteractiveUtils.code_warntype(ftype, argtypes; optimize=optimize)
 end
 
 """
-    model_typed(model[, varinfo, optimize=true]; context=DefaultContext(get_values(varinfo)))
+    model_typed(model[, varinfo, optimize=true]; context=Context(InitFromParams(get_values(varinfo), nothing), get_transform_strategy(varinfo)))
 
 Return the type inference for the model's evaluator.
 
@@ -372,13 +378,16 @@ This simply calls `@code_typed` on the model's evaluator, filling in internal ar
 - `varinfo::AbstractVarInfo`: The varinfo to use when evaluating the model. Default: `VarInfo(model)`.
 
 # Keyword Arguments
-- `context::AbstractContext`: The evaluation context. Defaults to the values supplied in `varinfo`.
+- `context::Context`: The evaluation context. Defaults to the values supplied in `varinfo`.
 """
 function model_typed(
     model::Model,
     varinfo::AbstractVarInfo=VarInfo(model),
     optimize::Bool=true;
-    context::AbstractContext=DefaultContext(get_values(varinfo)),
+    context::Context=Context(
+        InitFromParams(get_values(varinfo), nothing),
+        DynamicPPL.get_transform_strategy(varinfo),
+    ),
 )
     ftype, argtypes = gen_evaluator_call_with_types(model, varinfo; context)
     return only(InteractiveUtils.code_typed(ftype, argtypes; optimize=optimize))

@@ -14,7 +14,7 @@ mutable struct P
 end
 
 function get_logp_and_rawval_accs(model::Model)
-    accs = OnlyAccsVarInfo()
+    accs = VarInfo()
     accs = setacc!!(accs, RawValueAccumulator(false))
     _, accs = init!!(model, accs, InitFromPrior(), UnlinkAll())
     return accs
@@ -82,7 +82,7 @@ end
             else
                 wrap(container)
             end
-            vi = OnlyAccsVarInfo(RawValueAccumulator(false))
+            vi = VarInfo(RawValueAccumulator(false))
             result, vi = init!!(model, vi, InitFromPrior(), UnlinkAll())
             raw = get_raw_values(vi)
             a = wrap === identity ? raw.data.a : raw.data.b.data.a
@@ -110,7 +110,7 @@ end
             a[2, 2] ~ to_submodel(child_matrix())
             return a
         end
-        vi = OnlyAccsVarInfo(RawValueAccumulator(false))
+        vi = VarInfo(RawValueAccumulator(false))
         _, vi = init!!(parent_matrix(), vi, InitFromPrior(), UnlinkAll())
         a = get_raw_values(vi).data.a
         @test size(a.data) == (2, 2)
@@ -352,7 +352,7 @@ end
             vnt = rand(model)
             @test only(keys(vnt)) == @varname(x.a)
 
-            accs = OnlyAccsVarInfo((RawValueAccumulator(true),))
+            accs = VarInfo((RawValueAccumulator(true),))
             a, accs = init!!(model, accs, InitFromPrior(), UnlinkAll())
             vnt = get_raw_values(accs)
             @test vnt[@varname(x.a)] == a
@@ -377,7 +377,7 @@ end
             vnt = rand(model)
             @test only(keys(vnt)) == @varname(x.a)
 
-            accs = OnlyAccsVarInfo((RawValueAccumulator(true),))
+            accs = VarInfo((RawValueAccumulator(true),))
             a, accs = init!!(model, accs, InitFromPrior(), UnlinkAll())
             vnt = get_raw_values(accs)
             @test vnt[@varname(x.a)] == a
@@ -468,15 +468,24 @@ end
         @testset "$(nameof(model.f))" for model in (
             t2844_inner(), t2844_middle(), t2844_outer(), t2844_deeper()
         )
-            # The fast evaluation path: `init!!` into an `OnlyAccsVarInfo`, under both
+            # The fast evaluation path: `init!!` into a `VarInfo`, under both
             # transform strategies.
             @testset "$tfm" for tfm in (UnlinkAll(), LinkAll())
-                accs = setacc!!(OnlyAccsVarInfo(), LogPriorAccumulator())
+                accs = setacc!!(VarInfo(), LogPriorAccumulator())
                 @test @inferred(init!!(model, accs, InitFromPrior(), tfm)) isa Tuple
             end
             # Evaluating a pre-populated `VarInfo` must also stay type stable.
             vi = VarInfo(model)
-            @test @inferred(evaluate!!(model, DefaultContext(get_values(vi)), vi)) isa Tuple
+            @test @inferred(
+                evaluate!!(
+                    model,
+                    Context(
+                        InitFromParams(get_values(vi), nothing),
+                        DynamicPPL.infer_transform_strategy_from_values(get_values(vi)),
+                    ),
+                    vi,
+                )
+            ) isa Tuple
         end
     end
 end

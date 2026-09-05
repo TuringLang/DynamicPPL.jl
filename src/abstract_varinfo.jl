@@ -54,9 +54,9 @@ end
 """
     get_values(vi::AbstractVarInfo)
 
-Return the `VarNamedTuple` in `vi` that stores the variables' transformed values.
+Extract vectorised values from the `VectorValueAccumulator` in `vi`.
 
-This should be implemented by each subtype of `AbstractVarInfo`.
+This is a compatibility name for `get_vector_values`; parameter values are optional outputs.
 """
 function get_values end
 
@@ -447,7 +447,7 @@ true
 julia> 0 < only(v) < 1
 false
 
-julia> accs = OnlyAccsVarInfo(RawValueAccumulator(false));
+julia> accs = VarInfo(RawValueAccumulator(false));
 
 julia> _, accs = init!!(f(), accs, InitFromParams((x = 0.25,)), LinkAll());
 
@@ -583,9 +583,9 @@ VarNamedTuple
 ├─ m => 2.0
 └─ x => [3.0, 4.0]
 
-julia> vi = last(init!!(model, VarInfo(), InitFromParams(params), UnlinkAll()));
+julia> vi = last(init!!(model, VarInfo(VectorValueAccumulator()), InitFromParams(params), UnlinkAll()));
 
-julia> vi.values
+julia> keys(vi)
 4-element Vector{VarName}:
  s
  m
@@ -695,7 +695,7 @@ end
     link(vi::AbstractVarInfo, vns::NTuple{N,VarName}, model::Model)
 
 Transform all variables in `vi` to their linked space without mutating `vi` (i.e., replace
-all the `TransformedValue`s in `vi.values` with the corresponding
+all the `TransformedValue`s in `get_vector_values(vi)` with the corresponding
 `TransformedValue(linked_value, DynamicLink())`. If `vns` is provided, then only transform
 the variables in `vns`.
 
@@ -724,9 +724,9 @@ function link!! end
     invlink(vi::AbstractVarInfo, vns::NTuple{N,VarName}, model::Model)
 
 Transform all variables in `vi` to the original space without mutating `vi` (i.e., replace
-all the `TransformedValue`s in `vi.values` with the corresponding
+all the `TransformedValue`s in `get_vector_values(vi)` with the corresponding
 `TransformedValue(unlinked_value, Unlink())`. Note that the unlinked values are still
-vectorised (that is a requirement of `vi.values`). If `vns` is provided, then only transform
+vectorised (that is a requirement of `get_vector_values(vi)`). If `vns` is provided, then only transform
 the variables in `vns`.
 
 Note that if `vi` contains variables that have fixed transforms, the fixed transforms will
@@ -752,7 +752,7 @@ function invlink!! end
 """
     unflatten!!(vi::AbstractVarInfo, x::AbstractVector)
 
-Return a new instance of `vi` where the internal values stored in `vi.values` have been
+Return a new instance of `vi` where the internal values stored in `get_vector_values(vi)` have been
 overwritten with the values in `x`.
 
 This is the inverse operation of [`internal_values_as_vector`](@ref).

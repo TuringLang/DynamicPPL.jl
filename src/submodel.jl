@@ -99,7 +99,7 @@ as in the definition of `y` above.
 We can verify that the log joint probability of the model accumulated in `vi` is correct:
 
 ```jldoctest submodel-to_submodel
-julia> accs = setacc!!(OnlyAccsVarInfo(), RawValueAccumulator(false));
+julia> accs = setacc!!(VarInfo(), RawValueAccumulator(false));
 
 julia> _, accs = init!!(model, accs, InitFromPrior(), UnlinkAll());
 
@@ -181,7 +181,7 @@ end
 """
     DynamicPPL.tilde_assume!!(
         parent_model::Model,
-        context::AbstractContext,
+        context::Context,
         submodel::DynamicPPL.Submodel,
         left_vn::VarName,
         template,
@@ -192,7 +192,7 @@ Evaluate `submodel` under `parent_model`.
 """
 function tilde_assume!!(
     parent_model::Model,
-    context::AbstractContext,
+    context::Context,
     submodel::Submodel{M,AutoPrefix},
     left_vn::VarName,
     template,

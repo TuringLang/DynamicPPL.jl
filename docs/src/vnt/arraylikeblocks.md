@@ -106,7 +106,7 @@ This means that we have to collectively assign multiple indices in the `VarNamed
 end
 dirichlet_model = dirichlet()
 vi = VarInfo(dirichlet_model)
-vi.values
+get_vector_values(vi)
 ```
 
 This means that in the actual `VarInfo` we do not have a notion of what `x[1]` is:

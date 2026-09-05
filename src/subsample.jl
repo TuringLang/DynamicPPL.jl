@@ -606,10 +606,10 @@ function _probe_independent_model(
             observation, scale, expected_nobs, population_size, indices, Val(false)
         )...,
     ))
-    vi = OnlyAccsVarInfo(accumulators)
+    vi = VarInfo(accumulators)
     _, vi = init!!(rng, model, vi, init_strategy, transform_strategy)
     IndependentLogJoint()(vi)
-    return LogDensityFunction(model, getlogjoint_internal, get_vector_values(vi))
+    return LogDensityFunction(model, getlogjoint_internal, get_vector_values(vi); rng)
 end
 
 function _strict_independent_ldf(
@@ -620,7 +620,8 @@ function _strict_independent_ldf(
     scale::Real,
     expected_nobs::Int,
     population_size::Int,
-    indices=nothing,
+    indices=nothing;
+    rng::Random.AbstractRNG,
 )
     accumulators = AccumulatorTuple((
         VectorValueAccumulator(),
@@ -629,7 +630,7 @@ function _strict_independent_ldf(
         )...,
     ))
     return LogDensityFunction(
-        model, IndependentLogJoint(ranges), ranges, sample, accumulators
+        model, IndependentLogJoint(ranges), ranges, sample, accumulators; rng
     )
 end
 
@@ -874,7 +875,7 @@ function subsample(
     indices = _sample_without_replacement(
         rng, size(problem.full_data, ndims(problem.full_data)), Int(batch_size)
     )
-    return _batch_ldf(problem, indices)
+    return _batch_ldf(problem, indices; rng)
 end
 
 function subsample(
@@ -885,7 +886,7 @@ function subsample(
     transform_strategy::T=UnlinkAll(),
 ) where {T<:AbstractTransformStrategy}
     problem = _subsampling_problem(model, dataset_size, transform_strategy)
-    return _batch_ldf(problem, indices)
+    return _batch_ldf(problem, indices; rng)
 end
 
 function subsample(
@@ -903,7 +904,7 @@ function subsample(
             "the resampler must return a vector of integer indices; got $(typeof(indices))",
         ),
     )
-    return _batch_ldf(problem, indices)
+    return _batch_ldf(problem, indices; rng)
 end
 
 function subsample(
@@ -950,7 +951,11 @@ function _sample_without_replacement(
     return indices
 end
 
-function _batch_ldf(problem::SubsamplingState, batch::AbstractVector{<:Integer})
+function _batch_ldf(
+    problem::SubsamplingState,
+    batch::AbstractVector{<:Integer};
+    rng::Random.AbstractRNG=problem.ldf.rng,
+)
     batch_data = _select_batch(problem.full_data, batch)
     batch = collect(Int, batch)
     batch_model = condition(
@@ -984,6 +989,7 @@ function _batch_ldf(problem::SubsamplingState, batch::AbstractVector{<:Integer})
         scale,
         batch_size,
         full_size,
-        batch,
+        batch;
+        rng,
     )
 end

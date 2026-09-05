@@ -55,16 +55,14 @@ end
 """
     get_fixed_transforms(
         model::DynamicPPL.Model,
-        transform_strategy::AbstractTransformStrategy
+        transform_strategy::AbstractTransformStrategy;
+        rng::Random.AbstractRNG=Random.default_rng(),
     )
 
 Extract the fixed transforms for all variables in a model by running the model with the
 given transform strategy.
 
-Note that, even though this method evaluates the model once, this method does *not* accept
-an RNG argument to control that evaluation. This is because the fixed transforms are
-supposed to be *fixed*, i.e., they should not depend on random choices made during model
-execution!
+The RNG controls this evaluation, but the transforms must not depend on its random choices.
 
 If you are unsure about whether the transforms for your model are fixed, you can use
 [`DynamicPPL.DebugUtils.has_static_constraints`](@ref). Note though that this relies on
@@ -72,10 +70,11 @@ executing the model multiple times and is thus not foolproof (it may be that you
 just happen to be the same each time).
 """
 function get_fixed_transforms(
-    model::DynamicPPL.Model, transform_strategy::AbstractTransformStrategy
+    model::DynamicPPL.Model,
+    transform_strategy::AbstractTransformStrategy;
+    rng::Random.AbstractRNG=Random.default_rng(),
 )
-    rng = Random.default_rng()
-    accs = OnlyAccsVarInfo(FixedTransformAccumulator())
+    accs = VarInfo(FixedTransformAccumulator())
     _, accs = init!!(rng, model, accs, InitFromPrior(), transform_strategy)
     return get_fixed_transforms(accs)
 end

@@ -1,5 +1,7 @@
 # Unreleased
 
+`LogDensityFunction(model; rng)` uses the supplied RNG for construction and evaluation. Inside a model, `rand(__context__.rng, ...)` advances it; ordinary `~` sites read the parameter vector during density evaluation. Stochastic densities still require inference and AD methods that support them. See [#721](https://github.com/TuringLang/DynamicPPL.jl/issues/721).
+
 Removed `NamedDist` and distribution-driven site renaming. Replace `x ~ NamedDist(Normal(), :y)` with `y ~ Normal(); x = y`. The stochastic variable is `y`; `x` is a local alias.
 
 Arguments supply default observations: for `@model f(x) = x ~ Normal()`, `f(2.0)` observes 2.0. `decondition(f(2.0), :x)` makes `x` latent; `condition(f(2.0); x=3.0)` replaces the observation. Complete replacements are available before the body runs; later statements use the computed or sampled value.
@@ -10,11 +12,13 @@ Partial overrides preserve replacement records and tuples: after replacing `x=(a
 
 `missing` no longer selects latent variables in arguments, `condition`, `fix`, or `InitFromParams`. Replace `f(missing)` with `decondition(f(template), :x)`, where `template` supplies storage of the required shape; omit unavailable initial parameters. Use indexed conditioning for separate scalar sites. Missing chain cells still represent absent sites. See [#1464](https://github.com/TuringLang/DynamicPPL.jl/issues/1464).
 
-Removed parent contexts, traversal APIs, and `Model.context`. Replace `contextualize`/`setleafcontext` plus evaluation, or `evaluate!!(m, vi)`, with `evaluate!!(m, ctx, vi)`. Replace `conditioned(m.context)`/`fixed(m.context)` with `conditioned(m)`/`fixed(m)`. `AbstractContext`, latent hooks, and `VarInfo` remain; the broader context redesign in [#895](https://github.com/TuringLang/DynamicPPL.jl/issues/895) is incomplete.
+Removed parent contexts, traversal APIs, and `Model.context`. Replace `contextualize`/`setleafcontext` plus evaluation, or `evaluate!!(m, vi)`, with `evaluate!!(m, ctx, vi)`. Replace `conditioned(m.context)`/`fixed(m.context)` with `conditioned(m)`/`fixed(m)`. This advances the context simplification in [#895](https://github.com/TuringLang/DynamicPPL.jl/issues/895).
 
 Observation and tracking hooks no longer dispatch on context. With supplied `y`, `y ~ Normal(x); z := x+y` scores `y` and records `z` through accumulators when requested. Literal observations follow the same path. Pass a model instead of a context to `tilde_observe!!`/`store_coloneq_value!!`; customize `accumulate_observe!!` on accumulators.
 
-Latent inputs now belong to `DefaultContext`: `evaluate!!(m, DefaultContext(get_values(previous)), OnlyAccsVarInfo())` reads latent values from a previous `VarInfo` and returns `(retval, outputs)`. Inputs must be vectorised `TransformedValue`s in a `VarNamedTuple`; output storage no longer supplies them. Custom contexts implement `get_param_eltype(ctx)`, replacing `get_param_eltype(vi, ctx)`.
+`Context(rng, strategy, transforms)` replaces `InitContext`, `DefaultContext`, and the `AbstractContext` interface. Customise value selection through initialisation strategies. Reuse outputs explicitly with `Context(rng, InitFromParams(get_raw_values(previous), nothing), UnlinkAll())`. `init!!` now defaults to `UnlinkAll()` independently of output state. See [#1469](https://github.com/TuringLang/DynamicPPL.jl/issues/1469).
+
+`OnlyAccsVarInfo` is now `VarInfo`, containing only accumulators. `VarInfo()` records log densities; add `RawValueAccumulator` or `VectorValueAccumulator` to record values. Replace `vi.values` with `get_vector_values(vi)`. Every evaluation resets all outputs, including recorded values, so skipped sites do not persist.
 
 Argument observations have lowest precedence; later operations replace value and role: `condition(fix(m; x=1); x=2)` observes 2; `fix(condition(m; x=2); x=1)` fixes 1 without scoring it. Parent bindings override child bindings, regardless of role. Updating `x[1]` preserves untouched `x[2]`. See [#1012](https://github.com/TuringLang/DynamicPPL.jl/issues/1012).
 

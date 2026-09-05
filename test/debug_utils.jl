@@ -196,9 +196,9 @@ end
             @test codeinfo isa Core.CodeInfo
             @test retype <: Tuple
 
-            context = InitContext(Xoshiro(1), InitFromParams((; y=2.0)), UnlinkAll())
-            _, retype = DynamicPPL.DebugUtils.model_typed(model, OnlyAccsVarInfo(); context)
-            @test retype <: Tuple{Float64,OnlyAccsVarInfo}
+            context = Context(Xoshiro(1), InitFromParams((; y=2.0)), UnlinkAll())
+            _, retype = DynamicPPL.DebugUtils.model_typed(model, VarInfo(); context)
+            @test retype <: Tuple{Float64,VarInfo}
 
             # Just make sure the following is runnable.
             @test DynamicPPL.DebugUtils.model_warntype(model) isa Any

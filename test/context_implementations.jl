@@ -10,23 +10,19 @@ using LinearAlgebra: I, norm
 using Random: Xoshiro
 using Test
 
-struct UnimplementedContext <: AbstractContext end
+struct UnimplementedStrategy <: AbstractInitStrategy end
 
-struct RecordingContext{C<:AbstractContext} <: AbstractContext
-    inner::C
+struct RecordingStrategy{S<:AbstractInitStrategy} <: AbstractInitStrategy
+    inner::S
     assumed::Vector{VarName}
 end
-function RecordingContext(inner)
-    return RecordingContext(inner, VarName[])
+RecordingStrategy(inner) = RecordingStrategy(inner, VarName[])
+function DynamicPPL.get_param_eltype(strategy::RecordingStrategy)
+    return DynamicPPL.get_param_eltype(strategy.inner)
 end
-function DynamicPPL.get_param_eltype(ctx::RecordingContext)
-    return DynamicPPL.get_param_eltype(ctx.inner)
-end
-function DynamicPPL.tilde_assume!!(
-    ctx::RecordingContext, dist::Distribution, vn::VarName, template, vi::AbstractVarInfo
-)
-    push!(ctx.assumed, vn)
-    return DynamicPPL.tilde_assume!!(ctx.inner, dist, vn, template, vi)
+function DynamicPPL.init(rng, vn::VarName, dist::Distribution, strategy::RecordingStrategy)
+    push!(strategy.assumed, vn)
+    return DynamicPPL.init(rng, vn, dist, strategy.inner)
 end
 
 @model function child(y=2.0)
@@ -55,7 +51,7 @@ end
             for value in (one(T), T[1, 2])
                 for vn in (@varname(x), nothing)
                     result, vi = @inferred tilde_observe!!(
-                        child(), dist, value, vn, NoTemplate(), OnlyAccsVarInfo()
+                        child(), dist, value, vn, NoTemplate(), VarInfo()
                     )
                     @test result === value
                     @test getloglikelihood(vi) ≈ loglikelihood(dist, value)
@@ -65,28 +61,28 @@ end
         end
         @test !applicable(
             tilde_observe!!,
-            DefaultContext(),
+            Context(InitFromPrior(), UnlinkAll()),
             Normal(),
             1.0,
             nothing,
             NoTemplate(),
-            OnlyAccsVarInfo(),
+            VarInfo(),
         )
         @test !applicable(
             DynamicPPL.store_coloneq_value!!,
-            DefaultContext(),
+            Context(InitFromPrior(), UnlinkAll()),
             @varname(z),
             1.0,
             NoTemplate(),
-            OnlyAccsVarInfo(),
+            VarInfo(),
         )
     end
 
     @testset "no context hooks needed without latent sites" begin
-        accs = OnlyAccsVarInfo((
-            DynamicPPL.default_accumulators()..., RawValueAccumulator(true)
-        ))
-        result, vi = evaluate!!(fix(child(); x=1.0), UnimplementedContext(), accs)
+        accs = VarInfo((DynamicPPL.default_accumulators()..., RawValueAccumulator(true)))
+        result, vi = evaluate!!(
+            fix(child(); x=1.0), Context(UnimplementedStrategy(), UnlinkAll()), accs
+        )
         @test result == 3.0
         @test get_raw_values(vi)[@varname(z)] == 3.0
         @test iszero(getlogprior(vi))
@@ -99,54 +95,65 @@ end
             model = outer(parent(inner, Val(auto_prefix)))
             for x in (1.0, 3.0)
                 strategy = InitFromParams(VarNamedTuple((@varname(b.a.x) => x,)))
-                ctx = RecordingContext(InitContext(Xoshiro(1), strategy, UnlinkAll()))
-                accs = OnlyAccsVarInfo((
+                recording = RecordingStrategy(strategy)
+                ctx = Context(Xoshiro(1), recording, UnlinkAll())
+                accs = VarInfo((
                     DynamicPPL.default_accumulators()..., RawValueAccumulator(true)
                 ))
                 result, vi = evaluate!!(model, ctx, accs)
                 @test result == x + 2.0
-                @test ctx.assumed == [@varname(b.a.x)]
+                @test recording.assumed == [@varname(b.a.x)]
                 @test get_raw_values(vi)[@varname(b.a.z)] == result
                 @test getlogjoint(vi) ≈
                     logpdf(Normal(), x) + logpdf(Normal(x), 2.0) + logpdf(Normal(), 0.0)
                 @test iszero(getlogjoint(accs))
-                @test first(@inferred evaluate!!(model, ctx.inner, OnlyAccsVarInfo())) ==
-                    result
+                @test first(@inferred evaluate!!(model, ctx, VarInfo())) == result
             end
         end
 
         model = child()
-        ctx = InitContext(Xoshiro(1), InitFromParams((; x=1.0)), UnlinkAll())
-        result, vi = @inferred evaluate!!(model, ctx, VarInfo())
+        ctx = Context(Xoshiro(1), InitFromParams((; x=1.0)), UnlinkAll())
+        result, vi = @inferred evaluate!!(model, ctx, VarInfo(VectorValueAccumulator()))
         @test result == 3.0
-        ctx = InitContext(Xoshiro(1), InitFromParams((; x=3.0)), UnlinkAll())
+        ctx = Context(Xoshiro(1), InitFromParams((; x=3.0)), UnlinkAll())
         result, vi = @inferred evaluate!!(model, ctx, vi)
         @test result == 5.0
-        @test first(@inferred evaluate!!(model, DefaultContext(get_values(vi)), vi)) ==
-            result
+        @test first(
+            @inferred evaluate!!(
+                model,
+                Context(
+                    InitFromParams(get_values(vi), nothing),
+                    DynamicPPL.infer_transform_strategy_from_values(get_values(vi)),
+                ),
+                vi,
+            )
+        ) == result
     end
 
-    @testset "DefaultContext supplies inputs independently of outputs" begin
-        @test_throws ArgumentError DefaultContext(VarNamedTuple(; x=1.0))
-        @test_throws ArgumentError DefaultContext(
-            VarNamedTuple(; x=TransformedValue([1.0], NoTransform()))
+    @testset "Context supplies inputs independently of outputs" begin
+        @test fieldnames(VarInfo) == (:accs,)
+        @test !isdefined(DynamicPPL, :OnlyAccsVarInfo)
+        @test !isdefined(DynamicPPL, :DefaultContext)
+        @test !isdefined(DynamicPPL, :InitContext)
+        @test :AbstractContext ∉ names(DynamicPPL)
+        @test isconcretetype(typeof(Context(Xoshiro(1), InitFromPrior(), UnlinkAll())))
+        empty_context = Context(
+            Xoshiro(1), InitFromParams(VarNamedTuple(), nothing), UnlinkAll()
         )
-        @test_throws KeyError evaluate!!(child(), DefaultContext(), OnlyAccsVarInfo())
-        @test_throws KeyError evaluate!!(
-            child(), DefaultContext(), VarInfo(child(), InitFromParams((; x=1.0)))
+        @test_throws ErrorException evaluate!!(child(), empty_context, VarInfo())
+        @test_throws ErrorException evaluate!!(
+            child(), empty_context, VarInfo(child(), InitFromParams((; x=1.0)))
         )
-        nested = DynamicPPL.TestUtils.demo_nested_colons()
-        nested_input = VarInfo(Xoshiro(1), nested)
-        @test DynamicPPL.get_param_eltype(DefaultContext(get_values(nested_input))) ==
-            Float64
         for T in (Float32, Float64, BigFloat), threaded in (false, true)
             model = setthreadsafe(child(T(2)), threaded)
             input = VarInfo(Xoshiro(1), model, InitFromParams((; x=one(T))))
-            context = DefaultContext(get_values(input))
+            context = Context(
+                Xoshiro(1), InitFromParams(get_vector_values(input), nothing), UnlinkAll()
+            )
             @test DynamicPPL.get_param_eltype(context) == T
             for output in (
-                OnlyAccsVarInfo(),
                 VarInfo(),
+                VarInfo(VectorValueAccumulator(), DynamicPPL.default_accumulators()...),
                 VarInfo(Xoshiro(2), model, InitFromParams((; x=T(9)))),
             )
                 result, output = evaluate!!(model, context, output)
@@ -155,11 +162,50 @@ end
                     logpdf(Normal(), one(T)) +
                       logpdf(Normal(one(T)), T(2)) +
                       logpdf(Normal(), 0.0)
-                if output isa VarInfo
-                    @test get_values(output) == get_values(input)
+                if DynamicPPL.hasacc(output, Val(DynamicPPL.VECTORVAL_ACCNAME))
+                    @test get_vector_values(output) == get_vector_values(input)
                 end
             end
         end
+
+        # Inputs determine transforms even when the reused output recorded linked values.
+        @model positive() = x ~ Exponential()
+        old = VarInfo(positive(), InitFromParams((; x=2.0)), LinkAll())
+        context = Context(Xoshiro(1), InitFromParams((; x=3.0), nothing), UnlinkAll())
+        result, output = evaluate!!(positive(), context, old)
+        @test result == 3.0
+        @test iszero(getlogjac(output))
+        @test get_vector_values(output)[@varname(x)].transform isa Unlink
+        @test first(init!!(positive(), old, InitFromParams((; x=4.0), nothing))) == 4.0
+
+        @test first(
+            evaluate!!(
+                positive(), Context(Xoshiro(1), InitFromPrior(), UnlinkAll()), VarInfo()
+            ),
+        ) == first(
+            evaluate!!(
+                positive(), Context(Xoshiro(1), InitFromPrior(), UnlinkAll()), VarInfo()
+            ),
+        )
+
+        @model function optional_site(include_x)
+            if include_x
+                x ~ Normal()
+            end
+            return y ~ Normal()
+        end
+        outputs = VarInfo(VectorValueAccumulator(), RawValueAccumulator(false))
+        context = Context(Xoshiro(1), InitFromPrior(), UnlinkAll())
+        _, outputs = evaluate!!(optional_site(true), context, outputs)
+        inputs = get_vector_values(outputs)
+        context = Context(Xoshiro(1), InitFromParams(inputs, nothing), UnlinkAll())
+        _, outputs = evaluate!!(optional_site(false), context, outputs)
+        @test !haskey(get_vector_values(outputs), @varname(x))
+        @test !haskey(get_raw_values(outputs), @varname(x))
+        @test haskey(inputs, @varname(x))
+        @test outputs == copy(outputs)
+        @test isequal(outputs, copy(outputs))
+        @test hash(outputs) == hash(copy(outputs))
 
         @model function dependent_support()
             x ~ Exponential()
@@ -168,10 +214,13 @@ end
         end
         model = dependent_support()
         input = VarInfo(Xoshiro(1), model, InitFromParams((; x=2.0, y=0.5)), LinkAll())
-        context = DefaultContext(get_values(input))
+        context = Context(
+            InitFromParams(get_values(input), nothing),
+            DynamicPPL.infer_transform_strategy_from_values(get_values(input)),
+        )
         # The same linked y is 0.5 under Uniform(0, 2), but 1.0 under Uniform(0, 4).
         changed = fix(model; x=4.0)
-        result, output = @inferred evaluate!!(changed, context, OnlyAccsVarInfo())
+        result, output = @inferred evaluate!!(changed, context, VarInfo())
         expected = VarInfo(Xoshiro(1), changed, InitFromParams((; y=1.0)), LinkAll())
         @test result ≈ 1.0
         @test getlogjoint(output) ≈ getlogjoint(expected)
@@ -221,7 +270,7 @@ end
             for ysize in ((2,), (2, 3), (2, 3, 4))
                 x = randn()
                 y = randn(ysize)
-                z = logjoint(test(x, y), VarInfo())
+                z = logjoint(test(x, y), VarNamedTuple())
                 @test z ≈ sum(logpdf.(Normal.(x), y))
             end
         end

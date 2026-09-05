@@ -181,10 +181,7 @@ end
                 decondition(partial_input(data)), @varname(x[i]) => 3.0
             )
             result, vi = init!!(
-                changed_model,
-                OnlyAccsVarInfo(),
-                InitFromParams((; x=[7.0, 7.0])),
-                UnlinkAll(),
+                changed_model, VarInfo(), InitFromParams((; x=[7.0, 7.0])), UnlinkAll()
             )
             @test result.before[i] == result.x[i] == 4.0
             @test result.before[3 - i] == 1.0
@@ -237,9 +234,7 @@ end
 
         partial = condition(decondition(nested_array(data)), @varname(x[1][1]) => 10.0f0)
         partial = condition(partial, @varname(x[2][1]) => 20.0f0)
-        result, _ = init!!(
-            partial, OnlyAccsVarInfo(), InitFromParams((; x=data)), UnlinkAll()
-        )
+        result, _ = init!!(partial, VarInfo(), InitFromParams((; x=data)), UnlinkAll())
         @test result == reshape([[10.0f0], [20.0f0], [3.0f0], [4.0f0]], 2, 2)
 
         observations = @vnt begin
@@ -282,7 +277,7 @@ end
             @test keys(conditioned(original)) == [@varname(x)]
             latent = decondition(original, :x)
             result, _ = init!!(
-                latent, OnlyAccsVarInfo(), InitFromParams((; x=[3.0, 4.0])), UnlinkAll()
+                latent, VarInfo(), InitFromParams((; x=[3.0, 4.0])), UnlinkAll()
             )
             @test result == [3.0, 4.0]
             @test data == [1.0, 2.0]
@@ -405,7 +400,7 @@ end
             latent = remove(changed, @varname(x.a))
             result, _ = init!!(
                 latent,
-                OnlyAccsVarInfo(),
+                VarInfo(),
                 InitFromParams((; x=(; a=oftype(replacement.a, 7)))),
                 UnlinkAll(),
             )
@@ -419,7 +414,12 @@ end
         parent = fix(parent, @varname(child.x.a) => 3.0)
         @test parent() == (; a=3.0, b=2.0)
         result, _ = @inferred evaluate!!(
-            parent, DefaultContext(VarNamedTuple()), OnlyAccsVarInfo()
+            parent,
+            Context(
+                InitFromParams(VarNamedTuple(), nothing),
+                DynamicPPL.infer_transform_strategy_from_values(VarNamedTuple()),
+            ),
+            VarInfo(),
         )
         @test result == (; a=3.0, b=2.0)
 
@@ -511,7 +511,7 @@ end
     @testset "observation role lookup does not copy slices" begin
         @model slices(x) = x[:] ~ Normal()
         function evaluation_bytes(model)
-            vi = OnlyAccsVarInfo()
+            vi = VarInfo()
             init!!(model, vi, InitFromPrior(), UnlinkAll())
             return @allocated init!!(model, vi, InitFromPrior(), UnlinkAll())
         end
@@ -680,7 +680,7 @@ end
             return data.x
         end
         fixed_model = fix(ntfix(), (; data=(; x=5.0)))
-        accs = OnlyAccsVarInfo(RawValueAccumulator(false))
+        accs = VarInfo(RawValueAccumulator(false))
         retval, accs = init!!(fixed_model, accs, InitFromPrior(), UnlinkAll())
         @test retval == 5.0
         @test get_raw_values(accs)[@varname(m)] isa Real

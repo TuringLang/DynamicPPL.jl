@@ -212,6 +212,7 @@ end
         data = zeros(1_000_000)
         problem = subsample(rng, normal_location() | (x=data,), 3, length(data))
         @test problem isa LogDensityFunction
+        @test problem.rng === rng
         @test rng.draws == 3
     end
 

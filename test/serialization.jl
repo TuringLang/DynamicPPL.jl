@@ -37,9 +37,7 @@ gdemo_def = gdemo_d()
     end
 
     @testset "thread-safe accumulator state" begin
-        vi = DynamicPPL.ThreadSafeVarInfo(
-            OnlyAccsVarInfo(DynamicPPL.LogLikelihoodAccumulator())
-        )
+        vi = DynamicPPL.ThreadSafeVarInfo(VarInfo(DynamicPPL.LogLikelihoodAccumulator()))
         vi = DynamicPPL.accloglikelihood!!(vi, 2.0)
         # Emulate deserializing on a process with more threads.
         cache = @atomic :acquire vi.task_accs_cache

@@ -594,7 +594,7 @@ function build_output(modeldef, linenumbernode, sites)
     evaluatordef[:args] = vcat(
         [
             :(__model__::$(DynamicPPL.Model)),
-            :(__context__::$(DynamicPPL.AbstractContext)),
+            :(__context__::$(DynamicPPL.Context)),
             :(__varinfo__::$(DynamicPPL.AbstractVarInfo)),
         ],
         args,

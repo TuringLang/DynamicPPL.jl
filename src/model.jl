@@ -1470,7 +1470,7 @@ end
 
 function tilde_assume!!(
     model::Model,
-    context::AbstractContext,
+    context::Context,
     right::Distribution,
     vn::VarName,
     template::Any,
@@ -1551,9 +1551,7 @@ function (model::Model)(varinfo::AbstractVarInfo)
 end
 # ^ Weird Documenter.jl bug means that we have to write the two above separately
 # as it can only detect the `function`-less syntax.
-function (model::Model)(
-    rng::Random.AbstractRNG, varinfo::AbstractVarInfo=OnlyAccsVarInfo(())
-)
+function (model::Model)(rng::Random.AbstractRNG, varinfo::AbstractVarInfo=VarInfo(()))
     return first(init!!(rng, model, varinfo, InitFromPrior(), UnlinkAll()))
 end
 
@@ -1563,20 +1561,15 @@ end
         model::Model,
         varinfo::AbstractVarInfo,
         init_strategy::AbstractInitStrategy,
-        [transform_strategy::AbstractTransformStrategy=get_transform_strategy(varinfo),]
+        [transform_strategy::AbstractTransformStrategy=UnlinkAll(),]
     )
 
-Evaluate the `model` and replace the values of the model's random variables in the given
-`varinfo` with new values, using a specified initialisation strategy. If the values in
-`varinfo` are not set, they will be added using a specified initialisation strategy.
+Construct a `Context` and evaluate `model`, resetting and collecting the requested outputs.
 
-`transform_strategy` tells the model evaluation whether variables should be interpreted as
-linked or unlinked. Right now, it is slightly complicated because the default behaviour
-depends on the `varinfo` provided. If `varinfo isa VarInfo`, then the transform strategy is
-inferred from the VarInfo, i.e., linked variables in the VarInfo are treated as linked
-during evaluation. Conversely, if `varinfo isa OnlyAccsVarInfo`, then you must specify the
-transform strategy explicitly, since an `OnlyAccsVarInfo` does not contain any information
-about which variables are transformed.
+The initialisation strategy supplies latent values. The transform strategy defaults to
+`UnlinkAll()`, independently of the contents of `varinfo`. To reuse previous outputs,
+explicitly pass `InitFromParams(get_vector_values(previous), nothing)` and the desired
+transform strategy.
 
 Returns a tuple of the model's return value, plus the updated `varinfo` object.
 """
@@ -1585,22 +1578,22 @@ function init!!(
     model::Model,
     vi::AbstractVarInfo,
     init_strategy::AbstractInitStrategy,
-    transform_strategy::AbstractTransformStrategy=get_transform_strategy(vi),
+    transform_strategy::AbstractTransformStrategy=UnlinkAll(),
 )
-    ctx = InitContext(rng, init_strategy, transform_strategy)
+    ctx = Context(rng, init_strategy, transform_strategy)
     return AbstractPPL.evaluate!!(model, ctx, vi)
 end
 function init!!(
     model::Model,
     vi::AbstractVarInfo,
     init_strategy::AbstractInitStrategy=InitFromPrior(),
-    transform_strategy::AbstractTransformStrategy=get_transform_strategy(vi),
+    transform_strategy::AbstractTransformStrategy=UnlinkAll(),
 )
     return init!!(Random.default_rng(), model, vi, init_strategy, transform_strategy)
 end
 
 """
-    evaluate!!(model::Model, context::AbstractContext, varinfo::AbstractVarInfo)
+    evaluate!!(model::Model, context::Context, varinfo::AbstractVarInfo)
 
 Reset the accumulators and evaluate `model` using `context`, returning `(retval, varinfo)`.
 
@@ -1609,12 +1602,10 @@ submodels and to [`tilde_assume!!`](@ref) for latent sites. Observations and tra
 go directly to accumulators, independently of the context. Models marked with
 [`setthreadsafe`](@ref) use a `ThreadSafeVarInfo` during evaluation.
 
-An [`InitContext`](@ref) supplies an RNG, initialisation strategy, and transform strategy.
-Use [`OnlyAccsVarInfo`](@ref) when only accumulated outputs are needed. The convenience
-function [`init!!`](@ref) constructs an `InitContext` and calls this method.
-
-A [`DefaultContext`](@ref) instead holds a `VarNamedTuple` of parameter values with their
-transform information. Neither context reads latent inputs from the output `varinfo`.
+The [`Context`](@ref) supplies an RNG, initialisation strategy, and transform strategy.
+The [`VarInfo`](@ref) contains only output accumulators. The convenience function
+[`init!!`](@ref) constructs a `Context` and calls this method. Latent inputs are never
+read from the output `varinfo`.
 
 # Examples
 
@@ -1623,17 +1614,15 @@ julia> using Random: Xoshiro
 
 julia> @model example(y) = (x ~ Normal(); y ~ Normal(x); return x + y);
 
-julia> ctx = InitContext(Xoshiro(1), InitFromParams((; x=1.0)), UnlinkAll());
+julia> ctx = Context(Xoshiro(1), InitFromParams((; x=1.0)), UnlinkAll());
 
-julia> retval, vi = evaluate!!(example(2.0), ctx, OnlyAccsVarInfo());
+julia> retval, vi = evaluate!!(example(2.0), ctx, VarInfo());
 
 julia> retval
 3.0
 ```
 """
-function AbstractPPL.evaluate!!(
-    model::Model, context::AbstractContext, varinfo::AbstractVarInfo
-)
+function AbstractPPL.evaluate!!(model::Model, context::Context, varinfo::AbstractVarInfo)
     return if requires_threadsafe(model)
         # Thread-local accumulators must accept AD values before evaluation starts.
         param_eltype = DynamicPPL.get_param_eltype(context)
@@ -1650,14 +1639,14 @@ function AbstractPPL.evaluate!!(
 end
 
 """
-    _evaluate!!(model::Model, context::AbstractContext, varinfo)
+    _evaluate!!(model::Model, context::Context, varinfo)
 
 Evaluate the `model` with the given `context` and `varinfo`.
 
 This function does not wrap the varinfo in a `ThreadSafeVarInfo`. It also does not
 reset the log probability of the `varinfo` before running.
 """
-function _evaluate!!(model::Model, context::AbstractContext, varinfo::AbstractVarInfo)
+function _evaluate!!(model::Model, context::Context, varinfo::AbstractVarInfo)
     args, kwargs = make_evaluate_args_and_kwargs(model, context, varinfo)
     return model.f(args...; kwargs...)
 end
@@ -1676,7 +1665,7 @@ execution directly. This prepares arguments without executing the model, resetti
 accumulators, or wrapping `varinfo` for thread safety; use [`evaluate!!`](@ref) otherwise.
 """
 @generated function make_evaluate_args_and_kwargs(
-    model::Model{_F,argnames}, context::AbstractContext, varinfo::AbstractVarInfo
+    model::Model{_F,argnames}, context::Context, varinfo::AbstractVarInfo
 ) where {_F,argnames}
     unwrap_args = [
         if is_splat_symbol(var)
@@ -1690,22 +1679,6 @@ accumulators, or wrapping `varinfo` for thread safety; use [`evaluate!!`](@ref) 
         kwargs = model.defaults
         return args, kwargs
     end
-end
-
-"""
-    get_param_eltype(context::AbstractContext)
-
-Return the parameter element type used to promote model arguments and thread-local
-accumulators, including AD types such as `ForwardDiff.Dual`.
-
-`DefaultContext` derives this type from its input values; `InitContext` queries its
-initialisation strategy. Custom contexts should provide the corresponding type when
-promotion is needed. The fallback returns `Any`; see
-[`get_param_eltype(::AbstractInitStrategy)`](@ref).
-"""
-get_param_eltype(::AbstractContext) = Any
-function get_param_eltype(ctx::InitContext)
-    return get_param_eltype(ctx.strategy)
 end
 
 """
@@ -1729,7 +1702,7 @@ Base.nameof(model::Model{<:Function}) = nameof(model.f)
 Sample a `VarNamedTuple` of raw values from the prior of `model`.
 """
 function Base.rand(rng::Random.AbstractRNG, model::Model)
-    vi = OnlyAccsVarInfo((RawValueAccumulator(false),))
+    vi = VarInfo((RawValueAccumulator(false),))
     vi = last(init!!(rng, model, vi, InitFromPrior(), UnlinkAll()))
     return get_raw_values(vi)
 end
@@ -1771,9 +1744,7 @@ julia> # Truth.
 ```
 """
 function logjoint(model::Model, params)
-    vi = OnlyAccsVarInfo(
-        AccumulatorTuple(LogPriorAccumulator(), LogLikelihoodAccumulator())
-    )
+    vi = VarInfo(AccumulatorTuple(LogPriorAccumulator(), LogLikelihoodAccumulator()))
     init_strategy = InitFromParams(params, nothing)
     return getlogjoint(last(init!!(model, vi, init_strategy, UnlinkAll())))
 end
@@ -1817,7 +1788,7 @@ julia> # Truth.
 ```
 """
 function logprior(model::Model, params)
-    vi = OnlyAccsVarInfo(AccumulatorTuple(LogPriorAccumulator()))
+    vi = VarInfo(AccumulatorTuple(LogPriorAccumulator()))
     init_strategy = InitFromParams(params, nothing)
     return getlogprior(last(init!!(model, vi, init_strategy, UnlinkAll())))
 end
@@ -1857,7 +1828,7 @@ julia> # Truth.
 -4901.418938533205
 """
 function Distributions.loglikelihood(model::Model, params)
-    vi = OnlyAccsVarInfo(AccumulatorTuple(LogLikelihoodAccumulator()))
+    vi = VarInfo(AccumulatorTuple(LogLikelihoodAccumulator()))
     init_strategy = InitFromParams(params, nothing)
     return getloglikelihood(last(init!!(model, vi, init_strategy, UnlinkAll())))
 end
@@ -1905,7 +1876,7 @@ function returned(model::Model, parameters...)
     return first(
         init!!(
             model,
-            DynamicPPL.OnlyAccsVarInfo(DynamicPPL.AccumulatorTuple()),
+            DynamicPPL.VarInfo(DynamicPPL.AccumulatorTuple()),
             # Use `nothing` as the fallback to ensure that any missing parameters cause an
             # error
             InitFromParams(parameters..., nothing),

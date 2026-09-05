@@ -68,10 +68,9 @@ get_sample_input_vector
 subsample
 ```
 
-Internally, this is accomplished using [`init!!`](@ref) on:
+Internally, this is accomplished using [`init!!`](@ref) with [`VarInfo`](@ref).
 
 ```@docs
-OnlyAccsVarInfo
 to_vector_params
 ```
 
@@ -322,12 +321,11 @@ AbstractVarInfo
 ```@docs
 VarInfo
 DynamicPPL.get_values
-DynamicPPL.setindex_with_dist!!
 ```
 
-One main characteristic of [`VarInfo`](@ref) is that samples are transformed to unconstrained Euclidean space and stored in a linearized form, as described in the [main Turing documentation](https://turinglang.org/docs/developers/transforms/dynamicppl/).
+[`VarInfo`](@ref) stores only accumulators. A `VectorValueAccumulator` records vectorised samples, whose transforms are selected by the evaluation context.
 The [Transformations section below](#Transformations) describes the methods used for this.
-In the specific case of `VarInfo`, it keeps track of whether samples have been transformed by setting flags on them, using the following functions.
+Inspect the transforms recorded by a `VectorValueAccumulator` with:
 
 ```@docs
 is_transformed
@@ -335,7 +333,7 @@ is_transformed
 
 #### `VarNamedTuple`s
 
-`VarInfo` is only a thin wrapper around [`VarNamedTuple`](@ref), which stores arbitrary data keyed by `VarName`s.
+Value accumulators use [`VarNamedTuple`](@ref), which stores data keyed by `VarName`s.
 For more details on `VarNamedTuple`, see the Internals section of our documentation.
 
 ```@docs
@@ -482,20 +480,15 @@ outputs in `varinfo`. Accumulators are reset before evaluation.
 The context is an evaluation input; it is not stored in the model.
 Prefixes are stored separately from values. Conditioned and fixed values share one store, with each value carrying its role. Only latent sites reach the context; observations and tracked values go directly to accumulators.
 
-All contexts are subtypes of `AbstractPPL.AbstractContext`.
-
-Contexts decide how model evaluation proceeds.
-For example, `DefaultContext` holds a `VarNamedTuple` of vectorised parameter values and their transforms, whereas `InitContext` obtains values through an initialisation strategy.
-The output `varinfo` does not supply latent inputs to either context.
+`Context` is the sole evaluation context. It supplies an RNG, an initialisation strategy,
+and a transform strategy. The output `varinfo` never supplies latent inputs.
 
 ```@docs
-DefaultContext
-InitContext
+DynamicPPL.Context
 ```
 
-To implement a context, subtype `AbstractPPL.AbstractContext` and implement `tilde_assume!!`.
-Customise observation handling through `accumulate_observe!!` methods on accumulators,
-not through context dispatch.
+Customise value selection through `init` methods on initialisation strategies, and
+observation handling through `accumulate_observe!!` methods on accumulators.
 
 ```@docs
 tilde_assume!!
@@ -511,8 +504,7 @@ DynamicPPL.make_evaluate_args_and_kwargs
 
 ### VarInfo initialisation
 
-The function `init!!` is used to initialise, or overwrite, values in a VarInfo.
-It is really a thin wrapper around using `evaluate!!` with an `InitContext`.
+The function `init!!` constructs a `Context` and evaluates the model, resetting the output accumulators.
 
 ```@docs
 init!!

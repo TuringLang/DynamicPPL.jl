@@ -10,12 +10,77 @@ using DynamicPPL.TestUtils.AD: run_ad, WithExpectedResult, NoTest
 using LinearAlgebra: I
 using Test
 using LogDensityProblems: LogDensityProblems
-using Random: Xoshiro
+using Random: Random, Xoshiro
 using StableRNGs: StableRNG
 
 using DifferentiationInterface: DifferentiationInterface
 using ForwardDiff: ForwardDiff
 using Mooncake: Mooncake
+
+@model function rng_child()
+    x ~ Normal()
+    u = rand(__context__.rng)
+    0.0 ~ Normal(x + u, 1)
+    return x
+end
+@model rng_parent() = child ~ to_submodel(rng_child())
+@model rng_deterministic() = x ~ Normal()
+
+@testset "LogDensityFunction: explicit RNG" begin
+    rng = Xoshiro(42)
+    ldf = LogDensityFunction(rng_deterministic(); rng, adtype=AutoForwardDiff())
+    expected_rng = copy(rng)
+    @test LogDensityProblems.logdensity(ldf, [0.2]) ≈ logpdf(Normal(), 0.2)
+    @test last(LogDensityProblems.logdensity_and_gradient(ldf, [0.2])) ≈ [-0.2]
+    @test rand(copy(rng)) == rand(expected_rng)
+    expected_rng = copy(rng)
+    @test only(rand(ldf)) == rand(expected_rng, Normal())
+    @test rand(copy(rng)) == rand(expected_rng)
+
+    for model in (rng_child(), rng_parent())
+        values = get_vector_values(VarInfo(Xoshiro(1), model))
+        ranges, x = DynamicPPL.get_rat_and_samplevec(values)
+        for (args, kwargs) in (
+            ((UnlinkAll(),), (;)),
+            ((VarInfo(Xoshiro(1), model),), (;)),
+            ((values,), (;)),
+            ((values,), (; fix_transforms=true)),
+            ((ranges, x), (;)),
+        )
+            rng = Xoshiro(42)
+            default_rng = copy(Random.default_rng())
+            ldf = LogDensityFunction(model, getlogjoint_internal, args...; rng, kwargs...)
+            @test rand() == rand(default_rng)
+            @test ldf.rng === rng
+            expected_rng = copy(rng)
+            for default_seed in (1, 2)
+                Random.seed!(default_seed)
+                u = rand(expected_rng)
+                @test (@inferred LogDensityProblems.logdensity(ldf, [0.2])) ≈
+                    logpdf(Normal(), 0.2) + logpdf(Normal(0.2 + u, 1), 0.0)
+            end
+            for include_log_probs in (true, false)
+                u = rand(expected_rng)
+                output = ParamsWithStats([0.2], ldf; include_log_probs)
+                if include_log_probs
+                    @test output.stats.logjoint ≈
+                        logpdf(Normal(), 0.2) + logpdf(Normal(0.2 + u, 1), 0.0)
+                end
+            end
+            @test rand(copy(rng)) == rand(expected_rng)
+        end
+        for adtype in (AutoForwardDiff(), AutoMooncake())
+            rng = Xoshiro(42)
+            ldf = LogDensityFunction(model; rng, adtype)
+            expected_rng = copy(rng)
+            u = rand(expected_rng)
+            logp, grad = LogDensityProblems.logdensity_and_gradient(ldf, [0.2])
+            @test logp ≈ logpdf(Normal(), 0.2) + logpdf(Normal(0.2 + u, 1), 0.0)
+            @test only(grad) ≈ -0.4 - u
+            @test rand(copy(rng)) == rand(expected_rng)
+        end
+    end
+end
 
 @model function issue_2844_nested_inner()
     p ~ Normal()
@@ -51,12 +116,12 @@ end
         x := DynamicPPL.RangeAndTransform(1:1, DynamicLink())
     end
     oavi_unlinked = begin
-        accs = OnlyAccsVarInfo(VectorValueAccumulator())
+        accs = VarInfo(VectorValueAccumulator())
         _, accs = init!!(f(), accs, InitFromPrior(), UnlinkAll())
         accs
     end
     oavi_linked = begin
-        accs = OnlyAccsVarInfo(VectorValueAccumulator())
+        accs = VarInfo(VectorValueAccumulator())
         _, accs = init!!(f(), accs, InitFromPrior(), LinkAll())
         accs
     end
@@ -65,7 +130,7 @@ end
     # or a transform strategy itself.
     for arg in (
         VarInfo(f()),
-        VarInfo(f()).values,
+        get_vector_values(VarInfo(f())),
         oavi_unlinked,
         get_vector_values(oavi_unlinked),
         UnlinkAll(),
@@ -84,7 +149,7 @@ end
     end
     for arg in (
         link!!(VarInfo(f()), f()),
-        link!!(VarInfo(f()), f()).values,
+        get_vector_values(link!!(VarInfo(f()), f())),
         oavi_linked,
         get_vector_values(oavi_linked),
         LinkAll(),
@@ -328,7 +393,7 @@ end
             # raw values.
             vec = manual_make_vec(transform_strategy)
             init_strategy = InitFromVector(vec, ldf)
-            accs = OnlyAccsVarInfo(RawValueAccumulator(false))
+            accs = VarInfo(RawValueAccumulator(false))
             _, accs = init!!(model, accs, init_strategy, UnlinkAll())
             new_raw_values = get_raw_values(accs)
             @test new_raw_values[@varname(x)] ≈ xraw
@@ -345,7 +410,7 @@ end
             # vector (either indirectly via VectorValueAccumulator and to_vector_params, or
             # directly via VectorParamAccumulator).
             init_strategy = InitFromParams(raw_values)
-            accs = OnlyAccsVarInfo(VectorValueAccumulator(), VectorParamAccumulator(ldf))
+            accs = VarInfo(VectorValueAccumulator(), VectorParamAccumulator(ldf))
             _, accs = init!!(model, accs, init_strategy, transform_strategy)
 
             vecvals = get_vector_values(accs)
@@ -361,12 +426,12 @@ end
 
             @testset "Throws an error if transform strategy doesn't line up" begin
                 if transform_strategy != UnlinkAll()
-                    accs = OnlyAccsVarInfo(VectorValueAccumulator())
+                    accs = VarInfo(VectorValueAccumulator())
                     _, accs = init!!(model, accs, InitFromPrior(), UnlinkAll())
                     vecvals = get_vector_values(accs)
                     @test_throws ArgumentError to_vector_params(vecvals, ldf)
 
-                    accs = OnlyAccsVarInfo(VectorParamAccumulator(ldf))
+                    accs = VarInfo(VectorParamAccumulator(ldf))
                     @test_throws ArgumentError init!!(
                         model, accs, InitFromPrior(), UnlinkAll()
                     )
@@ -381,12 +446,12 @@ end
                 end
                 extra_model = extra_var_model()
 
-                accs = OnlyAccsVarInfo(VectorValueAccumulator())
+                accs = VarInfo(VectorValueAccumulator())
                 _, accs = init!!(extra_model, accs, InitFromPrior(), transform_strategy)
                 vecvals = get_vector_values(accs)
                 @test_throws ArgumentError to_vector_params(vecvals, ldf)
 
-                accs = OnlyAccsVarInfo(VectorParamAccumulator(ldf))
+                accs = VarInfo(VectorParamAccumulator(ldf))
                 @test_throws KeyError init!!(
                     extra_model, accs, InitFromPrior(), transform_strategy
                 )
@@ -398,12 +463,12 @@ end
                 end
                 fewer_model = fewer_var_model()
 
-                accs = OnlyAccsVarInfo(VectorValueAccumulator())
+                accs = VarInfo(VectorValueAccumulator())
                 _, accs = init!!(fewer_model, accs, InitFromPrior(), transform_strategy)
                 vecvals = get_vector_values(accs)
                 @test_throws ArgumentError to_vector_params(vecvals, ldf)
 
-                accs = OnlyAccsVarInfo(VectorParamAccumulator(ldf))
+                accs = VarInfo(VectorParamAccumulator(ldf))
                 _, accs = init!!(fewer_model, accs, InitFromPrior(), transform_strategy)
                 @test_throws ArgumentError get_vector_params(accs)
             end
@@ -415,12 +480,12 @@ end
                 end
                 different_model = different_var_model()
 
-                accs = OnlyAccsVarInfo(VectorValueAccumulator())
+                accs = VarInfo(VectorValueAccumulator())
                 _, accs = init!!(different_model, accs, InitFromPrior(), transform_strategy)
                 vecvals = get_vector_values(accs)
                 @test_throws ArgumentError to_vector_params(vecvals, ldf)
 
-                accs = OnlyAccsVarInfo(VectorParamAccumulator(ldf))
+                accs = VarInfo(VectorParamAccumulator(ldf))
                 @test_throws ArgumentError init!!(
                     different_model, accs, InitFromPrior(), transform_strategy
                 )
@@ -432,7 +497,7 @@ end
             vec = manual_make_vec(transform_strategy)
             init_strategy = InitFromVector(vec, ldf)
 
-            accs = OnlyAccsVarInfo(VectorValueAccumulator(), VectorParamAccumulator(ldf))
+            accs = VarInfo(VectorValueAccumulator(), VectorParamAccumulator(ldf))
             _, accs = init!!(model, accs, init_strategy, transform_strategy)
             new_vecvals = get_vector_values(accs)
             new_vec = to_vector_params(new_vecvals, ldf)

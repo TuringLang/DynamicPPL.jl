@@ -38,7 +38,7 @@ Threads.nthreads()
 ```
 
 ```@example 1
-vi = DynamicPPL.OnlyAccsVarInfo(DynamicPPL.LogLikelihoodAccumulator())
+vi = DynamicPPL.VarInfo(DynamicPPL.LogLikelihoodAccumulator())
 tsvi = DynamicPPL.ThreadSafeVarInfo(vi)
 isempty(tsvi.accs_by_task)
 ```
@@ -48,7 +48,7 @@ tilde-statement.
 
 ```@example 1
 x = 1.0
-context = DynamicPPL.InitContext(InitFromParams((; x=x)), UnlinkAll())
+context = DynamicPPL.Context(InitFromParams((; x=x)), UnlinkAll())
 _, tsvi = DynamicPPL._evaluate!!(model, context, tsvi)
 length(tsvi.accs_by_task)
 ```
@@ -71,8 +71,7 @@ Any output obtained from an accumulator can be accumulated correctly in thread-s
 DynamicPPL can therefore provide full thread safety when all required outputs come from
 accumulators.
 
-The main situation where this is not yet true is when using a full `VarInfo`, which stores a VarNamedTuple in its `varinfo.values` field.
-Modifications to this field are currently not thread-safe.
-However, the `values` VNT is entirely equivalent to a `VectorValueAccumulator`.
-
-In the near future it should hopefully be possible to use a `OnlyAccsVarInfo` with a `VectorValueAccumulator` instead of a full `VarInfo`, which would allow DynamicPPL to be fully thread-safe (though see also [this issue](https://github.com/TuringLang/DynamicPPL.jl/issues/1266) for another caveat).
+Parameter values are also accumulator outputs. `VectorValueAccumulator` and
+`RawValueAccumulator` use task-local storage and combine their results after evaluation.
+This does not make arbitrary mutations in the model body or shared mutable
+initialisation strategies thread-safe.

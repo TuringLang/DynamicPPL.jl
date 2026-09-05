@@ -141,7 +141,7 @@ function model_dimension(model, islinked)
             DynamicPPL.init!!(
                 StableRNG(23),
                 model,
-                VarInfo(),
+                VarInfo(DynamicPPL.VectorValueAccumulator()),
                 DynamicPPL.InitFromPrior(),
                 transform_strategy(islinked),
             ),
