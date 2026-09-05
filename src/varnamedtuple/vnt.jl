@@ -115,7 +115,8 @@ end
 Base.haskey(vnt::VarNamedTuple, vn::VarName) = _haskey_optic(vnt, vn)
 @inline function Base.haskey(vnt::VarNamedTuple, sym::Symbol)
     _check_symbol_key(sym)
-    return haskey(vnt, VarName{sym}())
+    return haskey(vnt.data, sym) &&
+           _haskey_optic(getindex(vnt.data, sym), AbstractPPL.Iden())
 end
 
 """
