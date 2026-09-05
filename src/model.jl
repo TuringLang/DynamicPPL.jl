@@ -139,11 +139,7 @@ function _model_role_at(values::VarNamedTuples.PartialArray, optic::AbstractPPL.
         )
         return _model_role_at(selected, optic.child, vn)
     end
-    return if getindex(values.mask, optic.ix...; optic.kw...)
-        _model_role_at(getindex(values.data, optic.ix...; optic.kw...), optic.child, vn)
-    else
-        nothing
-    end
+    return _model_role_at(getindex(values.data, optic.ix...; optic.kw...), optic.child, vn)
 end
 function _get_model_role(model, vn)
     return _model_role_at(model.values, AbstractPPL.varname_to_optic(vn), vn)
@@ -210,7 +206,6 @@ function VarNamedTuples._getindex_optic(
         getindex(tree.values, optic.ix...; optic.kw...), optic.child, vn
     )
 end
-VarNamedTuples._getindex_optic(tree::ModelValueTree, ::AbstractPPL.Iden, vn) = tree
 
 function VarNamedTuples._haskey_optic(tree::ModelValueTree, optic::AbstractPPL.Property)
     return VarNamedTuples._haskey_optic(tree.values, optic)
@@ -368,7 +363,6 @@ function _model_role_at(tree::ModelValueTree{<:Tuple}, optic::AbstractPPL.Index,
     value = getindex(tree.values, optic.ix...)
     return value isa NoModelBinding ? nothing : _model_role_at(value, optic.child, vn)
 end
-_model_role_at(tree::ModelValueTree, ::AbstractPPL.Iden, vn) = _model_role(tree, vn)
 function _model_argument_binding(tree::ModelValueTree, optic::AbstractPPL.Property)
     return _model_argument_binding(tree.values, optic)
 end
@@ -379,7 +373,6 @@ function _model_argument_binding(tree::ModelValueTree{<:Tuple}, optic::AbstractP
     value = getindex(tree.values, optic.ix...)
     return value isa NoModelBinding ? nothing : _model_argument_binding(value, optic.child)
 end
-_model_argument_binding(tree::ModelValueTree, ::AbstractPPL.Iden) = tree
 @generated function _merge_model_values(
     previous::VarNamedTuple{P}, updates::VarNamedTuple{U}
 ) where {P,U}
@@ -474,9 +467,6 @@ end
     end
 end
 _previous_model_child(::NoModelBinding, optic) = NoModelBinding()
-function _previous_model_child(previous::ModelValueTree, optic::AbstractPPL.Property)
-    return _previous_model_child(previous.values, optic)
-end
 function _previous_model_child(previous::ModelValueTree{<:Tuple}, optic::AbstractPPL.Index)
     i = only(optic.ix)
     return i <= length(previous.values) ? previous.values[i] : NoModelBinding()

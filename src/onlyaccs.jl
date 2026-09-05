@@ -42,8 +42,6 @@ function DynamicPPL.get_transform_strategy(::OnlyAccsVarInfo)
     )
 end
 
-# This allows us to make use of the main tilde_assume!!(::InitContext) method without
-# having to duplicate the code here
 @inline function DynamicPPL.setindex_with_dist!!(
     vi::OnlyAccsVarInfo, ::TransformedValue, ::Distribution, ::VarName, ::Any
 )

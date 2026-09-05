@@ -178,7 +178,6 @@ function (::SharedGetProperty{S})(
     )
 end
 
-index_template(::NoTemplate, optic) = NoTemplate()
 index_template(template::SkipTemplate, optic) = decrease_skip(template)
 index_template(template, optic) = NoTemplate()
 function index_template(template::AbstractArray, optic)

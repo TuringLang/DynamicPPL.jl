@@ -156,29 +156,6 @@ to_submodel(m::Model, auto_prefix::Bool=true) = Submodel{typeof(m),auto_prefix}(
 # Submodels in tilde-pipeline
 # ---------------------------
 
-"""
-    DynamicPPL.tilde_assume!!(
-        model::Model,
-        context::AbstractContext,
-        right::DynamicPPL.Submodel,
-        vn::VarName,
-        ::Any,
-        vi::AbstractVarInfo
-    )
-
-Evaluate the submodel under the parent `model`.
-"""
-function tilde_assume!!(
-    model::Model,
-    context::AbstractContext,
-    right::DynamicPPL.Submodel,
-    vn::VarName,
-    template,
-    vi::AbstractVarInfo,
-)
-    return _evaluate!!(right, context, vi, model, vn, template)
-end
-
 _submodel_namespace(values::VarNamedTuple) = values
 _submodel_namespace(value::ModelValueTree{<:NamedTuple}) = value.values
 function _submodel_namespace(
@@ -201,17 +178,25 @@ function _submodel_values(values::VarNamedTuple, prefix::VarName, template)
     return _prefix_values(_submodel_namespace(binding), prefix, template)
 end
 
-# When automatic prefixing is used, the submodel itself doesn't carry the
-# prefix, as the prefix is obtained from the LHS of `~` (whereas the submodel
-# is on the RHS). The prefix can only be obtained in `tilde_assume!!`, and then
-# passed into this function.
-function _evaluate!!(
-    submodel::Submodel{M,AutoPrefix},
-    context::AbstractContext,
-    vi::AbstractVarInfo,
+"""
+    DynamicPPL.tilde_assume!!(
+        parent_model::Model,
+        context::AbstractContext,
+        submodel::DynamicPPL.Submodel,
+        left_vn::VarName,
+        template,
+        vi::AbstractVarInfo
+    )
+
+Evaluate `submodel` under `parent_model`.
+"""
+function tilde_assume!!(
     parent_model::Model,
+    context::AbstractContext,
+    submodel::Submodel{M,AutoPrefix},
     left_vn::VarName,
     template,
+    vi::AbstractVarInfo,
 ) where {M<:Model,AutoPrefix}
     parent_prefix = parent_model.prefix
     model = if AutoPrefix
