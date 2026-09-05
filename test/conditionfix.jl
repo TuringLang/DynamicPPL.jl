@@ -18,6 +18,11 @@ struct ObservationRecord{A,B}
     b::B
 end
 
+struct ReplacementRecord{A,B}
+    a::A
+    b::B
+end
+
 @testset "condition and fix" begin
     @model function demo_cond_fix()
         x ~ Normal()
@@ -118,6 +123,127 @@ end
             @test changed() == (; a=3.0, b=2.0)
             @test original() == (; a=1.0, b=2.0)
         end
+    end
+
+    @testset "observation arguments retain body computations" begin
+        @model scalar_input(x=1.0) = (x += 1; x ~ Normal(); return x)
+        @model keyword_input(; x=1.0) = (x += 1; x ~ Normal(); return x)
+        @model repeated_input(x) = (x += 1; x ~ Normal(); x += 1; x ~ Normal(); return x)
+        @model wrapped_input(model) = a ~ to_submodel(model)
+        @model expanded_array(x) = (x = vcat(x, oftype(first(x), 2)); x[2] ~ Normal(); x)
+        @model expanded_record(x) = (x = (; x..., b=oftype(x.a, 2)); x.b ~ Normal(); x)
+        for T in (Float32, Float64, BigFloat),
+            changed in (expanded_array(T[1]), expanded_record((; a=T(1))))
+
+            @test loglikelihood(changed, VarNamedTuple()) ≈ logpdf(Normal(), T(2))
+            @test wrapped_input(changed)() == changed()
+        end
+        @test scalar_input()() == keyword_input()() == 2.0
+        for T in (Float32, Float64, BigFloat),
+            constructor in (scalar_input, x -> keyword_input(; x))
+
+            original = constructor(T(1))
+            for model in (original, condition(decondition(original); x=T(1)))
+                @test model() == T(2)
+                @test loglikelihood(model, VarNamedTuple()) ≈ logpdf(Normal(), T(2))
+            end
+            @test fix(original; x=T(3))() == T(3)
+            @test condition(original; x=T(3))() == T(4)
+            nested = condition(wrapped_input(original), @varname(a.x) => T(3))
+            @test nested() == T(4)
+            @test loglikelihood(nested, VarNamedTuple()) ≈ logpdf(Normal(), T(4))
+        end
+        @test repeated_input(1.0)() == 3.0
+        @model splatted_input(x...) = (
+            x = collect(x) .+ 1; x ~ MvNormal(zeros(length(x)), I); return x
+        )
+        @test splatted_input(1.0)() == [2.0]
+        @test loglikelihood(repeated_input(1.0), VarNamedTuple()) ≈
+            logpdf(Normal(), 2.0) + logpdf(Normal(), 3.0)
+        @test ForwardDiff.derivative(
+            x -> loglikelihood(scalar_input(x), VarNamedTuple()), 1.0
+        ) == -2.0
+
+        @model function partial_input(x)
+            x = x .+ 1
+            before = copy(x)
+            for i in eachindex(x)
+                x[i] ~ Normal()
+            end
+            return (; before, x)
+        end
+        for data in (Float32[0, 0], BigFloat[0, 0], DimArray([0.0, 0.0], X)), i in 1:2
+            changed_model = condition(
+                decondition(partial_input(data)), @varname(x[i]) => 3.0
+            )
+            result, vi = init!!(
+                changed_model,
+                OnlyAccsVarInfo(),
+                InitFromParams((; x=[7.0, 7.0])),
+                UnlinkAll(),
+            )
+            @test result.before[i] == result.x[i] == 4.0
+            @test result.before[3 - i] == 1.0
+            @test result.x[3 - i] == 7.0
+            @test getloglikelihood(vi) ≈ logpdf(Normal(), 4.0)
+            @test data == [0, 0]
+        end
+        partial_loglik =
+            p -> loglikelihood(
+                condition(decondition(partial_input(zeros(2))), @varname(x[1]) => p),
+                (; x=[7.0, 7.0]),
+            )
+        @test ForwardDiff.derivative(partial_loglik, 3.0) == -4.0
+    end
+
+    @testset "successive nested array overrides retain shape" begin
+        @model function nested_array(x)
+            for i in eachindex(x), j in eachindex(x[i])
+                x[i][j] ~ Normal()
+            end
+            return x
+        end
+        @model outer_array(model) = a ~ to_submodel(model)
+        for first_op in (condition, fix),
+            second_op in (condition, fix),
+            third_op in (condition, fix),
+            T in (Float32, BigFloat)
+
+            data = reshape([[T(i)] for i in 1:4], 2, 2)
+            original = nested_array(data)
+            first = first_op(original, @varname(x[1][1]) => T(10))
+            second = second_op(first, @varname(x[2][1]) => T(20))
+            third = third_op(second, @varname(x[1, 1][1]) => T(30))
+            expected = reshape([[T(30)], [T(20)], [T(3)], [T(4)]], 2, 2)
+            @test third() == expected
+            @test third_op(outer_array(second), @varname(a.x[1][1]) => T(30))() == expected
+            @test first()[2][1] == T(2)
+            @test original() == data
+            @test loglikelihood(third, VarNamedTuple()) ≈
+                (third_op === condition ? logpdf(Normal(), T(30)) : zero(T)) +
+                  (second_op === condition ? logpdf(Normal(), T(20)) : zero(T)) +
+                  logpdf(Normal(), T(3)) +
+                  logpdf(Normal(), T(4))
+        end
+        data = reshape([[Float32(i)] for i in 1:4], 2, 2)
+        replaced = condition(nested_array([[0.0f0]]); x=data)
+        replaced = fix(replaced, @varname(x[1][1]) => 10.0f0)
+        replaced = condition(replaced, @varname(x[2][1]) => 20.0f0)
+        @test replaced() == reshape([[10.0f0], [20.0f0], [3.0f0], [4.0f0]], 2, 2)
+
+        partial = condition(decondition(nested_array(data)), @varname(x[1][1]) => 10.0f0)
+        partial = condition(partial, @varname(x[2][1]) => 20.0f0)
+        result, _ = init!!(
+            partial, OnlyAccsVarInfo(), InitFromParams((; x=data)), UnlinkAll()
+        )
+        @test result == reshape([[10.0f0], [20.0f0], [3.0f0], [4.0f0]], 2, 2)
+
+        observations = @vnt begin
+            @template x = data
+            x[1][1] := 10.0f0
+        end
+        partial = @test_logs condition(decondition(nested_array(data)), observations)
+        @test size(conditioned(partial).data.x) == (2, 2)
     end
 
     @testset "argument observations can be replaced and removed" begin
@@ -243,6 +369,129 @@ end
             @test original().b == data.b == [2.0, 3.0]
         end
         @test_throws ArgumentError condition(record_sites(data), @varname(x.unknown) => 1.0)
+    end
+
+    @testset "property overrides retain replacement containers" begin
+        @model fields(x) = (x.a ~ Normal(); return x)
+        @model nested_fields(m) = child ~ to_submodel(m)
+        for first_op in (condition, fix),
+            last_op in (condition, fix),
+            (original, replacement) in (
+                ((; a=0.0f0), (; a=1.0f0, b=2.0f0)),
+                (ObservationRecord(0.0f0, 0.0f0), ReplacementRecord(1.0f0, 2.0f0)),
+                (ObservationRecord(big"0", big"0"), (; a=big"1", b=big"2")),
+            )
+
+            base = first_op(fields(original); x=replacement)
+            changed = last_op(base, @varname(x.a) => oftype(replacement.a, 3))
+            result = changed()
+            @test typeof(result) === typeof(replacement)
+            @test result.a == 3
+            @test result.b == 2
+            @test base().a == replacement.a == 1
+            @test loglikelihood(changed, VarNamedTuple()) ≈
+                (last_op === condition ? logpdf(Normal(), 3) : 0)
+            nested = last_op(
+                nested_fields(base), @varname(child.x.a) => oftype(replacement.a, 4)
+            )
+            @test typeof(nested()) === typeof(replacement)
+            @test nested().a == 4
+            @test nested().b == 2
+
+            remove = last_op === condition ? decondition : unfix
+            latent = remove(changed, @varname(x.a))
+            result, _ = init!!(
+                latent,
+                OnlyAccsVarInfo(),
+                InitFromParams((; x=(; a=oftype(replacement.a, 7)))),
+                UnlinkAll(),
+            )
+            @test typeof(result) === typeof(replacement)
+            @test result.a == 7
+            @test result.b == 2
+        end
+        parent = condition(
+            nested_fields(fields((; a=0.0))), @varname(child.x) => (; a=1.0, b=2.0)
+        )
+        parent = fix(parent, @varname(child.x.a) => 3.0)
+        @test parent() == (; a=3.0, b=2.0)
+        result, _ = @inferred evaluate!!(
+            parent, DefaultContext(VarNamedTuple()), OnlyAccsVarInfo()
+        )
+        @test result == (; a=3.0, b=2.0)
+
+        @model array_fields(x) = (x[1].a ~ Normal(); return x)
+        parent = condition(
+            nested_fields(array_fields([(; a=0.0)])),
+            @varname(child.x[1]) => (; a=1.0, b=2.0),
+        )
+        @test fix(parent, @varname(child.x[1].a) => 3.0)() == [(; a=3.0, b=2.0)]
+        partial = condition(
+            decondition(array_fields([(; a=0.0)])), @varname(x[1]) => (; a=1.0, b=2.0)
+        )
+        @test fix(partial, @varname(x[1].a) => 3.0)() == [(; a=3.0, b=2.0)]
+
+        base = condition(fields(ObservationRecord(0.0, 0.0)); x=ReplacementRecord(1.0, 2.0))
+        loglik = p -> loglikelihood(condition(base, @varname(x.a) => p), VarNamedTuple())
+        @test ForwardDiff.derivative(loglik, 3.0) == -3.0
+        selected = conditioned(condition(base, @varname(x.a) => 3.0))
+        @test selected[@varname(x)] isa ReplacementRecord
+        @test selected == conditioned(condition(base, @varname(x.a) => 3.0))
+        @test condition(fields(ObservationRecord(0.0, 0.0)), selected)().a == 3.0
+        mixed = fix(base, @varname(x.a) => 3.0)
+        supplied = merge(conditioned(mixed), fixed(mixed))
+        @test supplied[@varname(x)] isa ReplacementRecord
+        @test supplied[@varname(x)].a == 3.0
+        @test supplied[@varname(x)].b == 2.0
+
+        @model namespace_child(x, y) = (x ~ Normal(); y ~ Normal(); return (x, y))
+        @model namespace_parent() = child ~ to_submodel(namespace_child(0.0, 0.0))
+        parent = condition(namespace_parent(); child=(; x=1.0, y=2.0))
+        parent = decondition(fix(parent, @varname(child.x) => 3.0), @varname(child.y))
+        @test parent() == (3.0, 0.0)
+    end
+
+    @testset "indexed tuple bindings preserve tuples and roles" begin
+        @model tuple_sites(x) = (x[1] ~ Normal(); x[2] ~ Normal(); return x)
+        @model nested_tuple(m) = child ~ to_submodel(m)
+        for T in (Float32, BigFloat),
+            first_op in (condition, fix),
+            last_op in (condition, fix)
+
+            original = tuple_sites((T(1), T(2)))
+            first = first_op(original, @varname(x[1]) => T(3))
+            changed = last_op(first, @varname(x[2]) => T(4))
+            @test changed() == (T(3), T(4))
+            @test changed() isa Tuple
+            @test merge(conditioned(changed), fixed(changed))[@varname(x)] == (T(3), T(4))
+            @test original() == (T(1), T(2))
+            @test first() == (T(3), T(2))
+            @test loglikelihood(changed, VarNamedTuple()) ≈
+                (first_op === condition ? logpdf(Normal(), T(3)) : zero(T)) +
+                  (last_op === condition ? logpdf(Normal(), T(4)) : zero(T))
+            @test last_op(nested_tuple(first), @varname(child.x[2]) => T(4))() ==
+                (T(3), T(4))
+        end
+        @model tuple_with_record(x) = (x[1].a ~ Normal(); return x)
+        changed = fix(tuple_with_record(((; a=1.0), 2.0)), @varname(x[1].a) => 3.0)
+        @test changed() == ((; a=3.0), 2.0)
+        loglik =
+            p -> loglikelihood(
+                condition(tuple_sites((0.0, 2.0)), @varname(x[1]) => p), VarNamedTuple()
+            )
+        @test ForwardDiff.derivative(loglik, 3.0) == -3.0
+    end
+
+    @testset "observation role lookup does not copy slices" begin
+        @model slices(x) = x[:] ~ Normal()
+        function evaluation_bytes(model)
+            vi = OnlyAccsVarInfo()
+            init!!(model, vi, InitFromPrior(), UnlinkAll())
+            return @allocated init!!(model, vi, InitFromPrior(), UnlinkAll())
+        end
+        small, large = slices(zeros(10_000)), slices(zeros(100_000))
+        @test evaluation_bytes(large) - evaluation_bytes(small) < 1_000_000
+        @test loglikelihood(large, VarNamedTuple()) ≈ 100_000 * logpdf(Normal(), 0.0)
     end
 
     @testset "partial updates retain complete argument replacements" begin

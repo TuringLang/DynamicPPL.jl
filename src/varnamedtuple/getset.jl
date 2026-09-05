@@ -210,7 +210,7 @@ function _setindex_optic!!(
     # doesn't yet have enough indices for that slice. Expand it if so.
     pa = grow_to_indices!!(pa, coptic.ix...; coptic.kw...)
 
-    is_multiindex = _is_multiindex(template_array(template), coptic.ix...; coptic.kw...)
+    is_multiindex = _is_multiindex(pa.data, coptic.ix...; coptic.kw...)
 
     if permissions isa MustNotOverwrite && optic.child isa AbstractPPL.Iden
         if any(view(pa.mask, coptic.ix...; coptic.kw...))
@@ -428,6 +428,7 @@ end
 function make_leaf_multiindex(value, coptic::AbstractPPL.Index, template)
     sub_value = make_sub_value(value, coptic, template)
     template = template_array(template)
+    sub_value = _prepare_indexed_value(sub_value, template, coptic.ix...; coptic.kw...)
 
     # Firstly, we need to make sure that sub_value has *exactly* the right size to fit into
     # the indices specified by `coptic`. This might not always be the case. Consider

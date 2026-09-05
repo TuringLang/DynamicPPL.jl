@@ -180,10 +180,13 @@ function tilde_assume!!(
 end
 
 _submodel_namespace(values::VarNamedTuple) = values
-function _submodel_namespace(value::ModelValue{R,<:NamedTuple}) where {R}
+_submodel_namespace(value::ModelValueTree{<:NamedTuple}) = value.values
+function _submodel_namespace(
+    value::ModelValue{R,<:NamedTuple}
+) where {R<:Union{Condition,Fix}}
     return _tag_model_values(R, VarNamedTuple(value.value))
 end
-function _submodel_namespace(::ModelValue{R}) where {R}
+function _submodel_namespace(::Union{ModelValue,ModelValueTree})
     throw(
         ArgumentError(
             "Cannot condition or fix a submodel's return value. Supply its internal variable names instead; decondition arguments used only as return-value buffers.",
@@ -193,8 +196,9 @@ end
 
 _submodel_values(values::VarNamedTuple, ::Nothing, template) = values
 function _submodel_values(values::VarNamedTuple, prefix::VarName, template)
-    hasvalue(values, prefix) || return VarNamedTuple()
-    return _prefix_values(_submodel_namespace(values[prefix]), prefix, template)
+    binding = _model_argument_binding(values, AbstractPPL.varname_to_optic(prefix))
+    binding === nothing && return VarNamedTuple()
+    return _prefix_values(_submodel_namespace(binding), prefix, template)
 end
 
 # When automatic prefixing is used, the submodel itself doesn't carry the
@@ -233,7 +237,7 @@ function _evaluate!!(
             _reconstruct_model(model; prefix_template)
         end
     end
-    values = merge(
+    values = _merge_model_values(
         model.values,
         _submodel_values(
             parent_model.values,

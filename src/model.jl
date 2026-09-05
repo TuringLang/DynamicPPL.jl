@@ -26,6 +26,34 @@ struct ModelValue{R<:Union{Condition,Fix},T}
     end
 end
 
+struct NoModelBinding end
+
+# Partial bindings retain the container from which their fields or tuple elements came.
+struct ModelValueTree{T,V<:Union{VarNamedTuple,Tuple}}
+    template::T
+    values::V
+    function ModelValueTree(template::T, values::V) where {T,V<:Union{VarNamedTuple,Tuple}}
+        if values isa Tuple
+            template isa Tuple && length(template) == length(values) ||
+                throw(ArgumentError("Tuple bindings must preserve their template's length"))
+        else
+            all(name -> hasproperty(template, name), keys(values.data)) ||
+                throw(ArgumentError("Field bindings must belong to their template"))
+        end
+        return new{T,V}(template, values)
+    end
+end
+
+function Base.:(==)(a::ModelValueTree, b::ModelValueTree)
+    return a.template == b.template && a.values == b.values
+end
+function Base.isequal(a::ModelValueTree, b::ModelValueTree)
+    return isequal(a.template, b.template) && isequal(a.values, b.values)
+end
+function Base.hash(value::ModelValueTree, h::UInt)
+    return hash(value.template, hash(value.values, hash(:ModelValueTree, h)))
+end
+
 function VarNamedTuples._getindex_optic(
     value::ModelValue{R}, optic::AbstractPPL.AbstractOptic, vn
 ) where {R}
@@ -40,146 +68,515 @@ function VarNamedTuples._haskey_optic(value::ModelValue, optic::AbstractPPL.Abst
     return VarNamedTuples._haskey_optic(value.value, optic)
 end
 VarNamedTuples._haskey_optic(::ModelValue, ::AbstractPPL.Iden) = true
-
-_model_value(value::ModelValue, ::VarName) = value
-function _model_value(values::VarNamedTuples.PartialArray, vn::VarName)
-    return _model_value(VarNamedTuples.unwrap_internal_array(values), vn)
+function VarNamedTuples._haskey_optic(
+    value::ModelValue{R,<:Tuple}, optic::AbstractPPL.Index
+) where {R<:Union{Condition,Fix}}
+    optic = AbstractPPL.concretize_top_level(optic, value.value)
+    isempty(optic.kw) && checkbounds(Bool, Base.OneTo(length(value.value)), optic.ix...) ||
+        return false
+    return VarNamedTuples._haskey_optic(getindex(value.value, optic.ix...), optic.child)
 end
-function _model_value(values::AbstractArray, vn::VarName)
+
+_model_role(::ModelValue{R}, ::VarName) where {R} = R()
+_model_role(::Nothing, ::VarName) = nothing
+_model_role(::NoModelBinding, ::VarName) = nothing
+function _model_role(value::VarNamedTuples.ArrayLikeBlock, vn::VarName)
+    return _model_role(value.block, vn)
+end
+function _model_role(tree::ModelValueTree, vn::VarName)
+    return if VarNamedTuples._haskey_optic(tree, AbstractPPL.Iden())
+        _model_role(tree.values, vn)
+    else
+        nothing
+    end
+end
+_model_role(values::VarNamedTuple, vn::VarName) = _model_role(values.data, vn)
+function _model_role(values::VarNamedTuples.PartialArray, vn::VarName)
+    return all(values.mask) ? _model_role(values.data, vn) : nothing
+end
+function _model_role(values::Union{AbstractArray,Tuple,NamedTuple}, vn::VarName)
     isempty(values) && throw(ArgumentError("Cannot determine the role of empty `$vn`"))
-    first_value = first(values)
-    first_value isa ModelValue || throw(ArgumentError("Invalid model value for `$vn`"))
-    return _model_value(values, vn, first_value)
-end
-function _model_value(values::AbstractArray, vn::VarName, ::ModelValue{R}) where {R}
-    all(value -> value isa ModelValue{R}, values) || throw(
-        ArgumentError(
-            "Cannot condition and fix different parts of the same tilde variable `$vn`"
-        ),
-    )
-    return ModelValue{R}(map(value -> value.value, values))
-end
-function _model_value(values::VarNamedTuple, vn::VarName)
-    tagged = map(value -> _model_value(value, vn), values.data)
-    isempty(tagged) && throw(ArgumentError("Cannot determine the role of empty `$vn`"))
-    return _model_value(tagged, vn, first(tagged))
-end
-function _model_value(values::NamedTuple, vn::VarName, ::ModelValue{R}) where {R}
-    all(value -> value isa ModelValue{R}, values) || throw(
-        ArgumentError(
-            "Cannot condition and fix different parts of the same tilde variable `$vn`"
-        ),
-    )
-    return ModelValue{R}(map(value -> value.value, values))
-end
-function _model_value(values, vn::VarName)
-    throw(ArgumentError("Invalid model value for `$vn`: $(typeof(values))"))
+    role = _model_role(first(values), vn)
+    role === nothing && return nothing
+    for value in values
+        next_role = _model_role(value, vn)
+        next_role === nothing && return nothing
+        typeof(next_role) === typeof(role) || throw(
+            ArgumentError(
+                "Cannot condition and fix different parts of the same tilde variable `$vn`",
+            ),
+        )
+    end
+    return role
 end
 
-function _get_model_value(model, vn)
-    return hasvalue(model.values, vn) ? _model_value(model.values[vn], vn) : nothing
+_model_role_at(values, ::AbstractPPL.Iden, vn) = _model_role(values, vn)
+function _model_role_at(values::VarNamedTuple, optic::AbstractPPL.Property{S}, vn) where {S}
+    return if haskey(values.data, S)
+        _model_role_at(values.data[S], optic.child, vn)
+    else
+        nothing
+    end
+end
+function _model_role_at(
+    value::ModelValue{R}, optic::AbstractPPL.AbstractOptic, vn
+) where {R}
+    return VarNamedTuples._haskey_optic(value, optic) ? R() : nothing
+end
+_model_role_at(::ModelValue{R}, ::AbstractPPL.Iden, vn) where {R} = R()
+function _model_role_at(values::VarNamedTuples.PartialArray, optic::AbstractPPL.Index, vn)
+    optic = AbstractPPL.concretize_top_level(optic, values.data)
+    VarNamedTuples._haskey_optic(values, optic) || return nothing
+    if VarNamedTuples._is_multiindex(values.data, optic.ix...; optic.kw...)
+        selected = VarNamedTuples.PartialArray(
+            view(values.data, optic.ix...; optic.kw...),
+            view(values.mask, optic.ix...; optic.kw...),
+        )
+        return _model_role_at(selected, optic.child, vn)
+    end
+    return if getindex(values.mask, optic.ix...; optic.kw...)
+        _model_role_at(getindex(values.data, optic.ix...; optic.kw...), optic.child, vn)
+    else
+        nothing
+    end
+end
+function _get_model_role(model, vn)
+    return _model_role_at(model.values, AbstractPPL.varname_to_optic(vn), vn)
+end
+function _get_argument_role(model, vn, argument)
+    argument = maybe_prefix(argument, model.prefix)
+    binding = _model_argument_binding(model.values, AbstractPPL.varname_to_optic(argument))
+    # A whole argument keeps its role when body computations change its shape or fields.
+    return binding isa ModelValue ? _model_role(binding, vn) : _get_model_role(model, vn)
+end
+function _get_model_data(model, vn)
+    return _model_data(VarNamedTuples._getindex_optic(model.values, vn))
 end
 
 function _tag_model_values(::Type{R}, values::VarNamedTuple) where {R}
     return map_values!!(ModelValue{R}, copy(values))
 end
 
-function VarNamedTuples._merge(
-    previous::ModelValue{R,<:NamedTuple}, updates::VarNamedTuple, recurse::Val{true}
-) where {R}
-    return VarNamedTuples._merge(
-        _tag_model_values(R, VarNamedTuple(previous.value)), updates, recurse
-    )
+function _expand_model_binding(previous::ModelValue{R,<:AbstractArray}) where {R}
+    data = map(ModelValue{R}, previous.value)
+    return VarNamedTuples.PartialArray(data, fill!(similar(data, Bool), true))
 end
-function VarNamedTuples._merge(
-    previous::ModelValue{R}, updates::VarNamedTuple, recurse::Val{true}
-) where {R}
-    all(name -> hasproperty(previous.value, name), keys(updates.data)) || throw(
-        ArgumentError(
-            "Cannot override nonexistent properties of $(typeof(previous.value))"
-        ),
-    )
+function _expand_model_binding(previous::ModelValue{R,<:Tuple}) where {R}
+    return ModelValueTree(previous.value, map(ModelValue{R}, previous.value))
+end
+function _expand_model_binding(previous::ModelValue{R}) where {R}
     names = propertynames(previous.value)
     fields = NamedTuple{names}(map(name -> getproperty(previous.value, name), names))
-    return VarNamedTuples._merge(
-        _tag_model_values(R, VarNamedTuple(fields)), updates, recurse
+    return ModelValueTree(previous.value, _tag_model_values(R, VarNamedTuple(fields)))
+end
+function VarNamedTuples._setindex_optic!!(
+    previous::ModelValue{R,<:Union{AbstractArray,Tuple}},
+    value,
+    optic::AbstractPPL.Index,
+    template,
+    permissions,
+) where {R}
+    return VarNamedTuples._setindex_optic!!(
+        _expand_model_binding(previous), value, optic, template, permissions
+    )
+end
+function VarNamedTuples._setindex_optic!!(
+    previous::ModelValue{R}, value, optic::AbstractPPL.Property{S}, template, permissions
+) where {R,S}
+    hasproperty(previous.value, S) || throw(
+        ArgumentError(
+            "Cannot override nonexistent property `$S` of $(typeof(previous.value))"
+        ),
+    )
+    expanded = _expand_model_binding(previous)
+    return VarNamedTuples._setindex_optic!!(expanded, value, optic, template, permissions)
+end
+
+function VarNamedTuples._getindex_optic(
+    tree::ModelValueTree, optic::AbstractPPL.Property, vn
+)
+    return VarNamedTuples._getindex_optic(tree.values, optic, vn)
+end
+function VarNamedTuples._getindex_optic(
+    tree::ModelValueTree{<:Tuple}, optic::AbstractPPL.Index, vn
+)
+    optic = AbstractPPL.concretize_top_level(optic, tree.template)
+    return VarNamedTuples._getindex_optic(
+        getindex(tree.values, optic.ix...; optic.kw...), optic.child, vn
+    )
+end
+VarNamedTuples._getindex_optic(tree::ModelValueTree, ::AbstractPPL.Iden, vn) = tree
+
+function VarNamedTuples._haskey_optic(tree::ModelValueTree, optic::AbstractPPL.Property)
+    return VarNamedTuples._haskey_optic(tree.values, optic)
+end
+function VarNamedTuples._haskey_optic(
+    tree::ModelValueTree{<:Tuple}, optic::AbstractPPL.Index
+)
+    optic = AbstractPPL.concretize_top_level(optic, tree.template)
+    isempty(optic.kw) && checkbounds(Bool, Base.OneTo(length(tree.values)), optic.ix...) ||
+        return false
+    value = getindex(tree.values, optic.ix...; optic.kw...)
+    return !(value isa NoModelBinding) && VarNamedTuples._haskey_optic(value, optic.child)
+end
+function VarNamedTuples._haskey_optic(tree::ModelValueTree, ::AbstractPPL.Iden)
+    values = tree.values
+    if values isa VarNamedTuple
+        return all(propertynames(tree.template)) do name
+            haskey(values.data, name) &&
+                VarNamedTuples._haskey_optic(values.data[name], AbstractPPL.Iden())
+        end
+    end
+    return all(
+        value ->
+            !(value isa NoModelBinding) &&
+                VarNamedTuples._haskey_optic(value, AbstractPPL.Iden()),
+        values,
     )
 end
 
-function VarNamedTuples._merge(
-    previous::ModelValue{R,<:AbstractArray},
-    updates::VarNamedTuples.PartialArray,
-    recurse::Val{true},
-) where {R}
-    data = map(ModelValue{R}, previous.value)
-    complete = VarNamedTuples.PartialArray(data, fill!(similar(data, Bool), true))
-    return _merge_model_array(complete, updates, previous.value, recurse)
-end
-function VarNamedTuples._merge(
-    previous::ModelValue{R,<:AbstractArray}, updates::VarNamedTuple, recurse::Val{true}
-) where {R}
-    data = map(ModelValue{R}, previous.value)
-    complete = VarNamedTuples.PartialArray(data, fill!(similar(data, Bool), true))
-    return _merge_model_array(complete, updates, previous.value, recurse)
-end
-function VarNamedTuples._merge(
-    previous::VarNamedTuples.PartialArray{<:ModelValue},
-    updates::VarNamedTuple,
-    recurse::Val{true},
+function VarNamedTuples._setindex_optic!!(
+    tree::ModelValueTree, value, optic::AbstractPPL.Property, template, permissions
 )
-    return _merge_model_array(previous, updates, previous.data, recurse)
+    values = VarNamedTuples._setindex_optic!!(
+        copy(tree.values), value, optic, tree.template, permissions
+    )
+    return ModelValueTree(tree.template, values)
 end
-function VarNamedTuples._merge(
-    previous::VarNamedTuples.PartialArray{<:ModelValue},
-    updates::VarNamedTuples.PartialArray,
-    recurse::Val{true},
+function VarNamedTuples._setindex_optic!!(
+    tree::ModelValueTree{<:Tuple}, value, optic::AbstractPPL.Index, template, permissions
 )
-    return _merge_model_array(previous, updates, previous.data, recurse)
-end
-function _merge_model_array(previous, updates, template, recurse)
-    values = mapfoldl(
-        identity,
-        (values, pair) ->
-            merge(values, _template_model_value(pair.second, pair.first, template)),
-        VarNamedTuple(; x=updates);
-        init=VarNamedTuple(),
+    optic = AbstractPPL.concretize_top_level(optic, tree.template)
+    length(optic.ix) == 1 && only(optic.ix) isa Integer && isempty(optic.kw) ||
+        throw(ArgumentError("Tuple bindings require a single integer index"))
+    i = only(optic.ix)
+    previous = tree.values[i]
+    previous = if previous isa Union{VarNamedTuple,VarNamedTuples.PartialArray}
+        copy(previous)
+    else
+        previous
+    end
+    updated = VarNamedTuples._setindex_optic!!(
+        previous, value, optic.child, tree.template[i], permissions
     )
-    isempty(values) && return previous
-    normalized = values.data.x
-    normalized isa VarNamedTuples.PartialArray ||
-        throw(ArgumentError("Cannot apply property updates to $(typeof(template))"))
-    return invoke(
-        VarNamedTuples._merge,
-        Tuple{VarNamedTuples.PartialArray,VarNamedTuples.PartialArray,Val},
-        previous,
-        normalized,
-        recurse,
-    )
-end
-function _template_model_value(value::ModelValue{R}, vn, template) where {R}
-    return _tag_model_values(
-        R, templated_setindex!!(VarNamedTuple(), value.value, vn, template)
-    )
+    return ModelValueTree(tree.template, Base.setindex(tree.values, updated, i))
 end
 
+function VarNamedTuples._mapreduce_recursive(
+    f, op, tree::ModelValueTree{T,<:VarNamedTuple}, vn, init
+) where {T}
+    return VarNamedTuples._mapreduce_recursive(f, op, tree.values, vn, init)
+end
+@generated function VarNamedTuples._mapreduce_recursive(
+    f, op, tree::ModelValueTree{T,V}, vn, init
+) where {T,V<:Tuple}
+    exs = map(1:fieldcount(V)) do i
+        quote
+            if !(tree.values[$i] isa NoModelBinding)
+                result = VarNamedTuples._mapreduce_recursive(
+                    f,
+                    op,
+                    tree.values[$i],
+                    AbstractPPL.append_optic(vn, AbstractPPL.Index(($i,), (;))),
+                    result,
+                )
+            end
+        end
+    end
+    return quote
+        result = init
+        $(exs...)
+        result
+    end
+end
+function VarNamedTuples._map_values_recursive!!(f, tree::ModelValueTree)
+    values = if tree.values isa VarNamedTuple
+        map_values!!(f, copy(tree.values))
+    else
+        map(tree.values) do value
+            if value isa NoModelBinding
+                value
+            else
+                VarNamedTuples._map_values_recursive!!(f, _copy_model_node(value))
+            end
+        end
+    end
+    return ModelValueTree(tree.template, values)
+end
+function VarNamedTuples._map_pairs_recursive!!(f, tree::ModelValueTree, vn)
+    values = if tree.values isa VarNamedTuple
+        VarNamedTuples._map_pairs_recursive!!(f, copy(tree.values), vn)
+    else
+        ntuple(length(tree.values)) do i
+            value = tree.values[i]
+            if value isa NoModelBinding
+                value
+            else
+                VarNamedTuples._map_pairs_recursive!!(
+                    f,
+                    _copy_model_node(value),
+                    AbstractPPL.append_optic(vn, AbstractPPL.Index((i,), (;))),
+                )
+            end
+        end
+    end
+    return ModelValueTree(tree.template, values)
+end
+
+function _empty_model_tree(tree::ModelValueTree)
+    values =
+        tree.values isa Tuple ? map(_ -> NoModelBinding(), tree.values) : VarNamedTuple()
+    return ModelValueTree(tree.template, values)
+end
+function VarNamedTuples.make_leaf(
+    value, optic::AbstractPPL.Property, template::ModelValueTree
+)
+    return VarNamedTuples._setindex_optic!!(
+        _empty_model_tree(template),
+        value,
+        optic,
+        template.template,
+        VarNamedTuples.AllowAll(),
+    )
+end
+function VarNamedTuples.make_leaf(
+    value, optic::AbstractPPL.Index, template::ModelValueTree{<:Tuple}
+)
+    return VarNamedTuples._setindex_optic!!(
+        _empty_model_tree(template),
+        value,
+        optic,
+        template.template,
+        VarNamedTuples.AllowAll(),
+    )
+end
+function (::VarNamedTuples.SharedGetProperty{S})(tree::ModelValueTree) where {S}
+    return VarNamedTuples.SharedGetProperty{S}()(tree.template)
+end
+function _model_role_at(tree::ModelValueTree, optic::AbstractPPL.Property, vn)
+    return _model_role_at(tree.values, optic, vn)
+end
+function _model_role_at(tree::ModelValueTree{<:Tuple}, optic::AbstractPPL.Index, vn)
+    optic = AbstractPPL.concretize_top_level(optic, tree.template)
+    isempty(optic.kw) && checkbounds(Bool, Base.OneTo(length(tree.values)), optic.ix...) ||
+        return nothing
+    value = getindex(tree.values, optic.ix...)
+    return value isa NoModelBinding ? nothing : _model_role_at(value, optic.child, vn)
+end
+_model_role_at(tree::ModelValueTree, ::AbstractPPL.Iden, vn) = _model_role(tree, vn)
+function _model_argument_binding(tree::ModelValueTree, optic::AbstractPPL.Property)
+    return _model_argument_binding(tree.values, optic)
+end
+function _model_argument_binding(tree::ModelValueTree{<:Tuple}, optic::AbstractPPL.Index)
+    optic = AbstractPPL.concretize_top_level(optic, tree.template)
+    isempty(optic.kw) && checkbounds(Bool, Base.OneTo(length(tree.values)), optic.ix...) ||
+        return nothing
+    value = getindex(tree.values, optic.ix...)
+    return value isa NoModelBinding ? nothing : _model_argument_binding(value, optic.child)
+end
+_model_argument_binding(tree::ModelValueTree, ::AbstractPPL.Iden) = tree
+@generated function _merge_model_values(
+    previous::VarNamedTuple{P}, updates::VarNamedTuple{U}
+) where {P,U}
+    names = Tuple(union(P, U))
+    fields = map(names) do name
+        if name in P && name in U
+            :(_merge_model_node(previous.data.$name, updates.data.$name))
+        elseif name in U
+            :(_copy_model_node(updates.data.$name))
+        else
+            :(previous.data.$name)
+        end
+    end
+    return :(VarNamedTuple(NamedTuple{$names}(($(fields...),))))
+end
+_copy_model_node(value) = value
+_copy_model_node(value::Union{VarNamedTuple,VarNamedTuples.PartialArray}) = copy(value)
+function _copy_model_node(value::ModelValueTree)
+    values =
+        value.values isa Tuple ? map(_copy_model_node, value.values) : copy(value.values)
+    return ModelValueTree(value.template, values)
+end
+_merge_model_node(previous, updates) = updates
+_merge_model_node(previous, ::NoModelBinding) = previous
+function _merge_model_node(previous, updates::VarNamedTuple)
+    previous isa NoModelBinding && return copy(updates)
+    previous isa ModelValue &&
+        return _merge_model_node(_expand_model_binding(previous), updates)
+    previous isa VarNamedTuple && return _merge_model_values(previous, updates)
+    if previous isa ModelValueTree
+        return ModelValueTree(
+            previous.template, _merge_model_values(previous.values, updates)
+        )
+    end
+    return _merge_model_indices(previous, updates)
+end
+function _merge_model_node(previous, updates::VarNamedTuples.PartialArray)
+    return if previous isa NoModelBinding
+        copy(updates)
+    else
+        _merge_model_indices(previous, updates)
+    end
+end
+function _merge_model_index(previous, update, optic, template)
+    child = _model_argument_binding(previous, optic)
+    value = child === nothing ? _copy_model_node(update) : _merge_model_node(child, update)
+    return VarNamedTuples._setindex_optic!!(
+        previous, value, optic, template, VarNamedTuples.AllowAll()
+    )
+end
+function _merge_model_indices(previous, updates)
+    return _fold_model_indices(_merge_model_index, _copy_model_node(previous), updates)
+end
+function _fold_model_indices(f, result, updates::VarNamedTuples.PartialArray)
+    mask =
+        if eltype(updates) <: VarNamedTuples.ArrayLikeBlock ||
+            VarNamedTuples.ArrayLikeBlock <: eltype(updates)
+            copy(updates.mask)
+        else
+            updates.mask
+        end
+    for i in CartesianIndices(mask)
+        mask[i] || continue
+        update = updates.data[i]
+        optic = if update isa VarNamedTuples.ArrayLikeBlock
+            mask[update.ix..., update.kw...] .= false
+            AbstractPPL.Index(update.ix, update.kw)
+        else
+            AbstractPPL.Index(Tuple(i), (;))
+        end
+        value = update isa VarNamedTuples.ArrayLikeBlock ? update.block : update
+        result = f(result, value, optic, updates)
+    end
+    return result
+end
+@generated function _fold_model_indices(
+    f, result, updates::VarNamedTuple{names}
+) where {names}
+    exs = map(names) do name
+        :(
+            result = f(
+                result,
+                updates.data.$name,
+                AbstractPPL.Property{$(QuoteNode(name))}(),
+                updates,
+            )
+        )
+    end
+    return quote
+        $(exs...)
+        result
+    end
+end
+_previous_model_child(::NoModelBinding, optic) = NoModelBinding()
+function _previous_model_child(previous::ModelValueTree, optic::AbstractPPL.Property)
+    return _previous_model_child(previous.values, optic)
+end
+function _previous_model_child(previous::ModelValueTree{<:Tuple}, optic::AbstractPPL.Index)
+    i = only(optic.ix)
+    return i <= length(previous.values) ? previous.values[i] : NoModelBinding()
+end
+function _previous_model_child(previous, optic)
+    value = _model_argument_binding(previous, optic)
+    return value === nothing ? NoModelBinding() : value
+end
+function _merge_model_node(previous, updates::ModelValueTree)
+    if updates.values isa Tuple
+        values = ntuple(length(updates.values)) do i
+            child = _previous_model_child(previous, AbstractPPL.Index((i,), (;)))
+            update = updates.values[i]
+            return child isa NoModelBinding ? update : _merge_model_node(child, update)
+        end
+        return ModelValueTree(updates.template, values)
+    end
+    fields = _merge_model_fields(previous, updates, Val(propertynames(updates.template)))
+    return ModelValueTree(updates.template, VarNamedTuple(fields))
+end
+function VarNamedTuples._merge(
+    previous::ModelValueTree, updates::ModelValueTree, ::Val{true}
+)
+    return _merge_model_node(previous, updates)
+end
+
+_merge_model_fields(previous, updates, ::Val{()}) = NamedTuple()
+function _merge_model_fields(previous, updates, ::Val{names}) where {names}
+    name = first(names)
+    child = _previous_model_child(previous, AbstractPPL.Property{name}())
+    if haskey(updates.values.data, name)
+        update = updates.values.data[name]
+        child = child isa NoModelBinding ? update : _merge_model_node(child, update)
+    end
+    rest = _merge_model_fields(previous, updates, Val(Base.tail(names)))
+    return child isa NoModelBinding ? rest : merge(NamedTuple{(name,)}((child,)), rest)
+end
+
+function VarNamedTuples._prepare_indexed_value(
+    value::ModelValue{R,<:AbstractArray}, data, inds...; kw...
+) where {R}
+    return if VarNamedTuples._is_multiindex(data, inds...; kw...)
+        map(ModelValue{R}, value.value)
+    else
+        value
+    end
+end
+
+_model_data(value) = value
 _model_data(value::ModelValue) = value.value
 _model_data(values::AbstractArray) = map(_model_data, values)
 _model_data(values::VarNamedTuple) = map(_model_data, values.data)
 function _model_data(values::VarNamedTuples.PartialArray)
     return _model_data(VarNamedTuples.unwrap_internal_array(values))
 end
+function _model_data(tree::ModelValueTree)
+    return if tree.values isa Tuple
+        map(tree.values, tree.template) do value, template
+            if value isa NoModelBinding
+                deepcopy(template)
+            else
+                _model_argument_value(value, template)
+            end
+        end
+    else
+        _model_argument_value(tree.values, tree.template)
+    end
+end
+function VarNamedTuples.unwrap_internal_array(tree::ModelValueTree)
+    VarNamedTuples._haskey_optic(tree, AbstractPPL.Iden()) ||
+        throw(ArgumentError("Cannot extract a partially supplied model value"))
+    return _model_data(tree)
+end
 
+_model_argument_value(value, template) = value
 _model_argument_value(::Nothing, template) = deepcopy(template)
 _model_argument_value(value::ModelValue, template) = value.value
+_model_argument_value(tree::ModelValueTree, template) = _model_data(tree)
 _model_argument_value(values::AbstractArray, template) = _model_data(values)
-function _model_argument_value(values::VarNamedTuples.PartialArray, template)
+
+_has_complete_model_data(::ModelValue) = true
+_has_complete_model_data(::ModelValueTree) = true
+_has_complete_model_data(values::VarNamedTuple) = all(_has_complete_model_data, values.data)
+_has_complete_model_data(::VarNamedTuples.ArrayLikeBlock) = false
+function _has_complete_model_data(values::VarNamedTuples.PartialArray)
     # Growable arrays describe supplied indices, not the extent of the argument.
-    return if !(values.data isa VarNamedTuples.GrowableArray) &&
-        VarNamedTuples._haskey_optic(values, AbstractPPL.Iden())
+    return !(values.data isa VarNamedTuples.GrowableArray) &&
+           all(values.mask) &&
+           all(_has_complete_model_data, values.data)
+end
+
+function _model_argument_value(values::VarNamedTuples.PartialArray, template)
+    return if _has_complete_model_data(values)
         _model_data(values)
     else
-        deepcopy(template)
+        _fold_model_indices(_set_model_argument, deepcopy(template), values)
     end
+end
+function _set_model_argument(result, value, optic, template)
+    child_template = VarNamedTuples.maybe_index_template(result, optic)
+    return Accessors.set(
+        result,
+        AbstractPPL.with_mutation(optic),
+        _model_argument_value(value, child_template),
+    )
 end
 @generated function _model_argument_value(
     values::VarNamedTuple{names}, template
@@ -593,7 +990,7 @@ ERROR: ArgumentError: Cannot condition or fix a submodel's return value. Supply 
 ```
 """
 function AbstractPPL.condition(model::Model, values...)
-    values = merge(
+    values = _merge_model_values(
         model.values, _tag_model_values(Condition, _make_condfix_values(values...))
     )
     return _reconstruct_model(model; values)
@@ -865,7 +1262,9 @@ julia> # The difference is the missing log-probability of `m`:
 ```
 """
 function fix(model::Model, values...)
-    values = merge(model.values, _tag_model_values(Fix, _make_condfix_values(values...)))
+    values = _merge_model_values(
+        model.values, _tag_model_values(Fix, _make_condfix_values(values...))
+    )
     return _reconstruct_model(model; values)
 end
 function fix(model::Model; values...)

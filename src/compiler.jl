@@ -158,7 +158,10 @@ function model(mod, linenumbernode, expr, warn)
 
     # Generate main body
     sites = Symbol[]
-    modeldef[:body] = generate_mainbody(mod, modeldef[:body], warn, true; sites)
+    arguments = map(
+        arg -> first(MacroTools.splitarg(arg)), vcat(modeldef[:args], modeldef[:kwargs])
+    )
+    modeldef[:body] = generate_mainbody(mod, modeldef[:body], warn, true; sites, arguments)
 
     return build_output(modeldef, linenumbernode, sites)
 end
@@ -203,8 +206,10 @@ Generate the body of the main evaluation function from expression `expr` and arg
 If `warn` is true, a warning is displayed if internal variables are used in the model
 definition.
 """
-generate_mainbody(mod, expr, warn, warn_threads; sites=Symbol[]) =
-    generate_mainbody!(mod, (; internal=Symbol[], sites), expr, warn, warn_threads)
+generate_mainbody(mod, expr, warn, warn_threads; sites=Symbol[], arguments=Symbol[]) =
+    generate_mainbody!(
+        mod, (; internal=Symbol[], sites, arguments), expr, warn, warn_threads
+    )
 
 generate_mainbody!(mod, found, x, warn, warn_threads) = x
 function generate_mainbody!(mod, found, sym::Symbol, warn, warn_threads)
@@ -268,7 +273,11 @@ function generate_mainbody!(mod, found, expr::Expr, warn, warn_threads)
             push!(found.sites, get_top_level_symbol(L))
         end
         return Base.remove_linenums!(
-            generate_tilde(L, generate_mainbody!(mod, found, R, warn, warn_threads))
+            generate_tilde(
+                L,
+                generate_mainbody!(mod, found, R, warn, warn_threads);
+                is_argument=!isliteral(L) && get_top_level_symbol(L) in found.arguments,
+            ),
         )
     end
 
@@ -343,12 +352,12 @@ function assign_or_set!!(lhs::Expr, rhs, vn)
 end
 
 """
-    generate_tilde(left, right)
+    generate_tilde(left, right; is_argument=false)
 
-Generate an `observe` expression for data variables and `assume` expression for parameter
-variables.
+Generate latent, observed, or fixed evaluation for a tilde expression.
+Observed arguments use their prepared local value, including body computations.
 """
-function generate_tilde(left, right)
+function generate_tilde(left, right; is_argument=false)
     isliteral(left) && return generate_tilde_literal(left, right)
     template = if left isa Symbol  # i.e. identity optic
         :($(NoTemplate)())
@@ -356,24 +365,38 @@ function generate_tilde(left, right)
         get_top_level_symbol(left)
     end
 
-    @gensym vn binding value dist supplied_val
+    @gensym vn role value dist supplied_val prefixed_vn
+    lookup_role = if is_argument
+        :($(DynamicPPL._get_argument_role)(
+            __model__, $prefixed_vn, $(VarName{get_top_level_symbol(left)}())
+        ))
+    else
+        :($(DynamicPPL._get_model_role)(__model__, $prefixed_vn))
+    end
 
     return quote
         $dist = $right
         $vn = $(make_varname_expression(left))
-        $binding = if $dist isa $(DynamicPPL.Submodel)
+        $prefixed_vn = $(DynamicPPL.maybe_prefix)($vn, __model__.prefix)
+        $role = if $dist isa $(DynamicPPL.Submodel)
             nothing
         else
-            $(DynamicPPL._get_model_value)(
-                __model__, $(DynamicPPL.maybe_prefix)($vn, __model__.prefix)
-            )
+            $lookup_role
         end
-        if $binding isa $(DynamicPPL.ModelValue){$(DynamicPPL.Fix)}
-            $(assign_or_set!!(left, :($binding.value), vn))
-        elseif $binding === nothing
+        if $role isa $(DynamicPPL.Fix)
+            $(assign_or_set!!(
+                left, :($(DynamicPPL._get_model_data)(__model__, $prefixed_vn)), vn
+            ))
+        elseif $role === nothing
             $(generate_tilde_assume(left, dist, vn))
         else
-            $supplied_val = $binding.value
+            $supplied_val = $(
+                if is_argument
+                    left
+                else
+                    :($(DynamicPPL._get_model_data)(__model__, $prefixed_vn))
+                end
+            )
 
             $value, __varinfo__ = $(DynamicPPL._tilde_observe!!)(
                 __model__.prefix,
@@ -658,13 +681,44 @@ end
 
 function prepare_model_argument(model::Model, vn::VarName, value)
     vn = maybe_prefix(vn, model.prefix)
-    binding = if hasvalue(model.values, vn)
-        VarNamedTuples._getindex_optic(model.values, vn)
+    binding = _model_argument_binding(model.values, AbstractPPL.varname_to_optic(vn))
+    return _model_argument_value(binding, value)
+end
+
+# Whole-variable hasvalue checks reject partial containers needed for argument preparation.
+_model_argument_binding(values, ::AbstractPPL.Iden) = values
+function _model_argument_binding(
+    values::VarNamedTuple, optic::AbstractPPL.Property{S}
+) where {S}
+    return if haskey(values.data, S)
+        _model_argument_binding(values.data[S], optic.child)
     else
         nothing
     end
-    return _model_argument_value(binding, value)
 end
+function _model_argument_binding(
+    values::VarNamedTuples.PartialArray, optic::AbstractPPL.Index
+)
+    optic = AbstractPPL.concretize_top_level(optic, values.data)
+    return if haskey(values, optic.ix...; optic.kw...)
+        selected = if VarNamedTuples._is_multiindex(values.data, optic.ix...; optic.kw...)
+            VarNamedTuples._subset_partialarray(values, optic.ix...; optic.kw...)
+        else
+            getindex(values, optic.ix...; optic.kw...)
+        end
+        _model_argument_binding(selected, optic.child)
+    else
+        nothing
+    end
+end
+function _model_argument_binding(values::ModelValue, optic::AbstractPPL.AbstractOptic)
+    return if VarNamedTuples._haskey_optic(values, optic)
+        VarNamedTuples._getindex_optic(values, optic, @varname(_))
+    else
+        nothing
+    end
+end
+_model_argument_binding(values::ModelValue, ::AbstractPPL.Iden) = values
 
 function warn_empty(body)
     if all(l -> isa(l, LineNumberNode), body.args)
