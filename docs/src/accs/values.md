@@ -60,31 +60,18 @@ keys(vi.values)
 
 In a `VarInfo`, the `accs` field is responsible for the accumulation step, just like an ordinary `AccumulatorTuple`.
 
-However, `values` serves three purposes in one:
+The `values` field also records outputs: the vectorised values produced during evaluation.
+Latent inputs and transform choices come from the context, not from this output store.
+To reuse recorded values as inputs, explicitly wrap them in
+`DefaultContext(get_values(vi))`. This context holds the value tuple, not the `VarInfo` or
+its accumulators.
 
-  - it is sometimes used for initialisation (when the model's leaf context is `DefaultContext`, the `TransformedValue` to be used in the transformation step is read from it)
-  - it also determines whether the log-Jacobian term should be included or not (by virtue of specifying a transformation)
-  - it is sometimes also used for accumulation (when evaluating a model with a VarInfo, we will potentially store a new `TransformedValue` in it!).
+`InitContext` separates the source of the values from the requested transforms using an
+initialisation strategy and a transform strategy. For example, `InitFromPrior()` with
+`LinkAll()` draws values from the prior and records them in linked space.
 
-The path to removing `VarInfo` is essentially to separate these three roles:
-
- 1. The initialisation role of `varinfo.values` can be taken over by an initialisation strategy that wraps it.
-    Recall that the only role of an initialisation strategy is to provide an `TransformedValue` via [`DynamicPPL.init`](@ref).
-    This can be trivially done by indexing into the `VarNamedTuple` stored in the strategy.
-
- 2. Whether the log-Jacobian term should be included or not can be determined by a transform strategy.
-    Much like how we can have an initialisation strategy that takes values from a `VarInfo`, we can also have a transform strategy that is defined by the existing status of a `VarInfo`.
-    This is implemented in the `DynamicPPL.get_link_strategy(::AbstractVarInfo)` function.
- 3. The accumulation role of `varinfo.values` can be taken over by a new accumulator, which we call `VectorValueAccumulator`.
-    This name is chosen because it does not store generic `TransformedValue`s, but only vectorised ones, i.e., `TransformedValue{V}` where `V <: AbstractVector`.
-    `VectorValueAccumulator` is implemented inside `src/accs/vector_value.jl`.
-
-!!! note
-    
-    Decoupling all of these components also means that we can mix and match different initialisation strategies, link strategies, and accumulators more easily.
-    
-    For example, previously, to create a linked VarInfo, you would need to first generate an unlinked VarInfo and then link it.
-    Now, you can directly create a linked VarInfo by initialising with `InitFromPrior()` and `LinkAll()`.
+`OnlyAccsVarInfo(VectorValueAccumulator())` can replace `VarInfo` when only the vectorised
+outputs are needed. Add other accumulators to collect log probabilities or raw values.
 
 ## `RawValueAccumulator`
 

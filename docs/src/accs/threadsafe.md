@@ -48,8 +48,8 @@ tilde-statement.
 
 ```@example 1
 x = 1.0
-model = setleafcontext(model, DynamicPPL.InitContext(InitFromParams((; x=x)), UnlinkAll()))
-_, tsvi = DynamicPPL._evaluate!!(model, tsvi)
+context = DynamicPPL.InitContext(InitFromParams((; x=x)), UnlinkAll())
+_, tsvi = DynamicPPL._evaluate!!(model, context, tsvi)
 length(tsvi.accs_by_task)
 ```
 

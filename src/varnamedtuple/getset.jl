@@ -108,7 +108,8 @@ function _haskey_optic(arr::AbstractArray, optic::IndexWithoutChild)
     # checkbounds. For example, DimArray can error here:
     # https://github.com/rafaqz/DimensionalData.jl/issues/1156. But that is not our job to fix
     # -- it should be done upstream -- hence we just forward the indices.
-    return checkbounds(Bool, arr, optic.ix...; optic.kw...)
+    coptic = AbstractPPL.concretize_top_level(optic, arr)
+    return checkbounds(Bool, arr, coptic.ix...; coptic.kw...)
 end
 
 """
@@ -169,6 +170,37 @@ end
 # `x.a ~ dist` would error if `x` did not have a property `a`.
 (::SharedGetProperty{S})(x) where {S} = getproperty(x, S)
 
+function (::SharedGetProperty{S})(
+    template::NestedTemplate{<:AbstractPPL.Property{S}}
+) where {S}
+    return nested_template(
+        template.path.child, SharedGetProperty{S}()(template.outer), template.inner
+    )
+end
+
+index_template(::NoTemplate, optic) = NoTemplate()
+index_template(template::SkipTemplate, optic) = decrease_skip(template)
+index_template(template, optic) = NoTemplate()
+function index_template(template::AbstractArray, optic)
+    return getindex(template, optic.ix...; optic.kw...)
+end
+maybe_index_template(template, optic) = index_template(template, optic)
+function maybe_index_template(template::AbstractArray, optic)
+    return if _is_multiindex(template, optic.ix...; optic.kw...) ||
+        isassigned(template, optic.ix...; optic.kw...)
+        getindex(template, optic.ix...; optic.kw...)
+    else
+        NoTemplate()
+    end
+end
+index_template(template::PartialArray, optic) = index_template(template.data, optic)
+function index_template(template::NestedTemplate{<:AbstractPPL.Index}, optic)
+    template.path.child isa AbstractPPL.Iden && return SkipTemplate{1}(template.inner)
+    return nested_template(
+        template.path.child, maybe_index_template(template.outer, optic), template.inner
+    )
+end
+
 function _setindex_optic!!(
     pa::PartialArray, value, optic::AbstractPPL.Index, template, permissions::SetPermissions
 )
@@ -178,7 +210,7 @@ function _setindex_optic!!(
     # doesn't yet have enough indices for that slice. Expand it if so.
     pa = grow_to_indices!!(pa, coptic.ix...; coptic.kw...)
 
-    is_multiindex = _is_multiindex(template, coptic.ix...; coptic.kw...)
+    is_multiindex = _is_multiindex(pa.data, coptic.ix...; coptic.kw...)
 
     if permissions isa MustNotOverwrite && optic.child isa AbstractPPL.Iden
         if any(view(pa.mask, coptic.ix...; coptic.kw...))
@@ -190,19 +222,7 @@ function _setindex_optic!!(
         # Skip recursion
         value
     else
-        child_template = if template === NoTemplate()
-            NoTemplate()
-        elseif template isa SkipTemplate
-            decrease_skip(template)
-        elseif is_multiindex
-            Base.getindex(template, coptic.ix...; coptic.kw...)
-        elseif isassigned(template, coptic.ix...; coptic.kw...)
-            # Single-index, but we should check that there is actual data there before
-            # calling getindex, as otherwise it will error
-            Base.getindex(template, coptic.ix...; coptic.kw...)
-        else
-            NoTemplate()
-        end
+        child_template = index_template(template, coptic)
 
         # TODO(penelopeysm): This check to haskey() will check *all* the indices, it only
         # returns true if they are all filled. This is probably not really correct, and is
@@ -342,13 +362,13 @@ end
 function make_leaf(
     value,
     optic::AbstractPPL.Index,
-    template::Union{AbstractArray,NoTemplate,SkipTemplate,Missing},
+    template::Union{AbstractArray,NoTemplate,SkipTemplate,Missing,NestedTemplate},
 )
     # First we need to resolve any dynamic indices, since _is_multiindex doesn't work with
     # them. This also helpfully catches errors if there is a dynamic index and a suitable
     # template is not provided (e.g., if someone tries to set `x[end]` without a template).
-    coptic = AbstractPPL.concretize_top_level(optic, template)
-    return if _is_multiindex(template, coptic.ix...; coptic.kw...)
+    coptic = AbstractPPL.concretize_top_level(optic, template_array(template))
+    return if _is_multiindex(template_array(template), coptic.ix...; coptic.kw...)
         make_leaf_multiindex(value, coptic, template)
     else
         make_leaf_singleindex(value, coptic, template)
@@ -366,17 +386,7 @@ function make_sub_value(value, coptic::AbstractPPL.Index, template)
     return if coptic.child isa AbstractPPL.Iden
         value
     else
-        child_template = if template isa NoTemplate
-            NoTemplate()
-        elseif template isa SkipTemplate
-            decrease_skip(template)
-        elseif template isa AbstractArray
-            # Note template can't be a PartialArray as that would have been unwrapped in
-            # another make_leaf method.
-            getindex(template, coptic.ix...; coptic.kw...)
-        else
-            NoTemplate()
-        end
+        child_template = index_template(template, coptic)
         make_leaf(value, coptic.child, child_template)
     end
 end
@@ -386,6 +396,7 @@ end
 # by the caller.
 function make_leaf_singleindex(value, coptic::AbstractPPL.Index, template)
     sub_value = make_sub_value(value, coptic, template)
+    template = template_array(template)
     # `sub_value` will become a single element inside the PartialArray that we create. To
     # ensure type stability, we want to make sure that the PartialArray is created with the
     # correct eltype to begin with, otherwise setindex!! may become type unstable.
@@ -416,6 +427,8 @@ end
 # This is more complex.
 function make_leaf_multiindex(value, coptic::AbstractPPL.Index, template)
     sub_value = make_sub_value(value, coptic, template)
+    template = template_array(template)
+    sub_value = _prepare_indexed_value(sub_value, template, coptic.ix...; coptic.kw...)
 
     # Firstly, we need to make sure that sub_value has *exactly* the right size to fit into
     # the indices specified by `coptic`. This might not always be the case. Consider

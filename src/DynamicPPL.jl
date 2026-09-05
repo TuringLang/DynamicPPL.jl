@@ -140,18 +140,10 @@ export AbstractVarInfo,
     get_range_and_transform,
     get_all_ranges_and_transforms,
     get_logdensity_callable,
-    # Leaf contexts
+    # Contexts
     AbstractContext,
-    contextualize,
     DefaultContext,
     InitContext,
-    # Parent contexts
-    AbstractParentContext,
-    childcontext,
-    setchildcontext,
-    leafcontext,
-    setleafcontext,
-    extract_prefixes,
     # Tilde pipeline
     tilde_assume!!,
     tilde_observe!!,
@@ -190,7 +182,6 @@ export AbstractVarInfo,
     invlink,
     invlink!!,
     # Pseudo distributions
-    NamedDist,
     NoDist,
     filldist,
     arraydist,
@@ -228,6 +219,8 @@ export AbstractVarInfo,
     # Deprecated.
     generated_quantities,
     typed_identity
+
+@compat public make_evaluate_args_and_kwargs, store_coloneq_value!!
 
 # Reexport
 using Distributions: loglikelihood
@@ -267,10 +260,7 @@ include("transformed_values.jl")
 include("contexts.jl")
 include("contexts/default.jl")
 include("contexts/init.jl")
-include("contexts/prefix.jl")
-include("contexts/conditionfix.jl")  # Must come after contexts/prefix.jl
 include("model.jl")
-include("varname.jl")
 include("distribution_wrappers.jl")
 include("distributions.jl")
 include("submodel.jl")

@@ -88,7 +88,8 @@ vi = VarInfo(Xoshiro(468), model)
 vals = [1.0, 1.0]
 # Note this was `unflatten` (no exclamation mark) in the old code
 vi = DynamicPPL.unflatten!!(vi, vals)
-_, vi = DynamicPPL.evaluate!!(model, vi)
+# Current syntax requires an explicit context.
+_, vi = DynamicPPL.evaluate!!(model, DefaultContext(get_values(vi)), vi)
 vi
 ```
 

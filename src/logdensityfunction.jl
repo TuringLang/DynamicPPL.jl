@@ -127,47 +127,13 @@ For all other fields, please use the corresponding getter functions provided in 
 
 # Extended help
 
-Up until DynamicPPL v0.38, there have been two ways of evaluating a DynamicPPL model at a
-given set of parameters:
+`LogDensityFunction` supplies parameter inputs through an `InitContext` and collects
+outputs in an `OnlyAccsVarInfo`. The latter holds accumulators, not latent inputs.
 
-1. With `unflatten!!` + `evaluate!!` with `DefaultContext`: this stores a vector of
-   parameters inside a VarInfo's metadata, then reads parameter values from the VarInfo
-   during evaluation.
-
-2. With `InitFromParams`: this reads parameter values from a NamedTuple or a Dict, and
-   stores them inside a VarInfo's metadata.
-
-In general, both of these approaches work fine, but the fact that they modify the VarInfo's
-metadata can often be quite wasteful. In particular, it is very common that the only outputs
-we care about from model evaluation are those which are stored in accumulators, such as log
-probability densities, or raw values.
-
-To avoid this issue, we use `OnlyAccsVarInfo`, which is a VarInfo that only contains
-accumulators. It implements enough of the `AbstractVarInfo` interface to not error during
-model evaluation.
-
-Because `OnlyAccsVarInfo` does not store any parameter values, when evaluating a model with
-it, it is mandatory that parameters are provided from outside the VarInfo, namely via
-`InitContext`.
-
-The main problem that we face is that it is not possible to directly implement
-`DynamicPPL.init(rng, vn, dist, strategy)` for `strategy::InitFromParams{<:AbstractVector}`.
-In particular, it is not clear:
-
- - which parts of the vector correspond to which random variables, and
- - whether the variables are linked or unlinked.
-
-Traditionally, this problem has been solved by `unflatten!!`, because that function would
-place values into the VarInfo's metadata alongside the information about ranges and linking.
-That way, when we evaluate with `DefaultContext`, we can read this information out again.
-However, we want to avoid using a metadata. Thus, here, we _extract this information from
-the VarInfo_ a single time when constructing a `LogDensityFunction` object. Inside the
-LogDensityFunction, we store a mapping from VarNames to ranges in that vector, along with
-link status.
-
-When evaluating the model, this allows us to combine the parameter vector together with
-those ranges to create an `InitFromVector`, which lets us very quickly read parameter values
-from the vector.
+A flat parameter vector does not identify which entries belong to each variable or how
+those entries are transformed. The constructor therefore prepares a mapping from
+`VarName`s to vector ranges and transforms. During evaluation, `InitFromVector` combines
+this mapping with the supplied vector so that each latent site can retrieve its value.
 
 Note that this assumes that the ranges and link status are static throughout the lifetime of
 the `LogDensityFunction` object. Therefore, a `LogDensityFunction` object cannot handle

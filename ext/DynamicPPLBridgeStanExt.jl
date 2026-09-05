@@ -537,13 +537,14 @@ function DynamicPPL.tilde_assume!!(
 end
 
 function DynamicPPL.tilde_assume!!(
-    ::DynamicPPL.DefaultContext,
+    context::DynamicPPL.DefaultContext,
     distribution::StanDistribution,
     vn::DynamicPPL.VarName,
     template,
     vi::DynamicPPL.AbstractVarInfo,
 )
-    transformed_value = DynamicPPL.get_transformed_value(vi, vn)
+    transformed_value = DynamicPPL.get_transformed_value(context, vn)
+    vi = DynamicPPL.setindex_with_dist!!(vi, transformed_value, distribution, vn, template)
     return _stan_assume!!(distribution, vn, template, vi, transformed_value)
 end
 

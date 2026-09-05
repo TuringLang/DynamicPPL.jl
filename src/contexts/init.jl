@@ -149,7 +149,7 @@ See the docstring of [`DynamicPPL.get_param_eltype`](@ref) for more information 
 is needed.
 
 The argument `fallback` specifies how new values are to be obtained if they cannot be found
-in `params`, or they are specified as `missing`. `fallback` can either be an initialisation
+in `params`. Omit absent parameters rather than supplying `missing`. `fallback` can either be an initialisation
 strategy itself, in which case it will be used to obtain new values, or it can be `nothing`,
 in which case an error will be thrown. The default for `fallback` is `InitFromPrior()`.
 """
@@ -178,11 +178,12 @@ function init(
 )
     return if hasvalue(p.params, vn, dist)
         x = getvalue(p.params, vn, dist)
-        if x === missing
-            p.fallback === nothing &&
-                error("A `missing` value was provided for the variable `$(vn)`.")
-            init(rng, vn, dist, p.fallback)
-        elseif x isa TransformedValue
+        _contains_missing(x) && throw(
+            ArgumentError(
+                "A `missing` value was provided for `$vn`; omit absent initial parameters instead.",
+            ),
+        )
+        if x isa TransformedValue
             x
         else
             TransformedValue(x, NoTransform())
@@ -227,10 +228,6 @@ function init(
 end
 
 function DynamicPPL.get_param_eltype(p::InitFromParamsUnsafe)
-    # TODO(penelopeysm): Ugly hack. Currently this is not used anywhere except in Turing's
-    # ADTypeCheckContext tests. However, when we stop using DefaultContext and start using
-    # this as its replacement, we will need this function so that we can promote the
-    # accumulators' eltype accordingly (unless we find a better solution than eltypes).
     return eltype(DynamicPPL.internal_values_as_vector(p.params))
 end
 
@@ -333,7 +330,7 @@ end
         transform_strategy::AbstractTransformStrategy,
     )
 
-A leaf context that indicates that new values for random variables are currently being
+An evaluation context that indicates that new values for random variables are currently being
 obtained through sampling. Used e.g. when initialising a fresh VarInfo.
 
 The `strategy` argument specifies how new values are to be obtained (see
@@ -343,8 +340,8 @@ whether values should be treated as being in linked or unlinked space. That also
 evaluating the model.
 
 !!! note
-    If `leafcontext(model.context) isa InitContext`, then `evaluate!!(model, varinfo)` will
-    override all values in the VarInfo.
+    `evaluate!!(model, context::InitContext, varinfo)` overwrites stored parameter values
+    using the context's initialisation strategy.
 """
 struct InitContext{
     R<:Random.AbstractRNG,S<:AbstractInitStrategy,L<:AbstractTransformStrategy
@@ -379,15 +376,4 @@ function tilde_assume!!(
     # We always return the untransformed value here, as that will determine
     # what the lhs of the tilde-statement is set to.
     return x, vi
-end
-
-function tilde_observe!!(
-    ::InitContext,
-    right::Distribution,
-    left,
-    vn::Union{VarName,Nothing},
-    template::Any,
-    vi::AbstractVarInfo,
-)
-    return tilde_observe!!(DefaultContext(), right, left, vn, template, vi)
 end

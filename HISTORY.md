@@ -1,3 +1,27 @@
+# Unreleased
+
+Removed `NamedDist` and distribution-driven site renaming. Replace `x ~ NamedDist(dist, :y)` with `y ~ dist`, followed by `x = y` if a local alias is needed.
+
+Model arguments now supply default conditioned values: `f(data)` remains equivalent to `condition(f(data); x=data)` for an argument `x`. `decondition` removes these observations, and `condition` replaces or restores them; subsequent model statements use the replacement or sampled value.
+
+Observation sites preserve computations on prepared arguments, including partial bindings; successive nested-array overrides retain their original shape.
+
+Partial overrides retain replacement record types and tuple structure; observation-role lookup no longer copies supplied slices.
+
+`missing` no longer selects latent sites in model arguments, `condition`, `fix`, or `InitFromParams`. Use `decondition(f(template), :x)` instead of `f(missing)`. Omit absent initial parameters; use indexed `VarName` keys to condition separate scalar sites. Chain entries may still be `missing` when a site was absent from an execution.
+
+Removed parent contexts, their traversal APIs, and `Model.context`. Replace `contextualize(model, context)` and `setleafcontext(model, context)` followed by evaluation with `evaluate!!(model, context, varinfo)`; the two-argument `evaluate!!(model, varinfo)` is also removed. Replace `conditioned(model.context)` / `fixed(model.context)` with `conditioned(model)` / `fixed(model)`. `AbstractContext`, latent-value evaluation hooks, and the existing `VarInfo` types remain available.
+
+Removed context dispatch from observations and tracked assignments. Replace observation-context hooks with `accumulate_observe!!` methods on accumulators. `tilde_observe!!(model, dist, value, vn, template, vi)` and `store_coloneq_value!!(model, vn, value, template, vi)` no longer take a context.
+
+`DefaultContext` now takes a `VarNamedTuple` of vectorised `TransformedValue`s. Replace `evaluate!!(model, DefaultContext(), vi)` with `evaluate!!(model, DefaultContext(get_values(vi)), outputs)`; `outputs` may be an independent `VarInfo` or `OnlyAccsVarInfo`. Custom contexts implement `get_param_eltype(context)` instead of `get_param_eltype(varinfo, context)`.
+
+Conditioning and fixing now share precedence: the later operation, or the parent model at a submodel boundary, determines both value and role; partial overrides preserve untouched siblings.
+
+Submodel traces now preserve parent array templates, including mixed linear and Cartesian indexing.
+
+Condition submodels through their internal variable names; conditioning an automatically prefixed submodel's return value now errors. Decondition arguments used only as return-value buffers.
+
 # 0.42.11
 
 Partial-array merges now expand growable storage when the other array has a template, including for matrices and higher-dimensional arrays. See [#1482](https://github.com/TuringLang/DynamicPPL.jl/pull/1482).

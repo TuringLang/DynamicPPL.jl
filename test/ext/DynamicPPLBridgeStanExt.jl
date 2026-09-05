@@ -224,6 +224,16 @@ parameters {
     @test logjoint(model, (; theta=invalid)) == -Inf
     @test logprior(model, (; theta=invalid)) == -Inf
 
+    context = DefaultContext(
+        VarNamedTuple(; theta=TransformedValue(u, FixedTransform(distribution.transform)))
+    )
+    for output in (OnlyAccsVarInfo(), VarInfo())
+        result, output = evaluate!!(model, context, output)
+        @test result ≈ constrained
+        @test getlogjoint(output) ≈ expected_unlinked
+        @test getlogjac(output) ≈ -logjac
+    end
+
     conditioned_model = condition(model, (; theta=constrained))
     @test logjoint(conditioned_model, NamedTuple()) ≈ expected_unlinked
 

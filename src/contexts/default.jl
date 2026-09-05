@@ -1,44 +1,75 @@
 """
-    struct DefaultContext <: AbstractContext end
+    DefaultContext(values::VarNamedTuple=VarNamedTuple())
 
-`DefaultContext`, as the name suggests, is the default context used when instantiating a
-model.
+Evaluate using the vectorised `TransformedValue`s supplied in `values`.
+
+Each value carries its transform information. The output varinfo does not supply latent
+values or determine their transforms. Use [`InitContext`](@ref) to obtain new values or
+choose a different transform strategy.
+
+The context borrows `values`; it does not copy the underlying parameter arrays.
+
+# Examples
 
 ```jldoctest
-julia> @model f() = x ~ Normal();
+julia> @model example() = x ~ Normal();
 
-julia> model = f(); model.context
-DefaultContext()
+julia> previous = VarInfo(example(), InitFromParams((; x=1.0)));
+
+julia> context = DefaultContext(get_values(previous));
+
+julia> retval, outputs = evaluate!!(example(), context, OnlyAccsVarInfo());
+
+julia> retval
+1.0
 ```
-
-As an evaluation context, the behaviour of `DefaultContext` is to require all variables to be
-present in the `AbstractVarInfo` used for evaluation. Thus, semantically, evaluating a model
-with `DefaultContext` means 'calculating the log-probability associated with the variables
-in the `AbstractVarInfo`'.
 """
-struct DefaultContext <: AbstractContext end
+struct DefaultContext{V<:VarNamedTuple} <: AbstractContext
+    values::V
+    function DefaultContext(values::V=VarNamedTuple()) where {V<:VarNamedTuple}
+        mapreduce(
+            pair ->
+                pair.second isa TransformedValue{
+                    <:AbstractVector{<:Real},<:Union{DynamicLink,Unlink,FixedTransform}
+                },
+            &,
+            values;
+            init=true,
+        ) || throw(ArgumentError("DefaultContext requires vectorised TransformedValues"))
+        return new{V}(values)
+    end
+end
+
+get_transformed_value(context::DefaultContext, vn::VarName) = context.values[vn]
+function get_param_eltype(context::DefaultContext)
+    return mapreduce(
+        pair -> eltype(get_internal_value(pair.second)),
+        promote_type,
+        context.values;
+        init=Union{},
+    )
+end
 
 """
     DynamicPPL.tilde_assume!!(
-        ::DefaultContext,
+        context::DefaultContext,
         right::Distribution,
         vn::VarName,
         template::Any,
         vi::AbstractVarInfo
     )
 
-Handle assumed variables. For `DefaultContext`, this function extracts the value associated
-with `vn` from `vi`, If `vi` does not contain an appropriate value then this will error.
+Read `vn` from the context, store it in the output varinfo, and accumulate its log probability.
+Throw `KeyError` if the context does not supply the variable.
 """
 function tilde_assume!!(
-    ::DefaultContext, right::Distribution, vn::VarName, template::Any, vi::AbstractVarInfo
+    context::DefaultContext,
+    right::Distribution,
+    vn::VarName,
+    template::Any,
+    vi::AbstractVarInfo,
 )
-    # TODO(penelopeysm): Conceptually, this is the same as InitContext, except that:
-    #  1. init(...) is not called; instead we read the value from vi.
-    #  2. apply_transform_strategy(...) is not called; instead we infer from vi whether the
-    #     value is supposed to be linked or not.
-    # This can definitely be unified in the future.
-    tval = get_transformed_value(vi, vn)
+    tval = get_transformed_value(context, vn)
     trf = if tval.transform isa DynamicLink
         Bijectors.VectorBijectors.from_linked_vec(right)
     elseif tval.transform isa Unlink
@@ -49,30 +80,7 @@ function tilde_assume!!(
         error("Expected transformed value to be a vectorised value")
     end
     x, inv_logjac = with_logabsdet_jacobian(trf, get_internal_value(tval))
+    vi = setindex_with_dist!!(vi, tval, right, vn, template)
     vi = accumulate_assume!!(vi, x, tval, -inv_logjac, vn, right, template)
     return x, vi
-end
-
-"""
-    DynamicPPL.tilde_observe!!(
-        ::DefaultContext,
-        right::Distribution,
-        left,
-        vn::Union{VarName,Nothing},
-        template::Any,
-        vi::AbstractVarInfo,
-    )
-
-Handle observed variables. This just accumulates the log-likelihood for `left`.
-"""
-function tilde_observe!!(
-    ::DefaultContext,
-    right::Distribution,
-    left,
-    vn::Union{VarName,Nothing},
-    template::Any,
-    vi::AbstractVarInfo,
-)
-    vi = accumulate_observe!!(vi, right, left, vn, template)
-    return left, vi
 end

@@ -63,19 +63,17 @@ end
             model = test()
             vi_unlinked = VarInfo(model)
             vi_linked = DynamicPPL.link!!(VarInfo(model), model)
-            @test (DynamicPPL.evaluate_nowarn!!(model, vi_unlinked); true)
-            @test (DynamicPPL.evaluate_nowarn!!(model, vi_linked); true)
+            @test (
+                evaluate!!(model, DefaultContext(get_values(vi_unlinked)), vi_unlinked); true
+            )
+            @test (
+                evaluate!!(model, DefaultContext(get_values(vi_linked)), vi_linked); true
+            )
 
-            model_init = DynamicPPL.setleafcontext(
-                model,
-                DynamicPPL.InitContext(DynamicPPL.InitFromPrior(), DynamicPPL.UnlinkAll()),
-            )
-            @test (DynamicPPL.evaluate_nowarn!!(model_init, vi_unlinked); true)
-            model_init = DynamicPPL.setleafcontext(
-                model,
-                DynamicPPL.InitContext(DynamicPPL.InitFromPrior(), DynamicPPL.LinkAll()),
-            )
-            @test (DynamicPPL.evaluate_nowarn!!(model_init, vi_linked); true)
+            ctx = InitContext(InitFromPrior(), UnlinkAll())
+            @test (evaluate!!(model, ctx, vi_unlinked); true)
+            ctx = InitContext(InitFromPrior(), LinkAll())
+            @test (evaluate!!(model, ctx, vi_linked); true)
         end
 
         # Unconstrained univariate

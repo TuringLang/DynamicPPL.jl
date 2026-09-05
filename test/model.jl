@@ -150,15 +150,14 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
         end
         model = demo_condition()
 
-        # Test that different syntaxes work and give the same underlying CondFixContext
+        # Test that different syntaxes store the same values.
         @testset "conditioning NamedTuple" begin
             expected_values = @vnt begin
                 y := 2
             end
-            @test condition(model, (y=2,)).context.values == expected_values
-            @test condition(model; y=2).context.values == expected_values
-            @test condition(model; y=2).context.values == expected_values
-            @test (model | (y=2,)).context.values == expected_values
+            @test conditioned(condition(model, (y=2,))) == expected_values
+            @test conditioned(condition(model; y=2)) == expected_values
+            @test conditioned(model | (y=2,)) == expected_values
             conditioned_model = condition(model, (y=2,))
             @test keys(VarInfo(conditioned_model)) == [@varname(x)]
         end
@@ -168,10 +167,10 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
             expected_values = @vnt begin
                 y := 2
             end
-            @test condition(model, Dict(@varname(y) => 2)).context.values == expected_values
-            @test condition(model, @varname(y) => 2).context.values == expected_values
-            @test (model | (@varname(y) => 2,)).context.values == expected_values
-            @test (model | (@varname(y) => 2)).context.values == expected_values
+            @test conditioned(condition(model, Dict(@varname(y) => 2))) == expected_values
+            @test conditioned(condition(model, @varname(y) => 2)) == expected_values
+            @test conditioned(model | (@varname(y) => 2,)) == expected_values
+            @test conditioned(model | (@varname(y) => 2)) == expected_values
             conditioned_model = condition(model, Dict(@varname(y) => 2))
             @test keys(VarInfo(conditioned_model)) == [@varname(x)]
 
@@ -180,7 +179,7 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
                 x := 1
                 y := 2
             end
-            @test condition(model, (@varname(x) => 1, @varname(y) => 2)).context.values ==
+            @test conditioned(condition(model, (@varname(x) => 1, @varname(y) => 2))) ==
                 expected_values
             conditioned_model = condition(model, (@varname(x) => 1, @varname(y) => 2))
             @test keys(VarInfo(conditioned_model)) == []
@@ -191,12 +190,12 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
             expected_values = @vnt begin
                 y := 2
             end
-            @test condition(model, (@vnt begin
+            @test conditioned(condition(model, (@vnt begin
                 y := 2
-            end)).context.values == expected_values
-            @test (model | (@vnt begin
+            end))) == expected_values
+            @test conditioned(model | (@vnt begin
                 y := 2
-            end)).context.values == expected_values
+            end)) == expected_values
         end
 
         @testset "deconditioning" begin
@@ -305,12 +304,12 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
 
     @testset "default arguments" begin
         @model test_defaults(x, n=length(x)) = x ~ MvNormal(zeros(n), I)
-        @test length(test_defaults(missing, 2)()) == 2
+        @test length(decondition(test_defaults(zeros(2), 2), :x)()) == 2
     end
 
-    @testset "missing kwarg" begin
-        @model test_missing_kwarg(; x=missing) = x ~ Normal(0, 1)
-        @test @varname(x) in keys(rand(test_missing_kwarg()))
+    @testset "deconditioned kwarg" begin
+        @model test_kwarg(; x=0.0) = x ~ Normal(0, 1)
+        @test @varname(x) in keys(rand(decondition(test_kwarg())))
     end
 
     @testset "extract priors" begin
@@ -373,7 +372,6 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
             @test results.bsq == params.b^2
             # `returned` should error when not all parameters are provided
             @test_throws ErrorException returned(model, (; a=1.0))
-            @test_throws ErrorException returned(model, (a=1.0, b=missing))
         end
         @testset "Dict" begin
             params = Dict{VarName,Float64}(@varname(a) => 1.0, @varname(b) => 2.0)
@@ -383,9 +381,6 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
             # `returned` should error when not all parameters are provided
             @test_throws ErrorException returned(
                 model, Dict{VarName,Float64}(@varname(a) => 1.0)
-            )
-            @test_throws ErrorException returned(
-                model, Dict{VarName,Any}(@varname(a) => 1.0, @varname(b) => missing)
             )
         end
     end
@@ -407,13 +402,21 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
             varinfos = DynamicPPL.TestUtils.setup_varinfos(model, example_values)
             @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
                 @test begin
-                    @inferred(DynamicPPL.evaluate_nowarn!!(model, varinfo))
+                    @inferred(
+                        evaluate!!(model, DefaultContext(get_values(varinfo)), varinfo)
+                    )
                     true
                 end
 
                 varinfo_linked = DynamicPPL.link(varinfo, model)
                 @test begin
-                    @inferred(DynamicPPL.evaluate_nowarn!!(model, varinfo_linked))
+                    @inferred(
+                        evaluate!!(
+                            model,
+                            DefaultContext(get_values(varinfo_linked)),
+                            varinfo_linked,
+                        )
+                    )
                     true
                 end
             end
@@ -529,7 +532,7 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
 
             # Generate predictions from that chain
             xs_test = [10 + 0.1, 10 + 2 * 0.1]
-            m_lin_reg_test = linear_reg(xs_test, fill(missing, length(xs_test)))
+            m_lin_reg_test = decondition(linear_reg(xs_test, zeros(length(xs_test))), :y)
             predictions = DynamicPPL.predict(m_lin_reg_test, β_chain)
 
             # Also test a vectorized model
@@ -537,7 +540,9 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
                 β ~ Normal(0, 1)
                 return y ~ MvNormal(β .* x, σ^2 * I)
             end
-            m_lin_reg_test_vec = linear_reg_vec(xs_test, missing)
+            m_lin_reg_test_vec = decondition(
+                linear_reg_vec(xs_test, zeros(length(xs_test))), :y
+            )
 
             @testset "variables in chain" begin
                 # Note that this also checks that variables on the lhs of :=,

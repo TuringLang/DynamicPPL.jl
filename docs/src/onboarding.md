@@ -120,9 +120,9 @@ If the intent is to add a likelihood term for a derived value, prefer
 `@addlogprob!` or a clearer model structure. Do not copy old `.~` examples; the
 dot-tilde pipeline was removed.
 
-Passing `missing` can affect whether a value is observed or latent. Add tests
-for the exact data shape you support, especially arrays with missing values,
-arrays of arrays, and mutable structs.
+Model arguments supply default observations; `decondition` removes them and
+`condition` replaces them. `missing` does not select stochastic roles. Test the
+data shapes you support, including arrays of arrays and mutable structs.
 
 ### Test contexts with nested models
 

@@ -12,6 +12,7 @@ This page goes into more detail about exactly *how* initialisation strategies, t
 ## The `@model` macro
 
 Each tilde-statement, say, `x ~ Normal()`, is transformed by the `@model` macro into something like the following pseudocode (the functions like `is_fixed` do not have those exact names in DynamicPPL but are conceptually equivalent).
+Each supplied binding has one role, conditioned or fixed; model arguments supply default conditioned bindings.
 If you're interested in the gory details you can run `@macroexpand @model f() = x ~ Normal()` in the REPL.
 
 ```julia
@@ -21,21 +22,19 @@ begin
     # To understand the need for `template`, see the VarNamedTuple docs.
     template = x
 
-    if is_fixed(vn)
-        raw_x = get_fixed_value(vn)
+    if is_fixed(__model__, vn)
+        raw_x = get_fixed_value(__model__, vn)
 
-    elseif is_conditioned(vn)
-        conditioned_x = get_conditioned_value(vn)
+    elseif is_conditioned(__model__, vn)
+        conditioned_x = get_conditioned_value(__model__, vn)
         raw_x, __varinfo__ = tilde_observe!!(
-            ctx, dist, conditioned_x, vn, template, __varinfo__
+            __model__, dist, conditioned_x, vn, template, __varinfo__
         )
 
-    elseif is_model_argument(vn)
-        arg_x = x
-        raw_x, __varinfo__ = tilde_observe!!(ctx, dist, arg_x, vn, template, __varinfo__)
-
     else
-        raw_x, __varinfo__ = tilde_assume!!(ctx, dist, vn, template, __varinfo__)
+        raw_x, __varinfo__ = tilde_assume!!(
+            __model__, __context__, dist, vn, template, __varinfo__
+        )
     end
 
     x = raw_x
@@ -43,9 +42,9 @@ end
 ```
 
 We won't go into detail about every part of this code; by far the most interesting part is the call to `tilde_assume!!`.
-Every tilde-statement `vn ~ dist` (where `vn` represents a random variable) is transformed into one such call.
+Every latent tilde-statement `vn ~ dist` is transformed into one such call.
 
-As described on the [Model evaluation page](./evaluation.md), there are three stages to every tilde-statement:
+As described on the [Model evaluation page](./evaluation.md), there are three stages to a latent tilde-statement:
 
  1. Initialisation: get an `TransformedValue` from the initialisation strategy.
  2. Transformation: figure out the untransformed (raw) value and the transformed value (where necessary); compute the relevant log-Jacobian.
@@ -73,13 +72,15 @@ For `tilde_observe!!`, the code is very similar, but even easier: the value can 
 Since the value is already untransformed, we can skip the second step.
 Finally, accumulators must behave differently: e.g. incrementing the likelihood instead of the prior.
 That is accomplished by calling `accumulate_observe!!` instead of `accumulate_assume!!`.
+Neither named nor literal observations dispatch on the evaluation context. Fixed sites
+bypass accumulation, and tracked assignments (`:=`) write directly to the raw-value accumulator.
 
 In the following sections, we stick to the three sections of `tilde_assume!!`.
 
 !!! note "InitContext"
     
     You may have noticed that we specified that the method above is for `InitContext`.
-    That is because different contexts are allowed to overload `tilde_assume!!` and `tilde_observe!!` and thereby endow them with new semantics.
+    Different contexts can overload `tilde_assume!!` to change how latent values are obtained and transformed.
     
     The reason why we recommend using `InitContext` (which `init!!` calls under the hood) is because it provides this framework for model evaluation that is both extensible and powerful.
     You *can* short-circuit all of this and define your own custom context that has completely different behaviour, but that means that it is less compatible with the rest of DynamicPPL.
@@ -95,7 +96,7 @@ For example, if `ctx.strategy` is `InitFromPrior()`, then `init()` samples a val
 
 !!! note "DefaultContext"
     
-    For `DefaultContext`, initialisation is handled by looking for the value stored inside `vi`.
+    For `DefaultContext`, the value is read from the `VarNamedTuple` held by the context.
 
 As discussed in the [Initialisation strategies](./init.md) page, this step, in general, does not return just the raw value (like `rand(dist)`).
 It returns an [`DynamicPPL.TransformedValue`](@ref), which represents a value that _may_ have been transformed.
@@ -159,11 +160,10 @@ It also allows us to read values from an existing `VarInfo` but interpret them a
 
 !!! note "DefaultContext"
     
-    For DefaultContext, whether or not the variable is transformed will depend on the `VarInfo` used for evaluation. If the variable is stored as transformed in the `VarInfo`, then it will be treated as transformed here.
-    Notice that both the initialisation strategy as well as the transform strategy are effectively determined by the `VarInfo` in this case.
-    The separation described above is not possible when using `DefaultContext`.
-    
-    The move away from `DefaultContext` and towards `InitContext` is motivated by the desire to separate these two concerns, and to enable a more modular and declarative way of specifying how a model is to be evaluated.
+    `DefaultContext` preserves each input's transform, as stored in its value tuple.
+    Use `InitContext` when the source of the values and the requested output transforms
+    need to be specified independently. Neither context reads latent values or their
+    transform information from the output varinfo.
 
 !!! note "Log-Jacobian computation"
     

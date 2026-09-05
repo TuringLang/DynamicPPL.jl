@@ -2,6 +2,9 @@ module DPPLSubmodelTests
 
 using DynamicPPL
 using Distributions
+using DimensionalData: DimArray, X, Y
+using ForwardDiff: ForwardDiff
+using LogDensityProblems: LogDensityProblems
 using Test
 
 # Dummy object that we can use to test VarNames with property lenses.
@@ -27,6 +30,108 @@ end
 @model t2844_deeper() = (c ~ to_submodel(t2844_outer()); return (; x=c.x))
 
 @testset "submodels.jl" begin
+    @testset "dynamic prefixes with stored observations" begin
+        @model observed_child(x=2.0) = x ~ Normal()
+        @model function dynamic_parent(child)
+            a = zeros(2, 3)
+            a[begin] ~ to_submodel(child)
+            a[end, end] ~ to_submodel(child)
+            return a
+        end
+        @model nested_parent(child) = b ~ to_submodel(dynamic_parent(child))
+        @model explicit_child(child) =
+            unused ~ to_submodel(prefix(child, @varname(inner)), false)
+        for op in (condition, fix), parent in (dynamic_parent, nested_parent)
+            child = op(observed_child(); x=2.0)
+            model = parent(child)
+            @test model() == [2.0 0.0 0.0; 0.0 0.0 2.0]
+            @test isempty(keys(VarInfo(model)))
+            @test logjoint(model, VarNamedTuple()) ==
+                (op === condition ? 2 * logpdf(Normal(), 2.0) : 0.0)
+            vn = parent === dynamic_parent ? @varname(a[2, 3].x) : @varname(b.a[2, 3].x)
+            changed = condition(model, vn => 3.0)
+            @test changed() == [2.0 0.0 0.0; 0.0 0.0 3.0]
+
+            model = parent(explicit_child(child))
+            vn = if parent === dynamic_parent
+                @varname(a[1].inner.x)
+            else
+                @varname(b.a[1].inner.x)
+            end
+            changed = condition(model, vn => 3.0)
+            @test changed() == [3.0 0.0 0.0; 0.0 0.0 2.0]
+        end
+    end
+
+    @testset "parent array templates" begin
+        @model leaf_template() = x ~ Normal()
+        @model function matrix_template(a)
+            a[1] ~ to_submodel(leaf_template())
+            a[2, 2] ~ to_submodel(leaf_template())
+            return a
+        end
+        @model function nested_template(a)
+            b ~ to_submodel(decondition(matrix_template(a)))
+            return b
+        end
+        for container in (zeros(2, 2), zeros(Float32, 2, 2), DimArray(zeros(2, 2), (X, Y))),
+            wrap in (identity, nested_template)
+
+            model = if wrap === identity
+                decondition(matrix_template(container))
+            else
+                wrap(container)
+            end
+            vi = OnlyAccsVarInfo(RawValueAccumulator(false))
+            result, vi = init!!(model, vi, InitFromPrior(), UnlinkAll())
+            raw = get_raw_values(vi)
+            a = wrap === identity ? raw.data.a : raw.data.b.data.a
+            @test size(a.data) == size(container)
+            @test count(a.mask) == 2
+            @test a.data[1].data.x == result[1]
+            @test a.data[2, 2].data.x == result[2, 2]
+        end
+
+        ldf = LogDensityFunction(nested_template(zeros(2, 2)))
+        parameters = [0.25, 0.5]
+        logdensity = p -> LogDensityProblems.logdensity(ldf, p)
+        @test logdensity(parameters) ≈ sum(logpdf.(Normal(), parameters))
+        @test ForwardDiff.gradient(logdensity, parameters) ≈ -parameters
+
+        @model function child_matrix()
+            x = zeros(2, 3)
+            x[1] ~ Normal()
+            x[2, 3] ~ Normal()
+            return sum(x)
+        end
+        @model function parent_matrix()
+            a = zeros(2, 2)
+            a[1] ~ to_submodel(child_matrix())
+            a[2, 2] ~ to_submodel(child_matrix())
+            return a
+        end
+        vi = OnlyAccsVarInfo(RawValueAccumulator(false))
+        _, vi = init!!(parent_matrix(), vi, InitFromPrior(), UnlinkAll())
+        a = get_raw_values(vi).data.a
+        @test size(a.data) == (2, 2)
+        @test size(a.data[1].data.x.data) == (2, 3)
+        @test size(a.data[2, 2].data.x.data) == (2, 3)
+
+        @model middle_matrix() =
+            unused ~ to_submodel(prefix(child_matrix(), @varname(inner)), false)
+        @model function outer_matrix()
+            a = zeros(2, 2)
+            a[1] ~ to_submodel(middle_matrix())
+            a[2, 2] ~ to_submodel(middle_matrix())
+            return a
+        end
+        _, vi = init!!(outer_matrix(), vi, InitFromPrior(), UnlinkAll())
+        a = get_raw_values(vi).data.a
+        @test size(a.data) == (2, 2)
+        @test size(a.data[1].data.inner.data.x.data) == (2, 3)
+        @test size(a.data[2, 2].data.inner.data.x.data) == (2, 3)
+    end
+
     @testset "$op with AbstractPPL API" for op in [condition, fix]
         x_val = 1.0
         x_logp = op == condition ? logpdf(Normal(), x_val) : 0.0
@@ -205,7 +310,7 @@ end
         end
     end
 
-    @testset "conditioning via model arguments" begin
+    @testset "conditioning argument-backed submodel sites" begin
         @model function f(x)
             x ~ Normal()
             return y ~ Normal()
@@ -214,11 +319,21 @@ end
             return a ~ to_submodel(f(inner_x))
         end
 
-        vnt = rand(g(1.0))
+        vnt = rand(condition(g(0.0), @varname(a.x) => 1.0))
         @test Set(keys(vnt)) == Set([@varname(a.y)])
 
-        vnt = rand(g(missing))
+        @model latent_g() = a ~ to_submodel(decondition(f(0.0)))
+        vnt = rand(latent_g())
         @test Set(keys(vnt)) == Set([@varname(a.x), @varname(a.y)])
+
+        @model observed_child(x=2.0) = x ~ Normal()
+        @model function parent_with_buffer(a)
+            a[1] ~ to_submodel(observed_child())
+            return a
+        end
+        @test_throws ArgumentError parent_with_buffer(zeros(1))()
+        @test decondition(parent_with_buffer(zeros(1)))() == [2.0]
+        @test isempty(keys(VarInfo(decondition(parent_with_buffer(zeros(1))))))
     end
 
     @testset ":= in submodels" begin
@@ -360,7 +475,8 @@ end
                 @test @inferred(init!!(model, accs, InitFromPrior(), tfm)) isa Tuple
             end
             # Evaluating a pre-populated `VarInfo` must also stay type stable.
-            @test @inferred(DynamicPPL.evaluate_nowarn!!(model, VarInfo(model))) isa Tuple
+            vi = VarInfo(model)
+            @test @inferred(evaluate!!(model, DefaultContext(get_values(vi)), vi)) isa Tuple
         end
     end
 end

@@ -49,6 +49,26 @@ retval, accs = DynamicPPL.init!!(
 
 which returns a tuple of the model's return value (the NamedTuple `(x=x, y=y)` in the example above) and the accumulators after evaluation.
 
+The equivalent explicit-context call is:
+
+```@example 1
+using Random: Xoshiro
+
+context = InitContext(Xoshiro(1), InitFromPrior(), UnlinkAll())
+retval, accs = evaluate!!(model, context, OnlyAccsVarInfo());
+```
+
+The context belongs to this evaluation, not to `Model`. It is passed to nested submodels
+and their latent-value hooks. Inside a model body, `__context__` refers to this context.
+`init!!` constructs an `InitContext` and calls `evaluate!!`; custom contexts can implement
+`tilde_assume!!` without being stored in the model. Observations, including literals, and
+tracked assignments (`:=`) are handled by accumulators without context dispatch.
+
+As a rule of thumb, contexts supply evaluation inputs and accumulators collect outputs.
+Conditioned and fixed data belong to the model. To reuse parameter values from a previous
+evaluation, pass `DefaultContext(get_values(previous_varinfo))` as the context; the output
+can be an independent `OnlyAccsVarInfo()` or `VarInfo()`.
+
 !!! note "OnlyAccsVarInfo"
     
     `OnlyAccsVarInfo` is a thin wrapper around a set of accumulators.
