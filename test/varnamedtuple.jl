@@ -1201,7 +1201,7 @@ end
     end
 
     @testset "merging PartialArrays with different axes" begin
-        @testset "mixed growable and templated storage" begin
+        @testset "mixed growable and templated storage (#1481)" begin
             growable = setindex!!(VarNamedTuple(), "left", @varname(x[1, 2]))
             templated = templated_setindex!!(
                 VarNamedTuple(), "right", @varname(x[2, 1]), Matrix{String}(undef, 2, 2)

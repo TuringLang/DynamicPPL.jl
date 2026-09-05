@@ -412,7 +412,7 @@ DynamicPPL.setchildcontext(::MyParentContext, child) = MyParentContext(child)
         end
     end
 
-    @testset "merging growable and templated conditions" begin
+    @testset "merging growable and templated conditions (#1481)" begin
         @model function partial_array_model()
             x = zeros(2, 2)
             x[1, 1] ~ Normal()
@@ -427,11 +427,13 @@ DynamicPPL.setchildcontext(::MyParentContext, child) = MyParentContext(child)
             x[2, 1] := 2.5
         end
         for op in (condition, fix)
-            model = op(partial_array_model(), Dict(@varname(x[1, 1]) => 1.5))
-            nested = partial_array_parent(model)
-            for updated in
-                (op(model, next_values), op(nested, VarNamedTuple(; child=next_values)))
-                @test returned(updated, VarNamedTuple()) == [1.5 0.0; 2.5 0.0]
+            model = partial_array_model()
+            nested = op(partial_array_parent(model), Dict(@varname(child.x[1, 1]) => 1.5))
+            model = op(model, Dict(@varname(x[1, 1]) => 1.5))
+            for (partial_model, values) in
+                ((model, next_values), (nested, VarNamedTuple(; child=next_values)))
+                @test returned(op(partial_model, values), VarNamedTuple()) ==
+                    [1.5 0.0; 2.5 0.0]
             end
         end
     end
