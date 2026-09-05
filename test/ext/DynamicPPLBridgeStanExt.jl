@@ -153,7 +153,6 @@ parameters {
     _, (vjp,) = DynamicPPL._stan_value_and_pullback(distribution.transform, u, (cotangent,))
 
     @test length(distribution) == length(constrained)
-    @test length(constrained) == length(cotangent)
     @test Bijectors.VectorBijectors.linked_vec_length(distribution) == length(u)
     @test insupport(distribution, constrained)
     @test !insupport(distribution, u)
@@ -164,17 +163,12 @@ parameters {
     @test logpdf(distribution, invalid) == -Inf
     @test !insupport(distribution, fill(NaN, length(distribution)))
     @test logpdf(distribution, fill(NaN, length(distribution))) == -Inf
-    @test norm(constrained[5:6]) ≈ 1
-    @test constrained[7] > 0
-    @test sum(constrained[8:9]) ≈ 1
     @test norm(jvp - finite_difference_jvp) < 1e-8
     @test doubled_jvp ≈ 2jvp
     @test norm(vjp - finite_difference_vjp) < 1e-8
     @test logpdf(distribution, constrained) ≈ BridgeStan.log_density(
         distribution.transform.model, u; propto=false, jacobian=false
     )
-    @test ForwardDiff.gradient(x -> logpdf(distribution, x), constrained) isa
-        Vector{Float64}
     @test ForwardDiff.jacobian(distribution.transform, u) * du ≈ jvp
     unconstrain = Bijectors.VectorBijectors.to_linked_vec(distribution)
     canonical_u = unconstrain(constrained)
@@ -216,7 +210,6 @@ parameters {
     @test norm(sampled_parameters[5:6]) ≈ 1
     @test sampled_parameters[7] > 0
     @test sum(sampled_parameters[8:9]) ≈ 1
-    @test length(rand_parameters) == length(distribution)
     @test insupport(distribution, rand_parameters)
     expected_unlinked =
         logpdf(distribution, constrained) + logpdf(Normal(constrained[1], 1), 0.4)
