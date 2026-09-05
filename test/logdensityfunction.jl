@@ -27,15 +27,17 @@ end
 @model rng_deterministic() = x ~ Normal()
 
 @testset "LogDensityFunction: explicit RNG" begin
-    rng = Xoshiro(42)
-    ldf = LogDensityFunction(rng_deterministic(); rng, adtype=AutoForwardDiff())
-    expected_rng = copy(rng)
-    @test LogDensityProblems.logdensity(ldf, [0.2]) ≈ logpdf(Normal(), 0.2)
-    @test last(LogDensityProblems.logdensity_and_gradient(ldf, [0.2])) ≈ [-0.2]
-    @test rand(copy(rng)) == rand(expected_rng)
-    expected_rng = copy(rng)
-    @test only(rand(ldf)) == rand(expected_rng, Normal())
-    @test rand(copy(rng)) == rand(expected_rng)
+    for adtype in (AutoForwardDiff(), AutoMooncake()), rng_type in (Xoshiro, StableRNG)
+        rng = rng_type(42)
+        ldf = LogDensityFunction(rng_deterministic(); rng, adtype)
+        expected_rng = copy(rng)
+        @test LogDensityProblems.logdensity(ldf, [0.2]) ≈ logpdf(Normal(), 0.2)
+        @test last(LogDensityProblems.logdensity_and_gradient(ldf, [0.2])) ≈ [-0.2]
+        @test rand(copy(rng)) == rand(expected_rng)
+        expected_rng = copy(rng)
+        @test only(rand(ldf)) == rand(expected_rng, Normal())
+        @test rand(copy(rng)) == rand(expected_rng)
+    end
 
     for model in (rng_child(), rng_parent())
         values = get_vector_values(VarInfo(Xoshiro(1), model))
