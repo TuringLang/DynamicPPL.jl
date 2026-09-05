@@ -529,6 +529,7 @@ function generate_tilde(left, right)
                 vn,
             ))
         elseif $isassumption
+            $(generate_input_provenance_check(left, vn))
             $(generate_tilde_assume(left, dist, vn))
         else
             # If `vn` is not in `argnames`, then it's definitely been conditioned on (if
@@ -557,6 +558,33 @@ function generate_tilde(left, right)
             )
             $(assign_or_set!!(left, value, vn))
             $value
+        end
+    end
+end
+
+const INPUT_PROVENANCE_ACCNAME = :InputProvenance
+
+# The ForwardDiff extension implements this hook for its input-provenance check.
+check_input_provenance!!(vi::AbstractVarInfo, value, vn::VarName) = vi
+
+generate_input_provenance_check(::Any, ::Any) = nothing
+function generate_input_provenance_check(left::Union{Expr,Symbol}, vn)
+    @gensym value err
+    top_symbol = get_top_level_symbol(left)
+    # The accumulator guard prevents an extra LHS read during ordinary evaluation.
+    return quote
+        if $(DynamicPPL.hasacc)(__varinfo__, $(Val(INPUT_PROVENANCE_ACCNAME))) &&
+            $(Expr(:isdefined, top_symbol))
+            # An indexed location can be assignable without having a readable value.
+            $value = try
+                $(maybe_view(left))
+            catch $err
+                $err isa $(InterruptException) && rethrow()
+                nothing
+            end
+            __varinfo__ = $(DynamicPPL.check_input_provenance!!)(
+                __varinfo__, $value, $(DynamicPPL.prefix)(__model__.context, $vn)
+            )
         end
     end
 end
