@@ -1201,6 +1201,38 @@ end
     end
 
     @testset "merging PartialArrays with different axes" begin
+        @testset "mixed growable and templated storage (#1481)" begin
+            growable = setindex!!(VarNamedTuple(), "left", @varname(x[1, 2]))
+            templated = templated_setindex!!(
+                VarNamedTuple(), "right", @varname(x[2, 1]), Matrix{String}(undef, 2, 2)
+            )
+            original_growable, original_templated = copy(growable), copy(templated)
+            expected = setindex!!(copy(templated), "left", @varname(x[1, 2]))
+            @test @inferred(merge(growable, templated)) == expected
+            @test @inferred(merge(templated, growable)) == expected
+            @test isequal(growable, original_growable)
+            @test isequal(templated, original_templated)
+
+            templated = setindex!!(templated, "overlap", @varname(x[1, 2]))
+            @test merge(growable, templated)[@varname(x[1, 2])] == "overlap"
+            @test merge(templated, growable)[@varname(x[1, 2])] == "left"
+
+            growable = setindex!!(VarNamedTuple(), 1.0, @varname(x[3]))
+            templated = templated_setindex!!(VarNamedTuple(), 2.0, @varname(x[1]), zeros(2))
+            expected = setindex!!(copy(growable), 2.0, @varname(x[1]))
+            @test @inferred(merge(growable, templated)) == expected
+            @test @inferred(merge(templated, growable)) == expected
+
+            for template in (zeros(2), zeros(1, 1), OA.OffsetArray(zeros(2, 2), 0:1, 0:1))
+                growable = setindex!!(VarNamedTuple(), 1.0, @varname(x[2, 2]))
+                templated = templated_setindex!!(
+                    VarNamedTuple(), 2.0, @varname(x[1]), template
+                )
+                @test_throws ArgumentError merge(growable, templated)
+                @test_throws ArgumentError merge(templated, growable)
+            end
+        end
+
         @testset "different vector lengths" begin
             vnt1 = templated_setindex!!(VarNamedTuple(), 1.0, @varname(x[1]), zeros(1))
             vnt2 = templated_setindex!!(VarNamedTuple(), 2.0, @varname(x[1]), zeros(2))

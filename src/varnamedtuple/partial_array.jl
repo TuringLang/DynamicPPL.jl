@@ -675,14 +675,16 @@ function _has_compatible_vector_axes(v1::AbstractVector, v2::AbstractVector)
     )
 end
 function _merge(pa1::PartialArray, pa2::PartialArray, recurse::Val)
-    # If both `pa1` and `pa2` are GrowableArrays, we can grow them before merging
-    if pa1.data isa GrowableArray && pa2.data isa GrowableArray && ndims(pa1) == ndims(pa2)
+    # Growable storage records a minimum extent, even when the other array has a template.
+    if (pa1.data isa GrowableArray || pa2.data isa GrowableArray) &&
+        ndims(pa1) == ndims(pa2)
         size1 = size(pa1.data)
         size2 = size(pa2.data)
         new_size = map(max, size1, size2)
         pa1 = grow_to_indices!!(pa1, new_size...)
         pa2 = grow_to_indices!!(pa2, new_size...)
-    elseif pa1.data isa AbstractVector &&
+    end
+    if pa1.data isa AbstractVector &&
         pa2.data isa AbstractVector &&
         length(pa1.data) != length(pa2.data) &&
         !Base.has_offset_axes(pa1.data) &&
