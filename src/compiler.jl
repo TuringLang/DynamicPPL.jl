@@ -369,8 +369,9 @@ function generate_tilde_literal(left, right)
     # If the LHS is a literal, it is always an observation
     @gensym value
     return quote
-        $value, __varinfo__ = $(DynamicPPL.tilde_observe!!)(
-            __model__,
+        $value, __varinfo__ = $(DynamicPPL._tilde_observe!!)(
+            __model__.prefix,
+            __model__.prefix_template,
             $(DynamicPPL.check_tilde_rhs)($right),
             $left,
             nothing,
@@ -428,8 +429,9 @@ function generate_tilde(left, right)
         else
             $supplied_val = $binding.value
 
-            $value, __varinfo__ = $(DynamicPPL.tilde_observe!!)(
-                __model__,
+            $value, __varinfo__ = $(DynamicPPL._tilde_observe!!)(
+                __model__.prefix,
+                __model__.prefix_template,
                 $(DynamicPPL.check_tilde_rhs)($dist),
                 $supplied_val,
                 $vn,

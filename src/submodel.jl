@@ -250,7 +250,12 @@ function _evaluate!!(
 end
 
 function tilde_observe!!(
-    ::Model, ::DynamicPPL.Submodel, left, ::Nothing, template, ::AbstractVarInfo
+    ::Model, right::DynamicPPL.Submodel, left, ::Nothing, template, vi::AbstractVarInfo
+)
+    return _tilde_observe!!(nothing, nothing, right, left, nothing, template, vi)
+end
+function _tilde_observe!!(
+    prefix, prefix_template, ::DynamicPPL.Submodel, left, ::Nothing, template, vi
 )
     throw(ArgumentError("`x ~ to_submodel(...)` is not supported when `x` is a literal"))
 end

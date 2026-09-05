@@ -1066,9 +1066,11 @@ optic_skip_length(optic::AbstractPPL.Index) = 1 + optic_skip_length(optic.child)
 optic_skip_length(optic::AbstractPPL.Property) = 1 + optic_skip_length(optic.child)
 
 function _prefix_varname_and_template(vn::VarName, template::Any, model::Model)
-    prefix = model.prefix
+    return _prefix_varname_and_template(vn, template, model.prefix, model.prefix_template)
+end
+function _prefix_varname_and_template(vn::VarName, template, prefix, prefix_template)
     prefix === nothing && return vn, template
-    pt = model.prefix_template === nothing ? prefix : model.prefix_template
+    pt = prefix_template === nothing ? prefix : prefix_template
     return AbstractPPL.prefix(vn, prefix), _apply_prefix_template(pt, template)
 end
 
@@ -1105,10 +1107,19 @@ function tilde_observe!!(
     template::Any,
     vi::AbstractVarInfo,
 )
+    return _tilde_observe!!(
+        model.prefix, model.prefix_template, right, left, vn, template, vi
+    )
+end
+
+# The compiler passes prefix metadata directly so observations do not box Model.
+function _tilde_observe!!(
+    prefix, prefix_template, right::Distribution, left, vn, template, vi
+)
     vn, template = if vn === nothing
         vn, NoTemplate()
     else
-        _prefix_varname_and_template(vn, template, model)
+        _prefix_varname_and_template(vn, template, prefix, prefix_template)
     end
     vi = accumulate_observe!!(vi, right, left, vn, template)
     return left, vi
