@@ -8,6 +8,7 @@ using Distributions
 using DynamicPPL
 using ForwardDiff: ForwardDiff
 using LinearAlgebra: I
+# Loads the renderer used by the docstring test.
 using REPL: REPL
 using Random: Random
 using Test
