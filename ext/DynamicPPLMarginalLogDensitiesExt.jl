@@ -156,7 +156,7 @@ re-evaluate the model with the values inside the returned VarInfo, for example u
 
 ```julia
 init_strategy = DynamicPPL.InitFromVector(mld, unmarginalized_params)
-accs = DynamicPPL.OnlyAccsVarInfo((
+accs = DynamicPPL.VarInfo((
     DynamicPPL.LogPriorAccumulator(),
     DynamicPPL.LogLikelihoodAccumulator(),
     DynamicPPL.RawValueAccumulator(false),
@@ -200,7 +200,7 @@ julia> # Get an initialisation strategy representing the mode of `y`.
        init_strategy = InitFromVector(mld, opt_solution.u);
 
 julia> # Evaluate the model with this initialisation strategy.
-       accs = DynamicPPL.OnlyAccsVarInfo((
+       accs = DynamicPPL.VarInfo((
            DynamicPPL.LogPriorAccumulator(),
            DynamicPPL.LogLikelihoodAccumulator(),
            DynamicPPL.RawValueAccumulator(false),

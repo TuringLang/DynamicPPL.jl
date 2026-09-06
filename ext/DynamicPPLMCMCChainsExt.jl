@@ -127,7 +127,7 @@ function AbstractMCMC.to_samples(
 )
     # Run model once to get templates for parameters. Note that the chain may include
     # variables stored with `:=`, so we need to pick those up as well.
-    vi = DynamicPPL.OnlyAccsVarInfo((DynamicPPL.RawValueAccumulator(true),))
+    vi = DynamicPPL.VarInfo((DynamicPPL.RawValueAccumulator(true),))
     _, vi = DynamicPPL.init!!(model, vi, DynamicPPL.InitFromPrior(), DynamicPPL.UnlinkAll())
     template_vnt = DynamicPPL.get_raw_values(vi)
     # Now we can iterate over the chain
@@ -144,6 +144,7 @@ function AbstractMCMC.to_samples(
             # If it's there then we can add it into the VNT.
             top_sym = AbstractPPL.getsym(vn)
             val = getindex_varname(chain, sample_idx, vn, chain_idx)
+            ismissing(val) && continue
             # This call to get() is type unstable, but I tried writing a generated function
             # that was type stable and it's really no different in terms of performance.
             # Presumably this is minimal compared to the rest of the work we do in this
@@ -233,7 +234,7 @@ function reevaluate_with_chain(
     fallback::Union{DynamicPPL.AbstractInitStrategy,Nothing}=nothing,
 ) where {N}
     params_with_stats = AbstractMCMC.to_samples(DynamicPPL.ParamsWithStats, chain, model)
-    vi = DynamicPPL.OnlyAccsVarInfo(DynamicPPL.AccumulatorTuple(accs))
+    vi = DynamicPPL.VarInfo(DynamicPPL.AccumulatorTuple(accs))
     return map(params_with_stats) do ps
         DynamicPPL.init!!(
             rng,
@@ -261,8 +262,8 @@ in `chain`, and return the resulting `Chains`.
 
 The `model` passed to `predict` is often different from the one used to generate `chain`.
 Typically, the model from which `chain` originated treats certain variables as observed (i.e.,
-data points), while the model you pass to `predict` may mark these same variables as missing
-or unobserved. Calling `predict` then leverages the previously inferred parameter values to
+data points), while the model you pass to `predict` leaves these same variables unconditioned.
+Calling `predict` then uses the previously inferred parameter values to
 simulate what new, unobserved data might look like, given your posterior beliefs.
 
 For each parameter configuration in `chain`:
@@ -305,7 +306,7 @@ ground_truth_β = 2.0
 # Generate predictions for two test points
 xs_test = [10.1, 10.2]
 
-m_train = linear_reg(xs_test, fill(missing, length(xs_test)))
+m_train = decondition(linear_reg(xs_test, zeros(length(xs_test))), :y)
 
 predictions = DynamicPPL.AbstractPPL.predict(
     Random.default_rng(), m_train, β_chain

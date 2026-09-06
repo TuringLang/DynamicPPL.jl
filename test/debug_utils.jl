@@ -122,31 +122,13 @@ end
         @test_throws ErrorException check_model(m; error_on_failure=true)
     end
 
-    @testset "incorrect use of condition" begin
-        @testset "missing in multivariate" begin
-            @model function demo_missing_in_multivariate(x)
-                return x ~ MvNormal(zeros(length(x)), I)
-            end
-            model = demo_missing_in_multivariate([1.0, missing])
-            test_model_fails_check(model)
+    @testset "conditioning overrides argument values" begin
+        @model function demo_conditioned_argument(x)
+            return x ~ Normal()
         end
-
-        @testset "condition both in args and context" begin
-            @model function demo_condition_both_in_args_and_context(x)
-                return x ~ Normal()
-            end
-            model = demo_condition_both_in_args_and_context(1.0)
-            for vals in [
-                (x=2.0,),
-                OrderedDict(@varname(x) => 2.0),
-                OrderedDict(@varname(x[1]) => 2.0),
-            ]
-                conditioned_model = DynamicPPL.condition(model, vals)
-                @test_throws ErrorException check_model(
-                    conditioned_model; error_on_failure=true
-                )
-            end
-        end
+        model = demo_conditioned_argument(1.0)
+        conditioned_model = DynamicPPL.condition(model, (x=2.0,))
+        @test check_model(conditioned_model; error_on_failure=true)
     end
 
     @testset "discrete distribution check" begin
@@ -213,6 +195,10 @@ end
             codeinfo, retype = DynamicPPL.DebugUtils.model_typed(model)
             @test codeinfo isa Core.CodeInfo
             @test retype <: Tuple
+
+            context = Context(Xoshiro(1), InitFromParams((; y=2.0)), UnlinkAll())
+            _, retype = DynamicPPL.DebugUtils.model_typed(model, VarInfo(); context)
+            @test retype <: Tuple{Float64,VarInfo}
 
             # Just make sure the following is runnable.
             @test DynamicPPL.DebugUtils.model_warntype(model) isa Any

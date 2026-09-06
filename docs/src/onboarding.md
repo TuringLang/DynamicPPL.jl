@@ -42,28 +42,17 @@ Start with these docs:
 
 ### Prefer explicit evaluation state
 
-For new evaluation code, prefer explicit initialisation strategies and
-accumulators over adding more responsibilities to `VarInfo`. `VarInfo` remains
-important, but fast paths should carry only the state they need.
-
-A common migration shape is:
+Keep evaluation inputs in `Context` and choose output accumulators in `VarInfo`.
+For example, to reuse recorded parameters while collecting a different set of outputs:
 
 ```julia
-evaluate!!(model, varinfo)
+context = Context(rng, InitFromParams(get_vector_values(previous), nothing), UnlinkAll())
+retval, outputs = evaluate!!(model, context, VarInfo(accumulators...))
 ```
 
-to:
-
-```julia
-init!!(
-    model,
-    OnlyAccsVarInfo(accumulators...),
-    InitFromParams(varinfo.values),
-    varinfo.transform_strategy,
-)
-```
-
-The exact strategy and accumulator set depend on the caller.
+Here `previous` contains a `VectorValueAccumulator`. The context specifies the requested
+output transforms explicitly; they are not inherited from previous outputs.
+See [Evaluation inputs and outputs](@ref evaluation-inputs-outputs).
 
 ### Use names and shapes carefully
 
@@ -120,9 +109,9 @@ If the intent is to add a likelihood term for a derived value, prefer
 `@addlogprob!` or a clearer model structure. Do not copy old `.~` examples; the
 dot-tilde pipeline was removed.
 
-Passing `missing` can affect whether a value is observed or latent. Add tests
-for the exact data shape you support, especially arrays with missing values,
-arrays of arrays, and mutable structs.
+Model arguments supply default observations; `decondition` removes them and
+`condition` replaces them. `missing` does not select stochastic roles. Test the
+data shapes you support, including arrays of arrays and mutable structs.
 
 ### Test contexts with nested models
 

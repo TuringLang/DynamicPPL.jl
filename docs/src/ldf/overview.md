@@ -54,12 +54,12 @@ The actual implementation of `LogDensityFunction` is a bit more complex than thi
 The main constructor for `LogDensityFunction` is
 
 ```julia
-LogDensityFunction(model, logdensityfunc, transform_strategy; adtype)
+LogDensityFunction(model, logdensityfunc, transform_strategy; adtype, rng)
 ```
 
 `model` is of course the model itself, but the other arguments deserve more explanation.
 
-  - `logdensityfunc` is a function that takes an `OnlyAccsVarInfo` and returns some real number.
+  - `logdensityfunc` is a function that takes a `VarInfo` and returns some real number.
     For example, it could be `getlogjoint_internal` (most of the time that is what you will want!).
     This is the argument that makes `LogDensityFunction` actually obey the interface that e.g. optimisers expect.
 
@@ -100,7 +100,7 @@ using StatsFuns: logistic
 x = 3.0
 y = logistic(4.0)
 params = VarNamedTuple(; x=x, y=y)
-_, accs = init!!(model, OnlyAccsVarInfo(), InitFromParams(params), LinkAll())
+_, accs = init!!(model, VarInfo(), InitFromParams(params), LinkAll())
 accs
 ```
 
@@ -115,6 +115,43 @@ LogDensityProblems.logdensity_and_gradient(ldf, [3.0, 4.0])
 (although that is not demonstrated here since it requires an AD backend to be loaded).
 
 Other functions such as `LogDensityProblems.capabilities` and `LogDensityProblems.dimension` will also work as expected with `LogDensityFunction`.
+
+## [Randomness in density evaluation](@id ldf-rng)
+
+Pass `rng` to `LogDensityFunction` to control model-body randomness. During density
+evaluation, `x ~ Normal()` reads `x` from the supplied parameter vector; it does not
+sample or advance the RNG. Only explicit random draws in the model body or its callees
+advance it. For example:
+
+```@example ldf-rng
+using DynamicPPL, Distributions, Random, LogDensityProblems
+
+@model function random_observation(y)
+    x ~ Normal()                                    # Read from the parameter vector.
+    i = rand(__context__.rng, eachindex(y))          # Advance the supplied RNG.
+    return y[i] ~ Normal(x, 1)
+end
+
+rng = Xoshiro(42)
+ldf = LogDensityFunction(random_observation([1.0, 2.0, 3.0]); rng)
+LogDensityProblems.logdensity(ldf, [0.5])
+```
+
+The same RNG reaches nested submodels and AD evaluation. It is shared with the caller,
+not copied or reset, so repeated calls can choose different observations and return
+different densities at identical parameters. Ordinary `rand(...)` without an RNG still
+uses Julia's default RNG; use `rand(__context__.rng, ...)` for evaluation-controlled draws.
+
+Construction is distinct from density evaluation: it may sample parameters to determine
+the vector layout. AD preparation may also execute the model and advance the RNG.
+`rand(ldf)` samples parameters using `ldf.rng`; `rand(other_rng, ldf)` uses `other_rng`.
+
+RNG control does not make stochastic densities suitable for ordinary HMC or NUTS,
+which require a deterministic target. AD backends may evaluate a model multiple times
+for one gradient, drawing different values, or replay a compiled tape without drawing
+again. RNG consumption therefore depends on the backend, and gradients may not
+correspond to a single realisation. For deterministic inference, select random data
+or other auxiliary randomness outside density evaluation and supply it to the model.
 
 ## Is `LogDensityFunction` less powerful than model evaluation?
 

@@ -1,4 +1,4 @@
-module DynamicPPLInitContextTests
+module DynamicPPLContextTests
 
 using Dates: now
 @info "Testing $(@__FILE__)..."
@@ -12,7 +12,7 @@ using Random: Xoshiro
 using StableRNGs: StableRNG
 using Test
 
-@testset "InitContext" begin
+@testset "Context" begin
     @model function test_init_model()
         x ~ Normal()
         y ~ MvNormal(fill(x, 2), I)
@@ -24,7 +24,9 @@ using Test
         @testset "generating new values: $(typeof(strategy))" begin
             # Check that init!! can generate values that weren't there previously.
             model = test_init_model()
-            empty_vi = VarInfo()
+            empty_vi = VarInfo(
+                VectorValueAccumulator(), DynamicPPL.default_accumulators()...
+            )
             this_vi = deepcopy(empty_vi)
             _, vi = DynamicPPL.init!!(model, this_vi, strategy, UnlinkAll())
             @test Set(keys(vi)) == Set([@varname(x), @varname(y)])
@@ -43,24 +45,8 @@ using Test
         @testset "replacing old values: $(typeof(strategy))" begin
             # Check that init!! can overwrite values that were already there.
             model = test_init_model()
-            empty_vi = VarInfo()
-            # start by generating some rubbish values
-            vi = deepcopy(empty_vi)
             old_x, old_y = 100000.00, [300000.00, 500000.00]
-            vi = DynamicPPL.setindex_with_dist!!(
-                vi,
-                TransformedValue(old_x, NoTransform()),
-                Normal(),
-                @varname(x),
-                DynamicPPL.NoTemplate(),
-            )
-            vi = DynamicPPL.setindex_with_dist!!(
-                vi,
-                TransformedValue(old_y, NoTransform()),
-                MvNormal(fill(old_x, 2), I),
-                @varname(y),
-                DynamicPPL.NoTemplate(),
-            )
+            vi = VarInfo(model, InitFromParams((; x=old_x, y=old_y), nothing))
             # then overwrite it
             _, new_vi = DynamicPPL.init!!(model, vi, strategy, UnlinkAll())
             new_x = only(DynamicPPL.getindex_internal(new_vi, @varname(x)))
@@ -74,7 +60,7 @@ using Test
     function test_rng_respected(strategy::AbstractInitStrategy)
         @testset "check that RNG is respected: $(typeof(strategy))" begin
             model = test_init_model()
-            accs = OnlyAccsVarInfo((RawValueAccumulator(false),))
+            accs = VarInfo((RawValueAccumulator(false),))
             _, accs1 = DynamicPPL.init!!(
                 Xoshiro(468), model, deepcopy(accs), strategy, UnlinkAll()
             )
@@ -116,7 +102,14 @@ using Test
             )
                 # Generate a VarInfo with that strategy
                 vi = last(
-                    DynamicPPL.init!!(model, VarInfo(), InitFromPrior(), transform_strategy)
+                    DynamicPPL.init!!(
+                        model,
+                        VarInfo(
+                            VectorValueAccumulator(), DynamicPPL.default_accumulators()...
+                        ),
+                        InitFromPrior(),
+                        transform_strategy,
+                    ),
                 )
                 # Check that initialising with that strategy preserves the linking
                 # status of the VarInfo
@@ -128,7 +121,7 @@ using Test
                     if DynamicPPL.target_transform(transform_strategy, vn) isa DynamicLink
                         @test DynamicPPL.is_transformed(vi, vn)
                         # The VarInfo should hold a linked value
-                        tv = vi.values[vn]
+                        tv = get_vector_values(vi)[vn]
                         @test tv.transform isa DynamicLink
                         linked_vec = DynamicPPL.get_internal_value(tv)
                         val, inv_logjac = Bijectors.with_logabsdet_jacobian(
@@ -139,7 +132,7 @@ using Test
                     else
                         @test !DynamicPPL.is_transformed(vi, vn)
                         # The VarInfo should hold a non-linked value
-                        tv = vi.values[vn]
+                        tv = get_vector_values(vi)[vn]
                         @test tv.transform isa Unlink
                         # it should wrap a single value
                         val = only(DynamicPPL.get_internal_value(tv))
@@ -161,7 +154,7 @@ using Test
         @testset "check that values are within support" begin
             @model just_unif() = x ~ Uniform(0.0, 1e-7)
             for _ in 1:100
-                accs = OnlyAccsVarInfo((RawValueAccumulator(false),))
+                accs = VarInfo((RawValueAccumulator(false),))
                 _, accs = DynamicPPL.init!!(just_unif(), accs, InitFromPrior(), UnlinkAll())
                 x = get_raw_values(accs)[@varname(x)]
                 @test x isa Real
@@ -178,9 +171,7 @@ using Test
             xs = Vector{Float64}(undef, N)
             for i in 1:N
                 xs[i] = first(
-                    DynamicPPL.init!!(
-                        rng, model, OnlyAccsVarInfo(()), InitFromPrior(), UnlinkAll()
-                    ),
+                    DynamicPPL.init!!(rng, model, VarInfo(()), InitFromPrior(), UnlinkAll())
                 )
             end
             @test mean(xs) ≈ 0.0 atol = 0.05
@@ -203,7 +194,7 @@ using Test
             for i in 1:N
                 xs[i] = first(
                     DynamicPPL.init!!(
-                        rng, model, OnlyAccsVarInfo(()), InitFromUniform(), UnlinkAll()
+                        rng, model, VarInfo(()), InitFromUniform(), UnlinkAll()
                     ),
                 )
             end
@@ -260,7 +251,7 @@ using Test
 
             model = test_init_model()
             acc = RawValueAccumulator(false)
-            empty_vi = OnlyAccsVarInfo((acc,))
+            empty_vi = VarInfo((acc,))
             _, vi = DynamicPPL.init!!(model, empty_vi, InitFromParams(vnt), UnlinkAll())
             vals = DynamicPPL.getacc(vi, Val(DynamicPPL.accumulator_name(acc))).values
             @test vals[@varname(x)] == my_x
@@ -276,7 +267,7 @@ using Test
             @testset "with InitFromPrior fallback" begin
                 model = test_init_model()
                 acc = RawValueAccumulator(false)
-                empty_vi = OnlyAccsVarInfo((acc,))
+                empty_vi = VarInfo((acc,))
                 _, vi = DynamicPPL.init!!(
                     model, empty_vi, InitFromParams(vnt, InitFromPrior()), UnlinkAll()
                 )
@@ -298,20 +289,11 @@ using Test
             @testset "with no fallback" begin
                 model = test_init_model()
                 acc = RawValueAccumulator(false)
-                empty_vi = OnlyAccsVarInfo((acc,))
+                empty_vi = VarInfo((acc,))
 
                 # When there's no entry for `y`
                 @test_throws ErrorException DynamicPPL.init!!(
                     model, empty_vi, InitFromParams(vnt, nothing), UnlinkAll()
-                )
-
-                # We also explicitly test the case where `y = missing`.
-                vnt_missing = @vnt begin
-                    x := my_x
-                    y := missing
-                end
-                @test_throws ErrorException DynamicPPL.init!!(
-                    model, empty_vi, InitFromParams(vnt_missing, nothing), UnlinkAll()
                 )
             end
         end
@@ -329,13 +311,23 @@ using Test
                 return b ~ Normal()
             end
             model = fixed_transform_model()
-            linked = last(DynamicPPL.init!!(model, VarInfo(), InitFromPrior(), LinkAll()))
+            linked = last(
+                DynamicPPL.init!!(
+                    model,
+                    VarInfo(VectorValueAccumulator(), DynamicPPL.default_accumulators()...),
+                    InitFromPrior(),
+                    LinkAll(),
+                ),
+            )
             # Feeding linked values into the equivalent fixed transforms must not change the
             # log-Jacobian: it belongs to the target transforms, not to the representation
             # the values arrived in.
             strategy = WithTransforms(get_fixed_transforms(model, LinkAll()), LinkAll())
             _, vi = DynamicPPL.init!!(
-                model, VarInfo(), InitFromParams(linked.values), strategy
+                model,
+                VarInfo(VectorValueAccumulator(), DynamicPPL.default_accumulators()...),
+                InitFromParams(get_vector_values(linked)),
+                strategy,
             )
             @test DynamicPPL.getlogjac(vi) ≈ DynamicPPL.getlogjac(linked)
         end

@@ -59,12 +59,12 @@ params = @vnt begin
     x := 1.5
     y := 2.0
 end
-_, vi_unlinked = init!!(f(), OnlyAccsVarInfo(), InitFromParams(params), UnlinkAll())
+_, vi_unlinked = init!!(f(), VarInfo(), InitFromParams(params), UnlinkAll())
 vi_unlinked.accs
 ```
 
 ```@example 1
-_, vi_linked = init!!(f(), OnlyAccsVarInfo(), InitFromParams(params), LinkAll())
+_, vi_linked = init!!(f(), VarInfo(), InitFromParams(params), LinkAll())
 vi_linked.accs
 ```
 
@@ -102,7 +102,7 @@ link_x_only = LookupTransformsInVNT(@vnt begin
     y := Unlink()
 end)
 
-_, vi_link_x_only = init!!(f(), OnlyAccsVarInfo(), InitFromParams(params), link_x_only)
+_, vi_link_x_only = init!!(f(), VarInfo(), InitFromParams(params), link_x_only)
 vi_link_x_only.accs
 ```
 
@@ -156,14 +156,15 @@ This used to be a standard workflow in Turing:
 
 ```@example 1
 using Random
-_, vi = init!!(Xoshiro(468), f(), VarInfo(), InitFromUniform())
+_, vi = init!!(Xoshiro(468), f(), VarInfo(VectorValueAccumulator()), InitFromUniform())
 
 # We'll run this later.
 # vi_linked = link!!(vi, f())
 ```
 
 In the first line, we are populating an empty `VarInfo` with values.
-This initialisation always causes the `VarInfo` to be unlinked, because the behaviour of `init!!` on a `VarInfo` is to always retain the transform state of the `VarInfo` (which is empty at this point, and hence unlinked).
+This initialisation records unlinked values because `init!!` defaults to `UnlinkAll()`.
+The contents of the output `VarInfo` do not determine the transform strategy.
 
 If we did not have a separate transform strategy, then we would have to make sure that `init()` always returned *untransformed* values when using `InitFromUniform` (otherwise we would be filling the `VarInfo` with transformed values, which is not what we want here).
 So we have this extra step where `InitFromUniform` has to generate transformed values, untransform them, and then pass them on to the `VarInfo` so that it can store untransformed values.

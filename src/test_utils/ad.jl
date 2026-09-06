@@ -333,7 +333,9 @@ function run_ad(
     verbose && @info "Running AD on $(model.f) with $(adtype)\n"
 
     # Generate initial parameters
-    ldf = LogDensityFunction(model, getlogdensity, transform_strategy; adtype=adtype)
+    ldf = LogDensityFunction(
+        model, getlogdensity, transform_strategy; adtype=adtype, rng=rng
+    )
     if isnothing(params)
         params = rand(rng, ldf, InitFromPrior())
     end
@@ -358,7 +360,7 @@ function run_ad(
             grad_true = test.grad
         elseif test isa WithBackend
             ldf_reference = LogDensityFunction(
-                model, getlogdensity, transform_strategy; adtype=test.adtype
+                model, getlogdensity, transform_strategy; adtype=test.adtype, rng=rng
             )
             value_true, grad_true = logdensity_and_gradient(ldf_reference, params)
             grad_true = collect(grad_true)

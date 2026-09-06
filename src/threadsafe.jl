@@ -31,6 +31,8 @@ mutable struct ThreadSafeVarInfo{V<:AbstractVarInfo,L<:AccumulatorTuple} <: Abst
     accs_lock::ReentrantLock
 end
 function ThreadSafeVarInfo(vi::AbstractVarInfo)
+    accs = map(acc -> promote_for_threadsafe_eval(acc, Any), getaccs(vi))
+    vi = setaccs!!(vi, accs)
     L = typeof(map(split, getaccs(vi)))
     accs_by_task = IdDict{TaskId,TaskAccumulators{L}}()
     task_accs_cache = _task_accs_cache(L)
@@ -76,6 +78,8 @@ Construct a `ThreadSafeVarInfo` that promotes any accumulators in `varinfo` to t
 versions for use in TSVI.
 
 This method also resets the accumulators' contents.
+Numeric parameter types are converted to floating equivalents; empty or unknown parameter
+types preserve the accumulators' existing numeric types.
 
 # Extended help
 
@@ -98,12 +102,17 @@ for model evaluation. See the docstring of `get_param_eltype` for more informati
 this. For accumulators that wrap `VarNamedTuple`s, thread safety is accomplished by removing
 the VNT type parameter from its type.
 """
-function ThreadSafeVarInfo(varinfo::AbstractVarInfo, param_eltype::Type{T}) where {T}
-    # The below line is finicky for type stability. For instance, assigning the eltype to
-    # convert to into an intermediate variable makes this unstable (constant propagation
-    # fails). Take care when editing.
+function ThreadSafeVarInfo(varinfo::AbstractVarInfo, ::Type{T}) where {T}
+    # Capturing a runtime type loses accumulator inference on Julia 1.10; use static T.
     accs = map(DynamicPPL.getaccs(varinfo)) do acc
-        DynamicPPL.promote_for_threadsafe_eval(acc, param_eltype)
+        DynamicPPL.promote_for_threadsafe_eval(
+            acc,
+            if T === Any || T === Union{}
+                Any
+            else
+                float_type_with_fallback(T)
+            end,
+        )
     end
     varinfo = DynamicPPL.setaccs!!(varinfo, accs)
     return ThreadSafeVarInfo(resetaccs!!(varinfo))
@@ -113,8 +122,6 @@ function setacc!!(vi::ThreadSafeVarInfo, acc::AbstractAccumulator)
     inner_vi = setaccs!!(vi.varinfo, getaccs(vi))
     return ThreadSafeVarInfo(setacc!!(inner_vi, acc))
 end
-
-get_values(vi::ThreadSafeVarInfo) = get_values(vi.varinfo)
 
 # This flag is accumulator configuration, not accumulated task state.
 function is_extracting_colon_eq_values(vi::ThreadSafeVarInfo)
@@ -164,33 +171,14 @@ function map_accumulators!!(func::Function, vi::ThreadSafeVarInfo)
     return vi
 end
 
-keys(vi::ThreadSafeVarInfo) = keys(vi.varinfo)
-haskey(vi::ThreadSafeVarInfo, vn::VarName) = haskey(vi.varinfo, vn)
-
-is_transformed(vi::ThreadSafeVarInfo) = is_transformed(vi.varinfo)
-
-function link!!(vi::ThreadSafeVarInfo, args...)
-    return Accessors.@set vi.varinfo = link!!(vi.varinfo, args...)
+function setaccs!!(vi::ThreadSafeVarInfo, accs::AccumulatorTuple)
+    return ThreadSafeVarInfo(setaccs!!(vi.varinfo, accs))
 end
 
-function invlink!!(vi::ThreadSafeVarInfo, args...)
-    return Accessors.@set vi.varinfo = invlink!!(vi.varinfo, args...)
-end
-get_transform_strategy(vi::ThreadSafeVarInfo) = get_transform_strategy(vi.varinfo)
-
-getindex(vi::ThreadSafeVarInfo, ::Colon) = getindex(vi.varinfo, Colon())
-
-function setindex_with_dist!!(
-    vi::ThreadSafeVarInfo, tval, dist::Distribution, vn::VarName, template
-)
-    vi_inner = setindex_with_dist!!(vi.varinfo, tval, dist, vn, template)
-    return Accessors.@set(vi.varinfo = vi_inner)
-end
-
-isempty(vi::ThreadSafeVarInfo) = isempty(vi.varinfo)
-function BangBang.empty!!(vi::ThreadSafeVarInfo)
-    return resetaccs!!(Accessors.@set(vi.varinfo = empty!!(vi.varinfo)))
-end
+keys(vi::ThreadSafeVarInfo) = keys(get_vector_values(vi))
+haskey(vi::ThreadSafeVarInfo, vn::VarName) = haskey(get_vector_values(vi), vn)
+isempty(vi::ThreadSafeVarInfo) = isempty(get_vector_values(vi))
+BangBang.empty!!(vi::ThreadSafeVarInfo) = resetaccs!!(vi)
 
 function resetaccs!!(vi::ThreadSafeVarInfo{V,L}) where {V,L}
     vi = Accessors.@set vi.varinfo = resetaccs!!(vi.varinfo)
@@ -201,28 +189,26 @@ function resetaccs!!(vi::ThreadSafeVarInfo{V,L}) where {V,L}
     return vi
 end
 
-internal_values_as_vector(vi::ThreadSafeVarInfo) = internal_values_as_vector(vi.varinfo)
-
-is_transformed(vi::ThreadSafeVarInfo, vn::VarName) = is_transformed(vi.varinfo, vn)
-function is_transformed(vi::ThreadSafeVarInfo, vns::AbstractVector{<:VarName})
-    return is_transformed(vi.varinfo, vns)
+function is_transformed(vi::ThreadSafeVarInfo, vn::VarName)
+    return get_transform(get_transformed_value(vi, vn)) isa DynamicLink
 end
 
-getindex_internal(vi::ThreadSafeVarInfo, vn::VarName) = getindex_internal(vi.varinfo, vn)
-function get_transformed_value(vi::ThreadSafeVarInfo, vn::VarName)
-    return get_transformed_value(vi.varinfo, vn)
+function link!!(vi::ThreadSafeVarInfo, args...)
+    return ThreadSafeVarInfo(link!!(setaccs!!(vi.varinfo, getaccs(vi)), args...))
 end
-
+function invlink!!(vi::ThreadSafeVarInfo, args...)
+    return ThreadSafeVarInfo(invlink!!(setaccs!!(vi.varinfo, getaccs(vi)), args...))
+end
 function unflatten!!(vi::ThreadSafeVarInfo, x::AbstractVector)
-    return Accessors.@set vi.varinfo = unflatten!!(vi.varinfo, x)
+    return ThreadSafeVarInfo(unflatten!!(setaccs!!(vi.varinfo, getaccs(vi)), x))
 end
-
-function subset(varinfo::ThreadSafeVarInfo, vns::AbstractVector{<:VarName})
-    return Accessors.@set varinfo.varinfo = subset(varinfo.varinfo, vns)
+function subset(vi::ThreadSafeVarInfo, vns::AbstractVector{<:VarName})
+    return ThreadSafeVarInfo(subset(setaccs!!(vi.varinfo, getaccs(vi)), vns))
 end
-
-function Base.merge(varinfo_left::ThreadSafeVarInfo, varinfo_right::ThreadSafeVarInfo)
-    return Accessors.@set varinfo_left.varinfo = merge(
-        varinfo_left.varinfo, varinfo_right.varinfo
+function Base.merge(left::ThreadSafeVarInfo, right::ThreadSafeVarInfo)
+    return ThreadSafeVarInfo(
+        merge(
+            setaccs!!(left.varinfo, getaccs(left)), setaccs!!(right.varinfo, getaccs(right))
+        ),
     )
 end

@@ -31,7 +31,10 @@ function setup_varinfos(
     model::Model, example_values::NamedTuple; include_threadsafe::Bool=false
 )
     _, vi = init!!(
-        model, VarInfo(), InitFromParams(example_values, InitFromPrior()), UnlinkAll()
+        model,
+        VarInfo(VectorValueAccumulator(), DynamicPPL.default_accumulators()...),
+        InitFromParams(example_values, InitFromPrior()),
+        UnlinkAll(),
     )
     return if include_threadsafe
         (vi, DynamicPPL.ThreadSafeVarInfo(deepcopy(vi)))

@@ -1,3 +1,35 @@
+# Unreleased
+
+Fixed type inference for thread-safe accumulator promotion on Julia 1.10: integer parameters, such as `x=1` for `x ~ Bernoulli(0.3)`, now select floating-point log-density storage with an inferable type.
+
+Indexed submodels keep child bindings local: `x[i] ~ to_submodel(child(y[i]))` no longer allocates an entire `x`-sized binding array for each child. Parent overrides, prefixes, and output templates are preserved.
+
+`LogDensityFunction(model; rng)` uses the supplied RNG for construction and evaluation. Inside a model, `rand(__context__.rng, ...)` advances it; ordinary `~` sites read the parameter vector during density evaluation. Stochastic densities still require inference and AD methods that support them. See [#721](https://github.com/TuringLang/DynamicPPL.jl/issues/721).
+
+Removed `NamedDist` and distribution-driven site renaming. Replace `x ~ NamedDist(Normal(), :y)` with `y ~ Normal(); x = y`. The stochastic variable is `y`; `x` is a local alias.
+
+Arguments supply default observations: for `@model f(x) = x ~ Normal()`, `f(2.0)` observes 2.0. `decondition(f(2.0), :x)` makes `x` latent; `condition(f(2.0); x=3.0)` replaces the observation. Complete replacements are available before the body runs; later statements use the computed or sampled value.
+
+Observation sites preserve argument computations, including partial bindings: starting with `x=1`, `x=x+1; x~Normal()` observes 2. For a 2×2 matrix `x` of vectors, successive overrides of `x[1][1]` and `x[2][1]` retain the matrix’s shape; the second index selects a vector element.
+
+Partial overrides preserve replacement records and tuples: after replacing `x=(a=0,)` with `(a=1,b=2)`, changing `x.a` retains `b=2` and the replacement’s type. Fixing `x[1]` to 3 in `(1,2)` yields `(3,2)`. Observation-role lookup for `x[:]` avoids copying the slice merely to decide whether it is observed.
+
+`missing` no longer selects latent variables in arguments, `condition`, `fix`, or `InitFromParams`. Replace `f(missing)` with `decondition(f(template), :x)`, where `template` supplies storage of the required shape; omit unavailable initial parameters. Use indexed conditioning for separate scalar sites. Missing chain cells still represent absent sites. See [#1464](https://github.com/TuringLang/DynamicPPL.jl/issues/1464).
+
+Removed parent contexts, traversal APIs, and `Model.context`. Replace `contextualize`/`setleafcontext` plus evaluation, or `evaluate!!(m, vi)`, with `evaluate!!(m, ctx, vi)`. Replace `conditioned(m.context)`/`fixed(m.context)` with `conditioned(m)`/`fixed(m)`. This advances the context simplification in [#895](https://github.com/TuringLang/DynamicPPL.jl/issues/895).
+
+Observation and tracking hooks no longer dispatch on context. With supplied `y`, `y ~ Normal(x); z := x+y` scores `y` and records `z` through accumulators when requested. Literal observations follow the same path. Pass a model instead of a context to `tilde_observe!!`/`store_coloneq_value!!`; customize `accumulate_observe!!` on accumulators.
+
+`Context(rng, strategy, transforms)` replaces `InitContext`, `DefaultContext`, and the `AbstractContext` interface. Customise value selection through initialisation strategies. Reuse outputs explicitly with `Context(rng, InitFromParams(get_raw_values(previous), nothing), UnlinkAll())`. `init!!` now defaults to `UnlinkAll()` independently of output state. See [#1469](https://github.com/TuringLang/DynamicPPL.jl/issues/1469).
+
+`OnlyAccsVarInfo` is now `VarInfo`, containing only accumulators. `VarInfo()` records log densities; add `RawValueAccumulator` or `VectorValueAccumulator` to record values. Replace `vi.values` with `get_vector_values(vi)`. Every evaluation resets all outputs, including recorded values, so skipped sites do not persist.
+
+Argument observations have lowest precedence; later operations replace value and role: `condition(fix(m; x=1); x=2)` observes 2; `fix(condition(m; x=2); x=1)` fixes 1 without scoring it. Parent bindings override child bindings, regardless of role. Updating `x[1]` preserves untouched `x[2]`. See [#1012](https://github.com/TuringLang/DynamicPPL.jl/issues/1012).
+
+Submodel traces preserve parent templates: with 2×2 `a`, calls at `a[1]` and `a[2,2]` retain a 2×2 trace container, while a child’s 2×3 `x` retains its own shape. This addresses template loss in [#1221](https://github.com/TuringLang/DynamicPPL.jl/issues/1221); independent submodel evaluation remains unimplemented.
+
+For `a ~ to_submodel(child())`, where `child` samples `x ~ Normal()` and returns `2x`, condition `@varname(a.x)` to 1, yielding 2. Conditioning `a` errors: it names the return value, not a stochastic variable. If argument `a` only provides return-value storage, use `decondition(parent(buffer), :a)`.
+
 # 0.42.11
 
 Partial-array merges now expand growable storage when the other array has a template, including for matrices and higher-dimensional arrays. See [#1482](https://github.com/TuringLang/DynamicPPL.jl/pull/1482).

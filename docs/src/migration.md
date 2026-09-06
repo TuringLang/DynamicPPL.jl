@@ -1,5 +1,29 @@
 # Migrating old `VarInfo` code
 
+`VarInfo` now means the accumulator-only container formerly called `OnlyAccsVarInfo`.
+`VarInfo()` records log densities, not parameter values. Add a `RawValueAccumulator`
+or `VectorValueAccumulator` when those outputs are needed; `VarInfo(model)` remains
+a convenience constructor that records vectorised values and log densities.
+
+Replace `InitContext` with `Context`. `DefaultContext` and context subtyping are removed:
+custom value selection belongs in initialisation strategies. To reuse previous values,
+extract them explicitly before evaluating:
+
+```julia
+context = Context(rng, InitFromParams(get_vector_values(previous), nothing), LinkAll())
+retval, outputs = evaluate!!(model, context, VarInfo())
+```
+
+Use `get_raw_values(previous)` for a raw-value accumulator. Choose `UnlinkAll()`,
+`LinkAll()`, or a partial/fixed transform strategy for the desired output representation.
+`init!!` defaults to `UnlinkAll()`; it never infers transforms from output state.
+For custom strategies, implement `get_param_eltype(strategy)` when evaluation needs
+to promote argument buffers or thread-local accumulators for AD.
+
+All output accumulators reset before evaluation. Previously recorded sites that are
+not executed again are absent from the new outputs. Replace `vi.values` with
+`get_vector_values(vi)`; there is no separate parameter store.
+
 Please get in touch if you have some old code you're unsure how to migrate, and we will be happy to add it to this list.
 
 ```@example 1
@@ -25,7 +49,7 @@ vi = VarInfo(Xoshiro(468), model)
 New:
 
 ```@example 1
-accs = OnlyAccsVarInfo()
+accs = VarInfo()
 _, vi = init!!(Xoshiro(468), model, accs, InitFromPrior(), UnlinkAll())
 vi
 ```
@@ -47,7 +71,7 @@ New:
 
 ```@example 1
 # Set to true if you want to include results of `:=` statements.
-accs = OnlyAccsVarInfo(RawValueAccumulator(false))
+accs = VarInfo(RawValueAccumulator(false))
 _, vi = init!!(Xoshiro(468), model, accs, InitFromPrior(), UnlinkAll())
 get_raw_values(vi)
 ```
@@ -88,7 +112,10 @@ vi = VarInfo(Xoshiro(468), model)
 vals = [1.0, 1.0]
 # Note this was `unflatten` (no exclamation mark) in the old code
 vi = DynamicPPL.unflatten!!(vi, vals)
-_, vi = DynamicPPL.evaluate!!(model, vi)
+# Current syntax requires an explicit context.
+_, vi = DynamicPPL.evaluate!!(
+    model, Context(InitFromParams(get_vector_values(vi), nothing), UnlinkAll()), vi
+)
 vi
 ```
 
@@ -106,7 +133,7 @@ Then you can do:
 ```@example 1
 init_strategy = InitFromVector(vals, ldf)
 
-vi = OnlyAccsVarInfo()
+vi = VarInfo()
 _, vi = init!!(Xoshiro(468), model, vi, init_strategy, ldf.transform_strategy)
 vi
 ```
