@@ -221,6 +221,9 @@ function check_model(
     _, oavi = DynamicPPL.init!!(rng, model, oavi, init_strategy, UnlinkAll())
 
     params = get_raw_values(oavi)
+    # This adds one evaluation per `check_model` call, not per ordinary model evaluation.
+    # Turing's `sample(model, NUTS(), 1000)` checks once before sampling; MCMC steps
+    # do not trigger it. `check_model=false` disables all model checks.
     provenance_ext = Base.get_extension(DynamicPPL, :DynamicPPLInputProvenanceExt)
     if !isempty(params) && provenance_ext !== nothing
         provenance_ext.check_input_provenance(rng, model, params)

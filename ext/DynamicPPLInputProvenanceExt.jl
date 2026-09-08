@@ -44,10 +44,10 @@ using SparseArrays: SparseArrays
 # non-differentiable, provided `g` has a rule. The new number would therefore need its own
 # numeric and package integrations.
 #
-# Both designs track only data carried by wrapped numeric values. They cannot retain
-# dependencies expressed through control flow or input-derived indexing, and concrete
-# conversions or foreign calls may erase the wrapper. Exact tracking for arbitrary Julia
-# requires control- and data-flow interpretation.
+# Only the executed path is checked: `if y > 0; x = exp(y); x ~ Normal(); end`
+# misses the overwrite with `y=-1`. In `x = y > 0 ? 1.0 : 2.0; x ~ Normal()`,
+# the selected constant carries no marker. Input-derived indexing, conversions, and foreign
+# calls can also lose provenance; exact tracking requires control- and data-flow analysis.
 #
 # Libtask.jl's lowered-IR transformation and control-flow analysis provide a relevant
 # precedent.
@@ -110,7 +110,12 @@ _dualize_input(x::Tuple) = map(_dualize_input, x)
 _dualize_input(x) = x
 
 function _has_input_provenance(x::ForwardDiff.Dual{InputProvenanceTag})
-    # Uninitialised storage can still contain NaNs unrelated to input provenance.
+    # `Vector{typeof(x)}(undef, n)` can contain arbitrary tangents. `isnan` rejects
+    # finite garbage, but stale NaNs can still cause false warnings. For bits-type
+    # arrays, `isassigned(a, i)` only checks bounds: it returns true for an in-bounds
+    # element even if no value has been written there.
+    # `undef` leaves no "unwritten" flag; detecting untouched elements requires
+    # tracking writes separately.
     return any(isnan, ForwardDiff.partials(x))
 end
 function _has_input_provenance(xs::AbstractArray)
