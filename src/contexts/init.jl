@@ -49,20 +49,15 @@ a model with ForwardDiff: the log-probability accumulators must be promoted to c
 tracer types, for example those in SparseConnectivityTracer.jl, also require similar
 treatment.
 
-If the `AbstractInitStrategy` is never used in combination with tracer types, then it is
-perfectly safe to return `Any`. This does not lead to type instability downstream because
-the actual accumulators will still be created with concrete Float types (the `Any` is just
-used to determine whether the float type needs to be modified).
+For thread-safe evaluation, returning `Any` allows accumulator types to widen at runtime,
+which costs type stability. Implement `get_param_eltype` to keep their storage concrete.
+Non-threadsafe evaluation permits widening in either case.
 
-In case that wasn't enough: in fact, even the above is not always true. Firstly, the
-accumulator argument is only true when evaluating with ThreadSafeVarInfo. See the comments
-in `DynamicPPL.unflatten!!` for more details. For non-threadsafe evaluation, Julia is
-capable of automatically promoting the types on its own. Secondly, the promotion only
-matters if you are trying to directly assign into a `Vector{Float64}` with a
-`ForwardDiff.Dual` or similar tracer type, for example using `xs[i] = MyDual`. This doesn't
-actually apply to tilde-statements like `xs[i] ~ ...` because those use `Accessors.set`
-under the hood, which also does the promotion for you. For the gory details, see the
-following issues:
+Argument promotion only matters if you are trying to directly assign into a
+`Vector{Float64}` with a `ForwardDiff.Dual` or similar tracer type, for example using
+`xs[i] = MyDual`. This doesn't actually apply to tilde-statements like `xs[i] ~ ...`
+because those use `Accessors.set` under the hood, which also does the promotion for you.
+For the gory details, see the following issues:
 
 - https://github.com/TuringLang/DynamicPPL.jl/issues/906 for accumulator types
 - https://github.com/TuringLang/DynamicPPL.jl/issues/823 for type argument promotion

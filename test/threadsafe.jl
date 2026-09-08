@@ -52,6 +52,25 @@ const gdemo_default = gdemo_d()
         @test ForwardDiff.derivative(x -> logjoint(continuous, (; x)), 2.0) ≈ -2.0
     end
 
+    @testset "unknown parameter types" begin
+        @model observed(y) = y ~ Normal()
+        for strategy in (InitFromParams((;)), InitFromPrior())
+            function density(y)
+                _, vi = init!!(
+                    Xoshiro(1), setthreadsafe(observed(y), true), VarInfo(), strategy
+                )
+                return getlogjoint(vi)
+            end
+            @test density(big"2.0") isa BigFloat
+            @test ForwardDiff.derivative(density, 2.0) ≈ -2.0
+        end
+        @model fallback() = x ~ Normal(big"0.0", big"1.0")
+        _, vi = init!!(
+            Xoshiro(1), setthreadsafe(fallback(), true), VarInfo(), InitFromParams((;))
+        )
+        @test getlogprior(vi) isa BigFloat
+    end
+
     @testset "parameter containers preserve numeric types" begin
         @model function indexed_parameter()
             x = zeros(1)

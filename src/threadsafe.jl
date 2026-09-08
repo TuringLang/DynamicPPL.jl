@@ -65,7 +65,7 @@ function _get_task_accs(vi::ThreadSafeVarInfo{V,L}) where {V,L}
     if task_accs === nothing || task_accs.task_id !== task_id
         task_accs = lock(vi.accs_lock) do
             get!(vi.accs_by_task, task_id) do
-                TaskAccumulators(task_id, map(split, getaccs(vi.varinfo))::L)
+                TaskAccumulators{L}(task_id, map(split, getaccs(vi.varinfo))::L)
             end
         end
         task_accs_cache[Threads.threadid()] = task_accs
@@ -81,7 +81,7 @@ versions for use in TSVI.
 
 This method also resets the accumulators' contents.
 Numeric parameter types are converted to floating equivalents; empty or unknown parameter
-types preserve the accumulators' existing numeric types.
+types permit task-local accumulator types to widen during evaluation.
 
 # Extended help
 
@@ -95,8 +95,8 @@ ForwardDiff. This would cause the wrapped log-likelihood to be promoted to
 `ForwardDiff.Dual`. If there were only one accumulator, this would be fine. However, the
 promoted accumulator cannot be stored in a field whose concrete type contains `Float64`.
 
-This means that *before* model evaluation even begins, the eltype of *all* log-probability
-accumulators must be promoted to `ForwardDiff.Dual`.
+When parameter types are known, accumulators are promoted before evaluation. Otherwise,
+task-local storage permits the accumulator tuple type to change.
 
 For log-probability accumulators, construction of the thread-safe versions therefore
 requires knowledge of `param_eltype`, which is the type of the parameters about to be used
@@ -117,7 +117,12 @@ function ThreadSafeVarInfo(varinfo::AbstractVarInfo, ::Type{T}) where {T}
         )
     end
     varinfo = DynamicPPL.setaccs!!(varinfo, accs)
-    return ThreadSafeVarInfo(resetaccs!!(varinfo))
+    varinfo = resetaccs!!(varinfo)
+    return if T === Any || T === Union{}
+        _threadsafe_varinfo(varinfo, AccumulatorTuple)
+    else
+        ThreadSafeVarInfo(varinfo)
+    end
 end
 
 function setacc!!(vi::ThreadSafeVarInfo, acc::AbstractAccumulator)
