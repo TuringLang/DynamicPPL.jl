@@ -621,6 +621,31 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
                 end
             end
 
+            @testset "multithreaded" begin
+                mt1 = DynamicPPL.predict(
+                    Xoshiro(468), m_lin_reg_test, β_chain; multithreaded=true
+                )
+                mt2 = DynamicPPL.predict(
+                    Xoshiro(468), m_lin_reg_test, β_chain; multithreaded=true
+                )
+                @test Array(mt1) == Array(mt2)
+                @test Set(keys(mt1)) == Set(keys(predictions))
+                ys_pred = vec(mean(Array(MCMCChains.group(mt1, :y)); dims=1))
+                @test ys_pred[1] ≈ ground_truth_β * xs_test[1] atol = 0.01
+                @test ys_pred[2] ≈ ground_truth_β * xs_test[2] atol = 0.01
+
+                two_chains = MCMCChains.Chains(
+                    reshape(rand(Normal(ground_truth_β, 0.002), 1000, 2), 1000, 1, 2),
+                    [:β];
+                    info=(; varname_to_symbol=Dict(@varname(β) => :β)),
+                )
+                mt3 = DynamicPPL.predict(
+                    Xoshiro(468), m_lin_reg_test, two_chains; multithreaded=true
+                )
+                @test size(mt3, 3) == size(two_chains, 3)
+                @test Set(keys(mt3)) == Set(keys(predictions))
+            end
+
             @testset "predictions with subsetted chain" begin
                 @model function f()
                     a ~ Normal()
