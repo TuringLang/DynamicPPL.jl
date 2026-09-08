@@ -7,6 +7,7 @@ struct Fix end
 
 _contains_missing(::Any) = false
 _contains_missing(::Missing) = true
+_contains_missing(value::TransformedValue) = _contains_missing(get_internal_value(value))
 _contains_missing(::AbstractArray{<:Number}) = false
 function _contains_missing(values::AbstractArray)
     return any(
