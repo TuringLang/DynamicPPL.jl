@@ -23,6 +23,10 @@ struct ReplacementRecord{A,B}
     b::B
 end
 
+mutable struct MissingRecord
+    a::Union{Missing,Float64}
+end
+
 @testset "condition and fix" begin
     @model function demo_cond_fix()
         x ~ Normal()
@@ -74,6 +78,22 @@ end
                 (last_op === condition ? logpdf(Normal(), 2.0) : 0.0)
             @test isempty(conditioned(transformed)) == (last_op === fix)
             @test isempty(fixed(transformed)) == (last_op === condition)
+        end
+    end
+
+    @testset "missing struct fields" begin
+        @model field_observation(x) = x.a ~ Normal()
+        @model nested_field(child) = inner ~ to_submodel(child)
+        for wrap in (identity, nested_field)
+            @test_throws ArgumentError logjoint(
+                wrap(field_observation(MissingRecord(missing))), (;)
+            )
+            for op in (condition, fix)
+                field_model = op(
+                    field_observation(MissingRecord(1.0)); x=MissingRecord(missing)
+                )
+                @test_throws ArgumentError logjoint(wrap(field_model), (;))
+            end
         end
     end
 

@@ -187,5 +187,5 @@ rand(cond_model_partial)
 
 ## Missing data
 
-Leave unobserved sites out of the conditioned values. `missing` is not a stochastic-role marker and is rejected by `condition` and `fix`.
+Leave unobserved sites out of the conditioned values. `missing` is not a stochastic-role marker. It is rejected when values are bound, or when fields of custom structs are used at tilde sites.
 For an array whose elements have separate tilde statements, condition only the observed indices, as in the examples above. A single multivariate draw cannot be partially conditioned.

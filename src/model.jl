@@ -1534,6 +1534,7 @@ function _tilde_observe!!(
     else
         _prefix_varname_and_template(vn, template, prefix, prefix_template)
     end
+    ModelValue{Condition}(left) # Validate prepared arguments, including mutable fields.
     vi = accumulate_observe!!(vi, right, left, vn, template)
     return left, vi
 end
