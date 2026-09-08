@@ -36,6 +36,27 @@ gdemo_def = gdemo_d()
         @test mean(samples_m) ≈ 0 atol = 0.15
     end
 
+    @testset "thread-safe accumulator state" begin
+        vi = DynamicPPL.ThreadSafeVarInfo(
+            OnlyAccsVarInfo(DynamicPPL.LogLikelihoodAccumulator())
+        )
+        vi = DynamicPPL.accloglikelihood!!(vi, 2.0)
+        # Emulate deserializing on a process with more threads.
+        cache = @atomic :acquire vi.task_accs_cache
+        @atomic :release vi.task_accs_cache = empty(cache)
+        io = IOBuffer()
+        serialize(io, vi)
+        seekstart(io)
+        vi = deserialize(io)
+
+        @test length(vi.accs_by_task) == 1
+        @test getloglikelihood(vi) == 2.0
+        vi = DynamicPPL.accloglikelihood!!(vi, 3.0)
+        @test getloglikelihood(vi) == 5.0
+        @test length(vi.accs_by_task) == 2
+        @test length(@atomic(:acquire, vi.task_accs_cache)) == Threads.maxthreadid()
+    end
+
     @testset "pmap" begin
         # Add worker processes.
         pids = addprocs()

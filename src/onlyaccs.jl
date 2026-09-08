@@ -15,6 +15,7 @@ accumulators](@ref accumulators-overview).
 struct OnlyAccsVarInfo{Accs<:AccumulatorTuple} <: AbstractVarInfo
     accs::Accs
 end
+Base.copy(vi::OnlyAccsVarInfo) = OnlyAccsVarInfo(copy(vi.accs))
 OnlyAccsVarInfo() = OnlyAccsVarInfo(default_accumulators())
 function OnlyAccsVarInfo(accs::NTuple{N,AbstractAccumulator}) where {N}
     return OnlyAccsVarInfo(AccumulatorTuple(accs))

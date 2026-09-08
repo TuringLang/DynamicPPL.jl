@@ -32,12 +32,34 @@ using LinearAlgebra
         vnt = get_raw_values(accs)
         @test !any(isnan, vnt[@varname(x)])
         @test !any(isnan, vnt[@varname(y)])
+        @test !any(isnan, get_colon_eq_values(accs)[@varname(y)])
         # with LDF
         ldf = LogDensityFunction(model)
         p = rand(ldf)
         pws = ParamsWithStats(p, ldf; include_colon_eq=true)
         @test !any(isnan, pws.params[@varname(x)])
         @test !any(isnan, pws.params[@varname(y)])
+    end
+
+    @testset "evaluation order" begin
+        @model function f()
+            y := 1.0
+            return x ~ Normal()
+        end
+        accs = OnlyAccsVarInfo(RawValueAccumulator(true))
+        _, accs = init!!(f(), accs, InitFromPrior(), UnlinkAll())
+        @test collect(keys(get_raw_values(accs))) == [@varname(y), @varname(x)]
+    end
+
+    @testset "indexed provenance" begin
+        acc = RawValueAccumulator(true)
+        acc = DynamicPPL.accumulate_assume!!(
+            acc, 1.0, 1.0, 0.0, @varname(x[1]), Normal(), zeros(3)
+        )
+        acc = DynamicPPL.store_colon_eq!!(acc, @varname(x[2:3]), [2.0, 3.0], zeros(3))
+        accs = OnlyAccsVarInfo(acc)
+        @test keys(get_parameter_values(accs)) == [@varname(x[1])]
+        @test keys(get_colon_eq_values(accs)) == [@varname(x[2]), @varname(x[3])]
     end
 end
 

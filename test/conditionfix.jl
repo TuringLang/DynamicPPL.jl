@@ -411,6 +411,32 @@ DynamicPPL.setchildcontext(::MyParentContext, child) = MyParentContext(child)
             end
         end
     end
+
+    @testset "merging growable and templated conditions (#1481)" begin
+        @model function partial_array_model()
+            x = zeros(2, 2)
+            x[1, 1] ~ Normal()
+            x[2, 1] ~ Normal()
+            return x
+        end
+        @model function partial_array_parent(child_model)
+            return child ~ to_submodel(child_model)
+        end
+        next_values = @vnt begin
+            @template x = zeros(2, 2)
+            x[2, 1] := 2.5
+        end
+        for op in (condition, fix)
+            model = partial_array_model()
+            nested = op(partial_array_parent(model), Dict(@varname(child.x[1, 1]) => 1.5))
+            model = op(model, Dict(@varname(x[1, 1]) => 1.5))
+            for (partial_model, values) in
+                ((model, next_values), (nested, VarNamedTuple(; child=next_values)))
+                @test returned(op(partial_model, values), VarNamedTuple()) ==
+                    [1.5 0.0; 2.5 0.0]
+            end
+        end
+    end
 end
 
 @testset "PrefixContext + CondFixContext interactions" begin

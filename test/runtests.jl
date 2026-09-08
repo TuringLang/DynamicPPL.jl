@@ -49,7 +49,12 @@ Random.seed!(100)
     if GROUP in [TEST_GROUP_ALL, TEST_GROUP_GROUP2]
         include("transformed_values.jl")
         include("logdensityfunction.jl")
+        include("subsample.jl")
         @testset "extensions" begin
+            # BridgeStan's Windows DLL conflict hangs Julia tests: roualdes/bridgestan#329.
+            if !Sys.iswindows()
+                include("ext/DynamicPPLBridgeStanExt.jl")
+            end
             include("ext/DynamicPPLMCMCChainsExt.jl")
             include("ext/DynamicPPLInputProvenanceExt.jl")
         end

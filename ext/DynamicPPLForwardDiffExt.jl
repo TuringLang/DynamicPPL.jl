@@ -7,6 +7,31 @@ using ForwardDiff
 use_dynamicppl_tag(::ADTypes.AutoForwardDiff{<:Any,Nothing}) = true
 use_dynamicppl_tag(::ADTypes.AutoForwardDiff) = false
 
+function (f::DynamicPPL._StanDifferentiableFunction)(
+    x::AbstractArray{<:ForwardDiff.Dual{T,V,N}}
+) where {T,V,N}
+    primal = ForwardDiff.value.(x)
+    input_partials = ForwardDiff.partials.(x)
+    input_tangents = ntuple(Val(N)) do direction
+        map(partials -> partials[direction], input_partials)
+    end
+    output, output_tangents = DynamicPPL._stan_value_and_pushforward(
+        f, primal, input_tangents
+    )
+    return _stan_dualize(T, output, output_tangents)
+end
+
+function _stan_dualize(::Type{T}, output::Real, tangents::NTuple{N}) where {T,N}
+    return ForwardDiff.Dual{T}(output, ForwardDiff.Partials(tangents))
+end
+
+function _stan_dualize(::Type{T}, output::AbstractArray, tangents::NTuple{N}) where {T,N}
+    return map(eachindex(output)) do index
+        partials = ForwardDiff.Partials(ntuple(i -> tangents[i][index], Val(N)))
+        ForwardDiff.Dual{T}(output[index], partials)
+    end
+end
+
 function DynamicPPL.tweak_adtype(
     ad::ADTypes.AutoForwardDiff{chunk_size}, ::DynamicPPL.Model, params::AbstractVector
 ) where {chunk_size}

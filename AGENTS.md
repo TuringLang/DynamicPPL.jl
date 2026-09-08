@@ -104,6 +104,7 @@ vi = accumulate_assume!!(vi, x, tval, logjac, vn, dist, template)
   - Preserve templates, shapes, and index structure when round-tripping between named values and flat vectors.
   - Ensure `copy(acc)` does not share mutable internal state; aliased accumulator containers corrupt results when copied for `ThreadSafeVarInfo`.
   - Ensure `split(acc)` does not share mutable accumulation state; `combine` must merge that state even when it is stored outside the main value container.
+  - Aggregating `ThreadSafeVarInfo` accumulators must not mutate stored state. Seed reductions with an independent copy because `combine` may consume its first argument, and test repeated reads and copies with a mutable accumulator.
   - Use `@varname(x)`, not `:x` or `VarName(:x)`. Use subsumption for containment checks, e.g. `subsumes(@varname(x), @varname(x[1]))`. Conditioning on `@varname(x)` covers subindices; conditioning on `@varname(x[1])` only matches that index.
 
 ## `@model` Compiler

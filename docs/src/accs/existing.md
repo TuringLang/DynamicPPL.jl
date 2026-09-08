@@ -33,6 +33,8 @@ and their associated convenience functions:
 
 ```@docs
 get_raw_values
+get_parameter_values
+get_colon_eq_values
 get_vector_values
 get_vector_params
 ```
