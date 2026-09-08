@@ -221,9 +221,9 @@ function check_model(
     _, oavi = DynamicPPL.init!!(rng, model, oavi, init_strategy, UnlinkAll())
 
     params = get_raw_values(oavi)
-    forwarddiff_ext = Base.get_extension(DynamicPPL, :DynamicPPLForwardDiffExt)
-    if !isempty(params) && forwarddiff_ext !== nothing
-        forwarddiff_ext.check_input_provenance(rng, model, params)
+    provenance_ext = Base.get_extension(DynamicPPL, :DynamicPPLInputProvenanceExt)
+    if !isempty(params) && provenance_ext !== nothing
+        provenance_ext.check_input_provenance(rng, model, params)
     end
 
     # If there are no raw values, then there are no parameters. We just warn in this case.

@@ -564,7 +564,7 @@ end
 
 const INPUT_PROVENANCE_ACCNAME = :InputProvenance
 
-# The ForwardDiff extension implements this hook for its input-provenance check.
+# The input-provenance extension implements this hook.
 check_input_provenance!!(vi::AbstractVarInfo, value, vn::VarName) = vi
 
 generate_input_provenance_check(::Any, ::Any) = nothing
