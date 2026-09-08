@@ -97,6 +97,10 @@ end
     )
 
     ext = Base.get_extension(DynamicPPL, :DynamicPPLInputProvenanceExt)
+    for tangent in (0.0, 1.0, Inf)
+        dual = ForwardDiff.Dual{ext.InputProvenanceTag}(1.0, tangent)
+        @test !ext._has_input_provenance(dual)
+    end
     for x in (sparse([1], [1], Float32[2], 3, 3), sparsevec([2], BigFloat[3], 4))
         dual_x = ext._dualize_input(x)
         @test eltype(dual_x) === typeof(ext._dualize_input(one(eltype(x))))
@@ -118,7 +122,7 @@ end
 
     acc = ext.InputProvenanceAccumulator()
     vi = DynamicPPL.ThreadSafeVarInfo(OnlyAccsVarInfo((acc,)))
-    dual = ForwardDiff.Dual{ext.InputProvenanceTag}(1.0, 1.0)
+    dual = ext._dualize_input(1.0)
     @test_logs (:warn, r"Variable x.*derived from a model input") begin
         vi = DynamicPPL.check_input_provenance!!(vi, dual, @varname(x))
     end

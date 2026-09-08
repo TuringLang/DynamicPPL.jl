@@ -23,7 +23,7 @@ using SparseArrays: SparseArrays
 # model once more with dual numbers carrying a single tangent. Under ordinary dual rules,
 # a scalar or structured intermediate `z = f(x)` carries directional derivative data
 # `dz = J_f(x) * v` with the same structure. Immediately before a latent tilde statement
-# overwrites an existing `z`, a nonzero tangent in any numeric leaf indicates that `z` was
+# overwrites an existing `z`, a NaN tangent in any numeric leaf indicates that `z` was
 # computed from a model input and may have been intended as an observation. One direction
 # suffices because the check needs only this yes-or-no signal, not a full Jacobian or the
 # identity of each contributing input.
@@ -110,7 +110,8 @@ _dualize_input(x::Tuple) = map(_dualize_input, x)
 _dualize_input(x) = x
 
 function _has_input_provenance(x::ForwardDiff.Dual{InputProvenanceTag})
-    return any(p -> !iszero(p), ForwardDiff.partials(x))
+    # Uninitialised storage can still contain NaNs unrelated to input provenance.
+    return any(isnan, ForwardDiff.partials(x))
 end
 function _has_input_provenance(xs::AbstractArray)
     for i in eachindex(xs)
