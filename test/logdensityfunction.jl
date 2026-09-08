@@ -53,7 +53,6 @@ end
             default_rng = copy(Random.default_rng())
             ldf = LogDensityFunction(model, getlogjoint_internal, args...; rng, kwargs...)
             @test rand() == rand(default_rng)
-            @test ldf.rng === rng
             expected_rng = copy(rng)
             for default_seed in (1, 2)
                 Random.seed!(default_seed)

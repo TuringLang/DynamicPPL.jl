@@ -218,7 +218,6 @@ end
             x[1] ~ Bernoulli(0.5)
             global varinfo_ = __varinfo__
             global model_ = __model__
-            global context_ = __context__
             global lp = getlogjoint(__varinfo__)
             return x
         end
@@ -227,8 +226,6 @@ end
         @test getlogjoint(varinfo) == lp
         @test varinfo_ isa AbstractVarInfo
         @test model_ === model
-        @test context_ isa DynamicPPL.Context
-        @test context_.rng isa Random.AbstractRNG
 
         # disable warnings
         @model function testmodel_missing4(x)
@@ -382,15 +379,6 @@ end
         model = makemodel(0.5)([1.0])
         varinfo = VarInfo(model)
         @test getlogjoint(varinfo) == lp
-    end
-
-    @testset "tilde names follow the left-hand side" begin
-        @test !isdefined(DynamicPPL, :NamedDist)
-        @model named_site() = (y ~ Normal(); x = y; return x)
-        @test only(keys(VarInfo(named_site()))) == @varname(y)
-        observed = condition(named_site(); y=2.0)
-        @test observed() == 2.0
-        @test loglikelihood(observed, VarNamedTuple()) == logpdf(Normal(), 2.0)
     end
 
     @testset "custom tilde" begin

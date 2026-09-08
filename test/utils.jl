@@ -56,44 +56,15 @@ end
 
     @testset "transformations" begin
         function test_transformation(dist::Distribution)
-            # Create a model and check that we can evaluate it with both unlinked and linked
-            # VarInfo. This relies on the transformations working correctly so is more of an
-            # 'end to end' test
             @model test() = x ~ dist
             model = test()
-            vi_unlinked = VarInfo(model)
-            vi_linked = DynamicPPL.link!!(VarInfo(model), model)
-            @test (
-                evaluate!!(
-                    model,
-                    Context(
-                        InitFromParams(get_values(vi_unlinked), nothing),
-                        DynamicPPL.infer_transform_strategy_from_values(
-                            get_values(vi_unlinked)
-                        ),
-                    ),
-                    vi_unlinked,
-                );
-                true
-            )
-            @test (
-                evaluate!!(
-                    model,
-                    Context(
-                        InitFromParams(get_values(vi_linked), nothing),
-                        DynamicPPL.infer_transform_strategy_from_values(
-                            get_values(vi_linked)
-                        ),
-                    ),
-                    vi_linked,
-                );
-                true
-            )
-
-            ctx = Context(InitFromPrior(), UnlinkAll())
-            @test (evaluate!!(model, ctx, vi_unlinked); true)
-            ctx = Context(InitFromPrior(), LinkAll())
-            @test (evaluate!!(model, ctx, vi_linked); true)
+            for transform in (UnlinkAll(), LinkAll())
+                input = VarInfo(model, InitFromPrior(), transform)
+                context = Context(InitFromParams(get_values(input), nothing), transform)
+                value, output = evaluate!!(model, context, VarInfo())
+                @test getlogjoint(output) ≈ logpdf(dist, value)
+                @test getlogjac(output) ≈ getlogjac(input)
+            end
         end
 
         # Unconstrained univariate

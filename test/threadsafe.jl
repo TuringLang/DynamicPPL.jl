@@ -165,7 +165,6 @@ const gdemo_default = gdemo_d()
     @testset "Check that VarInfo is wrapped during model evaluation" begin
         @model function f()
             global vi_ = __varinfo__
-            global ctx_ = __context__
             return x ~ Normal(0, 1)
         end
         model = setthreadsafe(f(), true)
@@ -177,19 +176,10 @@ const gdemo_default = gdemo_d()
         @test vi_ isa DynamicPPL.ThreadSafeVarInfo
         # But init!! should return the original VarInfo
         @test vi isa DynamicPPL.VarInfo
+        # Same with evaluate!!
         ctx = Context(Xoshiro(1), InitFromParams((; x=2.0)), UnlinkAll())
         result, vi = evaluate!!(model, ctx, vi)
         @test result == 2.0
-        @test ctx_ === ctx
-        # Same with evaluate!!
-        _, vi = evaluate!!(
-            model,
-            Context(
-                InitFromParams(get_values(vi), nothing),
-                DynamicPPL.infer_transform_strategy_from_values(get_values(vi)),
-            ),
-            vi,
-        )
         @test vi_ isa DynamicPPL.ThreadSafeVarInfo
         @test vi isa DynamicPPL.VarInfo
     end

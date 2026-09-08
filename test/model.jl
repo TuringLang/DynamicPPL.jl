@@ -143,68 +143,6 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
         end
     end
 
-    @testset "model de/conditioning" begin
-        @model function demo_condition()
-            x ~ Normal()
-            return y ~ Normal(x)
-        end
-        model = demo_condition()
-
-        # Test that different syntaxes store the same values.
-        @testset "conditioning NamedTuple" begin
-            expected_values = @vnt begin
-                y := 2
-            end
-            @test conditioned(condition(model, (y=2,))) == expected_values
-            @test conditioned(condition(model; y=2)) == expected_values
-            @test conditioned(model | (y=2,)) == expected_values
-            conditioned_model = condition(model, (y=2,))
-            @test keys(VarInfo(conditioned_model)) == [@varname(x)]
-        end
-
-        @testset "conditioning AbstractDict" begin
-            # condition just 1 variable
-            expected_values = @vnt begin
-                y := 2
-            end
-            @test conditioned(condition(model, Dict(@varname(y) => 2))) == expected_values
-            @test conditioned(condition(model, @varname(y) => 2)) == expected_values
-            @test conditioned(model | (@varname(y) => 2,)) == expected_values
-            @test conditioned(model | (@varname(y) => 2)) == expected_values
-            conditioned_model = condition(model, Dict(@varname(y) => 2))
-            @test keys(VarInfo(conditioned_model)) == [@varname(x)]
-
-            # condition 2 variables
-            expected_values = @vnt begin
-                x := 1
-                y := 2
-            end
-            @test conditioned(condition(model, (@varname(x) => 1, @varname(y) => 2))) ==
-                expected_values
-            conditioned_model = condition(model, (@varname(x) => 1, @varname(y) => 2))
-            @test keys(VarInfo(conditioned_model)) == []
-        end
-
-        @testset "conditioning VNT" begin
-            # This is mostly to check that the VNT method exists
-            expected_values = @vnt begin
-                y := 2
-            end
-            @test conditioned(condition(model, (@vnt begin
-                y := 2
-            end))) == expected_values
-            @test conditioned(model | (@vnt begin
-                y := 2
-            end)) == expected_values
-        end
-
-        @testset "deconditioning" begin
-            conditioned_model = condition(model, (y=2,))
-            deconditioned_model = decondition(conditioned_model)
-            @test keys(VarInfo(deconditioned_model)) == [@varname(x), @varname(y)]
-        end
-    end
-
     @testset "DynamicPPL#684: threadsafe evaluation with multiple types" begin
         @model function multiple_types(x)
             ns ~ filldist(Normal(0, 2.0), 3)

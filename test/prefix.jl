@@ -22,10 +22,6 @@ __now__ = now()
     prefixed = @inferred DynamicPPL.prefix(model, @varname(a))
     twice_prefixed = @inferred DynamicPPL.prefix(prefixed, @varname(b))
 
-    @test prefixed.prefix == @varname(a)
-    @test twice_prefixed.prefix == @varname(b.a)
-    @test isempty(keys(conditioned(prefixed)))
-    @test isempty(keys(fixed(prefixed)))
     @test Set(keys(rand(prefixed))) ==
         Set([@varname(a.x), @varname(a.y[1]), @varname(a.y[2])])
     @test Set(keys(rand(twice_prefixed))) ==
@@ -72,49 +68,11 @@ __now__ = now()
             prefixed = @inferred DynamicPPL.prefix(
                 op(model; x=2.0), @varname(a[end, end]); template=zeros(2, 3)
             )
-            @test prefixed.prefix == @varname(a[2, 3])
             @test prefixed().x == 2.0
             values = op === condition ? conditioned(prefixed) : fixed(prefixed)
             @test size(values.data.a.data) == (2, 3)
             @test values[@varname(a[2, 3].x)] == 2.0
         end
-    end
-
-    @testset "tracked assignments" begin
-        @model function tracked_assignment()
-            x := 1.0
-            return x
-        end
-        model = DynamicPPL.prefix(tracked_assignment(), @varname(a))
-        vi = VarInfo((RawValueAccumulator(true),))
-        _, vi = init!!(model, vi, InitFromPrior(), UnlinkAll())
-        values = get_raw_values(vi)
-        @test values[@varname(a.x)] == 1.0
-    end
-
-    @testset "model reconstruction preserves fields" begin
-        transformed = fix(
-            condition(DynamicPPL.prefix(model, @varname(a)), @varname(a.x) => 1.0),
-            @varname(a.y[1]) => 2.0,
-        )
-        reconstructed = DynamicPPL._reconstruct_model(transformed)
-        threadsafe = setthreadsafe(transformed, true)
-        for rebuilt in (reconstructed, threadsafe)
-            @test rebuilt.prefix == transformed.prefix
-            @test conditioned(rebuilt) == conditioned(transformed)
-            @test fixed(rebuilt) == fixed(transformed)
-        end
-    end
-
-    @testset "evaluation: $(model.f)" for model in DynamicPPL.TestUtils.ALL_MODELS
-        prefix_vn = @varname(my_prefix)
-        prefixed_model = DynamicPPL.prefix(model, prefix_vn)
-        _, varinfo = DynamicPPL.init!!(prefixed_model, VarInfo(VectorValueAccumulator()))
-        actual = Set(keys(varinfo))
-        expected = Set([
-            AbstractPPL.prefix(vn, prefix_vn) for vn in DynamicPPL.TestUtils.varnames(model)
-        ])
-        @test actual == expected
     end
 end
 

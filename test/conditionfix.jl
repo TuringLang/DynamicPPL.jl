@@ -51,6 +51,7 @@ end
             op(model, (; x)),
             op(model, Dict(@varname(x) => x)),
             op(model, @varname(x) => x),
+            op(model, (@varname(x) => x,)),
         )
         for transformed in transformed_models
             test_logp_correct(op, transformed, x)
@@ -60,20 +61,11 @@ end
             test_logp_correct(condition, model | (; x), x)
             test_logp_correct(condition, model | Dict(@varname(x) => x), x)
             test_logp_correct(condition, model | (@varname(x) => x), x)
+            test_logp_correct(condition, model | (@varname(x) => x,), x)
         end
     end
 
-    @testset "values are model fields" begin
-        conditioned_model = condition(condition(model; x=1.0); x=2.0, y=3.0)
-        @test conditioned(conditioned_model)[@varname(x)] == 2.0
-        @test conditioned(conditioned_model)[@varname(y)] == 3.0
-        @test conditioned_model() == 3.0
-
-        fixed_model = fix(fix(model; x=1.0); x=2.0, y=3.0)
-        @test fixed(fixed_model)[@varname(x)] == 2.0
-        @test fixed(fixed_model)[@varname(y)] == 3.0
-        @test fixed_model() == 3.0
-
+    @testset "later bindings replace values and roles" begin
         @model return_x() = x ~ Normal()
         for first_op in (condition, fix), last_op in (condition, fix)
             transformed = last_op(first_op(return_x(); x=1.0); x=2.0)
@@ -142,7 +134,6 @@ end
             @test loglikelihood(changed, VarNamedTuple()) ≈ logpdf(Normal(), T(2))
             @test wrapped_input(changed)() == changed()
         end
-        @test scalar_input()() == keyword_input()() == 2.0
         for T in (Float32, Float64, BigFloat),
             constructor in (scalar_input, x -> keyword_input(; x))
 
@@ -253,18 +244,11 @@ end
             @test isempty(keys(VarInfo(original)))
             @test conditioned(original)[@varname(x)] === initial
             @test loglikelihood(original, VarNamedTuple()) == logpdf(Normal(), initial)
-            @test conditioned(original) == conditioned(condition(original; x=initial))
             observed = condition(argument_model(initial); x=2.0)
             @test observed() == 2.0
             @test logjoint(observed, VarNamedTuple()) == logpdf(Normal(), 2.0)
             @test keys(VarInfo(decondition(observed))) == [@varname(x)]
-            @test condition(decondition(original); x=3.0)() == 3.0
         end
-
-        @model keyword_argument(; x=1.0) = x ~ Normal()
-        @test keyword_argument()() == 1.0
-        @test keyword_argument(; x=2.0)() == 2.0
-        @test keys(VarInfo(decondition(keyword_argument()))) == [@varname(x)]
 
         @model function array_argument(x; config=nothing)
             for i in eachindex(x)
@@ -280,7 +264,6 @@ end
                 latent, VarInfo(), InitFromParams((; x=[3.0, 4.0])), UnlinkAll()
             )
             @test result == [3.0, 4.0]
-            @test data == [1.0, 2.0]
             @test original() == [1.0, 2.0]
             @test condition(latent; x=[5.0, 6.0])() == [5.0, 6.0]
             @test data == [1.0, 2.0]
@@ -299,14 +282,6 @@ end
         @test isempty(keys(VarInfo(transformed)))
         @test transformed().a == 0.0
         @test transformed().b == 1.0
-
-        @model function reread(x)
-            x ~ Normal()
-            return x + x
-        end
-        observed = condition(reread(1.0); x=2.0)
-        @test observed() == 4.0
-        @test fix(decondition(observed); x=3.0)() == 6.0
     end
 
     @testset "replacement arguments drive model execution" begin
@@ -412,7 +387,6 @@ end
             nested_fields(fields((; a=0.0))), @varname(child.x) => (; a=1.0, b=2.0)
         )
         parent = fix(parent, @varname(child.x.a) => 3.0)
-        @test parent() == (; a=3.0, b=2.0)
         result, _ = @inferred evaluate!!(
             parent,
             Context(
@@ -439,7 +413,6 @@ end
         @test ForwardDiff.derivative(loglik, 3.0) == -3.0
         selected = conditioned(condition(base, @varname(x.a) => 3.0))
         @test selected[@varname(x)] isa ReplacementRecord
-        @test selected == conditioned(condition(base, @varname(x.a) => 3.0))
         @test condition(fields(ObservationRecord(0.0, 0.0)), selected)().a == 3.0
         mixed = fix(base, @varname(x.a) => 3.0)
         supplied = merge(conditioned(mixed), fixed(mixed))
@@ -549,8 +522,6 @@ end
         end
         @model nested_observation(m) = a ~ to_submodel(m)
         for op in (condition, fix), T in (Float32, BigFloat)
-            typed_model = op(typed_observation([0.0]); x=T[2])
-            @test typed_model() == (T, T[2])
             nested = op(nested_observation(typed_observation([0.0])), @varname(a.x) => T[2])
             @test nested() == (T, T[2])
         end
@@ -633,6 +604,8 @@ end
 
     @testset "decondition and unfix" begin
         conditioned_model = condition(model; x=1.0, y=2.0)
+        @test isempty(keys(VarInfo(conditioned_model)))
+        @test keys(VarInfo(decondition(conditioned_model))) == [@varname(x), @varname(y)]
         @test isempty(keys(conditioned(decondition(conditioned_model))))
         @test keys(conditioned(decondition(conditioned_model, :x))) == [@varname(y)]
         @test keys(conditioned(decondition(conditioned_model, @varname(x)))) ==

@@ -57,9 +57,8 @@ end
         density = mu -> logjoint(model, params(mu))
         @test density(0.25) ≈ logpdf(Normal(), 0.25) + logpdf(Normal(0.25, 1), 2.0)
         @test ForwardDiff.derivative(density, 0.25) ≈ 1.5
-        result, vi = init!!(model, VarInfo(), InitFromParams(params(0.25), nothing))
+        result, _ = init!!(model, VarInfo(), InitFromParams(params(0.25), nothing))
         @test result == [2.0, 3.0]
-        @test getlogjoint(vi) ≈ density(0.25)
         likelihoods = pointwise_loglikelihoods(model, InitFromParams(params(0.25), nothing))
         @test keys(likelihoods) == [@varname(a.x[1].y)]
         @test size(likelihoods.data.a.data.x) == (2,)

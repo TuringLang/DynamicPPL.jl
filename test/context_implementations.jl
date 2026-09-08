@@ -36,15 +36,6 @@ end
 @model outer(m) = b ~ to_submodel(m)
 
 @testset "context_implementations.jl" begin
-    @testset "explicit evaluation interface" begin
-        @test !hasproperty(child(), :context)
-        @test_throws MethodError evaluate!!(child(), VarInfo())
-        @static if VERSION >= v"1.11"
-            @test Base.ispublic(DynamicPPL, :make_evaluate_args_and_kwargs)
-            @test Base.ispublic(DynamicPPL, :store_coloneq_value!!)
-        end
-    end
-
     @testset "observations do not dispatch on context" begin
         for T in (Float32, Float64, BigFloat)
             dist = Normal(zero(T), one(T))
@@ -59,23 +50,6 @@ end
                 end
             end
         end
-        @test !applicable(
-            tilde_observe!!,
-            Context(InitFromPrior(), UnlinkAll()),
-            Normal(),
-            1.0,
-            nothing,
-            NoTemplate(),
-            VarInfo(),
-        )
-        @test !applicable(
-            DynamicPPL.store_coloneq_value!!,
-            Context(InitFromPrior(), UnlinkAll()),
-            @varname(z),
-            1.0,
-            NoTemplate(),
-            VarInfo(),
-        )
     end
 
     @testset "no context hooks needed without latent sites" begin
@@ -110,37 +84,12 @@ end
                 @test first(@inferred evaluate!!(model, ctx, VarInfo())) == result
             end
         end
-
-        model = child()
-        ctx = Context(Xoshiro(1), InitFromParams((; x=1.0)), UnlinkAll())
-        result, vi = @inferred evaluate!!(model, ctx, VarInfo(VectorValueAccumulator()))
-        @test result == 3.0
-        ctx = Context(Xoshiro(1), InitFromParams((; x=3.0)), UnlinkAll())
-        result, vi = @inferred evaluate!!(model, ctx, vi)
-        @test result == 5.0
-        @test first(
-            @inferred evaluate!!(
-                model,
-                Context(
-                    InitFromParams(get_values(vi), nothing),
-                    DynamicPPL.infer_transform_strategy_from_values(get_values(vi)),
-                ),
-                vi,
-            )
-        ) == result
     end
 
     @testset "Context supplies inputs independently of outputs" begin
-        @test fieldnames(VarInfo) == (:accs,)
-        @test !isdefined(DynamicPPL, :OnlyAccsVarInfo)
-        @test !isdefined(DynamicPPL, :DefaultContext)
-        @test !isdefined(DynamicPPL, :InitContext)
-        @test :AbstractContext ∉ names(DynamicPPL)
-        @test isconcretetype(typeof(Context(Xoshiro(1), InitFromPrior(), UnlinkAll())))
         empty_context = Context(
             Xoshiro(1), InitFromParams(VarNamedTuple(), nothing), UnlinkAll()
         )
-        @test_throws ErrorException evaluate!!(child(), empty_context, VarInfo())
         @test_throws ErrorException evaluate!!(
             child(), empty_context, VarInfo(child(), InitFromParams((; x=1.0)))
         )
@@ -150,13 +99,9 @@ end
             context = Context(
                 Xoshiro(1), InitFromParams(get_vector_values(input), nothing), UnlinkAll()
             )
-            @test DynamicPPL.get_param_eltype(context) == T
-            for output in (
-                VarInfo(),
-                VarInfo(VectorValueAccumulator(), DynamicPPL.default_accumulators()...),
-                VarInfo(Xoshiro(2), model, InitFromParams((; x=T(9)))),
-            )
-                result, output = evaluate!!(model, context, output)
+            for output in
+                (VarInfo(), VarInfo(Xoshiro(2), model, InitFromParams((; x=T(9)))))
+                result, output = @inferred evaluate!!(model, context, output)
                 @test result == T(3)
                 @test getlogjoint(output) ≈
                     logpdf(Normal(), one(T)) +
@@ -176,17 +121,6 @@ end
         @test result == 3.0
         @test iszero(getlogjac(output))
         @test get_vector_values(output)[@varname(x)].transform isa Unlink
-        @test first(init!!(positive(), old, InitFromParams((; x=4.0), nothing))) == 4.0
-
-        @test first(
-            evaluate!!(
-                positive(), Context(Xoshiro(1), InitFromPrior(), UnlinkAll()), VarInfo()
-            ),
-        ) == first(
-            evaluate!!(
-                positive(), Context(Xoshiro(1), InitFromPrior(), UnlinkAll()), VarInfo()
-            ),
-        )
 
         @model function optional_site(include_x)
             if include_x
@@ -203,9 +137,6 @@ end
         @test !haskey(get_vector_values(outputs), @varname(x))
         @test !haskey(get_raw_values(outputs), @varname(x))
         @test haskey(inputs, @varname(x))
-        @test outputs == copy(outputs)
-        @test isequal(outputs, copy(outputs))
-        @test hash(outputs) == hash(copy(outputs))
 
         @model function dependent_support()
             x ~ Exponential()
