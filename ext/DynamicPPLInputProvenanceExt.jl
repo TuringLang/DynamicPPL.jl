@@ -119,12 +119,7 @@ function _has_input_provenance(x::ForwardDiff.Dual{InputProvenanceTag})
     return any(isnan, ForwardDiff.partials(x))
 end
 function _has_input_provenance(xs::AbstractArray)
-    for i in eachindex(xs)
-        if isassigned(xs, i) && _has_input_provenance(xs[i])
-            return true
-        end
-    end
-    return false
+    return any(i -> isassigned(xs, i) && _has_input_provenance(xs[i]), eachindex(xs))
 end
 _has_input_provenance(xs::Union{Tuple,NamedTuple}) = any(_has_input_provenance, xs)
 _has_input_provenance(::Any) = false

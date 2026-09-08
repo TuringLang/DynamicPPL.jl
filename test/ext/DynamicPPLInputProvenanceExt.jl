@@ -7,13 +7,6 @@ using LinearAlgebra: I
 using SparseArrays: nnz, sparse, sparsevec, spzeros
 using Test: @test, @test_logs, @testset
 
-mutable struct ReferenceValue{T}
-    value::T
-end
-function Base.convert(::Type{ReferenceValue{T}}, value::T) where {T}
-    return ReferenceValue(value)
-end
-
 @testset "input provenance warning" begin
     @model function derived_observation(y; sigma=1.0)
         m ~ Normal(0, sigma)
@@ -79,8 +72,8 @@ end
         derived_vector([1.0, 2.0])
     )
 
-    @model function unassigned_index(::Type{F}=Float64) where {F<:AbstractFloat}
-        x = Vector{ReferenceValue{F}}(undef, 1)
+    @model function unassigned_index()
+        x = Vector{Real}(undef, 1)
         return x[1] ~ Normal()
     end
     @test_logs check_model(unassigned_index())
