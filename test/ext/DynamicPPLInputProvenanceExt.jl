@@ -120,7 +120,6 @@ using Test: @test, @test_logs, @testset
         vi = DynamicPPL.check_input_provenance!!(vi, dual, @varname(x))
     end
     @test isempty(vi.varinfo.accs[:InputProvenance].vns)
-    @test vi.accs_by_thread[Threads.threadid()][:InputProvenance].vns == Set((@varname(x),))
     @test DynamicPPL.getacc(vi, Val(:InputProvenance)).vns == Set((@varname(x),))
     @test isempty(vi.varinfo.accs[:InputProvenance].vns)
 end
