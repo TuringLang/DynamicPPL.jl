@@ -160,7 +160,15 @@ end
 InitFromParams(params) = InitFromParams(params, InitFromPrior())
 
 _parameter_eltype(value::Real) = typeof(value)
-_parameter_eltype(value::AbstractArray{<:Real}) = eltype(value)
+function _parameter_eltype(value::AbstractArray{T}) where {T}
+    isconcretetype(T) && T <: Real && return T
+    return mapreduce(
+        i -> isassigned(value, i) ? _parameter_eltype(value[i]) : Union{},
+        promote_type,
+        eachindex(value);
+        init=Union{},
+    )
+end
 _parameter_eltype(value::TransformedValue) = _parameter_eltype(get_internal_value(value))
 _parameter_eltype(value) = Any
 function _parameter_eltype(values::Union{Tuple,NamedTuple})
@@ -334,8 +342,8 @@ function init(
     end
     return TransformedValue(vect, tfm)
 end
-function get_param_eltype(strategy::InitFromVector{T}) where {T}
-    return eltype(strategy.vect)
+function get_param_eltype(strategy::InitFromVector)
+    return _parameter_eltype(strategy.vect)
 end
 
 """

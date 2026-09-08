@@ -7,6 +7,7 @@ __now__ = now()
 using Distributions
 using DynamicPPL
 using ForwardDiff: ForwardDiff
+using LogDensityProblems: logdensity
 using Random: Xoshiro
 using Test
 
@@ -49,6 +50,43 @@ const gdemo_default = gdemo_d()
             continuous, VarInfo(), InitFromParams((;), nothing)
         )
         @test ForwardDiff.derivative(x -> logjoint(continuous, (; x)), 2.0) ≈ -2.0
+    end
+
+    @testset "parameter containers preserve numeric types" begin
+        @model function indexed_parameter()
+            x = zeros(1)
+            return x[1] ~ Normal()
+        end
+        model = setthreadsafe(indexed_parameter(), true)
+        ldf = LogDensityFunction(model; rng=Xoshiro(1))
+        for container in (
+            identity,
+            x -> Real[x...],
+            x -> Any[x...],
+            x -> Union{Int,eltype(x)}[x...],
+            x -> view(Real[x...], :),
+        )
+            @test ForwardDiff.derivative(x -> logjoint(model, (; x=container([x]))), 2.0) ≈
+                -2.0
+        end
+        @test ForwardDiff.derivative(x -> logdensity(ldf, Real[x]), 2.0) ≈ -2.0
+        for T in (Float32, BigFloat)
+            @test logjoint(model, (; x=Real[T(2)])) isa T
+            @test (@inferred DynamicPPL.get_param_eltype(InitFromParams((; x=T[2])))) === T
+        end
+        dual = ForwardDiff.Dual(2.0, 1.0)
+        buffer = Vector{Real}(undef, 2)
+        buffer[1] = dual
+        for value in (buffer, [buffer])
+            params = VarNamedTuple(; x=value)
+            for strategy in
+                (InitFromParams(params), DynamicPPL.InitFromParamsUnsafe(params))
+                @test DynamicPPL.get_param_eltype(strategy) === typeof(dual)
+            end
+        end
+        @test DynamicPPL.get_param_eltype(InitFromParams((; x=Real[]))) === Union{}
+        @test DynamicPPL.get_param_eltype(InitFromParams((; x=Vector{Real}(undef, 1)))) ===
+            Union{}
     end
 
     @testset "constructor" begin
