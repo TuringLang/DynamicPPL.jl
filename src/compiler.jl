@@ -567,21 +567,42 @@ const INPUT_PROVENANCE_ACCNAME = :InputProvenance
 # The input-provenance extension implements this hook.
 check_input_provenance!!(vi::AbstractVarInfo, value, vn::VarName) = vi
 
+# An indexed or property location can be assignable without having a readable value. The
+# read is guarded in these functions rather than in the model body, because Libtask cannot
+# tape a `try` block and a closure over the left-hand side would box it for the whole model.
+@noinline function read_input_provenance_index(x, inds...)
+    return try
+        @views x[inds...]
+    catch err
+        err isa InterruptException && rethrow()
+        nothing
+    end
+end
+@noinline function read_input_provenance_property(x, name::Symbol)
+    return isdefined(x, name) ? getproperty(x, name) : nothing
+end
+
+# A bare symbol is already covered by the `isdefined` guard on the check itself.
+generate_input_provenance_read(left::Symbol) = left
+function generate_input_provenance_read(left::Expr)
+    if Meta.isexpr(left, :ref)
+        return :($(DynamicPPL.read_input_provenance_index)($(left.args...)))
+    elseif Meta.isexpr(left, :.)
+        return :($(DynamicPPL.read_input_provenance_property)($(left.args...)))
+    else
+        error("unreachable")
+    end
+end
+
 generate_input_provenance_check(::Any, ::Any) = nothing
 function generate_input_provenance_check(left::Union{Expr,Symbol}, vn)
-    @gensym value err
+    @gensym value
     top_symbol = get_top_level_symbol(left)
     # The accumulator guard prevents an extra LHS read during ordinary evaluation.
     return quote
         if $(DynamicPPL.hasacc)(__varinfo__, $(Val(INPUT_PROVENANCE_ACCNAME))) &&
             $(Expr(:isdefined, top_symbol))
-            # An indexed location can be assignable without having a readable value.
-            $value = try
-                $(maybe_view(left))
-            catch $err
-                $err isa $(InterruptException) && rethrow()
-                nothing
-            end
+            $value = $(generate_input_provenance_read(left))
             __varinfo__ = $(DynamicPPL.check_input_provenance!!)(
                 __varinfo__, $value, $(DynamicPPL.prefix)(__model__.context, $vn)
             )

@@ -885,6 +885,22 @@ end
         @test_logs (:warn, r"threadsafe evaluation") eval(e3)
     end
 
+    @testset "no try block in a model body" begin
+        # Libtask cannot tape a `try` block, so one in a model body breaks every particle
+        # sampler. https://github.com/TuringLang/DynamicPPL.jl/issues/1487
+        has_try(::Any) = false
+        has_try(e::Expr) = Meta.isexpr(e, :try) || any(has_try, e.args)
+
+        expr = @macroexpand @model function tilde_lhs_forms(y, s)
+            a ~ Normal()
+            b = [exp(y), exp(y)]
+            b[1] ~ Normal()
+            s.x ~ Normal()
+            return b .~ Normal()
+        end
+        @test !has_try(expr)
+    end
+
     @testset "Immutable data as model arguments" begin
         # https://github.com/TuringLang/DynamicPPL.jl/issues/1176
         @model function nt(data)
