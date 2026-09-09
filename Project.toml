@@ -1,6 +1,6 @@
 name = "DynamicPPL"
 uuid = "366bfd00-2699-11ea-058f-f148b4cae6d8"
-version = "0.42.11"
+version = "0.42.12"
 
 [deps]
 ADTypes = "47edcb42-4c32-4615-8424-f2b9edc5f35b"
@@ -26,6 +26,7 @@ PrecompileTools = "aea7be01-6a6a-4083-8856-8a6e6704d82a"
 Preferences = "21216c6a-2e73-6563-6e65-726566657250"
 Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
+SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
 SpecialFunctions = "276daf66-3868-5448-9aa4-cd146d93841b"
 Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
@@ -46,6 +47,7 @@ DynamicPPLBridgeStanExt = ["BridgeStan"]
 DynamicPPLComponentArraysExt = ["ComponentArrays"]
 DynamicPPLEnzymeCoreExt = ["EnzymeCore"]
 DynamicPPLForwardDiffExt = ["ForwardDiff"]
+DynamicPPLInputProvenanceExt = ["ForwardDiff"]
 DynamicPPLMCMCChainsExt = ["MCMCChains"]
 DynamicPPLMooncakeExt = ["Mooncake"]
 DynamicPPLMarginalLogDensitiesExt = ["MarginalLogDensities"]
@@ -83,6 +85,7 @@ PrecompileTools = "1.2.1"
 Preferences = "1.5.2"
 Printf = "1.10"
 Random = "1.6"
+SparseArrays = "1.10"
 SpecialFunctions = "2"
 ReverseDiff = "1"
 Statistics = "1"

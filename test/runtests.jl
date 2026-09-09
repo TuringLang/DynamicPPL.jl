@@ -56,6 +56,7 @@ Random.seed!(100)
                 include("ext/DynamicPPLBridgeStanExt.jl")
             end
             include("ext/DynamicPPLMCMCChainsExt.jl")
+            include("ext/DynamicPPLInputProvenanceExt.jl")
         end
         @testset "ad" begin
             include("ext/DynamicPPLForwardDiffExt.jl")
