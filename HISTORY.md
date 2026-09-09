@@ -1,3 +1,9 @@
+# 0.42.12
+
+`check_model` now warns when a latent tilde statement overwrites a value computed from a model input.
+The check runs only when ForwardDiff is loaded and is best effort, so it can miss dependencies through untaken branches, conditions, and code it cannot differentiate.
+See [#1465](https://github.com/TuringLang/DynamicPPL.jl/pull/1465).
+
 # 0.42.11
 
 Partial-array merges now expand growable storage when the other array has a template, including for matrices and higher-dimensional arrays. See [#1482](https://github.com/TuringLang/DynamicPPL.jl/pull/1482).
