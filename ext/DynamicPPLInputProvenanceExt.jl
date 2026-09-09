@@ -160,6 +160,7 @@ function check_input_provenance(rng, model, params)
         err isa InterruptException && rethrow()
         # This is a best-effort debug check. Valid models are not required to accept
         # ForwardDiff dual numbers, so an unsupported trace must not make `check_model` fail.
+        @debug "Skipped the input provenance check." exception = (err, catch_backtrace())
         return nothing
     end
 
