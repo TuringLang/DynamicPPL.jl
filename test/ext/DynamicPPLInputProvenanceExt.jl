@@ -4,7 +4,7 @@ using DynamicPPL
 using ForwardDiff: ForwardDiff
 using Distributions: MvNormal, Normal
 using LinearAlgebra: I
-using SparseArrays: nnz, sparse, sparsevec, spzeros
+using SparseArrays: AbstractSparseMatrixCSC, nnz, sparse, sparsevec, spzeros
 using Test: @test, @test_logs, @testset
 
 @testset "input provenance warning" begin
@@ -104,6 +104,8 @@ using Test: @test, @test_logs, @testset
     dual_zeros = ext._dualize_input(spzeros(3, 3))
     @test iszero(nnz(dual_zeros))
     @test ext._has_input_provenance(dual_zeros)
+    # Sparse fast paths are only reachable through the CSC interface.
+    @test dual_zeros isa AbstractSparseMatrixCSC
 
     @model function derived_structural_zero(y)
         v = exp(y[1])

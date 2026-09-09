@@ -103,6 +103,31 @@ Base.IndexStyle(::Type{<:DualizedSparseArray{D,N,A}}) where {D,N,A} = Base.Index
 Base.getindex(x::DualizedSparseArray, I...) = _dualize_input(parent(x)[I...])
 SparseArrays.nnz(x::DualizedSparseArray) = SparseArrays.nnz(parent(x))
 
+# Keeping the CSC interface lets `*` and the other sparse methods stay linear in the
+# number of stored entries rather than the number of array entries.
+struct DualizedSparseMatrixCSC{D,Ti,A<:SparseArrays.AbstractSparseMatrixCSC{<:Any,Ti}} <:
+       SparseArrays.AbstractSparseMatrixCSC{D,Ti}
+    parent::A
+    nzval::Vector{D}
+end
+function DualizedSparseMatrixCSC(
+    x::A
+) where {T,Ti,A<:SparseArrays.AbstractSparseMatrixCSC{T,Ti}}
+    D = Base.promote_op(_dualize_input, T)
+    nzval = convert(Vector{D}, map(_dualize_input, SparseArrays.nonzeros(x)))
+    return DualizedSparseMatrixCSC{D,Ti,A}(x, nzval)
+end
+Base.parent(x::DualizedSparseMatrixCSC) = x.parent
+Base.size(x::DualizedSparseMatrixCSC) = size(parent(x))
+SparseArrays.getcolptr(x::DualizedSparseMatrixCSC) = SparseArrays.getcolptr(parent(x))
+SparseArrays.rowvals(x::DualizedSparseMatrixCSC) = SparseArrays.rowvals(parent(x))
+SparseArrays.nonzeros(x::DualizedSparseMatrixCSC) = x.nzval
+function Base.getindex(x::DualizedSparseMatrixCSC, i::Integer, j::Integer)
+    return _dualize_input(parent(x)[i, j])
+end
+Base.getindex(x::DualizedSparseMatrixCSC, i::Integer) = _dualize_input(parent(x)[i])
+
+_dualize_input(x::SparseArrays.AbstractSparseMatrixCSC) = DualizedSparseMatrixCSC(x)
 _dualize_input(x::SparseArrays.AbstractSparseArray) = DualizedSparseArray(x)
 _dualize_input(x::AbstractArray) = map(_dualize_input, x)
 _dualize_input(x::NamedTuple) = map(_dualize_input, x)
