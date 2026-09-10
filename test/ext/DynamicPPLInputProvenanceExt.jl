@@ -17,6 +17,15 @@ using Test: @test, @test_logs, @testset
         derived_observation(1.0)
     )
 
+    @model function derived_from_observed_input(y)
+        y ~ Normal()
+        v = exp(y)
+        return v ~ Normal()
+    end
+    @test_logs (:warn, r"Variable v.*derived from a model input") check_model(
+        derived_from_observed_input(1.0)
+    )
+
     @model function unsupported_after_finding(y)
         v = exp(y)
         v ~ Normal()
@@ -116,7 +125,7 @@ using Test: @test, @test_logs, @testset
     )
 
     acc = ext.InputProvenanceAccumulator()
-    vi = DynamicPPL.ThreadSafeVarInfo(OnlyAccsVarInfo((acc,)))
+    vi = DynamicPPL.ThreadSafeVarInfo(VarInfo((acc,)))
     dual = ext._dualize_input(1.0)
     @test_logs (:warn, r"Variable x.*derived from a model input") begin
         vi = DynamicPPL.check_input_provenance!!(vi, dual, @varname(x))

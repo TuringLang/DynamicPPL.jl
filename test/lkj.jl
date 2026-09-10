@@ -34,7 +34,7 @@ _lkj_atol = 0.05
     model = lkj_prior_demo()
     for init_strategy in [InitFromPrior(), InitFromUniform()]
         corr_matrices = map(1:n_samples) do _
-            accs = DynamicPPL.OnlyAccsVarInfo(RawValueAccumulator(false))
+            accs = DynamicPPL.VarInfo(RawValueAccumulator(false))
             _, accs = DynamicPPL.init!!(model, accs, init_strategy, UnlinkAll())
             corr_sample = DynamicPPL.get_raw_values(accs)[@varname(x)]
         end
@@ -46,7 +46,7 @@ end
     model = lkj_chol_prior_demo(uplo)
     for init_strategy in [InitFromPrior(), InitFromUniform()]
         corr_matrices = map(1:n_samples) do _
-            accs = DynamicPPL.OnlyAccsVarInfo(RawValueAccumulator(false))
+            accs = DynamicPPL.VarInfo(RawValueAccumulator(false))
             _, accs = DynamicPPL.init!!(model, accs, init_strategy, UnlinkAll())
             chol_sample = DynamicPPL.get_raw_values(accs)[@varname(x)]
             pd_from_triangular(chol_sample.UL.data, uplo)

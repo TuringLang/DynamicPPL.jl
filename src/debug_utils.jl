@@ -14,8 +14,7 @@ export check_model, has_static_constraints
 
 An accumulator which checks calls at each tilde-statement for potential errors.
 
-Right now this accumulator only checks for `NaN` values on the left-hand side of observe
-statements, and partially `missing` values on the left-hand side of observe statements.
+This accumulator checks for `NaN` values on the left-hand side of observe statements.
 
 Other checks in `check_model` are accomplished via different accumulators.
 """
@@ -38,33 +37,6 @@ function DynamicPPL.combine(acc1::DebugAccumulator, acc2::DebugAccumulator)
 end
 
 """
-    _has_partial_missings(x, dist)
-
-Check if `x` is a container that contains partial `missing` values.
-"""
-_has_partial_missings(x, dist) = false
-function _has_partial_missings(x::AbstractArray, ::MultivariateDistribution)
-    for i in eachindex(x)
-        if isassigned(x, i) && ismissing(x[i])
-            return true
-        end
-    end
-    return false
-end
-function _has_partial_missings(
-    x::NamedTuple{names}, dists::Distributions.ProductNamedTupleDistribution
-) where {names}
-    for name in names
-        sub_value = x[name]
-        sub_dist = dists.dists[name]
-        if _has_partial_missings(sub_value, sub_dist)
-            return true
-        end
-    end
-    return false
-end
-
-"""
     _has_nans(x)
 
 Check if `x` is `NaN`, or contains any `NaN` values.
@@ -84,22 +56,6 @@ function DynamicPPL.accumulate_observe!!(
     acc::DebugAccumulator, right::Distribution, val, vn::Union{VarName,Nothing}, template
 )
     failed = acc.failed
-    if _has_partial_missings(val, right)
-        msg = if vn === nothing
-            "on the left-hand side of an observe statement"
-        else
-            "for variable $(vn) on the left-hand side of an observe statement"
-        end
-        full_msg =
-            "Encountered a container with one or more `missing` value(s) $msg." *
-            " To treat the variable on the left-hand side as a random variable, you" *
-            " should specify a single `missing` rather than a vector of `missing`s." *
-            " It is not currently possible to set part but not all of a distribution" *
-            " to be `missing`."
-        @warn full_msg
-        failed = true
-    end
-    # Check for NaN's as well
     if _has_nans(val)
         msg =
             "Encountered a NaN value on the left-hand side of an" *
@@ -199,21 +155,8 @@ function check_model(
 )
     failed = false
 
-    # Check that a variable in the model arguments is neither conditioned nor fixed.
-    conditioned_vns = keys(DynamicPPL.conditioned(model.context))
-    for vn in conditioned_vns
-        if DynamicPPL.inargnames(vn, model)
-            @warn (
-                "Variable $(vn) is specified in both the model arguments and conditioned values." *
-                " Please either specify observed data via the model arguments, or through" *
-                " `condition` / `|`, not both."
-            )
-            failed = true
-        end
-    end
-
     # Run the model and collect the data we need
-    oavi = DynamicPPL.OnlyAccsVarInfo((
+    oavi = DynamicPPL.VarInfo((
         DebugAccumulator(),
         PriorDistributionAccumulator(),
         DynamicPPL.DebugRawValueAccumulator(),
@@ -312,7 +255,7 @@ and checking if the model is consistent across runs.
 """
 function has_static_constraints(rng::Random.AbstractRNG, model::Model; num_evals::Int=5)
     prior_vnts = map(1:num_evals) do _
-        accs = DynamicPPL.OnlyAccsVarInfo(PriorDistributionAccumulator())
+        accs = DynamicPPL.VarInfo(PriorDistributionAccumulator())
         _, accs = DynamicPPL.init!!(rng, model, accs, InitFromPrior(), UnlinkAll())
         return only(DynamicPPL.getaccs(accs)).values
     end
@@ -334,7 +277,7 @@ function has_static_constraints(model::Model; num_evals::Int=5)
 end
 
 """
-    gen_evaluator_call_with_types(model[, varinfo])
+    gen_evaluator_call_with_types(model[, varinfo]; context=Context(InitFromParams(get_values(varinfo), nothing), get_transform_strategy(varinfo)))
 
 Generate the evaluator call and the types of the arguments.
 
@@ -349,9 +292,14 @@ A 2-tuple with the following elements:
 - `argtypes::Type{<:Tuple}`: The types of the arguments for the evaluator.
 """
 function gen_evaluator_call_with_types(
-    model::Model, varinfo::AbstractVarInfo=VarInfo(model)
+    model::Model,
+    varinfo::AbstractVarInfo=VarInfo(model);
+    context::Context=Context(
+        InitFromParams(get_values(varinfo), nothing),
+        DynamicPPL.get_transform_strategy(varinfo),
+    ),
 )
-    args, kwargs = DynamicPPL.make_evaluate_args_and_kwargs(model, varinfo)
+    args, kwargs = DynamicPPL.make_evaluate_args_and_kwargs(model, context, varinfo)
     return if isempty(kwargs)
         (model.f, Base.typesof(args...))
     else
@@ -360,7 +308,7 @@ function gen_evaluator_call_with_types(
 end
 
 """
-    model_warntype(model[, varinfo]; optimize=true)
+    model_warntype(model[, varinfo, optimize=false]; context=Context(InitFromParams(get_values(varinfo), nothing), get_transform_strategy(varinfo)))
 
 Check the type stability of the model's evaluator, warning about any potential issues.
 
@@ -371,17 +319,17 @@ This simply calls `@code_warntype` on the model's evaluator, filling in internal
 - `varinfo::AbstractVarInfo`: The varinfo to use when evaluating the model. Default: `VarInfo(model)`.
 
 # Keyword Arguments
-- `optimize::Bool`: Whether to generate optimized code. Default: `false`.
+- `context::Context`: The evaluation context. Defaults to the values supplied in `varinfo`.
 """
 function model_warntype(
-    model::Model, varinfo::AbstractVarInfo=VarInfo(model), optimize::Bool=false
+    model::Model, varinfo::AbstractVarInfo=VarInfo(model), optimize::Bool=false; kwargs...
 )
-    ftype, argtypes = gen_evaluator_call_with_types(model, varinfo)
+    ftype, argtypes = gen_evaluator_call_with_types(model, varinfo; kwargs...)
     return InteractiveUtils.code_warntype(ftype, argtypes; optimize=optimize)
 end
 
 """
-    model_typed(model[, varinfo]; optimize=true)
+    model_typed(model[, varinfo, optimize=true]; context=Context(InitFromParams(get_values(varinfo), nothing), get_transform_strategy(varinfo)))
 
 Return the type inference for the model's evaluator.
 
@@ -392,12 +340,12 @@ This simply calls `@code_typed` on the model's evaluator, filling in internal ar
 - `varinfo::AbstractVarInfo`: The varinfo to use when evaluating the model. Default: `VarInfo(model)`.
 
 # Keyword Arguments
-- `optimize::Bool`: Whether to generate optimized code. Default: `true`.
+- `context::Context`: The evaluation context. Defaults to the values supplied in `varinfo`.
 """
 function model_typed(
-    model::Model, varinfo::AbstractVarInfo=VarInfo(model), optimize::Bool=true
+    model::Model, varinfo::AbstractVarInfo=VarInfo(model), optimize::Bool=true; kwargs...
 )
-    ftype, argtypes = gen_evaluator_call_with_types(model, varinfo)
+    ftype, argtypes = gen_evaluator_call_with_types(model, varinfo; kwargs...)
     return only(InteractiveUtils.code_typed(ftype, argtypes; optimize=optimize))
 end
 

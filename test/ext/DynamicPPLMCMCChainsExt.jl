@@ -6,7 +6,7 @@ using AbstractPPL: AbstractPPL
 using Random: Random
 
 function make_chain_from_prior(rng::Random.AbstractRNG, model::Model, n_iters::Int)
-    vi = DynamicPPL.OnlyAccsVarInfo((
+    vi = DynamicPPL.VarInfo((
         DynamicPPL.default_accumulators()..., DynamicPPL.RawValueAccumulator(false)
     ))
     ps = hcat([

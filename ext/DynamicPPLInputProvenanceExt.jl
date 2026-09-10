@@ -132,6 +132,9 @@ _dualize_input(x::SparseArrays.AbstractSparseArray) = DualizedSparseArray(x)
 _dualize_input(x::AbstractArray) = map(_dualize_input, x)
 _dualize_input(x::NamedTuple) = map(_dualize_input, x)
 _dualize_input(x::Tuple) = map(_dualize_input, x)
+function _dualize_input(x::DynamicPPL.ModelValue{R}) where {R}
+    return DynamicPPL.ModelValue{R}(_dualize_input(x.value))
+end
 _dualize_input(x) = x
 
 function _has_input_provenance(x::ForwardDiff.Dual{InputProvenanceTag})
@@ -173,10 +176,11 @@ end
 function check_input_provenance(rng, model, params)
     args = map(_dualize_input, model.args)
     defaults = map(_dualize_input, model.defaults)
+    values = DynamicPPL.map_values!!(_dualize_input, copy(model.values))
     traced_model = DynamicPPL.Model{DynamicPPL.requires_threadsafe(model)}(
-        model.f, args, defaults, model.context
+        model.f, args, defaults, model.prefix, values, model.prefix_template
     )
-    vi = DynamicPPL.OnlyAccsVarInfo((InputProvenanceAccumulator(),))
+    vi = DynamicPPL.VarInfo((InputProvenanceAccumulator(),))
     strategy = DynamicPPL.InitFromParams(params, nothing)
 
     try

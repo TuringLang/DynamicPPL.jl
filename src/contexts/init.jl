@@ -49,20 +49,15 @@ a model with ForwardDiff: the log-probability accumulators must be promoted to c
 tracer types, for example those in SparseConnectivityTracer.jl, also require similar
 treatment.
 
-If the `AbstractInitStrategy` is never used in combination with tracer types, then it is
-perfectly safe to return `Any`. This does not lead to type instability downstream because
-the actual accumulators will still be created with concrete Float types (the `Any` is just
-used to determine whether the float type needs to be modified).
+For thread-safe evaluation, returning `Any` allows accumulator types to widen at runtime,
+which costs type stability. Implement `get_param_eltype` to keep their storage concrete.
+Non-threadsafe evaluation permits widening in either case.
 
-In case that wasn't enough: in fact, even the above is not always true. Firstly, the
-accumulator argument is only true when evaluating with ThreadSafeVarInfo. See the comments
-in `DynamicPPL.unflatten!!` for more details. For non-threadsafe evaluation, Julia is
-capable of automatically promoting the types on its own. Secondly, the promotion only
-matters if you are trying to directly assign into a `Vector{Float64}` with a
-`ForwardDiff.Dual` or similar tracer type, for example using `xs[i] = MyDual`. This doesn't
-actually apply to tilde-statements like `xs[i] ~ ...` because those use `Accessors.set`
-under the hood, which also does the promotion for you. For the gory details, see the
-following issues:
+Argument promotion only matters if you are trying to directly assign into a
+`Vector{Float64}` with a `ForwardDiff.Dual` or similar tracer type, for example using
+`xs[i] = MyDual`. This doesn't actually apply to tilde-statements like `xs[i] ~ ...`
+because those use `Accessors.set` under the hood, which also does the promotion for you.
+For the gory details, see the following issues:
 
 - https://github.com/TuringLang/DynamicPPL.jl/issues/906 for accumulator types
 - https://github.com/TuringLang/DynamicPPL.jl/issues/823 for type argument promotion
@@ -149,7 +144,7 @@ See the docstring of [`DynamicPPL.get_param_eltype`](@ref) for more information 
 is needed.
 
 The argument `fallback` specifies how new values are to be obtained if they cannot be found
-in `params`, or they are specified as `missing`. `fallback` can either be an initialisation
+in `params`. Omit absent parameters rather than supplying `missing`. `fallback` can either be an initialisation
 strategy itself, in which case it will be used to obtain new values, or it can be `nothing`,
 in which case an error will be thrown. The default for `fallback` is `InitFromPrior()`.
 """
@@ -158,6 +153,27 @@ struct InitFromParams{P,S<:Union{AbstractInitStrategy,Nothing}} <: AbstractInitS
     fallback::S
 end
 InitFromParams(params) = InitFromParams(params, InitFromPrior())
+
+_parameter_eltype(value::Real) = typeof(value)
+function _parameter_eltype(value::AbstractArray{T}) where {T}
+    isconcretetype(T) && T <: Real && return T
+    return mapreduce(
+        i -> isassigned(value, i) ? _parameter_eltype(value[i]) : Union{},
+        promote_type,
+        eachindex(value);
+        init=Union{},
+    )
+end
+_parameter_eltype(value::TransformedValue) = _parameter_eltype(get_internal_value(value))
+_parameter_eltype(value) = Any
+function _parameter_eltype(values::Union{Tuple,NamedTuple})
+    return mapreduce(_parameter_eltype, promote_type, values; init=Union{})
+end
+function get_param_eltype(p::InitFromParams{<:VarNamedTuple})
+    return mapreduce(
+        pair -> _parameter_eltype(pair.second), promote_type, p.params; init=Union{}
+    )
+end
 # For NamedTuple and Dict, we just convert to VNT internally. This saves us from having to
 # implement separate `init()` methods for those. It also means that when someone provides
 # a Dict with @varname(x[1]) => 1.0 we will issue a warning for untemplated VNT.
@@ -178,11 +194,12 @@ function init(
 )
     return if hasvalue(p.params, vn, dist)
         x = getvalue(p.params, vn, dist)
-        if x === missing
-            p.fallback === nothing &&
-                error("A `missing` value was provided for the variable `$(vn)`.")
-            init(rng, vn, dist, p.fallback)
-        elseif x isa TransformedValue
+        _contains_missing(x) && throw(
+            ArgumentError(
+                "A `missing` value was provided for `$vn`; omit absent initial parameters instead.",
+            ),
+        )
+        if x isa TransformedValue
             x
         else
             TransformedValue(x, NoTransform())
@@ -191,47 +208,6 @@ function init(
         p.fallback === nothing && error("No value was provided for the variable `$(vn)`.")
         init(rng, vn, dist, p.fallback)
     end
-end
-
-"""
-Like InitFromParams, but it is always assumed that the VNT contains _exactly_ the
-correct set of variables, and that indexing into them will always return _exactly_
-the values for those variables.
-
-The main difference is that InitFromParams will call hasvalue(p.params, vn, dist)
-rather than just hasvalue(p.params, vn), which can be substantially slower.
-
-TODO(penelopeysm): Get rid of MCMCChains and never call the three-value argument again.
-Seriously. It's just nuts that I have to do these workarounds because of a package that
-isn't even DynamicPPL.
-"""
-struct InitFromParamsUnsafe{P<:VarNamedTuple} <: AbstractInitStrategy
-    params::P
-end
-function init(
-    ::Random.AbstractRNG,
-    vn::VarName,
-    dist::Distribution,
-    p::InitFromParamsUnsafe{<:VarNamedTuple},
-)
-    return if haskey(p.params, vn)
-        x = p.params[vn]
-        if x isa TransformedValue
-            x
-        else
-            TransformedValue(x, NoTransform())
-        end
-    else
-        error("No value was provided for the variable `$(vn)`.")
-    end
-end
-
-function DynamicPPL.get_param_eltype(p::InitFromParamsUnsafe)
-    # TODO(penelopeysm): Ugly hack. Currently this is not used anywhere except in Turing's
-    # ADTypeCheckContext tests. However, when we stop using DefaultContext and start using
-    # this as its replacement, we will need this function so that we can promote the
-    # accumulators' eltype accordingly (unless we find a better solution than eltypes).
-    return eltype(DynamicPPL.internal_values_as_vector(p.params))
 end
 
 """
@@ -322,72 +298,54 @@ function init(
     end
     return TransformedValue(vect, tfm)
 end
-function get_param_eltype(strategy::InitFromVector{T}) where {T}
-    return eltype(strategy.vect)
+function get_param_eltype(strategy::InitFromVector)
+    return _parameter_eltype(strategy.vect)
 end
 
 """
-    InitContext(
-        [rng::Random.AbstractRNG=Random.default_rng()],
-        strategy::AbstractInitStrategy,
-        transform_strategy::AbstractTransformStrategy,
-    )
+    Context([rng::Random.AbstractRNG,] strategy::AbstractInitStrategy, transform_strategy::AbstractTransformStrategy)
 
-A leaf context that indicates that new values for random variables are currently being
-obtained through sampling. Used e.g. when initialising a fresh VarInfo.
+Supply the inputs for one model evaluation.
 
-The `strategy` argument specifies how new values are to be obtained (see
-[`AbstractInitStrategy`](@ref) for details), while the `transform_strategy` argument specifies
-whether values should be treated as being in linked or unlinked space. That also means that
-`transform_strategy` determines whether the log-Jacobian of the link transform is included when
-evaluating the model.
+The strategy obtains latent values, and the transform strategy determines their output
+representation and log-Jacobian. Observations and fixed values come from the model.
+Evaluation never reads parameter values or transforms from its output `VarInfo`.
+Inside a model, use `rand(__context__.rng, ...)` for explicit draws from this RNG.
 
-!!! note
-    If `leafcontext(model.context) isa InitContext`, then `evaluate!!(model, varinfo)` will
-    override all values in the VarInfo.
+# Examples
+
+```jldoctest
+julia> using Random: Xoshiro
+
+julia> @model example() = x ~ Normal();
+
+julia> ctx = Context(Xoshiro(1), InitFromParams((; x=2.0), nothing), UnlinkAll());
+
+julia> result, vi = evaluate!!(example(), ctx, VarInfo(RawValueAccumulator(false)));
+
+julia> result == get_raw_values(vi)[@varname(x)]
+true
+```
 """
-struct InitContext{
-    R<:Random.AbstractRNG,S<:AbstractInitStrategy,L<:AbstractTransformStrategy
-} <: AbstractContext
+struct Context{R<:Random.AbstractRNG,S<:AbstractInitStrategy,L<:AbstractTransformStrategy}
     rng::R
     strategy::S
     transform_strategy::L
-
-    function InitContext(
-        rng::Random.AbstractRNG,
-        strategy::AbstractInitStrategy,
-        transform_strategy::AbstractTransformStrategy,
-    )
-        return new{typeof(rng),typeof(strategy),typeof(transform_strategy)}(
-            rng, strategy, transform_strategy
-        )
-    end
-    function InitContext(
-        strategy::AbstractInitStrategy, transform_strategy::AbstractTransformStrategy
-    )
-        return InitContext(Random.default_rng(), strategy, transform_strategy)
-    end
 end
 
+function Context(
+    strategy::AbstractInitStrategy, transform_strategy::AbstractTransformStrategy
+)
+    return Context(Random.default_rng(), strategy, transform_strategy)
+end
+
+get_param_eltype(ctx::Context) = get_param_eltype(ctx.strategy)
+
 function tilde_assume!!(
-    ctx::InitContext, dist::Distribution, vn::VarName, template::Any, vi::AbstractVarInfo
+    ctx::Context, dist::Distribution, vn::VarName, template::Any, vi::AbstractVarInfo
 )
     init_tval = init(ctx.rng, vn, dist, ctx.strategy)
     x, tval, logjac = apply_transform_strategy(ctx.transform_strategy, init_tval, vn, dist)
-    vi = setindex_with_dist!!(vi, tval, dist, vn, template)
     vi = accumulate_assume!!(vi, x, tval, logjac, vn, dist, template)
-    # We always return the untransformed value here, as that will determine
-    # what the lhs of the tilde-statement is set to.
     return x, vi
-end
-
-function tilde_observe!!(
-    ::InitContext,
-    right::Distribution,
-    left,
-    vn::Union{VarName,Nothing},
-    template::Any,
-    vi::AbstractVarInfo,
-)
-    return tilde_observe!!(DefaultContext(), right, left, vn, template, vi)
 end

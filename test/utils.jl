@@ -56,26 +56,15 @@ end
 
     @testset "transformations" begin
         function test_transformation(dist::Distribution)
-            # Create a model and check that we can evaluate it with both unlinked and linked
-            # VarInfo. This relies on the transformations working correctly so is more of an
-            # 'end to end' test
             @model test() = x ~ dist
             model = test()
-            vi_unlinked = VarInfo(model)
-            vi_linked = DynamicPPL.link!!(VarInfo(model), model)
-            @test (DynamicPPL.evaluate_nowarn!!(model, vi_unlinked); true)
-            @test (DynamicPPL.evaluate_nowarn!!(model, vi_linked); true)
-
-            model_init = DynamicPPL.setleafcontext(
-                model,
-                DynamicPPL.InitContext(DynamicPPL.InitFromPrior(), DynamicPPL.UnlinkAll()),
-            )
-            @test (DynamicPPL.evaluate_nowarn!!(model_init, vi_unlinked); true)
-            model_init = DynamicPPL.setleafcontext(
-                model,
-                DynamicPPL.InitContext(DynamicPPL.InitFromPrior(), DynamicPPL.LinkAll()),
-            )
-            @test (DynamicPPL.evaluate_nowarn!!(model_init, vi_linked); true)
+            for transform in (UnlinkAll(), LinkAll())
+                input = VarInfo(model, InitFromPrior(), transform)
+                context = Context(InitFromParams(get_values(input), nothing), transform)
+                value, output = evaluate!!(model, context, VarInfo())
+                @test getlogjoint(output) ≈ logpdf(dist, value)
+                @test getlogjac(output) ≈ getlogjac(input)
+            end
         end
 
         # Unconstrained univariate

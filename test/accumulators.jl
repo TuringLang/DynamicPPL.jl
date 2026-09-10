@@ -219,7 +219,7 @@ TEST_ACCUMULATORS = (
     end
 
     @testset "PriorDistributionAccumulator" begin
-        accs = DynamicPPL.OnlyAccsVarInfo(
+        accs = DynamicPPL.VarInfo(
             PriorDistributionAccumulator(), RawValueAccumulator(false)
         )
         @model function f()
@@ -239,9 +239,7 @@ TEST_ACCUMULATORS = (
             @test copy(acc) isa Any
         end
 
-        vi = OnlyAccsVarInfo(
-            DynamicPPL.VectorParamAccumulator([1.0], [true], VarNamedTuple())
-        )
+        vi = VarInfo(DynamicPPL.VectorParamAccumulator([1.0], [true], VarNamedTuple()))
         copied_vi = copy(vi)
         getacc(copied_vi, Val(:VectorParamAccumulator)).vals[1] = 2.0
         @test getacc(vi, Val(:VectorParamAccumulator)).vals == [1.0]

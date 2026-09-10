@@ -343,7 +343,7 @@ function apply_transform_strategy(
     elseif target isa Unlink || target isa NoTransform
         # Need to return an unlinked value. We _could_ vectorise and generate a Unlink()
         # here, with the vectorisation transform. However, sometimes that's not needed (e.g.
-        # when evaluating with an OnlyAccsVarInfo). So we just return an untransformed
+        # when evaluating with an VarInfo). So we just return an untransformed
         # value. If a downstream function requires a vectorised value, it's on them to
         # generate it.
         (raw_value, TransformedValue(raw_value, NoTransform()), zero(LogProbType))

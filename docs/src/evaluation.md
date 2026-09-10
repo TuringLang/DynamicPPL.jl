@@ -41,7 +41,7 @@ To evaluate a model with these three components, you can use the method [`Dynami
 ```julia
 retval, accs = DynamicPPL.init!!(
     [rng::Random.AbstractRNG]model::DynamicPPL.Model,
-    accs::DynamicPPL.OnlyAccsVarInfo,
+    accs::DynamicPPL.VarInfo,
     init_strategy::DynamicPPL.AbstractInitStrategy,
     transform_strategy::DynamicPPL.AbstractTransformStrategy,
 )
@@ -49,27 +49,77 @@ retval, accs = DynamicPPL.init!!(
 
 which returns a tuple of the model's return value (the NamedTuple `(x=x, y=y)` in the example above) and the accumulators after evaluation.
 
-!!! note "OnlyAccsVarInfo"
-    
-    `OnlyAccsVarInfo` is a thin wrapper around a set of accumulators.
-    You can construct it using `OnlyAccsVarInfo(acc1, acc2, ...)`, where `acc1`, `acc2`, ... are the accumulators that you want to use during evaluation.
-    
-    The main reason why `OnlyAccsVarInfo` exists is that it acts as a bridge between older code that expects a `VarInfo` and the new evaluation framework that is described above.
-    `OnlyAccsVarInfo` contains only accumulators (as its name suggests), but implements a subset of the `AbstractVarInfo` interface, which allows it to be used in places where a `VarInfo` is expected.
-    
-    In the future it is likely that this will be removed, and you can directly pass the tuple of accumulators itself without having to wrap it.
+The equivalent explicit-context call is:
 
-!!! note "What's happening to VarInfo?"
-    
-    If you have been using DynamicPPL in the past, you may be familiar with the general idea of `VarInfo`.
-    (If that sounds completely foreign to you, you can ignore this!)
-    
-    While this still exists, we **strongly** encourage you to not work with it directly.
-    The reason for this is because `VarInfo` conflates all three of the concepts described above into a single stateful object, which makes evaluation difficult to control and to reason about.
-    In the long term we would like to remove `VarInfo` entirely.
-    
-    If you are using DynamicPPL internals and are unsure how to adapt your old code that uses `VarInfo` to the new evaluation framework, please check out the [Migration guide](./migration.md), or [open an issue on DynamicPPL](https://github.com/TuringLang/DynamicPPL.jl/issues).
-    We are happy to help!
+```@example 1
+using Random: Xoshiro
+
+context = Context(Xoshiro(1), InitFromPrior(), UnlinkAll())
+retval, accs = evaluate!!(model, context, VarInfo());
+```
+
+## [Evaluation inputs and outputs](@id evaluation-inputs-outputs)
+
+Evaluation separates the inputs that determine a model run from the outputs it records,
+as proposed in [#1469](https://github.com/TuringLang/DynamicPPL.jl/issues/1469).
+
+| Object    | Responsibility                                                        |
+|:--------- |:--------------------------------------------------------------------- |
+| `Model`   | Model function, arguments, and conditioned or fixed data              |
+| `Context` | RNG, initialisation strategy, and requested transform strategy        |
+| `VarInfo` | Output accumulators, with no separate parameter or transform storage  |
+| `retval`  | The model body's ordinary Julia return value, distinct from its trace |
+
+For a latent statement such as `x ~ Normal()`, the context's initialisation strategy
+supplies `x`. Its transform strategy determines the transformed value and Jacobian.
+Accumulators receive those results to compute densities or record values; evaluation
+does not read previously recorded parameters from `VarInfo`.
+
+For a conditioned observation such as `y ~ Normal(x, 1)`, the model supplies `y` and
+the likelihood accumulator scores it. Literal observations such as `0 ~ Normal(x, 1)`
+use the same observation path. Fixed values are not scored, and tracked assignments
+such as `z := x + y` are recorded when requested. None of these operations uses the
+context to select a latent value.
+
+The context belongs to the evaluation, not to `Model`, and is passed to nested submodels.
+Inside a model body, `__context__` refers to this context; use `rand(__context__.rng, ...)`
+for explicit random draws controlled by the evaluation's RNG. `init!!` constructs a `Context`
+and calls `evaluate!!`; custom value selection belongs in an initialisation strategy,
+not a custom context type.
+
+`VarInfo(acc1, acc2, ...)` selects the outputs to collect. `VarInfo()` collects only
+log prior, log likelihood, and log Jacobian; it does not record parameter values.
+Every evaluation resets its accumulators, so a value recorded in one run disappears
+if its site is skipped in the next. Always retain the returned `VarInfo`: `!!` operations
+may replace their input.
+
+To reuse outputs as inputs, extract the recorded values and construct a new context
+explicitly. For example, sample the model above, then evaluate it at the same parameters:
+
+```@example 1
+rng = Xoshiro(1)
+context = Context(rng, InitFromPrior(), LinkAll())
+retval, recorded = evaluate!!(model, context, VarInfo(RawValueAccumulator(false)))
+
+params = get_raw_values(recorded)
+context = Context(rng, InitFromParams(params, nothing), UnlinkAll())
+repeated, scores = evaluate!!(model, context, VarInfo())
+
+@assert repeated == retval
+@assert iszero(getlogjac(scores))
+getlogjoint(scores)
+```
+
+Here `nothing` disables fallback sampling: a missing parameter is an error, not a request
+to consult previous outputs. The second context explicitly requests unlinked outputs,
+independently of the first run's transform strategy. To reuse vectorised values instead,
+record a [`VectorValueAccumulator`](@ref) and pass `get_vector_values(recorded)` to
+`InitFromParams`; see [Storing vectorised and raw values](accs/values.md).
+
+This separation specifies data flow, not purity: evaluation can advance the RNG, and
+ordinary Julia mutations in a model body still take effect.
+For density evaluation, `~` sites read supplied parameters rather than sampling;
+see [Randomness in density evaluation](@ref ldf-rng).
 
 ## Accumulators
 
@@ -81,12 +131,12 @@ Each accumulator has a different function: there is a [`LogPriorAccumulator`](@r
 The beauty of accumulators is that they are completely separate from one another; that means that you can mix and match them as needed, and avoid computing any information that you don't need.
 For example, if you don't need to know the likelihood, you can drop the `LogLikelihoodAccumulator`, which will avoid unnecessary calls to `logpdf(dist, x)` for any observed `x`.
 
-You can specify which accumulators you want to use by passing them as arguments to `OnlyAccsVarInfo`.
+You can specify which accumulators you want to use by passing them as arguments to `VarInfo`.
 If no arguments are passed, a set of default accumulators (log-prior, log-likelihood, and log-Jacobian) are used.
 
 ```@example 1
-# Here, we set up an `OnlyAccsVarInfo` that only contains one accumulator.
-accs = OnlyAccsVarInfo(LogPriorAccumulator())
+# Here, we set up a `VarInfo` that only contains one accumulator.
+accs = VarInfo(LogPriorAccumulator())
 
 # When calling init!!, we need to specify all three components. For now, just
 # focus on the accumulators, and we'll talk about the other two components later.
@@ -97,7 +147,7 @@ retval, accs = DynamicPPL.init!!(model, accs, init_strategy, transform_strategy)
 accs
 ```
 
-There are a number of functions that you can call on an `OnlyAccsVarInfo` to extract the information.
+There are a number of functions that you can call on a `VarInfo` to extract the information.
 The most low-level one is `getacc`, which given an accumulator name (a `Symbol`) returns a specific accumulator; see the [accumulator docs](@ref accumulators-overview) for more details on this function.
 
 ```@example 1
@@ -127,7 +177,7 @@ from the prior.
 DynamicPPL provides [`InitFromPrior()`](@ref) for this purpose:
 
 ```@example 1
-accs = OnlyAccsVarInfo()
+accs = VarInfo()
 init_strategy = InitFromPrior()
 transform_strategy = UnlinkAll()
 
@@ -252,7 +302,7 @@ The answer to this is to use an accumulator (no surprises there!) that collects 
 Specifically, a `VectorValueAccumulator` collects vectorised forms of the parameters: that is, `TransformedValue{V,T}` where `V<:AbstractVector`.
 
 ```@example 1
-accs = OnlyAccsVarInfo(VectorValueAccumulator())
+accs = VarInfo(VectorValueAccumulator())
 _, accs = DynamicPPL.init!!(model, accs, init_strategy, transform_strategy)
 accs
 ```

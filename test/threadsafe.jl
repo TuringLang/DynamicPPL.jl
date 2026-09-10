@@ -6,6 +6,9 @@ __now__ = now()
 
 using Distributions
 using DynamicPPL
+using ForwardDiff: ForwardDiff
+using LogDensityProblems: logdensity
+using Random: Xoshiro
 using Test
 
 @model function gdemo_d()
@@ -17,19 +20,103 @@ using Test
 end
 const gdemo_default = gdemo_d()
 
+@model discrete_parameter() = x ~ Bernoulli(0.3)
+@model continuous_parameter() = x ~ Normal()
+@model observation_only() = 0.0 ~ Normal()
+
 @testset "threadsafe.jl" begin
+    @testset "parameter types permit floating-point accumulation" begin
+        for T in (
+            Int, Bool, Rational{Int}, Float32, BigFloat, ForwardDiff.Dual{Nothing,Float64,1}
+        )
+            vi = @inferred DynamicPPL.ThreadSafeVarInfo(VarInfo(LogPriorAccumulator()), T)
+            @test getlogprior(vi) isa float(T)
+        end
+        for T in (Any, Union{})
+            vi = @inferred DynamicPPL.ThreadSafeVarInfo(
+                VarInfo(LogPriorAccumulator(big"0.0")), T
+            )
+            @test getlogprior(vi) isa BigFloat
+        end
+
+        discrete = setthreadsafe(discrete_parameter(), true)
+        @test logjoint(discrete, (; x=1)) ≈ logpdf(Bernoulli(0.3), 1)
+        @test logjoint(setthreadsafe(observation_only(), true), (;)) ≈ logpdf(Normal(), 0.0)
+
+        continuous = setthreadsafe(continuous_parameter(), true)
+        value, vi = init!!(Xoshiro(1), continuous, VarInfo(), InitFromParams((;)))
+        @test getlogprior(vi) ≈ logpdf(Normal(), value)
+        @test_throws ErrorException init!!(
+            continuous, VarInfo(), InitFromParams((;), nothing)
+        )
+        @test ForwardDiff.derivative(x -> logjoint(continuous, (; x)), 2.0) ≈ -2.0
+    end
+
+    @testset "unknown parameter types" begin
+        @model observed(y) = y ~ Normal()
+        for strategy in (InitFromParams((;)), InitFromPrior())
+            function density(y)
+                _, vi = init!!(
+                    Xoshiro(1), setthreadsafe(observed(y), true), VarInfo(), strategy
+                )
+                return getlogjoint(vi)
+            end
+            @test density(big"2.0") isa BigFloat
+            @test ForwardDiff.derivative(density, 2.0) ≈ -2.0
+        end
+        @model fallback() = x ~ Normal(big"0.0", big"1.0")
+        _, vi = init!!(
+            Xoshiro(1), setthreadsafe(fallback(), true), VarInfo(), InitFromParams((;))
+        )
+        @test getlogprior(vi) isa BigFloat
+    end
+
+    @testset "parameter containers preserve numeric types" begin
+        @model function indexed_parameter()
+            x = zeros(1)
+            return x[1] ~ Normal()
+        end
+        model = setthreadsafe(indexed_parameter(), true)
+        ldf = LogDensityFunction(model; rng=Xoshiro(1))
+        for container in (
+            identity,
+            x -> Real[x...],
+            x -> Any[x...],
+            x -> Union{Int,eltype(x)}[x...],
+            x -> view(Real[x...], :),
+        )
+            @test ForwardDiff.derivative(x -> logjoint(model, (; x=container([x]))), 2.0) ≈
+                -2.0
+        end
+        @test ForwardDiff.derivative(x -> logdensity(ldf, Real[x]), 2.0) ≈ -2.0
+        for T in (Float32, BigFloat)
+            @test logjoint(model, (; x=Real[T(2)])) isa T
+            @test (@inferred DynamicPPL.get_param_eltype(InitFromParams((; x=T[2])))) === T
+        end
+        dual = ForwardDiff.Dual(2.0, 1.0)
+        buffer = Vector{Real}(undef, 2)
+        buffer[1] = dual
+        for value in (buffer, [buffer])
+            params = VarNamedTuple(; x=value)
+            @test DynamicPPL.get_param_eltype(InitFromParams(params)) === typeof(dual)
+        end
+        @test DynamicPPL.get_param_eltype(InitFromParams((; x=Real[]))) === Union{}
+        @test DynamicPPL.get_param_eltype(InitFromParams((; x=Vector{Real}(undef, 1)))) ===
+            Union{}
+    end
+
     @testset "constructor" begin
         vi = VarInfo(gdemo_default)
         threadsafe_vi = @inferred DynamicPPL.ThreadSafeVarInfo(vi)
 
-        @test threadsafe_vi.varinfo === vi
+        @test DynamicPPL.getaccs(threadsafe_vi) == DynamicPPL.getaccs(vi)
         @test threadsafe_vi.accs_by_task isa IdDict{DynamicPPL.TaskId}
         @test isempty(threadsafe_vi.accs_by_task)
 
         vnt_acc = DynamicPPL.VNTAccumulator{:Test}(
             (val, _...) -> val, VarNamedTuple(; x=1.0)
         )
-        threadsafe_vnt_vi = @inferred DynamicPPL.ThreadSafeVarInfo(OnlyAccsVarInfo(vnt_acc))
+        threadsafe_vnt_vi = @inferred DynamicPPL.ThreadSafeVarInfo(VarInfo(vnt_acc))
         @test_nowarn DynamicPPL.map_accumulators!!(identity, threadsafe_vnt_vi)
     end
 
@@ -75,9 +162,7 @@ const gdemo_default = gdemo_d()
         ntasks = 2
         ready = Threads.Atomic{Int}(0)
         release = Threads.Atomic{Bool}(false)
-        vi = DynamicPPL.ThreadSafeVarInfo(
-            OnlyAccsVarInfo(DynamicPPL.LogLikelihoodAccumulator())
-        )
+        vi = DynamicPPL.ThreadSafeVarInfo(VarInfo(DynamicPPL.LogLikelihoodAccumulator()))
         tasks = map(1:ntasks) do _
             Threads.@spawn DynamicPPL.map_accumulator!!(vi, Val(:LogLikelihood)) do acc
                 Threads.atomic_add!(ready, 1)
@@ -101,7 +186,7 @@ const gdemo_default = gdemo_d()
         main_acc = DynamicPPL.VectorParamAccumulator(
             [1.0, 0.0], [true, false], VarNamedTuple()
         )
-        vi = DynamicPPL.ThreadSafeVarInfo(OnlyAccsVarInfo(main_acc))
+        vi = DynamicPPL.ThreadSafeVarInfo(VarInfo(main_acc))
         vi = DynamicPPL.map_accumulator!!(vi, accname) do acc
             acc.vals[2] = 2.0
             acc.set_indices[2] = true
@@ -126,7 +211,7 @@ const gdemo_default = gdemo_d()
             end
         end
         model = setthreadsafe(colon_eq(10), true)
-        vi = OnlyAccsVarInfo(DynamicPPL.RawValueAccumulator(true))
+        vi = VarInfo(DynamicPPL.RawValueAccumulator(true))
         _, vi = DynamicPPL.init!!(model, vi, InitFromPrior(), UnlinkAll())
         @test length(DynamicPPL.get_raw_values(vi)) == 10
     end
@@ -138,13 +223,17 @@ const gdemo_default = gdemo_d()
         end
         model = setthreadsafe(f(), true)
 
-        _, vi = DynamicPPL.init!!(model, VarInfo())
+        _, vi = DynamicPPL.init!!(
+            model, VarInfo(VectorValueAccumulator(), DynamicPPL.default_accumulators()...)
+        )
         # Inside the model evaluation function, it should be wrapped
         @test vi_ isa DynamicPPL.ThreadSafeVarInfo
         # But init!! should return the original VarInfo
         @test vi isa DynamicPPL.VarInfo
         # Same with evaluate!!
-        _, vi = DynamicPPL.evaluate_nowarn!!(model, vi)
+        ctx = Context(Xoshiro(1), InitFromParams((; x=2.0)), UnlinkAll())
+        result, vi = evaluate!!(model, ctx, vi)
+        @test result == 2.0
         @test vi_ isa DynamicPPL.ThreadSafeVarInfo
         @test vi isa DynamicPPL.VarInfo
     end
@@ -165,7 +254,7 @@ const gdemo_default = gdemo_d()
         y = fill(1.0, 10)
         model = setthreadsafe(f(y), true)
 
-        @testset for vi in (VarInfo(), VarInfo(model), OnlyAccsVarInfo())
+        @testset for vi in (VarInfo(), VarInfo(model))
             @inferred getlogjoint(
                 last(DynamicPPL.init!!(model, vi, InitFromPrior(), UnlinkAll()))
             )
@@ -185,9 +274,6 @@ const gdemo_default = gdemo_d()
 
     @testset "assumes are threadsafe" begin
         # See https://github.com/TuringLang/DynamicPPL.jl/pull/1284.
-        #
-        # Note: anything that involves VarInfo is still thread-unsafe. But anything
-        # that uses OnlyAccsVarInfo is fine
         @model function threaded_assume()
             x = zeros(10)
             Threads.@threads for i in eachindex(x)

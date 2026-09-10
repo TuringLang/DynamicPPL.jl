@@ -132,7 +132,6 @@ export AbstractVarInfo,
     # LogDensityFunction
     LogDensityFunction,
     subsample,
-    OnlyAccsVarInfo,
     to_vector_params,
     get_input_vector_type,
     get_sample_input_vector,
@@ -140,18 +139,8 @@ export AbstractVarInfo,
     get_range_and_transform,
     get_all_ranges_and_transforms,
     get_logdensity_callable,
-    # Leaf contexts
-    AbstractContext,
-    contextualize,
-    DefaultContext,
-    InitContext,
-    # Parent contexts
-    AbstractParentContext,
-    childcontext,
-    setchildcontext,
-    leafcontext,
-    setleafcontext,
-    extract_prefixes,
+    # Contexts
+    Context,
     # Tilde pipeline
     tilde_assume!!,
     tilde_observe!!,
@@ -190,7 +179,6 @@ export AbstractVarInfo,
     invlink,
     invlink!!,
     # Pseudo distributions
-    NamedDist,
     NoDist,
     filldist,
     arraydist,
@@ -229,6 +217,8 @@ export AbstractVarInfo,
     generated_quantities,
     typed_identity
 
+@compat public make_evaluate_args_and_kwargs, store_coloneq_value!!
+
 # Reexport
 using Distributions: loglikelihood
 export loglikelihood
@@ -243,7 +233,8 @@ Abstract supertype for data structures that capture random variables when execut
 probabilistic model and accumulate log densities such as the log likelihood or the
 log joint probability of the model.
 
-See also: [`VarInfo`](@ref), [`OnlyAccsVarInfo`](@ref).
+Implement `getaccs` and `setaccs!!` to provide an output container.
+See also: [`VarInfo`](@ref).
 """
 abstract type AbstractVarInfo <: AbstractModelTrace end
 
@@ -265,12 +256,8 @@ using .VarNamedTuples:
 
 include("transformed_values.jl")
 include("contexts.jl")
-include("contexts/default.jl")
 include("contexts/init.jl")
-include("contexts/prefix.jl")
-include("contexts/conditionfix.jl")  # Must come after contexts/prefix.jl
 include("model.jl")
-include("varname.jl")
 include("distribution_wrappers.jl")
 include("distributions.jl")
 include("submodel.jl")
@@ -285,7 +272,6 @@ include("accumulators/pointwise_logdensities.jl")
 include("abstract_varinfo.jl")
 include("threadsafe.jl")
 include("varinfo.jl")
-include("onlyaccs.jl")
 include("compiler.jl")
 include("logdensityfunction.jl")
 include("subsample.jl")

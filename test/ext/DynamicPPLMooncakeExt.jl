@@ -6,14 +6,14 @@ __now__ = now()
 
 using Mooncake: Mooncake
 using StableRNGs: StableRNG
-using DynamicPPL: is_transformed, VarInfo
+using DynamicPPL: is_transformed, VarInfo, VectorValueAccumulator
 using Test: @testset
 
 @testset "DynamicPPLMooncakeExt" begin
     Mooncake.TestUtils.test_rule(
         StableRNG(123456),
         is_transformed,
-        VarInfo();
+        VarInfo(VectorValueAccumulator());
         unsafe_perturb=true,
         interface_only=true,
     )

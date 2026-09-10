@@ -97,9 +97,11 @@ end
             @test DynamicPPL.getlogjoint(vi) ≈ DynamicPPL.getlogjoint(vi_linked)
             # The internal values should be convertible to the same thing.
             @test Bijectors.VectorBijectors.from_linked_vec(dist)(
-                vi_linked.values[@varname(m)].value
+                get_vector_values(vi_linked)[@varname(m)].value
             ) ≈ LowerTriangular(
-                Bijectors.VectorBijectors.from_vec(dist)(vi.values[@varname(m)].value)
+                Bijectors.VectorBijectors.from_vec(dist)(
+                    get_vector_values(vi)[@varname(m)].value
+                ),
             )
             # Linked one should be working with a lower-dimensional representation.
             @test length(internal_values_as_vector(vi_linked)) <
@@ -115,9 +117,11 @@ end
                 length(internal_values_as_vector(vi))
             # The internal values should be convertible to the same thing.
             @test Bijectors.VectorBijectors.from_vec(dist)(
-                vi_invlinked.values[@varname(m)].value
+                get_vector_values(vi_invlinked)[@varname(m)].value
             ) ≈ LowerTriangular(
-                Bijectors.VectorBijectors.from_vec(dist)(vi.values[@varname(m)].value)
+                Bijectors.VectorBijectors.from_vec(dist)(
+                    get_vector_values(vi)[@varname(m)].value
+                ),
             )
             # The non-internal logjoint should still be the same, again since
             # it doesn't depend on linking.
@@ -139,7 +143,7 @@ end
                 values_original_x_only = (x=values_original.x,)
                 vis = DynamicPPL.TestUtils.setup_varinfos(model, values_original_x_only)
                 @testset "$(short_varinfo_name(vi))" for vi in vis
-                    val = fromvec_transform(vi.values[@varname(x)].value)
+                    val = fromvec_transform(get_vector_values(vi)[@varname(x)].value)
                     # Ensure that `reconstruct` works as intended.
                     @test val isa Cholesky
                     @test val.uplo == uplo

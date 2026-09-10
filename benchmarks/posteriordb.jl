@@ -227,11 +227,11 @@ const OTHER_AD_BACKENDS = (
 )
 
 function stable_ldf(model; adtype=nothing, logdensity=getlogjoint_internal)
-    vi = DynamicPPL.OnlyAccsVarInfo(DynamicPPL.VectorValueAccumulator())
+    vi = DynamicPPL.VarInfo(DynamicPPL.VectorValueAccumulator())
     _, vi = DynamicPPL.init!!(
         model, vi, DynamicPPL.InitFromUniform(-2.1, -1.9), DynamicPPL.LinkAll()
     )
-    fixed_vi = DynamicPPL.OnlyAccsVarInfo(DynamicPPL.FixedTransformAccumulator())
+    fixed_vi = DynamicPPL.VarInfo(DynamicPPL.FixedTransformAccumulator())
     _, fixed_vi = DynamicPPL.init!!(
         model, fixed_vi, DynamicPPL.InitFromUniform(-2.1, -1.9), DynamicPPL.LinkAll()
     )
