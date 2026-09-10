@@ -31,7 +31,9 @@ mutable struct ThreadSafeVarInfo{V<:AbstractVarInfo,L<:AccumulatorTuple} <: Abst
     accs_lock::ReentrantLock
 end
 function ThreadSafeVarInfo(vi::AbstractVarInfo)
-    L = typeof(map(split, getaccs(vi)))
+    return _threadsafe_varinfo(vi, typeof(map(split, getaccs(vi))))
+end
+function _threadsafe_varinfo(vi::AbstractVarInfo, ::Type{L}) where {L<:AccumulatorTuple}
     accs_by_task = IdDict{TaskId,TaskAccumulators{L}}()
     task_accs_cache = _task_accs_cache(L)
     return ThreadSafeVarInfo(vi, accs_by_task, task_accs_cache, ReentrantLock())
