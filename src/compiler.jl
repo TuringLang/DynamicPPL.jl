@@ -579,7 +579,12 @@ check_input_provenance!!(vi::AbstractVarInfo, value, vn::VarName) = vi
     end
 end
 @noinline function read_input_provenance_property(x, name::Symbol)
-    return isdefined(x, name) ? getproperty(x, name) : nothing
+    return try
+        getproperty(x, name)
+    catch err
+        err isa InterruptException && rethrow()
+        nothing
+    end
 end
 
 # A bare symbol is already covered by the `isdefined` guard on the check itself.
