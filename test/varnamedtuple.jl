@@ -365,6 +365,48 @@ end
         end
 
         @testset "ComponentArray" begin
+            @testset "ComponentVector property membership and updates" begin
+                for (template, property, index, value) in (
+                    (
+                        CA.ComponentVector(; a=1.0, b=2.0),
+                        @varname(x.b),
+                        @varname(x[2]),
+                        3.0,
+                    ),
+                    (
+                        CA.ComponentVector(; a=[1.0, 2.0], b=3.0),
+                        @varname(x.a),
+                        @varname(x[1:2]),
+                        [4.0, 5.0],
+                    ),
+                    (
+                        CA.ComponentVector(; a=(; b=[1.0, 2.0]), c=3.0),
+                        @varname(x.a.b[2]),
+                        @varname(x[2]),
+                        4.0,
+                    ),
+                    (
+                        CA.ComponentVector(; a=(; b=[1.0, 2.0]), c=3.0),
+                        @varname(x.a.b),
+                        @varname(x[1:2]),
+                        [4.0, 5.0],
+                    ),
+                )
+                    for set_vn in (property, index)
+                        vnt = templated_setindex!!(VarNamedTuple(), value, set_vn, template)
+                        for get_vn in (property, index)
+                            @test haskey(vnt, get_vn)
+                            @test vnt[get_vn] == value
+                            updated = templated_setindex!!(
+                                copy(vnt), 2 .* value, get_vn, template
+                            )
+                            @test updated[property] == updated[index] == 2 .* value
+                        end
+                        @test !haskey(vnt, @varname(x.absent))
+                    end
+                end
+            end
+
             ca = CA.ComponentArray(; a=1.0, b=2.0)
             test_get_set(GetSetTestCase(@varname(x[1]), 1.0, ca, []))
             test_get_set(GetSetTestCase(@varname(x[2]), 2.0, ca, []))
