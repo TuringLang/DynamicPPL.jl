@@ -1,3 +1,7 @@
+# Unreleased
+
+Removed `NamedDist` and distribution-driven site renaming. Replace `x ~ NamedDist(dist, :y)` with `y ~ dist`, followed by `x = y` if a local alias is needed.
+
 # 0.42.12
 
 `check_model` now warns when a latent tilde statement overwrites a value computed from a model input.
