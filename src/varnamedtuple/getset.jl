@@ -108,7 +108,8 @@ function _haskey_optic(arr::AbstractArray, optic::IndexWithoutChild)
     # checkbounds. For example, DimArray can error here:
     # https://github.com/rafaqz/DimensionalData.jl/issues/1156. But that is not our job to fix
     # -- it should be done upstream -- hence we just forward the indices.
-    return checkbounds(Bool, arr, optic.ix...; optic.kw...)
+    coptic = AbstractPPL.concretize_top_level(optic, arr)
+    return checkbounds(Bool, arr, coptic.ix...; coptic.kw...)
 end
 
 """

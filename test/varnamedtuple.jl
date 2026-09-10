@@ -180,6 +180,17 @@ function Base.similar(
 end
 
 @testset "VarNamedTuple" begin
+    @testset "dynamic indices into array leaves" begin
+        for x in ([1.0, 2.0], view([1.0, 2.0], :), OA.OffsetArray([1.0, 2.0], 3:4))
+            vnt = VarNamedTuple(; x)
+            @test haskey(vnt, @varname(x[begin]))
+            @test haskey(vnt, @varname(x[end]))
+            @test haskey(vnt, @varname(x[begin:end]))
+            @test !haskey(vnt, @varname(x[begin - 1]))
+            @test !haskey(vnt, @varname(x[end + 1]))
+        end
+    end
+
     @testset "Construction" begin
         vnt1 = VarNamedTuple()
         test_invariants(vnt1)
