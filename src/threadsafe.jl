@@ -63,7 +63,7 @@ function _get_task_accs(vi::ThreadSafeVarInfo{V,L}) where {V,L}
     if task_accs === nothing || task_accs.task_id !== task_id
         task_accs = lock(vi.accs_lock) do
             get!(vi.accs_by_task, task_id) do
-                TaskAccumulators(task_id, map(split, getaccs(vi.varinfo))::L)
+                TaskAccumulators{L}(task_id, map(split, getaccs(vi.varinfo))::L)
             end
         end
         task_accs_cache[Threads.threadid()] = task_accs
@@ -77,7 +77,9 @@ end
 Construct a `ThreadSafeVarInfo` that promotes any accumulators in `varinfo` to their
 versions for use in TSVI.
 
-This method also resets the accumulators' contents.
+This method also resets the accumulators' contents. Numeric parameter types are converted
+to floating equivalents; empty or unknown parameter types permit task-local accumulator
+types to widen during evaluation.
 
 # Extended help
 
@@ -91,8 +93,8 @@ ForwardDiff. This would cause the wrapped log-likelihood to be promoted to
 `ForwardDiff.Dual`. If there were only one accumulator, this would be fine. However, the
 promoted accumulator cannot be stored in a field whose concrete type contains `Float64`.
 
-This means that *before* model evaluation even begins, the eltype of *all* log-probability
-accumulators must be promoted to `ForwardDiff.Dual`.
+When parameter types are known, accumulators are promoted before evaluation. Otherwise,
+task-local storage permits the accumulator tuple type to change.
 
 For log-probability accumulators, construction of the thread-safe versions therefore
 requires knowledge of `param_eltype`, which is the type of the parameters about to be used
@@ -100,20 +102,34 @@ for model evaluation. See the docstring of `get_param_eltype` for more informati
 this. For accumulators that wrap `VarNamedTuple`s, thread safety is accomplished by removing
 the VNT type parameter from its type.
 """
-function ThreadSafeVarInfo(varinfo::AbstractVarInfo, param_eltype::Type{T}) where {T}
-    # The below line is finicky for type stability. For instance, assigning the eltype to
-    # convert to into an intermediate variable makes this unstable (constant propagation
-    # fails). Take care when editing.
+function ThreadSafeVarInfo(varinfo::AbstractVarInfo, ::Type{T}) where {T}
+    # Capturing a runtime type loses accumulator inference on Julia 1.10; use static T.
     accs = map(DynamicPPL.getaccs(varinfo)) do acc
-        DynamicPPL.promote_for_threadsafe_eval(acc, param_eltype)
+        DynamicPPL.promote_for_threadsafe_eval(
+            acc,
+            if T === Any || T === Union{}
+                Any
+            else
+                float_type_with_fallback(T)
+            end,
+        )
     end
     varinfo = DynamicPPL.setaccs!!(varinfo, accs)
-    return ThreadSafeVarInfo(resetaccs!!(varinfo))
+    varinfo = resetaccs!!(varinfo)
+    return if T === Any || T === Union{}
+        _threadsafe_varinfo(varinfo, AccumulatorTuple)
+    else
+        ThreadSafeVarInfo(varinfo)
+    end
 end
 
-function setacc!!(vi::ThreadSafeVarInfo, acc::AbstractAccumulator)
-    inner_vi = setaccs!!(vi.varinfo, getaccs(vi))
-    return ThreadSafeVarInfo(setacc!!(inner_vi, acc))
+function setacc!!(vi::ThreadSafeVarInfo{V,L}, acc::AbstractAccumulator) where {V,L}
+    inner_vi = setacc!!(setaccs!!(vi.varinfo, getaccs(vi)), acc)
+    return if L === AccumulatorTuple
+        _threadsafe_varinfo(inner_vi, L)
+    else
+        ThreadSafeVarInfo(inner_vi)
+    end
 end
 
 get_values(vi::ThreadSafeVarInfo) = get_values(vi.varinfo)
@@ -135,9 +151,9 @@ function getacc(vi::ThreadSafeVarInfo, accname::Val)
     return foldl(combine, other_accs; init=main_acc)
 end
 
-function Base.copy(vi::ThreadSafeVarInfo)
+function Base.copy(vi::ThreadSafeVarInfo{V,L}) where {V,L}
     inner_vi = setaccs!!(vi.varinfo, getaccs(vi))
-    return ThreadSafeVarInfo(copy(inner_vi))
+    return _threadsafe_varinfo(copy(inner_vi), L)
 end
 
 hasacc(vi::ThreadSafeVarInfo, accname::Val) = hasacc(vi.varinfo, accname)

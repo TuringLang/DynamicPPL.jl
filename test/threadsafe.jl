@@ -7,6 +7,9 @@ __now__ = now()
 using Distributions
 using DynamicPPL
 using Test
+using ForwardDiff
+using Random: Xoshiro
+using LogDensityProblems: logdensity
 
 @model function gdemo_d()
     s ~ InverseGamma(2, 3)
@@ -17,7 +20,113 @@ using Test
 end
 const gdemo_default = gdemo_d()
 
+@model discrete_parameter() = x ~ Bernoulli(0.3)
+@model continuous_parameter() = x ~ Normal()
+@model observation_only() = 0.0 ~ Normal()
+
 @testset "threadsafe.jl" begin
+    @testset "parameter types permit floating-point accumulation" begin
+        for T in (
+            Int, Bool, Rational{Int}, Float32, BigFloat, ForwardDiff.Dual{Nothing,Float64,1}
+        )
+            vi = @inferred DynamicPPL.ThreadSafeVarInfo(
+                OnlyAccsVarInfo(LogPriorAccumulator()), T
+            )
+            @test getlogprior(vi) isa float(T)
+        end
+        for T in (Any, Union{})
+            vi = @inferred DynamicPPL.ThreadSafeVarInfo(
+                OnlyAccsVarInfo(LogPriorAccumulator(big"0.0")), T
+            )
+            @test getlogprior(vi) isa BigFloat
+        end
+
+        discrete = setthreadsafe(discrete_parameter(), true)
+        @test logjoint(discrete, (; x=1)) ≈ logpdf(Bernoulli(0.3), 1)
+        @test logjoint(setthreadsafe(observation_only(), true), (;)) ≈ logpdf(Normal(), 0.0)
+
+        continuous = setthreadsafe(continuous_parameter(), true)
+        value, vi = init!!(
+            Xoshiro(1), continuous, OnlyAccsVarInfo(), InitFromParams((;)), UnlinkAll()
+        )
+        @test getlogprior(vi) ≈ logpdf(Normal(), value)
+        @test_throws ErrorException init!!(
+            continuous, OnlyAccsVarInfo(), InitFromParams((;), nothing), UnlinkAll()
+        )
+        @test ForwardDiff.derivative(x -> logjoint(continuous, (; x)), 2.0) ≈ -2.0
+    end
+
+    @testset "unknown parameter types" begin
+        @model observed(y) = y ~ Normal()
+        for strategy in (InitFromParams((;)), InitFromPrior())
+            function density(y)
+                _, vi = init!!(
+                    Xoshiro(1),
+                    setthreadsafe(observed(y), true),
+                    OnlyAccsVarInfo(),
+                    strategy,
+                    UnlinkAll(),
+                )
+                return getlogjoint(vi)
+            end
+            @test density(big"2.0") isa BigFloat
+            @test ForwardDiff.derivative(density, 2.0) ≈ -2.0
+        end
+        @model fallback() = x ~ Normal(big"0.0", big"1.0")
+        _, vi = init!!(
+            Xoshiro(1),
+            setthreadsafe(fallback(), true),
+            OnlyAccsVarInfo(),
+            InitFromParams((;)),
+            UnlinkAll(),
+        )
+        @test getlogprior(vi) isa BigFloat
+    end
+
+    @testset "parameter containers preserve numeric types" begin
+        @model function indexed_parameter()
+            x = zeros(1)
+            return x[1] ~ Normal()
+        end
+        model = setthreadsafe(indexed_parameter(), true)
+        ldf = LogDensityFunction(model)
+        for container in (
+            identity,
+            x -> Real[x...],
+            x -> Any[x...],
+            x -> Union{Int,eltype(x)}[x...],
+            x -> view(Real[x...], :),
+        )
+            @test ForwardDiff.derivative(x -> logjoint(model, (; x=container([x]))), 2.0) ≈
+                -2.0
+        end
+        @test ForwardDiff.derivative(x -> logdensity(ldf, Real[x]), 2.0) ≈ -2.0
+        for T in (Float32, BigFloat)
+            @test logjoint(model, (; x=Real[T(2)])) isa T
+            @test (@inferred DynamicPPL.get_param_eltype(InitFromParams((; x=T[2])))) === T
+        end
+        dual = ForwardDiff.Dual(2.0, 1.0)
+        wrapped = VarNamedTuple(; x=TransformedValue(Real[dual], Unlink()))
+        @test get_param_eltype(DynamicPPL.InitFromParamsUnsafe(wrapped)) === typeof(dual)
+        buffer = Vector{Real}(undef, 2)
+        buffer[1] = dual
+        for value in (buffer, [buffer])
+            params = VarNamedTuple(; x=value)
+            @test DynamicPPL.get_param_eltype(InitFromParams(params)) === typeof(dual)
+        end
+        @test DynamicPPL.get_param_eltype(InitFromParams((; x=Real[]))) === Union{}
+        @test DynamicPPL.get_param_eltype(InitFromParams((; x=Vector{Real}(undef, 1)))) ===
+            Union{}
+    end
+
+    @testset "unknown accumulator storage survives reconstruction" begin
+        vi = DynamicPPL.ThreadSafeVarInfo(OnlyAccsVarInfo(LogPriorAccumulator()), Any)
+        for rebuilt in (copy(vi), DynamicPPL.setacc!!(vi, LogPriorAccumulator()))
+            rebuilt = DynamicPPL.acclogprior!!(rebuilt, ForwardDiff.Dual(2.0, 1.0))
+            @test ForwardDiff.partials(getlogprior(rebuilt))[1] == 1.0
+        end
+    end
+
     @testset "constructor" begin
         vi = VarInfo(gdemo_default)
         threadsafe_vi = @inferred DynamicPPL.ThreadSafeVarInfo(vi)
