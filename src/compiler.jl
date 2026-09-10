@@ -385,6 +385,7 @@ function generate_tilde(left, right; is_argument=false)
         if $role isa $(DynamicPPL.Fix)
             $(assign_or_set!!(left, :($(DynamicPPL._get_model_data)(__model__, $vn)), vn))
         elseif $role === nothing
+            $(generate_input_provenance_check(left, vn))
             $(generate_tilde_assume(left, dist, vn))
         else
             $supplied_val = $(
@@ -406,6 +407,33 @@ function generate_tilde(left, right; is_argument=false)
             )
             $(assign_or_set!!(left, value, vn))
             $value
+        end
+    end
+end
+
+const INPUT_PROVENANCE_ACCNAME = :InputProvenance
+
+# The input-provenance extension implements this hook.
+check_input_provenance!!(vi::AbstractVarInfo, value, vn::VarName) = vi
+
+generate_input_provenance_check(::Any, ::Any) = nothing
+function generate_input_provenance_check(left::Union{Expr,Symbol}, vn)
+    @gensym value err
+    top_symbol = get_top_level_symbol(left)
+    # The accumulator guard prevents an extra LHS read during ordinary evaluation.
+    return quote
+        if $(DynamicPPL.hasacc)(__varinfo__, $(Val(INPUT_PROVENANCE_ACCNAME))) &&
+            $(Expr(:isdefined, top_symbol))
+            # An indexed location can be assignable without having a readable value.
+            $value = try
+                $left
+            catch $err
+                $err isa $(InterruptException) && rethrow()
+                nothing
+            end
+            __varinfo__ = $(DynamicPPL.check_input_provenance!!)(
+                __varinfo__, $value, $(DynamicPPL.maybe_prefix)($vn, __model__.prefix)
+            )
         end
     end
 end

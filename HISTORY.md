@@ -30,6 +30,12 @@ Submodel traces preserve parent templates: with 2×2 `a`, calls at `a[1]` and `a
 
 For `a ~ to_submodel(child())`, where `child` samples `x ~ Normal()` and returns `2x`, condition `@varname(a.x)` to 1, yielding 2. Conditioning `a` errors: it names the return value, not a stochastic variable. If argument `a` only provides return-value storage, use `decondition(parent(buffer), :a)`.
 
+# 0.42.12
+
+`check_model` now warns when a latent tilde statement overwrites a value computed from a model input.
+The check runs only when ForwardDiff is loaded and is best effort, so it can miss dependencies through untaken branches, conditions, and code it cannot differentiate.
+See [#1465](https://github.com/TuringLang/DynamicPPL.jl/pull/1465).
+
 # 0.42.11
 
 Partial-array merges now expand growable storage when the other array has a template, including for matrices and higher-dimensional arrays. See [#1482](https://github.com/TuringLang/DynamicPPL.jl/pull/1482).
