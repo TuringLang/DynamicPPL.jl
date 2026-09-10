@@ -14,8 +14,7 @@ export check_model, has_static_constraints
 
 An accumulator which checks calls at each tilde-statement for potential errors.
 
-Right now this accumulator only checks for `NaN` values on the left-hand side of observe
-statements, and partially `missing` values on the left-hand side of observe statements.
+This accumulator checks for `NaN` values on the left-hand side of observe statements.
 
 Other checks in `check_model` are accomplished via different accumulators.
 """
@@ -38,33 +37,6 @@ function DynamicPPL.combine(acc1::DebugAccumulator, acc2::DebugAccumulator)
 end
 
 """
-    _has_partial_missings(x, dist)
-
-Check if `x` is a container that contains partial `missing` values.
-"""
-_has_partial_missings(x, dist) = false
-function _has_partial_missings(x::AbstractArray, ::MultivariateDistribution)
-    for i in eachindex(x)
-        if isassigned(x, i) && ismissing(x[i])
-            return true
-        end
-    end
-    return false
-end
-function _has_partial_missings(
-    x::NamedTuple{names}, dists::Distributions.ProductNamedTupleDistribution
-) where {names}
-    for name in names
-        sub_value = x[name]
-        sub_dist = dists.dists[name]
-        if _has_partial_missings(sub_value, sub_dist)
-            return true
-        end
-    end
-    return false
-end
-
-"""
     _has_nans(x)
 
 Check if `x` is `NaN`, or contains any `NaN` values.
@@ -84,21 +56,6 @@ function DynamicPPL.accumulate_observe!!(
     acc::DebugAccumulator, right::Distribution, val, vn::Union{VarName,Nothing}, template
 )
     failed = acc.failed
-    if _has_partial_missings(val, right)
-        msg = if vn === nothing
-            "on the left-hand side of an observe statement"
-        else
-            "for variable $(vn) on the left-hand side of an observe statement"
-        end
-        full_msg =
-            "Encountered a container with one or more `missing` value(s) $msg." *
-            " Use `decondition` to make a named site latent. To observe only some" *
-            " components, declare separate scalar tilde statements and condition" *
-            " their indexed VarNames."
-        @warn full_msg
-        failed = true
-    end
-    # Check for NaN's as well
     if _has_nans(val)
         msg =
             "Encountered a NaN value on the left-hand side of an" *
@@ -365,15 +322,9 @@ This simply calls `@code_warntype` on the model's evaluator, filling in internal
 - `context::Context`: The evaluation context. Defaults to the values supplied in `varinfo`.
 """
 function model_warntype(
-    model::Model,
-    varinfo::AbstractVarInfo=VarInfo(model),
-    optimize::Bool=false;
-    context::Context=Context(
-        InitFromParams(get_values(varinfo), nothing),
-        DynamicPPL.get_transform_strategy(varinfo),
-    ),
+    model::Model, varinfo::AbstractVarInfo=VarInfo(model), optimize::Bool=false; kwargs...
 )
-    ftype, argtypes = gen_evaluator_call_with_types(model, varinfo; context)
+    ftype, argtypes = gen_evaluator_call_with_types(model, varinfo; kwargs...)
     return InteractiveUtils.code_warntype(ftype, argtypes; optimize=optimize)
 end
 
@@ -392,15 +343,9 @@ This simply calls `@code_typed` on the model's evaluator, filling in internal ar
 - `context::Context`: The evaluation context. Defaults to the values supplied in `varinfo`.
 """
 function model_typed(
-    model::Model,
-    varinfo::AbstractVarInfo=VarInfo(model),
-    optimize::Bool=true;
-    context::Context=Context(
-        InitFromParams(get_values(varinfo), nothing),
-        DynamicPPL.get_transform_strategy(varinfo),
-    ),
+    model::Model, varinfo::AbstractVarInfo=VarInfo(model), optimize::Bool=true; kwargs...
 )
-    ftype, argtypes = gen_evaluator_call_with_types(model, varinfo; context)
+    ftype, argtypes = gen_evaluator_call_with_types(model, varinfo; kwargs...)
     return only(InteractiveUtils.code_typed(ftype, argtypes; optimize=optimize))
 end
 

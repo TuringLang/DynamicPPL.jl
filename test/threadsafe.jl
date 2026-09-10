@@ -98,10 +98,7 @@ const gdemo_default = gdemo_d()
         buffer[1] = dual
         for value in (buffer, [buffer])
             params = VarNamedTuple(; x=value)
-            for strategy in
-                (InitFromParams(params), DynamicPPL.InitFromParamsUnsafe(params))
-                @test DynamicPPL.get_param_eltype(strategy) === typeof(dual)
-            end
+            @test DynamicPPL.get_param_eltype(InitFromParams(params)) === typeof(dual)
         end
         @test DynamicPPL.get_param_eltype(InitFromParams((; x=Real[]))) === Union{}
         @test DynamicPPL.get_param_eltype(InitFromParams((; x=Vector{Real}(undef, 1)))) ===

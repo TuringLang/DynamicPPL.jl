@@ -416,7 +416,6 @@ const INPUT_PROVENANCE_ACCNAME = :InputProvenance
 # The input-provenance extension implements this hook.
 check_input_provenance!!(vi::AbstractVarInfo, value, vn::VarName) = vi
 
-generate_input_provenance_check(::Any, ::Any) = nothing
 function generate_input_provenance_check(left::Union{Expr,Symbol}, vn)
     @gensym value err
     top_symbol = get_top_level_symbol(left)
