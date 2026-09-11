@@ -35,8 +35,8 @@ jobs:
           - version: 'min'
             os: ubuntu-latest
             num_threads: 2
-          # 1.11
-          - version: '1.11'
+          # 1.12
+          - version: '1.12'
             os: ubuntu-latest
             num_threads: 2
           # Single-threaded
