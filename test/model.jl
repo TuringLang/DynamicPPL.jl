@@ -585,13 +585,14 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
                 @test ys_pred_vec[2] ≈ ground_truth_β * xs_test[2] atol = 0.01
             end
 
+            # Normal linreg model
+            multiple_β_chain = MCMCChains.Chains(
+                reshape(rand(Normal(ground_truth_β, 0.002), 1000, 2), 1000, 1, 2),
+                [:β];
+                info=(; varname_to_symbol=Dict(@varname(β) => :β)),
+            )
+
             @testset "prediction from multiple chains" begin
-                # Normal linreg model
-                multiple_β_chain = MCMCChains.Chains(
-                    reshape(rand(Normal(ground_truth_β, 0.002), 1000, 2), 1000, 1, 2),
-                    [:β];
-                    info=(; varname_to_symbol=Dict(@varname(β) => :β)),
-                )
                 predictions = DynamicPPL.predict(m_lin_reg_test, multiple_β_chain)
                 @test size(multiple_β_chain, 3) == size(predictions, 3)
 
@@ -634,15 +635,10 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
                 @test ys_pred[1] ≈ ground_truth_β * xs_test[1] atol = 0.01
                 @test ys_pred[2] ≈ ground_truth_β * xs_test[2] atol = 0.01
 
-                two_chains = MCMCChains.Chains(
-                    reshape(rand(Normal(ground_truth_β, 0.002), 1000, 2), 1000, 1, 2),
-                    [:β];
-                    info=(; varname_to_symbol=Dict(@varname(β) => :β)),
-                )
                 mt3 = DynamicPPL.predict(
-                    Xoshiro(468), m_lin_reg_test, two_chains; multithreaded=true
+                    Xoshiro(468), m_lin_reg_test, multiple_β_chain; multithreaded=true
                 )
-                @test size(mt3, 3) == size(two_chains, 3)
+                @test size(mt3, 3) == size(multiple_β_chain, 3)
                 @test Set(keys(mt3)) == Set(keys(predictions))
             end
 
