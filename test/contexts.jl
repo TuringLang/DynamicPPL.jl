@@ -92,13 +92,9 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
                 # Extract all conditioned variables. We also use varname_leaves
                 # here to split up arrays which could potentially have some,
                 # but not all, elements being `missing`.
-                conditioned_vns = [
-                    vn for p in pairs(conditioned_values) for
+                for p in pairs(conditioned_values),
                     vn in AbstractPPL.varname_leaves(p.first, p.second)
-                ]
 
-                # We can now loop over them to check which ones are missing.
-                for vn in conditioned_vns
                     val = conditioned_values[vn]
                     # These VarNames are present in the conditioning values, so
                     # we should always be able to extract the value.
