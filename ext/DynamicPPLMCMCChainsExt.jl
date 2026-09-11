@@ -282,10 +282,10 @@ function reevaluate_with_chain(
     chain::MCMCChains.Chains,
     accs::NTuple{N,DynamicPPL.AbstractAccumulator},
     fallback::Union{DynamicPPL.AbstractInitStrategy,Nothing}=nothing;
-    multithreaded::Bool=false,
+    kwargs...,
 ) where {N}
     return reevaluate_with_chain(
-        Random.default_rng(), model, chain, accs, fallback; multithreaded=multithreaded
+        Random.default_rng(), model, chain, accs, fallback; kwargs...
     )
 end
 
@@ -409,19 +409,8 @@ function DynamicPPL.predict(
     end
     return chain_result[parameter_names]
 end
-function DynamicPPL.predict(
-    model::DynamicPPL.Model,
-    chain::MCMCChains.Chains;
-    include_all=false,
-    multithreaded::Bool=false,
-)
-    return DynamicPPL.predict(
-        DynamicPPL.Random.default_rng(),
-        model,
-        chain;
-        include_all=include_all,
-        multithreaded=multithreaded,
-    )
+function DynamicPPL.predict(model::DynamicPPL.Model, chain::MCMCChains.Chains; kwargs...)
+    return DynamicPPL.predict(DynamicPPL.Random.default_rng(), model, chain; kwargs...)
 end
 
 """
