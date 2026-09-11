@@ -391,6 +391,18 @@ end
                         @varname(x[1:2]),
                         [4.0, 5.0],
                     ),
+                    (
+                        CA.ComponentVector(; a=[1.0, 2.0, 3.0], b=4.0),
+                        @varname(x.a[1:2]),
+                        @varname(x[1:2]),
+                        [5.0, 6.0],
+                    ),
+                    (
+                        CA.ComponentVector(; a=(; b=[1.0, 2.0, 3.0]), c=4.0),
+                        @varname(x.a.b[2:3]),
+                        @varname(x[2:3]),
+                        [5.0, 6.0],
+                    ),
                 )
                     for set_vn in (property, index)
                         vnt = templated_setindex!!(VarNamedTuple(), value, set_vn, template)

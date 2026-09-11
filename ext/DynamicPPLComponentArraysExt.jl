@@ -16,8 +16,19 @@ function _property_to_index(
     template::ComponentVector, optic::AbstractPPL.Property{S}
 ) where {S}
     indices = ComponentVector(LinearIndices(template), ComponentArrays.getaxes(template))
-    return AbstractPPL.Index((optic(indices),), NamedTuple(), AbstractPPL.Iden())
+    return AbstractPPL.Index(
+        (_resolve_indices(optic, indices),), NamedTuple(), AbstractPPL.Iden()
+    )
 end
+
+# Properties are looked up through the component axes, but anything below them is applied to
+# a plain array: indexing a ComponentVector with a range is ambiguous between
+# `ComponentArrays.getindex(::CombinedAxis, ::AbstractArray)` and Base's range indexing.
+_resolve_indices(::AbstractPPL.Iden, indices) = indices
+function _resolve_indices(optic::AbstractPPL.Property{S}, indices) where {S}
+    return _resolve_indices(optic.child, getproperty(indices, S))
+end
+_resolve_indices(optic::AbstractPPL.AbstractOptic, indices) = optic(collect(indices))
 
 function DynamicPPL.VarNamedTuples.make_leaf(
     value, optic::AbstractPPL.Property{S}, template::ComponentVector
