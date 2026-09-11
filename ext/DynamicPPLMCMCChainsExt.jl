@@ -266,12 +266,12 @@ function reevaluate_with_chain(
     end
     seeds = rand(rng, UInt, length(params_with_stats))
     tasks = map(chunk_ranges(length(params_with_stats), Threads.nthreads())) do idxs
-        # An accumulator may hold mutable state, so no two tasks share a varinfo. `copy`
-        # rather than `deepcopy` for the rng: https://github.com/JuliaLang/julia/issues/42899
-        Threads.@spawn let task_rng = copy(rng), task_vi = copy(vi)
+        # An accumulator may hold mutable state, so no two tasks share a varinfo. Each sample
+        # gets a fresh generator built from its own seed, so `rng` only has to produce the
+        # seeds: copying it would rule out generators such as `RandomDevice`.
+        Threads.@spawn let task_vi = copy(vi)
             map(idxs) do i
-                Random.seed!(task_rng, seeds[i])
-                evaluate(task_rng, task_vi, params_with_stats[i])
+                evaluate(Random.Xoshiro(seeds[i]), task_vi, params_with_stats[i])
             end
         end
     end

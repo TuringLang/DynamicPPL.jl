@@ -640,6 +640,12 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
                 )
                 @test size(mt3, 3) == size(multiple_β_chain, 3)
                 @test Set(keys(mt3)) == Set(keys(predictions))
+
+                # `RandomDevice` cannot be copied, and only has to supply the seeds.
+                mt4 = DynamicPPL.predict(
+                    Random.RandomDevice(), m_lin_reg_test, β_chain; multithreaded=true
+                )
+                @test Set(keys(mt4)) == Set(keys(predictions))
             end
 
             @testset "predictions with subsetted chain" begin
