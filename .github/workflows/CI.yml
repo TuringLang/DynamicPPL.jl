@@ -39,10 +39,6 @@ jobs:
           - version: '1.12'
             os: ubuntu-latest
             num_threads: 2
-          # 1.13
-          - version: '1.13'
-            os: ubuntu-latest
-            num_threads: 2
           # Single-threaded
           - version: '1'
             os: ubuntu-latest
