@@ -208,12 +208,24 @@ function AbstractMCMC.bundle_samples(
 end
 
 """
+    chunk_ranges(n::Int, nchunks::Int)
+
+Split `1:n` into at most `nchunks` contiguous ranges of as equal length as possible.
+"""
+function chunk_ranges(n::Int, nchunks::Int)
+    nchunks = min(nchunks, n)
+    bounds = round.(Int, range(0, n; length=(nchunks + 1)))
+    return [(bounds[i] + 1):bounds[i + 1] for i in 1:nchunks]
+end
+
+"""
     reevaluate_with_chain(
         rng::AbstractRNG,
         model::Model,
         chain::MCMCChains.Chains
         accs::NTuple{N,AbstractAccumulator};
         fallback=nothing,
+        multithreaded=false,
     )
 
 Re-evaluate `model` for each sample in `chain` using the accumulators provided in `accs`,
@@ -224,37 +236,67 @@ initialisation strategy when re-evaluating the model. For many usecases the fall
 not be provided (as we expect the chain to contain all necessary variables); but for
 `predict` this has to be `InitFromPrior()` to allow sampling new variables (i.e. generating
 the posterior predictions).
+
+Set `multithreaded = true` to spread the samples over threads. Each sample is then evaluated
+with its own random number generator, seeded from `rng` before any thread starts, so the
+result is reproducible and does not depend on the number of threads. It does differ from the
+single-threaded result for the same `rng`, which draws every sample from one stream.
 """
 function reevaluate_with_chain(
     rng::Random.AbstractRNG,
     model::DynamicPPL.Model,
     chain::MCMCChains.Chains,
     accs::NTuple{N,DynamicPPL.AbstractAccumulator},
-    fallback::Union{DynamicPPL.AbstractInitStrategy,Nothing}=nothing,
+    fallback::Union{DynamicPPL.AbstractInitStrategy,Nothing}=nothing;
+    multithreaded::Bool=false,
 ) where {N}
     params_with_stats = AbstractMCMC.to_samples(DynamicPPL.ParamsWithStats, chain, model)
     vi = DynamicPPL.OnlyAccsVarInfo(DynamicPPL.AccumulatorTuple(accs))
-    return map(params_with_stats) do ps
-        DynamicPPL.init!!(
-            rng,
+    function evaluate(r, v, ps)
+        return DynamicPPL.init!!(
+            r,
             model,
-            vi,
+            v,
             DynamicPPL.InitFromParams(ps.params, fallback),
             DynamicPPL.UnlinkAll(),
         )
     end
+    if !multithreaded || isempty(params_with_stats)
+        return map(ps -> evaluate(rng, vi, ps), params_with_stats)
+    end
+    seeds = rand(rng, UInt, length(params_with_stats))
+    tasks = map(chunk_ranges(length(params_with_stats), Threads.nthreads())) do idxs
+        # An accumulator may hold mutable state, so no two tasks share a varinfo. Each sample
+        # gets a fresh generator built from its own seed, so `rng` only has to produce the
+        # seeds: copying it would rule out generators such as `RandomDevice`.
+        Threads.@spawn let task_vi = copy(vi)
+            map(idxs) do i
+                evaluate(Random.Xoshiro(seeds[i]), task_vi, params_with_stats[i])
+            end
+        end
+    end
+    return reshape(reduce(vcat, fetch.(tasks)), size(params_with_stats))
 end
 function reevaluate_with_chain(
     model::DynamicPPL.Model,
     chain::MCMCChains.Chains,
     accs::NTuple{N,DynamicPPL.AbstractAccumulator},
-    fallback::Union{DynamicPPL.AbstractInitStrategy,Nothing}=nothing,
+    fallback::Union{DynamicPPL.AbstractInitStrategy,Nothing}=nothing;
+    kwargs...,
 ) where {N}
-    return reevaluate_with_chain(Random.default_rng(), model, chain, accs, fallback)
+    return reevaluate_with_chain(
+        Random.default_rng(), model, chain, accs, fallback; kwargs...
+    )
 end
 
 """
-    predict([rng::AbstractRNG,] model::Model, chain::MCMCChains.Chains; include_all=false)
+    predict(
+        [rng::AbstractRNG,]
+        model::Model,
+        chain::MCMCChains.Chains;
+        include_all=false,
+        multithreaded=false,
+    )
 
 Sample from the posterior predictive distribution by executing `model` with parameters fixed to each sample
 in `chain`, and return the resulting `Chains`.
@@ -272,6 +314,14 @@ For each parameter configuration in `chain`:
 If `include_all` is `false`, the returned `Chains` will contain only those variables that were not fixed by
 the samples in `chain`. This is useful when you want to sample only new variables from the posterior
 predictive distribution.
+
+Set `multithreaded` to `true` to spread the samples of `chain` over threads. Each sample is
+then drawn with its own random number generator, seeded from `rng` before any thread starts,
+so a given `rng` gives the same predictions however many threads Julia was started with.
+Those predictions differ from the single-threaded ones for that same `rng`, which draws
+every sample from one stream. Threading only pays off when evaluating the model is itself
+expensive: it is a loss for a model that evaluates in microseconds, and for a model with
+many variables the time goes into building the `Chains` object rather than into evaluation.
 
 !!! warning "Variables are treated as they occur in the model"
     A variable drawn from a multivariate distribution in a single tilde-statement
@@ -329,6 +379,7 @@ function DynamicPPL.predict(
     model::DynamicPPL.Model,
     chain::MCMCChains.Chains;
     include_all=false,
+    multithreaded::Bool=false,
 )
     parameter_only_chain = MCMCChains.get_sections(chain, :parameters)
     accs = (
@@ -339,7 +390,12 @@ function DynamicPPL.predict(
     predictions = map(
         DynamicPPL.ParamsWithStats ∘ last,
         reevaluate_with_chain(
-            rng, model, parameter_only_chain, accs, DynamicPPL.InitFromPrior()
+            rng,
+            model,
+            parameter_only_chain,
+            accs,
+            DynamicPPL.InitFromPrior();
+            multithreaded=multithreaded,
         ),
     )
     chain_result = AbstractMCMC.from_samples(MCMCChains.Chains, predictions)
@@ -353,12 +409,8 @@ function DynamicPPL.predict(
     end
     return chain_result[parameter_names]
 end
-function DynamicPPL.predict(
-    model::DynamicPPL.Model, chain::MCMCChains.Chains; include_all=false
-)
-    return DynamicPPL.predict(
-        DynamicPPL.Random.default_rng(), model, chain; include_all=include_all
-    )
+function DynamicPPL.predict(model::DynamicPPL.Model, chain::MCMCChains.Chains; kwargs...)
+    return DynamicPPL.predict(DynamicPPL.Random.default_rng(), model, chain; kwargs...)
 end
 
 """

@@ -1,5 +1,10 @@
 # 0.42.12
 
+`predict` now takes `multithreaded`, which spreads the samples of the chain over threads.
+Each sample is drawn with its own random number generator, seeded from `rng` before any thread starts, so a given `rng` gives the same predictions whatever the thread count.
+Those predictions differ from the single-threaded ones for that same `rng`, which draws every sample from one stream.
+See [#1170](https://github.com/TuringLang/DynamicPPL.jl/issues/1170).
+
 `check_model` now warns when a latent tilde statement overwrites a value computed from a model input.
 The check runs only when ForwardDiff is loaded and is best effort, so it can miss dependencies through untaken branches, conditions, and code it cannot differentiate.
 See [#1465](https://github.com/TuringLang/DynamicPPL.jl/pull/1465).
