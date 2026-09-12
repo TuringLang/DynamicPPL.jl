@@ -514,19 +514,11 @@ const INPUT_PROVENANCE_ACCNAME = :InputProvenance
 check_input_provenance!!(vi::AbstractVarInfo, value, vn::VarName) = vi
 
 # An indexed or property location can be assignable without having a readable value. The
-# read is guarded in these functions rather than in the model body, because Libtask cannot
+# read is guarded in this function rather than in the model body, because Libtask cannot
 # tape a `try` block and a closure over the left-hand side would box it for the whole model.
-@noinline function read_input_provenance_index(x, inds...)
+@noinline function read_input_provenance(f::F, args...) where {F}
     return try
-        @views x[inds...]
-    catch err
-        err isa InterruptException && rethrow()
-        nothing
-    end
-end
-@noinline function read_input_provenance_property(x, name::Symbol)
-    return try
-        getproperty(x, name)
+        f(args...)
     catch err
         err isa InterruptException && rethrow()
         nothing
@@ -537,9 +529,9 @@ end
 generate_input_provenance_read(left::Symbol) = left
 function generate_input_provenance_read(left::Expr)
     if Meta.isexpr(left, :ref)
-        return :($(DynamicPPL.read_input_provenance_index)($(left.args...)))
+        return :($(DynamicPPL.read_input_provenance)($(Base.maybeview), $(left.args...)))
     elseif Meta.isexpr(left, :.)
-        return :($(DynamicPPL.read_input_provenance_property)($(left.args...)))
+        return :($(DynamicPPL.read_input_provenance)($(getproperty), $(left.args...)))
     else
         error("unreachable")
     end
