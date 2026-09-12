@@ -419,6 +419,21 @@ end
                 end
             end
 
+            @testset "Unset component properties" begin
+                for (template, unset) in (
+                    (CA.ComponentVector(; a="a", b="b"), @varname(x.b)),
+                    (CA.ComponentVector(; a="a", b=["b", "c"]), @varname(x.b[1])),
+                    (CA.ComponentVector(; a="a", b=(; c="c")), @varname(x.b.c)),
+                )
+                    vnt = templated_setindex!!(
+                        VarNamedTuple(), "set", @varname(x.a), template
+                    )
+                    @test haskey(vnt, @varname(x.a))
+                    @test !haskey(vnt, unset)
+                    @test !haskey(vnt, @varname(x[2]))
+                end
+            end
+
             ca = CA.ComponentArray(; a=1.0, b=2.0)
             test_get_set(GetSetTestCase(@varname(x[1]), 1.0, ca, []))
             test_get_set(GetSetTestCase(@varname(x[2]), 2.0, ca, []))
