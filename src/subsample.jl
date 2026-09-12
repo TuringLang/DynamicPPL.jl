@@ -746,7 +746,7 @@ Base.length(::SubsamplingShape) = _throw_full_data_access()
 function VarNamedTuples._haskey_optic(
     data::SubsamplingShape, optic::VarNamedTuples.IndexWithoutChild
 )
-    return checkbounds(Bool, data.data, optic.ix...; optic.kw...)
+    return VarNamedTuples._haskey_optic(data.data, optic)
 end
 function Base.getindex(data::SubsamplingShape, indices...)
     return SubsamplingShape(view(data.data, indices...), data.root)
