@@ -585,13 +585,14 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
                 @test ys_pred_vec[2] ≈ ground_truth_β * xs_test[2] atol = 0.01
             end
 
+            # Normal linreg model
+            multiple_β_chain = MCMCChains.Chains(
+                reshape(rand(Normal(ground_truth_β, 0.002), 1000, 2), 1000, 1, 2),
+                [:β];
+                info=(; varname_to_symbol=Dict(@varname(β) => :β)),
+            )
+
             @testset "prediction from multiple chains" begin
-                # Normal linreg model
-                multiple_β_chain = MCMCChains.Chains(
-                    reshape(rand(Normal(ground_truth_β, 0.002), 1000, 2), 1000, 1, 2),
-                    [:β];
-                    info=(; varname_to_symbol=Dict(@varname(β) => :β)),
-                )
                 predictions = DynamicPPL.predict(m_lin_reg_test, multiple_β_chain)
                 @test size(multiple_β_chain, 3) == size(predictions, 3)
 
@@ -619,6 +620,32 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
                     @test ys_pred_vec[1] ≈ ground_truth_β * xs_test[1] atol = 0.01
                     @test ys_pred_vec[2] ≈ ground_truth_β * xs_test[2] atol = 0.01
                 end
+            end
+
+            @testset "multithreaded" begin
+                mt1 = DynamicPPL.predict(
+                    Xoshiro(468), m_lin_reg_test, β_chain; multithreaded=true
+                )
+                mt2 = DynamicPPL.predict(
+                    Xoshiro(468), m_lin_reg_test, β_chain; multithreaded=true
+                )
+                @test Array(mt1) == Array(mt2)
+                @test Set(keys(mt1)) == Set(keys(predictions))
+                ys_pred = vec(mean(Array(MCMCChains.group(mt1, :y)); dims=1))
+                @test ys_pred[1] ≈ ground_truth_β * xs_test[1] atol = 0.01
+                @test ys_pred[2] ≈ ground_truth_β * xs_test[2] atol = 0.01
+
+                mt3 = DynamicPPL.predict(
+                    Xoshiro(468), m_lin_reg_test, multiple_β_chain; multithreaded=true
+                )
+                @test size(mt3, 3) == size(multiple_β_chain, 3)
+                @test Set(keys(mt3)) == Set(keys(predictions))
+
+                # `RandomDevice` cannot be copied, and only has to supply the seeds.
+                mt4 = DynamicPPL.predict(
+                    Random.RandomDevice(), m_lin_reg_test, β_chain; multithreaded=true
+                )
+                @test Set(keys(mt4)) == Set(keys(predictions))
             end
 
             @testset "predictions with subsetted chain" begin
