@@ -3,6 +3,19 @@ mutable struct TaskId end
 mutable struct TaskAccumulators{L<:AccumulatorTuple}
     task_id::TaskId
     accs::L
+    # Avoid checking the logger on every conversion.
+    conversion_reported::Bool
+end
+
+function Base.setproperty!(task_accs::TaskAccumulators{L}, name::Symbol, value) where {L}
+    if name === :accs && !(value isa L) && !task_accs.conversion_reported
+        @info (
+            "Thread-safe accumulation is converting $(typeof(value)) to $L; this may reduce precision. " *
+            "Use compatible numeric types or setthreadsafe(model, false) to avoid this conversion."
+        ) maxlog = 1
+        setfield!(task_accs, :conversion_reported, true)
+    end
+    return invoke(setproperty!, Tuple{Any,Symbol,Any}, task_accs, name, value)
 end
 
 const _TASK_ID_KEY = Ref{Nothing}(nothing)
@@ -61,7 +74,7 @@ function _get_task_accs(vi::ThreadSafeVarInfo{V,L}) where {V,L}
     if task_accs === nothing || task_accs.task_id !== task_id
         task_accs = lock(vi.accs_lock) do
             get!(vi.accs_by_task, task_id) do
-                TaskAccumulators(task_id, map(split, getaccs(vi.varinfo))::L)
+                TaskAccumulators{L}(task_id, map(split, getaccs(vi.varinfo))::L, false)
             end
         end
         task_accs_cache[Threads.threadid()] = task_accs
@@ -75,35 +88,30 @@ end
 Construct a `ThreadSafeVarInfo` that promotes any accumulators in `varinfo` to their
 versions for use in TSVI.
 
-This method also resets the accumulators' contents.
+This method resets the accumulators and promotes their initial values using the supplied
+parameter type. Numeric types are converted to floating equivalents; empty or unknown
+types leave the initial accumulator types unchanged.
 
-# Extended help
+Each task keeps a concrete accumulator tuple type. Updates are converted to that type;
+conversion may reduce precision, including the precision of AD derivatives. An informational
+message is logged at most once when an update requires conversion. Conversions unsupported
+by Julia still throw. Use compatible numeric types or `setthreadsafe(model, false)` to avoid
+these conversions.
 
-The reason why this is needed in general is to ensure that the function call
-`map_accumulator!!(tsvi::ThreadSafeVarInfo, ...)` does not fail. Suppose first that
-`TaskAccumulators.accs` has a concrete `AccumulatorTuple` type containing a
-`LogLikelihoodAccumulator(::Float64)`.
-
-Now, consider a situation where we evaluate the gradient of the log-probability with
-ForwardDiff. This would cause the wrapped log-likelihood to be promoted to
-`ForwardDiff.Dual`. If there were only one accumulator, this would be fine. However, the
-promoted accumulator cannot be stored in a field whose concrete type contains `Float64`.
-
-This means that *before* model evaluation even begins, the eltype of *all* log-probability
-accumulators must be promoted to `ForwardDiff.Dual`.
-
-For log-probability accumulators, construction of the thread-safe versions therefore
-requires knowledge of `param_eltype`, which is the type of the parameters about to be used
-for model evaluation. See the docstring of `get_param_eltype` for more information about
-this. For accumulators that wrap `VarNamedTuple`s, thread safety is accomplished by removing
-the VNT type parameter from its type.
+For accumulators that wrap `VarNamedTuple`s, thread safety also requires removing the VNT
+type parameter; see [`promote_for_threadsafe_eval`](@ref).
 """
-function ThreadSafeVarInfo(varinfo::AbstractVarInfo, param_eltype::Type{T}) where {T}
-    # The below line is finicky for type stability. For instance, assigning the eltype to
-    # convert to into an intermediate variable makes this unstable (constant propagation
-    # fails). Take care when editing.
+function ThreadSafeVarInfo(varinfo::AbstractVarInfo, ::Type{T}) where {T}
+    # Capturing a runtime type loses accumulator inference on Julia 1.10; use static T.
     accs = map(DynamicPPL.getaccs(varinfo)) do acc
-        DynamicPPL.promote_for_threadsafe_eval(acc, param_eltype)
+        DynamicPPL.promote_for_threadsafe_eval(
+            acc,
+            if T === Any || T === Union{}
+                Any
+            else
+                float_type_with_fallback(T)
+            end,
+        )
     end
     varinfo = DynamicPPL.setaccs!!(varinfo, accs)
     return ThreadSafeVarInfo(resetaccs!!(varinfo))
