@@ -91,15 +91,16 @@ function _haskey_optic(pa::PartialArray, ::AbstractPPL.Iden)
     end
 end
 function _haskey_optic(pa::PartialArray, optic::AbstractPPL.Index)
+    coptic = AbstractPPL.concretize_top_level(optic, pa.data)
     # check the top level Index
-    Base.haskey(pa, optic.ix...; optic.kw...) || return false
+    Base.haskey(pa, coptic.ix...; coptic.kw...) || return false
     # recurse if necessary
     return if optic.child isa AbstractPPL.Iden
         true
-    elseif _is_multiindex(pa, optic.ix...; optic.kw...)
-        _haskey_optic(_subset_partialarray(pa, optic.ix...; optic.kw...), optic.child)
+    elseif _is_multiindex(pa, coptic.ix...; coptic.kw...)
+        _haskey_optic(_subset_partialarray(pa, coptic.ix...; coptic.kw...), optic.child)
     else
-        _haskey_optic(getindex(pa, optic.ix...; optic.kw...), optic.child)
+        _haskey_optic(getindex(pa, coptic.ix...; coptic.kw...), optic.child)
     end
 end
 function _haskey_optic(arr::AbstractArray, optic::IndexWithoutChild)
@@ -108,7 +109,8 @@ function _haskey_optic(arr::AbstractArray, optic::IndexWithoutChild)
     # checkbounds. For example, DimArray can error here:
     # https://github.com/rafaqz/DimensionalData.jl/issues/1156. But that is not our job to fix
     # -- it should be done upstream -- hence we just forward the indices.
-    return checkbounds(Bool, arr, optic.ix...; optic.kw...)
+    coptic = AbstractPPL.concretize_top_level(optic, arr)
+    return checkbounds(Bool, arr, coptic.ix...; coptic.kw...)
 end
 
 """
