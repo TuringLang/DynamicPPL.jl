@@ -1,3 +1,7 @@
+# Unreleased
+
+Removed `NamedDist` and distribution-driven site renaming. Replace `x ~ NamedDist(dist, :y)` with `y ~ dist`, followed by `x = y` if a local alias is needed.
+
 # 0.42.12
 
 `predict` now takes `multithreaded`, which spreads the samples of the chain over threads.
