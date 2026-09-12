@@ -1,3 +1,7 @@
+# Unreleased
+
+Removed `NamedDist` and distribution-driven site renaming. Replace `x ~ NamedDist(dist, :y)` with `y ~ dist`, followed by `x = y` if a local alias is needed.
+
 # 0.42.13
 
 Model bodies no longer contain a `try` block, so Libtask can tape them again.
@@ -5,6 +9,11 @@ Particle samplers such as `SMC`, `PG` and `CSMC` threw while building a `TapedTa
 See [#1487](https://github.com/TuringLang/DynamicPPL.jl/issues/1487).
 
 # 0.42.12
+
+`predict` now takes `multithreaded`, which spreads the samples of the chain over threads.
+Each sample is drawn with its own random number generator, seeded from `rng` before any thread starts, so a given `rng` gives the same predictions whatever the thread count.
+Those predictions differ from the single-threaded ones for that same `rng`, which draws every sample from one stream.
+See [#1170](https://github.com/TuringLang/DynamicPPL.jl/issues/1170).
 
 `check_model` now warns when a latent tilde statement overwrites a value computed from a model input.
 The check runs only when ForwardDiff is loaded and is best effort, so it can miss dependencies through untaken branches, conditions, and code it cannot differentiate.
