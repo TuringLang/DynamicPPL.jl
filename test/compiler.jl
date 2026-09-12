@@ -876,7 +876,7 @@ end
 
     @testset "no try block in a model body" begin
         # Libtask cannot tape a `try` block, so one in a model body breaks every particle
-        # sampler. https://github.com/TuringLang/DynamicPPL.jl/issues/1487
+        # sampler. See #1487
         has_try(::Any) = false
         has_try(e::Expr) = Meta.isexpr(e, :try) || any(has_try, e.args)
 
