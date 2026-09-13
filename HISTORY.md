@@ -1,6 +1,13 @@
-# Unreleased
+# 0.42.13
 
-Removed `NamedDist` and distribution-driven site renaming. Replace `x ~ NamedDist(dist, :y)` with `y ~ dist`, followed by `x = y` if a local alias is needed.
+Model bodies no longer contain a `try` block, so Libtask can tape them again.
+Particle samplers such as `SMC`, `PG` and `CSMC` threw while building a `TapedTask` on 0.42.12, whether or not model checking was enabled.
+See [#1487](https://github.com/TuringLang/DynamicPPL.jl/issues/1487).
+
+## Breaking changes
+
+`NamedDist` and distribution-driven site renaming have been removed.
+Replace `x ~ NamedDist(dist, :y)` with `y ~ dist`, followed by `x = y` if a local alias is needed.
 
 # 0.42.12
 
