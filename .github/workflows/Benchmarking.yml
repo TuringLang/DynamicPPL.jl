@@ -38,6 +38,7 @@ jobs:
           julia --project=. -e 'using Pkg; Pkg.instantiate()'
           julia -e 'using InteractiveUtils; versioninfo()' > version_info.txt
           # `tee` so the table also appears in the workflow log at-a-glance.
+          set -o pipefail
           julia --project=. benchmarks.jl markdown | tee results.md
 
       - uses: actions/upload-artifact@v7
@@ -70,6 +71,7 @@ jobs:
         working-directory: ./benchmarks
         run: |
           julia --project=. -e 'using Pkg; Pkg.instantiate()'
+          set -o pipefail
           julia --project=. benchmarks.jl markdown | tee results.md
 
       - uses: actions/upload-artifact@v7
