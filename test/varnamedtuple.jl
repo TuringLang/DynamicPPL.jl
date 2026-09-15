@@ -180,6 +180,33 @@ function Base.similar(
 end
 
 @testset "VarNamedTuple" begin
+    @testset "dynamic indices into array leaves" begin
+        for x in ([1.0, 2.0], view([1.0, 2.0], :), OA.OffsetArray([1.0, 2.0], 3:4))
+            vnt = VarNamedTuple(; x)
+            @test haskey(vnt, @varname(x[begin]))
+            @test haskey(vnt, @varname(x[end]))
+            @test haskey(vnt, @varname(x[begin:end]))
+            @test !haskey(vnt, @varname(x[begin - 1]))
+            @test !haskey(vnt, @varname(x[end + 1]))
+        end
+        @test haskey(VarNamedTuple(; x=[1.0 2.0; 3.0 4.0]), @varname(x[end, end]))
+    end
+
+    @testset "dynamic indices into partial array leaves" begin
+        template = [0.0, 0.0]
+        partial = DynamicPPL.templated_setindex!!(
+            VarNamedTuple(), 1.0, @varname(x[1]), template
+        )
+        # `x[2]` is still masked, so the last index is absent and retrieval throws.
+        @test haskey(partial, @varname(x[begin]))
+        @test !haskey(partial, @varname(x[end]))
+        @test_throws BoundsError partial[@varname(x[end])]
+
+        filled = DynamicPPL.templated_setindex!!(partial, 2.0, @varname(x[2]), template)
+        @test haskey(filled, @varname(x[end]))
+        @test filled[@varname(x[end])] == 2.0
+    end
+
     @testset "Construction" begin
         vnt1 = VarNamedTuple()
         test_invariants(vnt1)
