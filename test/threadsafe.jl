@@ -43,7 +43,7 @@ end
             vi = @inferred DynamicPPL.ThreadSafeVarInfo(
                 OnlyAccsVarInfo(LogPriorAccumulator()), T
             )
-            @test getlogprior(vi) isa float(T)
+            @test getlogprior(vi) isa promote_type(DynamicPPL.LogProbType, float(T))
         end
         for T in (Any, Union{})
             vi = @inferred DynamicPPL.ThreadSafeVarInfo(
@@ -168,7 +168,8 @@ end
         @test logjoint(model, (; x=Real[2.0f0])) isa Float64
         @test logjoint(model, (; x=Real[big"2.0"])) isa BigFloat
         @model float32_parameter() = x ~ Normal(0.0f0, 1.0f0)
-        @test logjoint(setthreadsafe(float32_parameter(), true), (; x=2.0f0)) isa Float32
+        @test typeof(logjoint(setthreadsafe(float32_parameter(), true), (; x=2.0f0))) ===
+            typeof(logjoint(float32_parameter(), (; x=2.0f0)))
         for T in (Float32, BigFloat)
             @test (@inferred DynamicPPL.get_param_eltype(InitFromParams((; x=T[2])))) === T
         end
