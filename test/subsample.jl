@@ -57,6 +57,21 @@ function independent_problem(model, dataset_size; transform_strategy=UnlinkAll()
 end
 
 @testset "Subsampling" begin
+    @testset "shape membership" begin
+        for data in ([1.0, 2.0], view([1.0, 2.0, 3.0], 2:3))
+            shape = DynamicPPL.SubsamplingShape(data)
+            values = VarNamedTuple(; x=shape)
+            @test haskey(values, @varname(x[begin]))
+            @test haskey(values, @varname(x[end]))
+            @test haskey(values, @varname(x[begin:end]))
+            @test !haskey(values, @varname(x[begin - 1]))
+            @test !haskey(values, @varname(x[end + 1]))
+            for inspect in (size, axes, length)
+                @test_throws ArgumentError inspect(shape)
+            end
+        end
+    end
+
     @testset "full and batched densities" begin
         data = [-2.0, -1.0, 0.5, 3.0]
         model = normal_location() | (x=data,)
