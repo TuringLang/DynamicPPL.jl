@@ -34,8 +34,7 @@ obtain a more specific type where possible.
 
 `InitFromParams` inspects its supplied values, not its fallback strategy. This hint need
 not cover every generated parameter or log-probability contribution. Thread-safe evaluation
-uses it to promote initial accumulators, then converts updates to those fixed types.
-Conversions that may reduce precision emit a rate-limited informational message.
+uses it to promote initial accumulators, which can widen further during evaluation.
 
 This type also determines promotion of model arguments, including type arguments used for
 preallocation. Custom strategies that supply AD tracers should implement this method when

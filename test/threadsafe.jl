@@ -7,7 +7,6 @@ __now__ = now()
 using Distributions
 using DynamicPPL
 using Test
-using Logging: Info, with_logger
 using ForwardDiff
 using Random: Xoshiro
 using LogDensityProblems: logdensity
@@ -70,8 +69,8 @@ const gdemo_default = gdemo_d()
                 )
                 return getlogjoint(vi)
             end
-            @test density(big"2.0") isa Float64
-            @test_throws MethodError ForwardDiff.derivative(density, 2.0)
+            @test density(big"2.0") isa BigFloat
+            @test ForwardDiff.derivative(density, 2.0) ≈ -2.0
         end
         @model fallback() = x ~ Normal(big"0.0", big"1.0")
         _, vi = init!!(
@@ -81,7 +80,7 @@ const gdemo_default = gdemo_d()
             InitFromParams((;)),
             UnlinkAll(),
         )
-        @test getlogprior(vi) isa Float64
+        @test getlogprior(vi) isa BigFloat
         _, vi = init!!(
             Xoshiro(1),
             setthreadsafe(fallback(), true),
@@ -92,7 +91,7 @@ const gdemo_default = gdemo_d()
         @test getlogprior(vi) isa BigFloat
     end
 
-    @testset "contributions use the accumulator types" begin
+    @testset "contributions widen the accumulator types" begin
         @model function observed_parameter(y)
             x ~ Normal()
             Threads.@threads for i in eachindex(y)
@@ -113,10 +112,8 @@ const gdemo_default = gdemo_d()
         for strategy in (InitFromParams((; x=1.0), nothing), InitFromVector([1.0], ldf))
             @test density([2.0, 2.0], strategy) ≈
                 logpdf(Normal(), 1.0) + 2 * logpdf(Normal(1, 1), 2.0)
-            @test density([big"2.0", big"2.0"], strategy) isa Float64
-            @test_throws "Float64" ForwardDiff.derivative(
-                y -> density([y, y], strategy), 2.0
-            )
+            @test density([big"2.0", big"2.0"], strategy) isa BigFloat
+            @test ForwardDiff.derivative(y -> density([y, y], strategy), 2.0) ≈ -2.0
         end
 
         @model function wider_prior()
@@ -133,7 +130,7 @@ const gdemo_default = gdemo_d()
                 strategy,
                 UnlinkAll(),
             )
-            @test getlogprior(vi) isa Float64
+            @test getlogprior(vi) isa BigFloat
             @test getlogprior(vi) ≈
                 logpdf(Normal(), x) + logpdf(Normal(big"0.0", big"1.0"), z)
         end
@@ -157,7 +154,7 @@ const gdemo_default = gdemo_d()
                 -2.0
         end
         @test ForwardDiff.derivative(x -> logdensity(ldf, Real[x]), 2.0) ≈ -2.0
-        @test logjoint(model, (; x=Real[2.0f0])) isa Float32
+        @test logjoint(model, (; x=Real[2.0f0])) isa Float64
         @test logjoint(model, (; x=Real[big"2.0"])) isa BigFloat
         @model float32_parameter() = x ~ Normal(0.0f0, 1.0f0)
         @test logjoint(setthreadsafe(float32_parameter(), true), (; x=2.0f0)) isa Float32
@@ -178,36 +175,32 @@ const gdemo_default = gdemo_d()
             Union{}
     end
 
-    @testset "accumulator conversions report precision loss" begin
+    @testset "task storage preserves widened accumulators" begin
         for x in (1.0, ForwardDiff.Dual(1.0, 1.0))
             vi = DynamicPPL.ThreadSafeVarInfo(
                 OnlyAccsVarInfo(LogPriorAccumulator()), typeof(x)
             )
             contribution = logpdf(Normal(big"0.0", big"1.0"), x)
-            logger = Test.TestLogger(; min_level=Info, respect_maxlog=true)
-            with_logger(logger) do
-                vi = DynamicPPL.acclogprior!!(vi, contribution)
-                vi = DynamicPPL.map_accumulators!!(vi) do acc
-                    DynamicPPL.acclogp(acc, contribution)
-                end
+            vi = DynamicPPL.acclogprior!!(vi, contribution)
+            vi = DynamicPPL.map_accumulators!!(vi) do acc
+                DynamicPPL.acclogp(acc, contribution)
             end
-            @test getlogprior(vi) === 2 * convert(typeof(x), contribution)
-            @test length(logger.logs) == 1
-            @test occursin("this may reduce precision", only(logger.logs).message)
-            @test occursin("BigFloat", only(logger.logs).message)
-            @test occursin("Float64", only(logger.logs).message)
-            @test occursin("setthreadsafe(model, false)", only(logger.logs).message)
+            @test getlogprior(vi) isa typeof(contribution)
+            @test getlogprior(vi) == 2 * contribution
             for rebuilt in (copy(vi), DynamicPPL.setacc!!(vi, LogLikelihoodAccumulator()))
-                @test getlogprior(rebuilt) === getlogprior(vi)
+                @test getlogprior(rebuilt) == getlogprior(vi)
                 rebuilt = DynamicPPL.acclogprior!!(rebuilt, zero(x))
-                @test getlogprior(rebuilt) === getlogprior(vi)
+                @test getlogprior(rebuilt) == getlogprior(vi)
             end
             vi = DynamicPPL.resetaccs!!(vi)
             @test iszero(getlogprior(vi))
+            vi = DynamicPPL.acclogprior!!(vi, contribution)
+            @test getlogprior(vi) == contribution
         end
         vi = DynamicPPL.ThreadSafeVarInfo(OnlyAccsVarInfo(LogPriorAccumulator()))
-        @test_throws MethodError DynamicPPL.acclogprior!!(vi, ForwardDiff.Dual(1.0, 1.0))
-        @test iszero(getlogprior(vi))
+        x = ForwardDiff.Dual(1.0, 1.0)
+        vi = DynamicPPL.acclogprior!!(vi, x)
+        @test getlogprior(vi) === x
     end
 
     @testset "constructor" begin
@@ -248,7 +241,7 @@ const gdemo_default = gdemo_d()
         # float addition might lead to rounding errors so use approx rather than ==
         @test getlogjoint(threadsafe_vi) ≈ lp + 42
 
-        copied_vi = @inferred copy(threadsafe_vi)
+        copied_vi = copy(threadsafe_vi)
         @test isempty(copied_vi.accs_by_task)
         copied_vi = DynamicPPL.acclogprior!!(copied_vi, 1)
         @test getlogjoint(copied_vi) ≈ lp + 43
@@ -264,19 +257,20 @@ const gdemo_default = gdemo_d()
     end
 
     @testset "tasks own accumulator state" begin
-        ntasks = 2
+        contributions = (1.0, big"2.0")
+        ntasks = length(contributions)
         ready = Threads.Atomic{Int}(0)
         release = Threads.Atomic{Bool}(false)
         vi = DynamicPPL.ThreadSafeVarInfo(
             OnlyAccsVarInfo(DynamicPPL.LogLikelihoodAccumulator())
         )
-        tasks = map(1:ntasks) do _
+        tasks = map(contributions) do contribution
             Threads.@spawn DynamicPPL.map_accumulator!!(vi, Val(:LogLikelihood)) do acc
                 Threads.atomic_add!(ready, 1)
                 while !release[]
                     yield()
                 end
-                return DynamicPPL.acclogp(acc, 1.0)
+                return DynamicPPL.acclogp(acc, contribution)
             end
         end
         status = timedwait(() -> ready[] == ntasks, 30; pollint=0.001)
@@ -284,7 +278,9 @@ const gdemo_default = gdemo_d()
         @test status === :ok
         fetch.(tasks)
 
-        @test getloglikelihood(vi) == ntasks
+        @test getloglikelihood(vi) isa BigFloat
+        @test getloglikelihood(vi) == sum(contributions)
+        @test getloglikelihood(copy(vi)) == getloglikelihood(vi)
         @test length(vi.accs_by_task) == ntasks
     end
 

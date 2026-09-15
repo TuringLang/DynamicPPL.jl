@@ -3,19 +3,8 @@ mutable struct TaskId end
 mutable struct TaskAccumulators{L<:AccumulatorTuple}
     task_id::TaskId
     accs::L
-    # Avoid checking the logger on every conversion.
-    conversion_reported::Bool
-end
-
-function Base.setproperty!(task_accs::TaskAccumulators{L}, name::Symbol, value) where {L}
-    if name === :accs && !(value isa L) && !task_accs.conversion_reported
-        @info (
-            "Thread-safe accumulation is converting $(typeof(value)) to $L; this may reduce precision. " *
-            "Use compatible numeric types or setthreadsafe(model, false) to avoid this conversion."
-        ) maxlog = 1
-        setfield!(task_accs, :conversion_reported, true)
-    end
-    return invoke(setproperty!, Tuple{Any,Symbol,Any}, task_accs, name, value)
+    # Once widened, this holds the current state and `accs` is no longer used.
+    widened_accs::Union{Nothing,AccumulatorTuple}
 end
 
 const _TASK_ID_KEY = Ref{Nothing}(nothing)
@@ -74,7 +63,7 @@ function _get_task_accs(vi::ThreadSafeVarInfo{V,L}) where {V,L}
     if task_accs === nothing || task_accs.task_id !== task_id
         task_accs = lock(vi.accs_lock) do
             get!(vi.accs_by_task, task_id) do
-                TaskAccumulators{L}(task_id, map(split, getaccs(vi.varinfo))::L, false)
+                TaskAccumulators{L}(task_id, map(split, getaccs(vi.varinfo))::L, nothing)
             end
         end
         task_accs_cache[Threads.threadid()] = task_accs
@@ -92,11 +81,8 @@ This method resets the accumulators and promotes their initial values using the 
 parameter type. Numeric types are converted to floating equivalents; empty or unknown
 types leave the initial accumulator types unchanged.
 
-Each task keeps a concrete accumulator tuple type. Updates are converted to that type;
-conversion may reduce precision, including the precision of AD derivatives. An informational
-message is logged at most once when an update requires conversion. Conversions unsupported
-by Julia still throw. Use compatible numeric types or `setthreadsafe(model, false)` to avoid
-these conversions.
+Each task can replace its accumulator tuple with a wider type during evaluation, preserving
+contributions from observations, fallback parameters, and AD tracers.
 
 For accumulators that wrap `VarNamedTuple`s, thread safety also requires removing the VNT
 type parameter; see [`promote_for_threadsafe_eval`](@ref).
@@ -135,7 +121,12 @@ function getacc(vi::ThreadSafeVarInfo, accname::Val)
     # only be read after their tasks complete.
     other_accs = lock(vi.accs_lock) do
         map(values(vi.accs_by_task)) do task_accs
-            getacc(task_accs.accs, accname)
+            widened_accs = task_accs.widened_accs
+            if widened_accs === nothing
+                getacc(task_accs.accs, accname)
+            else
+                getacc(widened_accs, accname)
+            end
         end
     end
     return foldl(combine, other_accs; init=main_acc)
@@ -150,25 +141,39 @@ hasacc(vi::ThreadSafeVarInfo, accname::Val) = hasacc(vi.varinfo, accname)
 acckeys(vi::ThreadSafeVarInfo) = acckeys(vi.varinfo)
 
 function getaccs(vi::ThreadSafeVarInfo)
-    # This method is a bit finicky to maintain type stability. For instance, moving the
-    # accname -> Val(accname) part in the main `map` call makes constant propagation fail
-    # and this becomes unstable. Do check the effects if you make edits.
     accnames = acckeys(vi)
     accname_vals = map(Val, accnames)
     return AccumulatorTuple(map(anv -> getacc(vi, anv), accname_vals))
 end
 
+function _map_task_accs!!(func::F, task_accs::TaskAccumulators{L}) where {F,L}
+    widened_accs = task_accs.widened_accs
+    if widened_accs === nothing
+        accs = func(task_accs.accs)
+        if accs isa L
+            task_accs.accs = accs
+        else
+            task_accs.widened_accs = accs
+        end
+    else
+        task_accs.widened_accs = func(widened_accs)
+    end
+    return task_accs
+end
+
 # Calls to map_accumulator(s)!! are task-specific by default. For any use of them that
 # should not be task-specific a specific method has to be written.
 function map_accumulator!!(func::Function, vi::ThreadSafeVarInfo, accname::Val)
-    task_accs = _get_task_accs(vi)
-    task_accs.accs = map_accumulator(func, task_accs.accs, accname)
+    _map_task_accs!!(_get_task_accs(vi)) do accs
+        map_accumulator(func, accs, accname)
+    end
     return vi
 end
 
 function map_accumulators!!(func::Function, vi::ThreadSafeVarInfo)
-    task_accs = _get_task_accs(vi)
-    task_accs.accs = map(func, task_accs.accs)
+    _map_task_accs!!(_get_task_accs(vi)) do accs
+        map(func, accs)
+    end
     return vi
 end
 
