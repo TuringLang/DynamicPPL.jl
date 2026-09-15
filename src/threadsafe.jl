@@ -3,6 +3,8 @@ mutable struct TaskId end
 mutable struct TaskAccumulators{L<:AccumulatorTuple}
     task_id::TaskId
     accs::L
+    # Once widened, this holds the current state and `accs` is no longer used.
+    widened_accs::Union{Nothing,AccumulatorTuple}
 end
 
 const _TASK_ID_KEY = Ref{Nothing}(nothing)
@@ -61,7 +63,7 @@ function _get_task_accs(vi::ThreadSafeVarInfo{V,L}) where {V,L}
     if task_accs === nothing || task_accs.task_id !== task_id
         task_accs = lock(vi.accs_lock) do
             get!(vi.accs_by_task, task_id) do
-                TaskAccumulators(task_id, map(split, getaccs(vi.varinfo))::L)
+                TaskAccumulators{L}(task_id, map(split, getaccs(vi.varinfo))::L, nothing)
             end
         end
         task_accs_cache[Threads.threadid()] = task_accs
@@ -75,35 +77,27 @@ end
 Construct a `ThreadSafeVarInfo` that promotes any accumulators in `varinfo` to their
 versions for use in TSVI.
 
-This method also resets the accumulators' contents.
+This method resets the accumulators and promotes their initial values using the supplied
+parameter type. Numeric types are converted to floating equivalents; empty or unknown
+types leave the initial accumulator types unchanged.
 
-# Extended help
+Each task can replace its accumulator tuple with a wider type during evaluation, preserving
+contributions from observations, fallback parameters, and AD tracers.
 
-The reason why this is needed in general is to ensure that the function call
-`map_accumulator!!(tsvi::ThreadSafeVarInfo, ...)` does not fail. Suppose first that
-`TaskAccumulators.accs` has a concrete `AccumulatorTuple` type containing a
-`LogLikelihoodAccumulator(::Float64)`.
-
-Now, consider a situation where we evaluate the gradient of the log-probability with
-ForwardDiff. This would cause the wrapped log-likelihood to be promoted to
-`ForwardDiff.Dual`. If there were only one accumulator, this would be fine. However, the
-promoted accumulator cannot be stored in a field whose concrete type contains `Float64`.
-
-This means that *before* model evaluation even begins, the eltype of *all* log-probability
-accumulators must be promoted to `ForwardDiff.Dual`.
-
-For log-probability accumulators, construction of the thread-safe versions therefore
-requires knowledge of `param_eltype`, which is the type of the parameters about to be used
-for model evaluation. See the docstring of `get_param_eltype` for more information about
-this. For accumulators that wrap `VarNamedTuple`s, thread safety is accomplished by removing
-the VNT type parameter from its type.
+For accumulators that wrap `VarNamedTuple`s, thread safety also requires removing the VNT
+type parameter; see [`promote_for_threadsafe_eval`](@ref).
 """
-function ThreadSafeVarInfo(varinfo::AbstractVarInfo, param_eltype::Type{T}) where {T}
-    # The below line is finicky for type stability. For instance, assigning the eltype to
-    # convert to into an intermediate variable makes this unstable (constant propagation
-    # fails). Take care when editing.
+function ThreadSafeVarInfo(varinfo::AbstractVarInfo, ::Type{T}) where {T}
+    # Capturing a runtime type loses accumulator inference on Julia 1.10; use static T.
     accs = map(DynamicPPL.getaccs(varinfo)) do acc
-        DynamicPPL.promote_for_threadsafe_eval(acc, param_eltype)
+        DynamicPPL.promote_for_threadsafe_eval(
+            acc,
+            if T === Any || T === Union{}
+                Any
+            else
+                float_type_with_fallback(T)
+            end,
+        )
     end
     varinfo = DynamicPPL.setaccs!!(varinfo, accs)
     return ThreadSafeVarInfo(resetaccs!!(varinfo))
@@ -121,17 +115,32 @@ function is_extracting_colon_eq_values(vi::ThreadSafeVarInfo)
     return is_extracting_colon_eq_values(vi.varinfo)
 end
 
-function getacc(vi::ThreadSafeVarInfo, accname::Val)
-    main_acc = copy(getacc(vi.varinfo, accname))
+function _getaccs(f::F, vi::ThreadSafeVarInfo, accnames::Tuple) where {F}
+    main_accs = map(name -> copy(getacc(vi.varinfo, name)), accnames)
     # Protect dictionary traversal from concurrent registration. Accumulator contents may
     # only be read after their tasks complete.
-    other_accs = lock(vi.accs_lock) do
-        map(values(vi.accs_by_task)) do task_accs
-            getacc(task_accs.accs, accname)
-        end
+    task_accs = lock(vi.accs_lock) do
+        collect(values(vi.accs_by_task))
     end
-    return foldl(combine, other_accs; init=main_acc)
+    # Keep the reduction and result construction inferred when no task has widened.
+    if all(task -> task.widened_accs === nothing, task_accs)
+        accs = foldl(task_accs; init=main_accs) do accs, task
+            map(accs, accnames) do acc, name
+                combine(acc, getacc(task.accs, name))
+            end
+        end
+        return f(accs)
+    else
+        accs = foldl(task_accs; init=main_accs) do accs, task
+            other = task.widened_accs === nothing ? task.accs : task.widened_accs
+            map(accs, accnames) do acc, name
+                combine(acc, getacc(other, name))
+            end
+        end
+        return f(accs)
+    end
 end
+getacc(vi::ThreadSafeVarInfo, accname::Val) = _getaccs(only, vi, (accname,))
 
 function Base.copy(vi::ThreadSafeVarInfo)
     inner_vi = setaccs!!(vi.varinfo, getaccs(vi))
@@ -142,25 +151,39 @@ hasacc(vi::ThreadSafeVarInfo, accname::Val) = hasacc(vi.varinfo, accname)
 acckeys(vi::ThreadSafeVarInfo) = acckeys(vi.varinfo)
 
 function getaccs(vi::ThreadSafeVarInfo)
-    # This method is a bit finicky to maintain type stability. For instance, moving the
-    # accname -> Val(accname) part in the main `map` call makes constant propagation fail
-    # and this becomes unstable. Do check the effects if you make edits.
-    accnames = acckeys(vi)
-    accname_vals = map(Val, accnames)
-    return AccumulatorTuple(map(anv -> getacc(vi, anv), accname_vals))
+    return _getaccs(vi, map(Val, acckeys(vi))) do accs
+        AccumulatorTuple(accs)
+    end
+end
+
+function _map_task_accs!!(func::F, task_accs::TaskAccumulators{L}) where {F,L}
+    widened_accs = task_accs.widened_accs
+    if widened_accs === nothing
+        accs = func(task_accs.accs)
+        if accs isa L
+            task_accs.accs = accs
+        else
+            task_accs.widened_accs = accs
+        end
+    else
+        task_accs.widened_accs = func(widened_accs)
+    end
+    return task_accs
 end
 
 # Calls to map_accumulator(s)!! are task-specific by default. For any use of them that
 # should not be task-specific a specific method has to be written.
 function map_accumulator!!(func::Function, vi::ThreadSafeVarInfo, accname::Val)
-    task_accs = _get_task_accs(vi)
-    task_accs.accs = map_accumulator(func, task_accs.accs, accname)
+    _map_task_accs!!(_get_task_accs(vi)) do accs
+        map_accumulator(func, accs, accname)
+    end
     return vi
 end
 
 function map_accumulators!!(func::Function, vi::ThreadSafeVarInfo)
-    task_accs = _get_task_accs(vi)
-    task_accs.accs = map(func, task_accs.accs)
+    _map_task_accs!!(_get_task_accs(vi)) do accs
+        map(func, accs)
+    end
     return vi
 end
 
