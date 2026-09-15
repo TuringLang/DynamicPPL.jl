@@ -1,4 +1,5 @@
 using ADTypes: ADTypes
+using Distributed: addprocs, remotecall_fetch, rmprocs, workers
 using Distributions:
     Categorical,
     Dirichlet,
@@ -340,20 +341,39 @@ function run(; markdown::Bool=false)
     combinations = build_combinations(StableRNG(23))
     total = length(combinations)
     results = []
-    for (i, (name, model, adbackend, islinked)) in enumerate(combinations)
-        # Mooncake-style header: index/total, then model + config, then backend.
-        @info "$i / $total", name, (; linked=islinked)
-        @info adbackend
-        dim, t_logd, ratio = try
-            r = benchmark(model, adbackend, islinked)
-            @info "  t(logdensity) = $(format_time(r.primal_time))"
-            @info "  t(grad)       = $(format_time(r.grad_time))"
-            (length(r.params), r.primal_time, r.grad_time / r.primal_time)
-        catch e
-            @info "  errored: $(sprint(showerror, e))"
-            (model_dimension(model, islinked), missing, missing)
+    worker = 0
+    try
+        for (i, (name, model, adbackend, islinked)) in enumerate(combinations)
+            if worker ∉ workers()
+                # Reuse the project and worker; restart only after a process crash.
+                worker = only(
+                    addprocs(1; exeflags=`--project=$(dirname(Base.active_project()))`)
+                )
+                remotecall_fetch(include, worker, @__FILE__)
+            end
+            # Mooncake-style header: index/total, then model + config, then backend.
+            @info "$i / $total", name, (; linked=islinked)
+            @info adbackend
+            dim, t_logd, ratio = try
+                dim, primal_time, grad_time = remotecall_fetch(
+                    worker, model, adbackend, islinked
+                ) do model, adbackend, islinked
+                    r = benchmark(model, adbackend, islinked)
+                    (length(r.params), r.primal_time, r.grad_time)
+                end
+                @info "  t(logdensity) = $(format_time(primal_time))"
+                @info "  t(grad)       = $(format_time(grad_time))"
+                (dim, primal_time, grad_time / primal_time)
+            catch e
+                @info "  errored: $(sprint(showerror, e))"
+                (model_dimension(model, islinked), missing, missing)
+            end
+            push!(
+                results, (; name, dim, adbackend=string(adbackend), islinked, t_logd, ratio)
+            )
         end
-        push!(results, (; name, dim, adbackend=string(adbackend), islinked, t_logd, ratio))
+    finally
+        worker ∈ workers() && rmprocs(worker)
     end
     if markdown
         println("```")
