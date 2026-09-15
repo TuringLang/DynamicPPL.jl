@@ -381,6 +381,18 @@ end
         @test getlogjoint(varinfo) == lp
     end
 
+    @testset "tilde names follow the left-hand side" begin
+        @model function named_site()
+            y ~ Normal()
+            x = y
+            return x
+        end
+        @test only(keys(rand(named_site()))) == @varname(y)
+        observed = condition(named_site(); y=2.0)
+        @test observed() == 2.0
+        @test loglikelihood(observed, VarNamedTuple()) == logpdf(Normal(), 2.0)
+    end
+
     @testset "custom tilde" begin
         @model demo() = begin
             $(@custom m ~ Normal())
@@ -863,6 +875,43 @@ end
             end
         end
         @test_logs (:warn, r"threadsafe evaluation") eval(e3)
+    end
+
+    @testset "no try block in a model body" begin
+        # Libtask cannot tape a `try` block, so one in a model body breaks every particle
+        # sampler. See #1487
+        has_try(::Any) = false
+        has_try(e::Expr) = Meta.isexpr(e, :try) || any(has_try, e.args)
+
+        expr = @macroexpand @model function tilde_lhs_forms(y, s)
+            a ~ Normal()
+            b = [exp(y), exp(y)]
+            b[1] ~ Normal()
+            s.x ~ Normal()
+            return b .~ Normal()
+        end
+        @test !has_try(expr)
+    end
+
+    @testset "guarded provenance read" begin
+        read = DynamicPPL.read_input_provenance
+        v = [1.0, 2.0, 3.0]
+        # A scalar index stays a scalar and a range becomes a view, as `@views` would give.
+        @test read(Base.maybeview, v, 2) === 2.0
+        @test read(Base.maybeview, v, 1:2) isa SubArray
+        # An unreadable location is reported as absent rather than throwing.
+        @test read(Base.maybeview, v, 9) === nothing
+        @test read(Base.maybeview, Vector{Vector{Float64}}(undef, 2), 1) === nothing
+        @test read(getproperty, (; a=1.0), :zzz) === nothing
+        # A property that only an overloaded `getproperty` can reach is still read, which
+        # an `isdefined` guard would have missed.
+        struct OnlyOverloaded
+            d::Dict{Symbol,Float64}
+        end
+        Base.getproperty(o::OnlyOverloaded, s::Symbol) = getfield(o, :d)[s]
+        o = OnlyOverloaded(Dict(:x => 1.5))
+        @test !isdefined(o, :x)
+        @test read(getproperty, o, :x) === 1.5
     end
 
     @testset "Immutable data as model arguments" begin

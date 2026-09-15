@@ -1,12 +1,14 @@
 # Unreleased
 
-Fixed type inference for thread-safe accumulator promotion on Julia 1.10: integer parameters, such as `x=1` for `x ~ Bernoulli(0.3)`, now select floating-point log-density storage with an inferable type.
+`VarNamedTuple` membership resolves `begin` and `end` against the stored array. See [#1490](https://github.com/TuringLang/DynamicPPL.jl/pull/1490).
+
+`ComponentVector` properties, including nested fields and slices, use consistent indices for membership, retrieval, and updates. See [#1491](https://github.com/TuringLang/DynamicPPL.jl/pull/1491).
+
+Fixed type inference for thread-safe accumulator promotion on Julia 1.10: integer parameters, such as `x=1` for `x ~ Bernoulli(0.3)`, now select floating-point log-density storage with an inferable type. Related: [#1493](https://github.com/TuringLang/DynamicPPL.jl/pull/1493).
 
 Indexed submodels keep child bindings local: `x[i] ~ to_submodel(child(y[i]))` no longer allocates an entire `x`-sized binding array for each child. Parent overrides, prefixes, and output templates are preserved.
 
 `LogDensityFunction(model; rng)` uses the supplied RNG for construction and evaluation. Inside a model, `rand(__context__.rng, ...)` advances it; ordinary `~` sites read the parameter vector during density evaluation. Stochastic densities still require inference and AD methods that support them. See [#721](https://github.com/TuringLang/DynamicPPL.jl/issues/721).
-
-Removed `NamedDist` and distribution-driven site renaming. Replace `x ~ NamedDist(Normal(), :y)` with `y ~ Normal(); x = y`. The stochastic variable is `y`; `x` is a local alias.
 
 Arguments supply default observations: for `@model f(x) = x ~ Normal()`, `f(2.0)` observes 2.0. `decondition(f(2.0), :x)` makes `x` latent; `condition(f(2.0); x=3.0)` replaces the observation. Complete replacements are available before the body runs; later statements use the computed or sampled value.
 
@@ -30,7 +32,24 @@ Submodel traces preserve parent templates: with 2×2 `a`, calls at `a[1]` and `a
 
 For `a ~ to_submodel(child())`, where `child` samples `x ~ Normal()` and returns `2x`, condition `@varname(a.x)` to 1, yielding 2. Conditioning `a` errors: it names the return value, not a stochastic variable. If argument `a` only provides return-value storage, use `decondition(parent(buffer), :a)`.
 
+# 0.42.13
+
+Model bodies no longer contain a `try` block, so Libtask can tape them again.
+Particle samplers such as `SMC`, `PG` and `CSMC` threw while building a `TapedTask` on 0.42.12, whether or not model checking was enabled.
+See [#1487](https://github.com/TuringLang/DynamicPPL.jl/issues/1487).
+
+## Breaking changes
+
+`NamedDist` and distribution-driven site renaming have been removed.
+Replace `x ~ NamedDist(dist, :y)` with `y ~ dist`, followed by `x = y` if a local alias is needed.
+See [#1492](https://github.com/TuringLang/DynamicPPL.jl/pull/1492).
+
 # 0.42.12
+
+`predict` now takes `multithreaded`, which spreads the samples of the chain over threads.
+Each sample is drawn with its own random number generator, seeded from `rng` before any thread starts, so a given `rng` gives the same predictions whatever the thread count.
+Those predictions differ from the single-threaded ones for that same `rng`, which draws every sample from one stream.
+See [#1170](https://github.com/TuringLang/DynamicPPL.jl/issues/1170).
 
 `check_model` now warns when a latent tilde statement overwrites a value computed from a model input.
 The check runs only when ForwardDiff is loaded and is best effort, so it can miss dependencies through untaken branches, conditions, and code it cannot differentiate.

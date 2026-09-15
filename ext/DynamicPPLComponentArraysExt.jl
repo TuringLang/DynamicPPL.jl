@@ -15,8 +15,22 @@ using AbstractPPL
 function _property_to_index(
     template::ComponentVector, optic::AbstractPPL.Property{S}
 ) where {S}
-    indices = ComponentVector(LinearIndices(template), ComponentArrays.getaxes(template))
-    return AbstractPPL.Index((optic(indices),), NamedTuple(), AbstractPPL.Iden())
+    indices = ComponentVector(
+        LinearIndices(ComponentArrays.getdata(template)), ComponentArrays.getaxes(template)
+    )
+    return AbstractPPL.Index(
+        (_resolve_indices(optic, indices),), NamedTuple(), AbstractPPL.Iden()
+    )
+end
+
+# Resolve child indices against unwrapped storage to avoid ComponentArrays'
+# range-indexing ambiguity.
+_resolve_indices(::AbstractPPL.Iden, indices) = indices
+function _resolve_indices(optic::AbstractPPL.Property{S}, indices) where {S}
+    return _resolve_indices(optic.child, getproperty(indices, S))
+end
+function _resolve_indices(optic::AbstractPPL.AbstractOptic, indices)
+    return optic(ComponentArrays.getdata(indices))
 end
 
 function DynamicPPL.VarNamedTuples.make_leaf(
@@ -46,7 +60,10 @@ end
 function DynamicPPL.VarNamedTuples._haskey_optic(
     pa::PartialArray{<:Any,<:Any,<:ComponentVector}, optic::AbstractPPL.Property{S}
 ) where {S}
-    AbstractPPL.canview(optic, pa.data) || return false
+    indices = ComponentVector(
+        LinearIndices(ComponentArrays.getdata(pa.data)), ComponentArrays.getaxes(pa.data)
+    )
+    AbstractPPL.canview(optic, indices) || return false
     return _haskey_optic(pa, _property_to_index(pa.data, optic))
 end
 
