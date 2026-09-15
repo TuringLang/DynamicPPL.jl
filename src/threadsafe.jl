@@ -115,22 +115,32 @@ function is_extracting_colon_eq_values(vi::ThreadSafeVarInfo)
     return is_extracting_colon_eq_values(vi.varinfo)
 end
 
-function getacc(vi::ThreadSafeVarInfo, accname::Val)
-    main_acc = copy(getacc(vi.varinfo, accname))
+function _getaccs(f::F, vi::ThreadSafeVarInfo, accnames::Tuple) where {F}
+    main_accs = map(name -> copy(getacc(vi.varinfo, name)), accnames)
     # Protect dictionary traversal from concurrent registration. Accumulator contents may
     # only be read after their tasks complete.
-    other_accs = lock(vi.accs_lock) do
-        map(values(vi.accs_by_task)) do task_accs
-            widened_accs = task_accs.widened_accs
-            if widened_accs === nothing
-                getacc(task_accs.accs, accname)
-            else
-                getacc(widened_accs, accname)
+    task_accs = lock(vi.accs_lock) do
+        collect(values(vi.accs_by_task))
+    end
+    # Keep the reduction and result construction inferred when no task has widened.
+    if all(task -> task.widened_accs === nothing, task_accs)
+        accs = foldl(task_accs; init=main_accs) do accs, task
+            map(accs, accnames) do acc, name
+                combine(acc, getacc(task.accs, name))
             end
         end
+        return f(accs)
+    else
+        accs = foldl(task_accs; init=main_accs) do accs, task
+            other = task.widened_accs === nothing ? task.accs : task.widened_accs
+            map(accs, accnames) do acc, name
+                combine(acc, getacc(other, name))
+            end
+        end
+        return f(accs)
     end
-    return foldl(combine, other_accs; init=main_acc)
 end
+getacc(vi::ThreadSafeVarInfo, accname::Val) = _getaccs(only, vi, (accname,))
 
 function Base.copy(vi::ThreadSafeVarInfo)
     inner_vi = setaccs!!(vi.varinfo, getaccs(vi))
@@ -141,9 +151,9 @@ hasacc(vi::ThreadSafeVarInfo, accname::Val) = hasacc(vi.varinfo, accname)
 acckeys(vi::ThreadSafeVarInfo) = acckeys(vi.varinfo)
 
 function getaccs(vi::ThreadSafeVarInfo)
-    accnames = acckeys(vi)
-    accname_vals = map(Val, accnames)
-    return AccumulatorTuple(map(anv -> getacc(vi, anv), accname_vals))
+    return _getaccs(vi, map(Val, acckeys(vi))) do accs
+        AccumulatorTuple(accs)
+    end
 end
 
 function _map_task_accs!!(func::F, task_accs::TaskAccumulators{L}) where {F,L}

@@ -24,6 +24,17 @@ const gdemo_default = gdemo_d()
 @model continuous_parameter() = x ~ Normal()
 @model observation_only() = 0.0 ~ Normal()
 
+struct CombineCallbackAccumulator{F} <: DynamicPPL.AbstractAccumulator
+    f::F
+end
+DynamicPPL.accumulator_name(::CombineCallbackAccumulator) = :CombineCallback
+Base.copy(acc::CombineCallbackAccumulator) = acc
+DynamicPPL.split(acc::CombineCallbackAccumulator) = acc
+function DynamicPPL.combine(acc::CombineCallbackAccumulator, ::CombineCallbackAccumulator)
+    acc.f()
+    return acc
+end
+
 @testset "threadsafe.jl" begin
     @testset "parameter types permit floating-point accumulation" begin
         for T in (
@@ -304,6 +315,24 @@ const gdemo_default = gdemo_d()
         copied_vi = copy(vi)
         @test DynamicPPL.get_vector_params(copied_vi) == [1.0, 2.0]
         @test DynamicPPL.getacc(vi, accname).vals == [1.0, 2.0]
+    end
+
+    @testset "combine runs outside the registry lock" begin
+        for widened in (false, true)
+            lock_available = Bool[]
+            callback() = push!(lock_available, fetch(Threads.@spawn begin
+                acquired = trylock(vi.accs_lock)
+                acquired && unlock(vi.accs_lock)
+                acquired
+            end))
+            vi = DynamicPPL.ThreadSafeVarInfo(
+                OnlyAccsVarInfo(LogPriorAccumulator(), CombineCallbackAccumulator(callback))
+            )
+            vi = DynamicPPL.acclogprior!!(vi, widened ? big"1.0" : 1.0)
+            DynamicPPL.getacc(vi, Val(:CombineCallback))
+            DynamicPPL.getaccs(vi)
+            @test lock_available == [true, true]
+        end
     end
 
     @testset "colon-eq extraction during threaded evaluation" begin
