@@ -65,6 +65,19 @@ using Test: @test, @test_logs, @testset
         derived_index(1.0)
     )
 
+    @model function derived_dynamic_indices(y)
+        x = exp.([y, y])
+        x[begin] ~ Normal()
+        x[end] ~ Normal()
+        z = exp(y)
+        return z ~ Normal()
+    end
+    @test_logs (:warn, r"Variable x.*derived from a model input") (
+        :warn, r"Variable x.*derived from a model input"
+    ) (:warn, r"Variable z.*derived from a model input") check_model(
+        derived_dynamic_indices(1.0)
+    )
+
     @model function derived_property(y)
         state = (; x=exp(y))
         return state.x ~ Normal()

@@ -428,18 +428,6 @@ check_input_provenance!!(vi::AbstractVarInfo, value, vn::VarName) = vi
     end
 end
 
-# A bare symbol is already covered by the `isdefined` guard on the check itself.
-generate_input_provenance_read(left::Symbol) = left
-function generate_input_provenance_read(left::Expr)
-    if Meta.isexpr(left, :ref)
-        return :($(DynamicPPL.read_input_provenance)($(Base.maybeview), $(left.args...)))
-    elseif Meta.isexpr(left, :.)
-        return :($(DynamicPPL.read_input_provenance)($(getproperty), $(left.args...)))
-    else
-        error("unreachable")
-    end
-end
-
 generate_input_provenance_check(::Any, ::Any) = nothing
 function generate_input_provenance_check(left::Union{Expr,Symbol}, vn)
     @gensym value
@@ -448,7 +436,9 @@ function generate_input_provenance_check(left::Union{Expr,Symbol}, vn)
     return quote
         if $(DynamicPPL.hasacc)(__varinfo__, $(Val(INPUT_PROVENANCE_ACCNAME))) &&
             $(Expr(:isdefined, top_symbol))
-            $value = $(generate_input_provenance_read(left))
+            $value = $(DynamicPPL.read_input_provenance)(
+                $(AbstractPPL.getoptic)($vn), $top_symbol
+            )
             __varinfo__ = $(DynamicPPL.check_input_provenance!!)(
                 __varinfo__, $value, $(DynamicPPL.maybe_prefix)($vn, __model__.prefix)
             )

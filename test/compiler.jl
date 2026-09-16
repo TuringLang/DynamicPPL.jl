@@ -6,6 +6,7 @@ __now__ = now()
 
 using Distributions
 using DynamicPPL
+using AbstractPPL: getoptic
 using ForwardDiff: ForwardDiff
 using LinearAlgebra: I
 # Loads the renderer used by the docstring test.
@@ -886,7 +887,7 @@ end
         expr = @macroexpand @model function tilde_lhs_forms(y, s)
             a ~ Normal()
             b = [exp(y), exp(y)]
-            b[1] ~ Normal()
+            b[end] ~ Normal()
             s.x ~ Normal()
             return b .~ Normal()
         end
@@ -894,15 +895,15 @@ end
     end
 
     @testset "guarded provenance read" begin
-        read = DynamicPPL.read_input_provenance
+        read(vn, value) = DynamicPPL.read_input_provenance(getoptic(vn), value)
         v = [1.0, 2.0, 3.0]
-        # A scalar index stays a scalar and a range becomes a view, as `@views` would give.
-        @test read(Base.maybeview, v, 2) === 2.0
-        @test read(Base.maybeview, v, 1:2) isa SubArray
+        @test read(@varname(x[2]), v) === 2.0
+        @test read(@varname(x[begin:end]), v) == v
+        @test read(@varname(x.a[end]), (; a=v)) === 3.0
         # An unreadable location is reported as absent rather than throwing.
-        @test read(Base.maybeview, v, 9) === nothing
-        @test read(Base.maybeview, Vector{Vector{Float64}}(undef, 2), 1) === nothing
-        @test read(getproperty, (; a=1.0), :zzz) === nothing
+        @test read(@varname(x[9]), v) === nothing
+        @test read(@varname(x[1]), Vector{Vector{Float64}}(undef, 2)) === nothing
+        @test read(@varname(x.zzz), (; a=1.0)) === nothing
         # A property that only an overloaded `getproperty` can reach is still read, which
         # an `isdefined` guard would have missed.
         struct OnlyOverloaded
@@ -911,7 +912,7 @@ end
         Base.getproperty(o::OnlyOverloaded, s::Symbol) = getfield(o, :d)[s]
         o = OnlyOverloaded(Dict(:x => 1.5))
         @test !isdefined(o, :x)
-        @test read(getproperty, o, :x) === 1.5
+        @test read(@varname(o.x), o) === 1.5
     end
 
     @testset "Immutable data as model arguments" begin
