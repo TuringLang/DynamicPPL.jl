@@ -27,40 +27,22 @@ function init end
 """
     DynamicPPL.get_param_eltype(strategy::AbstractInitStrategy)
 
-Return the element type of the parameters generated from the given initialisation strategy.
+Return a numeric type hint for the parameters supplied by `strategy`.
 
-The default implementation returns `Any`. However, for `InitFromParams` which provides known
-parameters for evaluating the model, methods are sometimes implemented in order to return
-more specific types.
+The default is `Any`. `InitFromParams` and `InitFromVector` inspect supplied values to
+obtain a more specific type where possible.
 
-In general, if you are implementing a custom `AbstractInitStrategy`, correct behaviour can
-only be guaranteed if you implement this method as well. However, quite often, the default
-return value of `Any` will actually suffice. The cases where this does *not* suffice, and
-where you _do_ have to manually implement `get_param_eltype`, are explained in the extended
-help (see `??DynamicPPL.get_param_eltype` in the REPL).
+`InitFromParams` inspects its supplied values, not its fallback strategy. This hint need
+not cover every generated parameter or log-probability contribution. Thread-safe evaluation
+uses it to promote initial accumulators, which can widen further during evaluation.
 
-# Extended help
+This type also determines promotion of model arguments, including type arguments used for
+preallocation. Custom strategies that supply AD tracers should implement this method when
+model code directly assigns tracers into preallocated arrays. Tilde assignments already
+permit promotion through `Accessors.set`.
 
-There are a few edge cases in DynamicPPL where the element type is needed. These largely
-relate to determining the element type of accumulators ahead of time (_before_ evaluation),
-as well as promoting type parameters in model arguments. The classic case is when evaluating
-a model with ForwardDiff: the log-probability accumulators must be promoted to contain
-`Dual`s, and any `Vector{Float64}` arguments must be promoted to `Vector{Dual}`. Other
-tracer types, for example those in SparseConnectivityTracer.jl, also require similar
-treatment.
-
-For thread-safe evaluation, returning `Any` allows accumulator types to widen at runtime,
-which costs type stability. Implement `get_param_eltype` to keep their storage concrete.
-Non-threadsafe evaluation permits widening in either case.
-
-Argument promotion only matters if you are trying to directly assign into a
-`Vector{Float64}` with a `ForwardDiff.Dual` or similar tracer type, for example using
-`xs[i] = MyDual`. This doesn't actually apply to tilde-statements like `xs[i] ~ ...`
-because those use `Accessors.set` under the hood, which also does the promotion for you.
-For the gory details, see the following issues:
-
-- https://github.com/TuringLang/DynamicPPL.jl/issues/906 for accumulator types
-- https://github.com/TuringLang/DynamicPPL.jl/issues/823 for type argument promotion
+See https://github.com/TuringLang/DynamicPPL.jl/issues/906 for accumulator types and
+https://github.com/TuringLang/DynamicPPL.jl/issues/823 for type argument promotion.
 """
 get_param_eltype(::AbstractInitStrategy) = Any
 

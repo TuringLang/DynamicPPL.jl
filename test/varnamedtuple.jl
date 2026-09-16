@@ -184,9 +184,9 @@ end
             @test haskey(vnt, @varname(x[begin]))
             @test haskey(vnt, @varname(x[end]))
             @test haskey(vnt, @varname(x[begin:end]))
-            @test vnt[@varname(x[begin:end])] == x[begin:end]
             @test !haskey(vnt, @varname(x[begin - 1]))
             @test !haskey(vnt, @varname(x[end + 1]))
+            @test vnt[@varname(x[begin:end])] == [1.0, 2.0]
         end
         @test haskey(VarNamedTuple(; x=[1.0 2.0; 3.0 4.0]), @varname(x[end, end]))
     end

@@ -15,11 +15,17 @@ using AbstractPPL
 function _property_to_index(
     template::ComponentVector, optic::AbstractPPL.Property{S}
 ) where {S}
-    indices = ComponentVector(
-        LinearIndices(ComponentArrays.getdata(template)), ComponentArrays.getaxes(template)
-    )
+    indices = _index_vector(template)
     return AbstractPPL.Index(
         (_resolve_indices(optic, indices),), NamedTuple(), AbstractPPL.Iden()
+    )
+end
+
+# A ComponentVector of the template's linear indices. Structural checks run against this
+# rather than against the stored data, which is only partially initialised.
+function _index_vector(template::ComponentVector)
+    return ComponentVector(
+        LinearIndices(ComponentArrays.getdata(template)), ComponentArrays.getaxes(template)
     )
 end
 
@@ -60,24 +66,21 @@ end
 function DynamicPPL.VarNamedTuples._haskey_optic(
     pa::PartialArray{<:Any,<:Any,<:ComponentVector}, optic::AbstractPPL.Property{S}
 ) where {S}
-    indices = ComponentVector(
-        LinearIndices(ComponentArrays.getdata(pa.data)), ComponentArrays.getaxes(pa.data)
-    )
-    AbstractPPL.canview(optic, indices) || return false
+    AbstractPPL.canview(optic, _index_vector(pa.data)) || return false
     return _haskey_optic(pa, _property_to_index(pa.data, optic))
 end
 
 function DynamicPPL._model_role_at(
     pa::PartialArray{<:Any,<:Any,<:ComponentVector}, optic::AbstractPPL.Property, vn
 )
-    AbstractPPL.canview(optic, pa.data) || return nothing
+    AbstractPPL.canview(optic, _index_vector(pa.data)) || return nothing
     return DynamicPPL._model_role_at(pa, _property_to_index(pa.data, optic), vn)
 end
 
 function DynamicPPL._model_argument_binding(
     pa::PartialArray{<:Any,<:Any,<:ComponentVector}, optic::AbstractPPL.Property
 )
-    AbstractPPL.canview(optic, pa.data) || return nothing
+    AbstractPPL.canview(optic, _index_vector(pa.data)) || return nothing
     return DynamicPPL._model_argument_binding(pa, _property_to_index(pa.data, optic))
 end
 
