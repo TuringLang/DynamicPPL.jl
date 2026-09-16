@@ -150,8 +150,10 @@ RNG control does not make stochastic densities suitable for ordinary HMC or NUTS
 which require a deterministic target. AD backends may evaluate a model multiple times
 for one gradient, drawing different values, or replay a compiled tape without drawing
 again. RNG consumption therefore depends on the backend, and gradients may not
-correspond to a single realisation. For deterministic inference, select random data
-or other auxiliary randomness outside density evaluation and supply it to the model.
+correspond to a single realisation. Random operations also need backend support;
+passing an RNG does not supply missing differentiation rules. For deterministic
+inference, select random data or other auxiliary randomness outside density evaluation
+and supply it to the model.
 
 ## Is `LogDensityFunction` less powerful than model evaluation?
 
