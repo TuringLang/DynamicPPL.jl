@@ -853,7 +853,11 @@ function build_output(
 
     # Add the internal arguments to the user-specified arguments (positional + keywords).
     evaluatordef[:args] = vcat(
-        [:(__model__::$(DynamicPPL.Model)), :(__varinfo__::$(DynamicPPL.AbstractVarInfo))],
+        [
+            :(__model__::$(DynamicPPL.Model)),
+            :(__context__::$(DynamicPPL.Context)),
+            :(__varinfo__::$(DynamicPPL.AbstractVarInfo)),
+        ],
         args,
     )
 
@@ -867,7 +871,6 @@ function build_output(
     # See the docstrings of `replace_returns` for more info.
     evaluatordef[:body] = MacroTools.@q begin
         $(linenumbernode)
-        __context__ = __model__.context
         __context__ = $(DynamicPPL._record_binding_read)(
             __context__, __model__, nothing, $(NoTemplate)()
         )
@@ -924,12 +927,13 @@ function build_output(
         # Pass prepared keywords positionally so applicability checks their types too.
         definition[:kwargs] = []
         definition[:args] = vcat(
-            definition[:args][1:2],
+            definition[:args][1:3],
             [MacroTools.combinearg(n, t, false, nothing) for (n, t, _, _) in kwargs_split],
             args,
         )
         callargs = Any[
             :__model__,
+            :__context__,
             :__varinfo__,
             [
                 is_splat ? :($(Base.pairs)($(NamedTuple)($n))) : n for
@@ -1005,8 +1009,7 @@ function build_output(
         return $(DynamicPPL.Model){false}(
             $name,
             $args_nt,
-            $kwargs_nt,
-            $(DynamicPPL.DefaultContext)();
+            $kwargs_nt;
             args_on_lhs=$(ModelBindingMetadata){
                 $(QuoteNode(Tuple(args_on_lhs))),
                 $(QuoteNode(Tuple(unique(lhs_names)))),
@@ -1129,7 +1132,7 @@ convert_model_argument(::Type{Any}, t::TypeWrap{T}) where {T} = t
 
 convert_model_argument(varinfo, context, argument) = convert_model_argument(Any, argument)
 function convert_model_argument(varinfo, context, argument::Union{Type,TypeWrap})
-    return convert_model_argument(get_param_eltype(varinfo, context), argument)
+    return convert_model_argument(get_param_eltype(context), argument)
 end
 
 """

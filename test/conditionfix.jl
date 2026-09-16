@@ -2902,7 +2902,7 @@ end
         parent = fix(decondition(parent, @varname(child.x.a)), @varname(child.x.a) => 3.0)
         result, _ = @inferred evaluate!!(
             parent,
-            InitContext(
+            Context(
                 InitFromParams(VarNamedTuple(), nothing),
                 DynamicPPL.infer_transform_strategy_from_values(VarNamedTuple()),
             ),

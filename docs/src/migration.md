@@ -18,10 +18,12 @@ to set a prefix and `DynamicPPL.getprefix(model)` to read the combined prefix
 Replace `prefix(ctx, vn)` with
 `AbstractPPL.prefix(vn, DynamicPPL.getprefix(model))` for a prefixed model.
 
-To reuse previous values, extract them explicitly before evaluating:
+Replace `InitContext` with `Context`. `DefaultContext` and context subtyping are removed:
+custom value selection belongs in initialisation strategies. To reuse previous values,
+extract them explicitly before evaluating:
 
 ```julia
-context = InitContext(rng, InitFromParams(get_vector_values(previous), nothing), LinkAll())
+context = Context(rng, InitFromParams(get_vector_values(previous), nothing), LinkAll())
 retval, outputs = evaluate!!(model, context, VarInfo())
 ```
 
