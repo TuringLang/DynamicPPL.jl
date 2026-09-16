@@ -27,6 +27,7 @@ Argument observations have lowest precedence; later operations replace value and
 Submodel traces preserve parent templates: with 2×2 `a`, calls at `a[1]` and `a[2,2]` retain a 2×2 trace container, while a child’s 2×3 `x` retains its own shape. This addresses template loss in [#1221](https://github.com/TuringLang/DynamicPPL.jl/issues/1221); independent submodel evaluation remains unimplemented.
 
 For `a ~ to_submodel(child())`, where `child` samples `x ~ Normal()` and returns `2x`, condition `@varname(a.x)` to 1, yielding 2. Conditioning `a` errors: it names the return value, not a stochastic variable. If argument `a` only provides return-value storage, use `decondition(parent(buffer), :a)`.
+
 # 0.42.13
 
 Model bodies no longer contain a `try` block, so Libtask can tape them again.

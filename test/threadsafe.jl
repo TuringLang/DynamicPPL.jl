@@ -43,9 +43,7 @@ end
         for T in (
             Int, Bool, Rational{Int}, Float32, BigFloat, ForwardDiff.Dual{Nothing,Float64,1}
         )
-            vi = @inferred DynamicPPL.ThreadSafeVarInfo(
-                VarInfo(LogPriorAccumulator()), T
-            )
+            vi = @inferred DynamicPPL.ThreadSafeVarInfo(VarInfo(LogPriorAccumulator()), T)
             @test getlogprior(vi) isa promote_type(DynamicPPL.LogProbType, float(T))
         end
         for T in (Any, Union{})
@@ -178,7 +176,7 @@ end
         end
         dual = ForwardDiff.Dual(2.0, 1.0)
         wrapped = VarNamedTuple(; x=TransformedValue(Real[dual], Unlink()))
-        @test get_param_eltype(DynamicPPL.InitFromParamsUnsafe(wrapped)) === typeof(dual)
+        @test get_param_eltype(InitFromParams(wrapped)) === typeof(dual)
         buffer = Vector{Real}(undef, 2)
         buffer[1] = dual
         for value in (buffer, [buffer])
@@ -192,9 +190,7 @@ end
 
     @testset "task storage preserves widened accumulators" begin
         for x in (1.0, ForwardDiff.Dual(1.0, 1.0))
-            vi = DynamicPPL.ThreadSafeVarInfo(
-                VarInfo(LogPriorAccumulator()), typeof(x)
-            )
+            vi = DynamicPPL.ThreadSafeVarInfo(VarInfo(LogPriorAccumulator()), typeof(x))
             contribution = logpdf(Normal(big"0.0", big"1.0"), x)
             vi = DynamicPPL.acclogprior!!(vi, contribution)
             vi = DynamicPPL.map_accumulators!!(vi) do acc
@@ -276,9 +272,7 @@ end
         ntasks = length(contributions)
         ready = Threads.Atomic{Int}(0)
         release = Threads.Atomic{Bool}(false)
-        vi = DynamicPPL.ThreadSafeVarInfo(
-            VarInfo(DynamicPPL.LogLikelihoodAccumulator())
-        )
+        vi = DynamicPPL.ThreadSafeVarInfo(VarInfo(DynamicPPL.LogLikelihoodAccumulator()))
         tasks = map(contributions) do contribution
             Threads.@spawn DynamicPPL.map_accumulator!!(vi, Val(:LogLikelihood)) do acc
                 Threads.atomic_add!(ready, 1)
