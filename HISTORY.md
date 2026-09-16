@@ -12,6 +12,8 @@ Fixed type inference for thread-safe accumulator promotion on Julia 1.10: intege
 
 Model arguments now supply default observations. Use `decondition(model, :x)` instead of passing `missing`; `condition` and `fix` replace the previous role at an address. Removing that binding makes the site latent.
 
+`PrefixContext` has been removed. Use `prefix(model, vn; template)`; prefixes and nested storage templates now belong to the model.
+
 # 0.42.13
 
 Model bodies no longer contain a `try` block, so Libtask can tape them again.

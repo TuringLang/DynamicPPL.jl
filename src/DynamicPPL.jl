@@ -150,7 +150,6 @@ export AbstractVarInfo,
     setchildcontext,
     leafcontext,
     setleafcontext,
-    extract_prefixes,
     # Tilde pipeline
     tilde_assume!!,
     tilde_observe!!,
@@ -265,7 +264,6 @@ include("transformed_values.jl")
 include("contexts.jl")
 include("contexts/default.jl")
 include("contexts/init.jl")
-include("contexts/prefix.jl")
 include("model.jl")
 include("distribution_wrappers.jl")
 include("distributions.jl")
