@@ -38,6 +38,8 @@ Partial `link!!(vi, vns, model)` / `invlink!!(vi, vns, model)` are removed: use 
 
 Added `SamplingOutput` support for `pointwise_logdensities`, `pointwise_loglikelihoods`, and `pointwise_prior_logdensities`, plus conversion to `MCMCChains.Chains`. See [#1506](https://github.com/TuringLang/DynamicPPL.jl/pull/1506).
 
+Model arguments now supply default observations. Use `decondition(model, :x)` instead of passing `missing`; `condition` and `fix` replace the previous role at an address. Removing that binding makes the site latent.
+
 # 0.42.13
 
 Model bodies no longer contain a `try` block, so Libtask can tape them again.
