@@ -50,11 +50,11 @@ As described on the [Model evaluation page](./evaluation.md), there are three st
  2. Transformation: figure out the untransformed (raw) value and the transformed value (where necessary); compute the relevant log-Jacobian.
  3. Accumulation: pass all the relevant information to the accumulators, which individually decide what to do with it.
 
-The method for `tilde_assume!!` (with `InitContext`) more or less implements this logic directly with three lines of code.
+The method for `tilde_assume!!` (with `Context`) more or less implements this logic directly with three lines of code.
 The implementation in `src/contexts/init.jl` follows this structure:
 
 ```julia
-function DynamicPPL.tilde_assume!!(ctx::InitContext, dist, vn, template, vi)
+function DynamicPPL.tilde_assume!!(ctx::Context, dist, vn, template, vi)
     # 1. Initialisation
     init_tval = DynamicPPL.init(ctx.rng, vn, dist, ctx.strategy)
 

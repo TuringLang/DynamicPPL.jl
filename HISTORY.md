@@ -14,6 +14,8 @@ Model arguments now supply default observations. Use `decondition(model, :x)` in
 
 `PrefixContext` has been removed. Use `prefix(model, vn; template)`; prefixes and nested storage templates now belong to the model.
 
+`Context(rng, init_strategy, transform_strategy)` replaces `InitContext` and the context hierarchy. Pass it to `evaluate!!(model, context, outputs)`; custom initialisation and observation handling belong to strategies and accumulators.
+
 # 0.42.13
 
 Model bodies no longer contain a `try` block, so Libtask can tape them again.

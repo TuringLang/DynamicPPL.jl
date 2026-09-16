@@ -606,7 +606,11 @@ function build_output(modeldef, linenumbernode, sites)
 
     # Add the internal arguments to the user-specified arguments (positional + keywords).
     evaluatordef[:args] = vcat(
-        [:(__model__::$(DynamicPPL.Model)), :(__varinfo__::$(DynamicPPL.AbstractVarInfo))],
+        [
+            :(__model__::$(DynamicPPL.Model)),
+            :(__context__::$(DynamicPPL.Context)),
+            :(__varinfo__::$(DynamicPPL.AbstractVarInfo)),
+        ],
         args,
     )
 
@@ -620,7 +624,6 @@ function build_output(modeldef, linenumbernode, sites)
     # See the docstrings of `replace_returns` for more info.
     evaluatordef[:body] = MacroTools.@q begin
         $(linenumbernode)
-        __context__ = __model__.context
         $(replace_returns(add_return_to_last_statment(modeldef[:body])))
     end
 
@@ -653,7 +656,9 @@ function build_output(modeldef, linenumbernode, sites)
     else
         definition = copy(evaluatordef)
         definition[:name] = gensym(:model_body)
-        callargs = Any[:__model__, :__varinfo__, map(splitarg_to_expr, args_split)...]
+        callargs = Any[
+            :__model__, :__context__, :__varinfo__, map(splitarg_to_expr, args_split)...
+        ]
         if Meta.isexpr(evaluatordef[:name], :(::))
             definition[:args] = vcat([evaluatordef[:name]], definition[:args])
             pushfirst!(callargs, :(__model__.f))

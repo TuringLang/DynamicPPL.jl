@@ -517,7 +517,7 @@ end
             @test @inferred(
                 evaluate!!(
                     model,
-                    InitContext(
+                    Context(
                         InitFromParams(get_values(vi), nothing),
                         DynamicPPL.infer_transform_strategy_from_values(get_values(vi)),
                     ),

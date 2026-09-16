@@ -60,7 +60,7 @@ end
             model = test()
             for transform in (UnlinkAll(), LinkAll())
                 input = VarInfo(model, InitFromPrior(), transform)
-                context = InitContext(InitFromParams(get_values(input), nothing), transform)
+                context = Context(InitFromParams(get_values(input), nothing), transform)
                 value, output = evaluate!!(model, context, VarInfo())
                 @test getlogjoint(output) ≈ logpdf(dist, value)
                 @test getlogjac(output) ≈ getlogjac(input)
