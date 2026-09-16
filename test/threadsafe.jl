@@ -6,6 +6,9 @@ __now__ = now()
 
 using Distributions
 using DynamicPPL
+using ForwardDiff: ForwardDiff
+using LogDensityProblems: logdensity
+using Random: Xoshiro
 using Test
 using ForwardDiff
 using Random: Xoshiro
@@ -40,14 +43,12 @@ end
         for T in (
             Int, Bool, Rational{Int}, Float32, BigFloat, ForwardDiff.Dual{Nothing,Float64,1}
         )
-            vi = @inferred DynamicPPL.ThreadSafeVarInfo(
-                OnlyAccsVarInfo(LogPriorAccumulator()), T
-            )
+            vi = @inferred DynamicPPL.ThreadSafeVarInfo(VarInfo(LogPriorAccumulator()), T)
             @test getlogprior(vi) isa promote_type(DynamicPPL.LogProbType, float(T))
         end
         for T in (Any, Union{})
             vi = @inferred DynamicPPL.ThreadSafeVarInfo(
-                OnlyAccsVarInfo(LogPriorAccumulator(big"0.0")), T
+                VarInfo(LogPriorAccumulator(big"0.0")), T
             )
             @test getlogprior(vi) isa BigFloat
         end
@@ -58,11 +59,11 @@ end
 
         continuous = setthreadsafe(continuous_parameter(), true)
         value, vi = init!!(
-            Xoshiro(1), continuous, OnlyAccsVarInfo(), InitFromParams((;)), UnlinkAll()
+            Xoshiro(1), continuous, VarInfo(), InitFromParams((;)), UnlinkAll()
         )
         @test getlogprior(vi) ≈ logpdf(Normal(), value)
         @test_throws ErrorException init!!(
-            continuous, OnlyAccsVarInfo(), InitFromParams((;), nothing), UnlinkAll()
+            continuous, VarInfo(), InitFromParams((;), nothing), UnlinkAll()
         )
         @test ForwardDiff.derivative(x -> logjoint(continuous, (; x)), 2.0) ≈ -2.0
     end
@@ -74,7 +75,7 @@ end
                 _, vi = init!!(
                     Xoshiro(1),
                     setthreadsafe(observed(y), true),
-                    OnlyAccsVarInfo(),
+                    VarInfo(),
                     strategy,
                     UnlinkAll(),
                 )
@@ -87,7 +88,7 @@ end
         _, vi = init!!(
             Xoshiro(1),
             setthreadsafe(fallback(), true),
-            OnlyAccsVarInfo(),
+            VarInfo(),
             InitFromParams((;)),
             UnlinkAll(),
         )
@@ -95,7 +96,7 @@ end
         _, vi = init!!(
             Xoshiro(1),
             setthreadsafe(fallback(), true),
-            OnlyAccsVarInfo(LogPriorAccumulator(big"0.0")),
+            VarInfo(LogPriorAccumulator(big"0.0")),
             InitFromParams((;)),
             UnlinkAll(),
         )
@@ -113,7 +114,7 @@ end
             _, vi = init!!(
                 Xoshiro(1),
                 setthreadsafe(observed_parameter(y), true),
-                OnlyAccsVarInfo(),
+                VarInfo(),
                 strategy,
                 UnlinkAll(),
             )
@@ -137,7 +138,7 @@ end
             (x, z), vi = init!!(
                 Xoshiro(1),
                 setthreadsafe(wider_prior(), true),
-                OnlyAccsVarInfo(),
+                VarInfo(),
                 strategy,
                 UnlinkAll(),
             )
@@ -175,7 +176,7 @@ end
         end
         dual = ForwardDiff.Dual(2.0, 1.0)
         wrapped = VarNamedTuple(; x=TransformedValue(Real[dual], Unlink()))
-        @test get_param_eltype(DynamicPPL.InitFromParamsUnsafe(wrapped)) === typeof(dual)
+        @test get_param_eltype(InitFromParams(wrapped)) === typeof(dual)
         buffer = Vector{Real}(undef, 2)
         buffer[1] = dual
         for value in (buffer, [buffer])
@@ -189,9 +190,7 @@ end
 
     @testset "task storage preserves widened accumulators" begin
         for x in (1.0, ForwardDiff.Dual(1.0, 1.0))
-            vi = DynamicPPL.ThreadSafeVarInfo(
-                OnlyAccsVarInfo(LogPriorAccumulator()), typeof(x)
-            )
+            vi = DynamicPPL.ThreadSafeVarInfo(VarInfo(LogPriorAccumulator()), typeof(x))
             contribution = logpdf(Normal(big"0.0", big"1.0"), x)
             vi = DynamicPPL.acclogprior!!(vi, contribution)
             vi = DynamicPPL.map_accumulators!!(vi) do acc
@@ -209,7 +208,7 @@ end
             vi = DynamicPPL.acclogprior!!(vi, contribution)
             @test getlogprior(vi) == contribution
         end
-        vi = DynamicPPL.ThreadSafeVarInfo(OnlyAccsVarInfo(LogPriorAccumulator()))
+        vi = DynamicPPL.ThreadSafeVarInfo(VarInfo(LogPriorAccumulator()))
         x = ForwardDiff.Dual(1.0, 1.0)
         vi = DynamicPPL.acclogprior!!(vi, x)
         @test getlogprior(vi) === x
@@ -219,14 +218,14 @@ end
         vi = VarInfo(gdemo_default)
         threadsafe_vi = @inferred DynamicPPL.ThreadSafeVarInfo(vi)
 
-        @test threadsafe_vi.varinfo === vi
+        @test DynamicPPL.getaccs(threadsafe_vi) == DynamicPPL.getaccs(vi)
         @test threadsafe_vi.accs_by_task isa IdDict{DynamicPPL.TaskId}
         @test isempty(threadsafe_vi.accs_by_task)
 
         vnt_acc = DynamicPPL.VNTAccumulator{:Test}(
             (val, _...) -> val, VarNamedTuple(; x=1.0)
         )
-        threadsafe_vnt_vi = @inferred DynamicPPL.ThreadSafeVarInfo(OnlyAccsVarInfo(vnt_acc))
+        threadsafe_vnt_vi = @inferred DynamicPPL.ThreadSafeVarInfo(VarInfo(vnt_acc))
         @test_nowarn DynamicPPL.map_accumulators!!(identity, threadsafe_vnt_vi)
     end
 
@@ -273,9 +272,7 @@ end
         ntasks = length(contributions)
         ready = Threads.Atomic{Int}(0)
         release = Threads.Atomic{Bool}(false)
-        vi = DynamicPPL.ThreadSafeVarInfo(
-            OnlyAccsVarInfo(DynamicPPL.LogLikelihoodAccumulator())
-        )
+        vi = DynamicPPL.ThreadSafeVarInfo(VarInfo(DynamicPPL.LogLikelihoodAccumulator()))
         tasks = map(contributions) do contribution
             Threads.@spawn DynamicPPL.map_accumulator!!(vi, Val(:LogLikelihood)) do acc
                 Threads.atomic_add!(ready, 1)
@@ -301,7 +298,7 @@ end
         main_acc = DynamicPPL.VectorParamAccumulator(
             [1.0, 0.0], [true, false], VarNamedTuple()
         )
-        vi = DynamicPPL.ThreadSafeVarInfo(OnlyAccsVarInfo(main_acc))
+        vi = DynamicPPL.ThreadSafeVarInfo(VarInfo(main_acc))
         vi = DynamicPPL.map_accumulator!!(vi, accname) do acc
             acc.vals[2] = 2.0
             acc.set_indices[2] = true
@@ -327,7 +324,7 @@ end
                 acquired
             end))
             vi = DynamicPPL.ThreadSafeVarInfo(
-                OnlyAccsVarInfo(LogPriorAccumulator(), CombineCallbackAccumulator(callback))
+                VarInfo(LogPriorAccumulator(), CombineCallbackAccumulator(callback))
             )
             vi = DynamicPPL.acclogprior!!(vi, widened ? big"1.0" : 1.0)
             DynamicPPL.getacc(vi, Val(:CombineCallback))
@@ -344,7 +341,7 @@ end
             end
         end
         model = setthreadsafe(colon_eq(10), true)
-        vi = OnlyAccsVarInfo(DynamicPPL.RawValueAccumulator(true))
+        vi = VarInfo(DynamicPPL.RawValueAccumulator(true))
         _, vi = DynamicPPL.init!!(model, vi, InitFromPrior(), UnlinkAll())
         @test length(DynamicPPL.get_raw_values(vi)) == 10
     end
@@ -356,13 +353,17 @@ end
         end
         model = setthreadsafe(f(), true)
 
-        _, vi = DynamicPPL.init!!(model, VarInfo())
+        _, vi = DynamicPPL.init!!(
+            model, VarInfo(VectorValueAccumulator(), DynamicPPL.default_accumulators()...)
+        )
         # Inside the model evaluation function, it should be wrapped
         @test vi_ isa DynamicPPL.ThreadSafeVarInfo
         # But init!! should return the original VarInfo
         @test vi isa DynamicPPL.VarInfo
         # Same with evaluate!!
-        _, vi = DynamicPPL.evaluate_nowarn!!(model, vi)
+        ctx = InitContext(Xoshiro(1), InitFromParams((; x=2.0)), UnlinkAll())
+        result, vi = evaluate!!(model, ctx, vi)
+        @test result == 2.0
         @test vi_ isa DynamicPPL.ThreadSafeVarInfo
         @test vi isa DynamicPPL.VarInfo
     end
@@ -379,7 +380,7 @@ end
         y = fill(1.0, 10)
         model = setthreadsafe(f(y), true)
 
-        @testset for vi in (VarInfo(), VarInfo(model), OnlyAccsVarInfo())
+        @testset for vi in (VarInfo(), VarInfo(model))
             @inferred getlogjoint(
                 last(DynamicPPL.init!!(model, vi, InitFromPrior(), UnlinkAll()))
             )
@@ -399,9 +400,6 @@ end
 
     @testset "assumes are threadsafe" begin
         # See https://github.com/TuringLang/DynamicPPL.jl/pull/1284.
-        #
-        # Note: anything that involves VarInfo is still thread-unsafe. But anything
-        # that uses OnlyAccsVarInfo is fine
         @model function threaded_assume()
             x = zeros(10)
             Threads.@threads for i in eachindex(x)

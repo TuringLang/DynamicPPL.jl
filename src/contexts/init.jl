@@ -368,7 +368,6 @@ function tilde_assume!!(
 )
     init_tval = init(ctx.rng, vn, dist, ctx.strategy)
     x, tval, logjac = apply_transform_strategy(ctx.transform_strategy, init_tval, vn, dist)
-    vi = setindex_with_dist!!(vi, tval, dist, vn, template)
     vi = accumulate_assume!!(vi, x, tval, logjac, vn, dist, template)
     # We always return the untransformed value here, as that will determine
     # what the lhs of the tilde-statement is set to.
@@ -383,5 +382,5 @@ function tilde_observe!!(
     template::Any,
     vi::AbstractVarInfo,
 )
-    return tilde_observe!!(DefaultContext(), right, left, vn, template, vi)
+    return left, accumulate_observe!!(vi, right, left, vn, template)
 end

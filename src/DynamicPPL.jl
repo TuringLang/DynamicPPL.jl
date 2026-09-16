@@ -132,7 +132,6 @@ export AbstractVarInfo,
     # LogDensityFunction
     LogDensityFunction,
     subsample,
-    OnlyAccsVarInfo,
     to_vector_params,
     get_input_vector_type,
     get_sample_input_vector,
@@ -242,7 +241,7 @@ Abstract supertype for data structures that capture random variables when execut
 probabilistic model and accumulate log densities such as the log likelihood or the
 log joint probability of the model.
 
-See also: [`VarInfo`](@ref), [`OnlyAccsVarInfo`](@ref).
+See also: [`VarInfo`](@ref), [`VarInfo`](@ref).
 """
 abstract type AbstractVarInfo <: AbstractModelTrace end
 
@@ -284,7 +283,6 @@ include("accumulators/pointwise_logdensities.jl")
 include("abstract_varinfo.jl")
 include("threadsafe.jl")
 include("varinfo.jl")
-include("onlyaccs.jl")
 include("compiler.jl")
 include("logdensityfunction.jl")
 include("subsample.jl")

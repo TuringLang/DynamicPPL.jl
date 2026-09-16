@@ -532,7 +532,6 @@ function DynamicPPL.tilde_assume!!(
 )
     transformed_value = DynamicPPL.init(context.rng, vn, distribution, context.strategy)
     transformed_value = _stan_fixed_value(distribution, transformed_value)
-    vi = DynamicPPL.setindex_with_dist!!(vi, transformed_value, distribution, vn, template)
     return _stan_assume!!(distribution, vn, template, vi, transformed_value)
 end
 

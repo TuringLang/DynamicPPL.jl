@@ -773,9 +773,7 @@ function (model::Model)(varinfo::AbstractVarInfo)
 end
 # ^ Weird Documenter.jl bug means that we have to write the two above separately
 # as it can only detect the `function`-less syntax.
-function (model::Model)(
-    rng::Random.AbstractRNG, varinfo::AbstractVarInfo=OnlyAccsVarInfo(())
-)
+function (model::Model)(rng::Random.AbstractRNG, varinfo::AbstractVarInfo=VarInfo(()))
     return first(init!!(rng, model, varinfo, InitFromPrior(), UnlinkAll()))
 end
 
@@ -785,20 +783,15 @@ end
         model::Model,
         varinfo::AbstractVarInfo,
         init_strategy::AbstractInitStrategy,
-        [transform_strategy::AbstractTransformStrategy=get_transform_strategy(varinfo),]
+        [transform_strategy::AbstractTransformStrategy=UnlinkAll(),]
     )
 
 Evaluate the `model` and replace the values of the model's random variables in the given
 `varinfo` with new values, using a specified initialisation strategy. If the values in
 `varinfo` are not set, they will be added using a specified initialisation strategy.
 
-`transform_strategy` tells the model evaluation whether variables should be interpreted as
-linked or unlinked. Right now, it is slightly complicated because the default behaviour
-depends on the `varinfo` provided. If `varinfo isa VarInfo`, then the transform strategy is
-inferred from the VarInfo, i.e., linked variables in the VarInfo are treated as linked
-during evaluation. Conversely, if `varinfo isa OnlyAccsVarInfo`, then you must specify the
-transform strategy explicitly, since an `OnlyAccsVarInfo` does not contain any information
-about which variables are transformed.
+`transform_strategy` controls the output representation and defaults to `UnlinkAll()`.
+Parameter values are recorded only when the output contains a value accumulator.
 
 Returns a tuple of the model's return value, plus the updated `varinfo` object.
 """
@@ -807,7 +800,7 @@ function init!!(
     model::Model,
     vi::AbstractVarInfo,
     init_strategy::AbstractInitStrategy,
-    transform_strategy::AbstractTransformStrategy=get_transform_strategy(vi),
+    transform_strategy::AbstractTransformStrategy=UnlinkAll(),
 )
     ctx = InitContext(rng, init_strategy, transform_strategy)
     model = DynamicPPL.setleafcontext(model, ctx)
@@ -817,7 +810,7 @@ function init!!(
     model::Model,
     vi::AbstractVarInfo,
     init_strategy::AbstractInitStrategy=InitFromPrior(),
-    transform_strategy::AbstractTransformStrategy=get_transform_strategy(vi),
+    transform_strategy::AbstractTransformStrategy=UnlinkAll(),
 )
     return init!!(Random.default_rng(), model, vi, init_strategy, transform_strategy)
 end
@@ -833,7 +826,7 @@ model is marked as needing threadsafe evaluation.
     *not* use this method unless absolutely necessary. In the future this method will be
     deprecated and removed. As far as possible (and it should **always** be possible --
     please open an issue if you do not know how to adapt your code!) you should use the
-    five-argument `init!!([rng,] model, ::OnlyAccsVarInfo, init_strategy,
+    five-argument `init!!([rng,] model, ::VarInfo, init_strategy,
     transform_strategy)` method, which has more explicit semantics and allows you to have
     more control over each part of the evaluation process.
 
@@ -871,7 +864,7 @@ function AbstractPPL.evaluate!!(model::Model, varinfo::AbstractVarInfo)
     @warn (
         "Calling `evaluate!!(model, varinfo)` directly is not recommended and will be" *
         " deprecated in the future. Please switch to using `init!!([rng,] model," *
-        " ::OnlyAccsVarInfo, init_strategy, transform_strategy)` instead, which" *
+        " ::VarInfo, init_strategy, transform_strategy)` instead, which" *
         " has more explicit semantics and allows you to have more control over each" *
         " part of the evaluation process. Please see the DynamicPPL documentation" *
         " for more details: https://turinglang.org/DynamicPPL.jl/stable/evaluation"
@@ -889,6 +882,13 @@ This is the same as `evaluate!!(model, varinfo)` but without the deprecation war
     code, please note that it may break at any time.
 """
 function evaluate_nowarn!!(model::Model, varinfo::AbstractVarInfo)
+    if leafcontext(model.context) isa DefaultContext
+        ctx = InitContext(
+            InitFromParams(copy(get_vector_values(varinfo)), nothing),
+            get_transform_strategy(varinfo),
+        )
+        model = setleafcontext(model, ctx)
+    end
     return if requires_threadsafe(model)
         # Use of float_type_with_fallback(eltype(x)) is necessary to deal with cases where x is
         # a gradient type of some AD backend.
@@ -967,7 +967,9 @@ explanation.
 function get_param_eltype(vi::AbstractVarInfo, ctx::AbstractParentContext)
     return get_param_eltype(vi, DynamicPPL.childcontext(ctx))
 end
-get_param_eltype(vi::AbstractVarInfo, ::AbstractContext) = eltype(vi)
+function get_param_eltype(vi::AbstractVarInfo, ::AbstractContext)
+    return get_param_eltype(InitFromParams(get_vector_values(vi), nothing))
+end
 function get_param_eltype(::AbstractVarInfo, ctx::InitContext)
     return get_param_eltype(ctx.strategy)
 end
@@ -1000,7 +1002,7 @@ Base.nameof(model::Model{<:Function}) = nameof(model.f)
 Sample a `VarNamedTuple` of raw values from the prior of `model`.
 """
 function Base.rand(rng::Random.AbstractRNG, model::Model)
-    vi = OnlyAccsVarInfo((RawValueAccumulator(false),))
+    vi = VarInfo((RawValueAccumulator(false),))
     vi = last(init!!(rng, model, vi, InitFromPrior(), UnlinkAll()))
     return get_raw_values(vi)
 end
@@ -1042,9 +1044,7 @@ julia> # Truth.
 ```
 """
 function logjoint(model::Model, params)
-    vi = OnlyAccsVarInfo(
-        AccumulatorTuple(LogPriorAccumulator(), LogLikelihoodAccumulator())
-    )
+    vi = VarInfo(AccumulatorTuple(LogPriorAccumulator(), LogLikelihoodAccumulator()))
     init_strategy = InitFromParams(params, nothing)
     return getlogjoint(last(init!!(model, vi, init_strategy, UnlinkAll())))
 end
@@ -1088,7 +1088,7 @@ julia> # Truth.
 ```
 """
 function logprior(model::Model, params)
-    vi = OnlyAccsVarInfo(AccumulatorTuple(LogPriorAccumulator()))
+    vi = VarInfo(AccumulatorTuple(LogPriorAccumulator()))
     init_strategy = InitFromParams(params, nothing)
     return getlogprior(last(init!!(model, vi, init_strategy, UnlinkAll())))
 end
@@ -1128,7 +1128,7 @@ julia> # Truth.
 -4901.418938533205
 """
 function Distributions.loglikelihood(model::Model, params)
-    vi = OnlyAccsVarInfo(AccumulatorTuple(LogLikelihoodAccumulator()))
+    vi = VarInfo(AccumulatorTuple(LogLikelihoodAccumulator()))
     init_strategy = InitFromParams(params, nothing)
     return getloglikelihood(last(init!!(model, vi, init_strategy, UnlinkAll())))
 end
@@ -1176,11 +1176,15 @@ function returned(model::Model, parameters...)
     return first(
         init!!(
             model,
-            DynamicPPL.OnlyAccsVarInfo(DynamicPPL.AccumulatorTuple()),
+            DynamicPPL.VarInfo(DynamicPPL.AccumulatorTuple()),
             # Use `nothing` as the fallback to ensure that any missing parameters cause an
             # error
             InitFromParams(parameters..., nothing),
             UnlinkAll(),
         ),
     )
+end
+
+function AbstractPPL.evaluate!!(model::Model, context::AbstractContext, vi::AbstractVarInfo)
+    return evaluate_nowarn!!(setleafcontext(model, context), vi)
 end

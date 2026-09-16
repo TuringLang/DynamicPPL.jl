@@ -43,7 +43,7 @@ For example, let's say we'd like to know what raw values the vector `[3.0, 4.0]`
     See the [`LogDensityFunction`](@ref) docstring for more details.
 
 ```@example 1
-accs = OnlyAccsVarInfo(RawValueAccumulator(false))
+accs = VarInfo(RawValueAccumulator(false))
 _, accs = init!!(model, accs, init_strategy, ldf.transform_strategy)
 get_raw_values(accs)
 ```
@@ -58,9 +58,7 @@ logistic(4.0)
 Notice that you can include all the necessary log-density accumulators in the above:
 
 ```@example 1
-accs = OnlyAccsVarInfo(
-    LogPriorAccumulator(), LogLikelihoodAccumulator(), LogJacobianAccumulator()
-)
+accs = VarInfo(LogPriorAccumulator(), LogLikelihoodAccumulator(), LogJacobianAccumulator())
 _, accs = init!!(model, accs, init_strategy, ldf.transform_strategy)
 accs
 ```
@@ -113,7 +111,7 @@ Note that we *must* use the same transform strategy as the one contained in the 
 init_strategy = InitFromParams(VarNamedTuple(; x=5.0, y=0.6))
 transform_strategy = ldf.transform_strategy
 
-accs = OnlyAccsVarInfo(VectorParamAccumulator(ldf))
+accs = VarInfo(VectorParamAccumulator(ldf))
 _, accs = init!!(model, accs, init_strategy, transform_strategy)
 vec = get_vector_params(accs)
 ```
@@ -129,7 +127,7 @@ This allows you to obtain all the information you need with only one model evalu
     If you used the latter instead, e.g.,
     
     ```@example 1
-    accs = OnlyAccsVarInfo(VectorValueAccumulator())
+    accs = VarInfo(VectorValueAccumulator())
     _, accs = init!!(model, accs, init_strategy, transform_strategy)
     vec_vals = get_vector_values(accs)
     ```

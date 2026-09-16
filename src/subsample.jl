@@ -606,7 +606,7 @@ function _probe_independent_model(
             observation, scale, expected_nobs, population_size, indices, Val(false)
         )...,
     ))
-    vi = OnlyAccsVarInfo(accumulators)
+    vi = VarInfo(accumulators)
     _, vi = init!!(rng, model, vi, init_strategy, transform_strategy)
     IndependentLogJoint()(vi)
     return LogDensityFunction(model, getlogjoint_internal, get_vector_values(vi))

@@ -75,7 +75,7 @@ function get_fixed_transforms(
     model::DynamicPPL.Model, transform_strategy::AbstractTransformStrategy
 )
     rng = Random.default_rng()
-    accs = OnlyAccsVarInfo(FixedTransformAccumulator())
+    accs = VarInfo(FixedTransformAccumulator())
     _, accs = init!!(rng, model, accs, InitFromPrior(), transform_strategy)
     return get_fixed_transforms(accs)
 end

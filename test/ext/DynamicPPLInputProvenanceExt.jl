@@ -116,7 +116,7 @@ using Test: @test, @test_logs, @testset
     )
 
     acc = ext.InputProvenanceAccumulator()
-    vi = DynamicPPL.ThreadSafeVarInfo(OnlyAccsVarInfo((acc,)))
+    vi = DynamicPPL.ThreadSafeVarInfo(VarInfo((acc,)))
     dual = ext._dualize_input(1.0)
     @test_logs (:warn, r"Variable x.*derived from a model input") begin
         vi = DynamicPPL.check_input_provenance!!(vi, dual, @varname(x))

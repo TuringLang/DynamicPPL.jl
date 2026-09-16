@@ -53,7 +53,7 @@ using Test
             for ysize in ((2,), (2, 3), (2, 3, 4))
                 x = randn()
                 y = randn(ysize)
-                z = logjoint(test(x, y), VarInfo())
+                z = logjoint(test(x, y), VarNamedTuple())
                 @test z ≈ sum(logpdf.(Normal.(x), y))
             end
         end

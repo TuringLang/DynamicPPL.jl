@@ -51,12 +51,12 @@ end
         x := DynamicPPL.RangeAndTransform(1:1, DynamicLink())
     end
     oavi_unlinked = begin
-        accs = OnlyAccsVarInfo(VectorValueAccumulator())
+        accs = VarInfo(VectorValueAccumulator())
         _, accs = init!!(f(), accs, InitFromPrior(), UnlinkAll())
         accs
     end
     oavi_linked = begin
-        accs = OnlyAccsVarInfo(VectorValueAccumulator())
+        accs = VarInfo(VectorValueAccumulator())
         _, accs = init!!(f(), accs, InitFromPrior(), LinkAll())
         accs
     end
@@ -65,7 +65,7 @@ end
     # or a transform strategy itself.
     for arg in (
         VarInfo(f()),
-        VarInfo(f()).values,
+        get_vector_values(VarInfo(f())),
         oavi_unlinked,
         get_vector_values(oavi_unlinked),
         UnlinkAll(),
@@ -84,7 +84,7 @@ end
     end
     for arg in (
         link!!(VarInfo(f()), f()),
-        link!!(VarInfo(f()), f()).values,
+        get_vector_values(link!!(VarInfo(f()), f())),
         oavi_linked,
         get_vector_values(oavi_linked),
         LinkAll(),
@@ -328,7 +328,7 @@ end
             # raw values.
             vec = manual_make_vec(transform_strategy)
             init_strategy = InitFromVector(vec, ldf)
-            accs = OnlyAccsVarInfo(RawValueAccumulator(false))
+            accs = VarInfo(RawValueAccumulator(false))
             _, accs = init!!(model, accs, init_strategy, UnlinkAll())
             new_raw_values = get_raw_values(accs)
             @test new_raw_values[@varname(x)] ≈ xraw
@@ -345,7 +345,7 @@ end
             # vector (either indirectly via VectorValueAccumulator and to_vector_params, or
             # directly via VectorParamAccumulator).
             init_strategy = InitFromParams(raw_values)
-            accs = OnlyAccsVarInfo(VectorValueAccumulator(), VectorParamAccumulator(ldf))
+            accs = VarInfo(VectorValueAccumulator(), VectorParamAccumulator(ldf))
             _, accs = init!!(model, accs, init_strategy, transform_strategy)
 
             vecvals = get_vector_values(accs)
@@ -361,12 +361,12 @@ end
 
             @testset "Throws an error if transform strategy doesn't line up" begin
                 if transform_strategy != UnlinkAll()
-                    accs = OnlyAccsVarInfo(VectorValueAccumulator())
+                    accs = VarInfo(VectorValueAccumulator())
                     _, accs = init!!(model, accs, InitFromPrior(), UnlinkAll())
                     vecvals = get_vector_values(accs)
                     @test_throws ArgumentError to_vector_params(vecvals, ldf)
 
-                    accs = OnlyAccsVarInfo(VectorParamAccumulator(ldf))
+                    accs = VarInfo(VectorParamAccumulator(ldf))
                     @test_throws ArgumentError init!!(
                         model, accs, InitFromPrior(), UnlinkAll()
                     )
@@ -381,12 +381,12 @@ end
                 end
                 extra_model = extra_var_model()
 
-                accs = OnlyAccsVarInfo(VectorValueAccumulator())
+                accs = VarInfo(VectorValueAccumulator())
                 _, accs = init!!(extra_model, accs, InitFromPrior(), transform_strategy)
                 vecvals = get_vector_values(accs)
                 @test_throws ArgumentError to_vector_params(vecvals, ldf)
 
-                accs = OnlyAccsVarInfo(VectorParamAccumulator(ldf))
+                accs = VarInfo(VectorParamAccumulator(ldf))
                 @test_throws KeyError init!!(
                     extra_model, accs, InitFromPrior(), transform_strategy
                 )
@@ -398,12 +398,12 @@ end
                 end
                 fewer_model = fewer_var_model()
 
-                accs = OnlyAccsVarInfo(VectorValueAccumulator())
+                accs = VarInfo(VectorValueAccumulator())
                 _, accs = init!!(fewer_model, accs, InitFromPrior(), transform_strategy)
                 vecvals = get_vector_values(accs)
                 @test_throws ArgumentError to_vector_params(vecvals, ldf)
 
-                accs = OnlyAccsVarInfo(VectorParamAccumulator(ldf))
+                accs = VarInfo(VectorParamAccumulator(ldf))
                 _, accs = init!!(fewer_model, accs, InitFromPrior(), transform_strategy)
                 @test_throws ArgumentError get_vector_params(accs)
             end
@@ -415,12 +415,12 @@ end
                 end
                 different_model = different_var_model()
 
-                accs = OnlyAccsVarInfo(VectorValueAccumulator())
+                accs = VarInfo(VectorValueAccumulator())
                 _, accs = init!!(different_model, accs, InitFromPrior(), transform_strategy)
                 vecvals = get_vector_values(accs)
                 @test_throws ArgumentError to_vector_params(vecvals, ldf)
 
-                accs = OnlyAccsVarInfo(VectorParamAccumulator(ldf))
+                accs = VarInfo(VectorParamAccumulator(ldf))
                 @test_throws ArgumentError init!!(
                     different_model, accs, InitFromPrior(), transform_strategy
                 )
@@ -432,7 +432,7 @@ end
             vec = manual_make_vec(transform_strategy)
             init_strategy = InitFromVector(vec, ldf)
 
-            accs = OnlyAccsVarInfo(VectorValueAccumulator(), VectorParamAccumulator(ldf))
+            accs = VarInfo(VectorValueAccumulator(), VectorParamAccumulator(ldf))
             _, accs = init!!(model, accs, init_strategy, transform_strategy)
             new_vecvals = get_vector_values(accs)
             new_vec = to_vector_params(new_vecvals, ldf)

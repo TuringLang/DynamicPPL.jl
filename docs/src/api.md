@@ -77,7 +77,6 @@ subsample
 Internally, this is accomplished using [`init!!`](@ref) on:
 
 ```@docs
-OnlyAccsVarInfo
 to_vector_params
 ```
 
@@ -328,12 +327,11 @@ AbstractVarInfo
 ```@docs
 VarInfo
 DynamicPPL.get_values
-DynamicPPL.setindex_with_dist!!
 ```
 
-One main characteristic of [`VarInfo`](@ref) is that samples are transformed to unconstrained Euclidean space and stored in a linearized form, as described in the [main Turing documentation](https://turinglang.org/docs/developers/transforms/dynamicppl/).
+[`VarInfo`](@ref) stores only accumulators. A `VectorValueAccumulator` records vectorised samples, whose transforms are selected by the evaluation context.
 The [Transformations section below](#Transformations) describes the methods used for this.
-In the specific case of `VarInfo`, it keeps track of whether samples have been transformed by setting flags on them, using the following functions.
+Inspect the transforms recorded by a `VectorValueAccumulator` with:
 
 ```@docs
 is_transformed
@@ -341,7 +339,7 @@ is_transformed
 
 #### `VarNamedTuple`s
 
-`VarInfo` is only a thin wrapper around [`VarNamedTuple`](@ref), which stores arbitrary data keyed by `VarName`s.
+Value accumulators use [`VarNamedTuple`](@ref), which stores data keyed by `VarName`s.
 For more details on `VarNamedTuple`, see the Internals section of our documentation.
 
 ```@docs

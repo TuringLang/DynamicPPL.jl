@@ -172,7 +172,13 @@ using Test: @inferred, @test, @test_throws, @testset
         end
         model = discrete_obs(3, 2, 4)
         vi = last(
-            DynamicPPL.init!!(StableRNG(7), model, VarInfo(), InitFromPrior(), LinkAll())
+            DynamicPPL.init!!(
+                StableRNG(7),
+                model,
+                VarInfo(VectorValueAccumulator()),
+                InitFromPrior(),
+                LinkAll(),
+            ),
         )
         ldf = DynamicPPL.LogDensityFunction(
             model,

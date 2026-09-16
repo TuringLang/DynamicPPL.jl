@@ -1,3 +1,15 @@
+# 0.43.0 (unreleased)
+
+`VarNamedTuple` membership resolves `begin` and `end` against the stored array. See [#1490](https://github.com/TuringLang/DynamicPPL.jl/pull/1490).
+
+`ComponentVector` properties, including nested fields and slices, use consistent indices for membership, retrieval, and updates. See [#1491](https://github.com/TuringLang/DynamicPPL.jl/pull/1491).
+
+Fixed type inference for thread-safe accumulator promotion on Julia 1.10: integer parameters, such as `x=1` for `x ~ Bernoulli(0.3)`, now select floating-point log-density storage with an inferable type. Related: [#1493](https://github.com/TuringLang/DynamicPPL.jl/pull/1493).
+
+## Breaking changes
+
+`VarInfo` now contains only accumulators, replacing `OnlyAccsVarInfo`. Use `get_vector_values(vi)` instead of `vi.values`; add a `VectorValueAccumulator` when constructing empty outputs that must record parameters. `init!!` defaults to `UnlinkAll()` independently of previous outputs.
+
 # 0.42.13
 
 Model bodies no longer contain a `try` block, so Libtask can tape them again.
@@ -8,6 +20,7 @@ See [#1487](https://github.com/TuringLang/DynamicPPL.jl/issues/1487).
 
 `NamedDist` and distribution-driven site renaming have been removed.
 Replace `x ~ NamedDist(dist, :y)` with `y ~ dist`, followed by `x = y` if a local alias is needed.
+See [#1492](https://github.com/TuringLang/DynamicPPL.jl/pull/1492).
 
 # 0.42.12
 
