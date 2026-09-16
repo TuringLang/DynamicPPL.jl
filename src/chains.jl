@@ -49,10 +49,10 @@ function ParamsWithStats(
             DynamicPPL.LogLikelihoodAccumulator(),
             DynamicPPL.RawValueAccumulator(include_colon_eq),
         )
-        _pws_eval(model, accs, init_strategy, stats, true)
+        _pws_eval(Random.default_rng(), model, accs, init_strategy, stats, true)
     else
         accs = (DynamicPPL.RawValueAccumulator(include_colon_eq),)
-        _pws_eval(model, accs, init_strategy, stats, false)
+        _pws_eval(Random.default_rng(), model, accs, init_strategy, stats, false)
     end
 end
 
@@ -103,7 +103,7 @@ end
     )
 
 Generate a `ParamsWithStats` by re-evaluating the given `ldf` with the provided
-`param_vector`.
+`param_vector` and `ldf.rng`.
 
 This method obtains parameter values and statistics in one model evaluation, without
 constructing an intermediate value trace.
@@ -142,19 +142,26 @@ function pws_with_eval(
             DynamicPPL.LogLikelihoodAccumulator(),
             DynamicPPL.RawValueAccumulator(include_colon_eq),
         )
-        _pws_eval(ldf.model, accs, strategy, stats, true)
+        _pws_eval(ldf.rng, ldf.model, accs, strategy, stats, true)
     else
         accs = (DynamicPPL.RawValueAccumulator(include_colon_eq),)
-        _pws_eval(ldf.model, accs, strategy, stats, false)
+        _pws_eval(ldf.rng, ldf.model, accs, strategy, stats, false)
     end
 end
 @noinline function _pws_eval(
-    model::Model, accs::Tuple, strategy, stats::NamedTuple, include_log_probs::Bool
+    rng::Random.AbstractRNG,
+    model::Model,
+    accs::Tuple,
+    strategy,
+    stats::NamedTuple,
+    include_log_probs::Bool,
 )
     # UnlinkAll() actually doesn't have any impact here, because there isn't even a
     # LogJacobianAccumulator; consequently, it doesn't matter whether we interpret the
     # parameters as being in linked space or not. However, we just include it for clarity.
-    _, vi = DynamicPPL.init!!(model, VarInfo(AccumulatorTuple(accs)), strategy, UnlinkAll())
+    _, vi = DynamicPPL.init!!(
+        rng, model, VarInfo(AccumulatorTuple(accs)), strategy, UnlinkAll()
+    )
     params = densify!!(get_raw_values(vi))
     if include_log_probs
         stats = merge(
