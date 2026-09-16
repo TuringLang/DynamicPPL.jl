@@ -6,9 +6,6 @@ __now__ = now()
 
 using Distributions
 using DynamicPPL
-using ForwardDiff: ForwardDiff
-using LogDensityProblems: logdensity
-using Random: Xoshiro
 using Test
 using ForwardDiff
 using Random: Xoshiro

@@ -105,13 +105,8 @@ end
 Generate a `ParamsWithStats` by re-evaluating the given `ldf` with the provided
 `param_vector`.
 
-This method is intended to replace the old method of obtaining parameters and statistics
-via `unflatten!!` plus re-evaluation. It is faster for two reasons:
-
-1. It does not rely on `deepcopy`-ing the VarInfo object (this used to be mandatory as
-   otherwise re-evaluation would mutate the VarInfo, rendering it unusable for subsequent
-   MCMC iterations).
-2. The re-evaluation is faster as it uses `VarInfo`.
+This method obtains parameter values and statistics in one model evaluation, without
+constructing an intermediate value trace.
 
 Furthermore, if the `LogDensityFunction` has all fixed transforms (i.e., was constructed
 with `fix_transforms=true`), and neither `include_log_probs` nor `include_colon_eq` is
