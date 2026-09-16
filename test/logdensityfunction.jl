@@ -10,12 +10,78 @@ using DynamicPPL.TestUtils.AD: run_ad, WithExpectedResult, NoTest
 using LinearAlgebra: I
 using Test
 using LogDensityProblems: LogDensityProblems
-using Random: Xoshiro
+using Random: Random, Xoshiro
 using StableRNGs: StableRNG
 
 using DifferentiationInterface: DifferentiationInterface
 using ForwardDiff: ForwardDiff
 using Mooncake: Mooncake
+
+@model function rng_child()
+    x ~ Normal()
+    u = rand(__context__.rng)
+    0.0 ~ Normal(x + u, 1)
+    return x
+end
+@model rng_parent() = child ~ to_submodel(rng_child())
+@model rng_deterministic() = x ~ Normal()
+
+@testset "LogDensityFunction: explicit RNG" begin
+    for adtype in (AutoForwardDiff(), AutoMooncake()), rng_type in (Xoshiro, StableRNG)
+        rng = rng_type(42)
+        ldf = LogDensityFunction(rng_deterministic(); rng, adtype)
+        expected_rng = copy(rng)
+        @test LogDensityProblems.logdensity(ldf, [0.2]) ≈ logpdf(Normal(), 0.2)
+        @test last(LogDensityProblems.logdensity_and_gradient(ldf, [0.2])) ≈ [-0.2]
+        @test rand(copy(rng)) == rand(expected_rng)
+        expected_rng = copy(rng)
+        @test only(rand(ldf)) == rand(expected_rng, Normal())
+        @test rand(copy(rng)) == rand(expected_rng)
+    end
+
+    for model in (rng_child(), rng_parent())
+        values = get_vector_values(VarInfo(Xoshiro(1), model))
+        ranges, x = DynamicPPL.get_rat_and_samplevec(values)
+        for (args, kwargs) in (
+            ((UnlinkAll(),), (;)),
+            ((VarInfo(Xoshiro(1), model),), (;)),
+            ((values,), (;)),
+            ((values,), (; fix_transforms=true)),
+            ((ranges, x), (;)),
+        )
+            rng = Xoshiro(42)
+            default_rng = copy(Random.default_rng())
+            ldf = LogDensityFunction(model, getlogjoint_internal, args...; rng, kwargs...)
+            @test rand() == rand(default_rng)
+            expected_rng = copy(rng)
+            for default_seed in (1, 2)
+                Random.seed!(default_seed)
+                u = rand(expected_rng)
+                @test (@inferred LogDensityProblems.logdensity(ldf, [0.2])) ≈
+                    logpdf(Normal(), 0.2) + logpdf(Normal(0.2 + u, 1), 0.0)
+            end
+            for include_log_probs in (true, false)
+                u = rand(expected_rng)
+                output = ParamsWithStats([0.2], ldf; include_log_probs)
+                if include_log_probs
+                    @test output.stats.logjoint ≈
+                        logpdf(Normal(), 0.2) + logpdf(Normal(0.2 + u, 1), 0.0)
+                end
+            end
+            @test rand(copy(rng)) == rand(expected_rng)
+        end
+        for adtype in (AutoForwardDiff(), AutoMooncake())
+            rng = Xoshiro(42)
+            ldf = LogDensityFunction(model; rng, adtype)
+            expected_rng = copy(rng)
+            u = rand(expected_rng)
+            logp, grad = LogDensityProblems.logdensity_and_gradient(ldf, [0.2])
+            @test logp ≈ logpdf(Normal(), 0.2) + logpdf(Normal(0.2 + u, 1), 0.0)
+            @test only(grad) ≈ -0.4 - u
+            @test rand(copy(rng)) == rand(expected_rng)
+        end
+    end
+end
 
 @model function issue_2844_nested_inner()
     p ~ Normal()

@@ -3,6 +3,10 @@ module DynamicPPLMooncakeExt
 using DynamicPPL: DynamicPPL, is_transformed
 using AbstractPPL: AbstractPPL
 using Mooncake: Mooncake
+using Random: AbstractRNG
+
+# RNG state is not a differentiable input to model evaluation.
+Mooncake.tangent_type(::Type{<:AbstractRNG}) = Mooncake.NoTangent
 
 Mooncake.@is_primitive Mooncake.MinimalCtx Tuple{
     DynamicPPL._StanDifferentiableFunction,<:AbstractArray{<:Real}

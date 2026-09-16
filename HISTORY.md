@@ -16,6 +16,8 @@ Model arguments now supply default observations. Use `decondition(model, :x)` in
 
 `Context(rng, init_strategy, transform_strategy)` replaces `InitContext` and the context hierarchy. Pass it to `evaluate!!(model, context, outputs)`; custom initialisation and observation handling belong to strategies and accumulators.
 
+`LogDensityFunction(model; rng)` now shares the supplied RNG across construction, evaluation, AD preparation, and parameter sampling. Use `rand(__context__.rng, ...)` for model-body draws.
+
 # 0.42.13
 
 Model bodies no longer contain a `try` block, so Libtask can tape them again.
