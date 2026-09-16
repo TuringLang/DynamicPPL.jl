@@ -337,7 +337,7 @@ function build_combinations(rng)
     return combos
 end
 
-function run(; markdown::Bool=false)
+function collect_results()
     combinations = build_combinations(StableRNG(23))
     total = length(combinations)
     results = []
@@ -375,6 +375,14 @@ function run(; markdown::Bool=false)
     finally
         worker ∈ workers() && rmprocs(worker)
     end
+    return results
+end
+
+function run(; markdown::Bool=false)
+    # A `Distributed` worker's output is relayed to this process's stdout, so a crashing
+    # worker would otherwise print its backtrace into the report. Send everything the run
+    # itself emits to stderr, leaving stdout for the report alone.
+    results = redirect_stdout(collect_results, stderr)
     if markdown
         println("```")
         print_results(results)
