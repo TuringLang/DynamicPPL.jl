@@ -67,19 +67,19 @@ function DynamicPPL.tilde_assume!!(
     _register_removals!(ctx, submodel.model)
     local_prefix = if AutoPrefix
         namespace = DynamicPPL._concretize_prefix(vn, template; prefix=Val(true))
-        DynamicPPL.maybe_prefix(DynamicPPL._model_prefix(submodel.model), namespace)
+        DynamicPPL.maybe_prefix(submodel.model.prefix, namespace)
     else
-        DynamicPPL._model_prefix(submodel.model)
+        submodel.model.prefix
     end
-    full_prefix = DynamicPPL.maybe_prefix(local_prefix, DynamicPPL._model_prefix(parent))
+    full_prefix = DynamicPPL.maybe_prefix(local_prefix, parent.prefix)
     lock(ctx.lock) do
         push!(ctx.template_models, (submodel.model, full_prefix))
     end
-    prefixed = AutoPrefix || DynamicPPL._model_prefix(submodel.model) !== nothing
+    prefixed = AutoPrefix || submodel.model.prefix !== nothing
     if ctx.track_names
         lock(ctx.lock) do
             if prefixed
-                namespace = AutoPrefix ? vn : DynamicPPL._model_prefix(submodel.model)
+                namespace = AutoPrefix ? vn : submodel.model.prefix
                 push!(ctx.namespaces, DynamicPPL.AbstractPPL.getsym(namespace))
             else
                 push!(ctx.models, submodel.model)
@@ -121,7 +121,7 @@ function _register_removals!(ctx::BindingCheckContext, model)
             for marker in DynamicPPL._removals(role, model.values)
                 name = marker.name
                 if model.values isa DynamicPPL.LocalModelValues
-                    name = DynamicPPL.maybe_prefix(name, DynamicPPL._model_prefix(model))
+                    name = DynamicPPL.maybe_prefix(name, model.prefix)
                 end
                 name = name === nothing ? "all addresses" : string(name)
                 layer = role === DynamicPPL.Condition ? "observations" : "fixed bindings"
@@ -192,7 +192,7 @@ function DynamicPPL._record_binding_read(ctx::BindingCheckContext, model, vn, te
         return _binding_read_context(ctx, ctx.binding_values, (ctx.binding_reads..., reads))
     end
     name = DynamicPPL._concretize_prefix(vn, template; canonical=true)
-    name = DynamicPPL.maybe_prefix(name, DynamicPPL._model_prefix(model))
+    name = DynamicPPL.maybe_prefix(name, model.prefix)
     lock(ctx.lock) do
         for reads in ctx.binding_reads
             push!(reads, name)
@@ -235,13 +235,13 @@ function _warn_unread_bindings(ctx::BindingCheckContext)
             DynamicPPL.AbstractPPL.getsym(vn) for
             (vn, _) in DynamicPPL._lhs_addresses(DynamicPPL._binding_metadata(model))
         )
-        DynamicPPL._model_prefix(model) === nothing && union!(lhs_names, shared_names)
+        model.prefix === nothing && union!(lhs_names, shared_names)
         names = Tuple(
             name for name in keys(values.data) if
             name in lhs_names && !(values.data[name] isa DynamicPPL.ModelValue)
         )
         values = VarNamedTuple(NamedTuple{names}(values.data))
-        prefix = DynamicPPL._model_prefix(model)
+        prefix = model.prefix
         local_reads = Tuple(
             prefix === nothing ? vn : DynamicPPL.AbstractPPL.unprefix(vn, prefix) for
             vn in reads if prefix === nothing || subsumes(prefix, vn)
@@ -444,7 +444,7 @@ function check_model(
         model.context, Model[model], Set{Symbol}(), ReentrantLock()
     )
     _register_removals!(binding_context, model)
-    push!(binding_context.template_models, (model, DynamicPPL._model_prefix(model)))
+    push!(binding_context.template_models, (model, model.prefix))
     checked_model = DynamicPPL.contextualize(model, binding_context)
     _, vi = DynamicPPL.init!!(rng, checked_model, vi, init_strategy, UnlinkAll())
     _warn_unused_binding_names(model, binding_context)
