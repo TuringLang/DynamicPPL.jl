@@ -849,8 +849,8 @@ If the leaf context is a `DefaultContext`, then this function:
   stored, then the transform strategy will treat that variable as linked; likewise for
   unlinked)
 - uses the accumulators inside `varinfo` (resetting them before evaluation);
-- does not overwrite the values in the `varinfo` (that is unnecessary since the values used
-  for evaluation are already stored in `varinfo`).
+- records the values of executed sites in the reset value accumulator, omitting sites
+  that are no longer executed.
 
 The long-term plan for this method is to:
 
@@ -883,10 +883,12 @@ This is the same as `evaluate!!(model, varinfo)` but without the deprecation war
 """
 function evaluate_nowarn!!(model::Model, varinfo::AbstractVarInfo)
     if leafcontext(model.context) isa DefaultContext
-        ctx = InitContext(
-            InitFromParams(copy(get_vector_values(varinfo)), nothing),
-            get_transform_strategy(varinfo),
-        )
+        values, strategy = if hasacc(varinfo, Val(VECTORVAL_ACCNAME))
+            copy(get_vector_values(varinfo)), get_transform_strategy(varinfo)
+        else
+            VarNamedTuple(), UnlinkAll()
+        end
+        ctx = InitContext(InitFromParams(values, nothing), strategy)
         model = setleafcontext(model, ctx)
     end
     return if requires_threadsafe(model)
@@ -955,19 +957,18 @@ Get the element type of the parameters being used to evaluate a model, using a `
 under the given `context`. For example, when evaluating a model with ForwardDiff AD, this
 should return `ForwardDiff.Dual`.
 
-By default, this uses `eltype(varinfo)` which is slightly cursed. This relies on the fact
-that typically, before evaluation, the parameters will have been inserted into the VarInfo's
-metadata field.
+For `InitContext`, query its initialisation strategy. For other leaf contexts, infer
+this type from recorded vectorised values, or return `Union{}` if no value accumulator
+is present. Parent contexts delegate to their child context.
 
-For `InitContext`, it's quite different: because `InitContext` is responsible for supplying
-the parameters, we can avoid using `eltype(varinfo)` and instead query the parameters inside
-it. See the docstring of `get_param_eltype(strategy::AbstractInitStrategy)` for more
-explanation.
+See the docstring of `get_param_eltype(strategy::AbstractInitStrategy)` for the
+strategy interface.
 """
 function get_param_eltype(vi::AbstractVarInfo, ctx::AbstractParentContext)
     return get_param_eltype(vi, DynamicPPL.childcontext(ctx))
 end
 function get_param_eltype(vi::AbstractVarInfo, ::AbstractContext)
+    hasacc(vi, Val(VECTORVAL_ACCNAME)) || return Union{}
     return get_param_eltype(InitFromParams(get_vector_values(vi), nothing))
 end
 function get_param_eltype(::AbstractVarInfo, ctx::InitContext)
