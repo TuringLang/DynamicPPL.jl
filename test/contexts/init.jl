@@ -1,4 +1,4 @@
-module DynamicPPLInitContextTests
+module DynamicPPLContextTests
 
 using Dates: now
 @info "Testing $(@__FILE__)..."
@@ -12,7 +12,7 @@ using Random: Xoshiro
 using StableRNGs: StableRNG
 using Test
 
-@testset "InitContext" begin
+@testset "Context" begin
     @model function test_init_model()
         x ~ Normal()
         y ~ MvNormal(fill(x, 2), I)
@@ -209,6 +209,20 @@ using Test
     end
 
     @testset "InitFromParams" begin
+        @testset "wrapped missing values are rejected before transformation" begin
+            @model missing_parameter() = x ~ Normal()
+            for value in (
+                TransformedValue(missing, NoTransform()),
+                TransformedValue([missing], Unlink()),
+            )
+                strategy = InitFromParams((; x=value), nothing)
+                context = InitContext(Xoshiro(1), strategy, UnlinkAll())
+                @test_throws ArgumentError evaluate!!(
+                    missing_parameter(), context, VarInfo(())
+                )
+            end
+        end
+
         # Once we've checked that NTs and Dicts are internally promoted to VNTs, the rest of
         # the tests only need to check that InitFromParams(::VNT) is handled correctly.
         @testset "NT promotion to VNT" begin

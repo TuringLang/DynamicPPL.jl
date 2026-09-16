@@ -150,8 +150,8 @@ predict
 The typical workflow for posterior prediction involves:
 
  1. Fitting a model to observed data to obtain posterior samples
- 2. Creating a new model instance with some variables marked as missing (unobserved)
- 3. Using `predict` to generate samples for these missing variables based on the posterior parameter samples
+ 2. Creating a new model instance with the prediction sites left unconditioned
+ 3. Using `predict` to sample these sites based on the posterior parameter samples
 
 When using `predict` with `MCMCChains.Chains`, you can control which variables are included in the output with the `include_all` parameter:
 
@@ -507,7 +507,7 @@ tilde_observe!!
 ```
 
 **Parent contexts**: These essentially act as 'modifiers' for leaf contexts.
-For example, `PrefixContext` adds a prefix to all variable names during evaluation, while `CondFixContext` marks certain variables as being either conditioned or fixed.
+`PrefixContext` supplies address metadata. Conditioned and fixed values are stored on the model.
 
 To implement a parent context, you have to subtype `DynamicPPL.AbstractParentContext`, and implement the `childcontext` and `setchildcontext` methods.
 If needed, you can also implement `tilde_assume!!` and `tilde_observe!!` for your context.

@@ -115,7 +115,8 @@ end
 Base.haskey(vnt::VarNamedTuple, vn::VarName) = _haskey_optic(vnt, vn)
 @inline function Base.haskey(vnt::VarNamedTuple, sym::Symbol)
     _check_symbol_key(sym)
-    return haskey(vnt, VarName{sym}())
+    return haskey(vnt.data, sym) &&
+           _haskey_optic(getindex(vnt.data, sym), AbstractPPL.Iden())
 end
 
 """
@@ -136,7 +137,7 @@ Here, `rand(2, 2)` is the template for the top-level symbol `x`, which tells `se
 that `x` should be a `PartialArray` that is backed by a matrix.
 
 The actual data inside `template` is not needed, and `template` is never mutated by this
-call.
+call. For nested indexing, intermediate containers in `template` must be initialised.
 """
 function templated_setindex!!(vnt::VarNamedTuple, value, vn::VarName, template)
     return _setindex_optic!!(

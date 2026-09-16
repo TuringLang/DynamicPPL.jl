@@ -10,6 +10,8 @@ Fixed type inference for thread-safe accumulator promotion on Julia 1.10: intege
 
 `VarInfo` now contains only accumulators, replacing `OnlyAccsVarInfo`. Use `get_vector_values(vi)` instead of `vi.values`; add a `VectorValueAccumulator` when constructing empty outputs that must record parameters. `init!!` defaults to `UnlinkAll()` independently of previous outputs.
 
+Model arguments now supply default observations. Use `decondition(model, :x)` instead of passing `missing`; `condition` and `fix` replace the previous role at an address. Removing that binding makes the site latent.
+
 # 0.42.13
 
 Model bodies no longer contain a `try` block, so Libtask can tape them again.

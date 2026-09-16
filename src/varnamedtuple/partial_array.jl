@@ -568,11 +568,15 @@ function grow_to_indices!!(
 end
 grow_to_indices!!(pa::PartialArray, inds::Vararg{Any}; kw...) = pa
 
+# Storage wrappers may need to distribute metadata over a slice's elements.
+_prepare_indexed_value(value, data, inds...; kw...) = value
+
 function BangBang.setindex!!(pa::PartialArray, value, inds::Vararg{Any}; kw...)
     # If pa.data and pa.mask are GrowableArrays, we may need to resize them before doing
     # anything else. For other AbstractArrays, grow_to_indices is a no-op.
     new_pa = grow_to_indices!!(pa, inds...; kw...)
     new_data, new_mask = new_pa.data, new_pa.mask
+    value = _prepare_indexed_value(value, new_data, inds...; kw...)
 
     # Then delete any overlapping ArrayLikeBlocks
     new_data, new_mask = _remove_partial_blocks!!(new_data, new_mask, inds...; kw...)
