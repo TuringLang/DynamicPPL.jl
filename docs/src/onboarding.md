@@ -42,13 +42,11 @@ Start with these docs:
 
 ### Prefer explicit evaluation state
 
-Keep evaluation inputs in `InitContext` and choose output accumulators in `VarInfo`.
+Keep evaluation inputs in `Context` and choose output accumulators in `VarInfo`.
 For example, to reuse recorded parameters while collecting a different set of outputs:
 
 ```julia
-context = InitContext(
-    rng, InitFromParams(get_vector_values(previous), nothing), UnlinkAll()
-)
+context = Context(rng, InitFromParams(get_vector_values(previous), nothing), UnlinkAll())
 retval, outputs = evaluate!!(model, context, VarInfo(accumulators...))
 ```
 

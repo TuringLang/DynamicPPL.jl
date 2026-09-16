@@ -1,7 +1,7 @@
 using DynamicPPL:
     AbstractVarInfo,
     AccumulatorTuple,
-    InitContext,
+    Context,
     InitFromVector,
     AbstractInitStrategy,
     LogJacobianAccumulator,
@@ -126,7 +126,7 @@ For all other fields, please use the corresponding getter functions provided in 
 
 # Extended help
 
-`LogDensityFunction` supplies parameter inputs through a `InitContext` and collects
+`LogDensityFunction` supplies parameter inputs through a `Context` and collects
 outputs in a `VarInfo`. The latter holds accumulators, not latent inputs.
 
 A flat parameter vector does not identify which entries belong to each variable or how

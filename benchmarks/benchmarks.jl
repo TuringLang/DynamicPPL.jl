@@ -91,6 +91,18 @@ end
     return (; x=x)
 end
 
+@model _indexed_observation(obs, mu) = obs ~ Normal(mu, 1)
+
+"Indexed submodels with argument observations and one shared latent mean."
+@model function indexed_submodels(obs)
+    mu ~ Normal()
+    x = similar(obs)
+    for i in eachindex(obs)
+        x[i] ~ to_submodel(_indexed_observation(obs[i], mu))
+    end
+    return (; mu=mu)
+end
+
 "Variables whose support varies under linking, or otherwise nontrivial bijectors."
 @model function dynamic()
     eta ~ truncated(Normal(); lower=0.0, upper=0.1)
@@ -142,7 +154,7 @@ function model_dimension(model, islinked)
             DynamicPPL.init!!(
                 StableRNG(23),
                 model,
-                VarInfo(),
+                VarInfo(DynamicPPL.VectorValueAccumulator()),
                 DynamicPPL.InitFromPrior(),
                 transform_strategy(islinked),
             ),
@@ -321,6 +333,7 @@ function build_combinations(rng)
     end
     push!(models, ("Dynamic", dynamic()))
     push!(models, ("Submodel", parent(randn(rng))))
+    push!(models, ("Indexed submodels 3k", indexed_submodels(randn(rng, 3_000))))
     d = [1, 1, 1, 2, 2, 2]
     w = [1, 2, 3, 2, 1, 1]
     z = [1, 1, 2, 2, 1, 2]

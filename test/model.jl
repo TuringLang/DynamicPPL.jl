@@ -351,7 +351,7 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
                     @inferred(
                         evaluate!!(
                             model,
-                            InitContext(
+                            Context(
                                 InitFromParams(get_values(varinfo), nothing), UnlinkAll()
                             ),
                             VarInfo(),
@@ -365,7 +365,7 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
                     @inferred(
                         evaluate!!(
                             model,
-                            InitContext(
+                            Context(
                                 InitFromParams(get_values(varinfo_linked), nothing),
                                 LinkAll(),
                             ),

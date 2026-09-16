@@ -54,7 +54,7 @@ The equivalent explicit-context call is:
 ```@example 1
 using Random: Xoshiro
 
-context = InitContext(Xoshiro(1), InitFromPrior(), UnlinkAll())
+context = Context(Xoshiro(1), InitFromPrior(), UnlinkAll())
 retval, accs = evaluate!!(model, context, VarInfo());
 ```
 
@@ -63,12 +63,12 @@ retval, accs = evaluate!!(model, context, VarInfo());
 Evaluation separates the inputs that determine a model run from the outputs it records,
 as proposed in [#1469](https://github.com/TuringLang/DynamicPPL.jl/issues/1469).
 
-| Object        | Responsibility                                                        |
-|:------------- |:--------------------------------------------------------------------- |
-| `Model`       | Model function, arguments, and conditioned or fixed data              |
-| `InitContext` | RNG, initialisation strategy, and requested transform strategy        |
-| `VarInfo`     | Output accumulators, with no separate parameter or transform storage  |
-| `retval`      | The model body's ordinary Julia return value, distinct from its trace |
+| Object    | Responsibility                                                        |
+|:--------- |:--------------------------------------------------------------------- |
+| `Model`   | Model function, arguments, and conditioned or fixed data              |
+| `Context` | RNG, initialisation strategy, and requested transform strategy        |
+| `VarInfo` | Output accumulators, with no separate parameter or transform storage  |
+| `retval`  | The model body's ordinary Julia return value, distinct from its trace |
 
 For a latent statement such as `x ~ Normal()`, the context's initialisation strategy
 supplies `x`. Its transform strategy determines the transformed value and Jacobian.
@@ -81,9 +81,9 @@ use the same observation path. Fixed values are not scored, and tracked assignme
 such as `z := x + y` are recorded when requested. None of these operations uses the
 context to select a latent value.
 
-The supplied leaf context replaces the model’s leaf context and is inherited by nested submodels.
+The context belongs to the evaluation, not to `Model`, and is passed to nested submodels.
 Inside a model body, `__context__` refers to this context; use `rand(__context__.rng, ...)`
-for explicit random draws controlled by the evaluation's RNG. `init!!` constructs a `InitContext`
+for explicit random draws controlled by the evaluation's RNG. `init!!` constructs a `Context`
 and calls `evaluate!!`; custom value selection belongs in an initialisation strategy,
 not a custom context type.
 
@@ -98,11 +98,11 @@ explicitly. For example, sample the model above, then evaluate it at the same pa
 
 ```@example 1
 rng = Xoshiro(1)
-context = InitContext(rng, InitFromPrior(), LinkAll())
+context = Context(rng, InitFromPrior(), LinkAll())
 retval, recorded = evaluate!!(model, context, VarInfo(RawValueAccumulator(false)))
 
 params = get_raw_values(recorded)
-context = InitContext(rng, InitFromParams(params, nothing), UnlinkAll())
+context = Context(rng, InitFromParams(params, nothing), UnlinkAll())
 repeated, scores = evaluate!!(model, context, VarInfo())
 
 @assert repeated == retval

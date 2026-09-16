@@ -5,10 +5,12 @@
 or `VectorValueAccumulator` when those outputs are needed; `VarInfo(model)` remains
 a convenience constructor that records vectorised values and log densities.
 
-To reuse previous values, extract them explicitly before evaluating:
+Replace `InitContext` with `Context`. `DefaultContext` and context subtyping are removed:
+custom value selection belongs in initialisation strategies. To reuse previous values,
+extract them explicitly before evaluating:
 
 ```julia
-context = InitContext(rng, InitFromParams(get_vector_values(previous), nothing), LinkAll())
+context = Context(rng, InitFromParams(get_vector_values(previous), nothing), LinkAll())
 retval, outputs = evaluate!!(model, context, VarInfo())
 ```
 
@@ -110,9 +112,9 @@ vi = VarInfo(Xoshiro(468), model)
 vals = [1.0, 1.0]
 # Note this was `unflatten` (no exclamation mark) in the old code
 vi = DynamicPPL.unflatten!!(vi, vals)
-# Supply the inputs explicitly.
+# Current syntax requires an explicit context.
 _, vi = DynamicPPL.evaluate!!(
-    model, InitContext(InitFromParams(get_vector_values(vi), nothing), UnlinkAll()), vi
+    model, Context(InitFromParams(get_vector_values(vi), nothing), UnlinkAll()), vi
 )
 vi
 ```

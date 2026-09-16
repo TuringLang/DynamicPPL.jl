@@ -193,43 +193,6 @@ function init(
 end
 
 """
-Like InitFromParams, but it is always assumed that the VNT contains _exactly_ the
-correct set of variables, and that indexing into them will always return _exactly_
-the values for those variables.
-
-The main difference is that InitFromParams will call hasvalue(p.params, vn, dist)
-rather than just hasvalue(p.params, vn), which can be substantially slower.
-
-TODO(penelopeysm): Get rid of MCMCChains and never call the three-value argument again.
-Seriously. It's just nuts that I have to do these workarounds because of a package that
-isn't even DynamicPPL.
-"""
-struct InitFromParamsUnsafe{P<:VarNamedTuple} <: AbstractInitStrategy
-    params::P
-end
-function init(
-    ::Random.AbstractRNG,
-    vn::VarName,
-    dist::Distribution,
-    p::InitFromParamsUnsafe{<:VarNamedTuple},
-)
-    return if haskey(p.params, vn)
-        x = p.params[vn]
-        if x isa TransformedValue
-            x
-        else
-            TransformedValue(x, NoTransform())
-        end
-    else
-        error("No value was provided for the variable `$(vn)`.")
-    end
-end
-
-function get_param_eltype(p::InitFromParamsUnsafe)
-    return get_param_eltype(InitFromParams(p.params, nothing))
-end
-
-"""
     RangeAndTransform
 
 Suppose we have a set of vectorised parameters `params::AbstractVector{<:Real}` for a Turing
@@ -322,66 +285,49 @@ function get_param_eltype(strategy::InitFromVector)
 end
 
 """
-    InitContext(
-        [rng::Random.AbstractRNG=Random.default_rng()],
-        strategy::AbstractInitStrategy,
-        transform_strategy::AbstractTransformStrategy,
-    )
+    Context([rng::Random.AbstractRNG,] strategy::AbstractInitStrategy, transform_strategy::AbstractTransformStrategy)
 
-A leaf context that indicates that new values for random variables are currently being
-obtained through sampling. Used e.g. when initialising a fresh VarInfo.
+Supply the inputs for one model evaluation.
 
-The `strategy` argument specifies how new values are to be obtained (see
-[`AbstractInitStrategy`](@ref) for details), while the `transform_strategy` argument specifies
-whether values should be treated as being in linked or unlinked space. That also means that
-`transform_strategy` determines whether the log-Jacobian of the link transform is included when
-evaluating the model.
+The strategy obtains latent values, and the transform strategy determines their output
+representation and log-Jacobian. Observations and fixed values come from the model.
+Evaluation never reads parameter values or transforms from its output `VarInfo`.
+Inside a model, use `rand(__context__.rng, ...)` for explicit draws from this RNG.
 
-!!! note
-    If `leafcontext(model.context) isa InitContext`, then `evaluate!!(model, varinfo)` will
-    override all values in the VarInfo.
+# Examples
+
+```jldoctest
+julia> using Random: Xoshiro
+
+julia> @model example() = x ~ Normal();
+
+julia> ctx = Context(Xoshiro(1), InitFromParams((; x=2.0), nothing), UnlinkAll());
+
+julia> result, vi = evaluate!!(example(), ctx, VarInfo(RawValueAccumulator(false)));
+
+julia> result == get_raw_values(vi)[@varname(x)]
+true
+```
 """
-struct InitContext{
-    R<:Random.AbstractRNG,S<:AbstractInitStrategy,L<:AbstractTransformStrategy
-} <: AbstractContext
+struct Context{R<:Random.AbstractRNG,S<:AbstractInitStrategy,L<:AbstractTransformStrategy}
     rng::R
     strategy::S
     transform_strategy::L
-
-    function InitContext(
-        rng::Random.AbstractRNG,
-        strategy::AbstractInitStrategy,
-        transform_strategy::AbstractTransformStrategy,
-    )
-        return new{typeof(rng),typeof(strategy),typeof(transform_strategy)}(
-            rng, strategy, transform_strategy
-        )
-    end
-    function InitContext(
-        strategy::AbstractInitStrategy, transform_strategy::AbstractTransformStrategy
-    )
-        return InitContext(Random.default_rng(), strategy, transform_strategy)
-    end
 end
 
+function Context(
+    strategy::AbstractInitStrategy, transform_strategy::AbstractTransformStrategy
+)
+    return Context(Random.default_rng(), strategy, transform_strategy)
+end
+
+get_param_eltype(ctx::Context) = get_param_eltype(ctx.strategy)
+
 function tilde_assume!!(
-    ctx::InitContext, dist::Distribution, vn::VarName, template::Any, vi::AbstractVarInfo
+    ctx::Context, dist::Distribution, vn::VarName, template::Any, vi::AbstractVarInfo
 )
     init_tval = init(ctx.rng, vn, dist, ctx.strategy)
     x, tval, logjac = apply_transform_strategy(ctx.transform_strategy, init_tval, vn, dist)
     vi = accumulate_assume!!(vi, x, tval, logjac, vn, dist, template)
-    # We always return the untransformed value here, as that will determine
-    # what the lhs of the tilde-statement is set to.
     return x, vi
-end
-
-function tilde_observe!!(
-    ::InitContext,
-    right::Distribution,
-    left,
-    vn::Union{VarName,Nothing},
-    template::Any,
-    vi::AbstractVarInfo,
-)
-    return left, accumulate_observe!!(vi, right, left, vn, template)
 end

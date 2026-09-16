@@ -216,7 +216,7 @@ using Test
                 TransformedValue([missing], Unlink()),
             )
                 strategy = InitFromParams((; x=value), nothing)
-                context = InitContext(Xoshiro(1), strategy, UnlinkAll())
+                context = Context(Xoshiro(1), strategy, UnlinkAll())
                 @test_throws ArgumentError evaluate!!(
                     missing_parameter(), context, VarInfo(())
                 )

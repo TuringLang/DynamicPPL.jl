@@ -7,7 +7,7 @@ Collect model-evaluation outputs in accumulators.
 
 The default accumulators record log prior, log likelihood, and log Jacobian. Add a
 `RawValueAccumulator` or `VectorValueAccumulator` to record parameter values.
-Inputs, including the transform strategy, belong to `InitContext`; this type stores
+Inputs, including the transform strategy, belong to `Context`; this type stores
 no independent parameter values or transform state.
 """
 struct VarInfo{Accs<:AccumulatorTuple} <: AbstractVarInfo
@@ -38,7 +38,7 @@ end
 Evaluate `model` and collect vectorised parameter values and log densities.
 
 To select different outputs, pass `VarInfo(accumulators...)` to `evaluate!!` with
-an explicit `InitContext`.
+an explicit `Context`.
 """
 function VarInfo(
     rng::Random.AbstractRNG,
@@ -47,7 +47,7 @@ function VarInfo(
     transform_strategy::AbstractTransformStrategy=UnlinkAll(),
 )
     vi = VarInfo(VectorValueAccumulator(), default_accumulators()...)
-    return last(evaluate!!(model, InitContext(rng, init_strategy, transform_strategy), vi))
+    return last(evaluate!!(model, Context(rng, init_strategy, transform_strategy), vi))
 end
 function VarInfo(
     model::Model,
@@ -114,7 +114,7 @@ Leave other accumulators unchanged.
 function update_transform_status!!(
     vi::VarInfo, strategy::AbstractTransformStrategy, model::Model
 )
-    ctx = InitContext(InitFromParams(get_vector_values(vi), nothing), strategy)
+    ctx = Context(InitFromParams(get_vector_values(vi), nothing), strategy)
     outputs = VarInfo(VectorValueAccumulator(), LogJacobianAccumulator())
     _, outputs = evaluate!!(model, ctx, outputs)
     vi = _set_vector_values!!(vi, get_vector_values(outputs))

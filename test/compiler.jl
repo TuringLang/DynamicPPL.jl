@@ -226,8 +226,7 @@ end
         varinfo = VarInfo(model)
         @test getlogjoint(varinfo) == lp
         @test varinfo_ isa AbstractVarInfo
-        @test model_.f === model.f
-        @test model_.context isa InitContext
+        @test model_ === model
 
         # disable warnings
         @model function testmodel_missing4(x)
