@@ -328,7 +328,7 @@ function LogDensityFunction(
     end
     ranges_and_transforms, x = get_rat_and_samplevec(vecvals)
     return LogDensityFunction(
-        model, getlogdensity, ranges_and_transforms, x, accs; adtype=adtype, rng=rng
+        model, getlogdensity, ranges_and_transforms, x, accs; adtype, rng
     )
 end
 function LogDensityFunction(
@@ -346,15 +346,7 @@ function LogDensityFunction(
         )
     end
     vnt = getacc(vi, Val(VECTORVAL_ACCNAME)).values
-    return LogDensityFunction(
-        model,
-        getlogdensity,
-        vnt,
-        accs;
-        adtype=adtype,
-        fix_transforms=fix_transforms,
-        rng=rng,
-    )
+    return LogDensityFunction(model, getlogdensity, vnt, accs; adtype, fix_transforms, rng)
 end
 function LogDensityFunction(
     model::Model,
@@ -370,13 +362,7 @@ function LogDensityFunction(
     _, vi = DynamicPPL.init!!(rng, model, vi, InitFromPrior(), transform_strategy)
     vecvals = getacc(vi, Val(VECTORVAL_ACCNAME)).values
     return LogDensityFunction(
-        model,
-        getlogdensity,
-        vecvals,
-        accs;
-        adtype=adtype,
-        fix_transforms=fix_transforms,
-        rng=rng,
+        model, getlogdensity, vecvals, accs; adtype, fix_transforms, rng
     )
 end
 
