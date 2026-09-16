@@ -1,97 +1,711 @@
-"""
-    struct Model{F,argnames,defaultnames,missings,Targs,Tdefaults,Ctx<:AbstractContext,Threaded}
-        f::F
-        args::NamedTuple{argnames,Targs}
-        defaults::NamedTuple{defaultnames,Tdefaults}
-        context::Ctx=DefaultContext()
+#
+# Model values
+#
+
+struct Condition end
+struct Fix end
+
+_contains_missing(::Any) = false
+_contains_missing(::Missing) = true
+_contains_missing(value::TransformedValue) = _contains_missing(get_internal_value(value))
+_contains_missing(::AbstractArray{<:Number}) = false
+function _contains_missing(values::AbstractArray)
+    return any(
+        i -> isassigned(values, i) && _contains_missing(values[i]), eachindex(values)
+    )
+end
+function _contains_missing(values::Union{Tuple,NamedTuple})
+    return any(_contains_missing, values)
+end
+
+struct ModelValue{R<:Union{Condition,Fix},T}
+    value::T
+    function ModelValue{R}(value::T) where {R<:Union{Condition,Fix},T}
+        (R === Condition || R === Fix) ||
+            throw(ArgumentError("A model value must have one concrete role"))
+        _contains_missing(value) && throw(
+            ArgumentError(
+                "`missing` no longer selects latent variables. Omit unobserved values from `condition` or `fix` instead.",
+            ),
+        )
+        return new{R,T}(value)
     end
+end
 
-A `Model` struct with model evaluation function of type `F`, arguments of names `argnames`
-types `Targs`, default arguments of names `defaultnames` with types `Tdefaults`, missing
-arguments `missings`, and evaluation context of type `Ctx`.
+struct NoModelBinding end
 
-Here `argnames`, `defaultargnames`, and `missings` are tuples of symbols, e.g. `(:a, :b)`.
-`context` is by default `DefaultContext()`.
+# Evaluation-local bindings avoid expanding each child into its parent's storage shape.
+struct LocalModelValues{V<:VarNamedTuple}
+    values::V
+end
+_model_values(values::VarNamedTuple) = values
+_model_values(values::LocalModelValues) = values.values
+_model_value_varname(::VarNamedTuple, vn, prefix) = maybe_prefix(vn, prefix)
+_model_value_varname(::LocalModelValues, vn, prefix) = vn
 
-An argument with a type of `Missing` will be in `missings` by default. However, in
-non-traditional use-cases `missings` can be defined differently. All variables in `missings`
-are treated as random variables rather than observations.
+# Partial bindings retain the container from which their fields or tuple elements came.
+struct ModelValueTree{T,V<:Union{VarNamedTuple,Tuple}}
+    template::T
+    values::V
+    function ModelValueTree(template::T, values::V) where {T,V<:Union{VarNamedTuple,Tuple}}
+        if values isa Tuple
+            template isa Tuple && length(template) == length(values) ||
+                throw(ArgumentError("Tuple bindings must preserve their template's length"))
+        else
+            all(name -> hasproperty(template, name), keys(values.data)) ||
+                throw(ArgumentError("Field bindings must belong to their template"))
+        end
+        return new{T,V}(template, values)
+    end
+end
 
-The `Threaded` type parameter indicates whether the model requires threadsafe evaluation
-(i.e., whether the model contains statements which modify the internal VarInfo that are
-executed in parallel). By default, this is set to `false`.
+function Base.:(==)(a::ModelValueTree, b::ModelValueTree)
+    return a.template == b.template && a.values == b.values
+end
+function Base.isequal(a::ModelValueTree, b::ModelValueTree)
+    return isequal(a.template, b.template) && isequal(a.values, b.values)
+end
+function Base.hash(value::ModelValueTree, h::UInt)
+    return hash(value.template, hash(value.values, hash(:ModelValueTree, h)))
+end
 
-The default arguments are used internally when constructing instances of the same model with
-different arguments.
+function VarNamedTuples._getindex_optic(
+    value::ModelValue{R}, optic::AbstractPPL.AbstractOptic, vn
+) where {R}
+    return ModelValue{R}(VarNamedTuples._getindex_optic(value.value, optic, vn))
+end
+function VarNamedTuples._getindex_optic(
+    value::ModelValue{R}, ::AbstractPPL.Iden, vn
+) where {R}
+    return value
+end
+function VarNamedTuples._haskey_optic(value::ModelValue, optic::AbstractPPL.AbstractOptic)
+    return VarNamedTuples._haskey_optic(value.value, optic)
+end
+VarNamedTuples._haskey_optic(::ModelValue, ::AbstractPPL.Iden) = true
+function VarNamedTuples._haskey_optic(
+    value::ModelValue{R,<:Tuple}, optic::AbstractPPL.Index
+) where {R<:Union{Condition,Fix}}
+    optic = AbstractPPL.concretize_top_level(optic, value.value)
+    isempty(optic.kw) && checkbounds(Bool, Base.OneTo(length(value.value)), optic.ix...) ||
+        return false
+    return VarNamedTuples._haskey_optic(getindex(value.value, optic.ix...), optic.child)
+end
 
-# Examples
+_model_role(::ModelValue{R}, ::VarName) where {R} = R()
+_model_role(::Nothing, ::VarName) = nothing
+_model_role(::NoModelBinding, ::VarName) = nothing
+function _model_role(value::VarNamedTuples.ArrayLikeBlock, vn::VarName)
+    return _model_role(value.block, vn)
+end
+function _model_role(tree::ModelValueTree, vn::VarName)
+    return if VarNamedTuples._haskey_optic(tree, AbstractPPL.Iden())
+        _model_role(tree.values, vn)
+    else
+        nothing
+    end
+end
+_model_role(values::VarNamedTuple, vn::VarName) = _model_role(values.data, vn)
+function _model_role(values::VarNamedTuples.PartialArray, vn::VarName)
+    return all(values.mask) ? _model_role(values.data, vn) : nothing
+end
+function _model_role(values::Union{AbstractArray,Tuple,NamedTuple}, vn::VarName)
+    isempty(values) && throw(ArgumentError("Cannot determine the role of empty `$vn`"))
+    role = _model_role(first(values), vn)
+    role === nothing && return nothing
+    for value in values
+        next_role = _model_role(value, vn)
+        next_role === nothing && return nothing
+        typeof(next_role) === typeof(role) || throw(
+            ArgumentError(
+                "Cannot condition and fix different parts of the same tilde variable `$vn`",
+            ),
+        )
+    end
+    return role
+end
 
-```julia
-julia> Model(f, (x = 1.0, y = 2.0))
-Model{typeof(f),(:x, :y),(),(),Tuple{Float64,Float64},Tuple{}}(f, (x = 1.0, y = 2.0), NamedTuple())
+_model_role_at(values, ::AbstractPPL.Iden, vn) = _model_role(values, vn)
+function _model_role_at(values::VarNamedTuple, optic::AbstractPPL.Property{S}, vn) where {S}
+    return if haskey(values.data, S)
+        _model_role_at(values.data[S], optic.child, vn)
+    else
+        nothing
+    end
+end
+function _model_role_at(
+    value::ModelValue{R}, optic::AbstractPPL.AbstractOptic, vn
+) where {R}
+    return VarNamedTuples._haskey_optic(value, optic) ? R() : nothing
+end
+_model_role_at(::ModelValue{R}, ::AbstractPPL.Iden, vn) where {R} = R()
+function _model_role_at(values::VarNamedTuples.PartialArray, optic::AbstractPPL.Index, vn)
+    optic = AbstractPPL.concretize_top_level(optic, values.data)
+    VarNamedTuples._haskey_optic(values, optic) || return nothing
+    if VarNamedTuples._is_multiindex(values.data, optic.ix...; optic.kw...)
+        selected = VarNamedTuples.PartialArray(
+            view(values.data, optic.ix...; optic.kw...),
+            view(values.mask, optic.ix...; optic.kw...),
+        )
+        return _model_role_at(selected, optic.child, vn)
+    end
+    return _model_role_at(getindex(values.data, optic.ix...; optic.kw...), optic.child, vn)
+end
+function _get_model_role(model, vn)
+    vn = _model_value_varname(model.values, vn, _model_prefix(model))
+    return _model_role_at(_model_values(model.values), AbstractPPL.varname_to_optic(vn), vn)
+end
+function _get_argument_role(model, vn, argument)
+    argument = _model_value_varname(model.values, argument, _model_prefix(model))
+    binding = _model_argument_binding(
+        _model_values(model.values), AbstractPPL.varname_to_optic(argument)
+    )
+    # A whole argument keeps its role when body computations change its shape or fields.
+    return binding isa ModelValue ? _model_role(binding, vn) : _get_model_role(model, vn)
+end
+function _get_model_data(model, vn)
+    vn = _model_value_varname(model.values, vn, _model_prefix(model))
+    return _model_data(VarNamedTuples._getindex_optic(_model_values(model.values), vn))
+end
 
-julia> Model(f, (x = 1.0, y = 2.0), (x = 42,))
-Model{typeof(f),(:x, :y),(:x,),(),Tuple{Float64,Float64},Tuple{Int64}}(f, (x = 1.0, y = 2.0), (x = 42,))
+function _tag_model_values(::Type{R}, values::VarNamedTuple) where {R}
+    return map_values!!(ModelValue{R}, copy(values))
+end
 
-julia> Model{(:y,)}(f, (x = 1.0, y = 2.0), (x = 42,)) # with special definition of missings
-Model{typeof(f),(:x, :y),(:x,),(:y,),Tuple{Float64,Float64},Tuple{Int64}}(f, (x = 1.0, y = 2.0), (x = 42,))
-```
+function _expand_model_binding(previous::ModelValue{R,<:AbstractArray}) where {R}
+    data = map(ModelValue{R}, previous.value)
+    return VarNamedTuples.PartialArray(data, fill!(similar(data, Bool), true))
+end
+function _expand_model_binding(previous::ModelValue{R,<:Tuple}) where {R}
+    return ModelValueTree(previous.value, map(ModelValue{R}, previous.value))
+end
+function _expand_model_binding(previous::ModelValue{R}) where {R}
+    names = propertynames(previous.value)
+    fields = NamedTuple{names}(map(name -> getproperty(previous.value, name), names))
+    return ModelValueTree(previous.value, _tag_model_values(R, VarNamedTuple(fields)))
+end
+function VarNamedTuples._setindex_optic!!(
+    previous::ModelValue{R,<:Union{AbstractArray,Tuple}},
+    value,
+    optic::AbstractPPL.Index,
+    template,
+    permissions,
+) where {R}
+    return VarNamedTuples._setindex_optic!!(
+        _expand_model_binding(previous), value, optic, template, permissions
+    )
+end
+function VarNamedTuples._setindex_optic!!(
+    previous::ModelValue{R}, value, optic::AbstractPPL.Property{S}, template, permissions
+) where {R,S}
+    hasproperty(previous.value, S) || throw(
+        ArgumentError(
+            "Cannot override nonexistent property `$S` of $(typeof(previous.value))"
+        ),
+    )
+    expanded = _expand_model_binding(previous)
+    return VarNamedTuples._setindex_optic!!(expanded, value, optic, template, permissions)
+end
+
+function VarNamedTuples._getindex_optic(
+    tree::ModelValueTree, optic::AbstractPPL.Property, vn
+)
+    return VarNamedTuples._getindex_optic(tree.values, optic, vn)
+end
+function VarNamedTuples._getindex_optic(
+    tree::ModelValueTree{<:Tuple}, optic::AbstractPPL.Index, vn
+)
+    optic = AbstractPPL.concretize_top_level(optic, tree.template)
+    return VarNamedTuples._getindex_optic(
+        getindex(tree.values, optic.ix...; optic.kw...), optic.child, vn
+    )
+end
+
+function VarNamedTuples._haskey_optic(tree::ModelValueTree, optic::AbstractPPL.Property)
+    return VarNamedTuples._haskey_optic(tree.values, optic)
+end
+function VarNamedTuples._haskey_optic(
+    tree::ModelValueTree{<:Tuple}, optic::AbstractPPL.Index
+)
+    optic = AbstractPPL.concretize_top_level(optic, tree.template)
+    isempty(optic.kw) && checkbounds(Bool, Base.OneTo(length(tree.values)), optic.ix...) ||
+        return false
+    value = getindex(tree.values, optic.ix...; optic.kw...)
+    return !(value isa NoModelBinding) && VarNamedTuples._haskey_optic(value, optic.child)
+end
+function VarNamedTuples._haskey_optic(tree::ModelValueTree, ::AbstractPPL.Iden)
+    values = tree.values
+    if values isa VarNamedTuple
+        return all(propertynames(tree.template)) do name
+            haskey(values.data, name) &&
+                VarNamedTuples._haskey_optic(values.data[name], AbstractPPL.Iden())
+        end
+    end
+    return all(
+        value ->
+            !(value isa NoModelBinding) &&
+                VarNamedTuples._haskey_optic(value, AbstractPPL.Iden()),
+        values,
+    )
+end
+
+function VarNamedTuples._setindex_optic!!(
+    tree::ModelValueTree, value, optic::AbstractPPL.Property, template, permissions
+)
+    template = template isa ModelValueTree ? template.values : tree.template
+    values = VarNamedTuples._setindex_optic!!(
+        copy(tree.values), value, optic, template, permissions
+    )
+    return ModelValueTree(tree.template, values)
+end
+function VarNamedTuples._setindex_optic!!(
+    tree::ModelValueTree{<:Tuple}, value, optic::AbstractPPL.Index, template, permissions
+)
+    optic = AbstractPPL.concretize_top_level(optic, tree.template)
+    length(optic.ix) == 1 && only(optic.ix) isa Integer && isempty(optic.kw) ||
+        throw(ArgumentError("Tuple bindings require a single integer index"))
+    i = only(optic.ix)
+    previous = tree.values[i]
+    previous = if previous isa Union{VarNamedTuple,VarNamedTuples.PartialArray}
+        copy(previous)
+    else
+        previous
+    end
+    child_template = template isa ModelValueTree ? template.values[i] : tree.template[i]
+    updated = if previous isa NoModelBinding
+        permissions isa VarNamedTuples.MustOverwrite &&
+            throw(VarNamedTuples.MustOverwriteError(permissions))
+        VarNamedTuples.make_leaf(value, optic.child, child_template)
+    else
+        VarNamedTuples._setindex_optic!!(
+            previous, value, optic.child, child_template, permissions
+        )
+    end
+    return ModelValueTree(tree.template, Base.setindex(tree.values, updated, i))
+end
+
+function VarNamedTuples._mapreduce_recursive(
+    f, op, tree::ModelValueTree{T,<:VarNamedTuple}, vn, init
+) where {T}
+    return VarNamedTuples._mapreduce_recursive(f, op, tree.values, vn, init)
+end
+@generated function VarNamedTuples._mapreduce_recursive(
+    f, op, tree::ModelValueTree{T,V}, vn, init
+) where {T,V<:Tuple}
+    exs = map(1:fieldcount(V)) do i
+        quote
+            if !(tree.values[$i] isa NoModelBinding)
+                result = VarNamedTuples._mapreduce_recursive(
+                    f,
+                    op,
+                    tree.values[$i],
+                    AbstractPPL.append_optic(vn, AbstractPPL.Index(($i,), (;))),
+                    result,
+                )
+            end
+        end
+    end
+    return quote
+        result = init
+        $(exs...)
+        result
+    end
+end
+function VarNamedTuples._map_values_recursive!!(f, tree::ModelValueTree)
+    values = if tree.values isa VarNamedTuple
+        map_values!!(f, copy(tree.values))
+    else
+        map(tree.values) do value
+            if value isa NoModelBinding
+                value
+            else
+                VarNamedTuples._map_values_recursive!!(f, _copy_model_node(value))
+            end
+        end
+    end
+    return ModelValueTree(tree.template, values)
+end
+function VarNamedTuples._map_pairs_recursive!!(f, tree::ModelValueTree, vn)
+    values = if tree.values isa VarNamedTuple
+        VarNamedTuples._map_pairs_recursive!!(f, copy(tree.values), vn)
+    else
+        ntuple(length(tree.values)) do i
+            value = tree.values[i]
+            if value isa NoModelBinding
+                value
+            else
+                VarNamedTuples._map_pairs_recursive!!(
+                    f,
+                    _copy_model_node(value),
+                    AbstractPPL.append_optic(vn, AbstractPPL.Index((i,), (;))),
+                )
+            end
+        end
+    end
+    return ModelValueTree(tree.template, values)
+end
+
+function _empty_model_tree(tree::ModelValueTree)
+    values =
+        tree.values isa Tuple ? map(_ -> NoModelBinding(), tree.values) : VarNamedTuple()
+    return ModelValueTree(tree.template, values)
+end
+function VarNamedTuples.make_leaf(
+    value, optic::AbstractPPL.Property, template::ModelValueTree
+)
+    return VarNamedTuples._setindex_optic!!(
+        _empty_model_tree(template), value, optic, template, VarNamedTuples.AllowAll()
+    )
+end
+function VarNamedTuples.make_leaf(
+    value, optic::AbstractPPL.Index, template::ModelValueTree{<:Tuple}
+)
+    return VarNamedTuples._setindex_optic!!(
+        _empty_model_tree(template), value, optic, template, VarNamedTuples.AllowAll()
+    )
+end
+function (::VarNamedTuples.SharedGetProperty{S})(tree::ModelValueTree) where {S}
+    return VarNamedTuples.SharedGetProperty{S}()(tree.template)
+end
+function _model_role_at(tree::ModelValueTree, optic::AbstractPPL.Property, vn)
+    return _model_role_at(tree.values, optic, vn)
+end
+function _model_role_at(tree::ModelValueTree{<:Tuple}, optic::AbstractPPL.Index, vn)
+    optic = AbstractPPL.concretize_top_level(optic, tree.template)
+    isempty(optic.kw) && checkbounds(Bool, Base.OneTo(length(tree.values)), optic.ix...) ||
+        return nothing
+    value = getindex(tree.values, optic.ix...)
+    return value isa NoModelBinding ? nothing : _model_role_at(value, optic.child, vn)
+end
+function _model_argument_binding(tree::ModelValueTree, optic::AbstractPPL.Property)
+    return _model_argument_binding(tree.values, optic)
+end
+function _model_argument_binding(tree::ModelValueTree{<:Tuple}, optic::AbstractPPL.Index)
+    optic = AbstractPPL.concretize_top_level(optic, tree.template)
+    isempty(optic.kw) && checkbounds(Bool, Base.OneTo(length(tree.values)), optic.ix...) ||
+        return nothing
+    value = getindex(tree.values, optic.ix...)
+    return value isa NoModelBinding ? nothing : _model_argument_binding(value, optic.child)
+end
+@generated function _merge_model_values(
+    previous::VarNamedTuple{P}, updates::VarNamedTuple{U}
+) where {P,U}
+    names = Tuple(union(P, U))
+    fields = map(names) do name
+        if name in P && name in U
+            :(_merge_model_node(previous.data.$name, updates.data.$name))
+        elseif name in U
+            :(_copy_model_node(updates.data.$name))
+        else
+            :(previous.data.$name)
+        end
+    end
+    return :(VarNamedTuple(NamedTuple{$names}(($(fields...),))))
+end
+_copy_model_node(value) = value
+_copy_model_node(value::Union{VarNamedTuple,VarNamedTuples.PartialArray}) = copy(value)
+function _copy_model_node(value::ModelValueTree)
+    values =
+        value.values isa Tuple ? map(_copy_model_node, value.values) : copy(value.values)
+    return ModelValueTree(value.template, values)
+end
+_merge_model_node(previous, updates) = updates
+_merge_model_node(previous, ::NoModelBinding) = previous
+function _merge_model_node(previous, updates::VarNamedTuple)
+    previous isa NoModelBinding && return copy(updates)
+    previous isa ModelValue &&
+        return _merge_model_node(_expand_model_binding(previous), updates)
+    previous isa VarNamedTuple && return _merge_model_values(previous, updates)
+    if previous isa ModelValueTree
+        return ModelValueTree(
+            previous.template, _merge_model_values(previous.values, updates)
+        )
+    end
+    return _merge_model_indices(previous, updates)
+end
+function _merge_model_node(previous, updates::VarNamedTuples.PartialArray)
+    return if previous isa NoModelBinding
+        copy(updates)
+    else
+        _merge_model_indices(previous, updates)
+    end
+end
+function _merge_model_index(previous, update, optic, template)
+    child = _model_argument_binding(previous, optic)
+    value = child === nothing ? _copy_model_node(update) : _merge_model_node(child, update)
+    return VarNamedTuples._setindex_optic!!(
+        previous, value, optic, template, VarNamedTuples.AllowAll()
+    )
+end
+function _merge_model_indices(previous, updates)
+    return _fold_model_indices(_merge_model_index, _copy_model_node(previous), updates)
+end
+function _fold_model_indices(f, result, updates::VarNamedTuples.PartialArray)
+    mask =
+        if eltype(updates) <: VarNamedTuples.ArrayLikeBlock ||
+            VarNamedTuples.ArrayLikeBlock <: eltype(updates)
+            copy(updates.mask)
+        else
+            updates.mask
+        end
+    for i in CartesianIndices(mask)
+        mask[i] || continue
+        update = updates.data[i]
+        optic = if update isa VarNamedTuples.ArrayLikeBlock
+            mask[update.ix..., update.kw...] .= false
+            AbstractPPL.Index(update.ix, update.kw)
+        else
+            AbstractPPL.Index(Tuple(i), (;))
+        end
+        value = update isa VarNamedTuples.ArrayLikeBlock ? update.block : update
+        result = f(result, value, optic, updates)
+    end
+    return result
+end
+@generated function _fold_model_indices(
+    f, result, updates::VarNamedTuple{names}
+) where {names}
+    exs = map(names) do name
+        :(
+            result = f(
+                result,
+                updates.data.$name,
+                AbstractPPL.Property{$(QuoteNode(name))}(),
+                updates,
+            )
+        )
+    end
+    return quote
+        $(exs...)
+        result
+    end
+end
+_previous_model_child(::NoModelBinding, optic) = NoModelBinding()
+function _previous_model_child(previous::ModelValueTree{<:Tuple}, optic::AbstractPPL.Index)
+    i = only(optic.ix)
+    return i <= length(previous.values) ? previous.values[i] : NoModelBinding()
+end
+function _previous_model_child(previous, optic)
+    value = _model_argument_binding(previous, optic)
+    return value === nothing ? NoModelBinding() : value
+end
+function _merge_model_node(previous, updates::ModelValueTree)
+    if updates.values isa Tuple
+        values = ntuple(length(updates.values)) do i
+            child = _previous_model_child(previous, AbstractPPL.Index((i,), (;)))
+            update = updates.values[i]
+            return child isa NoModelBinding ? update : _merge_model_node(child, update)
+        end
+        return ModelValueTree(updates.template, values)
+    end
+    fields = _merge_model_fields(previous, updates, Val(propertynames(updates.template)))
+    return ModelValueTree(updates.template, VarNamedTuple(fields))
+end
+function VarNamedTuples._merge(
+    previous::ModelValueTree, updates::ModelValueTree, ::Val{true}
+)
+    return _merge_model_node(previous, updates)
+end
+
+_merge_model_fields(previous, updates, ::Val{()}) = NamedTuple()
+function _merge_model_fields(previous, updates, ::Val{names}) where {names}
+    name = first(names)
+    child = _previous_model_child(previous, AbstractPPL.Property{name}())
+    if haskey(updates.values.data, name)
+        update = updates.values.data[name]
+        child = child isa NoModelBinding ? update : _merge_model_node(child, update)
+    end
+    rest = _merge_model_fields(previous, updates, Val(Base.tail(names)))
+    return child isa NoModelBinding ? rest : merge(NamedTuple{(name,)}((child,)), rest)
+end
+
+function VarNamedTuples._prepare_indexed_value(
+    value::ModelValue{R,<:AbstractArray}, data, inds...; kw...
+) where {R}
+    return if VarNamedTuples._is_multiindex(data, inds...; kw...)
+        map(ModelValue{R}, value.value)
+    else
+        value
+    end
+end
+
+_model_data(value) = value
+_model_data(value::ModelValue) = value.value
+_model_data(values::AbstractArray) = map(_model_data, values)
+_model_data(values::VarNamedTuple) = map(_model_data, values.data)
+function _model_data(values::VarNamedTuples.PartialArray)
+    return _model_data(VarNamedTuples.unwrap_internal_array(values))
+end
+function _model_data(tree::ModelValueTree)
+    return if tree.values isa Tuple
+        map(tree.values, tree.template) do value, template
+            if value isa NoModelBinding
+                deepcopy(template)
+            else
+                _model_argument_value(value, template)
+            end
+        end
+    else
+        _model_argument_value(tree.values, tree.template)
+    end
+end
+function VarNamedTuples.unwrap_internal_array(tree::ModelValueTree)
+    VarNamedTuples._haskey_optic(tree, AbstractPPL.Iden()) ||
+        throw(ArgumentError("Cannot extract a partially supplied model value"))
+    return _model_data(tree)
+end
+
+_model_argument_value(value, template) = value
+_model_argument_value(::Nothing, template) = deepcopy(template)
+_model_argument_value(value::ModelValue, template) = value.value
+_model_argument_value(tree::ModelValueTree, template) = _model_data(tree)
+_model_argument_value(values::AbstractArray, template) = _model_data(values)
+
+_has_complete_model_data(::Any) = true
+_has_complete_model_data(::NoModelBinding) = false
+_has_complete_model_data(values::VarNamedTuple) = all(_has_complete_model_data, values.data)
+_has_complete_model_data(::VarNamedTuples.ArrayLikeBlock) = false
+function _has_complete_model_data(values::VarNamedTuples.PartialArray)
+    # Growable arrays describe supplied indices, not the extent of the argument.
+    return !(values.data isa VarNamedTuples.GrowableArray) &&
+           all(values.mask) &&
+           all(_has_complete_model_data, values.data)
+end
+
+function _model_argument_value(values::VarNamedTuples.PartialArray, template)
+    return if _has_complete_model_data(values)
+        _model_data(values)
+    else
+        _fold_model_indices(_set_model_argument, deepcopy(template), values)
+    end
+end
+function _set_model_argument(result, value, optic, template)
+    child_template = VarNamedTuples.maybe_index_template(result, optic)
+    return Accessors.set(
+        result,
+        AbstractPPL.with_mutation(optic),
+        _model_argument_value(value, child_template),
+    )
+end
+@generated function _model_argument_value(
+    values::VarNamedTuple{names}, template
+) where {names}
+    updates = map(names) do name
+        :(
+            result = Accessors.set(
+                result,
+                AbstractPPL.with_mutation(AbstractPPL.Property{$(QuoteNode(name))}()),
+                _model_argument_value(
+                    values.data.$name,
+                    VarNamedTuples.SharedGetProperty{$(QuoteNode(name))}()(result),
+                ),
+            )
+        )
+    end
+    return quote
+        template isa NoTemplate && return _model_data(values)
+        result = deepcopy(template)
+        $(updates...)
+        return result
+    end
+end
+
+function _select_model_values(::Type{R}, values::VarNamedTuple) where {R}
+    return mapfoldl(
+        identity,
+        function (selected, pair)
+            vn, value = pair
+            return if value isa ModelValue{R}
+                templated_setindex!!(
+                    selected, value.value, vn, values.data[AbstractPPL.getsym(vn)]
+                )
+            else
+                selected
+            end
+        end,
+        values;
+        init=VarNamedTuple(),
+    )
+end
+
+#
+# Model definition
+#
+
+struct PrefixTemplate{V<:VarName,T,I}
+    prefix::V
+    template::T
+    inner::I
+end
+_apply_prefix_template(::Nothing, template) = template
+function _apply_prefix_template(prefix::VarName, template)
+    return SkipTemplate{optic_skip_length(AbstractPPL.getoptic(prefix)) + 1}(template)
+end
+function _apply_prefix_template(prefix::PrefixTemplate, template)
+    return VarNamedTuples.nested_template(
+        AbstractPPL.getoptic(prefix.prefix),
+        prefix.template,
+        _apply_prefix_template(prefix.inner, template),
+    )
+end
+_compose_prefix_templates(::Nothing, inner) = inner
+function _compose_prefix_templates(prefix::VarName, inner)
+    return PrefixTemplate(prefix, NoTemplate(), inner)
+end
+function _compose_prefix_templates(prefix::PrefixTemplate, inner)
+    return PrefixTemplate(
+        prefix.prefix, prefix.template, _compose_prefix_templates(prefix.inner, inner)
+    )
+end
+
+"""
+    Model(f, args::NamedTuple, defaults::NamedTuple, context=DefaultContext())
+
+Store a model function, arguments, context, and role-tagged conditioned or fixed values.
+Model arguments provide default observations. Use `decondition` to make their sites latent.
 """
 struct Model{
-    F,argnames,defaultnames,missings,Targs,Tdefaults,Ctx<:AbstractContext,Threaded
+    F,
+    argnames,
+    defaultnames,
+    Targs,
+    Tdefaults,
+    C<:AbstractContext,
+    Values<:Union{VarNamedTuple,LocalModelValues},
+    Threaded,
 } <: AbstractProbabilisticProgram
     f::F
     args::NamedTuple{argnames,Targs}
     defaults::NamedTuple{defaultnames,Tdefaults}
-    context::Ctx
-
-    @doc """
-        Model{Threaded,missings}(f, args::NamedTuple, defaults::NamedTuple)
-
-    Create a model with evaluation function `f` and missing arguments overwritten by
-    `missings`.
-    """
-    function Model{Threaded,missings}(
+    context::C
+    values::Values
+    function Model{Threaded}(
         f::F,
-        args::NamedTuple{argnames,Targs},
-        defaults::NamedTuple{defaultnames,Tdefaults},
-        context::Ctx=DefaultContext(),
-    ) where {missings,F,argnames,Targs,defaultnames,Tdefaults,Ctx,Threaded}
-        return new{F,argnames,defaultnames,missings,Targs,Tdefaults,Ctx,Threaded}(
-            f, args, defaults, context
-        )
+        args::NamedTuple{A,Ta},
+        defaults::NamedTuple{D,Td},
+        context::C=DefaultContext(),
+        values::V=_tag_model_values(Condition, VarNamedTuple(merge(args, defaults))),
+    ) where {F,A,Ta,D,Td,C,V,Threaded}
+        mapreduce(
+            pair -> pair.second isa ModelValue, &, _model_values(values); init=true
+        ) || throw(ArgumentError("Model values must carry a condition or fix role"))
+        return new{F,A,D,Ta,Td,C,V,Threaded}(f, args, defaults, context, values)
     end
 end
 
 """
     Model(f, args::NamedTuple[, defaults::NamedTuple = ()])
 
-Create a model with evaluation function `f` and missing arguments deduced from `args`.
+Create a model with evaluation function `f` and arguments `args`.
+
+Arguments supply default conditioned values. Use [`decondition`](@ref) to make an
+argument-backed stochastic site latent, or [`condition`](@ref) to replace its observation.
 
 Default arguments `defaults` are used internally when constructing instances of the same
 model with different arguments.
 """
-@generated function Model{Threaded}(
-    f::F,
-    args::NamedTuple{argnames,Targs},
-    defaults::NamedTuple{kwargnames,Tkwargs},
-    context::AbstractContext=DefaultContext(),
-) where {Threaded,F,argnames,Targs,kwargnames,Tkwargs}
-    missing_args = Tuple(
-        name for (name, typ) in zip(argnames, Targs.types) if typ <: Missing
-    )
-    missing_kwargs = Tuple(
-        name for (name, typ) in zip(kwargnames, Tkwargs.types) if typ <: Missing
-    )
-    return :(Model{Threaded,$(missing_args..., missing_kwargs...)}(
-        f, args, defaults, context
-    ))
-end
-
-function Model{Threaded}(
-    f, args::NamedTuple, context::AbstractContext=DefaultContext(); kwargs...
-) where {Threaded}
-    return Model{Threaded}(f, args, NamedTuple(kwargs), context)
+function Model{Threaded}(f, args::NamedTuple; kwargs...) where {Threaded}
+    return Model{Threaded}(f, args, NamedTuple(kwargs))
 end
 
 """
@@ -100,31 +714,27 @@ end
 Return whether `model` has been marked as needing threadsafe evaluation (using
 `setthreadsafe`).
 """
-function requires_threadsafe(
-    ::Model{F,A,D,M,Ta,Td,Ctx,Threaded}
-) where {F,A,D,M,Ta,Td,Ctx,Threaded}
-    return Threaded
+requires_threadsafe(::Model{F,A,D,Ta,Td,C,V,Threaded}) where {F,A,D,Ta,Td,C,V,Threaded} =
+    Threaded
+function _reconstruct_model(model::Model; context=model.context, values=model.values)
+    return Model{requires_threadsafe(model)}(
+        model.f, model.args, model.defaults, context, values
+    )
 end
-
 """
     contextualize(model::Model, context::AbstractContext)
 
-Return a new `Model` with the same evaluation function and other arguments, but
-with its underlying context set to `context`.
+Return a model with its context replaced by `context`.
 """
-function contextualize(model::Model, context::AbstractContext)
-    return Model{requires_threadsafe(model)}(model.f, model.args, model.defaults, context)
-end
-
-"""
-    setleafcontext(model::Model, context::AbstractContext)
-
-Return a new `Model` with its leaf context set to `context`. This is a convenience shortcut
-for `contextualize(model, setleafcontext(model.context, context)`).
-"""
+contextualize(model::Model, context::AbstractContext) = _reconstruct_model(model; context)
 function setleafcontext(model::Model, context::AbstractContext)
     return contextualize(model, setleafcontext(model.context, context))
 end
+_model_prefix(model::Model) = last(extract_prefixes(model.context))
+_prefix_template(::AbstractContext) = nothing
+_prefix_template(context::AbstractParentContext) = _prefix_template(childcontext(context))
+_prefix_template(context::PrefixContext) = context.template
+_model_prefix_template(model::Model) = _prefix_template(model.context)
 
 """
     setthreadsafe(model::Model, threadsafe::Bool)
@@ -145,11 +755,11 @@ Setting `threadsafe` to `true` increases the overhead in evaluating the model. P
 [the Turing.jl docs](https://turinglang.org/docs/usage/threadsafe-evaluation/) for more
 details.
 """
-function setthreadsafe(model::Model{F,A,D,M}, threadsafe::Bool) where {F,A,D,M}
+function setthreadsafe(model::Model, threadsafe::Bool)
     return if requires_threadsafe(model) == threadsafe
         model
     else
-        Model{threadsafe,M}(model.f, model.args, model.defaults, model.context)
+        Model{threadsafe}(model.f, model.args, model.defaults, model.context, model.values)
     end
 end
 
@@ -171,16 +781,14 @@ Return a `Model` which now treats the variables in `values` as observations.
 
 See also: [`decondition`](@ref), [`conditioned`](@ref)
 
-# Limitations
+Supplied values override model arguments and earlier conditioned or fixed values at the
+same address. Parent-model values override submodel values. Sites without supplied values
+remain latent; `missing` is not a latent-variable marker.
 
-This does currently _not_ work with variables that are
-provided to the model as arguments, e.g. `@model function demo(x) ... end`
-means that `condition` will not affect the variable `x`.
-
-Therefore if one wants to make use of `condition` and [`decondition`](@ref)
-one should not be specifying any random variables as arguments.
-
-This is done for the sake of backwards compatibility.
+A complete argument replacement supplies its value, shape, and dispatch type parameters
+from the start of the model body. Partial updates preserve the remaining stored values and
+their array templates. Arguments with unobserved entries retain their original storage
+template; the corresponding tilde statements fill those entries during evaluation.
 
 # Examples
 ## Simple univariate model
@@ -241,8 +849,7 @@ true
 
 ## Condition only a part of a multivariate variable
 
-When conditioning on multiple variables at a time, we can use `missing` to signal that a
-part of the variable should not be conditioned on.
+Supply only the indices to observe; omitted sites remain latent.
 
 However, note that in this case each element of the multivariate random variable must be on
 its own tilde-statement. In other words, if we write `m ~ MvNormal(...)`, then we cannot
@@ -263,9 +870,14 @@ demo_mv (generic function with 4 methods)
 
 julia> model = demo_mv();
 
-julia> conditioned_model = condition(model, m = [missing, 1.0]);
+julia> observations = @vnt begin
+           @template m=zeros(2)
+           m[2] := 1.0
+       end;
 
-julia> # (✓) `m[1]` sampled while `m[2]` is fixed
+julia> conditioned_model = condition(model, observations);
+
+julia> # `m[1]` is sampled while `m[2]` is observed.
        m = conditioned_model(); (m[1] != 1.0 && m[2] == 1.0)
 true
 ```
@@ -329,31 +941,28 @@ julia> # If you attempt to condition on `inner` itself, it must refer to the pre
 julia> conditioned_model2()
 1.0
 
-julia> # However, if `inner` does not contain `m` inside it as a field, this will not
-       # result in any conditioning:
+julia> # Conditioning a submodel's return value is not supported.
        conditioned_model_fail = model | (inner = "something else", );
 
-julia> conditioned_model_fail == 1.0
-false
+julia> conditioned_model_fail()
+ERROR: ArgumentError: Cannot condition or fix a submodel's return value. Supply its internal variable names instead; decondition arguments used only as return-value buffers.
 ```
 """
 function AbstractPPL.condition(model::Model, values...)
-    # Positional arguments - need to handle cases carefully
-    return contextualize(
-        model, CondFixContext{Condition}(_make_condfix_values(values...), model.context)
+    values = _merge_model_values(
+        model.values, _tag_model_values(Condition, _make_condfix_values(values...))
     )
+    return _reconstruct_model(model; values)
 end
 function AbstractPPL.condition(model::Model; values...)
-    return contextualize(
-        model, CondFixContext{Condition}(VarNamedTuple(NamedTuple(values)), model.context)
-    )
+    return condition(model, NamedTuple(values))
 end
 
 """
     _make_condfix_values(vals...)
 
 Convert different types of input to a `VarNamedTuple` of values, suitable for storage in a
-`CondFixContext`.
+`Model`.
 
 This handles all the cases where `vals` is either already a `NamedTuple` or `AbstractDict`
 (e.g. `model | (x=1, y=2)`), as well as if they are splatted (e.g. `condition(model, x=1,
@@ -379,9 +988,8 @@ end
 Return a `Model` for which `variables...` are _not_ conditioned on. If no `variables` are
 provided, then all conditioned variables will be removed.
 
-Note that this function cannot decondition variables that are provided as arguments to the
-model function itself; it can only decondition variables that were provided via `condition`
-or `|`.
+This also removes observations supplied as model arguments. After deconditioning, a site's
+sampled value replaces its local argument value and is used by subsequent model statements.
 
 This is essentially the inverse of [`condition`](@ref).
 
@@ -455,7 +1063,19 @@ julia> deconditioned_model()  # (×) `m[1]` is still conditioned
 ```
 """
 function AbstractPPL.decondition(model::Model, syms::Union{Symbol,VarName}...)
-    return contextualize(model, decondition_context(model.context, syms...))
+    values = _remove_model_values(Condition, model.values, syms...)
+    return _reconstruct_model(model; values)
+end
+
+function _remove_model_values(
+    ::Type{R}, values::VarNamedTuple, args::Union{Symbol,VarName}...
+) where {R}
+    vns = map(arg -> arg isa VarName ? arg : VarName{arg}(), args)
+    retained_keys = filter(keys(values)) do key
+        !(values[key] isa ModelValue{R}) ||
+            (!isempty(args) && all(vn -> !subsumes(vn, key), vns))
+    end
+    return subset(values, retained_keys)
 end
 
 """
@@ -467,7 +1087,7 @@ Return the conditioned values in `model`.
 ```jldoctest
 julia> using Distributions
 
-julia> using DynamicPPL: conditioned, contextualize, PrefixContext, CondFixContext, Condition
+julia> using DynamicPPL: conditioned, prefix
 
 julia> @model function demo()
            m ~ Normal()
@@ -483,25 +1103,22 @@ VarNamedTuple
 ├─ x => 100.0
 └─ m => 1.0
 
-julia> # Nested ones also work. (Note that `PrefixContext` also prefixes
-       # the variables of any `CondFixContext` that is _inside_ it.)
-       new_context = PrefixContext(@varname(a), CondFixContext{Condition}(VarNamedTuple(m=1.0,)));
-       cm = condition(contextualize(m, new_context), x=100.0);
+julia> # Prefixing also prefixes values already stored on the model.
+       cm = condition(m, m=1.0) |> model -> prefix(model, @varname(a));
 
 julia> conditioned(cm)
 VarNamedTuple
-├─ a => VarNamedTuple
-│       └─ m => 1.0
-└─ x => 100.0
+└─ a => VarNamedTuple
+        └─ m => 1.0
 
 julia> # Since we conditioned on `a.m`, it is not treated as a random variable.
-       # However, `a.x` will still be a random variable.
+       # However, `a.x` is still a random variable.
        keys(VarInfo(cm))
 1-element Vector{VarName}:
  a.x
 
-julia> # We can also condition on `a.m` _outside_ of the PrefixContext:
-       cm = condition(contextualize(m, PrefixContext(@varname(a))), (@varname(a.m) => 1.0));
+julia> # Values added after prefixing use their supplied names unchanged.
+       cm = condition(prefix(m, @varname(a)), (@varname(a.m) => 1.0));
 
 julia> conditioned(cm)
 VarNamedTuple
@@ -514,7 +1131,7 @@ julia> # Now `a.x` will be sampled.
  a.x
 ```
 """
-conditioned(model::Model) = conditioned(model.context)
+conditioned(model::Model) = _select_model_values(Condition, model.values)
 
 """
     fix(model::Model; values...)
@@ -604,14 +1221,13 @@ julia> # The difference is the missing log-probability of `m`:
 ```
 """
 function fix(model::Model, values...)
-    return contextualize(
-        model, CondFixContext{Fix}(_make_condfix_values(values...), model.context)
+    values = _merge_model_values(
+        model.values, _tag_model_values(Fix, _make_condfix_values(values...))
     )
+    return _reconstruct_model(model; values)
 end
 function fix(model::Model; values...)
-    return contextualize(
-        model, CondFixContext{Fix}(VarNamedTuple(NamedTuple(values)), model.context)
-    )
+    return fix(model, NamedTuple(values))
 end
 
 """
@@ -665,8 +1281,10 @@ julia> # `unfix` without any symbols will `unfix` all variables.
 true
 ```
 """
-unfix(model::Model, syms::Union{Symbol,VarName}...) =
-    contextualize(model, unfix_context(model.context, syms...))
+function unfix(model::Model, syms::Union{Symbol,VarName}...)
+    values = _remove_model_values(Fix, model.values, syms...)
+    return _reconstruct_model(model; values)
+end
 
 """
     fixed(model::Model)
@@ -677,7 +1295,7 @@ Return the fixed values in `model`.
 ```jldoctest
 julia> using Distributions
 
-julia> using DynamicPPL: fixed, contextualize, PrefixContext, CondFixContext, Fix
+julia> using DynamicPPL: fixed, prefix
 
 julia> @model function demo()
            m ~ Normal()
@@ -693,18 +1311,20 @@ VarNamedTuple
 ├─ x => 100.0
 └─ m => 1.0
 
-julia> # The rest of this is the same as the `condition` example above.
-       fm = fix(contextualize(m, PrefixContext(@varname(a), CondFixContext{Fix}(VarNamedTuple(m=1.0)))), x=100.0);
+julia> # Prefixing also prefixes values already stored on the model.
+       fm = prefix(fix(m, m=1.0), @varname(a));
 
-julia> Set(keys(fixed(fm))) == Set([@varname(a.m), @varname(x)])
-true
+julia> fixed(fm)
+VarNamedTuple
+└─ a => VarNamedTuple
+        └─ m => 1.0
 
 julia> keys(VarInfo(fm))
 1-element Vector{VarName}:
  a.x
 
-julia> # We can also fix `a.m` _outside_ of the PrefixContext:
-       fm = fix(contextualize(m, PrefixContext(@varname(a))), (@varname(a.m) => 1.0));
+julia> # Values added after prefixing use their supplied names unchanged.
+       fm = fix(prefix(m, @varname(a)), (@varname(a.m) => 1.0));
 
 julia> fixed(fm)
 VarNamedTuple
@@ -717,10 +1337,38 @@ julia> # Now `a.x` will be sampled.
  a.x
 ```
 """
-fixed(model::Model) = fixed(model.context)
+fixed(model::Model) = _select_model_values(Fix, model.values)
+
+function _prefix_values(values::VarNamedTuple, vn::VarName, template)
+    isempty(values) && return values
+    return templated_setindex!!(VarNamedTuple(), values, vn, template)
+end
+
+# Prefix templates can cross submodel boundaries without reading parent return values.
+function _concretize_prefix(vn::VarName{S}, template) where {S}
+    return VarName{S}(_concretize_prefix(AbstractPPL.getoptic(vn), template))
+end
+_concretize_prefix(optic::AbstractPPL.Iden, template) = optic
+function _concretize_prefix(optic::AbstractPPL.Property{S}, template) where {S}
+    AbstractPPL.is_dynamic(optic) || return optic
+    child = _concretize_prefix(optic.child, VarNamedTuples.SharedGetProperty{S}()(template))
+    return AbstractPPL.Property{S}(child)
+end
+function _concretize_prefix(optic::AbstractPPL.Index, template)
+    AbstractPPL.is_dynamic(optic) || return optic
+    optic = AbstractPPL.concretize_top_level(optic, VarNamedTuples.template_array(template))
+    AbstractPPL.is_dynamic(optic.child) || return optic
+    child = _concretize_prefix(optic.child, VarNamedTuples.index_template(template, optic))
+    return AbstractPPL.Index(optic.ix, optic.kw, child)
+end
+
+maybe_prefix(vn::VarName, ::Nothing) = vn
+maybe_prefix(::Nothing, ::Nothing) = nothing
+maybe_prefix(::Nothing, prefix::VarName) = prefix
+maybe_prefix(vn::VarName, prefix::VarName) = AbstractPPL.prefix(vn, prefix)
 
 """
-    prefix(model::Model, x::VarName)
+    prefix(model::Model, x::VarName; template=NoTemplate())
     prefix(model::Model, x::Val{sym})
     prefix(model::Model, x::Any)
 
@@ -730,6 +1378,9 @@ Return `model` but with all random variables prefixed by `x`, where `x` is eithe
 - for any other type, `x` is converted to a Symbol and then to a `VarName`. Note that
   this will introduce runtime overheads so is not recommended unless absolutely
   necessary.
+
+For an indexed prefix, `template` supplies the enclosing container's shape and resolves
+`begin` and `end` indices.
 
 # Examples
 
@@ -750,12 +1401,114 @@ VarNamedTuple
                 └─ x => 1
 ```
 """
-prefix(model::Model, x::VarName) = contextualize(model, PrefixContext(x, model.context))
+function prefix(model::Model, x::VarName; template=NoTemplate())
+    x = _concretize_prefix(x, template)
+    values = _prefix_values(model.values, x, template)
+    return _prefix_model(model, x, template, values)
+end
+function _prefix_model(model::Model, x::VarName, template, values)
+    model_prefix = maybe_prefix(_model_prefix(model), x)
+    prefix_template =
+        if template isa NoTemplate && _model_prefix_template(model) === nothing
+            nothing
+        else
+            inner = if _model_prefix_template(model) === nothing
+                _model_prefix(model)
+            else
+                _model_prefix_template(model)
+            end
+            PrefixTemplate(x, template, inner)
+        end
+    context = PrefixContext(
+        model_prefix, first(extract_prefixes(model.context)), prefix_template
+    )
+    return _reconstruct_model(model; context, values)
+end
 function prefix(model::Model, ::Val{sym}) where {sym}
-    return contextualize(model, PrefixContext(VarName{sym}(), model.context))
+    return prefix(model, VarName{sym}())
 end
 function prefix(model::Model, x)
-    return contextualize(model, PrefixContext(VarName{Symbol(x)}(), model.context))
+    return prefix(model, VarName{Symbol(x)}())
+end
+
+function _prefix_varname_and_template(vn::VarName, template::Any, model::Model)
+    return _prefix_varname_and_template(
+        vn, template, _model_prefix(model), _model_prefix_template(model)
+    )
+end
+function _prefix_varname_and_template(vn::VarName, template, prefix, prefix_template)
+    prefix === nothing && return vn, template
+    pt = prefix_template === nothing ? prefix : prefix_template
+    return AbstractPPL.prefix(vn, prefix), _apply_prefix_template(pt, template)
+end
+
+function tilde_assume!!(
+    model::Model,
+    context::AbstractContext,
+    right::Distribution,
+    vn::VarName,
+    template::Any,
+    vi::AbstractVarInfo,
+)
+    vn, template = _prefix_varname_and_template(vn, template, model)
+    return tilde_assume!!(context, right, vn, template, vi)
+end
+
+"""
+    tilde_observe!!(model::Model, right::Distribution, left, vn, template, vi)
+
+Accumulate an observation and return `(left, vi)` with the updated varinfo.
+
+`left` is supplied by the model's conditioned values or by a literal expression. `vn` is
+the variable name before prefixing, or `nothing` for a literal. `template` describes the
+top-level variable's storage; literals use `NoTemplate()`.
+
+Apply the model's prefix and delegate to [`accumulate_observe!!`](@ref). Observation
+handling is independent of the evaluation context. Fixed sites bypass this function
+and do not contribute to the log probability.
+"""
+function tilde_observe!!(
+    model::Model,
+    right::Distribution,
+    left,
+    vn::Union{VarName,Nothing},
+    template::Any,
+    vi::AbstractVarInfo,
+)
+    return _tilde_observe!!(
+        _model_prefix(model), _model_prefix_template(model), right, left, vn, template, vi
+    )
+end
+
+# The compiler passes prefix metadata directly so observations do not box Model.
+function _tilde_observe!!(
+    prefix, prefix_template, right::Distribution, left, vn, template, vi
+)
+    vn, template = if vn === nothing
+        vn, NoTemplate()
+    else
+        _prefix_varname_and_template(vn, template, prefix, prefix_template)
+    end
+    ModelValue{Condition}(left) # Validate prepared arguments, including mutable fields.
+    vi = accumulate_observe!!(vi, right, left, vn, template)
+    return left, vi
+end
+
+"""
+    store_coloneq_value!!(model::Model, vn::VarName, right, template, vi)
+
+Store a tracked assignment's value in the raw-value accumulator and return the updated `vi`.
+
+Apply the model's prefix to `vn` and its storage `template`. The evaluator calls this
+function only when tracked-value extraction is enabled; no context hook is involved.
+"""
+function store_coloneq_value!!(
+    model::Model, vn::VarName, right::Any, template::Any, vi::AbstractVarInfo
+)
+    vn, template = _prefix_varname_and_template(vn, template, model)
+    return map_accumulator!!(
+        acc -> store_colon_eq!!(acc, vn, right, template), vi, Val(RAW_VALUE_ACCNAME)
+    )
 end
 
 """
@@ -981,13 +1734,6 @@ end
 Get a tuple of the argument names of the `model`.
 """
 getargnames(model::Model{_F,argnames}) where {argnames,_F} = argnames
-
-"""
-    getmissings(model::Model)
-
-Get a tuple of the names of the missing arguments of the `model`.
-"""
-getmissings(model::Model{_F,_a,_d,missings}) where {missings,_F,_a,_d} = missings
 
 """
     nameof(model::Model)

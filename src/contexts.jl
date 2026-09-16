@@ -26,9 +26,9 @@ effectively updating the child context.
 
 # Examples
 ```jldoctest; setup=:(using Random)
-julia> using DynamicPPL: InitContext, CondFixContext, Condition
+julia> using DynamicPPL: InitContext, PrefixContext
 
-julia> ctx = CondFixContext{Condition}(VarNamedTuple(; a = 1));
+julia> ctx = PrefixContext(@varname(a));
 
 julia> DynamicPPL.childcontext(ctx)
 DefaultContext()
