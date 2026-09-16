@@ -71,7 +71,8 @@ end
 function promote_for_threadsafe_eval(
     acc::LogProbAccumulator, ::Type{Tparam_eltype}
 ) where {Tparam_eltype}
-    return basetypeof(acc)(convert(Tparam_eltype, logp(acc)))
+    T = promote_type(Tparam_eltype, typeof(logp(acc)))
+    return basetypeof(acc)(convert(T, logp(acc)))
 end
 
 """

@@ -114,10 +114,13 @@ TEST_ACCUMULATORS = (
                 LogLikelihoodAccumulator{Float32}, LogLikelihoodAccumulator(1.0)
             ) == LogLikelihoodAccumulator{Float32}(1.0f0)
 
-            @test promote_for_threadsafe_eval(LogPriorAccumulator(1.0), Float32) ==
-                LogPriorAccumulator{Float32}(1.0f0)
-            @test promote_for_threadsafe_eval(LogLikelihoodAccumulator(1.0), Float32) ==
-                LogLikelihoodAccumulator{Float32}(1.0f0)
+            for Acc in
+                (LogPriorAccumulator, LogLikelihoodAccumulator, LogJacobianAccumulator)
+                for T in (Float32, Float64, BigFloat)
+                    acc = Acc(T(1))
+                    @test (@inferred promote_for_threadsafe_eval(acc, Float32)) === acc
+                end
+            end
         end
 
         @testset "accumulate_assume" begin
