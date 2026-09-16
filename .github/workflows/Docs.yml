@@ -10,10 +10,9 @@ on:
     types: [checks_requested]
 
 concurrency:
-  # Skip intermediate builds: always.
-  # Cancel intermediate builds: only if it is a pull request build.
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ startsWith(github.ref, 'refs/pull/') }}
+  # All documentation workflows write to the same gh-pages branch.
+  group: docs-gh-pages
+  queue: max
 
 permissions:
   contents: write
