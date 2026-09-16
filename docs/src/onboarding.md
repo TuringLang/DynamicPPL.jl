@@ -42,14 +42,12 @@ Start with these docs:
 
 ### Prefer explicit evaluation state
 
-For new evaluation code, prefer explicit initialisation strategies and
-accumulators over adding more responsibilities to `VarInfo`. `VarInfo` remains
-important, but fast paths should carry only the state they need.
-
-A common migration shape is:
+Keep evaluation inputs in `Context` and choose output accumulators in `VarInfo`.
+For example, to reuse recorded parameters while collecting a different set of outputs:
 
 ```julia
-evaluate!!(model, varinfo)
+context = Context(rng, InitFromParams(get_vector_values(previous), nothing), UnlinkAll())
+retval, outputs = evaluate!!(model, context, VarInfo(accumulators...))
 ```
 
 to:

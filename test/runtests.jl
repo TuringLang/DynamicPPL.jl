@@ -36,6 +36,7 @@ Random.seed!(100)
 
         include("pointwise_logdensities.jl")
         include("lkj.jl")
+        include("prefix.jl")
         include("contexts/init.jl")
         include("conditionfix.jl")
         include("binding.jl")
@@ -78,7 +79,7 @@ Random.seed!(100)
         # why...) -- if we don't import them here then the doctest output will include
         # the prefixed module name
         using Distributions: Normal
-        using DynamicPPL: DefaultContext, Condition, Fix
+        using DynamicPPL: Context
         Documenter.doctest(DynamicPPL; manual=false, doctestfilters=doctestfilters)
     end
 

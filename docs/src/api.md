@@ -28,12 +28,6 @@ Model
 Model()
 ```
 
-The context of a model can be set using [`contextualize`](@ref):
-
-```@docs
-contextualize
-```
-
 Some models require threadsafe evaluation (see [the Turing docs](https://turinglang.org/docs/usage/threadsafe-evaluation/) for more information on when this is necessary).
 If this is the case, one must enable threadsafe evaluation for a model:
 
@@ -74,7 +68,7 @@ get_sample_input_vector
 subsample
 ```
 
-Internally, this is accomplished using [`init!!`](@ref) on:
+Internally, this is accomplished using [`init!!`](@ref) with [`VarInfo`](@ref).
 
 ```@docs
 to_vector_params
@@ -462,7 +456,7 @@ unflatten!!
 internal_values_as_vector
 ```
 
-### Evaluation Contexts
+### Evaluation contexts
 
 Internally, model evaluation is performed with [`AbstractPPL.evaluate!!`](@ref).
 
@@ -470,26 +464,20 @@ Internally, model evaluation is performed with [`AbstractPPL.evaluate!!`](@ref).
 AbstractPPL.evaluate!!
 ```
 
-This method mutates the `varinfo` used for execution.
-By default, it does not perform any actual sampling: it only evaluates the model using the values of the variables that are already in the `varinfo`.
-If you wish to sample new values, see the section on [VarInfo initialisation](#VarInfo-initialisation) just below this.
+Call `evaluate!!(model, context, varinfo)` to evaluate with an explicit context and collect
+outputs in `varinfo`. Accumulators are reset before evaluation.
 
-The behaviour of a model execution can be changed with evaluation contexts, which are a field of the model.
+The context is an evaluation input; it is not stored in the model.
+Prefixes are stored separately from values. Conditioned and fixed values share one store, with each value carrying its role. Only latent sites reach the context; observations and tracked values go directly to accumulators.
 
-All contexts are subtypes of `AbstractPPL.AbstractContext`.
-
-Contexts are split into two kinds:
-
-**Leaf contexts**: These are the most important contexts as they ultimately decide how model evaluation proceeds.
-For example, `DefaultContext` evaluates the model using values stored inside a VarInfo's metadata, whereas `InitContext` obtains new values either by sampling or from a known set of parameters.
-DynamicPPL has more leaf contexts which are used for internal purposes, but these are the two that are exported.
+`Context` is the sole evaluation context. It supplies an RNG, an initialisation strategy,
+and a transform strategy. The output `varinfo` never supplies latent inputs.
 
 ```@docs
-DefaultContext
-InitContext
+DynamicPPL.Context
 ```
 
-Customise latent value selection with an [initialisation strategy](init.md) supplied to `InitContext`.
+Customise latent value selection with an [initialisation strategy](init.md) supplied to `Context`.
 `tilde_assume!!` dispatches on that context to initialise, transform, and accumulate a latent value.
 Observations call `tilde_observe!!(prefix, right, left, vn, template, vi)` without a context argument.
 For named observations, this applies the prefix and its storage template before calling `accumulate_observe!!`; literals have no variable name to prefix.
@@ -497,33 +485,18 @@ For named observations, this applies the prefix and its storage template before 
 ```@docs
 tilde_assume!!
 tilde_observe!!
+DynamicPPL.store_coloneq_value!!
 ```
 
-**Parent contexts**: These essentially act as 'modifiers' for leaf contexts.
-Prefixes, conditioned values, and fixed values are stored on the model; see [Binding rules](@ref).
-
-To implement a parent context, you have to subtype `DynamicPPL.AbstractParentContext`, and implement the `childcontext` and `setchildcontext` methods.
-You can also implement `tilde_assume!!` to customise how your context handles latent variables.
-This is optional; the default implementation is to simply delegate to the child context.
+Downstream evaluators that control execution directly can prepare arguments for `model.f`:
 
 ```@docs
-AbstractParentContext
-childcontext
-setchildcontext
-```
-
-Since contexts form a tree structure, these functions are automatically defined for manipulating context stacks.
-They are mainly useful for modifying the fundamental behaviour (i.e. the leaf context), without affecting any of the modifiers (i.e. parent contexts).
-
-```@docs
-leafcontext
-setleafcontext
+DynamicPPL.make_evaluate_args_and_kwargs
 ```
 
 ### VarInfo initialisation
 
-The function `init!!` is used to initialise, or overwrite, values in a VarInfo.
-It is really a thin wrapper around using `evaluate!!` with an `InitContext`.
+The function `init!!` constructs a `Context` and evaluates the model, resetting the output accumulators.
 
 ```@docs
 init!!

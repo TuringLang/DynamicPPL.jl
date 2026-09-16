@@ -327,9 +327,11 @@ end
 _local_binding_input(model, input::Tuple) = map(x -> _local_binding_input(model, x), input)
 _local_binding_input(model, input) = input
 _record_binding_read(context, model, vn, template) = context
-function _record_binding_read(context::AbstractParentContext, model, vn, template)
-    return setchildcontext(
-        context, _record_binding_read(childcontext(context), model, vn, template)
+function _record_binding_read(context::Context, model, vn, template)
+    return Context(
+        context.rng,
+        _record_binding_read(context.strategy, model, vn, template),
+        context.transform_strategy,
     )
 end
 
@@ -1013,8 +1015,8 @@ function _select_removal(r, prefix, error_prefix=nothing)
 end
 
 _record_removal_use(context, role, marker) = nothing
-function _record_removal_use(context::AbstractParentContext, role, marker)
-    return _record_removal_use(childcontext(context), role, marker)
+function _record_removal_use(context::Context, role, marker)
+    return _record_removal_use(context.strategy, role, marker)
 end
 
 function _submodel_removals(R, model, prefix)
@@ -1048,8 +1050,12 @@ function _check_assigned_binding_storage(array, optic, vn)
 end
 
 _binding_read_context(context, values) = context
-function _binding_read_context(context::AbstractParentContext, values)
-    return setchildcontext(context, _binding_read_context(childcontext(context), values))
+function _binding_read_context(context::Context, values)
+    return Context(
+        context.rng,
+        _binding_read_context(context.strategy, values),
+        context.transform_strategy,
+    )
 end
 
 function _remove_model_values(R, values::VarNamedTuple, names)
@@ -1121,8 +1127,7 @@ function _record_binding_template(model, schema)
         model.args,
         model.defaults,
         model.prefix,
-        model.values,
-        model.context;
+        model.values;
         args_on_lhs=metadata,
         observation_removals=model.observation_removals,
         fixed_removals=model.fixed_removals,

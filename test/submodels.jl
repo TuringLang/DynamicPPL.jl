@@ -1324,7 +1324,7 @@ end
         @model prefixed_parent(m) = a ~ to_submodel(m)
         @model prefixed_outer(m) = b ~ to_submodel(m)
         model = prefixed_outer(prefixed_parent(prefix(prefixed_leaf(), @varname(p))))
-        context = InitContext(
+        context = Context(
             Xoshiro(1),
             InitFromParams(VarNamedTuple((@varname(b.a.p.x) => 1.0,))),
             UnlinkAll(),
@@ -1347,9 +1347,7 @@ end
             vi = VarInfo(model)
             @test @inferred(
                 evaluate!!(
-                    model,
-                    InitContext(InitFromParams(get_values(vi), nothing), UnlinkAll()),
-                    vi,
+                    model, Context(InitFromParams(get_values(vi), nothing), UnlinkAll()), vi
                 )
             ) isa Tuple
         end

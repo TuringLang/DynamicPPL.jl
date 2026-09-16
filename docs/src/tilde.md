@@ -63,7 +63,7 @@ The method for `tilde_assume!!` (with `InitContext`) more or less implements thi
 At the time of writing, this is implemented in `src/contexts/init.jl`, and looks like:
 
 ```julia
-function DynamicPPL.tilde_assume!!(ctx::InitContext, dist, vn, template, vi)
+function DynamicPPL.tilde_assume!!(ctx::Context, dist, vn, template, vi)
     # 1. Initialisation
     init_tval = DynamicPPL.init(ctx.rng, vn, dist, ctx.strategy)
 

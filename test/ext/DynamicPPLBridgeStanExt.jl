@@ -217,6 +217,27 @@ parameters {
     @test logjoint(model, (; theta=invalid)) == -Inf
     @test logprior(model, (; theta=invalid)) == -Inf
 
+    context = Context(
+        InitFromParams(
+            VarNamedTuple(;
+                theta=TransformedValue(u, FixedTransform(distribution.transform))
+            ),
+            nothing,
+        ),
+        DynamicPPL.infer_transform_strategy_from_values(
+            VarNamedTuple(;
+                theta=TransformedValue(u, FixedTransform(distribution.transform))
+            ),
+        ),
+    )
+    for output in
+        (VarInfo(), VarInfo(VectorValueAccumulator(), DynamicPPL.default_accumulators()...))
+        result, output = evaluate!!(model, context, output)
+        @test result ≈ constrained
+        @test getlogjoint(output) ≈ expected_unlinked
+        @test getlogjac(output) ≈ -logjac
+    end
+
     conditioned_model = condition(model, (; theta=constrained))
     @test logjoint(conditioned_model, NamedTuple()) ≈ expected_unlinked
 
