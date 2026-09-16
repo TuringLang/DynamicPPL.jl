@@ -3257,8 +3257,7 @@ function _record_binding_template(model::Model, template)
         model.args,
         model.defaults,
         model.prefix,
-        model.values,
-        model.context;
+        model.values;
         args_on_lhs=metadata,
     )
 end
@@ -5411,10 +5410,10 @@ function _submodel_layer(::Type{R}, model) where {R}
     return _submodel_values(_binding_layer(R, model.values), prefix)
 end
 
-# DebugUtils can record use through its context without storing mutable state in a model.
+# DebugUtils records use through the init strategy, without model-owned mutable state.
 _record_removal_use(context, role, marker) = nothing
-function _record_removal_use(context::AbstractParentContext, role, marker)
-    return _record_removal_use(childcontext(context), role, marker)
+function _record_removal_use(context::Context, role, marker)
+    return _record_removal_use(context.strategy, role, marker)
 end
 _apply_parent_removals(::Type{R}, values, ::Tuple{}, context, model) where {R} = values
 function _apply_parent_removals(
@@ -6541,13 +6540,19 @@ function _model_values_for_prefix(model)
 end
 
 _record_binding_read(context, model, vn, template) = context
-function _record_binding_read(context::AbstractParentContext, model, vn, template)
-    return setchildcontext(
-        context, _record_binding_read(childcontext(context), model, vn, template)
+function _record_binding_read(context::Context, model, vn, template)
+    return Context(
+        context.rng,
+        _record_binding_read(context.strategy, model, vn, template),
+        context.transform_strategy,
     )
 end
 
 _binding_read_context(context, values) = context
-function _binding_read_context(context::AbstractParentContext, values)
-    return setchildcontext(context, _binding_read_context(childcontext(context), values))
+function _binding_read_context(context::Context, values)
+    return Context(
+        context.rng,
+        _binding_read_context(context.strategy, values),
+        context.transform_strategy,
+    )
 end
