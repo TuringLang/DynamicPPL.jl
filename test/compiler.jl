@@ -8,7 +8,6 @@ using Distributions
 using DynamicPPL
 using AbstractPPL: getoptic
 using ForwardDiff: ForwardDiff
-using REPL: REPL
 using LinearAlgebra: I
 # Loads the renderer used by the docstring test.
 using REPL: REPL
