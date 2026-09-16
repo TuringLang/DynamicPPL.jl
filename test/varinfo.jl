@@ -609,7 +609,7 @@ end
         @test_throws DimensionMismatch DynamicPPL.unflatten!!(varinfo, zeros(2n))
     end
 
-    @testset "unflatten!! type stability" begin
+    @testset "unflatten!! values and serial type stability" begin
         @model function demo(y)
             x ~ Normal()
             y ~ Normal(x, 1)
@@ -621,7 +621,17 @@ end
             model, (; x=1.0); include_threadsafe=true
         )
         @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
-            @inferred DynamicPPL.unflatten!!(varinfo, internal_values_as_vector(varinfo))
+            values = internal_values_as_vector(varinfo)
+            if varinfo isa DynamicPPL.ThreadSafeVarInfo
+                varinfo = DynamicPPL.acclogprior!!(varinfo, big"1.0")
+                logprior = getlogprior(varinfo)
+                varinfo = DynamicPPL.unflatten!!(varinfo, values)
+                @test getlogprior(varinfo) isa BigFloat
+                @test getlogprior(varinfo) == logprior
+            else
+                varinfo = @inferred DynamicPPL.unflatten!!(varinfo, values)
+            end
+            @test internal_values_as_vector(varinfo) == values
         end
     end
 

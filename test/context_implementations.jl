@@ -101,7 +101,13 @@ end
             )
             for output in
                 (VarInfo(), VarInfo(Xoshiro(2), model, InitFromParams((; x=T(9)))))
-                result, output = @inferred evaluate!!(model, context, output)
+                # Threaded accumulation can widen output types at runtime.
+                result, output = if threaded
+                    evaluate!!(model, context, output)
+                else
+                    @inferred evaluate!!(model, context, output)
+                end
+                @test result isa T
                 @test result == T(3)
                 @test getlogjoint(output) ≈
                     logpdf(Normal(), one(T)) +
