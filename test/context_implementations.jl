@@ -9,7 +9,37 @@ using Distributions
 using LinearAlgebra: I, norm
 using Test
 
+struct ObservationContext <: AbstractContext end
+function DynamicPPL.tilde_observe!!(
+    ::ObservationContext,
+    dist::Distribution,
+    value,
+    vn::Union{VarName,Nothing},
+    template,
+    vi::AbstractVarInfo,
+)
+    return value, DynamicPPL.accumulate_observe!!(vi, dist, value, vn, template)
+end
+
 @testset "context_implementations.jl" begin
+    @testset "leaf contexts without parameter outputs" begin
+        @model function observed_only(x)
+            x ~ Normal()
+            0.0 ~ Normal()
+            return x
+        end
+        for context in (ObservationContext(), DefaultContext()), threaded in (false, true)
+            model = contextualize(setthreadsafe(observed_only(1.0), threaded), context)
+            value, vi = DynamicPPL.evaluate_nowarn!!(model, VarInfo())
+            @test value == 1.0
+            @test getloglikelihood(vi) == logpdf(Normal(), 1.0) + logpdf(Normal(), 0.0)
+        end
+        @model latent() = x ~ Normal()
+        @test_throws "No value was provided" DynamicPPL.evaluate_nowarn!!(
+            latent(), VarInfo()
+        )
+    end
+
     # https://github.com/TuringLang/DynamicPPL.jl/issues/129
     @testset "#129" begin
         @model function test(x)
@@ -53,7 +83,7 @@ using Test
             for ysize in ((2,), (2, 3), (2, 3, 4))
                 x = randn()
                 y = randn(ysize)
-                z = logjoint(test(x, y), VarInfo())
+                z = logjoint(test(x, y), VarNamedTuple())
                 @test z ≈ sum(logpdf.(Normal.(x), y))
             end
         end

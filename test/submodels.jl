@@ -11,7 +11,7 @@ mutable struct P
 end
 
 function get_logp_and_rawval_accs(model::Model)
-    accs = OnlyAccsVarInfo()
+    accs = VarInfo()
     accs = setacc!!(accs, RawValueAccumulator(false))
     _, accs = init!!(model, accs, InitFromPrior(), UnlinkAll())
     return accs
@@ -237,7 +237,7 @@ end
             vnt = rand(model)
             @test only(keys(vnt)) == @varname(x.a)
 
-            accs = OnlyAccsVarInfo((RawValueAccumulator(true),))
+            accs = VarInfo((RawValueAccumulator(true),))
             a, accs = init!!(model, accs, InitFromPrior(), UnlinkAll())
             vnt = get_raw_values(accs)
             @test vnt[@varname(x.a)] == a
@@ -262,7 +262,7 @@ end
             vnt = rand(model)
             @test only(keys(vnt)) == @varname(x.a)
 
-            accs = OnlyAccsVarInfo((RawValueAccumulator(true),))
+            accs = VarInfo((RawValueAccumulator(true),))
             a, accs = init!!(model, accs, InitFromPrior(), UnlinkAll())
             vnt = get_raw_values(accs)
             @test vnt[@varname(x.a)] == a
@@ -353,14 +353,24 @@ end
         @testset "$(nameof(model.f))" for model in (
             t2844_inner(), t2844_middle(), t2844_outer(), t2844_deeper()
         )
-            # The fast evaluation path: `init!!` into an `OnlyAccsVarInfo`, under both
+            # The fast evaluation path: `init!!` into an `VarInfo`, under both
             # transform strategies.
             @testset "$tfm" for tfm in (UnlinkAll(), LinkAll())
-                accs = setacc!!(OnlyAccsVarInfo(), LogPriorAccumulator())
+                accs = setacc!!(VarInfo(), LogPriorAccumulator())
                 @test @inferred(init!!(model, accs, InitFromPrior(), tfm)) isa Tuple
             end
             # Evaluating a pre-populated `VarInfo` must also stay type stable.
-            @test @inferred(DynamicPPL.evaluate_nowarn!!(model, VarInfo(model))) isa Tuple
+            vi = VarInfo(model)
+            @test @inferred(
+                evaluate!!(
+                    model,
+                    InitContext(
+                        InitFromParams(get_values(vi), nothing),
+                        DynamicPPL.get_transform_strategy(vi),
+                    ),
+                    vi,
+                )
+            ) isa Tuple
         end
     end
 end

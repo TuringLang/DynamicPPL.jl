@@ -59,7 +59,7 @@ LogDensityFunction(model, logdensityfunc, transform_strategy; adtype)
 
 `model` is of course the model itself, but the other arguments deserve more explanation.
 
-  - `logdensityfunc` is a function that takes an `OnlyAccsVarInfo` and returns some real number.
+  - `logdensityfunc` is a function that takes a `VarInfo` and returns some real number.
     For example, it could be `getlogjoint_internal` (most of the time that is what you will want!).
     This is the argument that makes `LogDensityFunction` actually obey the interface that e.g. optimisers expect.
 
@@ -100,7 +100,7 @@ using StatsFuns: logistic
 x = 3.0
 y = logistic(4.0)
 params = VarNamedTuple(; x=x, y=y)
-_, accs = init!!(model, OnlyAccsVarInfo(), InitFromParams(params), LinkAll())
+_, accs = init!!(model, VarInfo(), InitFromParams(params), LinkAll())
 accs
 ```
 

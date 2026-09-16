@@ -213,7 +213,7 @@ function check_model(
     end
 
     # Run the model and collect the data we need
-    oavi = DynamicPPL.OnlyAccsVarInfo((
+    oavi = DynamicPPL.VarInfo((
         DebugAccumulator(),
         PriorDistributionAccumulator(),
         DynamicPPL.DebugRawValueAccumulator(),
@@ -312,7 +312,7 @@ and checking if the model is consistent across runs.
 """
 function has_static_constraints(rng::Random.AbstractRNG, model::Model; num_evals::Int=5)
     prior_vnts = map(1:num_evals) do _
-        accs = DynamicPPL.OnlyAccsVarInfo(PriorDistributionAccumulator())
+        accs = DynamicPPL.VarInfo(PriorDistributionAccumulator())
         _, accs = DynamicPPL.init!!(rng, model, accs, InitFromPrior(), UnlinkAll())
         return only(DynamicPPL.getaccs(accs)).values
     end

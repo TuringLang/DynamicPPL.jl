@@ -18,7 +18,7 @@ using Test
     z = 1.0
     model = f(z)
 
-    for init_strat in (InitFromPrior(), InitFromParams(VarInfo(model).values))
+    for init_strat in (InitFromPrior(), InitFromParams(get_vector_values(VarInfo(model))))
         @testset "with reevaluation" begin
             ps = ParamsWithStats(init_strat, model)
             @test haskey(ps.params, @varname(x))
@@ -58,12 +58,12 @@ using Test
 
     @testset "no reevaluation" begin
         # Without VAIM, it should error
-        vi = OnlyAccsVarInfo()
+        vi = VarInfo()
         @test_throws ErrorException get_raw_values(vi) # sanity check that it doesn't have VAIM
         vi = last(DynamicPPL.init!!(model, vi, InitFromPrior(), UnlinkAll()))
         @test_throws ErrorException ParamsWithStats(vi)
         # With VAIM, it should work
-        vi = OnlyAccsVarInfo(RawValueAccumulator(true))
+        vi = VarInfo(RawValueAccumulator(true))
         vi = last(DynamicPPL.init!!(model, vi, InitFromPrior(), UnlinkAll()))
         ps = ParamsWithStats(vi)
         @test haskey(ps.params, @varname(x))
@@ -83,7 +83,7 @@ end
             # This will give us a VNT of values.params`.
             actual_vnt = ParamsWithStats(param_vector, ldf).params
             # We should make sure that those values line up with the values inside the vector.
-            accs = OnlyAccsVarInfo(RawValueAccumulator(true))
+            accs = VarInfo(RawValueAccumulator(true))
             _, accs = DynamicPPL.init!!(
                 m, accs, InitFromVector(param_vector, ldf), transform_strategy
             )
@@ -186,7 +186,7 @@ end
     ParamsWithStats(DynamicPPL.InitFromPrior(), model)
 
     is_union_of_oavi(t) =
-        t isa Union && all(u -> u <: DynamicPPL.OnlyAccsVarInfo, Base.uniontypes(t))
+        t isa Union && all(u -> u <: DynamicPPL.VarInfo, Base.uniontypes(t))
     function offending_methods(f)
         hits = String[]
         for m in methods(f)

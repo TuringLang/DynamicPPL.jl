@@ -105,13 +105,8 @@ end
 Generate a `ParamsWithStats` by re-evaluating the given `ldf` with the provided
 `param_vector`.
 
-This method is intended to replace the old method of obtaining parameters and statistics
-via `unflatten!!` plus re-evaluation. It is faster for two reasons:
-
-1. It does not rely on `deepcopy`-ing the VarInfo object (this used to be mandatory as
-   otherwise re-evaluation would mutate the VarInfo, rendering it unusable for subsequent
-   MCMC iterations).
-2. The re-evaluation is faster as it uses `OnlyAccsVarInfo`.
+This method obtains parameter values and statistics in one model evaluation, without
+constructing an intermediate value trace.
 
 Furthermore, if the `LogDensityFunction` has all fixed transforms (i.e., was constructed
 with `fix_transforms=true`), and neither `include_log_probs` nor `include_colon_eq` is
@@ -159,9 +154,7 @@ end
     # UnlinkAll() actually doesn't have any impact here, because there isn't even a
     # LogJacobianAccumulator; consequently, it doesn't matter whether we interpret the
     # parameters as being in linked space or not. However, we just include it for clarity.
-    _, vi = DynamicPPL.init!!(
-        model, OnlyAccsVarInfo(AccumulatorTuple(accs)), strategy, UnlinkAll()
-    )
+    _, vi = DynamicPPL.init!!(model, VarInfo(AccumulatorTuple(accs)), strategy, UnlinkAll())
     params = densify!!(get_raw_values(vi))
     if include_log_probs
         stats = merge(
