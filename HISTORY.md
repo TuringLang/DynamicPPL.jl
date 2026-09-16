@@ -28,6 +28,8 @@ Added `evaluate!!(model, context, vi)` to evaluate with an explicit leaf context
 
 ## Breaking changes
 
+`PrefixContext` has been removed. Use `prefix(model, vn; template)`; prefixes and nested storage templates now belong to the model.
+
 `logprior`, `loglikelihood`, `logjoint`, and `returned` reject dictionaries: `f(model, Dict(@varname(x) => v))` → `f(model, (; x=v))` or `f(model, VarNamedTuple((@varname(x) => v,)))`.
 
 `decondition(m, names...)` and `unfix(m, names...)` now remove bindings from submodels too, including calls without names. See [binding migration](docs/src/conditionfix.md#migration-to-model-owned-bindings).

@@ -194,8 +194,10 @@ function check_input_provenance(rng, model, params)
         model.f,
         args,
         defaults,
-        model.context,
-        values;
+        model.prefix,
+        values,
+        model.prefix_template,
+        model.context;
         args_on_lhs=DynamicPPL._binding_metadata(model),
         observation_removals=model.observation_removals,
         fixed_removals=model.fixed_removals,
