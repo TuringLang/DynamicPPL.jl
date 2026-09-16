@@ -28,7 +28,7 @@ using Random: Xoshiro
     return x[1:3] ~ Dirichlet(ones(3))
 end
 model = dirichlet()
-context = InitContext(Xoshiro(1), InitFromPrior(), LinkAll())
+context = Context(Xoshiro(1), InitFromPrior(), LinkAll())
 _, vi = evaluate!!(model, context, VarInfo(VectorValueAccumulator()))
 vector_values = get_vector_values(vi)
 keys(vector_values)
@@ -51,7 +51,7 @@ A `RawValueAccumulator` records untransformed values. It does not retain LHS var
 block boundaries: indexed LHS variables are represented by their individual indices.
 
 ```@example 1
-context = InitContext(Xoshiro(1), InitFromPrior(), UnlinkAll())
+context = Context(Xoshiro(1), InitFromPrior(), UnlinkAll())
 _, vi = evaluate!!(model, context, VarInfo(RawValueAccumulator(false)))
 raw_values = get_raw_values(vi)
 keys(raw_values)
@@ -67,7 +67,7 @@ convert them explicitly outside evaluation; the context holds inputs and the `Va
 holds only outputs:
 
 ```@example 1
-context = InitContext(Xoshiro(1), InitFromParams(raw_values, nothing), LinkAll())
+context = Context(Xoshiro(1), InitFromParams(raw_values, nothing), LinkAll())
 retval, outputs = evaluate!!(model, context, VarInfo(VectorValueAccumulator()))
 get_vector_values(outputs)
 ```

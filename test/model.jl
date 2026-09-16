@@ -79,9 +79,7 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
         for m in (
             DynamicPPL.Model{false}(f, (; x=missing, y=1.0), (;)),
             DynamicPPL.Model{false}(f, (; x=missing); y=1.0),
-            DynamicPPL.Model{false}(
-                f, (; x=missing, y=1.0), (;), nothing, VarNamedTuple(), DefaultContext()
-            ),
+            DynamicPPL.Model{false}(f, (; x=missing, y=1.0), (;), nothing, VarNamedTuple()),
         )
             @test isempty(conditioned(m))
             @test isempty(DynamicPPL._args_on_lhs(m))
@@ -122,8 +120,7 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
                 model.args,
                 model.defaults,
                 model.prefix,
-                model.values,
-                model.context;
+                model.values;
                 args_on_lhs=DynamicPPL._args_on_lhs(model),
             )
             @test direct.prefix === model.prefix
@@ -450,7 +447,7 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
                     @inferred(
                         evaluate!!(
                             model,
-                            InitContext(
+                            Context(
                                 InitFromParams(get_values(varinfo), nothing), UnlinkAll()
                             ),
                             VarInfo(),
@@ -464,7 +461,7 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
                     @inferred(
                         evaluate!!(
                             model,
-                            InitContext(
+                            Context(
                                 InitFromParams(get_values(varinfo_linked), nothing),
                                 LinkAll(),
                             ),

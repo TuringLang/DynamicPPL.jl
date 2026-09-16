@@ -10,7 +10,6 @@ using LinearAlgebra: I, norm
 using Random: Xoshiro
 using Test
 
-struct ObservationContext <: AbstractContext end
 struct UnimplementedStrategy <: AbstractInitStrategy end
 
 struct ObserveHookDistribution <: ContinuousUnivariateDistribution
@@ -70,8 +69,10 @@ end
             acc = DynamicPPL.VNTAccumulator{DynamicPPL.POINTWISE_ACCNAME}(
                 DynamicPPL.PointwiseLogProb{false,true}()
             )
-            _, vi = DynamicPPL.evaluate_nowarn!!(
-                m, VarInfo((DynamicPPL.default_accumulators()..., acc))
+            _, vi = evaluate!!(
+                m,
+                Context(UnimplementedStrategy(), UnlinkAll()),
+                VarInfo((DynamicPPL.default_accumulators()..., acc)),
             )
             @test seen ==
                 [@varname(x), @varname(z), nothing, @varname(ys[1]), @varname(ys[2])]
@@ -115,24 +116,6 @@ end
         @test Set(keys(get_vector_values(vi))) == expected
     end
 
-    @testset "leaf contexts without parameter outputs" begin
-        @model function observed_only(x)
-            x ~ Normal()
-            0.0 ~ Normal()
-            return x
-        end
-        for context in (ObservationContext(), DefaultContext()), threaded in (false, true)
-            model = contextualize(setthreadsafe(observed_only(1.0), threaded), context)
-            value, vi = DynamicPPL.evaluate_nowarn!!(model, VarInfo())
-            @test value == 1.0
-            @test getloglikelihood(vi) == logpdf(Normal(), 1.0) + logpdf(Normal(), 0.0)
-        end
-        @model latent() = x ~ Normal()
-        @test_throws "No value was provided" DynamicPPL.evaluate_nowarn!!(
-            latent(), VarInfo()
-        )
-    end
-
     @testset "observations do not dispatch on context" begin
         for T in (Float32, Float64, BigFloat)
             dist = Normal(zero(T), one(T))
@@ -152,7 +135,7 @@ end
     @testset "no context hooks needed without latent LHS variables" begin
         accs = VarInfo((DynamicPPL.default_accumulators()..., RawValueAccumulator(true)))
         result, vi = evaluate!!(
-            fix(child(); x=1.0), InitContext(UnimplementedStrategy(), UnlinkAll()), accs
+            fix(child(); x=1.0), Context(UnimplementedStrategy(), UnlinkAll()), accs
         )
         @test result == 3.0
         @test get_raw_values(vi)[@varname(z)] == 3.0
@@ -167,7 +150,7 @@ end
             for x in (1.0, 3.0)
                 strategy = InitFromParams(VarNamedTuple((@varname(b.a.x) => x,)))
                 recording = RecordingStrategy(strategy)
-                ctx = InitContext(Xoshiro(1), recording, UnlinkAll())
+                ctx = Context(Xoshiro(1), recording, UnlinkAll())
                 accs = VarInfo((
                     DynamicPPL.default_accumulators()..., RawValueAccumulator(true)
                 ))
@@ -184,7 +167,7 @@ end
     end
 
     @testset "Context supplies inputs independently of outputs" begin
-        empty_context = InitContext(
+        empty_context = Context(
             Xoshiro(1), InitFromParams(VarNamedTuple(), nothing), UnlinkAll()
         )
         @test_throws ErrorException evaluate!!(
@@ -193,7 +176,7 @@ end
         for T in (Float32, Float64, BigFloat), threaded in (false, true)
             model = setthreadsafe(child(T(2)), threaded)
             input = VarInfo(Xoshiro(1), model, InitFromParams((; x=one(T))))
-            context = InitContext(
+            context = Context(
                 Xoshiro(1), InitFromParams(get_vector_values(input), nothing), UnlinkAll()
             )
             for output in
@@ -219,7 +202,7 @@ end
         # Inputs determine transforms even when the reused output recorded linked values.
         @model positive() = x ~ Exponential()
         old = VarInfo(positive(), InitFromParams((; x=2.0)), LinkAll())
-        context = InitContext(Xoshiro(1), InitFromParams((; x=3.0), nothing), UnlinkAll())
+        context = Context(Xoshiro(1), InitFromParams((; x=3.0), nothing), UnlinkAll())
         result, output = evaluate!!(positive(), context, old)
         @test result == 3.0
         @test iszero(getlogjac(output))
@@ -232,10 +215,10 @@ end
             return y ~ Normal()
         end
         outputs = VarInfo(VectorValueAccumulator(), RawValueAccumulator(false))
-        context = InitContext(Xoshiro(1), InitFromPrior(), UnlinkAll())
+        context = Context(Xoshiro(1), InitFromPrior(), UnlinkAll())
         _, outputs = evaluate!!(optional_lhs(true), context, outputs)
         inputs = get_vector_values(outputs)
-        context = InitContext(Xoshiro(1), InitFromParams(inputs, nothing), UnlinkAll())
+        context = Context(Xoshiro(1), InitFromParams(inputs, nothing), UnlinkAll())
         _, outputs = evaluate!!(optional_lhs(false), context, outputs)
         @test !haskey(get_vector_values(outputs), @varname(x))
         @test !haskey(get_raw_values(outputs), @varname(x))
@@ -248,7 +231,7 @@ end
         end
         model = dependent_support()
         input = VarInfo(Xoshiro(1), model, InitFromParams((; x=2.0, y=0.5)), LinkAll())
-        context = InitContext(
+        context = Context(
             InitFromParams(get_values(input), nothing),
             DynamicPPL.infer_transform_strategy_from_values(get_values(input)),
         )

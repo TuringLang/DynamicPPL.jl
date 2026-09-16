@@ -22,10 +22,12 @@ Bindings outside a model's prefix now throw. Replace
 `condition(prefix(m, @varname(p)); y=v)` with
 `condition(prefix(m, @varname(p)), @varname(p.y) => v)`.
 
-To reuse previous values, extract them explicitly before evaluating:
+Replace `InitContext` with `Context`. `DefaultContext` and context subtyping are removed:
+custom value selection belongs in initialisation strategies. To reuse previous values,
+extract them explicitly before evaluating:
 
 ```julia
-context = InitContext(rng, InitFromParams(get_vector_values(previous), nothing), LinkAll())
+context = Context(rng, InitFromParams(get_vector_values(previous), nothing), LinkAll())
 retval, outputs = evaluate!!(model, context, VarInfo())
 ```
 
