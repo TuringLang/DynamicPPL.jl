@@ -449,27 +449,8 @@ function generate_input_provenance_check(left::Union{Expr,Symbol}, vn)
 end
 
 function generate_tilde_assume(left, right, vn)
-    # HACK: Because the Setfield.jl macro does not support assignment
-    # with multiple arguments on the LHS, we need to capture the return-values
-    # and then update the LHS variables one by one.
     @gensym value
-    expr = if left isa Expr # as opposed to Symbol
-        left_top_sym = get_top_level_symbol(left)
-        :(
-            $left_top_sym = $(Accessors.set)(
-                $left_top_sym,
-                $(AbstractPPL.with_mutation)($(AbstractPPL.getoptic)($vn)),
-                $value,
-            )
-        )
-    else
-        :($left = $value)
-    end
-    template = if left isa Symbol  # i.e. identity optic
-        :($(NoTemplate)())
-    else
-        left_top_sym
-    end
+    template = left isa Symbol ? :($(NoTemplate)()) : get_top_level_symbol(left)
     return quote
         $value, __varinfo__ = $(DynamicPPL.tilde_assume!!)(
             __model__,
@@ -479,7 +460,7 @@ function generate_tilde_assume(left, right, vn)
             $template,
             __varinfo__,
         )
-        $expr
+        $(assign_or_set!!(left, value, vn))
         $value
     end
 end
