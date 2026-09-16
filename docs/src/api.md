@@ -491,7 +491,7 @@ All contexts are subtypes of `AbstractPPL.AbstractContext`.
 Contexts are split into two kinds:
 
 **Leaf contexts**: These are the most important contexts as they ultimately decide how model evaluation proceeds.
-For example, `DefaultContext` evaluates the model using values stored inside a VarInfo's metadata, whereas `InitContext` obtains new values either by sampling or from a known set of parameters.
+For example, `DefaultContext` reuses values recorded by a `VectorValueAccumulator`, whereas `InitContext` obtains values either by sampling or from supplied parameters.
 DynamicPPL has more leaf contexts which are used for internal purposes, but these are the two that are exported.
 
 ```@docs
@@ -499,7 +499,8 @@ DefaultContext
 InitContext
 ```
 
-To implement a leaf context, you need to subtype `AbstractPPL.AbstractContext` and implement the `tilde_assume!!` and `tilde_observe!!` methods for your context.
+To implement a leaf context, subtype `AbstractPPL.AbstractContext` and implement `tilde_assume!!`.
+Observations bypass the context and call `accumulate_observe!!` directly.
 
 ```@docs
 tilde_assume!!
@@ -510,7 +511,7 @@ tilde_observe!!
 `PrefixContext` supplies address metadata. Conditioned and fixed values are stored on the model.
 
 To implement a parent context, you have to subtype `DynamicPPL.AbstractParentContext`, and implement the `childcontext` and `setchildcontext` methods.
-If needed, you can also implement `tilde_assume!!` and `tilde_observe!!` for your context.
+If needed, you can also implement `tilde_assume!!` for your context.
 This is optional; the default implementation is to simply delegate to the child context.
 
 ```@docs
