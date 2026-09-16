@@ -79,7 +79,15 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
         for m in (
             DynamicPPL.Model{false}(f, (; x=missing, y=1.0), (;)),
             DynamicPPL.Model{false}(f, (; x=missing); y=1.0),
-            DynamicPPL.Model{false}(f, (; x=missing, y=1.0), (;), DefaultContext()),
+            DynamicPPL.Model{false}(
+                f,
+                (; x=missing, y=1.0),
+                (;),
+                nothing,
+                VarNamedTuple(),
+                nothing,
+                DefaultContext(),
+            ),
         )
             @test isempty(conditioned(m))
             @test isempty(DynamicPPL._args_on_lhs(m))

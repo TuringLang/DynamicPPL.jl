@@ -161,10 +161,10 @@ struct Model{
     defaultnames,
     Targs,
     Tdefaults,
+    Prefix<:Union{VarName,Nothing},
+    PT,
+    Values<:Union{VarNamedTuple,ModelBindingLayers,LocalModelValues,UnprefixedArgumentValues},
     C<:AbstractContext,
-    Values<:Union{
-        VarNamedTuple,ModelBindingLayers,LocalModelValues,UnprefixedArgumentValues
-    },
     Threaded,
     ArgsOnLHS,
 } <: AbstractProbabilisticProgram
@@ -172,15 +172,19 @@ struct Model{
     args::NamedTuple{argnames,Targs}
     defaults::NamedTuple{defaultnames,Tdefaults}
     context::C
+    prefix::Prefix
+    prefix_template::PT
     values::Values
     function Model{Threaded}(
         f::F,
         args::NamedTuple{A,Ta},
         defaults::NamedTuple{D,Td},
-        context::C,
-        values::V;
+        prefix::P,
+        values::V,
+        prefix_template::PT,
+        context::C;
         args_on_lhs::Union{Tuple{Vararg{Symbol}},Vector{Symbol},ModelBindingMetadata}=(),
-    ) where {F,A,Ta,D,Td,C,V,Threaded}
+    ) where {F,A,Ta,D,Td,P,PT,C,V,Threaded}
         mapreduce(
             pair -> pair.second isa ModelValue, &, _model_values(values); init=true
         ) || throw(ArgumentError("Model values must carry a condition or fix role"))
@@ -193,21 +197,28 @@ struct Model{
                 ),
             )
         end
-        return new{F,A,D,Ta,Td,C,V,Threaded,metadata}(f, args, defaults, context, values)
+        return new{F,A,D,Ta,Td,P,PT,V,C,Threaded,metadata}(
+            f, args, defaults, context, prefix, prefix_template, values
+        )
     end
     # Internal reconstruction reuses already-validated bindings.
     function DynamicPPL._reconstruct_model(
-        model::Model{F,A,D,Ta,Td}, context::C, values::V, ::Val{Threaded}
-    ) where {F,A,D,Ta,Td,C,V,Threaded}
-        return new{F,A,D,Ta,Td,C,V,Threaded,_binding_metadata(model)}(
-            model.f, model.args, model.defaults, context, values
+        model::Model{F,A,D,Ta,Td},
+        prefix::P,
+        prefix_template::PT,
+        context::C,
+        values::V,
+        ::Val{Threaded},
+    ) where {F,A,D,Ta,Td,P,PT,C,V,Threaded}
+        return new{F,A,D,Ta,Td,P,PT,V,C,Threaded,_binding_metadata(model)}(
+            model.f, model.args, model.defaults, context, prefix, prefix_template, values
         )
     end
 end
 
 function _binding_metadata(
-    ::Model{F,A,D,Ta,Td,C,V,Threaded,ArgsOnLHS}
-) where {F,A,D,Ta,Td,C,V,Threaded,ArgsOnLHS}
+    ::Model{F,A,D,Ta,Td,P,PT,V,C,Threaded,ArgsOnLHS}
+) where {F,A,D,Ta,Td,P,PT,V,C,Threaded,ArgsOnLHS}
     return ArgsOnLHS
 end
 
@@ -221,7 +232,9 @@ Base.@constprop :aggressive function Model{Threaded}(
     args_on_lhs::Union{Tuple{Vararg{Symbol}},Vector{Symbol},ModelBindingMetadata}=(),
 ) where {Threaded}
     values = _argument_defaults(merge(args, defaults), Val(_args_on_lhs(args_on_lhs)))
-    return Model{Threaded}(f, args, defaults, context, values; args_on_lhs)
+    return Model{Threaded}(
+        f, args, defaults, nothing, values, nothing, context; args_on_lhs
+    )
 end
 
 """
@@ -246,10 +259,19 @@ end
 Return whether `model` has been marked as needing threadsafe evaluation (using
 `setthreadsafe`).
 """
-requires_threadsafe(::Model{F,A,D,Ta,Td,C,V,Threaded}) where {F,A,D,Ta,Td,C,V,Threaded} =
-    Threaded
-function _reconstruct_model(model::Model; context=model.context, values=model.values)
-    return _reconstruct_model(model, context, values, Val(requires_threadsafe(model)))
+requires_threadsafe(
+    ::Model{F,A,D,Ta,Td,P,PT,V,C,Threaded}
+) where {F,A,D,Ta,Td,P,PT,V,C,Threaded} = Threaded
+function _reconstruct_model(
+    model::Model;
+    prefix=model.prefix,
+    prefix_template=model.prefix_template,
+    context=model.context,
+    values=model.values,
+)
+    return _reconstruct_model(
+        model, prefix, prefix_template, context, values, Val(requires_threadsafe(model))
+    )
 end
 
 """
@@ -258,23 +280,12 @@ end
 Return a model with its context replaced by `context`.
 """
 function contextualize(model::Model, context::AbstractContext)
-    if model.values isa UnprefixedArgumentValues && (
-        last(extract_prefixes(context)) != _model_prefix(model) ||
-        _prefix_template(context) !== _model_prefix_template(model)
-    )
-        model = _materialize_argument_values(model)
-    end
     return _reconstruct_model(model; context)
 end
 """Return a model with its leaf context replaced by `context`."""
 function setleafcontext(model::Model, context::AbstractContext)
     return contextualize(model, setleafcontext(model.context, context))
 end
-_model_prefix(model::Model) = last(extract_prefixes(model.context))
-_prefix_template(::AbstractContext) = nothing
-_prefix_template(context::AbstractParentContext) = _prefix_template(childcontext(context))
-_prefix_template(context::PrefixContext) = context.template
-_model_prefix_template(model::Model) = _prefix_template(model.context)
 
 """
     setthreadsafe(model::Model, threadsafe::Bool)
@@ -299,7 +310,14 @@ function setthreadsafe(model::Model, threadsafe::Bool)
     return if requires_threadsafe(model) == threadsafe
         model
     else
-        _reconstruct_model(model, model.context, model.values, Val(threadsafe))
+        _reconstruct_model(
+            model,
+            model.prefix,
+            model.prefix_template,
+            model.context,
+            model.values,
+            Val(threadsafe),
+        )
     end
 end
 
@@ -378,7 +396,7 @@ function prefix(model::Model, x::VarName; template=NoTemplate())
     model = _materialize_argument_values(model)
     values =
         if model.values isa VarNamedTuple &&
-            _model_prefix(model) === nothing &&
+            model.prefix === nothing &&
             !isempty(model.values) &&
             mapreduce(
                 pair -> pair.second isa ModelValue{ArgumentCondition},
@@ -393,22 +411,14 @@ function prefix(model::Model, x::VarName; template=NoTemplate())
     return _prefix_model(model, x, template, values)
 end
 function _prefix_model(model::Model, x::VarName, template, values)
-    model_prefix = maybe_prefix(_model_prefix(model), x)
-    prefix_template =
-        if template isa NoTemplate && _model_prefix_template(model) === nothing
-            nothing
-        else
-            inner = if _model_prefix_template(model) === nothing
-                _model_prefix(model)
-            else
-                _model_prefix_template(model)
-            end
-            PrefixTemplate(x, template, inner)
-        end
-    context = PrefixContext(
-        model_prefix, first(extract_prefixes(model.context)), prefix_template
-    )
-    return _reconstruct_model(model; context, values)
+    model_prefix = maybe_prefix(model.prefix, x)
+    prefix_template = if template isa NoTemplate && model.prefix_template === nothing
+        nothing
+    else
+        inner = model.prefix_template === nothing ? model.prefix : model.prefix_template
+        PrefixTemplate(x, template, inner)
+    end
+    return _reconstruct_model(model; prefix=model_prefix, values, prefix_template)
 end
 function prefix(model::Model, ::Val{sym}) where {sym}
     return prefix(model, VarName{sym}())
@@ -418,9 +428,7 @@ function prefix(model::Model, x)
 end
 
 function _prefix_varname_and_template(vn::VarName, template::Any, model::Model)
-    return _prefix_varname_and_template(
-        vn, template, _model_prefix(model), _model_prefix_template(model)
-    )
+    return _prefix_varname_and_template(vn, template, model.prefix, model.prefix_template)
 end
 function _prefix_varname_and_template(vn::VarName, template, prefix, prefix_template)
     prefix === nothing && return vn, template
@@ -938,3 +946,7 @@ end
 function AbstractPPL.evaluate!!(model::Model, context::AbstractContext, vi::AbstractVarInfo)
     return evaluate_nowarn!!(setleafcontext(model, context), vi)
 end
+
+optic_skip_length(::AbstractPPL.Iden) = 0
+optic_skip_length(optic::AbstractPPL.Index) = 1 + optic_skip_length(optic.child)
+optic_skip_length(optic::AbstractPPL.Property) = 1 + optic_skip_length(optic.child)

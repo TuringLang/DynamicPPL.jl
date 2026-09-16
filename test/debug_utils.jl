@@ -82,8 +82,10 @@ end
                     __model__.f,
                     (; y, checking=true),
                     __model__.defaults,
-                    __model__.context,
-                    __model__.values;
+                    __model__.prefix,
+                    __model__.values,
+                    __model__.prefix_template,
+                    __model__.context;
                     args_on_lhs=DynamicPPL._args_on_lhs(__model__),
                 )
                 @test check_model(child)
