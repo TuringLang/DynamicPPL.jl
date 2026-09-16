@@ -108,6 +108,10 @@ To preserve argument `x=1` before the body runs, replace `condition(f(1); x=2)` 
 
 To observe raw data, replace a conditioned argument LHS with a separate local LHS variable. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
+`LogDensityFunction(model; rng)` now shares the supplied RNG across construction, evaluation, AD preparation, and parameter sampling. Use `rand(__context__.rng, ...)` for model-body draws.
+
+`DynamicPPL.logdensity_internal` now requires `rng` as its final positional argument. Downstream calls to `AbstractPPL.prepare(DynamicPPL.logdensity_internal, x; context=...)` must append the RNG to their context tuple.
+
 Replace whole bindings incompatible with declared argument or template types with compatible values, or reconstruct the model. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
 For partial bindings into `Float32` storage, `0.1` → `Float32(0.1)`; for runtime AD bindings, replace fixed-type storage with storage built from the running AD value. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
