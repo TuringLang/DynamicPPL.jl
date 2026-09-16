@@ -179,11 +179,31 @@ end
 
 @testset "VarNamedTuple" begin
     @testset "dynamic indices into array leaves" begin
-        values = VarNamedTuple(; x=[1.0, 2.0])
-        @test haskey(values, @varname(x[begin]))
-        @test haskey(values, @varname(x[end]))
-        @test haskey(values, @varname(x[begin:end]))
-        @test values[@varname(x[begin:end])] == [1.0, 2.0]
+        for x in ([1.0, 2.0], view([1.0, 2.0], :), OA.OffsetArray([1.0, 2.0], 3:4))
+            vnt = VarNamedTuple(; x)
+            @test haskey(vnt, @varname(x[begin]))
+            @test haskey(vnt, @varname(x[end]))
+            @test haskey(vnt, @varname(x[begin:end]))
+            @test !haskey(vnt, @varname(x[begin - 1]))
+            @test !haskey(vnt, @varname(x[end + 1]))
+            @test vnt[@varname(x[begin:end])] == [1.0, 2.0]
+        end
+        @test haskey(VarNamedTuple(; x=[1.0 2.0; 3.0 4.0]), @varname(x[end, end]))
+    end
+
+    @testset "dynamic indices into partial array leaves" begin
+        template = [0.0, 0.0]
+        partial = DynamicPPL.templated_setindex!!(
+            VarNamedTuple(), 1.0, @varname(x[1]), template
+        )
+        # `x[2]` is still masked, so the last index is absent and retrieval throws.
+        @test haskey(partial, @varname(x[begin]))
+        @test !haskey(partial, @varname(x[end]))
+        @test_throws BoundsError partial[@varname(x[end])]
+
+        filled = DynamicPPL.templated_setindex!!(partial, 2.0, @varname(x[2]), template)
+        @test haskey(filled, @varname(x[end]))
+        @test filled[@varname(x[end])] == 2.0
     end
 
     @testset "Construction" begin
@@ -371,6 +391,75 @@ end
         end
 
         @testset "ComponentArray" begin
+            @testset "ComponentVector property membership and updates" begin
+                for (template, property, index, value) in (
+                    (
+                        CA.ComponentVector(; a=1.0, b=2.0),
+                        @varname(x.b),
+                        @varname(x[2]),
+                        3.0,
+                    ),
+                    (
+                        CA.ComponentVector(; a=[1.0, 2.0], b=3.0),
+                        @varname(x.a),
+                        @varname(x[1:2]),
+                        [4.0, 5.0],
+                    ),
+                    (
+                        CA.ComponentVector(; a=(; b=[1.0, 2.0]), c=3.0),
+                        @varname(x.a.b[2]),
+                        @varname(x[2]),
+                        4.0,
+                    ),
+                    (
+                        CA.ComponentVector(; a=(; b=[1.0, 2.0]), c=3.0),
+                        @varname(x.a.b),
+                        @varname(x[1:2]),
+                        [4.0, 5.0],
+                    ),
+                    (
+                        CA.ComponentVector(; a=[1.0, 2.0, 3.0], b=4.0),
+                        @varname(x.a[1:2]),
+                        @varname(x[1:2]),
+                        [5.0, 6.0],
+                    ),
+                    (
+                        CA.ComponentVector(; a=(; b=[1.0, 2.0, 3.0]), c=4.0),
+                        @varname(x.a.b[2:3]),
+                        @varname(x[2:3]),
+                        [5.0, 6.0],
+                    ),
+                )
+                    for set_vn in (property, index)
+                        vnt = templated_setindex!!(VarNamedTuple(), value, set_vn, template)
+                        for get_vn in (property, index)
+                            @test haskey(vnt, get_vn)
+                            @test vnt[get_vn] == value
+                            updated = templated_setindex!!(
+                                copy(vnt), 2 .* value, get_vn, template
+                            )
+                            @test updated[property] == updated[index] == 2 .* value
+                        end
+                        @test !haskey(vnt, @varname(x.absent))
+                    end
+                end
+            end
+
+            @testset "Unset component properties" begin
+                for (template, unset) in (
+                    (CA.ComponentVector(; a="a", b="b"), @varname(x.b)),
+                    (CA.ComponentVector(; a="a", b=["b", "c"]), @varname(x.b[1])),
+                    (CA.ComponentVector(; a="a", b=(; c="c")), @varname(x.b.c)),
+                )
+                    vnt = templated_setindex!!(
+                        VarNamedTuple(), "set", @varname(x.a), template
+                    )
+                    @test haskey(vnt, @varname(x.a))
+                    @test !haskey(vnt, unset)
+                    @test !haskey(vnt, @varname(x[2]))
+                end
+            end
+
             ca = CA.ComponentArray(; a=1.0, b=2.0)
             test_get_set(GetSetTestCase(@varname(x[1]), 1.0, ca, []))
             test_get_set(GetSetTestCase(@varname(x[2]), 2.0, ca, []))

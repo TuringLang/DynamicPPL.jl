@@ -6,8 +6,6 @@ Indexed submodels keep child bindings local: `x[i] ~ to_submodel(child(y[i]))` n
 
 `LogDensityFunction(model; rng)` uses the supplied RNG for construction and evaluation. Inside a model, `rand(__context__.rng, ...)` advances it; ordinary `~` sites read the parameter vector during density evaluation. Stochastic densities still require inference and AD methods that support them. See [#721](https://github.com/TuringLang/DynamicPPL.jl/issues/721).
 
-Removed `NamedDist` and distribution-driven site renaming. Replace `x ~ NamedDist(Normal(), :y)` with `y ~ Normal(); x = y`. The stochastic variable is `y`; `x` is a local alias.
-
 Arguments supply default observations: for `@model f(x) = x ~ Normal()`, `f(2.0)` observes 2.0. `decondition(f(2.0), :x)` makes `x` latent; `condition(f(2.0); x=3.0)` replaces the observation. Complete replacements are available before the body runs; later statements use the computed or sampled value.
 
 Observation sites preserve argument computations, including partial bindings: starting with `x=1`, `x=x+1; x~Normal()` observes 2. For a 2×2 matrix `x` of vectors, successive overrides of `x[1][1]` and `x[2][1]` retain the matrix’s shape; the second index selects a vector element.
@@ -29,8 +27,23 @@ Argument observations have lowest precedence; later operations replace value and
 Submodel traces preserve parent templates: with 2×2 `a`, calls at `a[1]` and `a[2,2]` retain a 2×2 trace container, while a child’s 2×3 `x` retains its own shape. This addresses template loss in [#1221](https://github.com/TuringLang/DynamicPPL.jl/issues/1221); independent submodel evaluation remains unimplemented.
 
 For `a ~ to_submodel(child())`, where `child` samples `x ~ Normal()` and returns `2x`, condition `@varname(a.x)` to 1, yielding 2. Conditioning `a` errors: it names the return value, not a stochastic variable. If argument `a` only provides return-value storage, use `decondition(parent(buffer), :a)`.
+# 0.42.13
+
+Model bodies no longer contain a `try` block, so Libtask can tape them again.
+Particle samplers such as `SMC`, `PG` and `CSMC` threw while building a `TapedTask` on 0.42.12, whether or not model checking was enabled.
+See [#1487](https://github.com/TuringLang/DynamicPPL.jl/issues/1487).
+
+## Breaking changes
+
+`NamedDist` and distribution-driven site renaming have been removed.
+Replace `x ~ NamedDist(dist, :y)` with `y ~ dist`, followed by `x = y` if a local alias is needed.
 
 # 0.42.12
+
+`predict` now takes `multithreaded`, which spreads the samples of the chain over threads.
+Each sample is drawn with its own random number generator, seeded from `rng` before any thread starts, so a given `rng` gives the same predictions whatever the thread count.
+Those predictions differ from the single-threaded ones for that same `rng`, which draws every sample from one stream.
+See [#1170](https://github.com/TuringLang/DynamicPPL.jl/issues/1170).
 
 `check_model` now warns when a latent tilde statement overwrites a value computed from a model input.
 The check runs only when ForwardDiff is loaded and is best effort, so it can miss dependencies through untaken branches, conditions, and code it cannot differentiate.
