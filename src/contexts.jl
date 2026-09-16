@@ -16,7 +16,7 @@ abstract type AbstractParentContext <: AbstractContext end
 
 Return the descendant context of `context`.
 """
-childcontext
+function childcontext end
 
 """
     setchildcontext(parent::AbstractParentContext, child::AbstractContext)
@@ -24,22 +24,8 @@ childcontext
 Reconstruct `parent` but now using `child` is its [`childcontext`](@ref),
 effectively updating the child context.
 
-# Examples
-```jldoctest; setup=:(using Random)
-julia> using DynamicPPL: InitContext, PrefixContext
-
-julia> ctx = PrefixContext(@varname(a));
-
-julia> DynamicPPL.childcontext(ctx)
-DefaultContext()
-
-julia> ctx_prior = DynamicPPL.setchildcontext(ctx, InitContext(MersenneTwister(23), InitFromPrior(), UnlinkAll()));
-
-julia> DynamicPPL.childcontext(ctx_prior)
-InitContext{MersenneTwister, InitFromPrior, UnlinkAll}(MersenneTwister(23), InitFromPrior(), UnlinkAll())
-```
 """
-setchildcontext
+function setchildcontext end
 
 """
     leafcontext(context::AbstractContext)
@@ -208,10 +194,6 @@ end
 function store_coloneq_value!!(
     ::AbstractContext, vn::VarName, right::Any, template::Any, vi::AbstractVarInfo
 )
-    # This is the method that will be hit for leaf contexts. Importantly, if there are any
-    # PrefixContexts in the context stack, both `vn` and `template` will have been appropriately
-    # prefixed (PrefixContext overloads store_coloneq_value!!). That allows us to not fuss over
-    # prefixes here.
     return DynamicPPL.map_accumulator!!(
         acc -> store_colon_eq!!(acc, vn, right, template),
         vi,

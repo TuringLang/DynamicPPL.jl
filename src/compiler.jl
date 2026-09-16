@@ -325,8 +325,8 @@ function generate_tilde_literal(left, right)
     @gensym value
     return quote
         $value, __varinfo__ = $(DynamicPPL._tilde_observe!!)(
-            $(DynamicPPL._model_prefix)(__model__),
-            $(DynamicPPL._model_prefix_template)(__model__),
+            __model__.prefix,
+            __model__.prefix_template,
             $(DynamicPPL.check_tilde_rhs)($right),
             $left,
             nothing,
@@ -397,8 +397,8 @@ function generate_tilde(left, right; is_argument=false)
             )
 
             $value, __varinfo__ = $(DynamicPPL._tilde_observe!!)(
-                $(DynamicPPL._model_prefix)(__model__),
-                $(DynamicPPL._model_prefix_template)(__model__),
+                __model__.prefix,
+                __model__.prefix_template,
                 $(DynamicPPL.check_tilde_rhs)($dist),
                 $supplied_val,
                 $vn,
@@ -440,9 +440,7 @@ function generate_input_provenance_check(left::Union{Expr,Symbol}, vn)
                 $(AbstractPPL.getoptic)($vn), $top_symbol
             )
             __varinfo__ = $(DynamicPPL.check_input_provenance!!)(
-                __varinfo__,
-                $value,
-                $(DynamicPPL.maybe_prefix)($vn, $(DynamicPPL._model_prefix)(__model__)),
+                __varinfo__, $value, $(DynamicPPL.maybe_prefix)($vn, __model__.prefix)
             )
         end
     end
@@ -622,7 +620,7 @@ function build_output(modeldef, linenumbernode, sites)
     # See the docstrings of `replace_returns` for more info.
     evaluatordef[:body] = MacroTools.@q begin
         $(linenumbernode)
-        __context__ = first($(DynamicPPL.extract_prefixes)(__model__.context))
+        __context__ = __model__.context
         $(replace_returns(add_return_to_last_statment(modeldef[:body])))
     end
 
@@ -678,7 +676,7 @@ function build_output(modeldef, linenumbernode, sites)
             $name,
             $args_nt,
             (; $(kwargs_inclusion...)),
-            $(DynamicPPL.DefaultContext)(),
+            nothing,
             $(_tag_model_values)($(Condition), $(VarNamedTuple)($observations)),
         )
     end
@@ -691,7 +689,7 @@ function build_output(modeldef, linenumbernode, sites)
 end
 
 function prepare_model_argument(model::Model, vn::VarName, value)
-    vn = _model_value_varname(model.values, vn, _model_prefix(model))
+    vn = _model_value_varname(model.values, vn, model.prefix)
     binding = _model_argument_binding(
         _model_values(model.values), AbstractPPL.varname_to_optic(vn)
     )

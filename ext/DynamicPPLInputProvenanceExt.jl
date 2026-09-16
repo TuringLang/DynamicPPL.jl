@@ -178,7 +178,7 @@ function check_input_provenance(rng, model, params)
     defaults = map(_dualize_input, model.defaults)
     values = DynamicPPL.map_values!!(_dualize_input, copy(model.values))
     traced_model = DynamicPPL.Model{DynamicPPL.requires_threadsafe(model)}(
-        model.f, args, defaults, model.context, values
+        model.f, args, defaults, model.prefix, values, model.prefix_template, model.context
     )
     vi = DynamicPPL.VarInfo((InputProvenanceAccumulator(),))
     strategy = DynamicPPL.InitFromParams(params, nothing)
