@@ -28,7 +28,11 @@ Added `evaluate!!(model, context, vi)` to evaluate with an explicit `Context` an
 
 ## Breaking changes
 
-Replace `DefaultContext()` and `InitContext(...)` with `Context(rng, init_strategy, transform_strategy)` to specify parameter inputs and output transforms. See [#1503](https://github.com/TuringLang/DynamicPPL.jl/pull/1503), [#1469](https://github.com/TuringLang/DynamicPPL.jl/issues/1469).
+`LogDensityFunction(model; rng)` now shares the supplied RNG across construction, evaluation, AD preparation, and parameter sampling. Use `rand(__context__.rng, ...)` for model-body draws.
+
+`DynamicPPL.logdensity_internal` now requires `rng` as its final positional argument. Downstream calls to `AbstractPPL.prepare(DynamicPPL.logdensity_internal, x; context=...)` must append the RNG to their context tuple.
+
+`DefaultContext()`/`InitContext(...)` are removed → `Context(rng, init_strategy, transform_strategy)` with explicit parameter inputs and output transforms. See [#1503](https://github.com/TuringLang/DynamicPPL.jl/pull/1503), [#1469](https://github.com/TuringLang/DynamicPPL.jl/issues/1469).
 
 `Model.context`, `contextualize`, and two-argument evaluation are removed: `evaluate!!(contextualize(m, ctx), vi)` → `evaluate!!(m, ctx, vi)`. See [#1503](https://github.com/TuringLang/DynamicPPL.jl/pull/1503).
 
