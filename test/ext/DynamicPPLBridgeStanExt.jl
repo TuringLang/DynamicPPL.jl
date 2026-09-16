@@ -217,18 +217,12 @@ parameters {
     @test logjoint(model, (; theta=invalid)) == -Inf
     @test logprior(model, (; theta=invalid)) == -Inf
 
+    values = VarNamedTuple(;
+        theta=TransformedValue(u, FixedTransform(distribution.transform))
+    )
     context = Context(
-        InitFromParams(
-            VarNamedTuple(;
-                theta=TransformedValue(u, FixedTransform(distribution.transform))
-            ),
-            nothing,
-        ),
-        DynamicPPL.infer_transform_strategy_from_values(
-            VarNamedTuple(;
-                theta=TransformedValue(u, FixedTransform(distribution.transform))
-            ),
-        ),
+        InitFromParams(values, nothing),
+        DynamicPPL.infer_transform_strategy_from_values(values),
     )
     for output in
         (VarInfo(), VarInfo(VectorValueAccumulator(), DynamicPPL.default_accumulators()...))
