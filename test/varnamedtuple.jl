@@ -109,9 +109,7 @@ function test_invariants(vnt::VarNamedTuple)
         @test !(v isa ArrayLikeBlock)
         @test !(v isa PartialArray)
         vnt2 = setindex!!(copy(vnt), v, k)
-        equality = (vnt == vnt2)
-        # The value may be `missing` if vnt itself has values that are missing.
-        @test equality === true || equality === missing
+        @test vnt == vnt2
         @test isequal(vnt, vnt2)
         @test hash(vnt) == hash(vnt2)
     end
@@ -188,6 +186,7 @@ end
             @test haskey(vnt, @varname(x[begin:end]))
             @test !haskey(vnt, @varname(x[begin - 1]))
             @test !haskey(vnt, @varname(x[end + 1]))
+            @test vnt[@varname(x[begin:end])] == [1.0, 2.0]
         end
         @test haskey(VarNamedTuple(; x=[1.0 2.0; 3.0 4.0]), @varname(x[end, end]))
     end
@@ -775,6 +774,16 @@ end
         vnt = VarNamedTuple()
         vnt = @inferred(templated_setindex!!(vnt, 1, @varname(a[1][1]), [[randn()]]))
         @test @inferred(getindex(vnt, @varname(a[1][1]))) == 1
+        vnt = @inferred(templated_setindex!!(vnt, 2, @varname(a[1][1]), [[0]]))
+        @test vnt[@varname(a[1][1])] == 2
+        @test_throws UndefRefError templated_setindex!!(
+            vnt, 3, @varname(a[1][1]), Vector{Vector{Int}}(undef, 1)
+        )
+        template = [(; data=zeros(2))]
+        vn = @varname(nested[1].data[:])
+        vnt = @inferred(templated_setindex!!(vnt, SizedThing((2,)), vn, template))
+        vnt = @inferred(templated_setindex!!(vnt, SizedThing((2,)), vn, template))
+        @test vnt[vn] == SizedThing((2,))
         vnt = @inferred(templated_setindex!!(vnt, 1, @varname(ab[1:2][1]), randn(2)))
         @test @inferred(getindex(vnt, @varname(ab[1]))) == 1
         @test @inferred(getindex(vnt, @varname(ab[1:2][1]))) == 1
@@ -1103,7 +1112,7 @@ end
         varnames_and_templates = (
             (@varname(b[1]), b), (@varname(b[3]), b), (@varname(c.d[2].e), c)
         )
-        possible_values = (missing, 1, -0.0, 0.0)
+        possible_values = (1, -0.0, 0.0)
         for vn_template_set in Combinatorics.combinations(varnames_and_templates)
             valuesets1 = Combinatorics.with_replacement_combinations(
                 possible_values, length(vn_template_set)

@@ -49,14 +49,76 @@ retval, accs = DynamicPPL.init!!(
 
 which returns a tuple of the model's return value (the NamedTuple `(x=x, y=y)` in the example above) and the accumulators after evaluation.
 
-!!! note "VarInfo"
-    
-    `VarInfo` is a thin wrapper around a set of accumulators.
-    You can construct it using `VarInfo(acc1, acc2, ...)`, where `acc1`, `acc2`, ... are the accumulators that you want to use during evaluation.
-    
-    The default accumulators record log prior, log likelihood, and log Jacobian.
-    Add a `VectorValueAccumulator` to record vectorised parameter values, or a
-    `RawValueAccumulator` to record untransformed values.
+The equivalent explicit-context call is:
+
+```@example 1
+using Random: Xoshiro
+
+context = InitContext(Xoshiro(1), InitFromPrior(), UnlinkAll())
+retval, accs = evaluate!!(model, context, VarInfo());
+```
+
+## [Evaluation inputs and outputs](@id evaluation-inputs-outputs)
+
+Evaluation separates the inputs that determine a model run from the outputs it records,
+as proposed in [#1469](https://github.com/TuringLang/DynamicPPL.jl/issues/1469).
+
+| Object        | Responsibility                                                        |
+|:------------- |:--------------------------------------------------------------------- |
+| `Model`       | Model function, arguments, and conditioned or fixed data              |
+| `InitContext` | RNG, initialisation strategy, and requested transform strategy        |
+| `VarInfo`     | Output accumulators, with no separate parameter or transform storage  |
+| `retval`      | The model body's ordinary Julia return value, distinct from its trace |
+
+For a latent statement such as `x ~ Normal()`, the context's initialisation strategy
+supplies `x`. Its transform strategy determines the transformed value and Jacobian.
+Accumulators receive those results to compute densities or record values; evaluation
+does not read previously recorded parameters from `VarInfo`.
+
+For a conditioned observation such as `y ~ Normal(x, 1)`, the model supplies `y` and
+the likelihood accumulator scores it. Literal observations such as `0 ~ Normal(x, 1)`
+use the same observation path. Fixed values are not scored, and tracked assignments
+such as `z := x + y` are recorded when requested. None of these operations uses the
+context to select a latent value.
+
+The supplied leaf context replaces the model’s leaf context and is inherited by nested submodels.
+Inside a model body, `__context__` refers to this context; use `rand(__context__.rng, ...)`
+for explicit random draws controlled by the evaluation's RNG. `init!!` constructs a `InitContext`
+and calls `evaluate!!`; custom value selection belongs in an initialisation strategy,
+not a custom context type.
+
+`VarInfo(acc1, acc2, ...)` selects the outputs to collect. `VarInfo()` collects only
+log prior, log likelihood, and log Jacobian; it does not record parameter values.
+Every evaluation resets its accumulators, so a value recorded in one run disappears
+if its site is skipped in the next. Always retain the returned `VarInfo`: `!!` operations
+may replace their input.
+
+To reuse outputs as inputs, extract the recorded values and construct a new context
+explicitly. For example, sample the model above, then evaluate it at the same parameters:
+
+```@example 1
+rng = Xoshiro(1)
+context = InitContext(rng, InitFromPrior(), LinkAll())
+retval, recorded = evaluate!!(model, context, VarInfo(RawValueAccumulator(false)))
+
+params = get_raw_values(recorded)
+context = InitContext(rng, InitFromParams(params, nothing), UnlinkAll())
+repeated, scores = evaluate!!(model, context, VarInfo())
+
+@assert repeated == retval
+@assert iszero(getlogjac(scores))
+getlogjoint(scores)
+```
+
+Here `nothing` disables fallback sampling: a missing parameter is an error, not a request
+to consult previous outputs. The second context explicitly requests unlinked outputs,
+independently of the first run's transform strategy. To reuse vectorised values instead,
+record a [`VectorValueAccumulator`](@ref) and pass `get_vector_values(recorded)` to
+`InitFromParams`; see [Storing vectorised and raw values](accs/values.md).
+
+This separation specifies data flow, not purity: evaluation can advance the RNG, and
+ordinary Julia mutations in a model body still take effect.
+For density evaluation, `~` sites read supplied parameters rather than sampling.
 
 ## Accumulators
 
