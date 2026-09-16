@@ -407,8 +407,8 @@ function generate_tilde_literal(left, right)
     @gensym value
     return quote
         $value, __varinfo__ = $(DynamicPPL.tilde_observe!!)(
-            $(DynamicPPL._model_prefix)(__model__),
-            $(DynamicPPL._model_prefix_template)(__model__),
+            __model__.prefix,
+            __model__.prefix_template,
             $(DynamicPPL.check_tilde_rhs)($right),
             $left,
             nothing,
@@ -529,9 +529,7 @@ function generate_tilde(left, right; is_argument=false)
         end
         if $role isa $(DynamicPPL.Fix)
             $value = $(DynamicPPL._check_tilde_value)(
-                $fixed_data,
-                $(DynamicPPL.maybe_prefix)($vn, $(DynamicPPL._model_prefix)(__model__)),
-                $role,
+                $fixed_data, $(DynamicPPL.maybe_prefix)($vn, __model__.prefix), $role
             )
             $(assign_or_set!!(left, value, vn, is_argument ? _set_fixed_lhs : _set_lhs))
         elseif $role === nothing
@@ -558,8 +556,8 @@ function generate_tilde(left, right; is_argument=false)
             )
 
             $value, __varinfo__ = $(DynamicPPL.tilde_observe!!)(
-                $(DynamicPPL._model_prefix)(__model__),
-                $(DynamicPPL._model_prefix_template)(__model__),
+                __model__.prefix,
+                __model__.prefix_template,
                 $(DynamicPPL.check_tilde_rhs)($dist),
                 $supplied_val,
                 $vn,
@@ -601,9 +599,7 @@ function generate_input_provenance_check(left::Union{Expr,Symbol}, vn)
                 $(AbstractPPL.getoptic)($vn), $top_symbol
             )
             __varinfo__ = $(DynamicPPL.check_input_provenance!!)(
-                __varinfo__,
-                $value,
-                $(DynamicPPL.maybe_prefix)($vn, $(DynamicPPL._model_prefix)(__model__)),
+                __varinfo__, $value, $(DynamicPPL.maybe_prefix)($vn, __model__.prefix)
             )
         end
     end
@@ -768,7 +764,7 @@ function build_output(
     # See the docstrings of `replace_returns` for more info.
     evaluatordef[:body] = MacroTools.@q begin
         $(linenumbernode)
-        __context__ = first($(DynamicPPL.extract_prefixes)(__model__.context))
+        __context__ = __model__.context
         $(replace_returns(add_return_to_last_statment(modeldef[:body])))
     end
 
@@ -938,7 +934,7 @@ end
 
 function prepare_model_argument(model::Model, vn::VarName, value)
     binding = _get_model_binding(model, vn)
-    return _model_argument_value(binding, value, maybe_prefix(vn, _model_prefix(model)))
+    return _model_argument_value(binding, value, maybe_prefix(vn, model.prefix))
 end
 function prepare_model_argument(binding, value)
     return _model_argument_value(binding, value)
