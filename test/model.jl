@@ -129,9 +129,7 @@ DynamicPPL.convert_model_argument(T, ::Type{CustomModelArgument}) = (:converted_
         for m in (
             DynamicPPL.Model{false}(f, (; x=missing, y=1.0), (;)),
             DynamicPPL.Model{false}(f, (; x=missing); y=1.0),
-            DynamicPPL.Model{false}(
-                f, (; x=missing, y=1.0), (;), nothing, VarNamedTuple(), DefaultContext()
-            ),
+            DynamicPPL.Model{false}(f, (; x=missing, y=1.0), (;), nothing, VarNamedTuple()),
         )
             @test isempty(conditioned(m))
             @test isempty(DynamicPPL._args_on_lhs(m))
@@ -172,8 +170,7 @@ DynamicPPL.convert_model_argument(T, ::Type{CustomModelArgument}) = (:converted_
                 model.args,
                 model.defaults,
                 model.prefix,
-                model.values,
-                model.context;
+                model.values;
                 args_on_lhs=DynamicPPL._args_on_lhs(model),
             )
             @test direct.prefix === model.prefix
@@ -499,7 +496,7 @@ DynamicPPL.convert_model_argument(T, ::Type{CustomModelArgument}) = (:converted_
                     @inferred(
                         evaluate!!(
                             model,
-                            InitContext(
+                            Context(
                                 InitFromParams(get_values(varinfo), nothing), UnlinkAll()
                             ),
                             VarInfo(),
@@ -513,7 +510,7 @@ DynamicPPL.convert_model_argument(T, ::Type{CustomModelArgument}) = (:converted_
                     @inferred(
                         evaluate!!(
                             model,
-                            InitContext(
+                            Context(
                                 InitFromParams(get_values(varinfo_linked), nothing),
                                 LinkAll(),
                             ),

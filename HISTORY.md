@@ -20,7 +20,7 @@ Re-evaluation and `LogDensityFunction` construction no longer copy fixed transfo
 
 `pointwise_loglikelihoods` and `pointwise_logdensities` now record observations for threadsafe models, such as `setthreadsafe(model, true)`; previously they were silently omitted. See [#1500](https://github.com/TuringLang/DynamicPPL.jl/pull/1500).
 
-Added `evaluate!!(model, context, vi)` to evaluate with an explicit leaf context and collect outputs in `vi`, such as `evaluate!!(model, InitContext(rng, InitFromPrior(), UnlinkAll()), VarInfo())`. See [#1500](https://github.com/TuringLang/DynamicPPL.jl/pull/1500).
+Added `evaluate!!(model, context, vi)` to evaluate with an explicit `Context` and collect outputs in `vi`, such as `evaluate!!(model, Context(rng, InitFromPrior(), UnlinkAll()), VarInfo())`. See [#1500](https://github.com/TuringLang/DynamicPPL.jl/pull/1500).
 
 `TransformedValue`, `FixedTransform`, `WithTransforms`, `LinkSome`, and `UnlinkSome` now hash consistently with `isequal`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
@@ -95,6 +95,8 @@ Partial local bindings use a positional binding template: `@vnt`/`@template` sto
 Explicit observations now replace argument-supplied observations before the body: ignored `condition(f(1); x=2)` → the observations of `f(2)`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501), [#958](https://github.com/TuringLang/DynamicPPL.jl/issues/958).
 
 Conditioned argument LHS variables observe body-transformed values: observing the original bound value → observe it under a separate LHS variable. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+
+`Context(rng, init_strategy, transform_strategy)` replaces `InitContext` and the context hierarchy. Pass it to `evaluate!!(model, context, outputs)`; custom initialisation and observation handling belong to strategies and accumulators.
 
 Whole bindings must satisfy declared argument or local storage types and shared signature constraints: incompatible replacement → reconstruct the model or provide compatible storage. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
