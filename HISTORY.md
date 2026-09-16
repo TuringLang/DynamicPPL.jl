@@ -108,6 +108,8 @@ To preserve argument `x=1` before the body runs, replace `condition(f(1); x=2)` 
 
 To observe raw data, replace a conditioned argument LHS with a separate local LHS variable. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
+`PrefixContext` has been removed. Use `prefix(model, vn; template)`; prefixes and nested storage templates now belong to the model.
+
 Replace whole bindings incompatible with declared argument or template types with compatible values, or reconstruct the model. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
 For partial bindings into `Float32` storage, `0.1` → `Float32(0.1)`; for runtime AD bindings, replace fixed-type storage with storage built from the running AD value. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).

@@ -129,7 +129,15 @@ DynamicPPL.convert_model_argument(T, ::Type{CustomModelArgument}) = (:converted_
         for m in (
             DynamicPPL.Model{false}(f, (; x=missing, y=1.0), (;)),
             DynamicPPL.Model{false}(f, (; x=missing); y=1.0),
-            DynamicPPL.Model{false}(f, (; x=missing, y=1.0), (;), DefaultContext()),
+            DynamicPPL.Model{false}(
+                f,
+                (; x=missing, y=1.0),
+                (;),
+                nothing,
+                VarNamedTuple(),
+                nothing,
+                DefaultContext(),
+            ),
         )
             @test isempty(conditioned(m))
             @test isempty(DynamicPPL._args_on_lhs(m))

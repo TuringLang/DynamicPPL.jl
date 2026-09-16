@@ -42,6 +42,7 @@ Random.seed!(100)
             include("conditionfix.jl")
             include("binding.jl")
         end
+        include("prefix.jl")
         include("context_implementations.jl")
         include("threadsafe.jl")
         include("debug_utils.jl")

@@ -195,8 +195,10 @@ function check_input_provenance(rng, model, params)
         model.f,
         args,
         defaults,
-        model.context,
-        values;
+        model.prefix,
+        values,
+        model.prefix_template,
+        model.context;
         args_on_lhs=DynamicPPL._args_on_lhs(model),
     )
     vi = DynamicPPL.VarInfo((InputProvenanceAccumulator(),))
