@@ -272,8 +272,8 @@ _sampling_output_params(draw::VarNamedTuple) = draw
     convert(::Type{T}, output::AbstractMCMC.SamplingOutput)
 
 Convert structured `SamplingOutput` draws to an `AbstractMCMC.AbstractChains` type using
-`AbstractMCMC.from_samples`. This fallback converts only the draws and drops chain-level
-metadata. Chain packages that preserve metadata should overload this method, or extend
+`AbstractMCMC.from_samples`. Unsupported metadata is intentionally omitted.
+Chain packages can overload this method, or support metadata by extending
 `from_samples` to accept `iterations`, `sampling_stats`, and `sampler_states` and forward
 those fields from their overload.
 
@@ -288,7 +288,13 @@ Base.convert(::Type{T}, o::AbstractMCMC.SamplingOutput) where {T<:AbstractMCMC.A
 function Base.convert(
     ::Type{T}, output::AbstractMCMC.SamplingOutput{<:Union{ParamsWithStats,VarNamedTuple}}
 ) where {T<:AbstractChains}
-    return AbstractMCMC.from_samples(T, output.samples)
+    output isa T && return output
+    metadata = (; output.iterations, output.sampling_stats, output.sampler_states)
+    signature = Tuple{Type{T},typeof(output.samples)}
+    supported = filter(keys(metadata)) do key
+        hasmethod(AbstractMCMC.from_samples, signature, (key,))
+    end
+    return AbstractMCMC.from_samples(T, output.samples; NamedTuple{supported}(metadata)...)
 end
 
 """

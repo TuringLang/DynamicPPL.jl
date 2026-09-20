@@ -281,6 +281,12 @@ end
     fs = (pointwise_logdensities, pointwise_loglikelihoods, pointwise_prior_logdensities)
     for draws in (params, map(p -> ParamsWithStats(p, (; ignored=1)), params))
         chain = SamplingOutput(draws; iterations=3:2:5, sampler_states=[:a, :b])
+        for T in (SamplingOutput, typeof(chain), DynamicPPL.AbstractChains)
+            @test convert(T, chain) === chain
+        end
+        widened = convert(SamplingOutput{Any}, chain)
+        @test widened.iterations == chain.iterations
+        @test widened.sampler_states == chain.sampler_states
         for f in fs, factorize in (false, true)
             result = f(model, chain; factorize)
             @test result isa SamplingOutput{<:VarNamedTuple}
