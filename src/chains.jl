@@ -318,9 +318,16 @@ function predict(
             prediction
         else
             predicted_params = VarNamedTuple()
-            for (vn, value) in pairs(prediction.params)
-                for (leaf, leaf_value) in AbstractPPL.varname_and_value_leaves(vn, value)
-                    if !haskey(params, leaf) || ismissing(params[leaf])
+            # Raw values retain sampled-variable boundaries before arrays are densified.
+            for (vn, value) in pairs(get_raw_values(vi))
+                leaves = AbstractPPL.varname_and_value_leaves(vn, value)
+                keep_all = all(
+                    p -> !haskey(params, first(p)) || ismissing(params[first(p)]),
+                    leaves,
+                )
+                retained = keep_all ? ((vn, value),) : leaves
+                for (leaf, leaf_value) in retained
+                    if keep_all || !haskey(params, leaf) || ismissing(params[leaf])
                         predicted_params = templated_setindex!!(
                             predicted_params,
                             leaf_value,

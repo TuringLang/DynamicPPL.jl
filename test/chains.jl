@@ -252,6 +252,25 @@ end
     @test haskey(prediction.params, @varname(x[2]))
 end
 
+@testset "Prediction filtering preserves structured values" begin
+    dist = product_distribution((; a=Normal(), b=Bernoulli(), c=MvNormal(zeros(2), 1)))
+    @model function m(y=Any[missing, missing])
+        y[1] ~ dist
+        y[2] ~ dist
+        return (y, Float32(1))
+    end
+    partial = DynamicPPL.templated_setindex!!(
+        VarNamedTuple(), rand(Xoshiro(2), dist), @varname(y[1]), zeros(2)
+    )
+    for params in (VarNamedTuple(), partial)
+        chain = SamplingOutput(fill(params, 1, 1))
+        full = predict(Xoshiro(1), m(), chain)
+        filtered = predict(Xoshiro(1), m(), chain; include_all=false)[1, 1].params
+        @test haskey(filtered, @varname(y[1])) == !haskey(params, @varname(y[1]))
+        restored = densify!!(merge(params, filtered))
+        @test logjoint(m(), restored) ≈ only(logjoint(m(), full))
+    end
+end
 @info "Completed $(@__FILE__) in $(now() - __now__)."
 
 end # module
