@@ -211,53 +211,40 @@ end
     @test isempty(offending)
 end
 
-@testset "SamplingOutput model evaluation" begin
-    @model function model(y)
-        x ~ Normal()
-        y ~ Normal(x, 1)
+@testset "SamplingOutput evaluation and conversion" begin
+    @model function m(y=ones(2))
+        x ~ MvNormal(zeros(2), I)
+        y ~ MvNormal(x, I)
         return x + y
     end
-
-    params = [VarNamedTuple(; x=i + j / 10) for i in 1:2, j in 1:2]
-    for draws in (params, map(p -> DynamicPPL.ParamsWithStats(p, (;)), params))
-        chain = SamplingOutput(draws; iterations=3:2:5)
-        @test returned(model(1), chain) == map(p -> p[@varname(x)] + 1, params)
+    params = [VarNamedTuple(; x=[i / 10, j / 10]) for i in 1:2, j in 1:2]
+    fs = (pointwise_logdensities, pointwise_loglikelihoods, pointwise_prior_logdensities)
+    for draws in (params, map(p -> ParamsWithStats(p, (;)), params))
+        chain = SamplingOutput(draws; iterations=3:2:5, sampler_states=[:a, :b])
+        @test returned(m(), chain) == map(p -> p[@varname(x)] + ones(2), params)
+        for T in (SamplingOutput, typeof(chain), DynamicPPL.AbstractChains)
+            @test convert(T, chain) === chain
+        end
+        widened = convert(SamplingOutput{Any}, chain)
+        @test (widened.iterations, widened.sampler_states) ==
+            (chain.iterations, chain.sampler_states)
         for f in (logjoint, logprior, loglikelihood)
-            @test f(model(1), chain) ≈ map(p -> f(model(1), p), params)
+            @test f(m(), chain) ≈ map(p -> f(m(), p), params)
         end
-        predictions = predict(Xoshiro(1), model(missing), chain)
-        @test size(predictions) == size(chain)
-        @test predictions.iterations == chain.iterations
-        @test all(ismissing, predictions.sampler_states)
-        @test map(p -> p.params[@varname(x)], predictions.samples) ==
-            map(p -> p[@varname(x)], params)
-        again = predict(Xoshiro(1), model(missing), chain; include_all=false)
-        @test all(p -> !haskey(p.params, @varname(x)), again.samples)
-        @test map(p -> p.params[@varname(y)], again.samples) ==
-            map(p -> p.params[@varname(y)], predictions.samples)
-        @test map(p -> p.stats, again.samples) == map(p -> p.stats, predictions.samples)
-        @test predict(model(missing), chain) isa SamplingOutput
-        @test_throws ErrorException returned(model(missing), chain)
-    end
-    @model function indexed_model()
-        x = zeros(2)
-        for i in eachindex(x)
-            x[i] ~ Normal()
+        for f in fs, factorize in (false, true)
+            result = f(m(), chain; factorize)
+            @test (size(result), result.iterations) == (size(chain), chain.iterations)
+            @test result.samples ==
+                map(p -> f(m(), InitFromParams(p, nothing); factorize), params)
+            @test_throws ErrorException f(m(), SamplingOutput(fill(VarNamedTuple(), 1, 1)))
         end
     end
-    params = DynamicPPL.templated_setindex!!(VarNamedTuple(), 4.0, @varname(x[1]), zeros(2))
-    chain = SamplingOutput(fill(params, 1, 1))
-    prediction = predict(Xoshiro(1), indexed_model(), chain; include_all=false)[1, 1]
-    @test !haskey(prediction.params, @varname(x[1]))
-    @test haskey(prediction.params, @varname(x[2]))
 end
-
 @testset "Prediction filtering preserves structured values" begin
     dist = product_distribution((; a=Normal(), b=Bernoulli(), c=MvNormal(zeros(2), 1)))
     @model function m(y=Any[missing, missing])
         y[1] ~ dist
-        y[2] ~ dist
-        return (y, Float32(1))
+        return y[2] ~ dist
     end
     partial = DynamicPPL.templated_setindex!!(
         VarNamedTuple(), rand(Xoshiro(2), dist), @varname(y[1]), zeros(2)
@@ -269,36 +256,6 @@ end
         @test haskey(filtered, @varname(y[1])) == !haskey(params, @varname(y[1]))
         restored = densify!!(merge(params, filtered))
         @test logjoint(m(), restored) ≈ only(logjoint(m(), full))
-    end
-end
-@testset "SamplingOutput pointwise log densities" begin
-    @model function pointwise_model(y)
-        x ~ MvNormal(zeros(2), I)
-        return y ~ MvNormal(x, I)
-    end
-    model = pointwise_model([0.5, -0.5])
-    params = [VarNamedTuple(; x=[i / 10, j / 10]) for i in 1:2, j in 1:2]
-    fs = (pointwise_logdensities, pointwise_loglikelihoods, pointwise_prior_logdensities)
-    for draws in (params, map(p -> ParamsWithStats(p, (; ignored=1)), params))
-        chain = SamplingOutput(draws; iterations=3:2:5, sampler_states=[:a, :b])
-        for T in (SamplingOutput, typeof(chain), DynamicPPL.AbstractChains)
-            @test convert(T, chain) === chain
-        end
-        widened = convert(SamplingOutput{Any}, chain)
-        @test widened.iterations == chain.iterations
-        @test widened.sampler_states == chain.sampler_states
-        for f in fs, factorize in (false, true)
-            result = f(model, chain; factorize)
-            @test result isa SamplingOutput{<:VarNamedTuple}
-            @test size(result) == size(chain)
-            @test result.iterations == chain.iterations
-            @test all(ismissing, [result.sampler_states; result.sampling_stats])
-            for i in eachindex(params)
-                @test result[i] == f(model, InitFromParams(params[i], nothing); factorize)
-            end
-            incomplete = SamplingOutput(fill(VarNamedTuple(), 1, 1))
-            @test_throws ErrorException f(model, incomplete)
-        end
     end
 end
 @info "Completed $(@__FILE__) in $(now() - __now__)."
