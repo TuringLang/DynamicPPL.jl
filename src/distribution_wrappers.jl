@@ -9,45 +9,10 @@ using Distributions:
     UnivariateDistribution
 using FillArrays: Fill
 
-"""
-    NamedDist(dist::Distribution, name::Symbol)
-
-A named distribution that carries the name of the random variable with it.
-
-# Fields
-
-$(TYPEDFIELDS)
-"""
-struct NamedDist{variate,support,Td<:Distribution{variate,support},Tv<:VarName} <:
-       Distribution{variate,support}
-    "the underlying distribution"
-    dist::Td
-    "the name of the random variable"
-    name::Tv
-end
-
-NamedDist(dist::Distribution, name::Symbol) = NamedDist(dist, VarName{name}())
-
-Distributions.logpdf(dist::NamedDist, x::Real) = Distributions.logpdf(dist.dist, x)
-function Distributions.logpdf(dist::NamedDist, x::AbstractArray{<:Real,0})
-    # extract the singleton value from 0-dimensional array
-    return Distributions.logpdf(dist.dist, first(x))
-end
-function Distributions.logpdf(dist::NamedDist, x::AbstractArray{<:Real})
-    return Distributions.logpdf(dist.dist, x)
-end
-function Distributions.loglikelihood(dist::NamedDist, x::Real)
-    return Distributions.loglikelihood(dist.dist, x)
-end
-function Distributions.loglikelihood(dist::NamedDist, x::AbstractArray{<:Real})
-    return Distributions.loglikelihood(dist.dist, x)
-end
-
 struct NoDist{variate,support,Td<:Distribution{variate,support}} <:
        Distribution{variate,support}
     dist::Td
 end
-NoDist(dist::NamedDist) = NamedDist(NoDist(dist.dist), dist.name)
 
 nodist(dist::Distribution) = NoDist(dist)
 nodist(dists::AbstractArray) = nodist.(dists)
@@ -86,7 +51,6 @@ for f in (
     :(Distributions.maximum),
 )
     @eval $f(d::NoDist) = $f(d.dist)
-    @eval $f(d::NamedDist) = $f(d.dist)
 end
 
 """

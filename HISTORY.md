@@ -1,8 +1,24 @@
-# 0.42.13
+# 0.42.14
 
 Added `SamplingOutput` support for `pointwise_logdensities`, `pointwise_loglikelihoods`, and `pointwise_prior_logdensities`, plus conversion to `MCMCChains.Chains`. See [#1506](https://github.com/TuringLang/DynamicPPL.jl/pull/1506).
+Model bodies no longer contain a `try` block, so Libtask can tape them again.
+
+# 0.42.13
+
+Particle samplers such as `SMC`, `PG` and `CSMC` threw while building a `TapedTask` on 0.42.12, whether or not model checking was enabled.
+See [#1487](https://github.com/TuringLang/DynamicPPL.jl/issues/1487).
+
+## Breaking changes
+
+`NamedDist` and distribution-driven site renaming have been removed.
+Replace `x ~ NamedDist(dist, :y)` with `y ~ dist`, followed by `x = y` if a local alias is needed.
 
 # 0.42.12
+
+`predict` now takes `multithreaded`, which spreads the samples of the chain over threads.
+Each sample is drawn with its own random number generator, seeded from `rng` before any thread starts, so a given `rng` gives the same predictions whatever the thread count.
+Those predictions differ from the single-threaded ones for that same `rng`, which draws every sample from one stream.
+See [#1170](https://github.com/TuringLang/DynamicPPL.jl/issues/1170).
 
 `check_model` now warns when a latent tilde statement overwrites a value computed from a model input.
 The check runs only when ForwardDiff is loaded and is best effort, so it can miss dependencies through untaken branches, conditions, and code it cannot differentiate.

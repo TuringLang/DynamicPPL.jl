@@ -1,6 +1,5 @@
 name: JuliaPre
 
-# JuliaPre tests are currently disabled because there is no pre-release of v1.13.
 on: workflow_dispatch
   # push:
   #   branches:

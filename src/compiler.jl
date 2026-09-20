@@ -187,60 +187,6 @@ function check_dot_tilde_rhs(::AbstractArray{<:Distribution})
 end
 check_dot_tilde_rhs(x::UnivariateDistribution) = x
 
-"""
-    unwrap_right_vn(right, vn)
-
-Return the unwrapped distribution on the right-hand side and variable name on the left-hand
-side of a `~` expression such as `x ~ Normal()`.
-
-This is used mainly to unwrap `NamedDist` distributions.
-"""
-unwrap_right_vn(right, vn) = right, vn
-unwrap_right_vn(right::NamedDist, vn) = unwrap_right_vn(right.dist, right.name)
-
-"""
-    unwrap_right_left_vns(right, left, vns)
-
-Return the unwrapped distributions on the right-hand side and values and variable names on the
-left-hand side of a `.~` expression such as `x .~ Normal()`.
-
-This is used mainly to unwrap `NamedDist` distributions and adjust the indices of the
-variables.
-
-# Example
-```jldoctest; setup=:(using Distributions, LinearAlgebra)
-julia> _, _, vns = DynamicPPL.unwrap_right_left_vns(Normal(), randn(1, 2), @varname(x)); vns[end]
-x[1, 2]
-
-julia> _, _, vns = DynamicPPL.unwrap_right_left_vns(Normal(), randn(1, 2), @varname(x[:])); vns[end]
-x[:][1, 2]
-
-julia> _, _, vns = DynamicPPL.unwrap_right_left_vns(Normal(), randn(3), @varname(x[1])); vns[end]
-x[1][3]
-```
-"""
-unwrap_right_left_vns(right, left, vns) = right, left, vns
-function unwrap_right_left_vns(right::NamedDist, left::AbstractArray, ::VarName)
-    return unwrap_right_left_vns(right.dist, left, right.name)
-end
-function unwrap_right_left_vns(right::NamedDist, left::AbstractMatrix, ::VarName)
-    return unwrap_right_left_vns(right.dist, left, right.name)
-end
-function unwrap_right_left_vns(
-    right::Union{Distribution,AbstractArray{<:Distribution}},
-    left::AbstractArray,
-    vn::VarName,
-)
-    vns = map(CartesianIndices(left)) do i
-        sym, optic = getsym(vn), getoptic(vn)
-        return VarName{sym}(AbstractPPL.Index(Tuple(i), (;), AbstractPPL.Iden()) ∘ optic)
-    end
-    return unwrap_right_left_vns(right, left, vns)
-end
-
-resolve_varnames(vn::VarName, _) = vn
-resolve_varnames(::VarName, dist::NamedDist) = dist.name
-
 #################
 # Main Compiler #
 #################
@@ -514,7 +460,7 @@ function generate_tilde(left, right)
 
     return quote
         $dist = $right
-        $vn = $(DynamicPPL.resolve_varnames)($(make_varname_expression(left)), $dist)
+        $vn = $(make_varname_expression(left))
         $isassumption = $(DynamicPPL.isassumption(left, vn))
         # TODO(penelopeysm): VERY HACKY WORKAROUND FOR SUBMODELS. See src/submodel.jl
         # tilde_observe!! for more details.
@@ -567,21 +513,39 @@ const INPUT_PROVENANCE_ACCNAME = :InputProvenance
 # The input-provenance extension implements this hook.
 check_input_provenance!!(vi::AbstractVarInfo, value, vn::VarName) = vi
 
+# An indexed or property location can be assignable without having a readable value. The
+# read is guarded in this function rather than in the model body, because Libtask cannot
+# tape a `try` block and a closure over the left-hand side would box it for the whole model.
+@noinline function read_input_provenance(f::F, args...) where {F}
+    return try
+        f(args...)
+    catch err
+        err isa InterruptException && rethrow()
+        nothing
+    end
+end
+
+# A bare symbol is already covered by the `isdefined` guard on the check itself.
+generate_input_provenance_read(left::Symbol) = left
+function generate_input_provenance_read(left::Expr)
+    if Meta.isexpr(left, :ref)
+        return :($(DynamicPPL.read_input_provenance)($(Base.maybeview), $(left.args...)))
+    elseif Meta.isexpr(left, :.)
+        return :($(DynamicPPL.read_input_provenance)($(getproperty), $(left.args...)))
+    else
+        error("unreachable")
+    end
+end
+
 generate_input_provenance_check(::Any, ::Any) = nothing
 function generate_input_provenance_check(left::Union{Expr,Symbol}, vn)
-    @gensym value err
+    @gensym value
     top_symbol = get_top_level_symbol(left)
     # The accumulator guard prevents an extra LHS read during ordinary evaluation.
     return quote
         if $(DynamicPPL.hasacc)(__varinfo__, $(Val(INPUT_PROVENANCE_ACCNAME))) &&
             $(Expr(:isdefined, top_symbol))
-            # An indexed location can be assignable without having a readable value.
-            $value = try
-                $(maybe_view(left))
-            catch $err
-                $err isa $(InterruptException) && rethrow()
-                nothing
-            end
+            $value = $(generate_input_provenance_read(left))
             __varinfo__ = $(DynamicPPL.check_input_provenance!!)(
                 __varinfo__, $value, $(DynamicPPL.prefix)(__model__.context, $vn)
             )
@@ -614,7 +578,8 @@ function generate_tilde_assume(left, right, vn)
     return quote
         $value, __varinfo__ = $(DynamicPPL.tilde_assume!!)(
             __model__.context,
-            $(DynamicPPL.unwrap_right_vn)($(DynamicPPL.check_tilde_rhs)($right), $vn)...,
+            $(DynamicPPL.check_tilde_rhs)($right),
+            $vn,
             $template,
             __varinfo__,
         )
