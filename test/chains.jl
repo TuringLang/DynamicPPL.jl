@@ -251,8 +251,8 @@ end
     )
     for params in (VarNamedTuple(), partial)
         chain = SamplingOutput(fill(params, 1, 1))
-        full = predict(Xoshiro(1), m(), chain)
-        filtered = predict(Xoshiro(1), m(), chain; include_all=false)[1, 1].params
+        full = predict(Xoshiro(1), m(), chain; include_all=true)
+        filtered = predict(Xoshiro(1), m(), chain)[1, 1].params
         @test haskey(filtered, @varname(y[1])) == !haskey(params, @varname(y[1]))
         restored = densify!!(merge(params, filtered))
         @test logjoint(m(), restored) ≈ only(logjoint(m(), full))

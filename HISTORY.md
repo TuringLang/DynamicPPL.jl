@@ -1,10 +1,10 @@
 # 0.42.14
 
 Added `SamplingOutput` support for `pointwise_logdensities`, `pointwise_loglikelihoods`, and `pointwise_prior_logdensities`, plus conversion to `MCMCChains.Chains`. See [#1506](https://github.com/TuringLang/DynamicPPL.jl/pull/1506).
-Model bodies no longer contain a `try` block, so Libtask can tape them again.
 
 # 0.42.13
 
+Model bodies no longer contain a `try` block, so Libtask can tape them again.
 Particle samplers such as `SMC`, `PG` and `CSMC` threw while building a `TapedTask` on 0.42.12, whether or not model checking was enabled.
 See [#1487](https://github.com/TuringLang/DynamicPPL.jl/issues/1487).
 

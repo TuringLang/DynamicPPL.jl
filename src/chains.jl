@@ -342,19 +342,19 @@ for f in (:pointwise_logdensities, :pointwise_loglikelihoods, :pointwise_prior_l
 end
 
 """
-    predict([rng::AbstractRNG,] model::Model, chain::AbstractMCMC.SamplingOutput; include_all=true)
+    predict([rng::AbstractRNG,] model::Model, chain::AbstractMCMC.SamplingOutput; include_all=false)
 
 Sample predictions using each draw's parameters, drawing absent variables from their priors.
 
 Return a `SamplingOutput` with the input's iteration indices and freshly evaluated log
-probabilities. Set `include_all=false` to omit parameters supplied by each input draw.
+probabilities. Set `include_all=true` to retain parameters supplied by each input draw.
 Sampling times and sampler states are not carried over to the predictions.
 """
 function predict(
     rng::Random.AbstractRNG,
     model::Model,
     chain::AbstractMCMC.SamplingOutput{<:Union{ParamsWithStats,VarNamedTuple}};
-    include_all::Bool=true,
+    include_all::Bool=false,
 )
     predictions = map(chain.samples) do draw
         params = _sampling_output_params(draw)
