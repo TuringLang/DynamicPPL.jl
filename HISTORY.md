@@ -1,6 +1,6 @@
 # 0.42.13
 
-Added `SamplingOutput` support for `pointwise_logdensities`, `pointwise_loglikelihoods`, and `pointwise_prior_logdensities`, plus conversion to `MCMCChains.Chains`.
+Added `SamplingOutput` support for `pointwise_logdensities`, `pointwise_loglikelihoods`, and `pointwise_prior_logdensities`, plus conversion to `MCMCChains.Chains`. See [#1506](https://github.com/TuringLang/DynamicPPL.jl/pull/1506).
 
 # 0.42.12
 
