@@ -44,6 +44,7 @@ Random.seed!(100)
         include("debug_utils.jl")
         include("submodels.jl")
         include("chains.jl")
+        include("samplingoutput.jl")
     end
 
     if GROUP in [TEST_GROUP_ALL, TEST_GROUP_GROUP2]
