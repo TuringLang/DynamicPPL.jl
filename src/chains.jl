@@ -288,6 +288,30 @@ for f in (:logjoint, :logprior, :(Distributions.loglikelihood))
     end
 end
 
+for f in (:pointwise_logdensities, :pointwise_loglikelihoods, :pointwise_prior_logdensities)
+    @eval begin
+        """
+            $($f)(model::Model, chain::AbstractMCMC.SamplingOutput; factorize=false)
+
+        Evaluate `$($f)` at each draw and return a `SamplingOutput` of `VarNamedTuple`s.
+        Preserve iteration indices; omit sampling statistics and sampler states.
+        All model parameters must be supplied in each draw.
+
+        $(_FACTORIZE_KWARG_DOC)
+        """
+        function $f(
+            model::Model,
+            chain::AbstractMCMC.SamplingOutput{<:Union{ParamsWithStats,VarNamedTuple}};
+            factorize=false,
+        )
+            densities = map(chain.samples) do draw
+                $f(model, InitFromParams(_sampling_output_params(draw), nothing); factorize)
+            end
+            return AbstractMCMC.SamplingOutput(densities; iterations=chain.iterations)
+        end
+    end
+end
+
 """
     predict([rng::AbstractRNG,] model::Model, chain::AbstractMCMC.SamplingOutput; include_all=true)
 

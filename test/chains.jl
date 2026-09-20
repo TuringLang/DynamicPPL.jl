@@ -271,6 +271,30 @@ end
         @test logjoint(m(), restored) ≈ only(logjoint(m(), full))
     end
 end
+@testset "SamplingOutput pointwise log densities" begin
+    @model function pointwise_model(y)
+        x ~ MvNormal(zeros(2), I)
+        return y ~ MvNormal(x, I)
+    end
+    model = pointwise_model([0.5, -0.5])
+    params = [VarNamedTuple(; x=[i / 10, j / 10]) for i in 1:2, j in 1:2]
+    fs = (pointwise_logdensities, pointwise_loglikelihoods, pointwise_prior_logdensities)
+    for draws in (params, map(p -> ParamsWithStats(p, (; ignored=1)), params))
+        chain = SamplingOutput(draws; iterations=3:2:5, sampler_states=[:a, :b])
+        for f in fs, factorize in (false, true)
+            result = f(model, chain; factorize)
+            @test result isa SamplingOutput{<:VarNamedTuple}
+            @test size(result) == size(chain)
+            @test result.iterations == chain.iterations
+            @test all(ismissing, [result.sampler_states; result.sampling_stats])
+            for i in eachindex(params)
+                @test result[i] == f(model, InitFromParams(params[i], nothing); factorize)
+            end
+            incomplete = SamplingOutput(fill(VarNamedTuple(), 1, 1))
+            @test_throws ErrorException f(model, incomplete)
+        end
+    end
+end
 @info "Completed $(@__FILE__) in $(now() - __now__)."
 
 end # module
