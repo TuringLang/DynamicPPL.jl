@@ -21,6 +21,19 @@ function make_chain_from_prior(model::Model, n_iters::Int)
 end
 
 @testset "DynamicPPLMCMCChainsExt" begin
+    @testset "SamplingOutput conversion" begin
+        samples = fill(ParamsWithStats(VarNamedTuple(; x=1), (; ess=[2, 3])), 1, 1)
+        output = AbstractMCMC.SamplingOutput(
+            samples; iterations=3:2:3, sampler_states=[:saved]
+        )
+        chain = convert(MCMCChains.Chains, output)
+        @test output[1, 1].stats.ess == [2, 3]
+        @test only(chain[Symbol("ess[2]")]) == 3
+        @test only(AbstractMCMC.from_samples(MCMCChains.Chains, samples)[:ess]) === missing
+        @test range(chain) == output.iterations
+        @test chain.info.samplerstate === :saved
+    end
+
     @testset "from_samples" begin
         @model function f(z)
             x ~ Normal()

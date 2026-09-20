@@ -1,3 +1,7 @@
+# 0.42.13
+
+Added `SamplingOutput` support for `pointwise_logdensities`, `pointwise_loglikelihoods`, and `pointwise_prior_logdensities`, plus conversion to `MCMCChains.Chains`.
+
 # 0.42.12
 
 `check_model` now warns when a latent tilde statement overwrites a value computed from a model input.

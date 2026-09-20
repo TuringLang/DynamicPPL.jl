@@ -269,6 +269,29 @@ _sampling_output_params(draw::ParamsWithStats) = draw.params
 _sampling_output_params(draw::VarNamedTuple) = draw
 
 """
+    convert(::Type{T}, output::AbstractMCMC.SamplingOutput)
+
+Convert structured `SamplingOutput` draws to an `AbstractMCMC.AbstractChains` type using
+`AbstractMCMC.from_samples`. This fallback converts only the draws and drops chain-level
+metadata. Chain packages that preserve metadata should overload this method, or extend
+`from_samples` to accept `iterations`, `sampling_stats`, and `sampler_states` and forward
+those fields from their overload.
+
+```julia
+AbstractMCMC.from_samples(::Type{T}, draws; iterations, sampling_stats, sampler_states) where {T} =
+    Chain(draws; iterations, sampling_stats, sampler_states) # package-specific constructor
+Base.convert(::Type{T}, o::AbstractMCMC.SamplingOutput) where {T<:AbstractMCMC.AbstractChains} =
+    AbstractMCMC.from_samples(T, o.samples; iterations=o.iterations,
+                              sampling_stats=o.sampling_stats, sampler_states=o.sampler_states)
+```
+"""
+function Base.convert(
+    ::Type{T}, output::AbstractMCMC.SamplingOutput{<:Union{ParamsWithStats,VarNamedTuple}}
+) where {T<:AbstractChains}
+    return AbstractMCMC.from_samples(T, output.samples)
+end
+
+"""
     returned(model::Model, chain::AbstractMCMC.SamplingOutput)
 
 Return a matrix of model return values evaluated at each draw's parameters.
@@ -345,6 +368,7 @@ function predict(
             # Raw values retain sampled-variable boundaries before arrays are densified.
             for (vn, value) in pairs(get_raw_values(vi))
                 leaves = AbstractPPL.varname_and_value_leaves(vn, value)
+                isempty(leaves) && haskey(params, vn) && !ismissing(params[vn]) && continue
                 keep_all = all(
                     p -> !haskey(params, first(p)) || ismissing(params[first(p)]),
                     leaves,
