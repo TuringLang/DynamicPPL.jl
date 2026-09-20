@@ -23,8 +23,9 @@ end
 @testset "DynamicPPLMCMCChainsExt" begin
     @testset "SamplingOutput conversion" begin
         samples = fill(ParamsWithStats(VarNamedTuple(; x=1), (; ess=[2, 3])), 1, 1)
+        # Exercise conversion to the native Int indices required by MCMCChains.
         output = AbstractMCMC.SamplingOutput(
-            samples; iterations=3:2:3, sampler_states=[:saved]
+            samples; iterations=big.(3:2:3), sampler_states=[:saved]
         )
         chain = convert(MCMCChains.Chains, output)
         @test output[1, 1].stats.ess == [2, 3]

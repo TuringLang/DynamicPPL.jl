@@ -221,7 +221,7 @@ function Base.convert(
     output::AbstractMCMC.SamplingOutput{<:Union{ParamsWithStats,VarNamedTuple}},
 )
     c = AbstractMCMC.from_samples(MCMCChains.Chains, map(mcmcchains_sample, output.samples))
-    c = MCMCChains.setrange(c, output.iterations)
+    c = MCMCChains.setrange(c, Int.(output.iterations))
     info = c.info
     for (key, f) in ((:start_time, :start), (:stop_time, :stop), (:samplerstate, nothing))
         values = if f === nothing
