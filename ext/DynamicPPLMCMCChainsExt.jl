@@ -1,6 +1,7 @@
 module DynamicPPLMCMCChainsExt
 
 using DynamicPPL: DynamicPPL, AbstractPPL, AbstractMCMC, Random
+using DynamicPPL: ParamsWithStats, VarNamedTuple
 using BangBang: setindex!!
 using MCMCChains: MCMCChains
 
@@ -205,6 +206,34 @@ function AbstractMCMC.bundle_samples(
         thin=thinning,
     )
     return sort_chain ? sort(chain) : chain
+end
+
+mcmcchains_sample(draw::VarNamedTuple) = ParamsWithStats(draw, (;))
+function mcmcchains_sample(draw::ParamsWithStats)
+    leaves = AbstractPPL.varname_and_value_leaves(draw.stats)
+    return ParamsWithStats(draw.params, (; (Symbol(vn) => v for (vn, v) in leaves)...))
+end
+
+# Prefer convert to direct bundling: array-valued statistics become scalar columns
+# instead of missing; iteration indices, timing, and saved states are retained.
+function Base.convert(
+    ::Type{MCMCChains.Chains},
+    output::AbstractMCMC.SamplingOutput{<:Union{ParamsWithStats,VarNamedTuple}},
+)
+    c = AbstractMCMC.from_samples(MCMCChains.Chains, map(mcmcchains_sample, output.samples))
+    c = MCMCChains.setrange(c, Int.(output.iterations))
+    info = c.info
+    for (key, f) in ((:start_time, :start), (:stop_time, :stop), (:samplerstate, nothing))
+        values = if f === nothing
+            output.sampler_states
+        else
+            map(s -> ismissing(s) ? missing : getproperty(s, f), output.sampling_stats)
+        end
+        any(!ismissing, values) || continue
+        value = size(output, 2) == 1 ? only(values) : values
+        info = merge(info, NamedTuple{(key,)}((value,)))
+    end
+    return MCMCChains.setinfo(c, info)
 end
 
 """

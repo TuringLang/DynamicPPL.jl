@@ -264,3 +264,142 @@ function InitFromParams(
 )
     return InitFromParams(ps.params, fallback)
 end
+
+_sampling_output_params(draw::ParamsWithStats) = draw.params
+_sampling_output_params(draw::VarNamedTuple) = draw
+
+"""
+    convert(::Type{T}, output::AbstractMCMC.SamplingOutput)
+
+Convert structured `SamplingOutput` draws to an `AbstractMCMC.AbstractChains` type using
+`AbstractMCMC.from_samples`. Unsupported metadata is intentionally omitted.
+Chain packages can overload this method, or support metadata by extending
+`from_samples` to accept `iterations`, `sampling_stats`, and `sampler_states` and forward
+those fields from their overload.
+
+```julia
+AbstractMCMC.from_samples(::Type{T}, draws; iterations, sampling_stats, sampler_states) where {T} =
+    Chain(draws; iterations, sampling_stats, sampler_states) # package-specific constructor
+Base.convert(::Type{T}, o::AbstractMCMC.SamplingOutput) where {T<:AbstractMCMC.AbstractChains} =
+    AbstractMCMC.from_samples(T, o.samples; iterations=o.iterations,
+                              sampling_stats=o.sampling_stats, sampler_states=o.sampler_states)
+```
+"""
+function Base.convert(
+    ::Type{T}, output::AbstractMCMC.SamplingOutput{<:Union{ParamsWithStats,VarNamedTuple}}
+) where {T<:AbstractChains}
+    output isa T && return output
+    metadata = (; output.iterations, output.sampling_stats, output.sampler_states)
+    signature = Tuple{Type{T},typeof(output.samples)}
+    supported = filter(keys(metadata)) do key
+        hasmethod(AbstractMCMC.from_samples, signature, (key,))
+    end
+    return AbstractMCMC.from_samples(T, output.samples; NamedTuple{supported}(metadata)...)
+end
+
+"""
+    returned(model::Model, chain::AbstractMCMC.SamplingOutput)
+
+Return a matrix of model return values evaluated at each draw's parameters.
+"""
+function returned(
+    model::Model, chain::AbstractMCMC.SamplingOutput{<:Union{ParamsWithStats,VarNamedTuple}}
+)
+    return map(draw -> returned(model, _sampling_output_params(draw)), chain.samples)
+end
+
+for f in (:logjoint, :logprior, :(Distributions.loglikelihood))
+    @eval function $f(
+        model::Model,
+        chain::AbstractMCMC.SamplingOutput{<:Union{ParamsWithStats,VarNamedTuple}},
+    )
+        return map(draw -> $f(model, _sampling_output_params(draw)), chain.samples)
+    end
+end
+
+for f in (:pointwise_logdensities, :pointwise_loglikelihoods, :pointwise_prior_logdensities)
+    @eval begin
+        """
+            $($f)(model::Model, chain::AbstractMCMC.SamplingOutput; factorize=false)
+
+        Evaluate `$($f)` at each draw and return a `SamplingOutput` of `VarNamedTuple`s.
+        Preserve iteration indices; omit sampling statistics and sampler states.
+        All model parameters must be supplied in each draw.
+
+        $(_FACTORIZE_KWARG_DOC)
+        """
+        function $f(
+            model::Model,
+            chain::AbstractMCMC.SamplingOutput{<:Union{ParamsWithStats,VarNamedTuple}};
+            factorize=false,
+        )
+            densities = map(chain.samples) do draw
+                $f(model, InitFromParams(_sampling_output_params(draw), nothing); factorize)
+            end
+            return AbstractMCMC.SamplingOutput(densities; iterations=chain.iterations)
+        end
+    end
+end
+
+"""
+    predict([rng::AbstractRNG,] model::Model, chain::AbstractMCMC.SamplingOutput; include_all=false)
+
+Sample predictions using each draw's parameters, drawing absent variables from their priors.
+
+Return a `SamplingOutput` with the input's iteration indices and freshly evaluated log
+probabilities. Set `include_all=true` to retain parameters supplied by each input draw.
+Sampling times and sampler states are not carried over to the predictions.
+"""
+function predict(
+    rng::Random.AbstractRNG,
+    model::Model,
+    chain::AbstractMCMC.SamplingOutput{<:Union{ParamsWithStats,VarNamedTuple}};
+    include_all::Bool=false,
+)
+    predictions = map(chain.samples) do draw
+        params = _sampling_output_params(draw)
+        vi = OnlyAccsVarInfo(
+            AccumulatorTuple(
+                LogPriorAccumulator(),
+                LogLikelihoodAccumulator(),
+                RawValueAccumulator(true),
+            ),
+        )
+        _, vi = init!!(rng, model, vi, InitFromParams(params), UnlinkAll())
+        prediction = ParamsWithStats(vi)
+        if include_all
+            prediction
+        else
+            predicted_params = VarNamedTuple()
+            # Raw values retain sampled-variable boundaries before arrays are densified.
+            for (vn, value) in pairs(get_raw_values(vi))
+                leaves = AbstractPPL.varname_and_value_leaves(vn, value)
+                isempty(leaves) && haskey(params, vn) && !ismissing(params[vn]) && continue
+                keep_all = all(
+                    p -> !haskey(params, first(p)) || ismissing(params[first(p)]),
+                    leaves,
+                )
+                retained = keep_all ? ((vn, value),) : leaves
+                for (leaf, leaf_value) in retained
+                    if keep_all || !haskey(params, leaf) || ismissing(params[leaf])
+                        predicted_params = templated_setindex!!(
+                            predicted_params,
+                            leaf_value,
+                            leaf,
+                            prediction.params.data[AbstractPPL.getsym(leaf)],
+                        )
+                    end
+                end
+            end
+            ParamsWithStats(densify!!(predicted_params), prediction.stats)
+        end
+    end
+    return AbstractMCMC.SamplingOutput(predictions; iterations=chain.iterations)
+end
+function predict(
+    model::Model,
+    chain::AbstractMCMC.SamplingOutput{<:Union{ParamsWithStats,VarNamedTuple}};
+    kwargs...,
+)
+    return predict(Random.default_rng(), model, chain; kwargs...)
+end
