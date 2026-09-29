@@ -66,11 +66,13 @@ Throw an error if that accumulator is absent.
 get_vector_values(vi::AbstractVarInfo) = getacc(vi, Val(VECTORVAL_ACCNAME)).values
 get_values(vi::AbstractVarInfo) = get_vector_values(vi)
 
-Base.keys(vi::VarInfo) = keys(get_vector_values(vi))
-Base.haskey(vi::VarInfo, vn::VarName) = haskey(get_vector_values(vi), vn)
+Base.keys(vi::Union{VarInfo,ThreadSafeVarInfo}) = keys(get_vector_values(vi))
+function Base.haskey(vi::Union{VarInfo,ThreadSafeVarInfo}, vn::VarName)
+    return haskey(get_vector_values(vi), vn)
+end
 Base.length(vi::VarInfo) = length(get_vector_values(vi))
 Base.values(vi::VarInfo) = values(get_vector_values(vi))
-Base.isempty(vi::VarInfo) = isempty(get_vector_values(vi))
+Base.isempty(vi::Union{VarInfo,ThreadSafeVarInfo}) = isempty(get_vector_values(vi))
 Base.empty(vi::VarInfo) = resetaccs!!(copy(vi))
 BangBang.empty!!(vi::VarInfo) = resetaccs!!(vi)
 
@@ -81,7 +83,7 @@ end
 function internal_values_as_vector(vi::AbstractVarInfo)
     return internal_values_as_vector(get_vector_values(vi))
 end
-function is_transformed(vi::VarInfo, vn::VarName)
+function is_transformed(vi::Union{VarInfo,ThreadSafeVarInfo}, vn::VarName)
     return get_transform(get_transformed_value(vi, vn)) isa DynamicLink
 end
 

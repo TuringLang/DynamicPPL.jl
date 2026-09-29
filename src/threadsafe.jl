@@ -200,9 +200,6 @@ function setaccs!!(vi::ThreadSafeVarInfo, accs::AccumulatorTuple)
     return ThreadSafeVarInfo(setaccs!!(vi.varinfo, accs))
 end
 
-keys(vi::ThreadSafeVarInfo) = keys(get_vector_values(vi))
-haskey(vi::ThreadSafeVarInfo, vn::VarName) = haskey(get_vector_values(vi), vn)
-isempty(vi::ThreadSafeVarInfo) = isempty(get_vector_values(vi))
 BangBang.empty!!(vi::ThreadSafeVarInfo) = resetaccs!!(vi)
 
 function resetaccs!!(vi::ThreadSafeVarInfo{V,L}) where {V,L}
@@ -212,10 +209,6 @@ function resetaccs!!(vi::ThreadSafeVarInfo{V,L}) where {V,L}
         @atomic :release vi.task_accs_cache = _task_accs_cache(L)
     end
     return vi
-end
-
-function is_transformed(vi::ThreadSafeVarInfo, vn::VarName)
-    return get_transform(get_transformed_value(vi, vn)) isa DynamicLink
 end
 
 function link!!(vi::ThreadSafeVarInfo, model::Model)
