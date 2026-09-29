@@ -6,9 +6,27 @@
 
 Fixed type inference for thread-safe accumulator promotion on Julia 1.10: integer parameters, such as `x=1` for `x ~ Bernoulli(0.3)`, now select floating-point log-density storage with an inferable type. Related: [#1493](https://github.com/TuringLang/DynamicPPL.jl/pull/1493).
 
+Missing accumulator lookups throw an `ArgumentError` naming the missing and available accumulators.
+
+Re-evaluation and `LogDensityFunction` construction no longer copy fixed transforms, so transforms compared by identity are preserved.
+
 ## Breaking changes
 
-`VarInfo` now contains only accumulators, replacing `OnlyAccsVarInfo`. Use `get_vector_values(vi)` instead of `vi.values`; add a `VectorValueAccumulator` when constructing empty outputs that must record parameters. `init!!` defaults to `UnlinkAll()` independently of previous outputs.
+`OnlyAccsVarInfo` is removed: `OnlyAccsVarInfo(accs...)` → `VarInfo(accs...)`, with the same constructor forms.
+
+`VarInfo{Tfm,T,Accs}` → `VarInfo{Accs}`; dispatch on the old type parameters breaks.
+
+`VarInfo()` no longer records parameter values: use `VarInfo(VectorValueAccumulator(), DynamicPPL.default_accumulators()...)` to record vectorised values and log densities.
+
+`vi.values` is removed: use `get_vector_values(vi)`.
+
+`init!!` now defaults to `UnlinkAll()` regardless of the `VarInfo` contents: `init!!(rng, model, vi, init)` → `init!!(rng, model, vi, init, strategy)` to retain a chosen strategy.
+
+Partial `link!!(vi, vns, model)` / `invlink!!(vi, vns, model)` are removed: use `init!!(rng, model, vi, InitFromParams(get_vector_values(vi), nothing), LinkSome(Set(vns), base))` / `UnlinkSome(Set(vns), base)`; for the removed non-mutating `link` / `invlink` forms, pass `copy(vi)` as the output.
+
+`setindex_with_dist!!` is removed: supply named values with `InitFromParams(params, nothing)` and an explicit strategy to `init!!`.
+
+`update_transform_strategy` is removed: construct `LinkSome`, `UnlinkSome`, or `WithTransforms` explicitly and pass the strategy to `init!!`.
 
 # 0.42.13
 
