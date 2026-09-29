@@ -68,6 +68,21 @@ end
         @test vi == initialized
     end
 
+    @testset "no recorded values" begin
+        for vi in (VarInfo(), DynamicPPL.ThreadSafeVarInfo(VarInfo()))
+            @test @inferred isempty(vi)
+            @test isempty(@inferred keys(vi))
+            @test isempty(@inferred values(vi))
+            @test !(@inferred haskey(vi, @varname(x)))
+            @test (@inferred length(vi)) == 0
+            @test_throws ArgumentError get_vector_values(vi)
+            @test_throws ArgumentError internal_values_as_vector(vi)
+            @test_throws ArgumentError vi[:]
+            @test_throws ArgumentError eltype(vi)
+            @test_throws ArgumentError DynamicPPL.get_transformed_value(vi, @varname(x))
+        end
+    end
+
     @testset "Base" begin
         @test_throws "Missing accumulator :VectorValue. Available accumulators: (:LogPrior, :LogJacobian, :LogLikelihood)" get_vector_values(
             VarInfo()
