@@ -198,6 +198,7 @@ function Base.haskey(at::AccumulatorTuple, ::Val{accname}) where {accname}
 end
 Base.keys(at::AccumulatorTuple) = keys(at.nt)
 Base.:(==)(at1::AccumulatorTuple, at2::AccumulatorTuple) = at1.nt == at2.nt
+Base.isequal(at1::AccumulatorTuple, at2::AccumulatorTuple) = isequal(at1.nt, at2.nt)
 Base.hash(at::AccumulatorTuple, h::UInt) = Base.hash((AccumulatorTuple, at.nt), h)
 Base.copy(at::AccumulatorTuple) = AccumulatorTuple(map(copy, at.nt))
 

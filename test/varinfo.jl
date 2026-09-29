@@ -57,6 +57,11 @@ end
 
 @testset "varinfo.jl" begin
     @testset "Base" begin
+        vi_poszero = VarInfo(Xoshiro(1), value_model(), InitFromParams((x=0.0,), nothing))
+        vi_negzero = VarInfo(Xoshiro(1), value_model(), InitFromParams((x=-0.0,), nothing))
+        @test vi_poszero == vi_negzero
+        @test !isequal(vi_poszero, vi_negzero)
+
         vi = VarInfo(VectorValueAccumulator(), DynamicPPL.default_accumulators()...)
         @test getlogjoint(vi) == 0
         @test isempty(internal_values_as_vector(vi))
