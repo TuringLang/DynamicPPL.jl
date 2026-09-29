@@ -141,11 +141,11 @@ vi
 
 Whole-model `link!!(vi, model)` and `invlink!!(vi, model)` remain available.
 The partial forms, including non-mutating `link` and `invlink`, are removed.
-Specify the strategy for variables outside `vns` explicitly as `base`.
-The old forms kept every other variable's current transform; `base` replaces it, so
-pass the strategy that produced `vi`. For example, if `y` is already linked,
-`LinkSome(Set([@varname(x)]), UnlinkAll())` links `x` but unlinks `y`; use
-`LinkSome(Set([@varname(x), @varname(y)]), UnlinkAll())` to keep it linked.
+The second argument of `LinkSome` and `UnlinkSome`, `fallback`, is the strategy for
+all variables outside `vns`. The old forms kept their current transforms; pass the
+strategy that produced `vi` as `fallback` to do the same. For example, if `y` is
+already linked, `LinkSome(Set([@varname(x)]), UnlinkAll())` links `x` but unlinks
+`y`; use `LinkSome(Set([@varname(x), @varname(y)]), UnlinkAll())` to keep it linked.
 
 Old:
 
@@ -162,8 +162,8 @@ New:
 rng = Xoshiro(468)
 vi = VarInfo(rng, model)
 vns = (@varname(x),)
-base = UnlinkAll()
-linked = LinkSome(Set(vns), base)
+fallback = UnlinkAll()
+linked = LinkSome(Set(vns), fallback)
 _, vi = init!!(rng, model, vi, InitFromParams(get_vector_values(vi), nothing), linked)
 _, vi = init!!(
     rng,
