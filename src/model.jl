@@ -902,7 +902,14 @@ function evaluate_nowarn!!(model::Model, varinfo::AbstractVarInfo)
         # will return the underlying VI, which is a bit counterintuitive (because
         # calling TSVI(::TSVI) returns the original TSVI, instead of wrapping it
         # again).
-        return result, setaccs!!(wrapper_new.varinfo, getaccs(wrapper_new))
+        accs = map(getaccs(wrapper_new)) do acc
+            if acc isa TSVNTAccumulator
+                VNTAccumulator{accumulator_name(acc)}(acc.f, acc.values)
+            else
+                acc
+            end
+        end
+        return result, setaccs!!(wrapper_new.varinfo, accs)
     else
         _evaluate!!(model, resetaccs!!(varinfo))
     end

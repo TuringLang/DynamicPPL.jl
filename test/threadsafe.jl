@@ -236,6 +236,31 @@ end
         @test !DynamicPPL.requires_threadsafe(model)
     end
 
+    @testset "evaluation returns concrete value accumulators" begin
+        model = gdemo_default
+        threadsafe_model = setthreadsafe(model, true)
+        expected = VarInfo(Xoshiro(1), model)
+        vi = VarInfo(Xoshiro(1), threadsafe_model)
+        ctx = InitContext(Xoshiro(1), InitFromPrior(), UnlinkAll())
+        outputs() = VarInfo(VectorValueAccumulator(), DynamicPPL.default_accumulators()...)
+        for result in (
+            vi,
+            last(evaluate!!(threadsafe_model, ctx, outputs())),
+            last(
+                DynamicPPL.init!!(Xoshiro(1), threadsafe_model, outputs(), InitFromPrior())
+            ),
+        )
+            acc = DynamicPPL.getacc(result, Val(:VectorValue))
+            @test acc isa VNTAccumulator
+            @test isconcretetype(fieldtype(typeof(acc), :values))
+            @test Set(keys(result)) == Set(keys(expected))
+            for vn in keys(expected)
+                @test get_vector_values(result)[vn] == get_vector_values(expected)[vn]
+            end
+            @test getlogp(result) == getlogp(expected)
+        end
+    end
+
     # TODO: Add more tests of the public API
     @testset "API" begin
         vi = VarInfo(gdemo_default)
