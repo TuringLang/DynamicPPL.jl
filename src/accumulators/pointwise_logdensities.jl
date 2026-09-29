@@ -113,9 +113,9 @@ function _pointwise_logdensities(
     factorize=false,
 ) where {Prior,Likelihood}
     acc = VNTAccumulator{POINTWISE_ACCNAME}(PointwiseLogProb{Prior,Likelihood,factorize}())
-    oavi = VarInfo(acc)
-    oavi = last(init!!(model, oavi, init_strat, UnlinkAll()))
-    return get_pointwise_logprobs(oavi)
+    vi = VarInfo(acc)
+    vi = last(init!!(model, vi, init_strat, UnlinkAll()))
+    return get_pointwise_logprobs(vi)
 end
 
 """

@@ -254,7 +254,7 @@ You can pass either:
   `TransformedValue{<:AbstractVector}`s). Obtain these by evaluating a model with a
   `VectorValueAccumulator` and calling `get_vector_values` on the resulting `VarInfo`.
 
-- **`oavi`**: a [`VarInfo`](@ref), in which case the [`get_vector_values`](@ref)
+- **`vi`**: a [`VarInfo`](@ref), in which case the [`get_vector_values`](@ref)
   function is used to extract a VarNamedTuple of vector values from the
   [`VectorValueAccumulator`](@ref) inside it. If the `VarInfo` does not contain a
   `VectorValueAccumulator`, then an error is thrown.
@@ -309,17 +309,17 @@ end
 function LogDensityFunction(
     model::Model,
     getlogdensity::Any,
-    oavi::VarInfo,
+    vi::VarInfo,
     accs::Union{NTuple{<:Any,AbstractAccumulator},AccumulatorTuple}=ldf_accs(getlogdensity);
     adtype::Union{ADTypes.AbstractADType,Nothing}=nothing,
     fix_transforms::Bool=false,
 )
-    if !hasacc(oavi, Val(VECTORVAL_ACCNAME))
+    if !hasacc(vi, Val(VECTORVAL_ACCNAME))
         error(
             "Constructing a LogDensityFunction from a VarInfo requires a VectorValueAccumulator.",
         )
     end
-    vnt = getacc(oavi, Val(VECTORVAL_ACCNAME)).values
+    vnt = getacc(vi, Val(VECTORVAL_ACCNAME)).values
     return LogDensityFunction(
         model, getlogdensity, vnt, accs; adtype=adtype, fix_transforms=fix_transforms
     )
@@ -333,9 +333,9 @@ function LogDensityFunction(
     fix_transforms::Bool=false,
 )
     # note that this reevaluates the model
-    oavi = VarInfo(VectorValueAccumulator())
-    _, oavi = DynamicPPL.init!!(model, oavi, InitFromPrior(), transform_strategy)
-    vecvals = getacc(oavi, Val(VECTORVAL_ACCNAME)).values
+    vi = VarInfo(VectorValueAccumulator())
+    _, vi = DynamicPPL.init!!(model, vi, InitFromPrior(), transform_strategy)
+    vecvals = getacc(vi, Val(VECTORVAL_ACCNAME)).values
     return LogDensityFunction(
         model, getlogdensity, vecvals, accs; adtype=adtype, fix_transforms=fix_transforms
     )

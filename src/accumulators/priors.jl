@@ -97,8 +97,8 @@ This is done by evaluating the model at the values present in `varinfo`
 and recording the distributions that are present at each tilde statement.
 """
 function extract_priors(model::Model, varinfo::AbstractVarInfo)
-    oavi = VarInfo((PriorDistributionAccumulator(),))
+    vi = VarInfo((PriorDistributionAccumulator(),))
     init_strategy = InitFromParams(get_vector_values(varinfo), nothing)
-    varinfo = last(init!!(model, oavi, init_strategy, UnlinkAll()))
+    varinfo = last(init!!(model, vi, init_strategy, UnlinkAll()))
     return getacc(varinfo, Val(PRIOR_ACCNAME)).values
 end

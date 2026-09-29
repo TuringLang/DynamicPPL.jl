@@ -50,12 +50,12 @@ end
     expected_ral_linked = @vnt begin
         x := DynamicPPL.RangeAndTransform(1:1, DynamicLink())
     end
-    oavi_unlinked = begin
+    vi_unlinked = begin
         accs = VarInfo(VectorValueAccumulator())
         _, accs = init!!(f(), accs, InitFromPrior(), UnlinkAll())
         accs
     end
-    oavi_linked = begin
+    vi_linked = begin
         accs = VarInfo(VectorValueAccumulator())
         _, accs = init!!(f(), accs, InitFromPrior(), LinkAll())
         accs
@@ -66,8 +66,8 @@ end
     for arg in (
         VarInfo(f()),
         get_vector_values(VarInfo(f())),
-        oavi_unlinked,
-        get_vector_values(oavi_unlinked),
+        vi_unlinked,
+        get_vector_values(vi_unlinked),
         UnlinkAll(),
     )
         for adtype in (nothing, AutoForwardDiff())
@@ -85,8 +85,8 @@ end
     for arg in (
         link!!(VarInfo(f()), f()),
         get_vector_values(link!!(VarInfo(f()), f())),
-        oavi_linked,
-        get_vector_values(oavi_linked),
+        vi_linked,
+        get_vector_values(vi_linked),
         LinkAll(),
     )
         for adtype in (nothing, AutoForwardDiff())

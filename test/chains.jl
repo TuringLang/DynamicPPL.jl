@@ -187,8 +187,7 @@ end
     ParamsWithStats(param_vector, ldf)
     ParamsWithStats(DynamicPPL.InitFromPrior(), model)
 
-    is_union_of_oavi(t) =
-        t isa Union && all(u -> u <: DynamicPPL.VarInfo, Base.uniontypes(t))
+    is_union_of_vi(t) = t isa Union && all(u -> u <: DynamicPPL.VarInfo, Base.uniontypes(t))
     function offending_methods(f)
         hits = String[]
         for m in methods(f)
@@ -199,7 +198,7 @@ end
             end
             body === nothing && continue
             for (ci, _) in code_typed(body; optimize=true)
-                any(is_union_of_oavi, ci.ssavaluetypes) && push!(hits, string(m))
+                any(is_union_of_vi, ci.ssavaluetypes) && push!(hits, string(m))
             end
         end
         return hits

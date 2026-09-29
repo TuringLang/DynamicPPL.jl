@@ -522,13 +522,12 @@ function _pointwise_logdensities_chain(
     parameter_only_chain = MCMCChains.get_sections(chain, :parameters)
     # Reevaluating this gives us a VNT of log probs. We can densify and then wrap in
     # ParamsWithStats so that we can easily convert back to a Chains object.
-    pointwise_logps = map(
-        reevaluate_with_chain(model, parameter_only_chain, (acc,), nothing)
-    ) do (_, oavi)
-        logprobs = DynamicPPL.get_pointwise_logprobs(oavi)
-        dense_logprobs = DynamicPPL.densify!!(logprobs)
-        DynamicPPL.ParamsWithStats(dense_logprobs, (;))
-    end
+    pointwise_logps =
+        map(reevaluate_with_chain(model, parameter_only_chain, (acc,), nothing)) do (_, vi)
+            logprobs = DynamicPPL.get_pointwise_logprobs(vi)
+            dense_logprobs = DynamicPPL.densify!!(logprobs)
+            DynamicPPL.ParamsWithStats(dense_logprobs, (;))
+        end
     return AbstractMCMC.from_samples(MCMCChains.Chains, pointwise_logps)
 end
 
