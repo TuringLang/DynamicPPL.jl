@@ -24,7 +24,7 @@ Re-evaluation and `LogDensityFunction` construction no longer copy fixed transfo
 
 `init!!` now defaults to `UnlinkAll()` regardless of the `VarInfo` contents: `init!!(rng, model, vi, init)` → `init!!(rng, model, vi, init, strategy)` to retain a chosen strategy.
 
-Partial `link!!(vi, vns, model)` / `invlink!!(vi, vns, model)` are removed: use `init!!(rng, model, vi, InitFromParams(get_vector_values(vi), nothing), LinkSome(Set(vns), base))` / `UnlinkSome(Set(vns), base)`; for the removed non-mutating `link` / `invlink` forms, pass `copy(vi)` as the output.
+Partial `link!!(vi, vns, model)` / `invlink!!(vi, vns, model)` are removed: use `init!!(rng, model, vi, InitFromParams(get_vector_values(vi), nothing), LinkSome(Set(vns), base))` / `UnlinkSome(Set(vns), base)`, where `base` is the strategy that produced `vi` (the old forms kept other variables' transforms; `base` now sets them); for the removed non-mutating `link` / `invlink` forms, pass `copy(vi)` as the output.
 
 `setindex_with_dist!!` is removed: supply named values with `InitFromParams(params, nothing)` and an explicit strategy to `init!!`.
 

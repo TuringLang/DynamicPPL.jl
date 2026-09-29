@@ -142,6 +142,10 @@ vi
 Whole-model `link!!(vi, model)` and `invlink!!(vi, model)` remain available.
 The partial forms, including non-mutating `link` and `invlink`, are removed.
 Specify the strategy for variables outside `vns` explicitly as `base`.
+The old forms kept every other variable's current transform; `base` replaces it, so
+pass the strategy that produced `vi`. For example, if `y` is already linked,
+`LinkSome(Set([@varname(x)]), UnlinkAll())` links `x` but unlinks `y`; use
+`LinkSome(Set([@varname(x), @varname(y)]), UnlinkAll())` to keep it linked.
 
 Old:
 
