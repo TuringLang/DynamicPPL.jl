@@ -182,7 +182,9 @@ So we are calculating the same transformation twice, and evaluating the model tw
 Instead, now with a separate transform strategy, we can immediately do:
 
 ```@example 1
-_, vi_linked = init!!(Xoshiro(468), f(), VarInfo(), InitFromUniform(), LinkAll())
+_, vi_linked = init!!(
+    Xoshiro(468), f(), VarInfo(VectorValueAccumulator()), InitFromUniform(), LinkAll()
+)
 vi_linked
 ```
 
