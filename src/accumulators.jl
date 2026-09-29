@@ -245,8 +245,9 @@ function deleteacc!!(
     return AccumulatorTuple(NamedTuple{filter(x -> x != T, names)}(accs.nt))
 end
 
-function Base.map(func::Function, at::AccumulatorTuple)
-    return AccumulatorTuple(map(func, at.nt))
+@generated function Base.map(func::F, at::AccumulatorTuple{N}) where {F<:Function,N}
+    calls = [:(func(at.nt[$i])) for i in 1:N]
+    return :(AccumulatorTuple(($(calls...),)))
 end
 
 """

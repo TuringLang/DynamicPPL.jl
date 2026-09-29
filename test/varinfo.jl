@@ -56,6 +56,18 @@ function make_chain_from_prior(model::Model, n_iters::Int)
 end
 
 @testset "varinfo.jl" begin
+    @testset "inference" begin
+        model = value_model()
+        vi = @inferred VarInfo(Xoshiro(1), model)
+        _, initialized = @inferred DynamicPPL.init!!(
+            Xoshiro(1),
+            model,
+            VarInfo(VectorValueAccumulator(), DynamicPPL.default_accumulators()...),
+            InitFromPrior(),
+        )
+        @test vi == initialized
+    end
+
     @testset "Base" begin
         @test_throws "Missing accumulator :VectorValue. Available accumulators: (:LogPrior, :LogJacobian, :LogLikelihood)" get_vector_values(
             VarInfo()

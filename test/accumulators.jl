@@ -202,14 +202,16 @@ TEST_ACCUMULATORS = (
         @testset "map_accumulator(s)!!" begin
             # map over all accumulators
             accs = AccumulatorTuple(lp_f32, ll_f32)
-            @test map(DynamicPPL.reset, accs) == AccumulatorTuple(
+            @test (@inferred map(DynamicPPL.reset, AccumulatorTuple())) ==
+                AccumulatorTuple()
+            @test (@inferred map(DynamicPPL.reset, accs)) == AccumulatorTuple(
                 LogPriorAccumulator(0.0f0), LogLikelihoodAccumulator(0.0f0)
             )
             # Test that the original wasn't modified.
             @test accs == AccumulatorTuple(lp_f32, ll_f32)
 
             # A map with a closure that changes the types of the accumulators.
-            @test map(acc -> promote_for_threadsafe_eval(acc, Float64), accs) ==
+            @test (@inferred map(acc -> promote_for_threadsafe_eval(acc, Float64), accs)) ==
                 AccumulatorTuple(LogPriorAccumulator(1.0), LogLikelihoodAccumulator(1.0))
 
             # only apply to a particular accumulator
