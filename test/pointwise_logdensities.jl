@@ -101,6 +101,21 @@ end
         @test length(log_likelihoods[@varname(z)]) == 2
         @test !haskey(log_likelihoods, @varname(x))
     end
+
+    @testset "threadsafe evaluation records observations" begin
+        @model function threaded_obs(y)
+            m ~ Normal()
+            Threads.@threads for i in eachindex(y)
+                y[i] ~ Normal(m)
+            end
+        end
+        model = threaded_obs([1.0, 2.0, 3.0])
+        init = InitFromParams((; m=0.5), nothing)
+        expected = pointwise_loglikelihoods(model, init)
+        actual = pointwise_loglikelihoods(setthreadsafe(model, true), init)
+        @test length(actual) == 3
+        @test all(vn -> actual[vn] ≈ expected[vn], keys(expected))
+    end
 end
 
 @testset "pointwise_logdensities with chain" begin

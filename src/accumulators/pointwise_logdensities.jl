@@ -76,7 +76,10 @@ end
 # Have to overload accumulate_assume!! since VNTAccumulator by default does not track
 # observe statements.
 function accumulate_observe!!(
-    acc::VNTAccumulator{POINTWISE_ACCNAME,PointwiseLogProb{Prior,Likelihood,Factorised}},
+    acc::Union{
+        VNTAccumulator{POINTWISE_ACCNAME,PointwiseLogProb{Prior,Likelihood,Factorised}},
+        TSVNTAccumulator{POINTWISE_ACCNAME,PointwiseLogProb{Prior,Likelihood,Factorised}},
+    },
     right,
     left,
     vn,
@@ -86,7 +89,7 @@ function accumulate_observe!!(
     return if Likelihood && vn isa VarName
         logp = _maybe_pointwise_logpdf(right, left, Val{Factorised}())
         new_values = DynamicPPL.templated_setindex!!(acc.values, logp, vn, template)
-        VNTAccumulator{POINTWISE_ACCNAME}(acc.f, new_values)
+        update_values(acc, new_values)
     else
         # No need to accumulate likelihoods.
         acc

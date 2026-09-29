@@ -10,6 +10,8 @@ Missing accumulator lookups throw an `ArgumentError` naming the missing and avai
 
 Re-evaluation and `LogDensityFunction` construction no longer copy fixed transforms, so transforms compared by identity are preserved.
 
+`pointwise_loglikelihoods` and `pointwise_logdensities` now record observations for threadsafe models; previously they were silently omitted.
+
 Added `evaluate!!(model, context, vi)` to evaluate with an explicit leaf context and collect outputs in `vi`.
 
 ## Breaking changes
