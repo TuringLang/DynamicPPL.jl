@@ -84,9 +84,6 @@ end
 function is_transformed(vi::VarInfo, vn::VarName)
     return get_transform(get_transformed_value(vi, vn)) isa DynamicLink
 end
-function get_transform_strategy(vi::AbstractVarInfo)
-    return infer_transform_strategy_from_values(get_vector_values(vi))
-end
 
 function _set_vector_values!!(vi::AbstractVarInfo, values::VarNamedTuple)
     acc = getacc(vi, Val(VECTORVAL_ACCNAME))
@@ -122,16 +119,6 @@ function update_transform_status!!(
 end
 link!!(vi::VarInfo, model::Model) = update_transform_status!!(vi, LinkAll(), model)
 invlink!!(vi::VarInfo, model::Model) = update_transform_status!!(vi, UnlinkAll(), model)
-function link!!(vi::VarInfo, vns, model::Model)
-    return update_transform_status!!(
-        vi, LinkSome(Set(vns), get_transform_strategy(vi)), model
-    )
-end
-function invlink!!(vi::VarInfo, vns, model::Model)
-    return update_transform_status!!(
-        vi, UnlinkSome(Set(vns), get_transform_strategy(vi)), model
-    )
-end
 
 mutable struct VectorChunkIterator!{T<:AbstractVector}
     vec::T

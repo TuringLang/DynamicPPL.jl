@@ -364,10 +364,7 @@ end
             @test @inferred(
                 evaluate!!(
                     model,
-                    InitContext(
-                        InitFromParams(get_values(vi), nothing),
-                        DynamicPPL.get_transform_strategy(vi),
-                    ),
+                    InitContext(InitFromParams(get_values(vi), nothing), UnlinkAll()),
                     vi,
                 )
             ) isa Tuple

@@ -692,12 +692,10 @@ end
 
 """
     link(vi::AbstractVarInfo, model::Model)
-    link(vi::AbstractVarInfo, vns::NTuple{N,VarName}, model::Model)
 
 Transform all variables in `vi` to their linked space without mutating `vi` (i.e., replace
 all the `TransformedValue`s in `get_vector_values(vi)` with the corresponding
-`TransformedValue(linked_value, DynamicLink())`. If `vns` is provided, then only transform
-the variables in `vns`.
+`TransformedValue(linked_value, DynamicLink())`).
 
 Note that if `vi` contains variables that have fixed transforms, the fixed transforms will
 be overwritten.
@@ -707,13 +705,9 @@ See also: [`invlink`](@ref).
 function link(vi::AbstractVarInfo, model::Model)
     return link!!(deepcopy(vi), model)
 end
-function link(vi::AbstractVarInfo, vns, model::Model)
-    return link!!(deepcopy(vi), vns, model)
-end
 
 """
     link!!(vi::AbstractVarInfo, model::Model)
-    link!!(vi::AbstractVarInfo, vns::NTuple{N,VarName}, model::Model)
 
 Like `link`, but might mutate `vi` in-place if it is possible to do so.
 """
@@ -721,13 +715,11 @@ function link!! end
 
 """
     invlink(vi::AbstractVarInfo, model::Model)
-    invlink(vi::AbstractVarInfo, vns::NTuple{N,VarName}, model::Model)
 
 Transform all variables in `vi` to the original space without mutating `vi` (i.e., replace
 all the `TransformedValue`s in `get_vector_values(vi)` with the corresponding
-`TransformedValue(unlinked_value, Unlink())`. Note that the unlinked values are still
-vectorised (that is a requirement of `get_vector_values(vi)`). If `vns` is provided, then only transform
-the variables in `vns`.
+`TransformedValue(unlinked_value, Unlink())`). Note that the unlinked values are still
+vectorised (that is a requirement of `get_vector_values(vi)`).
 
 Note that if `vi` contains variables that have fixed transforms, the fixed transforms will
 be overwritten.
@@ -737,13 +729,9 @@ See also: [`link`](@ref).
 function invlink(vi::AbstractVarInfo, model::Model)
     return invlink!!(deepcopy(vi), model)
 end
-function invlink(vi::AbstractVarInfo, vns, model::Model)
-    return invlink!!(deepcopy(vi), vns, model)
-end
 
 """
     invlink!!(vi::AbstractVarInfo, model::Model)
-    invlink!!(vi::AbstractVarInfo, vns::NTuple{N,VarName}, model::Model)
 
 Like `invlink`, but might mutate `vi` in-place if it is possible to do so.
 """

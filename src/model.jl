@@ -884,7 +884,8 @@ This is the same as `evaluate!!(model, varinfo)` but without the deprecation war
 function evaluate_nowarn!!(model::Model, varinfo::AbstractVarInfo)
     if leafcontext(model.context) isa DefaultContext
         values, strategy = if hasacc(varinfo, Val(VECTORVAL_ACCNAME))
-            copy(get_vector_values(varinfo)), get_transform_strategy(varinfo)
+            copy(get_vector_values(varinfo)),
+            infer_transform_strategy_from_values(get_vector_values(varinfo))
         else
             VarNamedTuple(), UnlinkAll()
         end

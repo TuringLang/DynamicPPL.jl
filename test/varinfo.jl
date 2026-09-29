@@ -336,7 +336,13 @@ end
         @test !is_transformed(vi)
 
         # partial linking
-        vi = DynamicPPL.link!!(vi, [@varname(x)], model)
+        _, vi = init!!(
+            Xoshiro(1),
+            model,
+            vi,
+            InitFromParams(get_vector_values(vi), nothing),
+            LinkSome(Set([@varname(x)]), UnlinkAll()),
+        )
         @test is_transformed(vi, @varname(x))
         @test !is_transformed(vi, @varname(y))
         @test !is_transformed(vi)
@@ -406,10 +412,23 @@ end
             other_vns = filter(x -> !subsumes(vn, x), all_vns)
             @test !isempty(target_vns)
             @test !isempty(other_vns)
-            vi = link!!(vi, (vn,), model)
+            strategy = LinkSome(Set([vn]), UnlinkAll())
+            _, vi = init!!(
+                Xoshiro(1),
+                model,
+                vi,
+                InitFromParams(get_vector_values(vi), nothing),
+                strategy,
+            )
             @test all_transformed(subset(vi, target_vns))
             @test !any_transformed(subset(vi, other_vns))
-            vi = invlink!!(vi, (vn,), model)
+            _, vi = init!!(
+                Xoshiro(1),
+                model,
+                vi,
+                InitFromParams(get_vector_values(vi), nothing),
+                UnlinkSome(Set([vn]), strategy),
+            )
             @test !any_transformed(vi)
             @test internal_values_as_vector(vi) ≈ vals atol = 1e-10
         end
@@ -452,7 +471,13 @@ end
             end
             if transform_strategy isa LinkSome
                 vi2 = VarInfo(Xoshiro(468), model)
-                vi2 = DynamicPPL.link!!(vi2, transform_strategy.vns, model)
+                _, vi2 = init!!(
+                    Xoshiro(468),
+                    model,
+                    vi2,
+                    InitFromParams(get_vector_values(vi2), nothing),
+                    LinkSome(Set(transform_strategy.vns), UnlinkAll()),
+                )
                 @test vi == vi2
             end
         end
@@ -505,7 +530,6 @@ end
                 InitFromPrior(),
                 tfm_strat,
             )
-            @test DynamicPPL.get_transform_strategy(vi) == tfm_strat
             # check the values line up too
             for vn in keys(vi)
                 tval = DynamicPPL.get_transformed_value(vi, vn)
@@ -522,7 +546,6 @@ end
             )
 
             vi_linked = DynamicPPL.link!!(deepcopy(vi), model)
-            @test DynamicPPL.get_transform_strategy(vi_linked) == LinkAll()
             @test all(
                 vn ->
                     DynamicPPL.get_transformed_value(vi_linked, vn).transform isa
@@ -531,7 +554,6 @@ end
             )
 
             vi_invlinked = DynamicPPL.invlink!!(deepcopy(vi), model)
-            @test DynamicPPL.get_transform_strategy(vi_invlinked) == UnlinkAll()
             @test all(
                 vn ->
                     DynamicPPL.get_transformed_value(vi_invlinked, vn).transform isa
@@ -879,7 +901,13 @@ end
 
             varinfo_left = VarInfo(model_left)
             varinfo_right = VarInfo(model_right)
-            varinfo_right = DynamicPPL.link!!(varinfo_right, (@varname(x),), model_right)
+            _, varinfo_right = init!!(
+                Xoshiro(1),
+                model_right,
+                varinfo_right,
+                InitFromParams(get_vector_values(varinfo_right), nothing),
+                LinkSome(Set([@varname(x)]), UnlinkAll()),
+            )
 
             varinfo_merged = merge(varinfo_left, varinfo_right)
             vns = [@varname(x), @varname(y), @varname(z)]

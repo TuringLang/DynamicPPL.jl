@@ -216,11 +216,11 @@ function is_transformed(vi::ThreadSafeVarInfo, vn::VarName)
     return get_transform(get_transformed_value(vi, vn)) isa DynamicLink
 end
 
-function link!!(vi::ThreadSafeVarInfo, args...)
-    return ThreadSafeVarInfo(link!!(setaccs!!(vi.varinfo, getaccs(vi)), args...))
+function link!!(vi::ThreadSafeVarInfo, model::Model)
+    return ThreadSafeVarInfo(link!!(setaccs!!(vi.varinfo, getaccs(vi)), model))
 end
-function invlink!!(vi::ThreadSafeVarInfo, args...)
-    return ThreadSafeVarInfo(invlink!!(setaccs!!(vi.varinfo, getaccs(vi)), args...))
+function invlink!!(vi::ThreadSafeVarInfo, model::Model)
+    return ThreadSafeVarInfo(invlink!!(setaccs!!(vi.varinfo, getaccs(vi)), model))
 end
 function unflatten!!(vi::ThreadSafeVarInfo, x::AbstractVector)
     return ThreadSafeVarInfo(unflatten!!(setaccs!!(vi.varinfo, getaccs(vi)), x))
