@@ -107,7 +107,6 @@ To use this accumulator in a model evaluation, we need to wrap it in a `VarInfo`
 !!! note "VarInfo"
     
     As described on the [Model evaluation](../evaluation.md) page, a `VarInfo` is just a wrapper around a set of accumulators.
-    Don't worry about the name; it's mostly a historical artifact.
 
 We can either do this by creating it from scratch, or by modifying an existing one (see the next section for details).
 In this example, we'll create a `VarInfo` from scratch using only our new accumulator.

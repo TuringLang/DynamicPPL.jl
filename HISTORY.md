@@ -10,6 +10,8 @@ Missing accumulator lookups throw an `ArgumentError` naming the missing and avai
 
 Re-evaluation and `LogDensityFunction` construction no longer copy fixed transforms, so transforms compared by identity are preserved.
 
+Added `evaluate!!(model, context, vi)` to evaluate with an explicit leaf context and collect outputs in `vi`.
+
 ## Breaking changes
 
 `OnlyAccsVarInfo` is removed: `OnlyAccsVarInfo(accs...)` → `VarInfo(accs...)`, with the same constructor forms.

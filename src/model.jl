@@ -786,12 +786,11 @@ end
         [transform_strategy::AbstractTransformStrategy=UnlinkAll(),]
     )
 
-Evaluate the `model` and replace the values of the model's random variables in the given
-`varinfo` with new values, using a specified initialisation strategy. If the values in
-`varinfo` are not set, they will be added using a specified initialisation strategy.
+Evaluate `model` with the given initialisation and transform strategies, resetting and
+filling the accumulators in `varinfo`. Parameter values are recorded only if a value
+accumulator is present.
 
 `transform_strategy` controls the output representation and defaults to `UnlinkAll()`.
-Parameter values are recorded only when the output contains a value accumulator.
 
 Returns a tuple of the model's return value, plus the updated `varinfo` object.
 """
