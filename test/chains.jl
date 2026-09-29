@@ -59,9 +59,9 @@ using Test
     @testset "no reevaluation" begin
         # Without VAIM, it should error
         vi = VarInfo()
-        @test_throws ErrorException get_raw_values(vi) # sanity check that it doesn't have VAIM
+        @test_throws ArgumentError get_raw_values(vi) # sanity check that it doesn't have VAIM
         vi = last(DynamicPPL.init!!(model, vi, InitFromPrior(), UnlinkAll()))
-        @test_throws ErrorException ParamsWithStats(vi)
+        @test_throws ArgumentError ParamsWithStats(vi)
         # With VAIM, it should work
         vi = VarInfo(RawValueAccumulator(true))
         vi = last(DynamicPPL.init!!(model, vi, InitFromPrior(), UnlinkAll()))

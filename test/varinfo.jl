@@ -57,6 +57,9 @@ end
 
 @testset "varinfo.jl" begin
     @testset "Base" begin
+        @test_throws "Missing accumulator :VectorValue. Available accumulators: (:LogPrior, :LogJacobian, :LogLikelihood)" get_vector_values(
+            VarInfo()
+        )
         vi_poszero = VarInfo(Xoshiro(1), value_model(), InitFromParams((x=0.0,), nothing))
         vi_negzero = VarInfo(Xoshiro(1), value_model(), InitFromParams((x=-0.0,), nothing))
         @test vi_poszero == vi_negzero
@@ -110,7 +113,7 @@ end
         @model eltype_demo() = x ~ Normal()
         @test eltype(VarInfo(eltype_demo())) === Float64
         accs_only = VarInfo(DynamicPPL.default_accumulators())
-        @test_throws ErrorException eltype(accs_only)
+        @test_throws ArgumentError eltype(accs_only)
     end
 
     @testset "get/set/acclogp" begin
@@ -208,11 +211,9 @@ end
             ),
         )
         @test getlogprior(vi) == lp_a + lp_b
-        # need regex because 1.11 and 1.12 throw different errors (in 1.12 the
-        # missing field is surrounded by backticks)
-        @test_throws r"has no field `?LogLikelihood" getloglikelihood(vi)
-        @test_throws r"has no field `?LogJacobian" getlogp(vi)
-        @test_throws r"has no field `?LogLikelihood" getlogjoint(vi)
+        @test_throws "Missing accumulator :LogLikelihood." getloglikelihood(vi)
+        @test_throws "Missing accumulator :LogJacobian." getlogp(vi)
+        @test_throws "Missing accumulator :LogLikelihood." getlogjoint(vi)
         @test begin
             vi = acclogprior!!(vi, 1.0)
             getlogprior(vi) == lp_a + lp_b + 1.0
@@ -228,12 +229,10 @@ end
                 m, InitContext(InitFromParams(values, nothing), UnlinkAll()), VarInfo(())
             ),
         )
-        # need regex because 1.11 and 1.12 throw different errors (in 1.12 the
-        # missing field is surrounded by backticks)
-        @test_throws r"has no field `?LogPrior" getlogprior(vi)
-        @test_throws r"has no field `?LogLikelihood" getloglikelihood(vi)
-        @test_throws r"has no field `?LogPrior" getlogp(vi)
-        @test_throws r"has no field `?LogPrior" getlogjoint(vi)
+        @test_throws "Missing accumulator :LogPrior." getlogprior(vi)
+        @test_throws "Missing accumulator :LogLikelihood." getloglikelihood(vi)
+        @test_throws "Missing accumulator :LogPrior." getlogp(vi)
+        @test_throws "Missing accumulator :LogPrior." getlogjoint(vi)
     end
 
     @testset "resetaccs" begin

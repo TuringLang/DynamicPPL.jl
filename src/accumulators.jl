@@ -225,8 +225,12 @@ end
     getacc(at::AccumulatorTuple, ::Val{accname})
 
 Get the accumulator with name `accname` from `at`.
+Throw an `ArgumentError` if it is absent, listing the available accumulator names.
 """
 function getacc(at::AccumulatorTuple, ::Val{accname}) where {accname}
+    haskey(at, Val(accname)) || throw(
+        ArgumentError("Missing accumulator :$accname. Available accumulators: $(keys(at))"),
+    )
     return at[accname]
 end
 

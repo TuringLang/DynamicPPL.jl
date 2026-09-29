@@ -196,7 +196,7 @@ TEST_ACCUMULATORS = (
             @test setacc!!(AccumulatorTuple(lp_f64), ll_f64) ==
                 AccumulatorTuple(lp_f64, ll_f64)
 
-            @test getacc(at_all64, Val(:LogPrior)) == lp_f64
+            @test (@inferred getacc(at_all64, Val(:LogPrior))) == lp_f64
         end
 
         @testset "map_accumulator(s)!!" begin
