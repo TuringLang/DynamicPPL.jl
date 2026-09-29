@@ -192,43 +192,6 @@ function init(
 end
 
 """
-Like InitFromParams, but it is always assumed that the VNT contains _exactly_ the
-correct set of variables, and that indexing into them will always return _exactly_
-the values for those variables.
-
-The main difference is that InitFromParams will call hasvalue(p.params, vn, dist)
-rather than just hasvalue(p.params, vn), which can be substantially slower.
-
-TODO(penelopeysm): Get rid of MCMCChains and never call the three-value argument again.
-Seriously. It's just nuts that I have to do these workarounds because of a package that
-isn't even DynamicPPL.
-"""
-struct InitFromParamsUnsafe{P<:VarNamedTuple} <: AbstractInitStrategy
-    params::P
-end
-function init(
-    ::Random.AbstractRNG,
-    vn::VarName,
-    dist::Distribution,
-    p::InitFromParamsUnsafe{<:VarNamedTuple},
-)
-    return if haskey(p.params, vn)
-        x = p.params[vn]
-        if x isa TransformedValue
-            x
-        else
-            TransformedValue(x, NoTransform())
-        end
-    else
-        error("No value was provided for the variable `$(vn)`.")
-    end
-end
-
-function get_param_eltype(p::InitFromParamsUnsafe)
-    return get_param_eltype(InitFromParams(p.params, nothing))
-end
-
-"""
     RangeAndTransform
 
 Suppose we have a set of vectorised parameters `params::AbstractVector{<:Real}` for a Turing
