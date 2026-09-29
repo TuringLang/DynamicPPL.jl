@@ -112,8 +112,10 @@ function ThreadSafeVarInfo(varinfo::AbstractVarInfo, ::Type{T}) where {T}
     end
 end
 
+_combined_varinfo(vi::ThreadSafeVarInfo) = setaccs!!(vi.varinfo, getaccs(vi))
+
 function setacc!!(vi::ThreadSafeVarInfo, acc::AbstractAccumulator)
-    inner_vi = setaccs!!(vi.varinfo, getaccs(vi))
+    inner_vi = _combined_varinfo(vi)
     return ThreadSafeVarInfo(setacc!!(inner_vi, acc))
 end
 
@@ -150,7 +152,7 @@ end
 getacc(vi::ThreadSafeVarInfo, accname::Val) = _getaccs(only, vi, (accname,))
 
 function Base.copy(vi::ThreadSafeVarInfo)
-    inner_vi = setaccs!!(vi.varinfo, getaccs(vi))
+    inner_vi = _combined_varinfo(vi)
     return ThreadSafeVarInfo(copy(inner_vi))
 end
 
@@ -217,21 +219,17 @@ function is_transformed(vi::ThreadSafeVarInfo, vn::VarName)
 end
 
 function link!!(vi::ThreadSafeVarInfo, model::Model)
-    return ThreadSafeVarInfo(link!!(setaccs!!(vi.varinfo, getaccs(vi)), model))
+    return ThreadSafeVarInfo(link!!(_combined_varinfo(vi), model))
 end
 function invlink!!(vi::ThreadSafeVarInfo, model::Model)
-    return ThreadSafeVarInfo(invlink!!(setaccs!!(vi.varinfo, getaccs(vi)), model))
+    return ThreadSafeVarInfo(invlink!!(_combined_varinfo(vi), model))
 end
 function unflatten!!(vi::ThreadSafeVarInfo, x::AbstractVector)
-    return ThreadSafeVarInfo(unflatten!!(setaccs!!(vi.varinfo, getaccs(vi)), x))
+    return ThreadSafeVarInfo(unflatten!!(_combined_varinfo(vi), x))
 end
 function subset(vi::ThreadSafeVarInfo, vns::AbstractVector{<:VarName})
-    return ThreadSafeVarInfo(subset(setaccs!!(vi.varinfo, getaccs(vi)), vns))
+    return ThreadSafeVarInfo(subset(_combined_varinfo(vi), vns))
 end
 function Base.merge(left::ThreadSafeVarInfo, right::ThreadSafeVarInfo)
-    return ThreadSafeVarInfo(
-        merge(
-            setaccs!!(left.varinfo, getaccs(left)), setaccs!!(right.varinfo, getaccs(right))
-        ),
-    )
+    return ThreadSafeVarInfo(merge(_combined_varinfo(left), _combined_varinfo(right)))
 end
