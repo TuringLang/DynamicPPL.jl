@@ -28,6 +28,10 @@ Partial `link!!(vi, vns, model)` / `invlink!!(vi, vns, model)` are removed: use 
 
 `update_transform_strategy` is removed: construct `LinkSome`, `UnlinkSome`, or `WithTransforms` explicitly and pass the strategy to `init!!`.
 
+# 0.42.14
+
+Added `SamplingOutput` support for `pointwise_logdensities`, `pointwise_loglikelihoods`, and `pointwise_prior_logdensities`, plus conversion to `MCMCChains.Chains`. See [#1506](https://github.com/TuringLang/DynamicPPL.jl/pull/1506).
+
 # 0.42.13
 
 Model bodies no longer contain a `try` block, so Libtask can tape them again.

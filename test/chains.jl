@@ -4,9 +4,11 @@ using Dates: now
 @info "Testing $(@__FILE__)..."
 __now__ = now()
 
+using AbstractMCMC: SamplingOutput
 using DynamicPPL
 using Distributions
 using LinearAlgebra
+using Random: Xoshiro
 using Test
 
 @testset "ParamsWithStats from VarInfo" begin
@@ -209,6 +211,53 @@ end
     @test isempty(offending)
 end
 
+@testset "SamplingOutput evaluation and conversion" begin
+    @model function m(y=ones(2))
+        x ~ MvNormal(zeros(2), I)
+        y ~ MvNormal(x, I)
+        return x + y
+    end
+    params = [VarNamedTuple(; x=[i / 10, j / 10]) for i in 1:2, j in 1:2]
+    fs = (pointwise_logdensities, pointwise_loglikelihoods, pointwise_prior_logdensities)
+    for draws in (params, map(p -> ParamsWithStats(p, (;)), params))
+        chain = SamplingOutput(draws; iterations=3:2:5, sampler_states=[:a, :b])
+        @test returned(m(), chain) == map(p -> p[@varname(x)] + ones(2), params)
+        for T in (SamplingOutput, typeof(chain), DynamicPPL.AbstractChains)
+            @test convert(T, chain) === chain
+        end
+        widened = convert(SamplingOutput{Any}, chain)
+        @test (widened.iterations, widened.sampler_states) ==
+            (chain.iterations, chain.sampler_states)
+        for f in (logjoint, logprior, loglikelihood)
+            @test f(m(), chain) ≈ map(p -> f(m(), p), params)
+        end
+        for f in fs, factorize in (false, true)
+            result = f(m(), chain; factorize)
+            @test (size(result), result.iterations) == (size(chain), chain.iterations)
+            @test result.samples ==
+                map(p -> f(m(), InitFromParams(p, nothing); factorize), params)
+            @test_throws ErrorException f(m(), SamplingOutput(fill(VarNamedTuple(), 1, 1)))
+        end
+    end
+end
+@testset "Prediction filtering preserves structured values" begin
+    dist = product_distribution((; a=Normal(), b=Bernoulli(), c=MvNormal(zeros(2), 1)))
+    @model function m(y=Any[missing, missing])
+        y[1] ~ dist
+        return y[2] ~ dist
+    end
+    partial = DynamicPPL.templated_setindex!!(
+        VarNamedTuple(), rand(Xoshiro(2), dist), @varname(y[1]), zeros(2)
+    )
+    for params in (VarNamedTuple(), partial)
+        chain = SamplingOutput(fill(params, 1, 1))
+        full = predict(Xoshiro(1), m(), chain; include_all=true)
+        filtered = predict(Xoshiro(1), m(), chain)[1, 1].params
+        @test haskey(filtered, @varname(y[1])) == !haskey(params, @varname(y[1]))
+        restored = densify!!(merge(params, filtered))
+        @test logjoint(m(), restored) ≈ only(logjoint(m(), full))
+    end
+end
 @info "Completed $(@__FILE__) in $(now() - __now__)."
 
 end # module
