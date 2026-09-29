@@ -54,7 +54,8 @@ end
 """
     get_values(vi::AbstractVarInfo)
 
-Extract vectorised values from the `VectorValueAccumulator` in `vi`.
+Return the `VarNamedTuple` of vectorised `TransformedValue`s from the
+`VectorValueAccumulator` in `vi`. Throw an `ArgumentError` if that accumulator is absent.
 
 This is a compatibility name for `get_vector_values`; parameter values are optional outputs.
 """

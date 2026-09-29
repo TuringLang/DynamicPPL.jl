@@ -20,6 +20,8 @@ Re-evaluation and `LogDensityFunction` construction no longer copy fixed transfo
 
 `vi.values` is removed: use `get_vector_values(vi)`.
 
+`get_values(vi)`: always-present `vi.values` → the `VarNamedTuple` of vectorised `TransformedValue`s in the optional `VectorValueAccumulator`; throws `ArgumentError` if that accumulator is absent.
+
 `init!!` now defaults to `UnlinkAll()` regardless of the `VarInfo` contents: `init!!(rng, model, vi, init)` → `init!!(rng, model, vi, init, strategy)` to retain a chosen strategy.
 
 Partial `link!!(vi, vns, model)` / `invlink!!(vi, vns, model)` are removed: use `init!!(rng, model, vi, InitFromParams(get_vector_values(vi), nothing), LinkSome(Set(vns), base))` / `UnlinkSome(Set(vns), base)`; for the removed non-mutating `link` / `invlink` forms, pass `copy(vi)` as the output.
