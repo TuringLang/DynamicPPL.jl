@@ -140,8 +140,9 @@ end
             model = remove(bind(sliced([1.0, 2.0]); x=[1.0, 2.0]), @varname(x[2]))
             @test model(Xoshiro(1))[1] == 1.0
             @test loglikelihood(model, (; x=[3.0, 4.0])) ==
-                (bind === condition ? logpdf(Normal(), 1.0) : 0.0)
-            @test keys(VarInfo(Xoshiro(1), model)) == [@varname(x[2])]
+                (bind === condition ? logpdf(Normal(), 1.0) : logpdf(Normal(), 2.0))
+            @test keys(VarInfo(Xoshiro(1), model)) ==
+                (bind === condition ? [@varname(x[2])] : VarName[])
         end
     end
 
@@ -291,7 +292,8 @@ end
                 changed = remove(matrix, vn)
                 latent = rand(Xoshiro(1), changed)
                 for i in 1:4
-                    @test haskey(latent, @varname(x[i])) == (i in indices)
+                    @test haskey(latent, @varname(x[i])) ==
+                        (bind === condition && i in indices)
                 end
                 result = changed(Xoshiro(1))
                 @test result[setdiff(1:4, indices)] ==
@@ -315,7 +317,7 @@ end
             )
                 bound = bind(model; x=model.args.x)
                 changed = remove(bound, first)
-                @test haskey(rand(Xoshiro(1), changed), first)
+                @test haskey(rand(Xoshiro(1), changed), first) == (bind === condition)
                 @test !haskey(select(changed), first)
                 @test select(changed)[sibling] == 2.0
                 @test select(bound)[sibling] == 2.0
@@ -641,9 +643,9 @@ end
             original = bind(partial_observations([1.0, 2.0]); x=[1.0, 2.0])
             latent = remove(original, @varname(x[2]))
             @test Set(keys(VarInfo(Xoshiro(1), latent))) ==
-                Set([@varname(m), @varname(x[2])])
+                Set(bind === condition ? [@varname(m), @varname(x[2])] : [@varname(m)])
             @test loglikelihood(latent, (; m=0.0, x=[1.0, 3.0])) ≈
-                (bind === condition ? logpdf(Normal(), 1.0) : 0.0)
+                (bind === condition ? logpdf(Normal(), 1.0) : logpdf(Normal(), 2.0))
             @test select(original)[@varname(x)] == [1.0, 2.0]
             @test_throws ArgumentError remove(original, @varname(absent))
             record = bind(record_observations(); t=(; a=1.0, b=2.0))
@@ -806,7 +808,7 @@ end
                 UnlinkAll(),
             )
             @test typeof(result) === typeof(replacement)
-            @test result.a == 7
+            @test result.a == (last_op === condition ? 7 : original.a)
             @test result.b == 2
         end
         parent = condition(
@@ -1037,6 +1039,35 @@ end
             @test changed() == original() == data
             @test logjoint(changed, VarNamedTuple()) == logjoint(original, VarNamedTuple())
         end
+    end
+
+    @testset "unfix restores argument defaults" begin
+        @model argument_site(x) = x ~ Normal()
+        m = argument_site(1.0)
+        for original in (m, condition(m; x=2.0), decondition(m, :x))
+            u = unfix(fix(original; x=5.0), :x)
+            @test isempty(keys(VarInfo(u)))
+            @test logjoint(u, (;)) ≈ logpdf(Normal(), 1.0)
+            @test keys(VarInfo(decondition(u, :x))) == [@varname(x)]
+        end
+        @model argument_components(x) = (
+            for i in eachindex(x)
+                x[i] ~ Normal()
+            end
+        )
+        m = argument_components([1.0, 2.0])
+        u = unfix(fix(m, @varname(x[1]) => 5.0), @varname(x[1]))
+        @test logjoint(u, (;)) ≈ sum(logpdf.(Normal(), [1.0, 2.0]))
+        u = unfix(fix(m; x=[5.0, 6.0]), @varname(x[1]))
+        @test logjoint(u, (;)) ≈ logpdf(Normal(), 1.0)
+        @test fixed(u)[@varname(x[2])] == 6.0
+        @test logjoint(unfix(u), (;)) ≈ sum(logpdf.(Normal(), [1.0, 2.0]))
+        @model argument_parent(child) = a ~ to_submodel(child)
+        @test logjoint(argument_parent(unfix(fix(m; x=[5.0, 6.0]))), (;)) ≈
+            sum(logpdf.(Normal(), [1.0, 2.0]))
+        p = DynamicPPL.prefix(argument_site(1.0), @varname(a))
+        @test logjoint(unfix(fix(p, @varname(a.x) => 5.0), @varname(a.x)), (;)) ≈
+            logpdf(Normal(), 1.0)
     end
 
     @testset "decondition and unfix" begin

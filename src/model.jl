@@ -1194,7 +1194,8 @@ end
 Return a `Model` for which `variables...` are _not_ conditioned on. If no `variables` are
 provided, then all conditioned variables will be removed.
 
-This also removes observations supplied as model arguments. After deconditioning, a site's
+Unlike [`unfix`](@ref), `decondition(m, :x)` removes explicit and argument-default
+observations, making `x` latent. After deconditioning, a site's
 sampled value replaces its local argument value and is used by subsequent model statements.
 
 A name matches when it equals, contains, or is contained in a stored binding's address,
@@ -1249,7 +1250,6 @@ true
 ```
 
 A component of a whole binding can be deconditioned when it has its own tilde statement.
-Names that do not match a binding leave the model unchanged.
 
 ```jldoctest decondition
 julia> @model function demo_mv(::Type{TV}=Float64) where {TV}
@@ -1467,6 +1467,9 @@ directly or through a `view`. Replacement, missing-value rejection, unused bindi
 argument restrictions follow [`condition`](@ref). See [Binding rules](@ref) for the shared rules, including the
 cost of component bindings on array arguments, and [`to_submodel`](@ref) for submodels.
 
+Removing a fixed binding with [`unfix`](@ref) restores the argument default, if any,
+without restoring an earlier explicit condition.
+
 See also: [`unfix`](@ref), [`fixed`](@ref)
 
 !!! warning "Fixing applies to whole variables"
@@ -1563,6 +1566,10 @@ are supplied. Matching follows [`decondition`](@ref), including equivalent index
 property forms. A name with no stored fixed match throws `ArgumentError`, including a
 name supplied only by a child submodel or only conditioned on this model.
 
+Unlike [`decondition`](@ref), removal restores the argument's default observation, if any,
+otherwise making the site latent; it never restores an earlier explicit condition.
+For `@model f(x) = x ~ Normal()`, `unfix(fix(f(1.0); x=5.0), :x)` observes `x = 1.0` again.
+
 See also: [`fix`](@ref), [Binding rules](@ref).
 
 # Examples
@@ -1607,6 +1614,38 @@ true
 function unfix(model::Model, syms::Union{Symbol,VarName}...)
     _check_model_removal(Fix, _model_values(model.values), syms...)
     values = _remove_model_values(Fix, _model_values(model.values), syms...)
+    remaining = keys(_select_model_values(Fix, values))
+    removed = if isempty(remaining)
+        _model_values(model.values)
+    else
+        _remove_model_values(Fix, _model_values(model.values), remaining...)
+    end
+    defaults = VarNamedTuple()
+    arguments = merge(model.args, model.defaults)
+    for name in model.argument_sites
+        vn = _model_value_varname(model.values, VarName{name}(), _model_prefix(model))
+        defaults = templated_setindex!!(
+            defaults,
+            ModelValue{ArgumentCondition}(arguments[name]),
+            vn,
+            _apply_prefix_template(_model_prefix_template(model), NoTemplate()),
+        )
+    end
+    values = mapfoldl(
+        identity,
+        function (restored, pair)
+            vn, binding = pair
+            return if binding isa ModelValue{Fix} && haskey(defaults, vn)
+                templated_setindex!!(
+                    restored, defaults[vn], vn, defaults.data[AbstractPPL.getsym(vn)]
+                )
+            else
+                restored
+            end
+        end,
+        removed;
+        init=values,
+    )
     values = model.values isa LocalModelValues ? LocalModelValues(values) : values
     return _reconstruct_model(model; values)
 end

@@ -25,7 +25,10 @@
     stored binding's address, after resolving equivalent index and property forms.
     A name with no match throws `ArgumentError`, including bindings supplied only by
     a child. Decondition child argument observations before `to_submodel`. With no
-    names, all bindings of the requested role are removed.
+    names, all bindings of the requested role are removed. `unfix` restores the argument's
+    default observation, if any, otherwise making the site latent; it never restores an
+    earlier explicit condition. `decondition(m, :x)` removes explicit and argument-default
+    observations at `x`, making it latent.
   - `conditioned` and `fixed` return plain values, independent of binding history:
     `VarNamedTuple`, `PartialArray`, or ordinary values. Partial removal or mixed
     roles produce plain partial values, not the original container type.
