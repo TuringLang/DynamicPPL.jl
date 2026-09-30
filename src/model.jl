@@ -1247,8 +1247,9 @@ entries are not reflected in those components. The model body must not mutate bo
 directly or through an alias such as a `view`. This also applies to [`fix`](@ref).
 
 A complete argument replacement supplies its value, shape, and dispatch type parameters
-from the start of the model body. Partial updates preserve the remaining stored values and
-their array templates. Component values are converted to the argument array's element
+from the start of the model body. Observed sites use the value computed by the body;
+fixed sites reset to their bound value at the tilde statement. Partial updates preserve the
+remaining stored values and their array templates. Component values are converted to the argument array's element
 type; values that cannot be represented exactly throw `ArgumentError`.
 Arguments with unobserved entries retain their original storage
 template; the corresponding tilde statements fill those entries during evaluation.
@@ -1830,7 +1831,8 @@ conditioned(model::Model) = _select_model_values(
     fix(model::Model, values::NamedTuple)
 
 Return a `Model` which treats the sites bound by `values` as constants: they replace
-sampling and contribute no log probability.
+sampling and contribute no log probability. Fixed argument sites reset to their bound
+value when their tilde statement runs, even if the body has computed a different value.
 
 Whole bindings use the supplied object without copying. A component binding snapshots the
 remaining components when it splits a whole binding; later changes to the supplied container's
