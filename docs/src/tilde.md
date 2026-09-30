@@ -28,7 +28,7 @@ begin
     elseif is_conditioned(__model__, vn)
         conditioned_x = get_conditioned_value(__model__, vn)
         raw_x, __varinfo__ = tilde_observe!!(
-            __model__, dist, conditioned_x, vn, template, __varinfo__
+            __prefix__, __prefix_template__, dist, conditioned_x, vn, template, __varinfo__
         )
 
     else
@@ -40,6 +40,9 @@ begin
     x = raw_x
 end
 ```
+
+Here, `__prefix__` and `__prefix_template__` are the model's prefix and its storage
+template, passed directly to the exported `tilde_observe!!` entry point.
 
 We won't go into detail about every part of this code; by far the most interesting part is the call to `tilde_assume!!`.
 Every latent tilde-statement `vn ~ dist` is transformed into one such call.
