@@ -29,6 +29,22 @@ mutable struct MissingRecord
 end
 
 @testset "condition and fix" begin
+    @testset "named tuple tilde sites require whole bindings" begin
+        @model named_site() = x ~ product_distribution((a=Normal(), b=Normal()))
+        for (bind, remove) in ((condition, decondition), (fix, unfix))
+            partial = bind(named_site(), @varname(x.a) => 1.0)
+            @test_throws r"ArgumentError: .*`x`.*bound as a whole" partial(Xoshiro(1))
+            whole = bind(named_site(); x=(; a=1.0, b=2.0))
+            @test whole(Xoshiro(1)) == (; a=1.0, b=2.0)
+            @test bind(whole, @varname(x.a) => 3.0)(Xoshiro(1)) == (; a=3.0, b=2.0)
+            @test_throws r"ArgumentError: .*`x`.*bound as a whole" remove(
+                whole, @varname(x.b)
+            )(
+                Xoshiro(1)
+            )
+        end
+    end
+
     @testset "expanded component bindings validate their extent" begin
         @model indexed(y) = (y[1] ~ Normal(); y[2] ~ Normal(); y)
         for data in ([1.0, 2.0], (1.0, 2.0)), bind in (condition, fix)

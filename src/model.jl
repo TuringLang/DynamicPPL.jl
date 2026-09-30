@@ -104,12 +104,21 @@ function _model_role(value::VarNamedTuples.ArrayLikeBlock, vn::VarName)
 end
 function _model_role(tree::ModelValueTree, vn::VarName)
     return if VarNamedTuples._haskey_optic(tree, AbstractPPL.Iden())
+        values = tree.values isa VarNamedTuple ? tree.values.data : tree.values
+        _model_role(values, vn)
+    elseif tree.values isa VarNamedTuple
         _model_role(tree.values, vn)
     else
         nothing
     end
 end
-_model_role(values::VarNamedTuple, vn::VarName) = _model_role(values.data, vn)
+function _model_role(::VarNamedTuple, vn::VarName)
+    return throw(
+        ArgumentError(
+            "Cannot bind only components of tilde variable `$vn`: a single tilde statement's value must be bound as a whole.",
+        ),
+    )
+end
 function _model_role(values::VarNamedTuples.PartialArray, vn::VarName)
     return all(values.mask) ? _model_role(values.data, vn) : nothing
 end
