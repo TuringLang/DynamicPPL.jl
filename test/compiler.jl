@@ -456,7 +456,7 @@ end
         @model function demo1()
             return x ~ Normal()
         end
-        @model function demo2(x, y)
+        @model function demo2(unused_x, y)
             _ignore ~ to_submodel(demo1(), false)
             return y ~ Uniform()
         end

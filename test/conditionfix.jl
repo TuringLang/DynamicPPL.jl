@@ -29,6 +29,35 @@ mutable struct MissingRecord
 end
 
 @testset "condition and fix" begin
+    @testset "ordinary arguments cannot be bound" begin
+        @model ordinary(n; scale=1.0) = x ~ Normal(n, scale)
+        @model dispatched(x::Real) = x ~ Normal()
+        @model dispatched(x::AbstractVector) = y ~ Normal(sum(x))
+        for bind in (condition, fix)
+            for model in
+                (ordinary(1), decondition(ordinary(1)), setthreadsafe(ordinary(1), true))
+                for values in
+                    ((; n=2), (; n=nothing), (@varname(n) => 2,), Dict(@varname(n) => 2))
+                    @test_throws r"ArgumentError: .*`n`.*left-hand side of `~`.*construct" bind(
+                        model, values
+                    )
+                end
+                @test_throws r"ArgumentError: .*`scale`.*left-hand side of `~`" bind(
+                    model; scale=2.0
+                )
+            end
+            @test_throws r"ArgumentError: .*`n`.*left-hand side of `~`" bind(
+                prefix(ordinary(1), @varname(a)), @varname(a.n) => 2
+            )
+            @test bind(dispatched(1); x=2)(Xoshiro(1)) == 2
+            @test_throws r"ArgumentError: .*`x`.*left-hand side of `~`" bind(
+                dispatched([1]); x=[2]
+            )
+            @test bind(ordinary(1); x=2)(Xoshiro(1)) == 2
+            @test bind(ordinary(1); dynamic_site=2) isa Model
+        end
+    end
+
     @testset "removal requires a stored binding of the requested role" begin
         @model scalar() = x ~ Normal()
         @model inner_arg(x=1.0) = x ~ Normal()
@@ -845,8 +874,9 @@ end
         @model function ordinary_input(x)
             return y ~ Normal(x)
         end
-        @test logprior(condition(ordinary_input(1.0); x=2.0), (; y=1.0)) ==
-            logpdf(Normal(), 0.0)
+        @test_throws r"ArgumentError: .*`x`.*left-hand side of `~`" condition(
+            ordinary_input(1.0); x=2.0
+        )
     end
 
     @testset "component properties and indices share observations" begin
