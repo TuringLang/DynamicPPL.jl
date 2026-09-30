@@ -925,7 +925,7 @@ Base.:|(model::Model, values::Union{NamedTuple,AbstractDict,Pair,Tuple,VarNamedT
 function _check_argument_bindings(model, values)
     for name in (keys(model.args)..., keys(model.defaults)...)
         name in model.argument_sites && continue
-        vn = maybe_prefix(VarName{name}(), _model_prefix(model))
+        vn = _model_value_varname(model.values, VarName{name}(), _model_prefix(model))
         binding = _model_argument_binding(values, AbstractPPL.varname_to_optic(vn))
         binding === nothing || throw(
             ArgumentError(
@@ -1140,7 +1140,8 @@ true
 function AbstractPPL.condition(model::Model, values...)
     values = _tag_model_values(Condition, _make_condfix_values(values...))
     _check_argument_bindings(model, values)
-    values = _merge_model_values(model.values, values)
+    values = _merge_model_values(_model_values(model.values), values)
+    values = model.values isa LocalModelValues ? LocalModelValues(values) : values
     return _reconstruct_model(model; values)
 end
 function AbstractPPL.condition(model::Model; values...)
@@ -1259,8 +1260,9 @@ true
 ```
 """
 function AbstractPPL.decondition(model::Model, syms::Union{Symbol,VarName}...)
-    _check_model_removal(Condition, model.values, syms...)
-    values = _remove_model_values(Condition, model.values, syms...)
+    _check_model_removal(Condition, _model_values(model.values), syms...)
+    values = _remove_model_values(Condition, _model_values(model.values), syms...)
+    values = model.values isa LocalModelValues ? LocalModelValues(values) : values
     return _reconstruct_model(model; values)
 end
 
@@ -1433,7 +1435,7 @@ julia> # Now `a.x` will be sampled.
  a.x
 ```
 """
-conditioned(model::Model) = _select_model_values(Condition, model.values)
+conditioned(model::Model) = _select_model_values(Condition, _model_values(model.values))
 
 """
     fix(model::Model; values...)
@@ -1526,7 +1528,8 @@ julia> # The difference is the missing log-probability of `m`:
 function fix(model::Model, values...)
     values = _tag_model_values(Fix, _make_condfix_values(values...))
     _check_argument_bindings(model, values)
-    values = _merge_model_values(model.values, values)
+    values = _merge_model_values(_model_values(model.values), values)
+    values = model.values isa LocalModelValues ? LocalModelValues(values) : values
     return _reconstruct_model(model; values)
 end
 function fix(model::Model; values...)
@@ -1584,8 +1587,9 @@ true
 ```
 """
 function unfix(model::Model, syms::Union{Symbol,VarName}...)
-    _check_model_removal(Fix, model.values, syms...)
-    values = _remove_model_values(Fix, model.values, syms...)
+    _check_model_removal(Fix, _model_values(model.values), syms...)
+    values = _remove_model_values(Fix, _model_values(model.values), syms...)
+    values = model.values isa LocalModelValues ? LocalModelValues(values) : values
     return _reconstruct_model(model; values)
 end
 
@@ -1644,7 +1648,7 @@ julia> # Now `a.x` will be sampled.
  a.x
 ```
 """
-fixed(model::Model) = _select_model_values(Fix, model.values)
+fixed(model::Model) = _select_model_values(Fix, _model_values(model.values))
 
 function _prefix_values(values::VarNamedTuple, vn::VarName, template)
     isempty(values) && return values
