@@ -1760,7 +1760,7 @@ function tilde_assume!!(
 end
 
 """
-    tilde_observe!!(model::Model, right::Distribution, left, vn, template, vi)
+    tilde_observe!!(prefix, prefix_template, right::Distribution, left, vn, template, vi)
 
 Accumulate an observation and return `(left, vi)` with the updated varinfo.
 
@@ -1768,25 +1768,12 @@ Accumulate an observation and return `(left, vi)` with the updated varinfo.
 the variable name before prefixing, or `nothing` for a literal. `template` describes the
 top-level variable's storage; literals use `NoTemplate()`.
 
-Apply the model's prefix and delegate to [`accumulate_observe!!`](@ref). Observation
-handling is independent of the evaluation context. Fixed sites bypass this function
-and do not contribute to the log probability.
+Apply `prefix` (a `VarName` or `nothing`) and its storage template `prefix_template`,
+then delegate to [`accumulate_observe!!`](@ref). The compiler passes this metadata directly
+so observations do not box the model. Every observation calls this function, independently
+of the evaluation context. Fixed sites bypass it and do not contribute to the log probability.
 """
 function tilde_observe!!(
-    model::Model,
-    right::Distribution,
-    left,
-    vn::Union{VarName,Nothing},
-    template::Any,
-    vi::AbstractVarInfo,
-)
-    return _tilde_observe!!(
-        _model_prefix(model), _model_prefix_template(model), right, left, vn, template, vi
-    )
-end
-
-# The compiler passes prefix metadata directly so observations do not box Model.
-function _tilde_observe!!(
     prefix, prefix_template, right::Distribution, left, vn, template, vi
 )
     vn, template = if vn === nothing
