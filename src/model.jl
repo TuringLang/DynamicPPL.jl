@@ -968,8 +968,10 @@ Binding an argument that is not a tilde site throws `ArgumentError` at this call
 the model with a new argument value instead. For submodel names, precedence, and errors
 at evaluation time, see [`to_submodel`](@ref) and [Binding rules](@ref).
 
-Bound values are not copied. The model body must not mutate them, directly or through an
-alias such as a `view`. This also applies to [`fix`](@ref).
+Whole bindings use the supplied object without copying. A component binding snapshots the
+remaining elements when it splits a whole binding; later changes to the supplied container's
+entries are not reflected in those elements. The model body must not mutate bound values,
+directly or through an alias such as a `view`. This also applies to [`fix`](@ref).
 
 A complete argument replacement supplies its value, shape, and dispatch type parameters
 from the start of the model body. Partial updates preserve the remaining stored values and
@@ -1458,9 +1460,11 @@ conditioned(model::Model) = _select_model_values(Condition, _model_values(model.
 Return a `Model` which treats the variables in `values` as constants: they replace
 sampling and contribute no log probability.
 
-Fixed values are not copied; the model body must not mutate them, directly or through a
-`view`. Replacement, missing-value rejection, unused bindings, and argument restrictions
-follow [`condition`](@ref). See [Binding rules](@ref) for the shared rules, including the
+Whole bindings use the supplied object without copying. A component binding snapshots the
+remaining elements when it splits a whole binding; later changes to the supplied container's
+entries are not reflected in those elements. The model body must not mutate bound values,
+directly or through a `view`. Replacement, missing-value rejection, unused bindings, and
+argument restrictions follow [`condition`](@ref). See [Binding rules](@ref) for the shared rules, including the
 cost of component bindings on array arguments, and [`to_submodel`](@ref) for submodels.
 
 See also: [`unfix`](@ref), [`fixed`](@ref)
