@@ -703,10 +703,13 @@ function _compose_prefix_templates(prefix::PrefixTemplate, inner)
 end
 
 """
-    Model(f, args::NamedTuple, defaults::NamedTuple, context=DefaultContext())
+    Model{Threaded}(f, args::NamedTuple, defaults::NamedTuple, context=DefaultContext(), values=...)
 
 Store a model function, arguments, context, and role-tagged conditioned or fixed values.
-Model arguments provide default observations. Use `decondition` to make their sites latent.
+Direct construction without `values` conditions every entry in `merge(args, defaults)`,
+including arguments unused by tilde statements. In contrast, `@model` supplies bindings only
+for arguments used on the left-hand side of `~`. These construction paths can therefore
+produce different results from `conditioned(model)`. Use `decondition` to make sites latent.
 """
 struct Model{
     F,
@@ -738,15 +741,14 @@ struct Model{
 end
 
 """
-    Model(f, args::NamedTuple[, defaults::NamedTuple = ()])
+    Model{Threaded}(f, args::NamedTuple; kwargs...)
 
 Create a model with evaluation function `f` and arguments `args`.
 
 Arguments supply default conditioned values. Use [`decondition`](@ref) to make an
 argument-backed stochastic site latent, or [`condition`](@ref) to replace its observation.
 
-Default arguments `defaults` are used internally when constructing instances of the same
-model with different arguments.
+Keyword arguments `kwargs` are stored in the model's `defaults` field.
 """
 function Model{Threaded}(f, args::NamedTuple; kwargs...) where {Threaded}
     return Model{Threaded}(f, args, NamedTuple(kwargs))
@@ -833,6 +835,8 @@ A complete argument replacement supplies its value, shape, and dispatch type par
 from the start of the model body. Partial updates preserve the remaining stored values and
 their array templates. Arguments with unobserved entries retain their original storage
 template; the corresponding tilde statements fill those entries during evaluation.
+Defaults derived from a replaced argument are evaluated at model construction and are not
+recomputed.
 
 # Examples
 ## Simple univariate model

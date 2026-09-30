@@ -498,8 +498,9 @@ DefaultContext
 InitContext
 ```
 
-To implement a leaf context, subtype `AbstractPPL.AbstractContext` and implement `tilde_assume!!`.
-Observations bypass the context and call `accumulate_observe!!` directly.
+Customise latent value selection with an [initialisation strategy](init.md) supplied to `InitContext`.
+`tilde_assume!!` dispatches on that context to initialise, transform, and accumulate a latent value.
+Observations use `tilde_observe!!`, which takes the model and calls `accumulate_observe!!` without dispatching on a context.
 
 ```@docs
 tilde_assume!!
