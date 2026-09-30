@@ -33,6 +33,22 @@ struct MetadataRecord
     b::Missing
 end
 
+struct LatentRecord{X,Y}
+    X::X
+    y::Y
+end
+mutable struct MutableLatentRecord{X,Y}
+    X::X
+    y::Y
+end
+@model function selective_copy(d)
+    m ~ Normal()
+    for i in eachindex(d.y)
+        d.y[i] ~ Normal(m + d.X[i, 1])
+    end
+    return d
+end
+
 @testset "condition and fix" begin
     @testset "keyword splat index removal" begin
         @model indexed_keywords(; kwargs...) = (
@@ -44,6 +60,26 @@ end
                 logpdf(Normal(), 2.0)
             @test loglikelihood(unfix(m, :kwargs), (;)) ==
                 logpdf(Normal(), 2.0) + logpdf(Normal(), 5.0)
+        end
+    end
+
+    @testset "partly latent argument storage" begin
+        for ctor in ((X, y) -> (; X, y), LatentRecord, MutableLatentRecord)
+            d = ctor(zeros(1000, 1000), zeros(2))
+            m = decondition(selective_copy(d), @varname(d.y))
+            result, _ = init!!(
+                Xoshiro(1),
+                m,
+                VarInfo(),
+                InitFromParams((; m=0.0, d=(; y=ones(2)))),
+                UnlinkAll(),
+            )
+            m(Xoshiro(1))
+            @test (@allocated m(Xoshiro(1))) < sizeof(d.X) ÷ 2
+            @test result.X === d.X
+            @test result.y == ones(2)
+            @test d.y == zeros(2)
+            @test result.y !== d.y
         end
     end
 
