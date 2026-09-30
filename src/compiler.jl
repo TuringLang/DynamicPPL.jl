@@ -376,7 +376,10 @@ function generate_tilde(left, right; is_argument=false)
 
     fixed_data = if is_argument
         :($(DynamicPPL._get_model_data)(
-            __model__, $vn, $(VarName{get_top_level_symbol(left)}())
+            __model__,
+            $vn,
+            $(VarName{get_top_level_symbol(left)}()),
+            $(get_top_level_symbol(left)),
         ))
     else
         :($(DynamicPPL._get_model_data)(__model__, $vn))

@@ -4,6 +4,9 @@
 
   - A conditioned value is an observation and contributes to the likelihood. A fixed
     value is a constant and contributes no log probability. Both replace sampling.
+    Fixed values must cover every site they bind with a static size and shape: changing a
+    fixed argument's size or shape in the body throws `ArgumentError` naming the site.
+    This restriction does not apply to conditioned values.
   - With `@model`, an argument on the left of `~` supplies a default observation.
     Direct `Model` construction without bindings records no observations or argument sites.
     An argument used as a submodel's left-hand side (`a ~ to_submodel(...)`) supplies a return-value

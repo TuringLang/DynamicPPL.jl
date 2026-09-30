@@ -217,18 +217,69 @@ function _get_model_data(model, vn)
     vn = _model_value_varname(model.values, vn, _model_prefix(model))
     return _model_data(VarNamedTuples._getindex_optic(_model_values(model.values), vn))
 end
-function _get_model_data(model, vn, argument)
+function _get_model_data(model, vn, argument, local_value)
+    address = _model_value_varname(model.values, argument, _model_prefix(model))
+    binding = _model_argument_binding(
+        _model_values(model.values), AbstractPPL.varname_to_optic(address)
+    )
     return try
+        _check_fixed_shape(binding, local_value, AbstractPPL.getoptic(vn), vn)
         _get_model_data(model, vn)
     catch err
-        err isa BoundsError || rethrow()
+        err isa BoundsError || err isa KeyError || rethrow()
         throw(
             ArgumentError(
-                "`$vn` is not covered by the fixed value supplied for `$argument`; " *
-                "fix it explicitly or supply a value that covers it",
+                "`$vn` is not covered by the fixed value supplied for `$argument`; fixed arguments require a static size and shape.",
             ),
         )
     end
+end
+
+function _check_fixed_shape(binding, local_value, optic, vn)
+    value = binding isa ModelValue ? binding.value : binding
+    array = value isa VarNamedTuples.PartialArray ? value.data : value
+    tuple = value isa ModelValueTree ? value.template : value
+    if tuple isa Tuple
+        local_value isa Tuple && length(tuple) == length(local_value) || throw(
+            ArgumentError(
+                "Fixed site `$vn` requires a static size and shape; the model body changed its argument's length.",
+            ),
+        )
+    elseif (array isa AbstractArray || local_value isa AbstractArray) && !(
+        value isa VarNamedTuples.PartialArray && array isa VarNamedTuples.GrowableArray
+    )
+        array isa AbstractArray &&
+            local_value isa AbstractArray &&
+            axes(array) == axes(local_value) || throw(
+            ArgumentError(
+                "Fixed site `$vn` requires a static size and shape; the model body changed its argument's shape.",
+            ),
+        )
+    end
+    return _check_fixed_shape_child(binding, local_value, optic, vn)
+end
+_check_fixed_shape_child(binding, local_value, ::AbstractPPL.Iden, vn) = nothing
+function _check_fixed_shape_child(
+    binding, local_value, optic::AbstractPPL.Property{S}, vn
+) where {S}
+    child = _model_argument_binding(binding, AbstractPPL.Property{S}())
+    child !== nothing && hasproperty(local_value, S) || throw(
+        ArgumentError("Fixed site `$vn` requires coverage with a static size and shape."),
+    )
+    return _check_fixed_shape(child, getproperty(local_value, S), optic.child, vn)
+end
+function _check_fixed_shape_child(binding, local_value, optic::AbstractPPL.Index, vn)
+    optic = AbstractPPL.concretize_top_level(optic, local_value)
+    child = _model_argument_binding(binding, AbstractPPL.Index(optic.ix, optic.kw))
+    child === nothing && throw(
+        ArgumentError("Fixed site `$vn` requires coverage with a static size and shape."),
+    )
+    selected = if VarNamedTuples._is_multiindex(local_value, optic.ix...; optic.kw...)
+        Base.maybeview(local_value, optic.ix...; optic.kw...)
+    else
+        getindex(local_value, optic.ix...; optic.kw...)
+    end
+    return _check_fixed_shape(child, selected, optic.child, vn)
 end
 
 function _tag_model_values(::Type{R}, values::VarNamedTuple) where {R}
@@ -1491,6 +1542,10 @@ directly or through a `view`. `missing` rejection has the scope and remedies doc
 in [`condition`](@ref). Replacement, unused bindings, and
 argument restrictions follow [`condition`](@ref). See [Binding rules](@ref) for the shared rules, including the
 cost of component bindings on array arguments, and [`to_submodel`](@ref) for submodels.
+
+Fixed values must cover every site they bind with a static size and shape. If the model
+body changes a fixed argument's size or shape, evaluation throws `ArgumentError` naming
+the site. This restriction does not apply to [`condition`](@ref).
 
 Removing a fixed binding with [`unfix`](@ref) restores the argument default, if any,
 without restoring an earlier explicit condition.

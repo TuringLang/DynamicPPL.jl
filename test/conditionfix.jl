@@ -34,6 +34,55 @@ struct MetadataRecord
 end
 
 @testset "condition and fix" begin
+    @testset "fixed coverage errors" begin
+        @model uncovered(x) = x[2] ~ Normal()
+        @test_throws r"ArgumentError: .*x\[2\].*size and shape" fix(
+            uncovered(Any[1.0]); x=Any[2.0]
+        )()
+        @model field_site(p) = p.a ~ Normal()
+        @test_throws r"ArgumentError: .*p.a.*size and shape" fix(
+            field_site((; a=1.0)); p=(; b=2.0)
+        )()
+        @model scalar_shape(x) = (x = [x]; x ~ MvNormal(zeros(1), 1.0))
+        @test_throws r"ArgumentError: .*x.*size and shape" fix(scalar_shape(1.0); x=2.0)()
+    end
+
+    @testset "fixed argument shape" begin
+        @model function changed_shape(x, change, index)
+            x = change(x)
+            x[index] ~ Normal()
+            return x
+        end
+        @model function changed_range(x, change)
+            x = change(x)
+            x[:] ~ MvNormal(zeros(length(x)), 1.0)
+            return x
+        end
+        for change in (
+                x -> vcat(x, 2.0),
+                x -> x[1:1],
+                x -> reshape(x, 1, 2),
+                x -> resize!(copy(x), 1),
+            ),
+            constructor in (x -> changed_shape(x, change, 1), x -> changed_range(x, change))
+
+            m = constructor([1.0, 2.0])
+            @test_throws r"ArgumentError: .*x.*(size|shape)" fix(m; x=[3.0, 4.0])()
+            @test condition(m; x=[3.0, 4.0])() == change([3.0, 4.0])
+        end
+        @test_throws r"ArgumentError: .*x.*size and shape" fix(
+            changed_shape((1.0, 2.0), x -> (x..., 3.0), 1); x=(3.0, 4.0)
+        )()
+        @model function changed_field(p)
+            p = (; a=reshape(p.a, 1, 2))
+            p.a[1] ~ Normal()
+            return p
+        end
+        @test_throws r"ArgumentError: .*p.a\[1\].*(size|shape)" fix(
+            changed_field((; a=[1.0, 2.0])); p=(; a=[3.0, 4.0])
+        )()
+    end
+
     @testset "missing paths and construction scope" begin
         @model metadata_site(p) = p.a ~ Normal()
         for p in ((a=1.0, b=missing), (a=missing, b=1.0), (a=1.0, b=[(missing,)]))
@@ -527,12 +576,14 @@ end
         @model grow_scalar(x) = (x = vcat(x, 2.0); x[2] ~ Normal(); return x)
         @model grow_range(x) = (x = vcat(x, 2.0); x[1:2] ~ MvNormal(zeros(2), I); return x)
         for model in (grow_scalar([1.0]), grow_range([1.0]))
-            @test_throws r"ArgumentError: `x\[(2|1:2)\]` is not covered by the fixed value supplied for `x`; fix it explicitly or supply a value that covers it" fix(
+            @test_throws r"ArgumentError: .*`x\[(2|1:2)\]`.*size and shape" fix(
                 model; x=[3.0]
             )()
             @test condition(model; x=[3.0])() == [3.0, 2.0]
         end
-        @test fix(grow_scalar([1.0]); x=[3.0, 4.0])() == [3.0, 4.0, 2.0]
+        @test_throws r"ArgumentError: .*`x\[2\]`.*size and shape" fix(
+            grow_scalar([1.0]); x=[3.0, 4.0]
+        )()
         @test_throws r"Cannot condition and fix different parts" fix(
             grow_range([1.0, 2.0]), @varname(x[1]) => 3.0
         )()
