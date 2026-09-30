@@ -208,11 +208,14 @@ function _get_model_role(model, vn)
     vn = _model_value_varname(model.values, vn, _model_prefix(model))
     return _model_role_at(_model_values(model.values), AbstractPPL.varname_to_optic(vn), vn)
 end
-function _get_argument_role(model, vn, argument)
-    argument = _model_value_varname(model.values, argument, _model_prefix(model))
-    binding = _model_argument_binding(
-        _model_values(model.values), AbstractPPL.varname_to_optic(argument)
+function _get_model_binding(model, vn)
+    vn = _model_value_varname(model.values, vn, _model_prefix(model))
+    return _model_argument_binding(
+        _model_values(model.values), AbstractPPL.varname_to_optic(vn)
     )
+end
+function _get_argument_role(model, vn, argument)
+    binding = _get_model_binding(model, argument)
     # A whole argument keeps its role when body computations change its shape or fields.
     return binding isa ModelValue ? _model_role(binding, vn) : _get_model_role(model, vn)
 end
@@ -228,10 +231,7 @@ function _get_model_data(model, vn)
     end
 end
 function _get_model_data(model, vn, argument, local_value)
-    address = _model_value_varname(model.values, argument, _model_prefix(model))
-    binding = _model_argument_binding(
-        _model_values(model.values), AbstractPPL.varname_to_optic(address)
-    )
+    binding = _get_model_binding(model, argument)
     return try
         _check_fixed_shape(binding, local_value, AbstractPPL.getoptic(vn), vn)
         _get_model_data(model, vn)
@@ -354,10 +354,7 @@ end
 function VarNamedTuples._haskey_optic(
     tree::ModelValueTree{<:Tuple}, optic::AbstractPPL.Index
 )
-    optic = AbstractPPL.concretize_top_level(optic, tree.template)
-    isempty(optic.kw) && checkbounds(Bool, Base.OneTo(length(tree.values)), optic.ix...) ||
-        return false
-    value = getindex(tree.values, optic.ix...; optic.kw...)
+    value = _model_tuple_getindex(tree, optic)
     return !(value isa NoModelBinding) && VarNamedTuples._haskey_optic(value, optic.child)
 end
 function VarNamedTuples._haskey_optic(tree::ModelValueTree, ::AbstractPPL.Iden)
