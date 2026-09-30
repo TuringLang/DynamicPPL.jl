@@ -637,6 +637,37 @@ end
         end
     end
 
+    @testset "partial bindings require whole-site coverage" begin
+        @model whole_vector() = x ~ MvNormal(zeros(2), I)
+        @model function ranged_vector()
+            x = zeros(3)
+            x[1:3] ~ MvNormal(zeros(3), I)
+            return x
+        end
+        @model function disjoint_vector()
+            x = zeros(4)
+            x[2:4] ~ MvNormal(zeros(3), I)
+            return x
+        end
+        templated = @vnt begin
+            @template x = zeros(3)
+            x[1] := 5.0
+        end
+        for bind in (condition, fix)
+            for model in (whole_vector(), ranged_vector()),
+                values in ((@varname(x[1]) => 5.0,), (templated,))
+
+                @test_throws ArgumentError bind(model, values...)(Xoshiro(1))
+            end
+            @test_throws ArgumentError bind(ranged_vector(), @varname(x[1:2]) => (5.0, 6.0))(
+                Xoshiro(1)
+            )
+            @test bind(disjoint_vector(), @varname(x[1]) => 5.0)(Xoshiro(1)) ==
+                disjoint_vector()(Xoshiro(1))
+            @test bind(ranged_vector(), @varname(x[1:3]) => ones(3))(Xoshiro(1)) == ones(3)
+        end
+    end
+
     @testset "one tilde cannot mix binding roles" begin
         @model joint() = x ~ MvNormal(zeros(2), I)
         for (first_op, last_op) in ((condition, fix), (fix, condition))
@@ -1390,8 +1421,9 @@ end
             x[2] := 2.0
             x[3] := 3.0
         end
-        for op in (condition, fix), values in (templated, untemplated)
-            @test op(mvnorm(), values)() == [1.0, 2.0, 3.0]
+        for op in (condition, fix)
+            @test op(mvnorm(), templated)() == [1.0, 2.0, 3.0]
+            @test_throws ArgumentError op(mvnorm(), untemplated)()
         end
     end
     @testset "merging growable and templated conditions (#1481)" begin
