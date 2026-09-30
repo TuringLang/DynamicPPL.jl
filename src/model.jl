@@ -450,9 +450,20 @@ function _check_model_binding(
     end
     _fold_model_indices(nothing, updates) do _, update, optic, _
         child = _model_argument_binding(previous, optic)
-        if child === nothing &&
-            previous isa ModelValue &&
-            previous.value isa Union{AbstractArray,Tuple}
+        if child === nothing && (
+            (previous isa ModelValue && previous.value isa Union{AbstractArray,Tuple}) ||
+            (
+                previous isa VarNamedTuples.PartialArray &&
+                optic isa AbstractPPL.Index &&
+                !(previous.data isa VarNamedTuples.GrowableArray) &&
+                !checkbounds(Bool, previous.data, optic.ix...; optic.kw...)
+            ) ||
+            (
+                previous isa ModelValueTree{<:Tuple} &&
+                optic isa AbstractPPL.Index &&
+                !checkbounds(Bool, Base.OneTo(length(previous.values)), optic.ix...)
+            )
+        )
             address = AbstractPPL.append_optic(vn, optic)
             throw(
                 ArgumentError(
