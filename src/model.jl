@@ -563,7 +563,8 @@ _model_argument_value(values::AbstractArray, template) = _model_data(values)
 
 _has_complete_model_data(::Any) = true
 _has_complete_model_data(::NoModelBinding) = false
-_has_complete_model_data(values::VarNamedTuple) = all(_has_complete_model_data, values.data)
+# A namespace does not replace its submodel's return-value buffer.
+_has_complete_model_data(::VarNamedTuple) = false
 _has_complete_model_data(::VarNamedTuples.ArrayLikeBlock) = false
 function _has_complete_model_data(values::VarNamedTuples.PartialArray)
     # Growable arrays describe supplied indices, not the extent of the argument.
@@ -604,6 +605,10 @@ end
     end
     return quote
         template isa NoTemplate && return _model_data(values)
+        # Fields absent from the argument address a submodel namespace.
+        for name in $names
+            hasproperty(template, name) || return deepcopy(template)
+        end
         result = deepcopy(template)
         $(updates...)
         return result
