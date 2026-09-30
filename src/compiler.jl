@@ -679,7 +679,8 @@ function build_output(modeldef, linenumbernode, sites)
             $args_nt,
             (; $(kwargs_inclusion...)),
             $(DynamicPPL.DefaultContext)(),
-            $(_tag_model_values)($(ArgumentCondition), $(VarNamedTuple)($observations)),
+            $(_tag_model_values)($(ArgumentCondition), $(VarNamedTuple)($observations));
+            argument_sites=($(QuoteNode(Symbol[observed_args...]))),
         )
     end
 

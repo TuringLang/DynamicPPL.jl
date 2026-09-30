@@ -788,6 +788,8 @@ struct Model{
     defaults::NamedTuple{defaultnames,Tdefaults}
     context::C
     values::Values
+    # The compiler shares this read-only metadata across model instances.
+    argument_sites::Vector{Symbol}
     function Model{Threaded}(
         f::F,
         args::NamedTuple{A,Ta},
@@ -795,12 +797,15 @@ struct Model{
         context::C=DefaultContext(),
         values::V=_tag_model_values(
             ArgumentCondition, VarNamedTuple(merge(args, defaults))
-        ),
+        );
+        argument_sites::Vector{Symbol}=Symbol[A..., D...],
     ) where {F,A,Ta,D,Td,C,V,Threaded}
         mapreduce(
             pair -> pair.second isa ModelValue, &, _model_values(values); init=true
         ) || throw(ArgumentError("Model values must carry a condition or fix role"))
-        return new{F,A,D,Ta,Td,C,V,Threaded}(f, args, defaults, context, values)
+        return new{F,A,D,Ta,Td,C,V,Threaded}(
+            f, args, defaults, context, values, argument_sites
+        )
     end
 end
 
@@ -828,7 +833,12 @@ requires_threadsafe(::Model{F,A,D,Ta,Td,C,V,Threaded}) where {F,A,D,Ta,Td,C,V,Th
     Threaded
 function _reconstruct_model(model::Model; context=model.context, values=model.values)
     return Model{requires_threadsafe(model)}(
-        model.f, model.args, model.defaults, context, values
+        model.f,
+        model.args,
+        model.defaults,
+        context,
+        values;
+        argument_sites=model.argument_sites,
     )
 end
 """
@@ -869,7 +879,14 @@ function setthreadsafe(model::Model, threadsafe::Bool)
     return if requires_threadsafe(model) == threadsafe
         model
     else
-        Model{threadsafe}(model.f, model.args, model.defaults, model.context, model.values)
+        Model{threadsafe}(
+            model.f,
+            model.args,
+            model.defaults,
+            model.context,
+            model.values;
+            argument_sites=model.argument_sites,
+        )
     end
 end
 
@@ -883,6 +900,20 @@ See [`condition`](@ref) for more information and examples.
 Base.:|(model::Model, values::Union{NamedTuple,AbstractDict,Pair,Tuple,VarNamedTuple}) =
     condition(model, values)
 
+function _check_argument_bindings(model, values)
+    for name in (keys(model.args)..., keys(model.defaults)...)
+        name in model.argument_sites && continue
+        vn = maybe_prefix(VarName{name}(), _model_prefix(model))
+        binding = _model_argument_binding(values, AbstractPPL.varname_to_optic(vn))
+        binding === nothing || throw(
+            ArgumentError(
+                "Argument `$name` does not occur on the left-hand side of `~` and cannot be conditioned or fixed; construct the model with a new argument value instead. If `$name` names a variable of an unprefixed submodel, rename the argument.",
+            ),
+        )
+    end
+    return nothing
+end
+
 """
     condition(model::Model; values...)
     condition(model::Model, values::NamedTuple)
@@ -892,8 +923,8 @@ Return a `Model` which now treats the variables in `values` as observations.
 See also: [`decondition`](@ref), [`conditioned`](@ref)
 
 Supplied values override model arguments and earlier conditioned or fixed values at the
-same address. Bindings for arguments that do not occur on the left-hand side of `~`
-are stored and reported by `conditioned`, but do not replace those arguments. Parent-model
+same address. Binding an argument that does not occur on the left-hand side of `~`
+throws `ArgumentError`; construct the model with a new argument value instead. Parent-model
 values override submodel values. Sites without supplied values remain latent; `missing` is
 not a latent-variable marker.
 
@@ -1078,9 +1109,9 @@ true
 ```
 """
 function AbstractPPL.condition(model::Model, values...)
-    values = _merge_model_values(
-        model.values, _tag_model_values(Condition, _make_condfix_values(values...))
-    )
+    values = _tag_model_values(Condition, _make_condfix_values(values...))
+    _check_argument_bindings(model, values)
+    values = _merge_model_values(model.values, values)
     return _reconstruct_model(model; values)
 end
 function AbstractPPL.condition(model::Model; values...)
@@ -1312,9 +1343,6 @@ Return the conditioned values in `model`.
 After partial removal or mixed roles, this returns plain partial values
 (`VarNamedTuple`/`PartialArray`), not the original container type.
 
-This includes stored bindings for arguments that do not occur on the left-hand side of `~`.
-Such bindings do not replace the arguments used by the model body.
-
 # Examples
 ```jldoctest
 julia> using Distributions
@@ -1372,6 +1400,9 @@ conditioned(model::Model) = _select_model_values(Condition, model.values)
 Return a `Model` which now treats the variables in `values` as fixed.
 
 See also: [`unfix`](@ref), [`fixed`](@ref)
+
+Binding an argument that does not occur on the left-hand side of `~` throws `ArgumentError`;
+construct the model with a new argument value instead.
 
 !!! note
     Component bindings on an array argument (for example, `@varname(x[1])`) rebuild the
@@ -1469,9 +1500,9 @@ julia> # The difference is the missing log-probability of `m`:
 ```
 """
 function fix(model::Model, values...)
-    values = _merge_model_values(
-        model.values, _tag_model_values(Fix, _make_condfix_values(values...))
-    )
+    values = _tag_model_values(Fix, _make_condfix_values(values...))
+    _check_argument_bindings(model, values)
+    values = _merge_model_values(model.values, values)
     return _reconstruct_model(model; values)
 end
 function fix(model::Model; values...)
