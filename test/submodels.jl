@@ -42,6 +42,25 @@ end
 @model nested_observations(y) = a ~ to_submodel(indexed_observations(y))
 
 @testset "submodels.jl" begin
+    @testset "submodel return bindings with manual prefixes" begin
+        @model child() = x ~ Normal()
+        @model manual(a, m) = a ~ to_submodel(m, false)
+        @model nested(m) = outer ~ to_submodel(m)
+        for child_model in (child(), prefix(child(), @varname(b)))
+            for m in (
+                manual(3.0, child_model),
+                condition(decondition(manual(0.0, child_model)); a=3.0),
+                fix(decondition(manual(0.0, child_model)); a=3.0),
+            )
+                for model in (m, nested(m))
+                    @test_throws "Cannot condition or fix a submodel's return value" model(
+                        Xoshiro(1)
+                    )
+                end
+            end
+        end
+    end
+
     @testset "indexed child bindings stay local" begin
         for n in (1_000, 2_000)
             model = indexed_observations(zeros(n))
