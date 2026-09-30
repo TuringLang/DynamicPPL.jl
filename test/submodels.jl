@@ -65,6 +65,44 @@ end
         end
     end
 
+    @testset "evaluation-local binding APIs" begin
+        @model function inspect_child(x=[0.0, 1.0]; metadata=0)
+            for i in eachindex(x)
+                x[i] ~ Normal()
+            end
+            return __model__
+        end
+        @model inspect_parent(m) = a ~ to_submodel(m)
+        @model function inspect_outer(m)
+            b = Vector{Any}(undef, 2)
+            b[2] ~ to_submodel(m)
+            return b[2]
+        end
+        child = inspect_child()
+        parent = condition(inspect_parent(child), @varname(a.x[1]) => 2.0)
+        for model in (parent, inspect_outer(parent))
+            local_model = model(Xoshiro(1))
+            @test conditioned(local_model) ==
+                conditioned(condition(child, @varname(x[1]) => 2.0))
+            @test isempty(fixed(local_model))
+            for (bind, remove, accessor) in
+                ((condition, decondition, conditioned), (fix, unfix, fixed))
+                edited = bind(local_model, @varname(x[2]) => 3.0)
+                @test accessor(edited)[@varname(x[2])] == 3.0
+                @test accessor(edited(Xoshiro(1)))[@varname(x[2])] == 3.0
+                removed = remove(edited, @varname(x[2]))
+                @test !haskey(accessor(removed(Xoshiro(1))), @varname(x[2]))
+                @test isempty(accessor(remove(edited)))
+                values = rand(Xoshiro(1), removed)
+                vn = model === parent ? @varname(a.x[2]) : @varname(b[2].a.x[2])
+                @test haskey(values, vn)
+                @test_throws r"ArgumentError: Argument `metadata`" bind(
+                    local_model; metadata=1
+                )
+            end
+        end
+    end
+
     @testset "arguments supply submodel return buffers" begin
         @model child() = (x ~ Normal(); x)
         @model function dynamic_buffer(a)
