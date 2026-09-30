@@ -978,6 +978,10 @@ true
 
 `condition` also supports the use of nested models through the use of [`to_submodel`](@ref).
 
+If a submodel's left-hand side is a model argument (a return-value buffer), bindings below
+that address are rejected during evaluation, including named-tuple namespace bindings.
+Condition or fix the child model before wrapping it with `to_submodel` instead.
+
 ```jldoctest condition
 julia> @model demo_inner() = m ~ Normal()
 demo_inner (generic function with 2 methods)
@@ -1285,6 +1289,9 @@ See also: [`unfix`](@ref), [`fixed`](@ref)
     argument on every evaluation, costing O(length(x)). For large arrays or hot loops,
     prefer replacing the whole argument, for example `fix(model; x=newx)` with
     `newx` already containing the override, or construct the model with the updated argument.
+
+Bindings below a submodel's argument-backed return-value buffer are rejected during
+evaluation. Fix the child model before wrapping it with `to_submodel` instead.
 
 !!! warning "Fixed values are not copied"
     Evaluation uses the supplied values directly, including as model arguments. The model

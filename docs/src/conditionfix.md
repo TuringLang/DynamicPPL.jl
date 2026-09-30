@@ -193,6 +193,13 @@ cond_model_partial = model | vnt
 rand(cond_model_partial)
 ```
 
+When a submodel's left-hand side is also a model argument, it is a return-value buffer.
+Bindings below that address, such as `a.x` for argument `a` in `a ~ to_submodel(child())`,
+are rejected during evaluation. This includes whole named-tuple namespace bindings such
+as `condition(model; a=(; x=2.0))` and indexed buffers such as `a[1]`.
+Condition or fix the child model before wrapping it with `to_submodel` instead.
+Parent-to-submodel bindings remain supported when the left-hand side is not a model argument.
+
 ## Missing data
 
 Leave unobserved sites out of the conditioned values. `missing` is not a stochastic-role marker. It is rejected when values are bound, or when fields of custom structs are used at tilde sites.
