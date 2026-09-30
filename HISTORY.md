@@ -14,7 +14,13 @@ Re-evaluation and `LogDensityFunction` construction no longer copy fixed transfo
 
 Added `evaluate!!(model, context, vi)` to evaluate with an explicit leaf context and collect outputs in `vi`, such as `evaluate!!(model, InitContext(rng, InitFromPrior(), UnlinkAll()), VarInfo())`. See [#1500](https://github.com/TuringLang/DynamicPPL.jl/pull/1500).
 
+Added the `template` keyword to `prefix(model, x::VarName)` to supply the enclosing container's shape and resolve `begin` and `end` in indexed prefixes. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+
+Added the `context` keyword to `DynamicPPL.DebugUtils.model_typed`, `model_warntype`, and `gen_evaluator_call_with_types` to select the evaluation context. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+
 ## Breaking changes
+
+`DynamicPPL.TestUtils.test_context` is removed: `test_context(context, model)` → tests using `evaluate!!(model, context, vi)` and the context's interface methods. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
 `tilde_observe!!(::AbstractContext, ...)` overloads are no longer called: context observation hooks → `accumulate_observe!!` implementations. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
