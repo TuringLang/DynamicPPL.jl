@@ -136,13 +136,12 @@ function _model_role(tree::ModelValueTree, vn::VarName)
     return if VarNamedTuples._haskey_optic(tree, AbstractPPL.Iden())
         values = tree.values isa VarNamedTuple ? tree.values.data : tree.values
         _model_role(values, vn)
-    elseif tree.values isa VarNamedTuple
-        _model_role(tree.values, vn)
     else
-        nothing
+        _model_role(tree.values, vn)
     end
 end
-function _model_role(::VarNamedTuple, vn::VarName)
+_model_role(::VarNamedTuple, vn::VarName) = _partial_binding_error(vn)
+function _partial_binding_error(vn)
     return throw(
         ArgumentError(
             "Cannot bind only components of tilde variable `$vn`: a single tilde statement's value must be bound as a whole.",
@@ -150,21 +149,31 @@ function _model_role(::VarNamedTuple, vn::VarName)
     )
 end
 function _model_role(values::VarNamedTuples.PartialArray, vn::VarName)
-    return all(values.mask) ? _model_role(values.data, vn) : nothing
+    all(values.mask) && return _model_role(values.data, vn)
+    any(values.mask) || return nothing
+    role = _model_role(values.data[values.mask], vn)
+    return role === nothing ? nothing : _partial_binding_error(vn)
 end
 function _model_role(values::Union{AbstractArray,Tuple,NamedTuple}, vn::VarName)
     isempty(values) && throw(ArgumentError("Cannot determine the role of empty `$vn`"))
-    role = _model_role(first(values), vn)
-    role === nothing && return nothing
+    role = nothing
+    unbound = false
     for value in values
         next_role = _model_role(value, vn)
-        next_role === nothing && return nothing
-        typeof(next_role) === typeof(role) || throw(
-            ArgumentError(
-                "Cannot condition and fix different parts of the same tilde variable `$vn`",
-            ),
-        )
+        if next_role === nothing
+            unbound = true
+            continue
+        end
+        role === nothing ||
+            typeof(next_role) === typeof(role) ||
+            throw(
+                ArgumentError(
+                    "Cannot condition and fix different parts of the same tilde variable `$vn`",
+                ),
+            )
+        role = next_role
     end
+    unbound && role !== nothing && _partial_binding_error(vn)
     return role
 end
 
@@ -1214,8 +1223,7 @@ Supply only the indices to observe; omitted sites remain latent.
 
 However, note that in this case each element of the multivariate random variable must be on
 its own tilde-statement. In other words, if we write `m ~ MvNormal(...)`, then we cannot
-condition on only `m[1]`. Attempting to do so may abort model evaluation with an unrelated
-`DimensionMismatch`, or the conditioning may be silently ignored, with `m` sampled afresh.
+condition on only `m[1]`. Partly bound sites throw `ArgumentError` during evaluation.
 (In principle, for some distributions this can be possible, specifically when the
 distribution can be factorised into independent components, like an MvNormal with a
 diagonal covariance matrix. However, this is not currently implemented.)
@@ -1664,9 +1672,8 @@ See also: [`unfix`](@ref), [`fixed`](@ref)
     Variables are treated as they occur in the model. A variable drawn from a multivariate
     distribution in a single tilde-statement (e.g. `x ~ MvNormal(...)`) is a *single* random
     variable, so a subset of its components cannot be fixed independently; only fixing the
-    variable in its entirety is supported. Attempting to fix a subset may silently collapse
-    the variable to just the supplied components, or leave it entirely unfixed and sampled
-    from the prior. Declare components in a loop (`x[i] ~ ...`) if you need to fix them
+    variable in its entirety is supported. Partly bound sites throw `ArgumentError` during
+    evaluation. Declare components in a loop (`x[i] ~ ...`) if you need to fix them
     individually.
 
 # Examples

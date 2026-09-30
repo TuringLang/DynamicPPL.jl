@@ -15,7 +15,8 @@
     or use `@varname(a.x)` on a parent whose submodel LHS `a` is not an argument.
   - Later bindings replace earlier ones where they overlap. A whole binding replaces
     all components; a component binding replaces only that component. A single tilde
-    statement's value cannot mix conditioned and fixed components.
+    statement's value cannot mix conditioned, fixed, or unbound components; such sites
+    throw `ArgumentError` during evaluation.
   - Parent bindings override child bindings at the same address. Use the submodel's
     names in the parent, such as `@varname(a.x)`, or unprefixed names with
     `auto_prefix=false` (unless the child was manually prefixed).
