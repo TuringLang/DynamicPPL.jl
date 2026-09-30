@@ -1406,9 +1406,11 @@ julia> try
 true
 ```
 """
-function AbstractPPL.condition(model::Model, values...)
+AbstractPPL.condition(model::Model, values...) = _bind_model(Condition, model, values...)
+
+function _bind_model(::Type{R}, model::Model, values...) where {R}
     model = _materialize_argument_values(model)
-    values = _tag_model_values(Condition, _make_condfix_values(model, values...))
+    values = _tag_model_values(R, _make_condfix_values(model, values...))
     values = _check_argument_bindings(model, values)
     values = _merge_model_values(_model_values(model.values), values)
     values = model.values isa LocalModelValues ? LocalModelValues(values) : values
@@ -1898,14 +1900,7 @@ julia> # The difference is the missing log-probability of `m`:
 -1.4189385332046727
 ```
 """
-function fix(model::Model, values...)
-    model = _materialize_argument_values(model)
-    values = _tag_model_values(Fix, _make_condfix_values(model, values...))
-    values = _check_argument_bindings(model, values)
-    values = _merge_model_values(_model_values(model.values), values)
-    values = model.values isa LocalModelValues ? LocalModelValues(values) : values
-    return _reconstruct_model(model; values)
-end
+fix(model::Model, values...) = _bind_model(Fix, model, values...)
 function fix(model::Model; values...)
     return fix(model, NamedTuple(values))
 end
