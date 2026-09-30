@@ -13,6 +13,17 @@ using Test
 struct ObservationContext <: AbstractContext end
 struct UnimplementedStrategy <: AbstractInitStrategy end
 
+struct ObserveHookDistribution <: ContinuousUnivariateDistribution
+    seen::Vector{Union{VarName,Nothing}}
+end
+Distributions.logpdf(::ObserveHookDistribution, x::Real) = logpdf(Normal(), x)
+function DynamicPPL.tilde_observe!!(
+    prefix, prefix_template, dist::ObserveHookDistribution, left, vn, template, vi
+)
+    push!(dist.seen, vn)
+    return tilde_observe!!(prefix, prefix_template, Normal(), left, vn, template, vi)
+end
+
 struct RecordingStrategy{S<:AbstractInitStrategy} <: AbstractInitStrategy
     inner::S
     assumed::Vector{VarName}
@@ -37,6 +48,26 @@ end
 @model outer(m) = b ~ to_submodel(m)
 
 @testset "context_implementations.jl" begin
+    @testset "public observation hook" begin
+        @model function observations(x, ys, dist)
+            x ~ dist
+            z ~ dist
+            0.0 ~ dist
+            return ys .~ dist
+        end
+        seen = Union{VarName,Nothing}[]
+        model = condition(
+            observations(1.0, [2.0, 3.0], ObserveHookDistribution(seen)); z=4.0
+        )
+        _, vi = DynamicPPL.evaluate_nowarn!!(model, VarInfo())
+        @test seen == [@varname(x), @varname(z), nothing, @varname(ys[1]), @varname(ys[2])]
+        @test getloglikelihood(vi) ≈ sum(logpdf.(Normal(), 0.0:4.0))
+        empty!(seen)
+        _, vi = DynamicPPL.evaluate_nowarn!!(outer(model), VarInfo())
+        @test length(seen) == 5
+        @test getloglikelihood(vi) ≈ sum(logpdf.(Normal(), 0.0:4.0))
+    end
+
     @testset "prefixed evaluation: $(model.f)" for model in DynamicPPL.TestUtils.ALL_MODELS
         prefix_vn = @varname(my_prefix)
         prefixed = prefix(model, prefix_vn)
@@ -74,7 +105,7 @@ end
             for value in (one(T), T[1, 2])
                 for vn in (@varname(x), nothing)
                     result, vi = @inferred tilde_observe!!(
-                        child(), dist, value, vn, NoTemplate(), VarInfo()
+                        nothing, NoTemplate(), dist, value, vn, NoTemplate(), VarInfo()
                     )
                     @test result === value
                     @test getloglikelihood(vi) ≈ loglikelihood(dist, value)

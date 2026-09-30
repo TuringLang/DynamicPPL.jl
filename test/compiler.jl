@@ -880,6 +880,19 @@ end
         @test_logs (:warn, r"threadsafe evaluation") eval(e3)
     end
 
+    @testset "public observation call target" begin
+        count_observe(::Any) = 0
+        function count_observe(ex::Expr)
+            return (Meta.isexpr(ex, :call) && ex.args[1] === tilde_observe!!) +
+                   sum(count_observe, ex.args; init=0)
+        end
+        expr = @macroexpand @model function observations(x)
+            x ~ Normal()
+            return 0.0 ~ Normal()
+        end
+        @test count_observe(expr) == 2
+    end
+
     @testset "no try block in a model body" begin
         # Libtask cannot tape a `try` block, so one in a model body breaks every particle
         # sampler. See #1487
