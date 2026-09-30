@@ -11,17 +11,6 @@ using Random: Xoshiro
 using Test
 
 struct ObservationContext <: AbstractContext end
-function DynamicPPL.tilde_observe!!(
-    ::ObservationContext,
-    dist::Distribution,
-    value,
-    vn::Union{VarName,Nothing},
-    template,
-    vi::AbstractVarInfo,
-)
-    return value, DynamicPPL.accumulate_observe!!(vi, dist, value, vn, template)
-end
-
 struct UnimplementedStrategy <: AbstractInitStrategy end
 
 struct RecordingStrategy{S<:AbstractInitStrategy} <: AbstractInitStrategy

@@ -337,14 +337,3 @@ function tilde_assume!!(
     # what the lhs of the tilde-statement is set to.
     return x, vi
 end
-
-function tilde_observe!!(
-    ::InitContext,
-    right::Distribution,
-    left,
-    vn::Union{VarName,Nothing},
-    template::Any,
-    vi::AbstractVarInfo,
-)
-    return left, accumulate_observe!!(vi, right, left, vn, template)
-end

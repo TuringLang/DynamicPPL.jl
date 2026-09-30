@@ -167,30 +167,6 @@ function tilde_assume!!(
     return tilde_assume!!(new_context, right, new_vn, SkipTemplate{n}(template), vi)
 end
 
-function tilde_observe!!(
-    context::PrefixContext,
-    right::Distribution,
-    left,
-    vn::Union{VarName,Nothing},
-    template::Any,
-    vi::AbstractVarInfo,
-)
-    # In the observe case, unlike assume, `vn` may be `nothing` if the LHS is a literal
-    # value. For the need for prefix_and_strip_contexts rather than just prefix, see the
-    # comment in `tilde_assume!!`.
-    new_vn, new_context, new_template = if vn !== nothing
-        new_context, aggregated_prefix_vn = extract_prefixes(context)
-        n = optic_skip_length(AbstractPPL.getoptic(aggregated_prefix_vn)) + 1
-        prefixed_vn = AbstractPPL.prefix(vn, aggregated_prefix_vn)
-        prefixed_vn, new_context, SkipTemplate{n}(template)
-    else
-        # We don't need a template at all in this branch, so may as well avoid trying to
-        # choose one.
-        vn, childcontext(context), NoTemplate()
-    end
-    return tilde_observe!!(new_context, right, left, new_vn, new_template, vi)
-end
-
 function store_coloneq_value!!(
     context::PrefixContext, vn::VarName, right::Any, template::Any, vi::AbstractVarInfo
 )

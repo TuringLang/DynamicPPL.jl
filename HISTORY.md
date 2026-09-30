@@ -22,6 +22,8 @@ Added `evaluate!!(model, context, vi)` to evaluate with an explicit leaf context
 
 On newer DynamicPPL versions, MLD’s generic API requires a manually constructed log-density adapter; no drop-in model-level replacement is currently available. Migration of the integration into MLD is proposed in [MLD #47](https://github.com/ElOceanografo/MarginalLogDensities.jl/pull/47).
 
+`tilde_observe!!(::AbstractContext, ...)` overloads are no longer called: context observation hooks → `accumulate_observe!!` implementations. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+
 Model arguments supply default observations; `condition` and `fix` at the same address now replace the earlier role rather than stacking contexts. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
 `missing` at a bound site now throws `ArgumentError`, including arguments and values supplied to `condition`, `fix`, or `InitFromParams`: `f(missing)` / `f([1.0, missing])` → `decondition(f(x), :x)` / `decondition(f(x), @varname(x[2]))`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
