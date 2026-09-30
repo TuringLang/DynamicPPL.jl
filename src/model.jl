@@ -1051,6 +1051,11 @@ provided, then all conditioned variables will be removed.
 This also removes observations supplied as model arguments. After deconditioning, a site's
 sampled value replaces its local argument value and is used by subsequent model statements.
 
+Only bindings stored on this model are removed. This cannot remove a child submodel's
+argument observations: `decondition(outer_arg(), @varname(a.x))` has no effect when `a.x`
+is supplied only by the child argument. Decondition the child before wrapping it with
+`to_submodel` instead.
+
 This is essentially the inverse of [`condition`](@ref).
 
 # Examples
