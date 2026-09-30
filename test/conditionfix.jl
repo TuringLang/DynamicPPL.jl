@@ -63,6 +63,23 @@ end
         end
     end
 
+    @testset "argument binding templates" begin
+        @model template_sites(y) = (for i in eachindex(y)
+            y[i] ~ Normal()
+        end;
+        y)
+        for bind in (condition, fix),
+            input in (
+                (@varname(y[2]) => 3.0,),
+                (Dict(@varname(y[2]) => 3.0),),
+                ((@varname(y[2]) => 3.0,),),
+            )
+
+            m = @test_logs bind(template_sites([1.0, 2.0]), input...)
+            @test m() == [1.0, 3.0]
+        end
+    end
+
     @testset "partly latent argument storage" begin
         for ctor in ((X, y) -> (; X, y), LatentRecord, MutableLatentRecord)
             d = ctor(zeros(1000, 1000), zeros(2))

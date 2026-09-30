@@ -1408,7 +1408,7 @@ true
 """
 function AbstractPPL.condition(model::Model, values...)
     model = _materialize_argument_values(model)
-    values = _tag_model_values(Condition, _make_condfix_values(values...))
+    values = _tag_model_values(Condition, _make_condfix_values(model, values...))
     values = _check_argument_bindings(model, values)
     values = _merge_model_values(_model_values(model.values), values)
     values = model.values isa LocalModelValues ? LocalModelValues(values) : values
@@ -1437,17 +1437,54 @@ This handles all the cases where `vals` is either already a `NamedTuple` or `Abs
 (e.g. `model | (x=1, y=2)`), as well as if they are splatted (e.g. `condition(model, x=1,
 y=2)`).
 """
-_make_condfix_values(values::NamedTuple) = VarNamedTuple(values)
-_make_condfix_values(values::VarNamedTuple) = values
-_make_condfix_values(values::AbstractDict{<:VarName}) = VarNamedTuple(pairs(values))
-function _make_condfix_values(values::Pair{<:Union{VarName,Symbol}}...)
-    pairs = map(
-        v -> ((v.first isa Symbol ? VarName{v.first}() : v.first) => v.second), values
-    )
-    return VarNamedTuple(pairs)
+_make_condfix_values(model, values::NamedTuple) = VarNamedTuple(values)
+_make_condfix_values(model, values::VarNamedTuple) = values
+function _make_condfix_values(model, values::AbstractDict{<:VarName})
+    return _make_condfix_values(model, pairs(values)...)
 end
-function _make_condfix_values(values::NTuple{N,Pair{<:Union{VarName,Symbol}}}) where {N}
-    return _make_condfix_values(values...)
+function _make_condfix_values(model, values::Pair{<:Union{VarName,Symbol}}...)
+    templates = VarNamedTuple()
+    for (stored_name, argument) in pairs(merge(model.args, model.defaults))
+        name = unsplat_symbol(stored_name)
+        vn = _model_value_varname(model.values, VarName{name}(), _model_prefix(model))
+        previous = _model_argument_binding(
+            _model_values(model.values), AbstractPPL.varname_to_optic(vn)
+        )
+        template =
+            previous === nothing ? argument : _model_argument_value(previous, argument)
+        template isa AbstractArray || continue
+        templates = templated_setindex!!(
+            templates,
+            template,
+            vn,
+            get(_model_values(model.values).data, AbstractPPL.getsym(vn), NoTemplate()),
+        )
+    end
+    result = VarNamedTuple()
+    for (name, value) in values
+        vn = name isa Symbol ? VarName{name}() : name
+        result = try
+            templated_setindex!!(
+                result,
+                value,
+                vn,
+                get(templates.data, AbstractPPL.getsym(vn), NoTemplate()),
+            )
+        catch err
+            err isa BoundsError || rethrow()
+            throw(
+                ArgumentError(
+                    "Cannot bind `$vn`: index is outside the argument template at `$(AbstractPPL.getsym(vn))`",
+                ),
+            )
+        end
+    end
+    return result
+end
+function _make_condfix_values(
+    model, values::NTuple{N,Pair{<:Union{VarName,Symbol}}}
+) where {N}
+    return _make_condfix_values(model, values...)
 end
 
 """
@@ -1865,7 +1902,7 @@ julia> # The difference is the missing log-probability of `m`:
 """
 function fix(model::Model, values...)
     model = _materialize_argument_values(model)
-    values = _tag_model_values(Fix, _make_condfix_values(values...))
+    values = _tag_model_values(Fix, _make_condfix_values(model, values...))
     values = _check_argument_bindings(model, values)
     values = _merge_model_values(_model_values(model.values), values)
     values = model.values isa LocalModelValues ? LocalModelValues(values) : values
