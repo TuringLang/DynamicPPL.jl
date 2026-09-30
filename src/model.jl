@@ -1153,6 +1153,15 @@ function _prepare_argument_fields(
     template, bindings::Union{VarNamedTuple,VarNamedTuples.PartialArray}, vn
 )
     return _fold_model_indices(copy(bindings), bindings) do result, binding, optic, storage
+        if template isa Union{AbstractArray,Tuple} && optic isa AbstractPPL.Index
+            indices = AbstractPPL.concretize_top_level(optic, template)
+            bounds = template isa Tuple ? Base.OneTo(length(template)) : template
+            checkbounds(Bool, bounds, indices.ix...; indices.kw...) || throw(
+                ArgumentError(
+                    "Cannot bind `$(AbstractPPL.append_optic(vn, optic))`: index is outside argument `$vn`",
+                ),
+            )
+        end
         if template isa NamedTuple &&
             optic isa AbstractPPL.Property &&
             !VarNamedTuples._haskey_optic(template, optic)

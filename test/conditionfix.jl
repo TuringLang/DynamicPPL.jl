@@ -63,6 +63,20 @@ end
         end
     end
 
+    @testset "deconditioned arguments retain component bounds" begin
+        @model component_argument(x) = (x[1] ~ Normal(); x)
+        for bind in (condition, fix), x in ([1.0, 2.0], (1.0, 2.0))
+            model = decondition(component_argument(x))
+            invalid = @vnt begin
+                x[3] := 9.0
+            end
+            for values in ((@varname(x[3]) => 9.0), invalid)
+                @test_throws ArgumentError bind(model, values)
+            end
+            @test bind(model, @varname(x[1]) => 9.0)(Xoshiro(1))[1] == 9.0
+        end
+    end
+
     @testset "argument binding templates" begin
         @model template_sites(y) = (for i in eachindex(y)
             y[i] ~ Normal()
