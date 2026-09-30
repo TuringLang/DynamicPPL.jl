@@ -699,6 +699,7 @@ function prepare_model_argument(model::Model, vn::VarName, value)
 end
 
 # Whole-variable hasvalue checks reject partial containers needed for argument preparation.
+_model_argument_binding(values, ::AbstractPPL.AbstractOptic) = nothing
 _model_argument_binding(values, ::AbstractPPL.Iden) = values
 function _model_argument_binding(
     values::VarNamedTuple, optic::AbstractPPL.Property{S}
@@ -713,16 +714,15 @@ function _model_argument_binding(
     values::VarNamedTuples.PartialArray, optic::AbstractPPL.Index
 )
     optic = AbstractPPL.concretize_top_level(optic, values.data)
-    return if haskey(values, optic.ix...; optic.kw...)
-        selected = if VarNamedTuples._is_multiindex(values.data, optic.ix...; optic.kw...)
-            VarNamedTuples._subset_partialarray(values, optic.ix...; optic.kw...)
-        else
-            getindex(values, optic.ix...; optic.kw...)
-        end
-        _model_argument_binding(selected, optic.child)
+    checkbounds(Bool, values.data, optic.ix...; optic.kw...) || return nothing
+    selected = if VarNamedTuples._is_multiindex(values.data, optic.ix...; optic.kw...)
+        VarNamedTuples._subset_partialarray(values, optic.ix...; optic.kw...)
+    elseif haskey(values, optic.ix...; optic.kw...)
+        getindex(values, optic.ix...; optic.kw...)
     else
-        nothing
+        return nothing
     end
+    return _model_argument_binding(selected, optic.child)
 end
 function _model_argument_binding(values::ModelValue, optic::AbstractPPL.AbstractOptic)
     return if VarNamedTuples._haskey_optic(values, optic)

@@ -403,7 +403,11 @@ function _model_argument_binding(tree::ModelValueTree, optic::AbstractPPL.Proper
     return _model_argument_binding(tree.values, optic)
 end
 function _model_argument_binding(tree::ModelValueTree{<:Tuple}, optic::AbstractPPL.Index)
+    optic = AbstractPPL.concretize_top_level(optic, tree.template)
     value = _model_tuple_getindex(tree, optic)
+    if value isa Tuple
+        value = ModelValueTree(getindex(tree.template, optic.ix...), value)
+    end
     return value isa NoModelBinding ? nothing : _model_argument_binding(value, optic.child)
 end
 @generated function _merge_model_values(
@@ -1116,11 +1120,13 @@ provided, then all conditioned variables will be removed.
 This also removes observations supplied as model arguments. After deconditioning, a site's
 sampled value replaces its local argument value and is used by subsequent model statements.
 
-Names that match no stored binding are a no-op. Component addresses are resolved against
-the stored container, so equivalent linear, Cartesian, and property indices match.
+A name that matches no stored conditioned binding throws `ArgumentError`, including
+names with only fixed bindings. With no names, removing all observations is always valid.
+Component addresses are resolved against the stored container, so equivalent linear,
+Cartesian, and property indices match.
 
 Only bindings stored on this model are removed. This cannot remove a child submodel's
-argument observations: `decondition(outer_arg(), @varname(a.x))` has no effect when `a.x`
+argument observations: `decondition(outer_arg(), @varname(a.x))` throws when `a.x`
 is supplied only by the child argument. Decondition the child before wrapping it with
 `to_submodel` instead.
 
@@ -1156,7 +1162,7 @@ julia> (m, x) = model(); (m ≠ 1.0 && x == 10.0)
 true
 
 julia> # `decondition` multiple at once:
-       (m, x) = decondition(model, :m, :x)(); (m ≠ 1.0 && x ≠ 10.0)
+       (m, x) = decondition(conditioned_model, :m, :x)(); (m ≠ 1.0 && x ≠ 10.0)
 true
 
 julia> # `decondition` without any symbols will `decondition` all variables.
@@ -1192,8 +1198,31 @@ true
 ```
 """
 function AbstractPPL.decondition(model::Model, syms::Union{Symbol,VarName}...)
+    _check_model_removal(Condition, model.values, syms...)
     values = _remove_model_values(Condition, model.values, syms...)
     return _reconstruct_model(model; values)
+end
+
+function _check_model_removal(::Type{R}, values, args...) where {R}
+    for arg in args
+        vn = arg isa VarName ? arg : VarName{arg}()
+        binding = _model_argument_binding(values, AbstractPPL.varname_to_optic(vn))
+        VarNamedTuples._mapreduce_recursive(
+            pair -> _matches_model_role(R, pair.second), |, binding, vn, false
+        ) && continue
+        role = R === Condition ? "conditioned" : "fixed"
+        message = "Cannot remove `$vn`: no $role binding is stored at this address."
+        if VarNamedTuples._mapreduce_recursive(
+            pair -> pair.second isa ModelValue, |, binding, vn, false
+        )
+            other = R === Condition ? "fixed" : "conditioned"
+            message *= " The stored binding is $other."
+        elseif R === Condition && !(AbstractPPL.getoptic(vn) isa AbstractPPL.Iden)
+            message *= " If this is a child model's argument, decondition the child model before wrapping it with `to_submodel`."
+        end
+        throw(ArgumentError(message))
+    end
+    return nothing
 end
 
 function _remove_model_values(
@@ -1455,6 +1484,8 @@ end
 
 Return a `Model` for which `variables...` are _not_ considered fixed. If no `variables` are
 provided, then all fixed variables will be removed.
+A name that matches no stored fixed binding throws `ArgumentError`, including names with
+only conditioned bindings. With no names, removing all fixed bindings is always valid.
 
 This is essentially the inverse of [`fix`](@ref).
 
@@ -1492,7 +1523,7 @@ julia> (m, x) = model(); (m != 1.0 && x == 10.0)
 true
 
 julia> # `unfix` multiple at once:
-       (m, x) = unfix(model, :m, :x)(); (m != 1.0 && x != 10.0)
+       (m, x) = unfix(fixed_model, :m, :x)(); (m != 1.0 && x != 10.0)
 true
 
 julia> # `unfix` without any symbols will `unfix` all variables.
@@ -1501,6 +1532,7 @@ true
 ```
 """
 function unfix(model::Model, syms::Union{Symbol,VarName}...)
+    _check_model_removal(Fix, model.values, syms...)
     values = _remove_model_values(Fix, model.values, syms...)
     return _reconstruct_model(model; values)
 end
