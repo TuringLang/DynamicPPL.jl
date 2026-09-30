@@ -1101,34 +1101,51 @@ See [`condition`](@ref) for more information and examples.
 Base.:|(model::Model, values::Union{NamedTuple,AbstractDict,Pair,Tuple,VarNamedTuple}) =
     condition(model, values)
 
-function _check_argument_bindings(model, values)
-    for stored_name in (keys(model.args)..., keys(model.defaults)...)
+@generated function _check_argument_bindings(model::Model, values)
+    names = (
+        fieldnames(fieldtype(model, :args))..., fieldnames(fieldtype(model, :defaults))...
+    )
+    checks = map(names) do stored_name
         name = unsplat_symbol(stored_name)
-        vn = _model_value_varname(model.values, VarName{name}(), _model_prefix(model))
-        binding = _model_argument_binding(values, AbstractPPL.varname_to_optic(vn))
-        if name in model.argument_sites
-            binding isa Union{VarNamedTuple,VarNamedTuples.PartialArray} || continue
-            argument = get(merge(model.args, model.defaults), stored_name, nothing)
-            previous = _model_argument_binding(
-                _model_values(model.values), AbstractPPL.varname_to_optic(vn)
-            )
-            _check_argument_fields(_model_argument_value(previous, argument), binding, vn)
-            continue
+        quote
+            name = $(QuoteNode(name))
+            stored_name = $(QuoteNode(stored_name))
+            vn = _model_value_varname(model.values, VarName{name}(), _model_prefix(model))
+            binding = _model_argument_binding(values, AbstractPPL.varname_to_optic(vn))
+            if name in model.argument_sites
+                if binding isa Union{VarNamedTuple,VarNamedTuples.PartialArray}
+                    argument = get(merge(model.args, model.defaults), stored_name, nothing)
+                    previous = _model_argument_binding(
+                        _model_values(model.values), AbstractPPL.varname_to_optic(vn)
+                    )
+                    binding = _prepare_argument_fields(
+                        _model_argument_value(previous, argument), binding, vn
+                    )
+                    values = templated_setindex!!(
+                        values, binding, vn, values.data[AbstractPPL.getsym(vn)]
+                    )
+                end
+            else
+                binding === nothing || throw(
+                    ArgumentError(
+                        "Argument `$name` does not occur on the left-hand side of `~` and cannot be conditioned or fixed; construct the model with a new argument value instead. If `$name` names a variable of an unprefixed submodel, rename the argument.",
+                    ),
+                )
+            end
         end
-        binding === nothing || throw(
-            ArgumentError(
-                "Argument `$name` does not occur on the left-hand side of `~` and cannot be conditioned or fixed; construct the model with a new argument value instead. If `$name` names a variable of an unprefixed submodel, rename the argument.",
-            ),
-        )
     end
-    return nothing
+    return quote
+        isempty(values) && return values
+        $(checks...)
+        return values
+    end
 end
 
-_check_argument_fields(template, binding, vn) = nothing
-function _check_argument_fields(
+_prepare_argument_fields(template, binding, vn) = binding
+function _prepare_argument_fields(
     template, bindings::Union{VarNamedTuple,VarNamedTuples.PartialArray}, vn
 )
-    _fold_model_indices(nothing, bindings) do _, binding, optic, _
+    return _fold_model_indices(copy(bindings), bindings) do result, binding, optic, storage
         if template isa NamedTuple &&
             optic isa AbstractPPL.Property &&
             !VarNamedTuples._haskey_optic(template, optic)
@@ -1140,11 +1157,40 @@ function _check_argument_fields(
         end
         if VarNamedTuples._haskey_optic(template, optic)
             child = VarNamedTuples._getindex_optic(template, optic, vn)
-            _check_argument_fields(child, binding, AbstractPPL.append_optic(vn, optic))
+            address = AbstractPPL.append_optic(vn, optic)
+            binding = _prepare_argument_fields(child, binding, address)
+            if template isa AbstractArray && binding isa ModelValue
+                binding = _convert_argument_component(binding, template, optic, address)
+            end
         end
-        return nothing
+        return VarNamedTuples._setindex_optic!!(
+            result, binding, optic, storage, VarNamedTuples.AllowAll()
+        )
     end
-    return nothing
+end
+
+function _convert_argument_component(binding::ModelValue{R}, template, optic, vn) where {R}
+    value = binding.value
+    converted = try
+        if VarNamedTuples._is_multiindex(template, optic.ix...; optic.kw...)
+            map(v -> convert(eltype(template), v), value)
+        else
+            convert(eltype(template), value)
+        end
+    catch err
+        err isa InterruptException && rethrow()
+        throw(
+            ArgumentError(
+                "Cannot represent component `$vn` in argument element type $(eltype(template))",
+            ),
+        )
+    end
+    isequal(converted, value) || throw(
+        ArgumentError(
+            "Cannot exactly represent component `$vn` in argument element type $(eltype(template))",
+        ),
+    )
+    return ModelValue{R}(converted, vn)
 end
 
 """
@@ -1176,7 +1222,9 @@ directly or through an alias such as a `view`. This also applies to [`fix`](@ref
 
 A complete argument replacement supplies its value, shape, and dispatch type parameters
 from the start of the model body. Partial updates preserve the remaining stored values and
-their array templates. Arguments with unobserved entries retain their original storage
+their array templates. Component values are converted to the argument array's element
+type; values that cannot be represented exactly throw `ArgumentError`.
+Arguments with unobserved entries retain their original storage
 template; the corresponding tilde statements fill those entries during evaluation.
 Defaults derived from a replaced argument are evaluated at model construction and are not
 recomputed.
@@ -1356,13 +1404,22 @@ true
 function AbstractPPL.condition(model::Model, values...)
     model = _materialize_argument_values(model)
     values = _tag_model_values(Condition, _make_condfix_values(values...))
-    _check_argument_bindings(model, values)
+    values = _check_argument_bindings(model, values)
     values = _merge_model_values(_model_values(model.values), values)
     values = model.values isa LocalModelValues ? LocalModelValues(values) : values
     return _reconstruct_model(model; values)
 end
 function AbstractPPL.condition(model::Model; values...)
     return condition(model, NamedTuple(values))
+end
+function AbstractPPL.condition(model::Model, first::Pair, second::Pair, rest::Pair...)
+    return condition(condition(model, first), second, rest...)
+end
+function AbstractPPL.condition(model::Model, values::Tuple{Vararg{Pair}})
+    return condition(model, values...)
+end
+function AbstractPPL.condition(model::Model, values::AbstractDict{<:VarName})
+    return condition(model, pairs(values)...)
 end
 
 """
@@ -1804,13 +1861,22 @@ julia> # The difference is the missing log-probability of `m`:
 function fix(model::Model, values...)
     model = _materialize_argument_values(model)
     values = _tag_model_values(Fix, _make_condfix_values(values...))
-    _check_argument_bindings(model, values)
+    values = _check_argument_bindings(model, values)
     values = _merge_model_values(_model_values(model.values), values)
     values = model.values isa LocalModelValues ? LocalModelValues(values) : values
     return _reconstruct_model(model; values)
 end
 function fix(model::Model; values...)
     return fix(model, NamedTuple(values))
+end
+function fix(model::Model, first::Pair, second::Pair, rest::Pair...)
+    return fix(fix(model, first), second, rest...)
+end
+function fix(model::Model, values::Tuple{Vararg{Pair}})
+    return fix(model, values...)
+end
+function fix(model::Model, values::AbstractDict{<:VarName})
+    return fix(model, pairs(values)...)
 end
 
 """

@@ -47,6 +47,37 @@ end
         end
     end
 
+    @testset "component argument element types" begin
+        @model elements(y) = (for i in eachindex(y)
+            y[i] ~ Normal()
+        end;
+        y)
+        @model typed_elements(y::Vector{Float64}) = (y[1] ~ Normal(); y)
+        for bind in (condition, fix), constructor in (elements, typed_elements)
+            result = bind(constructor([1.0, 2.0]), @varname(y[1]) => 1)
+            @test result() isa Vector{Float64}
+            @test result() == [1.0, 2.0]
+            @test_throws r"ArgumentError: .*represent" bind(
+                constructor([1.0, 2.0]), @varname(y[1]) => big(2)^100 + 1
+            )()
+        end
+        @model wrapped_elements() = a ~ to_submodel(elements([1.0, 2.0]))
+        @test condition(wrapped_elements(), @varname(a.y[1]) => 1)() isa Vector{Float64}
+        for bind in (condition, fix)
+            bindings = (@varname(y) => Float32[1, 2], @varname(y[1]) => 3)
+            @test bind(elements([1.0, 2.0]), bindings...)() isa Vector{Float32}
+            @test bind(elements([1.0, 2.0]), bindings)() isa Vector{Float32}
+            inexact = (@varname(y) => [1.0, 2.0], @varname(y[1]) => big(2)^100 + 1)
+            @test_throws r"ArgumentError: .*represent" bind(
+                elements([1.0, 2.0]), inexact...
+            )
+            @test_throws r"ArgumentError: .*represent" bind(elements([1.0, 2.0]), inexact)
+        end
+        for T in (Float32, BigFloat)
+            @test condition(elements(T[1, 2]), @varname(y[1]) => 3)() isa Vector{T}
+        end
+    end
+
     @testset "restore splatted argument observations" begin
         @model positional(args...) = (args[1] ~ Normal(); args)
         @model keywords(; kwargs...) = (
@@ -725,7 +756,9 @@ end
         end
         partial_loglik =
             p -> loglikelihood(
-                condition(decondition(partial_input(zeros(2))), @varname(x[1]) => p),
+                condition(
+                    decondition(partial_input(zeros(typeof(p), 2))), @varname(x[1]) => p
+                ),
                 (; x=[7.0, 7.0]),
             )
         @test ForwardDiff.derivative(partial_loglik, 3.0) == -4.0
@@ -988,12 +1021,12 @@ end
 
         @model array_fields(x) = (x[1].a ~ Normal(); return x)
         parent = condition(
-            nested_fields(array_fields([(; a=0.0)])),
+            nested_fields(array_fields(Any[(; a=0.0)])),
             @varname(child.x[1]) => (; a=1.0, b=2.0),
         )
         @test fix(parent, @varname(child.x[1].a) => 3.0)() == [(; a=3.0, b=2.0)]
         partial = condition(
-            decondition(array_fields([(; a=0.0)])), @varname(x[1]) => (; a=1.0, b=2.0)
+            decondition(array_fields(Any[(; a=0.0)])), @varname(x[1]) => (; a=1.0, b=2.0)
         )
         @test fix(partial, @varname(x[1].a) => 3.0)() == [(; a=3.0, b=2.0)]
 

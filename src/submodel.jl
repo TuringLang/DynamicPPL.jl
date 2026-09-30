@@ -228,14 +228,15 @@ function tilde_assume!!(
     else
         _model_prefix(submodel.model)
     end
-    values = LocalModelValues(
-        _merge_model_values(
-            _submodel_values(submodel.model, nothing),
-            _remove_model_values(
-                ArgumentCondition, _submodel_values(parent_model, local_prefix)
-            ),
+    child_values = _submodel_values(submodel.model, nothing)
+    child_model = _reconstruct_model(submodel.model; values=LocalModelValues(child_values))
+    parent_values = _check_argument_bindings(
+        child_model,
+        _remove_model_values(
+            ArgumentCondition, _submodel_values(parent_model, local_prefix)
         ),
     )
+    values = LocalModelValues(_merge_model_values(child_values, parent_values))
     parent_prefix = _model_prefix(parent_model)
     model = if AutoPrefix
         vn, template = _prefix_varname_and_template(left_vn, template, parent_model)
