@@ -69,6 +69,13 @@ templates. Arguments with unobserved entries retain their original storage templ
 corresponding tilde statements fill those entries during evaluation.
 Defaults derived from a replaced argument are evaluated at model construction and are not recomputed.
 
+!!! note
+    
+    Component bindings on an array argument (for example, `@varname(x[1])`) rebuild the
+    argument on every evaluation, costing O(length(x)). For large arrays or hot loops,
+    prefer replacing the whole argument, for example `condition(model; x=newx)` with
+    `newx` already containing the override, or construct the model with the updated argument.
+
 To condition the model on observed data, we can use the `condition` function, or its alias `|`.
 The most robust way of conditioning is to provide a `VarNamedTuple` that holds the values to condition on.
 
