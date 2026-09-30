@@ -33,7 +33,7 @@ end
                     __model__.defaults,
                     __model__.context,
                     __model__.values;
-                    argument_sites=__model__.argument_sites,
+                    argument_sites=DynamicPPL._argument_sites(__model__),
                 )
                 @test check_model(child)
             end

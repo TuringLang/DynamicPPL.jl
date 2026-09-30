@@ -61,6 +61,18 @@ end
 const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
 
 @testset "model.jl" begin
+    @testset "immutable argument site metadata" begin
+        @model argument_site(x) = x ~ Normal()
+        @test isbitstype(typeof(DynamicPPL.Model{false}(identity, (;), (;))))
+        @test isbitstype(
+            typeof(DynamicPPL.Model{false}(identity, (; x=1.0), (;); argument_sites=[:x]))
+        )
+        @test DynamicPPL._argument_sites(argument_site(1.0)) === (:x,)
+        model = argument_site(1.0)
+        accs = VarInfo(DynamicPPL.AccumulatorTuple(LogLikelihoodAccumulator()))
+        @test first(@inferred init!!(Xoshiro(1), model, accs, InitFromPrior())) == 1.0
+    end
+
     @testset "direct construction has no observations" begin
         @model covariate(x, y) = y ~ Normal(x)
         f = covariate(0.0, 1.0).f
@@ -70,7 +82,7 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
             DynamicPPL.Model{false}(f, (; x=missing, y=1.0), (;), DefaultContext()),
         )
             @test isempty(conditioned(m))
-            @test isempty(m.argument_sites)
+            @test isempty(DynamicPPL._argument_sites(m))
             @test ismissing(m.args.x)
         end
         @test conditioned(covariate(0.0, 1.0)) == VarNamedTuple(; y=1.0)
