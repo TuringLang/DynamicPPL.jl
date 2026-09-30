@@ -67,6 +67,7 @@ Replacing a complete argument updates its value, shape, and dispatch type parame
 the model body runs. Partial updates preserve the remaining stored values and their array
 templates. Arguments with unobserved entries retain their original storage template; the
 corresponding tilde statements fill those entries during evaluation.
+Defaults derived from a replaced argument are evaluated at model construction and are not recomputed.
 
 To condition the model on observed data, we can use the `condition` function, or its alias `|`.
 The most robust way of conditioning is to provide a `VarNamedTuple` that holds the values to condition on.

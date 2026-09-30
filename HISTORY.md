@@ -22,6 +22,22 @@ Added `evaluate!!(model, context, vi)` to evaluate with an explicit leaf context
 
 On newer DynamicPPL versions, MLD’s generic API requires a manually constructed log-density adapter; no drop-in model-level replacement is currently available. Migration of the integration into MLD is proposed in [MLD #47](https://github.com/ElOceanografo/MarginalLogDensities.jl/pull/47).
 
+Model arguments supply default observations; `condition` and `fix` at the same address now replace the earlier role rather than stacking contexts. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+
+`missing` at a bound site now throws `ArgumentError`, including arguments and values supplied to `condition`, `fix`, or `InitFromParams`: `f(missing)` / `f([1.0, missing])` → `decondition(f(x), :x)` / `decondition(f(x), @varname(x[2]))`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+
+`CondFixContext` is removed: use `condition(model, values)` / `fix(model, values)`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+
+`inargnames`, `inmissings`, `getmissings`, `contextual_isassumption`, `contextual_isfixed`, and `hasmissing` are removed: select observations and fixed sites with `condition`, `fix`, `decondition`, and `unfix`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+
+`conditioned(::AbstractContext)` / `fixed(::AbstractContext)` are removed: use `conditioned(model)` / `fixed(model)`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+
+`Model` gains a `values` field and loses its `missings` type parameter: direct field construction and dispatch on the old type parameters break; use `Model{Threaded}(f, args, defaults, context, values)` with role-tagged `values`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+
+Conditioning or fixing a submodel's return value now errors: binding the submodel LHS → binding its internal variable names. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+
+`check_model` no longer warns when a variable is both a model argument and explicitly conditioned: explicit bindings now replace argument observations. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+
 `OnlyAccsVarInfo` is removed: `OnlyAccsVarInfo(accs...)` → `VarInfo(accs...)`, with the same constructor forms. See [#1500](https://github.com/TuringLang/DynamicPPL.jl/pull/1500).
 
 `VarInfo{Tfm,T,Accs}` → `VarInfo{Accs}`; dispatch on the old type parameters breaks. See [#1500](https://github.com/TuringLang/DynamicPPL.jl/pull/1500).
@@ -43,8 +59,6 @@ Partial `link!!(vi, vns, model)` / `invlink!!(vi, vns, model)` are removed: use 
 # 0.42.14
 
 Added `SamplingOutput` support for `pointwise_logdensities`, `pointwise_loglikelihoods`, and `pointwise_prior_logdensities`, plus conversion to `MCMCChains.Chains`. See [#1506](https://github.com/TuringLang/DynamicPPL.jl/pull/1506).
-
-Model arguments now supply default observations. Use `decondition(model, :x)` instead of passing `missing`; `condition` and `fix` replace the previous role at an address. Removing that binding makes the site latent.
 
 # 0.42.13
 
