@@ -141,7 +141,7 @@ end
 _model_role_at(::ModelValue{R}, ::AbstractPPL.Iden, vn) where {R} = R()
 function _model_role_at(values::VarNamedTuples.PartialArray, optic::AbstractPPL.Index, vn)
     optic = AbstractPPL.concretize_top_level(optic, values.data)
-    VarNamedTuples._haskey_optic(values, optic) || return nothing
+    checkbounds(Bool, values.data, optic.ix...; optic.kw...) || return nothing
     if VarNamedTuples._is_multiindex(values.data, optic.ix...; optic.kw...)
         selected = VarNamedTuples.PartialArray(
             view(values.data, optic.ix...; optic.kw...),
@@ -149,6 +149,7 @@ function _model_role_at(values::VarNamedTuples.PartialArray, optic::AbstractPPL.
         )
         return _model_role_at(selected, optic.child, vn)
     end
+    haskey(values, optic.ix...; optic.kw...) || return nothing
     return _model_role_at(getindex(values.data, optic.ix...; optic.kw...), optic.child, vn)
 end
 function _get_model_role(model, vn)
