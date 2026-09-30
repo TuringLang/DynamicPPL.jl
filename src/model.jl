@@ -1043,10 +1043,8 @@ julia> # `decondition` without any symbols will `decondition` all variables.
 true
 ```
 
-Note that `decondition` is only guaranteed to work when you decondition variables that were
-explicitly provided to `condition` earlier. In this example we condition on `@varname(m)`
-but decondition on `@varname(m[1])`, which fails because `m[1]` was not explicitly
-conditioned on:
+A component of a whole binding can be deconditioned when it has its own tilde statement.
+Names that do not match a binding leave the model unchanged.
 
 ```jldoctest decondition
 julia> @model function demo_mv(::Type{TV}=Float64) where {TV}
@@ -1068,10 +1066,8 @@ julia> conditioned_model()
 
 julia> deconditioned_model = decondition(conditioned_model, @varname(m[1]));
 
-julia> deconditioned_model()  # (×) `m[1]` is still conditioned
-2-element Vector{Float64}:
- 1.0
- 2.0
+julia> m = deconditioned_model(); (m[1] != 1.0 && m[2] == 2.0)
+true
 ```
 """
 function AbstractPPL.decondition(model::Model, syms::Union{Symbol,VarName}...)
@@ -1083,6 +1079,19 @@ function _remove_model_values(
     ::Type{R}, values::VarNamedTuple, args::Union{Symbol,VarName}...
 ) where {R}
     vns = map(arg -> arg isa VarName ? arg : VarName{arg}(), args)
+    for vn in vns
+        expanded = values
+        while true
+            ancestors = filter(keys(expanded)) do key
+                key != vn && subsumes(key, vn) && expanded[key] isa ModelValue{R}
+            end
+            isempty(ancestors) && break
+            expanded = VarNamedTuples.apply!!(
+                _expand_model_binding, copy(expanded), only(ancestors)
+            )
+        end
+        haskey(expanded, vn) && (values = expanded)
+    end
     retained_keys = filter(keys(values)) do key
         !(values[key] isa ModelValue{R}) ||
             (!isempty(args) && all(vn -> !subsumes(vn, key), vns))
