@@ -50,6 +50,19 @@ end
 end
 
 @testset "condition and fix" begin
+    @testset "keyword splat component bindings are explicit errors" begin
+        @model keyword_site(; kw...) = (kw[:y] ~ Normal(); return kw[:y])
+        for bind in (condition, fix)
+            model = keyword_site(; y=1.0)
+            for original in (model, decondition(model))
+                @test_throws r"ArgumentError: .*keyword-splat argument `kw`.*cannot be bound" bind(
+                    original, @varname(kw.y) => 2.0
+                )
+            end
+            @test bind(model; kw=(; y=2.0))(Xoshiro(1)) == 2.0
+        end
+    end
+
     @testset "keyword splat index removal" begin
         @model indexed_keywords(; kwargs...) = (
             kwargs[:x] ~ Normal(); kwargs[:y] ~ Normal(); kwargs

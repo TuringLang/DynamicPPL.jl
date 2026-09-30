@@ -1121,6 +1121,16 @@ Base.:|(model::Model, values::Union{NamedTuple,AbstractDict,Pair,Tuple,VarNamedT
             binding = _model_argument_binding(values, AbstractPPL.varname_to_optic(vn))
             if name in _argument_sites(model)
                 if binding isa Union{VarNamedTuple,VarNamedTuples.PartialArray}
+                    if $(
+                        is_splat_symbol(stored_name) &&
+                        stored_name in fieldnames(fieldtype(model, :defaults))
+                    )
+                        throw(
+                            ArgumentError(
+                                "Components of keyword-splat argument `$name` cannot be bound; replace the whole argument with `condition` or `fix` instead.",
+                            ),
+                        )
+                    end
                     argument = get(merge(model.args, model.defaults), stored_name, nothing)
                     previous = _model_argument_binding(
                         _model_values(model.values), AbstractPPL.varname_to_optic(vn)
