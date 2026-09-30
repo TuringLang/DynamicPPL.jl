@@ -13,7 +13,8 @@
   - An *argument site* is a model argument whose name is the top symbol of a site's
     address. With `@model`, it supplies an *argument observation*: an implicit
     conditioned binding. An *argument replacement* makes the model body start from
-    the bound value; each site then observes or fixes what the body computes.
+    the bound value. Observed sites use the value computed by the body; fixed sites
+    reset to their bound value when their tilde statement runs.
     Direct `Model` construction records no observations; pass `argument_sites` to declare
     which arguments can be bound with `condition` or `fix`.
     An argument used as a submodel's left-hand side (`a ~ to_submodel(...)`) is a *return-value
