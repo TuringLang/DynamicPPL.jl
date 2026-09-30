@@ -1198,6 +1198,12 @@ Return a `Model` which now treats the variables in `values` as fixed.
 
 See also: [`unfix`](@ref), [`fixed`](@ref)
 
+!!! warning "Fixed values are not copied"
+    Evaluation uses the supplied values directly, including as model arguments. The model
+    body must not mutate them, directly or through an alias such as a `view`: doing so
+    changes the stored binding and the caller's object. Pass a copy if the model may write
+    to a fixed value.
+
 !!! warning "Fixing applies to whole variables"
     Variables are treated as they occur in the model. A variable drawn from a multivariate
     distribution in a single tilde-statement (e.g. `x ~ MvNormal(...)`) is a *single* random
