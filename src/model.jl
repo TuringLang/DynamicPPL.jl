@@ -393,7 +393,12 @@ end
     names = Tuple(union(P, U))
     fields = map(names) do name
         if name in P && name in U
-            :(_merge_model_node(previous.data.$name, updates.data.$name))
+            quote
+                _check_model_binding(
+                    previous.data.$name, updates.data.$name, $(VarName{name}())
+                )
+                _merge_model_node(previous.data.$name, updates.data.$name)
+            end
         elseif name in U
             :(_copy_model_node(updates.data.$name))
         else
@@ -402,6 +407,33 @@ end
     end
     return :(VarNamedTuple(NamedTuple{$names}(($(fields...),))))
 end
+_check_model_binding(previous, updates, vn) = nothing
+function _check_model_binding(
+    previous, updates::Union{VarNamedTuple,VarNamedTuples.PartialArray}, vn
+)
+    if previous isa ModelValue
+        compatible = if updates isa VarNamedTuples.PartialArray
+            previous.value isa Union{AbstractArray,Tuple}
+        else
+            previous.value isa NamedTuple ||
+                all(name -> hasproperty(previous.value, name), keys(updates.data))
+        end
+        compatible || throw(
+            ArgumentError(
+                "Cannot bind components below `$vn` with value of type $(typeof(previous.value)). " *
+                "Use decondition(model, @varname($vn)) before binding a submodel's internal variables.",
+            ),
+        )
+    end
+    _fold_model_indices(nothing, updates) do _, update, optic, _
+        child = _model_argument_binding(previous, optic)
+        child === nothing ||
+            _check_model_binding(child, update, AbstractPPL.append_optic(vn, optic))
+        return nothing
+    end
+    return nothing
+end
+
 _copy_model_node(value) = value
 _copy_model_node(value::Union{VarNamedTuple,VarNamedTuples.PartialArray}) = copy(value)
 function _copy_model_node(value::ModelValueTree)

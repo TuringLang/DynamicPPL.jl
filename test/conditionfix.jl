@@ -257,6 +257,18 @@ end
         @test size(conditioned(partial).data.x) == (2, 2)
     end
 
+    @testset "invalid bindings below scalar values" begin
+        @model scalar_site(a) = a ~ Normal()
+        @model scalar_child() = x ~ Normal()
+        @model scalar_return(a) = a ~ to_submodel(scalar_child())
+        for bind in (condition, fix),
+            (model, vn) in
+            ((scalar_site(1.0), @varname(a[1])), (scalar_return(0.0), @varname(a.x)))
+
+            @test_throws r"ArgumentError: .*`a`.*decondition" bind(model, vn => 2.0)
+        end
+    end
+
     @testset "partial removal expands whole bindings" begin
         @model function partial_observations(x)
             m ~ Normal()
