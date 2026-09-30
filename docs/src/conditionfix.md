@@ -30,8 +30,11 @@
   - `missing` is rejected in argument observations, `condition`, and `fix`.
     `InitFromParams` rejects it when the parameter is read during initialization,
     not at construction. Leave unobserved values out instead.
-  - Bound values are not copied. The model body must not mutate them, directly or
-    through an alias such as a `view`. Component bindings on array arguments rebuild
+  - Whole bindings use the supplied object without copying. When a component binding
+    splits a whole binding, the remaining elements are captured at that time; later
+    changes to the supplied container's entries are not reflected in those elements.
+    The model body must not mutate bound values, directly or through an alias such
+    as a `view`. Component bindings on array arguments rebuild
     the argument in O(length) per evaluation; prefer whole replacements for large arrays.
   - Bindings unused by any executed tilde statement are ignored, including unknown
     names and sites in branches that do not run.
