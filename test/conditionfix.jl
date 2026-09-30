@@ -29,6 +29,17 @@ mutable struct MissingRecord
 end
 
 @testset "condition and fix" begin
+    @testset "nested slices retain bound siblings" begin
+        @model sliced(x) = (x[1:2][1:2][1] ~ Normal(); x[2] ~ Normal(); x)
+        for (bind, remove) in ((condition, decondition), (fix, unfix))
+            model = remove(bind(sliced([1.0, 2.0]); x=[1.0, 2.0]), @varname(x[2]))
+            @test model(Xoshiro(1))[1] == 1.0
+            @test loglikelihood(model, (; x=[3.0, 4.0])) ==
+                (bind === condition ? logpdf(Normal(), 1.0) : 0.0)
+            @test keys(VarInfo(Xoshiro(1), model)) == [@varname(x[2])]
+        end
+    end
+
     @testset "accessors return plain partial values" begin
         @model function named_sites()
             x = (; a=0.0, b=0.0)
