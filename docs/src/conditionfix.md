@@ -115,7 +115,9 @@ Replacing a complete argument updates its value, shape, and dispatch type parame
 the model body runs, provided it matches the declared argument types. For example, replacing
 `x::Vector{Float64}` with `[1, 2]` throws `ArgumentError`; use `[1.0, 2.0]` instead.
 Partial updates preserve the remaining stored values and their array
-templates. Arguments with unobserved entries retain their original storage template; the
+templates. Component values are converted to the argument array's element type;
+values that cannot be represented exactly throw `ArgumentError`.
+Arguments with unobserved entries retain their original storage template; the
 corresponding tilde statements fill those entries during evaluation.
 Defaults derived from a replaced argument are evaluated at model construction and are not recomputed.
 
