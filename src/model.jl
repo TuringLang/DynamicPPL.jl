@@ -26,7 +26,7 @@ struct ModelValue{R<:Union{Condition,ArgumentCondition,Fix},T}
             throw(ArgumentError("A model value must have one concrete role"))
         _contains_missing(value) && throw(
             ArgumentError(
-                "`missing` no longer selects latent variables. Omit unobserved values from `condition` or `fix` instead.",
+                "`missing` no longer selects latent variables. Omit unobserved values from `condition` or `fix`, or use `decondition` to make an argument latent.",
             ),
         )
         return new{R,T}(value)

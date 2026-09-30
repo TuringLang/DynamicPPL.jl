@@ -29,6 +29,13 @@ mutable struct MissingRecord
 end
 
 @testset "condition and fix" begin
+    @testset "missing arguments explain deconditioning" begin
+        @model observed(x) = x ~ Normal()
+        @test_throws r"ArgumentError: .*condition.*fix.*decondition.*argument" observed(
+            missing
+        )
+    end
+
     @testset "named tuple tilde sites require whole bindings" begin
         @model named_site() = x ~ product_distribution((a=Normal(), b=Normal()))
         for (bind, remove) in ((condition, decondition), (fix, unfix))
