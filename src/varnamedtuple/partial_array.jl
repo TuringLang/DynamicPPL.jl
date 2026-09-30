@@ -306,7 +306,11 @@ function _concretise_eltype!!(pa::PartialArray)
     # https://github.com/TuringLang/DynamicPPL.jl/pull/1098#discussion_r2472636188.
     # Base.promote_typejoin would be like typejoin, but creates Unions out of Nothing
     # and Missing, rather than falling back on Any. However, it's not exported.
-    new_et = typejoin((typeof(pa.data[i]) for i in eachindex(pa.mask) if pa.mask[i])...)
+    new_et = foldl(
+        typejoin,
+        (typeof(pa.data[i]) for i in eachindex(pa.mask) if pa.mask[i]);
+        init=Union{},
+    )
     # TODO(mhauru) Should we check as below, or rather isconcretetype(new_et)?
     # In other words, does it help to be more concrete, even if we aren't fully concrete?
     if new_et === eltype(pa)
