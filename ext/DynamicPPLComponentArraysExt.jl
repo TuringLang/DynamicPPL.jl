@@ -84,4 +84,11 @@ function DynamicPPL._model_argument_binding(
     return DynamicPPL._model_argument_binding(pa, _property_to_index(pa.data, optic))
 end
 
+function DynamicPPL._remove_model_binding(
+    ::Type{R}, pa::PartialArray{<:Any,<:Any,<:ComponentVector}, optic::AbstractPPL.Property
+) where {R}
+    AbstractPPL.canview(optic, _index_vector(pa.data)) || return pa
+    return DynamicPPL._remove_model_binding(R, pa, _property_to_index(pa.data, optic))
+end
+
 end

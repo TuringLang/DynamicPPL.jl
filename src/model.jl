@@ -1051,6 +1051,9 @@ provided, then all conditioned variables will be removed.
 This also removes observations supplied as model arguments. After deconditioning, a site's
 sampled value replaces its local argument value and is used by subsequent model statements.
 
+Names that match no stored binding are a no-op. Component addresses are resolved against
+the stored container, so equivalent linear, Cartesian, and property indices match.
+
 Only bindings stored on this model are removed. This cannot remove a child submodel's
 argument observations: `decondition(outer_arg(), @varname(a.x))` has no effect when `a.x`
 is supplied only by the child argument. Decondition the child before wrapping it with
@@ -1131,25 +1134,78 @@ end
 function _remove_model_values(
     ::Type{R}, values::VarNamedTuple, args::Union{Symbol,VarName}...
 ) where {R}
-    vns = map(arg -> arg isa VarName ? arg : VarName{arg}(), args)
-    for vn in vns
-        expanded = values
-        while true
-            ancestors = filter(keys(expanded)) do key
-                key != vn && subsumes(key, vn) && expanded[key] isa ModelValue{R}
-            end
-            isempty(ancestors) && break
-            expanded = VarNamedTuples.apply!!(
-                _expand_model_binding, copy(expanded), only(ancestors)
-            )
-        end
-        haskey(expanded, vn) && (values = expanded)
+    if isempty(args)
+        return subset(values, filter(key -> !(values[key] isa ModelValue{R}), keys(values)))
     end
-    retained_keys = filter(keys(values)) do key
-        !(values[key] isa ModelValue{R}) ||
-            (!isempty(args) && all(vn -> !subsumes(vn, key), vns))
+    for arg in args
+        vn = arg isa VarName ? arg : VarName{arg}()
+        values = _remove_model_binding(R, values, AbstractPPL.varname_to_optic(vn))
     end
-    return subset(values, retained_keys)
+    return subset(values, filter(key -> !(values[key] isa NoModelBinding), keys(values)))
+end
+
+function _remove_model_binding(::Type{R}, value, optic::AbstractPPL.AbstractOptic) where {R}
+    if optic isa AbstractPPL.Iden
+        return VarNamedTuples._map_values_recursive!!(
+            v -> v isa ModelValue{R} ? NoModelBinding() : v, _copy_model_node(value)
+        )
+    elseif value isa ModelValue{R} && VarNamedTuples._haskey_optic(value, optic)
+        return _remove_model_binding(R, _expand_model_binding(value), optic)
+    end
+    return value
+end
+function _remove_model_binding(
+    ::Type{R}, values::VarNamedTuple, optic::AbstractPPL.Property{S}
+) where {R,S}
+    haskey(values.data, S) || return values
+    child = _remove_model_binding(R, values.data[S], optic.child)
+    return VarNamedTuple(merge(values.data, NamedTuple{(S,)}((child,))))
+end
+function _remove_model_binding(
+    ::Type{R}, tree::ModelValueTree, optic::AbstractPPL.Property
+) where {R}
+    return ModelValueTree(tree.template, _remove_model_binding(R, tree.values, optic))
+end
+function _remove_model_binding(
+    ::Type{R}, tree::ModelValueTree{<:Tuple}, optic::AbstractPPL.Index
+) where {R}
+    optic = AbstractPPL.concretize_top_level(optic, tree.template)
+    checkbounds(Bool, Base.OneTo(length(tree.values)), optic.ix...) || return tree
+    indices = getindex(ntuple(identity, length(tree.values)), optic.ix...)
+    if indices isa Integer
+        child = _remove_model_binding(R, tree.values[indices], optic.child)
+        return ModelValueTree(tree.template, Base.setindex(tree.values, child, indices))
+    end
+    selected = ModelValueTree(
+        getindex(tree.template, optic.ix...), getindex(tree.values, optic.ix...)
+    )
+    removed = _remove_model_binding(R, selected, optic.child)
+    values = tree.values
+    for (i, child) in zip(indices, removed.values)
+        values = Base.setindex(values, child, i)
+    end
+    return ModelValueTree(tree.template, values)
+end
+function _remove_model_binding(
+    ::Type{R}, values::VarNamedTuples.PartialArray, optic::AbstractPPL.Index
+) where {R}
+    optic = AbstractPPL.concretize_top_level(optic, values.data)
+    checkbounds(Bool, values.data, optic.ix...; optic.kw...) || return values
+    selected = if VarNamedTuples._is_multiindex(values.data, optic.ix...; optic.kw...)
+        VarNamedTuples._subset_partialarray(values, optic.ix...; optic.kw...)
+    elseif haskey(values, optic.ix...; optic.kw...)
+        getindex(values, optic.ix...; optic.kw...)
+    else
+        return values
+    end
+    child = _remove_model_binding(R, selected, optic.child)
+    return VarNamedTuples._setindex_optic!!(
+        copy(values),
+        child,
+        AbstractPPL.Index(optic.ix, optic.kw),
+        values,
+        VarNamedTuples.AllowAll(),
+    )
 end
 
 """

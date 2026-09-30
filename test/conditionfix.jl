@@ -29,6 +29,63 @@ mutable struct MissingRecord
 end
 
 @testset "condition and fix" begin
+    @testset "removal resolves container addresses" begin
+        @model function matrix_sites(x)
+            for i in eachindex(x)
+                x[i] ~ Normal()
+            end
+            return x
+        end
+        @model component_sites(x) = (x.a ~ Normal(); x.b ~ Normal(); x)
+        @model nested_component_sites(x) = (x[1].a ~ Normal(); x[1].b ~ Normal(); x)
+        for (bind, remove, select) in
+            ((condition, decondition, conditioned), (fix, unfix, fixed))
+            matrix = bind(matrix_sites([1.0 3.0; 2.0 4.0]); x=[1.0 3.0; 2.0 4.0])
+            for (vn, indices) in (
+                (@varname(x[2]), [2]),
+                (@varname(x[2, 1]), [2]),
+                (@varname(x[2:3]), [2, 3]),
+                (@varname(x[begin]), [1]),
+                (@varname(x[end]), [4]),
+                (@varname(x[:, 1]), [1, 2]),
+                (@varname(x[:]), [1, 2, 3, 4]),
+                (@varname(x[2:4][2]), [3]),
+            )
+                changed = remove(matrix, vn)
+                latent = rand(Xoshiro(1), changed)
+                for i in 1:4
+                    @test haskey(latent, @varname(x[i])) == (i in indices)
+                end
+                result = changed(Xoshiro(1))
+                @test result[setdiff(1:4, indices)] ==
+                    [1.0, 2.0, 3.0, 4.0][setdiff(1:4, indices)]
+            end
+            partial = remove(matrix, @varname(x[2]))
+            @test !haskey(select(remove(partial, @varname(x[2:3]))), @varname(x[3]))
+            @test select(remove(matrix, @varname(z))) == select(matrix)
+            @test select(remove(matrix, @varname(x[8]))) == select(matrix)
+            for (model, first, sibling) in (
+                (
+                    component_sites(ComponentVector(; a=1.0, b=2.0)),
+                    @varname(x.a),
+                    @varname(x.b)
+                ),
+                (
+                    nested_component_sites([ComponentVector(; a=1.0, b=2.0)]),
+                    @varname(x[1].a),
+                    @varname(x[1].b)
+                ),
+            )
+                bound = bind(model; x=model.args.x)
+                changed = remove(bound, first)
+                @test haskey(rand(Xoshiro(1), changed), first)
+                @test !haskey(select(changed), first)
+                @test select(changed)[sibling] == 2.0
+                @test select(bound)[sibling] == 2.0
+            end
+        end
+    end
+
     @testset "invalid component addresses" begin
         @model function elements(y)
             for i in eachindex(y)
