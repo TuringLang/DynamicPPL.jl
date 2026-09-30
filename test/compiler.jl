@@ -721,6 +721,32 @@ end
         @test res == (1, (), 1, Int, NamedTuple())
     end
 
+    @testset "incompatible prepared argument types" begin
+        @model typed_input(x::Vector{Float64}) = (x[1] ~ Normal(); return x)
+        @model typed_keyword(; x::Vector{Float64}=[0.0]) = (x[1] ~ Normal(); return x)
+        for (model, name) in
+            ((typed_input([0.0]), "typed_input"), (typed_keyword(), "typed_keyword")),
+            bind in (condition, fix)
+
+            err = try
+                bind(model; x=[1])()
+            catch err
+                err
+            end
+            @test err isa ArgumentError
+            @test occursin(name, sprint(showerror, err))
+            @test occursin("`x`", sprint(showerror, err))
+            @test occursin("Vector{Float64}", sprint(showerror, err))
+            @test occursin(string(Vector{Int}), sprint(showerror, err))
+            @test bind(model; x=[1.0])() == [1.0]
+        end
+        @model function body_methoderror(x)
+            x ~ Normal()
+            return sin("body error")
+        end
+        @test_throws MethodError condition(body_methoderror(0.0); x=1)()
+    end
+
     @testset "prepared arguments dispatch within the selected model definition" begin
         @model function typed_replacement(x::AbstractVector{T}=[0.0]) where {T}
             x[1] ~ Normal()

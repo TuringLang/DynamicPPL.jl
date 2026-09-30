@@ -654,24 +654,57 @@ function build_output(modeldef, linenumbernode, sites)
         name for (name, _, _, _) in vcat(args_split, kwargs_split) if name in sites
     ])
     observations = Expr(:tuple, [Expr(:(=), name, name) for name in observed_args]...)
-    prepare_args = [
-        :($name = $(prepare_model_argument)(__model__, $(VarName{name}()), $name)) for
-        name in observed_args
-    ]
+    @gensym replaced prepared
+    prepare_args = map(observed_args) do name
+        return quote
+            $prepared = $(prepare_model_argument)(__model__, $(VarName{name}()), $name)
+            $replaced |= $prepared !== $name
+            $name = $prepared
+        end
+    end
     bodydef = if isempty(observed_args)
         nothing
     else
         definition = copy(evaluatordef)
         definition[:name] = gensym(:model_body)
-        callargs = Any[:__model__, :__varinfo__, map(splitarg_to_expr, args_split)...]
+        # Pass prepared keywords positionally so applicability checks their types too.
+        definition[:kwargs] = []
+        definition[:args] = vcat(
+            definition[:args][1:2],
+            [MacroTools.combinearg(n, t, false, nothing) for (n, t, _, _) in kwargs_split],
+            args,
+        )
+        callargs = Any[
+            :__model__,
+            :__varinfo__,
+            map(first, kwargs_split)...,
+            map(splitarg_to_expr, args_split)...,
+        ]
         if Meta.isexpr(evaluatordef[:name], :(::))
             definition[:args] = vcat([evaluatordef[:name]], definition[:args])
             pushfirst!(callargs, :(__model__.f))
         end
+        descriptions = [
+            :($(Base.string)($("`$n` declared as $t, supplied "), $(Core.typeof)($n)))
+            for (n, t, _, _) in vcat(args_split, kwargs_split) if n in observed_args
+        ]
         # Dispatch again after replacement so the body's type parameters match its inputs.
         evaluatordef[:body] = MacroTools.@q begin
+            $replaced = false
             $(prepare_args...)
-            return $(definition[:name])($(callargs...); $(kwargs_inclusion...))
+            if $replaced && !$(Base.applicable)($(definition[:name]), $(callargs...))
+                $(Core.throw)(
+                    $(ArgumentError)(
+                        $(Base.string)(
+                            "Incompatible argument replacement for model `",
+                            $(Base.nameof)(__model__),
+                            "`: ",
+                            $(Base.join)(($(descriptions...),), "; "),
+                        ),
+                    ),
+                )
+            end
+            return $(definition[:name])($(callargs...))
         end
         MacroTools.combinedef(definition)
     end
