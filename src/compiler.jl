@@ -739,10 +739,7 @@ function build_output(modeldef, linenumbernode, sites)
 end
 
 function prepare_model_argument(model::Model, vn::VarName, value)
-    vn = _model_value_varname(model.values, vn, _model_prefix(model))
-    binding = _model_argument_binding(
-        _model_values(model.values), AbstractPPL.varname_to_optic(vn)
-    )
+    binding = _get_model_binding(model, vn)
     return _model_argument_value(binding, value)
 end
 
