@@ -61,6 +61,13 @@ struct NoModelBinding end
 struct LocalModelValues{V<:VarNamedTuple}
     values::V
 end
+# Default arguments need no enclosing namespace storage during evaluation.
+struct PrefixedArgumentValues{V<:VarNamedTuple}
+    values::V
+end
+_model_values(values::PrefixedArgumentValues) = values.values
+_model_value_varname(::PrefixedArgumentValues, vn, prefix) = vn
+
 _model_values(values::VarNamedTuple) = values
 _model_values(values::LocalModelValues) = values.values
 _model_value_varname(::VarNamedTuple, vn, prefix) = maybe_prefix(vn, prefix)
@@ -200,18 +207,6 @@ function _get_argument_role(model, vn, argument)
     )
     # A whole argument keeps its role when body computations change its shape or fields.
     return binding isa ModelValue ? _model_role(binding, vn) : _get_model_role(model, vn)
-end
-function _without_argument_binding(model, vn)
-    address = _model_value_varname(model.values, vn, _model_prefix(model))
-    binding = _model_argument_binding(
-        _model_values(model.values), AbstractPPL.varname_to_optic(address)
-    )
-    VarNamedTuples._mapreduce_recursive(
-        pair -> pair.second isa ModelValue{ArgumentCondition}, |, binding, address, false
-    ) || return model
-    values = _remove_model_values(ArgumentCondition, _model_values(model.values), address)
-    values = model.values isa LocalModelValues ? LocalModelValues(values) : values
-    return _reconstruct_model(model; values)
 end
 function _get_model_data(model, vn)
     vn = _model_value_varname(model.values, vn, _model_prefix(model))
@@ -889,7 +884,7 @@ struct Model{
     Targs,
     Tdefaults,
     C<:AbstractContext,
-    Values<:Union{VarNamedTuple,LocalModelValues},
+    Values<:Union{VarNamedTuple,LocalModelValues,PrefixedArgumentValues},
     Threaded,
 } <: AbstractProbabilisticProgram
     f::F
@@ -948,12 +943,30 @@ function _reconstruct_model(model::Model; context=model.context, values=model.va
         argument_sites=model.argument_sites,
     )
 end
+function _materialize_argument_values(model::Model)
+    model.values isa PrefixedArgumentValues || return model
+    values = _prefix_values(
+        _model_values(model.values),
+        _model_prefix(model),
+        _apply_prefix_template(_model_prefix_template(model), NoTemplate()),
+    )
+    return _reconstruct_model(model; values)
+end
+
 """
     contextualize(model::Model, context::AbstractContext)
 
 Return a model with its context replaced by `context`.
 """
-contextualize(model::Model, context::AbstractContext) = _reconstruct_model(model; context)
+function contextualize(model::Model, context::AbstractContext)
+    if model.values isa PrefixedArgumentValues && (
+        last(extract_prefixes(context)) != _model_prefix(model) ||
+        _prefix_template(context) !== _model_prefix_template(model)
+    )
+        model = _materialize_argument_values(model)
+    end
+    return _reconstruct_model(model; context)
+end
 function setleafcontext(model::Model, context::AbstractContext)
     return contextualize(model, setleafcontext(model.context, context))
 end
@@ -1229,6 +1242,7 @@ true
 ```
 """
 function AbstractPPL.condition(model::Model, values...)
+    model = _materialize_argument_values(model)
     values = _tag_model_values(Condition, _make_condfix_values(values...))
     _check_argument_bindings(model, values)
     values = _merge_model_values(_model_values(model.values), values)
@@ -1351,6 +1365,7 @@ true
 ```
 """
 function AbstractPPL.decondition(model::Model, syms::Union{Symbol,VarName}...)
+    model = _materialize_argument_values(model)
     _check_model_removal(Condition, _model_values(model.values), syms...)
     values = _remove_model_values(Condition, _model_values(model.values), syms...)
     values = model.values isa LocalModelValues ? LocalModelValues(values) : values
@@ -1526,7 +1541,9 @@ julia> # Now `a.x` will be sampled.
  a.x
 ```
 """
-conditioned(model::Model) = _select_model_values(Condition, _model_values(model.values))
+conditioned(model::Model) = _select_model_values(
+    Condition, _model_values(_materialize_argument_values(model).values)
+)
 
 """
     fix(model::Model; values...)
@@ -1627,6 +1644,7 @@ julia> # The difference is the missing log-probability of `m`:
 ```
 """
 function fix(model::Model, values...)
+    model = _materialize_argument_values(model)
     values = _tag_model_values(Fix, _make_condfix_values(values...))
     _check_argument_bindings(model, values)
     values = _merge_model_values(_model_values(model.values), values)
@@ -1692,6 +1710,7 @@ true
 ```
 """
 function unfix(model::Model, syms::Union{Symbol,VarName}...)
+    model = _materialize_argument_values(model)
     _check_model_removal(Fix, _model_values(model.values), syms...)
     values = _remove_model_values(Fix, _model_values(model.values), syms...)
     remaining = keys(_select_model_values(Fix, values))
@@ -1785,7 +1804,8 @@ julia> # Now `a.x` will be sampled.
  a.x
 ```
 """
-fixed(model::Model) = _select_model_values(Fix, _model_values(model.values))
+fixed(model::Model) =
+    _select_model_values(Fix, _model_values(_materialize_argument_values(model).values))
 
 function _prefix_values(values::VarNamedTuple, vn::VarName, template)
     isempty(values) && return values
@@ -1851,7 +1871,20 @@ VarNamedTuple
 """
 function prefix(model::Model, x::VarName; template=NoTemplate())
     x = _concretize_prefix(x, template)
-    values = _prefix_values(model.values, x, template)
+    model = _materialize_argument_values(model)
+    values =
+        if _model_prefix(model) === nothing &&
+            !isempty(model.values) &&
+            mapreduce(
+                pair -> pair.second isa ModelValue{ArgumentCondition},
+                &,
+                model.values;
+                init=true,
+            )
+            PrefixedArgumentValues(model.values)
+        else
+            _prefix_values(model.values, x, template)
+        end
     return _prefix_model(model, x, template, values)
 end
 function _prefix_model(model::Model, x::VarName, template, values)

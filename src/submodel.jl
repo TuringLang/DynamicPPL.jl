@@ -162,6 +162,7 @@ to_submodel(m::Model, auto_prefix::Bool=true) = Submodel{typeof(m),auto_prefix}(
 # ---------------------------
 
 _submodel_namespace(values::VarNamedTuple) = values
+_submodel_namespace(::ModelValue{ArgumentCondition}) = VarNamedTuple()
 _submodel_namespace(value::ModelValueTree{<:NamedTuple}) = value.values
 function _submodel_namespace(
     value::ModelValue{R,<:NamedTuple}
@@ -207,8 +208,9 @@ function tilde_assume!!(
     template,
     vi::AbstractVarInfo,
 ) where {M<:Model,AutoPrefix}
-    parent_model = _without_argument_binding(parent_model, left_vn)
-    namespace = _submodel_values(parent_model, left_vn)
+    namespace = _remove_model_values(
+        ArgumentCondition, _submodel_values(parent_model, left_vn)
+    )
     if !isempty(namespace) && (
         haskey(parent_model.args, AbstractPPL.getsym(left_vn)) ||
         haskey(parent_model.defaults, AbstractPPL.getsym(left_vn))
@@ -229,11 +231,8 @@ function tilde_assume!!(
     values = LocalModelValues(
         _merge_model_values(
             _submodel_values(submodel.model, nothing),
-            _submodel_values(
-                _remove_model_values(ArgumentCondition, _model_values(parent_model.values)),
-                _model_value_varname(
-                    parent_model.values, local_prefix, _model_prefix(parent_model)
-                ),
+            _remove_model_values(
+                ArgumentCondition, _submodel_values(parent_model, local_prefix)
             ),
         ),
     )
