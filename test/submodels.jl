@@ -6,6 +6,7 @@ using DimensionalData: DimArray, X, Y
 using ForwardDiff: ForwardDiff
 using LogDensityProblems: LogDensityProblems
 using Test
+using Random: Xoshiro
 
 # Dummy object that we can use to test VarNames with property lenses.
 mutable struct P
@@ -372,6 +373,27 @@ end
         @test_throws ArgumentError parent_with_buffer(zeros(1))()
         @test decondition(parent_with_buffer(zeros(1)))() == [2.0]
         @test isempty(keys(VarInfo(decondition(parent_with_buffer(zeros(1))))))
+    end
+
+    @testset "submodel namespaces preserve argument buffers" begin
+        @model inner_buffer() = x ~ Normal()
+        @model scalar_buffer(a) = a ~ to_submodel(inner_buffer())
+        @model function indexed_buffer(a)
+            one(a[1])
+            return a[1] ~ to_submodel(inner_buffer())
+        end
+        namespace = @vnt begin
+            @template a = [(; x=0.0)]
+            a[1].x := 2.0
+        end
+        for bind in (condition, fix)
+            @test bind(decondition(scalar_buffer(0.0)), @varname(a.x) => 2.0)(Xoshiro(1)) ==
+                2.0
+            @test bind(decondition(indexed_buffer([0.0])), @varname(a[1].x) => 2.0)(
+                Xoshiro(1)
+            ) == 2.0
+            @test bind(decondition(indexed_buffer([0.0])), namespace)(Xoshiro(1)) == 2.0
+        end
     end
 
     @testset ":= in submodels" begin
