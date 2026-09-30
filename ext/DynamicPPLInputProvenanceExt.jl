@@ -138,8 +138,8 @@ end
 function _dualize_input(values::DynamicPPL.VarNamedTuple)
     return DynamicPPL.map_values!!(_dualize_input, copy(values))
 end
-function _dualize_input(values::DynamicPPL.PrefixedArgumentValues)
-    return DynamicPPL.PrefixedArgumentValues(_dualize_input(values.values))
+function _dualize_input(values::DynamicPPL.UnprefixedArgumentValues)
+    return DynamicPPL.UnprefixedArgumentValues(_dualize_input(values.values))
 end
 function _dualize_input(values::DynamicPPL.LocalModelValues)
     return DynamicPPL.LocalModelValues(_dualize_input(values.values))

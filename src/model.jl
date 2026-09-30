@@ -62,11 +62,11 @@ struct LocalModelValues{V<:VarNamedTuple}
     values::V
 end
 # Default arguments need no enclosing namespace storage during evaluation.
-struct PrefixedArgumentValues{V<:VarNamedTuple}
+struct UnprefixedArgumentValues{V<:VarNamedTuple}
     values::V
 end
-_model_values(values::PrefixedArgumentValues) = values.values
-_model_value_varname(::PrefixedArgumentValues, vn, prefix) = vn
+_model_values(values::UnprefixedArgumentValues) = values.values
+_model_value_varname(::UnprefixedArgumentValues, vn, prefix) = vn
 
 _model_values(values::VarNamedTuple) = values
 _model_values(values::LocalModelValues) = values.values
@@ -964,7 +964,7 @@ struct Model{
     Targs,
     Tdefaults,
     C<:AbstractContext,
-    Values<:Union{VarNamedTuple,LocalModelValues,PrefixedArgumentValues},
+    Values<:Union{VarNamedTuple,LocalModelValues,UnprefixedArgumentValues},
     Threaded,
 } <: AbstractProbabilisticProgram
     f::F
@@ -1025,7 +1025,7 @@ function _reconstruct_model(model::Model; context=model.context, values=model.va
     return _reconstruct_model(model, context, values, Val(requires_threadsafe(model)))
 end
 function _materialize_argument_values(model::Model)
-    model.values isa PrefixedArgumentValues || return model
+    model.values isa UnprefixedArgumentValues || return model
     values = _prefix_values(
         _model_values(model.values),
         _model_prefix(model),
@@ -1040,7 +1040,7 @@ end
 Return a model with its context replaced by `context`.
 """
 function contextualize(model::Model, context::AbstractContext)
-    if model.values isa PrefixedArgumentValues && (
+    if model.values isa UnprefixedArgumentValues && (
         last(extract_prefixes(context)) != _model_prefix(model) ||
         _prefix_template(context) !== _model_prefix_template(model)
     )
@@ -2177,7 +2177,7 @@ function prefix(model::Model, x::VarName; template=NoTemplate())
                 model.values;
                 init=true,
             )
-            PrefixedArgumentValues(model.values)
+            UnprefixedArgumentValues(model.values)
         else
             _prefix_values(model.values, x, template)
         end
