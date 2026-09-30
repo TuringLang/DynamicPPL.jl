@@ -34,6 +34,20 @@ struct MetadataRecord
 end
 
 @testset "condition and fix" begin
+    @testset "nonexistent argument fields" begin
+        @model nt_fields(p) = (m ~ Normal(); p.a ~ Normal(m); p.b ~ Normal(m))
+        for bind in (condition, fix)
+            m = nt_fields((; a=1.0, b=2.0))
+            @test_throws r"ArgumentError: .*c.*p" bind(m, @varname(p.c) => 0.0)
+            @test_throws r"ArgumentError: .*c.*p" bind(
+                m, @varname(p.a) => 5.0, @varname(p.c) => 0.0
+            )
+            @test_throws r"ArgumentError: .*c.*p" bind(
+                decondition(m, :p), @varname(p.c) => 0.0
+            )
+        end
+    end
+
     @testset "fixed coverage errors" begin
         @model uncovered(x) = x[2] ~ Normal()
         @test_throws r"ArgumentError: .*x\[2\].*size and shape" fix(

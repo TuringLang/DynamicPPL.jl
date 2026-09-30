@@ -22,7 +22,8 @@
   - Binding a submodel's return value, or anything below an argument-backed return
     buffer, throws `ArgumentError` at the submodel tilde during evaluation. Bind the
     child before wrapping it with `to_submodel` instead. Binding an argument that is
-    not a tilde site throws at the `condition` or `fix` call; construct the model with
+    not a tilde site, or a nonexistent field of an argument, throws at the `condition`
+    or `fix` call; construct the model with
     a new argument value instead.
   - `decondition` and `unfix` remove this model's bindings of their own role at the
     requested names. A name matches if it equals, contains, or is contained in a
