@@ -61,6 +61,21 @@ end
 const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
 
 @testset "model.jl" begin
+    @testset "direct construction has no observations" begin
+        @model covariate(x, y) = y ~ Normal(x)
+        f = covariate(0.0, 1.0).f
+        for m in (
+            DynamicPPL.Model{false}(f, (; x=missing, y=1.0), (;)),
+            DynamicPPL.Model{false}(f, (; x=missing); y=1.0),
+            DynamicPPL.Model{false}(f, (; x=missing, y=1.0), (;), DefaultContext()),
+        )
+            @test isempty(conditioned(m))
+            @test isempty(m.argument_sites)
+            @test ismissing(m.args.x)
+        end
+        @test conditioned(covariate(0.0, 1.0)) == VarNamedTuple(; y=1.0)
+    end
+
     @testset "convenience functions" begin
         model = GDEMO_DEFAULT
 
