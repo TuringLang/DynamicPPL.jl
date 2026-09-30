@@ -29,6 +29,21 @@ mutable struct MissingRecord
 end
 
 @testset "condition and fix" begin
+    @testset "expanded component bindings validate their extent" begin
+        @model indexed(y) = (y[1] ~ Normal(); y[2] ~ Normal(); y)
+        for data in ([1.0, 2.0], (1.0, 2.0)), bind in (condition, fix)
+            model = bind(indexed(data), @varname(y[1]) => 4.0)
+            @test_throws r"ArgumentError: .*`y\[3\]`.*outside.*`y`" bind(
+                model, @varname(y[3]) => 9.0
+            )
+            @test_throws r"ArgumentError: .*outside" bind(
+                model, @varname(y[2:3]) => [8.0, 9.0]
+            )
+            @test bind(model, @varname(y[2]) => 5.0)(Xoshiro(1)) ==
+                (data isa Tuple ? (4.0, 5.0) : [4.0, 5.0])
+        end
+    end
+
     @testset "ordinary arguments cannot be bound" begin
         @model ordinary(n; scale=1.0) = x ~ Normal(n, scale)
         @model dispatched(x::Real) = x ~ Normal()
