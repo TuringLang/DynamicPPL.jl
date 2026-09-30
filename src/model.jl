@@ -218,7 +218,14 @@ function _get_argument_role(model, vn, argument)
 end
 function _get_model_data(model, vn)
     vn = _model_value_varname(model.values, vn, _model_prefix(model))
-    return _model_data(VarNamedTuples._getindex_optic(_model_values(model.values), vn))
+    binding = _model_argument_binding(
+        _model_values(model.values), AbstractPPL.varname_to_optic(vn)
+    )
+    return if binding === nothing
+        _model_data(VarNamedTuples._getindex_optic(_model_values(model.values), vn))
+    else
+        _model_data(binding)
+    end
 end
 function _get_model_data(model, vn, argument, local_value)
     address = _model_value_varname(model.values, argument, _model_prefix(model))
@@ -292,6 +299,9 @@ end
 function _expand_model_binding(previous::ModelValue{R,<:AbstractArray}) where {R}
     data = map(ModelValue{R}, previous.value)
     return VarNamedTuples.PartialArray(data, fill!(similar(data, Bool), true))
+end
+function _expand_model_binding(previous::ModelValue{R,<:Base.Pairs}) where {R}
+    return _expand_model_binding(ModelValue{R}(NamedTuple(previous.value)))
 end
 function _expand_model_binding(previous::ModelValue{R,<:Tuple}) where {R}
     return ModelValueTree(previous.value, map(ModelValue{R}, previous.value))
@@ -508,6 +518,22 @@ function _model_argument_binding(tree::ModelValueTree{<:Tuple}, optic::AbstractP
     end
     return value isa NoModelBinding ? nothing : _model_argument_binding(value, optic.child)
 end
+function _model_argument_binding(
+    values::Union{VarNamedTuple,ModelValueTree{<:NamedTuple}},
+    optic::AbstractPPL.Index{Tuple{Symbol},NamedTuple{(),Tuple{}}},
+)
+    return _model_argument_binding(
+        values, AbstractPPL.Property{only(optic.ix)}(optic.child)
+    )
+end
+function _model_role_at(
+    values::Union{VarNamedTuple,ModelValueTree{<:NamedTuple}},
+    optic::AbstractPPL.Index{Tuple{Symbol},NamedTuple{(),Tuple{}}},
+    vn,
+)
+    return _model_role_at(values, AbstractPPL.Property{only(optic.ix)}(optic.child), vn)
+end
+
 @generated function _merge_model_values(
     previous::VarNamedTuple{P}, updates::VarNamedTuple{U}
 ) where {P,U}
@@ -1076,12 +1102,13 @@ Base.:|(model::Model, values::Union{NamedTuple,AbstractDict,Pair,Tuple,VarNamedT
     condition(model, values)
 
 function _check_argument_bindings(model, values)
-    for name in (keys(model.args)..., keys(model.defaults)...)
+    for stored_name in (keys(model.args)..., keys(model.defaults)...)
+        name = unsplat_symbol(stored_name)
         vn = _model_value_varname(model.values, VarName{name}(), _model_prefix(model))
         binding = _model_argument_binding(values, AbstractPPL.varname_to_optic(vn))
         if name in model.argument_sites
             binding isa Union{VarNamedTuple,VarNamedTuples.PartialArray} || continue
-            argument = get(merge(model.args, model.defaults), name, nothing)
+            argument = get(merge(model.args, model.defaults), stored_name, nothing)
             previous = _model_argument_binding(
                 _model_values(model.values), AbstractPPL.varname_to_optic(vn)
             )
@@ -1565,6 +1592,16 @@ function _remove_model_binding(
     return ModelValueTree(tree.template, _remove_model_binding(R, tree.values, optic))
 end
 function _remove_model_binding(
+    ::Type{R},
+    values::Union{VarNamedTuple,ModelValueTree{<:NamedTuple}},
+    optic::AbstractPPL.Index{Tuple{Symbol},NamedTuple{(),Tuple{}}},
+) where {R}
+    return _remove_model_binding(
+        R, values, AbstractPPL.Property{only(optic.ix)}(optic.child)
+    )
+end
+
+function _remove_model_binding(
     ::Type{R}, tree::ModelValueTree{<:Tuple}, optic::AbstractPPL.Index
 ) where {R}
     optic = AbstractPPL.concretize_top_level(optic, tree.template)
@@ -1863,11 +1900,12 @@ function unfix(model::Model, syms::Union{Symbol,VarName}...)
 end
 
 @generated function _argument_defaults(arguments::NamedTuple{names}, sites) where {names}
-    fields = map(names) do name
+    fields = map(names) do stored_name
+        name = unsplat_symbol(stored_name)
         :(
             if $(QuoteNode(name)) in sites
                 NamedTuple{($(QuoteNode(name)),)}((
-                    ModelValue{ArgumentCondition}(arguments.$name),
+                    ModelValue{ArgumentCondition}(arguments.$stored_name),
                 ))
             else
                 (;)
@@ -2319,6 +2357,9 @@ function _evaluate!!(model::Model, varinfo::AbstractVarInfo)
 end
 
 is_splat_symbol(s::Symbol) = startswith(string(s), "#splat#")
+function unsplat_symbol(s::Symbol)
+    return is_splat_symbol(s) ? Symbol(chopprefix(string(s), "#splat#")) : s
+end
 
 """
     make_evaluate_args_and_kwargs(model, varinfo)
@@ -2326,8 +2367,8 @@ is_splat_symbol(s::Symbol) = startswith(string(s), "#splat#")
 Return the arguments and keyword arguments to be passed to the evaluator of the model, i.e. `model.f`e.
 """
 @generated function make_evaluate_args_and_kwargs(
-    model::Model{_F,argnames}, varinfo::AbstractVarInfo
-) where {_F,argnames}
+    model::Model{_F,argnames,defaultnames}, varinfo::AbstractVarInfo
+) where {_F,argnames,defaultnames}
     unwrap_args = [
         if is_splat_symbol(var)
             :(
@@ -2341,9 +2382,13 @@ Return the arguments and keyword arguments to be passed to the evaluator of the 
             ))
         end for var in argnames
     ]
+    unwrap_kwargs = [
+        is_splat_symbol(var) ? :(model.defaults.$var...) : :($var = model.defaults.$var) for
+        var in defaultnames
+    ]
     return quote
         args = (model, varinfo, $(unwrap_args...))
-        kwargs = model.defaults
+        kwargs = (; $(unwrap_kwargs...))
         return args, kwargs
     end
 end

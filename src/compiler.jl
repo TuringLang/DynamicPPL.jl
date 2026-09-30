@@ -652,7 +652,10 @@ function build_output(modeldef, linenumbernode, sites)
     args_split = map(MacroTools.splitarg, args)
     kwargs_split = map(MacroTools.splitarg, kwargs)
     args_nt = namedtuple_from_splitargs(args_split)
-    kwargs_inclusion = map(splitarg_to_expr, kwargs_split)
+    kwargs_nt = namedtuple_from_splitargs(kwargs_split)
+    for (i, (name, _, is_splat, _)) in enumerate(kwargs_split)
+        is_splat && (kwargs_nt.args[2].args[i] = :($(NamedTuple)($name)))
+    end
     observed_args = unique([
         name for (name, _, _, _) in vcat(args_split, kwargs_split) if name in sites
     ])
@@ -721,7 +724,7 @@ function build_output(modeldef, linenumbernode, sites)
         return $(DynamicPPL.Model){false}(
             $name,
             $args_nt,
-            (; $(kwargs_inclusion...)),
+            $kwargs_nt,
             $(DynamicPPL.DefaultContext)(),
             $(_tag_model_values)($(ArgumentCondition), $(VarNamedTuple)($observations));
             argument_sites=($(QuoteNode(Symbol[observed_args...]))),
