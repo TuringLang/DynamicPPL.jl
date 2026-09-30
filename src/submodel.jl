@@ -227,7 +227,12 @@ function tilde_assume!!(
     values = LocalModelValues(
         _merge_model_values(
             _submodel_values(submodel.model, nothing),
-            _submodel_values(parent_model, local_prefix),
+            _submodel_values(
+                _remove_model_values(ArgumentCondition, _model_values(parent_model.values)),
+                _model_value_varname(
+                    parent_model.values, local_prefix, _model_prefix(parent_model)
+                ),
+            ),
         ),
     )
     parent_prefix = _model_prefix(parent_model)

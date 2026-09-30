@@ -1286,14 +1286,25 @@ function _check_model_removal(::Type{R}, values, args...) where {R}
     return nothing
 end
 
+function _remove_model_values(::Type{R}, values::VarNamedTuple) where {R}
+    return mapfoldl(
+        identity,
+        function (kept, pair)
+            vn, value = pair
+            return if _matches_model_role(R, value)
+                kept
+            else
+                templated_setindex!!(kept, value, vn, values.data[AbstractPPL.getsym(vn)])
+            end
+        end,
+        values;
+        init=VarNamedTuple(),
+    )
+end
+
 function _remove_model_values(
     ::Type{R}, values::VarNamedTuple, args::Union{Symbol,VarName}...
 ) where {R}
-    if isempty(args)
-        return subset(
-            values, filter(key -> !_matches_model_role(R, values[key]), keys(values))
-        )
-    end
     for arg in args
         vn = arg isa VarName ? arg : VarName{arg}()
         values = _remove_model_binding(R, values, AbstractPPL.varname_to_optic(vn))
