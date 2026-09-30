@@ -956,12 +956,15 @@ end
 function _reconstruct_model end
 
 """
-    Model{Threaded}(f, args::NamedTuple, defaults::NamedTuple, context=DefaultContext(), values=...)
+    Model{Threaded}(f, args::NamedTuple, defaults::NamedTuple, context=DefaultContext(); argument_sites=Symbol[])
 
-Store a model function, arguments, context, and role-tagged conditioned or fixed values.
-Direct construction without `values` supplies no observations and records no argument
-sites; arguments are ordinary inputs. `@model` supplies default observations and site
-metadata for arguments used on the left-hand side of `~`. Use [`decondition`](@ref)
+Store a model function, arguments, and context. Prefer [`@model`](@ref) for construction.
+For direct construction, use [`condition`](@ref) or [`fix`](@ref) to supply bindings.
+Set `argument_sites` to the vector of argument names that occur on the left-hand side of
+`~` so those arguments can be bound, for example
+`condition(Model{false}(f, (; y=1.0), (;); argument_sites=[:y]); y=2.0)`.
+Direct construction supplies no observations; arguments are ordinary inputs. `@model`
+supplies default observations and site metadata for arguments used on the left-hand side of `~`. Use [`decondition`](@ref)
 to remove those observations.
 An argument used as a submodel's left-hand side supplies a return-value buffer, not an
 observation, and needs no deconditioning. See [Binding rules](@ref).
@@ -1056,6 +1059,7 @@ function contextualize(model::Model, context::AbstractContext)
     end
     return _reconstruct_model(model; context)
 end
+"""Return a model with its leaf context replaced by `context`."""
 function setleafcontext(model::Model, context::AbstractContext)
     return contextualize(model, setleafcontext(model.context, context))
 end
@@ -1891,7 +1895,10 @@ name supplied only by a child submodel or only conditioned on this model.
 
 Unlike [`decondition`](@ref), removal restores the argument's default observation, if any,
 otherwise making the site latent; it never restores an earlier explicit condition.
-For `@model f(x) = x ~ Normal()`, `unfix(fix(f(1.0); x=5.0), :x)` observes `x = 1.0` again.
+Argument observations are rebuilt from the model's arguments, even if previously removed
+with `decondition`. For `@model f(x) = x ~ Normal()`, both
+`unfix(fix(f(1.0); x=5.0), :x)` and
+`unfix(fix(decondition(f(1.0), :x); x=5.0), :x)` observe `x = 1.0` again.
 
 See also: [`fix`](@ref), [Binding rules](@ref).
 

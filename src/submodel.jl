@@ -55,8 +55,9 @@ An argument used as the left-hand side supplies a return-value buffer, not an ob
 it needs no [`decondition`](@ref). This includes `NamedTuple` arguments: their fields are
 initial buffer data, not bindings of the child's variables. To bind `@varname(a.x)` on the
 parent, `a` must not be a model argument. Explicit bindings at or below an argument buffer
-also throw during evaluation. Condition or fix the child before wrapping it instead. To
-remove a child's argument observations, decondition the child before wrapping it.
+also throw during evaluation, or at the `condition` or `fix` call when the buffer's type
+already rules out the requested field. Condition or fix the child before wrapping it instead.
+To remove a child's argument observations, decondition the child before wrapping it.
 See [Binding rules](@ref).
 
 `Submodel` is not a `Distribution`; it provides this tilde behavior but no standalone
