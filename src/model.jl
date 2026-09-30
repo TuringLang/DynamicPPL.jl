@@ -828,8 +828,10 @@ Return a `Model` which now treats the variables in `values` as observations.
 See also: [`decondition`](@ref), [`conditioned`](@ref)
 
 Supplied values override model arguments and earlier conditioned or fixed values at the
-same address. Parent-model values override submodel values. Sites without supplied values
-remain latent; `missing` is not a latent-variable marker.
+same address. Bindings for arguments that do not occur on the left-hand side of `~`
+are stored and reported by `conditioned`, but do not replace those arguments. Parent-model
+values override submodel values. Sites without supplied values remain latent; `missing` is
+not a latent-variable marker.
 
 A complete argument replacement supplies its value, shape, and dispatch type parameters
 from the start of the model body. Partial updates preserve the remaining stored values and
@@ -1139,6 +1141,9 @@ end
     conditioned(model::Model)
 
 Return the conditioned values in `model`.
+
+This includes stored bindings for arguments that do not occur on the left-hand side of `~`.
+Such bindings do not replace the arguments used by the model body.
 
 # Examples
 ```jldoctest
