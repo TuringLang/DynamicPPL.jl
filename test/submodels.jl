@@ -42,6 +42,29 @@ end
 @model nested_observations(y) = a ~ to_submodel(indexed_observations(y))
 
 @testset "submodels.jl" begin
+    @testset "implicit argument observations stay in their model" begin
+        @model scalar_likelihood(y, mu) = y ~ Normal(mu)
+        @model function overlap(y)
+            mu ~ Normal()
+            y[1] ~ Normal(mu)
+            return a ~ to_submodel(scalar_likelihood(y[2], mu), false)
+        end
+        @model function renamed(z)
+            mu ~ Normal()
+            z[1] ~ Normal(mu)
+            return a ~ to_submodel(scalar_likelihood(z[2], mu), false)
+        end
+        expected = sum(logpdf.(Normal(), [0.0, 1.0, 2.0]))
+        @test logjoint(overlap([1.0, 2.0]), (; mu=0.0)) ≈ expected
+        @test logjoint(renamed([1.0, 2.0]), (; mu=0.0)) ≈ expected
+        for bind in (condition, fix)
+            model = bind(renamed([1.0, 2.0]), @varname(y) => 5.0)
+            expected = logpdf(Normal(), 1.0)
+            bind === condition && (expected += logpdf(Normal(), 5.0))
+            @test loglikelihood(model, (; mu=0.0)) ≈ expected
+        end
+    end
+
     @testset "arguments supply submodel return buffers" begin
         @model child() = (x ~ Normal(); x)
         @model function dynamic_buffer(a)
