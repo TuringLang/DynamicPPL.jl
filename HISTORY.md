@@ -24,6 +24,14 @@ Added the `context` keyword to `DynamicPPL.DebugUtils.model_typed`, `model_warnt
 
 `tilde_observe!!(::AbstractContext, ...)` overloads are no longer called: context observation hooks → `accumulate_observe!!` implementations. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
+`tilde_observe!!` now takes `(prefix, prefix_template, right, left, vn, template, vi)` instead of `(model, right, left, vn, template, vi)`; every generated observation calls this exported entry point. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+
+Context-based `store_coloneq_value!!` methods are removed; `:=` statements use the model-based storage path. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+
+`decondition(model, names...)` and `unfix(model, names...)` now throw `ArgumentError` when a requested address has no stored binding of the requested role. Decondition child argument observations before wrapping the child with `to_submodel`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+
+`condition` and `fix` now reject model arguments that do not occur on the left-hand side of `~`. Construct the model with a new argument value instead. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+
 Model arguments supply default observations; `condition` and `fix` at the same address now replace the earlier role rather than stacking contexts. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
 `missing` at a bound site now throws `ArgumentError`, including arguments and values supplied to `condition`, `fix`, or `InitFromParams`: `f(missing)` / `f([1.0, missing])` → `decondition(f(x), @varname(x))` / `decondition(f(x), @varname(x[2]))`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
@@ -34,7 +42,7 @@ Model arguments supply default observations; `condition` and `fix` at the same a
 
 `conditioned(::AbstractContext)` / `fixed(::AbstractContext)` are removed: use `conditioned(model)` / `fixed(model)`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-`Model` gains a `values` field and loses its `missings` type parameter: direct field construction and dispatch on the old type parameters break; use `Model{Threaded}(f, args, defaults, context, values)` with role-tagged `values`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+`Model` gains `values` and `argument_sites` fields and loses its `missings` type parameter: direct field construction and dispatch on the old type parameters break; use `Model{Threaded}(f, args, defaults, context, values)` with role-tagged `values`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
 Conditioning or fixing a submodel's return value now errors: binding the submodel LHS → binding its internal variable names. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
