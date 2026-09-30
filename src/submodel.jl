@@ -38,23 +38,25 @@ function _stan_value_and_pullback end
 Wrap `model` for use on the right-hand side of `~`.
 
 In `value ~ to_submodel(model)`, `model` is evaluated, its return value is assigned to
-`value`, and its latent variables are recorded separately in the surrounding trace. By
-default, their names are prefixed with the left-hand side: a latent variable `x` becomes
+`value`, and its latent sites are recorded separately in the surrounding trace. By
+default, their names are prefixed with the left-hand side: a latent site `x` becomes
 `value.x`. This differs from [`to_distribution`](@ref), which assigns the represented latent
-variables themselves to the left-hand side.
+site values to the left-hand side.
 
 Conceptually, `to_submodel(model)` is a `returned_value(model)` wrapper: its value is the
-model's return value, not its latent variables.
+model's return value, not its latent site values.
 
-Condition or fix a submodel through its variable names in the parent: for example,
+Condition or fix a submodel through its submodel namespace in the parent: for example,
 `@varname(a.x)` in `a ~ to_submodel(child())`. With `auto_prefix=false`, use the child's
-names unchanged. Parent bindings override child bindings at the same address.
+names unchanged. Parent explicit bindings override the child's explicit bindings and
+argument observations at the same address; parent argument observations never reach a child.
 
 Binding the return value throws `ArgumentError` at the submodel tilde during evaluation.
-An argument used as the left-hand side supplies a return-value buffer, not an observation;
-it needs no [`decondition`](@ref). This includes `NamedTuple` arguments: their fields are
-initial buffer data, not bindings of the child's variables. To bind `@varname(a.x)` on the
-parent, `a` must not be a model argument. Explicit bindings at or below an argument buffer
+An argument used as the left-hand side supplies a return-value buffer; its argument
+observation is ignored at the submodel tilde, so it needs no [`decondition`](@ref).
+This includes `NamedTuple` arguments: their fields are
+initial buffer data, not bindings of the child's sites. To bind `@varname(a.x)` on the
+parent, `a` must not be a model argument. Explicit bindings at or below a return-value buffer
 also throw during evaluation, or at the `condition` or `fix` call when the buffer's type
 already rules out the requested field. Condition or fix the child before wrapping it instead.
 To remove a child's argument observations, decondition the child before wrapping it.
@@ -65,12 +67,12 @@ See [Binding rules](@ref).
 
 !!! warning
     Keep `auto_prefix=true` unless the wrapped model has been explicitly prefixed. Disabling
-    automatic prefixing can make latent-variable names collide.
+    automatic prefixing can make latent-site addresses collide.
 
 # Arguments
 
 - `model::Model`: the model to wrap.
-- `auto_prefix::Bool=true`: whether to prefix the model's latent variables with the
+- `auto_prefix::Bool=true`: whether to prefix the model's latent sites with the
   left-hand side of `~`.
 
 # Examples
@@ -89,7 +91,7 @@ julia> @model function demo2(y)
        end;
 ```
 
-When sampling from `demo2(0.4)`, the latent variable `x` is prefixed with `a`, the
+When sampling from `demo2(0.4)`, the latent site `x` is prefixed with `a`, the
 left-hand side of the tilde:
 
 ```jldoctest submodel-to_submodel
@@ -117,7 +119,7 @@ true
 
 ## Without automatic prefixing
 
-If `auto_prefix=false`, the submodel's latent-variable names are unchanged.
+If `auto_prefix=false`, the submodel's latent-site addresses are unchanged.
 ```jldoctest submodel-to_submodel-prefix; setup=:(using Distributions)
 julia> @model function demo1()
            x ~ Normal()

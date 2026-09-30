@@ -2,46 +2,58 @@
 
 ## Binding rules
 
-  - A conditioned value is an observation and contributes to the likelihood. A fixed
-    value is a constant and contributes no log probability. Both replace sampling.
+  - A *site* is the address on the left of a tilde statement; a *component* is a
+    sub-address of a site or binding. A *binding* pairs an address with a value and a
+    *role*: conditioned values are observations and contribute to the likelihood;
+    fixed values are constants and contribute no log probability. Both replace sampling.
+    An *explicit binding* is made by `condition` or `fix`.
     Fixed values must cover every site they bind with a static size and shape: changing a
     fixed argument's size or shape in the body throws `ArgumentError` naming the site.
     This restriction does not apply to conditioned values.
-  - With `@model`, an argument on the left of `~` supplies a default observation.
+  - An *argument site* is a model argument whose name is the top symbol of a site's
+    address. With `@model`, it supplies an *argument observation*: an implicit
+    conditioned binding. An *argument replacement* makes the model body start from
+    the bound value; each site then observes or fixes what the body computes.
     Direct `Model` construction records no observations; pass `argument_sites` to declare
     which arguments can be bound with `condition` or `fix`.
-    An argument used as a submodel's left-hand side (`a ~ to_submodel(...)`) supplies a return-value
-    buffer instead; it needs no `decondition`. Even a `NamedTuple` buffer is only an
-    initial return value, not a child namespace. Bind the child before `to_submodel`,
+    An argument used as a submodel's left-hand side (`a ~ to_submodel(...)`) is a *return-value
+    buffer*: it holds only the initial return value, and its argument observation is
+    ignored at the submodel tilde; it needs no `decondition`. A `NamedTuple` buffer
+    does not supply a submodel namespace. Bind the child before `to_submodel`,
     or use `@varname(a.x)` on a parent whose submodel LHS `a` is not an argument.
   - Later bindings replace earlier ones where they overlap. A whole binding replaces
-    all components; a component binding replaces only that component. A single tilde
-    statement's value cannot mix conditioned, fixed, or unbound components; such sites
+    all components; a component binding replaces only that component. A single site's
+    value cannot mix conditioned, fixed, or unbound components; such sites
     throw `ArgumentError` during evaluation.
-  - Parent bindings override child bindings at the same address. Use the submodel's
-    names in the parent, such as `@varname(a.x)`, or unprefixed names with
+  - The *effective binding* is the binding in force at a site. Precedence, highest
+    first: the parent's explicit binding at the child's prefixed address, then the
+    child's own explicit binding, then the child's argument observation. A parent's
+    argument observations never reach a child. A *latent site* has no effective
+    binding; its value is drawn or supplied by initialization.
+    The *submodel namespace* is the set of parent addresses that reach a child's
+    sites, such as `@varname(a.x)`, or the child's unchanged names with
     `auto_prefix=false` (unless the child was manually prefixed).
-  - Binding a submodel's return value, or anything below an argument-backed return
-    buffer, throws `ArgumentError` at the submodel tilde during evaluation, or earlier
+  - Binding a submodel's return value, or anything below a return-value buffer,
+    throws `ArgumentError` at the submodel tilde during evaluation, or earlier
     at the `condition` or `fix` call when the buffer's type rules out the requested field. Bind the
     child before wrapping it with `to_submodel` instead. Binding an argument that is
-    not a tilde site, or a nonexistent field of an argument, throws at the `condition`
+    not an argument site, or a nonexistent component of an argument, throws at the `condition`
     or `fix` call; construct the model with a new argument value instead.
   - `decondition` and `unfix` remove this model's bindings of their own role at the
     requested names. A name matches if it equals, contains, or is contained in a
     stored binding's address, after resolving equivalent index and property forms.
     A name with no match throws `ArgumentError`, including bindings supplied only by
     a child. Decondition child argument observations before `to_submodel`. With no
-    names, all bindings of the requested role are removed. `unfix` restores the argument's
-    default observation, if any, otherwise making the site latent; it never restores an
-    earlier explicit condition. Argument observations are rebuilt from the model's arguments,
+    names, all bindings of the requested role are removed. `unfix` restores the argument
+    observation, if any, otherwise making the site latent; it never restores an
+    earlier explicit conditioned binding. Argument observations are rebuilt from the model's arguments,
     so `unfix(fix(decondition(m, :x); x=5.0), :x)` also restores an argument observation
-    previously removed by `decondition`. `decondition(m, :x)` removes explicit and argument-default
+    previously removed by `decondition`. `decondition(m, :x)` removes explicit and argument
     observations at `x`, making it latent.
   - `conditioned` and `fixed` return plain values, independent of binding history:
     `VarNamedTuple`, `PartialArray`, or ordinary values. Partial removal or mixed
     roles produce plain partial values, not the original container type.
-  - `missing` is rejected at construction in tilde arguments and values supplied to
+  - `missing` is rejected at construction in argument sites and values supplied to
     `condition` or `fix`, recursively throughout tuples, named tuples, and assigned array
     entries, including unused parts of those arguments. Custom struct fields are checked
     only at executed sites. Omit unobserved bindings, or construct with a non-missing
@@ -49,12 +61,12 @@
     `InitFromParams` rejects it when the parameter is read during initialization,
     not at construction. Leave unobserved values out instead.
   - Whole bindings use the supplied object without copying. When a component binding
-    splits a whole binding, the remaining elements are captured at that time; later
-    changes to the supplied container's entries are not reflected in those elements.
+    splits a whole binding, the remaining components are captured at that time; later
+    changes to the supplied container's entries are not reflected in those components.
     The model body must not mutate bound values, directly or through an alias such
     as a `view`. Component bindings on array arguments rebuild
     the argument in O(length) per evaluation; prefer whole replacements for large arrays.
-  - Bindings unused by any executed tilde statement are ignored, including unknown
+  - Bindings unused by any executed site are ignored, including unknown
     names and sites in branches that do not run.
 
 ## Example
@@ -75,7 +87,7 @@ using DynamicPPL, Distributions
 end
 ```
 
-This model has no observed data: none of its sites are conditioned, so all the `y[i]`'s are latent variables.
+This model has no observed data: none of its sites are conditioned, so all the `y[i]` sites are latent.
 
 !!! note "Why do we need to define `y` in the model?"
     
@@ -97,8 +109,8 @@ If we run the model before conditioning on `y`, we will find that all of `m`, `c
 ```@example 1
 model = linear_regression(x)
 
-# Here, `rand(model())` samples from the prior distribution and returns a
-# VarNamedTuple of latent variables.
+# Here, `rand(model)` samples from the prior distribution and returns a
+# VarNamedTuple of latent sites.
 rand(model)
 ```
 
@@ -114,7 +126,7 @@ This is useful for prior predictive checks, for example.
 
 ## Conditioning
 
-Replacing a complete argument updates its value, shape, and dispatch type parameters before
+Replacing a complete argument site updates its value, shape, and dispatch type parameters before
 the model body runs, provided it matches the declared argument types. For example, replacing
 `x::Vector{Float64}` with `[1, 2]` throws `ArgumentError`; use `[1.0, 2.0]` instead.
 Partial updates preserve the remaining stored values and their array
@@ -143,14 +155,14 @@ We can inspect the values that have been conditioned on, using the `conditioned`
 conditioned(cond_model)
 ```
 
-If we were to run this model, we would now find that `y` is an observed variable, and thus it is not sampled:
+If we were to run this model, we would now find that the `y[i]` sites are observed, and thus they are not sampled:
 
 ```@example 1
 parameters = rand(cond_model)
 ```
 
 We can't directly draw from the posterior using DynamicPPL (`rand` still draws from the prior).
-However, since this is now an observed variable, the log-likelihood associated with the newly provided `y` will be computed:
+However, since these sites are now observed, the log-likelihood associated with the newly provided `y` will be computed:
 
 ```@example 1
 loglikelihood(cond_model, parameters)
@@ -239,13 +251,13 @@ rand(cond_model_partial)
 
 ## Missing data
 
-Construction checks all parts of tilde arguments recursively through tuples, named tuples,
-and assigned array entries, even when a part has no tilde statement. For
+Construction checks all parts of argument sites recursively through tuples, named tuples,
+and assigned array entries, even when a component is not a site. For
 `@model metadata_site(p) = p.a ~ Normal()`, `metadata_site((a=1.0, b=missing))` therefore
 throws at construction. Custom struct fields are not searched at construction; `missing`
-is rejected when such a field is used at an executed tilde site.
+is rejected when such a component is used at an executed site.
 
 Omit unobserved values from `condition` or `fix`. For argument observations, supply a
 non-missing placeholder first, then call `decondition(m, :x)` (or remove a component)
 to make the desired sites latent.
-For an array whose elements have separate tilde statements, condition only the observed indices, as in the examples above. A single multivariate draw cannot be partially conditioned.
+For an array whose components are separate sites, condition only the observed indices, as in the examples above. A single multivariate draw cannot be partially conditioned.

@@ -20,7 +20,7 @@ Added the `context` keyword to `DynamicPPL.DebugUtils.model_typed`, `model_warnt
 
 ## Breaking changes
 
-Partly removing bindings of a single multivariate tilde site now throws `ArgumentError` during evaluation; declare separate component sites to remove components independently. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+Partly removing bindings of a single multivariate site now throws `ArgumentError` during evaluation; declare separate component sites to remove components independently. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
 Component bindings preserve argument array element types through exact conversion and reject values that cannot be represented. Use a compatible argument template, including for AD tracer values. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
@@ -36,11 +36,11 @@ Context-based `store_coloneq_value!!` methods are removed; `:=` statements use t
 
 `decondition(model, names...)` and `unfix(model, names...)` now throw `ArgumentError` when a requested address has no stored binding of the requested role. Decondition child argument observations before wrapping the child with `to_submodel`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-`condition` and `fix` now reject model arguments that do not occur on the left-hand side of `~`, and nonexistent fields of NamedTuple arguments. Construct the model with a new argument value instead. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+`condition` and `fix` now reject model arguments that are not argument sites, and nonexistent components of NamedTuple arguments. Construct the model with a new argument value instead. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-Model arguments supply default observations; `condition` and `fix` at the same address now replace the earlier role rather than stacking contexts. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+Model arguments supply argument observations; `condition` and `fix` at the same address now replace the earlier role rather than stacking contexts. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-`missing` at a bound site now throws `ArgumentError`; construction checks tilde arguments recursively through tuples, named tuples, and assigned array entries, including unused parts (custom struct fields are checked at executed sites). `condition` and `fix` use the same checks; `InitFromParams` rejects `missing` when read: `f(missing)` / `f([1.0, missing])` → `decondition(f(x), @varname(x))` / `decondition(f(x), @varname(x[2]))`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+`missing` at a bound site now throws `ArgumentError`; construction checks argument sites recursively through tuples, named tuples, and assigned array entries, including unused parts (custom struct fields are checked at executed sites). `condition` and `fix` use the same checks; `InitFromParams` rejects `missing` when read: `f(missing)` / `f([1.0, missing])` → `decondition(f(x), @varname(x))` / `decondition(f(x), @varname(x[2]))`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
 `CondFixContext` is removed: use `condition(model, values)` / `fix(model, values)`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
@@ -48,11 +48,11 @@ Model arguments supply default observations; `condition` and `fix` at the same a
 
 `conditioned(::AbstractContext)` / `fixed(::AbstractContext)` are removed: use `conditioned(model)` / `fixed(model)`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-`Model` gains `values` and `argument_sites` fields and loses its `missings` type parameter: direct field construction and dispatch on the old type parameters break; construct with `@model`, or use `Model{Threaded}(f, args, defaults, context; argument_sites=[:y, ...])` followed by `condition`/`fix`. Direct construction supplies no observations; `argument_sites` lists arguments used on the left-hand side of `~` that can be bound. `@model` supplies both observations and site metadata for tilde arguments. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+`Model` gains `values` and `argument_sites` fields and loses its `missings` type parameter: direct field construction and dispatch on the old type parameters break; construct with `@model`, or use `Model{Threaded}(f, args, defaults, context; argument_sites=[:y, ...])` followed by `condition`/`fix`. Direct construction supplies no observations; `argument_sites` lists arguments used on the left-hand side of `~` that can be bound. `@model` supplies both observations and site metadata for argument sites. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-Conditioning or fixing a submodel's return value now errors: binding the submodel LHS → binding its internal variable names. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+Conditioning or fixing a submodel's return value now errors: binding the submodel LHS → binding sites in its submodel namespace. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-`check_model` no longer warns when a variable is both a model argument and explicitly conditioned: explicit bindings now replace argument observations. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+`check_model` no longer warns when an argument site is explicitly conditioned: explicit bindings now replace argument observations. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
 `OnlyAccsVarInfo` is removed: `OnlyAccsVarInfo(accs...)` → `VarInfo(accs...)`, with the same constructor forms. See [#1500](https://github.com/TuringLang/DynamicPPL.jl/pull/1500).
 

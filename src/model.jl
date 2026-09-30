@@ -964,10 +964,10 @@ Set `argument_sites` to the vector of argument names that occur on the left-hand
 `~` so those arguments can be bound, for example
 `condition(Model{false}(f, (; y=1.0), (;); argument_sites=[:y]); y=2.0)`.
 Direct construction supplies no observations; arguments are ordinary inputs. `@model`
-supplies default observations and site metadata for arguments used on the left-hand side of `~`. Use [`decondition`](@ref)
-to remove those observations.
-An argument used as a submodel's left-hand side supplies a return-value buffer, not an
-observation, and needs no deconditioning. See [Binding rules](@ref).
+supplies argument observations and site metadata for argument sites. Use
+[`decondition`](@ref) to remove those observations.
+An argument used as a submodel's left-hand side supplies a return-value buffer; its
+argument observation is ignored at the submodel tilde, so it needs no deconditioning. See [Binding rules](@ref).
 """
 struct Model{
     F,
@@ -1016,7 +1016,7 @@ end
 Create a model with evaluation function `f` and arguments `args`.
 
 Arguments are ordinary inputs; no observations or argument sites are recorded.
-Use [`@model`](@ref) to construct a model with argument-default observations.
+Use [`@model`](@ref) to construct a model with argument observations.
 
 Keyword arguments `kwargs` are stored in the model's `defaults` field.
 """
@@ -1202,27 +1202,27 @@ end
     condition(model::Model; values...)
     condition(model::Model, values::NamedTuple)
 
-Return a `Model` which treats the variables in `values` as observations: they replace
+Return a `Model` which treats the sites bound by `values` as observations: they replace
 sampling and contribute to the likelihood.
 
 See also: [`decondition`](@ref), [`conditioned`](@ref)
 
 Later bindings replace earlier ones where they overlap: a whole binding replaces all its
-components; a component binding replaces only itself. One tilde statement cannot mix
+components; a component binding replaces only itself. One site cannot mix
 conditioned and fixed components. `missing` is rejected at binding or model construction,
 recursively throughout tuples, named tuples, and assigned array entries, including unused
-parts of a tilde argument; custom struct fields are checked only at executed sites.
+parts of an argument site; custom struct fields are checked only at executed sites.
 Omit unobserved values from `condition` or `fix`, or supply a non-missing argument placeholder
 and [`decondition`](@ref) it; see [Missing data](@ref).
-Bindings unused by executed tilde statements are ignored.
+Bindings unused by executed sites are ignored.
 
-Binding an argument that is not a tilde site throws `ArgumentError` at this call; construct
+Binding an argument that is not an argument site throws `ArgumentError` at this call; construct
 the model with a new argument value instead. For submodel names, precedence, and errors
 at evaluation time, see [`to_submodel`](@ref) and [Binding rules](@ref).
 
 Whole bindings use the supplied object without copying. A component binding snapshots the
-remaining elements when it splits a whole binding; later changes to the supplied container's
-entries are not reflected in those elements. The model body must not mutate bound values,
+remaining components when it splits a whole binding; later changes to the supplied container's
+entries are not reflected in those components. The model body must not mutate bound values,
 directly or through an alias such as a `view`. This also applies to [`fix`](@ref).
 
 A complete argument replacement supplies its value, shape, and dispatch type parameters
@@ -1277,7 +1277,7 @@ julia> m, x = conditioned_model(); (m != 1.0 && x == 100.0)
 true
 ```
 
-In the above we have specified the conditioning variables via keyword arguments. You can also
+In the above we have specified the conditioned sites via keyword arguments. You can also
 provide a `NamedTuple`, `AbstractDict{<:VarName}`, or a `VarNamedTuple`; internally these are
 all converted to a `VarNamedTuple`.
 
@@ -1297,12 +1297,12 @@ julia> m, x = conditioned_model_pairs(); (m != 1.0 && x == 100.0)
 true
 ```
 
-## Condition only a part of a multivariate variable
+## Condition individual component sites
 
 Supply only the indices to observe; omitted sites remain latent.
 
-However, note that in this case each element of the multivariate random variable must be on
-its own tilde-statement. In other words, if we write `m ~ MvNormal(...)`, then we cannot
+However, note that in this case each component must be a separate site. If we write
+`m ~ MvNormal(...)`, then we cannot
 condition on only `m[1]`. Partly bound sites throw `ArgumentError` during evaluation.
 (In principle, for some distributions this can be possible, specifically when the
 distribution can be factorised into independent components, like an MvNormal with a
@@ -1361,9 +1361,9 @@ true
 
 `condition` also supports the use of nested models through the use of [`to_submodel`](@ref).
 
-If a submodel's left-hand side is a model argument, its default binding supplies a
-return-value buffer and does not observe the submodel's return value. Explicit bindings
-at or below that address are rejected during evaluation, including named-tuple namespaces.
+If a submodel's left-hand side is a model argument, it supplies a
+return-value buffer; its argument observation is ignored at the submodel tilde. Explicit bindings
+at or below that address are rejected during evaluation, including named-tuple submodel namespaces.
 Condition or fix the child model before wrapping it with `to_submodel` instead.
 
 ```jldoctest condition
@@ -1371,7 +1371,7 @@ julia> @model demo_inner() = m ~ Normal()
 demo_inner (generic function with 2 methods)
 
 julia> @model function demo_outer()
-           # By default, `to_submodel` prefixes the variables using the left-hand side of `~`.
+           # By default, `to_submodel` prefixes the sites using the left-hand side of `~`.
            inner ~ to_submodel(demo_inner())
            return inner
        end
@@ -1382,14 +1382,13 @@ julia> model = demo_outer();
 julia> model() ≠ 1.0
 true
 
-julia> # To condition the variable inside `demo_inner` we need to refer to it as `inner.m`.
+julia> # To condition the site inside `demo_inner` we need to refer to it as `inner.m`.
        conditioned_model = model | (@varname(inner.m) => 1.0, );
 
 julia> conditioned_model()
 1.0
 
-julia> # If you attempt to condition on `inner` itself, it must refer to the prefixed
-       # latent variables, not the return value. For example, this will work:
+julia> # Binding `inner` supplies a submodel namespace. For example, this will work:
        conditioned_model2 = model | (inner = (m = 1.0,), );
 
 julia> conditioned_model2()
@@ -1489,12 +1488,12 @@ end
 
 """
     decondition(model::Model)
-    decondition(model::Model, variables...)
+    decondition(model::Model, names...)
 
-Return a `Model` for which `variables...` are _not_ conditioned on. If no `variables` are
-provided, then all conditioned variables will be removed.
+Remove this model's conditioned bindings at `names...`, or all conditioned bindings
+if no names are supplied.
 
-Unlike [`unfix`](@ref), `decondition(m, :x)` removes explicit and argument-default
+Unlike [`unfix`](@ref), `decondition(m, :x)` removes explicit and argument
 observations, making `x` latent. After deconditioning, a site's
 sampled value replaces its local argument value and is used by subsequent model statements.
 
@@ -1544,12 +1543,12 @@ julia> # `decondition` multiple at once:
        (m, x) = decondition(conditioned_model, :m, :x)(); (m ≠ 1.0 && x ≠ 10.0)
 true
 
-julia> # `decondition` without any symbols will `decondition` all variables.
+julia> # `decondition` without any symbols will `decondition` all sites.
        (m, x) = decondition(model)(); (m ≠ 1.0 && x ≠ 10.0)
 true
 ```
 
-A component of a whole binding can be deconditioned when it has its own tilde statement.
+A component of a whole binding can be deconditioned when it is a separate site.
 
 ```jldoctest decondition
 julia> @model function demo_mv(::Type{TV}=Float64) where {TV}
@@ -1765,7 +1764,7 @@ demo (generic function with 2 methods)
 
 julia> m = demo();
 
-julia> # Returns all the variables we have conditioned on + their values.
+julia> # Returns the addresses and values of conditioned bindings.
        conditioned(condition(m, x=100.0, m=1.0))
 VarNamedTuple
 ├─ x => 100.0
@@ -1779,8 +1778,8 @@ VarNamedTuple
 └─ a => VarNamedTuple
         └─ m => 1.0
 
-julia> # Since we conditioned on `a.m`, it is not treated as a random variable.
-       # However, `a.x` is still a random variable.
+julia> # Since we conditioned on `a.m`, it is an observed site.
+       # However, `a.x` is still a latent site.
        keys(VarInfo(cm))
 1-element Vector{VarName}:
  a.x
@@ -1807,12 +1806,12 @@ conditioned(model::Model) = _select_model_values(
     fix(model::Model; values...)
     fix(model::Model, values::NamedTuple)
 
-Return a `Model` which treats the variables in `values` as constants: they replace
+Return a `Model` which treats the sites bound by `values` as constants: they replace
 sampling and contribute no log probability.
 
 Whole bindings use the supplied object without copying. A component binding snapshots the
-remaining elements when it splits a whole binding; later changes to the supplied container's
-entries are not reflected in those elements. The model body must not mutate bound values,
+remaining components when it splits a whole binding; later changes to the supplied container's
+entries are not reflected in those components. The model body must not mutate bound values,
 directly or through a `view`. `missing` rejection has the scope and remedies documented
 in [`condition`](@ref). Replacement, unused bindings, and
 argument restrictions follow [`condition`](@ref). See [Binding rules](@ref) for the shared rules, including the
@@ -1822,17 +1821,15 @@ Fixed values must cover every site they bind with a static size and shape. If th
 body changes a fixed argument's size or shape, evaluation throws `ArgumentError` naming
 the site. This restriction does not apply to [`condition`](@ref).
 
-Removing a fixed binding with [`unfix`](@ref) restores the argument default, if any,
-without restoring an earlier explicit condition.
+Removing a fixed binding with [`unfix`](@ref) restores the argument observation, if any,
+without restoring an earlier explicit conditioned binding.
 
 See also: [`unfix`](@ref), [`fixed`](@ref)
 
-!!! warning "Fixing applies to whole variables"
-    Variables are treated as they occur in the model. A variable drawn from a multivariate
-    distribution in a single tilde-statement (e.g. `x ~ MvNormal(...)`) is a *single* random
-    variable, so a subset of its components cannot be fixed independently; only fixing the
-    variable in its entirety is supported. Partly bound sites throw `ArgumentError` during
-    evaluation. Declare components in a loop (`x[i] ~ ...`) if you need to fix them
+!!! warning "Fixing applies to whole sites"
+    A multivariate draw (e.g. `x ~ MvNormal(...)`) is a single site, so a subset of its
+    components cannot be fixed independently; only fixing the whole site is supported.
+    Partly bound sites throw `ArgumentError` during evaluation. Declare components in a loop (`x[i] ~ ...`) if you need to fix them
     individually.
 
 # Examples
@@ -1923,15 +1920,15 @@ end
 
 """
     unfix(model::Model)
-    unfix(model::Model, variables...)
+    unfix(model::Model, names...)
 
-Remove this model's fixed bindings at `variables...`, or all fixed bindings if no names
+Remove this model's fixed bindings at `names...`, or all fixed bindings if no names
 are supplied. Matching follows [`decondition`](@ref), including equivalent index and
 property forms. A name with no stored fixed match throws `ArgumentError`, including a
 name supplied only by a child submodel or only conditioned on this model.
 
-Unlike [`decondition`](@ref), removal restores the argument's default observation, if any,
-otherwise making the site latent; it never restores an earlier explicit condition.
+Unlike [`decondition`](@ref), removal restores the argument observation, if any,
+otherwise making the site latent; it never restores an earlier explicit conditioned binding.
 Argument observations are rebuilt from the model's arguments, even if previously removed
 with `decondition`. For `@model f(x) = x ~ Normal()`, both
 `unfix(fix(f(1.0); x=5.0), :x)` and
@@ -1963,7 +1960,7 @@ true
 
 julia> # When `NamedTuple` is used as the underlying, you can also provide
        # the symbol directly (though the `@varname` approach is preferable if
-       # if the variable is known at compile-time).
+       # if the site is known at compile-time).
        model = unfix(fixed_model, :m);
 
 julia> (m, x) = model(); (m != 1.0 && x == 10.0)
@@ -1973,7 +1970,7 @@ julia> # `unfix` multiple at once:
        (m, x) = unfix(fixed_model, :m, :x)(); (m != 1.0 && x != 10.0)
 true
 
-julia> # `unfix` without any symbols will `unfix` all variables.
+julia> # `unfix` without any symbols will `unfix` all sites.
        (m, x) = unfix(model)(); (m != 1.0 && x != 10.0)
 true
 ```
@@ -2087,7 +2084,7 @@ demo (generic function with 2 methods)
 
 julia> m = demo();
 
-julia> # Returns all the variables we have fixed on + their values.
+julia> # Returns the addresses and values of fixed bindings.
        fixed(fix(m, x=100.0, m=1.0))
 VarNamedTuple
 ├─ x => 100.0
