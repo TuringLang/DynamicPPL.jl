@@ -665,7 +665,7 @@ end
 end
 
 function _select_model_values(::Type{R}, values::VarNamedTuple) where {R}
-    return mapfoldl(
+    selected = mapfoldl(
         identity,
         function (selected, pair)
             vn, value = pair
@@ -680,6 +680,35 @@ function _select_model_values(::Type{R}, values::VarNamedTuple) where {R}
         values;
         init=VarNamedTuple(),
     )
+    return _plain_model_values(selected)
+end
+
+# Keep whole supplied values intact, but expose incomplete bindings as ordinary partial values.
+_plain_model_values(value) = value
+function _plain_model_values(values::VarNamedTuple)
+    return VarNamedTuple(map(_plain_model_values, values.data))
+end
+function _plain_model_values(tree::ModelValueTree)
+    VarNamedTuples._haskey_optic(tree, AbstractPPL.Iden()) && return _model_data(tree)
+    values = if tree.values isa Tuple
+        # Tuple components are indexed bindings, not a complete array replacement.
+        mask = [!(value isa NoModelBinding) for value in tree.values]
+        last = findlast(mask)
+        VarNamedTuples.PartialArray(
+            VarNamedTuples.GrowableArray(collect(tree.values[1:last])),
+            VarNamedTuples.GrowableArray(mask[1:last]),
+        )
+    else
+        tree.values
+    end
+    return _plain_model_values(values)
+end
+function _plain_model_values(values::VarNamedTuples.PartialArray)
+    return _fold_model_indices(empty(values), values) do selected, value, optic, template
+        return VarNamedTuples._setindex_optic!!(
+            selected, _plain_model_values(value), optic, template, VarNamedTuples.AllowAll()
+        )
+    end
 end
 
 #
@@ -1223,6 +1252,9 @@ end
 
 Return the conditioned values in `model`.
 
+After partial removal or mixed roles, this returns plain partial values
+(`VarNamedTuple`/`PartialArray`), not the original container type.
+
 This includes stored bindings for arguments that do not occur on the left-hand side of `~`.
 Such bindings do not replace the arguments used by the model body.
 
@@ -1448,6 +1480,9 @@ end
     fixed(model::Model)
 
 Return the fixed values in `model`.
+
+After partial removal or mixed roles, this returns plain partial values
+(`VarNamedTuple`/`PartialArray`), not the original container type.
 
 # Examples
 ```jldoctest
