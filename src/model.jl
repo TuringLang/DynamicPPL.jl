@@ -802,10 +802,10 @@ end
     Model{Threaded}(f, args::NamedTuple, defaults::NamedTuple, context=DefaultContext(), values=...)
 
 Store a model function, arguments, context, and role-tagged conditioned or fixed values.
-Direct construction without `values` conditions every entry in `merge(args, defaults)`,
-including arguments unused by tilde statements. In contrast, `@model` supplies bindings only
-for arguments used on the left-hand side of `~`. These construction paths can therefore
-produce different results from `conditioned(model)`. Use `decondition` to make sites latent.
+Direct construction without `values` supplies no observations and records no argument
+sites; arguments are ordinary inputs. `@model` supplies default observations and site
+metadata for arguments used on the left-hand side of `~`. Use [`decondition`](@ref)
+to remove those observations.
 An argument used as a submodel's left-hand side supplies a return-value buffer, not an
 observation, and needs no deconditioning. See [Binding rules](@ref).
 """
@@ -831,10 +831,8 @@ struct Model{
         args::NamedTuple{A,Ta},
         defaults::NamedTuple{D,Td},
         context::C=DefaultContext(),
-        values::V=_tag_model_values(
-            ArgumentCondition, VarNamedTuple(merge(args, defaults))
-        );
-        argument_sites::Vector{Symbol}=Symbol[A..., D...],
+        values::V=VarNamedTuple();
+        argument_sites::Vector{Symbol}=Symbol[],
     ) where {F,A,Ta,D,Td,C,V,Threaded}
         mapreduce(
             pair -> pair.second isa ModelValue, &, _model_values(values); init=true
@@ -850,8 +848,8 @@ end
 
 Create a model with evaluation function `f` and arguments `args`.
 
-Arguments supply default conditioned values. Use [`decondition`](@ref) to make an
-argument-backed stochastic site latent, or [`condition`](@ref) to replace its observation.
+Arguments are ordinary inputs; no observations or argument sites are recorded.
+Use [`@model`](@ref) to construct a model with argument-default observations.
 
 Keyword arguments `kwargs` are stored in the model's `defaults` field.
 """

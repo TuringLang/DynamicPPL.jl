@@ -4,8 +4,9 @@
 
   - A conditioned value is an observation and contributes to the likelihood. A fixed
     value is a constant and contributes no log probability. Both replace sampling.
-  - An argument on the left of `~` supplies a default observation. An argument used
-    as a submodel's left-hand side (`a ~ to_submodel(...)`) supplies a return-value
+  - With `@model`, an argument on the left of `~` supplies a default observation.
+    Direct `Model` construction without bindings records no observations or argument sites.
+    An argument used as a submodel's left-hand side (`a ~ to_submodel(...)`) supplies a return-value
     buffer instead; it needs no `decondition`. Even a `NamedTuple` buffer is only an
     initial return value, not a child namespace. Bind the child before `to_submodel`,
     or use `@varname(a.x)` on a parent whose submodel LHS `a` is not an argument.

@@ -44,7 +44,7 @@ Model arguments supply default observations; `condition` and `fix` at the same a
 
 `conditioned(::AbstractContext)` / `fixed(::AbstractContext)` are removed: use `conditioned(model)` / `fixed(model)`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-`Model` gains `values` and `argument_sites` fields and loses its `missings` type parameter: direct field construction and dispatch on the old type parameters break; use `Model{Threaded}(f, args, defaults, context, values)` with role-tagged `values`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+`Model` gains `values` and `argument_sites` fields and loses its `missings` type parameter: direct field construction and dispatch on the old type parameters break; use `Model{Threaded}(f, args, defaults, context, values)` with role-tagged `values`. Constructors without `values` supply no observations and record no argument sites; `@model` supplies both for tilde arguments. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
 Conditioning or fixing a submodel's return value now errors: binding the submodel LHS → binding its internal variable names. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
