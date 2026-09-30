@@ -1,6 +1,6 @@
-#
+# ------------
 # Model values
-#
+# ------------
 
 struct Condition end
 struct ArgumentCondition end
@@ -754,9 +754,9 @@ function _plain_model_values(values::VarNamedTuples.PartialArray)
     end
 end
 
-#
+# ----------------
 # Model definition
-#
+# ----------------
 
 struct PrefixTemplate{V<:VarName,T,I}
     prefix::V
