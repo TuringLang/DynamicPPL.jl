@@ -193,8 +193,9 @@ cond_model_partial = model | vnt
 rand(cond_model_partial)
 ```
 
-When a submodel's left-hand side is also a model argument, it is a return-value buffer.
-Bindings below that address, such as `a.x` for argument `a` in `a ~ to_submodel(child())`,
+When a submodel's left-hand side is also a model argument, its default binding supplies a
+return-value buffer; there is no need to decondition it. Explicit bindings at or below that
+address, such as `a.x` for argument `a` in `a ~ to_submodel(child())`,
 are rejected during evaluation. This includes whole named-tuple namespace bindings such
 as `condition(model; a=(; x=2.0))` and indexed buffers such as `a[1]`.
 Condition or fix the child model before wrapping it with `to_submodel` instead.

@@ -3,6 +3,7 @@
 #
 
 struct Condition end
+struct ArgumentCondition end
 struct Fix end
 
 _contains_missing(::Any) = false
@@ -18,10 +19,10 @@ function _contains_missing(values::Union{Tuple,NamedTuple})
     return any(_contains_missing, values)
 end
 
-struct ModelValue{R<:Union{Condition,Fix},T}
+struct ModelValue{R<:Union{Condition,ArgumentCondition,Fix},T}
     value::T
-    function ModelValue{R}(value::T) where {R<:Union{Condition,Fix},T}
-        (R === Condition || R === Fix) ||
+    function ModelValue{R}(value::T) where {R<:Union{Condition,ArgumentCondition,Fix},T}
+        (R === Condition || R === ArgumentCondition || R === Fix) ||
             throw(ArgumentError("A model value must have one concrete role"))
         _contains_missing(value) && throw(
             ArgumentError(
@@ -85,7 +86,7 @@ end
 VarNamedTuples._haskey_optic(::ModelValue, ::AbstractPPL.Iden) = true
 function VarNamedTuples._haskey_optic(
     value::ModelValue{R,<:Tuple}, optic::AbstractPPL.Index
-) where {R<:Union{Condition,Fix}}
+) where {R<:Union{Condition,ArgumentCondition,Fix}}
     optic = AbstractPPL.concretize_top_level(optic, value.value)
     isempty(optic.kw) && checkbounds(Bool, Base.OneTo(length(value.value)), optic.ix...) ||
         return false
@@ -93,6 +94,9 @@ function VarNamedTuples._haskey_optic(
 end
 
 _model_role(::ModelValue{R}, ::VarName) where {R} = R()
+_model_role(::ModelValue{ArgumentCondition}, ::VarName) = Condition()
+_matches_model_role(::Type{R}, value) where {R} = value isa ModelValue{R}
+_matches_model_role(::Type{Condition}, ::ModelValue{ArgumentCondition}) = true
 _model_role(::Nothing, ::VarName) = nothing
 _model_role(::NoModelBinding, ::VarName) = nothing
 function _model_role(value::VarNamedTuples.ArrayLikeBlock, vn::VarName)
@@ -136,9 +140,11 @@ end
 function _model_role_at(
     value::ModelValue{R}, optic::AbstractPPL.AbstractOptic, vn
 ) where {R}
-    return VarNamedTuples._haskey_optic(value, optic) ? R() : nothing
+    return VarNamedTuples._haskey_optic(value, optic) ? _model_role(value, vn) : nothing
 end
-_model_role_at(::ModelValue{R}, ::AbstractPPL.Iden, vn) where {R} = R()
+function _model_role_at(value::ModelValue{R}, ::AbstractPPL.Iden, vn) where {R}
+    return _model_role(value, vn)
+end
 function _model_role_at(values::VarNamedTuples.PartialArray, optic::AbstractPPL.Index, vn)
     optic = AbstractPPL.concretize_top_level(optic, values.data)
     checkbounds(Bool, values.data, optic.ix...; optic.kw...) || return nothing
@@ -163,6 +169,18 @@ function _get_argument_role(model, vn, argument)
     )
     # A whole argument keeps its role when body computations change its shape or fields.
     return binding isa ModelValue ? _model_role(binding, vn) : _get_model_role(model, vn)
+end
+function _without_argument_binding(model, vn)
+    address = _model_value_varname(model.values, vn, _model_prefix(model))
+    binding = _model_argument_binding(
+        _model_values(model.values), AbstractPPL.varname_to_optic(address)
+    )
+    VarNamedTuples._mapreduce_recursive(
+        pair -> pair.second isa ModelValue{ArgumentCondition}, |, binding, address, false
+    ) || return model
+    values = _remove_model_values(ArgumentCondition, _model_values(model.values), address)
+    values = model.values isa LocalModelValues ? LocalModelValues(values) : values
+    return _reconstruct_model(model; values)
 end
 function _get_model_data(model, vn)
     vn = _model_value_varname(model.values, vn, _model_prefix(model))
@@ -670,7 +688,7 @@ function _select_model_values(::Type{R}, values::VarNamedTuple) where {R}
         identity,
         function (selected, pair)
             vn, value = pair
-            return if value isa ModelValue{R}
+            return if _matches_model_role(R, value)
                 templated_setindex!!(
                     selected, value.value, vn, values.data[AbstractPPL.getsym(vn)]
                 )
@@ -771,7 +789,9 @@ struct Model{
         args::NamedTuple{A,Ta},
         defaults::NamedTuple{D,Td},
         context::C=DefaultContext(),
-        values::V=_tag_model_values(Condition, VarNamedTuple(merge(args, defaults))),
+        values::V=_tag_model_values(
+            ArgumentCondition, VarNamedTuple(merge(args, defaults))
+        ),
     ) where {F,A,Ta,D,Td,C,V,Threaded}
         mapreduce(
             pair -> pair.second isa ModelValue, &, _model_values(values); init=true
@@ -1008,8 +1028,9 @@ true
 
 `condition` also supports the use of nested models through the use of [`to_submodel`](@ref).
 
-If a submodel's left-hand side is a model argument (a return-value buffer), bindings below
-that address are rejected during evaluation, including named-tuple namespace bindings.
+If a submodel's left-hand side is a model argument, its default binding supplies a
+return-value buffer and does not observe the submodel's return value. Explicit bindings
+at or below that address are rejected during evaluation, including named-tuple namespaces.
 Condition or fix the child model before wrapping it with `to_submodel` instead.
 
 ```jldoctest condition
@@ -1044,8 +1065,12 @@ julia> conditioned_model2()
 julia> # Conditioning a submodel's return value is not supported.
        conditioned_model_fail = model | (inner = "something else", );
 
-julia> conditioned_model_fail()
-ERROR: ArgumentError: Cannot condition or fix a submodel's return value. Supply its internal variable names instead; decondition arguments used only as return-value buffers.
+julia> try
+           conditioned_model_fail()
+       catch err
+           err isa ArgumentError
+       end
+true
 ```
 """
 function AbstractPPL.condition(model::Model, values...)
@@ -1175,7 +1200,9 @@ function _remove_model_values(
     ::Type{R}, values::VarNamedTuple, args::Union{Symbol,VarName}...
 ) where {R}
     if isempty(args)
-        return subset(values, filter(key -> !(values[key] isa ModelValue{R}), keys(values)))
+        return subset(
+            values, filter(key -> !_matches_model_role(R, values[key]), keys(values))
+        )
     end
     for arg in args
         vn = arg isa VarName ? arg : VarName{arg}()
@@ -1187,9 +1214,9 @@ end
 function _remove_model_binding(::Type{R}, value, optic::AbstractPPL.AbstractOptic) where {R}
     if optic isa AbstractPPL.Iden
         return VarNamedTuples._map_values_recursive!!(
-            v -> v isa ModelValue{R} ? NoModelBinding() : v, _copy_model_node(value)
+            v -> _matches_model_role(R, v) ? NoModelBinding() : v, _copy_model_node(value)
         )
-    elseif value isa ModelValue{R} && VarNamedTuples._haskey_optic(value, optic)
+    elseif _matches_model_role(R, value) && VarNamedTuples._haskey_optic(value, optic)
         return _remove_model_binding(R, _expand_model_binding(value), optic)
     end
     return value
@@ -1323,8 +1350,9 @@ See also: [`unfix`](@ref), [`fixed`](@ref)
     prefer replacing the whole argument, for example `fix(model; x=newx)` with
     `newx` already containing the override, or construct the model with the updated argument.
 
-Bindings below a submodel's argument-backed return-value buffer are rejected during
-evaluation. Fix the child model before wrapping it with `to_submodel` instead.
+Default argument bindings can supply submodel return-value buffers. Explicit bindings
+at or below a buffer are rejected during evaluation. Fix the child model before wrapping
+it with `to_submodel` instead.
 
 !!! warning "Fixed values are not copied"
     Evaluation uses the supplied values directly, including as model arguments. The model

@@ -202,6 +202,7 @@ function tilde_assume!!(
     template,
     vi::AbstractVarInfo,
 ) where {M<:Model,AutoPrefix}
+    parent_model = _without_argument_binding(parent_model, left_vn)
     namespace = _submodel_values(parent_model, left_vn)
     if !isempty(namespace) && (
         haskey(parent_model.args, AbstractPPL.getsym(left_vn)) ||
