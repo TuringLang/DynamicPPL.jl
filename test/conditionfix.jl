@@ -633,7 +633,7 @@ end
         for data in ([1.0f0, 2.0f0], BigFloat[1, 2], DimArray([1.0, 2.0], X))
             original = array_argument(data)
             @test keys(conditioned(original)) == [@varname(x)]
-            latent = decondition(original, :x)
+            latent = decondition(original, @varname(x))
             result, _ = init!!(
                 latent, VarInfo(), InitFromParams((; x=[3.0, 4.0])), UnlinkAll()
             )
