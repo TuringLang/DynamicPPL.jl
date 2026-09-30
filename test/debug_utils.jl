@@ -5,6 +5,7 @@ using Dates: now
 __now__ = now()
 
 using DynamicPPL, Distributions, Test
+using ForwardDiff: ForwardDiff
 using LinearAlgebra: I
 using Random: Xoshiro
 
@@ -21,6 +22,28 @@ function test_model_can_run_but_fails_check(model)
 end
 
 @testset "check_model" begin
+    @testset "provenance binding wrappers" begin
+        @model regression(y) = (μ ~ Normal(); y ~ Normal(μ))
+        @test check_model(prefix(regression(1.0), @varname(a)))
+        @model checked_child(y, checking=false) = begin
+            if !checking
+                child = DynamicPPL.Model{false}(
+                    __model__.f,
+                    (; y, checking=true),
+                    __model__.defaults,
+                    __model__.context,
+                    __model__.values;
+                    argument_sites=__model__.argument_sites,
+                )
+                @test check_model(child)
+            end
+            μ ~ Normal()
+            y ~ Normal(μ)
+        end
+        @model checked_parent() = a ~ to_submodel(checked_child(1.0))
+        @test VarInfo(checked_parent()) isa VarInfo
+    end
+
     @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
         @test check_model(model)
         @test DynamicPPL.has_static_constraints(model)

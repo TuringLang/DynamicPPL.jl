@@ -135,6 +135,15 @@ _dualize_input(x::Tuple) = map(_dualize_input, x)
 function _dualize_input(x::DynamicPPL.ModelValue{R}) where {R}
     return DynamicPPL.ModelValue{R}(_dualize_input(x.value))
 end
+function _dualize_input(values::DynamicPPL.VarNamedTuple)
+    return DynamicPPL.map_values!!(_dualize_input, copy(values))
+end
+function _dualize_input(values::DynamicPPL.PrefixedArgumentValues)
+    return DynamicPPL.PrefixedArgumentValues(_dualize_input(values.values))
+end
+function _dualize_input(values::DynamicPPL.LocalModelValues)
+    return DynamicPPL.LocalModelValues(_dualize_input(values.values))
+end
 _dualize_input(x) = x
 
 function _has_input_provenance(x::ForwardDiff.Dual{InputProvenanceTag})
@@ -176,9 +185,9 @@ end
 function check_input_provenance(rng, model, params)
     args = map(_dualize_input, model.args)
     defaults = map(_dualize_input, model.defaults)
-    values = DynamicPPL.map_values!!(_dualize_input, copy(model.values))
+    values = _dualize_input(model.values)
     traced_model = DynamicPPL.Model{DynamicPPL.requires_threadsafe(model)}(
-        model.f, args, defaults, model.context, values
+        model.f, args, defaults, model.context, values; argument_sites=model.argument_sites
     )
     vi = DynamicPPL.VarInfo((InputProvenanceAccumulator(),))
     strategy = DynamicPPL.InitFromParams(params, nothing)
