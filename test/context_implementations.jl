@@ -37,6 +37,19 @@ end
 @model outer(m) = b ~ to_submodel(m)
 
 @testset "context_implementations.jl" begin
+    @testset "prefixed evaluation: $(model.f)" for model in DynamicPPL.TestUtils.ALL_MODELS
+        prefix_vn = @varname(my_prefix)
+        prefixed = prefix(model, prefix_vn)
+        _, vi = init!!(
+            Xoshiro(1), prefixed, VarInfo(VectorValueAccumulator()), InitFromPrior()
+        )
+        expected = Set(
+            DynamicPPL.AbstractPPL.prefix(vn, prefix_vn) for
+            vn in DynamicPPL.TestUtils.varnames(model)
+        )
+        @test Set(keys(get_vector_values(vi))) == expected
+    end
+
     @testset "leaf contexts without parameter outputs" begin
         @model function observed_only(x)
             x ~ Normal()
