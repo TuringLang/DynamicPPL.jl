@@ -1,7 +1,42 @@
 # Conditioning and fixing
 
-DynamicPPL allows you to first *define* a model, and then *modify* it by either conditioning on observed data, or fixing variables to specific values.
-This is useful for defining models once and then using them in different ways.
+## Binding rules
+
+  - A conditioned value is an observation and contributes to the likelihood. A fixed
+    value is a constant and contributes no log probability. Both replace sampling.
+  - An argument on the left of `~` supplies a default observation. An argument used
+    as a submodel's left-hand side (`a ~ to_submodel(...)`) supplies a return-value
+    buffer instead; it needs no `decondition`.
+  - Later bindings replace earlier ones where they overlap. A whole binding replaces
+    all components; a component binding replaces only that component. A single tilde
+    statement's value cannot mix conditioned and fixed components.
+  - Parent bindings override child bindings at the same address. Use the submodel's
+    names in the parent, such as `@varname(a.x)`, or unprefixed names with
+    `auto_prefix=false` (unless the child was manually prefixed).
+  - Binding a submodel's return value, or anything below an argument-backed return
+    buffer, throws `ArgumentError` at the submodel tilde during evaluation. Bind the
+    child before wrapping it with `to_submodel` instead. Binding an argument that is
+    not a tilde site throws at the `condition` or `fix` call; construct the model with
+    a new argument value instead.
+  - `decondition` and `unfix` remove this model's bindings of their own role at the
+    requested names. A name matches if it equals, contains, or is contained in a
+    stored binding's address, after resolving equivalent index and property forms.
+    A name with no match throws `ArgumentError`, including bindings supplied only by
+    a child. Decondition child argument observations before `to_submodel`. With no
+    names, all bindings of the requested role are removed.
+  - `conditioned` and `fixed` return plain values, independent of binding history:
+    `VarNamedTuple`, `PartialArray`, or ordinary values. Partial removal or mixed
+    roles produce plain partial values, not the original container type.
+  - `missing` is rejected in argument observations, `condition`, and `fix`.
+    `InitFromParams` rejects it when the parameter is read during initialization,
+    not at construction. Leave unobserved values out instead.
+  - Bound values are not copied. The model body must not mutate them, directly or
+    through an alias such as a `view`. Component bindings on array arguments rebuild
+    the argument in O(length) per evaluation; prefer whole replacements for large arrays.
+  - Bindings unused by any executed tilde statement are ignored, including unknown
+    names and sites in branches that do not run.
+
+## Example
 
 As an example, one could define a linear regression model as follows:
 
@@ -25,7 +60,7 @@ This model has no observed data: none of its sites are conditioned, so all the `
     
     The definition of `y` in the model is needed so that there is somewhere to assign `y[i]` to after the tilde-statement runs. If we did not define `y`, we would get an error when trying to call `setindex!` on an undefined variable.
     
-    Model arguments supply default observations for sites with the same name. Local storage such as `y` does not: its sites are latent until conditioned or fixed. Use `decondition(model, @varname(x))` to remove an argument observation, and `condition(model; x=new_data)` to replace or restore it.
+    Local storage such as `y` does not supply observations: its sites are latent until conditioned or fixed.
 
 Let's create some synthetic data to work with:
 
@@ -58,23 +93,11 @@ This is useful for prior predictive checks, for example.
 
 ## Conditioning
 
-Arguments used on the left-hand side of `~` provide default observations. For example,
-`@model f(x) = x ~ Normal()` makes `f(1.0)` equivalent to `f(1.0) | (x=1.0,)`.
-`decondition(f(1.0), @varname(x))` makes `x` latent, and conditioning that model on `x=2.0`
-restores an observation with the new value. Other arguments remain ordinary model inputs.
-
 Replacing a complete argument updates its value, shape, and dispatch type parameters before
 the model body runs. Partial updates preserve the remaining stored values and their array
 templates. Arguments with unobserved entries retain their original storage template; the
 corresponding tilde statements fill those entries during evaluation.
 Defaults derived from a replaced argument are evaluated at model construction and are not recomputed.
-
-!!! note
-    
-    Component bindings on an array argument (for example, `@varname(x[1])`) rebuild the
-    argument on every evaluation, costing O(length(x)). For large arrays or hot loops,
-    prefer replacing the whole argument, for example `condition(model; x=newx)` with
-    `newx` already containing the override, or construct the model with the updated argument.
 
 To condition the model on observed data, we can use the `condition` function, or its alias `|`.
 The most robust way of conditioning is to provide a `VarNamedTuple` that holds the values to condition on.
@@ -111,10 +134,6 @@ loglikelihood(cond_model, parameters)
 and this quantity can be used by MCMC algorithms to draw samples from the posterior distribution.
 
 ## Fixing
-
-Fixing is exactly the same as conditioning, except that instead of incrementing the log-likelihood, there is no log-probability contribution from the fixed variables.
-
-In essence, fixing a variable `x ~ dist` to a value `x_val` is equivalent to replacing the statement with `x = x_val`, which removes it from the model entirely.
 
 We can illustrate this by fixing the intercept `c` to its true value:
 
@@ -193,15 +212,7 @@ cond_model_partial = model | vnt
 rand(cond_model_partial)
 ```
 
-When a submodel's left-hand side is also a model argument, its default binding supplies a
-return-value buffer; there is no need to decondition it. Explicit bindings at or below that
-address, such as `a.x` for argument `a` in `a ~ to_submodel(child())`,
-are rejected during evaluation. This includes whole named-tuple namespace bindings such
-as `condition(model; a=(; x=2.0))` and indexed buffers such as `a[1]`.
-Condition or fix the child model before wrapping it with `to_submodel` instead.
-Parent-to-submodel bindings remain supported when the left-hand side is not a model argument.
-
 ## Missing data
 
-Leave unobserved sites out of the conditioned values. `missing` is not a stochastic-role marker. It is rejected when values are bound, or when fields of custom structs are used at tilde sites.
+Fields of custom structs containing `missing` are rejected when used at tilde sites.
 For an array whose elements have separate tilde statements, condition only the observed indices, as in the examples above. A single multivariate draw cannot be partially conditioned.
