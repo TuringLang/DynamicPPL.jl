@@ -684,11 +684,6 @@ end
         result
     end
 end
-_previous_model_child(::NoModelBinding, optic) = NoModelBinding()
-function _previous_model_child(previous::ModelValueTree{<:Tuple}, optic::AbstractPPL.Index)
-    i = only(optic.ix)
-    return i <= length(previous.values) ? previous.values[i] : NoModelBinding()
-end
 function _previous_model_child(previous, optic)
     value = _model_argument_binding(previous, optic)
     return value === nothing ? NoModelBinding() : value
@@ -1462,9 +1457,6 @@ y=2)`).
 """
 _make_condfix_values(model, values::NamedTuple) = VarNamedTuple(values)
 _make_condfix_values(model, values::VarNamedTuple) = values
-function _make_condfix_values(model, values::AbstractDict{<:VarName})
-    return _make_condfix_values(model, pairs(values)...)
-end
 function _make_condfix_values(model, values::Pair{<:Union{VarName,Symbol}}...)
     templates = VarNamedTuple()
     for (stored_name, argument) in pairs(merge(model.args, model.defaults))
@@ -1503,11 +1495,6 @@ function _make_condfix_values(model, values::Pair{<:Union{VarName,Symbol}}...)
         end
     end
     return result
-end
-function _make_condfix_values(
-    model, values::NTuple{N,Pair{<:Union{VarName,Symbol}}}
-) where {N}
-    return _make_condfix_values(model, values...)
 end
 
 """
