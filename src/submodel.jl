@@ -215,8 +215,8 @@ function tilde_assume!!(
         ArgumentCondition, _submodel_values(parent_model, left_vn)
     )
     if !isempty(namespace) && (
-        haskey(parent_model.args, AbstractPPL.getsym(left_vn)) ||
-        haskey(parent_model.defaults, AbstractPPL.getsym(left_vn))
+        AbstractPPL.getsym(left_vn) in _argument_names(parent_model.args) ||
+        AbstractPPL.getsym(left_vn) in _argument_names(parent_model.defaults)
     )
         throw(
             ArgumentError(

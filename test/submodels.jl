@@ -117,6 +117,19 @@ end
         end
     end
 
+    @testset "splatted arguments supply return buffers" begin
+        @model splat_child() = x ~ Normal()
+        @model positional_buffer(args...) = args[1] ~ to_submodel(splat_child())
+        @model keyword_splat_buffer(; kw...) = kw[:y] ~ to_submodel(splat_child())
+        for bind in (condition, fix)
+            positional = bind(positional_buffer((; x=0.0)), @varname(args[1].x) => 2.0)
+            keyword = bind(keyword_splat_buffer(; y=(; x=0.0)); kw=(; y=(; x=2.0)))
+            for model in (positional, keyword)
+                @test_throws ArgumentError model(Xoshiro(1))
+            end
+        end
+    end
+
     @testset "arguments supply submodel return buffers" begin
         @model child() = (x ~ Normal(); x)
         @model function dynamic_buffer(a)
