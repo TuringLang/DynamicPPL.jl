@@ -29,6 +29,41 @@ mutable struct MissingRecord
 end
 
 @testset "condition and fix" begin
+    @testset "removal requires a stored binding of the requested role" begin
+        @model scalar() = x ~ Normal()
+        @model inner_arg(x=1.0) = x ~ Normal()
+        @model outer_arg() = a ~ to_submodel(inner_arg())
+        for (bind, remove, other_role) in
+            ((condition, unfix, "conditioned"), (fix, decondition, "fixed"))
+            @test_throws Regex("ArgumentError: .*`x`.*$other_role") remove(
+                bind(scalar(); x=1.0), :x
+            )
+            @test_throws r"ArgumentError: .*`unknown`" remove(scalar(), :unknown)
+            @test isempty(keys(conditioned(remove(scalar()))))
+            @test isempty(keys(fixed(remove(scalar()))))
+        end
+        @model indexed(x) = (x[1] ~ Normal(); x[2] ~ Normal(); x)
+        for data in ([1.0, 2.0], (1.0, 2.0)),
+            (bind, remove, select) in
+            ((condition, decondition, conditioned), (fix, unfix, fixed))
+
+            partial = remove(bind(indexed(data); x=data), @varname(x[2]))
+            @test isempty(select(remove(partial, @varname(x[1:2][1]))))
+            @test isempty(select(remove(partial, @varname(x[1:2]))))
+            @test_throws r"ArgumentError: .*`x\[2\]`" remove(partial, @varname(x[2]))
+        end
+        @test_throws r"ArgumentError: .*`a.x`.*[Dd]econdition.*child.*to_submodel" decondition(
+            outer_arg(), @varname(a.x)
+        )
+        for (bind, remove) in ((condition, decondition), (fix, unfix))
+            parent = bind(outer_arg(), @varname(a.x) => 2.0)
+            @test remove(parent, @varname(a.x))(Xoshiro(1)) == 1.0
+            @test_throws r"ArgumentError: .*`a.x`" remove(
+                remove(parent, @varname(a.x)), @varname(a.x)
+            )
+        end
+    end
+
     @testset "nested slices retain bound siblings" begin
         @model sliced(x) = (x[1:2][1:2][1] ~ Normal(); x[2] ~ Normal(); x)
         for (bind, remove) in ((condition, decondition), (fix, unfix))
@@ -194,8 +229,8 @@ end
             end
             partial = remove(matrix, @varname(x[2]))
             @test !haskey(select(remove(partial, @varname(x[2:3]))), @varname(x[3]))
-            @test select(remove(matrix, @varname(z))) == select(matrix)
-            @test select(remove(matrix, @varname(x[8]))) == select(matrix)
+            @test_throws ArgumentError remove(matrix, @varname(z))
+            @test_throws ArgumentError remove(matrix, @varname(x[8]))
             for (model, first, sibling) in (
                 (
                     component_sites(ComponentVector(; a=1.0, b=2.0)),
@@ -491,10 +526,10 @@ end
             @test loglikelihood(latent, (; m=0.0, x=[1.0, 3.0])) ≈
                 (bind === condition ? logpdf(Normal(), 1.0) : 0.0)
             @test select(original)[@varname(x)] == [1.0, 2.0]
-            @test select(remove(original, @varname(absent))) == select(original)
+            @test_throws ArgumentError remove(original, @varname(absent))
             record = bind(record_observations(); t=(; a=1.0, b=2.0))
             @test !haskey(select(remove(record, @varname(t.a))), @varname(t.a))
-            @test select(remove(record, @varname(t.absent))) == select(record)
+            @test_throws ArgumentError remove(record, @varname(t.absent))
         end
         original = condition(record_observations(); t=(; a=1.0, b=2.0))
         expanded = fix(original, @varname(t.b) => 5.0)
