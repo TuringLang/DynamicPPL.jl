@@ -20,7 +20,7 @@ Added `evaluate!!(model, context, vi)` to evaluate with an explicit leaf context
 
 Model arguments supply default observations; `condition` and `fix` at the same address now replace the earlier role rather than stacking contexts. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-`missing` at a bound site now throws `ArgumentError`, including arguments and values supplied to `condition`, `fix`, or `InitFromParams`: `f(missing)` / `f([1.0, missing])` → `decondition(f(x), :x)` / `decondition(f(x), @varname(x[2]))`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+`missing` at a bound site now throws `ArgumentError`, including arguments and values supplied to `condition`, `fix`, or `InitFromParams`: `f(missing)` / `f([1.0, missing])` → `decondition(f(x), @varname(x))` / `decondition(f(x), @varname(x[2]))`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
 `CondFixContext` is removed: use `condition(model, values)` / `fix(model, values)`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
