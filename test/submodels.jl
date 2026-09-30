@@ -76,11 +76,8 @@ end
             @test decondition(model, :a)(Xoshiro(1)) == expected
             for bind in (condition, fix)
                 address = expected isa AbstractArray ? @varname(a[1]) : @varname(a)
-                @test_throws r"ArgumentError: .*submodel's return value" bind(
-                    model, address => 3.0
-                )(
-                    Xoshiro(1)
-                )
+                bound = bind(model, address => 3.0)
+                @test_throws r"ArgumentError: .*submodel's return value" bound(Xoshiro(1))
             end
         end
     end
