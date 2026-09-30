@@ -374,6 +374,14 @@ function generate_tilde(left, right; is_argument=false)
         :($(DynamicPPL._get_model_role)(__model__, $vn))
     end
 
+    fixed_data = if is_argument
+        :($(DynamicPPL._get_model_data)(
+            __model__, $vn, $(VarName{get_top_level_symbol(left)}())
+        ))
+    else
+        :($(DynamicPPL._get_model_data)(__model__, $vn))
+    end
+
     return quote
         $dist = $right
         $vn = $(make_varname_expression(left))
@@ -383,7 +391,7 @@ function generate_tilde(left, right; is_argument=false)
             $lookup_role
         end
         if $role isa $(DynamicPPL.Fix)
-            $(assign_or_set!!(left, :($(DynamicPPL._get_model_data)(__model__, $vn)), vn))
+            $(assign_or_set!!(left, fixed_data, vn))
         elseif $role === nothing
             $(generate_input_provenance_check(left, vn))
             $(generate_tilde_assume(left, dist, vn))

@@ -195,6 +195,19 @@ function _get_model_data(model, vn)
     vn = _model_value_varname(model.values, vn, _model_prefix(model))
     return _model_data(VarNamedTuples._getindex_optic(_model_values(model.values), vn))
 end
+function _get_model_data(model, vn, argument)
+    return try
+        _get_model_data(model, vn)
+    catch err
+        err isa BoundsError || rethrow()
+        throw(
+            ArgumentError(
+                "`$vn` is not covered by the fixed value supplied for `$argument`; " *
+                "fix it explicitly or supply a value that covers it",
+            ),
+        )
+    end
+end
 
 function _tag_model_values(::Type{R}, values::VarNamedTuple) where {R}
     return map_values!!(ModelValue{R}, copy(values))

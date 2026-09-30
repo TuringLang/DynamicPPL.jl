@@ -20,6 +20,8 @@ Added the `context` keyword to `DynamicPPL.DebugUtils.model_typed`, `model_warnt
 
 ## Breaking changes
 
+Fixed argument bindings now throw `ArgumentError` when an executed site is outside the supplied value's coverage, rather than leaving that site observed. Supply a fixed value covering the site. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+
 `DynamicPPL.TestUtils.test_context` is removed: `test_context(context, model)` → tests using `evaluate!!(model, context, vi)` and the context's interface methods. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
 `tilde_observe!!(::AbstractContext, ...)` overloads are no longer called: context observation hooks → `accumulate_observe!!` implementations. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
