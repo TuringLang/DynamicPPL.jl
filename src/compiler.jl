@@ -390,7 +390,7 @@ function generate_tilde(left, right; is_argument=false)
         else
             $supplied_val = $(
                 if is_argument
-                    left
+                    :($(Base).@views($left))
                 else
                     :($(DynamicPPL._get_model_data)(__model__, $vn))
                 end
@@ -405,7 +405,7 @@ function generate_tilde(left, right; is_argument=false)
                 $template,
                 __varinfo__,
             )
-            $(assign_or_set!!(left, value, vn))
+            $(is_argument ? nothing : assign_or_set!!(left, value, vn))
             $value
         end
     end

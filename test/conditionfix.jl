@@ -556,7 +556,7 @@ end
             return @allocated init!!(model, vi, InitFromPrior(), UnlinkAll())
         end
         small, large = slices(zeros(10_000)), slices(zeros(100_000))
-        @test evaluation_bytes(large) - evaluation_bytes(small) < 1_000_000
+        @test evaluation_bytes(large) - evaluation_bytes(small) < 10_000
         @test loglikelihood(large, VarNamedTuple()) ≈ 100_000 * logpdf(Normal(), 0.0)
     end
 
