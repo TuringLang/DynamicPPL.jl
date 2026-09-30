@@ -29,6 +29,22 @@ mutable struct MissingRecord
 end
 
 @testset "condition and fix" begin
+    @testset "invalid component addresses" begin
+        @model function elements(y)
+            for i in eachindex(y)
+                y[i] ~ Normal()
+            end
+        end
+        for bind in (condition, fix)
+            @test_throws r"ArgumentError: .*y\[3\]" bind(
+                elements([1.0, 2.0]), @varname(y[3]) => 9.0
+            )
+            @test_throws r"ArgumentError: .*y\[3\]" bind(
+                elements((1.0, 2.0)), @varname(y[3]) => 9.0
+            )
+        end
+    end
+
     @model function demo_cond_fix()
         x ~ Normal()
         return y ~ Normal(x)
