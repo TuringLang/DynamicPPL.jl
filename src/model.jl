@@ -1464,6 +1464,12 @@ function _check_model_removal(::Type{R}, values, args...) where {R}
         VarNamedTuples._mapreduce_recursive(
             pair -> _matches_model_role(R, pair.second), |, binding, vn, false
         ) && continue
+        mapreduce(
+            pair -> subsumes(vn, pair.first) && _matches_model_role(R, pair.second),
+            |,
+            values;
+            init=false,
+        ) && continue
         role = R === Condition ? "conditioned" : "fixed"
         message = "Cannot remove `$vn`: no $role binding is stored at this address."
         if VarNamedTuples._mapreduce_recursive(
@@ -1514,7 +1520,24 @@ function _remove_model_values(
 ) where {R}
     for arg in args
         vn = arg isa VarName ? arg : VarName{arg}()
-        values = _remove_model_binding(R, values, AbstractPPL.varname_to_optic(vn))
+        if _model_argument_binding(values, AbstractPPL.varname_to_optic(vn)) === nothing
+            values = mapfoldl(
+                identity,
+                function (remaining, pair)
+                    return if subsumes(vn, pair.first)
+                        _remove_model_binding(
+                            R, remaining, AbstractPPL.varname_to_optic(pair.first)
+                        )
+                    else
+                        remaining
+                    end
+                end,
+                values;
+                init=values,
+            )
+        else
+            values = _remove_model_binding(R, values, AbstractPPL.varname_to_optic(vn))
+        end
     end
     return _prune_model_bindings(values)
 end

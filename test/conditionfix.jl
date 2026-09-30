@@ -34,6 +34,22 @@ struct MetadataRecord
 end
 
 @testset "condition and fix" begin
+    @testset "containing removal ranges" begin
+        @model range_sites() = begin
+            x = zeros(4)
+            for i in eachindex(x)
+                x[i] ~ Normal()
+            end
+        end
+        for (bind, remove, query) in
+            ((condition, decondition, conditioned), (fix, unfix, fixed))
+            m = bind(range_sites(), @varname(x[1]) => 2.0)
+            @test isempty(query(remove(m, @varname(x[1:3]))))
+            m = bind(m, @varname(x[4]) => 4.0)
+            @test keys(query(remove(m, @varname(x[1:3])))) == [@varname(x[4])]
+        end
+    end
+
     @testset "partly unbound tilde sites" begin
         @model mv_argument(x) = x ~ MvNormal(zeros(2), I)
         @model mv_local() = x ~ MvNormal(zeros(2), I)
