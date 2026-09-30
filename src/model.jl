@@ -427,6 +427,16 @@ function _check_model_binding(
     end
     _fold_model_indices(nothing, updates) do _, update, optic, _
         child = _model_argument_binding(previous, optic)
+        if child === nothing &&
+            previous isa ModelValue &&
+            previous.value isa Union{AbstractArray,Tuple}
+            address = AbstractPPL.append_optic(vn, optic)
+            throw(
+                ArgumentError(
+                    "Cannot bind `$address`: index is outside the binding at `$vn`"
+                ),
+            )
+        end
         child === nothing ||
             _check_model_binding(child, update, AbstractPPL.append_optic(vn, optic))
         return nothing
