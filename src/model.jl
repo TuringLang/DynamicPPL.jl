@@ -788,7 +788,56 @@ end
     end
 end
 
-function _select_model_values(::Type{R}, values::VarNamedTuple) where {R}
+@generated function _select_model_values(
+    ::Type{R}, values::VarNamedTuple{names}
+) where {R,names}
+    fields = map(names) do name
+        :(
+            let selected = _select_model_node(R, values.data.$name)
+                if selected isa NoModelBinding
+                    (;)
+                else
+                    NamedTuple{($(QuoteNode(name)),)}((selected,))
+                end
+            end
+        )
+    end
+    return :(VarNamedTuple(merge((;), $(fields...))))
+end
+function _select_model_node(::Type{R}, value::ModelValue) where {R}
+    return _matches_model_role(R, value) ? value.value : NoModelBinding()
+end
+function _select_model_node(::Type{R}, values::VarNamedTuple) where {R}
+    selected = _select_model_values(R, values)
+    return isempty(selected) ? NoModelBinding() : selected
+end
+function _select_model_node(
+    ::Type{R}, values::VarNamedTuples.PartialArray{<:ModelValue}
+) where {R}
+    values.data isa VarNamedTuples.GrowableArray &&
+        return _select_model_node_recursive(R, values)
+    T = Core.Compiler.return_type(_model_data, Tuple{eltype(values)})
+    isconcretetype(T) || return _select_model_node_recursive(R, values)
+    data = similar(values.data, T)
+    mask = copy(values.mask)
+    found = false
+    for i in eachindex(mask)
+        mask[i] || continue
+        value = values.data[i]
+        mask[i] = _matches_model_role(R, value)
+        if mask[i]
+            data[i] = value.value
+            found = true
+        end
+    end
+    return found ? VarNamedTuples.PartialArray(data, mask) : NoModelBinding()
+end
+_select_model_node(::Type{R}, value) where {R} = _select_model_node_recursive(R, value)
+function _select_model_node_recursive(::Type{R}, value) where {R}
+    selected = _select_model_values_recursive(R, VarNamedTuple(; _=value))
+    return get(selected.data, :_, NoModelBinding())
+end
+function _select_model_values_recursive(::Type{R}, values::VarNamedTuple) where {R}
     selected = mapfoldl(
         identity,
         function (selected, pair)
