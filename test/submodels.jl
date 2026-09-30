@@ -95,7 +95,7 @@ end
                 @test isempty(accessor(remove(edited)))
                 values = rand(Xoshiro(1), removed)
                 vn = model === parent ? @varname(a.x[2]) : @varname(b[2].a.x[2])
-                @test haskey(values, vn)
+                @test haskey(values, vn) == (remove === decondition)
                 @test_throws r"ArgumentError: Argument `metadata`" bind(
                     local_model; metadata=1
                 )
