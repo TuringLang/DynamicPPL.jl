@@ -850,6 +850,12 @@ template; the corresponding tilde statements fill those entries during evaluatio
 Defaults derived from a replaced argument are evaluated at model construction and are not
 recomputed.
 
+!!! note
+    Component bindings on an array argument (for example, `@varname(x[1])`) rebuild the
+    argument on every evaluation, costing O(length(x)). For large arrays or hot loops,
+    prefer replacing the whole argument, for example `condition(model; x=newx)` with
+    `newx` already containing the override, or construct the model with the updated argument.
+
 # Examples
 ## Simple univariate model
 ```jldoctest condition
@@ -1273,6 +1279,12 @@ conditioned(model::Model) = _select_model_values(Condition, model.values)
 Return a `Model` which now treats the variables in `values` as fixed.
 
 See also: [`unfix`](@ref), [`fixed`](@ref)
+
+!!! note
+    Component bindings on an array argument (for example, `@varname(x[1])`) rebuild the
+    argument on every evaluation, costing O(length(x)). For large arrays or hot loops,
+    prefer replacing the whole argument, for example `fix(model; x=newx)` with
+    `newx` already containing the override, or construct the model with the updated argument.
 
 !!! warning "Fixed values are not copied"
     Evaluation uses the supplied values directly, including as model arguments. The model
