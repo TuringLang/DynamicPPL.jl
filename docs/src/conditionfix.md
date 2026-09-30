@@ -8,7 +8,8 @@
     fixed argument's size or shape in the body throws `ArgumentError` naming the site.
     This restriction does not apply to conditioned values.
   - With `@model`, an argument on the left of `~` supplies a default observation.
-    Direct `Model` construction without bindings records no observations or argument sites.
+    Direct `Model` construction records no observations; pass `argument_sites` to declare
+    which arguments can be bound with `condition` or `fix`.
     An argument used as a submodel's left-hand side (`a ~ to_submodel(...)`) supplies a return-value
     buffer instead; it needs no `decondition`. Even a `NamedTuple` buffer is only an
     initial return value, not a child namespace. Bind the child before `to_submodel`,
@@ -21,11 +22,11 @@
     names in the parent, such as `@varname(a.x)`, or unprefixed names with
     `auto_prefix=false` (unless the child was manually prefixed).
   - Binding a submodel's return value, or anything below an argument-backed return
-    buffer, throws `ArgumentError` at the submodel tilde during evaluation. Bind the
+    buffer, throws `ArgumentError` at the submodel tilde during evaluation, or earlier
+    at the `condition` or `fix` call when the buffer's type rules out the requested field. Bind the
     child before wrapping it with `to_submodel` instead. Binding an argument that is
     not a tilde site, or a nonexistent field of an argument, throws at the `condition`
-    or `fix` call; construct the model with
-    a new argument value instead.
+    or `fix` call; construct the model with a new argument value instead.
   - `decondition` and `unfix` remove this model's bindings of their own role at the
     requested names. A name matches if it equals, contains, or is contained in a
     stored binding's address, after resolving equivalent index and property forms.
@@ -33,7 +34,9 @@
     a child. Decondition child argument observations before `to_submodel`. With no
     names, all bindings of the requested role are removed. `unfix` restores the argument's
     default observation, if any, otherwise making the site latent; it never restores an
-    earlier explicit condition. `decondition(m, :x)` removes explicit and argument-default
+    earlier explicit condition. Argument observations are rebuilt from the model's arguments,
+    so `unfix(fix(decondition(m, :x); x=5.0), :x)` also restores an argument observation
+    previously removed by `decondition`. `decondition(m, :x)` removes explicit and argument-default
     observations at `x`, making it latent.
   - `conditioned` and `fixed` return plain values, independent of binding history:
     `VarNamedTuple`, `PartialArray`, or ordinary values. Partial removal or mixed
