@@ -202,7 +202,18 @@ function tilde_assume!!(
     template,
     vi::AbstractVarInfo,
 ) where {M<:Model,AutoPrefix}
-    _submodel_values(parent_model, left_vn)
+    namespace = _submodel_values(parent_model, left_vn)
+    if !isempty(namespace) && (
+        haskey(parent_model.args, AbstractPPL.getsym(left_vn)) ||
+        haskey(parent_model.defaults, AbstractPPL.getsym(left_vn))
+    )
+        throw(
+            ArgumentError(
+                "Cannot bind internal variables below return-value buffer `$left_vn`. " *
+                "Condition or fix the child model before wrapping it with `to_submodel`.",
+            ),
+        )
+    end
     left_vn = AutoPrefix ? _concretize_prefix(left_vn, template) : left_vn
     local_prefix = if AutoPrefix
         maybe_prefix(_model_prefix(submodel.model), left_vn)
