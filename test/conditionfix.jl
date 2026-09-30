@@ -34,6 +34,35 @@ struct MetadataRecord
 end
 
 @testset "condition and fix" begin
+    @testset "keyword splat index removal" begin
+        @model indexed_keywords(; kwargs...) = (
+            kwargs[:x] ~ Normal(); kwargs[:y] ~ Normal(); kwargs
+        )
+        for value in ((; x=3.0, y=4.0), pairs((; x=3.0, y=4.0)))
+            m = fix(indexed_keywords(; x=2.0, y=5.0); kwargs=value)
+            @test loglikelihood(unfix(m, @varname(kwargs[:x])), (;)) ==
+                logpdf(Normal(), 2.0)
+            @test loglikelihood(unfix(m, :kwargs), (;)) ==
+                logpdf(Normal(), 2.0) + logpdf(Normal(), 5.0)
+        end
+    end
+
+    @testset "restore splatted argument observations" begin
+        @model positional(args...) = (args[1] ~ Normal(); args)
+        @model keywords(; kwargs...) = (
+            kwargs = NamedTuple(kwargs); kwargs.x ~ Normal(); kwargs
+        )
+        for (m, value, whole, component) in (
+            (positional(2.0), (; args=(3.0,)), :args, @varname(args[1])),
+            (keywords(; x=2.0), (; kwargs=(; x=3.0)), :kwargs, @varname(kwargs.x)),
+        )
+            for name in (whole, component)
+                restored = unfix(fix(m; value...), name)
+                @test loglikelihood(restored, (;)) ≈ logpdf(Normal(), 2.0)
+            end
+        end
+    end
+
     @testset "containing removal ranges" begin
         @model range_sites() = begin
             x = zeros(4)
