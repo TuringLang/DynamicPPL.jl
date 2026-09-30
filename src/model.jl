@@ -1001,6 +1001,7 @@ struct Model{
             f, args, defaults, context, values, argument_sites
         )
     end
+    # Internal reconstruction reuses already-validated bindings.
     function DynamicPPL._reconstruct_model(
         model::Model{F,A,D,Ta,Td}, context::C, values::V, ::Val{Threaded}
     ) where {F,A,D,Ta,Td,C,V,Threaded}
