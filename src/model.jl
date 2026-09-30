@@ -232,17 +232,8 @@ function _get_model_data(model, vn)
 end
 function _get_model_data(model, vn, argument, local_value)
     binding = _get_model_binding(model, argument)
-    return try
-        _check_fixed_shape(binding, local_value, AbstractPPL.getoptic(vn), vn)
-        _get_model_data(model, vn)
-    catch err
-        err isa BoundsError || err isa KeyError || rethrow()
-        throw(
-            ArgumentError(
-                "`$vn` is not covered by the fixed value supplied for `$argument`; fixed arguments require a static size and shape.",
-            ),
-        )
-    end
+    _check_fixed_shape(binding, local_value, AbstractPPL.getoptic(vn), vn)
+    return _get_model_data(model, vn)
 end
 
 function _check_fixed_shape(binding, local_value, optic, vn)
