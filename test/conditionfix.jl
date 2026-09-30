@@ -486,6 +486,21 @@ end
         end
     end
 
+    @testset "fixed arguments require coverage of executed sites" begin
+        @model grow_scalar(x) = (x = vcat(x, 2.0); x[2] ~ Normal(); return x)
+        @model grow_range(x) = (x = vcat(x, 2.0); x[1:2] ~ MvNormal(zeros(2), I); return x)
+        for model in (grow_scalar([1.0]), grow_range([1.0]))
+            @test_throws r"ArgumentError: `x\[(2|1:2)\]` is not covered by the fixed value supplied for `x`; fix it explicitly or supply a value that covers it" fix(
+                model; x=[3.0]
+            )()
+            @test condition(model; x=[3.0])() == [3.0, 2.0]
+        end
+        @test fix(grow_scalar([1.0]); x=[3.0, 4.0])() == [3.0, 4.0, 2.0]
+        @test_throws r"Cannot condition and fix different parts" fix(
+            grow_range([1.0, 2.0]), @varname(x[1]) => 3.0
+        )()
+    end
+
     @testset "observation arguments retain body computations" begin
         @model scalar_input(x=1.0) = (x += 1; x ~ Normal(); return x)
         @model keyword_input(; x=1.0) = (x += 1; x ~ Normal(); return x)
