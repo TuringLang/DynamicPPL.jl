@@ -159,9 +159,8 @@ function tilde_assume!!(
     # Figure out how many levels of templating to skip for this variable (and add 1 for the
     # top-level symbol in the VarName).
     # NOTE(penelopeysm): I tried to move this computation into an inner constructor of
-    # PrefixContext. But that
-    # caused nonzero allocations on the LogDensityFunction submodel test, for reasons that
-    # are rather unclear! Be careful if you think of doing that.
+    # PrefixContext. But that caused nonzero allocations on the LogDensityFunction submodel
+    # test, for reasons that are rather unclear! Be careful if you think of doing that.
     n = optic_skip_length(AbstractPPL.getoptic(aggregated_prefix_vn)) + 1
     return tilde_assume!!(new_context, right, new_vn, SkipTemplate{n}(template), vi)
 end
