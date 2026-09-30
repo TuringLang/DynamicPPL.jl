@@ -370,21 +370,21 @@ end
 function _model_role_at(tree::ModelValueTree, optic::AbstractPPL.Property, vn)
     return _model_role_at(tree.values, optic, vn)
 end
-function _model_role_at(tree::ModelValueTree{<:Tuple}, optic::AbstractPPL.Index, vn)
+function _model_tuple_getindex(tree::ModelValueTree{<:Tuple}, optic::AbstractPPL.Index)
     optic = AbstractPPL.concretize_top_level(optic, tree.template)
     isempty(optic.kw) && checkbounds(Bool, Base.OneTo(length(tree.values)), optic.ix...) ||
-        return nothing
-    value = getindex(tree.values, optic.ix...)
+        return NoModelBinding()
+    return getindex(tree.values, optic.ix...)
+end
+function _model_role_at(tree::ModelValueTree{<:Tuple}, optic::AbstractPPL.Index, vn)
+    value = _model_tuple_getindex(tree, optic)
     return value isa NoModelBinding ? nothing : _model_role_at(value, optic.child, vn)
 end
 function _model_argument_binding(tree::ModelValueTree, optic::AbstractPPL.Property)
     return _model_argument_binding(tree.values, optic)
 end
 function _model_argument_binding(tree::ModelValueTree{<:Tuple}, optic::AbstractPPL.Index)
-    optic = AbstractPPL.concretize_top_level(optic, tree.template)
-    isempty(optic.kw) && checkbounds(Bool, Base.OneTo(length(tree.values)), optic.ix...) ||
-        return nothing
-    value = getindex(tree.values, optic.ix...)
+    value = _model_tuple_getindex(tree, optic)
     return value isa NoModelBinding ? nothing : _model_argument_binding(value, optic.child)
 end
 @generated function _merge_model_values(
