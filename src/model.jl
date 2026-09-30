@@ -1781,7 +1781,11 @@ function tilde_observe!!(
     else
         _prefix_varname_and_template(vn, template, prefix, prefix_template)
     end
-    ModelValue{Condition}(left) # Validate prepared arguments, including mutable fields.
+    _contains_missing(left) && throw(
+        ArgumentError(
+            "`missing` no longer selects latent variables. Omit unobserved values from `condition` or `fix` instead.",
+        ),
+    )
     vi = accumulate_observe!!(vi, right, left, vn, template)
     return left, vi
 end
