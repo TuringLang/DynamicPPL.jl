@@ -27,7 +27,7 @@ using LinearAlgebra
         # rand uses RawValueAcc under the hood
         @test !any(isnan, rand(model)[@varname(x)])
         # Explicitly spelled out
-        accs = OnlyAccsVarInfo(RawValueAccumulator(true))
+        accs = VarInfo(RawValueAccumulator(true))
         _, accs = init!!(model, accs, InitFromPrior(), UnlinkAll())
         vnt = get_raw_values(accs)
         @test !any(isnan, vnt[@varname(x)])
@@ -46,7 +46,7 @@ using LinearAlgebra
             y := 1.0
             return x ~ Normal()
         end
-        accs = OnlyAccsVarInfo(RawValueAccumulator(true))
+        accs = VarInfo(RawValueAccumulator(true))
         _, accs = init!!(f(), accs, InitFromPrior(), UnlinkAll())
         @test collect(keys(get_raw_values(accs))) == [@varname(y), @varname(x)]
     end
@@ -57,7 +57,7 @@ using LinearAlgebra
             acc, 1.0, 1.0, 0.0, @varname(x[1]), Normal(), zeros(3)
         )
         acc = DynamicPPL.store_colon_eq!!(acc, @varname(x[2:3]), [2.0, 3.0], zeros(3))
-        accs = OnlyAccsVarInfo(acc)
+        accs = VarInfo(acc)
         @test keys(get_parameter_values(accs)) == [@varname(x[1])]
         @test keys(get_colon_eq_values(accs)) == [@varname(x[2]), @varname(x[3])]
     end

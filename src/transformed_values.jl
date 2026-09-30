@@ -341,11 +341,9 @@ function apply_transform_strategy(
         # No need to transform further
         (raw_value, tv, -inv_logjac)
     elseif target isa Unlink || target isa NoTransform
-        # Need to return an unlinked value. We _could_ vectorise and generate a Unlink()
-        # here, with the vectorisation transform. However, sometimes that's not needed (e.g.
-        # when evaluating with an OnlyAccsVarInfo). So we just return an untransformed
-        # value. If a downstream function requires a vectorised value, it's on them to
-        # generate it.
+        # Vectorisation is only needed when recording vector-valued outputs (e.g. in a
+        # VectorValueAccumulator). Return an untransformed value; consumers vectorise it
+        # when needed.
         (raw_value, TransformedValue(raw_value, NoTransform()), zero(LogProbType))
     elseif target isa FixedTransform
         fwd_transform = inverse(target.transform)
@@ -455,8 +453,9 @@ with the transforms specified in the VNT. For all values `v` in the VNT, `get_tr
 should return an `AbstractTransform`.
 """
 function infer_transform_strategy_from_values(vnt::VarNamedTuple)
-    # map_values!! might mutate the VNT, so deepcopy to avoid this
-    transforms_vnt = map_values!!(get_transform, deepcopy(vnt))
+    isempty(vnt) && return UnlinkAll()
+    # Copy the containers that map_values!! may mutate, preserving the transform objects.
+    transforms_vnt = map_values!!(get_transform, copy(vnt))
     tfms = values(transforms_vnt)
     # TODO(penelopeysm): In an ideal world, could we reliably use eltype(tfms) to infer
     # this? I'm just worried about the possibility of tfms having an overly abstract type,

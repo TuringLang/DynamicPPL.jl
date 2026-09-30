@@ -74,7 +74,7 @@ using MarginalLogDensities
         vi_linked = DynamicPPL.link(vi_unlinked, model)
 
         function get_raw_values_from_init_strat(model, init_strat)
-            accs = DynamicPPL.OnlyAccsVarInfo(DynamicPPL.RawValueAccumulator(false))
+            accs = DynamicPPL.VarInfo(DynamicPPL.RawValueAccumulator(false))
             _, accs = DynamicPPL.init!!(model, accs, init_strat, DynamicPPL.UnlinkAll())
             return DynamicPPL.get_raw_values(accs)
         end

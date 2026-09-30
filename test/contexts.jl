@@ -207,7 +207,9 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
             context = DynamicPPL.PrefixContext(prefix_vn, DefaultContext())
             new_model = contextualize(model, context)
             # Initialize a new varinfo with the prefixed model
-            _, varinfo = DynamicPPL.init!!(new_model, DynamicPPL.VarInfo())
+            _, varinfo = DynamicPPL.init!!(
+                new_model, DynamicPPL.VarInfo(VectorValueAccumulator())
+            )
             # Extract the resulting varnames
             vns_actual = Set(keys(varinfo))
 

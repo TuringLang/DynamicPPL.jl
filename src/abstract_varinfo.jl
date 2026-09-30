@@ -54,9 +54,11 @@ end
 """
     get_values(vi::AbstractVarInfo)
 
-Return the `VarNamedTuple` in `vi` that stores the variables' transformed values.
+Return the `VarNamedTuple` of vectorised `TransformedValue`s from the
+`VectorValueAccumulator` in `vi`. Throw an `ArgumentError` if that accumulator is absent.
 
-This should be implemented by each subtype of `AbstractVarInfo`.
+This is a compatibility name for `get_vector_values`; parameter values are optional outputs.
+`get_values` will be deprecated in a future release; use `get_vector_values`.
 """
 function get_values end
 
@@ -194,9 +196,9 @@ end
 """
     get_raw_values(vi::AbstractVarInfo)
 
-Extract a `VarNamedTuple` of values from the `RawValueAccumulator` in `vi`, without any
-transformations applied to them. This includes values introduced by `:=` when the
-accumulator was constructed with `include_colon_eq=true`.
+Extract a `VarNamedTuple` of raw values from the `RawValueAccumulator` in `vi`: model-space
+values as the model body sees them, without any transformations applied. This includes
+values introduced by `:=` when the accumulator was constructed with `include_colon_eq=true`.
 
 If `vi` does not contain a `RawValueAccumulator`, this function will throw an error.
 """
@@ -447,7 +449,7 @@ true
 julia> 0 < only(v) < 1
 false
 
-julia> accs = OnlyAccsVarInfo(RawValueAccumulator(false));
+julia> accs = VarInfo(RawValueAccumulator(false));
 
 julia> _, accs = init!!(f(), accs, InitFromParams((x = 0.25,)), LinkAll());
 
@@ -478,7 +480,8 @@ end
 """
     internal_values_as_vector(vi::AbstractVarInfo)
 
-Return all variable values stored internally in `vi` as a flattened `Vector`.
+Concatenate the per-statement vector values in `vi`'s `VectorValueAccumulator`, in key
+order, into one flat `Vector`.
 
 !!! warning "Mixed element types"
     A `Vector` has one element type, so concatenating variables with different element types
@@ -583,9 +586,9 @@ VarNamedTuple
 ├─ m => 2.0
 └─ x => [3.0, 4.0]
 
-julia> vi = last(init!!(model, VarInfo(), InitFromParams(params), UnlinkAll()));
+julia> vi = last(init!!(model, VarInfo(VectorValueAccumulator()), InitFromParams(params), UnlinkAll()));
 
-julia> vi.values
+julia> keys(vi)
 4-element Vector{VarName}:
  s
  m
@@ -692,12 +695,10 @@ end
 
 """
     link(vi::AbstractVarInfo, model::Model)
-    link(vi::AbstractVarInfo, vns::NTuple{N,VarName}, model::Model)
 
 Transform all variables in `vi` to their linked space without mutating `vi` (i.e., replace
-all the `TransformedValue`s in `vi.values` with the corresponding
-`TransformedValue(linked_value, DynamicLink())`. If `vns` is provided, then only transform
-the variables in `vns`.
+all the `TransformedValue`s in `get_vector_values(vi)` with the corresponding
+`TransformedValue(linked_value, DynamicLink())`).
 
 Note that if `vi` contains variables that have fixed transforms, the fixed transforms will
 be overwritten.
@@ -707,13 +708,9 @@ See also: [`invlink`](@ref).
 function link(vi::AbstractVarInfo, model::Model)
     return link!!(deepcopy(vi), model)
 end
-function link(vi::AbstractVarInfo, vns, model::Model)
-    return link!!(deepcopy(vi), vns, model)
-end
 
 """
     link!!(vi::AbstractVarInfo, model::Model)
-    link!!(vi::AbstractVarInfo, vns::NTuple{N,VarName}, model::Model)
 
 Like `link`, but might mutate `vi` in-place if it is possible to do so.
 """
@@ -721,13 +718,11 @@ function link!! end
 
 """
     invlink(vi::AbstractVarInfo, model::Model)
-    invlink(vi::AbstractVarInfo, vns::NTuple{N,VarName}, model::Model)
 
 Transform all variables in `vi` to the original space without mutating `vi` (i.e., replace
-all the `TransformedValue`s in `vi.values` with the corresponding
-`TransformedValue(unlinked_value, Unlink())`. Note that the unlinked values are still
-vectorised (that is a requirement of `vi.values`). If `vns` is provided, then only transform
-the variables in `vns`.
+all the `TransformedValue`s in `get_vector_values(vi)` with the corresponding
+`TransformedValue(unlinked_value, Unlink())`). Note that the unlinked values are still
+vectorised (that is a requirement of `get_vector_values(vi)`).
 
 Note that if `vi` contains variables that have fixed transforms, the fixed transforms will
 be overwritten.
@@ -737,13 +732,9 @@ See also: [`link`](@ref).
 function invlink(vi::AbstractVarInfo, model::Model)
     return invlink!!(deepcopy(vi), model)
 end
-function invlink(vi::AbstractVarInfo, vns, model::Model)
-    return invlink!!(deepcopy(vi), vns, model)
-end
 
 """
     invlink!!(vi::AbstractVarInfo, model::Model)
-    invlink!!(vi::AbstractVarInfo, vns::NTuple{N,VarName}, model::Model)
 
 Like `invlink`, but might mutate `vi` in-place if it is possible to do so.
 """
@@ -752,7 +743,7 @@ function invlink!! end
 """
     unflatten!!(vi::AbstractVarInfo, x::AbstractVector)
 
-Return a new instance of `vi` where the internal values stored in `vi.values` have been
+Return a new instance of `vi` where the internal values stored in `get_vector_values(vi)` have been
 overwritten with the values in `x`.
 
 This is the inverse operation of [`internal_values_as_vector`](@ref).

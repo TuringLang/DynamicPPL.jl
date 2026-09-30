@@ -56,10 +56,7 @@ to:
 
 ```julia
 init!!(
-    model,
-    OnlyAccsVarInfo(accumulators...),
-    InitFromParams(varinfo.values),
-    varinfo.transform_strategy,
+    model, VarInfo(accumulators...), InitFromParams(get_vector_values(varinfo)), UnlinkAll()
 )
 ```
 

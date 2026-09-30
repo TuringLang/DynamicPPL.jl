@@ -128,7 +128,7 @@ function AbstractMCMC.to_samples(
 )
     # Run model once to get templates for parameters. Note that the chain may include
     # variables stored with `:=`, so we need to pick those up as well.
-    vi = DynamicPPL.OnlyAccsVarInfo((DynamicPPL.RawValueAccumulator(true),))
+    vi = DynamicPPL.VarInfo((DynamicPPL.RawValueAccumulator(true),))
     _, vi = DynamicPPL.init!!(model, vi, DynamicPPL.InitFromPrior(), DynamicPPL.UnlinkAll())
     template_vnt = DynamicPPL.get_raw_values(vi)
     # Now we can iterate over the chain
@@ -280,7 +280,7 @@ function reevaluate_with_chain(
     multithreaded::Bool=false,
 ) where {N}
     params_with_stats = AbstractMCMC.to_samples(DynamicPPL.ParamsWithStats, chain, model)
-    vi = DynamicPPL.OnlyAccsVarInfo(DynamicPPL.AccumulatorTuple(accs))
+    vi = DynamicPPL.VarInfo(DynamicPPL.AccumulatorTuple(accs))
     function evaluate(r, v, ps)
         return DynamicPPL.init!!(
             r,
@@ -522,13 +522,12 @@ function _pointwise_logdensities_chain(
     parameter_only_chain = MCMCChains.get_sections(chain, :parameters)
     # Reevaluating this gives us a VNT of log probs. We can densify and then wrap in
     # ParamsWithStats so that we can easily convert back to a Chains object.
-    pointwise_logps = map(
-        reevaluate_with_chain(model, parameter_only_chain, (acc,), nothing)
-    ) do (_, oavi)
-        logprobs = DynamicPPL.get_pointwise_logprobs(oavi)
-        dense_logprobs = DynamicPPL.densify!!(logprobs)
-        DynamicPPL.ParamsWithStats(dense_logprobs, (;))
-    end
+    pointwise_logps =
+        map(reevaluate_with_chain(model, parameter_only_chain, (acc,), nothing)) do (_, vi)
+            logprobs = DynamicPPL.get_pointwise_logprobs(vi)
+            dense_logprobs = DynamicPPL.densify!!(logprobs)
+            DynamicPPL.ParamsWithStats(dense_logprobs, (;))
+        end
     return AbstractMCMC.from_samples(MCMCChains.Chains, pointwise_logps)
 end
 

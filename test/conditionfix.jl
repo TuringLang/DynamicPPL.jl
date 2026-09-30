@@ -372,7 +372,7 @@ DynamicPPL.setchildcontext(::MyParentContext, child) = MyParentContext(child)
             return data.x
         end
         fixm = DynamicPPL.fix(ntfix(), (; data=(; x=5.0)))
-        accs = OnlyAccsVarInfo(RawValueAccumulator(false))
+        accs = VarInfo(RawValueAccumulator(false))
         retval, accs = DynamicPPL.init!!(fixm, accs, InitFromPrior(), UnlinkAll())
         # The fixed data should overwrite the NamedTuple that came before it
         @test retval == 5.0

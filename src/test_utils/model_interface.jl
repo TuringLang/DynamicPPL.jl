@@ -93,9 +93,9 @@ implementation that evaluates the model is provided.
 """
 function varnames(model::Model)
     vval_acc = DynamicPPL.VectorValueAccumulator()
-    oavi = OnlyAccsVarInfo((vval_acc,))
-    _, oavi = DynamicPPL.init!!(model, oavi, InitFromPrior(), UnlinkAll())
-    vvals = DynamicPPL.getacc(oavi, Val(DynamicPPL.accumulator_name(vval_acc))).values
+    vi = VarInfo((vval_acc,))
+    _, vi = DynamicPPL.init!!(model, vi, InitFromPrior(), UnlinkAll())
+    vvals = DynamicPPL.getacc(vi, Val(DynamicPPL.accumulator_name(vval_acc))).values
     # Concretise the element type.
     return [x for x in keys(vvals)]
 end

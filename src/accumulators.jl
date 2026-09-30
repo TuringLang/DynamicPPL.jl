@@ -198,6 +198,7 @@ function Base.haskey(at::AccumulatorTuple, ::Val{accname}) where {accname}
 end
 Base.keys(at::AccumulatorTuple) = keys(at.nt)
 Base.:(==)(at1::AccumulatorTuple, at2::AccumulatorTuple) = at1.nt == at2.nt
+Base.isequal(at1::AccumulatorTuple, at2::AccumulatorTuple) = isequal(at1.nt, at2.nt)
 Base.hash(at::AccumulatorTuple, h::UInt) = Base.hash((AccumulatorTuple, at.nt), h)
 Base.copy(at::AccumulatorTuple) = AccumulatorTuple(map(copy, at.nt))
 
@@ -224,8 +225,12 @@ end
     getacc(at::AccumulatorTuple, ::Val{accname})
 
 Get the accumulator with name `accname` from `at`.
+Throw an `ArgumentError` if it is absent, listing the available accumulator names.
 """
 function getacc(at::AccumulatorTuple, ::Val{accname}) where {accname}
+    haskey(at, Val(accname)) || throw(
+        ArgumentError("Missing accumulator :$accname. Available accumulators: $(keys(at))"),
+    )
     return at[accname]
 end
 
@@ -240,8 +245,9 @@ function deleteacc!!(
     return AccumulatorTuple(NamedTuple{filter(x -> x != T, names)}(accs.nt))
 end
 
-function Base.map(func::Function, at::AccumulatorTuple)
-    return AccumulatorTuple(map(func, at.nt))
+@generated function Base.map(func::F, at::AccumulatorTuple{N}) where {F<:Function,N}
+    calls = [:(func(at.nt[$i])) for i in 1:N]
+    return :(AccumulatorTuple(($(calls...),)))
 end
 
 """

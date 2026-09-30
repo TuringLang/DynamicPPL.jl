@@ -14,6 +14,8 @@ using MCMCChains: MCMCChains
 using Random: Random, Xoshiro
 using Test
 
+@model value_model() = x ~ Normal()
+
 function check_varinfo_keys(varinfo, vns)
     vns_varinfo = keys(varinfo)
     @test union(vns_varinfo, vns) == intersect(vns_varinfo, vns)
@@ -26,7 +28,7 @@ function check_varinfo_values(varinfo1, varinfo2, vns)
 end
 
 function check_metadata_type_equal(v1::VarInfo, v2::VarInfo)
-    @test typeof(v1.values) == typeof(v2.values)
+    @test typeof(get_vector_values(v1)) == typeof(get_vector_values(v2))
 end
 function check_metadata_type_equal(
     v1::DynamicPPL.ThreadSafeVarInfo{<:AbstractVarInfo},
@@ -39,7 +41,7 @@ short_varinfo_name(::DynamicPPL.ThreadSafeVarInfo) = "ThreadSafeVarInfo"
 short_varinfo_name(::DynamicPPL.VarInfo) = "VarInfo"
 
 function make_chain_from_prior(rng::Random.AbstractRNG, model::Model, n_iters::Int)
-    vi = DynamicPPL.OnlyAccsVarInfo((
+    vi = DynamicPPL.VarInfo((
         DynamicPPL.default_accumulators()..., DynamicPPL.RawValueAccumulator(false)
     ))
     ps = hcat([
@@ -54,8 +56,43 @@ function make_chain_from_prior(model::Model, n_iters::Int)
 end
 
 @testset "varinfo.jl" begin
+    @testset "inference" begin
+        model = value_model()
+        vi = @inferred VarInfo(Xoshiro(1), model)
+        _, initialized = @inferred DynamicPPL.init!!(
+            Xoshiro(1),
+            model,
+            VarInfo(VectorValueAccumulator(), DynamicPPL.default_accumulators()...),
+            InitFromPrior(),
+        )
+        @test vi == initialized
+    end
+
+    @testset "no recorded values" begin
+        for vi in (VarInfo(), DynamicPPL.ThreadSafeVarInfo(VarInfo()))
+            @test @inferred isempty(vi)
+            @test isempty(@inferred keys(vi))
+            @test isempty(@inferred values(vi))
+            @test !(@inferred haskey(vi, @varname(x)))
+            @test (@inferred length(vi)) == 0
+            @test_throws ArgumentError get_vector_values(vi)
+            @test_throws ArgumentError internal_values_as_vector(vi)
+            @test_throws ArgumentError vi[:]
+            @test_throws ArgumentError eltype(vi)
+            @test_throws ArgumentError DynamicPPL.get_transformed_value(vi, @varname(x))
+        end
+    end
+
     @testset "Base" begin
-        vi = VarInfo()
+        @test_throws "Missing accumulator :VectorValue. Available accumulators: (:LogPrior, :LogJacobian, :LogLikelihood)" get_vector_values(
+            VarInfo()
+        )
+        vi_poszero = VarInfo(Xoshiro(1), value_model(), InitFromParams((x=0.0,), nothing))
+        vi_negzero = VarInfo(Xoshiro(1), value_model(), InitFromParams((x=-0.0,), nothing))
+        @test vi_poszero == vi_negzero
+        @test !isequal(vi_poszero, vi_negzero)
+
+        vi = VarInfo(VectorValueAccumulator(), DynamicPPL.default_accumulators()...)
         @test getlogjoint(vi) == 0
         @test isempty(internal_values_as_vector(vi))
 
@@ -69,26 +106,20 @@ end
         @test !haskey(vi, vn)
         @test !(vn in keys(vi))
 
-        vi = DynamicPPL.setindex_with_dist!!(
-            vi, TransformedValue(x, NoTransform()), Normal(), vn, x
-        )
+        vi = VarInfo(value_model(), InitFromParams((; x), nothing))
         @test !isempty(vi)
         @test haskey(vi, vn)
         @test vn in keys(vi)
 
         @test DynamicPPL.getindex_internal(vi, vn) == [x]
         @test internal_values_as_vector(vi) == [x]
-        vi = DynamicPPL.setindex_with_dist!!(
-            vi, TransformedValue(2 * x, NoTransform()), Normal(), vn, x
-        )
+        vi = VarInfo(value_model(), InitFromParams((; x=2 * x), nothing))
         @test DynamicPPL.getindex_internal(vi, vn) == [2 * x]
         @test internal_values_as_vector(vi) == [2 * x]
 
         vi = empty!!(vi)
         @test isempty(vi)
-        vi = DynamicPPL.setindex_with_dist!!(
-            vi, TransformedValue(x, NoTransform()), Normal(), vn, x
-        )
+        vi = VarInfo(value_model(), InitFromParams((; x), nothing))
         @test !isempty(vi)
 
         @testset "KeyError for missing varname" begin
@@ -101,22 +132,19 @@ end
             @test_throws KeyError DynamicPPL.getindex_internal(vi2, @varname(y))
             @test_throws KeyError DynamicPPL.get_transformed_value(vi2, @varname(y))
             # Direct VarNamedTuple access also throws KeyError
-            @test_throws KeyError vi2.values[@varname(y)]
+            @test_throws KeyError get_vector_values(vi2)[@varname(y)]
         end
     end
 
     @testset "eltype" begin
         @model eltype_demo() = x ~ Normal()
         @test eltype(VarInfo(eltype_demo())) === Float64
-        # A VarInfo holding no values falls through to `internal_values_as_vector`,
-        # which it does not implement.
-        accs_only = OnlyAccsVarInfo(DynamicPPL.default_accumulators())
-        @test Base.promote_op(getindex, typeof(accs_only), Colon) === Union{}
-        @test_throws MethodError eltype(accs_only)
+        accs_only = VarInfo(DynamicPPL.default_accumulators())
+        @test_throws ArgumentError eltype(accs_only)
     end
 
     @testset "get/set/acclogp" begin
-        vi = VarInfo()
+        vi = VarInfo(VectorValueAccumulator(), DynamicPPL.default_accumulators()...)
         @test DynamicPPL.getlogjoint(vi) === 0.0
         vi = DynamicPPL.setlogprior!!(vi, 1.0)
         @test DynamicPPL.getlogprior(vi) === 1.0
@@ -154,7 +182,16 @@ end
 
         vi = DynamicPPL.unflatten!!(VarInfo(m), [values.a, values.b])
 
-        vi = last(DynamicPPL.evaluate_nowarn!!(m, deepcopy(vi)))
+        vi = last(
+            evaluate!!(
+                m,
+                InitContext(
+                    InitFromParams(get_values(vi), nothing),
+                    DynamicPPL.infer_transform_strategy_from_values(get_values(vi)),
+                ),
+                deepcopy(vi),
+            ),
+        )
         @test getlogprior(vi) == lp_a + lp_b
         @test getlogjac(vi) == 0.0
         @test getloglikelihood(vi) == lp_c + lp_d
@@ -191,16 +228,19 @@ end
         @test getlogp(setlogp!!(vi, getlogp(vi))) == getlogp(vi)
 
         vi = last(
-            DynamicPPL.evaluate_nowarn!!(
-                m, DynamicPPL.setaccs!!(deepcopy(vi), (LogPriorAccumulator(),))
+            evaluate!!(
+                m,
+                InitContext(
+                    InitFromParams(get_values(vi), nothing),
+                    DynamicPPL.infer_transform_strategy_from_values(get_values(vi)),
+                ),
+                DynamicPPL.setaccs!!(deepcopy(vi), (LogPriorAccumulator(),)),
             ),
         )
         @test getlogprior(vi) == lp_a + lp_b
-        # need regex because 1.11 and 1.12 throw different errors (in 1.12 the
-        # missing field is surrounded by backticks)
-        @test_throws r"has no field `?LogLikelihood" getloglikelihood(vi)
-        @test_throws r"has no field `?LogJacobian" getlogp(vi)
-        @test_throws r"has no field `?LogLikelihood" getlogjoint(vi)
+        @test_throws "Missing accumulator :LogLikelihood." getloglikelihood(vi)
+        @test_throws "Missing accumulator :LogJacobian." getlogp(vi)
+        @test_throws "Missing accumulator :LogLikelihood." getlogjoint(vi)
         @test begin
             vi = acclogprior!!(vi, 1.0)
             getlogprior(vi) == lp_a + lp_b + 1.0
@@ -211,18 +251,20 @@ end
         end
 
         # Test evaluating without any accumulators.
-        vi = last(DynamicPPL.evaluate_nowarn!!(m, DynamicPPL.setaccs!!(deepcopy(vi), ())))
-        # need regex because 1.11 and 1.12 throw different errors (in 1.12 the
-        # missing field is surrounded by backticks)
-        @test_throws r"has no field `?LogPrior" getlogprior(vi)
-        @test_throws r"has no field `?LogLikelihood" getloglikelihood(vi)
-        @test_throws r"has no field `?LogPrior" getlogp(vi)
-        @test_throws r"has no field `?LogPrior" getlogjoint(vi)
+        vi = last(
+            evaluate!!(
+                m, InitContext(InitFromParams(values, nothing), UnlinkAll()), VarInfo(())
+            ),
+        )
+        @test_throws "Missing accumulator :LogPrior." getlogprior(vi)
+        @test_throws "Missing accumulator :LogLikelihood." getloglikelihood(vi)
+        @test_throws "Missing accumulator :LogPrior." getlogp(vi)
+        @test_throws "Missing accumulator :LogPrior." getlogjoint(vi)
     end
 
     @testset "resetaccs" begin
         # Put in a bunch of accumulators, check that they're all reset either
-        # when we call resetaccs!!, empty!!, or evaluate_nowarn!!.
+        # when we call resetaccs!!, empty!!, or evaluate!!.
         @model function demo()
             a ~ Normal()
             return x ~ Normal(a)
@@ -234,7 +276,14 @@ end
         vi_orig = DynamicPPL.setacc!!(vi_orig, DynamicPPL.RawValueAccumulator(true))
         vi_orig = DynamicPPL.setacc!!(vi_orig, DynamicPPL.PriorDistributionAccumulator())
         # And evaluate the model once so that they are populated.
-        _, vi_orig = DynamicPPL.evaluate_nowarn!!(model, vi_orig)
+        _, vi_orig = evaluate!!(
+            model,
+            InitContext(
+                InitFromParams(get_values(vi_orig), nothing),
+                DynamicPPL.infer_transform_strategy_from_values(get_values(vi_orig)),
+            ),
+            vi_orig,
+        )
 
         function all_accs_empty(vi::AbstractVarInfo)
             for acc_key in keys(DynamicPPL.getaccs(vi))
@@ -278,7 +327,14 @@ end
         @test all_accs_same(vi_orig, deepcopy(vi_orig))
         # If we re-evaluate, then we expect the accs to be reset prior to evaluation.
         # Thus after re-evaluation, the accs should be exactly the same as before.
-        _, vi = DynamicPPL.evaluate_nowarn!!(model, deepcopy(vi_orig))
+        _, vi = evaluate!!(
+            model,
+            InitContext(
+                InitFromParams(get_values(vi_orig), nothing),
+                DynamicPPL.infer_transform_strategy_from_values(get_values(vi_orig)),
+            ),
+            deepcopy(vi_orig),
+        )
         @test all_accs_same(vi, vi_orig)
     end
 
@@ -307,7 +363,13 @@ end
         @test !is_transformed(vi)
 
         # partial linking
-        vi = DynamicPPL.link!!(vi, [@varname(x)], model)
+        _, vi = init!!(
+            Xoshiro(1),
+            model,
+            vi,
+            InitFromParams(get_vector_values(vi), nothing),
+            LinkSome(Set([@varname(x)]), UnlinkAll()),
+        )
         @test is_transformed(vi, @varname(x))
         @test !is_transformed(vi, @varname(y))
         @test !is_transformed(vi)
@@ -342,10 +404,16 @@ end
         model = gdemo([1.0, 1.5], [2.0, 2.5])
 
         all_transformed(vi) = mapreduce(
-            p -> p.second.transform isa DynamicPPL.DynamicLink, &, vi.values; init=true
+            p -> p.second.transform isa DynamicPPL.DynamicLink,
+            &,
+            get_vector_values(vi);
+            init=true,
         )
         any_transformed(vi) = mapreduce(
-            p -> p.second.transform isa DynamicPPL.DynamicLink, |, vi.values; init=false
+            p -> p.second.transform isa DynamicPPL.DynamicLink,
+            |,
+            get_vector_values(vi);
+            init=false,
         )
 
         # Check that linking and invlinking set the `is_transformed` flag accordingly
@@ -371,10 +439,23 @@ end
             other_vns = filter(x -> !subsumes(vn, x), all_vns)
             @test !isempty(target_vns)
             @test !isempty(other_vns)
-            vi = link!!(vi, (vn,), model)
+            strategy = LinkSome(Set([vn]), UnlinkAll())
+            _, vi = init!!(
+                Xoshiro(1),
+                model,
+                vi,
+                InitFromParams(get_vector_values(vi), nothing),
+                strategy,
+            )
             @test all_transformed(subset(vi, target_vns))
             @test !any_transformed(subset(vi, other_vns))
-            vi = invlink!!(vi, (vn,), model)
+            _, vi = init!!(
+                Xoshiro(1),
+                model,
+                vi,
+                InitFromParams(get_vector_values(vi), nothing),
+                UnlinkSome(Set([vn]), strategy),
+            )
             @test !any_transformed(vi)
             @test internal_values_as_vector(vi) ≈ vals atol = 1e-10
         end
@@ -417,7 +498,13 @@ end
             end
             if transform_strategy isa LinkSome
                 vi2 = VarInfo(Xoshiro(468), model)
-                vi2 = DynamicPPL.link!!(vi2, transform_strategy.vns, model)
+                _, vi2 = init!!(
+                    Xoshiro(468),
+                    model,
+                    vi2,
+                    InitFromParams(get_vector_values(vi2), nothing),
+                    LinkSome(Set(transform_strategy.vns), UnlinkAll()),
+                )
                 @test vi == vi2
             end
         end
@@ -464,10 +551,12 @@ end
         tfm_strat = WithTransforms(get_fixed_transforms(model, LinkAll()), UnlinkAll())
 
         @testset "initialisation" begin
-            _, vi = DynamicPPL.init!!(model, VarInfo(), InitFromPrior(), tfm_strat)
-            # output_tfm_strat is generated via update_transform_strategy
-            output_tfm_strat = vi.transform_strategy
-            @test vi.transform_strategy == tfm_strat
+            _, vi = DynamicPPL.init!!(
+                model,
+                VarInfo(VectorValueAccumulator(), DynamicPPL.default_accumulators()...),
+                InitFromPrior(),
+                tfm_strat,
+            )
             # check the values line up too
             for vn in keys(vi)
                 tval = DynamicPPL.get_transformed_value(vi, vn)
@@ -476,10 +565,14 @@ end
         end
 
         @testset "linking" begin
-            _, vi = DynamicPPL.init!!(model, VarInfo(), InitFromPrior(), tfm_strat)
+            _, vi = DynamicPPL.init!!(
+                model,
+                VarInfo(VectorValueAccumulator(), DynamicPPL.default_accumulators()...),
+                InitFromPrior(),
+                tfm_strat,
+            )
 
             vi_linked = DynamicPPL.link!!(deepcopy(vi), model)
-            @test vi_linked.transform_strategy == LinkAll()
             @test all(
                 vn ->
                     DynamicPPL.get_transformed_value(vi_linked, vn).transform isa
@@ -488,7 +581,6 @@ end
             )
 
             vi_invlinked = DynamicPPL.invlink!!(deepcopy(vi), model)
-            @test vi_invlinked.transform_strategy == UnlinkAll()
             @test all(
                 vn ->
                     DynamicPPL.get_transformed_value(vi_invlinked, vn).transform isa
@@ -570,7 +662,7 @@ end
         @test_throws DimensionMismatch DynamicPPL.unflatten!!(varinfo, zeros(2n))
     end
 
-    @testset "unflatten!! type stability" begin
+    @testset "unflatten!! values and serial type stability" begin
         @model function demo(y)
             x ~ Normal()
             y ~ Normal(x, 1)
@@ -582,7 +674,17 @@ end
             model, (; x=1.0); include_threadsafe=true
         )
         @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
-            @inferred DynamicPPL.unflatten!!(varinfo, internal_values_as_vector(varinfo))
+            values = internal_values_as_vector(varinfo)
+            if varinfo isa DynamicPPL.ThreadSafeVarInfo
+                varinfo = DynamicPPL.acclogprior!!(varinfo, big"1.0")
+                logprior = getlogprior(varinfo)
+                varinfo = DynamicPPL.unflatten!!(varinfo, values)
+                @test getlogprior(varinfo) isa BigFloat
+                @test getlogprior(varinfo) == logprior
+            else
+                varinfo = @inferred DynamicPPL.unflatten!!(varinfo, values)
+            end
+            @test internal_values_as_vector(varinfo) == values
         end
     end
 
@@ -805,7 +907,7 @@ end
                     init_strat = InitFromParams(
                         DynamicPPL.get_values(varinfo_merged), nothing
                     )
-                    accs = OnlyAccsVarInfo(RawValueAccumulator(false))
+                    accs = VarInfo(RawValueAccumulator(false))
                     _, accs = init!!(model, accs, init_strat, UnlinkAll())
                     DynamicPPL.TestUtils.test_values(get_raw_values(accs), x, vns)
                 end
@@ -826,14 +928,21 @@ end
 
             varinfo_left = VarInfo(model_left)
             varinfo_right = VarInfo(model_right)
-            varinfo_right = DynamicPPL.link!!(varinfo_right, (@varname(x),), model_right)
+            _, varinfo_right = init!!(
+                Xoshiro(1),
+                model_right,
+                varinfo_right,
+                InitFromParams(get_vector_values(varinfo_right), nothing),
+                LinkSome(Set([@varname(x)]), UnlinkAll()),
+            )
 
             varinfo_merged = merge(varinfo_left, varinfo_right)
             vns = [@varname(x), @varname(y), @varname(z)]
             check_varinfo_keys(varinfo_merged, vns)
 
             # Right has precedence.
-            @test varinfo_merged.values[@varname(x)] == varinfo_right.values[@varname(x)]
+            @test get_vector_values(varinfo_merged)[@varname(x)] ==
+                get_vector_values(varinfo_right)[@varname(x)]
             @test DynamicPPL.is_transformed(varinfo_merged, @varname(x))
         end
     end
@@ -841,15 +950,10 @@ end
     # The below used to error, testing to avoid regression.
     @testset "merge different dimensions" begin
         vn = @varname(x)
-        vi_single = DynamicPPL.setindex_with_dist!!(
-            VarInfo(), TransformedValue(1.0, NoTransform()), Normal(), vn, 1.0
-        )
-        vi_double = DynamicPPL.setindex_with_dist!!(
-            VarInfo(),
-            TransformedValue([0.5, 0.6], NoTransform()),
-            MvNormal(zeros(2), I),
-            vn,
-            [0.5, 0.6],
+        @model dimensioned(d) = x ~ d
+        vi_single = VarInfo(dimensioned(Normal()), InitFromParams((; x=1.0), nothing))
+        vi_double = VarInfo(
+            dimensioned(MvNormal(zeros(2), I)), InitFromParams((; x=[0.5, 0.6]), nothing)
         )
         @test DynamicPPL.getindex_internal(merge(vi_single, vi_double), vn) == [0.5, 0.6]
         @test DynamicPPL.getindex_internal(merge(vi_double, vi_single), vn) == [1.0]

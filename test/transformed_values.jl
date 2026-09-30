@@ -8,7 +8,14 @@ using AbstractPPL: AbstractPPL
 using Bijectors: Bijectors
 using DynamicPPL
 using Distributions
+using Random: Xoshiro
 using Test
+
+mutable struct ScalarTransform
+    offset::Float64
+end
+(f::ScalarTransform)(x) = only(x) + f.offset
+Bijectors.with_logabsdet_jacobian(f::ScalarTransform, x) = (f(x), 0.0)
 
 @testset "TransformedValue API" begin
     @testset "get_transform, get_internal_value, set_internal_value" begin
@@ -115,6 +122,40 @@ end
 end
 
 @testset "infer_transform_strategy_from_values" begin
+    @test DynamicPPL.infer_transform_strategy_from_values(VarNamedTuple()) isa UnlinkAll
+
+    @testset "input preservation" begin
+        @model function linked_values()
+            x ~ LogNormal()
+            y ~ MvNormal(zeros(2), 1.0)
+            z = Vector{Float64}(undef, 2)
+            for i in eachindex(z)
+                z[i] ~ LogNormal()
+            end
+        end
+        vi = VarInfo(Xoshiro(1), linked_values(), InitFromPrior(), LinkAll())
+        vnt = get_vector_values(vi)
+        original = deepcopy(vnt)
+        @test DynamicPPL.infer_transform_strategy_from_values(vnt) isa LinkAll
+        @test isequal(vnt, original)
+    end
+
+    @testset "mutable fixed transform" begin
+        @model single() = x ~ Normal()
+        ft = FixedTransform(ScalarTransform(1.0))
+        vi = VarInfo(
+            Xoshiro(1),
+            single(),
+            InitFromParams((; x=TransformedValue([2.0], ft)), nothing),
+            WithTransforms(VarNamedTuple(; x=ft), UnlinkAll()),
+        )
+        strategy = DynamicPPL.infer_transform_strategy_from_values(get_vector_values(vi))
+        @test DynamicPPL.target_transform(strategy, @varname(x)) === ft
+        retval, vi = DynamicPPL.evaluate_nowarn!!(single(), vi)
+        @test retval == 3.0
+        @test get_transform(get_vector_values(vi)[@varname(x)]) === ft
+    end
+
     # If all are DynamicLink -> LinkAll
     vnt_linked = @vnt begin
         x := TransformedValue([1.0], DynamicLink())

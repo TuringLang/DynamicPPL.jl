@@ -58,6 +58,22 @@ function promote_for_threadsafe_eval(
     return TSVNTAccumulator{AccName}(acc.f, acc.values)
 end
 
+function Base.:(==)(
+    left::Union{VNTAccumulator{N},TSVNTAccumulator{N}},
+    right::Union{VNTAccumulator{N},TSVNTAccumulator{N}},
+) where {N}
+    return left.f == right.f && left.values == right.values
+end
+function Base.isequal(
+    left::Union{VNTAccumulator{N},TSVNTAccumulator{N}},
+    right::Union{VNTAccumulator{N},TSVNTAccumulator{N}},
+) where {N}
+    return isequal(left.f, right.f) && isequal(left.values, right.values)
+end
+function Base.hash(acc::Union{VNTAccumulator{N},TSVNTAccumulator{N}}, h::UInt) where {N}
+    return hash((N, acc.f, acc.values), h)
+end
+
 for acc_type in (:VNTAccumulator, :TSVNTAccumulator)
     @eval begin
         function Base.copy(acc::$acc_type{AccName}) where {AccName}

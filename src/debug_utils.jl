@@ -213,15 +213,15 @@ function check_model(
     end
 
     # Run the model and collect the data we need
-    oavi = DynamicPPL.OnlyAccsVarInfo((
+    vi = DynamicPPL.VarInfo((
         DebugAccumulator(),
         PriorDistributionAccumulator(),
         DynamicPPL.DebugRawValueAccumulator(),
     ))
     init_strategy = InitFromPrior()
-    _, oavi = DynamicPPL.init!!(rng, model, oavi, init_strategy, UnlinkAll())
+    _, vi = DynamicPPL.init!!(rng, model, vi, init_strategy, UnlinkAll())
 
-    params = get_raw_values(oavi)
+    params = get_raw_values(vi)
     # This adds one evaluation per `check_model` call, not per ordinary model evaluation.
     # Turing's `sample(model, NUTS(), 1000)` checks once before sampling; MCMC steps
     # do not trigger it. `check_model=false` disables all model checks.
@@ -238,13 +238,13 @@ function check_model(
     end
 
     # Check if the DebugAccumulator found any issues with the model.
-    debug_acc = DynamicPPL.getacc(oavi, Val(_DEBUG_ACC_NAME))
+    debug_acc = DynamicPPL.getacc(vi, Val(_DEBUG_ACC_NAME))
     if debug_acc.failed
         failed = true
     end
 
     # Check the DebugRawValueAccumulator
-    debug_raw_value_acc = DynamicPPL.getacc(oavi, Val(DynamicPPL.RAW_VALUE_ACCNAME))
+    debug_raw_value_acc = DynamicPPL.getacc(vi, Val(DynamicPPL.RAW_VALUE_ACCNAME))
     repeated_vns = debug_raw_value_acc.f.repeated_vns
     if !isempty(repeated_vns)
         for vn in repeated_vns
@@ -263,7 +263,7 @@ function check_model(
     # such mixed products are typed as `Continuous`, so a discrete component
     # inside one would not be caught here.
     if fail_if_discrete
-        prior_acc = DynamicPPL.getacc(oavi, Val(DynamicPPL.PRIOR_ACCNAME)).values
+        prior_acc = DynamicPPL.getacc(vi, Val(DynamicPPL.PRIOR_ACCNAME)).values
         for (vn, dist) in pairs(prior_acc)
             if dist isa Distributions.DiscreteDistribution
                 msg =
@@ -312,7 +312,7 @@ and checking if the model is consistent across runs.
 """
 function has_static_constraints(rng::Random.AbstractRNG, model::Model; num_evals::Int=5)
     prior_vnts = map(1:num_evals) do _
-        accs = DynamicPPL.OnlyAccsVarInfo(PriorDistributionAccumulator())
+        accs = DynamicPPL.VarInfo(PriorDistributionAccumulator())
         _, accs = DynamicPPL.init!!(rng, model, accs, InitFromPrior(), UnlinkAll())
         return only(DynamicPPL.getaccs(accs)).values
     end

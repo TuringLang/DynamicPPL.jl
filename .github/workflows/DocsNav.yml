@@ -8,6 +8,11 @@ on:
   # Whenever needed
   workflow_dispatch:
 
+concurrency:
+  # All documentation workflows write to the same gh-pages branch.
+  group: docs-gh-pages
+  queue: max
+
 permissions:
   contents: write
 

@@ -196,20 +196,22 @@ TEST_ACCUMULATORS = (
             @test setacc!!(AccumulatorTuple(lp_f64), ll_f64) ==
                 AccumulatorTuple(lp_f64, ll_f64)
 
-            @test getacc(at_all64, Val(:LogPrior)) == lp_f64
+            @test (@inferred getacc(at_all64, Val(:LogPrior))) == lp_f64
         end
 
         @testset "map_accumulator(s)!!" begin
             # map over all accumulators
             accs = AccumulatorTuple(lp_f32, ll_f32)
-            @test map(DynamicPPL.reset, accs) == AccumulatorTuple(
+            @test (@inferred map(DynamicPPL.reset, AccumulatorTuple())) ==
+                AccumulatorTuple()
+            @test (@inferred map(DynamicPPL.reset, accs)) == AccumulatorTuple(
                 LogPriorAccumulator(0.0f0), LogLikelihoodAccumulator(0.0f0)
             )
             # Test that the original wasn't modified.
             @test accs == AccumulatorTuple(lp_f32, ll_f32)
 
             # A map with a closure that changes the types of the accumulators.
-            @test map(acc -> promote_for_threadsafe_eval(acc, Float64), accs) ==
+            @test (@inferred map(acc -> promote_for_threadsafe_eval(acc, Float64), accs)) ==
                 AccumulatorTuple(LogPriorAccumulator(1.0), LogLikelihoodAccumulator(1.0))
 
             # only apply to a particular accumulator
@@ -222,7 +224,7 @@ TEST_ACCUMULATORS = (
     end
 
     @testset "PriorDistributionAccumulator" begin
-        accs = DynamicPPL.OnlyAccsVarInfo(
+        accs = DynamicPPL.VarInfo(
             PriorDistributionAccumulator(), RawValueAccumulator(false)
         )
         @model function f()
@@ -242,9 +244,7 @@ TEST_ACCUMULATORS = (
             @test copy(acc) isa Any
         end
 
-        vi = OnlyAccsVarInfo(
-            DynamicPPL.VectorParamAccumulator([1.0], [true], VarNamedTuple())
-        )
+        vi = VarInfo(DynamicPPL.VectorParamAccumulator([1.0], [true], VarNamedTuple()))
         copied_vi = copy(vi)
         getacc(copied_vi, Val(:VectorParamAccumulator)).vals[1] = 2.0
         @test getacc(vi, Val(:VectorParamAccumulator)).vals == [1.0]

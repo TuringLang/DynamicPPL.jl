@@ -14,7 +14,7 @@ using Random: Random
 using Test
 
 function make_chain_from_prior(rng::Random.AbstractRNG, model::Model, n_iters::Int)
-    vi = DynamicPPL.OnlyAccsVarInfo((
+    vi = DynamicPPL.VarInfo((
         DynamicPPL.default_accumulators()..., DynamicPPL.RawValueAccumulator(false)
     ))
     ps = hcat([
@@ -33,7 +33,14 @@ end
         example_values = DynamicPPL.TestUtils.rand_prior_true(model)
 
         # Instantiate a `VarInfo` with the example values.
-        vi = last(init!!(model, VarInfo(), InitFromParams(example_values), UnlinkAll()))
+        vi = last(
+            init!!(
+                model,
+                VarInfo(VectorValueAccumulator()),
+                InitFromParams(example_values),
+                UnlinkAll(),
+            ),
+        )
 
         loglikelihood_true = DynamicPPL.TestUtils.loglikelihood_true(
             model, example_values...
@@ -41,7 +48,7 @@ end
         logprior_true = logprior(model, vi)
 
         # Compute the pointwise loglikelihoods.
-        lls = pointwise_loglikelihoods(model, InitFromParams(vi.values))
+        lls = pointwise_loglikelihoods(model, InitFromParams(get_vector_values(vi)))
         if isempty(lls)
             # One of the models with literal observations, so we'll set this to 0 for subsequent comparisons.
             loglikelihood_true = 0.0
@@ -52,14 +59,15 @@ end
         end
 
         # Compute the pointwise logdensities of the priors.
-        lps_prior = pointwise_prior_logdensities(model, InitFromParams(vi.values))
+        lps_prior = pointwise_prior_logdensities(
+            model, InitFromParams(get_vector_values(vi))
+        )
         @test :x ∉ DynamicPPL.getsym.(keys(lps_prior))
         logp = sum(sum, values(lps_prior))
         @test logp ≈ logprior_true
 
         # Compute both likelihood and logdensity of prior
-        # using the default DefaultContext
-        lps = pointwise_logdensities(model, InitFromParams(vi.values))
+        lps = pointwise_logdensities(model, InitFromParams(get_vector_values(vi)))
         logp = sum(sum, values(lps))
         @test logp ≈ (logprior_true + loglikelihood_true)
     end
@@ -92,6 +100,21 @@ end
         @test log_likelihoods[@varname(z)] isa Vector{Float64}
         @test length(log_likelihoods[@varname(z)]) == 2
         @test !haskey(log_likelihoods, @varname(x))
+    end
+
+    @testset "threadsafe evaluation records observations" begin
+        @model function threaded_obs(y)
+            m ~ Normal()
+            Threads.@threads for i in eachindex(y)
+                y[i] ~ Normal(m)
+            end
+        end
+        model = threaded_obs([1.0, 2.0, 3.0])
+        init = InitFromParams((; m=0.5), nothing)
+        expected = pointwise_loglikelihoods(model, init)
+        actual = pointwise_loglikelihoods(setthreadsafe(model, true), init)
+        @test length(actual) == 3
+        @test all(vn -> actual[vn] ≈ expected[vn], keys(expected))
     end
 end
 

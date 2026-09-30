@@ -76,7 +76,9 @@ function test_parent_context(context::DynamicPPL.AbstractContext, model::Dynamic
         # Initialisation
         _, vi = DynamicPPL.init!!(
             new_model,
-            DynamicPPL.VarInfo(),
+            DynamicPPL.VarInfo(
+                VectorValueAccumulator(), DynamicPPL.default_accumulators()...
+            ),
             DynamicPPL.InitFromPrior(),
             DynamicPPL.UnlinkAll(),
         )

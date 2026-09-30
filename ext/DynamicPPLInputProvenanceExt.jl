@@ -176,7 +176,7 @@ function check_input_provenance(rng, model, params)
     traced_model = DynamicPPL.Model{DynamicPPL.requires_threadsafe(model)}(
         model.f, args, defaults, model.context
     )
-    vi = DynamicPPL.OnlyAccsVarInfo((InputProvenanceAccumulator(),))
+    vi = DynamicPPL.VarInfo((InputProvenanceAccumulator(),))
     strategy = DynamicPPL.InitFromParams(params, nothing)
 
     try

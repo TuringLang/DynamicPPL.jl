@@ -42,16 +42,16 @@ function _get_vector_tval(
     return TransformedValue(val, Unlink())
 end
 
-# This is equivalent to `varinfo.values` where `varinfo isa VarInfo`
 """
     VectorValueAccumulator()
 
-An accumulator that collects vectorised values, i.e. `TransformedValue{<:AbstractVector}`.
+An accumulator that collects one vectorised value, i.e. a
+`TransformedValue{<:AbstractVector}`, per tilde statement.
 
 The exact type of the vectorised value (i.e., `tval.transform`) will depend on the transform
 strategy that the model was evaluated with, and specifically, is equal to
 `target_transform(transform_strategy, vn)`; *except* for the case where `target_transform`
-is `Untransformed`, i.e., no transformation is to be applied. In this case, the
+is `NoTransform()`, i.e., no transformation is to be applied. In this case, the
 `VectorValueAccumulator` will apply a vectorisation transform to the untransformed value,
 i.e., generate a `TransformedValue` with `Unlink()` as the transform.
 """
@@ -81,9 +81,8 @@ julia> internal_values_as_vector(vnt)
  3.0
 ```
 
-This is equivalent to `varinfo[:]` (for `varinfo::VarInfo`). However, instead of using a
-`VarInfo` object, we strongly recommend that you use a `VectorValueAccumulator` and then
-call `get_vector_values` on the accumulator.
+To record vectorised values, evaluate with a `VectorValueAccumulator` and extract them
+with `get_vector_values`.
 
 ```jldoctest
 julia> using DynamicPPL, Distributions, LinearAlgebra
@@ -95,7 +94,7 @@ julia> @model function f()
            y ~ Beta(2, 2)
        end;
 
-julia> accs = OnlyAccsVarInfo(vector_acc);
+julia> accs = VarInfo(vector_acc);
 
 julia> # note InitFromParams provides parameters in untransformed space
        _, accs = init!!(f(), accs, InitFromParams((x = [1.0, 2.0], y = 0.5)), LinkAll());

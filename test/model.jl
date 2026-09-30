@@ -17,7 +17,7 @@ short_varinfo_name(::DynamicPPL.ThreadSafeVarInfo) = "ThreadSafeVarInfo"
 short_varinfo_name(::DynamicPPL.VarInfo) = "VarInfo"
 
 function make_chain_from_prior(rng::Random.AbstractRNG, model::Model, n_iters::Int)
-    vi = DynamicPPL.OnlyAccsVarInfo((
+    vi = DynamicPPL.VarInfo((
         DynamicPPL.default_accumulators()..., DynamicPPL.RawValueAccumulator(false)
     ))
     ps = hcat([
@@ -65,7 +65,7 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
         model = GDEMO_DEFAULT
 
         # sample from model and extract variables
-        accs = OnlyAccsVarInfo()
+        accs = VarInfo()
         accs = setacc!!(accs, RawValueAccumulator(false))
         _, accs = init!!(model, accs, InitFromPrior(), UnlinkAll())
         raw_values = get_raw_values(accs)
@@ -351,7 +351,7 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
             @test logjoint(model, x) !=
                 DynamicPPL.TestUtils.logjoint_true_with_logabsdet_jacobian(model, x...)
             # Ensure `varnames` is implemented.
-            vi = last(DynamicPPL.init!!(model, VarInfo()))
+            vi = last(DynamicPPL.init!!(model, VarInfo(VectorValueAccumulator())))
             @test all(collect(keys(vi)) .== DynamicPPL.TestUtils.varnames(model))
             # Ensure `posterior_mean` is implemented.
             @test DynamicPPL.TestUtils.posterior_mean(model) isa typeof(x)
@@ -407,13 +407,30 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
             varinfos = DynamicPPL.TestUtils.setup_varinfos(model, example_values)
             @testset "$(short_varinfo_name(varinfo))" for varinfo in varinfos
                 @test begin
-                    @inferred(DynamicPPL.evaluate_nowarn!!(model, varinfo))
+                    @inferred(
+                        evaluate!!(
+                            model,
+                            InitContext(
+                                InitFromParams(get_values(varinfo), nothing), UnlinkAll()
+                            ),
+                            VarInfo(),
+                        )
+                    )
                     true
                 end
 
                 varinfo_linked = DynamicPPL.link(varinfo, model)
                 @test begin
-                    @inferred(DynamicPPL.evaluate_nowarn!!(model, varinfo_linked))
+                    @inferred(
+                        evaluate!!(
+                            model,
+                            InitContext(
+                                InitFromParams(get_values(varinfo_linked), nothing),
+                                LinkAll(),
+                            ),
+                            VarInfo(),
+                        )
+                    )
                     true
                 end
             end
@@ -434,7 +451,7 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
             # We can set the include_colon_eq arg to false because none of
             # the demo models contain :=. The behaviour when
             # include_colon_eq is true is tested in test/compiler.jl
-            accs = OnlyAccsVarInfo(RawValueAccumulator(false))
+            accs = VarInfo(RawValueAccumulator(false))
             _, accs = init!!(
                 model, accs, InitFromParams(example_values, nothing), UnlinkAll()
             )
@@ -463,7 +480,7 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
             end
 
             for model in (outer_auto_prefix(), outer_manual_prefix())
-                vi = OnlyAccsVarInfo((RawValueAccumulator(false),))
+                vi = VarInfo((RawValueAccumulator(false),))
                 _, vi = init!!(model, vi, InitFromPrior(), UnlinkAll())
                 vns = Set(keys(get_raw_values(vi)))
                 @test vns == Set([@varname(a.x), @varname(b.x)])
@@ -496,7 +513,10 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
         varinfo_linked = DynamicPPL.link(varinfo, model)
         varinfo_linked_result = last(
             DynamicPPL.init!!(
-                model, VarInfo(), InitFromParams(varinfo_linked.values, nothing), LinkAll()
+                model,
+                VarInfo(),
+                InitFromParams(get_vector_values(varinfo_linked), nothing),
+                LinkAll(),
             ),
         )
         # getlogjoint should return the same result as before it was linked

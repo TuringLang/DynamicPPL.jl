@@ -63,7 +63,6 @@ function DynamicPPL.tilde_assume!!(ctx::InitContext, dist, vn, template, vi)
     x, tval, logjac = apply_transform_strategy(ctx.transform_strategy, init_tval, vn, dist)
 
     # 3. Accumulation
-    vi = DynamicPPL.setindex_with_dist!!(vi, tval, dist, vn, template)
     vi = DynamicPPL.accumulate_assume!!(vi, x, tval, logjac, vn, dist, template)
     return x, vi
 end
@@ -177,17 +176,8 @@ It also allows us to read values from an existing `VarInfo` but interpret them a
 ## Accumulation
 
 ```julia
-vi = DynamicPPL.setindex_with_dist!!(vi, tval, dist, vn, template)
 vi = DynamicPPL.accumulate_assume!!(vi, x, tval, logjac, vn, dist, template)
 ```
-
-!!! note
-    
-    The first line, `setindex_with_dist!!`, is only necessary when using a full `VarInfo`.
-    It essentially stores the value `tval` inside the `VarInfo`, but makes sure to store a vectorised form (i.e., if `tval` is not vectorised, it will be).
-    This is entirely equivalent to using a `VectorValueAccumulator` to store the values; it's just that when using a full `VarInfo` that accumulator is 'built-in' as `vi.values`.
-    
-    Since conceptually this is the same as an accumulator, we will not discuss it further here.
 
 Here, we pass all of the information we have gathered so far for this tilde-statement to the accumulators.
 `accumulate_assume!!(vi::AbstractVarInfo, ...)` will loop over all accumulators stored inside `vi`, and call each of their individual `accumulate_assume!!` methods.
