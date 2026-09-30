@@ -785,7 +785,13 @@ function _model_argument_value(values::VarNamedTuples.PartialArray, template)
     return if _has_complete_model_data(values)
         _model_data(values)
     else
-        _fold_model_indices(_set_model_argument, deepcopy(template), values)
+        result = template isa Tuple ? template : copy(template)
+        for i in eachindex(template)
+            if !haskey(values, i) && (template isa Tuple || isassigned(template, i))
+                result = BangBang.setindex!!(result, deepcopy(template[i]), i)
+            end
+        end
+        _fold_model_indices(_set_model_argument, result, values)
     end
 end
 function _set_model_argument(result, value, optic, template)
@@ -796,34 +802,29 @@ function _set_model_argument(result, value, optic, template)
         _model_argument_value(value, child_template),
     )
 end
-@generated function _model_argument_value(
-    values::VarNamedTuple{names}, template
-) where {names}
-    updates = map(names) do name
-        :(
-            result = Accessors.set(
-                result,
-                AbstractPPL.with_mutation(AbstractPPL.Property{$(QuoteNode(name))}()),
-                _model_argument_value(
-                    values.data.$name,
-                    VarNamedTuples.SharedGetProperty{$(QuoteNode(name))}()(result),
-                ),
-            )
+function _model_argument_value(values::VarNamedTuple, template)
+    template isa NoTemplate && return _model_data(values)
+    for name in keys(values.data)
+        hasproperty(template, name) || throw(
+            ArgumentError(
+                "Cannot override nonexistent property `$name` of $(typeof(template)). If this is a return-value buffer, condition or fix the child model before wrapping it with `to_submodel`.",
+            ),
         )
     end
-    return quote
-        template isa NoTemplate && return _model_data(values)
-        for name in $names
-            hasproperty(template, name) || throw(
-                ArgumentError(
-                    "Cannot override nonexistent property `$name` of $(typeof(template)). If this is a return-value buffer, condition or fix the child model before wrapping it with `to_submodel`.",
-                ),
-            )
+    fields = _model_argument_fields(values, ConstructionBase.getproperties(template))
+    return ConstructionBase.setproperties(template, fields)
+end
+@generated function _model_argument_fields(
+    values::VarNamedTuple{names}, template::NamedTuple{fields}
+) where {names,fields}
+    updates = map(fields) do name
+        if name in names
+            :(_model_argument_value(values.data.$name, template.$name))
+        else
+            :(deepcopy(template.$name))
         end
-        result = deepcopy(template)
-        $(updates...)
-        return result
     end
+    return :(NamedTuple{$fields}(($(updates...),)))
 end
 
 @generated function _select_model_values(
