@@ -2507,6 +2507,10 @@ function get_param_eltype(::AbstractVarInfo, ctx::InitContext)
     return get_param_eltype(ctx.strategy)
 end
 
+@generated function _argument_names(::NamedTuple{names}) where {names}
+    return QuoteNode(map(unsplat_symbol, names))
+end
+
 """
     getargnames(model::Model)
 
