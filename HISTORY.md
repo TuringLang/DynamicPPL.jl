@@ -36,7 +36,7 @@ Context-based `store_coloneq_value!!` methods are removed; `:=` statements use t
 
 Model arguments supply default observations; `condition` and `fix` at the same address now replace the earlier role rather than stacking contexts. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-`missing` at a bound site now throws `ArgumentError`, including arguments and values supplied to `condition`, `fix`, or `InitFromParams`: `f(missing)` / `f([1.0, missing])` → `decondition(f(x), @varname(x))` / `decondition(f(x), @varname(x[2]))`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+`missing` at a bound site now throws `ArgumentError`; construction checks tilde arguments recursively through tuples, named tuples, and assigned array entries, including unused parts (custom struct fields are checked at executed sites). `condition` and `fix` use the same checks; `InitFromParams` rejects `missing` when read: `f(missing)` / `f([1.0, missing])` → `decondition(f(x), @varname(x))` / `decondition(f(x), @varname(x[2]))`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
 `CondFixContext` is removed: use `condition(model, values)` / `fix(model, values)`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 

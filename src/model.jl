@@ -19,14 +19,36 @@ function _contains_missing(values::Union{Tuple,NamedTuple})
     return any(_contains_missing, values)
 end
 
+_missing_path(::Missing, path) = path
+function _missing_path(value::TransformedValue, path)
+    return _missing_path(get_internal_value(value), path)
+end
+function _missing_path(value::NamedTuple, path)
+    name = first(name for name in keys(value) if _contains_missing(value[name]))
+    return _missing_path(value[name], "$path.$name")
+end
+function _missing_path(value::Tuple, path)
+    i = findfirst(_contains_missing, value)
+    return _missing_path(value[i], "$path[$i]")
+end
+function _missing_path(value::AbstractArray, path)
+    i = first(
+        i for
+        i in CartesianIndices(value) if isassigned(value, i) && _contains_missing(value[i])
+    )
+    return _missing_path(value[i], "$path[$(join(Tuple(i), ", "))]")
+end
+
 struct ModelValue{R<:Union{Condition,ArgumentCondition,Fix},T}
     value::T
-    function ModelValue{R}(value::T) where {R<:Union{Condition,ArgumentCondition,Fix},T}
+    function ModelValue{R}(
+        value::T, vn=@varname(_)
+    ) where {R<:Union{Condition,ArgumentCondition,Fix},T}
         (R === Condition || R === ArgumentCondition || R === Fix) ||
             throw(ArgumentError("A model value must have one concrete role"))
         _contains_missing(value) && throw(
             ArgumentError(
-                "`missing` no longer selects latent variables. Omit unobserved values from `condition` or `fix`, or use `decondition` to make an argument latent.",
+                "Bound value `$(AbstractPPL.getsym(vn))` contains `missing` at `$(_missing_path(value, string(vn)))`. Omit unobserved values from `condition` or `fix`, or construct with a non-missing placeholder and use `decondition` to make the argument latent.",
             ),
         )
         return new{R,T}(value)
@@ -73,7 +95,7 @@ end
 function VarNamedTuples._getindex_optic(
     value::ModelValue{R}, optic::AbstractPPL.AbstractOptic, vn
 ) where {R}
-    return ModelValue{R}(VarNamedTuples._getindex_optic(value.value, optic, vn))
+    return ModelValue{R}(VarNamedTuples._getindex_optic(value.value, optic, vn), vn)
 end
 function VarNamedTuples._getindex_optic(
     value::ModelValue{R}, ::AbstractPPL.Iden, vn
@@ -210,7 +232,7 @@ function _get_model_data(model, vn, argument)
 end
 
 function _tag_model_values(::Type{R}, values::VarNamedTuple) where {R}
-    return map_values!!(ModelValue{R}, copy(values))
+    return map_pairs!!(pair -> ModelValue{R}(pair.second, pair.first), copy(values))
 end
 
 function _expand_model_binding(previous::ModelValue{R,<:AbstractArray}) where {R}
@@ -959,7 +981,11 @@ See also: [`decondition`](@ref), [`conditioned`](@ref)
 
 Later bindings replace earlier ones where they overlap: a whole binding replaces all its
 components; a component binding replaces only itself. One tilde statement cannot mix
-conditioned and fixed components. `missing` is rejected; omit unobserved values instead.
+conditioned and fixed components. `missing` is rejected at binding or model construction,
+recursively throughout tuples, named tuples, and assigned array entries, including unused
+parts of a tilde argument; custom struct fields are checked only at executed sites.
+Omit unobserved values from `condition` or `fix`, or supply a non-missing argument placeholder
+and [`decondition`](@ref) it; see [Missing data](@ref).
 Bindings unused by executed tilde statements are ignored.
 
 Binding an argument that is not a tilde site throws `ArgumentError` at this call; construct
@@ -1461,7 +1487,8 @@ sampling and contribute no log probability.
 Whole bindings use the supplied object without copying. A component binding snapshots the
 remaining elements when it splits a whole binding; later changes to the supplied container's
 entries are not reflected in those elements. The model body must not mutate bound values,
-directly or through a `view`. Replacement, missing-value rejection, unused bindings, and
+directly or through a `view`. `missing` rejection has the scope and remedies documented
+in [`condition`](@ref). Replacement, unused bindings, and
 argument restrictions follow [`condition`](@ref). See [Binding rules](@ref) for the shared rules, including the
 cost of component bindings on array arguments, and [`to_submodel`](@ref) for submodels.
 
@@ -1844,7 +1871,7 @@ function tilde_observe!!(
     end
     _contains_missing(left) && throw(
         ArgumentError(
-            "`missing` no longer selects latent variables. Omit unobserved values from `condition` or `fix` instead.",
+            "`missing` at `$(_missing_path(left, string(vn)))` no longer selects latent variables. Omit unobserved values from `condition` or `fix`, or construct with a non-missing placeholder and use `decondition` to make the argument latent.",
         ),
     )
     vi = accumulate_observe!!(vi, right, left, vn, template)

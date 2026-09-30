@@ -33,7 +33,11 @@
   - `conditioned` and `fixed` return plain values, independent of binding history:
     `VarNamedTuple`, `PartialArray`, or ordinary values. Partial removal or mixed
     roles produce plain partial values, not the original container type.
-  - `missing` is rejected in argument observations, `condition`, and `fix`.
+  - `missing` is rejected at construction in tilde arguments and values supplied to
+    `condition` or `fix`, recursively throughout tuples, named tuples, and assigned array
+    entries, including unused parts of those arguments. Custom struct fields are checked
+    only at executed sites. Omit unobserved bindings, or construct with a non-missing
+    argument placeholder and `decondition` it (see [Missing data](@ref)).
     `InitFromParams` rejects it when the parameter is read during initialization,
     not at construction. Leave unobserved values out instead.
   - Whole bindings use the supplied object without copying. When a component binding
@@ -225,5 +229,13 @@ rand(cond_model_partial)
 
 ## Missing data
 
-Fields of custom structs containing `missing` are rejected when used at tilde sites.
+Construction checks all parts of tilde arguments recursively through tuples, named tuples,
+and assigned array entries, even when a part has no tilde statement. For
+`@model metadata_site(p) = p.a ~ Normal()`, `metadata_site((a=1.0, b=missing))` therefore
+throws at construction. Custom struct fields are not searched at construction; `missing`
+is rejected when such a field is used at an executed tilde site.
+
+Omit unobserved values from `condition` or `fix`. For argument observations, supply a
+non-missing placeholder first, then call `decondition(m, :x)` (or remove a component)
+to make the desired sites latent.
 For an array whose elements have separate tilde statements, condition only the observed indices, as in the examples above. A single multivariate draw cannot be partially conditioned.
