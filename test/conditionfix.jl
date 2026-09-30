@@ -363,7 +363,7 @@ end
 
             original = indexed_argument(zeros(2))
             changed = op(original; x=data)
-            @test changed() === data
+            @test changed(Xoshiro(1)) === data
             @test isempty(keys(VarInfo(changed)))
             @test logjoint(changed, VarNamedTuple()) ≈
                 (op === condition ? sum(logpdf.(Normal(), data)) : 0.0)

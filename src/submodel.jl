@@ -202,6 +202,7 @@ function tilde_assume!!(
     template,
     vi::AbstractVarInfo,
 ) where {M<:Model,AutoPrefix}
+    _submodel_values(parent_model, left_vn)
     left_vn = AutoPrefix ? _concretize_prefix(left_vn, template) : left_vn
     local_prefix = if AutoPrefix
         maybe_prefix(_model_prefix(submodel.model), left_vn)
