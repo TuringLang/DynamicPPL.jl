@@ -42,6 +42,49 @@ end
 @model nested_observations(y) = a ~ to_submodel(indexed_observations(y))
 
 @testset "submodels.jl" begin
+    @testset "arguments supply submodel return buffers" begin
+        @model child() = (x ~ Normal(); x)
+        @model function dynamic_buffer(a)
+            sub = to_submodel(fix(child(); x=2.0))
+            a ~ sub
+            return a
+        end
+        @model function indexed_buffer(a)
+            a[1] ~ to_submodel(fix(child(); x=2.0))
+            return a
+        end
+        @model keyword_buffer(; a=0.0) = a ~ to_submodel(fix(child(); x=2.0))
+        @model nested(m) = b ~ to_submodel(m)
+        for bind in (condition, fix)
+            for model in (
+                bind(dynamic_buffer((; x=0.0)), @varname(a.x) => 2.0),
+                bind(dynamic_buffer(0.0); a=(; x=2.0)),
+                bind(indexed_buffer([(; x=0.0)]), @varname(a[1].x) => 2.0),
+            )
+                @test_throws r"ArgumentError: .*return-value buffer" model(Xoshiro(1))
+            end
+        end
+        for (model, expected) in (
+            (dynamic_buffer(0.0), 2.0),
+            (indexed_buffer([0.0]), [2.0]),
+            (keyword_buffer(), 2.0),
+        )
+            for wrapped in (model, nested(model))
+                @test wrapped(Xoshiro(1)) == expected
+                @test isempty(keys(VarInfo(Xoshiro(1), wrapped)))
+            end
+            @test decondition(model, :a)(Xoshiro(1)) == expected
+            for bind in (condition, fix)
+                address = expected isa AbstractArray ? @varname(a[1]) : @varname(a)
+                @test_throws r"ArgumentError: .*submodel's return value" bind(
+                    model, address => 3.0
+                )(
+                    Xoshiro(1)
+                )
+            end
+        end
+    end
+
     @testset "bindings below argument return buffers are rejected" begin
         @model child(mu) = x ~ Normal(mu)
         @model function buffer_parent(a; rhs=child)
@@ -97,7 +140,6 @@ end
         @model nested(m) = outer ~ to_submodel(m)
         for child_model in (child(), prefix(child(), @varname(b)))
             for m in (
-                manual(3.0, child_model),
                 condition(decondition(manual(0.0, child_model)); a=3.0),
                 fix(decondition(manual(0.0, child_model)); a=3.0),
             )
@@ -438,7 +480,7 @@ end
             a[1] ~ to_submodel(observed_child())
             return a
         end
-        @test_throws ArgumentError parent_with_buffer(zeros(1))()
+        @test parent_with_buffer(zeros(1))() == [2.0]
         @test decondition(parent_with_buffer(zeros(1)))() == [2.0]
         @test isempty(keys(VarInfo(decondition(parent_with_buffer(zeros(1))))))
     end
