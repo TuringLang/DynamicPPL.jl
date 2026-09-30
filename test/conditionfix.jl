@@ -9,6 +9,7 @@ using ForwardDiff: ForwardDiff
 using LinearAlgebra: I
 using LogDensityProblems: LogDensityProblems
 using Test
+using Random: Xoshiro
 
 @info "Testing $(@__FILE__)..."
 __now__ = now()
@@ -254,6 +255,40 @@ end
         end
         partial = @test_logs condition(decondition(nested_array(data)), observations)
         @test size(conditioned(partial).data.x) == (2, 2)
+    end
+
+    @testset "partial removal expands whole bindings" begin
+        @model function partial_observations(x)
+            m ~ Normal()
+            for i in eachindex(x)
+                x[i] ~ Normal(m)
+            end
+        end
+        @model record_observations(t=(; a=1.0, b=2.0)) = (t.a ~ Normal(); t.b ~ Normal(); t)
+        for (bind, remove, select) in
+            ((condition, decondition, conditioned), (fix, unfix, fixed))
+            original = bind(partial_observations([1.0, 2.0]); x=[1.0, 2.0])
+            latent = remove(original, @varname(x[2]))
+            @test Set(keys(VarInfo(Xoshiro(1), latent))) ==
+                Set([@varname(m), @varname(x[2])])
+            @test loglikelihood(latent, (; m=0.0, x=[1.0, 3.0])) ≈
+                (bind === condition ? logpdf(Normal(), 1.0) : 0.0)
+            @test select(original)[@varname(x)] == [1.0, 2.0]
+            @test select(remove(original, @varname(absent))) == select(original)
+            record = bind(record_observations(); t=(; a=1.0, b=2.0))
+            @test !haskey(select(remove(record, @varname(t.a))), @varname(t.a))
+            @test select(remove(record, @varname(t.absent))) == select(record)
+        end
+        original = condition(record_observations(); t=(; a=1.0, b=2.0))
+        expanded = fix(original, @varname(t.b) => 5.0)
+        for model in (original, expanded)
+            latent = decondition(model, @varname(t.a))
+            @test keys(VarInfo(Xoshiro(1), latent)) == [@varname(t.a)]
+        end
+        @model nested_removal(x) = (x[1].a[2] ~ Normal(); x)
+        original = nested_removal([(; a=[1.0, 2.0])])
+        @test keys(VarInfo(Xoshiro(1), decondition(original, @varname(x[1].a[2])))) ==
+            [@varname(x[1].a[2])]
     end
 
     @testset "argument observations can be replaced and removed" begin
