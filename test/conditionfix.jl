@@ -34,6 +34,22 @@ struct MetadataRecord
 end
 
 @testset "condition and fix" begin
+    @testset "partly unbound tilde sites" begin
+        @model mv_argument(x) = x ~ MvNormal(zeros(2), I)
+        @model mv_local() = x ~ MvNormal(zeros(2), I)
+        @test_throws r"ArgumentError: .*x.*whole" VarInfo(
+            decondition(mv_argument([1.0, 2.0]), @varname(x[1]))
+        )
+        for (bind, remove) in ((condition, decondition), (fix, unfix))
+            @test_throws r"ArgumentError: .*x.*whole" VarInfo(
+                remove(bind(mv_local(); x=[1.0, 2.0]), @varname(x[1]))
+            )
+            @test_throws r"ArgumentError: .*x.*whole" VarInfo(
+                bind(mv_local(), @varname(x[2]) => 2.0)
+            )
+        end
+    end
+
     @testset "nonexistent argument fields" begin
         @model nt_fields(p) = (m ~ Normal(); p.a ~ Normal(m); p.b ~ Normal(m))
         for bind in (condition, fix)
