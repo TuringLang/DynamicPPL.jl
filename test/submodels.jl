@@ -103,6 +103,20 @@ end
         end
     end
 
+    @testset "scalar component errors distinguish return buffers" begin
+        @model child_value() = x ~ Normal()
+        @model return_buffer(a=0.0) = a ~ to_submodel(child_value())
+        @model scalar_argument(a=0.0) = a ~ Normal()
+        for bind in (condition, fix)
+            @test_throws r"If `a` is a return-value buffer, condition or fix the child model before wrapping it with `to_submodel`" bind(
+                return_buffer(), @varname(a.x) => 2.0
+            )()
+            @test_throws r"For other bindings, use `decondition\(model, @varname\(a\)\)` first" bind(
+                scalar_argument(), @varname(a.x) => 2.0
+            )
+        end
+    end
+
     @testset "arguments supply submodel return buffers" begin
         @model child() = (x ~ Normal(); x)
         @model function dynamic_buffer(a)

@@ -466,7 +466,8 @@ function _check_model_binding(
         compatible || throw(
             ArgumentError(
                 "Cannot bind components below `$vn` with value of type $(typeof(previous.value)). " *
-                "Use decondition(model, @varname($vn)) before binding a submodel's internal variables.",
+                "If `$vn` is a return-value buffer, condition or fix the child model before wrapping it with `to_submodel`. " *
+                "For other bindings, use `decondition(model, @varname($vn))` first.",
             ),
         )
     end
