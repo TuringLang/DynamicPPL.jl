@@ -52,6 +52,9 @@ Base.:(==)(ft1::FixedTransform, ft2::FixedTransform) = ft1.transform == ft2.tran
 function Base.isequal(ft1::FixedTransform, ft2::FixedTransform)
     return isequal(ft1.transform, ft2.transform)
 end
+# Each `hash` in this file hashes the fields its `isequal` compares, so equal values hash
+# equally.
+Base.hash(ft::FixedTransform, h::UInt) = hash(ft.transform, hash(:FixedTransform, h))
 
 """
     TransformedValue{V,T<:AbstractTransform}
@@ -75,6 +78,9 @@ end
 function Base.isequal(tv1::TransformedValue, tv2::TransformedValue)
     return isequal(get_internal_value(tv1), get_internal_value(tv2)) &&
            isequal(get_transform(tv1), get_transform(tv2))
+end
+function Base.hash(tv::TransformedValue, h::UInt)
+    return hash(get_internal_value(tv), hash(get_transform(tv), hash(:TransformedValue, h)))
 end
 
 """
@@ -225,6 +231,9 @@ end
 function Base.isequal(wt1::WithTransforms, wt2::WithTransforms)
     return isequal(wt1.transforms, wt2.transforms) && isequal(wt1.fallback, wt2.fallback)
 end
+function Base.hash(wt::WithTransforms, h::UInt)
+    return hash(wt.transforms, hash(wt.fallback, hash(:WithTransforms, h)))
+end
 function target_transform(linker::WithTransforms, vn::VarName)
     return if haskey(linker.transforms, vn)
         linker.transforms[vn]
@@ -257,6 +266,7 @@ end
 function Base.isequal(ls1::LinkSome, ls2::LinkSome)
     return isequal(ls1.vns, ls2.vns) && isequal(ls1.fallback, ls2.fallback)
 end
+Base.hash(ls::LinkSome, h::UInt) = hash(ls.vns, hash(ls.fallback, hash(:LinkSome, h)))
 
 """
     UnlinkSome(vns::Set{<:VarName}, fallback) <: AbstractTransformStrategy
@@ -283,6 +293,7 @@ end
 function Base.isequal(us1::UnlinkSome, us2::UnlinkSome)
     return isequal(us1.vns, us2.vns) && isequal(us1.fallback, us2.fallback)
 end
+Base.hash(us::UnlinkSome, h::UInt) = hash(us.vns, hash(us.fallback, hash(:UnlinkSome, h)))
 
 """
     DynamicPPL.apply_transform_strategy(

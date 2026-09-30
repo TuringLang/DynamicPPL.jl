@@ -6,6 +6,8 @@
 
 Fixed type inference for thread-safe accumulator promotion on Julia 1.10: integer parameters, such as `x=1` for `x ~ Bernoulli(0.3)`, now select floating-point log-density storage with an inferable type. Related: [#1493](https://github.com/TuringLang/DynamicPPL.jl/pull/1493).
 
+`TransformedValue`, `FixedTransform`, `WithTransforms`, `LinkSome`, and `UnlinkSome` now define `hash` consistently with `isequal`, so equal values (including `VarInfo`s that contain them) hash equally.
+
 Missing accumulator lookups throw an `ArgumentError` naming the missing and available accumulators; for example, `get_vector_values(VarInfo())` names `:VectorValue`. See [#1500](https://github.com/TuringLang/DynamicPPL.jl/pull/1500).
 
 Re-evaluation and `LogDensityFunction` construction no longer copy fixed transforms, so a `FixedTransform` whose callable compares by identity is preserved. See [#1500](https://github.com/TuringLang/DynamicPPL.jl/pull/1500).
