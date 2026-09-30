@@ -34,6 +34,9 @@ end
         @test_throws r"ArgumentError: .*condition.*fix.*decondition.*argument" observed(
             missing
         )
+        for bind in (condition, fix)
+            @test_throws ArgumentError bind(observed(1.0); x=missing)
+        end
     end
 
     @testset "named tuple tilde sites require whole bindings" begin
@@ -389,6 +392,34 @@ end
         end
     end
 
+    @testset "one tilde cannot mix binding roles" begin
+        @model joint() = x ~ MvNormal(zeros(2), I)
+        for (first_op, last_op) in ((condition, fix), (fix, condition))
+            mixed = last_op(first_op(joint(); x=[1.0, 2.0]), @varname(x[1]) => 3.0)
+            @test_throws r"ArgumentError: .*condition and fix different parts" mixed(
+                Xoshiro(1)
+            )
+        end
+    end
+
+    @testset "unused bindings are ignored" begin
+        @model function optional_site(active)
+            x ~ Normal()
+            if active
+                y ~ Normal()
+            end
+            return x
+        end
+        unused_model = optional_site(false)
+        for bind in (condition, fix), name in (@varname(z), @varname(y))
+            bound = bind(unused_model, name => 1.0)
+            value, vi = init!!(Xoshiro(1), unused_model, VarInfo(), InitFromPrior())
+            bound_value, bound_vi = init!!(Xoshiro(1), bound, VarInfo(), InitFromPrior())
+            @test bound_value == value
+            @test getlogjoint(bound_vi) == getlogjoint(vi)
+        end
+    end
+
     @testset "missing struct fields" begin
         @model field_observation(x) = x.a ~ Normal()
         @model nested_field(child) = inner ~ to_submodel(child)
@@ -438,6 +469,12 @@ end
             @test changed()[1] == 3.0
             @test changed()[2, 2] == 2.0
             @test original()[1] == 1.0
+            replaced = last_op(
+                first_op(indexed(), @varname(x[1]) => 3.0); x=[1.0 0.0; 0.0 2.0]
+            )
+            @test replaced(Xoshiro(1)) == [1.0 0.0; 0.0 2.0]
+            @test isempty(conditioned(replaced)) == (last_op === fix)
+            @test isempty(fixed(replaced)) == (last_op === condition)
             @test isempty(keys(VarInfo(changed)))
             @test logjoint(changed, VarNamedTuple()) ==
                 (first_op === condition ? logpdf(Normal(), 2.0) : 0.0) +
