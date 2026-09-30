@@ -385,7 +385,7 @@ ground_truth_β = 2.0
 # Generate predictions for two test points
 xs_test = [10.1, 10.2]
 
-m_train = decondition(linear_reg(xs_test, zeros(length(xs_test))), :y)
+m_train = decondition(linear_reg(xs_test, zeros(length(xs_test))), @varname(y))
 
 predictions = DynamicPPL.AbstractPPL.predict(
     Random.default_rng(), m_train, β_chain

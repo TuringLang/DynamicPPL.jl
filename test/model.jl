@@ -242,12 +242,12 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
 
     @testset "default arguments" begin
         @model test_defaults(x, n=length(x)) = x ~ MvNormal(zeros(n), I)
-        @test length(decondition(test_defaults(zeros(2), 2), :x)()) == 2
+        @test length(decondition(test_defaults(zeros(2), 2), @varname(x))(Xoshiro(1))) == 2
     end
 
     @testset "deconditioned kwarg" begin
         @model test_kwarg(; x=0.0) = x ~ Normal(0, 1)
-        @test @varname(x) in keys(rand(decondition(test_kwarg())))
+        @test @varname(x) in keys(rand(Xoshiro(1), decondition(test_kwarg())))
     end
 
     @testset "extract priors" begin

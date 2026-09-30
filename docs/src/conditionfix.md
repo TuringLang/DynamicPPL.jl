@@ -25,7 +25,7 @@ This model has no observed data: none of its sites are conditioned, so all the `
     
     The definition of `y` in the model is needed so that there is somewhere to assign `y[i]` to after the tilde-statement runs. If we did not define `y`, we would get an error when trying to call `setindex!` on an undefined variable.
     
-    Model arguments supply default observations for sites with the same name. Local storage such as `y` does not: its sites are latent until conditioned or fixed. Use `decondition(model, :x)` to remove an argument observation, and `condition(model; x=new_data)` to replace or restore it.
+    Model arguments supply default observations for sites with the same name. Local storage such as `y` does not: its sites are latent until conditioned or fixed. Use `decondition(model, @varname(x))` to remove an argument observation, and `condition(model; x=new_data)` to replace or restore it.
 
 Let's create some synthetic data to work with:
 
@@ -60,7 +60,7 @@ This is useful for prior predictive checks, for example.
 
 Arguments used on the left-hand side of `~` provide default observations. For example,
 `@model f(x) = x ~ Normal()` makes `f(1.0)` equivalent to `f(1.0) | (x=1.0,)`.
-`decondition(f(1.0), :x)` makes `x` latent, and conditioning that model on `x=2.0`
+`decondition(f(1.0), @varname(x))` makes `x` latent, and conditioning that model on `x=2.0`
 restores an observation with the new value. Other arguments remain ordinary model inputs.
 
 Replacing a complete argument updates its value, shape, and dispatch type parameters before

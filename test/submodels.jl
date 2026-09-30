@@ -141,7 +141,7 @@ end
                 wrap(container)
             end
             vi = VarInfo(RawValueAccumulator(false))
-            result, vi = init!!(model, vi, InitFromPrior(), UnlinkAll())
+            result, vi = init!!(Xoshiro(1), model, vi, InitFromPrior(), UnlinkAll())
             raw = get_raw_values(vi)
             a = wrap === identity ? raw.data.a : raw.data.b.data.a
             @test size(a.data) == size(container)
@@ -169,7 +169,7 @@ end
             return a
         end
         vi = VarInfo(RawValueAccumulator(false))
-        _, vi = init!!(parent_matrix(), vi, InitFromPrior(), UnlinkAll())
+        _, vi = init!!(Xoshiro(1), parent_matrix(), vi, InitFromPrior(), UnlinkAll())
         a = get_raw_values(vi).data.a
         @test size(a.data) == (2, 2)
         @test size(a.data[1].data.x.data) == (2, 3)
@@ -183,7 +183,7 @@ end
             a[2, 2] ~ to_submodel(middle_matrix())
             return a
         end
-        _, vi = init!!(outer_matrix(), vi, InitFromPrior(), UnlinkAll())
+        _, vi = init!!(Xoshiro(1), outer_matrix(), vi, InitFromPrior(), UnlinkAll())
         a = get_raw_values(vi).data.a
         @test size(a.data) == (2, 2)
         @test size(a.data[1].data.inner.data.x.data) == (2, 3)
@@ -377,11 +377,11 @@ end
             return a ~ to_submodel(f(inner_x))
         end
 
-        vnt = rand(condition(g(0.0), @varname(a.x) => 1.0))
+        vnt = rand(Xoshiro(1), condition(g(0.0), @varname(a.x) => 1.0))
         @test Set(keys(vnt)) == Set([@varname(a.y)])
 
         @model latent_g() = a ~ to_submodel(decondition(f(0.0)))
-        vnt = rand(latent_g())
+        vnt = rand(Xoshiro(1), latent_g())
         @test Set(keys(vnt)) == Set([@varname(a.x), @varname(a.y)])
 
         @model observed_child(x=2.0) = x ~ Normal()

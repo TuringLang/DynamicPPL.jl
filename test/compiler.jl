@@ -11,7 +11,7 @@ using ForwardDiff: ForwardDiff
 using LinearAlgebra: I
 # Loads the renderer used by the docstring test.
 using REPL: REPL
-using Random: Random
+using Random: Random, Xoshiro
 using Test
 
 macro custom(expr)
@@ -55,6 +55,7 @@ module NoImportDPPLTest
     using Distributions
     using DynamicPPL: @model, fix, condition, decondition, VarNamedTuple, to_submodel
     using Test: @testset, @test
+    using Random: Xoshiro
     # This module tests that the compiler interpolates all necessary DynamicPPL identifiers so
     # that the user doesn't need to `using DynamicPPL` in order to use the model macro. This can
     # be important if e.g. the user is only loading Turing.
@@ -70,11 +71,11 @@ module NoImportDPPLTest
             z ~ Normal(y)
             return a ~ to_submodel(inner())
         end
-        @test rand(f(1.0)) isa VarNamedTuple
-        @test rand(decondition(f(1.0))) isa VarNamedTuple
-        @test rand(condition(f(1.0), (; x=2.0))) isa VarNamedTuple
-        @test rand(fix(f(1.0), (; x=2.0))) isa VarNamedTuple
-        @test rand(fix(f(1.0), (; a=(; b=2.0)))) isa VarNamedTuple
+        @test rand(Xoshiro(1), f(1.0)) isa VarNamedTuple
+        @test rand(Xoshiro(1), decondition(f(1.0))) isa VarNamedTuple
+        @test rand(Xoshiro(1), condition(f(1.0), (; x=2.0))) isa VarNamedTuple
+        @test rand(Xoshiro(1), fix(f(1.0), (; x=2.0))) isa VarNamedTuple
+        @test rand(Xoshiro(1), fix(f(1.0), (; a=(; b=2.0)))) isa VarNamedTuple
     end
 end
 
@@ -389,7 +390,7 @@ end
             x = y
             return x
         end
-        @test only(keys(rand(named_site()))) == @varname(y)
+        @test only(keys(rand(Xoshiro(1), named_site()))) == @varname(y)
         observed = condition(named_site(); y=2.0)
         @test observed() == 2.0
         @test loglikelihood(observed, VarNamedTuple()) == logpdf(Normal(), 2.0)

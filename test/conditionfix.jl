@@ -330,7 +330,7 @@ end
             observed = condition(argument_model(initial); x=2.0)
             @test observed() == 2.0
             @test logjoint(observed, VarNamedTuple()) == logpdf(Normal(), 2.0)
-            @test keys(VarInfo(decondition(observed))) == [@varname(x)]
+            @test keys(VarInfo(Xoshiro(1), decondition(observed))) == [@varname(x)]
         end
 
         @model function array_argument(x; config=nothing)
@@ -568,8 +568,9 @@ end
         @model slices(x) = x[:] ~ Normal()
         function evaluation_bytes(model)
             vi = VarInfo()
-            init!!(model, vi, InitFromPrior(), UnlinkAll())
-            return @allocated init!!(model, vi, InitFromPrior(), UnlinkAll())
+            rng = Xoshiro(1)
+            _, vi = init!!(rng, model, vi, InitFromPrior(), UnlinkAll())
+            return @allocated _, vi = init!!(rng, model, vi, InitFromPrior(), UnlinkAll())
         end
         small, large = slices(zeros(10_000)), slices(zeros(100_000))
         @test evaluation_bytes(large) - evaluation_bytes(small) < 10_000
@@ -737,7 +738,7 @@ end
         end
         fixed_model = fix(ntfix(), (; data=(; x=5.0)))
         accs = VarInfo(RawValueAccumulator(false))
-        retval, accs = init!!(fixed_model, accs, InitFromPrior(), UnlinkAll())
+        retval, accs = init!!(Xoshiro(1), fixed_model, accs, InitFromPrior(), UnlinkAll())
         @test retval == 5.0
         @test get_raw_values(accs)[@varname(m)] isa Real
     end

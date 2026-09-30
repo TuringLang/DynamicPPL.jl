@@ -5,6 +5,7 @@ using Distributions
 using DynamicPPL
 using LinearAlgebra: LinearAlgebra
 using Test
+using Random: Xoshiro
 
 isapprox_nested(a::Number, b::Number; kwargs...) = isapprox(a, b; kwargs...)
 isapprox_nested(a::AbstractArray, b::AbstractArray; kwargs...) = isapprox(a, b; kwargs...)
@@ -59,7 +60,7 @@ end
             @model test() = x ~ dist
             model = test()
             for transform in (UnlinkAll(), LinkAll())
-                input = VarInfo(model, InitFromPrior(), transform)
+                input = VarInfo(Xoshiro(1), model, InitFromPrior(), transform)
                 context = InitContext(InitFromParams(get_values(input), nothing), transform)
                 value, output = evaluate!!(model, context, VarInfo())
                 @test getlogjoint(output) ≈ logpdf(dist, value)
