@@ -952,13 +952,14 @@ end
 function _reconstruct_model end
 
 """
-    Model{Threaded}(f, args::NamedTuple, defaults::NamedTuple, context=DefaultContext(); argument_sites=Symbol[])
+    Model{Threaded}(f, args::NamedTuple, defaults::NamedTuple, context=DefaultContext(); argument_sites=())
 
 Store a model function, arguments, and context. Prefer [`@model`](@ref) for construction.
 For direct construction, use [`condition`](@ref) or [`fix`](@ref) to supply bindings.
-Set `argument_sites` to the vector of argument names that occur on the left-hand side of
+The tuple of argument sites is stored as immutable type metadata.
+Set `argument_sites` to the tuple of argument names that occur on the left-hand side of
 `~` so those arguments can be bound, for example
-`condition(Model{false}(f, (; y=1.0), (;); argument_sites=[:y]); y=2.0)`.
+`condition(Model{false}(f, (; y=1.0), (;); argument_sites=(:y,)); y=2.0)`.
 Direct construction supplies no observations; arguments are ordinary inputs. `@model`
 supplies argument observations and site metadata for argument sites. Use
 [`decondition`](@ref) to remove those observations.
@@ -974,37 +975,41 @@ struct Model{
     C<:AbstractContext,
     Values<:Union{VarNamedTuple,LocalModelValues,UnprefixedArgumentValues},
     Threaded,
+    Sites,
 } <: AbstractProbabilisticProgram
     f::F
     args::NamedTuple{argnames,Targs}
     defaults::NamedTuple{defaultnames,Tdefaults}
     context::C
     values::Values
-    # The compiler shares this read-only metadata across model instances.
-    argument_sites::Vector{Symbol}
     function Model{Threaded}(
         f::F,
         args::NamedTuple{A,Ta},
         defaults::NamedTuple{D,Td},
         context::C=DefaultContext(),
         values::V=VarNamedTuple();
-        argument_sites::Vector{Symbol}=Symbol[],
+        argument_sites::Union{Tuple{Vararg{Symbol}},Vector{Symbol}}=(),
     ) where {F,A,Ta,D,Td,C,V,Threaded}
         mapreduce(
             pair -> pair.second isa ModelValue, &, _model_values(values); init=true
         ) || throw(ArgumentError("Model values must carry a condition or fix role"))
-        return new{F,A,D,Ta,Td,C,V,Threaded}(
-            f, args, defaults, context, values, argument_sites
-        )
+        sites = Tuple(argument_sites)
+        return new{F,A,D,Ta,Td,C,V,Threaded,sites}(f, args, defaults, context, values)
     end
     # Internal reconstruction reuses already-validated bindings.
     function DynamicPPL._reconstruct_model(
         model::Model{F,A,D,Ta,Td}, context::C, values::V, ::Val{Threaded}
     ) where {F,A,D,Ta,Td,C,V,Threaded}
-        return new{F,A,D,Ta,Td,C,V,Threaded}(
-            model.f, model.args, model.defaults, context, values, model.argument_sites
+        return new{F,A,D,Ta,Td,C,V,Threaded,_argument_sites(model)}(
+            model.f, model.args, model.defaults, context, values
         )
     end
+end
+
+function _argument_sites(
+    ::Model{F,A,D,Ta,Td,C,V,Threaded,Sites}
+) where {F,A,D,Ta,Td,C,V,Threaded,Sites}
+    return Sites
 end
 
 """
@@ -1114,7 +1119,7 @@ Base.:|(model::Model, values::Union{NamedTuple,AbstractDict,Pair,Tuple,VarNamedT
             stored_name = $(QuoteNode(stored_name))
             vn = _model_value_varname(model.values, VarName{name}(), _model_prefix(model))
             binding = _model_argument_binding(values, AbstractPPL.varname_to_optic(vn))
-            if name in model.argument_sites
+            if name in _argument_sites(model)
                 if binding isa Union{VarNamedTuple,VarNamedTuples.PartialArray}
                     argument = get(merge(model.args, model.defaults), stored_name, nothing)
                     previous = _model_argument_binding(
@@ -1972,7 +1977,7 @@ function unfix(model::Model, syms::Union{Symbol,VarName}...)
     _check_model_removal(Fix, _model_values(model.values), syms...)
     values = _remove_model_values(Fix, _model_values(model.values), syms...)
     removed = _removed_fixed_bindings(_model_values(model.values), values)
-    defaults = _argument_defaults(merge(model.args, model.defaults), model.argument_sites)
+    defaults = _argument_defaults(merge(model.args, model.defaults), _argument_sites(model))
     if !(model.values isa LocalModelValues) && _model_prefix(model) !== nothing
         defaults = _prefix_values(
             defaults,
