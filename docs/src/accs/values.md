@@ -1,9 +1,18 @@
 # Storing vectorised and raw values
 
-`VarInfo` contains only accumulators. Choose which parameter representation to record:
-`RawValueAccumulator` stores model-space values, while `VectorValueAccumulator` stores
-vectorised `TransformedValue`s with their transforms. Neither accumulator supplies inputs
-during evaluation.
+`VarInfo` contains only accumulators. Two accumulators record parameter values, in
+different representations:
+
+  - *Raw values* (`RawValueAccumulator`) are model-space values, as the model body and
+    `logpdf` see them. For `x ~ Dirichlet(ones(3))`, the raw value is `[0.2, 0.3, 0.5]`.
+  - *Vector values* (`VectorValueAccumulator`) hold one `TransformedValue` per tilde
+    statement: that variable's value flattened to a vector, together with its transform.
+    Linked, the same `x` becomes `TransformedValue([-0.69, -0.51], DynamicLink())`.
+
+Both are `VarNamedTuple`s keyed by variable name, not one vector for the whole model.
+[`internal_values_as_vector`](@ref) concatenates the vector values into the flat vector
+that samplers and `LogDensityFunction` use. Neither accumulator supplies inputs during
+evaluation.
 
 ## Vectorised values
 
@@ -32,8 +41,9 @@ coordinates. See [Array-like blocks](@ref array-like-blocks).
 internal_values_as_vector(vector_values)
 ```
 
-These values can initialise a `LogDensityFunction`, which derives the flat parameter
-layout and transforms from them. There is no separate value store in `VarInfo`.
+The flat vector concatenates the per-statement vectors in key order. These values can
+initialise a `LogDensityFunction`, which derives from them the range of each variable
+within the flat vector and its transform. There is no separate value store in `VarInfo`.
 
 ## Raw values
 

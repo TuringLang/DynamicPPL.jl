@@ -196,9 +196,9 @@ end
 """
     get_raw_values(vi::AbstractVarInfo)
 
-Extract a `VarNamedTuple` of values from the `RawValueAccumulator` in `vi`, without any
-transformations applied to them. This includes values introduced by `:=` when the
-accumulator was constructed with `include_colon_eq=true`.
+Extract a `VarNamedTuple` of raw values from the `RawValueAccumulator` in `vi`: model-space
+values as the model body sees them, without any transformations applied. This includes
+values introduced by `:=` when the accumulator was constructed with `include_colon_eq=true`.
 
 If `vi` does not contain a `RawValueAccumulator`, this function will throw an error.
 """
@@ -480,7 +480,8 @@ end
 """
     internal_values_as_vector(vi::AbstractVarInfo)
 
-Return all variable values stored internally in `vi` as a flattened `Vector`.
+Concatenate the per-statement vector values in `vi`'s `VectorValueAccumulator`, in key
+order, into one flat `Vector`.
 
 !!! warning "Mixed element types"
     A `Vector` has one element type, so concatenating variables with different element types

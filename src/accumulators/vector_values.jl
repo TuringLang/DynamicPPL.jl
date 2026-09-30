@@ -45,12 +45,13 @@ end
 """
     VectorValueAccumulator()
 
-An accumulator that collects vectorised values, i.e. `TransformedValue{<:AbstractVector}`.
+An accumulator that collects one vectorised value, i.e. a
+`TransformedValue{<:AbstractVector}`, per tilde statement.
 
 The exact type of the vectorised value (i.e., `tval.transform`) will depend on the transform
 strategy that the model was evaluated with, and specifically, is equal to
 `target_transform(transform_strategy, vn)`; *except* for the case where `target_transform`
-is `Untransformed`, i.e., no transformation is to be applied. In this case, the
+is `NoTransform()`, i.e., no transformation is to be applied. In this case, the
 `VectorValueAccumulator` will apply a vectorisation transform to the untransformed value,
 i.e., generate a `TransformedValue` with `Unlink()` as the transform.
 """

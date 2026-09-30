@@ -60,8 +60,10 @@ end
 """
     get_vector_values(vi::AbstractVarInfo)
 
-Extract vectorised `TransformedValue`s from the `VectorValueAccumulator` in `vi`.
-Throw an error if that accumulator is absent.
+Return the `VarNamedTuple` of vector values from the `VectorValueAccumulator` in `vi`: one
+vectorised `TransformedValue` per tilde statement, holding its transform. Throw an
+`ArgumentError` if that accumulator is absent. Use [`internal_values_as_vector`](@ref) for a
+single flat vector.
 """
 get_vector_values(vi::AbstractVarInfo) = getacc(vi, Val(VECTORVAL_ACCNAME)).values
 get_values(vi::AbstractVarInfo) = get_vector_values(vi)
