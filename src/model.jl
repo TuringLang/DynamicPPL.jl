@@ -413,6 +413,13 @@ _merge_model_node(previous, updates) = updates
 _merge_model_node(previous, ::NoModelBinding) = previous
 function _merge_model_node(previous, updates::VarNamedTuple)
     previous isa NoModelBinding && return copy(updates)
+    if previous isa Union{ModelValue{<:Any,<:NamedTuple},ModelValueTree{<:NamedTuple}}
+        template = previous isa ModelValue ? previous.value : previous.template
+        if !all(name -> hasproperty(template, name), keys(updates.data))
+            # Named tuples can also supply extensible submodel namespaces.
+            return _merge_model_values(_submodel_namespace(previous), updates)
+        end
+    end
     previous isa ModelValue &&
         return _merge_model_node(_expand_model_binding(previous), updates)
     previous isa VarNamedTuple && return _merge_model_values(previous, updates)

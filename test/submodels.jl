@@ -375,6 +375,20 @@ end
         @test isempty(keys(VarInfo(decondition(parent_with_buffer(zeros(1))))))
     end
 
+    @testset "extending named-tuple submodel namespaces" begin
+        @model namespace_inner() = (x ~ Normal(); y ~ Normal(); z ~ Normal(); (x, y, z))
+        @model namespace_outer() = a ~ to_submodel(namespace_inner())
+        for first_bind in (condition, fix), bind in (condition, fix)
+            original = first_bind(namespace_outer(); a=(; x=1.0))
+            extended = bind(original, @varname(a.y) => 2.0)
+            @test bind(extended, @varname(a.z) => 3.0)(Xoshiro(1)) == (1.0, 2.0, 3.0)
+            expanded = bind(original, @varname(a.x) => 1.0)
+            @test bind(bind(expanded, @varname(a.y) => 2.0), @varname(a.z) => 3.0)(
+                Xoshiro(1)
+            ) == (1.0, 2.0, 3.0)
+        end
+    end
+
     @testset "submodel namespaces preserve argument buffers" begin
         @model inner_buffer() = x ~ Normal()
         @model scalar_buffer(a) = a ~ to_submodel(inner_buffer())
