@@ -778,9 +778,12 @@ end
     end
     return quote
         template isa NoTemplate && return _model_data(values)
-        # Fields absent from the argument address a submodel namespace.
         for name in $names
-            hasproperty(template, name) || return deepcopy(template)
+            hasproperty(template, name) || throw(
+                ArgumentError(
+                    "Cannot override nonexistent property `$name` of $(typeof(template)). If this is a return-value buffer, condition or fix the child model before wrapping it with `to_submodel`.",
+                ),
+            )
         end
         result = deepcopy(template)
         $(updates...)
@@ -1065,14 +1068,45 @@ Base.:|(model::Model, values::Union{NamedTuple,AbstractDict,Pair,Tuple,VarNamedT
 
 function _check_argument_bindings(model, values)
     for name in (keys(model.args)..., keys(model.defaults)...)
-        name in model.argument_sites && continue
         vn = _model_value_varname(model.values, VarName{name}(), _model_prefix(model))
         binding = _model_argument_binding(values, AbstractPPL.varname_to_optic(vn))
+        if name in model.argument_sites
+            binding isa Union{VarNamedTuple,VarNamedTuples.PartialArray} || continue
+            argument = get(merge(model.args, model.defaults), name, nothing)
+            previous = _model_argument_binding(
+                _model_values(model.values), AbstractPPL.varname_to_optic(vn)
+            )
+            _check_argument_fields(_model_argument_value(previous, argument), binding, vn)
+            continue
+        end
         binding === nothing || throw(
             ArgumentError(
                 "Argument `$name` does not occur on the left-hand side of `~` and cannot be conditioned or fixed; construct the model with a new argument value instead. If `$name` names a variable of an unprefixed submodel, rename the argument.",
             ),
         )
+    end
+    return nothing
+end
+
+_check_argument_fields(template, binding, vn) = nothing
+function _check_argument_fields(
+    template, bindings::Union{VarNamedTuple,VarNamedTuples.PartialArray}, vn
+)
+    _fold_model_indices(nothing, bindings) do _, binding, optic, _
+        if template isa NamedTuple &&
+            optic isa AbstractPPL.Property &&
+            !VarNamedTuples._haskey_optic(template, optic)
+            throw(
+                ArgumentError(
+                    "Cannot override nonexistent field `$(AbstractPPL.append_optic(vn, optic))` of argument `$vn`. If this is a return-value buffer, condition or fix the child model before wrapping it with `to_submodel`.",
+                ),
+            )
+        end
+        if VarNamedTuples._haskey_optic(template, optic)
+            child = VarNamedTuples._getindex_optic(template, optic, vn)
+            _check_argument_fields(child, binding, AbstractPPL.append_optic(vn, optic))
+        end
+        return nothing
     end
     return nothing
 end
