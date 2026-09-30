@@ -149,7 +149,9 @@ function _partial_binding_error(vn)
     )
 end
 function _model_role(values::VarNamedTuples.PartialArray, vn::VarName)
-    all(values.mask) && return _model_role(values.data, vn)
+    !(values.data isa VarNamedTuples.GrowableArray) &&
+        all(values.mask) &&
+        return _model_role(values.data, vn)
     any(values.mask) || return nothing
     role = _model_role(values.data[values.mask], vn)
     return role === nothing ? nothing : _partial_binding_error(vn)
@@ -193,7 +195,16 @@ end
 end
 function _model_role_at(values::VarNamedTuples.PartialArray, optic::AbstractPPL.Index, vn)
     optic = AbstractPPL.concretize_top_level(optic, values.data)
-    checkbounds(Bool, values.data, optic.ix...; optic.kw...) || return nothing
+    if !checkbounds(Bool, values.data, optic.ix...; optic.kw...)
+        # Storage bounds describe supplied indices, so an out-of-bounds site may overlap.
+        for indices in Iterators.product(Base.to_indices(values.data, optic.ix)...)
+            checkbounds(Bool, values.data, indices...; optic.kw...) || continue
+            getindex(values.mask, indices...; optic.kw...) || continue
+            value = getindex(values.data, indices...; optic.kw...)
+            _model_role_at(value, optic.child, vn) === nothing || _partial_binding_error(vn)
+        end
+        return nothing
+    end
     if VarNamedTuples._is_multiindex(values.data, optic.ix...; optic.kw...)
         selected = VarNamedTuples.PartialArray(
             view(values.data, optic.ix...; optic.kw...),
