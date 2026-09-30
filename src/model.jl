@@ -122,8 +122,9 @@ function VarNamedTuples._haskey_optic(
     return VarNamedTuples._haskey_optic(getindex(value.value, optic.ix...), optic.child)
 end
 
-_model_role(::ModelValue{R}, ::VarName) where {R} = R()
-_model_role(::ModelValue{ArgumentCondition}, ::VarName) = Condition()
+_model_role(::ModelValue{R}) where {R} = R()
+_model_role(::ModelValue{ArgumentCondition}) = Condition()
+_model_role(value::ModelValue, vn) = _model_role(value)
 _matches_model_role(::Type{R}, value) where {R} = value isa ModelValue{R}
 _matches_model_role(::Type{Condition}, ::ModelValue{ArgumentCondition}) = true
 _model_role(::Nothing, ::VarName) = nothing
@@ -175,13 +176,11 @@ function _model_role_at(values::VarNamedTuple, optic::AbstractPPL.Property{S}, v
         nothing
     end
 end
-function _model_role_at(
-    value::ModelValue{R}, optic::AbstractPPL.AbstractOptic, vn
-) where {R}
-    return VarNamedTuples._haskey_optic(value, optic) ? _model_role(value, vn) : nothing
+@inline function _model_role_at(value::ModelValue, optic::AbstractPPL.AbstractOptic, vn)
+    return VarNamedTuples._haskey_optic(value, optic) ? _model_role(value) : nothing
 end
-function _model_role_at(value::ModelValue{R}, ::AbstractPPL.Iden, vn) where {R}
-    return _model_role(value, vn)
+@inline function _model_role_at(value::ModelValue, ::AbstractPPL.Iden, vn)
+    return _model_role(value)
 end
 function _model_role_at(values::VarNamedTuples.PartialArray, optic::AbstractPPL.Index, vn)
     optic = AbstractPPL.concretize_top_level(optic, values.data)
@@ -866,6 +865,8 @@ function _compose_prefix_templates(prefix::PrefixTemplate, inner)
     )
 end
 
+function _reconstruct_model end
+
 """
     Model{Threaded}(f, args::NamedTuple, defaults::NamedTuple, context=DefaultContext(), values=...)
 
@@ -909,6 +910,13 @@ struct Model{
             f, args, defaults, context, values, argument_sites
         )
     end
+    function DynamicPPL._reconstruct_model(
+        model::Model{F,A,D,Ta,Td}, context::C, values::V, ::Val{Threaded}
+    ) where {F,A,D,Ta,Td,C,V,Threaded}
+        return new{F,A,D,Ta,Td,C,V,Threaded}(
+            model.f, model.args, model.defaults, context, values, model.argument_sites
+        )
+    end
 end
 
 """
@@ -934,14 +942,7 @@ Return whether `model` has been marked as needing threadsafe evaluation (using
 requires_threadsafe(::Model{F,A,D,Ta,Td,C,V,Threaded}) where {F,A,D,Ta,Td,C,V,Threaded} =
     Threaded
 function _reconstruct_model(model::Model; context=model.context, values=model.values)
-    return Model{requires_threadsafe(model)}(
-        model.f,
-        model.args,
-        model.defaults,
-        context,
-        values;
-        argument_sites=model.argument_sites,
-    )
+    return _reconstruct_model(model, context, values, Val(requires_threadsafe(model)))
 end
 function _materialize_argument_values(model::Model)
     model.values isa PrefixedArgumentValues || return model
@@ -999,14 +1000,7 @@ function setthreadsafe(model::Model, threadsafe::Bool)
     return if requires_threadsafe(model) == threadsafe
         model
     else
-        Model{threadsafe}(
-            model.f,
-            model.args,
-            model.defaults,
-            model.context,
-            model.values;
-            argument_sites=model.argument_sites,
-        )
+        _reconstruct_model(model, model.context, model.values, Val(threadsafe))
     end
 end
 
