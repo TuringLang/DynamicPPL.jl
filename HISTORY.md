@@ -26,7 +26,7 @@ Added the `context` keyword to `DynamicPPL.DebugUtils.model_typed`, `model_warnt
 
 On newer DynamicPPL versions, MLD’s generic API requires a manually constructed log-density adapter; no drop-in model-level replacement is currently available. Migration of the integration into MLD is proposed in [MLD #47](https://github.com/ElOceanografo/MarginalLogDensities.jl/pull/47).
 
-Fixed argument bindings now throw `ArgumentError` when an executed site is outside the supplied value's coverage, rather than leaving that site observed. Supply a fixed value covering the site. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+Fixed argument bindings now require static size and shape and throw `ArgumentError` naming the site when the body changes either or a site is outside the supplied value's coverage. Supply a fixed value covering every site; conditioned values are unaffected. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
 `DynamicPPL.TestUtils.test_context` is removed: `test_context(context, model)` → tests using `evaluate!!(model, context, vi)` and the context's interface methods. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
