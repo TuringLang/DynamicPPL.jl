@@ -29,6 +29,127 @@ mutable struct MissingRecord
 end
 
 @testset "condition and fix" begin
+    @testset "accessors return plain partial values" begin
+        @model function named_sites()
+            x = (; a=0.0, b=0.0)
+            x = (; a=(x.a ~ Normal()), b=(x.b ~ Normal()))
+            return x
+        end
+        @model function tuple_sites()
+            x = (0.0, 0.0)
+            x = ((x[1] ~ Normal()), (x[2] ~ Normal()))
+            return x
+        end
+        @model function nested_sites()
+            x = [(; a=0.0, b=0.0)]
+            x[1].a ~ Normal()
+            x[1].b ~ Normal()
+            return x
+        end
+        @model array_sites(x) = (x[1] ~ Normal(); x[2] ~ Normal(); x)
+        @model inner2() = (x ~ Normal(); y ~ Normal(); (; x, y))
+        @model outer() = a ~ to_submodel(inner2())
+
+        for (bind, remove, select, other) in
+            ((condition, decondition, conditioned, fix), (fix, unfix, fixed, condition))
+            for (name, unbound, whole, removed, retained, template) in (
+                (
+                    "named tuple",
+                    named_sites(),
+                    (; x=(; a=1.0, b=2.0)),
+                    @varname(x.a),
+                    @varname(x.b),
+                    NoTemplate(),
+                ),
+                (
+                    "tuple",
+                    tuple_sites(),
+                    (; x=(1.0, 2.0)),
+                    @varname(x[1]),
+                    @varname(x[2]),
+                    zeros(2),
+                ),
+                (
+                    "tuple trailing removal",
+                    tuple_sites(),
+                    (; x=(2.0, 1.0)),
+                    @varname(x[2]),
+                    @varname(x[1]),
+                    zeros(1),
+                ),
+                (
+                    "tuple argument",
+                    decondition(array_sites((1.0, 2.0))),
+                    (; x=(1.0, 2.0)),
+                    @varname(x[1]),
+                    @varname(x[2]),
+                    zeros(2),
+                ),
+                (
+                    "nested",
+                    nested_sites(),
+                    (; x=[(; a=1.0, b=2.0)]),
+                    @varname(x[1].a),
+                    @varname(x[1].b),
+                    [(; a=0.0, b=0.0)],
+                ),
+                (
+                    "array argument",
+                    decondition(array_sites([1.0, 2.0])),
+                    (; x=[1.0, 2.0]),
+                    @varname(x[1]),
+                    @varname(x[2]),
+                    zeros(2),
+                ),
+                (
+                    "submodel namespace",
+                    outer(),
+                    (; a=(; x=1.0, y=2.0)),
+                    @varname(a.x),
+                    @varname(a.y),
+                    NoTemplate(),
+                ),
+            )
+                @testset "$bind $name" begin
+                    complete = bind(unbound, whole)
+                    root = first(keys(whole)) === :x ? @varname(x) : @varname(a)
+                    @test select(complete)[root] === first(whole)
+                    expected = DynamicPPL.templated_setindex!!(
+                        VarNamedTuple(), 2.0, retained, template
+                    )
+                    partial = remove(complete, removed)
+                    @test select(partial) == select(bind(unbound, expected))
+                    @test select(partial) == expected
+                    @test select(partial)[retained] == 2.0
+                    if template isa NoTemplate
+                        @test select(partial)[root] isa VarNamedTuple
+                    else
+                        @test select(partial).data[first(keys(whole))] isa
+                            DynamicPPL.VarNamedTuples.PartialArray
+                    end
+                    mixed = other(complete, removed => 3.0)
+                    @test select(mixed) == expected
+                    @test select(remove(mixed, retained)) == VarNamedTuple()
+                    for original in (complete, partial, mixed)
+                        rebuilt = fix(
+                            condition(unbound, conditioned(original)), fixed(original)
+                        )
+                        result, vi = init!!(
+                            Xoshiro(42), original, VarInfo(), InitFromPrior(), UnlinkAll()
+                        )
+                        restored, restored_vi = init!!(
+                            Xoshiro(42), rebuilt, VarInfo(), InitFromPrior(), UnlinkAll()
+                        )
+                        @test restored == result
+                        @test getlogprior(restored_vi) == getlogprior(vi)
+                        @test getloglikelihood(restored_vi) == getloglikelihood(vi)
+                        @test getlogjoint(restored_vi) == getlogjoint(vi)
+                    end
+                end
+            end
+        end
+    end
+
     @testset "removal resolves container addresses" begin
         @model function matrix_sites(x)
             for i in eachindex(x)
@@ -552,13 +673,16 @@ end
         loglik = p -> loglikelihood(condition(base, @varname(x.a) => p), VarNamedTuple())
         @test ForwardDiff.derivative(loglik, 3.0) == -3.0
         selected = conditioned(condition(base, @varname(x.a) => 3.0))
+        @test conditioned(base)[@varname(x)] isa ReplacementRecord
+        @test condition(fields(ObservationRecord(0.0, 0.0)), conditioned(base))() isa
+            ReplacementRecord
         @test selected[@varname(x)] isa ReplacementRecord
         @test condition(fields(ObservationRecord(0.0, 0.0)), selected)().a == 3.0
         mixed = fix(base, @varname(x.a) => 3.0)
         supplied = merge(conditioned(mixed), fixed(mixed))
-        @test supplied[@varname(x)] isa ReplacementRecord
-        @test supplied[@varname(x)].a == 3.0
-        @test supplied[@varname(x)].b == 2.0
+        @test supplied[@varname(x)] isa VarNamedTuple
+        @test supplied[@varname(x.a)] == 3.0
+        @test supplied[@varname(x.b)] == 2.0
 
         @model namespace_child(x, y) = (x ~ Normal(); y ~ Normal(); return (x, y))
         @model namespace_parent() = child ~ to_submodel(namespace_child(0.0, 0.0))
@@ -578,7 +702,8 @@ end
             first = first_op(original, @varname(x[1]) => T(3))
             changed = last_op(first, @varname(x[2]) => T(4))
             @test changed() == (T(3), T(4))
-            @test merge(conditioned(changed), fixed(changed))[@varname(x)] == (T(3), T(4))
+            @test Tuple(merge(conditioned(changed), fixed(changed))[@varname(x)]) ==
+                (T(3), T(4))
             @test original() == (T(1), T(2))
             @test first() == (T(3), T(2))
             @test loglikelihood(changed, VarNamedTuple()) ≈
@@ -611,6 +736,11 @@ end
             @test conditioned(unfix(conditioned_model))[vn] == 3.0
             @test merge(conditioned(fixed_model), fixed(fixed_model))[@varname(x)] ==
                 expected
+            rebuilt = fix(
+                condition(decondition(original), conditioned(fixed_model)),
+                fixed(fixed_model),
+            )
+            @test rebuilt(Xoshiro(42)) == expected
             nested = nested_tuple(fixed_model)
             @test decondition(nested)() == expected
         end
