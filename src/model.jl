@@ -241,40 +241,37 @@ function _check_fixed_shape(binding, local_value, optic, vn)
     array = value isa VarNamedTuples.PartialArray ? value.data : value
     tuple = value isa ModelValueTree ? value.template : value
     if tuple isa Tuple
-        local_value isa Tuple && length(tuple) == length(local_value) || throw(
-            ArgumentError(
-                "Fixed site `$vn` requires a static size and shape; the model body changed its argument's length.",
-            ),
+        local_value isa Tuple && length(tuple) == length(local_value) || _fixed_shape_error(
+            vn, "a static size and shape; the model body changed its argument's length."
         )
     elseif (array isa AbstractArray || local_value isa AbstractArray) && !(
         value isa VarNamedTuples.PartialArray && array isa VarNamedTuples.GrowableArray
     )
         array isa AbstractArray &&
             local_value isa AbstractArray &&
-            axes(array) == axes(local_value) || throw(
-            ArgumentError(
-                "Fixed site `$vn` requires a static size and shape; the model body changed its argument's shape.",
-            ),
+            axes(array) == axes(local_value) || _fixed_shape_error(
+            vn, "a static size and shape; the model body changed its argument's shape."
         )
     end
     return _check_fixed_shape_child(binding, local_value, optic, vn)
+end
+# Keep error construction out of the hot path so the shape checks can inline.
+@noinline function _fixed_shape_error(vn, message)
+    return throw(ArgumentError("Fixed site `$vn` requires $message"))
 end
 _check_fixed_shape_child(binding, local_value, ::AbstractPPL.Iden, vn) = nothing
 function _check_fixed_shape_child(
     binding, local_value, optic::AbstractPPL.Property{S}, vn
 ) where {S}
     child = _model_argument_binding(binding, AbstractPPL.Property{S}())
-    child !== nothing && hasproperty(local_value, S) || throw(
-        ArgumentError("Fixed site `$vn` requires coverage with a static size and shape."),
-    )
+    child !== nothing && hasproperty(local_value, S) ||
+        _fixed_shape_error(vn, "coverage with a static size and shape.")
     return _check_fixed_shape(child, getproperty(local_value, S), optic.child, vn)
 end
 function _check_fixed_shape_child(binding, local_value, optic::AbstractPPL.Index, vn)
     optic = AbstractPPL.concretize_top_level(optic, local_value)
     child = _model_argument_binding(binding, AbstractPPL.Index(optic.ix, optic.kw))
-    child === nothing && throw(
-        ArgumentError("Fixed site `$vn` requires coverage with a static size and shape."),
-    )
+    child === nothing && _fixed_shape_error(vn, "coverage with a static size and shape.")
     selected = if VarNamedTuples._is_multiindex(local_value, optic.ix...; optic.kw...)
         Base.maybeview(local_value, optic.ix...; optic.kw...)
     else
