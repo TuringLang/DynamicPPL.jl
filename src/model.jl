@@ -1389,11 +1389,25 @@ function _check_model_removal(::Type{R}, values, args...) where {R}
 end
 
 function _remove_model_values(::Type{R}, values::VarNamedTuple) where {R}
+    return _prune_model_bindings(_remove_model_binding(R, values, AbstractPPL.Iden()))
+end
+
+@generated function _prune_model_bindings(values::VarNamedTuple{names,T}) where {names,T}
+    if all(t -> t <: ModelValue || t <: NoModelBinding, fieldtypes(T))
+        kept = Tuple(
+            name for (name, t) in zip(names, fieldtypes(T)) if !(t <: NoModelBinding)
+        )
+        fields = map(name -> :(values.data.$name), kept)
+        return :(VarNamedTuple(NamedTuple{$kept}(($(fields...),))))
+    end
+    return :(_prune_model_bindings_recursive(values))
+end
+function _prune_model_bindings_recursive(values::VarNamedTuple)
     return mapfoldl(
         identity,
         function (kept, pair)
             vn, value = pair
-            return if _matches_model_role(R, value)
+            return if value isa NoModelBinding
                 kept
             else
                 templated_setindex!!(kept, value, vn, values.data[AbstractPPL.getsym(vn)])
@@ -1411,7 +1425,7 @@ function _remove_model_values(
         vn = arg isa VarName ? arg : VarName{arg}()
         values = _remove_model_binding(R, values, AbstractPPL.varname_to_optic(vn))
     end
-    return subset(values, filter(key -> !(values[key] isa NoModelBinding), keys(values)))
+    return _prune_model_bindings(values)
 end
 
 function _remove_model_binding(::Type{R}, value, optic::AbstractPPL.AbstractOptic) where {R}
@@ -1707,20 +1721,12 @@ function unfix(model::Model, syms::Union{Symbol,VarName}...)
     model = _materialize_argument_values(model)
     _check_model_removal(Fix, _model_values(model.values), syms...)
     values = _remove_model_values(Fix, _model_values(model.values), syms...)
-    remaining = keys(_select_model_values(Fix, values))
-    removed = if isempty(remaining)
-        _model_values(model.values)
-    else
-        _remove_model_values(Fix, _model_values(model.values), remaining...)
-    end
-    defaults = VarNamedTuple()
-    arguments = merge(model.args, model.defaults)
-    for name in model.argument_sites
-        vn = _model_value_varname(model.values, VarName{name}(), _model_prefix(model))
-        defaults = templated_setindex!!(
+    removed = _removed_fixed_bindings(_model_values(model.values), values)
+    defaults = _argument_defaults(merge(model.args, model.defaults), model.argument_sites)
+    if !(model.values isa LocalModelValues) && _model_prefix(model) !== nothing
+        defaults = _prefix_values(
             defaults,
-            ModelValue{ArgumentCondition}(arguments[name]),
-            vn,
+            _model_prefix(model),
             _apply_prefix_template(_model_prefix_template(model), NoTemplate()),
         )
     end
@@ -1741,6 +1747,59 @@ function unfix(model::Model, syms::Union{Symbol,VarName}...)
     )
     values = model.values isa LocalModelValues ? LocalModelValues(values) : values
     return _reconstruct_model(model; values)
+end
+
+@generated function _argument_defaults(arguments::NamedTuple{names}, sites) where {names}
+    fields = map(names) do name
+        :(
+            if $(QuoteNode(name)) in sites
+                NamedTuple{($(QuoteNode(name)),)}((
+                    ModelValue{ArgumentCondition}(arguments.$name),
+                ))
+            else
+                (;)
+            end
+        )
+    end
+    return :(VarNamedTuple(merge((;), $(fields...))))
+end
+
+_removed_fixed_bindings(previous, remaining) = NoModelBinding()
+function _removed_fixed_bindings(previous::ModelValue{Fix}, remaining)
+    remaining isa ModelValue{Fix} && return NoModelBinding()
+    remaining === nothing && return previous
+    return _removed_fixed_bindings(_expand_model_binding(previous), remaining)
+end
+function _removed_fixed_bindings(
+    previous::Union{VarNamedTuple,VarNamedTuples.PartialArray}, remaining
+)
+    remaining === nothing && return previous
+    return _fold_model_indices(empty(previous), previous) do removed, value, optic, template
+        child = _removed_fixed_bindings(value, _model_argument_binding(remaining, optic))
+        return if child isa NoModelBinding
+            removed
+        else
+            VarNamedTuples._setindex_optic!!(
+                removed, child, optic, template, VarNamedTuples.AllowAll()
+            )
+        end
+    end
+end
+function _removed_fixed_bindings(previous::ModelValueTree, remaining)
+    remaining === nothing && return previous
+    values = if previous.values isa Tuple
+        ntuple(length(previous.values)) do i
+            _removed_fixed_bindings(
+                previous.values[i],
+                _model_argument_binding(remaining, AbstractPPL.Index((i,), (;))),
+            )
+        end
+    else
+        _removed_fixed_bindings(
+            previous.values, remaining isa ModelValueTree ? remaining.values : remaining
+        )
+    end
+    return ModelValueTree(previous.template, values)
 end
 
 """
