@@ -6,33 +6,33 @@
 
 Fixed type inference for thread-safe accumulator promotion on Julia 1.10: integer parameters, such as `x=1` for `x ~ Bernoulli(0.3)`, now select floating-point log-density storage with an inferable type. Related: [#1493](https://github.com/TuringLang/DynamicPPL.jl/pull/1493).
 
-Missing accumulator lookups throw an `ArgumentError` naming the missing and available accumulators.
+Missing accumulator lookups throw an `ArgumentError` naming the missing and available accumulators; for example, `get_vector_values(VarInfo())` names `:VectorValue`. See [#1500](https://github.com/TuringLang/DynamicPPL.jl/pull/1500).
 
-Re-evaluation and `LogDensityFunction` construction no longer copy fixed transforms, so transforms compared by identity are preserved.
+Re-evaluation and `LogDensityFunction` construction no longer copy fixed transforms, so a `FixedTransform` whose callable compares by identity is preserved. See [#1500](https://github.com/TuringLang/DynamicPPL.jl/pull/1500).
 
-`pointwise_loglikelihoods` and `pointwise_logdensities` now record observations for threadsafe models; previously they were silently omitted.
+`pointwise_loglikelihoods` and `pointwise_logdensities` now record observations for threadsafe models, such as `setthreadsafe(model, true)`; previously they were silently omitted. See [#1500](https://github.com/TuringLang/DynamicPPL.jl/pull/1500).
 
-Added `evaluate!!(model, context, vi)` to evaluate with an explicit leaf context and collect outputs in `vi`.
+Added `evaluate!!(model, context, vi)` to evaluate with an explicit leaf context and collect outputs in `vi`, such as `evaluate!!(model, InitContext(rng, InitFromPrior(), UnlinkAll()), VarInfo())`. See [#1500](https://github.com/TuringLang/DynamicPPL.jl/pull/1500).
 
 ## Breaking changes
 
-`OnlyAccsVarInfo` is removed: `OnlyAccsVarInfo(accs...)` → `VarInfo(accs...)`, with the same constructor forms.
+`OnlyAccsVarInfo` is removed: `OnlyAccsVarInfo(accs...)` → `VarInfo(accs...)`, with the same constructor forms. See [#1500](https://github.com/TuringLang/DynamicPPL.jl/pull/1500).
 
-`VarInfo{Tfm,T,Accs}` → `VarInfo{Accs}`; dispatch on the old type parameters breaks.
+`VarInfo{Tfm,T,Accs}` → `VarInfo{Accs}`; dispatch on the old type parameters breaks. See [#1500](https://github.com/TuringLang/DynamicPPL.jl/pull/1500).
 
-`VarInfo()` no longer records parameter values: use `VarInfo(VectorValueAccumulator(), DynamicPPL.default_accumulators()...)` to record vectorised values and log densities.
+`VarInfo()` no longer records parameter values: use `VarInfo(VectorValueAccumulator(), DynamicPPL.default_accumulators()...)` to record vectorised values and log densities. See [#1500](https://github.com/TuringLang/DynamicPPL.jl/pull/1500).
 
-`vi.values` is removed: use `get_vector_values(vi)`.
+`vi.values` is removed: use `get_vector_values(vi)`. See [#1500](https://github.com/TuringLang/DynamicPPL.jl/pull/1500).
 
-`get_values(vi)`: always-present `vi.values` → the `VarNamedTuple` of vectorised `TransformedValue`s in the optional `VectorValueAccumulator`; throws `ArgumentError` if that accumulator is absent.
+`get_values(vi)`: always-present `vi.values` → the `VarNamedTuple` of vectorised `TransformedValue`s in the optional `VectorValueAccumulator`; throws `ArgumentError` if that accumulator is absent. See [#1500](https://github.com/TuringLang/DynamicPPL.jl/pull/1500).
 
-`init!!` now defaults to `UnlinkAll()` regardless of the `VarInfo` contents: `init!!(rng, model, vi, init)` → `init!!(rng, model, vi, init, strategy)` to retain a chosen strategy.
+`init!!` now defaults to `UnlinkAll()` regardless of the `VarInfo` contents: `init!!(rng, model, vi, init)` → `init!!(rng, model, vi, init, strategy)` to retain a chosen strategy. See [#1500](https://github.com/TuringLang/DynamicPPL.jl/pull/1500).
 
-Partial `link!!(vi, vns, model)` / `invlink!!(vi, vns, model)` are removed: use `init!!(rng, model, vi, InitFromParams(get_vector_values(vi), nothing), LinkSome(Set(vns), fallback))` / `UnlinkSome(Set(vns), fallback)`, where `fallback` sets the transforms of all other variables; pass the strategy that produced `vi` to keep them. For the removed non-mutating `link` / `invlink` forms, pass `copy(vi)` as the output.
+Partial `link!!(vi, vns, model)` / `invlink!!(vi, vns, model)` are removed: use `init!!(rng, model, vi, InitFromParams(get_vector_values(vi), nothing), LinkSome(Set(vns), fallback))` / `UnlinkSome(Set(vns), fallback)`, where `fallback` sets the transforms of all other variables; pass the strategy that produced `vi` to keep them. For the removed non-mutating `link` / `invlink` forms, pass `copy(vi)` as the output. See [#1500](https://github.com/TuringLang/DynamicPPL.jl/pull/1500).
 
-`setindex_with_dist!!` is removed: supply named values with `InitFromParams(params, nothing)` and an explicit strategy to `init!!`.
+`setindex_with_dist!!` is removed: supply named values with `InitFromParams(params, nothing)` and an explicit strategy to `init!!`. See [#1500](https://github.com/TuringLang/DynamicPPL.jl/pull/1500).
 
-`update_transform_strategy` is removed: construct `LinkSome`, `UnlinkSome`, or `WithTransforms` explicitly and pass the strategy to `init!!`.
+`update_transform_strategy` is removed: construct `LinkSome`, `UnlinkSome`, or `WithTransforms` explicitly and pass the strategy to `init!!`. See [#1500](https://github.com/TuringLang/DynamicPPL.jl/pull/1500).
 
 # 0.42.14
 

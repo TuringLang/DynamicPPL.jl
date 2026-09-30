@@ -126,8 +126,9 @@ For all other fields, please use the corresponding getter functions provided in 
 
 # Extended help
 
-`LogDensityFunction` supplies parameter inputs through a `InitContext` and collects
-outputs in a `VarInfo`. The latter holds accumulators, not latent inputs.
+`LogDensityFunction` supplies parameter inputs through an `InitContext` and collects
+outputs in a `VarInfo`, which holds only evaluation outputs as accumulators, not inputs
+such as parameter values or transform strategies.
 
 A flat parameter vector does not identify which entries belong to each variable or how
 those entries are transformed. The constructor therefore prepares a mapping from

@@ -52,7 +52,9 @@ Raw values are used for chain construction. A whole variable such as
 
 ## Reusing outputs as inputs
 
-Reuse requires an explicit conversion outside evaluation:
+To pass outputs of one evaluation, such as parameter values, as inputs to the next,
+convert them explicitly outside evaluation; the context holds inputs and the `VarInfo`
+holds only outputs:
 
 ```@example 1
 context = InitContext(Xoshiro(1), InitFromParams(raw_values, nothing), LinkAll())
@@ -65,5 +67,5 @@ representation. `InitFromParams(vector_values, nothing)` also accepts vectorised
 including dynamically linked values. Dynamic transforms are reconstructed from each
 site's current distribution, so parameter-dependent supports remain correct.
 
-The `nothing` fallback makes an absent parameter an error. Specify another
-initialisation strategy when new sites should instead receive generated values.
+The `nothing` fallback makes an absent parameter an error. To sample absent sites from
+their priors instead, pass `InitFromParams(raw_values, InitFromPrior())`.
