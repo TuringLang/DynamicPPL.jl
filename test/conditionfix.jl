@@ -28,7 +28,42 @@ mutable struct MissingRecord
     a::Union{Missing,Float64}
 end
 
+struct MetadataRecord
+    a::Float64
+    b::Missing
+end
+
 @testset "condition and fix" begin
+    @testset "missing paths and construction scope" begin
+        @model metadata_site(p) = p.a ~ Normal()
+        for p in ((a=1.0, b=missing), (a=missing, b=1.0), (a=1.0, b=[(missing,)]))
+            path = if ismissing(p.a)
+                "p.a"
+            elseif ismissing(p.b)
+                "p.b"
+            else
+                "p.b[1][1]"
+            end
+            err = try
+                metadata_site(p)
+            catch e
+                e
+            end
+            @test err isa ArgumentError
+            @test occursin(path, sprint(showerror, err))
+            @test occursin("`p`", sprint(showerror, err))
+            @test occursin("condition", sprint(showerror, err))
+            @test occursin("fix", sprint(showerror, err))
+            @test occursin("decondition", sprint(showerror, err))
+        end
+        @test metadata_site(MetadataRecord(1.0, missing))() == 1.0
+        for bind in (condition, fix)
+            @test_throws r"p.b\[1\]" bind(
+                metadata_site((a=1.0, b=2.0)); p=(a=1.0, b=[missing])
+            )
+        end
+    end
+
     @testset "missing arguments explain deconditioning" begin
         @model observed(x) = x ~ Normal()
         @test_throws r"ArgumentError: .*condition.*fix.*decondition.*argument" observed(
