@@ -792,6 +792,8 @@ Direct construction without `values` conditions every entry in `merge(args, defa
 including arguments unused by tilde statements. In contrast, `@model` supplies bindings only
 for arguments used on the left-hand side of `~`. These construction paths can therefore
 produce different results from `conditioned(model)`. Use `decondition` to make sites latent.
+An argument used as a submodel's left-hand side supplies a return-value buffer, not an
+observation, and needs no deconditioning. See [Binding rules](@ref).
 """
 struct Model{
     F,
@@ -938,15 +940,22 @@ end
     condition(model::Model; values...)
     condition(model::Model, values::NamedTuple)
 
-Return a `Model` which now treats the variables in `values` as observations.
+Return a `Model` which treats the variables in `values` as observations: they replace
+sampling and contribute to the likelihood.
 
 See also: [`decondition`](@ref), [`conditioned`](@ref)
 
-Supplied values override model arguments and earlier conditioned or fixed values at the
-same address. Binding an argument that does not occur on the left-hand side of `~`
-throws `ArgumentError`; construct the model with a new argument value instead. Parent-model
-values override submodel values. Sites without supplied values remain latent; `missing` is
-not a latent-variable marker.
+Later bindings replace earlier ones where they overlap: a whole binding replaces all its
+components; a component binding replaces only itself. One tilde statement cannot mix
+conditioned and fixed components. `missing` is rejected; omit unobserved values instead.
+Bindings unused by executed tilde statements are ignored.
+
+Binding an argument that is not a tilde site throws `ArgumentError` at this call; construct
+the model with a new argument value instead. For submodel names, precedence, and errors
+at evaluation time, see [`to_submodel`](@ref) and [Binding rules](@ref).
+
+Bound values are not copied. The model body must not mutate them, directly or through an
+alias such as a `view`. This also applies to [`fix`](@ref).
 
 A complete argument replacement supplies its value, shape, and dispatch type parameters
 from the start of the model body. Partial updates preserve the remaining stored values and
@@ -1171,10 +1180,11 @@ provided, then all conditioned variables will be removed.
 This also removes observations supplied as model arguments. After deconditioning, a site's
 sampled value replaces its local argument value and is used by subsequent model statements.
 
-A name that matches no stored conditioned binding throws `ArgumentError`, including
-names with only fixed bindings. With no names, removing all observations is always valid.
-Component addresses are resolved against the stored container, so equivalent linear,
-Cartesian, and property indices match.
+A name matches when it equals, contains, or is contained in a stored binding's address,
+after resolving equivalent index and property forms against the stored container.
+Only the matching conditioned parts are removed. A name with no match throws
+`ArgumentError`, including names with only fixed bindings. With no names, removing all
+observations is always valid.
 
 Only bindings stored on this model are removed. This cannot remove a child submodel's
 argument observations: `decondition(outer_arg(), @varname(a.x))` throws when `a.x`
@@ -1358,10 +1368,11 @@ end
 """
     conditioned(model::Model)
 
-Return the conditioned values in `model`.
+Return this model's conditioned values as plain values, independent of binding history.
 
-After partial removal or mixed roles, this returns plain partial values
-(`VarNamedTuple`/`PartialArray`), not the original container type.
+The result is a `VarNamedTuple` containing ordinary or partial values. After partial
+removal or mixed roles, containers become plain partial values (`VarNamedTuple` or
+`PartialArray`), not the original container type.
 
 # Examples
 ```jldoctest
@@ -1417,28 +1428,15 @@ conditioned(model::Model) = _select_model_values(Condition, model.values)
     fix(model::Model; values...)
     fix(model::Model, values::NamedTuple)
 
-Return a `Model` which now treats the variables in `values` as fixed.
+Return a `Model` which treats the variables in `values` as constants: they replace
+sampling and contribute no log probability.
+
+Fixed values are not copied; the model body must not mutate them, directly or through a
+`view`. Replacement, missing-value rejection, unused bindings, and argument restrictions
+follow [`condition`](@ref). See [Binding rules](@ref) for the shared rules, including the
+cost of component bindings on array arguments, and [`to_submodel`](@ref) for submodels.
 
 See also: [`unfix`](@ref), [`fixed`](@ref)
-
-Binding an argument that does not occur on the left-hand side of `~` throws `ArgumentError`;
-construct the model with a new argument value instead.
-
-!!! note
-    Component bindings on an array argument (for example, `@varname(x[1])`) rebuild the
-    argument on every evaluation, costing O(length(x)). For large arrays or hot loops,
-    prefer replacing the whole argument, for example `fix(model; x=newx)` with
-    `newx` already containing the override, or construct the model with the updated argument.
-
-Default argument bindings can supply submodel return-value buffers. Explicit bindings
-at or below a buffer are rejected during evaluation. Fix the child model before wrapping
-it with `to_submodel` instead.
-
-!!! warning "Fixed values are not copied"
-    Evaluation uses the supplied values directly, including as model arguments. The model
-    body must not mutate them, directly or through an alias such as a `view`: doing so
-    changes the stored binding and the caller's object. Pass a copy if the model may write
-    to a fixed value.
 
 !!! warning "Fixing applies to whole variables"
     Variables are treated as they occur in the model. A variable drawn from a multivariate
@@ -1466,7 +1464,7 @@ julia> model = demo();
 julia> m, x = model(); (m ≠ 1.0 && x ≠ 100.0)
 true
 
-julia> # Create a new instance which treats `x` as observed
+julia> # Create a new instance which treats `x` as fixed
        # with value `100.0`, and similarly for `m=1.0`.
        fixed_model = fix(model, x=100.0, m=1.0);
 
@@ -1487,12 +1485,7 @@ please see its docstring for more examples.
 
 ## Difference from `condition`
 
-The only difference between fixing and conditioning is as follows:
-
-- Conditioned variables are considered to be observations, and are thus included in the
-  computation log-joint and log-likelihood, but not the log-prior.
-- Fixed variables are considered to be constant, and are thus not included
-  in any log-probability computations.
+Fixing omits the bound variable's log probability:
 
 ```jldoctest; setup=:(using DynamicPPL, Distributions)
 julia> @model function demo()
@@ -1533,15 +1526,12 @@ end
     unfix(model::Model)
     unfix(model::Model, variables...)
 
-Return a `Model` for which `variables...` are _not_ considered fixed. If no `variables` are
-provided, then all fixed variables will be removed.
-A name that matches no stored fixed binding throws `ArgumentError`, including names with
-only conditioned bindings. With no names, removing all fixed bindings is always valid.
+Remove this model's fixed bindings at `variables...`, or all fixed bindings if no names
+are supplied. Matching follows [`decondition`](@ref), including equivalent index and
+property forms. A name with no stored fixed match throws `ArgumentError`, including a
+name supplied only by a child submodel or only conditioned on this model.
 
-This is essentially the inverse of [`fix`](@ref).
-
-Conceptually this is very similar to [`decondition`](@ref) and thus the same limitations
-apply; please see its docstring for more details.
+See also: [`fix`](@ref), [Binding rules](@ref).
 
 # Examples
 ```jldoctest unfix
@@ -1591,10 +1581,11 @@ end
 """
     fixed(model::Model)
 
-Return the fixed values in `model`.
+Return this model's fixed values as plain values, independent of binding history.
 
-After partial removal or mixed roles, this returns plain partial values
-(`VarNamedTuple`/`PartialArray`), not the original container type.
+The result is a `VarNamedTuple` containing ordinary or partial values. After partial
+removal or mixed roles, containers become plain partial values (`VarNamedTuple` or
+`PartialArray`), not the original container type.
 
 # Examples
 ```jldoctest

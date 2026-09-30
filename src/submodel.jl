@@ -46,16 +46,19 @@ variables themselves to the left-hand side.
 Conceptually, `to_submodel(model)` is a `returned_value(model)` wrapper: its value is the
 model's return value, not its latent variables.
 
-Condition a submodel through its internal variable names, not its return value. If an
-argument provides storage for submodel return values, remove its default observation with
-[`decondition`](@ref) before evaluation.
+Condition or fix a submodel through its variable names in the parent: for example,
+`@varname(a.x)` in `a ~ to_submodel(child())`. With `auto_prefix=false`, use the child's
+names unchanged. Parent bindings override child bindings at the same address.
+
+Binding the return value throws `ArgumentError` at the submodel tilde during evaluation.
+An argument used as the left-hand side supplies a return-value buffer, not an observation;
+it needs no [`decondition`](@ref). Explicit bindings at or below that buffer also throw
+during evaluation. Condition or fix the child before wrapping it instead. To remove a
+child's argument observations, decondition the child before wrapping it.
+See [Binding rules](@ref).
 
 `Submodel` is not a `Distribution`; it provides this tilde behavior but no standalone
 `logpdf` method.
-
-!!! warning
-    Operations normally associated with `left ~ right`, such as [`condition`](@ref), do not
-    necessarily work with `to_submodel`.
 
 !!! warning
     Keep `auto_prefix=true` unless the wrapped model has been explicitly prefixed. Disabling
