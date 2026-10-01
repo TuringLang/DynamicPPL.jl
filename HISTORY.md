@@ -20,6 +20,8 @@ Added the `template` keyword to `prefix(model, x::VarName)` to supply the enclos
 
 Added the `context` keyword to `DynamicPPL.DebugUtils.model_typed`, `model_warntype`, and `gen_evaluator_call_with_types` to select the evaluation context. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
+`subsample` and `independent_problem` now accept argument-supplied observations; previously observations had to be supplied through `condition`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+
 ## Breaking changes
 
 Partly removing bindings of a single multivariate LHS variable now throws `ArgumentError` during evaluation; declare separate LHS variables to remove their bindings independently. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
@@ -50,7 +52,7 @@ Model arguments provide argument-supplied observations; `condition` and `fix` at
 
 `conditioned(::AbstractContext)` / `fixed(::AbstractContext)` are removed: use `conditioned(model)` / `fixed(model)`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-`Model` gains a `values` field and a type parameter listing arguments with LHS variables, and loses its `missings` type parameter: direct field construction and dispatch on the old type parameters break; construct with `@model`, or use `Model{Threaded}(f, args, defaults, context; argument_sites=(:y, ...))` followed by `condition`/`fix`. Direct construction supplies no observations; `argument_sites` lists arguments used on the left-hand side of `~` that can be bound. `@model` supplies both argument-supplied observations and the names of arguments with LHS variables. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+`Model` gains a `values` field and a type parameter listing arguments with LHS variables, and loses its `missings` type parameter: direct field construction and dispatch on the old type parameters break; construct with `@model`, or use `Model{Threaded}(f, args, defaults, context; lhs_arguments=(:y, ...))` followed by `condition`/`fix`. Direct construction supplies no observations; `lhs_arguments` lists arguments used on the left-hand side of `~` that can be bound. `@model` supplies both argument-supplied observations and the names of arguments with LHS variables. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
 Conditioning or fixing a submodel's return value now errors: binding the submodel LHS → binding LHS variables in its submodel namespace. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
