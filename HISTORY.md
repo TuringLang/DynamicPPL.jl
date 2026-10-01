@@ -26,6 +26,8 @@ Added the `context` keyword to `DynamicPPL.DebugUtils.model_typed`, `model_warnt
 
 ## Breaking changes
 
+For `@model fs(y; kw...)`, `fs(1.0; z=2, w=3).defaults` changes from `(z=2, w=3)` to `(var"#splat#kw"=(z=2, w=3),)`: keyword-splat entries are nested under the generated name instead of merged with other keywords, which remain at the top level. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+
 Integer indices into NamedTuples are rejected in binding addresses and LHS variables: `x[1]` on a NamedTuple → `x.a`; Tuples retain integer indices. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
 Partly removing bindings of a single multivariate LHS variable now throws `ArgumentError` during evaluation; declare separate LHS variables to remove their bindings independently. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
