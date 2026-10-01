@@ -410,6 +410,7 @@ function generate_tilde(left, right; is_argument=false)
             $value = $(DynamicPPL._check_tilde_value)(
                 $fixed_data,
                 $(DynamicPPL.maybe_prefix)($vn, $(DynamicPPL._model_prefix)(__model__)),
+                $role,
             )
             $(assign_or_set!!(left, value, vn))
         elseif $role === nothing

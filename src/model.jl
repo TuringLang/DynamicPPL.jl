@@ -2312,10 +2312,11 @@ function tilde_assume!!(
     return tilde_assume!!(context, right, vn, template, vi)
 end
 
-function _check_tilde_value(value, vn)
+function _check_tilde_value(value, vn, role::Union{Condition,Fix})
+    remove = role isa Fix ? "unfix" : "decondition"
     _contains_missing(value) && throw(
         ArgumentError(
-            "LHS variable `$vn` contains `missing`; `missing` no longer marks an LHS variable as latent. Use `decondition` to make it latent.",
+            "LHS variable `$vn` contains `missing`; make it latent with `$remove`."
         ),
     )
     return value
@@ -2343,7 +2344,7 @@ function tilde_observe!!(
     else
         _prefix_varname_and_template(vn, template, prefix, prefix_template)
     end
-    left = _check_tilde_value(left, vn)
+    left = _check_tilde_value(left, vn, Condition())
     vi = accumulate_observe!!(vi, right, left, vn, template)
     return left, vi
 end
