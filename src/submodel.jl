@@ -174,6 +174,11 @@ function _submodel_namespace(
 ) where {R<:Union{Condition,Fix}}
     return _tag_model_values(R, VarNamedTuple(value.value))
 end
+function _submodel_namespace(
+    value::ModelValue{R,<:VarNamedTuple}
+) where {R<:Union{Condition,Fix}}
+    return _tag_model_values(R, value.value)
+end
 function _submodel_namespace(::Union{ModelValue,ModelValueTree})
     throw(
         ArgumentError(
