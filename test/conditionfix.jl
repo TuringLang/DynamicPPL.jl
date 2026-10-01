@@ -63,17 +63,20 @@ end
         end
     end
 
-    @testset "keyword splat arguments with LHS variables reject missing entries" begin
+    @testset "keyword splat argument LHS variables reject missing when read" begin
         @model keyword_observation(; kw...) = (kw[:x] ~ Normal(); kw)
-        for (value, path) in (
-            ((; x=missing), r"ArgumentError: .*kw\.x"),
-            ((; x=1.0, y=missing), r"ArgumentError: .*kw\.y"),
-            ((; x=1.0, y=[(a=missing,)]), r"ArgumentError: .*kw\.y\[1\]\.a"),
-        )
-            @test_throws path keyword_observation(; value...)
+        for value in ((; x=1.0, y=missing), (; x=1.0, y=[(a=missing,)]))
+            @test keyword_observation(; value...)(Xoshiro(1))[:x] == 1.0
             for bind in (condition, fix), replacement in (value, pairs(value))
-                @test_throws path bind(keyword_observation(; x=1.0); kw=replacement)
+                @test bind(keyword_observation(; x=1.0); kw=replacement)(Xoshiro(1))[:x] ==
+                    1.0
             end
+        end
+        model = keyword_observation(; x=missing)
+        @test_throws r"ArgumentError: .*`kw\[:x\]`.*decondition" model(Xoshiro(1))
+        for bind in (condition, fix)
+            bound = bind(keyword_observation(; x=1.0); kw=(; x=missing))
+            @test_throws r"ArgumentError: .*`kw\[:x\]`.*decondition" bound(Xoshiro(1))
         end
     end
 
@@ -305,44 +308,67 @@ end
         )()
     end
 
-    @testset "missing paths and construction scope" begin
-        @model metadata_lhs(p) = p.a ~ Normal()
-        for p in ((a=1.0, b=missing), (a=missing, b=1.0), (a=1.0, b=[(missing,)]))
-            path = if ismissing(p.a)
-                "p.a"
-            elseif ismissing(p.b)
-                "p.b"
-            else
-                "p.b[1][1]"
+    @testset "missing is rejected only when an LHS variable reads it" begin
+        @model metadata_lhs(p) = (p.a ~ Normal(); p.a)
+        @model indexed_observation(y) = begin
+            for i in 1:2
+                y[i] ~ Normal()
             end
-            err = try
-                metadata_lhs(p)
-            catch e
-                e
-            end
-            @test err isa ArgumentError
-            @test occursin(path, sprint(showerror, err))
-            @test occursin("`p`", sprint(showerror, err))
-            @test occursin("condition", sprint(showerror, err))
-            @test occursin("fix", sprint(showerror, err))
-            @test occursin("decondition", sprint(showerror, err))
+            y
         end
-        @test metadata_lhs(MetadataRecord(1.0, missing))() == 1.0
-        for bind in (condition, fix)
-            @test_throws r"p.b\[1\]" bind(
-                metadata_lhs((a=1.0, b=2.0)); p=(a=1.0, b=[missing])
+        @model whole_observation(y) = y ~ MvNormal(zeros(2), I)
+        @model scalar_observation(y) = y ~ Normal()
+        for p in ((a=1.0, b=missing), (a=1.0, b=[(missing,)]), MetadataRecord(1.0, missing))
+            @test metadata_lhs(p)(Xoshiro(1)) == 1.0
+            for bind in (condition, fix)
+                @test bind(metadata_lhs((a=1.0, b=2.0)); p)(Xoshiro(1)) == 1.0
+            end
+        end
+        for bind in (
+            identity,
+            m -> condition(m; y=[1.0, 2.0, missing]),
+            m -> fix(m; y=[1.0, 2.0, missing]),
+        )
+            @test isequal(
+                bind(indexed_observation([1.0, 2.0, missing]))(Xoshiro(1)),
+                [1.0, 2.0, missing],
             )
         end
-    end
-
-    @testset "missing arguments explain deconditioning" begin
-        @model observed(x) = x ~ Normal()
-        @test_throws r"ArgumentError: .*condition.*fix.*decondition.*argument" observed(
-            missing
+        for (constructor, values, message) in (
+            (
+                metadata_lhs,
+                (; p=(a=missing, b=1.0)),
+                r"ArgumentError: .*`p.a`.*missing.*latent.*decondition",
+            ),
+            (
+                indexed_observation,
+                (; y=[1.0, missing, 3.0]),
+                r"ArgumentError: .*`y\[2\]`.*missing.*latent.*decondition",
+            ),
+            (
+                indexed_observation,
+                (; y=[1.0, missing]),
+                r"ArgumentError: .*`y\[2\]`.*missing.*latent.*decondition",
+            ),
+            (
+                whole_observation,
+                (; y=[1.0, missing]),
+                r"ArgumentError: .*`y`.*missing.*latent.*decondition",
+            ),
+            (
+                scalar_observation,
+                (; y=missing),
+                r"ArgumentError: .*`y`.*missing.*latent.*decondition",
+            ),
         )
-        for bind in (condition, fix)
-            @test_throws ArgumentError bind(observed(1.0); x=missing)
+            model = constructor(only(values))
+            @test_throws message model(Xoshiro(1))
+            for bind in (condition, fix)
+                bound = bind(model; values...)
+                @test_throws message bound(Xoshiro(1))
+            end
         end
+        @test decondition(scalar_observation(missing))(Xoshiro(1)) isa Real
     end
 
     @testset "named tuple LHS variables require whole bindings" begin
@@ -791,8 +817,11 @@ end
             return x
         end
         unused_model = optional_lhs(false)
-        for bind in (condition, fix), name in (@varname(z), @varname(y))
-            bound = bind(unused_model, name => 1.0)
+        for bind in (condition, fix),
+            name in (@varname(z), @varname(y)),
+            data in (1.0, missing)
+
+            bound = bind(unused_model, name => data)
             value, vi = init!!(Xoshiro(1), unused_model, VarInfo(), InitFromPrior())
             bound_value, bound_vi = init!!(Xoshiro(1), bound, VarInfo(), InitFromPrior())
             @test bound_value == value
@@ -803,15 +832,18 @@ end
     @testset "missing struct fields" begin
         @model field_observation(x) = x.a ~ Normal()
         @model nested_field(child) = inner ~ to_submodel(child)
-        for wrap in (identity, nested_field)
-            @test_throws ArgumentError logjoint(
+        for (wrap, message) in (
+            (identity, r"ArgumentError: .*`x.a`.*missing.*decondition"),
+            (nested_field, r"ArgumentError: .*`inner.x.a`.*missing.*decondition"),
+        )
+            @test_throws message logjoint(
                 wrap(field_observation(MissingRecord(missing))), (;)
             )
             for op in (condition, fix)
                 field_model = op(
                     field_observation(MissingRecord(1.0)); x=MissingRecord(missing)
                 )
-                @test_throws ArgumentError logjoint(wrap(field_model), (;))
+                @test_throws message logjoint(wrap(field_model), (;))
             end
         end
     end
