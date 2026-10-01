@@ -84,7 +84,6 @@ end
                     __model__.defaults,
                     __model__.prefix,
                     __model__.values,
-                    __model__.prefix_template,
                     __model__.context;
                     args_on_lhs=DynamicPPL._args_on_lhs(__model__),
                 )

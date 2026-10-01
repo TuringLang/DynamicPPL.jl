@@ -189,7 +189,7 @@ function _submodel_namespace(::Union{ModelValue,ModelValueTree})
 end
 
 function _submodel_values(model::Model, prefix)
-    prefix = _model_value_varname(model.values, prefix, model.prefix)
+    prefix = _model_value_varname(model.values, prefix, getprefix(model))
     return _submodel_values(_model_values(model.values), prefix)
 end
 _submodel_values(values::VarNamedTuple, ::Nothing) = values
@@ -201,7 +201,7 @@ end
 
 # Shape ownership survives selecting a child's namespace, including whole namespace bindings.
 function _submodel_fixed_owners(model::Model, prefix)
-    prefix = _model_value_varname(model.values, prefix, model.prefix)
+    prefix = _model_value_varname(model.values, prefix, getprefix(model))
     owners = _fixed_owners(model.values)
     prefix === nothing && return owners
     return mapreduce((a, b) -> (a..., b...), owners; init=()) do owner
@@ -252,9 +252,9 @@ function tilde_assume!!(
     end
     left_vn = AutoPrefix ? _concretize_prefix(left_vn, template) : left_vn
     local_prefix = if AutoPrefix
-        maybe_prefix(submodel.model.prefix, left_vn)
+        maybe_prefix(getprefix(submodel.model), left_vn)
     else
-        submodel.model.prefix
+        getprefix(submodel.model)
     end
     child_values = _submodel_values(submodel.model, nothing)
     child_model = _reconstruct_model(submodel.model; values=LocalModelValues(child_values))
@@ -265,7 +265,7 @@ function tilde_assume!!(
         ),
     )
     # Shared unprefixed names may belong to the parent or another child.
-    if AutoPrefix || submodel.model.prefix !== nothing
+    if AutoPrefix || DynamicPPL.getprefix(submodel.model) !== nothing
         _check_binding_addresses(child_model, parent_values)
     end
     owners = (
@@ -288,30 +288,12 @@ end
     vi::AbstractVarInfo,
     values::LocalModelValues,
 ) where {M,AutoPrefix}
-    parent_prefix = parent_model.prefix
     model = if AutoPrefix
         vn, template = _prefix_varname_and_template(left_vn, template, parent_model)
         _prefix_model(submodel.model, vn, template, values)
-    elseif parent_prefix === nothing
-        _reconstruct_model(submodel.model; values)
     else
-        model = _prefix_model(
-            submodel.model,
-            parent_prefix,
-            _apply_prefix_template(parent_model.prefix_template, NoTemplate()),
-            values,
-        )
-        if parent_model.prefix_template === nothing
-            model
-        else
-            inner = if submodel.model.prefix_template === nothing
-                submodel.model.prefix
-            else
-                submodel.model.prefix_template
-            end
-            prefix_template = _compose_prefix_templates(parent_model.prefix_template, inner)
-            _reconstruct_model(model; prefix_template)
-        end
+        prefix = _compose_prefix_templates(parent_model.prefix, submodel.model.prefix)
+        _reconstruct_model(submodel.model; prefix, values)
     end
     # Calling model.f directly avoids the inference recursion limit as nested prefixes
     # change the Model type; routing through _evaluate!! widens it to Any (Turing.jl#2844).

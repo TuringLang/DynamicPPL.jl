@@ -224,6 +224,8 @@ export AbstractVarInfo,
     generated_quantities,
     typed_identity
 
+@compat public getprefix
+
 # Reexport
 using Distributions: loglikelihood
 export loglikelihood

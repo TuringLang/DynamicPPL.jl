@@ -383,8 +383,8 @@ function generate_tilde_literal(left, right)
     @gensym value
     return quote
         $value, __varinfo__ = $(DynamicPPL.tilde_observe!!)(
-            __model__.prefix,
-            __model__.prefix_template,
+            $(DynamicPPL.getprefix)(__model__),
+            $(DynamicPPL._prefix_template)(__model__.prefix),
             $(DynamicPPL.check_tilde_rhs)($right),
             $left,
             nothing,
@@ -464,7 +464,9 @@ function generate_tilde(left, right; is_argument=false)
         end
         if $role isa $(DynamicPPL.Fix)
             $value = $(DynamicPPL._check_tilde_value)(
-                $fixed_data, $(DynamicPPL.maybe_prefix)($vn, __model__.prefix), $role
+                $fixed_data,
+                $(DynamicPPL.maybe_prefix)($vn, $(DynamicPPL.getprefix)(__model__)),
+                $role,
             )
             $(assign_or_set!!(left, value, vn))
         elseif $role === nothing
@@ -482,8 +484,8 @@ function generate_tilde(left, right; is_argument=false)
             )
 
             $value, __varinfo__ = $(DynamicPPL.tilde_observe!!)(
-                __model__.prefix,
-                __model__.prefix_template,
+                $(DynamicPPL.getprefix)(__model__),
+                $(DynamicPPL._prefix_template)(__model__.prefix),
                 $(DynamicPPL.check_tilde_rhs)($dist),
                 $supplied_val,
                 $vn,
@@ -525,7 +527,9 @@ function generate_input_provenance_check(left::Union{Expr,Symbol}, vn)
                 $(AbstractPPL.getoptic)($vn), $top_symbol
             )
             __varinfo__ = $(DynamicPPL.check_input_provenance!!)(
-                __varinfo__, $value, $(DynamicPPL.maybe_prefix)($vn, __model__.prefix)
+                __varinfo__,
+                $value,
+                $(DynamicPPL.maybe_prefix)($vn, $(DynamicPPL.getprefix)(__model__)),
             )
         end
     end
