@@ -721,6 +721,25 @@ end
     end
 end
 
+@testset "logdensity_internal defaults to the task-local RNG" begin
+    @model tiny() = x ~ Normal()
+    ldf = LogDensityFunction(tiny())
+    args = (
+        ldf.model,
+        DynamicPPL.getlogjoint_internal,
+        DynamicPPL.get_all_ranges_and_transforms(ldf),
+        ldf.transform_strategy,
+        ldf._accs,
+    )
+    params = [0.3]
+    @test DynamicPPL.logdensity_internal(params, args...) ≈
+        LogDensityProblems.logdensity(ldf, params)
+    prepared = AbstractPPL.prepare(
+        DynamicPPL.logdensity_internal, params; check_dims=false, context=args
+    )
+    @test prepared(params) ≈ LogDensityProblems.logdensity(ldf, params)
+end
+
 @testset "LogDensityAt deprecation shim" begin
     @model tiny() = x ~ Normal()
     ldf = LogDensityFunction(tiny())
