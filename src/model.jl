@@ -8,6 +8,7 @@ struct Fix end
 
 _contains_missing(::Any) = false
 _contains_missing(::Missing) = true
+_contains_missing(value::Base.Pairs) = _contains_missing(values(value))
 _contains_missing(value::TransformedValue) = _contains_missing(get_internal_value(value))
 _contains_missing(::AbstractArray{<:Number}) = false
 function _contains_missing(values::AbstractArray)
@@ -20,6 +21,7 @@ function _contains_missing(values::Union{Tuple,NamedTuple})
 end
 
 _missing_path(::Missing, path) = path
+_missing_path(value::Base.Pairs, path) = _missing_path(values(value), path)
 function _missing_path(value::TransformedValue, path)
     return _missing_path(get_internal_value(value), path)
 end

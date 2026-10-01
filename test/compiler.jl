@@ -721,6 +721,32 @@ end
         @test res == (1, (), 1, Int, NamedTuple())
     end
 
+    @testset "keyword splat LHS arguments preserve Julia semantics" begin
+        forward_keywords(; kw...) = kw
+        @model function keyword_replacement_body(; kw...)
+            kw[:y] ~ Normal()
+            return kw, kw[:y], keys(kw), values(kw), forward_keywords(; kw...)
+        end
+        model = keyword_replacement_body(; y=1.0)
+        for (prepared, expected) in (
+            (model, 1.0),
+            (condition(model; kw=(; y=2.0)), 2.0),
+            (fix(model; kw=(; y=2.0)), 2.0),
+            (condition(model; kw=pairs((; y=2.0))), 2.0),
+            (fix(model; kw=pairs((; y=2.0))), 2.0),
+            (condition(model; kw=Dict(:y => 2.0)), 2.0),
+            (fix(model; kw=Dict(:y => 2.0)), 2.0),
+            (unfix(fix(model; kw=(; y=2.0))), 1.0),
+        )
+            kw, y, names, vals, forwarded = prepared(Xoshiro(1))
+            @test typeof(kw) === typeof(forward_keywords(; y=expected))
+            @test y === expected
+            @test names === (:y,)
+            @test vals === (; y=expected)
+            @test forwarded === kw
+        end
+    end
+
     @testset "incompatible prepared argument types" begin
         @model typed_input(x::Vector{Float64}) = (x[1] ~ Normal(); return x)
         @model typed_keyword(; x::Vector{Float64}=[0.0]) = (x[1] ~ Normal(); return x)
