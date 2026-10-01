@@ -368,7 +368,13 @@ function build_combinations(rng)
     end
     push!(models, ("Dynamic", dynamic()))
     push!(models, ("Submodel", parent(randn(rng))))
-    push!(models, ("Indexed submodels 3k", indexed_submodels(randn(rng, 3_000))))
+    indexed = indexed_submodels(randn(rng, 3_000))
+    push!(models, ("Indexed submodels 3k", indexed))
+    # A parent binding at a child's prefixed address.
+    push!(
+        models,
+        ("Indexed submodels conditioned", condition(indexed, @varname(x[1].obs) => 0.0)),
+    )
     d = [1, 1, 1, 2, 2, 2]
     w = [1, 2, 3, 2, 1, 1]
     z = [1, 1, 2, 2, 1, 2]
