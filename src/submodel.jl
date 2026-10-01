@@ -243,6 +243,21 @@ function tilde_assume!!(
         ),
     )
     values = LocalModelValues(_merge_model_values(child_values, parent_values))
+    return _evaluate_submodel!!(
+        parent_model, context, submodel, left_vn, template, vi, values
+    )
+end
+
+# Specialize child evaluation on the selected submodel namespace bindings.
+@inline function _evaluate_submodel!!(
+    parent_model::Model,
+    context::AbstractContext,
+    submodel::Submodel{M,AutoPrefix},
+    left_vn::VarName,
+    template,
+    vi::AbstractVarInfo,
+    values::LocalModelValues,
+) where {M,AutoPrefix}
     parent_prefix = _model_prefix(parent_model)
     model = if AutoPrefix
         vn, template = _prefix_varname_and_template(left_vn, template, parent_model)
