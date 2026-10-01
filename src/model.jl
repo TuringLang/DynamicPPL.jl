@@ -733,6 +733,23 @@ function _merge_model_fields(previous, updates, ::Val{names}) where {names}
     return child isa NoModelBinding ? rest : merge(NamedTuple{(name,)}((child,)), rest)
 end
 
+# A finite union keeps mixed binding tags visible to inference instead of typejoining them.
+function VarNamedTuples._concretise_eltype!!(
+    pa::VarNamedTuples.PartialArray{<:ModelValue{R,T} where {R}}
+) where {T}
+    isconcretetype(eltype(pa)) && return pa
+    isconcretetype(T) || return invoke(
+        VarNamedTuples._concretise_eltype!!, Tuple{VarNamedTuples.PartialArray}, pa
+    )
+    ET = Union{ModelValue{Condition,T},ModelValue{ArgumentCondition,T},ModelValue{Fix,T}}
+    eltype(pa) === ET && return pa
+    data = similar(pa.data, ET)
+    for i in eachindex(pa.mask)
+        pa.mask[i] && (data[i] = pa.data[i])
+    end
+    return VarNamedTuples.PartialArray(data, pa.mask)
+end
+
 function VarNamedTuples._prepare_indexed_value(
     value::ModelValue{R,<:AbstractArray}, data, inds...; kw...
 ) where {R}
