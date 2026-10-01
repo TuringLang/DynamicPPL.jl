@@ -689,7 +689,6 @@ function build_output(modeldef, linenumbernode, lhs_names)
     lhs_arguments = unique([
         name for (name, _, _, _) in vcat(args_split, kwargs_split) if name in lhs_names
     ])
-    observations = Expr(:tuple, [Expr(:(=), name, name) for name in lhs_arguments]...)
     @gensym replaced prepared
     prepare_args = map(lhs_arguments) do name
         return quote
@@ -770,8 +769,7 @@ function build_output(modeldef, linenumbernode, lhs_names)
             $name,
             $args_nt,
             $kwargs_nt,
-            $(DynamicPPL.DefaultContext)(),
-            $(_tag_model_values)($(ArgumentCondition), $(VarNamedTuple)($observations));
+            $(DynamicPPL.DefaultContext)();
             lhs_arguments=($(QuoteNode(Tuple(lhs_arguments)))),
         )
     end

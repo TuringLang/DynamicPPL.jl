@@ -963,20 +963,24 @@ function _compose_prefix_templates(prefix::PrefixTemplate, inner)
     )
 end
 
+is_splat_symbol(s::Symbol) = startswith(string(s), "#splat#")
+function unsplat_symbol(s::Symbol)
+    return is_splat_symbol(s) ? Symbol(chopprefix(string(s), "#splat#")) : s
+end
+
 function _reconstruct_model end
 
 """
     Model{Threaded}(f, args::NamedTuple, defaults::NamedTuple, context=DefaultContext(); lhs_arguments=())
 
 Store a model function, arguments, and context. Prefer [`@model`](@ref) for construction.
-For direct construction, use [`condition`](@ref) or [`fix`](@ref) to supply bindings.
 The names of arguments with LHS variables are stored as immutable type metadata.
 Set `lhs_arguments` to the tuple of argument names that occur on the left-hand side of
-`~` so those arguments can be bound, for example
-`condition(Model{false}(f, (; y=1.0), (;); lhs_arguments=(:y,)); y=2.0)`.
-Direct construction supplies no observations; arguments are ordinary inputs. `@model`
-records argument-supplied observations and the names of arguments with LHS variables. Use
-[`decondition`](@ref) to remove those observations.
+`~`, for example `Model{false}(f, (; y=1.0), (;); lhs_arguments=(:y,))`.
+These arguments record argument-supplied observations, just as with `@model`, and can
+be bound with [`condition`](@ref) or [`fix`](@ref). Use [`decondition`](@ref) to remove
+argument-supplied observations. Without `lhs_arguments`, direct construction records
+no argument-supplied observations and its arguments cannot be bound.
 An argument equal to `nothing` supplies no argument-supplied observation; its LHS
 variables are latent unless explicitly bound.
 At a submodel tilde, an argument LHS variable receives the submodel return value. The
@@ -993,7 +997,6 @@ struct Model{
     Values<:Union{VarNamedTuple,LocalModelValues,UnprefixedArgumentValues},
     Threaded,
     LHSArguments,
-    ArgumentObservations,
 } <: AbstractProbabilisticProgram
     f::F
     args::NamedTuple{argnames,Targs}
@@ -1004,18 +1007,15 @@ struct Model{
         f::F,
         args::NamedTuple{A,Ta},
         defaults::NamedTuple{D,Td},
-        context::C=DefaultContext(),
-        values::V=VarNamedTuple();
+        context::C,
+        values::V;
         lhs_arguments::Union{Tuple{Vararg{Symbol}},Vector{Symbol}}=(),
     ) where {F,A,Ta,D,Td,C,V,Threaded}
         mapreduce(
             pair -> pair.second isa ModelValue, &, _model_values(values); init=true
         ) || throw(ArgumentError("Model values must carry a condition or fix role"))
         argument_names = Tuple(lhs_arguments)
-        observation_names = keys(
-            _select_model_values(ArgumentCondition, _model_values(values)).data
-        )
-        return new{F,A,D,Ta,Td,C,V,Threaded,argument_names,observation_names}(
+        return new{F,A,D,Ta,Td,C,V,Threaded,argument_names}(
             f, args, defaults, context, values
         )
     end
@@ -1023,9 +1023,7 @@ struct Model{
     function DynamicPPL._reconstruct_model(
         model::Model{F,A,D,Ta,Td}, context::C, values::V, ::Val{Threaded}
     ) where {F,A,D,Ta,Td,C,V,Threaded}
-        return new{
-            F,A,D,Ta,Td,C,V,Threaded,_lhs_arguments(model),_argument_observations(model)
-        }(
+        return new{F,A,D,Ta,Td,C,V,Threaded,_lhs_arguments(model)}(
             model.f, model.args, model.defaults, context, values
         )
     end
@@ -1037,10 +1035,15 @@ function _lhs_arguments(
     return LHSArguments
 end
 
-function _argument_observations(
-    ::Model{F,A,D,Ta,Td,C,V,Threaded,LHSArguments,ArgumentObservations}
-) where {F,A,D,Ta,Td,C,V,Threaded,LHSArguments,ArgumentObservations}
-    return ArgumentObservations
+Base.@constprop :aggressive function Model{Threaded}(
+    f,
+    args::NamedTuple,
+    defaults::NamedTuple,
+    context::AbstractContext=DefaultContext();
+    lhs_arguments::Union{Tuple{Vararg{Symbol}},Vector{Symbol}}=(),
+) where {Threaded}
+    values = _argument_defaults(merge(args, defaults), Val(Tuple(lhs_arguments)))
+    return Model{Threaded}(f, args, defaults, context, values; lhs_arguments)
 end
 
 """
@@ -1048,8 +1051,10 @@ end
 
 Create a model with evaluation function `f` and arguments `args`.
 
-Arguments are ordinary inputs; no observations or metadata about arguments with LHS variables are recorded.
-Use [`@model`](@ref) to construct a model with argument-supplied observations.
+Arguments are ordinary inputs; no argument-supplied observations or metadata about
+argument LHS variables are recorded, and these arguments cannot be bound.
+Use [`@model`](@ref) or the constructor accepting `defaults` and `lhs_arguments` to
+construct a model with argument-supplied observations.
 
 Keyword arguments `kwargs` are stored in the model's `defaults` field.
 """
@@ -2042,7 +2047,7 @@ function unfix(model::Model, syms::Union{Symbol,VarName}...)
     values = _remove_model_values(Fix, _model_values(model.values), syms...)
     removed = _removed_fixed_bindings(_model_values(model.values), values)
     defaults = _argument_defaults(
-        merge(model.args, model.defaults), _argument_observations(model)
+        merge(model.args, model.defaults), Val(_lhs_arguments(model))
     )
     if !(model.values isa LocalModelValues) && _model_prefix(model) !== nothing
         defaults = _prefix_values(
@@ -2071,21 +2076,14 @@ function unfix(model::Model, syms::Union{Symbol,VarName}...)
 end
 
 @generated function _argument_defaults(
-    arguments::NamedTuple{names}, argument_observations
-) where {names}
+    arguments::NamedTuple{names}, ::Val{lhs_arguments}
+) where {names,lhs_arguments}
     fields = map(names) do stored_name
         name = unsplat_symbol(stored_name)
-        :(
-            if $(QuoteNode(name)) in argument_observations
-                NamedTuple{($(QuoteNode(name)),)}((
-                    _tag_model_value(
-                        ArgumentCondition, arguments.$stored_name, $(VarName{name}())
-                    ),
-                ))
-            else
-                (;)
-            end
-        )
+        name in lhs_arguments || return :((;))
+        :(NamedTuple{($(QuoteNode(name)),)}((
+            _tag_model_value(ArgumentCondition, arguments.$stored_name, $(VarName{name}())),
+        )))
     end
     return :(_prune_model_bindings(VarNamedTuple(merge((;), $(fields...)))))
 end
@@ -2538,11 +2536,6 @@ reset the log probability of the `varinfo` before running.
 function _evaluate!!(model::Model, varinfo::AbstractVarInfo)
     args, kwargs = make_evaluate_args_and_kwargs(model, varinfo)
     return model.f(args...; kwargs...)
-end
-
-is_splat_symbol(s::Symbol) = startswith(string(s), "#splat#")
-function unsplat_symbol(s::Symbol)
-    return is_splat_symbol(s) ? Symbol(chopprefix(string(s), "#splat#")) : s
 end
 
 """

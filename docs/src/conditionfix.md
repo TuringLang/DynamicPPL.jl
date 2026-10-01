@@ -21,8 +21,10 @@
     `model.args` and `model.defaults` retain construction values when bindings change;
     bindings live in the model's binding table, so use [`conditioned`](@ref) and
     [`fixed`](@ref) to inspect effective observations and fixed values.
-    Direct `Model` construction records no observations; pass `lhs_arguments` to declare
-    which arguments can be bound with `condition` or `fix`.
+    Direct `Model` construction with `lhs_arguments` records argument-supplied
+    observations for the listed arguments, just as `@model` does. Without
+    `lhs_arguments`, it records no argument-supplied observations and its arguments
+    cannot be bound.
     A *submodel return value* is the value assigned to the LHS variable by a submodel
     tilde (`a ~ to_submodel(...)`). If `a` is an argument, it supplies only the value
     before the tilde runs; its argument-supplied observation is ignored at that tilde,
@@ -58,8 +60,8 @@
     a child. Decondition child argument-supplied observations before `to_submodel`. With no
     names, all conditioned or fixed bindings, respectively, are removed. `unfix` restores the argument-supplied
     observation, if any, otherwise making the LHS variable latent; it never restores an
-    earlier explicit conditioned binding. Only recorded argument-supplied observations are rebuilt
-    from the model's arguments,
+    earlier explicit conditioned binding. Argument-supplied observations are rebuilt
+    from the stored non-`nothing` values of arguments with LHS variables,
     so `unfix(fix(decondition(m, :x); x=5.0), :x)` also restores an argument-supplied observation
     previously removed by `decondition`. `decondition(m, :x)` removes explicit and argument-supplied
     observations at `x`, making it latent.
