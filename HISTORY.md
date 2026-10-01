@@ -108,7 +108,7 @@ To preserve argument `x=1` before the body runs, replace `condition(f(1); x=2)` 
 
 To observe raw data, replace a conditioned argument LHS with a separate local LHS variable. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-`PrefixContext` has been removed. Use `prefix(model, vn; template)`; prefixes and nested storage templates now belong to the model.
+`PrefixContext` and `extract_prefixes` are removed: use `prefix(model, vn; template)` to set prefixes and `model.prefix` to read the combined prefix (`nothing` when absent). Prefixes and nested storage templates now belong to the model. See [#1502](https://github.com/TuringLang/DynamicPPL.jl/pull/1502).
 
 Replace whole bindings incompatible with declared argument or template types with compatible values, or reconstruct the model. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
