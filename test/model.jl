@@ -111,6 +111,22 @@ DynamicPPL.convert_model_argument(T, ::Type{CustomModelArgument}) = (:converted_
         end
     end
 
+    @testset "prepared evaluator arguments apply effective bindings" begin
+        @model function prepared_bindings(observation, replaced; held=0.0)
+            observation ~ Normal()
+            replaced ~ Normal()
+            held ~ Normal()
+            return (; observation, replaced, held)
+        end
+        model = fix(condition(prepared_bindings(1.0, 2.0); replaced=3.0); held=4.0)
+        context = DynamicPPL.Context(Xoshiro(1), InitFromPrior(), UnlinkAll())
+        args, kwargs = DynamicPPL.make_evaluate_args_and_kwargs(model, context, VarInfo())
+        result, vi = model.f(args...; kwargs...)
+        @test result == (; observation=1.0, replaced=3.0, held=4.0)
+        @test getloglikelihood(vi) ≈ logpdf(Normal(), 1.0) + logpdf(Normal(), 3.0)
+        @test getlogprior(vi) == 0.0
+    end
+
     @testset "immutable metadata for arguments with LHS variables" begin
         @model argument_lhs(x) = x ~ Normal()
         @test isbitstype(typeof(DynamicPPL.Model{false}(identity, (;), (;))))
