@@ -475,7 +475,7 @@ Call `evaluate!!(model, context, varinfo)` to evaluate with an explicit context 
 outputs in `varinfo`. Accumulators are reset before evaluation.
 
 The context is an evaluation input; it is not stored in the model.
-Prefixes are stored separately from values. Conditioned and fixed values share one store, with each value carrying its role. Only latent sites reach the context; observations and tracked values go directly to accumulators.
+Prefixes are stored separately from values. Conditioned and fixed values share one store, with each value carrying its role. Only latent LHS variables reach the context; observations and tracked values go directly to accumulators.
 
 `Context` is the sole evaluation context. It supplies an RNG, an initialisation strategy,
 and a transform strategy. The output `varinfo` never supplies latent inputs.
