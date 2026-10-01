@@ -261,6 +261,20 @@ end
         end
     end
 
+    @testset "indexed submodel namespace bindings avoid per-call allocations" begin
+        unbound = indexed_observations(zeros(100))
+        accs = VarInfo(LogPriorAccumulator(), LogLikelihoodAccumulator())
+        strategy = InitFromParams((; mu=0.1), nothing)
+        init!!(unbound, accs, strategy, UnlinkAll())
+        baseline = @allocated init!!(unbound, accs, strategy, UnlinkAll())
+        for bindings in
+            ((@varname(x[1].y) => 0.0,), Tuple(@varname(x[i].y) => 0.0 for i in 1:100))
+            model = condition(unbound, bindings...)
+            init!!(model, accs, strategy, UnlinkAll())
+            @test (@allocated init!!(model, accs, strategy, UnlinkAll())) <= baseline + 128
+        end
+    end
+
     @testset "indexed child bindings stay local" begin
         for n in (1_000, 2_000)
             model = indexed_observations(zeros(n))
