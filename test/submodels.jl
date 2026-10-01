@@ -1,6 +1,7 @@
 module DPPLSubmodelTests
 
 using DynamicPPL
+using AbstractPPL: AbstractPPL
 using Distributions
 using DimensionalData: DimArray, X, Y
 using ForwardDiff: ForwardDiff
@@ -287,8 +288,13 @@ end
         @model slice_leaf() = x ~ Normal()
         @model slice_parent(child) = unused ~ to_submodel(child, false)
         @model slice_nested(child) = outer ~ to_submodel(child)
-        for name in (@varname(a[:]), @varname(a[1:2])), bind in (condition, fix)
+        for name in (@varname(a), @varname(a[1]), @varname(a[:]), @varname(a[1:2])),
+            (bind, accessor) in ((condition, conditioned), (fix, fixed))
+
             child = prefix(bind(slice_leaf(); x=3.0), name; template=zeros(2))
+            bindings = accessor(child)
+            @test keys(bindings) == [AbstractPPL.prefix(@varname(x), name)]
+            @test bindings[AbstractPPL.prefix(@varname(x), name)] == 3.0
             @test isempty(rand(Xoshiro(1), child))
             @test child(Xoshiro(1)) == 3.0
             @test slice_parent(child)(Xoshiro(1)) == 3.0

@@ -397,7 +397,7 @@ Base.mapfoldl(f, op, vnt::VarNamedTuple; init=nothing) = mapreduce(f, op, vnt; i
 
 _mapreduce_recursive(f, op, x, vn, init) = op(init, f(vn => x))
 function _mapreduce_recursive(f, op, alb::ArrayLikeBlock, vn, init)
-    return op(init, f(vn => alb.block))
+    return _mapreduce_recursive(f, op, alb.block, vn, init)
 end
 
 # As above but with a prefix VarName `vn`.
