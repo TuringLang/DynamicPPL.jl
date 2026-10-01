@@ -117,7 +117,7 @@ Explicit observations now replace argument-supplied observations before the body
 
 Conditioned argument LHS variables observe body-transformed values: observing the original bound value → observe it under a separate LHS variable. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-`PrefixContext` has been removed. Use `prefix(model, vn; template)`; prefixes and nested storage templates now belong to the model.
+`PrefixContext` and `extract_prefixes` are removed: use `prefix(model, vn; template)` to set prefixes and `model.prefix` to read the combined prefix (`nothing` when absent). Prefixes and nested storage templates now belong to the model. See [#1502](https://github.com/TuringLang/DynamicPPL.jl/pull/1502).
 
 Whole bindings must satisfy declared argument types, explicit local binding template types, and shared signature constraints; untemplated locals may change value type while retaining their binding geometry. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
