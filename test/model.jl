@@ -61,7 +61,7 @@ end
 const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
 
 @testset "model.jl" begin
-    @testset "immutable argument site metadata" begin
+    @testset "immutable metadata for arguments with LHS variables" begin
         @model argument_lhs(x) = x ~ Normal()
         @test isbitstype(typeof(DynamicPPL.Model{false}(identity, (;), (;))))
         @test isbitstype(

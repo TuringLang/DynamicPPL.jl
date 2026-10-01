@@ -115,7 +115,7 @@ end
         end
     end
 
-    @testset "no context hooks needed without latent sites" begin
+    @testset "no context hooks needed without latent LHS variables" begin
         accs = VarInfo((DynamicPPL.default_accumulators()..., RawValueAccumulator(true)))
         result, vi = evaluate!!(
             fix(child(); x=1.0), InitContext(UnimplementedStrategy(), UnlinkAll()), accs

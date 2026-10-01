@@ -363,7 +363,7 @@ end
     generate_tilde(left, right; is_argument=false)
 
 Generate latent, observed, or fixed evaluation for a tilde expression.
-Observed arguments use their prepared local value, including body computations.
+Argument LHS variables that are observed use their prepared local value, including body computations.
 """
 function generate_tilde(left, right; is_argument=false)
     isliteral(left) && return generate_tilde_literal(left, right)
@@ -716,7 +716,7 @@ function build_output(modeldef, linenumbernode, lhs_names)
                 $(Core.throw)(
                     $(ArgumentError)(
                         $(Base.string)(
-                            "Incompatible argument replacement for model `",
+                            "Bound value does not match the declared argument type in model `",
                             $(Base.nameof)(__model__),
                             "`: ",
                             $(Base.join)(($(descriptions...),), "; "),

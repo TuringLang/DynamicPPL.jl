@@ -57,7 +57,7 @@ end
         end
     end
 
-    @testset "implicit argument observations stay in their model" begin
+    @testset "implicit argument-supplied observations stay in their model" begin
         @model scalar_likelihood(y, mu) = y ~ Normal(mu)
         @model function overlap(y)
             mu ~ Normal()
@@ -118,12 +118,12 @@ end
         end
     end
 
-    @testset "scalar component errors distinguish return buffers" begin
+    @testset "scalar partial-binding errors identify submodel return values" begin
         @model child_value() = x ~ Normal()
         @model submodel_return(a=0.0) = a ~ to_submodel(child_value())
         @model scalar_argument(a=0.0) = a ~ Normal()
         for bind in (condition, fix)
-            @test_throws r"If `a` is a return-value buffer, condition or fix the child model before wrapping it with `to_submodel`" bind(
+            @test_throws r"If `a` holds a submodel return value, condition or fix the child model before wrapping it with `to_submodel`" bind(
                 submodel_return(), @varname(a.x) => 2.0
             )()
             @test_throws r"For other bindings, use `decondition\(model, @varname\(a\)\)` first" bind(
@@ -132,7 +132,7 @@ end
         end
     end
 
-    @testset "splatted arguments supply return buffers" begin
+    @testset "splatted arguments receive submodel return values" begin
         @model splat_child() = x ~ Normal()
         @model positional_return_value(args...) = args[1] ~ to_submodel(splat_child())
         @model keyword_splat_return_value(; kw...) = kw[:y] ~ to_submodel(splat_child())
@@ -147,7 +147,7 @@ end
         end
     end
 
-    @testset "arguments supply submodel return buffers" begin
+    @testset "argument LHS variables receive submodel return values" begin
         @model child() = (x ~ Normal(); x)
         @model function dynamic_return_value(a)
             sub = to_submodel(fix(child(); x=2.0))
@@ -172,7 +172,7 @@ end
                 bind(dynamic_return_value(0.0); a=(; x=2.0)),
                 bind(indexed_return_value([(; x=0.0)]), @varname(a[1].x) => 2.0),
             )
-                @test_throws r"ArgumentError: .*return-value buffer" model(Xoshiro(1))
+                @test_throws r"ArgumentError: .*submodel return value" model(Xoshiro(1))
             end
         end
         for (model, expected) in (
@@ -193,7 +193,7 @@ end
         end
     end
 
-    @testset "bindings below argument return buffers are rejected" begin
+    @testset "bindings below argument LHS variables receiving submodel return values are rejected" begin
         @model child(mu) = x ~ Normal(mu)
         @model function return_value_parent(a; rhs=child)
             mu = a.x
@@ -222,13 +222,13 @@ end
                 ),
             )
             for model in models, wrapped in (model, outer(model))
-                @test_throws r"ArgumentError: .*return-value buffer.*Condition.*child.*to_submodel" wrapped(
+                @test_throws r"ArgumentError: .*submodel return value.*Condition.*child.*to_submodel" wrapped(
                     Xoshiro(1)
                 )
             end
             @test bind(local_parent(), @varname(a.x) => 2.0)(Xoshiro(1)) == 2.0
             @test bind(local_parent(); a=(; x=2.0))(Xoshiro(1)) == 2.0
-            @test_throws r"ArgumentError: .*return-value buffer" bind(
+            @test_throws r"ArgumentError: .*submodel return value" bind(
                 outer(decondition(return_value_parent((; x=0.0)))), @varname(b.a.x) => 2.0
             )(
                 Xoshiro(1)
@@ -585,7 +585,7 @@ end
         end
     end
 
-    @testset "conditioning argument-backed submodel sites" begin
+    @testset "conditioning argument-backed submodel LHS variables" begin
         @model function f(x)
             x ~ Normal()
             return y ~ Normal()
@@ -625,7 +625,7 @@ end
         end
     end
 
-    @testset "submodel namespaces reject argument buffers" begin
+    @testset "submodel namespaces reject arguments receiving submodel return values" begin
         @model inner_return_value() = x ~ Normal()
         @model scalar_return_value(a) = a ~ to_submodel(inner_return_value())
         @model function indexed_return_value(a)
@@ -637,17 +637,17 @@ end
             a[1].x := 2.0
         end
         for bind in (condition, fix)
-            @test_throws r"ArgumentError: .*return-value buffer" bind(
+            @test_throws r"ArgumentError: .*submodel return value" bind(
                 decondition(scalar_return_value(0.0)), @varname(a.x) => 2.0
             )(
                 Xoshiro(1)
             )
-            @test_throws r"ArgumentError: .*return-value buffer" bind(
+            @test_throws r"ArgumentError: .*submodel return value" bind(
                 decondition(indexed_return_value([0.0])), @varname(a[1].x) => 2.0
             )(
                 Xoshiro(1)
             )
-            @test_throws r"ArgumentError: .*return-value buffer" bind(
+            @test_throws r"ArgumentError: .*submodel return value" bind(
                 decondition(indexed_return_value([0.0])), namespace
             )(
                 Xoshiro(1)

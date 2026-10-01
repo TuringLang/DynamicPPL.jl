@@ -146,7 +146,7 @@ _model_role(::VarNamedTuple, vn::VarName) = _partial_binding_error(vn)
 function _partial_binding_error(vn)
     return throw(
         ArgumentError(
-            "Cannot bind only components of tilde variable `$vn`: a single tilde statement's value must be bound as a whole.",
+            "LHS variable `$vn` must be bound as a whole; bind all its subvariables or none.",
         ),
     )
 end
@@ -172,7 +172,7 @@ function _model_role(values::Union{AbstractArray,Tuple,NamedTuple}, vn::VarName)
             typeof(next_role) === typeof(role) ||
             throw(
                 ArgumentError(
-                    "Cannot condition and fix different parts of the same tilde variable `$vn`",
+                    "Cannot condition and fix different parts of the same LHS variable `$vn`",
                 ),
             )
         role = next_role
@@ -201,7 +201,7 @@ end
 function _model_role_at(values::VarNamedTuples.PartialArray, optic::AbstractPPL.Index, vn)
     optic = AbstractPPL.concretize_top_level(optic, values.data)
     if !checkbounds(Bool, values.data, optic.ix...; optic.kw...)
-        # Storage bounds describe supplied indices, so an out-of-bounds site may overlap.
+        # Storage bounds describe supplied indices, so an out-of-bounds LHS variable may overlap.
         for indices in Iterators.product(Base.to_indices(values.data, optic.ix)...)
             checkbounds(Bool, values.data, indices...; optic.kw...) || continue
             getindex(values.mask, indices...; optic.kw...) || continue
@@ -270,7 +270,7 @@ function _check_fixed_shape(binding, local_value, optic, vn)
 end
 # Keep error construction out of the hot path so the shape checks can inline.
 @noinline function _fixed_shape_error(vn, message)
-    return throw(ArgumentError("Fixed site `$vn` requires $message"))
+    return throw(ArgumentError("Fixed LHS variable `$vn` requires $message"))
 end
 _check_fixed_shape_child(binding, local_value, ::AbstractPPL.Iden, vn) = nothing
 function _check_fixed_shape_child(
@@ -589,8 +589,8 @@ function _check_model_binding(
         end
         compatible || throw(
             ArgumentError(
-                "Cannot bind components below `$vn` with value of type $(typeof(previous.value)). " *
-                "If `$vn` is a return-value buffer, condition or fix the child model before wrapping it with `to_submodel`. " *
+                "Cannot bind parts below `$vn` with value of type $(typeof(previous.value)). " *
+                "If `$vn` holds a submodel return value, condition or fix the child model before wrapping it with `to_submodel`. " *
                 "For other bindings, use `decondition(model, @varname($vn))` first.",
             ),
         )
@@ -788,7 +788,7 @@ _model_argument_value(values::AbstractArray, template) = _model_data(values)
 
 _has_complete_model_data(::Any) = true
 _has_complete_model_data(::NoModelBinding) = false
-# A namespace does not replace its submodel's return-value buffer.
+# A namespace does not replace the submodel return value.
 _has_complete_model_data(::VarNamedTuple) = false
 _has_complete_model_data(::VarNamedTuples.ArrayLikeBlock) = false
 function _has_complete_model_data(values::VarNamedTuples.PartialArray)
@@ -824,7 +824,7 @@ function _model_argument_value(values::VarNamedTuple, template)
     for name in keys(values.data)
         hasproperty(template, name) || throw(
             ArgumentError(
-                "Cannot override nonexistent property `$name` of $(typeof(template)). If this is a return-value buffer, condition or fix the child model before wrapping it with `to_submodel`.",
+                "Cannot override nonexistent property `$name` of $(typeof(template)). If it holds a submodel return value, condition or fix the child model before wrapping it with `to_submodel`.",
             ),
         )
     end
@@ -920,7 +920,7 @@ end
 function _plain_model_values(tree::ModelValueTree)
     VarNamedTuples._haskey_optic(tree, AbstractPPL.Iden()) && return _model_data(tree)
     values = if tree.values isa Tuple
-        # Tuple components are indexed bindings, not a complete array replacement.
+        # Tuple entries are indexed bindings, not a complete array replacement.
         mask = [!(value isa NoModelBinding) for value in tree.values]
         last = findlast(mask)
         VarNamedTuples.PartialArray(
@@ -977,15 +977,16 @@ function _reconstruct_model end
 
 Store a model function, arguments, and context. Prefer [`@model`](@ref) for construction.
 For direct construction, use [`condition`](@ref) or [`fix`](@ref) to supply bindings.
-The tuple of argument sites is stored as immutable type metadata.
+The names of arguments with LHS variables are stored as immutable type metadata.
 Set `lhs_arguments` to the tuple of argument names that occur on the left-hand side of
 `~` so those arguments can be bound, for example
 `condition(Model{false}(f, (; y=1.0), (;); lhs_arguments=(:y,)); y=2.0)`.
 Direct construction supplies no observations; arguments are ordinary inputs. `@model`
-supplies argument observations and site metadata for argument sites. Use
+records argument-supplied observations and the names of arguments with LHS variables. Use
 [`decondition`](@ref) to remove those observations.
-An argument used as a submodel's left-hand side supplies a return-value buffer; its
-argument observation is ignored at the submodel tilde, so it needs no deconditioning. See [Binding rules](@ref).
+At a submodel tilde, an argument LHS variable receives the submodel return value. The
+argument supplies only its value before the tilde runs; its argument-supplied observation
+is ignored at that tilde, so it needs no deconditioning. See [Binding rules](@ref).
 """
 struct Model{
     F,
@@ -1040,8 +1041,8 @@ end
 
 Create a model with evaluation function `f` and arguments `args`.
 
-Arguments are ordinary inputs; no observations or argument sites are recorded.
-Use [`@model`](@ref) to construct a model with argument observations.
+Arguments are ordinary inputs; no observations or metadata about arguments with LHS variables are recorded.
+Use [`@model`](@ref) to construct a model with argument-supplied observations.
 
 Keyword arguments `kwargs` are stored in the model's `defaults` field.
 """
@@ -1150,7 +1151,7 @@ Base.:|(model::Model, values::Union{NamedTuple,AbstractDict,Pair,Tuple,VarNamedT
                     )
                         throw(
                             ArgumentError(
-                                "Components of keyword-splat argument `$name` cannot be bound; replace the whole argument with `condition` or `fix` instead.",
+                                "Entries of keyword-splat argument `$name` cannot be bound; replace the whole argument with `condition` or `fix` instead.",
                             ),
                         )
                     end
@@ -1200,7 +1201,7 @@ function _prepare_argument_fields(
             !VarNamedTuples._haskey_optic(template, optic)
             throw(
                 ArgumentError(
-                    "Cannot override nonexistent field `$(AbstractPPL.append_optic(vn, optic))` of argument `$vn`. If this is a return-value buffer, condition or fix the child model before wrapping it with `to_submodel`.",
+                    "Cannot override nonexistent field `$(AbstractPPL.append_optic(vn, optic))` of argument `$vn`. If it holds a submodel return value, condition or fix the child model before wrapping it with `to_submodel`.",
                 ),
             )
         end
@@ -1234,13 +1235,13 @@ function _convert_partial_argument_binding(
         err isa InterruptException && rethrow()
         throw(
             ArgumentError(
-                "Cannot represent component `$vn` in argument element type $(eltype(template))",
+                "Cannot represent partial binding at `$vn` in argument element type $(eltype(template))",
             ),
         )
     end
     isequal(converted, value) || throw(
         ArgumentError(
-            "Cannot exactly represent component `$vn` in argument element type $(eltype(template))",
+            "Cannot exactly represent partial binding at `$vn` in argument element type $(eltype(template))",
         ),
     )
     return ModelValue{R}(converted, vn)
@@ -1250,41 +1251,41 @@ end
     condition(model::Model; values...)
     condition(model::Model, values::NamedTuple)
 
-Return a `Model` which treats the sites bound by `values` as observations: they replace
+Return a `Model` which treats the LHS variables bound by `values` as observations: they replace
 sampling and contribute to the likelihood.
 
 See also: [`decondition`](@ref), [`conditioned`](@ref)
 
-Later bindings replace earlier ones where they overlap: a whole binding replaces all its
-components; a component binding replaces only itself. One site cannot mix
-conditioned and fixed components. `missing` is rejected at binding or model construction,
+Later bindings replace earlier ones where they overlap: a whole binding replaces the entire
+value; a partial binding changes part of an already-bound value and preserves the rest.
+Subvariables of one LHS variable cannot have different roles. `missing` is rejected at binding or model construction,
 recursively throughout tuples, named tuples, and assigned array entries, including unused
-parts of an argument site; custom struct fields are checked only at executed sites.
+parts of an argument with LHS variables; custom struct fields are checked only at executed LHS variables.
 Omit unobserved values from `condition` or `fix`, or supply a non-missing argument placeholder
 and [`decondition`](@ref) it; see [Missing data](@ref).
-Bindings unused by executed sites are ignored.
+Bindings unused by executed LHS variables are ignored.
 
-Binding an argument that is not an argument site throws `ArgumentError` at this call; construct
+Binding an argument with no LHS variables throws `ArgumentError` at this call; construct
 the model with a new argument value instead. For submodel names, precedence, and errors
 at evaluation time, see [`to_submodel`](@ref) and [Binding rules](@ref).
 
-Whole bindings use the supplied object without copying. A component binding snapshots the
-remaining components when it splits a whole binding; later changes to the supplied container's
-entries are not reflected in those components. The model body must not mutate bound values,
+Whole bindings use the supplied object without copying. A partial binding snapshots the
+remaining parts when it splits a whole binding; later changes to the supplied container's
+entries are not reflected in those parts. The model body must not mutate bound values,
 directly or through an alias such as a `view`. This also applies to [`fix`](@ref).
 
-A complete argument replacement supplies its value, shape, and dispatch type parameters
-from the start of the model body. Observed sites use the value computed by the body;
-fixed sites reset to their bound value at the tilde statement. Partial updates preserve the
-remaining stored values and their array templates. Component values are converted to the argument array's element
+Binding a whole argument replaces its value, shape, and dispatch type parameters
+from the start of the model body. Observed LHS variables use the value computed by the body;
+fixed LHS variables reset to their bound value at the tilde statement. Partial updates preserve the
+remaining stored values and their array templates. Values in partial bindings are converted to the argument array's element
 type; values that cannot be represented exactly throw `ArgumentError`.
 Arguments with unobserved entries retain their original storage
 template; the corresponding tilde statements fill those entries during evaluation.
-Defaults derived from a replaced argument are evaluated at model construction and are not
-recomputed.
+Defaults derived from an argument are evaluated at model construction; binding that
+argument does not recompute them.
 
 !!! note
-    Component bindings on an array argument (for example, `@varname(x[1])`) rebuild the
+    Partial bindings on an array argument (for example, `@varname(x[1])`) rebuild the
     argument on every evaluation, costing O(length(x)). For large arrays or hot loops,
     prefer replacing the whole argument, for example `condition(model; x=newx)` with
     `newx` already containing the override, or construct the model with the updated argument.
@@ -1326,7 +1327,7 @@ julia> m, x = conditioned_model(); (m != 1.0 && x == 100.0)
 true
 ```
 
-In the above we have specified the conditioned sites via keyword arguments. You can also
+In the above we have specified the LHS variables to observe via keyword arguments. You can also
 provide a `NamedTuple`, `AbstractDict{<:VarName}`, or a `VarNamedTuple`; internally these are
 all converted to a `VarNamedTuple`.
 
@@ -1346,13 +1347,13 @@ julia> m, x = conditioned_model_pairs(); (m != 1.0 && x == 100.0)
 true
 ```
 
-## Condition individual component sites
+## Condition individual indexed LHS variables
 
-Supply only the indices to observe; omitted sites remain latent.
+Supply only the indices to observe; omitted LHS variables remain latent.
 
-However, note that in this case each component must be a separate site. If we write
+However, note that in this case each index must address a separate LHS variable. If we write
 `m ~ MvNormal(...)`, then we cannot
-condition on only `m[1]`. Partly bound sites throw `ArgumentError` during evaluation.
+condition on only `m[1]`. Partly bound LHS variables throw `ArgumentError` during evaluation.
 (In principle, for some distributions this can be possible, specifically when the
 distribution can be factorised into independent components, like an MvNormal with a
 diagonal covariance matrix. However, this is not currently implemented.)
@@ -1410,8 +1411,9 @@ true
 
 `condition` also supports the use of nested models through the use of [`to_submodel`](@ref).
 
-If a submodel's left-hand side is a model argument, it supplies a
-return-value buffer; its argument observation is ignored at the submodel tilde. Explicit bindings
+At a submodel tilde, an argument LHS variable receives the submodel return value. The
+argument supplies only its value before the tilde runs; its argument-supplied observation
+is ignored at that tilde. Explicit bindings
 at or below that address are rejected during evaluation, including named-tuple submodel namespaces.
 Condition or fix the child model before wrapping it with `to_submodel` instead.
 
@@ -1420,7 +1422,7 @@ julia> @model demo_inner() = m ~ Normal()
 demo_inner (generic function with 2 methods)
 
 julia> @model function demo_outer()
-           # By default, `to_submodel` prefixes the sites using the left-hand side of `~`.
+           # By default, `to_submodel` prefixes the LHS variables using the left-hand side of `~`.
            inner ~ to_submodel(demo_inner())
            return inner
        end
@@ -1431,7 +1433,7 @@ julia> model = demo_outer();
 julia> model() ≠ 1.0
 true
 
-julia> # To condition the site inside `demo_inner` we need to refer to it as `inner.m`.
+julia> # To condition the LHS variable inside `demo_inner` we need to refer to it as `inner.m`.
        conditioned_model = model | (@varname(inner.m) => 1.0, );
 
 julia> conditioned_model()
@@ -1536,8 +1538,8 @@ end
 Remove this model's conditioned bindings at `names...`, or all conditioned bindings
 if no names are supplied.
 
-Unlike [`unfix`](@ref), `decondition(m, :x)` removes explicit and argument
-observations, making `x` latent. After deconditioning, a site's
+Unlike [`unfix`](@ref), `decondition(m, :x)` removes explicit and argument-supplied
+observations, making `x` latent. After deconditioning, an LHS variable's
 sampled value replaces its local argument value and is used by subsequent model statements.
 
 A name matches when it equals, contains, or is contained in a stored binding's address,
@@ -1547,7 +1549,7 @@ Only the matching conditioned parts are removed. A name with no match throws
 observations is always valid.
 
 Only bindings stored on this model are removed. This cannot remove a child submodel's
-argument observations: `decondition(outer_arg(), @varname(a.x))` throws when `a.x`
+argument-supplied observations: `decondition(outer_arg(), @varname(a.x))` throws when `a.x`
 is supplied only by the child argument. Decondition the child before wrapping it with
 `to_submodel` instead.
 
@@ -1586,12 +1588,12 @@ julia> # `decondition` multiple at once:
        (m, x) = decondition(conditioned_model, :m, :x)(); (m ≠ 1.0 && x ≠ 10.0)
 true
 
-julia> # `decondition` without any symbols will `decondition` all sites.
+julia> # `decondition` without any symbols will `decondition` all LHS variables.
        (m, x) = decondition(model)(); (m ≠ 1.0 && x ≠ 10.0)
 true
 ```
 
-A component of a whole binding can be deconditioned when it is a separate site.
+Part of a whole binding can be deconditioned when that part is a separate LHS variable.
 
 ```jldoctest decondition
 julia> @model function demo_mv(::Type{TV}=Float64) where {TV}
@@ -1796,8 +1798,8 @@ end
 
 Return this model's conditioned values as plain values, independent of binding history.
 
-This may include argument observations that evaluation ignores when their LHS arguments
-hold submodel return values.
+This may include argument-supplied observations that evaluation ignores when their argument LHS variables
+receive submodel return values.
 
 The result is a `VarNamedTuple` containing ordinary or partial values. After partial
 removal or mixed roles, containers become plain partial values (`VarNamedTuple` or
@@ -1831,8 +1833,8 @@ VarNamedTuple
 └─ a => VarNamedTuple
         └─ m => 1.0
 
-julia> # Since we conditioned on `a.m`, it is an observed site.
-       # However, `a.x` is still a latent site.
+julia> # Since we conditioned on `a.m`, it is an observed LHS variable.
+       # However, `a.x` is still a latent LHS variable.
        keys(VarInfo(cm))
 1-element Vector{VarName}:
  a.x
@@ -1859,31 +1861,31 @@ conditioned(model::Model) = _select_model_values(
     fix(model::Model; values...)
     fix(model::Model, values::NamedTuple)
 
-Return a `Model` which treats the sites bound by `values` as constants: they replace
-sampling and contribute no log probability. Fixed argument sites reset to their bound
+Return a `Model` which treats the LHS variables bound by `values` as constants: they replace
+sampling and contribute no log probability. Fixed argument LHS variables reset to their bound
 value when their tilde statement runs, even if the body has computed a different value.
 
-Whole bindings use the supplied object without copying. A component binding snapshots the
-remaining components when it splits a whole binding; later changes to the supplied container's
-entries are not reflected in those components. The model body must not mutate bound values,
+Whole bindings use the supplied object without copying. A partial binding snapshots the
+remaining parts when it splits a whole binding; later changes to the supplied container's
+entries are not reflected in those parts. The model body must not mutate bound values,
 directly or through a `view`. `missing` rejection has the scope and remedies documented
 in [`condition`](@ref). Replacement, unused bindings, and
 argument restrictions follow [`condition`](@ref). See [Binding rules](@ref) for the shared rules, including the
-cost of component bindings on array arguments, and [`to_submodel`](@ref) for submodels.
+cost of partial bindings on array arguments, and [`to_submodel`](@ref) for submodels.
 
-Fixed values must cover every site they bind with a static size and shape. If the model
+Fixed values must cover every LHS variable they bind with a static size and shape. If the model
 body changes a fixed argument's size or shape, evaluation throws `ArgumentError` naming
-the site. This restriction does not apply to [`condition`](@ref).
+the LHS variable. This restriction does not apply to [`condition`](@ref).
 
-Removing a fixed binding with [`unfix`](@ref) restores the argument observation, if any,
+Removing a fixed binding with [`unfix`](@ref) restores the argument-supplied observation, if any,
 without restoring an earlier explicit conditioned binding.
 
 See also: [`unfix`](@ref), [`fixed`](@ref)
 
-!!! warning "Fixing applies to whole sites"
-    A multivariate draw (e.g. `x ~ MvNormal(...)`) is a single site, so a subset of its
-    components cannot be fixed independently; only fixing the whole site is supported.
-    Partly bound sites throw `ArgumentError` during evaluation. Declare components in a loop (`x[i] ~ ...`) if you need to fix them
+!!! warning "Fixing applies to whole LHS variables"
+    A multivariate draw (e.g. `x ~ MvNormal(...)`) is a single LHS variable, so a subset of its
+    subvariables cannot be fixed independently; only fixing the whole LHS variable is supported.
+    Partly bound LHS variables throw `ArgumentError` during evaluation. Declare separate LHS variables in a loop (`x[i] ~ ...`) if you need to fix them
     individually.
 
 # Examples
@@ -1974,9 +1976,9 @@ are supplied. Matching follows [`decondition`](@ref), including equivalent index
 property forms. A name with no stored fixed match throws `ArgumentError`, including a
 name supplied only by a child submodel or only conditioned on this model.
 
-Unlike [`decondition`](@ref), removal restores the argument observation, if any,
-otherwise making the site latent; it never restores an earlier explicit conditioned binding.
-Argument observations are rebuilt from the model's arguments, even if previously removed
+Unlike [`decondition`](@ref), removal restores the argument-supplied observation, if any,
+otherwise making the LHS variable latent; it never restores an earlier explicit conditioned binding.
+Argument-supplied observations are rebuilt from the model's arguments, even if previously removed
 with `decondition`. For `@model f(x) = x ~ Normal()`, both
 `unfix(fix(f(1.0); x=5.0), :x)` and
 `unfix(fix(decondition(f(1.0), :x); x=5.0), :x)` observe `x = 1.0` again.
@@ -2007,7 +2009,7 @@ true
 
 julia> # When `NamedTuple` is used as the underlying, you can also provide
        # the symbol directly (though the `@varname` approach is preferable if
-       # if the site is known at compile-time).
+       # the LHS variable is known at compile-time).
        model = unfix(fixed_model, :m);
 
 julia> (m, x) = model(); (m != 1.0 && x == 10.0)
@@ -2017,7 +2019,7 @@ julia> # `unfix` multiple at once:
        (m, x) = unfix(fixed_model, :m, :x)(); (m != 1.0 && x != 10.0)
 true
 
-julia> # `unfix` without any symbols will `unfix` all sites.
+julia> # `unfix` without any symbols will `unfix` all LHS variables.
        (m, x) = unfix(model)(); (m != 1.0 && x != 10.0)
 true
 ```
@@ -2115,7 +2117,7 @@ end
 
 Return this model's fixed values as plain values, independent of binding history.
 
-For LHS arguments that hold submodel return values, `conditioned` lists argument observations
+For argument LHS variables that receive submodel return values, `conditioned` lists argument-supplied observations
 that evaluation ignores, while `fixed` lists explicit bindings that evaluation rejects.
 
 The result is a `VarNamedTuple` containing ordinary or partial values. After partial
@@ -2311,7 +2313,7 @@ top-level variable's storage; literals use `NoTemplate()`.
 Apply `prefix` (a `VarName` or `nothing`) and its storage template `prefix_template`,
 then delegate to [`accumulate_observe!!`](@ref). The compiler passes this metadata directly
 so observations do not box the model. Every observation calls this function, independently
-of the evaluation context. Fixed sites bypass it and do not contribute to the log probability.
+of the evaluation context. Fixed LHS variables bypass it and do not contribute to the log probability.
 """
 function tilde_observe!!(
     prefix, prefix_template, right::Distribution, left, vn, template, vi
@@ -2437,7 +2439,7 @@ If the leaf context is a `DefaultContext`, then this function:
   stored, then the transform strategy will treat that variable as linked; likewise for
   unlinked)
 - uses the accumulators inside `varinfo` (resetting them before evaluation);
-- records the values of executed sites in the reset value accumulator, omitting sites
+- records the values of executed LHS variables in the reset value accumulator, omitting LHS variables
   that are no longer executed.
 
 The long-term plan for this method is to:

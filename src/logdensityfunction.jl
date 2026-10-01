@@ -133,7 +133,7 @@ such as parameter values or transform strategies.
 A flat parameter vector does not identify which entries belong to each variable or how
 those entries are transformed. The constructor therefore prepares a mapping from
 `VarName`s to vector ranges and transforms. During evaluation, `InitFromVector` combines
-this mapping with the supplied vector so that each latent site can retrieve its value.
+this mapping with the supplied vector so that each latent LHS variable can retrieve its value.
 
 Note that this assumes that the ranges and link status are static throughout the lifetime of
 the `LogDensityFunction` object. Therefore, a `LogDensityFunction` object cannot handle

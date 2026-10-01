@@ -50,7 +50,7 @@ end
 end
 
 @testset "condition and fix" begin
-    @testset "keyword splat component bindings are explicit errors" begin
+    @testset "keyword splat partial bindings are explicit errors" begin
         @model keyword_lhs(; kw...) = (kw[:y] ~ Normal(); return kw[:y])
         for bind in (condition, fix)
             model = keyword_lhs(; y=1.0)
@@ -63,7 +63,7 @@ end
         end
     end
 
-    @testset "keyword splat LHS arguments reject missing components" begin
+    @testset "keyword splat arguments with LHS variables reject missing entries" begin
         @model keyword_observation(; kw...) = (kw[:x] ~ Normal(); kw)
         for (value, path) in (
             ((; x=missing), r"ArgumentError: .*kw\.x"),
@@ -90,7 +90,7 @@ end
         end
     end
 
-    @testset "deconditioned arguments retain component bounds" begin
+    @testset "deconditioned arguments retain index bounds" begin
         @model indexed_lhs_argument(x) = (x[1] ~ Normal(); x)
         for bind in (condition, fix), x in ([1.0, 2.0], (1.0, 2.0))
             model = decondition(indexed_lhs_argument(x))
@@ -141,7 +141,7 @@ end
         end
     end
 
-    @testset "component argument element types" begin
+    @testset "partial bindings preserve argument element types" begin
         @model elements(y) = (for i in eachindex(y)
             y[i] ~ Normal()
         end;
@@ -172,7 +172,7 @@ end
         end
     end
 
-    @testset "restore splatted argument observations" begin
+    @testset "restore splatted argument-supplied observations" begin
         @model positional(args...) = (args[1] ~ Normal(); args)
         @model keywords(; kwargs...) = (
             kwargs = NamedTuple(kwargs); kwargs.x ~ Normal(); kwargs
@@ -204,7 +204,7 @@ end
         end
     end
 
-    @testset "partly unbound tilde sites" begin
+    @testset "partly unbound LHS variables" begin
         @model mv_argument(x) = x ~ MvNormal(zeros(2), I)
         @model mv_local() = x ~ MvNormal(zeros(2), I)
         @test_throws r"ArgumentError: .*x.*whole" VarInfo(
@@ -247,7 +247,7 @@ end
         @test_throws r"ArgumentError: .*x.*size and shape" fix(scalar_shape(1.0); x=2.0)()
     end
 
-    @testset "whole fixed bindings cover executed local components" begin
+    @testset "whole fixed bindings cover executed local LHS variables" begin
         @model function local_lhs_variables()
             x = zeros(2)
             for i in 1:2
@@ -345,7 +345,7 @@ end
         end
     end
 
-    @testset "named tuple tilde sites require whole bindings" begin
+    @testset "named tuple LHS variables require whole bindings" begin
         @model named_lhs() = x ~ product_distribution((a=Normal(), b=Normal()))
         for (bind, remove) in ((condition, decondition), (fix, unfix))
             partial = bind(named_lhs(), @varname(x.a) => 1.0)
@@ -361,7 +361,7 @@ end
         end
     end
 
-    @testset "expanded component bindings validate their extent" begin
+    @testset "expanded partial bindings validate their extent" begin
         @model indexed(y) = (y[1] ~ Normal(); y[2] ~ Normal(); y)
         for data in ([1.0, 2.0], (1.0, 2.0)), bind in (condition, fix)
             model = bind(indexed(data), @varname(y[1]) => 4.0)
@@ -631,7 +631,7 @@ end
         end
     end
 
-    @testset "NamedTuple integer components resolve against the stored template" begin
+    @testset "NamedTuple integer indices resolve against the stored template" begin
         @model named_fields(x) = (x.a ~ Normal(); x.b ~ Normal(); x)
         @model nested_named_fields(x) = (x[1].a ~ Normal(); x[1].b ~ Normal(); x)
         for (model, first, second, latent) in (
@@ -655,7 +655,7 @@ end
         @test unfix(restored, @varname(x[2]))(Xoshiro(1)) == (a=1.0, b=2.0)
     end
 
-    @testset "unfix restores the last fixed component's argument observation" begin
+    @testset "unfix restores the last fixed LHS variable's argument-supplied observation" begin
         @model restored_indices(x) = (x[1] ~ Normal(); x[2] ~ Normal(); x)
         for original in ([1.0, 2.0], (1.0, 2.0))
             bound = fix(decondition(restored_indices(original)), @varname(x[1]) => 5.0)
@@ -672,7 +672,7 @@ end
         @test restored(Xoshiro(1)).a == [1.0, rand(Xoshiro(1), Normal())]
     end
 
-    @testset "invalid component addresses" begin
+    @testset "invalid field and index addresses" begin
         @model function elements(y)
             for i in eachindex(y)
                 y[i] ~ Normal()
@@ -741,7 +741,7 @@ end
         end
     end
 
-    @testset "partial bindings require whole-site coverage" begin
+    @testset "partial bindings must cover whole LHS variables" begin
         @model whole_vector() = x ~ MvNormal(zeros(2), I)
         @model function ranged_vector()
             x = zeros(3)
@@ -816,7 +816,7 @@ end
         end
     end
 
-    @testset "argument buffers can be initialized in the model body" begin
+    @testset "argument storage can be initialized in the model body" begin
         @model function initialize_argument(x)
             fill!(x, [1.0])
             x[1] ~ MvNormal([0.0], [1.0;;])
@@ -866,7 +866,7 @@ end
         end
     end
 
-    @testset "fixed arguments require coverage of executed sites" begin
+    @testset "fixed arguments require coverage of executed LHS variables" begin
         @model grow_scalar(x) = (x = vcat(x, 2.0); x[2] ~ Normal(); return x)
         @model grow_range(x) = (x = vcat(x, 2.0); x[1:2] ~ MvNormal(zeros(2), I); return x)
         for model in (grow_scalar([1.0]), grow_range([1.0]))
@@ -1046,7 +1046,7 @@ end
             [@varname(x[1].a[2])]
     end
 
-    @testset "argument observations can be replaced and removed" begin
+    @testset "argument-supplied observations can be replaced and removed" begin
         @model argument_model(x) = x ~ Normal()
         for initial in (1.0f0, 1.0, big"1.0")
             original = argument_model(initial)
@@ -1316,7 +1316,7 @@ end
         @test loglikelihood(large, VarNamedTuple()) ≈ 100_000 * logpdf(Normal(), 0.0)
     end
 
-    @testset "partial updates retain complete argument replacements" begin
+    @testset "partial bindings retain the rest of a whole argument binding" begin
         @model function indexed_replacement(x)
             for i in eachindex(x)
                 x[i] ~ Normal()
@@ -1356,7 +1356,7 @@ end
         )
     end
 
-    @testset "component properties and indices share observations" begin
+    @testset "ComponentVector properties and indices share observations" begin
         @model function indexed_fields()
             x = ComponentVector(; a=0.0, b=0.0)
             x[1] ~ Normal()

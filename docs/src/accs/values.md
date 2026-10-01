@@ -16,7 +16,7 @@ evaluation.
 
 ## Vectorised values
 
-Vectorised values preserve stochastic-site boundaries, including sites whose linked
+Vectorised values preserve LHS variable boundaries, including LHS variables whose linked
 dimension differs from their model-space dimension.
 
 ```@example 1
@@ -47,8 +47,8 @@ within the flat vector and its transform. There is no separate value store in `V
 
 ## Raw values
 
-A `RawValueAccumulator` records untransformed values. It does not retain stochastic-site
-block boundaries: indexed sites are represented by their individual indices.
+A `RawValueAccumulator` records untransformed values. It does not retain LHS variable
+block boundaries: indexed LHS variables are represented by their individual indices.
 
 ```@example 1
 context = InitContext(Xoshiro(1), InitFromPrior(), UnlinkAll())
@@ -75,7 +75,7 @@ get_vector_values(outputs)
 The context determines the new output transforms, independently of the input
 representation. `InitFromParams(vector_values, nothing)` also accepts vectorised inputs,
 including dynamically linked values. Dynamic transforms are reconstructed from each
-site's current distribution, so parameter-dependent supports remain correct.
+LHS variable's current distribution, so parameter-dependent supports remain correct.
 
-The `nothing` fallback makes an absent parameter an error. To sample absent sites from
+The `nothing` fallback makes an absent parameter an error. To sample absent LHS variables from
 their priors instead, pass `InitFromParams(raw_values, InitFromPrior())`.
