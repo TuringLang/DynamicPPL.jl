@@ -504,49 +504,43 @@ function _model_argument_binding(tree::ModelValueTree{<:Tuple}, optic::AbstractP
     end
     return value isa NoModelBinding ? nothing : _model_argument_binding(value, optic.child)
 end
-@generated function _with_model_property(
-    f::F, tree::ModelValueTree{<:NamedTuple{names}}, optic::AbstractPPL.Index
-) where {F,names}
-    branches = map(enumerate(names)) do (i, name)
-        :(
-            (index == $i || index === $(QuoteNode(name))) &&
-            return f(AbstractPPL.Property{$(QuoteNode(name))}(optic.child))
-        )
-    end
-    return quote
-        optic = AbstractPPL.concretize_top_level(optic, tree.template)
-        isempty(optic.kw) && length(optic.ix) == 1 || return f(nothing)
-        index = only(optic.ix)
-        index isa Union{Integer,Symbol} || return f(nothing)
-        $(branches...)
-        return f(nothing)
-    end
-end
 function _model_argument_binding(
-    tree::ModelValueTree{<:NamedTuple}, optic::AbstractPPL.Index
-)
-    return _with_model_property(tree, optic) do property
-        return property === nothing ? nothing : _model_argument_binding(tree, property)
-    end
-end
-function _model_role_at(tree::ModelValueTree{<:NamedTuple}, optic::AbstractPPL.Index, vn)
-    return _with_model_property(tree, optic) do property
-        return property === nothing ? nothing : _model_role_at(tree, property, vn)
-    end
-end
-function _model_argument_binding(
-    values::VarNamedTuple, optic::AbstractPPL.Index{Tuple{Symbol},NamedTuple{(),Tuple{}}}
+    values::Union{VarNamedTuple,ModelValueTree{<:NamedTuple}},
+    optic::AbstractPPL.Index{Tuple{Symbol},NamedTuple{(),Tuple{}}},
 )
     return _model_argument_binding(
         values, AbstractPPL.Property{only(optic.ix)}(optic.child)
     )
 end
 function _model_role_at(
-    values::VarNamedTuple,
+    values::Union{VarNamedTuple,ModelValueTree{<:NamedTuple}},
     optic::AbstractPPL.Index{Tuple{Symbol},NamedTuple{(),Tuple{}}},
     vn,
 )
     return _model_role_at(values, AbstractPPL.Property{only(optic.ix)}(optic.child), vn)
+end
+
+function _check_namedtuple_index(value, optic, prefix=AbstractPPL.Iden())
+    optic isa AbstractPPL.Iden && return nothing
+    template = value isa ModelValue ? value.value : value
+    template = template isa ModelValueTree ? template.template : template
+    if template isa NamedTuple && optic isa AbstractPPL.Index
+        index = AbstractPPL.concretize_top_level(optic, template)
+        if index.ix isa Tuple{Integer}
+            field = get(keys(template), only(index.ix), nothing)
+            suggestion = if field === nothing
+                "a field name"
+            else
+                "`$(AbstractPPL.optic_to_varname(AbstractPPL.Property{field}(optic.child) ∘ prefix))`"
+            end
+            message = "Integer indexing into a NamedTuple at `$(AbstractPPL.optic_to_varname(optic ∘ prefix))` is unsupported; use $suggestion instead."
+            throw(ArgumentError(message))
+        end
+    end
+    optic.child isa AbstractPPL.Iden && return nothing
+    head = AbstractPPL.ohead(optic)
+    child = _model_argument_binding(value, head)
+    return _check_namedtuple_index(child, optic.child, head ∘ prefix)
 end
 
 @generated function _merge_model_values(
@@ -573,22 +567,23 @@ _check_model_binding(previous, updates, vn) = nothing
 function _check_model_binding(
     previous, updates::Union{VarNamedTuple,VarNamedTuples.PartialArray}, vn
 )
-    if previous isa ModelValue
-        compatible = if updates isa VarNamedTuples.PartialArray
-            previous.value isa Union{AbstractArray,Tuple}
-        else
-            previous.value isa NamedTuple ||
-                all(name -> hasproperty(previous.value, name), keys(updates.data))
-        end
-        compatible || throw(
-            ArgumentError(
-                "Cannot bind parts below `$vn` with value of type $(typeof(previous.value)). " *
-                "If `$vn` holds a submodel return value, condition or fix the child model before wrapping it with `to_submodel`. " *
-                "For other bindings, use `decondition(model, @varname($vn))` first.",
-            ),
-        )
-    end
     _fold_model_indices(nothing, updates) do _, update, optic, _
+        _check_namedtuple_index(previous, optic, AbstractPPL.varname_to_optic(vn))
+        if previous isa ModelValue
+            compatible = if updates isa VarNamedTuples.PartialArray
+                previous.value isa Union{AbstractArray,Tuple}
+            else
+                previous.value isa NamedTuple ||
+                    all(name -> hasproperty(previous.value, name), keys(updates.data))
+            end
+            compatible || throw(
+                ArgumentError(
+                    "Cannot bind parts below `$vn` with value of type $(typeof(previous.value)). " *
+                    "If `$vn` holds a submodel return value, condition or fix the child model before wrapping it with `to_submodel`. " *
+                    "For other bindings, use `decondition(model, @varname($vn))` first.",
+                ),
+            )
+        end
         child = _model_argument_binding(previous, optic)
         if child === nothing && (
             (previous isa ModelValue && previous.value isa Union{AbstractArray,Tuple}) ||
@@ -1182,6 +1177,9 @@ function _prepare_argument_fields(
     template, bindings::Union{VarNamedTuple,VarNamedTuples.PartialArray}, vn
 )
     return _fold_model_indices(copy(bindings), bindings) do result, binding, optic, storage
+        _check_namedtuple_index(
+            ModelValue{Condition}(template), optic, AbstractPPL.varname_to_optic(vn)
+        )
         if template isa Union{AbstractArray,Tuple} && optic isa AbstractPPL.Index
             indices = AbstractPPL.concretize_top_level(optic, template)
             bounds = template isa Tuple ? Base.OneTo(length(template)) : template
@@ -1507,6 +1505,9 @@ function _make_condfix_values(model, values::Pair{<:Union{VarName,Symbol}}...)
     result = VarNamedTuple()
     for (name, value) in values
         vn = name isa Symbol ? VarName{name}() : name
+        _check_namedtuple_index(
+            _model_values(model.values), AbstractPPL.varname_to_optic(vn)
+        )
         result = try
             templated_setindex!!(
                 result,
@@ -1537,8 +1538,8 @@ Unlike [`unfix`](@ref), `decondition(m, :x)` removes explicit and argument-suppl
 observations, making `x` latent. After deconditioning, an LHS variable's
 sampled value replaces its local argument value and is used by subsequent model statements.
 
-A name matches when it equals, contains, or is contained in a stored binding's address,
-after resolving equivalent index and property forms against the stored container.
+A name matches when it equals, contains, or is contained in a stored binding's address.
+NamedTuple integer indices are rejected: use `x.a` instead of `x[1]`; Tuples keep integer indices.
 Only the matching conditioned parts are removed. A name with no match throws
 `ArgumentError`, including names with only fixed bindings. With no names, removing all
 observations is always valid.
@@ -1625,6 +1626,7 @@ end
 function _check_model_removal(::Type{R}, values, args...) where {R}
     for arg in args
         vn = arg isa VarName ? arg : VarName{arg}()
+        _check_namedtuple_index(values, AbstractPPL.varname_to_optic(vn))
         binding = _model_argument_binding(values, AbstractPPL.varname_to_optic(vn))
         VarNamedTuples._mapreduce_recursive(
             pair -> _matches_model_role(R, pair.second), |, binding, vn, false
@@ -1731,20 +1733,12 @@ function _remove_model_binding(
 end
 function _remove_model_binding(
     ::Type{R},
-    values::VarNamedTuple,
+    values::Union{VarNamedTuple,ModelValueTree{<:NamedTuple}},
     optic::AbstractPPL.Index{Tuple{Symbol},NamedTuple{(),Tuple{}}},
 ) where {R}
     return _remove_model_binding(
         R, values, AbstractPPL.Property{only(optic.ix)}(optic.child)
     )
-end
-
-function _remove_model_binding(
-    ::Type{R}, tree::ModelValueTree{<:NamedTuple}, optic::AbstractPPL.Index
-) where {R}
-    return _with_model_property(tree, optic) do property
-        return property === nothing ? tree : _remove_model_binding(R, tree, property)
-    end
 end
 
 function _remove_model_binding(
@@ -1968,9 +1962,9 @@ end
     unfix(model::Model, names...)
 
 Remove this model's fixed bindings at `names...`, or all fixed bindings if no names
-are supplied. Matching follows [`decondition`](@ref), including equivalent index and
-property forms. A name with no stored fixed match throws `ArgumentError`, including a
-name supplied only by a child submodel or only conditioned on this model.
+are supplied. NamedTuple integer indices are rejected: use `x.a` instead of `x[1]`; Tuples keep integer indices.
+Matching follows [`decondition`](@ref). A name with no stored fixed match throws `ArgumentError`,
+including a name supplied only by a child submodel or only conditioned on this model.
 
 Unlike [`decondition`](@ref), removal restores the argument-supplied observation, if any,
 otherwise making the LHS variable latent; it never restores an earlier explicit conditioned binding.

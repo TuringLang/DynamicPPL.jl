@@ -396,6 +396,11 @@ function generate_tilde(left, right; is_argument=false)
     return quote
         $dist = $right
         $vn = $(make_varname_expression(left))
+        $(DynamicPPL._check_namedtuple_index)(
+            $(DynamicPPL.ModelValue){$(DynamicPPL.Condition)}($template),
+            $(AbstractPPL.getoptic)($vn),
+            $(AbstractPPL.Property{get_top_level_symbol(left)}()),
+        )
         $role = if $dist isa $(DynamicPPL.Submodel)
             nothing
         else

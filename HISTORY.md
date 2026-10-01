@@ -26,6 +26,8 @@ Added the `context` keyword to `DynamicPPL.DebugUtils.model_typed`, `model_warnt
 
 ## Breaking changes
 
+Integer indices into NamedTuples are rejected in binding addresses and LHS variables: `x[1]` on a NamedTuple → `x.a`; Tuples retain integer indices. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+
 Partly removing bindings of a single multivariate LHS variable now throws `ArgumentError` during evaluation; declare separate LHS variables to remove their bindings independently. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
 Partial bindings preserve argument array element types through exact conversion and reject values that cannot be represented. Use a compatible argument template, including for AD tracer values. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).

@@ -26,6 +26,8 @@
     so it needs no `decondition`. A `NamedTuple` argument at a submodel tilde
     does not supply a submodel namespace. Bind the child before `to_submodel`,
     or use `@varname(a.x)` on a parent whose submodel LHS `a` is not an argument.
+  - Integer indices into NamedTuples are rejected in binding addresses and LHS variables;
+    use `x.a` instead of `x[1]` for `x = (a=1.0, b=2.0)` (Tuples retain integer indices).
   - Later bindings replace earlier ones where they overlap. A *whole binding* binds an
     entire value; a *partial binding* binds part of a value already bound as a whole,
     preserving the rest of its binding. Subvariables of one LHS variable cannot
@@ -48,7 +50,7 @@
     or `fix` call; construct the model with a new argument value instead.
   - `decondition` removes this model's conditioned bindings; `unfix` removes its fixed
     bindings at the requested names. A name matches if it equals, contains, or is contained in a
-    stored binding's address, after resolving equivalent index and property forms.
+    stored binding's address, with Symbol indices equivalent to properties.
     A name with no match throws `ArgumentError`, including bindings supplied only by
     a child. Decondition child argument-supplied observations before `to_submodel`. With no
     names, all conditioned or fixed bindings, respectively, are removed. `unfix` restores the argument-supplied
