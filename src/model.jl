@@ -24,6 +24,28 @@ executed in parallel). By default, this is set to `false`.
 The default arguments are used internally when constructing instances of the same model with
 different arguments.
 
+!!! note "Why keep `Model.f`?"
+    Local models can capture variables from the enclosing function:
+
+    ```julia
+    function run_analysis(offset)
+        @model function demo()
+            x ~ Normal(offset, 1)
+            return x
+        end
+        return demo()
+    end
+    ```
+
+    `run_analysis(1)` and `run_analysis(2)` have the same evaluator type `F` but capture different
+    offsets. The field `f` holds these values; the type alone cannot.
+
+    Defining `(model::Model)(...)` or extending a global `get_evaluator` inside `run_analysis`
+    requires a global method definition, which Julia rejects there. Using `eval` installs
+    the method, but world age prevents the running `run_analysis` from calling it directly.
+    We'd need a bridge such as `invokelatest` and separate storage for captures. Keeping `f`
+    avoids both.
+
 # Examples
 
 ```julia
