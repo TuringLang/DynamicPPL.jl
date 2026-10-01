@@ -120,11 +120,11 @@ end
 
     @testset "scalar component errors distinguish return buffers" begin
         @model child_value() = x ~ Normal()
-        @model return_buffer(a=0.0) = a ~ to_submodel(child_value())
+        @model submodel_return(a=0.0) = a ~ to_submodel(child_value())
         @model scalar_argument(a=0.0) = a ~ Normal()
         for bind in (condition, fix)
             @test_throws r"If `a` is a return-value buffer, condition or fix the child model before wrapping it with `to_submodel`" bind(
-                return_buffer(), @varname(a.x) => 2.0
+                submodel_return(), @varname(a.x) => 2.0
             )()
             @test_throws r"For other bindings, use `decondition\(model, @varname\(a\)\)` first" bind(
                 scalar_argument(), @varname(a.x) => 2.0
@@ -134,11 +134,13 @@ end
 
     @testset "splatted arguments supply return buffers" begin
         @model splat_child() = x ~ Normal()
-        @model positional_buffer(args...) = args[1] ~ to_submodel(splat_child())
-        @model keyword_splat_buffer(; kw...) = kw[:y] ~ to_submodel(splat_child())
+        @model positional_return_value(args...) = args[1] ~ to_submodel(splat_child())
+        @model keyword_splat_return_value(; kw...) = kw[:y] ~ to_submodel(splat_child())
         for bind in (condition, fix)
-            positional = bind(positional_buffer((; x=0.0)), @varname(args[1].x) => 2.0)
-            keyword = bind(keyword_splat_buffer(; y=(; x=0.0)); kw=(; y=(; x=2.0)))
+            positional = bind(
+                positional_return_value((; x=0.0)), @varname(args[1].x) => 2.0
+            )
+            keyword = bind(keyword_splat_return_value(; y=(; x=0.0)); kw=(; y=(; x=2.0)))
             for model in (positional, keyword)
                 @test_throws ArgumentError model(Xoshiro(1))
             end
@@ -147,36 +149,36 @@ end
 
     @testset "arguments supply submodel return buffers" begin
         @model child() = (x ~ Normal(); x)
-        @model function dynamic_buffer(a)
+        @model function dynamic_return_value(a)
             sub = to_submodel(fix(child(); x=2.0))
             a ~ sub
             return a
         end
-        @model function indexed_buffer(a)
+        @model function indexed_return_value(a)
             a[1] ~ to_submodel(fix(child(); x=2.0))
             return a
         end
-        @model keyword_buffer(; a=0.0) = a ~ to_submodel(fix(child(); x=2.0))
+        @model keyword_return_value(; a=0.0) = a ~ to_submodel(fix(child(); x=2.0))
         @model nested(m) = b ~ to_submodel(m)
         @testset "binding accessors list submodel return values before evaluation" begin
-            model = dynamic_buffer(3.0)
+            model = dynamic_return_value(3.0)
             @test conditioned(model)[@varname(a)] == 3.0
             @test isempty(conditioned(decondition(model, :a)))
             @test fixed(fix(model; a=1.0))[@varname(a)] == 1.0
         end
         for bind in (condition, fix)
             for model in (
-                bind(dynamic_buffer((; x=0.0)), @varname(a.x) => 2.0),
-                bind(dynamic_buffer(0.0); a=(; x=2.0)),
-                bind(indexed_buffer([(; x=0.0)]), @varname(a[1].x) => 2.0),
+                bind(dynamic_return_value((; x=0.0)), @varname(a.x) => 2.0),
+                bind(dynamic_return_value(0.0); a=(; x=2.0)),
+                bind(indexed_return_value([(; x=0.0)]), @varname(a[1].x) => 2.0),
             )
                 @test_throws r"ArgumentError: .*return-value buffer" model(Xoshiro(1))
             end
         end
         for (model, expected) in (
-            (dynamic_buffer(0.0), 2.0),
-            (indexed_buffer([0.0]), [2.0]),
-            (keyword_buffer(), 2.0),
+            (dynamic_return_value(0.0), 2.0),
+            (indexed_return_value([0.0]), [2.0]),
+            (keyword_return_value(), 2.0),
         )
             for wrapped in (model, nested(model))
                 @test wrapped(Xoshiro(1)) == expected
@@ -193,7 +195,7 @@ end
 
     @testset "bindings below argument return buffers are rejected" begin
         @model child(mu) = x ~ Normal(mu)
-        @model function buffer_parent(a; rhs=child)
+        @model function return_value_parent(a; rhs=child)
             mu = a.x
             a ~ to_submodel(rhs(mu))
             return mu, a
@@ -209,8 +211,8 @@ end
         @model local_parent() = a ~ to_submodel(child(0.0))
         for bind in (condition, fix)
             models = (
-                bind(decondition(buffer_parent((; x=0.0))), @varname(a.x) => 2.0),
-                bind(decondition(buffer_parent((; x=0.0))); a=(; x=2.0)),
+                bind(decondition(return_value_parent((; x=0.0))), @varname(a.x) => 2.0),
+                bind(decondition(return_value_parent((; x=0.0))); a=(; x=2.0)),
                 bind(decondition(keyword_parent()); a=(; x=2.0)),
                 bind(decondition(indexed_parent([(; x=0.0)], 1)), @varname(a[1].x) => 2.0),
                 bind(decondition(indexed_parent([(; x=0.0)], 1)); a=[(; x=2.0)]),
@@ -227,13 +229,13 @@ end
             @test bind(local_parent(), @varname(a.x) => 2.0)(Xoshiro(1)) == 2.0
             @test bind(local_parent(); a=(; x=2.0))(Xoshiro(1)) == 2.0
             @test_throws r"ArgumentError: .*return-value buffer" bind(
-                outer(decondition(buffer_parent((; x=0.0)))), @varname(b.a.x) => 2.0
+                outer(decondition(return_value_parent((; x=0.0)))), @varname(b.a.x) => 2.0
             )(
                 Xoshiro(1)
             )
             @test bind(dynamic_parent(0.0, Normal()); a=2.0)(Xoshiro(1)) == 2.0
             replacement = mu -> bind(child(mu); x=2.0)
-            model = decondition(buffer_parent((; x=0.0); rhs=replacement))
+            model = decondition(return_value_parent((; x=0.0); rhs=replacement))
             @test model(Xoshiro(1)) == (0.0, 2.0)
             @test logjoint(model, VarNamedTuple()) ==
                 (bind === condition ? logpdf(Normal(), 2.0) : 0.0)
@@ -600,13 +602,13 @@ end
         @test Set(keys(vnt)) == Set([@varname(a.x), @varname(a.y)])
 
         @model observed_child(x=2.0) = x ~ Normal()
-        @model function parent_with_buffer(a)
+        @model function parent_with_return_value(a)
             a[1] ~ to_submodel(observed_child())
             return a
         end
-        @test parent_with_buffer(zeros(1))() == [2.0]
-        @test decondition(parent_with_buffer(zeros(1)))() == [2.0]
-        @test isempty(keys(VarInfo(decondition(parent_with_buffer(zeros(1))))))
+        @test parent_with_return_value(zeros(1))() == [2.0]
+        @test decondition(parent_with_return_value(zeros(1)))() == [2.0]
+        @test isempty(keys(VarInfo(decondition(parent_with_return_value(zeros(1))))))
     end
 
     @testset "extending named-tuple submodel namespaces" begin
@@ -624,11 +626,11 @@ end
     end
 
     @testset "submodel namespaces reject argument buffers" begin
-        @model inner_buffer() = x ~ Normal()
-        @model scalar_buffer(a) = a ~ to_submodel(inner_buffer())
-        @model function indexed_buffer(a)
+        @model inner_return_value() = x ~ Normal()
+        @model scalar_return_value(a) = a ~ to_submodel(inner_return_value())
+        @model function indexed_return_value(a)
             one(a[1])
-            return a[1] ~ to_submodel(inner_buffer())
+            return a[1] ~ to_submodel(inner_return_value())
         end
         namespace = @vnt begin
             @template a = [(; x=0.0)]
@@ -636,17 +638,17 @@ end
         end
         for bind in (condition, fix)
             @test_throws r"ArgumentError: .*return-value buffer" bind(
-                decondition(scalar_buffer(0.0)), @varname(a.x) => 2.0
+                decondition(scalar_return_value(0.0)), @varname(a.x) => 2.0
             )(
                 Xoshiro(1)
             )
             @test_throws r"ArgumentError: .*return-value buffer" bind(
-                decondition(indexed_buffer([0.0])), @varname(a[1].x) => 2.0
+                decondition(indexed_return_value([0.0])), @varname(a[1].x) => 2.0
             )(
                 Xoshiro(1)
             )
             @test_throws r"ArgumentError: .*return-value buffer" bind(
-                decondition(indexed_buffer([0.0])), namespace
+                decondition(indexed_return_value([0.0])), namespace
             )(
                 Xoshiro(1)
             )

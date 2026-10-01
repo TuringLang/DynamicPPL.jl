@@ -157,13 +157,15 @@ function model(mod, linenumbernode, expr, warn)
     modeldef = build_model_definition(expr)
 
     # Generate main body
-    sites = Symbol[]
+    lhs_names = Symbol[]
     arguments = map(
         arg -> first(MacroTools.splitarg(arg)), vcat(modeldef[:args], modeldef[:kwargs])
     )
-    modeldef[:body] = generate_mainbody(mod, modeldef[:body], warn, true; sites, arguments)
+    modeldef[:body] = generate_mainbody(
+        mod, modeldef[:body], warn, true; lhs_names, arguments
+    )
 
-    return build_output(modeldef, linenumbernode, sites)
+    return build_output(modeldef, linenumbernode, lhs_names)
 end
 
 """
@@ -206,9 +208,9 @@ Generate the body of the main evaluation function from expression `expr` and arg
 If `warn` is true, a warning is displayed if internal variables are used in the model
 definition.
 """
-generate_mainbody(mod, expr, warn, warn_threads; sites=Symbol[], arguments=Symbol[]) =
+generate_mainbody(mod, expr, warn, warn_threads; lhs_names=Symbol[], arguments=Symbol[]) =
     generate_mainbody!(
-        mod, (; internal=Symbol[], sites, arguments), expr, warn, warn_threads
+        mod, (; internal=Symbol[], lhs_names, arguments), expr, warn, warn_threads
     )
 
 generate_mainbody!(mod, found, x, warn, warn_threads) = x
@@ -270,7 +272,7 @@ function generate_mainbody!(mod, found, expr::Expr, warn, warn_threads)
         L, R = args_tilde
         L = generate_mainbody!(mod, found, L, warn, warn_threads)
         if !isliteral(L)
-            push!(found.sites, get_top_level_symbol(L))
+            push!(found.lhs_names, get_top_level_symbol(L))
         end
         return Base.remove_linenums!(
             generate_tilde(
@@ -614,7 +616,7 @@ end
 
 Builds the output expression.
 """
-function build_output(modeldef, linenumbernode, sites)
+function build_output(modeldef, linenumbernode, lhs_names)
     args = transform_args(modeldef[:args])
     kwargs = transform_args(modeldef[:kwargs])
 
@@ -665,19 +667,19 @@ function build_output(modeldef, linenumbernode, sites)
         :($name = $(NamedTuple)($name)) for
         (name, _, is_splat, _) in kwargs_split if is_splat
     ]
-    observed_args = unique([
-        name for (name, _, _, _) in vcat(args_split, kwargs_split) if name in sites
+    lhs_arguments = unique([
+        name for (name, _, _, _) in vcat(args_split, kwargs_split) if name in lhs_names
     ])
-    observations = Expr(:tuple, [Expr(:(=), name, name) for name in observed_args]...)
+    observations = Expr(:tuple, [Expr(:(=), name, name) for name in lhs_arguments]...)
     @gensym replaced prepared
-    prepare_args = map(observed_args) do name
+    prepare_args = map(lhs_arguments) do name
         return quote
             $prepared = $(prepare_model_argument)(__model__, $(VarName{name}()), $name)
             $replaced |= $prepared !== $name
             $name = $prepared
         end
     end
-    bodydef = if isempty(observed_args)
+    bodydef = if isempty(lhs_arguments)
         nothing
     else
         definition = copy(evaluatordef)
@@ -704,7 +706,7 @@ function build_output(modeldef, linenumbernode, sites)
         end
         descriptions = [
             :($(Base.string)($("`$n` declared as $t, supplied "), $(Core.typeof)($n)))
-            for (n, t, _, _) in vcat(args_split, kwargs_split) if n in observed_args
+            for (n, t, _, _) in vcat(args_split, kwargs_split) if n in lhs_arguments
         ]
         # Dispatch again after replacement so the body's type parameters match its inputs.
         evaluatordef[:body] = MacroTools.@q begin
@@ -740,7 +742,7 @@ function build_output(modeldef, linenumbernode, sites)
             $kwargs_nt,
             $(DynamicPPL.DefaultContext)(),
             $(_tag_model_values)($(ArgumentCondition), $(VarNamedTuple)($observations));
-            argument_sites=($(QuoteNode(Tuple(observed_args)))),
+            lhs_arguments=($(QuoteNode(Tuple(lhs_arguments)))),
         )
     end
 

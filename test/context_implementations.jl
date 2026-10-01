@@ -191,7 +191,7 @@ end
         @test iszero(getlogjac(output))
         @test get_vector_values(output)[@varname(x)].transform isa Unlink
 
-        @model function optional_site(include_x)
+        @model function optional_lhs(include_x)
             if include_x
                 x ~ Normal()
             end
@@ -199,10 +199,10 @@ end
         end
         outputs = VarInfo(VectorValueAccumulator(), RawValueAccumulator(false))
         context = InitContext(Xoshiro(1), InitFromPrior(), UnlinkAll())
-        _, outputs = evaluate!!(optional_site(true), context, outputs)
+        _, outputs = evaluate!!(optional_lhs(true), context, outputs)
         inputs = get_vector_values(outputs)
         context = InitContext(Xoshiro(1), InitFromParams(inputs, nothing), UnlinkAll())
-        _, outputs = evaluate!!(optional_site(false), context, outputs)
+        _, outputs = evaluate!!(optional_lhs(false), context, outputs)
         @test !haskey(get_vector_values(outputs), @varname(x))
         @test !haskey(get_raw_values(outputs), @varname(x))
         @test haskey(inputs, @varname(x))

@@ -51,9 +51,9 @@ end
 
 @testset "condition and fix" begin
     @testset "keyword splat component bindings are explicit errors" begin
-        @model keyword_site(; kw...) = (kw[:y] ~ Normal(); return kw[:y])
+        @model keyword_lhs(; kw...) = (kw[:y] ~ Normal(); return kw[:y])
         for bind in (condition, fix)
-            model = keyword_site(; y=1.0)
+            model = keyword_lhs(; y=1.0)
             for original in (model, decondition(model))
                 @test_throws r"ArgumentError: .*keyword-splat argument `kw`.*cannot be bound" bind(
                     original, @varname(kw.y) => 2.0
@@ -91,9 +91,9 @@ end
     end
 
     @testset "deconditioned arguments retain component bounds" begin
-        @model component_argument(x) = (x[1] ~ Normal(); x)
+        @model indexed_lhs_argument(x) = (x[1] ~ Normal(); x)
         for bind in (condition, fix), x in ([1.0, 2.0], (1.0, 2.0))
-            model = decondition(component_argument(x))
+            model = decondition(indexed_lhs_argument(x))
             invalid = @vnt begin
                 x[3] := 9.0
             end
@@ -105,7 +105,7 @@ end
     end
 
     @testset "argument binding templates" begin
-        @model template_sites(y) = (for i in eachindex(y)
+        @model template_lhs_variables(y) = (for i in eachindex(y)
             y[i] ~ Normal()
         end;
         y)
@@ -116,7 +116,7 @@ end
                 ((@varname(y[2]) => 3.0,),),
             )
 
-            m = @test_logs bind(template_sites([1.0, 2.0]), input...)
+            m = @test_logs bind(template_lhs_variables([1.0, 2.0]), input...)
             @test m() == [1.0, 3.0]
         end
     end
@@ -177,11 +177,11 @@ end
         @model keywords(; kwargs...) = (
             kwargs = NamedTuple(kwargs); kwargs.x ~ Normal(); kwargs
         )
-        for (m, value, whole, component) in (
+        for (m, value, whole, part) in (
             (positional(2.0), (; args=(3.0,)), :args, @varname(args[1])),
             (keywords(; x=2.0), (; kwargs=(; x=3.0)), :kwargs, @varname(kwargs.x)),
         )
-            for name in (whole, component)
+            for name in (whole, part)
                 restored = unfix(fix(m; value...), name)
                 @test loglikelihood(restored, (;)) ≈ logpdf(Normal(), 2.0)
             end
@@ -189,7 +189,7 @@ end
     end
 
     @testset "containing removal ranges" begin
-        @model range_sites() = begin
+        @model range_lhs_variables() = begin
             x = zeros(4)
             for i in eachindex(x)
                 x[i] ~ Normal()
@@ -197,7 +197,7 @@ end
         end
         for (bind, remove, query) in
             ((condition, decondition, conditioned), (fix, unfix, fixed))
-            m = bind(range_sites(), @varname(x[1]) => 2.0)
+            m = bind(range_lhs_variables(), @varname(x[1]) => 2.0)
             @test isempty(query(remove(m, @varname(x[1:3]))))
             m = bind(m, @varname(x[4]) => 4.0)
             @test keys(query(remove(m, @varname(x[1:3])))) == [@varname(x[4])]
@@ -239,32 +239,32 @@ end
         @test_throws r"ArgumentError: .*x\[2\].*size and shape" fix(
             uncovered(Any[1.0]); x=Any[2.0]
         )()
-        @model field_site(p) = p.a ~ Normal()
+        @model field_lhs(p) = p.a ~ Normal()
         @test_throws r"ArgumentError: .*p.a.*size and shape" fix(
-            field_site((; a=1.0)); p=(; b=2.0)
+            field_lhs((; a=1.0)); p=(; b=2.0)
         )()
         @model scalar_shape(x) = (x = [x]; x ~ MvNormal(zeros(1), 1.0))
         @test_throws r"ArgumentError: .*x.*size and shape" fix(scalar_shape(1.0); x=2.0)()
     end
 
     @testset "whole fixed bindings cover executed local components" begin
-        @model function local_components()
+        @model function local_lhs_variables()
             x = zeros(2)
             for i in 1:2
                 x[i] ~ Normal()
             end
             return x
         end
-        @model nested_local_components() = child ~ to_submodel(local_components())
+        @model nested_local_lhs_variables() = child ~ to_submodel(local_lhs_variables())
         for model in (
-            fix(local_components(); x=[2.0]),
-            fix(nested_local_components(), @varname(child.x) => [2.0]),
+            fix(local_lhs_variables(); x=[2.0]),
+            fix(nested_local_lhs_variables(), @varname(child.x) => [2.0]),
         )
             @test_throws r"ArgumentError: .*x\[2\].*coverage.*size and shape" model(
                 Xoshiro(1)
             )
         end
-        observed = condition(local_components(); x=[2.0])
+        observed = condition(local_lhs_variables(); x=[2.0])
         @test observed(Xoshiro(1)) == [2.0, rand(Xoshiro(1), Normal())]
         @test keys(rand(Xoshiro(1), observed)) == [@varname(x[2])]
     end
@@ -306,7 +306,7 @@ end
     end
 
     @testset "missing paths and construction scope" begin
-        @model metadata_site(p) = p.a ~ Normal()
+        @model metadata_lhs(p) = p.a ~ Normal()
         for p in ((a=1.0, b=missing), (a=missing, b=1.0), (a=1.0, b=[(missing,)]))
             path = if ismissing(p.a)
                 "p.a"
@@ -316,7 +316,7 @@ end
                 "p.b[1][1]"
             end
             err = try
-                metadata_site(p)
+                metadata_lhs(p)
             catch e
                 e
             end
@@ -327,10 +327,10 @@ end
             @test occursin("fix", sprint(showerror, err))
             @test occursin("decondition", sprint(showerror, err))
         end
-        @test metadata_site(MetadataRecord(1.0, missing))() == 1.0
+        @test metadata_lhs(MetadataRecord(1.0, missing))() == 1.0
         for bind in (condition, fix)
             @test_throws r"p.b\[1\]" bind(
-                metadata_site((a=1.0, b=2.0)); p=(a=1.0, b=[missing])
+                metadata_lhs((a=1.0, b=2.0)); p=(a=1.0, b=[missing])
             )
         end
     end
@@ -346,11 +346,11 @@ end
     end
 
     @testset "named tuple tilde sites require whole bindings" begin
-        @model named_site() = x ~ product_distribution((a=Normal(), b=Normal()))
+        @model named_lhs() = x ~ product_distribution((a=Normal(), b=Normal()))
         for (bind, remove) in ((condition, decondition), (fix, unfix))
-            partial = bind(named_site(), @varname(x.a) => 1.0)
+            partial = bind(named_lhs(), @varname(x.a) => 1.0)
             @test_throws r"ArgumentError: .*`x`.*bound as a whole" partial(Xoshiro(1))
-            whole = bind(named_site(); x=(; a=1.0, b=2.0))
+            whole = bind(named_lhs(); x=(; a=1.0, b=2.0))
             @test whole(Xoshiro(1)) == (; a=1.0, b=2.0)
             @test bind(whole, @varname(x.a) => 3.0)(Xoshiro(1)) == (; a=3.0, b=2.0)
             @test_throws r"ArgumentError: .*`x`.*bound as a whole" remove(
@@ -401,7 +401,7 @@ end
                 dispatched([1]); x=[2]
             )
             @test bind(ordinary(1); x=2)(Xoshiro(1)) == 2
-            @test bind(ordinary(1); dynamic_site=2) isa Model
+            @test bind(ordinary(1); dynamic_lhs=2) isa Model
         end
     end
 
@@ -453,23 +453,23 @@ end
     end
 
     @testset "accessors return plain partial values" begin
-        @model function named_sites()
+        @model function named_lhs_variables()
             x = (; a=0.0, b=0.0)
             x = (; a=(x.a ~ Normal()), b=(x.b ~ Normal()))
             return x
         end
-        @model function tuple_sites()
+        @model function tuple_lhs_variables()
             x = (0.0, 0.0)
             x = ((x[1] ~ Normal()), (x[2] ~ Normal()))
             return x
         end
-        @model function nested_sites()
+        @model function nested_lhs_variables()
             x = [(; a=0.0, b=0.0)]
             x[1].a ~ Normal()
             x[1].b ~ Normal()
             return x
         end
-        @model array_sites(x) = (x[1] ~ Normal(); x[2] ~ Normal(); x)
+        @model array_lhs_variables(x) = (x[1] ~ Normal(); x[2] ~ Normal(); x)
         @model inner2() = (x ~ Normal(); y ~ Normal(); (; x, y))
         @model outer() = a ~ to_submodel(inner2())
 
@@ -478,7 +478,7 @@ end
             for (name, unbound, whole, removed, retained, template) in (
                 (
                     "named tuple",
-                    named_sites(),
+                    named_lhs_variables(),
                     (; x=(; a=1.0, b=2.0)),
                     @varname(x.a),
                     @varname(x.b),
@@ -486,7 +486,7 @@ end
                 ),
                 (
                     "tuple",
-                    tuple_sites(),
+                    tuple_lhs_variables(),
                     (; x=(1.0, 2.0)),
                     @varname(x[1]),
                     @varname(x[2]),
@@ -494,7 +494,7 @@ end
                 ),
                 (
                     "tuple trailing removal",
-                    tuple_sites(),
+                    tuple_lhs_variables(),
                     (; x=(2.0, 1.0)),
                     @varname(x[2]),
                     @varname(x[1]),
@@ -502,7 +502,7 @@ end
                 ),
                 (
                     "tuple argument",
-                    decondition(array_sites((1.0, 2.0))),
+                    decondition(array_lhs_variables((1.0, 2.0))),
                     (; x=(1.0, 2.0)),
                     @varname(x[1]),
                     @varname(x[2]),
@@ -510,7 +510,7 @@ end
                 ),
                 (
                     "nested",
-                    nested_sites(),
+                    nested_lhs_variables(),
                     (; x=[(; a=1.0, b=2.0)]),
                     @varname(x[1].a),
                     @varname(x[1].b),
@@ -518,7 +518,7 @@ end
                 ),
                 (
                     "array argument",
-                    decondition(array_sites([1.0, 2.0])),
+                    decondition(array_lhs_variables([1.0, 2.0])),
                     (; x=[1.0, 2.0]),
                     @varname(x[1]),
                     @varname(x[2]),
@@ -574,17 +574,17 @@ end
     end
 
     @testset "removal resolves container addresses" begin
-        @model function matrix_sites(x)
+        @model function matrix_lhs_variables(x)
             for i in eachindex(x)
                 x[i] ~ Normal()
             end
             return x
         end
-        @model component_sites(x) = (x.a ~ Normal(); x.b ~ Normal(); x)
-        @model nested_component_sites(x) = (x[1].a ~ Normal(); x[1].b ~ Normal(); x)
+        @model field_lhs_variables(x) = (x.a ~ Normal(); x.b ~ Normal(); x)
+        @model nested_field_lhs_variables(x) = (x[1].a ~ Normal(); x[1].b ~ Normal(); x)
         for (bind, remove, select) in
             ((condition, decondition, conditioned), (fix, unfix, fixed))
-            matrix = bind(matrix_sites([1.0 3.0; 2.0 4.0]); x=[1.0 3.0; 2.0 4.0])
+            matrix = bind(matrix_lhs_variables([1.0 3.0; 2.0 4.0]); x=[1.0 3.0; 2.0 4.0])
             for (vn, indices) in (
                 (@varname(x[2]), [2]),
                 (@varname(x[2, 1]), [2]),
@@ -611,12 +611,12 @@ end
             @test_throws ArgumentError remove(matrix, @varname(x[8]))
             for (model, first, sibling) in (
                 (
-                    component_sites(ComponentVector(; a=1.0, b=2.0)),
+                    field_lhs_variables(ComponentVector(; a=1.0, b=2.0)),
                     @varname(x.a),
                     @varname(x.b)
                 ),
                 (
-                    nested_component_sites([ComponentVector(; a=1.0, b=2.0)]),
+                    nested_field_lhs_variables([ComponentVector(; a=1.0, b=2.0)]),
                     @varname(x[1].a),
                     @varname(x[1].b)
                 ),
@@ -632,17 +632,12 @@ end
     end
 
     @testset "NamedTuple integer components resolve against the stored template" begin
-        @model named_components(x) = (x.a ~ Normal(); x.b ~ Normal(); x)
-        @model nested_named_components(x) = (x[1].a ~ Normal(); x[1].b ~ Normal(); x)
+        @model named_fields(x) = (x.a ~ Normal(); x.b ~ Normal(); x)
+        @model nested_named_fields(x) = (x[1].a ~ Normal(); x[1].b ~ Normal(); x)
         for (model, first, second, latent) in (
+            (named_fields((a=1.0, b=2.0)), @varname(x[1]), @varname(x[2]), @varname(x.a)),
             (
-                named_components((a=1.0, b=2.0)),
-                @varname(x[1]),
-                @varname(x[2]),
-                @varname(x.a)
-            ),
-            (
-                nested_named_components([(a=1.0, b=2.0)]),
+                nested_named_fields([(a=1.0, b=2.0)]),
                 @varname(x[1][1]),
                 @varname(x[1][2]),
                 @varname(x[1].a)
@@ -654,16 +649,16 @@ end
             @test_throws ArgumentError decondition(changed, first)
         end
         restored = unfix(
-            fix(named_components((a=1.0, b=2.0)); x=(a=3.0, b=4.0)), @varname(x[1])
+            fix(named_fields((a=1.0, b=2.0)); x=(a=3.0, b=4.0)), @varname(x[1])
         )
         @test restored(Xoshiro(1)) == (a=1.0, b=4.0)
         @test unfix(restored, @varname(x[2]))(Xoshiro(1)) == (a=1.0, b=2.0)
     end
 
     @testset "unfix restores the last fixed component's argument observation" begin
-        @model restored_components(x) = (x[1] ~ Normal(); x[2] ~ Normal(); x)
+        @model restored_indices(x) = (x[1] ~ Normal(); x[2] ~ Normal(); x)
         for original in ([1.0, 2.0], (1.0, 2.0))
-            bound = fix(decondition(restored_components(original)), @varname(x[1]) => 5.0)
+            bound = fix(decondition(restored_indices(original)), @varname(x[1]) => 5.0)
             for names in ((), (@varname(x),), (@varname(x[1]),))
                 restored = unfix(bound, names...)
                 @test restored(Xoshiro(1))[1] == 1.0
@@ -788,14 +783,14 @@ end
     end
 
     @testset "unused bindings are ignored" begin
-        @model function optional_site(active)
+        @model function optional_lhs(active)
             x ~ Normal()
             if active
                 y ~ Normal()
             end
             return x
         end
-        unused_model = optional_site(false)
+        unused_model = optional_lhs(false)
         for bind in (condition, fix), name in (@varname(z), @varname(y))
             bound = bind(unused_model, name => 1.0)
             value, vi = init!!(Xoshiro(1), unused_model, VarInfo(), InitFromPrior())
@@ -822,16 +817,16 @@ end
     end
 
     @testset "argument buffers can be initialized in the model body" begin
-        @model function initialize_buffer(x)
+        @model function initialize_argument(x)
             fill!(x, [1.0])
             x[1] ~ MvNormal([0.0], [1.0;;])
             return x
         end
         for wrap in (identity, x -> view(x, :))
             data = wrap(Vector{Vector{Float64}}(undef, 1))
-            buffer_model = initialize_buffer(data)
+            initialized_model = initialize_argument(data)
             @test !isassigned(data, 1)
-            @test buffer_model() == [[1.0]]
+            @test initialized_model() == [[1.0]]
         end
     end
 
@@ -1006,12 +1001,12 @@ end
     end
 
     @testset "invalid bindings below scalar values" begin
-        @model scalar_site(a) = a ~ Normal()
+        @model scalar_lhs(a) = a ~ Normal()
         @model scalar_child() = x ~ Normal()
         @model scalar_return(a) = a ~ to_submodel(scalar_child())
         for bind in (condition, fix),
             (model, vn) in
-            ((scalar_site(1.0), @varname(a[1])), (scalar_return(0.0), @varname(a.x)))
+            ((scalar_lhs(1.0), @varname(a[1])), (scalar_return(0.0), @varname(a.x)))
 
             @test_throws r"ArgumentError: .*`a`.*decondition" bind(model, vn => 2.0)
         end
@@ -1121,21 +1116,21 @@ end
             x -> loglikelihood(condition(indexed_argument(zeros(2)); x), VarNamedTuple())
         @test ForwardDiff.gradient(loglik, [1.0, 2.0, 3.0]) ≈ [-1.0, -2.0, -3.0]
 
-        @model function read_before_site(; x=1.0)
+        @model function read_before_tilde(; x=1.0)
             y ~ Normal(x)
             x ~ Normal()
             return x
         end
         for op in (condition, fix)
-            changed = op(read_before_site(); x=2.0)
+            changed = op(read_before_tilde(); x=2.0)
             @test logprior(changed, (; y=2.0)) == logpdf(Normal(2.0), 2.0)
         end
-        logp = x -> logprior(condition(read_before_site(); x), (; y=2.0))
+        logp = x -> logprior(condition(read_before_tilde(); x), (; y=2.0))
         @test ForwardDiff.derivative(logp, 1.0) == 1.0
     end
 
     @testset "partial property overrides preserve struct fields" begin
-        @model function record_sites(x)
+        @model function record_lhs_variables(x)
             x.a ~ Normal()
             x.b[1] ~ Normal()
             x.b[2] ~ Normal()
@@ -1143,7 +1138,7 @@ end
         end
         data = ObservationRecord(1.0, [2.0, 3.0])
         for first_op in (condition, fix), last_op in (condition, fix)
-            original = first_op(record_sites(data); x=data)
+            original = first_op(record_lhs_variables(data); x=data)
             changed = last_op(original, @varname(x.a) => 4.0, @varname(x.b[1]) => 5.0)
             result = changed()
             @test result isa ObservationRecord
@@ -1156,7 +1151,9 @@ end
             @test original().a == data.a == 1.0
             @test original().b == data.b == [2.0, 3.0]
         end
-        @test_throws ArgumentError condition(record_sites(data), @varname(x.unknown) => 1.0)
+        @test_throws ArgumentError condition(
+            record_lhs_variables(data), @varname(x.unknown) => 1.0
+        )
     end
 
     @testset "property overrides retain replacement containers" begin
@@ -1246,13 +1243,13 @@ end
     end
 
     @testset "indexed tuple bindings preserve tuples and roles" begin
-        @model tuple_sites(x) = (x[1] ~ Normal(); x[2] ~ Normal(); return x)
+        @model tuple_lhs_variables(x) = (x[1] ~ Normal(); x[2] ~ Normal(); return x)
         @model nested_tuple(m) = child ~ to_submodel(m)
         for T in (Float32, BigFloat),
             first_op in (condition, fix),
             last_op in (condition, fix)
 
-            original = tuple_sites((T(1), T(2)))
+            original = tuple_lhs_variables((T(1), T(2)))
             first = first_op(original, @varname(x[1]) => T(3))
             changed = last_op(first, @varname(x[2]) => T(4))
             @test changed() == (T(3), T(4))
@@ -1300,7 +1297,8 @@ end
         end
         loglik =
             p -> loglikelihood(
-                condition(tuple_sites((0.0, 2.0)), @varname(x[1]) => p), VarNamedTuple()
+                condition(tuple_lhs_variables((0.0, 2.0)), @varname(x[1]) => p),
+                VarNamedTuple(),
             )
         @test ForwardDiff.derivative(loglik, 3.0) == -3.0
     end
@@ -1359,23 +1357,23 @@ end
     end
 
     @testset "component properties and indices share observations" begin
-        @model function indexed_components()
+        @model function indexed_fields()
             x = ComponentVector(; a=0.0, b=0.0)
             x[1] ~ Normal()
             x.b ~ Normal()
             return x
         end
-        @model joint_components(n=2) = x ~ MvNormal(zeros(n), I)
+        @model joint_draw(n=2) = x ~ MvNormal(zeros(n), I)
         for op in (condition, fix)
             data = ComponentVector(; a=1.0, b=2.0)
-            original = op(indexed_components(); x=data)
+            original = op(indexed_fields(); x=data)
             changed = op(original, @varname(x.a) => 3.0)
             changed = op(changed, @varname(x[2]) => 4.0)
             changed = op(changed, @varname(x.b) => 5.0)
             @test changed() == ComponentVector(; a=3.0, b=5.0)
             @test isempty(keys(VarInfo(changed)))
             @test original() == data
-            joint = op(op(joint_components(); x=data), @varname(x.a) => 1.0)
+            joint = op(op(joint_draw(); x=data), @varname(x.a) => 1.0)
             @test joint() == data
             @test joint() isa ComponentVector
             @test logjoint(joint, VarNamedTuple()) ≈
@@ -1403,7 +1401,7 @@ end
             ),
             op in (condition, fix)
 
-            original = op(joint_components(length(data)); x=data)
+            original = op(joint_draw(length(data)); x=data)
             changed = op(original, vn => value)
             @test changed() == expected
             @test typeof(changed()) === typeof(data)
@@ -1429,20 +1427,20 @@ end
     end
 
     @testset "unfix restores argument defaults" begin
-        @model argument_site(x) = x ~ Normal()
-        m = argument_site(1.0)
+        @model argument_lhs(x) = x ~ Normal()
+        m = argument_lhs(1.0)
         for original in (m, condition(m; x=2.0), decondition(m, :x))
             u = unfix(fix(original; x=5.0), :x)
             @test isempty(keys(VarInfo(u)))
             @test logjoint(u, (;)) ≈ logpdf(Normal(), 1.0)
             @test keys(VarInfo(decondition(u, :x))) == [@varname(x)]
         end
-        @model argument_components(x) = (
+        @model argument_indices(x) = (
             for i in eachindex(x)
                 x[i] ~ Normal()
             end
         )
-        m = argument_components([1.0, 2.0])
+        m = argument_indices([1.0, 2.0])
         u = unfix(fix(m, @varname(x[1]) => 5.0), @varname(x[1]))
         @test logjoint(u, (;)) ≈ sum(logpdf.(Normal(), [1.0, 2.0]))
         u = unfix(fix(m; x=[5.0, 6.0]), @varname(x[1]))
@@ -1452,7 +1450,7 @@ end
         @model argument_parent(child) = a ~ to_submodel(child)
         @test logjoint(argument_parent(unfix(fix(m; x=[5.0, 6.0]))), (;)) ≈
             sum(logpdf.(Normal(), [1.0, 2.0]))
-        p = DynamicPPL.prefix(argument_site(1.0), @varname(a))
+        p = DynamicPPL.prefix(argument_lhs(1.0), @varname(a))
         @test logjoint(unfix(fix(p, @varname(a.x) => 5.0), @varname(a.x)), (;)) ≈
             logpdf(Normal(), 1.0)
     end
