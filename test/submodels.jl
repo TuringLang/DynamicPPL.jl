@@ -42,6 +42,21 @@ end
 @model nested_observations(y) = a ~ to_submodel(indexed_observations(y))
 
 @testset "submodels.jl" begin
+    @testset "explicit bindings of submodel return values explain recovery" begin
+        @model child() = z ~ Normal()
+        @model parent(y) = (a ~ to_submodel(child()); y ~ Normal(a))
+        for bind in (condition, fix)
+            bound = bind(parent(0.0); a=1.0)
+            @test_throws r"Cannot explicitly bind a submodel return value\. Remove the explicit binding.*@varname\(a.z\)" bound(
+                Xoshiro(1)
+            )
+            model = bind(parent(0.0), @varname(a.z) => 1.0)
+            @test loglikelihood(model, VarNamedTuple()) ≈
+                logpdf(Normal(1.0), 0.0) +
+                  (bind === condition ? logpdf(Normal(), 1.0) : 0.0)
+        end
+    end
+
     @testset "implicit argument observations stay in their model" begin
         @model scalar_likelihood(y, mu) = y ~ Normal(mu)
         @model function overlap(y)
@@ -165,7 +180,7 @@ end
             for bind in (condition, fix)
                 address = expected isa AbstractArray ? @varname(a[1]) : @varname(a)
                 bound = bind(model, address => 3.0)
-                @test_throws r"ArgumentError: .*submodel's return value" bound(Xoshiro(1))
+                @test_throws r"ArgumentError: .*submodel return value" bound(Xoshiro(1))
             end
         end
     end
@@ -229,7 +244,7 @@ end
                 fix(decondition(manual(0.0, child_model)); a=3.0),
             )
                 for model in (m, nested(m))
-                    @test_throws "Cannot condition or fix a submodel's return value" model(
+                    @test_throws "Cannot explicitly bind a submodel return value" model(
                         Xoshiro(1)
                     )
                 end

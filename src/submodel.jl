@@ -175,7 +175,8 @@ end
 function _submodel_namespace(::Union{ModelValue,ModelValueTree})
     throw(
         ArgumentError(
-            "Cannot condition or fix a submodel's return value. Supply its internal variable names instead; decondition arguments used only as return-value buffers.",
+            "Cannot explicitly bind a submodel return value. Remove the explicit binding, " *
+            "or bind the child's variables by prefixed name (e.g. `@varname(a.z)` when `a` is not an LHS argument).",
         ),
     )
 end
