@@ -206,10 +206,7 @@ function _model_role_at(values::VarNamedTuples.PartialArray, optic::AbstractPPL.
         return nothing
     end
     if VarNamedTuples._is_multiindex(values.data, optic.ix...; optic.kw...)
-        selected = VarNamedTuples.PartialArray(
-            view(values.data, optic.ix...; optic.kw...),
-            view(values.mask, optic.ix...; optic.kw...),
-        )
+        selected = _model_argument_binding(values, AbstractPPL.Index(optic.ix, optic.kw))
         return _model_role_at(selected, optic.child, vn)
     end
     haskey(values, optic.ix...; optic.kw...) || return nothing

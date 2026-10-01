@@ -260,6 +260,24 @@ end
         @test size(likelihoods.data.a.data.x) == (2,)
     end
 
+    @testset "slice prefixes resolve explicit bindings" begin
+        @model slice_leaf() = x ~ Normal()
+        @model slice_parent(child) = unused ~ to_submodel(child, false)
+        @model slice_nested(child) = outer ~ to_submodel(child)
+        for name in (@varname(a[:]), @varname(a[1:2])), bind in (condition, fix)
+            child = prefix(bind(slice_leaf(); x=3.0), name; template=zeros(2))
+            @test isempty(rand(Xoshiro(1), child))
+            @test child(Xoshiro(1)) == 3.0
+            @test slice_parent(child)(Xoshiro(1)) == 3.0
+            parent = bind(
+                slice_parent(prefix(slice_leaf(), name; template=zeros(2))),
+                DynamicPPL.templated_setindex!!(VarNamedTuple(), (; x=4.0), name, zeros(2)),
+            )
+            @test parent(Xoshiro(1)) == 4.0
+            @test slice_nested(parent)(Xoshiro(1)) == 4.0
+        end
+    end
+
     @testset "dynamic prefixes with stored observations" begin
         @model observed_child(x=2.0) = x ~ Normal()
         @model function dynamic_parent(child)
