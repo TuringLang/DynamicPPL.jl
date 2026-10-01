@@ -125,7 +125,7 @@ end
         end
     end
 
-    @testset "unfix restores only actual argument-supplied observations" begin
+    @testset "unfix restores argument-supplied observations from declared argument LHS variables" begin
         @model scalar_argument(x) = x ~ Normal()
         @model keyword_argument(; x) = x ~ Normal()
         for observed in (scalar_argument(1.0), keyword_argument(; x=1.0))
@@ -135,9 +135,9 @@ end
             for original in (direct, condition(direct; x=4.0), decondition(direct))
                 for names in ((), (@varname(x),))
                     restored = unfix(fix(original; x=2.0), names...)
-                    @test isempty(conditioned(restored))
-                    @test keys(VarInfo(Xoshiro(1), restored)) == [@varname(x)]
-                    @test logjoint(restored, (; x=3.0)) == logjoint(direct, (; x=3.0))
+                    @test conditioned(restored)[@varname(x)] == 1.0
+                    @test isempty(keys(VarInfo(Xoshiro(1), restored)))
+                    @test logjoint(restored, (;)) == logpdf(Normal(), 1.0)
                 end
             end
             for original in (observed, decondition(observed))

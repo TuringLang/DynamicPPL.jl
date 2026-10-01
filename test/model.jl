@@ -73,7 +73,7 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
         @test first(@inferred init!!(Xoshiro(1), model, accs, InitFromPrior())) == 1.0
     end
 
-    @testset "direct construction has no observations" begin
+    @testset "direct construction without declared argument LHS variables" begin
         @model covariate(x, y) = y ~ Normal(x)
         f = covariate(0.0, 1.0).f
         for m in (
@@ -84,8 +84,35 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
             @test isempty(conditioned(m))
             @test isempty(DynamicPPL._lhs_arguments(m))
             @test ismissing(m.args.x)
+            @test_throws ArgumentError condition(m; y=2.0)
+            @test_throws ArgumentError fix(m; y=2.0)
         end
         @test conditioned(covariate(0.0, 1.0)) == VarNamedTuple(; y=1.0)
+    end
+
+    @testset "direct construction records argument-supplied observations" begin
+        @model positional_lhs(y, mu) = y ~ Normal(mu)
+        @model keyword_lhs(; y, mu) = y ~ Normal(mu)
+        direct_lhs(original) = DynamicPPL.Model{false}(
+            original.f, original.args, original.defaults; lhs_arguments=(:y,)
+        )
+        for original in (positional_lhs(1.0, 0.0), keyword_lhs(; y=1.0, mu=0.0))
+            direct = @inferred direct_lhs(original)
+            @test conditioned(direct) == VarNamedTuple(; y=1.0)
+            accs = VarInfo(DynamicPPL.AccumulatorTuple(LogLikelihoodAccumulator()))
+            result, vi = @inferred init!!(Xoshiro(1), direct, accs, InitFromPrior())
+            @test result == 1.0
+            @test getloglikelihood(vi) == logpdf(Normal(), 1.0)
+            @test keys(VarInfo(Xoshiro(1), decondition(direct))) == [@varname(y)]
+        end
+        for original in (positional_lhs(nothing, 0.0), keyword_lhs(; y=nothing, mu=0.0))
+            direct = @inferred direct_lhs(original)
+            @test isempty(conditioned(direct))
+            @test keys(VarInfo(Xoshiro(1), direct)) == [@varname(y)]
+            restored = unfix(fix(direct; y=2.0))
+            @test isempty(conditioned(restored))
+            @test keys(VarInfo(Xoshiro(1), restored)) == [@varname(y)]
+        end
     end
 
     @testset "convenience functions" begin
