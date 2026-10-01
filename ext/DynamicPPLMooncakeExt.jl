@@ -38,6 +38,14 @@ function Mooncake.rrule!!(
     return output, pullback
 end
 
+# Role queries return only discrete tags, never bound values.
+Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
+    typeof(DynamicPPL._get_argument_role),Vararg
+}
+Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
+    typeof(DynamicPPL._get_model_role),Vararg
+}
+
 # These are purely optimisations (although quite significant ones sometimes, especially for
 # _get_range_and_transform).
 Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{typeof(is_transformed),Vararg}
