@@ -227,6 +227,47 @@ end
             @test DynamicPPL.DebugUtils.model_warntype(model) isa Any
         end
     end
+
+    @testset "model body with an argument LHS variable" begin
+        @model function unstable_observation(y::T, extra...; center=0.0, kw...) where {T}
+            m ~ Normal(center)
+            body_scale = m > 0 ? 1.0 : 1
+            return y ~ Normal(m, body_scale)
+        end
+        @model function unstable_keyword(; y::T=1.0) where {T}
+            m ~ Normal()
+            body_scale = m > 0 ? 1.0 : 1
+            return y ~ Normal(m, body_scale)
+        end
+        @model function unstable_observation(y::Int)
+            unwrapped_body = y
+            return unwrapped_body
+        end
+        unwrapped = unstable_observation(1)
+        unwrapped_code, _ = DynamicPPL.DebugUtils.model_typed(
+            unwrapped, VarInfo(Xoshiro(1), unwrapped), false
+        )
+        @test :unwrapped_body in unwrapped_code.slotnames
+        for original in (
+                unstable_observation(1.0),
+                unstable_observation(1.0, 2; center=3.0, other=4),
+                unstable_keyword(),
+            ),
+            model in (original, condition(original; y=1.0f0))
+
+            vi = VarInfo(Xoshiro(1), model)
+            codeinfo, retype = DynamicPPL.DebugUtils.model_typed(model, vi, false)
+            @test :body_scale in codeinfo.slotnames
+            @test retype <: Tuple{typeof(conditioned(model)[@varname(y)]),VarInfo}
+            mktemp() do _, io
+                redirect_stdout(io) do
+                    DynamicPPL.DebugUtils.model_warntype(model, vi)
+                end
+                seekstart(io)
+                @test occursin("body_scale", read(io, String))
+            end
+        end
+    end
 end
 
 @info "Completed $(@__FILE__) in $(now() - __now__)."

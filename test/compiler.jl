@@ -90,7 +90,8 @@ end
 
             return x, y
         end
-        @test length(methods(testmodel_comp)) == 2
+        # Argument LHS variables add a debug evaluator method.
+        @test length(methods(testmodel_comp)) == 3
         testmodel_comp(1.0, 1.2)
 
         # check if drawing from the prior works
@@ -98,7 +99,7 @@ end
             x ~ Normal()
             return x
         end
-        @test length(methods(testmodel01)) == 4
+        @test length(methods(testmodel01)) == 6
         f0_mm = decondition(testmodel01())
         @test mean(f0_mm() for _ in 1:1000) ≈ 0.0 atol = 0.1
 
@@ -108,7 +109,7 @@ end
             x[2] ~ Normal()
             return x
         end
-        @test length(methods(testmodel02)) == 4
+        @test length(methods(testmodel02)) == 6
         f0_mm = decondition(testmodel02())
         @test all(x -> isapprox(x, 0; atol=0.1), mean(f0_mm() for _ in 1:1000))
 
@@ -117,7 +118,7 @@ end
             return x
         end
         f01_mm = decondition(testmodel03())
-        @test length(methods(testmodel03)) == 4
+        @test length(methods(testmodel03)) == 6
         @test mean(f01_mm() for _ in 1:1000) ≈ 0.5 atol = 0.1
 
         # test if we get the correct return values
@@ -130,7 +131,7 @@ end
 
             return x1, x2
         end
-        @test length(methods(testmodel1)) == 2
+        @test length(methods(testmodel1)) == 3
         f1_mm = testmodel1(1.0, 10.0)
         @test f1_mm() == (1, 10)
 
@@ -148,7 +149,7 @@ end
 
             return x1, x2
         end
-        @test length(methods(testmodel2)) == 2
+        @test length(methods(testmodel2)) == 3
         f1_mm = testmodel2(; x1=1.0, x2=10.0)
         @test f1_mm() == (1, 10)
 
@@ -613,7 +614,7 @@ end
 
         # Ensure we can specialize on arguments.
         @model demo(x) = x ~ Normal()
-        @test length(methods(demo)) == 4
+        @test length(methods(demo)) == 5
         @test f(demo(1.0))
         f(::Model{typeof(demo),(:x,)}) = false
         @test !f(demo(1.0))
