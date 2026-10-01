@@ -24,11 +24,19 @@ Re-evaluation and `LogDensityFunction` construction no longer copy fixed transfo
 
 `pointwise_loglikelihoods` and `pointwise_logdensities` now record observations for threadsafe models, such as `setthreadsafe(model, true)`; previously they were silently omitted. See [#1500](https://github.com/TuringLang/DynamicPPL.jl/pull/1500).
 
-Added `evaluate!!(model, context, vi)` to evaluate with an explicit leaf context and collect outputs in `vi`, such as `evaluate!!(model, InitContext(rng, InitFromPrior(), UnlinkAll()), VarInfo())`. See [#1500](https://github.com/TuringLang/DynamicPPL.jl/pull/1500).
+Added `evaluate!!(model, context, vi)` to evaluate with an explicit `Context` and collect outputs in `vi`, such as `evaluate!!(model, Context(rng, InitFromPrior(), UnlinkAll()), VarInfo())`. See [#1500](https://github.com/TuringLang/DynamicPPL.jl/pull/1500).
 
 ## Breaking changes
 
-Evaluation contexts now belong to a run: `InitContext` → `Context`, and `evaluate!!(model, vi)` → `evaluate!!(model, context, vi)`. Custom value selection belongs in initialisation strategies.
+`DefaultContext()` / `InitContext(...)` → `Context(rng, init_strategy, transform_strategy)`: specify parameter inputs and output transforms explicitly. See [#1503](https://github.com/TuringLang/DynamicPPL.jl/pull/1503).
+
+`contextualize` and `Model.context` are removed: `contextualize(m, ctx); evaluate!!(m, vi)` → `evaluate!!(m, ctx, vi)`. The two-argument `evaluate!!(m, vi)` is removed. See [#1503](https://github.com/TuringLang/DynamicPPL.jl/pull/1503).
+
+`AbstractContext` / `AbstractParentContext` subtyping → initialisation strategies for custom value selection and accumulators for custom output handling. These names are no longer exported. See [#1503](https://github.com/TuringLang/DynamicPPL.jl/pull/1503).
+
+`childcontext`, `setchildcontext`, `leafcontext`, and `setleafcontext` are removed: use a single `Context(rng, init_strategy, transform_strategy)` passed directly to evaluation instead of traversing or rebuilding a context hierarchy. See [#1503](https://github.com/TuringLang/DynamicPPL.jl/pull/1503).
+
+`make_evaluate_args_and_kwargs(m, vi)` → `DynamicPPL.make_evaluate_args_and_kwargs(m, ctx, vi)`, now `public`; the prepared positional arguments begin with `(m, ctx, vi)`. See [#1503](https://github.com/TuringLang/DynamicPPL.jl/pull/1503).
 
 Observation calls use merged prefix metadata: `tilde_observe!!(prefix, prefix_template, dist, value, vn, template, vi)` → `tilde_observe!!(prefix, dist, value, vn, template, vi)`. See [#1502](https://github.com/TuringLang/DynamicPPL.jl/pull/1502).
 

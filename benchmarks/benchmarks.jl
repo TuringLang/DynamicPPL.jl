@@ -118,12 +118,12 @@ end
 
 @model _indexed_observation(obs, mu) = obs ~ Normal(mu, 1)
 
-"Indexed submodels with argument observations and one shared latent mean."
+"Indexed submodels with explicit observations and one shared latent mean."
 @model function indexed_submodels(obs)
     mu ~ Normal()
     x = similar(obs)
     for i in eachindex(obs)
-        x[i] ~ to_submodel(_indexed_observation(obs[i], mu))
+        x[i] ~ to_submodel(condition(_indexed_observation(missing, mu); obs=obs[i]))
     end
     return (; mu=mu)
 end
