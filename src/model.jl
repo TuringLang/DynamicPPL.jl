@@ -188,7 +188,10 @@ function _model_role_at(values::VarNamedTuple, optic::AbstractPPL.Property{S}, v
     end
 end
 @inline function _model_role_at(value::ModelValue, optic::AbstractPPL.AbstractOptic, vn)
-    return VarNamedTuples._haskey_optic(value, optic) ? _model_role(value) : nothing
+    VarNamedTuples._haskey_optic(value, optic) && return _model_role(value)
+    value isa ModelValue{Fix} &&
+        _fixed_shape_error(vn, "coverage with a static size and shape.")
+    return nothing
 end
 @inline function _model_role_at(value::ModelValue, ::AbstractPPL.Iden, vn)
     return _model_role(value)
