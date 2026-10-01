@@ -494,24 +494,35 @@ function _model_argument_binding(tree::ModelValueTree{<:Tuple}, optic::AbstractP
     end
     return value isa NoModelBinding ? nothing : _model_argument_binding(value, optic.child)
 end
-function _model_property_optic(tree::ModelValueTree{<:NamedTuple}, optic::AbstractPPL.Index)
-    optic = AbstractPPL.concretize_top_level(optic, tree.template)
-    isempty(optic.kw) && length(optic.ix) == 1 || return nothing
-    index = only(optic.ix)
-    index isa Symbol && return AbstractPPL.Property{index}(optic.child)
-    index isa Integer && checkbounds(Bool, Base.OneTo(length(tree.template)), index) ||
-        return nothing
-    return AbstractPPL.Property{keys(tree.template)[index]}(optic.child)
+@generated function _with_model_property(
+    f::F, tree::ModelValueTree{<:NamedTuple{names}}, optic::AbstractPPL.Index
+) where {F,names}
+    branches = map(enumerate(names)) do (i, name)
+        :(
+            (index == $i || index === $(QuoteNode(name))) &&
+            return f(AbstractPPL.Property{$(QuoteNode(name))}(optic.child))
+        )
+    end
+    return quote
+        optic = AbstractPPL.concretize_top_level(optic, tree.template)
+        isempty(optic.kw) && length(optic.ix) == 1 || return f(nothing)
+        index = only(optic.ix)
+        index isa Union{Integer,Symbol} || return f(nothing)
+        $(branches...)
+        return f(nothing)
+    end
 end
 function _model_argument_binding(
     tree::ModelValueTree{<:NamedTuple}, optic::AbstractPPL.Index
 )
-    property = _model_property_optic(tree, optic)
-    return property === nothing ? nothing : _model_argument_binding(tree, property)
+    return _with_model_property(tree, optic) do property
+        return property === nothing ? nothing : _model_argument_binding(tree, property)
+    end
 end
 function _model_role_at(tree::ModelValueTree{<:NamedTuple}, optic::AbstractPPL.Index, vn)
-    property = _model_property_optic(tree, optic)
-    return property === nothing ? nothing : _model_role_at(tree, property, vn)
+    return _with_model_property(tree, optic) do property
+        return property === nothing ? nothing : _model_role_at(tree, property, vn)
+    end
 end
 function _model_argument_binding(
     values::VarNamedTuple, optic::AbstractPPL.Index{Tuple{Symbol},NamedTuple{(),Tuple{}}}
@@ -1719,8 +1730,9 @@ end
 function _remove_model_binding(
     ::Type{R}, tree::ModelValueTree{<:NamedTuple}, optic::AbstractPPL.Index
 ) where {R}
-    property = _model_property_optic(tree, optic)
-    return property === nothing ? tree : _remove_model_binding(R, tree, property)
+    return _with_model_property(tree, optic) do property
+        return property === nothing ? tree : _remove_model_binding(R, tree, property)
+    end
 end
 
 function _remove_model_binding(

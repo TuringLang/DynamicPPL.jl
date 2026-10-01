@@ -49,7 +49,32 @@ end
     return d
 end
 
+@model integer_lhs(x) = (x[1] ~ Normal(); x[2] ~ Normal(); x)
+@model mixed_lhs(x) = (x.a ~ Normal(); x[2] ~ Normal(); x)
+
 @testset "condition and fix" begin
+    @testset "partial NamedTuple bindings infer integer LHS variable lookup" begin
+        for x in ((a=1.0, b=2.0), (a=1.0, b=2.0, c=3.0, d=4.0, e=5.0)),
+            (model, expected) in (
+                (
+                    condition(integer_lhs(x), @varname(x.a) => 3.0),
+                    logpdf(Normal(), 3.0) + logpdf(Normal(), 2.0),
+                ),
+                (fix(mixed_lhs(x), @varname(x.a) => 3.0), logpdf(Normal(), 2.0)),
+            )
+
+            result, vi = @inferred evaluate!!(
+                model,
+                InitContext(
+                    Xoshiro(1), InitFromParams(VarNamedTuple(), nothing), UnlinkAll()
+                ),
+                VarInfo(),
+            )
+            @test result == merge(x, (a=3.0,))
+            @test getloglikelihood(vi) ≈ expected
+        end
+    end
+
     @testset "keyword splat partial bindings are explicit errors" begin
         @model keyword_lhs(; kw...) = (kw[:y] ~ Normal(); return kw[:y])
         for bind in (condition, fix)
