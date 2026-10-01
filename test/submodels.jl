@@ -158,6 +158,12 @@ end
         end
         @model keyword_buffer(; a=0.0) = a ~ to_submodel(fix(child(); x=2.0))
         @model nested(m) = b ~ to_submodel(m)
+        @testset "binding accessors list submodel return values before evaluation" begin
+            model = dynamic_buffer(3.0)
+            @test conditioned(model)[@varname(a)] == 3.0
+            @test isempty(conditioned(decondition(model, :a)))
+            @test fixed(fix(model; a=1.0))[@varname(a)] == 1.0
+        end
         for bind in (condition, fix)
             for model in (
                 bind(dynamic_buffer((; x=0.0)), @varname(a.x) => 2.0),
