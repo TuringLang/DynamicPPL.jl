@@ -148,6 +148,17 @@ end
         end
     end
 
+    @testset "missing diagnostics follow the LHS variable role" begin
+        @model missing_binding() = x ~ Normal()
+        for (bind, remove) in ((condition, decondition), (fix, unfix))
+            bound = bind(missing_binding(); x=missing)
+            @test_throws "LHS variable `x` contains `missing`; make it latent with `$remove`." bound(
+                Xoshiro(1)
+            )
+            @test remove(bound, @varname(x))(Xoshiro(1)) isa Real
+        end
+    end
+
     @testset "NamedTuple bindings and LHS variables require field names" begin
         @model integer_lhs(x) = (x[1] ~ Normal(); x)
         @model nested_integer_lhs(x) = (x.p[1] ~ Normal(); x)
@@ -354,9 +365,11 @@ end
         end
         model = keyword_observation(; x=missing)
         @test_throws r"ArgumentError: .*`kw\[:x\]`.*decondition" model(Xoshiro(1))
-        for bind in (condition, fix)
+        for (bind, remove) in ((condition, decondition), (fix, unfix))
             bound = bind(keyword_observation(; x=1.0); kw=(; x=missing))
-            @test_throws r"ArgumentError: .*`kw\[:x\]`.*decondition" bound(Xoshiro(1))
+            @test_throws "LHS variable `kw[:x]` contains `missing`; make it latent with `$remove`." bound(
+                Xoshiro(1)
+            )
         end
     end
 
@@ -645,7 +658,12 @@ end
             @test_throws message model(Xoshiro(1))
             for bind in (condition, fix)
                 bound = bind(model; values...)
-                @test_throws message bound(Xoshiro(1))
+                diagnostic = if bind === fix
+                    Regex(replace(message.pattern, "decondition" => "unfix"))
+                else
+                    message
+                end
+                @test_throws diagnostic bound(Xoshiro(1))
             end
         end
         @test decondition(scalar_observation(missing))(Xoshiro(1)) isa Real
@@ -1099,7 +1117,12 @@ end
                 field_model = op(
                     field_observation(MissingRecord(1.0)); x=MissingRecord(missing)
                 )
-                @test_throws message logjoint(wrap(field_model), (;))
+                diagnostic = if op === fix
+                    Regex(replace(message.pattern, "decondition" => "unfix"))
+                else
+                    message
+                end
+                @test_throws diagnostic logjoint(wrap(field_model), (;))
             end
         end
     end
