@@ -233,6 +233,28 @@ end
         @test_throws r"ArgumentError: .*x.*size and shape" fix(scalar_shape(1.0); x=2.0)()
     end
 
+    @testset "whole fixed bindings cover executed local components" begin
+        @model function local_components()
+            x = zeros(2)
+            for i in 1:2
+                x[i] ~ Normal()
+            end
+            return x
+        end
+        @model nested_local_components() = child ~ to_submodel(local_components())
+        for model in (
+            fix(local_components(); x=[2.0]),
+            fix(nested_local_components(), @varname(child.x) => [2.0]),
+        )
+            @test_throws r"ArgumentError: .*x\[2\].*coverage.*size and shape" model(
+                Xoshiro(1)
+            )
+        end
+        observed = condition(local_components(); x=[2.0])
+        @test observed(Xoshiro(1)) == [2.0, rand(Xoshiro(1), Normal())]
+        @test keys(rand(Xoshiro(1), observed)) == [@varname(x[2])]
+    end
+
     @testset "fixed argument shape" begin
         @model function changed_shape(x, change, index)
             x = change(x)
