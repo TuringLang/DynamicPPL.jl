@@ -11,7 +11,17 @@ using Distributions:
     product_distribution,
     truncated
 using DifferentiationInterface: DifferentiationInterface
-using DynamicPPL: DynamicPPL, @model, to_submodel, VarInfo, LinkAll, UnlinkAll
+using DynamicPPL:
+    DynamicPPL,
+    @model,
+    @varname,
+    condition,
+    decondition,
+    fix,
+    to_submodel,
+    VarInfo,
+    LinkAll,
+    UnlinkAll
 using DynamicPPL.TestUtils.AD: run_ad, NoTest
 using Enzyme: Enzyme
 using FillArrays: Fill
@@ -321,6 +331,13 @@ function build_combinations(rng)
     end
     push!(models, ("Dynamic", dynamic()))
     push!(models, ("Submodel", parent(randn(rng))))
+    # Binding paths: fixed values, and a partial binding and partial `decondition` of an
+    # argument.
+    push!(models, ("Smorgasbord fixed", fix(smorg; m=1.0, stds=ones(100))))
+    push!(
+        models, ("Smorgasbord partial condition", condition(smorg, @varname(x[1]) => 0.0))
+    )
+    push!(models, ("Smorgasbord partial decondition", decondition(smorg, @varname(x[1]))))
     d = [1, 1, 1, 2, 2, 2]
     w = [1, 2, 3, 2, 1, 1]
     z = [1, 1, 2, 2, 1, 2]
