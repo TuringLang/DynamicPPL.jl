@@ -30,7 +30,7 @@ Added `evaluate!!(model, context, vi)` to evaluate with an explicit `Context` an
 
 `LogDensityFunction(model; rng)` now shares the supplied RNG across construction, evaluation, AD preparation, and parameter sampling. Use `rand(__context__.rng, ...)` for model-body draws.
 
-`DynamicPPL.logdensity_internal` now requires `rng` as its final positional argument. Downstream calls to `AbstractPPL.prepare(DynamicPPL.logdensity_internal, x; context=...)` must append the RNG to their context tuple.
+`DynamicPPL.logdensity_internal` takes an optional final `rng` argument, defaulting to the task-local `Random.default_rng()`; append an RNG to the `context` tuple of `AbstractPPL.prepare(DynamicPPL.logdensity_internal, x; context=...)` to control explicit draws in the model body. See [#1504](https://github.com/TuringLang/DynamicPPL.jl/pull/1504).
 
 `DefaultContext()`/`InitContext(...)` are removed → `Context(rng, init_strategy, transform_strategy)` with explicit parameter inputs and output transforms. See [#1503](https://github.com/TuringLang/DynamicPPL.jl/pull/1503), [#1469](https://github.com/TuringLang/DynamicPPL.jl/issues/1469).
 
