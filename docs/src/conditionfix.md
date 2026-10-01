@@ -18,6 +18,9 @@
     observation*: a conditioned binding. Binding an argument replaces its value
     in the model body. Observed LHS variables use the value computed by the body; fixed LHS variables
     reset to their bound value when their tilde statement runs.
+    `model.args` and `model.defaults` retain construction values when bindings change;
+    bindings live in the model's binding table, so use [`conditioned`](@ref) and
+    [`fixed`](@ref) to inspect effective observations and fixed values.
     Direct `Model` construction records no observations; pass `lhs_arguments` to declare
     which arguments can be bound with `condition` or `fix`.
     A *submodel return value* is the value assigned to the LHS variable by a submodel
@@ -81,6 +84,8 @@
     The model body must not mutate bound values, directly or through an alias such
     as a `view`. Partial bindings on array arguments rebuild
     the argument in O(length) per evaluation; prefer whole replacements for large arrays.
+    Under reverse-mode AD such as Mooncake, partial bindings can be far more expensive,
+    so bind whole arrays when gradients are needed.
   - Bindings unused by any executed LHS variable are ignored, including unknown
     names and LHS variables in branches that do not run.
 
