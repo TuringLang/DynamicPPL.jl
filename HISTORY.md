@@ -108,7 +108,15 @@ To preserve argument `x=1` before the body runs, replace `condition(f(1); x=2)` 
 
 To observe raw data, replace a conditioned argument LHS with a separate local LHS variable. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-`Context(rng, init_strategy, transform_strategy)` replaces `InitContext` and the context hierarchy. Pass it to `evaluate!!(model, context, outputs)`; custom initialisation and observation handling belong to strategies and accumulators.
+`DefaultContext()` / `InitContext(...)` → `Context(rng, init_strategy, transform_strategy)`: specify parameter inputs and output transforms explicitly. See [#1503](https://github.com/TuringLang/DynamicPPL.jl/pull/1503).
+
+`contextualize` and `Model.context` are removed: `contextualize(m, ctx); evaluate!!(m, vi)` → `evaluate!!(m, ctx, vi)`. The two-argument `evaluate!!(m, vi)` is removed. See [#1503](https://github.com/TuringLang/DynamicPPL.jl/pull/1503).
+
+`AbstractContext` / `AbstractParentContext` subtyping → initialisation strategies for custom value selection and accumulators for custom output handling. These names are no longer exported. See [#1503](https://github.com/TuringLang/DynamicPPL.jl/pull/1503).
+
+`childcontext`, `setchildcontext`, `leafcontext`, and `setleafcontext` are removed: use a single `Context(rng, init_strategy, transform_strategy)` passed directly to evaluation instead of traversing or rebuilding a context hierarchy. See [#1503](https://github.com/TuringLang/DynamicPPL.jl/pull/1503).
+
+`make_evaluate_args_and_kwargs(m, vi)` → `DynamicPPL.make_evaluate_args_and_kwargs(m, ctx, vi)`, now `public`; the prepared positional arguments begin with `(m, ctx, vi)`. See [#1503](https://github.com/TuringLang/DynamicPPL.jl/pull/1503).
 
 Replace whole bindings incompatible with declared argument or template types with compatible values, or reconstruct the model. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
