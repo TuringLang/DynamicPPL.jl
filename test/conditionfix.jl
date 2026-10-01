@@ -49,29 +49,86 @@ end
     return d
 end
 
-@model integer_lhs(x) = (x[1] ~ Normal(); x[2] ~ Normal(); x)
-@model mixed_lhs(x) = (x.a ~ Normal(); x[2] ~ Normal(); x)
-
 @testset "condition and fix" begin
-    @testset "partial NamedTuple bindings infer integer LHS variable lookup" begin
-        for x in ((a=1.0, b=2.0), (a=1.0, b=2.0, c=3.0, d=4.0, e=5.0)),
-            (model, expected) in (
-                (
-                    condition(integer_lhs(x), @varname(x.a) => 3.0),
-                    logpdf(Normal(), 3.0) + logpdf(Normal(), 2.0),
-                ),
-                (fix(mixed_lhs(x), @varname(x.a) => 3.0), logpdf(Normal(), 2.0)),
+    @testset "NamedTuple bindings and LHS variables require field names" begin
+        @model integer_lhs(x) = (x[1] ~ Normal(); x)
+        @model nested_integer_lhs(x) = (x.p[1] ~ Normal(); x)
+        @model array_integer_lhs(x) = (x[1][1] ~ Normal(); x)
+        @model local_integer_lhs() = (x = (a=1.0, b=2.0); x[1] ~ Normal(); x)
+        for (model, value, address, message) in (
+            (
+                integer_lhs,
+                (a=1.0, b=2.0),
+                @varname(x[1]),
+                "ArgumentError: Integer indexing into a NamedTuple at `x[1]` is unsupported; use `x.a` instead.",
+            ),
+            (
+                nested_integer_lhs,
+                (p=(a=1.0, b=2.0),),
+                @varname(x.p[1]),
+                "ArgumentError: Integer indexing into a NamedTuple at `x.p[1]` is unsupported; use `x.p.a` instead.",
+            ),
+            (
+                array_integer_lhs,
+                [(a=1.0, b=2.0)],
+                @varname(x[1][1]),
+                "ArgumentError: Integer indexing into a NamedTuple at `x[1][1]` is unsupported; use `x[1].a` instead.",
+            ),
+        )
+            for m in (
+                model(value),
+                condition(model(nothing); x=value),
+                fix(model(nothing); x=value),
             )
+                for bind in (condition, fix)
+                    @test_throws message bind(m, address => 3.0)
+                end
+                for remove in (decondition, unfix)
+                    @test_throws message remove(m, address)
+                end
+                @test_throws message m(Xoshiro(1))
+            end
+            @test_throws message decondition(model(value))(Xoshiro(1))
+        end
+        message = "ArgumentError: Integer indexing into a NamedTuple at `x[1]` is unsupported; use `x.a` instead."
+        for m in (
+            local_integer_lhs(),
+            condition(local_integer_lhs(), @varname(x[1]) => 3.0),
+            fix(local_integer_lhs(), @varname(x[1]) => 3.0),
+        )
+            @test_throws message m(Xoshiro(1))
+        end
+        @test_throws "ArgumentError: Integer indexing into a NamedTuple at `x[1]` is unsupported; use a field name instead." integer_lhs((;))(
+            Xoshiro(1)
+        )
+        @test_throws "ArgumentError: Integer indexing into a NamedTuple at `x[3]` is unsupported; use a field name instead." fix(
+            integer_lhs((a=1.0, b=2.0)), @varname(x[3]) => 3.0
+        )
+        @model nested_integer_binding() = child ~ to_submodel(local_integer_lhs())
+        @test_throws message nested_integer_binding()(Xoshiro(1))
+        for bind in (condition, fix)
+            @test_throws message bind(
+                condition(local_integer_lhs(); x=(a=1.0, b=2.0)),
+                VarNamedTuple((@varname(x[1]) => 3.0,)),
+            )
+        end
+        @model named_lhs(x) = (x.a ~ Normal(); x.b ~ Normal(); x)
+        for bind in (condition, fix)
+            m = bind(named_lhs((a=1.0, b=2.0)), @varname(x.a) => 3.0)
+            for update in (condition, fix)
+                @test_throws message update(m, @varname(x[1]) => 4.0)
+            end
+            for remove in (decondition, unfix)
+                @test_throws message remove(m, @varname(x[1]))
+            end
+        end
+        for value in ((1.0, 2.0), [1.0, 2.0]),
+            (bind, remove) in ((condition, decondition), (fix, unfix))
 
-            result, vi = @inferred evaluate!!(
-                model,
-                InitContext(
-                    Xoshiro(1), InitFromParams(VarNamedTuple(), nothing), UnlinkAll()
-                ),
-                VarInfo(),
-            )
-            @test result == merge(x, (a=3.0,))
-            @test getloglikelihood(vi) ≈ expected
+            m = bind(integer_lhs(value), @varname(x[1]) => 3.0)
+            @test m(Xoshiro(1))[1] == 3.0
+            expected = remove === unfix ? 1.0 : rand(Xoshiro(1), Normal())
+            @test remove(m, @varname(x[1]))(Xoshiro(1))[1] == expected
         end
     end
 
@@ -780,30 +837,6 @@ end
                 @test select(bound)[sibling] == 2.0
             end
         end
-    end
-
-    @testset "NamedTuple integer indices resolve against the stored template" begin
-        @model named_fields(x) = (x.a ~ Normal(); x.b ~ Normal(); x)
-        @model nested_named_fields(x) = (x[1].a ~ Normal(); x[1].b ~ Normal(); x)
-        for (model, first, second, latent) in (
-            (named_fields((a=1.0, b=2.0)), @varname(x[1]), @varname(x[2]), @varname(x.a)),
-            (
-                nested_named_fields([(a=1.0, b=2.0)]),
-                @varname(x[1][1]),
-                @varname(x[1][2]),
-                @varname(x[1].a)
-            ),
-        )
-            changed = decondition(model, first)
-            @test haskey(rand(Xoshiro(1), changed), latent)
-            @test length(rand(Xoshiro(1), decondition(changed, second))) == 2
-            @test_throws ArgumentError decondition(changed, first)
-        end
-        restored = unfix(
-            fix(named_fields((a=1.0, b=2.0)); x=(a=3.0, b=4.0)), @varname(x[1])
-        )
-        @test restored(Xoshiro(1)) == (a=1.0, b=4.0)
-        @test unfix(restored, @varname(x[2]))(Xoshiro(1)) == (a=1.0, b=2.0)
     end
 
     @testset "unfix restores the last fixed LHS variable's argument-supplied observation" begin

@@ -32,6 +32,8 @@ Added the `context` keyword to `DynamicPPL.DebugUtils.model_typed`, `model_warnt
 
 On newer DynamicPPL versions, MLD’s generic API requires a manually constructed log-density adapter; no drop-in model-level replacement is currently available. Migration of the integration into MLD is proposed in [MLD #47](https://github.com/ElOceanografo/MarginalLogDensities.jl/pull/47).
 
+Integer indices into NamedTuples are rejected in binding addresses and LHS variables: `x[1]` on a NamedTuple → `x.a`; Tuples retain integer indices. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+
 Partly removing bindings of a single multivariate LHS variable now throws `ArgumentError` during evaluation; declare separate LHS variables to remove their bindings independently. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
 Partial bindings preserve argument array element types through exact conversion and reject values that cannot be represented. Use a compatible argument template, including for AD tracer values. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
