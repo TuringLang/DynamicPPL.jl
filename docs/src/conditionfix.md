@@ -21,9 +21,9 @@
     `model.args` and `model.defaults` retain construction values when bindings change;
     bindings live in the model's binding table, so use [`conditioned`](@ref) and
     [`fixed`](@ref) to inspect effective observations and fixed values.
-    Direct `Model` construction with `lhs_arguments` records argument-supplied
+    Direct `Model` construction with `args_on_lhs` records argument-supplied
     observations for the listed arguments, just as `@model` does. Without
-    `lhs_arguments`, it records no argument-supplied observations and its arguments
+    `args_on_lhs`, it records no argument-supplied observations and its arguments
     cannot be bound.
     A *submodel return value* is the value assigned to the LHS variable by a submodel
     tilde (`a ~ to_submodel(...)`). If `a` is an argument, it supplies only the value

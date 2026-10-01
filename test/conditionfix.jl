@@ -130,7 +130,7 @@ end
         @model keyword_argument(; x) = x ~ Normal()
         for observed in (scalar_argument(1.0), keyword_argument(; x=1.0))
             direct = DynamicPPL.Model{false}(
-                observed.f, observed.args, observed.defaults; lhs_arguments=(:x,)
+                observed.f, observed.args, observed.defaults; args_on_lhs=(:x,)
             )
             for original in (direct, condition(direct; x=4.0), decondition(direct))
                 for names in ((), (@varname(x),))
@@ -337,7 +337,7 @@ end
 
         direct = DynamicPPL.Model{false}(placeholder_array().f, (; x=nothing), (;))
         @test isempty(conditioned(direct))
-        @test isempty(DynamicPPL._lhs_arguments(direct))
+        @test isempty(DynamicPPL._args_on_lhs(direct))
         @test keys(VarInfo(Xoshiro(1), direct)) == [@varname(x[1]), @varname(x[2])]
     end
 
