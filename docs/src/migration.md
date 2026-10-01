@@ -12,6 +12,10 @@ or `VectorValueAccumulator` when those outputs are needed, for example
 `VarInfo(VectorValueAccumulator(), DynamicPPL.default_accumulators()...)`; `VarInfo(model)` remains
 a convenience constructor that records vectorised values and log densities.
 
+`PrefixContext` and `extract_prefixes` are removed. Use `prefix(model, vn; template)`
+to set a prefix and `model.prefix` to read the combined prefix (`nothing` when absent).
+Prefixes and nested storage templates are stored on the model.
+
 To reuse previous values, extract them explicitly before evaluating:
 
 ```julia
