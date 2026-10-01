@@ -130,13 +130,7 @@ DynamicPPL.convert_model_argument(T, ::Type{CustomModelArgument}) = (:converted_
             DynamicPPL.Model{false}(f, (; x=missing, y=1.0), (;)),
             DynamicPPL.Model{false}(f, (; x=missing); y=1.0),
             DynamicPPL.Model{false}(
-                f,
-                (; x=missing, y=1.0),
-                (;),
-                nothing,
-                VarNamedTuple(),
-                nothing,
-                DefaultContext(),
+                f, (; x=missing, y=1.0), (;), nothing, VarNamedTuple(), DefaultContext()
             ),
         )
             @test isempty(conditioned(m))
@@ -162,6 +156,31 @@ DynamicPPL.convert_model_argument(T, ::Type{CustomModelArgument}) = (:converted_
         )
             model = DynamicPPL.Model{false}(identity, args, defaults; args_on_lhs=(name,))
             @test DynamicPPL._args_on_lhs(model) === (name,)
+        end
+    end
+
+    @testset "direct construction preserves merged prefix metadata" begin
+        @model prefixed_lhs(y) = y ~ Normal()
+        original = prefixed_lhs(1.0)
+        for model in (
+            original,
+            prefix(original, @varname(p)),
+            prefix(original, @varname(p[2]); template=zeros(2)),
+        )
+            direct = DynamicPPL.Model{false}(
+                model.f,
+                model.args,
+                model.defaults,
+                model.prefix,
+                model.values,
+                model.context;
+                args_on_lhs=DynamicPPL._args_on_lhs(model),
+            )
+            @test direct.prefix === model.prefix
+            @test (@inferred DynamicPPL.getprefix(direct)) == DynamicPPL.getprefix(model)
+            @test conditioned(direct) == conditioned(model)
+            @test keys(VarInfo(Xoshiro(1), decondition(direct))) ==
+                keys(VarInfo(Xoshiro(1), decondition(model)))
         end
     end
 

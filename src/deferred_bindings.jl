@@ -722,12 +722,12 @@ end
         lhs === nothing || count(site -> first(site) == lhs, sites) == 1 || continue
         child = get(arguments, name, nothing)
         child isa Model || continue
-        address = local_names ? lhs : maybe_prefix(lhs, model.prefix)
+        address = local_names ? lhs : maybe_prefix(lhs, getprefix(model))
         optic =
             address === nothing ? AbstractPPL.Iden() : AbstractPPL.varname_to_optic(address)
         node = _model_argument_binding(values, optic)
         node === nothing && continue
-        prefix = child.prefix
+        prefix = getprefix(child)
         prefix_optic =
             prefix === nothing ? AbstractPPL.Iden() : AbstractPPL.varname_to_optic(prefix)
         namespace = if lhs === nothing && count(site -> first(site) === nothing, sites) > 1
@@ -769,7 +769,7 @@ _listing_namespace_agrees(child, vn) = true
 end
 
 @inline function _listing_namespace_agrees(other, root, child::Model, prefix=nothing)
-    prefix = maybe_prefix(child.prefix, prefix)
+    prefix = maybe_prefix(getprefix(child), prefix)
     for (lhs, submodel) in _lhs_addresses(_binding_metadata(child))
         submodel || continue
         address = maybe_prefix(lhs, prefix)
