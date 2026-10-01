@@ -993,6 +993,7 @@ struct Model{
     Values<:Union{VarNamedTuple,LocalModelValues,UnprefixedArgumentValues},
     Threaded,
     LHSArguments,
+    ArgumentObservations,
 } <: AbstractProbabilisticProgram
     f::F
     args::NamedTuple{argnames,Targs}
@@ -1011,7 +1012,10 @@ struct Model{
             pair -> pair.second isa ModelValue, &, _model_values(values); init=true
         ) || throw(ArgumentError("Model values must carry a condition or fix role"))
         argument_names = Tuple(lhs_arguments)
-        return new{F,A,D,Ta,Td,C,V,Threaded,argument_names}(
+        observation_names = keys(
+            _select_model_values(ArgumentCondition, _model_values(values)).data
+        )
+        return new{F,A,D,Ta,Td,C,V,Threaded,argument_names,observation_names}(
             f, args, defaults, context, values
         )
     end
@@ -1019,7 +1023,9 @@ struct Model{
     function DynamicPPL._reconstruct_model(
         model::Model{F,A,D,Ta,Td}, context::C, values::V, ::Val{Threaded}
     ) where {F,A,D,Ta,Td,C,V,Threaded}
-        return new{F,A,D,Ta,Td,C,V,Threaded,_lhs_arguments(model)}(
+        return new{
+            F,A,D,Ta,Td,C,V,Threaded,_lhs_arguments(model),_argument_observations(model)
+        }(
             model.f, model.args, model.defaults, context, values
         )
     end
@@ -1029,6 +1035,12 @@ function _lhs_arguments(
     ::Model{F,A,D,Ta,Td,C,V,Threaded,LHSArguments}
 ) where {F,A,D,Ta,Td,C,V,Threaded,LHSArguments}
     return LHSArguments
+end
+
+function _argument_observations(
+    ::Model{F,A,D,Ta,Td,C,V,Threaded,LHSArguments,ArgumentObservations}
+) where {F,A,D,Ta,Td,C,V,Threaded,LHSArguments,ArgumentObservations}
+    return ArgumentObservations
 end
 
 """
@@ -2024,7 +2036,9 @@ function unfix(model::Model, syms::Union{Symbol,VarName}...)
     _check_model_removal(Fix, _model_values(model.values), syms...)
     values = _remove_model_values(Fix, _model_values(model.values), syms...)
     removed = _removed_fixed_bindings(_model_values(model.values), values)
-    defaults = _argument_defaults(merge(model.args, model.defaults), _lhs_arguments(model))
+    defaults = _argument_defaults(
+        merge(model.args, model.defaults), _argument_observations(model)
+    )
     if !(model.values isa LocalModelValues) && _model_prefix(model) !== nothing
         defaults = _prefix_values(
             defaults,
@@ -2052,12 +2066,12 @@ function unfix(model::Model, syms::Union{Symbol,VarName}...)
 end
 
 @generated function _argument_defaults(
-    arguments::NamedTuple{names}, lhs_arguments
+    arguments::NamedTuple{names}, argument_observations
 ) where {names}
     fields = map(names) do stored_name
         name = unsplat_symbol(stored_name)
         :(
-            if $(QuoteNode(name)) in lhs_arguments
+            if $(QuoteNode(name)) in argument_observations
                 NamedTuple{($(QuoteNode(name)),)}((
                     _tag_model_value(
                         ArgumentCondition, arguments.$stored_name, $(VarName{name}())
