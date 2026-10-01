@@ -33,7 +33,7 @@ end
                     __model__.defaults,
                     __model__.context,
                     __model__.values;
-                    lhs_arguments=DynamicPPL._lhs_arguments(__model__),
+                    args_on_lhs=DynamicPPL._args_on_lhs(__model__),
                 )
                 @test check_model(child)
             end

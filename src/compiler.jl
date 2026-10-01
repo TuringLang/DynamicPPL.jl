@@ -686,11 +686,11 @@ function build_output(modeldef, linenumbernode, lhs_names)
         :($name = $(NamedTuple)($name)) for
         (name, _, is_splat, _) in kwargs_split if is_splat
     ]
-    lhs_arguments = unique([
+    args_on_lhs = unique([
         name for (name, _, _, _) in vcat(args_split, kwargs_split) if name in lhs_names
     ])
     @gensym replaced prepared
-    prepare_args = map(lhs_arguments) do name
+    prepare_args = map(args_on_lhs) do name
         return quote
             $prepared = $(prepare_model_argument)(__model__, $(VarName{name}()), $name)
             $replaced |= $prepared !== $name
@@ -698,7 +698,7 @@ function build_output(modeldef, linenumbernode, lhs_names)
         end
     end
     debugdef = nothing
-    bodydef = if isempty(lhs_arguments)
+    bodydef = if isempty(args_on_lhs)
         nothing
     else
         definition = copy(evaluatordef)
@@ -725,7 +725,7 @@ function build_output(modeldef, linenumbernode, lhs_names)
         end
         descriptions = [
             :($(Base.string)($("`$n` declared as $t, supplied "), $(Core.typeof)($n)))
-            for (n, t, _, _) in vcat(args_split, kwargs_split) if n in lhs_arguments
+            for (n, t, _, _) in vcat(args_split, kwargs_split) if n in args_on_lhs
         ]
         # Dispatch again after replacement so the body's type parameters match its inputs.
         evaluatordef[:body] = MacroTools.@q begin
@@ -770,7 +770,7 @@ function build_output(modeldef, linenumbernode, lhs_names)
             $args_nt,
             $kwargs_nt,
             $(DynamicPPL.DefaultContext)();
-            lhs_arguments=($(QuoteNode(Tuple(lhs_arguments)))),
+            args_on_lhs=($(QuoteNode(Tuple(args_on_lhs)))),
         )
     end
 
@@ -783,7 +783,7 @@ function build_output(modeldef, linenumbernode, lhs_names)
 end
 
 function _model_evaluator(f, args, kwargs)
-    isempty(_lhs_arguments(first(args))) && return (f, args, kwargs)
+    isempty(_args_on_lhs(first(args))) && return (f, args, kwargs)
     types = Base.typesof(_model_evaluator, args...)
     if hasmethod(f, types)
         signature = Base.unwrap_unionall(which(f, types).sig)

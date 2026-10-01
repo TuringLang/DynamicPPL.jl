@@ -971,15 +971,15 @@ end
 function _reconstruct_model end
 
 """
-    Model{Threaded}(f, args::NamedTuple, defaults::NamedTuple, context=DefaultContext(); lhs_arguments=())
+    Model{Threaded}(f, args::NamedTuple, defaults::NamedTuple, context=DefaultContext(); args_on_lhs=())
 
 Store a model function, arguments, and context. Prefer [`@model`](@ref) for construction.
 The names of arguments with LHS variables are stored as immutable type metadata.
-Set `lhs_arguments` to the tuple of argument names that occur on the left-hand side of
-`~`, for example `Model{false}(f, (; y=1.0), (;); lhs_arguments=(:y,))`.
+Set `args_on_lhs` to the tuple of argument names that occur on the left-hand side of
+`~`, for example `Model{false}(f, (; y=1.0), (;); args_on_lhs=(:y,))`.
 These arguments record argument-supplied observations, just as with `@model`, and can
 be bound with [`condition`](@ref) or [`fix`](@ref). Use [`decondition`](@ref) to remove
-argument-supplied observations. Without `lhs_arguments`, direct construction records
+argument-supplied observations. Without `args_on_lhs`, direct construction records
 no argument-supplied observations and its arguments cannot be bound.
 An argument equal to `nothing` supplies no argument-supplied observation; its LHS
 variables are latent unless explicitly bound.
@@ -996,7 +996,7 @@ struct Model{
     C<:AbstractContext,
     Values<:Union{VarNamedTuple,LocalModelValues,UnprefixedArgumentValues},
     Threaded,
-    LHSArguments,
+    ArgsOnLHS,
 } <: AbstractProbabilisticProgram
     f::F
     args::NamedTuple{argnames,Targs}
@@ -1009,12 +1009,12 @@ struct Model{
         defaults::NamedTuple{D,Td},
         context::C,
         values::V;
-        lhs_arguments::Union{Tuple{Vararg{Symbol}},Vector{Symbol}}=(),
+        args_on_lhs::Union{Tuple{Vararg{Symbol}},Vector{Symbol}}=(),
     ) where {F,A,Ta,D,Td,C,V,Threaded}
         mapreduce(
             pair -> pair.second isa ModelValue, &, _model_values(values); init=true
         ) || throw(ArgumentError("Model values must carry a condition or fix role"))
-        argument_names = Tuple(lhs_arguments)
+        argument_names = Tuple(args_on_lhs)
         return new{F,A,D,Ta,Td,C,V,Threaded,argument_names}(
             f, args, defaults, context, values
         )
@@ -1023,16 +1023,16 @@ struct Model{
     function DynamicPPL._reconstruct_model(
         model::Model{F,A,D,Ta,Td}, context::C, values::V, ::Val{Threaded}
     ) where {F,A,D,Ta,Td,C,V,Threaded}
-        return new{F,A,D,Ta,Td,C,V,Threaded,_lhs_arguments(model)}(
+        return new{F,A,D,Ta,Td,C,V,Threaded,_args_on_lhs(model)}(
             model.f, model.args, model.defaults, context, values
         )
     end
 end
 
-function _lhs_arguments(
-    ::Model{F,A,D,Ta,Td,C,V,Threaded,LHSArguments}
-) where {F,A,D,Ta,Td,C,V,Threaded,LHSArguments}
-    return LHSArguments
+function _args_on_lhs(
+    ::Model{F,A,D,Ta,Td,C,V,Threaded,ArgsOnLHS}
+) where {F,A,D,Ta,Td,C,V,Threaded,ArgsOnLHS}
+    return ArgsOnLHS
 end
 
 Base.@constprop :aggressive function Model{Threaded}(
@@ -1040,10 +1040,10 @@ Base.@constprop :aggressive function Model{Threaded}(
     args::NamedTuple,
     defaults::NamedTuple,
     context::AbstractContext=DefaultContext();
-    lhs_arguments::Union{Tuple{Vararg{Symbol}},Vector{Symbol}}=(),
+    args_on_lhs::Union{Tuple{Vararg{Symbol}},Vector{Symbol}}=(),
 ) where {Threaded}
-    values = _argument_defaults(merge(args, defaults), Val(Tuple(lhs_arguments)))
-    return Model{Threaded}(f, args, defaults, context, values; lhs_arguments)
+    values = _argument_defaults(merge(args, defaults), Val(Tuple(args_on_lhs)))
+    return Model{Threaded}(f, args, defaults, context, values; args_on_lhs)
 end
 
 """
@@ -1053,7 +1053,7 @@ Create a model with evaluation function `f` and arguments `args`.
 
 Arguments are ordinary inputs; no argument-supplied observations or metadata about
 argument LHS variables are recorded, and these arguments cannot be bound.
-Use [`@model`](@ref) or the constructor accepting `defaults` and `lhs_arguments` to
+Use [`@model`](@ref) or the constructor accepting `defaults` and `args_on_lhs` to
 construct a model with argument-supplied observations.
 
 Keyword arguments `kwargs` are stored in the model's `defaults` field.
@@ -1155,7 +1155,7 @@ Base.:|(model::Model, values::Union{NamedTuple,AbstractDict,Pair,Tuple,VarNamedT
             stored_name = $(QuoteNode(stored_name))
             vn = _model_value_varname(model.values, VarName{name}(), _model_prefix(model))
             binding = _model_argument_binding(values, AbstractPPL.varname_to_optic(vn))
-            if name in _lhs_arguments(model)
+            if name in _args_on_lhs(model)
                 if binding isa Union{VarNamedTuple,VarNamedTuples.PartialArray}
                     if $(
                         is_splat_symbol(stored_name) &&
@@ -2047,7 +2047,7 @@ function unfix(model::Model, syms::Union{Symbol,VarName}...)
     values = _remove_model_values(Fix, _model_values(model.values), syms...)
     removed = _removed_fixed_bindings(_model_values(model.values), values)
     defaults = _argument_defaults(
-        merge(model.args, model.defaults), Val(_lhs_arguments(model))
+        merge(model.args, model.defaults), Val(_args_on_lhs(model))
     )
     if !(model.values isa LocalModelValues) && _model_prefix(model) !== nothing
         defaults = _prefix_values(
@@ -2076,11 +2076,11 @@ function unfix(model::Model, syms::Union{Symbol,VarName}...)
 end
 
 @generated function _argument_defaults(
-    arguments::NamedTuple{names}, ::Val{lhs_arguments}
-) where {names,lhs_arguments}
+    arguments::NamedTuple{names}, ::Val{args_on_lhs}
+) where {names,args_on_lhs}
     fields = map(names) do stored_name
         name = unsplat_symbol(stored_name)
-        name in lhs_arguments || return :((;))
+        name in args_on_lhs || return :((;))
         :(NamedTuple{($(QuoteNode(name)),)}((
             _tag_model_value(ArgumentCondition, arguments.$stored_name, $(VarName{name}())),
         )))
