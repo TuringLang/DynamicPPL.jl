@@ -1790,6 +1790,9 @@ end
 
 Return this model's conditioned values as plain values, independent of binding history.
 
+This may include argument observations that evaluation ignores when their LHS arguments
+hold submodel return values.
+
 The result is a `VarNamedTuple` containing ordinary or partial values. After partial
 removal or mixed roles, containers become plain partial values (`VarNamedTuple` or
 `PartialArray`), not the original container type.
@@ -2103,6 +2106,9 @@ end
     fixed(model::Model)
 
 Return this model's fixed values as plain values, independent of binding history.
+
+For LHS arguments that hold submodel return values, `conditioned` lists argument observations
+that evaluation ignores, while `fixed` lists explicit bindings that evaluation rejects.
 
 The result is a `VarNamedTuple` containing ordinary or partial values. After partial
 removal or mixed roles, containers become plain partial values (`VarNamedTuple` or
