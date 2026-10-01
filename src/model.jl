@@ -266,7 +266,17 @@ function _check_fixed_shape_child(binding, local_value, optic::AbstractPPL.Index
 end
 
 function _tag_model_values(::Type{R}, values::VarNamedTuple) where {R}
-    return map_pairs!!(pair -> ModelValue{R}(pair.second), copy(values))
+    tagged = map_pairs!!(pair -> _tag_model_value(R, pair.second, pair.first), copy(values))
+    return R === ArgumentCondition ? _prune_model_bindings(tagged) : tagged
+end
+
+_tag_model_value(::Type{R}, value, vn) where {R} = ModelValue{R}(value)
+# Only a whole `nothing` argument is a latent placeholder. A `nothing` inside a container
+# stays bound data, so a tilde that reads it fails with a `MethodError` in `logpdf`.
+function _tag_model_value(
+    ::Type{ArgumentCondition}, ::Nothing, ::VarName{S,AbstractPPL.Iden}
+) where {S}
+    return NoModelBinding()
 end
 
 function _expand_model_binding(previous::ModelValue{R,<:AbstractArray}) where {R}
@@ -967,6 +977,8 @@ Set `lhs_arguments` to the tuple of argument names that occur on the left-hand s
 Direct construction supplies no observations; arguments are ordinary inputs. `@model`
 records argument-supplied observations and the names of arguments with LHS variables. Use
 [`decondition`](@ref) to remove those observations.
+An argument equal to `nothing` supplies no argument-supplied observation; its LHS
+variables are latent unless explicitly bound.
 At a submodel tilde, an argument LHS variable receives the submodel return value. The
 argument supplies only its value before the tilde runs; its argument-supplied observation
 is ignored at that tilde, so it needs no deconditioning. See [Binding rules](@ref).
@@ -2048,14 +2060,16 @@ end
         :(
             if $(QuoteNode(name)) in lhs_arguments
                 NamedTuple{($(QuoteNode(name)),)}((
-                    ModelValue{ArgumentCondition}(arguments.$stored_name),
+                    _tag_model_value(
+                        ArgumentCondition, arguments.$stored_name, $(VarName{name}())
+                    ),
                 ))
             else
                 (;)
             end
         )
     end
-    return :(VarNamedTuple(merge((;), $(fields...))))
+    return :(_prune_model_bindings(VarNamedTuple(merge((;), $(fields...)))))
 end
 
 _removed_fixed_bindings(previous, remaining) = NoModelBinding()
