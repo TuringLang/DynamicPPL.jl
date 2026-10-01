@@ -514,16 +514,34 @@ function _model_argument_binding(tree::ModelValueTree{<:Tuple}, optic::AbstractP
     end
     return value isa NoModelBinding ? nothing : _model_argument_binding(value, optic.child)
 end
+function _model_property_optic(tree::ModelValueTree{<:NamedTuple}, optic::AbstractPPL.Index)
+    optic = AbstractPPL.concretize_top_level(optic, tree.template)
+    isempty(optic.kw) && length(optic.ix) == 1 || return nothing
+    index = only(optic.ix)
+    index isa Symbol && return AbstractPPL.Property{index}(optic.child)
+    index isa Integer && checkbounds(Bool, Base.OneTo(length(tree.template)), index) ||
+        return nothing
+    return AbstractPPL.Property{keys(tree.template)[index]}(optic.child)
+end
 function _model_argument_binding(
-    values::Union{VarNamedTuple,ModelValueTree{<:NamedTuple}},
-    optic::AbstractPPL.Index{Tuple{Symbol},NamedTuple{(),Tuple{}}},
+    tree::ModelValueTree{<:NamedTuple}, optic::AbstractPPL.Index
+)
+    property = _model_property_optic(tree, optic)
+    return property === nothing ? nothing : _model_argument_binding(tree, property)
+end
+function _model_role_at(tree::ModelValueTree{<:NamedTuple}, optic::AbstractPPL.Index, vn)
+    property = _model_property_optic(tree, optic)
+    return property === nothing ? nothing : _model_role_at(tree, property, vn)
+end
+function _model_argument_binding(
+    values::VarNamedTuple, optic::AbstractPPL.Index{Tuple{Symbol},NamedTuple{(),Tuple{}}}
 )
     return _model_argument_binding(
         values, AbstractPPL.Property{only(optic.ix)}(optic.child)
     )
 end
 function _model_role_at(
-    values::Union{VarNamedTuple,ModelValueTree{<:NamedTuple}},
+    values::VarNamedTuple,
     optic::AbstractPPL.Index{Tuple{Symbol},NamedTuple{(),Tuple{}}},
     vn,
 )
@@ -1702,12 +1720,19 @@ function _remove_model_binding(
 end
 function _remove_model_binding(
     ::Type{R},
-    values::Union{VarNamedTuple,ModelValueTree{<:NamedTuple}},
+    values::VarNamedTuple,
     optic::AbstractPPL.Index{Tuple{Symbol},NamedTuple{(),Tuple{}}},
 ) where {R}
     return _remove_model_binding(
         R, values, AbstractPPL.Property{only(optic.ix)}(optic.child)
     )
+end
+
+function _remove_model_binding(
+    ::Type{R}, tree::ModelValueTree{<:NamedTuple}, optic::AbstractPPL.Index
+) where {R}
+    property = _model_property_optic(tree, optic)
+    return property === nothing ? tree : _remove_model_binding(R, tree, property)
 end
 
 function _remove_model_binding(
