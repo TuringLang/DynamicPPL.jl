@@ -50,6 +50,81 @@ end
 end
 
 @testset "condition and fix" begin
+    @testset "partial bindings of placeholder argument LHS variables" begin
+        @model function placeholder_indices(x=nothing)
+            x === nothing && (x = zeros(2))
+            for i in eachindex(x)
+                x[i] ~ Normal()
+            end
+            return x
+        end
+        @model function placeholder_fields(p=nothing)
+            p === nothing && (p = (a=0.0, b=0.0))
+            p.a ~ Normal()
+            p.b ~ Normal()
+            return p
+        end
+        @model placeholder_child(child) = a ~ to_submodel(child)
+        for (model, address, latent, whole, value, expected) in (
+            (
+                placeholder_indices(),
+                @varname(x[1]),
+                @varname(x[2]),
+                @varname(x),
+                [1.0, 2.0],
+                [5.0, rand(Xoshiro(1), Normal())],
+            ),
+            (
+                placeholder_fields(),
+                @varname(p.a),
+                @varname(p.b),
+                @varname(p),
+                (a=1.0, b=2.0),
+                (a=5.0, b=rand(Xoshiro(1), Normal())),
+            ),
+        )
+            @testset "explicit binding at $address with $bind" for (bind, remove) in (
+                (condition, decondition), (fix, unfix)
+            )
+                bound = bind(model, address => 5.0)
+                @test bound(Xoshiro(1)) == expected
+                @test placeholder_child(bound)(Xoshiro(1)) == expected
+                vi = VarInfo(Xoshiro(1), bound)
+                @test keys(vi) == [latent]
+                @test getloglikelihood(vi) ==
+                    (bind === condition ? logpdf(Normal(), 5.0) : 0)
+                @test ForwardDiff.derivative(v -> logjoint(bound, Dict(latent => v)), 3.0) ≈
+                    -3.0
+                restored = remove(bound, address)
+                @test isempty(conditioned(restored))
+                @test isempty(fixed(restored))
+                @test restored(Xoshiro(1)) == model(Xoshiro(1))
+                @test keys(VarInfo(Xoshiro(1), restored)) == [address, latent]
+                @test bind(model, whole => value)(Xoshiro(1)) == value
+            end
+        end
+        templated = @vnt begin
+            @template x = zeros(1)
+            x[1] := 5.0
+        end
+        for bind in (condition, fix)
+            @test bind(placeholder_indices(), templated)(Xoshiro(1)) ==
+                [5.0, rand(Xoshiro(1), Normal())]
+            bound = bind(placeholder_indices(), @varname(x[1]) => 5.0)
+            @test bind(bound, @varname(x[2]) => 6.0)(Xoshiro(1)) == [5.0, 6.0]
+        end
+        @model placeholder_whole(x=nothing) = (
+            x === nothing && (x = zeros(2)); x ~ MvNormal(zeros(2), I)
+        )
+        for bind in (condition, fix)
+            @test_throws r"LHS variable `x` must be bound as a whole" bind(
+                placeholder_whole(), @varname(x[1]) => 5.0
+            )(
+                Xoshiro(1)
+            )
+        end
+    end
+
     @testset "NamedTuple bindings and LHS variables require field names" begin
         @model integer_lhs(x) = (x[1] ~ Normal(); x)
         @model nested_integer_lhs(x) = (x.p[1] ~ Normal(); x)

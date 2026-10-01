@@ -65,6 +65,8 @@
   - An argument equal to `nothing` supplies no argument-supplied observation, so its
     LHS variables are latent unless explicitly bound. Only a whole argument is a
     placeholder; `nothing` inside a container and `missing` are not placeholders.
+    Bindings below a placeholder argument's address are resolved at the tilde, as for
+    local LHS variables; whole bindings replace the argument.
   - A value containing `missing` is rejected when a tilde statement observes or fixes
     it, with an `ArgumentError` naming the LHS variable. Parts of an argument or binding
     that no tilde statement reads may contain `missing`. It no longer marks an LHS

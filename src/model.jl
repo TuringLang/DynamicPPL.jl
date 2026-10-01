@@ -217,7 +217,8 @@ function _get_model_data(model, vn)
 end
 function _get_model_data(model, vn, argument, local_value)
     binding = _get_model_binding(model, argument)
-    _check_fixed_shape(binding, local_value, AbstractPPL.getoptic(vn), vn)
+    _defer_argument_binding(model, argument) ||
+        _check_fixed_shape(binding, local_value, AbstractPPL.getoptic(vn), vn)
     return _get_model_data(model, vn)
 end
 
@@ -786,6 +787,10 @@ function _has_complete_model_data(values::VarNamedTuples.PartialArray)
            all(_has_complete_model_data, values.data)
 end
 
+function _defer_argument_binding(binding, value)
+    return value === nothing && binding isa Union{VarNamedTuple,VarNamedTuples.PartialArray}
+end
+
 function _model_argument_value(values::VarNamedTuples.PartialArray, template)
     return if _has_complete_model_data(values)
         _model_data(values)
@@ -1150,7 +1155,7 @@ Base.:|(model::Model, values::Union{NamedTuple,AbstractDict,Pair,Tuple,VarNamedT
                         _model_values(model.values), AbstractPPL.varname_to_optic(vn)
                     )
                     binding = _prepare_argument_fields(
-                        _model_argument_value(previous, argument), binding, vn
+                        prepare_model_argument(previous, argument), binding, vn
                     )
                     values = templated_setindex!!(
                         values, binding, vn, values.data[AbstractPPL.getsym(vn)]
@@ -1493,7 +1498,7 @@ function _make_condfix_values(model, values::Pair{<:Union{VarName,Symbol}}...)
             _model_values(model.values), AbstractPPL.varname_to_optic(vn)
         )
         template =
-            previous === nothing ? argument : _model_argument_value(previous, argument)
+            previous === nothing ? argument : prepare_model_argument(previous, argument)
         template isa AbstractArray || continue
         templates = templated_setindex!!(
             templates,
