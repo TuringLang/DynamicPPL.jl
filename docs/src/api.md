@@ -150,8 +150,8 @@ predict
 The typical workflow for posterior prediction involves:
 
  1. Fitting a model to observed data to obtain posterior samples
- 2. Creating a new model instance with the prediction sites left unconditioned
- 3. Using `predict` to sample these sites based on the posterior parameter samples
+ 2. Creating a new model instance with the prediction LHS variables left unconditioned
+ 3. Using `predict` to sample these LHS variables based on the posterior parameter samples
 
 When using `predict` with `MCMCChains.Chains`, you can control which variables are included in the output with the `include_all` parameter:
 

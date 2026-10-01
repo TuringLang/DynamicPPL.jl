@@ -90,7 +90,7 @@ not a custom context type.
 `VarInfo(acc1, acc2, ...)` selects the outputs to collect. `VarInfo()` collects only
 log prior, log likelihood, and log Jacobian; it does not record parameter values.
 Every evaluation resets its accumulators, so a value recorded in one run disappears
-if its site is skipped in the next. Always retain the returned `VarInfo`: `!!` operations
+if its LHS variable is skipped in the next. Always retain the returned `VarInfo`: `!!` operations
 may replace their input.
 
 To reuse outputs as inputs, extract the recorded values and construct a new context
@@ -118,7 +118,7 @@ record a [`VectorValueAccumulator`](@ref) and pass `get_vector_values(recorded)`
 
 This separation specifies data flow, not purity: evaluation can advance the RNG, and
 ordinary Julia mutations in a model body still take effect.
-For density evaluation, `~` sites read supplied parameters rather than sampling.
+For density evaluation, LHS variables get their values from supplied parameters rather than sampling.
 
 ## Accumulators
 

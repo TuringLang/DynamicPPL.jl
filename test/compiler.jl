@@ -721,7 +721,7 @@ end
         @test res == (1, (), 1, Int, NamedTuple())
     end
 
-    @testset "keyword splat LHS arguments preserve Julia semantics" begin
+    @testset "keyword splat arguments with LHS variables preserve Julia semantics" begin
         forward_keywords(; kw...) = kw
         @model function keyword_replacement_body(; kw...)
             kw[:y] ~ Normal()

@@ -111,7 +111,7 @@ If the intent is to add a likelihood term for a derived value, prefer
 `@addlogprob!` or a clearer model structure. Do not copy old `.~` examples; the
 dot-tilde pipeline was removed.
 
-Model arguments supply default observations; `decondition` removes them and
+Model arguments provide argument-supplied observations; `decondition` removes them and
 `condition` replaces them. `missing` does not select stochastic roles. Test the
 data shapes you support, including arrays of arrays and mutable structs.
 

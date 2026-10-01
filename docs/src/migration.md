@@ -23,9 +23,9 @@ It now defaults to `UnlinkAll()` regardless of the recorded values. Replace
 `init!!(rng, model, vi, init)` with `init!!(rng, model, vi, init, strategy)` when the
 outputs should use a different representation.
 For custom strategies, implement `get_param_eltype(strategy)` when evaluation needs
-to promote argument buffers or thread-local accumulators for AD.
+to promote argument storage or thread-local accumulators for AD.
 
-All output accumulators reset before evaluation. Previously recorded sites that are
+All output accumulators reset before evaluation. Previously recorded LHS variables that are
 not executed again are absent from the new outputs. Replace `vi.values` with
 `get_vector_values(vi)`; there is no separate parameter store.
 

@@ -38,28 +38,30 @@ function _stan_value_and_pullback end
 Wrap `model` for use on the right-hand side of `~`.
 
 In `value ~ to_submodel(model)`, `model` is evaluated, its return value is assigned to
-`value`, and its latent sites are recorded separately in the surrounding trace. By
-default, their names are prefixed with the left-hand side: a latent site `x` becomes
+`value`, and its latent LHS variables are recorded separately in the surrounding trace. By
+default, their names are prefixed with the left-hand side: a latent LHS variable `x` becomes
 `value.x`. This differs from [`to_distribution`](@ref), which assigns the represented latent
-site values to the left-hand side.
+LHS variable values to the left-hand side.
 
 Conceptually, `to_submodel(model)` is a `returned_value(model)` wrapper: its value is the
-model's return value, not its latent site values.
+model's return value, not its latent LHS variable values.
 
 Condition or fix a submodel through its submodel namespace in the parent: for example,
 `@varname(a.x)` in `a ~ to_submodel(child())`. With `auto_prefix=false`, use the child's
 names unchanged. Parent explicit bindings override the child's explicit bindings and
-argument observations at the same address; parent argument observations never reach a child.
+argument-supplied observations at the same address; parent argument-supplied observations never reach a child.
 
 Binding the return value throws `ArgumentError` at the submodel tilde during evaluation.
-An argument used as the left-hand side supplies a return-value buffer; its argument
-observation is ignored at the submodel tilde, so it needs no [`decondition`](@ref).
-This includes `NamedTuple` arguments: their fields are
-initial buffer data, not bindings of the child's sites. To bind `@varname(a.x)` on the
-parent, `a` must not be a model argument. Explicit bindings at or below a return-value buffer
-also throw during evaluation, or at the `condition` or `fix` call when the buffer's type
+At a submodel tilde, an argument LHS variable receives the submodel return value. The
+argument supplies only its value before the tilde runs; its argument-supplied observation
+is ignored at that tilde, so it needs no [`decondition`](@ref).
+This includes `NamedTuple` arguments: their fields supply the value before the tilde,
+not bindings of the child's LHS variables. To bind `@varname(a.x)` on the
+parent, `a` must not be a model argument. Explicit bindings at or below an argument LHS
+variable receiving a submodel return value also throw during evaluation, or at the
+`condition` or `fix` call when the argument's type
 already rules out the requested field. Condition or fix the child before wrapping it instead.
-To remove a child's argument observations, decondition the child before wrapping it.
+To remove a child's argument-supplied observations, decondition the child before wrapping it.
 See [Binding rules](@ref).
 
 `Submodel` is not a `Distribution`; it provides this tilde behavior but no standalone
@@ -67,12 +69,12 @@ See [Binding rules](@ref).
 
 !!! warning
     Keep `auto_prefix=true` unless the wrapped model has been explicitly prefixed. Disabling
-    automatic prefixing can make latent-site addresses collide.
+    automatic prefixing can make latent LHS variable addresses collide.
 
 # Arguments
 
 - `model::Model`: the model to wrap.
-- `auto_prefix::Bool=true`: whether to prefix the model's latent sites with the
+- `auto_prefix::Bool=true`: whether to prefix the model's latent LHS variables with the
   left-hand side of `~`.
 
 # Examples
@@ -91,7 +93,7 @@ julia> @model function demo2(y)
        end;
 ```
 
-When sampling from `demo2(0.4)`, the latent site `x` is prefixed with `a`, the
+When sampling from `demo2(0.4)`, the latent LHS variable `x` is prefixed with `a`, the
 left-hand side of the tilde:
 
 ```jldoctest submodel-to_submodel
@@ -119,7 +121,7 @@ true
 
 ## Without automatic prefixing
 
-If `auto_prefix=false`, the submodel's latent-site addresses are unchanged.
+If `auto_prefix=false`, the submodel's latent LHS variable addresses are unchanged.
 ```jldoctest submodel-to_submodel-prefix; setup=:(using Distributions)
 julia> @model function demo1()
            x ~ Normal()
@@ -176,7 +178,7 @@ function _submodel_namespace(::Union{ModelValue,ModelValueTree})
     throw(
         ArgumentError(
             "Cannot explicitly bind a submodel return value. Remove the explicit binding, " *
-            "or bind the child's variables by prefixed name (e.g. `@varname(a.z)` when `a` is not an LHS argument).",
+            "or bind the child's variables by prefixed name (e.g. `@varname(a.z)` when `a` is not a model argument).",
         ),
     )
 end
@@ -221,7 +223,7 @@ function tilde_assume!!(
     )
         throw(
             ArgumentError(
-                "Cannot bind internal variables below return-value buffer `$left_vn`. " *
+                "Cannot bind internal variables below `$left_vn`, which holds a submodel return value. " *
                 "Condition or fix the child model before wrapping it with `to_submodel`.",
             ),
         )

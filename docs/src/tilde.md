@@ -74,7 +74,7 @@ For `tilde_observe!!`, the code is very similar, but even easier: the value can 
 Since the value is already untransformed, we can skip the second step.
 Finally, accumulators must behave differently: e.g. incrementing the likelihood instead of the prior.
 That is accomplished by calling `accumulate_observe!!` instead of `accumulate_assume!!`.
-Neither named nor literal observations dispatch on the evaluation context. Fixed sites
+Neither named nor literal observations dispatch on the evaluation context. Fixed LHS variables
 bypass accumulation, and tracked assignments (`:=`) write directly to the raw-value accumulator.
 
 In the following sections, we stick to the three sections of `tilde_assume!!`.
