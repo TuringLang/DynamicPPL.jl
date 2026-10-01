@@ -1293,12 +1293,17 @@ Arguments with unobserved entries retain their original storage
 template; the corresponding tilde statements fill those entries during evaluation.
 Defaults derived from an argument are evaluated at model construction; binding that
 argument does not recompute them.
+`model.args` and `model.defaults` retain construction values when bindings change;
+bindings live in the model's binding table, so use [`conditioned`](@ref) and
+[`fixed`](@ref) to inspect effective observations and fixed values.
 
 !!! note
     Partial bindings on an array argument (for example, `@varname(x[1])`) rebuild the
     argument on every evaluation, costing O(length(x)). For large arrays or hot loops,
     prefer replacing the whole argument, for example `condition(model; x=newx)` with
     `newx` already containing the override, or construct the model with the updated argument.
+    Under reverse-mode AD such as Mooncake, partial bindings can be far more expensive,
+    so bind whole arrays when gradients are needed.
 
 # Examples
 ## Simple univariate model
