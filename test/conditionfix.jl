@@ -595,6 +595,35 @@ end
         end
     end
 
+    @testset "NamedTuple integer components resolve against the stored template" begin
+        @model named_components(x) = (x.a ~ Normal(); x.b ~ Normal(); x)
+        @model nested_named_components(x) = (x[1].a ~ Normal(); x[1].b ~ Normal(); x)
+        for (model, first, second, latent) in (
+            (
+                named_components((a=1.0, b=2.0)),
+                @varname(x[1]),
+                @varname(x[2]),
+                @varname(x.a)
+            ),
+            (
+                nested_named_components([(a=1.0, b=2.0)]),
+                @varname(x[1][1]),
+                @varname(x[1][2]),
+                @varname(x[1].a)
+            ),
+        )
+            changed = decondition(model, first)
+            @test haskey(rand(Xoshiro(1), changed), latent)
+            @test length(rand(Xoshiro(1), decondition(changed, second))) == 2
+            @test_throws ArgumentError decondition(changed, first)
+        end
+        restored = unfix(
+            fix(named_components((a=1.0, b=2.0)); x=(a=3.0, b=4.0)), @varname(x[1])
+        )
+        @test restored(Xoshiro(1)) == (a=1.0, b=4.0)
+        @test unfix(restored, @varname(x[2]))(Xoshiro(1)) == (a=1.0, b=2.0)
+    end
+
     @testset "invalid component addresses" begin
         @model function elements(y)
             for i in eachindex(y)
