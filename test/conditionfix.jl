@@ -75,6 +75,106 @@ end
         end
     end
 
+    @testset "nothing arguments supply no observations" begin
+        @model function placeholder_array(x=nothing)
+            x === nothing && (x = zeros(2))
+            for i in 1:2
+                x[i] ~ Normal()
+            end
+            return x
+        end
+        @model function placeholder_keyword_array(; x=nothing)
+            x === nothing && (x = zeros(2))
+            for i in 1:2
+                x[i] ~ Normal()
+            end
+            return x
+        end
+        @model placeholder_scalar(y=nothing) = y ~ Normal()
+        @model placeholder_keyword_scalar(; y=nothing) = y ~ Normal()
+        for (models, vn, names, value) in (
+                (
+                    (
+                        placeholder_array(),
+                        placeholder_array(nothing),
+                        placeholder_keyword_array(),
+                        placeholder_keyword_array(; x=nothing),
+                    ),
+                    @varname(x),
+                    [@varname(x[1]), @varname(x[2])],
+                    [1.0, 2.0],
+                ),
+                (
+                    (
+                        placeholder_scalar(),
+                        placeholder_scalar(nothing),
+                        placeholder_keyword_scalar(),
+                        placeholder_keyword_scalar(; y=nothing),
+                    ),
+                    @varname(y),
+                    [@varname(y)],
+                    1.0,
+                ),
+            ),
+            model in models
+
+            @test isempty(conditioned(model))
+            vi = VarInfo(Xoshiro(1), model)
+            @test keys(vi) == names
+            @test getloglikelihood(vi) == 0
+            expected = if value isa Vector
+                rand(Xoshiro(1), Normal(), 2)
+            else
+                rand(Xoshiro(1), Normal())
+            end
+            @test model(Xoshiro(1)) == expected
+            for (bind, remove) in ((condition, decondition), (fix, unfix))
+                bound = bind(model, vn => value)
+                @test bound(Xoshiro(1)) == value
+                @test isempty(keys(VarInfo(Xoshiro(1), bound)))
+                restored = remove(bound, vn)
+                @test isempty(conditioned(restored))
+                @test keys(VarInfo(Xoshiro(1), restored)) == names
+            end
+        end
+        @test_throws "Cannot remove `x`: no conditioned binding is stored at this address." decondition(
+            placeholder_array(), :x
+        )
+        @test_throws "Cannot remove `x`: no fixed binding is stored at this address." unfix(
+            placeholder_array(), :x
+        )
+
+        @model container_field(p) = p.b ~ Normal()
+        @model container_index(p) = p[2] ~ Normal()
+        @model nothing_field(p) = p.a ~ Normal()
+        @model nothing_index(p) = p[1] ~ Normal()
+        for (unused, observed, value) in (
+            (container_field, nothing_field, (a=nothing, b=1.0)),
+            (container_index, nothing_index, [nothing, 1.0]),
+        )
+            @test conditioned(unused(value))[@varname(p)] === value
+            @test getloglikelihood(VarInfo(Xoshiro(1), unused(value))) ==
+                logpdf(Normal(), 1.0)
+            @test_throws MethodError VarInfo(Xoshiro(1), observed(value))
+        end
+        nested = placeholder_scalar(VarNamedTuple(; a=nothing, b=1.0))
+        @test conditioned(nested)[@varname(y.a)] === nothing
+
+        @model placeholder_parent(a=nothing) = (a ~ to_submodel(placeholder_scalar()); a)
+        parent = placeholder_parent()
+        @test isempty(conditioned(parent))
+        @test keys(VarInfo(Xoshiro(1), parent)) == [@varname(a.y)]
+        @test parent(Xoshiro(1)) == rand(Xoshiro(1), Normal())
+        for bind in (condition, fix)
+            @test_throws ArgumentError bind(parent; a=1.0)(Xoshiro(1))
+        end
+
+        direct = DynamicPPL.Model{false}(placeholder_array().f, (; x=nothing), (;))
+        @test isempty(conditioned(direct))
+        @test isempty(DynamicPPL._lhs_arguments(direct))
+        @test keys(VarInfo(Xoshiro(1), direct)) == [@varname(x[1]), @varname(x[2])]
+    end
+
     @testset "keyword splat partial bindings are explicit errors" begin
         @model keyword_lhs(; kw...) = (kw[:y] ~ Normal(); return kw[:y])
         for bind in (condition, fix)
