@@ -339,7 +339,15 @@ function build_combinations(rng)
     models = Tuple{String,DynamicPPL.Model}[
         ("Simple assume observe", simple_assume_observe(randn(rng))), ("Smorgasbord", smorg)
     ]
-    push!(models, ("Threadsafe", DynamicPPL.setthreadsafe(smorg, true)))
+    # Variants of the same model, kept adjacent so their rows compare directly: threadsafe
+    # evaluation, fixed values, and a partial binding and partial `decondition` of an
+    # argument.
+    push!(models, ("Smorgasbord threadsafe", DynamicPPL.setthreadsafe(smorg, true)))
+    push!(models, ("Smorgasbord fixed", fix(smorg; m=1.0, stds=ones(100))))
+    push!(
+        models, ("Smorgasbord partial condition", condition(smorg, @varname(x[1]) => 0.0))
+    )
+    push!(models, ("Smorgasbord partial decondition", decondition(smorg, @varname(x[1]))))
     push!(models, ("NamedTuple-field LHS variable", namedtuple_field((; a=1.0))))
     push!(
         models,
@@ -352,13 +360,6 @@ function build_combinations(rng)
     end
     push!(models, ("Dynamic", dynamic()))
     push!(models, ("Submodel", parent(randn(rng))))
-    # Binding paths: fixed values, and a partial binding and partial `decondition` of an
-    # argument.
-    push!(models, ("Smorgasbord fixed", fix(smorg; m=1.0, stds=ones(100))))
-    push!(
-        models, ("Smorgasbord partial condition", condition(smorg, @varname(x[1]) => 0.0))
-    )
-    push!(models, ("Smorgasbord partial decondition", decondition(smorg, @varname(x[1]))))
     d = [1, 1, 1, 2, 2, 2]
     w = [1, 2, 3, 2, 1, 1]
     z = [1, 1, 2, 2, 1, 2]
