@@ -463,6 +463,10 @@ end
             )
             @test_throws r"ArgumentError: .*represent" bind(elements([1.0, 2.0]), inexact)
         end
+        for bind in (condition, fix)
+            @test_throws InexactError bind(elements([1, 2]), @varname(y[1]) => 1.5)
+            @test_throws MethodError bind(elements([1, 2]), @varname(y[1]) => "invalid")
+        end
         for T in (Float32, BigFloat)
             @test condition(elements(T[1, 2]), @varname(y[1]) => 3)() isa Vector{T}
         end
@@ -979,6 +983,9 @@ end
             end
         end
         for bind in (condition, fix)
+            @test_throws "Cannot bind `y[0]`: index is outside the argument template at `y`" bind(
+                elements(nothing), @varname(y[0]) => 9.0
+            )
             @test_throws r"ArgumentError: .*y\[3\]" bind(
                 elements([1.0, 2.0]), @varname(y[3]) => 9.0
             )
