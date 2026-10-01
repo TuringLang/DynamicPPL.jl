@@ -117,6 +117,9 @@ function _apply_prefix_template(prefix::PrefixTemplate, template)
     )
 end
 _compose_prefix_templates(::Nothing, inner) = inner
+function _compose_prefix_templates(prefix::VarName, inner::Union{Nothing,VarName})
+    return maybe_prefix(inner, prefix)
+end
 function _compose_prefix_templates(prefix::VarName, inner)
     return PrefixTemplate(prefix, NoTemplate(), inner)
 end
@@ -125,6 +128,12 @@ function _compose_prefix_templates(prefix::PrefixTemplate, inner)
         prefix.prefix, prefix.template, _compose_prefix_templates(prefix.inner, inner)
     )
 end
+
+_prefix_template(::Union{Nothing,VarName}) = nothing
+_prefix_template(prefix::PrefixTemplate) = prefix
+
+_getprefix(prefix::Union{Nothing,VarName}) = prefix
+_getprefix(prefix::PrefixTemplate) = maybe_prefix(_getprefix(prefix.inner), prefix.prefix)
 
 is_splat_symbol(s::Symbol) = startswith(string(s), "#splat#")
 function unsplat_symbol(s::Symbol)
@@ -219,8 +228,7 @@ struct Model{
     defaultnames,
     Targs,
     Tdefaults,
-    Prefix<:Union{VarName,Nothing},
-    PT,
+    Prefix<:Union{VarName,Nothing,PrefixTemplate},
     Values<:Union{
         VarNamedTuple,ModelBindingLayers,LocalModelValues,UnprefixedArgumentValues
     },
@@ -233,7 +241,6 @@ struct Model{
     defaults::NamedTuple{defaultnames,Tdefaults}
     context::C
     prefix::Prefix
-    prefix_template::PT
     values::Values
     function Model{Threaded}(
         f::F,
@@ -241,10 +248,9 @@ struct Model{
         defaults::NamedTuple{D,Td},
         prefix::P,
         values::V,
-        prefix_template::PT,
         context::C;
         args_on_lhs::Union{Tuple{Vararg{Symbol}},Vector{Symbol},ModelBindingMetadata}=(),
-    ) where {F,A,Ta,D,Td,P,PT,C,V,Threaded}
+    ) where {F,A,Ta,D,Td,P,C,V,Threaded}
         mapreduce(
             pair -> pair.second isa ModelValue, &, _model_values(values); init=true
         ) || throw(ArgumentError("Model values must carry a condition or fix role"))
@@ -257,28 +263,31 @@ struct Model{
                 ),
             )
         end
-        return new{F,A,D,Ta,Td,P,PT,V,C,Threaded,metadata}(
-            f, args, defaults, context, prefix, prefix_template, values
+        return new{F,A,D,Ta,Td,P,V,C,Threaded,metadata}(
+            f, args, defaults, context, prefix, values
         )
     end
     # Internal reconstruction reuses already-validated bindings.
     function DynamicPPL._reconstruct_model(
-        model::Model{F,A,D,Ta,Td},
-        prefix::P,
-        prefix_template::PT,
-        context::C,
-        values::V,
-        ::Val{Threaded},
-    ) where {F,A,D,Ta,Td,P,PT,C,V,Threaded}
-        return new{F,A,D,Ta,Td,P,PT,V,C,Threaded,_binding_metadata(model)}(
-            model.f, model.args, model.defaults, context, prefix, prefix_template, values
+        model::Model{F,A,D,Ta,Td}, prefix::P, context::C, values::V, ::Val{Threaded}
+    ) where {F,A,D,Ta,Td,P,C,V,Threaded}
+        return new{F,A,D,Ta,Td,P,V,C,Threaded,_binding_metadata(model)}(
+            model.f, model.args, model.defaults, context, prefix, values
         )
     end
 end
 
+"""
+    getprefix(model::Model)
+
+Return the combined prefix of the model's LHS variables, or `nothing` when absent.
+Storage templates for nested submodel namespaces remain internal to the model.
+"""
+getprefix(model::Model) = _getprefix(model.prefix)
+
 function _binding_metadata(
-    ::Model{F,A,D,Ta,Td,P,PT,V,C,Threaded,ArgsOnLHS}
-) where {F,A,D,Ta,Td,P,PT,V,C,Threaded,ArgsOnLHS}
+    ::Model{F,A,D,Ta,Td,P,V,C,Threaded,ArgsOnLHS}
+) where {F,A,D,Ta,Td,P,V,C,Threaded,ArgsOnLHS}
     return ArgsOnLHS
 end
 
@@ -292,9 +301,7 @@ Base.@constprop :aggressive function Model{Threaded}(
     args_on_lhs::Union{Tuple{Vararg{Symbol}},Vector{Symbol},ModelBindingMetadata}=(),
 ) where {Threaded}
     values = _argument_defaults(merge(args, defaults), Val(_args_on_lhs(args_on_lhs)))
-    model = Model{Threaded}(
-        f, args, defaults, nothing, values, nothing, context; args_on_lhs
-    )
+    model = Model{Threaded}(f, args, defaults, nothing, values, context; args_on_lhs)
     found = _placeholder_names(merge(args, defaults), Val(_args_on_lhs(args_on_lhs)))
     return all(isempty, found) ? model : _remove_placeholders(model, found)
 end
@@ -363,17 +370,13 @@ Return whether `model` has been marked as needing threadsafe evaluation (using
 `setthreadsafe`).
 """
 requires_threadsafe(
-    ::Model{F,A,D,Ta,Td,P,PT,V,C,Threaded}
-) where {F,A,D,Ta,Td,P,PT,V,C,Threaded} = Threaded
+    ::Model{F,A,D,Ta,Td,P,V,C,Threaded}
+) where {F,A,D,Ta,Td,P,V,C,Threaded} = Threaded
 function _reconstruct_model(
-    model::Model;
-    prefix=model.prefix,
-    prefix_template=model.prefix_template,
-    context=model.context,
-    values=model.values,
+    model::Model; prefix=model.prefix, context=model.context, values=model.values
 )
     return _reconstruct_model(
-        model, prefix, prefix_template, context, values, Val(requires_threadsafe(model))
+        model, prefix, context, values, Val(requires_threadsafe(model))
     )
 end
 
@@ -414,12 +417,7 @@ function setthreadsafe(model::Model, threadsafe::Bool)
         model
     else
         _reconstruct_model(
-            model,
-            model.prefix,
-            model.prefix_template,
-            model.context,
-            model.values,
-            Val(threadsafe),
+            model, model.prefix, model.context, model.values, Val(threadsafe)
         )
     end
 end
@@ -559,7 +557,7 @@ function prefix(model::Model, x::VarName; template=NoTemplate())
     model = _materialize_argument_values(model)
     values =
         if model.values isa VarNamedTuple &&
-            model.prefix === nothing &&
+            getprefix(model) === nothing &&
             !isempty(model.values) &&
             mapreduce(
                 pair -> pair.second isa ModelValue{ArgumentCondition},
@@ -574,14 +572,12 @@ function prefix(model::Model, x::VarName; template=NoTemplate())
     return _prefix_model(model, x, template, values)
 end
 function _prefix_model(model::Model, x::VarName, template, values)
-    model_prefix = maybe_prefix(model.prefix, x)
-    prefix_template = if template isa NoTemplate && model.prefix_template === nothing
-        nothing
+    prefix = if template isa NoTemplate
+        _compose_prefix_templates(x, model.prefix)
     else
-        inner = model.prefix_template === nothing ? model.prefix : model.prefix_template
-        PrefixTemplate(x, template, inner)
+        PrefixTemplate(x, template, model.prefix)
     end
-    return _reconstruct_model(model; prefix=model_prefix, values, prefix_template)
+    return _reconstruct_model(model; prefix, values)
 end
 function prefix(model::Model, ::Val{sym}) where {sym}
     return prefix(model, VarName{sym}())
@@ -591,7 +587,7 @@ function prefix(model::Model, x)
 end
 
 function _prefix_varname_and_template(vn::VarName, template::Any, model::Model)
-    return _prefix_varname_and_template(vn, template, model.prefix, model.prefix_template)
+    return _prefix_varname_and_template(vn, template, getprefix(model), model.prefix)
 end
 function _prefix_varname_and_template(vn::VarName, template, prefix, prefix_template)
     prefix === nothing && return vn, template

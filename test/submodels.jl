@@ -1344,7 +1344,7 @@ end
         model = prefix(
             prefix_leaf(), @varname(p[2].q[end]); template=[(q=zeros(2),), (q=zeros(2),)]
         )
-        @test model.prefix == @varname(p[2].q[2])
+        @test DynamicPPL.getprefix(model) == @varname(p[2].q[2])
         @test model(Xoshiro(1)) == 3.0
     end
     for (name, canonical) in (
@@ -1356,7 +1356,7 @@ end
     )
         for leaf in (prefix_leaf(), condition(prefix_leaf(); x=3.0))
             model = prefix(leaf, name; template=zeros(2, 2))
-            @test model.prefix == canonical
+            @test DynamicPPL.getprefix(model) == canonical
             @test model(Xoshiro(1)) == 3.0
             @test prefix_nested(model)(Xoshiro(1)) == 3.0
         end
