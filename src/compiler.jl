@@ -338,7 +338,7 @@ function generate_tilde_literal(left, right)
 end
 
 function set_tilde_value!!(::AbstractVarInfo, object, value, vn::VarName)
-    return Accessors.set(object, AbstractPPL.with_mutation(AbstractPPL.getoptic(vn)), value)
+    return _set_lhs(object, AbstractPPL.with_mutation(AbstractPPL.getoptic(vn)), value)
 end
 
 assign_or_set!!(lhs::Symbol, rhs, vn) = drop_escape(:($lhs = $rhs))
@@ -351,6 +351,12 @@ function assign_or_set!!(lhs::Expr, rhs, vn)
             )
         ),
     )
+end
+
+_set_lhs(object, optic, value) = Accessors.set(object, optic, value)
+# A keyword splat must stay `Base.Pairs`, as plain Julia presents it to the body.
+function _set_lhs(object::Base.Pairs, optic, value)
+    return pairs(Accessors.set(values(object), optic, value))
 end
 
 """
@@ -655,9 +661,10 @@ function build_output(modeldef, linenumbernode, sites)
     kwargs_split = map(MacroTools.splitarg, kwargs)
     args_nt = namedtuple_from_splitargs(args_split)
     kwargs_nt = namedtuple_from_splitargs(kwargs_split)
-    for (i, (name, _, is_splat, _)) in enumerate(kwargs_split)
-        is_splat && (kwargs_nt.args[2].args[i] = :($(NamedTuple)($name)))
-    end
+    normalize_kwargs = [
+        :($name = $(NamedTuple)($name)) for
+        (name, _, is_splat, _) in kwargs_split if is_splat
+    ]
     observed_args = unique([
         name for (name, _, _, _) in vcat(args_split, kwargs_split) if name in sites
     ])
@@ -685,7 +692,10 @@ function build_output(modeldef, linenumbernode, sites)
         callargs = Any[
             :__model__,
             :__varinfo__,
-            map(first, kwargs_split)...,
+            [
+                is_splat ? :($(Base.pairs)($(NamedTuple)($n))) : n for
+                (n, _, is_splat, _) in kwargs_split
+            ]...,
             map(splitarg_to_expr, args_split)...,
         ]
         if Meta.isexpr(evaluatordef[:name], :(::))
@@ -723,6 +733,7 @@ function build_output(modeldef, linenumbernode, sites)
     # to the call site
     modeldef[:body] = MacroTools.@q begin
         $(linenumbernode)
+        $(normalize_kwargs...)
         return $(DynamicPPL.Model){false}(
             $name,
             $args_nt,

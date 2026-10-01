@@ -63,6 +63,20 @@ end
         end
     end
 
+    @testset "keyword splat LHS arguments reject missing components" begin
+        @model keyword_observation(; kw...) = (kw[:x] ~ Normal(); kw)
+        for (value, path) in (
+            ((; x=missing), r"ArgumentError: .*kw\.x"),
+            ((; x=1.0, y=missing), r"ArgumentError: .*kw\.y"),
+            ((; x=1.0, y=[(a=missing,)]), r"ArgumentError: .*kw\.y\[1\]\.a"),
+        )
+            @test_throws path keyword_observation(; value...)
+            for bind in (condition, fix), replacement in (value, pairs(value))
+                @test_throws path bind(keyword_observation(; x=1.0); kw=replacement)
+            end
+        end
+    end
+
     @testset "keyword splat index removal" begin
         @model indexed_keywords(; kwargs...) = (
             kwargs[:x] ~ Normal(); kwargs[:y] ~ Normal(); kwargs
