@@ -118,7 +118,7 @@ end
 
 @model _indexed_observation(obs, mu) = obs ~ Normal(mu, 1)
 
-"Indexed submodels with argument observations and one shared latent mean."
+"Indexed submodels with argument-supplied observations and one shared latent mean."
 @model function indexed_submodels(obs)
     mu ~ Normal()
     x = similar(obs)
