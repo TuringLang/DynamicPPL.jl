@@ -442,12 +442,13 @@ ldf_accs(::typeof(getloglikelihood)) = AccumulatorTuple((LogLikelihoodAccumulato
         varname_ranges::VarNamedTuple,
         transform_strategy::AbstractTransformStrategy,
         accs::AccumulatorTuple,
-        rng::Random.AbstractRNG,
+        rng::Random.AbstractRNG=Random.default_rng(),
     )
 
 Calculate the log density at the given `params`, using the provided information extracted
 from a `LogDensityFunction`. This is the internal implementation behind
-`LogDensityProblems.logdensity(ldf, params)`.
+`LogDensityProblems.logdensity(ldf, params)`. `rng` drives explicit draws in the model
+body, such as `rand(__context__.rng)`; it defaults to the task-local RNG.
 """
 function logdensity_internal(
     params::AbstractVector{<:Real},
@@ -456,7 +457,7 @@ function logdensity_internal(
     varname_ranges::VarNamedTuple,
     transform_strategy::AbstractTransformStrategy,
     accs::AccumulatorTuple,
-    rng::Random.AbstractRNG,
+    rng::Random.AbstractRNG=Random.default_rng(),
 )
     init_strategy = InitFromVector(params, varname_ranges, transform_strategy)
     _, vi = DynamicPPL.init!!(rng, model, VarInfo(accs), init_strategy, transform_strategy)
