@@ -15,7 +15,7 @@
     conditioned binding. An *argument replacement* makes the model body start from
     the bound value. Observed sites use the value computed by the body; fixed sites
     reset to their bound value when their tilde statement runs.
-    Direct `Model` construction records no observations; pass `argument_sites` to declare
+    Direct `Model` construction records no observations; pass `lhs_arguments` to declare
     which arguments can be bound with `condition` or `fix`.
     An argument used as a submodel's left-hand side (`a ~ to_submodel(...)`) is a *return-value
     buffer*: it holds only the initial return value, and its argument observation is
@@ -255,7 +255,7 @@ rand(cond_model_partial)
 
 Construction checks all parts of argument sites recursively through tuples, named tuples,
 and assigned array entries, even when a component is not a site. For
-`@model metadata_site(p) = p.a ~ Normal()`, `metadata_site((a=1.0, b=missing))` therefore
+`@model metadata_lhs(p) = p.a ~ Normal()`, `metadata_lhs((a=1.0, b=missing))` therefore
 throws at construction. Custom struct fields are not searched at construction; `missing`
 is rejected when such a component is used at an executed site.
 
