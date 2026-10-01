@@ -298,6 +298,28 @@ end
         @test size(likelihoods.data.a.data.x) == (2,)
     end
 
+    @testset "range-prefixed submodel namespace bindings" begin
+        @model range_child() = (x ~ Normal(); [x, x])
+        @model range_parent() = (a = zeros(2); a[1:2] ~ to_submodel(range_child()); a)
+        @model range_nested(child) = outer ~ to_submodel(child)
+        for bind in (condition, fix)
+            pair = @varname(a[1:2].x) => 2.0
+            bindings = DynamicPPL.templated_setindex!!(
+                VarNamedTuple(), 2.0, pair.first, zeros(2)
+            )
+            for form in (pair, bindings)
+                model = bind(range_parent(), form)
+                @test model(Xoshiro(1)) == [2.0, 2.0]
+                @test range_nested(model)(Xoshiro(1)) == [2.0, 2.0]
+            end
+            @test_throws "Cannot explicitly bind a submodel return value" bind(
+                range_parent(); a=zeros(2)
+            )(
+                Xoshiro(1)
+            )
+        end
+    end
+
     @testset "slice prefixes resolve explicit bindings" begin
         @model slice_leaf() = x ~ Normal()
         @model slice_parent(child) = unused ~ to_submodel(child, false)
