@@ -190,12 +190,12 @@ DynamicPPL.convert_model_argument(T, ::Type{CustomModelArgument}) = (:converted_
                 model.defaults,
                 model.prefix,
                 model.values,
-                model.prefix_template,
                 model.context;
                 args_on_lhs=DynamicPPL._args_on_lhs(model),
             )
             @test direct.context === model.context
-            @test direct.prefix == model.prefix
+            @test direct.prefix === model.prefix
+            @test (@inferred DynamicPPL.getprefix(direct)) == DynamicPPL.getprefix(model)
             @test conditioned(direct) == conditioned(model)
             @test keys(VarInfo(Xoshiro(1), decondition(direct))) ==
                 keys(VarInfo(Xoshiro(1), decondition(model)))

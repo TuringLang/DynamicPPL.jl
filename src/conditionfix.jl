@@ -16,7 +16,7 @@ end
 function _get_model_data(model, vn, root, local_value)
     binding = _get_model_binding(model, root)
     _check_bound_shape(
-        binding, local_value, AbstractPPL.getoptic(vn), maybe_prefix(vn, model.prefix)
+        binding, local_value, AbstractPPL.getoptic(vn), maybe_prefix(vn, getprefix(model))
     )
     return _get_model_data(model, vn)
 end
@@ -255,14 +255,16 @@ function _local_binding_role(node, vn, template, model, shape_role=Condition)
             )
         end
     end
-    role = _model_role_at(node, AbstractPPL.getoptic(vn), maybe_prefix(vn, model.prefix))
+    role = _model_role_at(
+        node, AbstractPPL.getoptic(vn), maybe_prefix(vn, getprefix(model))
+    )
     if !(template isa NoTemplate) &&
         (role !== nothing || node isa ModelValue{Condition} || _whole_observation(node))
         _check_bound_shape(
             node,
             template,
             AbstractPPL.getoptic(vn),
-            maybe_prefix(vn, model.prefix),
+            maybe_prefix(vn, getprefix(model)),
             shape_role,
         )
     end
@@ -296,8 +298,8 @@ function _binding_local_name(vn, prefix, operation)
 end
 
 function _public_binding_name(model, vn; operation="bind")
-    prefix = model.prefix
-    template = _apply_prefix_template(model.prefix_template, NoTemplate())
+    prefix = getprefix(model)
+    template = _apply_prefix_template(model.prefix, NoTemplate())
     depth = optic_skip_length(AbstractPPL.getoptic(prefix))
     prefix = _expand_cartesian(_concretize_prefix(prefix, template; depth, canonical=true))
     vn = _expand_cartesian(_concretize_prefix(vn, template; depth, canonical=true))
@@ -306,7 +308,7 @@ end
 function _local_binding_input(model, input::Pair{<:VarName})
     name = _public_binding_name(model, first(input))
     name !== nothing && return name => last(input)
-    prefix = model.prefix
+    prefix = getprefix(model)
     value = ModelValue{Condition}(last(input))
     optic = AbstractPPL._unprefix_optic(
         AbstractPPL.getoptic(prefix), AbstractPPL.getoptic(first(input))
@@ -320,7 +322,7 @@ function _local_binding_input(model, input::Union{NamedTuple,VarNamedTuple})
     values = input isa NamedTuple ? VarNamedTuple(input) : input
     foreach(vn -> _public_binding_name(model, vn), keys(values))
     tagged = _tag_model_values(Condition, values)
-    return _select_model_values(Condition, _submodel_values(tagged, model.prefix))
+    return _select_model_values(Condition, _submodel_values(tagged, getprefix(model)))
 end
 _local_binding_input(model, input::Tuple) = map(x -> _local_binding_input(model, x), input)
 _local_binding_input(model, input) = input
@@ -365,7 +367,7 @@ end
     return QuoteNode(map(name -> VarName{name}(), names))
 end
 
-function _check_binding_addresses(model, values, error_prefix=model.prefix)
+function _check_binding_addresses(model, values, error_prefix=getprefix(model))
     names = _lhs_names(_binding_metadata(model))
     names === nothing && return nothing
     for name in keys(values.data)
@@ -382,7 +384,7 @@ end
     model::Model,
     values,
     inherited=false,
-    error_prefix=model.prefix,
+    error_prefix=getprefix(model),
     templates=merge(model.values.observed_templates, model.values.fixed_templates),
 )
     names = (
@@ -700,7 +702,7 @@ function _conditionfix(model, ::Type{R}, inputs; kwargs...) where {R}
     offered_template = template_count == 0 ? nothing : zero(last(inputs))
     inputs = flattened
     keyword_values = (; kwargs...)
-    if model.prefix !== nothing
+    if getprefix(model) !== nothing
         inputs = map(input -> _local_binding_input(model, input), inputs)
         isempty(kwargs) || (keyword_values = _local_binding_input(model, keyword_values))
     end
@@ -710,7 +712,7 @@ function _conditionfix(model, ::Type{R}, inputs; kwargs...) where {R}
     expanded = _binding_inputs(
         map(input -> _expand_child_binding(model, input), (keyword_values, inputs...))
     )
-    table = _bind_resolved(model.values, R, expanded...; error_prefix=model.prefix)
+    table = _bind_resolved(model.values, R, expanded...; error_prefix=getprefix(model))
     return _finish_binding(model, table, offered_template)
 end
 
@@ -721,7 +723,7 @@ function _finish_binding(model, table, offered_template)
         model,
         table.values,
         false,
-        model.prefix,
+        getprefix(model),
         merge(table.observed_templates, table.fixed_templates),
     )
     _check_binding_addresses(model, values)
@@ -733,7 +735,7 @@ function _finish_binding(model, table, offered_template)
         table.arguments,
         table.roots,
     )
-    _check_shared_latent_storage(table, merge(model.args, model.defaults), model.prefix)
+    _check_shared_latent_storage(table, merge(model.args, model.defaults), getprefix(model))
     result = _reconstruct_model(model; values=table)
     return if offered_template === nothing
         result
@@ -772,13 +774,11 @@ fixed(model::Model) = _listed_bindings(model, Fix)
 function _listed_bindings(model, R)
     values = _listing_argument_children(model, model.values.values)
     values = _select_model_values(R, values)
-    prefix = model.prefix
+    prefix = getprefix(model)
     return if prefix === nothing
         values
     else
-        _prefix_values(
-            values, prefix, _apply_prefix_template(model.prefix_template, NoTemplate())
-        )
+        _prefix_values(values, prefix, _apply_prefix_template(model.prefix, NoTemplate()))
     end
 end
 
@@ -831,7 +831,7 @@ function _listing_argument_children(model, values)
         optic = AbstractPPL.varname_to_optic(lhs)
         node = _model_argument_binding(values, optic)
         node === nothing && continue
-        prefix = child.prefix
+        prefix = getprefix(child)
         prefix_optic =
             prefix === nothing ? AbstractPPL.Iden() : AbstractPPL.varname_to_optic(prefix)
         namespace = _listing_at_prefix(node, child, prefix_optic)
@@ -865,7 +865,7 @@ _removals(::Type{Fix}, model::Model) = model.fixed_removals
 function _decondition_unfix(model, names, R, ::Val{recursive}=Val(false)) where {recursive}
     names = map(names) do name
         vn = name isa Symbol ? VarName{name}() : name
-        if model.prefix === nothing
+        if getprefix(model) === nothing
             vn
         else
             _public_binding_name(model, vn; operation="remove")
@@ -919,7 +919,7 @@ function _decondition_unfix(model, names, R, ::Val{recursive}=Val(false)) where 
         observation_removals=R === Condition ? markers : model.observation_removals,
         fixed_removals=R === Fix ? markers : model.fixed_removals,
     )
-    _check_shared_latent_storage(table, merge(model.args, model.defaults), model.prefix)
+    _check_shared_latent_storage(table, merge(model.args, model.defaults), getprefix(model))
     return _check_latent_arguments(result)
 end
 function _check_removal_storage(model, storage)
@@ -1019,7 +1019,7 @@ end
 
 function _submodel_removals(R, model, prefix)
     return mapreduce(
-        r -> _select_removal(r, prefix, model.prefix),
+        r -> _select_removal(r, prefix, getprefix(model)),
         (a, b) -> (a..., b...),
         _removals(R, model);
         init=(),
@@ -1063,10 +1063,10 @@ end
 
 function _local_binding_input(model, ::Type{T}) where {T<:AbstractPPL.OfNamedTuple}
     storage = zero(T)
-    selected = _storage_at(storage, AbstractPPL.varname_to_optic(model.prefix))
+    selected = _storage_at(storage, AbstractPPL.varname_to_optic(getprefix(model)))
     if selected === nothing || !(selected isa NamedTuple)
         for name in _binding_template_names(storage)
-            absolute = maybe_prefix(name, model.prefix)
+            absolute = maybe_prefix(name, getprefix(model))
             throw(
                 ArgumentError(
                     "Binding template entry `$name` uses a local name; use the absolute name `$absolute`.",
@@ -1108,7 +1108,7 @@ function _binding_template_names(schema::NamedTuple, prefix=nothing)
     end
 end
 function _record_binding_template(model, schema)
-    prefix = model.prefix
+    prefix = getprefix(model)
     names = map(_binding_template_names(schema)) do name
         local_name = prefix === nothing || name != prefix && subsumes(prefix, name)
         address =
@@ -1122,7 +1122,6 @@ function _record_binding_template(model, schema)
         model.defaults,
         model.prefix,
         model.values,
-        model.prefix_template,
         model.context;
         args_on_lhs=metadata,
         observation_removals=model.observation_removals,
@@ -1141,7 +1140,7 @@ function _check_latent_arguments(model)
         AbstractPPL.getsym(vn) in lhs || return nothing
         binding = _get_model_binding(model, vn)
         storage = binding === nothing ? value : _argument_storage(binding, value)
-        _check_latent_storage(storage, maybe_prefix(vn, model.prefix))
+        _check_latent_storage(storage, maybe_prefix(vn, getprefix(model)))
     end
     return model
 end

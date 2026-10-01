@@ -264,7 +264,7 @@ end
             ),
         )
     left_vn = _concretize_prefix(left_vn, template; prefix=Val(true))
-    local_prefix = maybe_prefix(submodel.model.prefix, left_vn)
+    local_prefix = maybe_prefix(getprefix(submodel.model), left_vn)
     observations = _submodel_removals(Condition, parent_model, local_prefix)
     fixed = _submodel_removals(Fix, parent_model, local_prefix)
     return _tilde_assume_submodel!!(
@@ -291,7 +291,7 @@ end
             _get_model_binding(parent_model, VarName{AbstractPPL.getsym(left_vn)}()),
             template,
             AbstractPPL.getoptic(left_vn),
-            maybe_prefix(left_vn, parent_model.prefix),
+            maybe_prefix(left_vn, getprefix(parent_model)),
             _has_binding_role(Fix, inherited) ? Fix : Condition;
             submodel=true,
         )
@@ -424,7 +424,7 @@ end
     inherited,
 )
     local_prefix = maybe_prefix(getprefix(child), left_vn)
-    prefix = maybe_prefix(local_prefix, parent_model.prefix)
+    prefix = maybe_prefix(local_prefix, getprefix(parent_model))
     _has_binding_role(ArgumentCondition, child.values.values) &&
         _submodel_argument_observation_error(child, prefix)
     table = _apply_parent_removals(
@@ -461,7 +461,6 @@ end
     model = _reconstruct_model(
         child,
         child.prefix,
-        child.prefix_template,
         child.context,
         table,
         Val(requires_threadsafe(child)),

@@ -28,7 +28,7 @@ Added `evaluate!!(model, context, vi)` to evaluate with an explicit leaf context
 
 ## Breaking changes
 
-`PrefixContext` and `extract_prefixes` are removed. Use `prefix(model, vn; template)` and read the combined prefix from `model.prefix`; prefixes and nested storage templates now belong to the model.
+`PrefixContext` and `extract_prefixes` are removed. Use `prefix(model, vn; template)` and read the combined prefix with `DynamicPPL.getprefix(model)`; prefixes and nested storage templates now belong to the model.
 
 `logprior`, `loglikelihood`, `logjoint`, and `returned` reject dictionaries: `f(model, Dict(@varname(x) => v))` → `f(model, (; x=v))` or `f(model, VarNamedTuple((@varname(x) => v,)))`.
 
