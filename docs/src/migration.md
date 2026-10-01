@@ -22,9 +22,24 @@ Bindings outside a model's prefix now throw. Replace
 `condition(prefix(m, @varname(p)); y=v)` with
 `condition(prefix(m, @varname(p)), @varname(p.y) => v)`.
 
-Replace `InitContext` with `Context`. `DefaultContext` and context subtyping are removed:
-custom value selection belongs in initialisation strategies. To reuse previous values,
-extract them explicitly before evaluating:
+Replace `DefaultContext()` / `InitContext(...)` with
+`Context(rng, init_strategy, transform_strategy)`, specifying parameter inputs and output
+transforms explicitly. `Model.context` and `contextualize` are removed:
+`contextualize(m, ctx); evaluate!!(m, vi)` becomes `evaluate!!(m, ctx, vi)`.
+The two-argument `evaluate!!(m, vi)` is removed.
+
+`AbstractContext` and `AbstractParentContext` are no longer exported, and context
+subtyping is replaced by initialisation strategies for custom value selection and
+accumulators for custom output handling. `childcontext`, `setchildcontext`, `leafcontext`,
+and `setleafcontext` are removed; pass a single `Context` directly to evaluation instead
+of traversing or rebuilding a context hierarchy.
+
+For downstream evaluators, replace `make_evaluate_args_and_kwargs(m, vi)` with
+`DynamicPPL.make_evaluate_args_and_kwargs(m, ctx, vi)`, now `public`. Its prepared
+positional arguments begin with `(m, ctx, vi)`. It does not execute the model, reset
+accumulators, or wrap them for thread safety; use `evaluate!!` for those steps.
+
+To reuse previous values, extract them explicitly before evaluating:
 
 ```julia
 context = Context(rng, InitFromParams(get_vector_values(previous), nothing), LinkAll())

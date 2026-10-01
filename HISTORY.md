@@ -48,7 +48,15 @@ Explicit observations now replace argument-supplied observations before the body
 
 Conditioned argument LHS variables observe body-transformed values: observing the original bound value → observe it under a separate LHS variable. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-`Context(rng, init_strategy, transform_strategy)` replaces `InitContext` and the context hierarchy. Pass it to `evaluate!!(model, context, outputs)`; custom initialisation and observation handling belong to strategies and accumulators.
+`DefaultContext()` / `InitContext(...)` → `Context(rng, init_strategy, transform_strategy)`: specify parameter inputs and output transforms explicitly. See [#1503](https://github.com/TuringLang/DynamicPPL.jl/pull/1503).
+
+`contextualize` and `Model.context` are removed: `contextualize(m, ctx); evaluate!!(m, vi)` → `evaluate!!(m, ctx, vi)`. The two-argument `evaluate!!(m, vi)` is removed. See [#1503](https://github.com/TuringLang/DynamicPPL.jl/pull/1503).
+
+`AbstractContext` / `AbstractParentContext` subtyping → initialisation strategies for custom value selection and accumulators for custom output handling. These names are no longer exported. See [#1503](https://github.com/TuringLang/DynamicPPL.jl/pull/1503).
+
+`childcontext`, `setchildcontext`, `leafcontext`, and `setleafcontext` are removed: use a single `Context(rng, init_strategy, transform_strategy)` passed directly to evaluation instead of traversing or rebuilding a context hierarchy. See [#1503](https://github.com/TuringLang/DynamicPPL.jl/pull/1503).
+
+`make_evaluate_args_and_kwargs(m, vi)` → `DynamicPPL.make_evaluate_args_and_kwargs(m, ctx, vi)`, now `public`; the prepared positional arguments begin with `(m, ctx, vi)`. See [#1503](https://github.com/TuringLang/DynamicPPL.jl/pull/1503).
 
 Whole bindings must satisfy declared argument or local storage types and shared signature constraints: incompatible replacement → reconstruct the model or provide compatible storage. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 

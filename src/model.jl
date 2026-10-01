@@ -548,7 +548,7 @@ end
 Reset the accumulators and evaluate `model` using `context`, returning `(retval, varinfo)`.
 
 The context belongs to this evaluation, not to the model. The same context is passed to
-submodels and to [`tilde_assume!!`](@ref) for latent sites. Observations and tracked values
+submodels and to [`tilde_assume!!`](@ref) for latent LHS variables. Observations and tracked values
 go directly to accumulators, independently of the context. Models marked with
 [`setthreadsafe`](@ref) use a `ThreadSafeVarInfo` during evaluation.
 
