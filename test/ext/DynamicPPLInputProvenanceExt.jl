@@ -4,10 +4,25 @@ using DynamicPPL
 using ForwardDiff: ForwardDiff
 using Distributions: MvNormal, Normal
 using LinearAlgebra: I
+using Random: Xoshiro
 using SparseArrays: AbstractSparseMatrixCSC, nnz, sparse, sparsevec, spzeros
 using Test: @test, @test_logs, @testset
 
 @testset "input provenance warning" begin
+    @testset "submodel return values are not observations" begin
+        @model inner() = z ~ Normal()
+        @model outerarg(a, rhs) = a ~ rhs
+        @model outerkeyword(; a=3.0) = a ~ to_submodel(inner())
+        @model outerindexed(a) = a[1] ~ to_submodel(inner())
+        @model nested(m) = b ~ to_submodel(m)
+        for model in
+            (outerarg(3.0, to_submodel(inner())), outerkeyword(), outerindexed([3.0]))
+            for wrapped in (model, nested(model))
+                @test (@test_logs check_model(Xoshiro(1), wrapped))
+            end
+        end
+    end
+
     @model function derived_observation(y; sigma=1.0)
         m ~ Normal(0, sigma)
         v = exp(y) + sigma

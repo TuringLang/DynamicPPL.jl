@@ -402,7 +402,9 @@ function generate_tilde(left, right; is_argument=false)
         if $role isa $(DynamicPPL.Fix)
             $(assign_or_set!!(left, fixed_data, vn))
         elseif $role === nothing
-            $(generate_input_provenance_check(left, vn))
+            if !($dist isa $(DynamicPPL.Submodel))
+                $(generate_input_provenance_check(left, vn))
+            end
             $(generate_tilde_assume(left, dist, vn))
         else
             $supplied_val = $(
