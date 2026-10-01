@@ -180,6 +180,33 @@ function Base.similar(
 end
 
 @testset "VarNamedTuple" begin
+    @testset "PartialArray element type narrowing" begin
+        data = Vector{Any}(undef, 3)
+        data[1:2] = [1, "two"]
+        for (values, mask) in (
+            (Any[1, 2, 3], trues(3)),
+            (Real[1, 2.0, 3], trues(3)),
+            (Union{Nothing,Int}[1, nothing, 3], trues(3)),
+            (data, [true, true, false]),
+            (data, [true, false, false]),
+            (data, falses(3)),
+        )
+            expected = foldl(
+                typejoin,
+                (typeof(values[i]) for i in eachindex(mask) if mask[i]);
+                init=Union{},
+            )
+            pa = PartialArray(values, mask)
+            result = DynamicPPL.VarNamedTuples._concretise_eltype!!(pa)
+            @test eltype(result) === expected
+            @test result.mask === mask
+            @test result.data[mask] == values[mask]
+            if expected === eltype(pa)
+                @test result === pa
+            end
+        end
+    end
+
     @testset "dynamic indices into array leaves" begin
         for x in ([1.0, 2.0], view([1.0, 2.0], :), OA.OffsetArray([1.0, 2.0], 3:4))
             vnt = VarNamedTuple(; x)
