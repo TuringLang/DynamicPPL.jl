@@ -125,6 +125,29 @@ end
         end
     end
 
+    @testset "unfix restores only actual argument-supplied observations" begin
+        @model scalar_argument(x) = x ~ Normal()
+        @model keyword_argument(; x) = x ~ Normal()
+        for observed in (scalar_argument(1.0), keyword_argument(; x=1.0))
+            direct = DynamicPPL.Model{false}(
+                observed.f, observed.args, observed.defaults; lhs_arguments=(:x,)
+            )
+            for original in (direct, condition(direct; x=4.0), decondition(direct))
+                for names in ((), (@varname(x),))
+                    restored = unfix(fix(original; x=2.0), names...)
+                    @test isempty(conditioned(restored))
+                    @test keys(VarInfo(Xoshiro(1), restored)) == [@varname(x)]
+                    @test logjoint(restored, (; x=3.0)) == logjoint(direct, (; x=3.0))
+                end
+            end
+            for original in (observed, decondition(observed))
+                restored = unfix(fix(original; x=2.0), @varname(x))
+                @test conditioned(restored)[@varname(x)] == 1.0
+                @test logjoint(restored, (;)) == logpdf(Normal(), 1.0)
+            end
+        end
+    end
+
     @testset "NamedTuple bindings and LHS variables require field names" begin
         @model integer_lhs(x) = (x[1] ~ Normal(); x)
         @model nested_integer_lhs(x) = (x.p[1] ~ Normal(); x)

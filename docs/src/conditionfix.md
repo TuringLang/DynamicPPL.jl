@@ -55,7 +55,8 @@
     a child. Decondition child argument-supplied observations before `to_submodel`. With no
     names, all conditioned or fixed bindings, respectively, are removed. `unfix` restores the argument-supplied
     observation, if any, otherwise making the LHS variable latent; it never restores an
-    earlier explicit conditioned binding. Argument-supplied observations are rebuilt from the model's arguments,
+    earlier explicit conditioned binding. Only recorded argument-supplied observations are rebuilt
+    from the model's arguments,
     so `unfix(fix(decondition(m, :x); x=5.0), :x)` also restores an argument-supplied observation
     previously removed by `decondition`. `decondition(m, :x)` removes explicit and argument-supplied
     observations at `x`, making it latent.
