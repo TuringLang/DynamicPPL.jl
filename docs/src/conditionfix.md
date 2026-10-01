@@ -60,11 +60,11 @@
   - `conditioned` and `fixed` return plain values, independent of binding history:
     `VarNamedTuple`, `PartialArray`, or ordinary values. Partial removal or mixed
     roles produce plain partial values, not the original container type.
-  - `missing` is rejected at construction in arguments with LHS variables and values supplied to
-    `condition` or `fix`, recursively throughout tuples, named tuples, and assigned array
-    entries, including unused parts of those arguments. Custom struct fields are checked
-    only at executed LHS variables. Omit unobserved bindings, or construct with a non-missing
-    argument placeholder and `decondition` it (see [Missing data](@ref)).
+  - A value containing `missing` is rejected when a tilde statement observes or fixes
+    it, with an `ArgumentError` naming the LHS variable. Parts of an argument or binding
+    that no tilde statement reads may contain `missing`. It no longer marks an LHS
+    variable as latent: omit its explicit binding or `decondition` the argument LHS
+    variable (see [Missing data](@ref)).
     `InitFromParams` rejects it when the parameter is read during initialization,
     not at construction. Leave unobserved values out instead.
   - Whole bindings use the supplied object without copying. When a partial binding
@@ -260,13 +260,17 @@ rand(cond_model_partial)
 
 ## Missing data
 
-Construction checks all parts of arguments with LHS variables recursively through tuples, named tuples,
-and assigned array entries, even when an entry is not an LHS variable. For
-`@model metadata_lhs(p) = p.a ~ Normal()`, `metadata_lhs((a=1.0, b=missing))` therefore
-throws at construction. Custom struct fields are not searched at construction; `missing`
-is rejected when such a field is used as an LHS variable.
+A value containing `missing` is rejected when a tilde statement observes or fixes it.
+The `ArgumentError` names the LHS variable, rather than the LHS subvariable containing
+`missing`. Parts of an argument or binding that no tilde statement reads may contain
+`missing`: for `@model metadata_lhs(p) = p.a ~ Normal()`,
+`metadata_lhs((a=1.0, b=missing))` constructs and evaluates successfully, while
+`metadata_lhs((a=missing, b=1.0))` constructs but throws when evaluated, naming `p.a`.
+The same rule applies to explicit bindings from `condition` and `fix`.
 
-Omit unobserved values from `condition` or `fix`. For argument-supplied observations, supply a
-non-missing placeholder first, then call `decondition(m, :x)` (or remove a partial binding)
-to make the desired LHS variables latent.
-For an array whose entries are separate LHS variables, condition only the observed indices, as in the examples above. A single multivariate draw cannot be partially conditioned.
+`missing` no longer marks an LHS variable as latent. Omit its explicit binding, or use
+`decondition(m, @varname(x))` to make an argument LHS variable latent before evaluation.
+For `@model observed(x) = x ~ Normal()`, `decondition(observed(missing))(rng)` samples `x`.
+For an array whose indices are separate LHS variables, decondition only the desired
+indices. A single multivariate LHS variable cannot be partially conditioned:
+`x ~ MvNormal(...)` rejects a value containing `missing`, naming `x`.

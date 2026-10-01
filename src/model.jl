@@ -20,39 +20,11 @@ function _contains_missing(values::Union{Tuple,NamedTuple})
     return any(_contains_missing, values)
 end
 
-_missing_path(::Missing, path) = path
-_missing_path(value::Base.Pairs, path) = _missing_path(values(value), path)
-function _missing_path(value::TransformedValue, path)
-    return _missing_path(get_internal_value(value), path)
-end
-function _missing_path(value::NamedTuple, path)
-    name = first(name for name in keys(value) if _contains_missing(value[name]))
-    return _missing_path(value[name], "$path.$name")
-end
-function _missing_path(value::Tuple, path)
-    i = findfirst(_contains_missing, value)
-    return _missing_path(value[i], "$path[$i]")
-end
-function _missing_path(value::AbstractArray, path)
-    i = first(
-        i for
-        i in CartesianIndices(value) if isassigned(value, i) && _contains_missing(value[i])
-    )
-    return _missing_path(value[i], "$path[$(join(Tuple(i), ", "))]")
-end
-
 struct ModelValue{R<:Union{Condition,ArgumentCondition,Fix},T}
     value::T
-    function ModelValue{R}(
-        value::T, vn=@varname(_)
-    ) where {R<:Union{Condition,ArgumentCondition,Fix},T}
+    function ModelValue{R}(value::T) where {R<:Union{Condition,ArgumentCondition,Fix},T}
         (R === Condition || R === ArgumentCondition || R === Fix) ||
             throw(ArgumentError("A model value must have one concrete role"))
-        _contains_missing(value) && throw(
-            ArgumentError(
-                "Bound value `$(AbstractPPL.getsym(vn))` contains `missing` at `$(_missing_path(value, string(vn)))`. Omit unobserved values from `condition` or `fix`, or construct with a non-missing placeholder and use `decondition` to make the argument latent.",
-            ),
-        )
         return new{R,T}(value)
     end
 end
@@ -104,7 +76,7 @@ end
 function VarNamedTuples._getindex_optic(
     value::ModelValue{R}, optic::AbstractPPL.AbstractOptic, vn
 ) where {R}
-    return ModelValue{R}(VarNamedTuples._getindex_optic(value.value, optic, vn), vn)
+    return ModelValue{R}(VarNamedTuples._getindex_optic(value.value, optic, vn))
 end
 function VarNamedTuples._getindex_optic(
     value::ModelValue{R}, ::AbstractPPL.Iden, vn
@@ -294,7 +266,7 @@ function _check_fixed_shape_child(binding, local_value, optic::AbstractPPL.Index
 end
 
 function _tag_model_values(::Type{R}, values::VarNamedTuple) where {R}
-    return map_pairs!!(pair -> ModelValue{R}(pair.second, pair.first), copy(values))
+    return map_pairs!!(pair -> ModelValue{R}(pair.second), copy(values))
 end
 
 function _expand_model_binding(previous::ModelValue{R,<:AbstractArray}) where {R}
@@ -1244,7 +1216,7 @@ function _convert_partial_argument_binding(
             "Cannot exactly represent partial binding at `$vn` in argument element type $(eltype(template))",
         ),
     )
-    return ModelValue{R}(converted, vn)
+    return ModelValue{R}(converted)
 end
 
 """
@@ -1258,11 +1230,11 @@ See also: [`decondition`](@ref), [`conditioned`](@ref)
 
 Later bindings replace earlier ones where they overlap: a whole binding replaces the entire
 value; a partial binding changes part of an already-bound value and preserves the rest.
-Subvariables of one LHS variable cannot have different roles. `missing` is rejected at binding or model construction,
-recursively throughout tuples, named tuples, and assigned array entries, including unused
-parts of an argument with LHS variables; custom struct fields are checked only at executed LHS variables.
-Omit unobserved values from `condition` or `fix`, or supply a non-missing argument placeholder
-and [`decondition`](@ref) it; see [Missing data](@ref).
+Subvariables of one LHS variable cannot have different roles. A value containing `missing`
+is rejected when a tilde statement observes or fixes it, naming the LHS variable. Parts of
+an argument or binding that no tilde statement reads may contain `missing`. It no longer
+marks an LHS variable as latent: omit its explicit binding or use [`decondition`](@ref) to
+make an argument LHS variable latent; see [Missing data](@ref).
 Bindings unused by executed LHS variables are ignored.
 
 Binding an argument with no LHS variables throws `ArgumentError` at this call; construct
@@ -2301,6 +2273,15 @@ function tilde_assume!!(
     return tilde_assume!!(context, right, vn, template, vi)
 end
 
+function _check_tilde_value(value, vn)
+    _contains_missing(value) && throw(
+        ArgumentError(
+            "LHS variable `$vn` contains `missing`; `missing` no longer marks an LHS variable as latent. Use `decondition` to make it latent.",
+        ),
+    )
+    return value
+end
+
 """
     tilde_observe!!(prefix, prefix_template, right::Distribution, left, vn, template, vi)
 
@@ -2323,11 +2304,7 @@ function tilde_observe!!(
     else
         _prefix_varname_and_template(vn, template, prefix, prefix_template)
     end
-    _contains_missing(left) && throw(
-        ArgumentError(
-            "`missing` at `$(_missing_path(left, string(vn)))` no longer selects latent variables. Omit unobserved values from `condition` or `fix`, or construct with a non-missing placeholder and use `decondition` to make the argument latent.",
-        ),
-    )
+    left = _check_tilde_value(left, vn)
     vi = accumulate_observe!!(vi, right, left, vn, template)
     return left, vi
 end

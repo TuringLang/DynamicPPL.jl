@@ -402,7 +402,11 @@ function generate_tilde(left, right; is_argument=false)
             $lookup_role
         end
         if $role isa $(DynamicPPL.Fix)
-            $(assign_or_set!!(left, fixed_data, vn))
+            $value = $(DynamicPPL._check_tilde_value)(
+                $fixed_data,
+                $(DynamicPPL.maybe_prefix)($vn, $(DynamicPPL._model_prefix)(__model__)),
+            )
+            $(assign_or_set!!(left, value, vn))
         elseif $role === nothing
             if !($dist isa $(DynamicPPL.Submodel))
                 $(generate_input_provenance_check(left, vn))
