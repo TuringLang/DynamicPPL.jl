@@ -698,6 +698,7 @@ function build_output(modeldef, linenumbernode, lhs_names)
             $name = $prepared
         end
     end
+    debugdef = nothing
     bodydef = if isempty(lhs_arguments)
         nothing
     else
@@ -745,6 +746,16 @@ function build_output(modeldef, linenumbernode, lhs_names)
             end
             return $(definition[:name])($(callargs...))
         end
+        debug_definition = copy(evaluatordef)
+        debug_definition[:args] = vcat(
+            [:(::$(Core.Typeof)($(_model_evaluator)))], evaluatordef[:args]
+        )
+        debug_definition[:body] = Expr(
+            :block,
+            evaluatordef[:body].args[1:(end - 1)]...,
+            :(return ($(definition[:name]), ($(callargs...),), $(NamedTuple)())),
+        )
+        debugdef = MacroTools.combinedef(debug_definition)
         MacroTools.combinedef(definition)
     end
 
@@ -768,8 +779,22 @@ function build_output(modeldef, linenumbernode, lhs_names)
     return MacroTools.@q begin
         $bodydef
         $(MacroTools.combinedef(evaluatordef))
+        $debugdef
         $(Base).@__doc__ $(MacroTools.combinedef(modeldef))
     end
+end
+
+function _model_evaluator(f, args, kwargs)
+    isempty(_lhs_arguments(first(args))) && return (f, args, kwargs)
+    types = Base.typesof(_model_evaluator, args...)
+    if hasmethod(f, types)
+        signature = Base.unwrap_unionall(which(f, types).sig)
+        # A generic model constructor can also accept the debug marker.
+        if signature.parameters[2] === typeof(_model_evaluator)
+            return f(_model_evaluator, args...; kwargs...)
+        end
+    end
+    return f, args, kwargs
 end
 
 function prepare_model_argument(model::Model, vn::VarName, value)

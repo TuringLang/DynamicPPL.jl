@@ -287,8 +287,8 @@ Generate the evaluator call and the types of the arguments.
 
 # Returns
 A 2-tuple with the following elements:
-- `f`: This is either `model.f` or `Core.kwcall`, depending on whether
-    the model has keyword arguments.
+- `f`: The model body function, or `Core.kwcall` if it takes keyword arguments.
+    Models with argument LHS variables use prepared arguments for their body function.
 - `argtypes::Type{<:Tuple}`: The types of the arguments for the evaluator.
 """
 function gen_evaluator_call_with_types(
@@ -301,10 +301,11 @@ function gen_evaluator_call_with_types(
     args, kwargs = DynamicPPL.make_evaluate_args_and_kwargs(
         setleafcontext(model, context), varinfo
     )
+    f, args, kwargs = DynamicPPL._model_evaluator(model.f, args, kwargs)
     return if isempty(kwargs)
-        (model.f, Base.typesof(args...))
+        (f, Base.typesof(args...))
     else
-        (Core.kwcall, Tuple{typeof(kwargs),Core.Typeof(model.f),map(Core.Typeof, args)...})
+        (Core.kwcall, Tuple{typeof(kwargs),Core.Typeof(f),map(Core.Typeof, args)...})
     end
 end
 

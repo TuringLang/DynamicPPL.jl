@@ -2648,7 +2648,7 @@ julia> @model function demo(x)
                x[i] ~ Normal(m, 1.0)
            end
        end
-demo (generic function with 2 methods)
+demo (generic function with 3 methods)
 
 julia> # Using a `NamedTuple`.
        logjoint(demo([1.0]), (m = 100.0, ))
@@ -2692,7 +2692,7 @@ julia> @model function demo(x)
                x[i] ~ Normal(m, 1.0)
            end
        end
-demo (generic function with 2 methods)
+demo (generic function with 3 methods)
 
 julia> # Using a `NamedTuple`.
        logprior(demo([1.0]), (m = 100.0, ))
@@ -2733,7 +2733,7 @@ julia> @model function demo(x)
                x[i] ~ Normal(m, 1.0)
            end
        end
-demo (generic function with 2 methods)
+demo (generic function with 3 methods)
 
 julia> # Using a `NamedTuple`.
        loglikelihood(demo([1.0]), (m = 100.0, ))
