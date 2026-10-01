@@ -1240,26 +1240,46 @@ function _convert_partial_argument_binding(
     binding::ModelValue{R}, template, optic, vn
 ) where {R}
     value = binding.value
-    converted = try
-        if VarNamedTuples._is_multiindex(template, optic.ix...; optic.kw...)
-            map(v -> convert(eltype(template), v), value)
-        else
-            convert(eltype(template), value)
-        end
-    catch err
-        err isa InterruptException && rethrow()
-        throw(
-            ArgumentError(
-                "Cannot represent partial binding at `$vn` in argument element type $(eltype(template))",
-            ),
-        )
-    end
+    T = eltype(template)
+    multi = VarNamedTuples._is_multiindex(template, optic.ix...; optic.kw...)
+    converted = multi ? map(v -> convert(T, v), value) : convert(T, value)
     isequal(converted, value) || throw(
         ArgumentError(
-            "Cannot exactly represent partial binding at `$vn` in argument element type $(eltype(template))",
+            "Cannot exactly represent partial binding at `$vn` in argument element type $T",
         ),
     )
     return ModelValue{R}(converted)
+end
+_check_binding_template_bounds(template, ::AbstractPPL.Iden, vn) = nothing
+function _check_binding_template_bounds(
+    template, optic::AbstractPPL.Property{S}, vn
+) where {S}
+    optic.child isa AbstractPPL.Iden && return nothing
+    child = VarNamedTuples.SharedGetProperty{S}()(template)
+    return _check_binding_template_bounds(child, optic.child, vn)
+end
+function _check_binding_template_bounds(template, optic::AbstractPPL.Index, vn)
+    array = VarNamedTuples.template_array(template)
+    coptic = AbstractPPL.concretize_top_level(optic, array)
+    inbounds = if array isa AbstractArray
+        checkbounds(Bool, array, coptic.ix...; coptic.kw...)
+    elseif array isa Union{NoTemplate,VarNamedTuples.SkipTemplate,Missing}
+        dims = VarNamedTuples.get_maximum_size_from_indices(coptic.ix...; coptic.kw...)
+        all(>=(0), dims) || throw(ArgumentError("invalid Array dimensions"))
+        Base.checkbounds_indices(Bool, map(Base.OneTo, dims), coptic.ix)
+    else
+        true
+    end
+    inbounds || throw(
+        ArgumentError(
+            "Cannot bind `$vn`: index is outside the argument template at `$(AbstractPPL.getsym(vn))`",
+        ),
+    )
+    if !(coptic.child isa AbstractPPL.Iden)
+        child = VarNamedTuples.index_template(template, coptic)
+        _check_binding_template_bounds(child, coptic.child, vn)
+    end
+    return nothing
 end
 
 """
@@ -1293,7 +1313,8 @@ Binding a whole argument replaces its value, shape, and dispatch type parameters
 from the start of the model body. Observed LHS variables use the value computed by the body;
 fixed LHS variables reset to their bound value at the tilde statement. Partial updates preserve the
 remaining stored values and their array templates. Values in partial bindings are converted to the argument array's element
-type; values that cannot be represented exactly throw `ArgumentError`.
+type with `convert`, propagating conversion errors. Conversions that change a value
+throw `ArgumentError`.
 Arguments with unobserved entries retain their original storage
 template; the corresponding tilde statements fill those entries during evaluation.
 Defaults derived from an argument are evaluated at model construction; binding that
@@ -1535,21 +1556,9 @@ function _make_condfix_values(model, values::Pair{<:Union{VarName,Symbol}}...)
         _check_namedtuple_index(
             _model_values(model.values), AbstractPPL.varname_to_optic(vn)
         )
-        result = try
-            templated_setindex!!(
-                result,
-                value,
-                vn,
-                get(templates.data, AbstractPPL.getsym(vn), NoTemplate()),
-            )
-        catch err
-            err isa BoundsError || rethrow()
-            throw(
-                ArgumentError(
-                    "Cannot bind `$vn`: index is outside the argument template at `$(AbstractPPL.getsym(vn))`",
-                ),
-            )
-        end
+        template = get(templates.data, AbstractPPL.getsym(vn), NoTemplate())
+        _check_binding_template_bounds(template, AbstractPPL.getoptic(vn), vn)
+        result = templated_setindex!!(result, value, vn, template)
     end
     return result
 end
