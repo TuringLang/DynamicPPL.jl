@@ -447,6 +447,11 @@ end
             result = bind(constructor([1.0, 2.0]), @varname(y[1]) => 1)
             @test result() isa Vector{Float64}
             @test result() == [1.0, 2.0]
+            @test eltype(DynamicPPL._get_model_binding(result, @varname(y))) === Union{
+                DynamicPPL.ModelValue{DynamicPPL.Condition,Float64},
+                DynamicPPL.ModelValue{DynamicPPL.ArgumentCondition,Float64},
+                DynamicPPL.ModelValue{DynamicPPL.Fix,Float64},
+            }
             @test_throws r"ArgumentError: .*represent" bind(
                 constructor([1.0, 2.0]), @varname(y[1]) => big(2)^100 + 1
             )()
