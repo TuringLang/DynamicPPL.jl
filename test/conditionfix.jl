@@ -624,6 +624,23 @@ end
         @test unfix(restored, @varname(x[2]))(Xoshiro(1)) == (a=1.0, b=2.0)
     end
 
+    @testset "unfix restores the last fixed component's argument observation" begin
+        @model restored_components(x) = (x[1] ~ Normal(); x[2] ~ Normal(); x)
+        for original in ([1.0, 2.0], (1.0, 2.0))
+            bound = fix(decondition(restored_components(original)), @varname(x[1]) => 5.0)
+            for names in ((), (@varname(x),), (@varname(x[1]),))
+                restored = unfix(bound, names...)
+                @test restored(Xoshiro(1))[1] == 1.0
+                @test restored(Xoshiro(1))[2] == rand(Xoshiro(1), Normal())
+            end
+        end
+        @model restored_fields(x) = (x.a[1] ~ Normal(); x.a[2] ~ Normal(); x)
+        restored = unfix(
+            fix(decondition(restored_fields((a=[1.0, 2.0],))), @varname(x.a[1]) => 5.0)
+        )
+        @test restored(Xoshiro(1)).a == [1.0, rand(Xoshiro(1), Normal())]
+    end
+
     @testset "invalid component addresses" begin
         @model function elements(y)
             for i in eachindex(y)

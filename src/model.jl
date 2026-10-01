@@ -473,6 +473,12 @@ function _empty_model_tree(tree::ModelValueTree)
         tree.values isa Tuple ? map(_ -> NoModelBinding(), tree.values) : VarNamedTuple()
     return ModelValueTree(tree.template, values)
 end
+function VarNamedTuples.make_leaf(value, optic::AbstractPPL.Index, template::ModelValue)
+    return VarNamedTuples.make_leaf(value, optic, _expand_model_binding(template))
+end
+function VarNamedTuples.make_leaf(value, optic::AbstractPPL.Property, template::ModelValue)
+    return VarNamedTuples.make_leaf(value, optic, _expand_model_binding(template))
+end
 function VarNamedTuples.make_leaf(
     value, optic::AbstractPPL.Property, template::ModelValueTree
 )
