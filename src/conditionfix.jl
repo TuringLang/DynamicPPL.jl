@@ -1661,20 +1661,20 @@ See [`condition`](@ref) for more information and examples.
 Base.:|(model::Model, values::Union{NamedTuple,AbstractDict,Pair,Tuple,VarNamedTuple}) =
     _bind_ordered_inputs(Condition, model, _binding_inputs(values))
 
-function _check_binding_addresses(model, values)
+function _check_binding_addresses(model, values, addresses=nothing)
     metadata = _binding_metadata(model)
     names = _lhs_names(metadata)
-    names === nothing && return nothing
     prefix = model.prefix
     if !(model.values isa LocalModelValues) && prefix !== nothing
-        for name in keys(values.data)
-            name === AbstractPPL.getsym(prefix) || throw(
+        for name in (addresses === nothing ? keys(values) : addresses)
+            AbstractPPL.subsumes(prefix, name) || throw(
                 ArgumentError(
                     "Cannot bind `$name`: it is outside this model's prefix `$prefix`."
                 ),
             )
         end
     end
+    names === nothing && return nothing
     _may_have_submodels(metadata) && return nothing
     local_values = if model.values isa LocalModelValues || model.prefix === nothing
         values
@@ -2318,9 +2318,13 @@ function _bind_model(::Type{R}, model::Model, values...; preparation_model=model
     preparation_model = _binding_layer_model(
         R, _materialize_argument_values(preparation_model)
     )
-    values = _tag_model_values(R, _make_condfix_values(preparation_model, values...))
+    values = _make_condfix_values(preparation_model, values...)
+    # Tagging a slice namespace can wrap its nested values as one binding. Validate
+    # the supplied addresses, not the enclosing storage address of that wrapper.
+    addresses = keys(values)
+    values = _tag_model_values(R, values)
     values = _check_argument_bindings(preparation_model, values)
-    _check_binding_addresses(model, values)
+    _check_binding_addresses(model, values, addresses)
     values = _prepare_local_binding_types(R, preparation_model, values)
     observations = _observation_values(model.values)
     fixed_values = _fixed_values(model.values)

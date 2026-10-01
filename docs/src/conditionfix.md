@@ -197,7 +197,8 @@ values inside a whole structured LHS variable.
 
 NamedTuple fields must be addressed by name (`x.a`), never by integer index, in both bindings
 and LHS variables. Tuples retain integer indices. Bindings on prefixed models must be at or
-below the prefix. A **submodel namespace** reaches child LHS variables through addresses such as
+below the prefix: `condition(prefix(m, @varname(p)); y=0.0)` throws `ArgumentError`;
+use `@varname(p.y) => 0.0` instead. A **submodel namespace** reaches child LHS variables through addresses such as
 `a.x`, or through unchanged names with `auto_prefix=false` unless manually prefixed.
 
 Explicitly binding a **submodel return value**, assigned by `a ~ to_submodel(...)`, throws
