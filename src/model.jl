@@ -1641,7 +1641,7 @@ function _make_condfix_values(model, values::Pair{<:Union{VarName,Symbol}}...)
             templates,
             template,
             vn,
-            get(_model_values(model.values).data, AbstractPPL.getsym(vn), NoTemplate()),
+            _binding_template(model, _model_values(model.values), vn),
         )
     end
     result = VarNamedTuple()
@@ -1650,11 +1650,21 @@ function _make_condfix_values(model, values::Pair{<:Union{VarName,Symbol}}...)
         _check_namedtuple_index(
             _model_values(model.values), AbstractPPL.varname_to_optic(vn)
         )
-        template = get(templates.data, AbstractPPL.getsym(vn), NoTemplate())
+        template = _binding_template(model, templates, vn)
         _check_binding_template_bounds(template, AbstractPPL.getoptic(vn), vn)
         result = templated_setindex!!(result, value, vn, template)
     end
     return result
+end
+function _binding_template(model, templates::VarNamedTuple, vn::VarName)
+    template = get(templates.data, AbstractPPL.getsym(vn), NoTemplate())
+    prefix = _model_prefix(model)
+    if template isa NoTemplate &&
+        prefix !== nothing &&
+        AbstractPPL.getsym(vn) === AbstractPPL.getsym(prefix)
+        return _apply_prefix_template(_model_prefix_template(model), NoTemplate())
+    end
+    return template
 end
 
 """
