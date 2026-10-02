@@ -32,6 +32,7 @@ Indexed prefixes accept a prefix template: `prefix(m, @varname(a[2]))` → `pref
 
 `check_model` accepts explicit argument bindings and warns about binding names absent from the model and reached unprefixed submodels. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
+<<<<<<< HEAD
 Binding and removal addresses now accept scalar `CartesianIndex` at any depth, including below prefixes.
 
 Growable storage now accepts scalar indices of any `Integer` type, including `Int32`, without a `MethodError`.
@@ -53,6 +54,9 @@ Fixed stack overflows when removing bindings from models with cyclic covariates.
 Improved evaluation performance for indexed submodels.
 
 Improved placeholder-checking performance for heterogeneous arrays and tuples.
+=======
+Density evaluation accepts an explicit RNG: `DynamicPPL.logdensity_internal(args...)` → `DynamicPPL.logdensity_internal(args..., rng)`; append `rng` to `AbstractPPL.prepare`’s `context` tuple. See [#1504](https://github.com/TuringLang/DynamicPPL.jl/pull/1504).
+>>>>>>> 3602df7a (history: tighten the 0.43 entries)
 
 ## Breaking changes
 
@@ -95,10 +99,6 @@ Partial local bindings use a positional binding template: `@vnt`/`@template` sto
 Explicit observations now replace argument-supplied observations before the body: ignored `condition(f(1); x=2)` → the observations of `f(2)`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501), [#958](https://github.com/TuringLang/DynamicPPL.jl/issues/958).
 
 Conditioned argument LHS variables observe body-transformed values: observing the original bound value → observe it under a separate LHS variable. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
-
-`LogDensityFunction(model; rng)` now shares the supplied RNG across construction, evaluation, AD preparation, and parameter sampling. Use `rand(__context__.rng, ...)` for model-body draws. See [#1504](https://github.com/TuringLang/DynamicPPL.jl/pull/1504).
-
-`DynamicPPL.logdensity_internal` takes an optional final `rng` argument, defaulting to the task-local `Random.default_rng()`; append an RNG to the `context` tuple of `AbstractPPL.prepare(DynamicPPL.logdensity_internal, x; context=...)` to control explicit draws in the model body. See [#1504](https://github.com/TuringLang/DynamicPPL.jl/pull/1504).
 
 Whole bindings must satisfy declared argument or local storage types and shared signature constraints: incompatible replacement → reconstruct the model or provide compatible storage. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
@@ -173,6 +173,10 @@ Custom `AbstractContext`/`AbstractParentContext` subtyping is unsupported, and b
 `childcontext`, `setchildcontext`, `leafcontext`, and `setleafcontext` are removed: context hierarchy traversal/reconstruction → pass one `Context` directly to evaluation. See [#1503](https://github.com/TuringLang/DynamicPPL.jl/pull/1503).
 
 `DynamicPPL.evaluate_nowarn!!(m, vi)` is removed → `evaluate!!(m, ctx, vi)`. See [#1503](https://github.com/TuringLang/DynamicPPL.jl/pull/1503).
+
+`LogDensityFunction` shares RNG state across construction, evaluation, AD preparation, and sampling: implicit draws → `LogDensityFunction(m; rng)` and model-body `rand(__context__.rng, ...)`. See [#1504](https://github.com/TuringLang/DynamicPPL.jl/pull/1504), [#721](https://github.com/TuringLang/DynamicPPL.jl/issues/721).
+
+`rand(ldf)` uses `ldf.rng`: relying on the task-local RNG → `rand(Random.default_rng(), ldf)`. See [#1504](https://github.com/TuringLang/DynamicPPL.jl/pull/1504).
 
 `@vnt` is no longer exported: `@vnt` → `DynamicPPL.@vnt` or explicitly import it. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
