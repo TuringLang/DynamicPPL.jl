@@ -268,6 +268,8 @@ costs (about 110 ns per element) are indicative, not fixed. Bind whole arrays fo
 either also throw there. Both errors name the LHS variable. Unread parts may contain either. For
 example, `@model metadata_lhs(p) = p.a ~ Normal()` accepts `(a=1.0, b=missing)`, but
 `(a=missing, b=1.0)` throws on evaluation, naming `p.a`.
+Partial bindings into whole `missing`/`nothing` arguments, even after deconditioning, throw
+`ArgumentError` when bound; supply a concrete argument such as `f(zeros(n))` or a whole binding.
 
 The default-argument idiom `@model gdemo(x=missing)` called as `gdemo()` also throws, even if
 the body first replaces `x` using `if x === missing; x = Vector{T}(undef, n); end`. Remove the

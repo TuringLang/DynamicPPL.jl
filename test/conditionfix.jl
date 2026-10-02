@@ -54,78 +54,65 @@ end
 end
 
 @testset "condition and fix" begin
-    @testset "partial bindings of deconditioned argument LHS variables" begin
+    @testset "partial argument bindings need concrete storage" begin
         @model function placeholder_indices(x=missing)
-            x === missing && (x = zeros(2))
-            for i in eachindex(x)
-                x[i] ~ Normal()
-            end
-            return x
+            (ismissing(x) || x === nothing) && (x = zeros(1))
+            x = x .+ 1
+            before = x[1]
+            x[1] ~ Normal()
+            return (before, x[1])
         end
         @model function placeholder_fields(p=missing)
-            p === missing && (p = (a=0.0, b=0.0))
+            (ismissing(p) || p === nothing) && (p = (a=0.0,))
             p.a ~ Normal()
-            p.b ~ Normal()
             return p
-        end
-        @model placeholder_child(child) = a ~ to_submodel(child)
-        for (model, address, latent, whole, value, expected) in (
-            (
-                decondition(placeholder_indices()),
-                @varname(x[1]),
-                @varname(x[2]),
-                @varname(x),
-                [1.0, 2.0],
-                [5.0, rand(Xoshiro(1), Normal())],
-            ),
-            (
-                decondition(placeholder_fields()),
-                @varname(p.a),
-                @varname(p.b),
-                @varname(p),
-                (a=1.0, b=2.0),
-                (a=5.0, b=rand(Xoshiro(1), Normal())),
-            ),
-        )
-            @testset "explicit binding at $address with $bind" for (bind, remove) in (
-                (condition, decondition), (fix, unfix)
-            )
-                bound = bind(model, address => 5.0)
-                @test bound(Xoshiro(1)) == expected
-                @test placeholder_child(bound)(Xoshiro(1)) == expected
-                vi = VarInfo(Xoshiro(1), bound)
-                @test keys(vi) == [latent]
-                @test getloglikelihood(vi) ==
-                    (bind === condition ? logpdf(Normal(), 5.0) : 0)
-                @test ForwardDiff.derivative(v -> logjoint(bound, Dict(latent => v)), 3.0) ≈
-                    -3.0
-                restored = remove(bound, address)
-                @test isempty(conditioned(restored))
-                @test isempty(fixed(restored))
-                @test restored(Xoshiro(1)) == model(Xoshiro(1))
-                @test keys(VarInfo(Xoshiro(1), restored)) == [address, latent]
-                @test bind(model, whole => value)(Xoshiro(1)) == value
-            end
         end
         templated = DynamicPPL.@vnt begin
             @template x = zeros(1)
-            x[1] := 5.0
+            x[1] := 2.0
         end
-        for bind in (condition, fix)
-            @test bind(decondition(placeholder_indices()), templated)(Xoshiro(1)) ==
-                [5.0, rand(Xoshiro(1), Normal())]
-            bound = bind(decondition(placeholder_indices()), @varname(x[1]) => 5.0)
-            @test bind(bound, @varname(x[2]) => 6.0)(Xoshiro(1)) == [5.0, 6.0]
+        message = r"ArgumentError: .*partial.*`[xp]`.*(nothing|missing).*concrete argument.*whole binding"
+        for absent in (nothing, missing), bind in (condition, fix)
+            for model in
+                (placeholder_indices(absent), decondition(placeholder_indices(absent)))
+                @test_throws message bind(model, @varname(x[1]) => 2.0)
+                @test_throws message bind(model, (@varname(x[1]) => 2.0,))
+                @test_throws message bind(model, templated)
+                @test_throws message bind(model, of((;)), @varname(x[1]) => 2.0)
+                @test_throws message model | (@varname(x[1]) => 2.0)
+                @test_throws message model | templated
+                whole = bind(model; x=[2.0])
+                @test whole(Xoshiro(1)) == (3.0, bind === condition ? 3.0 : 2.0)
+            end
+            latent = decondition(placeholder_indices(absent))
+            whole = bind(latent; x=[2.0])
+            @test bind(whole, @varname(x[1]) => 4.0)(Xoshiro(1)) ==
+                (5.0, bind === condition ? 5.0 : 4.0)
+            @test bind(latent, :x => [2.0], @varname(x[1]) => 4.0)(Xoshiro(1)) ==
+                (5.0, bind === condition ? 5.0 : 4.0)
+            fields = decondition(placeholder_fields(absent))
+            @test_throws message bind(fields, @varname(p.a) => 2.0)
+            @test bind(fields; p=(a=2.0,))(Xoshiro(1)) == (a=2.0,)
+            @test decondition(placeholder_indices(absent))(Xoshiro(1)) ==
+                (1.0, rand(Xoshiro(1), Normal()))
+            @test fields(Xoshiro(1)) == (a=rand(Xoshiro(1), Normal()),)
         end
-        @model placeholder_whole(x=missing) = (
-            x === missing && (x = zeros(2)); x ~ MvNormal(zeros(2), I)
+        concrete = condition(
+            decondition(placeholder_indices(zeros(1))), @varname(x[1]) => 2.0
         )
-        for bind in (condition, fix)
-            @test_throws r"LHS variable `x` must be bound as a whole" bind(
-                decondition(placeholder_whole()), @varname(x[1]) => 5.0
-            )(
-                Xoshiro(1)
-            )
+        @test concrete(Xoshiro(1)) == (3.0, 3.0)
+        @test loglikelihood(concrete, (;)) == logpdf(Normal(), 3.0)
+
+        @model function runtime_placeholder(absent, bind)
+            m ~ Normal()
+            child = bind(decondition(placeholder_indices(absent)), @varname(x[1]) => m)
+            a ~ to_submodel(child)
+            return a
+        end
+        for absent in (nothing, missing), bind in (condition, fix)
+            model = runtime_placeholder(absent, bind)
+            @test_throws message returned(model, (m=2.0,))
+            @test_throws message ForwardDiff.derivative(m -> logjoint(model, (; m)), 2.0)
         end
     end
 
@@ -193,9 +180,9 @@ end
                 (fix, fix(model(nothing); x=value)),
             )
                 for bind in (condition, fix)
-                    # The observation beneath the whole fix is `nothing`, not a NamedTuple.
-                    expected = if origin === fix && bind === condition
-                        r"ArgumentError: Cannot bind parts below `x`.*decondition"
+                    # The other layer still has only the placeholder argument for storage.
+                    expected = if origin !== identity && bind !== origin
+                        r"ArgumentError: .*partial.*`x`.*nothing.*concrete argument.*whole binding"
                     else
                         message
                     end
@@ -335,7 +322,7 @@ end
             end
         end
         partially_observed = condition(
-            decondition(placeholder_array(), @varname(x)), @varname(x[1]) => 1.0
+            decondition(placeholder_array(zeros(2)), @varname(x)), @varname(x[1]) => 1.0
         )
         @test partially_observed(Xoshiro(1)) == [1.0, rand(Xoshiro(1), Normal())]
         @test keys(VarInfo(Xoshiro(1), partially_observed)) == [@varname(x[2])]
