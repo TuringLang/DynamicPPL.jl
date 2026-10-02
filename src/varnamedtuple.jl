@@ -36,6 +36,7 @@ a dedicated struct instead.
 struct NoTemplate end
 
 materialize_template(template) = template
+# Fixed `of` element types require runtime AD bindings to use running values or whole bindings.
 materialize_template(::Type{T}) where {T<:AbstractPPL.OfType} = zero(T)
 
 """
