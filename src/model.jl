@@ -1140,6 +1140,15 @@ function unsplat_symbol(s::Symbol)
     return is_splat_symbol(s) ? Symbol(chopprefix(string(s), "#splat#")) : s
 end
 
+# The existing argument metadata slot also carries macro-known LHS addresses.
+struct ModelBindingMetadata{Arguments,LHS,MayHaveSubmodels} end
+_args_on_lhs(::ModelBindingMetadata{A}) where {A} = A
+_args_on_lhs(names::Union{Tuple,Vector{Symbol}}) = Tuple(names)
+_lhs_names(::ModelBindingMetadata{A,L}) where {A,L} = L
+_lhs_names(::Tuple) = nothing
+_may_have_submodels(::ModelBindingMetadata{A,L,S}) where {A,L,S} = S
+_may_have_submodels(::Tuple) = true
+
 function _reconstruct_model end
 
 """
@@ -1206,12 +1215,13 @@ struct Model{
         defaults::NamedTuple{D,Td},
         context::C,
         values::V;
-        args_on_lhs::Union{Tuple{Vararg{Symbol}},Vector{Symbol}}=(),
+        args_on_lhs::Union{Tuple{Vararg{Symbol}},Vector{Symbol},ModelBindingMetadata}=(),
     ) where {F,A,Ta,D,Td,C,V,Threaded}
         mapreduce(
             pair -> pair.second isa ModelValue, &, _model_values(values); init=true
         ) || throw(ArgumentError("Model values must carry a condition or fix role"))
-        argument_names = Tuple(args_on_lhs)
+        argument_names = _args_on_lhs(args_on_lhs)
+        metadata = args_on_lhs isa ModelBindingMetadata ? args_on_lhs : argument_names
         for name in argument_names
             name in (_argument_names(args)..., _argument_names(defaults)...) || throw(
                 ArgumentError(
@@ -1219,34 +1229,34 @@ struct Model{
                 ),
             )
         end
-        return new{F,A,D,Ta,Td,C,V,Threaded,argument_names}(
-            f, args, defaults, context, values
-        )
+        return new{F,A,D,Ta,Td,C,V,Threaded,metadata}(f, args, defaults, context, values)
     end
     # Internal reconstruction reuses already-validated bindings.
     function DynamicPPL._reconstruct_model(
         model::Model{F,A,D,Ta,Td}, context::C, values::V, ::Val{Threaded}
     ) where {F,A,D,Ta,Td,C,V,Threaded}
-        return new{F,A,D,Ta,Td,C,V,Threaded,_args_on_lhs(model)}(
+        return new{F,A,D,Ta,Td,C,V,Threaded,_binding_metadata(model)}(
             model.f, model.args, model.defaults, context, values
         )
     end
 end
 
-function _args_on_lhs(
+function _binding_metadata(
     ::Model{F,A,D,Ta,Td,C,V,Threaded,ArgsOnLHS}
 ) where {F,A,D,Ta,Td,C,V,Threaded,ArgsOnLHS}
     return ArgsOnLHS
 end
+
+_args_on_lhs(model::Model) = _args_on_lhs(_binding_metadata(model))
 
 Base.@constprop :aggressive function Model{Threaded}(
     f,
     args::NamedTuple,
     defaults::NamedTuple,
     context::AbstractContext=DefaultContext();
-    args_on_lhs::Union{Tuple{Vararg{Symbol}},Vector{Symbol}}=(),
+    args_on_lhs::Union{Tuple{Vararg{Symbol}},Vector{Symbol},ModelBindingMetadata}=(),
 ) where {Threaded}
-    values = _argument_defaults(merge(args, defaults), Val(Tuple(args_on_lhs)))
+    values = _argument_defaults(merge(args, defaults), Val(_args_on_lhs(args_on_lhs)))
     return Model{Threaded}(f, args, defaults, context, values; args_on_lhs)
 end
 
@@ -1347,6 +1357,36 @@ See [`condition`](@ref) for more information and examples.
 """
 Base.:|(model::Model, values::Union{NamedTuple,AbstractDict,Pair,Tuple,VarNamedTuple}) =
     condition(model, values)
+
+function _check_binding_addresses(model, values)
+    metadata = _binding_metadata(model)
+    names = _lhs_names(metadata)
+    names === nothing && return nothing
+    prefix = _model_prefix(model)
+    if !(model.values isa LocalModelValues) && prefix !== nothing
+        for name in keys(values.data)
+            name === AbstractPPL.getsym(prefix) || throw(
+                ArgumentError(
+                    "Cannot bind `$name`: it is outside this model's prefix `$prefix`."
+                ),
+            )
+        end
+    end
+    _may_have_submodels(metadata) && return nothing
+    local_values = if model.values isa LocalModelValues || _model_prefix(model) === nothing
+        values
+    else
+        _submodel_values(values, _model_prefix(model))
+    end
+    for name in keys(local_values.data)
+        name in names || throw(
+            ArgumentError(
+                "Cannot bind `$name`: it is not an LHS top symbol of this model. Use an LHS address, or bind a child model through its submodel namespace.",
+            ),
+        )
+    end
+    return nothing
+end
 
 @generated function _check_argument_bindings(model::Model, values)
     names = (
@@ -1632,9 +1672,12 @@ do this with a `NamedTuple` because the `VarName` `m[2]` cannot be represented a
 (i.e., `Symbol("m[2]")` is not the same as `@varname(m[2])`).
 
 ```jldoctest condition
-julia> # (×) `m[2]` is not set to 1.0.
-       m = condition(model, var"m[2]" = 1.0)(); m[2] == 1.0
-false
+julia> try
+           condition(model, var"m[2]" = 1.0)
+       catch err
+           err isa ArgumentError
+       end
+true
 ```
 
 But you _can_ do this if you use `VarName` pairs or a `VarNamedTuple` as the underlying storage
@@ -1708,6 +1751,7 @@ function _bind_model(::Type{R}, model::Model, values...) where {R}
     model = _materialize_argument_values(model)
     values = _tag_model_values(R, _make_condfix_values(model, values...))
     values = _check_argument_bindings(model, values)
+    _check_binding_addresses(model, values)
     observations = _observation_values(model.values)
     fixed_values = _fixed_values(model.values)
     values = if R === Fix

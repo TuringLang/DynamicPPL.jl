@@ -158,14 +158,15 @@ function model(mod, linenumbernode, expr, warn)
 
     # Generate main body
     lhs_names = Symbol[]
+    may_have_submodels = Ref(false)
     arguments = map(
         arg -> first(MacroTools.splitarg(arg)), vcat(modeldef[:args], modeldef[:kwargs])
     )
     modeldef[:body] = generate_mainbody(
-        mod, modeldef[:body], warn, true; lhs_names, arguments
+        mod, modeldef[:body], warn, true; lhs_names, arguments, may_have_submodels
     )
 
-    return build_output(modeldef, linenumbernode, lhs_names)
+    return build_output(modeldef, linenumbernode, lhs_names, may_have_submodels[])
 end
 
 """
@@ -208,10 +209,41 @@ Generate the body of the main evaluation function from expression `expr` and arg
 If `warn` is true, a warning is displayed if internal variables are used in the model
 definition.
 """
-generate_mainbody(mod, expr, warn, warn_threads; lhs_names=Symbol[], arguments=Symbol[]) =
-    generate_mainbody!(
-        mod, (; internal=Symbol[], lhs_names, arguments), expr, warn, warn_threads
-    )
+generate_mainbody(
+    mod,
+    expr,
+    warn,
+    warn_threads;
+    lhs_names=Symbol[],
+    arguments=Symbol[],
+    may_have_submodels=Ref(false),
+) = generate_mainbody!(
+    mod,
+    (; internal=Symbol[], lhs_names, arguments, may_have_submodels),
+    expr,
+    warn,
+    warn_threads,
+)
+
+function _known_distribution_constructor(mod, expr)
+    constructor = if expr isa Symbol && isdefined(mod, expr)
+        getfield(mod, expr)
+    elseif expr isa GlobalRef && isdefined(expr.mod, expr.name)
+        getfield(expr.mod, expr.name)
+    elseif Meta.isexpr(expr, :.) && expr.args[1] isa Symbol && isdefined(mod, expr.args[1])
+        owner = getfield(mod, expr.args[1])
+        name = expr.args[2]
+        if owner isa Module && name isa QuoteNode && isdefined(owner, name.value)
+            getfield(owner, name.value)
+        else
+            nothing
+        end
+    else
+        nothing
+    end
+    return (constructor isa Type && constructor <: Distribution) ||
+           constructor === independent_distribution
+end
 
 generate_mainbody!(mod, found, x, warn, warn_threads) = x
 function generate_mainbody!(mod, found, sym::Symbol, warn, warn_threads)
@@ -270,6 +302,13 @@ function generate_mainbody!(mod, found, expr::Expr, warn, warn_threads)
     args_tilde = getargs_tilde(expr)
     if args_tilde !== nothing
         L, R = args_tilde
+        if !(
+            Meta.isexpr(R, :call) &&
+            !(R.args[1] in found.arguments) &&
+            _known_distribution_constructor(mod, R.args[1])
+        )
+            found.may_have_submodels[] = true
+        end
         L = generate_mainbody!(mod, found, L, warn, warn_threads)
         if !isliteral(L)
             push!(found.lhs_names, get_top_level_symbol(L))
@@ -635,7 +674,7 @@ end
 
 Builds the output expression.
 """
-function build_output(modeldef, linenumbernode, lhs_names)
+function build_output(modeldef, linenumbernode, lhs_names, may_have_submodels=false)
     args = transform_args(modeldef[:args])
     kwargs = transform_args(modeldef[:kwargs])
 
@@ -787,7 +826,11 @@ function build_output(modeldef, linenumbernode, lhs_names)
             $args_nt,
             $kwargs_nt,
             $(DynamicPPL.DefaultContext)();
-            args_on_lhs=($(QuoteNode(Tuple(args_on_lhs)))),
+            args_on_lhs=$(ModelBindingMetadata){
+                $(QuoteNode(Tuple(args_on_lhs))),
+                $(QuoteNode(Tuple(unique(lhs_names)))),
+                $may_have_submodels,
+            }(),
         )
     end
 

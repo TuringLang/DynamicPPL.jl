@@ -81,8 +81,9 @@
     the argument in O(length) per evaluation; prefer whole replacements for large arrays.
     Under reverse-mode AD such as Mooncake, partial bindings can be far more expensive,
     so bind whole arrays when gradients are needed.
-  - Bindings unused by any executed LHS variable are ignored, including unknown
-    names and LHS variables in branches that do not run.
+  - Unknown top symbols are rejected when a binding is made. Addresses crossing a
+    submodel namespace are checked when the child is reached. LHS variables in branches
+    that do not run are ignored.
 
 ## Example
 

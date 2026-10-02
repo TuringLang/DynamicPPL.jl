@@ -333,7 +333,9 @@ end
             @test conditioned(unused(value))[@varname(p)] === value
             @test getloglikelihood(VarInfo(Xoshiro(1), unused(value))) ==
                 logpdf(Normal(), 1.0)
-            @test_throws r"ArgumentError: .*nothing.*decondition" VarInfo(Xoshiro(1), observed(value))
+            @test_throws r"ArgumentError: .*nothing.*decondition" VarInfo(
+                Xoshiro(1), observed(value)
+            )
         end
         nested = placeholder_scalar(VarNamedTuple(; a=nothing, b=1.0))
         @test conditioned(nested)[@varname(y.a)] === nothing
@@ -792,7 +794,7 @@ end
                 dispatched([1]); x=[2]
             )
             @test bind(ordinary(1); x=2)(Xoshiro(1)) == 2
-            @test bind(ordinary(1); dynamic_lhs=2) isa Model
+            @test_throws ArgumentError bind(ordinary(1); dynamic_lhs=2)
         end
     end
 
@@ -1167,10 +1169,7 @@ end
             return x
         end
         unused_model = optional_lhs(false)
-        for bind in (condition, fix),
-            name in (@varname(z), @varname(y)),
-            data in (1.0, missing)
-
+        for bind in (condition, fix), name in (@varname(y),), data in (1.0, missing)
             bound = bind(unused_model, name => data)
             value, vi = init!!(Xoshiro(1), unused_model, VarInfo(), InitFromPrior())
             bound_value, bound_vi = init!!(Xoshiro(1), bound, VarInfo(), InitFromPrior())
@@ -1977,10 +1976,8 @@ end
         @test keys(fixed(unfix(fixed_model, @varname(x)))) == [@varname(y)]
 
         nested_values = VarNamedTuple((@varname(a.x) => 1.0, @varname(b) => 2.0))
-        @test keys(
-            conditioned(decondition(condition(model, nested_values), @varname(a)))
-        ) == [@varname(b)]
-        @test keys(fixed(unfix(fix(model, nested_values), @varname(a)))) == [@varname(b)]
+        @test_throws ArgumentError condition(model, nested_values)
+        @test_throws ArgumentError fix(model, nested_values)
 
         mixed = fix(condition(model; x=1.0); y=2.0)
         @test fixed(decondition(mixed)) == fixed(mixed)
@@ -2080,7 +2077,8 @@ end
     @test unfix(condition(fix(layered(1.0); x=5.0); x=2.0))(Xoshiro(1)) == 2.0
     @model layered_array(x) = (for i in eachindex(x)
         x[i] ~ Normal()
-    end; x)
+    end;
+    x)
     resized = fix(layered_array(zeros(2)); x=ones(3))
     @test unfix(condition(resized, @varname(x[3]) => 4.0))(Xoshiro(1)) == [0.0, 0.0, 4.0]
     @model layer_parent(child) = a ~ to_submodel(child)
@@ -2126,6 +2124,31 @@ end
             ((; x=[1.0, 2.0]), @varname(x[1]) => 3.0, VarNamedTuple(; x=[4.0, 5.0])),
         )
         @test m(Xoshiro(1)) == [4.0, 5.0]
+    end
+end
+
+@testset "binding addresses are checked at construction" begin
+    @model address_model(x, n=1) = (x[1] ~ Normal(n); false && (branch ~ Normal()); x)
+    @model address_child() = y ~ Normal()
+    @model address_parent() = a ~ to_submodel(address_child())
+    @model address_unprefixed() = a ~ to_submodel(address_child(), false)
+    @model address_callable(Normal) = a ~ Normal()
+    @test condition(address_callable(() -> to_submodel(address_child(), false)); y=2.0)(
+        Xoshiro(1)
+    ) == 2.0
+    for bind in (condition, fix)
+        @test_throws ArgumentError bind(address_model([0.0]); z=1.0)
+        @test_throws ArgumentError bind(
+            DynamicPPL.prefix(address_model([0.0]), @varname(p)); z=1.0
+        )
+        @test_throws ArgumentError bind(address_model([0.0]); n=1.0)
+        @test_throws ArgumentError bind(address_model([0.0]), @varname(x[2]) => 1.0)
+        @test bind(address_model([0.0]); branch=2.0)(Xoshiro(1)) == [0.0]
+        @test bind(address_parent(), @varname(a.y) => 2.0)(Xoshiro(1)) == 2.0
+        @test_throws ArgumentError bind(address_parent(), @varname(a.z) => 2.0)(Xoshiro(1))
+        @test bind(address_unprefixed(); y=2.0)(Xoshiro(1)) == 2.0
+        @test bind(address_unprefixed(); z=2.0)(Xoshiro(1)) ==
+            address_unprefixed()(Xoshiro(1))
     end
 end
 

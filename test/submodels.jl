@@ -868,4 +868,17 @@ end
     end
 end
 
+@testset "shared unprefixed binding addresses" begin
+    @model shared_left() = x ~ Normal()
+    @model shared_right() = y ~ Normal()
+    @model function shared_parent()
+        a ~ to_submodel(shared_left(), false)
+        b ~ to_submodel(shared_right(), false)
+        return (a, b)
+    end
+    for bind in (condition, fix)
+        @test bind(shared_parent(); x=1.0, y=2.0)(Xoshiro(1)) == (1.0, 2.0)
+    end
+end
+
 end

@@ -247,6 +247,10 @@ function tilde_assume!!(
             ArgumentCondition, _submodel_values(parent_model, local_prefix)
         ),
     )
+    # Shared unprefixed names may belong to the parent or another child.
+    if AutoPrefix || _model_prefix(submodel.model) !== nothing
+        _check_binding_addresses(child_model, parent_values)
+    end
     values = LocalModelValues(_merge_model_values(child_values, parent_values))
     return _evaluate_submodel!!(
         parent_model, context, submodel, left_vn, template, vi, values
