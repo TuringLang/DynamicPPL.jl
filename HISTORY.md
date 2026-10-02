@@ -28,7 +28,11 @@ Added `evaluate!!(model, context, vi)` to evaluate with an explicit leaf context
 
 ## Breaking changes
 
-`PrefixContext` and `extract_prefixes` are removed. Use `prefix(model, vn; template)` and read the combined prefix with `DynamicPPL.getprefix(model)`; prefixes and nested storage templates now belong to the model.
+`PrefixContext` is removed: context-based prefixing → `prefix(model, vn; template)`. See [#1502](https://github.com/TuringLang/DynamicPPL.jl/pull/1502), [#1221](https://github.com/TuringLang/DynamicPPL.jl/issues/1221).
+
+`extract_prefixes` is removed: `extract_prefixes(model.context)` → `DynamicPPL.getprefix(model)`, returning the combined prefix or `nothing`. See [#1502](https://github.com/TuringLang/DynamicPPL.jl/pull/1502).
+
+Context-based address prefixing is removed: `prefix(ctx, vn)` → `AbstractPPL.prefix(vn, DynamicPPL.getprefix(model))` for prefixed models. See [#1502](https://github.com/TuringLang/DynamicPPL.jl/pull/1502).
 
 `logprior`, `loglikelihood`, `logjoint`, and `returned` reject dictionaries: `f(model, Dict(@varname(x) => v))` → `f(model, (; x=v))` or `f(model, VarNamedTuple((@varname(x) => v,)))`.
 
