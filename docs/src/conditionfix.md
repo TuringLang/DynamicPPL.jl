@@ -67,8 +67,7 @@ Bound values are not copied, so the body must not mutate them, even through a `v
 bindings take a snapshot of their whole owner's remaining parts when made, so later edits are
 not reflected there.
 
-**Runtime bindings** are made inside the running body, as in `a ~
-to_submodel(condition(child(y), @varname(y[1]) => m))`. Remade at each evaluation, their values
+**Runtime bindings** are made inside the running body, as in `a ~ to_submodel(condition(child(y), @varname(y[1]) => m))`. Remade at each evaluation, their values
 carry derivatives with respect to enclosing latent variables. Bindings made beforehand hold
 values constant with respect to model parameters.
 
@@ -108,8 +107,7 @@ example, `1` becomes `1.0` in `Float64`. Unconvertible values propagate Julia's 
 error, such as `InexactError` for `1.5` into `Int`. Successful but lossy conversions, such as
 `0.1` into `Float32`, raise `ArgumentError`. Runtime AD values need compatible storage, such as
 `fill(zero(m), n)`. An `of` type fixed before evaluation fixes its element type. Under
-ForwardDiff or ReverseDiff, build the binding schema from running values (`@of(z = of(Array,
-typeof(m), n))`), or bind a whole value.
+ForwardDiff or ReverseDiff, build the binding schema from running values (`@of(z = of(Array, typeof(m), n))`), or bind a whole value.
 
 Integer indices, `end`, ranges, `:`, logical masks, and `CartesianIndex` need an argument,
 binding schema, earlier whole value, produced `VarNamedTuple`, or prefix template. Otherwise,
@@ -248,8 +246,7 @@ cond_model_partial = condition(
 rand(rng, cond_model_partial)
 ```
 
-`fix` accepts the same syntax. The equivalent functional spelling is `of((y=of(Array,
-length(y_data)),))`. Arguments already supply storage, so partial argument bindings need no
+`fix` accepts the same syntax. The equivalent functional spelling is `of((y=of(Array, length(y_data)),))`. Arguments already supply storage, so partial argument bindings need no
 schema. See [Binding rules](@ref) for the complete contract.
 
 ## Missing data
