@@ -831,9 +831,18 @@ function _model_argument_value(values::VarNamedTuples.PartialArray, template)
     return if _has_complete_model_data(values)
         _model_data(values)
     else
-        result = template isa Tuple ? template : copy(template)
+        result =
+            if template isa AbstractArray &&
+                !(values.data isa VarNamedTuples.GrowableArray) &&
+                axes(template) != axes(values.data)
+                similar(template, axes(values.data))
+            else
+                template isa Tuple ? template : copy(template)
+            end
         for i in eachindex(template)
-            if !haskey(values, i) && (template isa Tuple || isassigned(template, i))
+            if (result isa Tuple || checkbounds(Bool, result, i)) &&
+                !haskey(values, i) &&
+                (template isa Tuple || isassigned(template, i))
                 result = BangBang.setindex!!(result, _copy_model_argument(template[i]), i)
             end
         end

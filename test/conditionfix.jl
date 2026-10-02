@@ -1778,6 +1778,28 @@ end
             logpdf(Normal(), 1.0)
     end
 
+    @testset "partial removal retains replacement shape" begin
+        @model function replacement_shape(x)
+            for i in eachindex(x)
+                x[i] ~ Normal()
+            end
+            return x
+        end
+        for n in (2, 3), k in (1, n)
+            m = replacement_shape(zeros(5 - n))
+            observed = decondition(condition(m; x=ones(n)), @varname(x[k]))
+            expected = ones(n)
+            expected[k] = 2.0
+            @test returned(observed, (; x=fill(2.0, n))) == expected
+            @test logjoint(observed, (; x=fill(2.0, n))) ≈ sum(logpdf.(Normal(), expected))
+            @test LogDensityProblems.dimension(LogDensityFunction(observed)) == 1
+            restored = unfix(fix(m; x=ones(n)), @varname(x[k]))
+            expected[k] = k <= 5 - n ? 0.0 : 2.0
+            @test returned(restored, (; x=fill(2.0, n))) == expected
+            @test logjoint(restored, (; x=fill(2.0, n))) ≈ logpdf(Normal(), expected[k])
+        end
+    end
+
     @testset "decondition and unfix" begin
         conditioned_model = condition(model; x=1.0, y=2.0)
         @test isempty(keys(VarInfo(conditioned_model)))
