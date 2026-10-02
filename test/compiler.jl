@@ -1060,6 +1060,21 @@ end
     end
 end
 
+@testset "shadowed argument LHS roots are rejected" begin
+    @test_throws r"shadows model argument `x`" macroexpand(
+        @__MODULE__, :(@model sh(x) = ((x -> (x ~ Normal()))(2.0); x))
+    )
+    @test_throws r"shadows model argument `x`" macroexpand(
+        @__MODULE__, :(@model sh_nested(x) = (function f(x)
+            return x ~ Normal()
+        end;
+        f(2.0);
+        x))
+    )
+    @model capture_argument(x) = ((() -> (x ~ Normal()))(); x)
+    @test capture_argument(1.0)(Xoshiro(1)) == 1.0
+end
+
 @info "Completed $(@__FILE__) in $(now() - __now__)."
 
 end # module

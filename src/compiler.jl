@@ -219,7 +219,7 @@ generate_mainbody(
     may_have_submodels=Symbol[],
 ) = generate_mainbody!(
     mod,
-    (; internal=Symbol[], lhs_names, arguments, may_have_submodels),
+    (; internal=Symbol[], lhs_names, arguments, may_have_submodels, shadowed=Symbol[]),
     expr,
     warn,
     warn_threads,
@@ -268,6 +268,17 @@ function generate_mainbody!(mod, found, expr::Expr, warn, warn_threads)
     Meta.isexpr(expr, :escape) &&
         return generate_mainbody!(mod, found, expr.args[1], warn, warn_threads)
 
+    if expr.head === :-> || MacroTools.isdef(expr)
+        definition = MacroTools.splitdef(expr)
+        names = [
+            first(MacroTools.splitarg(arg)) for
+            arg in vcat(get(definition, :args, []), get(definition, :kwargs, []))
+        ]
+        found = merge(
+            found, (; shadowed=union(found.shadowed, intersect(names, found.arguments)))
+        )
+    end
+
     # If it's a macro, we expand it
     if Meta.isexpr(expr, :macrocall)
         if (
@@ -312,6 +323,11 @@ function generate_mainbody!(mod, found, expr::Expr, warn, warn_threads)
             )
                 push!(found.may_have_submodels, root)
             end
+            root in found.shadowed && throw(
+                ArgumentError(
+                    "LHS root `$root` shadows model argument `$root`; rename the inner function parameter.",
+                ),
+            )
             push!(found.lhs_names, root)
         end
         return Base.remove_linenums!(
