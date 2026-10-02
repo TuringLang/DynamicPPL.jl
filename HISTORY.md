@@ -26,7 +26,7 @@ Added the `context` keyword to `DynamicPPL.DebugUtils.model_typed`, `model_warnt
 
 ## Breaking changes
 
-`condition` and `fix` accept `NamedTuple`s/keywords, `VarName` pairs, `VarNamedTuple`s, and tuples of these; `AbstractDict` inputs and `Symbol` pairs (`:x => v`) throw `ArgumentError`: `Dict(@varname(x) => v)` → `@varname(x) => v`.
+`condition` and `fix` accept `NamedTuple`s/keywords, `VarName` pairs (`:x => v` is shorthand for `@varname(x) => v`), `VarNamedTuple`s, and tuples of these; `AbstractDict` inputs throw `ArgumentError`: `Dict(@varname(x) => v)` → `@varname(x) => v`.
 
 A positional binding schema replaces `@vnt`/`@template` for partial bindings of locals: use `condition(m, @varname(z[2]) => 1.0, @of(z = of(Array, 3)))` with `using AbstractPPL: of, @of`.
 

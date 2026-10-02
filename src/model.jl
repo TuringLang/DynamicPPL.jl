@@ -1836,6 +1836,7 @@ function _binding_inputs(values::Tuple)
     return mapreduce(_binding_inputs, (a, b) -> (a..., b...), values; init=())
 end
 _binding_inputs(value) = (value,)
+_binding_inputs((name, value)::Pair{Symbol}) = (VarName{name}() => value,)
 
 function _bind_ordered_inputs(::Type{R}, model, values) where {R}
     return foldl((m, v) -> _bind_model(R, m, v), values; init=model)

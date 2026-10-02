@@ -2127,7 +2127,6 @@ end
             Dict(@varname(x) => [2.0, 3.0]),
             Dict(:x => [2.0, 3.0]),
             pairs((; x=[2.0, 3.0])),
-            :x => [2.0, 3.0],
             [@varname(x) => [2.0, 3.0]],
             1,
         )
@@ -2138,6 +2137,7 @@ end
             ((; x=[1.0, 2.0]), @varname(x[1]) => 3.0, VarNamedTuple(; x=[4.0, 5.0])),
         )
         @test m(Xoshiro(1)) == [4.0, 5.0]
+        @test bind(input_forms([0.0, 0.0]), :x => [2.0, 3.0])(Xoshiro(1)) == [2.0, 3.0]
     end
 end
 
