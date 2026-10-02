@@ -44,9 +44,9 @@ function read_table(path)
     end
 end
 
-function commit_header(repo, sha, label)
-    isempty(sha) && return "`$label`"
-    return "`$label` [$(first(sha, 7))](https://github.com/$repo/commit/$sha)"
+function commit_link(repo, sha)
+    isempty(sha) && return ""
+    return " ([$(first(sha, 7))](https://github.com/$repo/commit/$sha))"
 end
 
 function report(args)
@@ -108,7 +108,10 @@ function report(args)
     end
 
     println(
-        "Primal times: $(commit_header(repo, main_sha, "main")), $(commit_header(repo, pr_sha, "PR"))",
+        "Primal times are for main$(commit_link(repo, main_sha)) and this PR$(commit_link(repo, pr_sha)). " *
+        "For very small models the gradient ratios vary across runs and machines, so compare the raw timings instead. " *
+        "The benchmarks are meant for DynamicPPL developers and mainly catch obvious allocation and type-stability regressions; " *
+        "see the [benchmark notes](https://github.com/$repo/tree/main/benchmarks#interpreting-results) for details.",
     )
     println("\n```")
     println(repeat("=", total_w))
