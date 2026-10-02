@@ -771,7 +771,7 @@ function _model_data(tree::ModelValueTree)
     return if tree.values isa Tuple
         map(tree.values, tree.template) do value, template
             if value isa NoModelBinding
-                deepcopy(template)
+                _copy_model_argument(template)
             else
                 _model_argument_value(value, template)
             end
@@ -786,8 +786,27 @@ function VarNamedTuples.unwrap_internal_array(tree::ModelValueTree)
     return _model_data(tree)
 end
 
+# Latent storage belongs to this evaluation, but numerical leaves retain their AD identity.
+_copy_model_argument(value::Union{Number,Type}) = value
+_copy_model_argument(value::AbstractArray{<:Number}) = copy(value)
+function _copy_model_argument(value::AbstractArray)
+    result = copy(value)
+    for i in eachindex(value)
+        if isassigned(value, i)
+            result = BangBang.setindex!!(result, _copy_model_argument(value[i]), i)
+        end
+    end
+    return result
+end
+_copy_model_argument(value::Union{Tuple,NamedTuple}) = map(_copy_model_argument, value)
+function _copy_model_argument(value)
+    properties = ConstructionBase.getproperties(value)
+    isempty(properties) && return deepcopy(value)
+    return ConstructionBase.setproperties(value, map(_copy_model_argument, properties))
+end
+
 _model_argument_value(value, template) = value
-_model_argument_value(::Nothing, template) = deepcopy(template)
+_model_argument_value(::Nothing, template) = _copy_model_argument(template)
 _model_argument_value(value::ModelValue, template) = value.value
 _model_argument_value(tree::ModelValueTree, template) = _model_data(tree)
 _model_argument_value(values::AbstractArray, template) = _model_data(values)
@@ -815,7 +834,7 @@ function _model_argument_value(values::VarNamedTuples.PartialArray, template)
         result = template isa Tuple ? template : copy(template)
         for i in eachindex(template)
             if !haskey(values, i) && (template isa Tuple || isassigned(template, i))
-                result = BangBang.setindex!!(result, deepcopy(template[i]), i)
+                result = BangBang.setindex!!(result, _copy_model_argument(template[i]), i)
             end
         end
         _fold_model_indices(_set_model_argument, result, values)
@@ -848,7 +867,7 @@ end
         if name in names
             :(_model_argument_value(values.data.$name, template.$name))
         else
-            :(deepcopy(template.$name))
+            :(_copy_model_argument(template.$name))
         end
     end
     return :(NamedTuple{$fields}(($(updates...),)))
