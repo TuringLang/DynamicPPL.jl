@@ -1619,6 +1619,8 @@ bindings live in the model's binding table, so use [`conditioned`](@ref) and
     Under reverse-mode AD such as Mooncake, partial bindings can be far more expensive,
     so bind whole arrays when gradients are needed.
 
+An `of` type fixed before evaluation has a fixed element type, so runtime bindings into submodels under ForwardDiff or ReverseDiff need a schema built from running values (`@of(z = of(Array, typeof(m), n))`) or a whole binding.
+
 # Examples
 ## Simple univariate model
 ```jldoctest condition
@@ -2415,6 +2417,8 @@ See also: [`unfix`](@ref), [`fixed`](@ref)
     subvariables cannot be fixed independently; only fixing the whole LHS variable is supported.
     Partly bound LHS variables throw `ArgumentError` during evaluation. Declare separate LHS variables in a loop (`x[i] ~ ...`) if you need to fix them
     individually.
+
+An `of` type fixed before evaluation has a fixed element type, so runtime bindings into submodels under ForwardDiff or ReverseDiff need a schema built from running values (`@of(z = of(Array, typeof(m), n))`) or a whole binding.
 
 # Examples
 ## Simple univariate model
