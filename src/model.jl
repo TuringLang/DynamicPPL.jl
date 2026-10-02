@@ -1574,15 +1574,15 @@ true
 ```
 
 In the above we have specified the LHS variables to observe via keyword arguments. You can also
-provide a `NamedTuple`, `AbstractDict{<:VarName}`, or a `VarNamedTuple`; internally these are
-all converted to a `VarNamedTuple`.
+provide a `NamedTuple`, a `VarNamedTuple`, or `VarName` pairs. Tuples of these inputs
+are applied left to right. Other inputs, including every `AbstractDict`, throw `ArgumentError`.
 
-For example, here we use a `Dict`:
+For example, here we use a `VarName` pair:
 
 ```jldoctest condition
-julia> conditioned_model_dict = condition(model, Dict(@varname(x) => 100.0));
+julia> conditioned_model_pair = condition(model, @varname(x) => 100.0);
 
-julia> m, x = conditioned_model_dict(); (m != 1.0 && x == 100.0)
+julia> m, x = conditioned_model_pair(); (m != 1.0 && x == 100.0)
 true
 
 julia> # There's also an option using `|` by letting the right-hand side be a tuple
@@ -1637,7 +1637,7 @@ julia> # (×) `m[2]` is not set to 1.0.
 false
 ```
 
-But you _can_ do this if you use a `Dict` or a `VarNamedTuple` as the underlying storage
+But you _can_ do this if you use `VarName` pairs or a `VarNamedTuple` as the underlying storage
 instead:
 
 ```jldoctest condition
@@ -1731,11 +1731,8 @@ end
 function AbstractPPL.condition(model::Model, first::Pair, second::Pair, rest::Pair...)
     return condition(condition(model, first), second, rest...)
 end
-function AbstractPPL.condition(model::Model, values::Tuple{Vararg{Pair}})
-    return condition(model, values...)
-end
-function AbstractPPL.condition(model::Model, values::AbstractDict{<:VarName})
-    return condition(model, pairs(values)...)
+function AbstractPPL.condition(model::Model, values::Tuple)
+    return foldl(condition, values; init=model)
 end
 
 """
@@ -1744,13 +1741,20 @@ end
 Convert different types of input to a `VarNamedTuple` of values, suitable for storage in a
 `Model`.
 
-This handles all the cases where `vals` is either already a `NamedTuple` or `AbstractDict`
+This handles all the cases where `vals` is either already a `NamedTuple` or `VarNamedTuple`
 (e.g. `model | (x=1, y=2)`), as well as if they are splatted (e.g. `condition(model, x=1,
 y=2)`).
 """
+function _make_condfix_values(model, values...)
+    throw(
+        ArgumentError(
+            "Bindings require a VarNamedTuple, NamedTuple, or VarName pairs (or an ordered tuple of these); use keywords for whole values or @varname(x) => value for an address. AbstractDict inputs are not supported.",
+        ),
+    )
+end
 _make_condfix_values(model, values::NamedTuple) = VarNamedTuple(values)
 _make_condfix_values(model, values::VarNamedTuple) = values
-function _make_condfix_values(model, values::Pair{<:Union{VarName,Symbol}}...)
+function _make_condfix_values(model, values::Pair{<:VarName}...)
     templates = VarNamedTuple()
     for (stored_name, argument) in pairs(merge(model.args, model.defaults))
         name = unsplat_symbol(stored_name)
@@ -1770,7 +1774,7 @@ function _make_condfix_values(model, values::Pair{<:Union{VarName,Symbol}}...)
     end
     result = VarNamedTuple()
     for (name, value) in values
-        vn = name isa Symbol ? VarName{name}() : name
+        vn = name
         _check_namedtuple_index(
             _model_values(model.values), AbstractPPL.varname_to_optic(vn)
         )
@@ -2228,11 +2232,8 @@ end
 function fix(model::Model, first::Pair, second::Pair, rest::Pair...)
     return fix(fix(model, first), second, rest...)
 end
-function fix(model::Model, values::Tuple{Vararg{Pair}})
-    return fix(model, values...)
-end
-function fix(model::Model, values::AbstractDict{<:VarName})
-    return fix(model, pairs(values)...)
+function fix(model::Model, values::Tuple)
+    return foldl(fix, values; init=model)
 end
 
 """

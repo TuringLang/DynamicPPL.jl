@@ -221,8 +221,8 @@ For convenience, both `condition` and `fix` also accept a variety of different i
 # NamedTuple
 model | (; y=y_data)
 
-# AbstractDict{VarName}
-model | Dict(@varname(y) => y_data)
+# Ordered tuple of pairs
+model | (@varname(y) => y_data,)
 
 # Pair
 model | (@varname(y) => y_data)
