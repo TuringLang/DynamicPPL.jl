@@ -2832,6 +2832,22 @@ end
     end
 end
 
+@testset "untouched unassigned argument entries" begin
+    @model assigned_argument(x) = (x[1] ~ MvNormal(zeros(1), ones(1)); x)
+    x = Vector{Vector{Float64}}(undef, 2)
+    x[1] = [1.0]
+    for bind in (condition, fix)
+        result = bind(assigned_argument(x), @varname(x[1]) => [2.0])(Xoshiro(1))
+        @test result[1] == [2.0]
+        @test !isassigned(result, 2)
+    end
+    result = returned(decondition(assigned_argument(x), @varname(x[1])), (x=[[3.0]],))
+    @test result[1] == [3.0]
+    @test !isassigned(result, 2)
+    @test x[1] == [1.0]
+    @test !isassigned(x, 2)
+end
+
 @info "Completed $(@__FILE__) in $(now() - __now__)."
 
 end

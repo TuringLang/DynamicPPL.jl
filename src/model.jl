@@ -431,8 +431,15 @@ end
 
 function _expand_model_binding(previous::ModelValue{R,<:AbstractArray}) where {R}
     value = previous.value
-    data = map(ModelValue{R}, value)
-    mask = fill!(similar(data, Bool), true)
+    T = isconcretetype(eltype(value)) ? ModelValue{R,eltype(value)} : ModelValue{R}
+    data = similar(value, T)
+    mask = similar(value, Bool)
+    for i in eachindex(value)
+        mask[i] = isassigned(value, i)
+        if mask[i]
+            data[i] = ModelValue{R}(value[i])
+        end
+    end
     # Arrays whose `similar` preserves their container already carry the owner type.
     # Leave those visible to array-specific binding protocols (e.g. ComponentArrays).
     if Core.Compiler.return_type(similar, Tuple{typeof(value)}) !== typeof(value)
