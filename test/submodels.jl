@@ -694,7 +694,7 @@ end
             one(a[1])
             return a[1] ~ to_submodel(inner_return_value())
         end
-        namespace = @vnt begin
+        namespace = DynamicPPL.@vnt begin
             @template a = [(; x=0.0)]
             a[1].x := 2.0
         end

@@ -1,5 +1,5 @@
 """
-    @vnt begin ... end
+    DynamicPPL.@vnt begin ... end
 
 Construct a `VarNamedTuple` from a block of assignments. Each assignment should be of the form
 `var := value`, where `var` is a variable name. This is best illustrated by
@@ -13,7 +13,7 @@ example:
 ```jldoctest
 julia> using DynamicPPL
 
-julia> @vnt begin
+julia> DynamicPPL.@vnt begin
            a := 1
            b := 2
        end
@@ -25,7 +25,7 @@ VarNamedTuple
 You can set entirely arbitrary variables:
 
 ```jldoctest; setup=:(using DynamicPPL)
-julia> @vnt begin
+julia> DynamicPPL.@vnt begin
            a.b.c.d.e := "hello"
        end
 VarNamedTuple
@@ -55,7 +55,7 @@ For example:
 ```jldoctest; setup=:(using DynamicPPL)
 julia> x = zeros(5); outside_y = zeros(3, 3);
 
-julia> @vnt begin
+julia> DynamicPPL.@vnt begin
             @template x y=outside_y
             x[1] := 1.0
             y[1, 1] := 2.0
@@ -78,7 +78,7 @@ results in simple cases, but is not recommended for general use. Please see the
 VarNamedTuple documentation for more details.
 
 ```jldoctest; setup=:(using DynamicPPL)
-julia> @vnt begin
+julia> DynamicPPL.@vnt begin
             # No template provided.
             x[1] := 1.0
             y[1, 1] := 2.0
@@ -118,7 +118,7 @@ end
 
 function _vnt(input)
     Meta.isexpr(input, :block) ||
-        error("`@vnt` expects a block expression (e.g. `@vnt begin ... end`)")
+        error("`@vnt` expects a block expression (e.g. `DynamicPPL.@vnt begin ... end`)")
     @gensym vnt
     symbols_to_templates = Dict{Symbol,Union{Expr,Symbol}}()
     output = Expr(:block)

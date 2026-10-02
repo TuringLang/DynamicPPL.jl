@@ -576,7 +576,7 @@ julia> @model function demo()
 
 julia> model = demo();
 
-julia> params = @vnt begin
+julia> params = DynamicPPL.@vnt begin
            s := 1.0
            m := 2.0
            x := [3.0, 4.0]
