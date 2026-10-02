@@ -8,6 +8,7 @@ using ForwardDiff: ForwardDiff
 using LogDensityProblems: LogDensityProblems
 using Test
 using Random: Xoshiro
+using OffsetArrays: OffsetArray
 
 # Dummy object that we can use to test VarNames with property lenses.
 mutable struct P
@@ -317,6 +318,25 @@ end
             )(
                 Xoshiro(1)
             )
+        end
+    end
+
+    @testset "binding construction uses prefix templates" begin
+        @model template_leaf() = x ~ Normal()
+        @model template_covariate(z) = x ~ Normal(z[1])
+        @model template_parent(child) = outer ~ to_submodel(child)
+        for (name, template) in
+            ((@varname(p[:]), zeros(2)), (@varname(p[0]), OffsetArray(zeros(2), 0:1))),
+            bind in (condition, fix),
+            leaf in (template_leaf(), template_covariate(zeros(2)))
+
+            original = prefix(leaf, name; template)
+            vn = AbstractPPL.prefix(@varname(x), name)
+            bound = bind(original, vn => 4.0)
+            @test bound(Xoshiro(1)) == 4.0
+            @test template_parent(bound)(Xoshiro(1)) == 4.0
+            @test loglikelihood(bound, VarNamedTuple()) ≈
+                (bind === condition ? logpdf(Normal(), 4.0) : 0.0)
         end
     end
 
