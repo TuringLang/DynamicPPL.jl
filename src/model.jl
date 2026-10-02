@@ -1656,13 +1656,15 @@ function _prepare_argument_fields(
             )
         end
         if VarNamedTuples._haskey_optic(template, optic)
-            child = VarNamedTuples._getindex_optic(template, optic, vn)
             address = AbstractPPL.append_optic(vn, optic)
-            binding = _prepare_argument_fields(child, binding, address)
             if binding isa ModelValue
+                # Conversion needs the owner's type, not a possibly unassigned value.
                 binding = _convert_partial_argument_binding(
                     binding, template, optic, address
                 )
+            else
+                child = VarNamedTuples._getindex_optic(template, optic, vn)
+                binding = _prepare_argument_fields(child, binding, address)
             end
         end
         return VarNamedTuples._setindex_optic!!(
@@ -1997,10 +1999,10 @@ function _prepare_local_binding_types(::Type{R}, model, values) where {R}
                         "Bound value at `$vn` must be an instance of template type $(typeof(owner)); supplied $(typeof(update.value)).",
                     ),
                 )
-        elseif previous isa ModelValue ||
-            previous isa ModelValueTree ||
-            _has_complete_model_data(previous)
-            update = _prepare_argument_fields(_model_data(previous), update, vn)
+        else
+            owner = _binding_owner(R, previous)
+            owner isa NoTemplate && continue
+            update = _prepare_argument_fields(owner, update, vn)
             local_values = VarNamedTuple(
                 merge(local_values.data, NamedTuple{(name,)}((update,)))
             )
