@@ -1899,6 +1899,20 @@ function _make_condfix_values(model, values::Pair{<:VarName}...)
     result = VarNamedTuple()
     for (name, value) in values
         vn = name
+        for stored_name in keys(model.defaults)
+            is_splat_symbol(stored_name) || continue
+            argument = unsplat_symbol(stored_name)
+            root = _model_value_varname(
+                model.values, VarName{argument}(), _model_prefix(model)
+            )
+            if root != vn && subsumes(root, vn)
+                throw(
+                    ArgumentError(
+                        "Entries of keyword-splat argument `$argument` cannot be bound; replace the whole argument with `condition` or `fix` instead.",
+                    ),
+                )
+            end
+        end
         _check_namedtuple_index(
             _model_values(model.values), AbstractPPL.varname_to_optic(vn)
         )
