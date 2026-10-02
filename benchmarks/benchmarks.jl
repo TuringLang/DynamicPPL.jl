@@ -339,10 +339,8 @@ function build_combinations(rng)
     models = Tuple{String,DynamicPPL.Model}[
         ("Simple assume observe", simple_assume_observe(randn(rng))), ("Smorgasbord", smorg)
     ]
-    # Variants of the same model, kept adjacent so their rows compare directly: threadsafe
-    # evaluation, fixed values, and a partial binding and partial `decondition` of an
-    # argument.
-    push!(models, ("Smorgasbord threadsafe", DynamicPPL.setthreadsafe(smorg, true)))
+    # Variants of the same model, kept adjacent so their rows compare directly: fixed
+    # values, and a partial binding and partial `decondition` of an argument.
     push!(models, ("Smorgasbord fixed", fix(smorg; m=1.0, stds=ones(100))))
     push!(
         models, ("Smorgasbord partial condition", condition(smorg, @varname(x[1]) => 0.0))
