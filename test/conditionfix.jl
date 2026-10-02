@@ -611,6 +611,50 @@ end
         )()
     end
 
+    @testset "whole missing arguments cannot become observations through body replacement" begin
+        @model function missing_placeholder(x, ::Type{T}=Float64) where {T}
+            if x === missing
+                x = Vector{T}(undef, 2)
+                fill!(x, 7)
+            end
+            s ~ Normal()
+            for i in eachindex(x)
+                x[i] ~ Normal(s, 1)
+            end
+            return x
+        end
+        model = missing_placeholder(missing)
+        @test_throws r"ArgumentError: .*`x\[1\]`.*missing.*decondition" model(Xoshiro(1))
+        @test_throws r"ArgumentError: .*`x\[1\]`.*missing.*decondition" loglikelihood(
+            model, (; s=0.0)
+        )
+        @test keys(rand(Xoshiro(1), decondition(model))) ==
+            [@varname(s), @varname(x[1]), @varname(x[2])]
+        @test condition(model; x=[1.0, 2.0])(Xoshiro(1)) == [1.0, 2.0]
+
+        @model function missing_keyword(; x)
+            x === missing && (x = (a=7.0,))
+            return x.a ~ Normal()
+        end
+        @test_throws r"ArgumentError: .*`x.a`.*missing.*decondition" missing_keyword(;
+            x=missing
+        )(
+            Xoshiro(1)
+        )
+        @model nested_missing() = child ~ to_submodel(missing_placeholder(missing))
+        @test_throws r"ArgumentError: .*`child.x\[1\]`.*missing.*decondition" nested_missing()(
+            Xoshiro(1)
+        )
+        @model unchanged_missing(x) = x ~ Normal()
+        @test_throws "LHS variable `x` contains `missing`; make it latent with `decondition`." unchanged_missing(
+            missing
+        )(
+            Xoshiro(1)
+        )
+        @model unread_missing(x, read) = read ? (x ~ Normal()) : x
+        @test ismissing(unread_missing(missing, false)(Xoshiro(1)))
+    end
+
     @testset "missing is rejected only when an LHS variable reads it" begin
         @model metadata_lhs(p) = (p.a ~ Normal(); p.a)
         @model indexed_observation(y) = begin

@@ -52,6 +52,8 @@ Model arguments provide argument-supplied observations; `condition` and `fix` at
 
 A value containing `missing` now throws `ArgumentError` naming the LHS variable when a tilde statement observes or fixes it; unread parts of arguments and bindings may contain `missing`. It no longer marks an LHS variable as latent: use `decondition`. `InitFromParams` rejects `missing` when read. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
+Passing `missing`, or omitting an argument whose default is `missing` (`@model gdemo(x=missing)` called as `gdemo()`), no longer makes its LHS variables latent; a tilde that reads it throws, including after the model body replaces it with an allocated array. `decondition` the argument instead: `decondition(gdemo(zeros(2)), @varname(x))`.
+
 `CondFixContext` is removed: use `condition(model, values)` / `fix(model, values)`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
 `inargnames`, `inmissings`, `getmissings`, `contextual_isassumption`, `contextual_isfixed`, and `hasmissing` are removed: select observations and fixed LHS variables with `condition`, `fix`, `decondition`, and `unfix`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
