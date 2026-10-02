@@ -108,8 +108,6 @@ To preserve argument `x=1` before the body runs, replace `condition(f(1); x=2)` 
 
 To observe raw data, replace a conditioned argument LHS with a separate local LHS variable. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-`PrefixContext` and `extract_prefixes` are removed: use `prefix(model, vn; template)` to set prefixes and `DynamicPPL.getprefix(model)` to read the combined prefix (`nothing` when absent). The `prefix` field stores internal metadata for LHS variable addresses and nested submodel namespace storage templates. `condition` and `fix` reject binding addresses outside the model's prefix; use the prefixed address, such as `@varname(p.y)`, instead of `y`. See [#1502](https://github.com/TuringLang/DynamicPPL.jl/pull/1502).
-
 Replace whole bindings incompatible with declared argument or template types with compatible values, or reconstruct the model. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
 For partial bindings into `Float32` storage, `0.1` → `Float32(0.1)`; for runtime AD bindings, replace fixed-type storage with storage built from the running AD value. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
@@ -153,6 +151,14 @@ For direct constructors, `Model{false}(f, args, defaults)` → `Model{false}(f, 
 For handwritten evaluators, direct argument use → reuse an `@model` evaluator or implement its argument-preparation and binding-aware tilde protocol. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
 Debug introspection may return a body callable distinct from `model.f`: assuming `gen_evaluator_call_with_types(m)[1] === m.f` → use the returned callable and argument types. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+
+`PrefixContext` is removed: context-based prefixing → `prefix(model, vn; template)`. See [#1502](https://github.com/TuringLang/DynamicPPL.jl/pull/1502), [#1221](https://github.com/TuringLang/DynamicPPL.jl/issues/1221).
+
+`extract_prefixes` is removed: `extract_prefixes(model.context)` → `DynamicPPL.getprefix(model)`, returning the combined prefix or `nothing`. See [#1502](https://github.com/TuringLang/DynamicPPL.jl/pull/1502).
+
+Context-based address prefixing is removed: `prefix(ctx, vn)` → `AbstractPPL.prefix(vn, DynamicPPL.getprefix(model))` for prefixed models. See [#1502](https://github.com/TuringLang/DynamicPPL.jl/pull/1502).
+
+Bindings outside a model’s prefix now throw: `condition(prefix(m, :p); y=v)` → `condition(prefix(m, :p), @varname(p.y) => v)`. See [#1502](https://github.com/TuringLang/DynamicPPL.jl/pull/1502).
 
 `@vnt` is no longer exported: `@vnt` → `DynamicPPL.@vnt` or explicitly import it. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
