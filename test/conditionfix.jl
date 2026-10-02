@@ -136,15 +136,14 @@ end
             for original in (direct, condition(direct; x=4.0), decondition(direct))
                 for names in ((), (@varname(x),))
                     restored = unfix(fix(original; x=2.0), names...)
-                    @test conditioned(restored)[@varname(x)] == 1.0
-                    @test isempty(keys(VarInfo(Xoshiro(1), restored)))
-                    @test logjoint(restored, (;)) == logpdf(Normal(), 1.0)
+                    @test conditioned(restored) == conditioned(original)
+                    @test rand(Xoshiro(1), restored) == rand(Xoshiro(1), original)
                 end
             end
             for original in (observed, decondition(observed))
                 restored = unfix(fix(original; x=2.0), @varname(x))
-                @test conditioned(restored)[@varname(x)] == 1.0
-                @test logjoint(restored, (;)) == logpdf(Normal(), 1.0)
+                @test conditioned(restored) == conditioned(original)
+                @test rand(Xoshiro(1), restored) == rand(Xoshiro(1), original)
             end
         end
     end
@@ -808,7 +807,7 @@ end
         @model outer_arg() = a ~ to_submodel(inner_arg())
         for (bind, remove, other_role) in
             ((condition, unfix, "conditioned"), (fix, decondition, "fixed"))
-            @test_throws Regex("ArgumentError: .*`x`.*$other_role") remove(
+            @test_throws r"ArgumentError: .*`x`.*no .* binding" remove(
                 bind(scalar(); x=1.0), :x
             )
             @test_throws r"ArgumentError: .*`unknown`" remove(scalar(), :unknown)
@@ -948,8 +947,10 @@ end
                             DynamicPPL.VarNamedTuples.PartialArray
                     end
                     mixed = other(complete, removed => 3.0)
-                    @test select(mixed) == expected
-                    @test select(remove(mixed, retained)) == VarNamedTuple()
+                    @test select(mixed) == (bind === fix ? select(complete) : expected)
+                    @test select(remove(mixed, retained)) == (
+                        bind === fix ? select(remove(complete, retained)) : VarNamedTuple()
+                    )
                     for original in (complete, partial, mixed)
                         rebuilt = fix(
                             condition(unbound, conditioned(original)), fixed(original)
@@ -1034,15 +1035,14 @@ end
             bound = fix(decondition(restored_indices(original)), @varname(x[1]) => 5.0)
             for names in ((), (@varname(x),), (@varname(x[1]),))
                 restored = unfix(bound, names...)
-                @test restored(Xoshiro(1))[1] == 1.0
-                @test restored(Xoshiro(1))[2] == rand(Xoshiro(1), Normal())
+                @test collect(restored(Xoshiro(1))) == rand(Xoshiro(1), Normal(), 2)
             end
         end
         @model restored_fields(x) = (x.a[1] ~ Normal(); x.a[2] ~ Normal(); x)
         restored = unfix(
             fix(decondition(restored_fields((a=[1.0, 2.0],))), @varname(x.a[1]) => 5.0)
         )
-        @test restored(Xoshiro(1)).a == [1.0, rand(Xoshiro(1), Normal())]
+        @test restored(Xoshiro(1)).a == rand(Xoshiro(1), Normal(), 2)
     end
 
     @testset "invalid field and index addresses" begin
@@ -1105,15 +1105,16 @@ end
         end
     end
 
-    @testset "later bindings replace values and roles" begin
+    @testset "later bindings replace values within their layer" begin
         @model return_x() = x ~ Normal()
         for first_op in (condition, fix), last_op in (condition, fix)
             transformed = last_op(first_op(return_x(); x=1.0); x=2.0)
-            @test transformed() == 2.0
+            isfixed = first_op === fix || last_op === fix
+            @test transformed() == (first_op === fix && last_op === condition ? 1.0 : 2.0)
             @test logjoint(transformed, VarNamedTuple()) ==
-                (last_op === condition ? logpdf(Normal(), 2.0) : 0.0)
-            @test isempty(conditioned(transformed)) == (last_op === fix)
-            @test isempty(fixed(transformed)) == (last_op === condition)
+                (isfixed ? 0.0 : logpdf(Normal(), 2.0))
+            @test isempty(conditioned(transformed)) == isfixed
+            @test isempty(fixed(transformed)) == !isfixed
         end
     end
 
@@ -1152,9 +1153,13 @@ end
         @model joint() = x ~ MvNormal(zeros(2), I)
         for (first_op, last_op) in ((condition, fix), (fix, condition))
             mixed = last_op(first_op(joint(); x=[1.0, 2.0]), @varname(x[1]) => 3.0)
-            @test_throws r"ArgumentError: .*condition and fix different parts" mixed(
-                Xoshiro(1)
-            )
+            if first_op === condition
+                @test_throws r"ArgumentError: .*condition and fix different parts" mixed(
+                    Xoshiro(1)
+                )
+            else
+                @test mixed(Xoshiro(1)) == [1.0, 2.0]
+            end
         end
     end
 
@@ -1259,22 +1264,35 @@ end
         for first_op in (condition, fix), last_op in (condition, fix)
             original = first_op(indexed(); x=[1.0 0.0; 0.0 2.0])
             changed = last_op(original, @varname(x[1]) => 3.0)
-            @test changed()[1] == 3.0
+            @test changed()[1] == (first_op === fix && last_op === condition ? 1.0 : 3.0)
             @test changed()[2, 2] == 2.0
             @test original()[1] == 1.0
             replaced = last_op(
                 first_op(indexed(), @varname(x[1]) => 3.0); x=[1.0 0.0; 0.0 2.0]
             )
-            @test replaced(Xoshiro(1)) == [1.0 0.0; 0.0 2.0]
+            @test replaced(Xoshiro(1)) == (
+                if first_op === fix && last_op === condition
+                    [3.0 0.0; 0.0 2.0]
+                else
+                    [1.0 0.0; 0.0 2.0]
+                end
+            )
             @test isempty(conditioned(replaced)) == (last_op === fix)
-            @test isempty(fixed(replaced)) == (last_op === condition)
+            @test isempty(fixed(replaced)) ==
+                (first_op === condition && last_op === condition)
             @test isempty(keys(VarInfo(changed)))
             @test logjoint(changed, VarNamedTuple()) ==
-                (first_op === condition ? logpdf(Normal(), 2.0) : 0.0) +
-                  (last_op === condition ? logpdf(Normal(), 3.0) : 0.0)
+                (first_op === condition ? logpdf(Normal(), 2.0) : 0.0) + (
+                if first_op === condition && last_op === condition
+                    logpdf(Normal(), 3.0)
+                else
+                    0.0
+                end
+            )
             original = first_op(properties(); x=(; a=1.0, b=2.0))
             changed = last_op(original, @varname(x.a) => 3.0)
-            @test changed() == (; a=3.0, b=2.0)
+            @test changed() ==
+                (; a=(first_op === fix && last_op === condition ? 1.0 : 3.0), b=2.0)
             @test original() == (; a=1.0, b=2.0)
         end
     end
@@ -1383,13 +1401,30 @@ end
             first = first_op(original, @varname(x[1][1]) => T(10))
             second = second_op(first, @varname(x[2][1]) => T(20))
             third = third_op(second, @varname(x[1, 1][1]) => T(30))
-            expected = reshape([[T(30)], [T(20)], [T(3)], [T(4)]], 2, 2)
+            expected = reshape(
+                [
+                    [T(first_op === fix && third_op === condition ? 10 : 30)],
+                    [T(20)],
+                    [T(3)],
+                    [T(4)],
+                ],
+                2,
+                2,
+            )
             @test third() == expected
-            @test third_op(outer_array(second), @varname(a.x[1][1]) => T(30))() == expected
+            expected_parent = reshape([[T(30)], [T(20)], [T(3)], [T(4)]], 2, 2)
+            @test third_op(outer_array(second), @varname(a.x[1][1]) => T(30))() ==
+                expected_parent
             @test first()[2][1] == T(2)
             @test original() == data
             @test loglikelihood(third, VarNamedTuple()) ≈
-                (third_op === condition ? logpdf(Normal(), T(30)) : zero(T)) +
+                (
+                      if first_op === condition && third_op === condition
+                          logpdf(Normal(), T(30))
+                      else
+                          zero(T)
+                      end
+                  ) +
                   (second_op === condition ? logpdf(Normal(), T(20)) : zero(T)) +
                   logpdf(Normal(), T(3)) +
                   logpdf(Normal(), T(4))
@@ -1555,12 +1590,18 @@ end
             changed = last_op(original, @varname(x.a) => 4.0, @varname(x.b[1]) => 5.0)
             result = changed()
             @test result isa ObservationRecord
-            @test result.a == 4.0
-            @test result.b == [5.0, 3.0]
+            @test result.a == (first_op === fix && last_op === condition ? 1.0 : 4.0)
+            @test result.b ==
+                (first_op === fix && last_op === condition ? [2.0, 3.0] : [5.0, 3.0])
             @test isempty(keys(VarInfo(changed)))
             @test logjoint(changed, VarNamedTuple()) ≈
-                (first_op === condition ? logpdf(Normal(), 3.0) : 0.0) +
-                  (last_op === condition ? sum(logpdf.(Normal(), [4.0, 5.0])) : 0.0)
+                (first_op === condition ? logpdf(Normal(), 3.0) : 0.0) + (
+                if first_op === condition && last_op === condition
+                    sum(logpdf.(Normal(), [4.0, 5.0]))
+                else
+                    0.0
+                end
+            )
             @test original().a == data.a == 1.0
             @test original().b == data.b == [2.0, 3.0]
         end
@@ -1584,11 +1625,12 @@ end
             changed = last_op(base, @varname(x.a) => oftype(replacement.a, 3))
             result = changed()
             @test typeof(result) === typeof(replacement)
-            @test result.a == 3
+            @test result.a == (first_op === fix && last_op === condition ? 1 : 3)
             @test result.b == 2
             @test base().a == replacement.a == 1
-            @test loglikelihood(changed, VarNamedTuple()) ≈
-                (last_op === condition ? logpdf(Normal(), 3) : 0)
+            @test loglikelihood(changed, VarNamedTuple()) ≈ (
+                first_op === condition && last_op === condition ? logpdf(Normal(), 3) : 0
+            )
             nested = last_op(
                 nested_fields(base), @varname(child.x.a) => oftype(replacement.a, 4)
             )
@@ -1605,7 +1647,13 @@ end
                 UnlinkAll(),
             )
             @test typeof(result) === typeof(replacement)
-            @test result.a == (last_op === condition ? 7 : original.a)
+            @test result.a == (
+                if last_op === condition
+                    (first_op === fix ? 1 : 7)
+                else
+                    (first_op === condition ? 1 : original.a)
+                end
+            )
             @test result.b == 2
         end
         parent = condition(
@@ -1696,7 +1744,7 @@ end
             @test decondition(fixed_model)() == expected
             @test fixed(decondition(fixed_model))[vn] == 3.0
             conditioned_model = condition(fix(original; x=expected), vn => 3.0)
-            @test conditioned(conditioned_model)[vn] == 3.0
+            @test isempty(conditioned(conditioned_model))
             @test conditioned(unfix(conditioned_model))[vn] == 3.0
             @test merge(conditioned(fixed_model), fixed(fixed_model))[@varname(x)] ==
                 expected
@@ -1844,9 +1892,8 @@ end
         m = argument_lhs(1.0)
         for original in (m, condition(m; x=2.0), decondition(m, :x))
             u = unfix(fix(original; x=5.0), :x)
-            @test isempty(keys(VarInfo(u)))
-            @test logjoint(u, (;)) ≈ logpdf(Normal(), 1.0)
-            @test keys(VarInfo(decondition(u, :x))) == [@varname(x)]
+            @test conditioned(u) == conditioned(original)
+            @test rand(Xoshiro(1), u) == rand(Xoshiro(1), original)
         end
         @model argument_indices(x) = (
             for i in eachindex(x)
@@ -1909,13 +1956,15 @@ end
         end
         m = fix(decondition(nested_argument((; a=[1.0, 2.0]))), @varname(x.a) => [5.0, 6.0])
         restored = unfix(m, @varname(x.a[1]))
-        @test returned(restored, (;)) == (; a=[1.0, 6.0])
-        @test conditioned(restored)[@varname(x.a[1])] == 1.0
+        @test returned(restored, (; x=(; a=[1.0, 2.0]))) == (; a=[1.0, 6.0])
+        @test isempty(conditioned(restored))
         @test fixed(restored)[@varname(x.a[2])] == 6.0
-        @test logjoint(restored, (;)) ≈ logpdf(Normal(), 1.0)
+        @test logjoint(restored, (; x=(; a=[1.0, 2.0]))) ≈ logpdf(Normal(), 1.0)
         @model restored_parent(child) = a ~ to_submodel(child)
-        @test returned(restored_parent(restored), (;)) == (; a=[1.0, 6.0])
-        @test logjoint(restored_parent(restored), (;)) ≈ logpdf(Normal(), 1.0)
+        @test returned(restored_parent(restored), (; a=(; x=(; a=[1.0, 2.0])))) ==
+            (; a=[1.0, 6.0])
+        @test logjoint(restored_parent(restored), (; a=(; x=(; a=[1.0, 2.0])))) ≈
+            logpdf(Normal(), 1.0)
     end
 
     @testset "decondition and unfix" begin
@@ -2021,6 +2070,29 @@ end
             end
         end
     end
+end
+
+@testset "fixed bindings shadow observations" begin
+    @model layered(x) = x ~ Normal()
+    for names in ((), (:x,), (@varname(x),))
+        latent = decondition(layered(1.0), :x)
+        @test isempty(conditioned(unfix(fix(latent; x=5.0), names...)))
+        observed = condition(layered(1.0); x=2.0)
+        @test conditioned(unfix(fix(observed; x=5.0), names...))[@varname(x)] == 2.0
+        @test isempty(conditioned(unfix(decondition(fix(observed; x=5.0)), names...)))
+    end
+    @test fix(condition(fix(layered(1.0); x=5.0); x=2.0); x=4.0)(Xoshiro(1)) == 4.0
+    @test unfix(condition(fix(layered(1.0); x=5.0); x=2.0))(Xoshiro(1)) == 2.0
+    @model layered_array(x) = (for i in eachindex(x)
+        x[i] ~ Normal()
+    end; x)
+    resized = fix(layered_array(zeros(2)); x=ones(3))
+    @test unfix(condition(resized, @varname(x[3]) => 4.0))(Xoshiro(1)) == [0.0, 0.0, 4.0]
+    @model layer_parent(child) = a ~ to_submodel(child)
+    observed = condition(layered(1.0); x=2.0)
+    @test layer_parent(unfix(fix(observed; x=5.0)))(Xoshiro(1)) == 2.0
+    prefixed = DynamicPPL.prefix(fix(observed; x=5.0), @varname(a))
+    @test unfix(prefixed, @varname(a.x))(Xoshiro(1)) == 2.0
 end
 
 @info "Completed $(@__FILE__) in $(now() - __now__)."

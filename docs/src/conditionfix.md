@@ -33,7 +33,8 @@
     or use `@varname(a.x)` on a parent whose submodel LHS `a` is not an argument.
   - Integer indices into NamedTuples are rejected in binding addresses and LHS variables;
     use `x.a` instead of `x[1]` for `x = (a=1.0, b=2.0)` (Tuples retain integer indices).
-  - Later bindings replace earlier ones where they overlap. A *whole binding* binds an
+  - Fixed bindings shadow observations. Within each layer, later bindings replace earlier
+    ones where they overlap. A *whole binding* binds an
     entire value; a *partial binding* binds part of a value already bound as a whole,
     preserving the rest of its binding. Subvariables of one LHS variable cannot
     have different roles; mixing roles throws `ArgumentError` during evaluation.
@@ -58,13 +59,12 @@
     stored binding's address, with Symbol indices equivalent to properties.
     A name with no match throws `ArgumentError`, including bindings supplied only by
     a child. Decondition child argument-supplied observations before `to_submodel`. With no
-    names, all conditioned or fixed bindings, respectively, are removed. `unfix` restores the argument-supplied
-    observation, if any, otherwise making the LHS variable latent; it never restores an
-    earlier explicit conditioned binding. Argument-supplied observations are rebuilt
-    from the stored values of arguments with LHS variables,
-    so `unfix(fix(decondition(m, :x); x=5.0), :x)` also restores an argument-supplied observation
-    previously removed by `decondition`. `decondition(m, :x)` removes explicit and argument-supplied
-    observations at `x`, making it latent.
+    names, all conditioned or fixed bindings, respectively, are removed. `unfix` uncovers the
+    explicit or argument-supplied observation below the fixed binding, or leaves the LHS
+    variable latent if no observation remains. Thus
+    `unfix(fix(decondition(m, :x); x=5.0), :x)` leaves `x` latent.
+    `decondition(m, :x)` removes explicit and argument-supplied observations at `x`;
+    an overlapping fixed binding remains in force.
   - `conditioned` and `fixed` return plain values, independent of binding history:
     `VarNamedTuple`, `PartialArray`, or ordinary values. Partial removal or mixed
     roles produce plain partial values, not the original container type.

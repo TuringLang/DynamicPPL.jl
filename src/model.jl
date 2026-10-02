@@ -31,8 +31,26 @@ end
 
 struct NoModelBinding end
 
+# Fixed bindings preserve the observation layer they shadow.
+struct ModelBindingLayers{O<:VarNamedTuple,F<:VarNamedTuple,V<:VarNamedTuple}
+    observations::O
+    fixed::F
+    values::V
+end
+function ModelBindingLayers(observations, fixed)
+    return ModelBindingLayers(
+        observations, fixed, _overlay_model_values(observations, fixed)
+    )
+end
+_model_values(values::ModelBindingLayers) = values.values
+_model_value_varname(::ModelBindingLayers, vn, prefix) = maybe_prefix(vn, prefix)
+_observation_values(values::ModelBindingLayers) = values.observations
+_fixed_values(values::ModelBindingLayers) = values.fixed
+_observation_values(values) = _remove_model_values(Fix, _model_values(values))
+_fixed_values(values) = _remove_model_values(Condition, _model_values(values))
+
 # Evaluation-local bindings avoid expanding each child into its parent's storage shape.
-struct LocalModelValues{V<:VarNamedTuple}
+struct LocalModelValues{V<:Union{VarNamedTuple,ModelBindingLayers}}
     values::V
 end
 # Default arguments need no enclosing namespace storage during evaluation.
@@ -43,7 +61,9 @@ _model_values(values::UnprefixedArgumentValues) = values.values
 _model_value_varname(::UnprefixedArgumentValues, vn, prefix) = vn
 
 _model_values(values::VarNamedTuple) = values
-_model_values(values::LocalModelValues) = values.values
+_model_values(values::LocalModelValues) = _model_values(values.values)
+_observation_values(values::LocalModelValues) = _observation_values(values.values)
+_fixed_values(values::LocalModelValues) = _fixed_values(values.values)
 _model_value_varname(::VarNamedTuple, vn, prefix) = maybe_prefix(vn, prefix)
 _model_value_varname(::LocalModelValues, vn, prefix) = vn
 
@@ -61,6 +81,74 @@ struct ModelValueTree{T,V<:Union{VarNamedTuple,Tuple}}
         end
         return new{T,V}(template, values)
     end
+end
+
+@generated function _overlay_model_values(
+    observations::VarNamedTuple{O}, fixed::VarNamedTuple{F}
+) where {O,F}
+    names = Tuple(union(O, F))
+    fields = map(names) do name
+        if name in O && name in F
+            :(_overlay_model_node(observations.data.$name, fixed.data.$name))
+        elseif name in F
+            :(fixed.data.$name)
+        else
+            :(observations.data.$name)
+        end
+    end
+    return :(VarNamedTuple(NamedTuple{$names}(($(fields...),))))
+end
+_overlay_model_node(previous, fixed) = _merge_model_node(previous, fixed)
+function _overlay_model_node(previous::VarNamedTuple, fixed::VarNamedTuple)
+    return _overlay_model_values(previous, fixed)
+end
+function _overlay_model_node(previous, fixed::VarNamedTuples.PartialArray)
+    previous isa ModelValue && (previous = _expand_model_binding(previous))
+    if previous isa VarNamedTuples.PartialArray &&
+        !(fixed.data isa VarNamedTuples.GrowableArray) &&
+        axes(previous) != axes(fixed)
+        data = similar(fixed.data, eltype(previous))
+        mask = fill!(similar(fixed.mask), false)
+        for i in eachindex(data)
+            if checkbounds(Bool, previous.data, i) && previous.mask[i]
+                data[i] = previous.data[i]
+                mask[i] = true
+            end
+        end
+        previous = VarNamedTuples.PartialArray(data, mask)
+    end
+    return _fold_model_indices(
+        _copy_model_node(previous), fixed
+    ) do result, update, optic, template
+        child = _model_argument_binding(result, optic)
+        value = child === nothing ? update : _overlay_model_node(child, update)
+        VarNamedTuples._setindex_optic!!(
+            result, value, optic, template, VarNamedTuples.AllowAll()
+        )
+    end
+end
+function _overlay_model_node(previous::VarNamedTuple, fixed::ModelValue{<:Any,<:NamedTuple})
+    if any(name -> !hasproperty(fixed.value, name), keys(previous.data))
+        return _overlay_model_values(previous, _submodel_namespace(fixed))
+    end
+    return fixed
+end
+function _overlay_model_node(previous, fixed::ModelValueTree)
+    values = if fixed.values isa Tuple
+        ntuple(length(fixed.values)) do i
+            child = _previous_model_child(previous, AbstractPPL.Index((i,), (;)))
+            _overlay_model_node(child, fixed.values[i])
+        end
+    else
+        previous isa ModelValue && (previous = _expand_model_binding(previous))
+        previous = previous isa ModelValueTree ? previous.values : previous
+        if previous isa VarNamedTuple
+            _overlay_model_values(previous, fixed.values)
+        else
+            fixed.values
+        end
+    end
+    return ModelValueTree(fixed.template, values)
 end
 
 function Base.:(==)(a::ModelValueTree, b::ModelValueTree)
@@ -1089,7 +1177,9 @@ struct Model{
     Targs,
     Tdefaults,
     C<:AbstractContext,
-    Values<:Union{VarNamedTuple,LocalModelValues,UnprefixedArgumentValues},
+    Values<:Union{
+        VarNamedTuple,ModelBindingLayers,LocalModelValues,UnprefixedArgumentValues
+    },
     Threaded,
     ArgsOnLHS,
 } <: AbstractProbabilisticProgram
@@ -1393,8 +1483,9 @@ sampling and contribute to the likelihood.
 
 See also: [`decondition`](@ref), [`conditioned`](@ref)
 
-Later bindings replace earlier ones where they overlap: a whole binding replaces the entire
-value; a partial binding changes part of an already-bound value and preserves the rest.
+Within each layer, later bindings replace earlier ones where they overlap: a whole binding
+replaces the entire value; a partial binding changes part of an already-bound value and
+preserves the rest. Fixed bindings shadow observations until removed with `unfix`.
 Subvariables of one LHS variable cannot have different roles. A value containing `missing`
 is rejected when a tilde statement observes or fixes it, naming the LHS variable. Parts of
 an argument or binding that no tilde statement reads may contain `missing`. It no longer
@@ -1605,7 +1696,20 @@ function _bind_model(::Type{R}, model::Model, values...) where {R}
     model = _materialize_argument_values(model)
     values = _tag_model_values(R, _make_condfix_values(model, values...))
     values = _check_argument_bindings(model, values)
-    values = _merge_model_values(_model_values(model.values), values)
+    observations = _observation_values(model.values)
+    fixed_values = _fixed_values(model.values)
+    values = if R === Fix
+        ModelBindingLayers(
+            observations,
+            _remove_model_values(
+                Condition, _merge_model_values(_model_values(model.values), values)
+            ),
+        )
+    elseif isempty(fixed_values)
+        _merge_model_values(observations, values)
+    else
+        ModelBindingLayers(_overlay_model_values(observations, values), fixed_values)
+    end
     values = model.values isa LocalModelValues ? LocalModelValues(values) : values
     return _reconstruct_model(model; values)
 end
@@ -1765,10 +1869,24 @@ true
 """
 function AbstractPPL.decondition(model::Model, syms::Union{Symbol,VarName}...)
     model = _materialize_argument_values(model)
-    _check_model_removal(Condition, _model_values(model.values), syms...)
-    values = _remove_model_values(Condition, _model_values(model.values), syms...)
+    observations = _observation_values(model.values)
+    _check_removal_addresses(model, syms...)
+    _check_model_removal(Condition, observations, syms...)
+    values = _remove_model_values(Condition, observations, syms...)
+    fixed_values = _fixed_values(model.values)
+    isempty(fixed_values) || (values = ModelBindingLayers(values, fixed_values))
     values = model.values isa LocalModelValues ? LocalModelValues(values) : values
     return _reconstruct_model(model; values)
+end
+
+function _check_removal_addresses(model, names...)
+    for name in names
+        vn = name isa VarName ? name : VarName{name}()
+        _check_namedtuple_index(
+            _model_values(model.values), AbstractPPL.varname_to_optic(vn)
+        )
+    end
+    return nothing
 end
 
 function _check_model_removal(::Type{R}, values, args...) where {R}
@@ -2015,8 +2133,8 @@ Fixed values must cover every LHS variable they bind with a static size and shap
 body changes a fixed argument's size or shape, evaluation throws `ArgumentError` naming
 the LHS variable. This restriction does not apply to [`condition`](@ref).
 
-Removing a fixed binding with [`unfix`](@ref) restores the argument-supplied observation, if any,
-without restoring an earlier explicit conditioned binding.
+Removing a fixed binding with [`unfix`](@ref) uncovers the observation below it,
+or makes the LHS variable latent if no observation remains.
 
 See also: [`unfix`](@ref), [`fixed`](@ref)
 
@@ -2114,12 +2232,11 @@ are supplied. NamedTuple integer indices are rejected: use `x.a` instead of `x[1
 Matching follows [`decondition`](@ref). A name with no stored fixed match throws `ArgumentError`,
 including a name supplied only by a child submodel or only conditioned on this model.
 
-Unlike [`decondition`](@ref), removal restores the argument-supplied observation, if any,
-otherwise making the LHS variable latent; it never restores an earlier explicit conditioned binding.
-Argument-supplied observations are rebuilt from the model's arguments, even if previously removed
-with `decondition`. For `@model f(x) = x ~ Normal()`, both
+Removal uncovers the explicit or argument-supplied observation below the fixed binding,
+or makes the LHS variable latent when no observation remains.
+Observations removed with `decondition` stay removed. For `@model f(x) = x ~ Normal()`,
 `unfix(fix(f(1.0); x=5.0), :x)` and
-`unfix(fix(decondition(f(1.0), :x); x=5.0), :x)` observe `x = 1.0` again.
+`unfix(fix(decondition(f(1.0), :x); x=5.0), :x)` respectively observe `1.0` and leave `x` latent.
 
 See also: [`fix`](@ref), [Binding rules](@ref).
 
@@ -2164,35 +2281,16 @@ true
 """
 function unfix(model::Model, syms::Union{Symbol,VarName}...)
     model = _materialize_argument_values(model)
-    _check_model_removal(Fix, _model_values(model.values), syms...)
-    values = _remove_model_values(Fix, _model_values(model.values), syms...)
-    removed = _removed_fixed_bindings(_model_values(model.values), values)
-    defaults = _argument_defaults(
-        merge(model.args, model.defaults), Val(_args_on_lhs(model))
-    )
-    if !(model.values isa LocalModelValues) && _model_prefix(model) !== nothing
-        defaults = _prefix_values(
-            defaults,
-            _model_prefix(model),
-            _apply_prefix_template(_model_prefix_template(model), NoTemplate()),
-        )
+    fixed_values = _fixed_values(model.values)
+    _check_removal_addresses(model, syms...)
+    _check_model_removal(Fix, fixed_values, syms...)
+    fixed_values = _remove_model_values(Fix, fixed_values, syms...)
+    observations = _observation_values(model.values)
+    values = if isempty(fixed_values)
+        observations
+    else
+        ModelBindingLayers(observations, fixed_values)
     end
-    values = mapfoldl(
-        identity,
-        function (restored, pair)
-            vn, binding = pair
-            default = _model_argument_binding(defaults, AbstractPPL.varname_to_optic(vn))
-            return if binding isa ModelValue{Fix} && default !== nothing
-                templated_setindex!!(
-                    restored, default, vn, defaults.data[AbstractPPL.getsym(vn)]
-                )
-            else
-                restored
-            end
-        end,
-        removed;
-        init=values,
-    )
     values = model.values isa LocalModelValues ? LocalModelValues(values) : values
     return _reconstruct_model(model; values)
 end
@@ -2208,44 +2306,6 @@ end
         )))
     end
     return :(VarNamedTuple(merge((;), $(fields...))))
-end
-
-_removed_fixed_bindings(previous, remaining) = NoModelBinding()
-function _removed_fixed_bindings(previous::ModelValue{Fix}, remaining)
-    remaining isa ModelValue{Fix} && return NoModelBinding()
-    remaining === nothing && return previous
-    return _removed_fixed_bindings(_expand_model_binding(previous), remaining)
-end
-function _removed_fixed_bindings(
-    previous::Union{VarNamedTuple,VarNamedTuples.PartialArray}, remaining
-)
-    remaining === nothing && return previous
-    return _fold_model_indices(empty(previous), previous) do removed, value, optic, template
-        child = _removed_fixed_bindings(value, _model_argument_binding(remaining, optic))
-        return if child isa NoModelBinding
-            removed
-        else
-            VarNamedTuples._setindex_optic!!(
-                removed, child, optic, template, VarNamedTuples.AllowAll()
-            )
-        end
-    end
-end
-function _removed_fixed_bindings(previous::ModelValueTree, remaining)
-    remaining === nothing && return previous
-    values = if previous.values isa Tuple
-        ntuple(length(previous.values)) do i
-            _removed_fixed_bindings(
-                previous.values[i],
-                _model_argument_binding(remaining, AbstractPPL.Index((i,), (;))),
-            )
-        end
-    else
-        _removed_fixed_bindings(
-            previous.values, remaining isa ModelValueTree ? remaining.values : remaining
-        )
-    end
-    return ModelValueTree(previous.template, values)
 end
 
 """
@@ -2309,6 +2369,12 @@ julia> # Now `a.x` will be sampled.
 fixed(model::Model) =
     _select_model_values(Fix, _model_values(_materialize_argument_values(model).values))
 
+function _prefix_values(values::ModelBindingLayers, vn::VarName, template)
+    return ModelBindingLayers(
+        _prefix_values(values.observations, vn, template),
+        _prefix_values(values.fixed, vn, template),
+    )
+end
 function _prefix_values(values::VarNamedTuple, vn::VarName, template)
     isempty(values) && return values
     return templated_setindex!!(VarNamedTuple(), values, vn, template)
@@ -2375,7 +2441,8 @@ function prefix(model::Model, x::VarName; template=NoTemplate())
     x = _concretize_prefix(x, template)
     model = _materialize_argument_values(model)
     values =
-        if _model_prefix(model) === nothing &&
+        if model.values isa VarNamedTuple &&
+            _model_prefix(model) === nothing &&
             !isempty(model.values) &&
             mapreduce(
                 pair -> pair.second isa ModelValue{ArgumentCondition},
