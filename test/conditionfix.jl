@@ -2770,6 +2770,28 @@ Distributions.loglikelihood(d::PlaceholderStateNormal, p::PlaceholderState) = lo
         -1.0
 end
 
+@testset "aliases in latent argument storage" begin
+    @model function aliased_argument(x)
+        x.a[1] ~ Normal()
+        0.0 ~ Normal(x.b[1], 1)
+        return (x.a === x.b, x.a[1], x.b[1])
+    end
+    v = [0.0]
+    m = decondition(aliased_argument((a=v, b=v)))
+    p = (x=(a=[2.0],),)
+    @test returned(m, p) == (true, 2.0, 2.0)
+    @test loglikelihood(m, p) ≈ logpdf(Normal(2.0, 1), 0.0)
+    @test v == [0.0]
+    copied = @inferred DynamicPPL._copy_model_argument((a=v, b=v))
+    @test copied.a === copied.b
+    @test copied.a !== v
+    cycle = Any[nothing]
+    cycle[1] = cycle
+    copied_cycle = DynamicPPL._copy_model_argument(cycle)
+    @test copied_cycle[1] === copied_cycle
+    @test copied_cycle !== cycle
+end
+
 @info "Completed $(@__FILE__) in $(now() - __now__)."
 
 end
