@@ -2195,10 +2195,12 @@ end
 @testset "bindings own shape at their address" begin
     @model shape_nested(x) = (for i in eachindex(x), j in eachindex(x[i])
         x[i][j] ~ Normal()
-    end; x)
+    end;
+    x)
     @model shape_field(p) = (for i in eachindex(p.a)
         p.a[i] ~ Normal()
-    end; p)
+    end;
+    p)
     m = condition(shape_nested([[0.0, 0.0]]), @varname(x[1]) => [1.0, 2.0, 3.0])
     @test returned(decondition(m, @varname(x[1][3])), (; x=[[7.0, 8.0, 9.0]])) ==
         [[1.0, 2.0, 9.0]]
@@ -2222,6 +2224,19 @@ end
                 shape_nested([[0.0], [0.0]]), vn => [[1.0], [2.0], [3.0]]
             )
         end
+    end
+end
+
+@testset "partial removal of shapeless observations" begin
+    @model allocated_placeholder(x=missing) = (
+        (ismissing(x) || x === nothing) && (x = zeros(2)); x[1] ~ Normal(); x
+    )
+    for value in (missing, nothing)
+        @test_throws r"Cannot remove part.*no template.*decondition" decondition(
+            allocated_placeholder(value), @varname(x[1])
+        )
+        @test length(decondition(allocated_placeholder(value), @varname(x))(Xoshiro(1))) ==
+            2
     end
 end
 

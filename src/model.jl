@@ -1819,10 +1819,10 @@ function _prepare_local_binding_types(model, values)
         local_values
     else
         _prefix_values(
-        local_values,
-        prefix,
-        _apply_prefix_template(_model_prefix_template(model), NoTemplate()),
-    )
+            local_values,
+            prefix,
+            _apply_prefix_template(_model_prefix_template(model), NoTemplate()),
+        )
     end
 end
 
@@ -2022,11 +2022,33 @@ end
 function _check_removal_addresses(model, names...)
     for name in names
         vn = name isa VarName ? name : VarName{name}()
+        _check_shapeless_removal(
+            _model_values(model.values),
+            AbstractPPL.varname_to_optic(vn),
+            AbstractPPL.Iden(),
+            vn,
+        )
         _check_namedtuple_index(
             _model_values(model.values), AbstractPPL.varname_to_optic(vn)
         )
     end
     return nothing
+end
+
+function _check_shapeless_removal(binding, optic, prefix, vn)
+    optic isa AbstractPPL.Iden && return nothing
+    if binding isa ModelValue{<:Any,<:Union{Missing,Nothing}}
+        root = AbstractPPL.optic_to_varname(prefix)
+        remove = binding isa ModelValue{Fix} ? "unfix" : "decondition"
+        throw(
+            ArgumentError(
+                "Cannot remove part `$vn`: the whole value `$(binding.value)` at `$root` supplies no template. Use `$remove(model, @varname($root))` to remove the whole binding.",
+            ),
+        )
+    end
+    head = AbstractPPL.ohead(optic)
+    child = _model_argument_binding(binding, head)
+    return _check_shapeless_removal(child, optic.child, head ∘ prefix, vn)
 end
 
 function _check_model_removal(::Type{R}, values, args...) where {R}
