@@ -2136,9 +2136,10 @@ function unfix(model::Model, syms::Union{Symbol,VarName}...)
         identity,
         function (restored, pair)
             vn, binding = pair
-            return if binding isa ModelValue{Fix} && haskey(defaults, vn)
+            default = _model_argument_binding(defaults, AbstractPPL.varname_to_optic(vn))
+            return if binding isa ModelValue{Fix} && default !== nothing
                 templated_setindex!!(
-                    restored, defaults[vn], vn, defaults.data[AbstractPPL.getsym(vn)]
+                    restored, default, vn, defaults.data[AbstractPPL.getsym(vn)]
                 )
             else
                 restored

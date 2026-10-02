@@ -1800,6 +1800,17 @@ end
         end
     end
 
+    @testset "unfix restores slice-prefixed arguments" begin
+        @model slice_argument(x=1.0) = x ~ Normal()
+        m = DynamicPPL.prefix(
+            fix(slice_argument(); x=3.0), @varname(p[1:2]); template=zeros(2)
+        )
+        restored = unfix(m)
+        @test conditioned(restored)[@varname(p[1:2].x)] == 1.0
+        @test returned(restored, (;)) == 1.0
+        @test loglikelihood(restored, (;)) ≈ logpdf(Normal(), 1.0)
+    end
+
     @testset "decondition and unfix" begin
         conditioned_model = condition(model; x=1.0, y=2.0)
         @test isempty(keys(VarInfo(conditioned_model)))
