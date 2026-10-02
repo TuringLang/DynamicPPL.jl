@@ -745,6 +745,8 @@ function build_output(modeldef, linenumbernode, lhs_names)
             end
             return $(definition[:name])($(callargs...))
         end
+        # The debug entry point is a method of the model function itself: a method of a
+        # DynamicPPL function cannot be defined when `@model` is used in local scope.
         debug_definition = copy(evaluatordef)
         debug_definition[:args] = vcat(
             [:(::$(Core.Typeof)($(_model_evaluator)))], evaluatordef[:args]
