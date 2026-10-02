@@ -139,7 +139,7 @@ end
 @testset "aliased latent argument storage" begin
     @model function aliased_argument(x)
         x.a[1] ~ Normal()
-        0.0 ~ Normal(x.b[1], 1)
+        return 0.0 ~ Normal(x.b[1], 1)
     end
     # Abstract storage can accept AD numbers without replacing either shared array.
     value = Real[0.0]
@@ -156,6 +156,32 @@ end
         density, gradient = logdensity_and_gradient(ldf, [2.0])
         @test density ≈ logjoint(model, (x=(a=[2.0],),))
         @test gradient ≈ [-4.0]
+    end
+end
+
+mutable struct InnerConstructorADState{T}
+    x::T
+    InnerConstructorADState(x::T) where {T} = new{T}(x)
+end
+
+@testset "latent inner-constructor argument gradients" begin
+    @model inner_state(s) = (y ~ Normal(s.x); s.x ~ Normal(); nothing)
+    @model function outer_state()
+        m ~ Normal()
+        return a ~ to_submodel(decondition(inner_state(InnerConstructorADState(m))))
+    end
+    model = outer_state()
+    _, vi = init!!(
+        StableRNG(123456),
+        model,
+        VarInfo(VectorValueAccumulator()),
+        InitFromPrior(),
+        UnlinkAll(),
+    )
+    for adtype in (AutoForwardDiff(), AutoMooncake())
+        ldf = LogDensityFunction(model, getlogjoint_internal, vi; adtype)
+        _, gradient = logdensity_and_gradient(ldf, [0.3, 0.7, 0.9])
+        @test gradient ≈ [0.1, -0.4, -0.9]
     end
 end
 
