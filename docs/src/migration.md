@@ -245,6 +245,20 @@ _, vi = init!!(Xoshiro(468), model, vi, InitFromParams(params, nothing), UnlinkA
 vi
 ```
 
+## Random number generators
+
+`LogDensityFunction` now shares its supplied RNG across construction, evaluation, AD
+preparation, and parameter sampling. Replace implicit model-body draws such as `rand()`
+with `rand(__context__.rng)` and supply the RNG with `LogDensityFunction(model; rng)`.
+Replace `rand(ldf)` with `rand(Random.default_rng(), ldf)` if sampling should use the
+task-local RNG; `rand(ldf)` now uses `ldf.rng`.
+
+For low-level density calls, replace `DynamicPPL.logdensity_internal(args...)` with
+`DynamicPPL.logdensity_internal(args..., rng)` to select an RNG explicitly. For
+`AbstractPPL.prepare`, replace `context=(model, getlogdensity, ranges, strategy, accs)`
+with `context=(model, getlogdensity, ranges, strategy, accs, rng)`.
+See [Randomness in density evaluation](@ref ldf-rng) for the evaluation contract.
+
 ## Binding arguments and data
 
 Arguments on the LHS are observed by default. A whole `missing` or `nothing` argument,

@@ -32,7 +32,6 @@ Indexed prefixes accept a prefix template: `prefix(m, @varname(a[2]))` → `pref
 
 `check_model` accepts explicit argument bindings and warns about binding names absent from the model and reached unprefixed submodels. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-<<<<<<< HEAD
 Binding and removal addresses now accept scalar `CartesianIndex` at any depth, including below prefixes.
 
 Growable storage now accepts scalar indices of any `Integer` type, including `Int32`, without a `MethodError`.
@@ -54,9 +53,7 @@ Fixed stack overflows when removing bindings from models with cyclic covariates.
 Improved evaluation performance for indexed submodels.
 
 Improved placeholder-checking performance for heterogeneous arrays and tuples.
-=======
 Density evaluation accepts an explicit RNG: `DynamicPPL.logdensity_internal(args...)` → `DynamicPPL.logdensity_internal(args..., rng)`; append `rng` to `AbstractPPL.prepare`’s `context` tuple. See [#1504](https://github.com/TuringLang/DynamicPPL.jl/pull/1504).
->>>>>>> 3602df7a (history: tighten the 0.43 entries)
 
 ## Breaking changes
 
