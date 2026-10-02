@@ -2192,6 +2192,39 @@ end
     end
 end
 
+@testset "bindings own shape at their address" begin
+    @model shape_nested(x) = (for i in eachindex(x), j in eachindex(x[i])
+        x[i][j] ~ Normal()
+    end; x)
+    @model shape_field(p) = (for i in eachindex(p.a)
+        p.a[i] ~ Normal()
+    end; p)
+    m = condition(shape_nested([[0.0, 0.0]]), @varname(x[1]) => [1.0, 2.0, 3.0])
+    @test returned(decondition(m, @varname(x[1][3])), (; x=[[7.0, 8.0, 9.0]])) ==
+        [[1.0, 2.0, 9.0]]
+    @test condition(m, @varname(x[1][3]) => 4.0)(Xoshiro(1)) == [[1.0, 2.0, 4.0]]
+    @test unfix(fix(m, @varname(x[1]) => zeros(4)), @varname(x[1]))(Xoshiro(1)) ==
+        [[1.0, 2.0, 3.0]]
+    @test unfix(fix(shape_nested([[0.0, 0.0]]), @varname(x[1]) => ones(3)), @varname(x[1]))(
+        Xoshiro(1)
+    ) == [[0.0, 0.0]]
+    p = condition(shape_field((a=zeros(2),)), @varname(p.a) => ones(3))
+    @test returned(decondition(p, @varname(p.a[3])), (; p=(a=fill(2.0, 3),))) ==
+        (a=[1.0, 1.0, 2.0],)
+    @test unfix(fix(p, @varname(p.a) => zeros(4)), @varname(p.a))(Xoshiro(1)) ==
+        (a=ones(3),)
+    for bind in (condition, fix)
+        @test_throws DimensionMismatch bind(
+            shape_nested([SVector(0.0, 0.0)]), @varname(x[1]) => ones(3)
+        )
+        for vn in (@varname(x[1:2]), @varname(x[:]), @varname(x[[true, true]]))
+            @test_throws DimensionMismatch bind(
+                shape_nested([[0.0], [0.0]]), vn => [[1.0], [2.0], [3.0]]
+            )
+        end
+    end
+end
+
 @info "Completed $(@__FILE__) in $(now() - __now__)."
 
 end
