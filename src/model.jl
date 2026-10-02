@@ -933,32 +933,63 @@ end
 # Latent storage belongs to this evaluation, but numerical leaves retain their AD identity.
 # Backends may need a different shallow copy to support subsequent argument assignments.
 _copy_model_argument_storage(value) = copy(value)
+_copy_model_argument(value) = _copy_model_argument(value, IdDict())
 _copy_model_argument(value::Union{Number,Type}) = value
 _copy_model_argument(value::AbstractArray{<:Number}) = _copy_model_argument_storage(value)
-function _copy_model_argument(value::AbstractArray)
+_copy_model_argument(value::Union{Number,Type}, ::IdDict) = value
+function _copy_model_argument(value::AbstractArray{<:Number}, memo::IdDict)
+    # The storage hook can change the container type (e.g. ReverseDiff.TrackedArray).
+    T = Core.Compiler.return_type(_copy_model_argument_storage, Tuple{typeof(value)})
+    cached = get(memo, value, nothing)
+    cached === nothing || return cached::T
+    return memo[value] = _copy_model_argument_storage(value)
+end
+function _copy_model_argument(value::AbstractArray, memo::IdDict)
+    cached = get(memo, value, nothing)
+    cached === nothing || return cached
     result = _copy_model_argument_storage(value)
+    memo[value] = result
     for i in eachindex(value)
         if isassigned(value, i)
-            result = BangBang.setindex!!(result, _copy_model_argument(value[i]), i)
+            child = _copy_model_argument(value[i], memo)
+            if BangBang.implements(setindex!, result) && child isa eltype(result)
+                # BangBang may replace arrays with abstract element types even when the
+                # element fits. Keep memoized mutable nodes in place, including cycles.
+                result[i] = child
+            else
+                result = BangBang.setindex!!(result, child, i)
+            end
         end
     end
-    return result
+    return memo[value] = result
 end
-_copy_model_argument(value::Union{Tuple,NamedTuple}) = map(_copy_model_argument, value)
-function _copy_model_argument(value::AbstractDict)
+function _copy_model_argument(value::Union{Tuple,NamedTuple}, memo::IdDict)
+    return map(child -> _copy_model_argument(child, memo), value)
+end
+function _copy_model_argument(value::AbstractDict, memo::IdDict)
+    cached = get(memo, value, nothing)
+    cached === nothing || return cached
     # Keys identify storage in the model body, including identity-based dictionary keys.
     # Only the values are latent storage; do not reconstruct collection implementation fields.
     result = empty(value)
+    memo[value] = result
     for (key, child) in value
-        result = BangBang.setindex!!(result, _copy_model_argument(child), key)
+        result = BangBang.setindex!!(result, _copy_model_argument(child, memo), key)
     end
-    return result
+    return memo[value] = result
 end
-_copy_model_argument(value::Base.Pairs) = pairs(_copy_model_argument(values(value)))
-function _copy_model_argument(value)
+function _copy_model_argument(value::Base.Pairs, memo::IdDict)
+    return pairs(_copy_model_argument(values(value), memo))
+end
+function _copy_model_argument(value, memo::IdDict)
+    cached = get(memo, value, nothing)
+    cached === nothing || return cached
     properties = ConstructionBase.getproperties(value)
     isempty(properties) && return deepcopy(value)
-    return ConstructionBase.setproperties(value, map(_copy_model_argument, properties))
+    result = ConstructionBase.setproperties(
+        value, map(child -> _copy_model_argument(child, memo), properties)
+    )
+    return memo[value] = result
 end
 
 _model_argument_value(value, template) = value

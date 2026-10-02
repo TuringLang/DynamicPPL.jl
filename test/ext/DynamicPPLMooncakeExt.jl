@@ -136,6 +136,29 @@ end
     end
 end
 
+@testset "aliased latent argument storage" begin
+    @model function aliased_argument(x)
+        x.a[1] ~ Normal()
+        0.0 ~ Normal(x.b[1], 1)
+    end
+    # Abstract storage can accept AD numbers without replacing either shared array.
+    value = Real[0.0]
+    model = decondition(aliased_argument((a=value, b=value)))
+    _, vi = init!!(
+        StableRNG(123456),
+        model,
+        VarInfo(VectorValueAccumulator()),
+        InitFromPrior(),
+        UnlinkAll(),
+    )
+    for adtype in (AutoForwardDiff(), AutoMooncake())
+        ldf = LogDensityFunction(model, getlogjoint_internal, vi; adtype)
+        density, gradient = logdensity_and_gradient(ldf, [2.0])
+        @test density ≈ logjoint(model, (x=(a=[2.0],),))
+        @test gradient ≈ [-4.0]
+    end
+end
+
 @info "Completed $(@__FILE__) in $(now() - __now__)."
 
 end # module
