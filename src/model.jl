@@ -6,7 +6,12 @@ struct Condition end
 struct ArgumentCondition end
 struct Fix end
 
-_contains_missing(::Any) = false
+function _contains_missing(value)
+    return any(1:fieldcount(typeof(value))) do i
+        isdefined(value, i) && _contains_missing(getfield(value, i))
+    end
+end
+_contains_missing(::Union{Number,AbstractString,Symbol,Type}) = false
 _contains_missing(::Missing) = true
 _contains_missing(value::Base.Pairs) = _contains_missing(values(value))
 _contains_missing(value::TransformedValue) = _contains_missing(get_internal_value(value))
@@ -20,7 +25,12 @@ function _contains_missing(values::Union{Tuple,NamedTuple})
     return any(_contains_missing, values)
 end
 
-_contains_nothing(::Any) = false
+function _contains_nothing(value)
+    return any(1:fieldcount(typeof(value))) do i
+        isdefined(value, i) && _contains_nothing(getfield(value, i))
+    end
+end
+_contains_nothing(::Union{Number,AbstractString,Symbol,Type}) = false
 _contains_nothing(::Nothing) = true
 _contains_nothing(value::Base.Pairs) = _contains_nothing(values(value))
 _contains_nothing(value::TransformedValue) = _contains_nothing(get_internal_value(value))

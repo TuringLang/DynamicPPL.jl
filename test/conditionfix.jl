@@ -2730,6 +2730,46 @@ end
     ) == ((b=((8.0, 2.0),),),)
 end
 
+struct PlaceholderState{T}
+    value::T
+end
+struct PlaceholderStateNormal <: Distribution{Univariate,Continuous} end
+function Distributions.logpdf(::PlaceholderStateNormal, p::PlaceholderState)
+    return logpdf(Normal(), p.value)
+end
+Distributions.loglikelihood(d::PlaceholderStateNormal, p::PlaceholderState) = logpdf(d, p)
+
+@testset "placeholders in whole struct LHS values" begin
+    @model state_lhs(p) = p ~ PlaceholderStateNormal()
+    @model state_field(p) = (p.a ~ Normal(); p.a)
+    @model state_parent(child) = a ~ to_submodel(child)
+    for value in (nothing, missing)
+        original = state_lhs(PlaceholderState(value))
+        for m in (
+            original,
+            condition(original; p=PlaceholderState(value)),
+            fix(original; p=PlaceholderState(value)),
+        )
+            @test_throws "LHS variable `p` contains `$value`" logjoint(m, (;))
+            @test_throws "LHS variable `a.p` contains `$value`" logjoint(
+                state_parent(m), (;)
+            )
+        end
+        # A field not read by a tilde may still contain a placeholder.
+        for bind in (condition, fix)
+            p = ObservationRecord(1.0, PlaceholderState(value))
+            @test bind(state_field(p); p=p)(Xoshiro(1)) == 1.0
+        end
+    end
+    for T in (Float32, Float64, BigFloat)
+        value = PlaceholderState(T(1))
+        @test logjoint(state_lhs(value), (;)) ≈ logpdf(Normal(), T(1))
+        @test fix(state_lhs(value); p=value)(Xoshiro(1)) === value
+    end
+    @test ForwardDiff.derivative(x -> logjoint(state_lhs(PlaceholderState(x)), (;)), 1.0) ≈
+        -1.0
+end
+
 @info "Completed $(@__FILE__) in $(now() - __now__)."
 
 end
