@@ -38,6 +38,17 @@ function Mooncake.rrule!!(
     return output, pullback
 end
 
+# Storage type selection returns only type metadata; copying payloads stays differentiable.
+Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
+    typeof(DynamicPPL.VarNamedTuples._concretised_eltype),
+    DynamicPPL.VarNamedTuples.PartialArray,
+}
+
+# Logging has no numerical result, even when storage is constructed during evaluation.
+Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
+    typeof(DynamicPPL.VarNamedTuples._warn_growable_array_creation),Any
+}
+
 # Role queries return only discrete tags, never bound values.
 Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
     typeof(DynamicPPL._get_argument_role),Vararg

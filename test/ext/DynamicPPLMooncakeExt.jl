@@ -8,7 +8,7 @@ using Mooncake: Mooncake
 using ADTypes: AutoMooncake, AutoForwardDiff
 using Distributions: Normal
 using ForwardDiff: ForwardDiff
-using LogDensityProblems: logdensity_and_gradient, dimension
+using LogDensityProblems: LogDensityProblems, logdensity_and_gradient, dimension
 using StableRNGs: StableRNG
 using DynamicPPL
 using DynamicPPL.TestUtils.AD: run_ad
@@ -46,6 +46,59 @@ end
             @test run_ad(
                 parent(make_array), AutoMooncake(); params=[0.3, 0.5], rng=StableRNG(123456)
             ) isa DynamicPPL.TestUtils.AD.ADResult
+        end
+    end
+
+    @testset "evaluation-local abstract argument arrays" begin
+        @model function abstract_child(y)
+            for i in eachindex(y)
+                y[i] ~ Normal()
+            end
+            return sum(y)
+        end
+        @model function abstract_parent(::Val{T}; slice=false) where {T}
+            m ~ Normal()
+            a ~ to_submodel(
+                condition(
+                    abstract_child(
+                        T === Tuple ? (zero(m), m, 0, 0.0f0) : T[zero(m), m, 0, 0.0f0]
+                    ),
+                    (slice ? @varname(y[1:2]) => [2m, 3m] : @varname(y[1]) => 2m),
+                ),
+            )
+            return z ~ Normal(a + m)
+        end
+        for (T, slice) in
+            ((Real, false), (Any, false), (Tuple, false), (Real, true), (Any, true))
+            model = abstract_parent(Val(T); slice=slice)
+            _, vi = DynamicPPL.init!!(
+                StableRNG(123456),
+                model,
+                VarInfo(VectorValueAccumulator()),
+                InitFromPrior(),
+                UnlinkAll(),
+            )
+            mc = LogDensityFunction(model, getlogjoint_internal, vi; adtype=AutoMooncake())
+            fd = LogDensityFunction(
+                model, getlogjoint_internal, vi; adtype=AutoForwardDiff()
+            )
+            for x in ([0.3, 0.5], [-0.4, -0.2], [0.3, 0.5])
+                value, gradient = logdensity_and_gradient(mc, x)
+                fd_value, fd_gradient = logdensity_and_gradient(fd, x)
+                @test value ≈ fd_value
+                @test gradient ≈ fd_gradient
+                h = 1e-5
+                numerical = map(eachindex(x)) do i
+                    plus, minus = copy(x), copy(x)
+                    plus[i] += h
+                    minus[i] -= h
+                    (
+                        LogDensityProblems.logdensity(fd, plus) -
+                        LogDensityProblems.logdensity(fd, minus)
+                    ) / (2h)
+                end
+                @test gradient ≈ numerical
+            end
         end
     end
 
