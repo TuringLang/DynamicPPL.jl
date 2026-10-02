@@ -162,20 +162,18 @@ transform_strategy(islinked) = islinked ? LinkAll() : UnlinkAll()
 
 "Dimension of `model`, accounting for linking. Used as a fallback when `benchmark` errors."
 function model_dimension(model, islinked)
-    return try
-        vi = last(
-            DynamicPPL.init!!(
-                StableRNG(23),
-                model,
-                VarInfo(),
-                DynamicPPL.InitFromPrior(),
-                transform_strategy(islinked),
-            ),
-        )
-        length(vi[:])
-    catch
-        missing
-    end
+    # Store parameter values explicitly, as in LogDensityFunction's constructor.
+    # Let initialization errors propagate rather than silently losing the dimension.
+    vi = last(
+        DynamicPPL.init!!(
+            StableRNG(23),
+            model,
+            VarInfo(DynamicPPL.VectorValueAccumulator()),
+            DynamicPPL.InitFromPrior(),
+            transform_strategy(islinked),
+        ),
+    )
+    return length(vi[:])
 end
 
 """
