@@ -120,6 +120,22 @@ end
     end
 end
 
+@testset "runtime bindings preserve AD values" begin
+    @model runtime_child(y) = (y[1] ~ Normal(); y[2] ~ Normal())
+    @model function runtime_parent(bind, partial)
+        m ~ Normal()
+        child = runtime_child(fill(zero(m), 2))
+        bound = partial ? bind(child, @varname(y[1]) => 2m) : bind(child; y=[2m, zero(m)])
+        a ~ to_submodel(bound)
+        return m
+    end
+    for bind in (condition, fix), partial in (false, true)
+        ldf = LogDensityFunction(runtime_parent(bind, partial); adtype=AutoMooncake())
+        _, gradient = LogDensityProblems.logdensity_and_gradient(ldf, [0.3])
+        @test gradient ≈ [bind === condition ? -1.5 : -0.3]
+    end
+end
+
 @info "Completed $(@__FILE__) in $(now() - __now__)."
 
 end # module

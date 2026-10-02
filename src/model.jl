@@ -1141,13 +1141,19 @@ function unsplat_symbol(s::Symbol)
 end
 
 # The existing argument metadata slot also carries macro-known LHS addresses.
-struct ModelBindingMetadata{Arguments,LHS,MayHaveSubmodels} end
+struct ModelBindingMetadata{Arguments,LHS,Submodels,Types} end
 _args_on_lhs(::ModelBindingMetadata{A}) where {A} = A
 _args_on_lhs(names::Union{Tuple,Vector{Symbol}}) = Tuple(names)
 _lhs_names(::ModelBindingMetadata{A,L}) where {A,L} = L
 _lhs_names(::Tuple) = nothing
-_may_have_submodels(::ModelBindingMetadata{A,L,S}) where {A,L,S} = S
+_may_have_submodels(::ModelBindingMetadata{A,L,S}) where {A,L,S} = !isempty(S)
+_submodel_lhs_names(::ModelBindingMetadata{A,L,S}) where {A,L,S} = S
 _may_have_submodels(::Tuple) = true
+
+_declared_argument_type(::Tuple, name) = Any
+function _declared_argument_type(::ModelBindingMetadata{A,L,S,T}, name) where {A,L,S,T}
+    return fieldtype(T, name)
+end
 
 function _reconstruct_model end
 
@@ -1400,6 +1406,14 @@ end
             vn = _model_value_varname(model.values, VarName{name}(), _model_prefix(model))
             binding = _model_argument_binding(values, AbstractPPL.varname_to_optic(vn))
             if name in _args_on_lhs(model)
+                if binding isa ModelValue
+                    T = _declared_argument_type(_binding_metadata(model), stored_name)
+                    binding.value isa T || throw(
+                        ArgumentError(
+                            "Bound value at `$vn` in model `$(nameof(model))` must be an instance of declared argument type $T; supplied $(typeof(binding.value)).",
+                        ),
+                    )
+                end
                 if binding isa Union{VarNamedTuple,VarNamedTuples.PartialArray}
                     if $(
                         is_splat_symbol(stored_name) &&
@@ -1468,7 +1482,7 @@ function _prepare_argument_fields(
             child = VarNamedTuples._getindex_optic(template, optic, vn)
             address = AbstractPPL.append_optic(vn, optic)
             binding = _prepare_argument_fields(child, binding, address)
-            if template isa AbstractArray && binding isa ModelValue
+            if binding isa ModelValue
                 binding = _convert_partial_argument_binding(
                     binding, template, optic, address
                 )
@@ -1480,12 +1494,31 @@ function _prepare_argument_fields(
     end
 end
 
+_binding_property_name(::AbstractPPL.Property{S}) where {S} = S
+
 function _convert_partial_argument_binding(
     binding::ModelValue{R}, template, optic, vn
 ) where {R}
     value = binding.value
-    T = eltype(template)
-    multi = VarNamedTuples._is_multiindex(template, optic.ix...; optic.kw...)
+    multi =
+        optic isa AbstractPPL.Index &&
+        VarNamedTuples._is_multiindex(template, optic.ix...; optic.kw...)
+    T = if template isa AbstractArray && optic isa AbstractPPL.Index
+        eltype(template)
+    elseif optic isa AbstractPPL.Property
+        name = _binding_property_name(optic)
+        if hasfield(typeof(template), name)
+            fieldtype(typeof(template), name)
+        else
+            child = getproperty(template, name)
+            multi = child isa AbstractArray
+            multi ? eltype(child) : typeof(child)
+        end
+    elseif template isa Tuple && !multi
+        fieldtype(typeof(template), only(optic.ix))
+    else
+        Any
+    end
     converted = multi ? map(v -> convert(T, v), value) : convert(T, value)
     isequal(converted, value) || throw(
         ArgumentError(
@@ -1554,12 +1587,14 @@ remaining parts when it splits a whole binding; later changes to the supplied co
 entries are not reflected in those parts. The model body must not mutate bound values,
 directly or through an alias such as a `view`. This also applies to [`fix`](@ref).
 
-Binding a whole argument replaces its value, shape, and dispatch type parameters
-from the start of the model body. Observed LHS variables use the value computed by the body;
+A whole binding must be an instance of the declared argument type (`Any` when undeclared),
+or the existing template's type for a local LHS variable. Binding a whole argument replaces
+its value, shape, and dispatch type parameters from the start of the model body. Observed LHS variables use the value computed by the body;
 fixed LHS variables reset to their bound value at the tilde statement. Partial updates preserve the
-remaining stored values and their array templates. Values in partial bindings are converted to the argument array's element
-type with `convert`, propagating conversion errors. Conversions that change a value
-throw `ArgumentError`.
+remaining stored values and their templates. Partial bindings convert to the container's
+element or field type, propagating conversion errors. Conversions that change a value
+throw `ArgumentError`. Runtime partial bindings with AD values require a compatible
+template, such as `fill(zero(m), n)` for an array depending on a latent `m`.
 Arguments with unobserved entries retain their original storage
 template; the corresponding tilde statements fill those entries during evaluation.
 Defaults derived from an argument are evaluated at model construction; binding that
@@ -1747,11 +1782,56 @@ true
 """
 AbstractPPL.condition(model::Model, values...) = _bind_model(Condition, model, values...)
 
+function _prepare_local_binding_types(model, values)
+    metadata = _binding_metadata(model)
+    _lhs_names(metadata) === nothing && return values
+    prefix = _model_prefix(model)
+    local_values = if model.values isa LocalModelValues || prefix === nothing
+        values
+    else
+        _submodel_values(values, prefix)
+    end
+    local_previous = _submodel_values(model, nothing)
+    for name in keys(local_values.data)
+        name in _args_on_lhs(model) && continue
+        name in _lhs_names(metadata) || continue
+        name in _submodel_lhs_names(metadata) && continue
+        previous = get(local_previous.data, name, nothing)
+        previous === nothing && continue
+        update = local_values.data[name]
+        vn = VarName{name}()
+        if previous isa ModelValue && update isa ModelValue
+            update.value isa typeof(previous.value) || throw(
+                ArgumentError(
+                    "Bound value at `$vn` must be an instance of template type $(typeof(previous.value)); supplied $(typeof(update.value)).",
+                ),
+            )
+        elseif previous isa ModelValue ||
+            previous isa ModelValueTree ||
+            _has_complete_model_data(previous)
+            update = _prepare_argument_fields(_model_data(previous), update, vn)
+            local_values = VarNamedTuple(
+                merge(local_values.data, NamedTuple{(name,)}((update,)))
+            )
+        end
+    end
+    return if model.values isa LocalModelValues || prefix === nothing
+        local_values
+    else
+        _prefix_values(
+        local_values,
+        prefix,
+        _apply_prefix_template(_model_prefix_template(model), NoTemplate()),
+    )
+    end
+end
+
 function _bind_model(::Type{R}, model::Model, values...) where {R}
     model = _materialize_argument_values(model)
     values = _tag_model_values(R, _make_condfix_values(model, values...))
     values = _check_argument_bindings(model, values)
     _check_binding_addresses(model, values)
+    values = _prepare_local_binding_types(model, values)
     observations = _observation_values(model.values)
     fixed_values = _fixed_values(model.values)
     values = if R === Fix

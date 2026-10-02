@@ -89,14 +89,14 @@ end
                 ys[i] ~ Normal()
             end
         end
-        for (model, name) in (
-            (condition(two_typed_arguments(1.0, 2.0); x=1), "x"),
-            (condition(keyword_typed_arguments(1.0; y=2.0); y=2), "y"),
-            (condition(splatted_typed_arguments(1.0, 2.0, 3.0); x=1), "x"),
+        for (model, values, name) in (
+            (two_typed_arguments(1.0, 2.0), (; x=1), "x"),
+            (keyword_typed_arguments(1.0; y=2.0), (; y=2), "y"),
+            (splatted_typed_arguments(1.0, 2.0, 3.0), (; x=1), "x"),
         )
-            message = "Bound value does not match the declared argument type in model `$(nameof(model))`: `$name` declared as Float64, supplied Int64"
+            message = "Bound value at `$name` in model `$(nameof(model))` must be an instance of declared argument type Float64; supplied Int64."
             err = try
-                model(Xoshiro(1))
+                condition(model, values)
             catch e
                 e
             end

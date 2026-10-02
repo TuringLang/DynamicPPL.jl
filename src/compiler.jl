@@ -158,7 +158,7 @@ function model(mod, linenumbernode, expr, warn)
 
     # Generate main body
     lhs_names = Symbol[]
-    may_have_submodels = Ref(false)
+    may_have_submodels = Symbol[]
     arguments = map(
         arg -> first(MacroTools.splitarg(arg)), vcat(modeldef[:args], modeldef[:kwargs])
     )
@@ -166,7 +166,7 @@ function model(mod, linenumbernode, expr, warn)
         mod, modeldef[:body], warn, true; lhs_names, arguments, may_have_submodels
     )
 
-    return build_output(modeldef, linenumbernode, lhs_names, may_have_submodels[])
+    return build_output(modeldef, linenumbernode, lhs_names, Tuple(may_have_submodels))
 end
 
 """
@@ -216,7 +216,7 @@ generate_mainbody(
     warn_threads;
     lhs_names=Symbol[],
     arguments=Symbol[],
-    may_have_submodels=Ref(false),
+    may_have_submodels=Symbol[],
 ) = generate_mainbody!(
     mod,
     (; internal=Symbol[], lhs_names, arguments, may_have_submodels),
@@ -302,16 +302,17 @@ function generate_mainbody!(mod, found, expr::Expr, warn, warn_threads)
     args_tilde = getargs_tilde(expr)
     if args_tilde !== nothing
         L, R = args_tilde
-        if !(
-            Meta.isexpr(R, :call) &&
-            !(R.args[1] in found.arguments) &&
-            _known_distribution_constructor(mod, R.args[1])
-        )
-            found.may_have_submodels[] = true
-        end
         L = generate_mainbody!(mod, found, L, warn, warn_threads)
         if !isliteral(L)
-            push!(found.lhs_names, get_top_level_symbol(L))
+            root = get_top_level_symbol(L)
+            if !(
+                Meta.isexpr(R, :call) &&
+                !(R.args[1] in found.arguments) &&
+                _known_distribution_constructor(mod, R.args[1])
+            )
+                push!(found.may_have_submodels, root)
+            end
+            push!(found.lhs_names, root)
         end
         return Base.remove_linenums!(
             generate_tilde(
@@ -674,7 +675,7 @@ end
 
 Builds the output expression.
 """
-function build_output(modeldef, linenumbernode, lhs_names, may_have_submodels=false)
+function build_output(modeldef, linenumbernode, lhs_names, may_have_submodels=())
     args = transform_args(modeldef[:args])
     kwargs = transform_args(modeldef[:kwargs])
 
@@ -728,6 +729,16 @@ function build_output(modeldef, linenumbernode, lhs_names, may_have_submodels=fa
     args_on_lhs = unique([
         name for (name, _, _, _) in vcat(args_split, kwargs_split) if name in lhs_names
     ])
+    type_names = Tuple(
+        is_splat ? Symbol("#splat#", n) : n for
+        (n, _, is_splat, _) in vcat(args_split, kwargs_split)
+    )
+    types = Any[is_splat ? :(Tuple{Vararg{$t}}) : t for (_, t, is_splat, _) in args_split]
+    append!(types, [is_splat ? :Any : t for (_, t, is_splat, _) in kwargs_split])
+    if !isempty(modeldef[:whereparams])
+        types = [Expr(:where, t, modeldef[:whereparams]...) for t in types]
+    end
+    argument_types = :(NamedTuple{$(QuoteNode(type_names)),Tuple{$(types...)}})
     @gensym replaced prepared
     prepare_args = map(args_on_lhs) do name
         return quote
@@ -829,7 +840,8 @@ function build_output(modeldef, linenumbernode, lhs_names, may_have_submodels=fa
             args_on_lhs=$(ModelBindingMetadata){
                 $(QuoteNode(Tuple(args_on_lhs))),
                 $(QuoteNode(Tuple(unique(lhs_names)))),
-                $may_have_submodels,
+                $(QuoteNode(Tuple(unique(may_have_submodels)))),
+                $argument_types,
             }(),
         )
     end
