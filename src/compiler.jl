@@ -817,7 +817,7 @@ function prepare_model_argument(model::Model, vn::VarName, value)
     return prepare_model_argument(binding, value)
 end
 function prepare_model_argument(binding, value)
-    _defer_argument_binding(binding, value) && return nothing
+    _defer_argument_binding(binding, value) && return value
     return _model_argument_value(binding, value)
 end
 

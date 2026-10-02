@@ -1,6 +1,6 @@
 # 0.43.0 (unreleased)
 
-Whole arguments equal to `nothing` supply no argument-supplied observations, leaving their LHS variables latent unless explicitly bound. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+Whole `missing` or `nothing` arguments throw `ArgumentError` naming the LHS variable when a tilde reads their argument-supplied observations, even after the body replaces them; use `decondition` to make data latent. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
 `VarNamedTuple` membership resolves `begin` and `end` against the stored array. See [#1490](https://github.com/TuringLang/DynamicPPL.jl/pull/1490).
 
@@ -52,7 +52,7 @@ Model arguments provide argument-supplied observations; `condition` and `fix` at
 
 A value containing `missing` now throws `ArgumentError` naming the LHS variable when a tilde statement observes or fixes it; unread parts of arguments and bindings may contain `missing`. It no longer marks an LHS variable as latent: use `decondition`. `InitFromParams` rejects `missing` when read. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-Passing `missing`, or omitting an argument whose default is `missing` (`@model gdemo(x=missing)` called as `gdemo()`), no longer makes its LHS variables latent; a tilde that reads it throws, including after the model body replaces it with an allocated array. `decondition` the argument instead: `decondition(gdemo(zeros(2)), @varname(x))`.
+Passing `missing`, or omitting an argument whose default is `missing` (`@model gdemo(x=missing)` called as `gdemo()`), no longer makes its LHS variables latent; a tilde that reads it throws, including after the model body replaces it with an allocated array. `decondition` the argument instead: `decondition(gdemo(), @varname(x))`.
 
 `CondFixContext` is removed: use `condition(model, values)` / `fix(model, values)`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
@@ -60,7 +60,7 @@ Passing `missing`, or omitting an argument whose default is `missing` (`@model g
 
 `conditioned(::AbstractContext)` / `fixed(::AbstractContext)` are removed: use `conditioned(model)` / `fixed(model)`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-`Model` gains a `values` field and a type parameter listing arguments with LHS variables, and loses its `missings` type parameter: direct field construction and dispatch on the old type parameters break; construct with `@model`, or use `Model{Threaded}(f, args, defaults, context; args_on_lhs=(:y, ...))`. Direct construction records argument-supplied observations for `args_on_lhs` just as `@model` does, except when an argument's whole value is `nothing`. Without `args_on_lhs`, direct construction records no argument-supplied observations and its arguments cannot be bound. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+`Model` gains a `values` field and a type parameter listing arguments with LHS variables, and loses its `missings` type parameter: direct field construction and dispatch on the old type parameters break; construct with `@model`, or use `Model{Threaded}(f, args, defaults, context; args_on_lhs=(:y, ...))`. Direct construction records argument-supplied observations for `args_on_lhs` just as `@model` does, including whole `missing` or `nothing` arguments. Without `args_on_lhs`, direct construction records no argument-supplied observations and its arguments cannot be bound. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
 Conditioning or fixing a submodel's return value now errors: binding the submodel LHS → binding LHS variables in its submodel namespace. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 

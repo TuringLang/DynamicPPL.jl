@@ -51,16 +51,16 @@ end
 end
 
 @testset "condition and fix" begin
-    @testset "partial bindings of placeholder argument LHS variables" begin
-        @model function placeholder_indices(x=nothing)
-            x === nothing && (x = zeros(2))
+    @testset "partial bindings of deconditioned argument LHS variables" begin
+        @model function placeholder_indices(x=missing)
+            x === missing && (x = zeros(2))
             for i in eachindex(x)
                 x[i] ~ Normal()
             end
             return x
         end
-        @model function placeholder_fields(p=nothing)
-            p === nothing && (p = (a=0.0, b=0.0))
+        @model function placeholder_fields(p=missing)
+            p === missing && (p = (a=0.0, b=0.0))
             p.a ~ Normal()
             p.b ~ Normal()
             return p
@@ -68,7 +68,7 @@ end
         @model placeholder_child(child) = a ~ to_submodel(child)
         for (model, address, latent, whole, value, expected) in (
             (
-                placeholder_indices(),
+                decondition(placeholder_indices()),
                 @varname(x[1]),
                 @varname(x[2]),
                 @varname(x),
@@ -76,7 +76,7 @@ end
                 [5.0, rand(Xoshiro(1), Normal())],
             ),
             (
-                placeholder_fields(),
+                decondition(placeholder_fields()),
                 @varname(p.a),
                 @varname(p.b),
                 @varname(p),
@@ -109,17 +109,17 @@ end
             x[1] := 5.0
         end
         for bind in (condition, fix)
-            @test bind(placeholder_indices(), templated)(Xoshiro(1)) ==
+            @test bind(decondition(placeholder_indices()), templated)(Xoshiro(1)) ==
                 [5.0, rand(Xoshiro(1), Normal())]
-            bound = bind(placeholder_indices(), @varname(x[1]) => 5.0)
+            bound = bind(decondition(placeholder_indices()), @varname(x[1]) => 5.0)
             @test bind(bound, @varname(x[2]) => 6.0)(Xoshiro(1)) == [5.0, 6.0]
         end
-        @model placeholder_whole(x=nothing) = (
-            x === nothing && (x = zeros(2)); x ~ MvNormal(zeros(2), I)
+        @model placeholder_whole(x=missing) = (
+            x === missing && (x = zeros(2)); x ~ MvNormal(zeros(2), I)
         )
         for bind in (condition, fix)
             @test_throws r"LHS variable `x` must be bound as a whole" bind(
-                placeholder_whole(), @varname(x[1]) => 5.0
+                decondition(placeholder_whole()), @varname(x[1]) => 5.0
             )(
                 Xoshiro(1)
             )
@@ -242,7 +242,7 @@ end
         end
     end
 
-    @testset "nothing arguments supply no observations" begin
+    @testset "whole nothing arguments require decondition" begin
         @model function placeholder_array(x=nothing)
             x === nothing && (x = zeros(2))
             for i in 1:2
@@ -285,8 +285,10 @@ end
             ),
             model in models
 
-            @test isempty(conditioned(model))
-            vi = VarInfo(Xoshiro(1), model)
+            @test conditioned(model)[vn] === nothing
+            @test_throws r"ArgumentError: .*nothing.*decondition" model(Xoshiro(1))
+            latent = decondition(model, vn)
+            vi = VarInfo(Xoshiro(1), latent)
             @test keys(vi) == names
             @test getloglikelihood(vi) == 0
             expected = if value isa Vector
@@ -294,19 +296,29 @@ end
             else
                 rand(Xoshiro(1), Normal())
             end
-            @test model(Xoshiro(1)) == expected
+            @test latent(Xoshiro(1)) == expected
+            @test decondition(model)(Xoshiro(1)) == expected
             for (bind, remove) in ((condition, decondition), (fix, unfix))
                 bound = bind(model, vn => value)
                 @test bound(Xoshiro(1)) == value
                 @test isempty(keys(VarInfo(Xoshiro(1), bound)))
                 restored = remove(bound, vn)
-                @test isempty(conditioned(restored))
-                @test keys(VarInfo(Xoshiro(1), restored)) == names
+                if remove === decondition
+                    @test isempty(conditioned(restored))
+                    @test keys(VarInfo(Xoshiro(1), restored)) == names
+                else
+                    @test conditioned(restored)[vn] === nothing
+                    @test_throws r"ArgumentError: .*nothing.*decondition" restored(
+                        Xoshiro(1)
+                    )
+                end
             end
         end
-        @test_throws "Cannot remove `x`: no conditioned binding is stored at this address." decondition(
-            placeholder_array(), :x
+        partially_observed = condition(
+            decondition(placeholder_array(), @varname(x)), @varname(x[1]) => 1.0
         )
+        @test partially_observed(Xoshiro(1)) == [1.0, rand(Xoshiro(1), Normal())]
+        @test keys(VarInfo(Xoshiro(1), partially_observed)) == [@varname(x[2])]
         @test_throws "Cannot remove `x`: no fixed binding is stored at this address." unfix(
             placeholder_array(), :x
         )
@@ -327,9 +339,11 @@ end
         nested = placeholder_scalar(VarNamedTuple(; a=nothing, b=1.0))
         @test conditioned(nested)[@varname(y.a)] === nothing
 
-        @model placeholder_parent(a=nothing) = (a ~ to_submodel(placeholder_scalar()); a)
+        @model placeholder_parent(a=nothing) = (
+            a ~ to_submodel(decondition(placeholder_scalar())); a
+        )
         parent = placeholder_parent()
-        @test isempty(conditioned(parent))
+        @test conditioned(parent)[@varname(a)] === nothing
         @test keys(VarInfo(Xoshiro(1), parent)) == [@varname(a.y)]
         @test parent(Xoshiro(1)) == rand(Xoshiro(1), Normal())
         for bind in (condition, fix)
@@ -611,9 +625,10 @@ end
         )()
     end
 
-    @testset "whole missing arguments cannot become observations through body replacement" begin
-        @model function missing_placeholder(x, ::Type{T}=Float64) where {T}
-            if x === missing
+    @testset "whole $value arguments reject body replacement" for value in
+                                                                  (missing, nothing)
+        @model function missing_placeholder(x=missing, ::Type{T}=Float64) where {T}
+            if x isa Union{Missing,Nothing}
                 x = Vector{T}(undef, 2)
                 fill!(x, 7)
             end
@@ -623,36 +638,40 @@ end
             end
             return x
         end
-        model = missing_placeholder(missing)
-        @test_throws r"ArgumentError: .*`x\[1\]`.*missing.*decondition" model(Xoshiro(1))
-        @test_throws r"ArgumentError: .*`x\[1\]`.*missing.*decondition" loglikelihood(
+        model = missing_placeholder(value)
+        @test_throws r"ArgumentError: .*`x\[1\]`.*(missing|nothing).*decondition" model(
+            Xoshiro(1)
+        )
+        @test_throws r"ArgumentError: .*`x\[1\]`.*(missing|nothing).*decondition" loglikelihood(
             model, (; s=0.0)
         )
         @test keys(rand(Xoshiro(1), decondition(model))) ==
             [@varname(s), @varname(x[1]), @varname(x[2])]
+        @test keys(rand(Xoshiro(1), decondition(model, @varname(x)))) ==
+            [@varname(s), @varname(x[1]), @varname(x[2])]
         @test condition(model; x=[1.0, 2.0])(Xoshiro(1)) == [1.0, 2.0]
 
         @model function missing_keyword(; x)
-            x === missing && (x = (a=7.0,))
+            x isa Union{Missing,Nothing} && (x = (a=7.0,))
             return x.a ~ Normal()
         end
-        @test_throws r"ArgumentError: .*`x.a`.*missing.*decondition" missing_keyword(;
-            x=missing
+        @test_throws r"ArgumentError: .*`x.a`.*(missing|nothing).*decondition" missing_keyword(;
+            x=value
         )(
             Xoshiro(1)
         )
-        @model nested_missing() = child ~ to_submodel(missing_placeholder(missing))
-        @test_throws r"ArgumentError: .*`child.x\[1\]`.*missing.*decondition" nested_missing()(
+        @model nested_missing() = child ~ to_submodel(missing_placeholder(value))
+        @test_throws r"ArgumentError: .*`child.x\[1\]`.*(missing|nothing).*decondition" nested_missing()(
             Xoshiro(1)
         )
         @model unchanged_missing(x) = x ~ Normal()
-        @test_throws "LHS variable `x` contains `missing`; make it latent with `decondition`." unchanged_missing(
-            missing
+        @test_throws "LHS variable `x` contains `$value`; make it latent with `decondition`." unchanged_missing(
+            value
         )(
             Xoshiro(1)
         )
         @model unread_missing(x, read) = read ? (x ~ Normal()) : x
-        @test ismissing(unread_missing(missing, false)(Xoshiro(1)))
+        @test unread_missing(value, false)(Xoshiro(1)) === value
     end
 
     @testset "missing is rejected only when an LHS variable reads it" begin
