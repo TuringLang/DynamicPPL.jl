@@ -1,3 +1,4 @@
+using AbstractPPL: of, @of
 using ADTypes: AutoReverseDiff
 using DifferentiationInterface
 using DynamicPPL
@@ -134,5 +135,32 @@ end
         ldf = LogDensityFunction(runtime_parent(bind, partial); adtype=AutoReverseDiff())
         _, gradient = LogDensityProblems.logdensity_and_gradient(ldf, [0.3])
         @test gradient ≈ [bind === condition ? -1.5 : -0.3]
+    end
+end
+
+@testset "runtime schemas preserve tracked values" begin
+    @model function schema_child(T, n)
+        z = zeros(T, n)
+        for i in eachindex(z)
+            z[i] ~ Normal()
+        end
+        return z
+    end
+    @model function schema_parent(bind, n)
+        m ~ Normal()
+        return a ~ to_submodel(
+            bind(
+                schema_child(typeof(m), n),
+                @varname(z[2]) => m,
+                @of(z = of(Array, typeof(m), n))
+            ),
+        )
+    end
+    for bind in (condition, fix)
+        gradient = ReverseDiff.gradient([0.3]) do x
+            m = only(x)
+            logjoint(schema_parent(bind, 3), (m=m, a=(z=[zero(m), m, zero(m)],)))
+        end
+        @test gradient ≈ [bind === condition ? -0.6 : -0.3]
     end
 end

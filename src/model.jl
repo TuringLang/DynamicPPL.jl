@@ -1370,7 +1370,7 @@ Return a `Model` which now treats variables on the right-hand side as observatio
 See [`condition`](@ref) for more information and examples.
 """
 Base.:|(model::Model, values::Union{NamedTuple,AbstractDict,Pair,Tuple,VarNamedTuple}) =
-    condition(model, values)
+    _bind_ordered_inputs(Condition, model, _binding_inputs(values))
 
 function _check_binding_addresses(model, values)
     metadata = _binding_metadata(model)
@@ -1788,7 +1788,10 @@ julia> try
 true
 ```
 """
-AbstractPPL.condition(model::Model, values...) = _bind_model(Condition, model, values...)
+function AbstractPPL.condition(model::Model, inputs...; values...)
+    inputs = isempty(values) ? inputs : (inputs..., NamedTuple(values))
+    return _bind_inputs(Condition, model, inputs)
+end
 
 function _prepare_local_binding_types(model, values)
     metadata = _binding_metadata(model)
@@ -1834,12 +1837,103 @@ function _prepare_local_binding_types(model, values)
     end
 end
 
-function _bind_model(::Type{R}, model::Model, values...) where {R}
+# Flatten ordered input groups without interpreting keyword values as schemas.
+function _binding_inputs(values::Tuple)
+    return mapreduce(_binding_inputs, (a, b) -> (a..., b...), values; init=())
+end
+_binding_inputs(value) = (value,)
+
+function _bind_ordered_inputs(::Type{R}, model, values) where {R}
+    return foldl((m, v) -> _bind_model(R, m, v), values; init=model)
+end
+
+function _bind_inputs(::Type{R}, model::Model, inputs::Tuple) where {R}
+    inputs = _binding_inputs(inputs)
+    schemas = filter(x -> x isa Type{<:AbstractPPL.OfNamedTuple}, inputs)
+    length(schemas) <= 1 ||
+        throw(ArgumentError("At most one binding schema is allowed per call."))
+    values = filter(x -> !(x isa Type{<:AbstractPPL.OfNamedTuple}), inputs)
+    isempty(schemas) && return _bind_ordered_inputs(R, model, values)
+    schema = zero(only(schemas))
+    for name in keys(schema)
+        name in map(unsplat_symbol, keys(merge(model.args, model.defaults))) && throw(
+            ArgumentError(
+                "Binding schema entry `$name` names a model argument; use its existing storage.",
+            ),
+        )
+        names = _lhs_names(_binding_metadata(model))
+        (names !== nothing && name in names) || throw(
+            ArgumentError("Binding schema entry `$name` is not a local LHS top symbol.")
+        )
+        root = _model_value_varname(model.values, VarName{name}(), _model_prefix(model))
+        any(v -> _input_binds_root(v, root), values) ||
+            throw(ArgumentError("Binding schema entry `$name` is not bound by this call."))
+    end
+    for value in values
+        model = _bind_schema_input(R, model, value, schema)
+    end
+    return model
+end
+_input_binds_root(value::Pair{<:VarName}, root) = subsumes(root, first(value))
+_input_binds_root(value::NamedTuple, root) = haskey(value, AbstractPPL.getsym(root))
+_input_binds_root(value::VarNamedTuple, root) = any(vn -> subsumes(root, vn), keys(value))
+_input_binds_root(value, root) = false
+
+_schema_storage(value::ModelValue) = value.value
+_schema_storage(value::ModelValueTree) = value.template
+_schema_storage(value) = value
+
+function _same_schema_storage(a::AbstractArray, b::AbstractArray)
+    return eltype(a) === eltype(b) && axes(a) == axes(b)
+end
+function _same_schema_storage(a::NamedTuple, b::NamedTuple)
+    return keys(a) == keys(b) && all(_same_schema_storage(x, y) for (x, y) in zip(a, b))
+end
+_same_schema_storage(a, b) = typeof(a) === typeof(b)
+
+function _bind_schema_input(::Type{R}, model, input, schema) where {R}
+    layer = R === Fix ? _fixed_values(model.values) : _observation_values(model.values)
+    layer_model = _reconstruct_model(
+        model; values=model.values isa LocalModelValues ? LocalModelValues(layer) : layer
+    )
+    templates = VarNamedTuple()
+    for (name, storage) in pairs(schema)
+        root = _model_value_varname(model.values, VarName{name}(), _model_prefix(model))
+        previous = _model_argument_binding(layer, AbstractPPL.varname_to_optic(root))
+        if previous !== nothing
+            owner = if previous isa VarNamedTuples.PartialArray
+                _select_model_node(R, previous).data
+            else
+                _schema_storage(previous)
+            end
+            _same_schema_storage(owner, storage) || throw(
+                ArgumentError(
+                    "Binding schema storage for `$name` conflicts with its existing owner.",
+                ),
+            )
+            storage = owner
+        end
+        templates = templated_setindex!!(
+            templates, storage, root, _binding_template(model, VarNamedTuple(), root)
+        )
+    end
+    if input isa Pair{<:VarName}
+        vn, value = input
+        template = _binding_template(model, templates, vn)
+        if !(template isa NoTemplate)
+            _check_binding_template_bounds(template, AbstractPPL.getoptic(vn), vn)
+            input = templated_setindex!!(VarNamedTuple(), value, vn, template)
+        end
+    end
+    return _bind_model(R, model, input; preparation_model=layer_model)
+end
+
+function _bind_model(::Type{R}, model::Model, values...; preparation_model=model) where {R}
     model = _materialize_argument_values(model)
-    values = _tag_model_values(R, _make_condfix_values(model, values...))
-    values = _check_argument_bindings(model, values)
+    values = _tag_model_values(R, _make_condfix_values(preparation_model, values...))
+    values = _check_argument_bindings(preparation_model, values)
     _check_binding_addresses(model, values)
-    values = _prepare_local_binding_types(model, values)
+    values = _prepare_local_binding_types(preparation_model, values)
     observations = _observation_values(model.values)
     fixed_values = _fixed_values(model.values)
     values = if R === Fix
@@ -1859,12 +1953,6 @@ function _bind_model(::Type{R}, model::Model, values...) where {R}
 end
 function AbstractPPL.condition(model::Model; values...)
     return condition(model, NamedTuple(values))
-end
-function AbstractPPL.condition(model::Model, first::Pair, second::Pair, rest::Pair...)
-    return condition(condition(model, first), second, rest...)
-end
-function AbstractPPL.condition(model::Model, values::Tuple)
-    return foldl(condition, values; init=model)
 end
 
 """
@@ -2393,15 +2481,12 @@ julia> # The difference is the missing log-probability of `m`:
 -1.4189385332046727
 ```
 """
-fix(model::Model, values...) = _bind_model(Fix, model, values...)
+function fix(model::Model, inputs...; values...)
+    inputs = isempty(values) ? inputs : (inputs..., NamedTuple(values))
+    return _bind_inputs(Fix, model, inputs)
+end
 function fix(model::Model; values...)
     return fix(model, NamedTuple(values))
-end
-function fix(model::Model, first::Pair, second::Pair, rest::Pair...)
-    return fix(fix(model, first), second, rest...)
-end
-function fix(model::Model, values::Tuple)
-    return foldl(fix, values; init=model)
 end
 
 """
