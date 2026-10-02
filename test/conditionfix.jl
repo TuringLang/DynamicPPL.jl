@@ -187,16 +187,29 @@ end
                 "ArgumentError: Integer indexing into a NamedTuple at `x[1][1]` is unsupported; use `x[1].a` instead.",
             ),
         )
-            for m in (
-                model(value),
-                condition(model(nothing); x=value),
-                fix(model(nothing); x=value),
+            for (origin, m) in (
+                (identity, model(value)),
+                (condition, condition(model(nothing); x=value)),
+                (fix, fix(model(nothing); x=value)),
             )
                 for bind in (condition, fix)
-                    @test_throws message bind(m, address => 3.0)
+                    # The observation beneath the whole fix is `nothing`, not a NamedTuple.
+                    expected = if origin === fix && bind === condition
+                        r"ArgumentError: Cannot bind parts below `x`.*decondition"
+                    else
+                        message
+                    end
+                    @test_throws expected bind(m, address => 3.0)
                 end
                 for remove in (decondition, unfix)
-                    @test_throws message remove(m, address)
+                    expected = if remove === unfix && origin !== fix
+                        "no fixed binding is stored"
+                    elseif remove === decondition && origin === fix
+                        "supplies no template"
+                    else
+                        message
+                    end
+                    @test_throws expected remove(m, address)
                 end
                 @test_throws message m(Xoshiro(1))
             end
@@ -231,7 +244,12 @@ end
                 @test_throws message update(m, @varname(x[1]) => 4.0)
             end
             for remove in (decondition, unfix)
-                @test_throws message remove(m, @varname(x[1]))
+                expected = if remove === unfix && bind === condition
+                    "no fixed binding is stored"
+                else
+                    message
+                end
+                @test_throws expected remove(m, @varname(x[1]))
             end
         end
         for value in ((1.0, 2.0), [1.0, 2.0]),
@@ -2135,7 +2153,9 @@ end
     end;
     x)
     resized = fix(layered_array(zeros(2)); x=ones(3))
-    @test unfix(condition(resized, @varname(x[3]) => 4.0))(Xoshiro(1)) == [0.0, 0.0, 4.0]
+    # The observation still owns length two beneath the resized fixed binding.
+    @test_throws "outside the storage" condition(resized, @varname(x[3]) => 4.0)
+    @test unfix(resized)(Xoshiro(1)) == zeros(2)
     @model layer_parent(child) = a ~ to_submodel(child)
     observed = condition(layered(1.0); x=2.0)
     @test layer_parent(unfix(fix(observed; x=5.0)))(Xoshiro(1)) == 2.0
@@ -2615,6 +2635,71 @@ end
         @test op(keyword_schema(), @of(z = of(Array, 3)), @varname(z[2]) => 1.0; w=2.0)(
             Xoshiro(1)
         )[2] === 2.0
+    end
+end
+
+@testset "binding edits use their layer's owner" begin
+    @model layer_array(x) = (for i in eachindex(x)
+        x[i] ~ Normal()
+    end; x)
+    @model function layer_flexible(x)
+        if x isa NamedTuple
+            x.a ~ Normal()
+        else
+            x[1] ~ Normal()
+            x[2] ~ Normal()
+        end
+        return x
+    end
+    @model layer_local() = (z = zeros(3); for i in eachindex(z)
+        z[i] ~ Normal()
+    end; z)
+    @model layer_record() = (z = (a=1.0, b=2.0); z.a ~ Normal(); z.b ~ Normal(); z)
+    @model layer_parent(child) = a ~ to_submodel(child)
+
+    m = fix(condition(layer_array(zeros(2)); x=ones(3)); x=zeros(2))
+    for edit in
+        (m -> condition(m, @varname(x[3]) => 7.0), m -> m | (@varname(x[3]) => 7.0,))
+        changed = edit(m)
+        @test changed(Xoshiro(1)) == zeros(2)
+        @test unfix(changed)(Xoshiro(1)) == [1.0, 1.0, 7.0]
+        @test layer_parent(unfix(changed))(Xoshiro(1)) == [1.0, 1.0, 7.0]
+    end
+    m = fix(condition(layer_array(zeros(2)); x=ones(2)); x=zeros(3))
+    @test_throws ArgumentError condition(m, @varname(x[3]) => 7.0)
+    m = fix(condition(layer_array(zeros(2)); x=Float32[1, 2]); x=zeros(2))
+    @test_throws ArgumentError condition(m, @varname(x[1]) => 0.1)
+    @test unfix(condition(m, @varname(x[1]) => 0.5))(Xoshiro(1)) == Float32[0.5, 2]
+    @test eltype(unfix(condition(m, @varname(x[1]) => 0.5))(Xoshiro(1))) === Float32
+
+    m = condition(fix(layer_array(zeros(2)); x=zeros(3)); x=ones(2))
+    @test fix(m, @varname(x[3]) => 7.0)(Xoshiro(1)) == [0.0, 0.0, 7.0]
+    @test unfix(m)(Xoshiro(1)) == ones(2)
+    m = fix(condition(layer_local(); z=ones(Float32, 3)); z=zeros(3))
+    @test_throws "template type" condition(m; z=ones(3))
+    @test_throws "template type" fix(m; z=ones(Float32, 3))
+    @test unfix(condition(m; z=fill(2.0f0, 3)))(Xoshiro(1)) == fill(2.0f0, 3)
+
+    m = decondition(fix(layer_flexible([1.0, 2.0]); x=(a=1.0,)), @varname(x[1]))
+    @test m(Xoshiro(1)) == (a=1.0,)
+    @test returned(unfix(m), (; x=[8.0, 9.0])) == [8.0, 2.0]
+    @test_throws "Integer indexing into a NamedTuple" unfix(
+        fix(layer_flexible([1.0, 2.0]); x=(a=1.0,)), @varname(x[1])
+    )
+
+    for (bind, remove) in ((condition, decondition), (fix, unfix))
+        whole = bind(layer_local(); z=ones(3))
+        for partial in (
+            remove(whole, @varname(z[1])),
+            bind(whole, @varname(z[1]) => 2.0),
+            bind(layer_local(), @of(z = of(Array, 3)), @varname(z[1]) => 2.0),
+        )
+            @test_throws "template type" bind(partial; z=ones(Float32, 3))
+            @test bind(partial; z=fill(3.0, 3))(Xoshiro(1)) == fill(3.0, 3)
+        end
+        record = remove(bind(layer_record(); z=(a=1.0, b=2.0)), @varname(z.a))
+        @test_throws "template type" bind(record; z=(a=1.0f0, b=2.0f0))
+        @test bind(record; z=(a=3.0, b=4.0))(Xoshiro(1)) == (a=3.0, b=4.0)
     end
 end
 
