@@ -6,7 +6,8 @@ __now__ = now()
 
 using Mooncake: Mooncake
 using ADTypes: AutoMooncake, AutoForwardDiff
-using Distributions: Normal
+using DifferentiationInterface: DifferentiationInterface
+using Distributions: Normal, MvNormal, logpdf
 using ForwardDiff: ForwardDiff
 using LogDensityProblems: LogDensityProblems, logdensity_and_gradient, dimension
 using StableRNGs: StableRNG
@@ -182,6 +183,90 @@ end
         ldf = LogDensityFunction(model, getlogjoint_internal, vi; adtype)
         _, gradient = logdensity_and_gradient(ldf, [0.3, 0.7, 0.9])
         @test gradient ≈ [0.1, -0.4, -0.9]
+    end
+end
+
+mutable struct ConstantCopyState{T}
+    const offset::T
+    x::Real
+    ConstantCopyState(offset::T) where {T} = new{T}(offset, zero(offset))
+end
+@testset "copy preserves AD identity" begin
+    @model function alias_copy(x)
+        x.a[1] ~ Normal()
+        x.c ~ Normal()
+        return 0.0 ~ Normal(x.b[1])
+    end
+    data = Real[0.0]
+    alias_model = condition(
+        decondition(alias_copy((a=data, b=data, c=0.0))), @varname(x.c) => 0.0
+    )
+    @model function const_copy(s)
+        s.x ~ Normal()
+        return 0.0 ~ Normal(s.x + s.offset)
+    end
+    @model function runtime_const_copy()
+        m ~ Normal()
+        return a ~ to_submodel(decondition(const_copy(ConstantCopyState(m))))
+    end
+    @model function copy_child(y)
+        y[1] ~ Normal()
+        y[2] ~ Normal()
+        return sum(y)
+    end
+    @model function runtime_copy(make_array)
+        m ~ Normal()
+        a ~ to_submodel(condition(copy_child(make_array(m)), @varname(y[1]) => 2m))
+        return z ~ Normal(a)
+    end
+    @model function nested_copy_child(x)
+        y ~ Normal(x.b[1])
+        x.a[1] ~ Normal()
+        return 0.0 ~ Normal(x.b[1])
+    end
+    @model function nested_copy_parent()
+        m ~ MvNormal(zeros(1), ones(1))
+        return a ~ to_submodel(decondition(nested_copy_child((a=m, b=m))))
+    end
+    @model named_copy_child(p) = p.m ~ Normal(1)
+    @model function named_copy_parent()
+        m ~ Normal()
+        return a ~ to_submodel(condition(named_copy_child((m=m,)), @varname(p.m) => 2m))
+    end
+    for adtype in (AutoForwardDiff(), AutoMooncake())
+        nested = LogDensityFunction(nested_copy_parent(); adtype)
+        _, nested_gradient = logdensity_and_gradient(nested, [0.3, 0.7, 0.9])
+        @test nested_gradient ≈ [0.1, -0.4, -1.8]
+        named = LogDensityFunction(named_copy_parent(); adtype)
+        for m in (0.0, 0.3)
+            _, named_gradient = logdensity_and_gradient(named, [m])
+            @test named_gradient ≈ [2 - 5m]
+        end
+        ldf = LogDensityFunction(alias_model; adtype)
+        for x in ([2.0], [-0.4], [2.0])
+            density, gradient = logdensity_and_gradient(ldf, x)
+            @test density ≈ 3logpdf(Normal(), 0.0) - x[1]^2
+            @test gradient ≈ -2x
+        end
+        ldf = LogDensityFunction(runtime_const_copy(); adtype)
+        for x in ([0.3, 0.7], [-0.4, 0.2], [0.3, 0.7])
+            density, gradient = logdensity_and_gradient(ldf, x)
+            @test density ≈
+                logpdf(Normal(), x[1]) +
+                  logpdf(Normal(), x[2]) +
+                  logpdf(Normal(x[1] + x[2]), 0)
+            @test gradient ≈ [-2x[1] - x[2], -x[1] - 2x[2]]
+        end
+        for make_array in (m -> [m, m], m -> Real[m, m])
+            ldf = LogDensityFunction(runtime_copy(make_array); adtype)
+            density, gradient = logdensity_and_gradient(ldf, [0.3, 0.5])
+            @test density ≈
+                logpdf(Normal(), 0.3) +
+                  logpdf(Normal(), 0.6) +
+                  logpdf(Normal(), 0.3) +
+                  logpdf(Normal(0.9), 0.5)
+            @test gradient ≈ [-3.0, 0.4]
+        end
     end
 end
 
