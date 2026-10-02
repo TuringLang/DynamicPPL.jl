@@ -1115,6 +1115,13 @@ struct Model{
             pair -> pair.second isa ModelValue, &, _model_values(values); init=true
         ) || throw(ArgumentError("Model values must carry a condition or fix role"))
         argument_names = Tuple(args_on_lhs)
+        for name in argument_names
+            name in (_argument_names(args)..., _argument_names(defaults)...) || throw(
+                ArgumentError(
+                    "`$name` in `args_on_lhs` is not an argument or default name"
+                ),
+            )
+        end
         return new{F,A,D,Ta,Td,C,V,Threaded,argument_names}(
             f, args, defaults, context, values
         )
