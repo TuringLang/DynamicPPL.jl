@@ -201,6 +201,12 @@ function _get_model_binding(model, vn)
 end
 function _get_argument_role(model, vn, argument)
     binding = _get_model_binding(model, argument)
+    # TODO: remove once users have migrated off the `x === missing; x = ...` placeholder idiom.
+    if binding isa ModelValue{ArgumentCondition,Missing}
+        _check_tilde_value(
+            binding.value, maybe_prefix(vn, _model_prefix(model)), Condition()
+        )
+    end
     # A whole argument keeps its role when body computations change its shape or fields.
     return binding isa ModelValue ? _model_role(binding, vn) : _get_model_role(model, vn)
 end
