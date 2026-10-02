@@ -1882,7 +1882,7 @@ _input_binds_root(value::VarNamedTuple, root) = any(vn -> subsumes(root, vn), ke
 _input_binds_root(value, root) = false
 
 _schema_storage(value::ModelValue) = value.value
-_schema_storage(value::ModelValueTree) = value.template
+_schema_storage(value::ModelValueTree) = _model_data(value)
 _schema_storage(value) = value
 
 function _same_schema_storage(a::AbstractArray, b::AbstractArray)
@@ -1892,6 +1892,24 @@ function _same_schema_storage(a::NamedTuple, b::NamedTuple)
     return keys(a) == keys(b) && all(_same_schema_storage(x, y) for (x, y) in zip(a, b))
 end
 _same_schema_storage(a, b) = typeof(a) === typeof(b)
+function _same_schema_storage(a::VarNamedTuples.PartialArray, b::AbstractArray)
+    return _same_schema_storage(a.data, b)
+end
+function _same_schema_storage(a::VarNamedTuple, b::NamedTuple)
+    return all(
+        name -> haskey(b, name) && _same_schema_storage(a.data[name], b[name]), keys(a.data)
+    )
+end
+
+function _schema_has_address(model, ::NamedTuple{names}, vn::VarName{sym}) where {names,sym}
+    if model.values isa LocalModelValues || _model_prefix(model) === nothing
+        return sym in names
+    end
+    return any(names) do name
+        root = _model_value_varname(model.values, VarName{name}(), _model_prefix(model))
+        subsumes(root, vn) || subsumes(vn, root)
+    end
+end
 
 function _bind_schema_input(::Type{R}, model, input, schema) where {R}
     layer = R === Fix ? _fixed_values(model.values) : _observation_values(model.values)
@@ -1903,8 +1921,8 @@ function _bind_schema_input(::Type{R}, model, input, schema) where {R}
         root = _model_value_varname(model.values, VarName{name}(), _model_prefix(model))
         previous = _model_argument_binding(layer, AbstractPPL.varname_to_optic(root))
         if previous !== nothing
-            owner = if previous isa VarNamedTuples.PartialArray
-                _select_model_node(R, previous).data
+            owner = if previous isa Union{VarNamedTuples.PartialArray,VarNamedTuple}
+                _select_model_node(R, previous)
             else
                 _schema_storage(previous)
             end
@@ -1913,25 +1931,67 @@ function _bind_schema_input(::Type{R}, model, input, schema) where {R}
                     "Binding schema storage for `$name` conflicts with its existing owner.",
                 ),
             )
-            storage = owner
+            storage =
+                owner isa Union{VarNamedTuple,VarNamedTuples.PartialArray} ? storage : owner
         end
         templates = templated_setindex!!(
             templates, storage, root, _binding_template(model, VarNamedTuple(), root)
         )
     end
-    if input isa Pair{<:VarName}
-        vn, value = input
-        template = _binding_template(model, templates, vn)
-        if !(template isa NoTemplate)
-            _check_binding_template_bounds(template, AbstractPPL.getoptic(vn), vn)
-            input = templated_setindex!!(VarNamedTuple(), value, vn, template)
+    is_pair = input isa Pair{<:VarName}
+    plain = is_pair ? VarNamedTuple() : _make_condfix_values(layer_model, input)
+    entries = is_pair ? (input,) : pairs(plain)
+    prepared = copy(plain)
+    for (vn, value) in entries
+        uses_schema = _schema_has_address(model, schema, vn)
+        if !uses_schema
+            is_pair && return _bind_model(R, model, input; preparation_model=layer_model)
+            continue
         end
+        template = _binding_template(model, templates, vn)
+        optic = AbstractPPL.getoptic(vn)
+        _check_binding_template_bounds(template, optic, vn)
+        value = _convert_binding_template(value, template, optic, vn)
+        prepared = templated_setindex!!(prepared, value, vn, template)
     end
+    input = prepared
     return _bind_model(R, model, input; preparation_model=layer_model)
+end
+
+function _convert_binding_template(value, template, ::AbstractPPL.Iden, vn)
+    template isa Union{NoTemplate,VarNamedTuples.SkipTemplate} && return value
+    value isa typeof(template) || throw(
+        ArgumentError(
+            "Bound value at `$vn` must be an instance of template type $(typeof(template)); supplied $(typeof(value)).",
+        ),
+    )
+    _same_schema_storage(value, template) || throw(
+        ArgumentError("Bound value at `$vn` conflicts with its binding schema storage.")
+    )
+    return value
+end
+function _binding_child_template(template, optic)
+    return VarNamedTuples.maybe_index_template(template, optic)
+end
+function _binding_child_template(template, ::AbstractPPL.Property{S}) where {S}
+    return VarNamedTuples.SharedGetProperty{S}()(template)
+end
+function _convert_binding_template(value, template, optic::AbstractPPL.AbstractOptic, vn)
+    template isa NoTemplate && return value
+    head = AbstractPPL.ohead(optic)
+    head = head isa AbstractPPL.Index ? AbstractPPL.concretize_top_level(head, template) : head
+    if optic.child isa AbstractPPL.Iden
+        return _convert_partial_argument_binding(
+            ModelValue{Condition}(value), template, head, vn
+        ).value
+    end
+    child = _binding_child_template(template, head)
+    return _convert_binding_template(value, child, optic.child, vn)
 end
 
 function _bind_model(::Type{R}, model::Model, values...; preparation_model=model) where {R}
     model = _materialize_argument_values(model)
+    preparation_model = _materialize_argument_values(preparation_model)
     values = _tag_model_values(R, _make_condfix_values(preparation_model, values...))
     values = _check_argument_bindings(preparation_model, values)
     _check_binding_addresses(model, values)
