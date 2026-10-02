@@ -461,8 +461,7 @@ end
 
         @model dictionary_parent(child) = a ~ to_submodel(child)
         # Dictionary keys name storage; identity keys must remain usable in the body.
-        for ctor in (Dict, IdDict)
-            key = Ref(:a)
+        for ctor in (Dict, IdDict), key in (Ref(:a), (Ref(:a),))
             data = ctor(key => [1.0, 3.0])
             model = decondition(nested_dictionary(data, key))
             params = (; x=ctor(key => [2.0, 3.0]))
@@ -3021,6 +3020,136 @@ end
         @test_throws ArgumentError logjoint(cyclic_observation(x), (;))
     end
 end
+@testset "partial latent aliases and views" begin
+    @model function copy_aliases(x)
+        x.a[1] ~ Normal()
+        x.c ~ Normal()
+        0.0 ~ Normal(x.b[1])
+        return (x.a === x.b, x.a[1], x.b[1])
+    end
+    v = Real[0.0]
+    source = copy_aliases((a=v, b=v, c=0.0))
+    models = (
+        decondition(source, @varname(x.a), @varname(x.b)),
+        condition(decondition(source), @varname(x.c) => 0.0),
+    )
+    for model in models
+        @test returned(model, (x=(a=[2.0],),)) == (true, 2.0, 2.0)
+        @test loglikelihood(model, (x=(a=[2.0],),)) ≈
+            logpdf(Normal(), 0.0) + logpdf(Normal(2.0), 0.0)
+        @test v == [0.0]
+    end
+    @model function copy_views(x)
+        x.a[2] ~ Normal()
+        0.0 ~ Normal(x.b[1])
+        return (x.a[2], x.b[1])
+    end
+    data = Real[0, 0, 0]
+    model = decondition(copy_views((a=view(data, 1:2), b=view(data, 2:3))))
+    @test returned(model, (x=(a=[0.0, 2.0],),)) == (2.0, 2.0)
+    @test loglikelihood(model, (x=(a=[0.0, 2.0],),)) ≈ logpdf(Normal(2.0), 0.0)
+    @test data == [0, 0, 0]
+end
+@testset "new binding extents preserve surviving latent storage" begin
+    @model function stale_shape(x)
+        before = x[1]
+        for i in eachindex(x)
+            x[i] ~ Normal()
+        end
+        return before
+    end
+    model = decondition(condition(stale_shape([5.0]); x=[1.0, 2.0, 3.0]), @varname(x[1]))
+    @test returned(model, (x=[9.0, 0.0, 0.0],)) == 5.0
+end
+
+@testset "bound view parents are not latent storage" begin
+    @model function latent_view(x)
+        x.a[1] ~ Normal()
+        0.0 ~ Normal(x.b[1])
+        return (x.a[1], x.b[1])
+    end
+    data = Real[0.0]
+    for value in ((a=view(data, :), b=data), (a=data, b=view(data, :)))
+        model = decondition(latent_view(value), @varname(x.a))
+        @test returned(model, (x=(a=[2.0],),)) == (2.0, 0.0)
+        @test data == [0.0]
+    end
+    @model function partial_latent_view(x)
+        x.a[1] ~ Normal()
+        x.a[2] ~ Normal()
+        return (x.a[2], x.b[2])
+    end
+    data = Real[0.0, 0.0]
+    model = condition(
+        decondition(partial_latent_view((a=view(data, :), b=data)), @varname(x.a)),
+        @varname(x.a[1]) => 1.0,
+    )
+    @test returned(model, (x=(a=[0.0, 2.0],),)) == (2.0, 0.0)
+    @test data == [0.0, 0.0]
+end
+
+mutable struct PartialInnerState
+    x::Float64
+    y::Float64
+    PartialInnerState() = new(0.0, 1.0)
+end
+struct ImmutableInnerState
+    x::Vector{Float64}
+    ImmutableInnerState() = new([0.0])
+end
+mutable struct UndefinedInnerState
+    x::Float64
+    unused::Vector{Float64}
+    UndefinedInnerState() = new(1.0)
+end
+@testset "partial structs use Julia storage semantics" begin
+    @testset "mutable inner constructor" begin
+        @model partial_inner(s) = (s.x ~ Normal(); s.y ~ Normal(); s)
+        source = PartialInnerState()
+        for bind in (condition, fix)
+            result = returned(bind(partial_inner(source), @varname(s.x) => 2.0), (;))
+            @test (result.x, result.y) == (2.0, 1.0)
+            @test source.x == 0.0
+        end
+        result = returned(decondition(partial_inner(source), @varname(s.x)), (s=(x=2.0,),))
+        @test (result.x, result.y) == (2.0, 1.0)
+    end
+    @testset "immutable inner constructor" begin
+        @model immutable_inner(s) = (original = s; s = 0.0; s ~ Normal(); original)
+        source = ImmutableInnerState()
+        result = returned(decondition(immutable_inner(source)), (s=2.0,))
+        @test result.x == [0.0]
+        @test result.x !== source.x
+        @test_throws ArgumentError condition(
+            immutable_inner(source), @varname(s.x) => [2.0]
+        )
+        @test source.x == [0.0]
+    end
+    @testset "undefined reference field" begin
+        @model undefined_inner(s) = (s.x ~ Normal(); s)
+        source = UndefinedInnerState()
+        for bind in (condition, fix)
+            result = returned(bind(undefined_inner(source), @varname(s.x) => 2.0), (;))
+            @test result.x == 2.0
+            @test !isdefined(result, :unused)
+            @test source.x == 1.0
+        end
+    end
+end
+mutable struct ConstBindingState
+    const offset::Float64
+    x::Float64
+    ConstBindingState() = new(0.0, 0.0)
+end
+@testset "const fields require a whole replacement" begin
+    @model const_binding_state(s) = (s.x ~ Normal(s.offset); s)
+    for bind in (condition, fix)
+        @test_throws r"ArgumentError: .*const.*ConstBindingState" bind(
+            const_binding_state(ConstBindingState()), @varname(s.offset) => 0.0
+        )
+    end
+end
+
 @info "Completed $(@__FILE__) in $(now() - __now__)."
 
 end

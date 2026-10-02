@@ -4,7 +4,7 @@ using DifferentiationInterface
 using DynamicPPL
 using DynamicPPL.TestUtils: ALL_MODELS
 using DynamicPPL.TestUtils.AD: run_ad
-using Distributions: Normal, logpdf
+using Distributions: MvNormal, Normal, logpdf
 using ForwardDiff: ForwardDiff  # run_ad uses FD for correctness test
 using LogDensityProblems: LogDensityProblems
 using Random: Xoshiro
@@ -198,5 +198,56 @@ end
             logjoint(schema_parent(bind, 3), (m=m, a=(z=[zero(m), m, zero(m)],)))
         end
         @test gradient ≈ [bind === condition ? -0.6 : -0.3]
+    end
+end
+
+mutable struct ConstantCopyState{T}
+    const offset::T
+    x::Real
+    ConstantCopyState(offset::T) where {T} = new{T}(offset, zero(offset))
+end
+@testset "copy preserves AD identity" begin
+    adtype = AutoReverseDiff(; compile=false)
+    @model function alias_copy(x)
+        x.a[1] ~ Normal()
+        x.c ~ Normal()
+        return 0.0 ~ Normal(x.b[1])
+    end
+    data = Real[0.0]
+    alias_model = condition(
+        decondition(alias_copy((a=data, b=data, c=0.0))), @varname(x.c) => 0.0
+    )
+    ldf = LogDensityFunction(alias_model; adtype)
+    for x in ([2.0], [-0.4])
+        density, gradient = LogDensityProblems.logdensity_and_gradient(ldf, x)
+        @test density ≈ 3logpdf(Normal(), 0.0) - x[1]^2
+        @test gradient ≈ -2x
+    end
+
+    @model function nested_copy_child(x)
+        y ~ Normal(x.b[1])
+        x.a[1] ~ Normal()
+        return 0.0 ~ Normal(x.b[1])
+    end
+    @model function nested_copy_parent()
+        m ~ MvNormal(zeros(1), ones(1))
+        return a ~ to_submodel(decondition(nested_copy_child((a=m, b=m))))
+    end
+    ldf = LogDensityFunction(nested_copy_parent(); adtype)
+    _, gradient = LogDensityProblems.logdensity_and_gradient(ldf, [0.3, 0.7, 0.9])
+    @test gradient ≈ [0.1, -0.4, -1.8]
+
+    @model function const_copy(s)
+        s.x ~ Normal()
+        return 0.0 ~ Normal(s.x + s.offset)
+    end
+    @model function runtime_const_copy()
+        m ~ Normal()
+        return a ~ to_submodel(decondition(const_copy(ConstantCopyState(m))))
+    end
+    ldf = LogDensityFunction(runtime_const_copy(); adtype)
+    for x in ([0.3, 0.7], [-0.4, 0.2])
+        _, gradient = LogDensityProblems.logdensity_and_gradient(ldf, x)
+        @test gradient ≈ [-2x[1] - x[2], -x[1] - 2x[2]]
     end
 end

@@ -38,6 +38,15 @@ function Mooncake.rrule!!(
     return output, pullback
 end
 
+Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
+    typeof(DynamicPPL._argument_may_need_adapter),Type
+}
+
+# Reconstruction support depends only on types and methods.
+Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
+    typeof(DynamicPPL._argument_reconstructible),Type,Type
+}
+
 # Storage type selection returns only type metadata; copying payloads stays differentiable.
 Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
     typeof(DynamicPPL.VarNamedTuples._concretised_eltype),
