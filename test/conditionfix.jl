@@ -2300,6 +2300,28 @@ end
 end
 
 @testset "local owners supply indexed binding storage" begin
+    @testset "unrelated storage does not increase preparation allocations" begin
+        @model function storage_locality(y)
+            z = zeros(1)
+            z[1] ~ Normal()
+            return y[1] ~ Normal()
+        end
+        function preparation_allocations(model)
+            pair = @varname(y[1]) => 0.3
+            DynamicPPL._make_condfix_values(model, pair)
+            return @allocated DynamicPPL._make_condfix_values(model, pair)
+        end
+        small = condition(
+            storage_locality([0.0]), @of(z = of(Array, 1000)), @varname(z[1]) => 0.0
+        )
+        large = condition(
+            storage_locality([0.0]), @of(z = of(Array, 10000)), @varname(z[1]) => 0.0
+        )
+        preparation_allocations(small)
+        preparation_allocations(large)
+        @test preparation_allocations(large) <= preparation_allocations(small) + 1024
+    end
+
     @model function local_storage()
         z = zeros(3)
         for i in eachindex(z)

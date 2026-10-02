@@ -2049,9 +2049,21 @@ function _binding_storage(value::VarNamedTuples.PartialArray)
     return VarNamedTuples._map_values_recursive!!(_binding_storage, copy(value))
 end
 
+_binding_storage(values::VarNamedTuple, ::Tuple{}) = VarNamedTuple()
+function _binding_storage(values::VarNamedTuple, pairs::Tuple{Pair,Vararg{Pair}})
+    templates = _binding_storage(values, Base.tail(pairs))
+    name = AbstractPPL.getsym(first(first(pairs)))
+    if haskey(templates.data, name) || !haskey(values.data, name)
+        return templates
+    end
+    storage = _binding_storage(values.data[name])
+    return VarNamedTuple(merge(templates.data, NamedTuple{(name,)}((storage,))))
+end
+
 function _make_condfix_values(model, values::Pair{<:VarName}...)
     # Existing local owners also supply storage, including axes and nested fields.
-    templates = _binding_storage(_model_values(model.values))
+    # Only traverse roots addressed by these pairs; unrelated partial storage can be large.
+    templates = _binding_storage(_model_values(model.values), values)
     for (stored_name, argument) in pairs(merge(model.args, model.defaults))
         name = unsplat_symbol(stored_name)
         vn = _model_value_varname(model.values, VarName{name}(), _model_prefix(model))
