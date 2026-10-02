@@ -211,8 +211,8 @@ mean(vnt[@varname(y)] for vnt in [rand(fixed_model) for _ in 1:1000])
 ## Supplying parameters to condition or fix on
 
 Use `NamedTuple`s or keywords for whole top-level values and `VarName` pairs for any
-address. Positional inputs and tuples of these inputs are applied left to right.
-`AbstractDict` inputs and `Symbol` pairs such as `:y => y_data` throw `ArgumentError`.
+address; `:y => y_data` is shorthand for `@varname(y) => y_data`. Positional inputs and
+tuples of these inputs are applied left to right. `AbstractDict` inputs throw `ArgumentError`.
 Values DynamicPPL produces, such as `rand(model)` and `conditioned(model)`, are
 [`VarNamedTuple`](@ref)s and can be passed straight back to `condition` or `fix` for round trips.
 
