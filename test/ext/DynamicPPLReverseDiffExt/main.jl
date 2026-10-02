@@ -82,6 +82,8 @@ end
         (z -> child([z], first), @varname(y)),
         (z -> child(Real[z], first), @varname(y)),
         (z -> child(Any[z], first), @varname(y)),
+        (z -> child(Dict(:a => z), y -> y[:a]), @varname(y)),
+        (z -> child(Dict(:a => [z]), y -> y[:a][1]), @varname(y)),
         (z -> child([[z]], y -> y[1][1]), @varname(y)),
         (z -> child(([z],), y -> y[1][1]), @varname(y)),
         (z -> child((a=[z],), y -> y.a[1]), @varname(y)),
