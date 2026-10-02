@@ -2271,33 +2271,34 @@ end
             (pair, schema, @varname(z[1]) => 2.0),
         )
             m = op(schema_local(), inputs...)
-            @test m()[2] == 1.0
+            @test m(Xoshiro(1))[2] == 1.0
             @test length(op === condition ? conditioned(m) : fixed(m)) >= 1
         end
-        @test op(schema_local(), pair, of((z=of(Array, 3),)))()[2] == 1.0
+        @test op(schema_local(), pair, of((z=of(Array, 3),)))(Xoshiro(1))[2] == 1.0
         @test_throws ArgumentError op(schema_local(), schema)
         @test_throws ArgumentError op(schema_local(), pair, schema, schema)
         @test_throws ArgumentError op(schema_local(), pair, @of(w = of(Array, 3)))
         @test_throws ArgumentError op(schema_local(), pair, @of(n = of(Int)))
         @test_throws ArgumentError op(schema_arg(zeros(3)), pair, schema)
         owned = op(schema_local(); z=[2.0, 3.0, 4.0])
-        @test op(owned, pair, schema)() == [2.0, 1.0, 4.0]
+        @test op(owned, pair, schema)(Xoshiro(1)) == [2.0, 1.0, 4.0]
         @test_throws ArgumentError op(owned, pair, @of(z = of(Array, 4)))
         @test_throws ArgumentError op(owned, pair, @of(z = of(Array, Float32, 3)))
-        @test op(schema_local(), (z=ones(3),), pair, schema)() == [1.0, 1.0, 1.0]
-        @test op(schema_local(), @varname(z[end]) => 2.0, schema)()[3] == 2.0
+        @test op(schema_local(), (z=ones(3),), pair, schema)(Xoshiro(1)) == [1.0, 1.0, 1.0]
+        @test op(schema_local(), @varname(z[end]) => 2.0, schema)(Xoshiro(1))[3] == 2.0
         @test isempty(conditioned(fix(schema_local(), pair, schema)))
         @test_throws ArgumentError schema_local() | (pair, schema)
         partial = op(schema_local(), pair, schema)
-        @test op(partial, @varname(z[3]) => 4.0, schema)()[2:3] == [1.0, 4.0]
+        @test op(partial, (z=ones(3),), schema)(Xoshiro(1)) == ones(3)
+        @test op(partial, @varname(z[3]) => 4.0, schema)(Xoshiro(1))[2:3] == [1.0, 4.0]
         prefixed = DynamicPPL.prefix(schema_local(), @varname(a))
-        @test op(prefixed, @varname(a.z[2]) => 1.0, schema)()[2] == 1.0
+        @test op(prefixed, @varname(a.z[2]) => 1.0, schema)(Xoshiro(1))[2] == 1.0
     end
     # A fixed layer must not determine an observation's storage, or vice versa.
     m = fix(condition(schema_local(); z=ones(3)); z=ones(4))
-    @test (x -> x() == [1.0, 2.0, 1.0])(unfix(condition(
-        m, @varname(z[2]) => 2.0, @of(z = of(Array, 3))
-    )))
+    @test (x -> x(Xoshiro(1)) == [1.0, 2.0, 1.0])(
+        unfix(condition(m, @varname(z[2]) => 2.0, @of(z = of(Array, 3))))
+    )
     @test_throws ArgumentError condition(m, @varname(z[2]) => 2.0, @of(z = of(Array, 4)))
     @model function schema_parent(op, n)
         m ~ Normal()
@@ -2314,6 +2315,134 @@ end
         @test ForwardDiff.derivative(0.3) do m
             logjoint(schema_parent(op, 3), (m=m, a=(z=[0.0, m, 0.0],)))
         end ≈ (op === condition ? -0.6 : -0.3)
+    end
+end
+
+@testset "schema exact conversion" begin
+    @model function typed_schema()
+        z = zeros(3)
+        for i in eachindex(z)
+            z[i] ~ Normal()
+        end
+        return z
+    end
+    for op in (condition, fix)
+        @test_throws InexactError op(
+            typed_schema(), @varname(z[2]) => 1.5, @of(z = of(Array, Int, 3))
+        )
+        @test_throws ArgumentError op(
+            typed_schema(), @varname(z[2]) => 0.1, @of(z = of(Array, Float32, 3))
+        )
+        m = op(typed_schema(), @varname(z[2]) => 1, @of(z = of(Array, 3)))
+        @test (op === condition ? conditioned(m) : fixed(m))[@varname(z[2])] === 1.0
+        @test_throws ArgumentError op(
+            typed_schema(), @varname(z) => ones(Float32, 3), @of(z = of(Array, 3))
+        )
+        @test_throws ArgumentError op(
+            typed_schema(), (z=ones(Float32, 3),), @of(z = of(Array, 3))
+        )
+        @test_throws ArgumentError op(
+            typed_schema(),
+            @varname(z[:]) => [0.1, 0.2, 0.3],
+            @of(z = of(Array, Float32, 3))
+        )
+        m32 = op(typed_schema(), @varname(z[2]) => 1.0, @of(z = of(Array, Float32, 3)))
+        @test (op === condition ? conditioned(m32) : fixed(m32))[@varname(z[2])] === 1.0f0
+        @test_throws ArgumentError op(
+            typed_schema(), VarNamedTuple(; z=ones(Float32, 3)), @of(z = of(Array, 3))
+        )
+    end
+end
+
+@testset "schema storage ownership" begin
+    @model function schema_fields()
+        z = (a=zeros(3), b=zeros(2))
+        for i in eachindex(z.a)
+            z.a[i] ~ Normal()
+        end
+        for i in eachindex(z.b)
+            z.b[i] ~ Normal()
+        end
+        return z
+    end
+    @model function two_locals()
+        z = zeros(3)
+        w = zeros(2)
+        for i in eachindex(z)
+            z[i] ~ Normal()
+        end
+        for i in eachindex(w)
+            w[i] ~ Normal()
+        end
+        return z, w
+    end
+    for op in (condition, fix)
+        schema = @of(z = @of(a = of(Array, 3), b = of(Array, 2)))
+        owned = op(schema_fields(); z=(a=zeros(2), b=zeros(2)))
+        resized = op(owned, @varname(z.a) => ones(3))
+        @test op(resized, @varname(z.a[2]) => 2.0, schema)(Xoshiro(1)).a == [1.0, 2.0, 1.0]
+        m = op(schema_fields(), @varname(z.a[2]) => 2.0, schema)
+        @test op(m, @varname(z.a[3]) => 3.0, schema)(Xoshiro(1)).a[2:3] == [2.0, 3.0]
+        @test op(m, @varname(z.b[2]) => 4.0, schema)(Xoshiro(1)).b[2] == 4.0
+        @test op(
+            two_locals(),
+            @of(z = of(Array, 3), w = of(Array, 2)),
+            @varname(z[2]) => 2.0,
+            @varname(w[2]) => 4.0,
+        )(
+            Xoshiro(1)
+        )[2][2] == 4.0
+        @test_throws ArgumentError op(
+            two_locals(), @varname(z) => ones(4), @of(z = of(Array, 3))
+        )
+        @test_throws ArgumentError op(
+            two_locals(),
+            @varname(z[2]) => 1.0,
+            @of(z = of(Array, 3)),
+            @varname(w[2]) => 2.0,
+            @of(w = of(Array, 2))
+        )
+        m = op(two_locals(), @varname(z[2]) => 2.0, @of(z = of(Array, 3)))
+        @test op(m, @varname(z[3]) => 3.0)(Xoshiro(1))[1][2:3] == [2.0, 3.0]
+    end
+end
+
+@model function mixed_storage()
+    z = zeros(3)
+    w = zeros(5)
+    for i in eachindex(z)
+        z[i] ~ Normal()
+    end
+    for i in eachindex(w)
+        w[i] ~ Normal()
+    end
+    return z, w
+end
+@testset "schemas preserve other input storage" begin
+    v = DynamicPPL.@vnt begin
+        @template w = zeros(5)
+        w[2] := 4.0
+    end
+    for op in (condition, fix)
+        m = op(mixed_storage(), @of(z = of(Array, 3)), @varname(z[2]) => 2.0, v)
+        values = op === condition ? conditioned(m) : fixed(m)
+        @test subset(values, [@varname(w)]) == v
+    end
+end
+
+@model function keyword_schema()
+    z = zeros(3)
+    for i in eachindex(z)
+        z[i] ~ Normal()
+    end
+    w ~ Normal()
+    return z, w
+end
+@testset "schemas with keyword binding data" begin
+    for op in (condition, fix)
+        @test op(keyword_schema(), @of(z = of(Array, 3)), @varname(z[2]) => 1.0; w=2.0)(
+            Xoshiro(1)
+        )[2] === 2.0
     end
 end
 
