@@ -84,6 +84,7 @@
   - Unknown top symbols are rejected when a binding is made. Addresses crossing a
     submodel namespace are checked when the child is reached. LHS variables in branches
     that do not run are ignored.
+    Models with possible unprefixed submodels defer unknown top-symbol checks; [`check_model`](@ref) warns about bound names that no LHS variable of the model or its reached unprefixed children can use, since an untaken submodel branch could still use them.
 
 ## Example
 
