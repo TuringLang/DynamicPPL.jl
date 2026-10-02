@@ -2679,6 +2679,42 @@ end
     end
 end
 
+@testset "first partial fix owns its layer" begin
+    @model function fixed_layer_array(x)
+        for i in eachindex(x)
+            x[i] ~ Normal()
+        end
+        return x
+    end
+    @model fixed_layer_parent(child) = a ~ to_submodel(child)
+    observed = condition(fixed_layer_array(zeros(3)); x=ones(1))
+    m = fix(observed, @varname(x[3]) => 9.0)
+    @test fixed(m)[@varname(x[3])] == 9.0
+    @test keys(conditioned(m)) == [@varname(x[1])]
+    @test conditioned(m)[@varname(x[1])] == 1.0
+    @test returned(m, (; x=[5.0, 6.0, 7.0])) == [1.0, 6.0, 9.0]
+    @test returned(fixed_layer_parent(m), (; a=(x=[5.0, 6.0, 7.0],))) == [1.0, 6.0, 9.0]
+    @test fix(m, @varname(x[2]) => 8.0)(Xoshiro(1)) == [1.0, 8.0, 9.0]
+    @test unfix(m)(Xoshiro(1)) == [1.0]
+    @test unfix(m, @varname(x[3]))(Xoshiro(1)) == [1.0]
+    @test_throws ArgumentError fix(observed, @varname(x[4]) => 9.0)
+    observed = condition(fixed_layer_array(zeros(3, 1)); x=ones(1, 3))
+    m = fix(observed, @varname(x[3, 1]) => 9.0)
+    expected = fill(2.0, 3, 3)
+    expected[1, :] .= 1.0
+    expected[3, 1] = 9.0
+    @test returned(m, (; x=fill(2.0, 3, 3))) == expected
+    @test unfix(m)(Xoshiro(1)) == ones(1, 3)
+    @model owned_shrink(x) = (x = x[1:1]; x[1] ~ Normal(); x)
+    m = fix(fix(owned_shrink([1.0, 2.0]); x=[3.0, 4.0]), @varname(x[1]) => 8.0)
+    @test_throws "static size and shape" m(Xoshiro(1))
+    @test_throws "static size and shape" fixed_layer_parent(m)(Xoshiro(1))
+    @model fixed_layer_fields(x) = (x.a ~ Normal(); x.b ~ Normal(); x)
+    m = fix(condition(fixed_layer_fields((a=0.0, b=0.0)); x=(a=1.0,)), @varname(x.b) => 9.0)
+    @test m(Xoshiro(1)) == (a=1.0, b=9.0)
+    @test fixed_layer_parent(m)(Xoshiro(1)) == (a=1.0, b=9.0)
+end
+
 @testset "binding edits use their layer's owner" begin
     @model layer_array(x) = (for i in eachindex(x)
         x[i] ~ Normal()

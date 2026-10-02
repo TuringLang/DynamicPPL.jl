@@ -143,11 +143,11 @@ function _dualize_input(values::DynamicPPL.UnprefixedArgumentValues)
 end
 function _dualize_input(values::DynamicPPL.ModelBindingLayers)
     return DynamicPPL.ModelBindingLayers(
-        _dualize_input(values.observations), _dualize_input(values.fixed)
+        _dualize_input(values.observations), _dualize_input(values.fixed), values.owners
     )
 end
 function _dualize_input(values::DynamicPPL.LocalModelValues)
-    return DynamicPPL.LocalModelValues(_dualize_input(values.values))
+    return DynamicPPL.LocalModelValues(_dualize_input(values.values), values.owners)
 end
 _dualize_input(x) = x
 
