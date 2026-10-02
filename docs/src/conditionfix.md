@@ -61,24 +61,17 @@
     names, all conditioned or fixed bindings, respectively, are removed. `unfix` restores the argument-supplied
     observation, if any, otherwise making the LHS variable latent; it never restores an
     earlier explicit conditioned binding. Argument-supplied observations are rebuilt
-    from the stored non-`nothing` values of arguments with LHS variables,
+    from the stored values of arguments with LHS variables,
     so `unfix(fix(decondition(m, :x); x=5.0), :x)` also restores an argument-supplied observation
     previously removed by `decondition`. `decondition(m, :x)` removes explicit and argument-supplied
     observations at `x`, making it latent.
   - `conditioned` and `fixed` return plain values, independent of binding history:
     `VarNamedTuple`, `PartialArray`, or ordinary values. Partial removal or mixed
     roles produce plain partial values, not the original container type.
-  - An argument equal to `nothing` supplies no argument-supplied observation, so its
-    LHS variables are latent unless explicitly bound. Only a whole argument is a
-    placeholder; `nothing` inside a container and `missing` are not placeholders.
-    Bindings below a placeholder argument's address are resolved at the tilde, as for
-    local LHS variables; whole bindings replace the argument.
-  - A value containing `missing` is rejected when a tilde statement observes or fixes
-    it, with an `ArgumentError` naming the LHS variable. Parts of an argument or binding
-    that no tilde statement reads may contain `missing`. It no longer marks an LHS
-    variable as latent: omit its explicit binding or `decondition` the argument LHS
-    variable (see [Missing data](@ref)).
-    `InitFromParams` rejects it when the parameter is read during initialization,
+  - Whole `missing`/`nothing` arguments and values containing `missing` throw
+    `ArgumentError` naming the LHS variable where a tilde reads them; make data latent
+    with `decondition` (see [Missing data](@ref)).
+    `InitFromParams` rejects `missing` when the parameter is read during initialization,
     not at construction. Leave unobserved values out instead.
   - Whole bindings use the supplied object without copying. When a partial binding
     splits a whole binding, the remaining parts are captured at that time; later
@@ -283,9 +276,31 @@ The `ArgumentError` names the LHS variable, rather than the LHS subvariable cont
 `metadata_lhs((a=missing, b=1.0))` constructs but throws when evaluated, naming `p.a`.
 The same rule applies to explicit bindings from `condition` and `fix`.
 
-`missing` no longer marks an LHS variable as latent. Omit its explicit binding, or use
-`decondition(m, @varname(x))` to make an argument LHS variable latent before evaluation.
-For `@model observed(x) = x ~ Normal()`, `decondition(observed(missing))(rng)` samples `x`.
+`missing` no longer marks an LHS variable as latent. Use `decondition(m, @varname(x))`
+to make an argument LHS variable latent before evaluation.
+Whole `missing` or `nothing` arguments also throw when the body replaces them before
+the tilde. To allocate latent data inside the body, use a `missing` default and
+`decondition` the argument:
+
+```@example missing-data
+using DynamicPPL, Distributions, StableRNGs
+
+@model function gdemo(x=missing)
+    x === missing && (x = zeros(2))
+    for i in eachindex(x)
+        x[i] ~ Normal()
+    end
+    return x
+end
+
+model = decondition(gdemo(), @varname(x))
+model(StableRNG(1))
+```
+
+`gdemo()` stores the argument-supplied observation; `decondition` removes it so the body
+can allocate and sample `x`. A `nothing` inside a container remains bound data and fails
+in `logpdf` if read.
+
 For an array whose indices are separate LHS variables, decondition only the desired
 indices. A single multivariate LHS variable cannot be partially conditioned:
 `x ~ MvNormal(...)` rejects a value containing `missing`, naming `x`.

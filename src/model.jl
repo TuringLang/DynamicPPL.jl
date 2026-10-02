@@ -202,9 +202,12 @@ end
 function _get_argument_role(model, vn, argument)
     binding = _get_model_binding(model, argument)
     # TODO: remove once users have migrated off the `x === missing; x = ...` placeholder idiom.
-    if binding isa ModelValue{ArgumentCondition,Missing}
-        _check_tilde_value(
-            binding.value, maybe_prefix(vn, _model_prefix(model)), Condition()
+    if binding isa ModelValue{ArgumentCondition,<:Union{Missing,Nothing}}
+        vn = maybe_prefix(vn, _model_prefix(model))
+        throw(
+            ArgumentError(
+                "LHS variable `$vn` contains `$(binding.value)`; make it latent with `decondition`.",
+            ),
         )
     end
     # A whole argument keeps its role when body computations change its shape or fields.
@@ -273,17 +276,7 @@ function _check_fixed_shape_child(binding, local_value, optic::AbstractPPL.Index
 end
 
 function _tag_model_values(::Type{R}, values::VarNamedTuple) where {R}
-    tagged = map_pairs!!(pair -> _tag_model_value(R, pair.second, pair.first), copy(values))
-    return R === ArgumentCondition ? _prune_model_bindings(tagged) : tagged
-end
-
-_tag_model_value(::Type{R}, value, vn) where {R} = ModelValue{R}(value)
-# Only a whole `nothing` argument is a latent placeholder. A `nothing` inside a container
-# stays bound data, so a tilde that reads it fails with a `MethodError` in `logpdf`.
-function _tag_model_value(
-    ::Type{ArgumentCondition}, ::Nothing, ::VarName{S,AbstractPPL.Iden}
-) where {S}
-    return NoModelBinding()
+    return map_pairs!!(pair -> ModelValue{R}(pair.second), copy(values))
 end
 
 function _expand_model_binding(previous::ModelValue{R,<:AbstractArray}) where {R}
@@ -857,7 +850,8 @@ function _has_complete_model_data(values::VarNamedTuples.PartialArray)
 end
 
 function _defer_argument_binding(binding, value)
-    return value === nothing && binding isa Union{VarNamedTuple,VarNamedTuples.PartialArray}
+    return value isa Union{Nothing,Missing} &&
+           binding isa Union{VarNamedTuple,VarNamedTuples.PartialArray}
 end
 
 function _model_argument_value(values::VarNamedTuples.PartialArray, template)
@@ -1059,8 +1053,9 @@ These arguments record argument-supplied observations, just as with `@model`, an
 be bound with [`condition`](@ref) or [`fix`](@ref). Use [`decondition`](@ref) to remove
 argument-supplied observations. Without `args_on_lhs`, direct construction records
 no argument-supplied observations and its arguments cannot be bound.
-An argument equal to `nothing` supplies no argument-supplied observation; its LHS
-variables are latent unless explicitly bound.
+Whole `missing` or `nothing` arguments throw `ArgumentError` when a tilde reads their
+argument-supplied observations, even if the body replaces them. Use [`decondition`](@ref)
+to make their LHS variables latent.
 At a submodel tilde, an argument LHS variable receives the submodel return value. The
 argument supplies only its value before the tilde runs; its argument-supplied observation
 is ignored at that tilde, so it needs no deconditioning. See [Binding rules](@ref).
@@ -2209,10 +2204,10 @@ end
         name = unsplat_symbol(stored_name)
         name in args_on_lhs || return :((;))
         :(NamedTuple{($(QuoteNode(name)),)}((
-            _tag_model_value(ArgumentCondition, arguments.$stored_name, $(VarName{name}())),
+            ModelValue{ArgumentCondition}(arguments.$stored_name),
         )))
     end
-    return :(_prune_model_bindings(VarNamedTuple(merge((;), $(fields...)))))
+    return :(VarNamedTuple(merge((;), $(fields...))))
 end
 
 _removed_fixed_bindings(previous, remaining) = NoModelBinding()
