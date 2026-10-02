@@ -2654,6 +2654,52 @@ end
     end
 end
 
+@testset "fixed NamedTuple owner fields" begin
+    @model function changed_fields(p, change)
+        p = change(p)
+        p.a ~ Normal()
+        return p
+    end
+    @model function changed_nested_fields(p, change)
+        p = (child=change(p.child),)
+        p.child.a ~ Normal()
+        return p
+    end
+    @model function changed_keyword_fields(change; kw...)
+        kw = pairs(change(values(kw)))
+        kw[:a] ~ Normal()
+        return kw
+    end
+    @model fields_parent(child) = child_result ~ to_submodel(child)
+    value = (a=3.0, b=4.0)
+    reordered = changed_fields(value, p -> (b=p.b, a=p.a))
+    @test fix(reordered; p=value)(Xoshiro(1)) == (b=4.0, a=3.0)
+    for change in (p -> (a=p.a,), p -> (; p..., c=5.0), p -> (a=p.a, c=p.b))
+        @test_throws r"ArgumentError: .*kw.*static size and shape" fix(
+            changed_keyword_fields(change; value...); kw=value
+        )(
+            Xoshiro(1)
+        )
+        for (model, address) in (
+            (changed_fields(value, change), @varname(p)),
+            (changed_nested_fields((child=value,), change), @varname(p.child)),
+        )
+            bound = fix(model, address => value)
+            @test_throws r"ArgumentError: .*p.*static size and shape" bound(Xoshiro(1))
+            @test_throws r"ArgumentError: .*p.*static size and shape" fields_parent(bound)(
+                Xoshiro(1)
+            )
+            # A partial fix does not own the enclosing NamedTuple's fields.
+            leaf = address == @varname(p) ? @varname(p.a) : @varname(p.child.a)
+            partial = fix(model, leaf => value.a)
+            observed = condition(model, address => value)
+            @test partial(Xoshiro(1)) == observed(Xoshiro(1))
+            @test observed(Xoshiro(1)) ==
+                (address == @varname(p) ? change(value) : (child=change(value),))
+        end
+    end
+end
+
 @testset "partial fixed shape ownership" begin
     @model function partial_shape(x, change)
         x = change(x)
