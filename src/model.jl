@@ -1003,6 +1003,28 @@ variables are latent unless explicitly bound.
 At a submodel tilde, an argument LHS variable receives the submodel return value. The
 argument supplies only its value before the tilde runs; its argument-supplied observation
 is ignored at that tilde, so it needs no deconditioning. See [Binding rules](@ref).
+
+!!! note "Why keep `Model.f`?"
+    Local models can capture variables from the enclosing function:
+
+    ```julia
+    function run_analysis(offset)
+        @model function demo()
+            x ~ Normal(offset, 1)
+            return x
+        end
+        return demo()
+    end
+    ```
+
+    `run_analysis(1)` and `run_analysis(2)` have the same evaluator type `F` but capture different
+    offsets. The field `f` holds these values; the type alone cannot.
+
+    Defining `(model::Model)(...)` or extending a global `get_evaluator` inside `run_analysis`
+    requires a global method definition, which Julia rejects there. Using `eval` installs
+    the method, but world age prevents the running `run_analysis` from calling it directly.
+    We'd need a bridge such as `invokelatest` and separate storage for captures. Keeping `f`
+    avoids both.
 """
 struct Model{
     F,
