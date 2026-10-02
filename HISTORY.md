@@ -16,6 +16,8 @@ Added `evaluate!!(model, context, vi)` to evaluate with an explicit leaf context
 
 ## Breaking changes
 
+`marginalize` and the `DynamicPPLMarginalLogDensitiesExt` extension are removed; use MarginalLogDensities.jl directly.
+
 `OnlyAccsVarInfo` is removed: `OnlyAccsVarInfo(accs...)` → `VarInfo(accs...)`, with the same constructor forms. See [#1500](https://github.com/TuringLang/DynamicPPL.jl/pull/1500).
 
 `VarInfo{Tfm,T,Accs}` → `VarInfo{Accs}`; dispatch on the old type parameters breaks. See [#1500](https://github.com/TuringLang/DynamicPPL.jl/pull/1500).
