@@ -371,8 +371,9 @@ end
         @test LogDensityProblems.logdensity(parent_batch, [0.0]) ≈
             logpdf(Normal(), 0.0) + 2 * logpdf(Normal(), data[2])
 
-        model = condition(normal_location(), @varname(x) => data, @varname(z) => 1.0)
-        @test_throws ArgumentError independent_problem(model, 2)
+        @test_throws ArgumentError condition(
+            normal_location(), @varname(x) => data, @varname(z) => 1.0
+        )
 
         partial = @vnt begin
             @template x = zeros(2)
@@ -485,8 +486,7 @@ end
         @model function no_observation()
             return μ ~ Normal()
         end
-        model = condition(no_observation(), @varname(x) => data)
-        @test_throws ArgumentError independent_problem(model, 2)
+        @test_throws ArgumentError condition(no_observation(), @varname(x) => data)
 
         @model function repeated_observation()
             μ ~ Normal()
