@@ -478,6 +478,9 @@ function VarNamedTuples.make_leaf(
         _empty_model_tree(template), value, optic, template, VarNamedTuples.AllowAll()
     )
 end
+function (::VarNamedTuples.SharedGetProperty{S})(value::ModelValue) where {S}
+    return VarNamedTuples.SharedGetProperty{S}()(value.value)
+end
 function (::VarNamedTuples.SharedGetProperty{S})(tree::ModelValueTree) where {S}
     return VarNamedTuples.SharedGetProperty{S}()(tree.template)
 end

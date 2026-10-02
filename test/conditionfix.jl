@@ -1811,6 +1811,23 @@ end
         @test loglikelihood(restored, (;)) ≈ logpdf(Normal(), 1.0)
     end
 
+    @testset "unfix restores nested arguments beside fixed bindings" begin
+        @model function nested_argument(x)
+            x.a[1] ~ Normal()
+            x.a[2] ~ Normal()
+            return x
+        end
+        m = fix(decondition(nested_argument((; a=[1.0, 2.0]))), @varname(x.a) => [5.0, 6.0])
+        restored = unfix(m, @varname(x.a[1]))
+        @test returned(restored, (;)) == (; a=[1.0, 6.0])
+        @test conditioned(restored)[@varname(x.a[1])] == 1.0
+        @test fixed(restored)[@varname(x.a[2])] == 6.0
+        @test logjoint(restored, (;)) ≈ logpdf(Normal(), 1.0)
+        @model restored_parent(child) = a ~ to_submodel(child)
+        @test returned(restored_parent(restored), (;)) == (; a=[1.0, 6.0])
+        @test logjoint(restored_parent(restored), (;)) ≈ logpdf(Normal(), 1.0)
+    end
+
     @testset "decondition and unfix" begin
         conditioned_model = condition(model; x=1.0, y=2.0)
         @test isempty(keys(VarInfo(conditioned_model)))
