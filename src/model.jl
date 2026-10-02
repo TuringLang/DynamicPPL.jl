@@ -736,6 +736,30 @@ function _merge_model_fields(previous, updates, ::Val{names}) where {names}
     return child isa NoModelBinding ? rest : merge(NamedTuple{(name,)}((child,)), rest)
 end
 
+function BangBang.setindex!!(
+    pa::VarNamedTuples.PartialArray{<:ModelValue},
+    value::Union{ModelValue,NoModelBinding},
+    inds::Vararg{Any};
+    kw...,
+)
+    if !(value isa eltype(pa))
+        # Static arrays do not widen their element type on insertion.
+        data = similar(pa.data, Union{eltype(pa),typeof(value)})
+        for i in eachindex(pa.mask)
+            pa.mask[i] && (data[i] = pa.data[i])
+        end
+        pa = VarNamedTuples.PartialArray(data, pa.mask)
+    end
+    return invoke(
+        setindex!!,
+        Tuple{VarNamedTuples.PartialArray,Any,Vararg{Any}},
+        pa,
+        value,
+        inds...;
+        kw...,
+    )
+end
+
 # A finite union keeps mixed binding tags visible to inference instead of typejoining them.
 function VarNamedTuples._concretise_eltype!!(
     pa::VarNamedTuples.PartialArray{<:ModelValue{R,T} where {R}}
