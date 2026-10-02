@@ -225,6 +225,17 @@ end
 
             # Just make sure the following is runnable.
             @test DynamicPPL.DebugUtils.model_warntype(model) isa Any
+
+            for vi in (VarInfo(), VarInfo(VectorValueAccumulator()))
+                _, argtypes = DynamicPPL.DebugUtils.gen_evaluator_call_with_types(model, vi)
+                @test argtypes <: Tuple
+                codeinfo, retype = DynamicPPL.DebugUtils.model_typed(model, vi)
+                @test codeinfo isa Core.CodeInfo
+                @test retype <: Tuple{Float64,VarInfo}
+                @test redirect_stdout(devnull) do
+                    DynamicPPL.DebugUtils.model_warntype(model, vi) === nothing
+                end
+            end
         end
     end
 
