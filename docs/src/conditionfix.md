@@ -1,5 +1,136 @@
 # Conditioning and fixing
 
+Use `condition` to supply observations and `fix` to hold values constant without adding a
+log-probability contribution. Both operations let you reuse a model definition with
+different data.
+
+## Linear regression example
+
+Consider the following linear regression model:
+
+```@example 1
+using DynamicPPL, Distributions, StableRNGs
+using AbstractPPL: of, @of
+
+@model function linear_regression(x)
+    m ~ Normal(0, 1)
+    c ~ Normal(0, 1)
+
+    y = Vector{Float64}(undef, length(x))
+    for i in eachindex(x)
+        y[i] ~ Normal(m * x[i] + c, 1.0)
+    end
+end
+```
+
+This model has no observed data or conditioned bindings, so all its `y[i]` LHS variables are
+latent. Defining `y` provides storage for `y[i]` after its tilde runs. Without it, `setindex!`
+would throw on an undefined variable. Local storage supplies no observations, so its LHS
+variables remain latent until conditioned or fixed.
+
+Create synthetic data for this model:
+
+```@example 1
+rng = StableRNG(1)
+true_m, true_c = 5.0, 3.0
+
+x = 0:0.1:0.5
+y_data = true_m .* x .+ true_c .+ randn(rng, length(x))
+```
+
+Before conditioning on `y`, the model draws `m`, `c`, and `y` from the prior distribution:
+
+```@example 1
+model = linear_regression(x)
+
+# Here, `rand(rng, model)` samples from the prior distribution and returns a
+# VarNamedTuple of latent LHS variables.
+rand(rng, model)
+```
+
+Estimate the prior mean of `y` for a prior predictive check:
+
+```@example 1
+vnts = [rand(rng, model) for _ in 1:1000]
+mean(vnt[@varname(y)] for vnt in vnts)
+```
+
+### Conditioning
+
+Use `condition` or its alias `|` to condition the model on observed data:
+
+```@example 1
+observations = (; y=y_data)
+
+# Equivalently: conditioned_model = condition(model, observations).
+cond_model = model | observations
+```
+
+`conditioned` and `fixed` inspect bound values, while `model.args` and `model.defaults` retain
+construction values. The accessors return plain values independent of history. Partial removal
+or mixed roles may produce `VarNamedTuple` or `PartialArray` containers.
+
+```@example 1
+conditioned(cond_model)
+```
+
+The observed `y[i]` LHS variables are no longer sampled:
+
+```@example 1
+parameters = rand(rng, cond_model)
+```
+
+`rand` still draws from the prior. Observations now contribute to the likelihood:
+
+```@example 1
+loglikelihood(cond_model, parameters)
+```
+
+MCMC algorithms use this likelihood to sample the posterior.
+
+### Fixing
+
+Fix the intercept `c` to its true value:
+
+```@example 1
+fix_values = (; c=true_c)
+
+fixed_model = fix(model, fix_values)
+```
+
+Then sample from the prior again:
+
+```@example 1
+parameters_fixed = rand(rng, fixed_model)
+```
+
+The prior draws of `y` now use the fixed intercept:
+
+```@example 1
+mean(vnt[@varname(y)] for vnt in [rand(rng, fixed_model) for _ in 1:1000])
+```
+
+### Supplying bound values
+
+```@example 1
+condition(model, (; y=y_data))
+condition(model; y=y_data)
+fix(model, @varname(c) => true_c)
+```
+
+To observe only `y[1]`, use a `VarName` pair and a binding schema to supply the shape and
+element type of local storage:
+
+```@example 1
+cond_model_partial = condition(
+    model, @varname(y[1]) => y_data[1], @of(y = of(Array, length(y_data)))
+)
+rand(rng, cond_model_partial)
+```
+
+`fix` accepts the same syntax. The equivalent functional spelling is `of((y=of(Array, length(y_data)),))`. Arguments already supply storage, so partial argument bindings need no
+schema. See [Binding rules](@ref) for the complete contract.
+
 ## Binding rules
 
 An **LHS variable** is the addressed left-hand side of one execution of `~`. An **LHS
@@ -50,7 +181,8 @@ shadowed binding, enclosing binding, or argument.
 The body sets the shape of local storage and may resize conditioned arguments. Fixed values must
 retain their size and shape and cover every reached LHS variable below their address. Fixed
 argument tildes reject growth, shrinkage, or reshaping with an `ArgumentError` naming the LHS
-variable.
+variable. Shape validation stops at the LHS variable's address; it does not inspect nested
+values inside a whole structured LHS variable.
 
 NamedTuple fields must be addressed by name (`x.a`), never by integer index, in both bindings
 and LHS variables. Tuples retain integer indices. Bindings on prefixed models must be at or
@@ -59,8 +191,10 @@ below the prefix. A **submodel namespace** reaches child LHS variables through a
 
 Explicitly binding a **submodel return value**, assigned by `a ~ to_submodel(...)`, throws
 `ArgumentError` during evaluation. If `a` is an argument, its observation is ignored at this
-tilde. Explicit bindings below it also throw, possibly earlier if its type rules out the field.
-A NamedTuple argument provides no submodel namespace, so bind the child before `to_submodel`.
+tilde. When `a` is a model argument, explicit bindings at or below `a` also throw, possibly
+at binding time if its type excludes the requested field. When `a` is local, `a.x` can bind
+the child's `x`. A NamedTuple argument provides no submodel namespace, so bind the child
+before `to_submodel`.
 Bindings unused by reached LHS variables are ignored, including branches or submodels not run.
 
 Bound values are not copied, so the body must not mutate them, even through a `view`. Partial
@@ -126,133 +260,6 @@ Construct the model again to recompute defaults.
 
 Partial bindings rebuild array arguments in O(length) per evaluation. Measured reverse-mode AD
 costs (about 110 ns per element) are indicative, not fixed. Bind whole arrays for gradients.
-
-## Example
-
-Consider a linear regression model:
-
-```@example 1
-using DynamicPPL, Distributions, StableRNGs
-using AbstractPPL: of, @of
-
-@model function linear_regression(x)
-    m ~ Normal(0, 1)
-    c ~ Normal(0, 1)
-
-    y = Vector{Float64}(undef, length(x))
-    for i in eachindex(x)
-        y[i] ~ Normal(m * x[i] + c, 1.0)
-    end
-end
-```
-
-This model has no observed data or conditioned bindings, so all its `y[i]` LHS variables are
-latent. Defining `y` provides storage for `y[i]` after its tilde runs. Without it, `setindex!`
-would throw on an undefined variable. Local storage supplies no observations, so its LHS
-variables remain latent until conditioned or fixed.
-
-Create synthetic data for this model:
-
-```@example 1
-rng = StableRNG(1)
-true_m, true_c = 5.0, 3.0
-
-x = 0:0.1:0.5
-y_data = true_m .* x .+ true_c .+ randn(rng, length(x))
-```
-
-Before conditioning on `y`, the model draws `m`, `c`, and `y` from the prior distribution:
-
-```@example 1
-model = linear_regression(x)
-
-# Here, `rand(rng, model)` samples from the prior distribution and returns a
-# VarNamedTuple of latent LHS variables.
-rand(rng, model)
-```
-
-Estimate the prior mean of `y` for a prior predictive check:
-
-```@example 1
-vnts = [rand(rng, model) for _ in 1:1000]
-mean(vnt[@varname(y)] for vnt in vnts)
-```
-
-## Conditioning
-
-Use `condition` or its alias `|` to condition the model on observed data:
-
-```@example 1
-observations = (; y=y_data)
-
-# Equivalently: conditioned_model = condition(model, observations).
-cond_model = model | observations
-```
-
-`conditioned` and `fixed` inspect bound values, while `model.args` and `model.defaults` retain
-construction values. The accessors return plain values independent of history. Partial removal
-or mixed roles may produce `VarNamedTuple` or `PartialArray` containers.
-
-```@example 1
-conditioned(cond_model)
-```
-
-The observed `y[i]` LHS variables are no longer sampled:
-
-```@example 1
-parameters = rand(rng, cond_model)
-```
-
-`rand` still draws from the prior. Observations now contribute to the likelihood:
-
-```@example 1
-loglikelihood(cond_model, parameters)
-```
-
-MCMC algorithms use this likelihood to sample the posterior.
-
-## Fixing
-
-Fix the intercept `c` to its true value:
-
-```@example 1
-fix_values = (; c=true_c)
-
-fixed_model = fix(model, fix_values)
-```
-
-Then sample from the prior again:
-
-```@example 1
-parameters_fixed = rand(rng, fixed_model)
-```
-
-The prior draws of `y` now use the fixed intercept:
-
-```@example 1
-mean(vnt[@varname(y)] for vnt in [rand(rng, fixed_model) for _ in 1:1000])
-```
-
-## Supplying parameters to condition or fix on
-
-```@example 1
-condition(model, (; y=y_data))
-condition(model; y=y_data)
-fix(model, @varname(c) => true_c)
-```
-
-To observe only `y[1]`, use a `VarName` pair and a binding schema to supply the shape and
-element type of local storage:
-
-```@example 1
-cond_model_partial = condition(
-    model, @varname(y[1]) => y_data[1], @of(y = of(Array, length(y_data)))
-)
-rand(rng, cond_model_partial)
-```
-
-`fix` accepts the same syntax. The equivalent functional spelling is `of((y=of(Array, length(y_data)),))`. Arguments already supply storage, so partial argument bindings need no
-schema. See [Binding rules](@ref) for the complete contract.
 
 ## Missing data
 

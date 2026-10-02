@@ -27,7 +27,12 @@ to promote argument storage or thread-local accumulators for AD.
 
 All output accumulators reset before evaluation. Previously recorded LHS variables that are
 not executed again are absent from the new outputs. Replace `vi.values` with
-`get_vector_values(vi)`; there is no separate parameter store.
+`get_vector_values(vi)`; there is no separate parameter store. Previously, `get_values(vi)`
+returned the always-present parameter store. It now returns the `VarNamedTuple` of vectorised
+`TransformedValue`s from the optional `VectorValueAccumulator`, and throws `ArgumentError`
+if that accumulator is absent. Replace unconditional `get_values(VarInfo())` calls with
+evaluation into `VarInfo(VectorValueAccumulator())` followed by `get_vector_values(vi)`;
+use `RawValueAccumulator` and `get_raw_values(vi)` for model-space values.
 
 Please get in touch if you have some old code you're unsure how to migrate, and we will be happy to add it to this list.
 
@@ -212,13 +217,96 @@ including `@model gdemo(x=missing)` called as `gdemo()`, with
 argument-supplied observation. `missing` and `nothing`, including nested values, throw
 where a tilde reads them. See [Missing data](@ref) for a complete example.
 
-Fixed bindings now shadow observations: `unfix` uncovers the layer below, while
-`decondition` removes observations even beneath a fixed binding. Explicit observations
-of arguments act through the argument before the body, just like argument-supplied data.
+For placeholder values in explicit bindings, replace `condition(m; x=missing)` with
+`decondition(m, @varname(x))` when `x` is observed, and `fix(m; x=nothing)` with
+`unfix(m, @varname(x))` when `x` is fixed. Leave already latent LHS variables unbound.
+Replace `InitFromParams((; x=missing))` with `InitFromParams((;))` to use the fallback.
 
-Replace dictionary binding inputs with NamedTuples/keywords or ordered `VarName` pairs;
-`:x => v` remains shorthand for `@varname(x) => v`. Supply local partial storage with one
-positional `@of(...)` binding schema (`using AbstractPPL: of, @of`). Produced
-`VarNamedTuple` values remain accepted. Address and independently declared type errors
-are checked when binding; submodel addresses and shared signature constraints may wait
-until evaluation. See [Binding rules](@ref) for both contracts and their exceptions.
+Explicit observations of arguments now act through the argument before the body:
+`condition(f(1); x=2)` observes as `f(2)` does. Replace attempts to observe the original
+bound `x` after transforming it in the body with a separate LHS variable for the raw data.
+
+Fixed bindings shadow observations. Replace reliance on `unfix` restoring construction-time
+arguments with explicit `condition` or `decondition` calls to retain or remove the desired
+observations. `unfix` uncovers only surviving observations; `decondition` removes them even
+beneath a fixed binding. Enclosing explicit bindings override child bindings, including fixed
+ones. To retain a child's fixed value, remove the enclosing observation with
+`decondition(parent, @varname(a.x))` or the enclosing fixed binding with `unfix`.
+
+Replace `condition(m, Dict(@varname(x) => v))` with `condition(m, @varname(x) => v)`,
+a NamedTuple, or keyword arguments. `:x => v` remains shorthand for `@varname(x) => v`.
+Replace `@vnt` or `@template` storage for partial local bindings with a positional binding
+schema, for example `condition(m, @varname(z[2]) => 1.0, @of(z = of(Array, 3)))`, importing
+`of, @of` from AbstractPPL. Produced `VarNamedTuple` values remain accepted. `@vnt` is no
+longer exported; replace unqualified uses with `DynamicPPL.@vnt` or explicitly import it.
+
+Whole bindings must satisfy declared argument types, local storage types, and shared
+signature constraints. Replace incompatible replacements with compatible storage, or
+reconstruct the model. Partial bindings require exact conversion to the element or field
+type: replace `0.1` bound into `Float32` storage with `Float32(0.1)`. For runtime AD
+bindings, replace fixed `Float64` storage with storage built from running values, such as
+`fill(zero(m), n)` or `@of(z = of(Array, typeof(m), n))`.
+
+Replace slice bindings that resize enclosing storage, such as
+`condition(m, @varname(x[1:2]) => ones(3))`, with `condition(m; x=ones(3))`.
+Replace resizing fixed arguments in the body with covering values of static size and shape.
+Shape validation stops at the LHS variable's address; it does not inspect nested values
+inside a whole structured LHS variable. Replace construction-time indices in later binding
+edits with indices of the latest enclosing bound value: after `condition(f(zeros(2)); x=ones(3))`,
+`decondition(m, @varname(x[3]))` preserves length three.
+
+Known-invalid addresses now throw. Replace bindings of covariates with model reconstruction;
+correct unknown LHS names, nonexistent fields, and indices outside storage. Replace
+NamedTuple integer addresses such as `x[1]` with field addresses such as `x.a`, both in
+bindings and on the LHS. Replace removal of absent bindings with removal of stored
+observations or fixed bindings only. Decondition child argument-supplied observations on
+the child before `to_submodel`. Replace partial removal from one multivariate LHS variable,
+such as `decondition(m, @varname(x[1]))` for `x ~ MvNormal(...)`, with a model declaring
+separate LHS variables when their roles must differ.
+
+Submodel return values cannot be bound. For local `a ~ to_submodel(child())`, replace
+`condition(m; a=value)` with `condition(m, @varname(a.x) => value)` to observe the child's
+`x`. If `a` is a model argument, bind the child before `to_submodel`; explicit bindings at
+or below `a` are rejected.
+
+Argument arrays whose element type includes `Missing` are no longer defensively copied.
+Replace mutation of bound storage with mutation of a copy. Partial bindings snapshot the
+remaining storage: replace mutation of original arguments after binding with rebuilding the
+partial binding. Replace manual merges of argument data into `conditioned(m)` with
+`conditioned(m)` itself; replace inspection of shadowed observations there with
+`conditioned(unfix(m))`.
+
+Keyword splats in `model.defaults` are nested under their generated name. For
+`@model f(; kw...)`, replace `model.defaults.z` with `model.defaults.var"#splat#kw".z`.
+Replace individual bindings such as `condition(m, @varname(kw.y) => 2)` with
+`condition(m; kw=(; y=2))`. Inner-function LHS variables cannot shadow model arguments:
+if `x` is a model argument, replace `(x -> x ~ Normal())` with `(z -> z ~ Normal())`.
+
+Replace construction or dispatch using `Model{Threaded,missings}` with `@model` and
+`decondition` for latent arguments. For direct construction, replace
+`Model{false}(f, args, defaults)` with `Model{false}(f, args, defaults; args_on_lhs=(:y,))`
+to declare argument-supplied observations of `y`. Handwritten evaluators must replace direct
+argument use with the argument-preparation and binding-aware tilde protocol of `@model`,
+or reuse an `@model` evaluator. In debug introspection, replace the assumption that
+`gen_evaluator_call_with_types(m)[1] === m.f` with use of the returned callable and argument
+types. See [`Model`](@ref) for evaluator obligations and [Binding rules](@ref) for the
+binding and argument contracts.
+
+Replace `CondFixContext` with `condition(model, values)` or `fix(model, values)`.
+Replace `conditioned(context)` and `fixed(context)` with the corresponding model calls;
+replace `decondition_context` and `unfix_context` with `decondition(model, names...)` and
+`unfix(model, names...)`. Replace `hasconditioned`, `getconditioned`, `hasfixed`, `getfixed`,
+and their `_nested` variants with `haskey(conditioned(m), vn)`, `conditioned(m)[vn]`, and
+the corresponding `fixed(m)` operations. Replace role inspection through `inargnames`,
+`inmissings`, `getmissings`, `isassumption`, `isfixed`, `contextual_isassumption`,
+`contextual_isfixed`, or `hasmissing` with inspection of `conditioned(m)` and `fixed(m)`.
+
+Replace context overloads of `tilde_observe!!` with `accumulate_observe!!` implementations.
+For direct observation calls, replace `tilde_observe!!(ctx, dist, value, vn, template, vi)`
+with the current signature `tilde_observe!!(prefix, prefix_template, dist, value, vn, template, vi)`.
+For submodel latent calls, replace `tilde_assume!!(ctx, submodel, vn, template, vi)` with
+`tilde_assume!!(parent, ctx, submodel, vn, template, vi)`.
+Replace `store_coloneq_value!!(ctx, vn, value, template, vi)` with
+`store_coloneq_value!!(model, vn, value, template, vi)`; context-based storage hooks are removed.
+Replace `DynamicPPL.TestUtils.test_context`, `test_leaf_context`, and `test_parent_context`
+with explicit evaluation and interface tests.
