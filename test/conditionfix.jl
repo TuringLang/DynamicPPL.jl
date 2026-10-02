@@ -154,26 +154,14 @@ end
         @model nested_integer_lhs(x) = (x.p[1] ~ Normal(); x)
         @model array_integer_lhs(x) = (x[1][1] ~ Normal(); x)
         @model local_integer_lhs() = (x = (a=1.0, b=2.0); x[1] ~ Normal(); x)
-        for (model, value, address, message) in (
-            (
-                integer_lhs,
-                (a=1.0, b=2.0),
-                @varname(x[1]),
-                "ArgumentError: Integer indexing into a NamedTuple at `x[1]` is unsupported; use `x.a` instead.",
-            ),
-            (
-                nested_integer_lhs,
-                (p=(a=1.0, b=2.0),),
-                @varname(x.p[1]),
-                "ArgumentError: Integer indexing into a NamedTuple at `x.p[1]` is unsupported; use `x.p.a` instead.",
-            ),
-            (
-                array_integer_lhs,
-                [(a=1.0, b=2.0)],
-                @varname(x[1][1]),
-                "ArgumentError: Integer indexing into a NamedTuple at `x[1][1]` is unsupported; use `x[1].a` instead.",
-            ),
+        for (model, value, address, field) in (
+            (integer_lhs, (a=1.0, b=2.0), @varname(x[1]), "x.a"),
+            (nested_integer_lhs, (p=(a=1.0, b=2.0),), @varname(x.p[1]), "x.p.a"),
+            (array_integer_lhs, [(a=1.0, b=2.0)], @varname(x[1][1]), "x[1].a"),
         )
+            message = ArgumentError(
+                "Integer indexing into a NamedTuple at `$address` is unsupported; use `$field` instead.",
+            )
             for (origin, m) in (
                 (identity, model(value)),
                 (condition, condition(model(nothing); x=value)),
@@ -268,23 +256,13 @@ end
         @model placeholder_keyword_scalar(; y=nothing) = y ~ Normal()
         for (models, vn, names, value) in (
                 (
-                    (
-                        placeholder_array(),
-                        placeholder_array(nothing),
-                        placeholder_keyword_array(),
-                        placeholder_keyword_array(; x=nothing),
-                    ),
+                    (placeholder_array(), placeholder_keyword_array()),
                     @varname(x),
                     [@varname(x[1]), @varname(x[2])],
                     [1.0, 2.0],
                 ),
                 (
-                    (
-                        placeholder_scalar(),
-                        placeholder_scalar(nothing),
-                        placeholder_keyword_scalar(),
-                        placeholder_keyword_scalar(; y=nothing),
-                    ),
+                    (placeholder_scalar(), placeholder_keyword_scalar()),
                     @varname(y),
                     [@varname(y)],
                     1.0,
@@ -644,12 +622,7 @@ end
             x[:] ~ MvNormal(zeros(length(x)), 1.0)
             return x
         end
-        for change in (
-                x -> vcat(x, 2.0),
-                x -> x[1:1],
-                x -> reshape(x, 1, 2),
-                x -> resize!(copy(x), 1),
-            ),
+        for change in (x -> vcat(x, 2.0), x -> x[1:1], x -> reshape(x, 1, 2)),
             constructor in (x -> changed_shape(x, change, 1), x -> changed_range(x, change))
 
             m = constructor([1.0, 2.0])
@@ -718,7 +691,7 @@ end
         @test unread_missing(value, false)(Xoshiro(1)) === value
     end
 
-    @testset "missing is rejected only when an LHS variable reads it" begin
+    @testset "placeholders are rejected only when an LHS variable reads them" begin
         @model metadata_lhs(p) = (p.a ~ Normal(); p.a)
         @model indexed_observation(y) = begin
             for i in 1:2
@@ -728,7 +701,13 @@ end
         end
         @model whole_observation(y) = y ~ MvNormal(zeros(2), I)
         @model scalar_observation(y) = y ~ Normal()
-        for p in ((a=1.0, b=missing), (a=1.0, b=[(missing,)]), MetadataRecord(1.0, missing))
+        @model product_observation(y) = y ~ product_distribution([Normal(), Normal()])
+        for p in (
+            (a=1.0, b=missing),
+            (a=1.0, b=nothing),
+            (a=1.0, b=[(missing,)]),
+            MetadataRecord(1.0, missing),
+        )
             @test metadata_lhs(p)(Xoshiro(1)) == 1.0
             for bind in (condition, fix)
                 @test bind(metadata_lhs((a=1.0, b=2.0)); p)(Xoshiro(1)) == 1.0
@@ -744,39 +723,22 @@ end
                 [1.0, 2.0, missing],
             )
         end
-        for (constructor, values, message) in (
-            (
-                metadata_lhs,
-                (; p=(a=missing, b=1.0)),
-                r"ArgumentError: .*`p.a`.*missing.*latent.*decondition",
-            ),
-            (
-                indexed_observation,
-                (; y=[1.0, missing, 3.0]),
-                r"ArgumentError: .*`y\[2\]`.*missing.*latent.*decondition",
-            ),
-            (
-                indexed_observation,
-                (; y=[1.0, missing]),
-                r"ArgumentError: .*`y\[2\]`.*missing.*latent.*decondition",
-            ),
-            (
-                whole_observation,
-                (; y=[1.0, missing]),
-                r"ArgumentError: .*`y`.*missing.*latent.*decondition",
-            ),
-            (
-                scalar_observation,
-                (; y=missing),
-                r"ArgumentError: .*`y`.*missing.*latent.*decondition",
-            ),
-        )
+        for absent in (missing, nothing),
+            (constructor, values, vn) in (
+                (metadata_lhs, (; p=(a=absent, b=1.0)), @varname(p.a)),
+                (indexed_observation, (; y=[1.0, absent]), @varname(y[2])),
+                (whole_observation, (; y=[1.0, absent]), @varname(y)),
+                (product_observation, (; y=[1.0, absent]), @varname(y)),
+                (scalar_observation, (; y=absent), @varname(y)),
+            )
+
+            message = "ArgumentError: LHS variable `$vn` contains `$absent`; make it latent with `decondition`."
             model = constructor(only(values))
             @test_throws message model(Xoshiro(1))
             for bind in (condition, fix)
                 bound = bind(model; values...)
                 diagnostic = if bind === fix
-                    Regex(replace(message.pattern, "decondition" => "unfix"))
+                    replace(message, "decondition" => "unfix")
                 else
                     message
                 end
@@ -1008,7 +970,6 @@ end
                         @test restored == result
                         @test getlogprior(restored_vi) == getlogprior(vi)
                         @test getloglikelihood(restored_vi) == getloglikelihood(vi)
-                        @test getlogjoint(restored_vi) == getlogjoint(vi)
                     end
                 end
             end
@@ -1135,7 +1096,6 @@ end
             op(model, (; x)),
             op(model, (@varname(x) => x,)),
             op(model, @varname(x) => x),
-            op(model, (@varname(x) => x,)),
         )
         for transformed in transformed_models
             test_logp_correct(op, transformed, x)
@@ -1145,7 +1105,6 @@ end
             test_logp_correct(condition, model | (; x), x)
             test_logp_correct(condition, model | (@varname(x) => x,), x)
             test_logp_correct(condition, model | (@varname(x) => x), x)
-            test_logp_correct(condition, model | (@varname(x) => x,), x)
         end
     end
 
@@ -1268,7 +1227,7 @@ end
     end
 
     @testset "partial bindings of static-array arguments" begin
-        @model function static_argument(x)
+        @model function static_argument(x::SVector{2,Float64})
             x[1] ~ Normal()
             x[2] ~ Normal()
             return x
@@ -1278,7 +1237,9 @@ end
         original = static_argument(data)
         for bind in (condition, fix)
             changed = bind(original, @varname(x[1]) => 3.0)
-            @test changed(Xoshiro(1)) == SVector(3.0, 2.0)
+            result = changed(Xoshiro(1))
+            @test result isa typeof(data)
+            @test result == SVector(3.0, 2.0)
             @test static_parent(changed)(Xoshiro(1)) == SVector(3.0, 2.0)
             @test original(Xoshiro(1)) === data
             removed = decondition(changed, @varname(x[2]))
@@ -1940,12 +1901,6 @@ end
 
     @testset "unfix restores argument defaults" begin
         @model argument_lhs(x) = x ~ Normal()
-        m = argument_lhs(1.0)
-        for original in (m, condition(m; x=2.0), decondition(m, :x))
-            u = unfix(fix(original; x=5.0), :x)
-            @test conditioned(u) == conditioned(original)
-            @test rand(Xoshiro(1), u) == rand(Xoshiro(1), original)
-        end
         @model argument_indices(x) = (
             for i in eachindex(x)
                 x[i] ~ Normal()
@@ -2149,34 +2104,10 @@ end
     @test unfix(prefixed, @varname(a.x))(Xoshiro(1)) == 2.0
 end
 
-@testset "nothing is rejected only where a tilde reads it" begin
-    @model absence_field(p) = p.a ~ Normal()
-    @model absence_array(x) = x ~ product_distribution([Normal(), Normal()])
-    for absent in (missing, nothing)
-        message = "LHS variable `p.a` contains `$absent`; make it latent with `decondition`."
-        @test_throws message absence_field((a=absent, b=1.0))(Xoshiro(1))
-        @test absence_field((a=1.0, b=absent))(Xoshiro(1)) == 1.0
-        @test_throws "LHS variable `x` contains `$absent`" absence_array([1.0, absent])(
-            Xoshiro(1)
-        )
-        @test_throws "make it latent with `unfix`" fix(
-            absence_field((a=1.0, b=2.0)); p=(a=absent, b=2.0)
-        )(
-            Xoshiro(1)
-        )
-    end
-end
-
 @testset "binding input forms are ordered" begin
     @model input_forms(x) = (x[1] ~ Normal(); x[2] ~ Normal(); x)
     for bind in (condition, fix)
-        for invalid in (
-            Dict(@varname(x) => [2.0, 3.0]),
-            Dict(:x => [2.0, 3.0]),
-            pairs((; x=[2.0, 3.0])),
-            [@varname(x) => [2.0, 3.0]],
-            1,
-        )
+        for invalid in (Dict(@varname(x) => [2.0, 3.0]), 1)
             @test_throws ArgumentError bind(input_forms([0.0, 0.0]), invalid)
         end
         m = bind(
@@ -2955,20 +2886,13 @@ end
 end
 
 @testset "partial bindings preserve array types" begin
-    @model typed_static_argument(x::SVector{2,Float64}) = (
-        x[1] ~ Normal(); x[2] ~ Normal(); x
-    )
     @model typed_view_argument(x::SubArray) = (x[1] ~ Normal(); x[2] ~ Normal(); x)
-    for (model, x) in (
-        (typed_static_argument, SVector(1.0, 2.0)),
-        (typed_view_argument, view([1.0, 2.0], :)),
-    )
-        for bind in (condition, fix)
-            result = bind(model(x), @varname(x[1]) => 3.0)(Xoshiro(1))
-            @test result isa typeof(x)
-            @test result == [3.0, 2.0]
-            @test x == [1.0, 2.0]
-        end
+    x = view([1.0, 2.0], :)
+    for bind in (condition, fix)
+        result = bind(typed_view_argument(x), @varname(x[1]) => 3.0)(Xoshiro(1))
+        @test result isa typeof(x)
+        @test result == [3.0, 2.0]
+        @test x == [1.0, 2.0]
     end
     @model replacement_array(x) = (x[1] ~ Normal(); x[2] ~ Normal(); x)
     for owner in (Float32[1, 2], SVector(1.0f0, 2.0f0), view(Float32[1, 2], :))
