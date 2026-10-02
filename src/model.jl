@@ -1854,7 +1854,7 @@ function _bind_inputs(::Type{R}, model::Model, inputs::Tuple) where {R}
         throw(ArgumentError("At most one binding schema is allowed per call."))
     values = filter(x -> !(x isa Type{<:AbstractPPL.OfNamedTuple}), inputs)
     isempty(schemas) && return _bind_ordered_inputs(R, model, values)
-    schema = zero(only(schemas))
+    schema = VarNamedTuples.materialize_template(only(schemas))
     for name in keys(schema)
         name in map(unsplat_symbol, keys(merge(model.args, model.defaults))) && throw(
             ArgumentError(
@@ -2704,6 +2704,7 @@ VarNamedTuple
 ```
 """
 function prefix(model::Model, x::VarName; template=NoTemplate())
+    template = VarNamedTuples.materialize_template(template)
     x = _concretize_prefix(x, template)
     model = _materialize_argument_values(model)
     values =

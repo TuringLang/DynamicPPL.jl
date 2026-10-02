@@ -35,6 +35,9 @@ a dedicated struct instead.
 """
 struct NoTemplate end
 
+materialize_template(template) = template
+materialize_template(::Type{T}) where {T<:AbstractPPL.OfType} = zero(T)
+
 """
     SkipTemplate{N}(value)
 

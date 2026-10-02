@@ -136,7 +136,9 @@ function _vnt(input)
                     if arg in keys(symbols_to_templates)
                         error("duplicate template definition for symbol: $arg")
                     end
-                    symbols_to_templates[arg] = esc(arg)
+                    new_sym = gensym()
+                    push!(output.args, :($new_sym = materialize_template($(esc(arg)))))
+                    symbols_to_templates[arg] = new_sym
                 elseif Meta.isexpr(arg, :(=))
                     # e.g. @template y = x
                     sym, template_expr = arg.args
@@ -146,7 +148,10 @@ function _vnt(input)
                     # evaluate the template expression one time so that we don't
                     # reevaluate it every time we set a value in the VNT
                     new_sym = gensym()
-                    push!(output.args, :($new_sym = $(esc(template_expr))))
+                    push!(
+                        output.args,
+                        :($new_sym = materialize_template($(esc(template_expr)))),
+                    )
                     symbols_to_templates[sym] = new_sym
                 else
                     error("unexpected argument to `@template`: $arg")
