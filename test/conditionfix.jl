@@ -2240,6 +2240,17 @@ end
     end
 end
 
+@testset "keyword splat index binding diagnostic" begin
+    @model keyword_index(; x...) = (x[:a] ~ Normal(); x[:a])
+    for bind in (condition, fix), wrap in (identity, m -> DynamicPPL.prefix(m, @varname(p)))
+        m = wrap(keyword_index(; a=1.0))
+        vn = wrap === identity ? @varname(x[:a]) : @varname(p.x[:a])
+        @test_throws r"keyword-splat argument `x`.*replace the whole argument" bind(
+            m, vn => 2.0
+        )
+    end
+end
+
 @info "Completed $(@__FILE__) in $(now() - __now__)."
 
 end
