@@ -17,7 +17,7 @@ function read_table(path)
     columns(lines[4]) == header || malformed()
     lines[5] == repeat("-", length(lines[1])) || malformed()
 
-    seen = Set{Tuple{String,String}}()
+    seen = Set{Tuple{String,String,String}}()
     return map(lines[6:(end - 1)]) do line
         # print_results uses a two-space gap; model names contain only single
         # spaces, as does the separator between a primal number and its unit.
@@ -37,7 +37,7 @@ function read_table(path)
         all(x -> x == "err" || tryparse(Float64, x) !== nothing, ratios) || malformed()
         # The tiny-primal marker can differ between runs; it is not part of
         # the model's identity. Preserve the PR marker in the displayed name.
-        key = (chopsuffix(name, "*"), linked)
+        key = (chopsuffix(name, "*"), dim, linked)
         key in seen && malformed()
         push!(seen, key)
         (; key, name, dim, linked, primal, ratios)
@@ -62,7 +62,7 @@ function report(args)
     )
     repo, pr_sha, main_sha, pr_path = args[1:4]
     pr_rows = read_table(pr_path)
-    main_times = Dict{Tuple{String,String},String}()
+    main_times = Dict{Tuple{String,String,String},String}()
     main_note = ""
     if length(args) == 5
         # Main runs main's printer, which may predate a format change in this PR.
