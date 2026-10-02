@@ -209,3 +209,10 @@ params = BangBang.setindex!!(params, TransformedValue(2.0, NoTransform()), @varn
 _, vi = init!!(Xoshiro(468), model, vi, InitFromParams(params, nothing), UnlinkAll())
 vi
 ```
+
+## Observation hooks
+
+For direct observation calls, replace
+`tilde_observe!!(prefix, prefix_template, dist, value, vn, template, vi)` with
+`tilde_observe!!(prefix, dist, value, vn, template, vi)`, passing the model's merged
+prefix metadata.

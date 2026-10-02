@@ -28,6 +28,8 @@ Added `evaluate!!(model, context, vi)` to evaluate with an explicit leaf context
 
 ## Breaking changes
 
+Observation calls use merged prefix metadata: `tilde_observe!!(prefix, prefix_template, dist, value, vn, template, vi)` → `tilde_observe!!(prefix, dist, value, vn, template, vi)`. See [#1502](https://github.com/TuringLang/DynamicPPL.jl/pull/1502).
+
 `PrefixContext` is removed: context-based prefixing → `prefix(model, vn; template)`. See [#1502](https://github.com/TuringLang/DynamicPPL.jl/pull/1502), [#1221](https://github.com/TuringLang/DynamicPPL.jl/issues/1221).
 
 `extract_prefixes` is removed: `extract_prefixes(model.context)` → `DynamicPPL.getprefix(model)`, returning the combined prefix or `nothing`. See [#1502](https://github.com/TuringLang/DynamicPPL.jl/pull/1502).

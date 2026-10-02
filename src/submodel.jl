@@ -479,6 +479,6 @@ end
     args, kwargs = make_evaluate_args_and_kwargs(model, vi)
     return @inline model.f(args...; kwargs...)
 end
-function tilde_observe!!(prefix, prefix_template, ::Submodel, left, ::Nothing, template, vi)
+function tilde_observe!!(prefix, ::Submodel, left, ::Nothing, template, vi)
     throw(ArgumentError("`x ~ to_submodel(...)` is not supported when `x` is a literal"))
 end
