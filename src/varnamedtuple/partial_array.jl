@@ -300,21 +300,7 @@ function _concretise_eltype!!(pa::PartialArray)
     if isconcretetype(eltype(pa))
         return pa
     end
-    # We could use promote_type here, instead of typejoin. However, that would e.g.
-    # cause Ints to be converted to Float64s, since
-    # promote_type(Int, Float64) == Float64, which can cause problems. See
-    # https://github.com/TuringLang/DynamicPPL.jl/pull/1098#discussion_r2472636188.
-    # Base.promote_typejoin would be like typejoin, but creates Unions out of Nothing
-    # and Missing, rather than falling back on Any. However, it's not exported.
-    new_et = Union{}
-    for i in eachindex(pa.mask)
-        pa.mask[i] || continue
-        element_type = typeof(pa.data[i])
-        element_type <: new_et && continue
-        new_et = typejoin(new_et, element_type)
-        # The join cannot change once it reaches the storage element type.
-        new_et === eltype(pa) && return pa
-    end
+    new_et = _concretised_eltype(pa)
     # TODO(mhauru) Should we check as below, or rather isconcretetype(new_et)?
     # In other words, does it help to be more concrete, even if we aren't fully concrete?
     if new_et === eltype(pa)
@@ -328,6 +314,26 @@ function _concretise_eltype!!(pa::PartialArray)
         end
     end
     return PartialArray(new_data, pa.mask)
+end
+
+# Only types and mask metadata affect this query, never the numerical payloads.
+function _concretised_eltype(pa::PartialArray)
+    # We could use promote_type here, instead of typejoin. However, that would e.g.
+    # cause Ints to be converted to Float64s, since
+    # promote_type(Int, Float64) == Float64, which can cause problems. See
+    # https://github.com/TuringLang/DynamicPPL.jl/pull/1098#discussion_r2472636188.
+    # Base.promote_typejoin would be like typejoin, but creates Unions out of Nothing
+    # and Missing, rather than falling back on Any. However, it's not exported.
+    new_et = Union{}
+    for i in eachindex(pa.mask)
+        pa.mask[i] || continue
+        element_type = typeof(pa.data[i])
+        element_type <: new_et && continue
+        new_et = typejoin(new_et, element_type)
+        # The join cannot change once it reaches the storage element type.
+        new_et === eltype(pa) && return new_et
+    end
+    return new_et
 end
 
 """
