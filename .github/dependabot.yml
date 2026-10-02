@@ -17,7 +17,6 @@ updates:
       - "/docs"
       - "/test"
       - "/test/ext/DynamicPPLEnzymeCoreExt"
-      - "/test/ext/DynamicPPLMarginalLogDensitiesExt"
       - "/test/ext/DynamicPPLReverseDiffExt"
       - "/test/floattypes"
     schedule:
