@@ -1,13 +1,16 @@
 module VarNamedTupleTests
 
+using AbstractPPL: of, @of
 using Dates: now
 @info "Testing $(@__FILE__)..."
 __now__ = now()
 
+using Distributions: Normal
+using Random: Xoshiro
 using Combinatorics: Combinatorics
 using OrderedCollections: OrderedDict
 using Test: @inferred, @test, @test_throws, @testset, @test_broken, @test_logs
-using DynamicPPL: DynamicPPL, @varname, VarNamedTuple, subset, @vnt
+using DynamicPPL: DynamicPPL, @model, @varname, VarNamedTuple, subset, @vnt
 using DynamicPPL.VarNamedTuples:
     PartialArray,
     ArrayLikeBlock,
@@ -2497,6 +2500,45 @@ end
         v13s = VarNamedTuple(; x=CA.ComponentArray(; a=nothing, b=nothing))
         test_skeleton(v13, v13s)
     end
+end
+
+@testset "of templates" begin
+    @test templated_setindex!!(VarNamedTuple(), 2.0, @varname(z[end]), of(Array, 3))[@varname(
+        z[3]
+    )] === 2.0
+    v = @vnt begin
+        @template z = @of(a = of(Array, 3))
+        z.a[end] := 2.0
+    end
+    @test v[@varname(z.a[3])] === 2.0
+    T = of(Array, 3)
+    v = @vnt begin
+        @template T
+        T[end] := 3.0
+    end
+    @test v[@varname(T[3])] === 3.0
+    @model of_prefix() = x ~ Normal()
+    @test only(
+        keys(
+            rand(
+                Xoshiro(1),
+                DynamicPPL.prefix(of_prefix(), @varname(a[end]); template=of(Array, 3)),
+            ),
+        ),
+    ) == @varname(a[3].x)
+    @test only(
+        keys(
+            rand(
+                Xoshiro(1),
+                DynamicPPL.prefix(
+                    of_prefix(), @varname(a.z[end]); template=@of(z = of(Array, 3))
+                ),
+            ),
+        ),
+    ) == @varname(a.z[3].x)
+    @test_throws ErrorException templated_setindex!!(
+        VarNamedTuple(), 2.0, @varname(z[1]), of(Array, :n)
+    )
 end
 
 @info "Completed $(@__FILE__) in $(now() - __now__)."

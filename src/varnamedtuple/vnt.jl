@@ -140,6 +140,7 @@ The actual data inside `template` is not needed, and `template` is never mutated
 call. For nested indexing, intermediate containers in `template` must be initialised.
 """
 function templated_setindex!!(vnt::VarNamedTuple, value, vn::VarName, template)
+    template = materialize_template(template)
     return _setindex_optic!!(
         vnt, value, AbstractPPL.varname_to_optic(vn), SkipTemplate{1}(template), AllowAll()
     )
@@ -156,6 +157,7 @@ are not set multiple times.
     This function is entirely internal to DynamicPPL.
 """
 function templated_setindex_no_overwrite!!(vnt::VarNamedTuple, value, vn::VarName, template)
+    template = materialize_template(template)
     return _setindex_optic!!(
         vnt,
         value,
