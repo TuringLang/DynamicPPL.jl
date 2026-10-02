@@ -277,13 +277,17 @@ function has_static_constraints(model::Model; num_evals::Int=5)
 end
 
 """
-    gen_evaluator_call_with_types(model[, varinfo]; context=InitContext(InitFromParams(get_values(varinfo), nothing), UnlinkAll()))
+    gen_evaluator_call_with_types(model[, varinfo]; context)
 
 Generate the evaluator call and the types of the arguments.
 
 # Arguments
 - `model::Model`: The model whose evaluator is of interest.
 - `varinfo::AbstractVarInfo`: The varinfo to use when evaluating the model. Default: `VarInfo(model)`.
+
+# Keyword Arguments
+- `context::AbstractContext`: The evaluation context. Defaults to the values supplied in `varinfo`,
+  unlinked, or `InitFromPrior()` when `varinfo` has no values.
 
 # Returns
 A 2-tuple with the following elements:
@@ -295,7 +299,8 @@ function gen_evaluator_call_with_types(
     model::Model,
     varinfo::AbstractVarInfo=VarInfo(model);
     context::AbstractContext=InitContext(
-        InitFromParams(get_values(varinfo), nothing), UnlinkAll()
+        isempty(varinfo) ? InitFromPrior() : InitFromParams(get_values(varinfo), nothing),
+        UnlinkAll(),
     ),
 )
     args, kwargs = DynamicPPL.make_evaluate_args_and_kwargs(
@@ -310,7 +315,7 @@ function gen_evaluator_call_with_types(
 end
 
 """
-    model_warntype(model[, varinfo, optimize=false]; context=InitContext(InitFromParams(get_values(varinfo), nothing), UnlinkAll()))
+    model_warntype(model[, varinfo, optimize=false]; context)
 
 Check the type stability of the model's evaluator, warning about any potential issues.
 
@@ -321,7 +326,8 @@ This simply calls `@code_warntype` on the model's evaluator, filling in internal
 - `varinfo::AbstractVarInfo`: The varinfo to use when evaluating the model. Default: `VarInfo(model)`.
 
 # Keyword Arguments
-- `context::AbstractContext`: The evaluation context. Defaults to the values supplied in `varinfo`, unlinked.
+- `context::AbstractContext`: The evaluation context. Defaults to the values supplied in `varinfo`,
+  unlinked, or `InitFromPrior()` when `varinfo` has no values.
 """
 function model_warntype(
     model::Model, varinfo::AbstractVarInfo=VarInfo(model), optimize::Bool=false; kwargs...
@@ -331,7 +337,7 @@ function model_warntype(
 end
 
 """
-    model_typed(model[, varinfo, optimize=true]; context=InitContext(InitFromParams(get_values(varinfo), nothing), UnlinkAll()))
+    model_typed(model[, varinfo, optimize=true]; context)
 
 Return the type inference for the model's evaluator.
 
@@ -342,7 +348,8 @@ This simply calls `@code_typed` on the model's evaluator, filling in internal ar
 - `varinfo::AbstractVarInfo`: The varinfo to use when evaluating the model. Default: `VarInfo(model)`.
 
 # Keyword Arguments
-- `context::AbstractContext`: The evaluation context. Defaults to the values supplied in `varinfo`, unlinked.
+- `context::AbstractContext`: The evaluation context. Defaults to the values supplied in `varinfo`,
+  unlinked, or `InitFromPrior()` when `varinfo` has no values.
 """
 function model_typed(
     model::Model, varinfo::AbstractVarInfo=VarInfo(model), optimize::Bool=true; kwargs...
