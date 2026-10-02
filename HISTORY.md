@@ -26,11 +26,13 @@ Re-evaluation and `LogDensityFunction` construction no longer copy fixed transfo
 
 Added `evaluate!!(model, context, vi)` to evaluate with an explicit `Context` and collect outputs in `vi`, such as `evaluate!!(model, Context(rng, InitFromPrior(), UnlinkAll()), VarInfo())`. See [#1500](https://github.com/TuringLang/DynamicPPL.jl/pull/1500), [#1503](https://github.com/TuringLang/DynamicPPL.jl/pull/1503).
 
+Density evaluation accepts an explicit RNG: `DynamicPPL.logdensity_internal(args...)` → `DynamicPPL.logdensity_internal(args..., rng)`; append `rng` to `AbstractPPL.prepare`’s `context` tuple. See [#1504](https://github.com/TuringLang/DynamicPPL.jl/pull/1504).
+
 ## Breaking changes
 
-`LogDensityFunction(model; rng)` now shares the supplied RNG across construction, evaluation, AD preparation, and parameter sampling. Use `rand(__context__.rng, ...)` for model-body draws. See [#1504](https://github.com/TuringLang/DynamicPPL.jl/pull/1504).
+`LogDensityFunction` shares RNG state across construction, evaluation, AD preparation, and sampling: implicit draws → `LogDensityFunction(m; rng)` and model-body `rand(__context__.rng, ...)`. See [#1504](https://github.com/TuringLang/DynamicPPL.jl/pull/1504), [#721](https://github.com/TuringLang/DynamicPPL.jl/issues/721).
 
-`DynamicPPL.logdensity_internal` takes an optional final `rng` argument, defaulting to the task-local `Random.default_rng()`; append an RNG to the `context` tuple of `AbstractPPL.prepare(DynamicPPL.logdensity_internal, x; context=...)` to control explicit draws in the model body. See [#1504](https://github.com/TuringLang/DynamicPPL.jl/pull/1504).
+`rand(ldf)` uses `ldf.rng`: relying on the task-local RNG → `rand(Random.default_rng(), ldf)`. See [#1504](https://github.com/TuringLang/DynamicPPL.jl/pull/1504).
 
 `DefaultContext()`/`InitContext(...)` are removed → `Context(rng, init_strategy, transform_strategy)` with explicit parameter inputs and output transforms. See [#1503](https://github.com/TuringLang/DynamicPPL.jl/pull/1503), [#1469](https://github.com/TuringLang/DynamicPPL.jl/issues/1469).
 
