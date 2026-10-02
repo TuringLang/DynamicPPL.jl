@@ -199,6 +199,23 @@ function _submodel_values(values::VarNamedTuple, prefix::VarName)
     return _submodel_namespace(binding)
 end
 
+# Shape ownership survives selecting a child's namespace, including whole namespace bindings.
+function _submodel_fixed_owners(model::Model, prefix)
+    prefix = _model_value_varname(model.values, prefix, _model_prefix(model))
+    owners = _fixed_owners(model.values)
+    prefix === nothing && return owners
+    return mapreduce((a, b) -> (a..., b...), owners; init=()) do owner
+        if subsumes(owner, prefix)
+            names = keys(_submodel_values(_model_values(model.values), prefix).data)
+            map(name -> VarName{name}(), names)
+        elseif subsumes(prefix, owner)
+            (AbstractPPL.unprefix(owner, prefix),)
+        else
+            ()
+        end
+    end
+end
+
 """
     DynamicPPL.tilde_assume!!(
         parent_model::Model,
@@ -251,7 +268,11 @@ function tilde_assume!!(
     if AutoPrefix || _model_prefix(submodel.model) !== nothing
         _check_binding_addresses(child_model, parent_values)
     end
-    values = LocalModelValues(_merge_model_values(child_values, parent_values))
+    owners = (
+        _submodel_fixed_owners(submodel.model, nothing)...,
+        _submodel_fixed_owners(parent_model, local_prefix)...,
+    )
+    values = LocalModelValues(_merge_model_values(child_values, parent_values), owners)
     return _evaluate_submodel!!(
         parent_model, context, submodel, left_vn, template, vi, values
     )

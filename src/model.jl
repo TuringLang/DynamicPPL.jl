@@ -55,27 +55,33 @@ end
 struct NoModelBinding end
 
 # Fixed bindings preserve the observation layer they shadow.
-struct ModelBindingLayers{O<:VarNamedTuple,F<:VarNamedTuple,V<:VarNamedTuple}
+struct ModelBindingLayers{O<:VarNamedTuple,F<:VarNamedTuple,V<:VarNamedTuple,A<:Tuple}
     observations::O
     fixed::F
     values::V
+    # Whole fixed owners survive expansion into partial storage.
+    owners::A
 end
-function ModelBindingLayers(observations, fixed)
+function ModelBindingLayers(observations, fixed, owners::Tuple=Tuple(keys(fixed)))
     return ModelBindingLayers(
-        observations, fixed, _overlay_model_values(observations, fixed)
+        observations, fixed, _overlay_model_values(observations, fixed, owners), owners
     )
 end
 _model_values(values::ModelBindingLayers) = values.values
 _model_value_varname(::ModelBindingLayers, vn, prefix) = maybe_prefix(vn, prefix)
 _observation_values(values::ModelBindingLayers) = values.observations
 _fixed_values(values::ModelBindingLayers) = values.fixed
+_fixed_owners(values::ModelBindingLayers) = values.owners
+_fixed_owners(values) = ()
 _observation_values(values) = _remove_model_values(Fix, _model_values(values))
 _fixed_values(values) = _remove_model_values(Condition, _model_values(values))
 
 # Child bindings selected from the parent's submodel namespace use the child's storage shape.
-struct LocalModelValues{V<:Union{VarNamedTuple,ModelBindingLayers}}
+struct LocalModelValues{V<:Union{VarNamedTuple,ModelBindingLayers},A<:Tuple}
     values::V
+    owners::A
 end
+LocalModelValues(values) = LocalModelValues(values, _fixed_owners(values))
 # Default arguments need no enclosing namespace storage during evaluation.
 struct UnprefixedArgumentValues{V<:VarNamedTuple}
     values::V
@@ -87,6 +93,7 @@ _model_values(values::VarNamedTuple) = values
 _model_values(values::LocalModelValues) = _model_values(values.values)
 _observation_values(values::LocalModelValues) = _observation_values(values.values)
 _fixed_values(values::LocalModelValues) = _fixed_values(values.values)
+_fixed_owners(values::LocalModelValues) = values.owners
 _model_value_varname(::VarNamedTuple, vn, prefix) = maybe_prefix(vn, prefix)
 _model_value_varname(::LocalModelValues, vn, prefix) = vn
 
@@ -107,12 +114,25 @@ struct ModelValueTree{T,V<:Union{VarNamedTuple,Tuple}}
 end
 
 @generated function _overlay_model_values(
-    observations::VarNamedTuple{O}, fixed::VarNamedTuple{F}
+    observations::VarNamedTuple{O}, fixed::VarNamedTuple{F}, owners, prefix=nothing
 ) where {O,F}
     names = Tuple(union(O, F))
     fields = map(names) do name
         if name in O && name in F
-            :(_overlay_model_node(observations.data.$name, fixed.data.$name))
+            quote
+                _check_model_binding(
+                    observations.data.$name,
+                    fixed.data.$name,
+                    $(VarName{name}());
+                    check_bounds=false,
+                )
+                _overlay_model_node(
+                    observations.data.$name,
+                    fixed.data.$name,
+                    owners,
+                    maybe_prefix($(VarName{name}()), prefix),
+                )
+            end
         elseif name in F
             :(fixed.data.$name)
         else
@@ -121,21 +141,38 @@ end
     end
     return :(VarNamedTuple(NamedTuple{$names}(($(fields...),))))
 end
-_overlay_model_node(previous, fixed) = _merge_model_node(previous, fixed)
-function _overlay_model_node(previous::VarNamedTuple, fixed::VarNamedTuple)
-    return _overlay_model_values(previous, fixed)
+_overlay_model_node(previous, fixed, owners, vn) = _merge_model_node(previous, fixed)
+function _overlay_model_node(previous::VarNamedTuple, fixed::VarNamedTuple, owners, vn)
+    return _overlay_model_values(previous, fixed, owners, vn)
 end
-function _overlay_model_node(previous, fixed::VarNamedTuples.PartialArray)
+function _overlay_model_node(previous, fixed::VarNamedTuples.PartialArray, owners, vn)
     eltype(fixed) <: ModelValue &&
         _has_complete_model_data(fixed) &&
         return _copy_model_node(fixed)
     previous isa ModelValue && (previous = _expand_model_binding(previous))
+    owns_shape = any(owner -> subsumes(owner, vn), owners)
     if previous isa VarNamedTuples.PartialArray &&
         !(fixed.data isa VarNamedTuples.GrowableArray) &&
-        axes(previous) != axes(fixed)
-        data = similar(fixed.data, eltype(previous))
-        mask = fill!(similar(fixed.mask), false)
-        for i in eachindex(data)
+        axes(previous) != axes(fixed) &&
+        (
+            owns_shape || any(
+                i -> fixed.mask[i] && !checkbounds(Bool, previous.data, i),
+                CartesianIndices(fixed.mask),
+            )
+        )
+        # Extending one layer must not discard observations on another axis.
+        merged_axes = if owns_shape
+            axes(fixed.data)
+        else
+            ntuple(max(ndims(previous.data), ndims(fixed.data))) do d
+                lo = min(first(axes(previous.data, d)), first(axes(fixed.data, d)))
+                hi = max(last(axes(previous.data, d)), last(axes(fixed.data, d)))
+                lo == 1 ? Base.OneTo(hi) : (lo:hi)
+            end
+        end
+        data = similar(previous.data, eltype(previous), merged_axes)
+        mask = fill!(similar(data, Bool), false)
+        for i in CartesianIndices(data)
             if checkbounds(Bool, previous.data, i) && previous.mask[i]
                 data[i] = previous.data[i]
                 mask[i] = true
@@ -153,34 +190,59 @@ function _overlay_model_node(previous, fixed::VarNamedTuples.PartialArray)
         _copy_model_node(previous), fixed
     ) do result, update, optic, template
         child = _model_argument_binding(result, optic)
-        value = child === nothing ? update : _overlay_model_node(child, update)
+        value = if child === nothing
+            update
+        else
+            _overlay_model_node(child, update, owners, AbstractPPL.append_optic(vn, optic))
+        end
         VarNamedTuples._setindex_optic!!(
             result, value, optic, template, VarNamedTuples.AllowAll()
         )
     end
 end
-function _overlay_model_node(previous::VarNamedTuple, fixed::ModelValue{<:Any,<:NamedTuple})
+function _overlay_model_node(
+    previous::VarNamedTuple, fixed::ModelValue{<:Any,<:NamedTuple}, owners, vn
+)
     if any(name -> !hasproperty(fixed.value, name), keys(previous.data))
-        return _overlay_model_values(previous, _submodel_namespace(fixed))
+        return _overlay_model_values(previous, _submodel_namespace(fixed), owners, vn)
     end
     return fixed
 end
-function _overlay_model_node(previous, fixed::ModelValueTree)
+function _overlay_model_node(previous, fixed::ModelValueTree, owners, vn)
+    owns_shape = any(owner -> subsumes(owner, vn), owners)
+    template = if !owns_shape && previous isa ModelValue
+        previous.value
+    elseif !owns_shape && previous isa ModelValueTree
+        previous.template
+    else
+        fixed.template
+    end
     values = if fixed.values isa Tuple
-        ntuple(length(fixed.values)) do i
-            child = _previous_model_child(previous, AbstractPPL.Index((i,), (;)))
-            _overlay_model_node(child, fixed.values[i])
+        template = length(template) < length(fixed.template) ? fixed.template : template
+        ntuple(length(template)) do i
+            optic = AbstractPPL.Index((i,), (;))
+            child = _previous_model_child(previous, optic)
+            _overlay_model_node(
+                child,
+                get(fixed.values, i, NoModelBinding()),
+                owners,
+                AbstractPPL.append_optic(vn, optic),
+            )
         end
     else
         previous isa ModelValue && (previous = _expand_model_binding(previous))
         previous = previous isa ModelValueTree ? previous.values : previous
         if previous isa VarNamedTuple
-            _overlay_model_values(previous, fixed.values)
+            _overlay_model_values(previous, fixed.values, owners, vn)
         else
             fixed.values
         end
     end
-    return ModelValueTree(fixed.template, values)
+    if values isa VarNamedTuple &&
+        !all(name -> hasproperty(template, name), keys(values.data))
+        template = fixed.template
+    end
+    return ModelValueTree(template, values)
 end
 
 function Base.:(==)(a::ModelValueTree, b::ModelValueTree)
@@ -354,15 +416,36 @@ function _get_model_data(model, vn)
 end
 function _get_model_data(model, vn, argument, local_value)
     binding = _get_model_binding(model, argument)
-    _check_fixed_shape(binding, local_value, AbstractPPL.getoptic(vn), vn)
+    _check_fixed_shape(
+        binding,
+        local_value,
+        AbstractPPL.getoptic(vn),
+        vn,
+        _fixed_owners(model.values),
+        _model_value_varname(model.values, argument, _model_prefix(model)),
+    )
     return _get_model_data(model, vn)
 end
 
-# Partial-binding storage does not own the shape of its enclosing container.
-function _check_fixed_shape(binding, local_value, optic, vn)
-    return _check_fixed_shape_child(binding, local_value, optic, vn)
+# Storage for a partial binding is not itself a fixed shape owner.
+function _check_fixed_shape(binding, local_value, optic, vn, owners=(), address=vn)
+    if optic isa AbstractPPL.Iden || any(owner -> subsumes(owner, address), owners)
+        template = if binding isa VarNamedTuples.PartialArray
+            binding.data
+        elseif binding isa ModelValueTree
+            binding.template
+        else
+            nothing
+        end
+        template === nothing || _check_fixed_shape(
+            ModelValue{Fix}(template), local_value, AbstractPPL.Iden(), vn
+        )
+    end
+    return _check_fixed_shape_child(binding, local_value, optic, vn, owners, address)
 end
-function _check_fixed_shape(binding::ModelValue{Fix}, local_value, optic, vn)
+function _check_fixed_shape(
+    binding::ModelValue{Fix}, local_value, optic, vn, owners=(), address=vn
+)
     value = binding.value
     if value isa Tuple
         local_value isa Tuple && length(value) == length(local_value) || _fixed_shape_error(
@@ -375,22 +458,35 @@ function _check_fixed_shape(binding::ModelValue{Fix}, local_value, optic, vn)
             vn, "a static size and shape; the model body changed its argument's shape."
         )
     end
-    return _check_fixed_shape_child(binding, local_value, optic, vn)
+    return _check_fixed_shape_child(binding, local_value, optic, vn, owners, address)
 end
 # Keep error construction out of the hot path so the shape checks can inline.
 @noinline function _fixed_shape_error(vn, message)
     return throw(ArgumentError("Fixed LHS variable `$vn` requires $message"))
 end
-_check_fixed_shape_child(binding, local_value, ::AbstractPPL.Iden, vn) = nothing
 function _check_fixed_shape_child(
-    binding, local_value, optic::AbstractPPL.Property{S}, vn
+    binding, local_value, ::AbstractPPL.Iden, vn, owners, address
+)
+    return nothing
+end
+function _check_fixed_shape_child(
+    binding, local_value, optic::AbstractPPL.Property{S}, vn, owners, address
 ) where {S}
     child = _model_argument_binding(binding, AbstractPPL.Property{S}())
     child !== nothing && hasproperty(local_value, S) ||
         _fixed_shape_error(vn, "coverage with a static size and shape.")
-    return _check_fixed_shape(child, getproperty(local_value, S), optic.child, vn)
+    return _check_fixed_shape(
+        child,
+        getproperty(local_value, S),
+        optic.child,
+        vn,
+        owners,
+        AbstractPPL.append_optic(address, AbstractPPL.Property{S}()),
+    )
 end
-function _check_fixed_shape_child(binding, local_value, optic::AbstractPPL.Index, vn)
+function _check_fixed_shape_child(
+    binding, local_value, optic::AbstractPPL.Index, vn, owners, address
+)
     optic = AbstractPPL.concretize_top_level(optic, local_value)
     child = _model_argument_binding(binding, AbstractPPL.Index(optic.ix, optic.kw))
     child === nothing && _fixed_shape_error(vn, "coverage with a static size and shape.")
@@ -399,7 +495,14 @@ function _check_fixed_shape_child(binding, local_value, optic::AbstractPPL.Index
     else
         getindex(local_value, optic.ix...; optic.kw...)
     end
-    return _check_fixed_shape(child, selected, optic.child, vn)
+    return _check_fixed_shape(
+        child,
+        selected,
+        optic.child,
+        vn,
+        owners,
+        AbstractPPL.append_optic(address, AbstractPPL.Index(optic.ix, optic.kw)),
+    )
 end
 
 function _tag_model_values(::Type{R}, values::VarNamedTuple) where {R}
@@ -730,9 +833,12 @@ end
     end
     return :(VarNamedTuple(NamedTuple{$names}(($(fields...),))))
 end
-_check_model_binding(previous, updates, vn) = nothing
+_check_model_binding(previous, updates, vn; check_bounds=true) = nothing
 function _check_model_binding(
-    previous, updates::Union{VarNamedTuple,VarNamedTuples.PartialArray}, vn
+    previous,
+    updates::Union{VarNamedTuple,VarNamedTuples.PartialArray},
+    vn;
+    check_bounds=true,
 )
     _fold_model_indices(nothing, updates) do _, update, optic, _
         _check_namedtuple_index(previous, optic, AbstractPPL.varname_to_optic(vn))
@@ -752,20 +858,24 @@ function _check_model_binding(
             )
         end
         child = _model_argument_binding(previous, optic)
-        if child === nothing && (
-            (previous isa ModelValue && previous.value isa Union{AbstractArray,Tuple}) ||
+        if check_bounds &&
+            child === nothing &&
             (
-                previous isa VarNamedTuples.PartialArray &&
-                optic isa AbstractPPL.Index &&
-                !(previous.data isa VarNamedTuples.GrowableArray) &&
-                !checkbounds(Bool, previous.data, optic.ix...; optic.kw...)
-            ) ||
-            (
-                previous isa ModelValueTree{<:Tuple} &&
-                optic isa AbstractPPL.Index &&
-                !checkbounds(Bool, Base.OneTo(length(previous.values)), optic.ix...)
+                (
+                    previous isa ModelValue && previous.value isa Union{AbstractArray,Tuple}
+                ) ||
+                (
+                    previous isa VarNamedTuples.PartialArray &&
+                    optic isa AbstractPPL.Index &&
+                    !(previous.data isa VarNamedTuples.GrowableArray) &&
+                    !checkbounds(Bool, previous.data, optic.ix...; optic.kw...)
+                ) ||
+                (
+                    previous isa ModelValueTree{<:Tuple} &&
+                    optic isa AbstractPPL.Index &&
+                    !checkbounds(Bool, Base.OneTo(length(previous.values)), optic.ix...)
+                )
             )
-        )
             address = AbstractPPL.append_optic(vn, optic)
             throw(
                 ArgumentError(
@@ -773,8 +883,9 @@ function _check_model_binding(
                 ),
             )
         end
-        child === nothing ||
-            _check_model_binding(child, update, AbstractPPL.append_optic(vn, optic))
+        child === nothing || _check_model_binding(
+            child, update, AbstractPPL.append_optic(vn, optic); check_bounds
+        )
         return nothing
     end
     return nothing
@@ -2181,16 +2292,43 @@ function _bind_model(::Type{R}, model::Model, values...; preparation_model=model
     observations = _observation_values(model.values)
     fixed_values = _fixed_values(model.values)
     values = if R === Fix
-        ModelBindingLayers(
-            observations,
-            _remove_model_values(
-                Condition, _merge_model_values(_model_values(model.values), values)
+        new_owners = Tuple(keys(values))
+        fixed_owners = (
+            filter(
+                owner -> !any(new -> subsumes(new, owner), new_owners),
+                _fixed_owners(model.values),
+            )...,
+            new_owners...,
+        )
+        # Original arguments supply storage where this layer has no owner yet.
+        owners = _argument_defaults(
+            merge(model.args, model.defaults), Val(_args_on_lhs(model))
+        )
+        owners = _prune_model_bindings(
+            VarNamedTuple(
+                map(owners.data) do owner
+                    owner.value isa Union{Missing,Nothing} ? NoModelBinding() : owner
+                end,
             ),
         )
+        if !(model.values isa LocalModelValues) && _model_prefix(model) !== nothing
+            owners = _prefix_values(
+                owners,
+                _model_prefix(model),
+                _apply_prefix_template(_model_prefix_template(model), NoTemplate()),
+            )
+        end
+        owners = VarNamedTuple(merge(owners.data, fixed_values.data))
+        fixed_values = _remove_model_values(Condition, _merge_model_values(owners, values))
+        ModelBindingLayers(observations, fixed_values, fixed_owners)
     elseif isempty(fixed_values)
         _merge_model_values(observations, values)
     else
-        ModelBindingLayers(_merge_model_values(observations, values), fixed_values)
+        ModelBindingLayers(
+            _merge_model_values(observations, values),
+            fixed_values,
+            _fixed_owners(model.values),
+        )
     end
     values = model.values isa LocalModelValues ? LocalModelValues(values) : values
     return _reconstruct_model(model; values)
@@ -2402,7 +2540,8 @@ function AbstractPPL.decondition(model::Model, syms::Union{Symbol,VarName}...)
     _check_model_removal(Condition, observations, syms...)
     values = _remove_model_values(Condition, observations, syms...)
     fixed_values = _fixed_values(model.values)
-    isempty(fixed_values) || (values = ModelBindingLayers(values, fixed_values))
+    isempty(fixed_values) ||
+        (values = ModelBindingLayers(values, fixed_values, _fixed_owners(model.values)))
     values = model.values isa LocalModelValues ? LocalModelValues(values) : values
     return _reconstruct_model(model; values)
 end
@@ -2829,7 +2968,10 @@ function unfix(model::Model, syms::Union{Symbol,VarName}...)
     values = if isempty(fixed_values)
         observations
     else
-        ModelBindingLayers(observations, fixed_values)
+        owners = filter(_fixed_owners(model.values)) do owner
+            any(vn -> subsumes(owner, vn) || subsumes(vn, owner), keys(fixed_values))
+        end
+        ModelBindingLayers(observations, fixed_values, owners)
     end
     values = model.values isa LocalModelValues ? LocalModelValues(values) : values
     return _reconstruct_model(model; values)
@@ -2913,6 +3055,7 @@ function _prefix_values(values::ModelBindingLayers, vn::VarName, template)
     return ModelBindingLayers(
         _prefix_values(values.observations, vn, template),
         _prefix_values(values.fixed, vn, template),
+        map(owner -> maybe_prefix(owner, vn), values.owners),
     )
 end
 function _prefix_values(values::VarNamedTuple, vn::VarName, template)
