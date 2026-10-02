@@ -1,6 +1,7 @@
 module DynamicPPLConditionFixTests
 
 using Dates: now
+using ADTypes: AutoForwardDiff
 using ComponentArrays: ComponentVector
 using Distributions
 using DimensionalData: DimArray, X
@@ -1676,7 +1677,11 @@ end
         @test fix(partial, @varname(x[1].a) => 3.0)() == [(; a=3.0, b=2.0)]
 
         base = condition(fields(ObservationRecord(0.0, 0.0)); x=ReplacementRecord(1.0, 2.0))
-        loglik = p -> loglikelihood(condition(base, @varname(x.a) => p), VarNamedTuple())
+        loglik =
+            p -> loglikelihood(
+                condition(fields(ReplacementRecord(zero(p), zero(p))), @varname(x.a) => p),
+                VarNamedTuple(),
+            )
         @test ForwardDiff.derivative(loglik, 3.0) == -3.0
         selected = conditioned(condition(base, @varname(x.a) => 3.0))
         @test conditioned(base)[@varname(x)] isa ReplacementRecord
@@ -1752,7 +1757,9 @@ end
         end
         loglik =
             p -> loglikelihood(
-                condition(tuple_lhs_variables((0.0, 2.0)), @varname(x[1]) => p),
+                condition(
+                    tuple_lhs_variables((zero(p), oftype(p, 2))), @varname(x[1]) => p
+                ),
                 VarNamedTuple(),
             )
         @test ForwardDiff.derivative(loglik, 3.0) == -3.0
@@ -2149,6 +2156,39 @@ end
         @test bind(address_unprefixed(); y=2.0)(Xoshiro(1)) == 2.0
         @test bind(address_unprefixed(); z=2.0)(Xoshiro(1)) ==
             address_unprefixed()(Xoshiro(1))
+    end
+end
+
+@testset "bindings fit declared and template types" begin
+    @model typed_binding(x::Float64) = x ~ Normal()
+    @model untyped_binding(x) = x ~ Normal()
+    @model typed_field(p) = (p.a ~ Normal(); p.a)
+    @model local_binding() = x ~ Normal()
+    @model local_type_child() = z ~ Normal()
+    @model local_type_parent() = (x ~ Normal(); a ~ to_submodel(local_type_child()))
+    @test_throws ArgumentError condition(condition(local_type_parent(); x=1.0); x=2)
+    for bind in (condition, fix)
+        @test_throws ArgumentError bind(typed_binding(1.0); x=2)
+        @test bind(untyped_binding(1.0); x=2)(Xoshiro(1)) === 2
+        @test_throws ArgumentError bind(bind(local_binding(); x=1.0); x=2)
+        @test_throws ArgumentError bind(typed_field((a=0.0f0,)), @varname(p.a) => 0.1)
+        @test bind(typed_field((a=0.0,)), @varname(p.a) => 1)(Xoshiro(1)) === 1.0
+    end
+end
+
+@testset "runtime bindings preserve AD values" begin
+    @model runtime_child(y) = (y[1] ~ Normal(); y[2] ~ Normal())
+    @model function runtime_parent(bind, partial)
+        m ~ Normal()
+        child = runtime_child(fill(zero(m), 2))
+        bound = partial ? bind(child, @varname(y[1]) => 2m) : bind(child; y=[2m, zero(m)])
+        a ~ to_submodel(bound)
+        return m
+    end
+    for bind in (condition, fix), partial in (false, true)
+        ldf = LogDensityFunction(runtime_parent(bind, partial); adtype=AutoForwardDiff())
+        _, gradient = LogDensityProblems.logdensity_and_gradient(ldf, [0.3])
+        @test gradient ≈ [bind === condition ? -1.5 : -0.3]
     end
 end
 
