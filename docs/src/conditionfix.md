@@ -64,8 +64,11 @@ A NamedTuple argument provides no submodel namespace, so bind the child before `
 Bindings unused by reached LHS variables are ignored, including branches or submodels not run.
 
 Bound values are not copied, so the body must not mutate them, even through a `view`. Partial
-bindings take a snapshot of their whole owner's remaining parts when made, so later edits are
-not reflected there.
+bindings take a shallow snapshot when made: the owner's container is copied one level deep,
+but nested mutable values remain shared and must not be mutated either. For example, in a
+model that observes each scalar of `x = [[1., 2.], [3., 4.]]`, binding `@varname(x[1][1]) => 9.`
+does not isolate `x[2]`. Subsequently setting `x[2][1] = 99.` makes evaluation return
+`[[9.0, 2.0], [99.0, 4.0]]` if the model returns `x`.
 
 **Runtime bindings** are made inside the running body, as in `a ~ to_submodel(condition(child(y), @varname(y[1]) => m))`. Remade at each evaluation, their values
 carry derivatives with respect to enclosing latent variables. Bindings made beforehand hold
