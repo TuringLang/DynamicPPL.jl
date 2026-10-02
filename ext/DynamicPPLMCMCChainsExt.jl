@@ -560,7 +560,7 @@ julia> @model function demo(xs, y)
            end
            y ~ Normal(m, √s)
        end
-demo (generic function with 2 methods)
+demo (generic function with 3 methods)
 
 julia> # Example observations.
        model = demo([1.0, 2.0, 3.0], [4.0]);
