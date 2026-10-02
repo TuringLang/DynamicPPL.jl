@@ -1,5 +1,6 @@
 module DynamicPPLConditionFixTests
 
+using AbstractPPL: of, @of
 using Dates: now
 using ADTypes: AutoForwardDiff
 using ComponentArrays: ComponentVector
@@ -2248,6 +2249,71 @@ end
         @test_throws r"keyword-splat argument `x`.*replace the whole argument" bind(
             m, vn => 2.0
         )
+    end
+end
+
+@testset "binding schemas" begin
+    @model function schema_local(n=3, T=Float64)
+        z = zeros(T, n)
+        for i in eachindex(z)
+            z[i] ~ Normal()
+        end
+        return z
+    end
+    @model schema_arg(z) = z ~ MvNormal(zeros(length(z)), ones(length(z)))
+    for op in (condition, fix)
+        schema = @of(z = of(Array, 3))
+        pair = @varname(z[2]) => 1.0
+        for inputs in (
+            (schema, pair),
+            (pair, schema),
+            ((pair,), schema),
+            (pair, schema, @varname(z[1]) => 2.0),
+        )
+            m = op(schema_local(), inputs...)
+            @test m()[2] == 1.0
+            @test length(op === condition ? conditioned(m) : fixed(m)) >= 1
+        end
+        @test op(schema_local(), pair, of((z=of(Array, 3),)))()[2] == 1.0
+        @test_throws ArgumentError op(schema_local(), schema)
+        @test_throws ArgumentError op(schema_local(), pair, schema, schema)
+        @test_throws ArgumentError op(schema_local(), pair, @of(w = of(Array, 3)))
+        @test_throws ArgumentError op(schema_local(), pair, @of(n = of(Int)))
+        @test_throws ArgumentError op(schema_arg(zeros(3)), pair, schema)
+        owned = op(schema_local(); z=[2.0, 3.0, 4.0])
+        @test op(owned, pair, schema)() == [2.0, 1.0, 4.0]
+        @test_throws ArgumentError op(owned, pair, @of(z = of(Array, 4)))
+        @test_throws ArgumentError op(owned, pair, @of(z = of(Array, Float32, 3)))
+        @test op(schema_local(), (z=ones(3),), pair, schema)() == [1.0, 1.0, 1.0]
+        @test op(schema_local(), @varname(z[end]) => 2.0, schema)()[3] == 2.0
+        @test isempty(conditioned(fix(schema_local(), pair, schema)))
+        @test_throws ArgumentError schema_local() | (pair, schema)
+        partial = op(schema_local(), pair, schema)
+        @test op(partial, @varname(z[3]) => 4.0, schema)()[2:3] == [1.0, 4.0]
+        prefixed = DynamicPPL.prefix(schema_local(), @varname(a))
+        @test op(prefixed, @varname(a.z[2]) => 1.0, schema)()[2] == 1.0
+    end
+    # A fixed layer must not determine an observation's storage, or vice versa.
+    m = fix(condition(schema_local(); z=ones(3)); z=ones(4))
+    @test (x -> x() == [1.0, 2.0, 1.0])(unfix(condition(
+        m, @varname(z[2]) => 2.0, @of(z = of(Array, 3))
+    )))
+    @test_throws ArgumentError condition(m, @varname(z[2]) => 2.0, @of(z = of(Array, 4)))
+    @model function schema_parent(op, n)
+        m ~ Normal()
+        a ~ to_submodel(
+            op(
+                schema_local(n, typeof(m)),
+                @varname(z[2]) => m,
+                @of(z = of(Array, typeof(m), n))
+            ),
+        )
+        return a
+    end
+    for op in (condition, fix)
+        @test ForwardDiff.derivative(0.3) do m
+            logjoint(schema_parent(op, 3), (m=m, a=(z=[0.0, m, 0.0],)))
+        end ≈ (op === condition ? -0.6 : -0.3)
     end
 end
 
