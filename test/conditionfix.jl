@@ -2652,6 +2652,33 @@ end
     @test_throws r"ArgumentError: .*x\[1\]\[1\].*size and shape" m(Xoshiro(1))
 end
 
+@testset "incomplete local owner conversion" begin
+    @model function localz()
+        z = zeros(3)
+        for i in eachindex(z)
+            z[i] ~ Normal()
+        end
+        return z
+    end
+    @model local_owner_parent(child) = a ~ to_submodel(child)
+    for (bind, remove, select) in
+        ((condition, decondition, conditioned), (fix, unfix, fixed))
+        m = remove(bind(localz(); z=ones(Float32, 3)), @varname(z[2]))
+        @test_throws ArgumentError bind(m, @varname(z[2]) => 0.1)
+        changed = bind(m, @varname(z[2]) => 0.5)
+        @test select(changed)[@varname(z[2])] === 0.5f0
+        @test local_owner_parent(changed)(Xoshiro(1)) == [1.0, 0.5, 1.0]
+        m = bind(localz(), @of(z = of(Array, Int, 3)), @varname(z[1]) => 1)
+        @test_throws InexactError bind(m, @varname(z[2]) => 1.5)
+        @test select(bind(m, @varname(z[2]) => 2.0))[@varname(z[2])] === 2
+        # Reference-valued storage retains its type without reading the removed entry.
+        m = remove(bind(localz(); z=ones(BigFloat, 3)), @varname(z[2]))
+        changed = bind(m, @varname(z[2]) => 2)
+        @test select(changed)[@varname(z[2])] isa BigFloat
+        @test changed(Xoshiro(1)) == [1.0, 2.0, 1.0]
+    end
+end
+
 @testset "binding edits use their layer's owner" begin
     @model layer_array(x) = (for i in eachindex(x)
         x[i] ~ Normal()
