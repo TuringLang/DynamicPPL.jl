@@ -6,41 +6,42 @@ struct Condition end
 struct ArgumentCondition end
 struct Fix end
 
-function _contains_missing(value)
-    return any(1:fieldcount(typeof(value))) do i
-        isdefined(value, i) && _contains_missing(getfield(value, i))
-    end
-end
-_contains_missing(::Union{Number,AbstractString,Symbol,Type}) = false
-_contains_missing(::Missing) = true
-_contains_missing(value::Base.Pairs) = _contains_missing(values(value))
-_contains_missing(value::TransformedValue) = _contains_missing(get_internal_value(value))
-_contains_missing(::AbstractArray{<:Number}) = false
-function _contains_missing(values::AbstractArray)
-    return any(
-        i -> isassigned(values, i) && _contains_missing(values[i]), eachindex(values)
-    )
-end
-function _contains_missing(values::Union{Tuple,NamedTuple})
-    return any(_contains_missing, values)
-end
+_contains_missing(value) = _contains_placeholder(value, Missing, nothing)
+_contains_nothing(value) = _contains_placeholder(value, Nothing, nothing)
 
-function _contains_nothing(value)
+function _contains_placeholder(value, ::Type{P}, seen) where {P}
+    value isa P && return true
+    if ismutabletype(typeof(value))
+        seen === nothing && (seen = Base.IdSet{Any}())
+        value in seen && return false
+        push!(seen, value)
+    end
+    return _contains_placeholder_children(value, P, seen)
+end
+_contains_placeholder(::Union{Number,AbstractString,Symbol,Type}, ::Type, seen) = false
+_contains_placeholder(::AbstractArray{<:Number}, ::Type, seen) = false
+
+function _contains_placeholder_children(value, ::Type{P}, seen) where {P}
     return any(1:fieldcount(typeof(value))) do i
-        isdefined(value, i) && _contains_nothing(getfield(value, i))
+        isdefined(value, i) && _contains_placeholder(getfield(value, i), P, seen)
     end
 end
-_contains_nothing(::Union{Number,AbstractString,Symbol,Type}) = false
-_contains_nothing(::Nothing) = true
-_contains_nothing(value::Base.Pairs) = _contains_nothing(values(value))
-_contains_nothing(value::TransformedValue) = _contains_nothing(get_internal_value(value))
-_contains_nothing(::AbstractArray{<:Number}) = false
-function _contains_nothing(values::AbstractArray)
-    return any(
-        i -> isassigned(values, i) && _contains_nothing(values[i]), eachindex(values)
-    )
+function _contains_placeholder_children(value::Base.Pairs, ::Type{P}, seen) where {P}
+    return _contains_placeholder(values(value), P, seen)
 end
-_contains_nothing(values::Union{Tuple,NamedTuple}) = any(_contains_nothing, values)
+function _contains_placeholder_children(value::TransformedValue, ::Type{P}, seen) where {P}
+    return _contains_placeholder(get_internal_value(value), P, seen)
+end
+function _contains_placeholder_children(values::AbstractArray, ::Type{P}, seen) where {P}
+    return any(eachindex(values)) do i
+        isassigned(values, i) && _contains_placeholder(values[i], P, seen)
+    end
+end
+function _contains_placeholder_children(
+    values::Union{Tuple,NamedTuple}, ::Type{P}, seen
+) where {P}
+    return any(value -> _contains_placeholder(value, P, seen), values)
+end
 
 struct ModelValue{R<:Union{Condition,ArgumentCondition,Fix},T}
     value::T

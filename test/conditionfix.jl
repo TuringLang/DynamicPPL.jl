@@ -2848,6 +2848,27 @@ end
     @test !isassigned(x, 2)
 end
 
+mutable struct CyclicObservation
+    value::Bool
+    next::Any
+end
+struct CyclicObservationDistribution <: DiscreteUnivariateDistribution end
+function Distributions.logpdf(::CyclicObservationDistribution, x::CyclicObservation)
+    return logpdf(Bernoulli(0.5), x.value)
+end
+function Distributions.loglikelihood(d::CyclicObservationDistribution, x::CyclicObservation)
+    return logpdf(d, x)
+end
+@testset "cyclic structured observations" begin
+    @model cyclic_observation(x) = x ~ CyclicObservationDistribution()
+    x = CyclicObservation(true, nothing)
+    x.next = x
+    @test logjoint(cyclic_observation(x), (;)) ≈ log(0.5)
+    for placeholder in (nothing, missing)
+        x.next = (x, placeholder)
+        @test_throws ArgumentError logjoint(cyclic_observation(x), (;))
+    end
+end
 @info "Completed $(@__FILE__) in $(now() - __now__)."
 
 end
