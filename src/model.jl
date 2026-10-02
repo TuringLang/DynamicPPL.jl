@@ -1530,7 +1530,7 @@ function _convert_partial_argument_binding(
     converted = multi ? map(v -> convert(T, v), value) : convert(T, value)
     isequal(converted, value) || throw(
         ArgumentError(
-            "Cannot exactly represent partial binding at `$vn` in argument element type $T",
+            "Cannot exactly represent partial binding at `$vn` in storage element type $T",
         ),
     )
     return ModelValue{R}(converted)
@@ -1557,7 +1557,7 @@ function _check_binding_template_bounds(template, optic::AbstractPPL.Index, vn)
     end
     inbounds || throw(
         ArgumentError(
-            "Cannot bind `$vn`: index is outside the argument template at `$(AbstractPPL.getsym(vn))`",
+            "Cannot bind `$vn`: index is outside the storage at `$(AbstractPPL.getsym(vn))`",
         ),
     )
     if !(coptic.child isa AbstractPPL.Iden)
