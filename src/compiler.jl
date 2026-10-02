@@ -724,8 +724,20 @@ function build_output(modeldef, linenumbernode, lhs_names)
             pushfirst!(callargs, :(__model__.f))
         end
         descriptions = [
-            :($(Base.string)($("`$n` declared as $t, supplied "), $(Core.typeof)($n)))
-            for (n, t, _, _) in vcat(args_split, kwargs_split) if n in args_on_lhs
+            :(
+                if $(
+                    if is_splat
+                        :($(Base.all)($(Base.Fix2)($(Core.isa), $t), $(Base.values)($n)))
+                    else
+                        :($n isa $t)
+                    end
+                )
+                    nothing
+                else
+                    $(Base.string)($("`$n` declared as $t, supplied "), $(Core.typeof)($n))
+                end
+            ) for
+            (n, t, is_splat, _) in vcat(args_split, kwargs_split) if n in args_on_lhs
         ]
         # Dispatch again after replacement so the body's type parameters match its inputs.
         evaluatordef[:body] = MacroTools.@q begin
@@ -738,7 +750,10 @@ function build_output(modeldef, linenumbernode, lhs_names)
                             "Bound value does not match the declared argument type in model `",
                             $(Base.nameof)(__model__),
                             "`: ",
-                            $(Base.join)(($(descriptions...),), "; "),
+                            $(Base.join)(
+                                $(Base.filter)($(!isnothing), ($(descriptions...),)),
+                                "; ",
+                            ),
                         ),
                     ),
                 )
