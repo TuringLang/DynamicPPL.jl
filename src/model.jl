@@ -183,8 +183,14 @@ function VarNamedTuples._getindex_optic(
 ) where {R}
     return value
 end
-function VarNamedTuples._haskey_optic(value::ModelValue, optic::AbstractPPL.AbstractOptic)
-    return VarNamedTuples._haskey_optic(value.value, optic)
+function VarNamedTuples._haskey_optic(
+    value::ModelValue{R}, optic::AbstractPPL.AbstractOptic
+) where {R<:Union{Condition,ArgumentCondition,Fix}}
+    # Keep the wrapper at every step so nested tuples use binding-aware bounds checks.
+    head = AbstractPPL.ohead(optic)
+    VarNamedTuples._haskey_optic(value.value, head) || return false
+    child = VarNamedTuples._getindex_optic(value.value, head, @varname(_))
+    return VarNamedTuples._haskey_optic(ModelValue{R}(child), optic.child)
 end
 VarNamedTuples._haskey_optic(::ModelValue, ::AbstractPPL.Iden) = true
 function VarNamedTuples._haskey_optic(
@@ -193,7 +199,9 @@ function VarNamedTuples._haskey_optic(
     optic = AbstractPPL.concretize_top_level(optic, value.value)
     isempty(optic.kw) && checkbounds(Bool, Base.OneTo(length(value.value)), optic.ix...) ||
         return false
-    return VarNamedTuples._haskey_optic(getindex(value.value, optic.ix...), optic.child)
+    return VarNamedTuples._haskey_optic(
+        ModelValue{R}(getindex(value.value, optic.ix...)), optic.child
+    )
 end
 
 _model_role(::ModelValue{R}) where {R} = R()
