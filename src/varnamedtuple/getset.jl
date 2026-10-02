@@ -193,7 +193,17 @@ function maybe_index_template(template::AbstractArray, optic)
         NoTemplate()
     end
 end
-index_template(template::PartialArray, optic) = index_template(template.data, optic)
+template_array(template::PartialArray) = template.data
+function index_template(template::PartialArray, optic)
+    # Read through the PartialArray so a slice namespace yields its block, rather
+    # than an array of ArrayLikeBlocks, before descending into the child's fields.
+    return if (eltype(template) <: ArrayLikeBlock || ArrayLikeBlock <: eltype(template)) &&
+        haskey(template, optic.ix...; optic.kw...)
+        getindex(template, optic.ix...; optic.kw...)
+    else
+        index_template(template.data, optic)
+    end
+end
 function index_template(template::NestedTemplate{<:AbstractPPL.Index}, optic)
     template.path.child isa AbstractPPL.Iden && return SkipTemplate{1}(template.inner)
     return nested_template(
@@ -355,14 +365,12 @@ end
 # This function handles Index optics. Since Index optics can represent either single-element
 # indexing or multi-element indexing (e.g., slices, arrays of indices), and their
 # implementation can be somewhat different, we dispatch to separate functions for each case.
-function make_leaf(value, optic::AbstractPPL.Index, template::PartialArray)
-    # If the template is a PA, use its data as the template.
-    return make_leaf(value, optic, template.data)
-end
 function make_leaf(
     value,
     optic::AbstractPPL.Index,
-    template::Union{AbstractArray,NoTemplate,SkipTemplate,Missing,NestedTemplate},
+    template::Union{
+        AbstractArray,PartialArray,NoTemplate,SkipTemplate,Missing,NestedTemplate
+    },
 )
     # First we need to resolve any dynamic indices, since _is_multiindex doesn't work with
     # them. This also helpfully catches errors if there is a dynamic index and a suitable

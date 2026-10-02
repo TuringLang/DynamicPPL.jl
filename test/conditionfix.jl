@@ -2431,6 +2431,43 @@ end
     end
 end
 
+@testset "binding schemas under slice namespaces" begin
+    @model function slice_schema_local()
+        z = zeros(3)
+        for i in eachindex(z)
+            z[i] ~ Normal()
+        end
+        return z
+    end
+    @model function slice_schema_parent(child)
+        b ~ to_submodel(child)
+        return b
+    end
+    schema = @of(z = of(Array, 3))
+    for op in (condition, fix)
+        for (prefix, address) in (
+            (@varname(a[:]), @varname(a[:].z[2])),
+            (@varname(a[1:2]), @varname(a[1:2].z[2])),
+            (@varname(a[:]), @varname(a[1:2].z[2])),
+            (@varname(a[2:2]), @varname(a[2:2].z[2])),
+        )
+            model = DynamicPPL.prefix(slice_schema_local(), prefix; template=zeros(2))
+            bound = op(model, address => 1.0, schema)
+            @test bound(Xoshiro(1)) == op(model, address => 1.0)(Xoshiro(1))
+            @test slice_schema_parent(bound)(Xoshiro(1)) == bound(Xoshiro(1))
+        end
+        model = DynamicPPL.prefix(slice_schema_local(), @varname(a[:]); template=zeros(2))
+        @test op(model, @varname(a[:].z[end]) => 1.0, schema)(Xoshiro(1))[3] == 1.0
+        @test op(model, @varname(a[:].z[:]) => ones(3), schema)(Xoshiro(1)) == ones(3)
+        @test_throws ArgumentError op(model, @varname(a[:].z[4]) => 1.0, schema)
+        @test_throws ArgumentError op(
+            model, @varname(a[:].z[2]) => 0.1, @of(z = of(Array, Float32, 3))
+        )
+        nested = DynamicPPL.prefix(model, @varname(b[1:2]); template=zeros(2))
+        @test op(nested, @varname(b[1:2].a[:].z[2]) => 1.0, schema)(Xoshiro(1))[2] == 1.0
+    end
+end
+
 @testset "schema exact conversion" begin
     @model function typed_schema()
         z = zeros(3)
