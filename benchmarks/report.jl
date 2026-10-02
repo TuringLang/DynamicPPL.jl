@@ -44,16 +44,9 @@ function read_table(path)
     end
 end
 
-function escape_html(s)
-    return replace(
-        s, '&' => "&amp;", '<' => "&lt;", '>' => "&gt;", '"' => "&quot;", '\'' => "&#39;"
-    )
-end
-
 function commit_header(repo, sha, label)
-    isempty(sha) && return label
-    url = escape_html("https://github.com/$repo/commit/$sha")
-    return "<a href=\"$url\">$label ($(escape_html(first(sha, 7))))</a>"
+    isempty(sha) && return "`$label`"
+    return "`$label` [$(first(sha, 7))](https://github.com/$repo/commit/$sha)"
 end
 
 function report(args)
@@ -78,22 +71,8 @@ function report(args)
             main_times[row.key] = row.primal
         end
     end
-    println("<table>")
-    println("<thead>")
-    println(
-        "<tr><th rowspan=\"2\">Model</th><th rowspan=\"2\">dim</th>" *
-        "<th rowspan=\"2\">linked</th><th colspan=\"2\">primal</th>" *
-        "<th colspan=\"4\">gradient</th></tr>",
-    )
-    println(
-        "<tr><th>$(commit_header(repo, main_sha, "main"))</th>" *
-        "<th>$(commit_header(repo, pr_sha, "PR"))</th>" *
-        "<th>FwdDiff</th><th>RvsDiff</th><th>Mooncake</th><th>Enzyme</th></tr>",
-    )
-    println("</thead>")
-    println("<tbody>")
-    for row in pr_rows
-        cells = (
+    rows = map(pr_rows) do row
+        (
             row.name,
             row.dim,
             row.linked,
@@ -101,10 +80,51 @@ function report(args)
             row.primal,
             row.ratios...,
         )
-        println("<tr>", join(("<td>$(escape_html(cell))</td>" for cell in cells)), "</tr>")
     end
-    println("</tbody>")
-    println("</table>")
+    header = (
+        "Model", "dim", "linked", "main", "PR", "FwdDiff", "RvsDiff", "Mooncake", "Enzyme"
+    )
+    # Match print_results: one extra space for names, two for every other
+    # column, and a two-space gap between columns.
+    widths = [
+        max(length(label), maximum(textwidth(row[i]) for row in rows)) + (i == 1 ? 1 : 2)
+        for (i, label) in enumerate(header)
+    ]
+    gap = "  "
+    gap_w = textwidth(gap)
+    stub_w = sum(widths[1:3]) + 2 * gap_w
+    primal_w = sum(widths[4:5]) + gap_w
+    grad_w = sum(widths[6:9]) + 3 * gap_w
+    total_w = stub_w + gap_w + primal_w + gap_w + grad_w
+    center(s, w) = lpad(rpad(s, div(w + textwidth(s), 2)), w)
+    function format_row(row)
+        return join(
+            (
+                i == 1 ? rpad(cell, w) : lpad(cell, w) for
+                (i, (cell, w)) in enumerate(zip(row, widths))
+            ),
+            gap,
+        )
+    end
+
+    println(
+        "Primal times: $(commit_header(repo, main_sha, "main")), $(commit_header(repo, pr_sha, "PR"))",
+    )
+    println("\n```")
+    println(repeat("=", total_w))
+    println(
+        rpad("", stub_w) *
+        gap *
+        center("primal", primal_w) *
+        gap *
+        center("gradient", grad_w),
+    )
+    println(rpad("", stub_w) * gap * repeat("-", primal_w) * gap * repeat("-", grad_w))
+    println(format_row(header))
+    println(repeat("-", total_w))
+    foreach(row -> println(format_row(row)), rows)
+    println(repeat("=", total_w))
+    println("```")
     isempty(main_note) || println("\n", main_note)
     return nothing
 end
