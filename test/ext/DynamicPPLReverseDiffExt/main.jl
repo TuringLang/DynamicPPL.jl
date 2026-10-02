@@ -3,9 +3,10 @@ using DifferentiationInterface
 using DynamicPPL
 using DynamicPPL.TestUtils: ALL_MODELS
 using DynamicPPL.TestUtils.AD: run_ad
-using Distributions: Normal
+using Distributions: Normal, logpdf
 using ForwardDiff: ForwardDiff  # run_ad uses FD for correctness test
 using LogDensityProblems: LogDensityProblems
+using Random: Xoshiro
 using ReverseDiff: ReverseDiff
 using Test: @test, @testset
 
@@ -47,4 +48,75 @@ end
     allocs_uncompiled = repeated_call_allocs(ldf_uncompiled, params)
 
     @test allocs_compiled < allocs_uncompiled
+end
+
+struct ArgumentRecord{A,B}
+    a::A
+    b::B
+end
+mutable struct MutableArgumentRecord{A,B}
+    a::A
+    b::B
+end
+
+@testset "deconditioned argument gradients" begin
+    @model function child(y, read)
+        μ = read(y)
+        x ~ Normal(μ, 1)
+        y = [missing]
+        return y[1] ~ Normal()
+    end
+    @model function record_child(y)
+        μ = y.a[1]
+        x ~ Normal(μ, 1)
+        y = (a=[missing], b=y.b)
+        return y.a[1] ~ Normal()
+    end
+    @model function parent(make_child, vn)
+        z ~ Normal()
+        return a ~ to_submodel(decondition(make_child(z), vn))
+    end
+
+    cases = (
+        (z -> child([z], first), @varname(y)),
+        (z -> child(Real[z], first), @varname(y)),
+        (z -> child(Any[z], first), @varname(y)),
+        (z -> child([[z]], y -> y[1][1]), @varname(y)),
+        (z -> child(([z],), y -> y[1][1]), @varname(y)),
+        (z -> child((a=[z],), y -> y.a[1]), @varname(y)),
+        (z -> child([z, zero(z)], first), @varname(y[1])),
+        (z -> child([[z], [zero(z)]], y -> y[1][1]), @varname(y[1])),
+        (z -> child(([z], [zero(z)]), y -> y[1][1]), @varname(y[1])),
+        (z -> record_child((a=[z], b=[zero(z)])), @varname(y.a)),
+        (z -> child(ArgumentRecord([z], [zero(z)]), y -> y.a[1]), @varname(y)),
+        (z -> child(ArgumentRecord([z], Float64), y -> y.a[1]), @varname(y)),
+        (z -> child(MutableArgumentRecord([z], [zero(z)]), y -> y.a[1]), @varname(y)),
+        (z -> record_child(ArgumentRecord([z], [zero(z)])), @varname(y.a)),
+        (z -> record_child(MutableArgumentRecord([z], [zero(z)])), @varname(y.a)),
+    )
+    params = [0.4, 0.7, 0.9]
+    for (make_child, vn) in cases, threadsafe in (false, true)
+        model = setthreadsafe(parent(make_child, vn), threadsafe)
+        _, vi = DynamicPPL.init!!(
+            Xoshiro(123456),
+            model,
+            VarInfo(VectorValueAccumulator()),
+            InitFromPrior(),
+            UnlinkAll(),
+        )
+        ldf = LogDensityFunction(
+            model, getlogjoint, vi; adtype=AutoReverseDiff(; compile=false)
+        )
+        value, gradient = LogDensityProblems.logdensity_and_gradient(ldf, params)
+        f = x -> LogDensityProblems.logdensity(ldf, x)
+        h = 1e-5
+        numerical = map(eachindex(params)) do i
+            delta = [j == i ? h : 0.0 for j in eachindex(params)]
+            (f(params + delta) - f(params - delta)) / (2h)
+        end
+        @test value ≈ sum(logpdf.(Normal(), [0.4, 0.3, 0.9]))
+        @test gradient ≈ [-0.1, -0.3, -0.9]
+        @test gradient ≈ ForwardDiff.gradient(f, params)
+        @test gradient ≈ numerical
+    end
 end
