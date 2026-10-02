@@ -26,13 +26,21 @@ Added the `context` keyword to `DynamicPPL.DebugUtils.model_typed`, `model_warnt
 
 ## Breaking changes
 
+`condition` and `fix` accept `NamedTuple`s/keywords, `VarName` pairs, `VarNamedTuple`s, and tuples of these; `AbstractDict` inputs and `Symbol` pairs (`:x => v`) throw `ArgumentError`: `Dict(@varname(x) => v)` → `@varname(x) => v`.
+
+A positional binding schema replaces `@vnt`/`@template` for partial bindings of locals: use `condition(m, @varname(z[2]) => 1.0, @of(z = of(Array, 3)))` with `using AbstractPPL: of, @of`.
+
+`@vnt` is no longer exported; internal users must qualify it as `DynamicPPL.@vnt` or explicitly import it.
+
+Whole argument bindings must be instances of the declared argument type, checked when the binding is made.
+
 For `@model fs(y; kw...)`, `fs(1.0; z=2, w=3).defaults` changes from `(z=2, w=3)` to `(var"#splat#kw"=(z=2, w=3),)`: keyword-splat entries are nested under the generated name instead of merged with other keywords, which remain at the top level. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
 Integer indices into NamedTuples are rejected in binding addresses and LHS variables: `x[1]` on a NamedTuple → `x.a`; Tuples retain integer indices. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
 Partly removing bindings of a single multivariate LHS variable now throws `ArgumentError` during evaluation; declare separate LHS variables to remove their bindings independently. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-Partial bindings preserve argument array element types through exact conversion and reject values that cannot be represented. Use a compatible argument template, including for AD tracer values. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+Partial bindings preserve schema and argument storage element or field types through exact conversion and reject values that cannot be represented. Runtime bindings into submodels under AD need compatible storage built from running values or whole bindings. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
 Fixed argument bindings now require static size and shape and throw `ArgumentError` naming the LHS variable when the body changes either or an LHS variable is outside the supplied value's coverage. Supply a fixed value covering every LHS variable; conditioned values are unaffected. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
@@ -46,11 +54,11 @@ Context-based `store_coloneq_value!!` methods are removed; `:=` statements use t
 
 `decondition(model, names...)` and `unfix(model, names...)` now throw `ArgumentError` when a requested address has no stored conditioned or fixed binding, respectively. Decondition child argument-supplied observations before wrapping the child with `to_submodel`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-`condition` and `fix` now reject model arguments with no LHS variables, and nonexistent fields of NamedTuple arguments. Construct the model with a new argument value instead. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+`condition` and `fix` now reject unknown top symbols, addresses outside a model's prefix, model arguments with no LHS variables, and nonexistent fields of NamedTuple arguments when the binding is made. Construct the model with a new argument value to change a non-LHS argument. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-Model arguments provide argument-supplied observations; `condition` and `fix` at the same address now replace the earlier role rather than stacking contexts. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+`fix` now shadows explicit and argument-supplied observations, and `unfix` uncovers the layer below: restoring the argument-supplied observation → revealing the surviving observation or leaving deconditioned data latent. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-A value containing `missing` now throws `ArgumentError` naming the LHS variable when a tilde statement observes or fixes it; unread parts of arguments and bindings may contain `missing`. It no longer marks an LHS variable as latent: use `decondition`. `InitFromParams` rejects `missing` when read. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+A value containing `missing` or `nothing` now throws `ArgumentError` naming the LHS variable when a tilde statement observes or fixes it; unread parts of arguments and bindings may contain either. Neither marks an LHS variable as latent: use `decondition`. `InitFromParams` rejects `missing` when read. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
 Passing `missing`, or omitting an argument whose default is `missing` (`@model gdemo(x=missing)` called as `gdemo()`), no longer makes its LHS variables latent; a tilde that reads it throws, including after the model body replaces it with an allocated array. `decondition` the argument instead: `decondition(gdemo(), @varname(x))`.
 
