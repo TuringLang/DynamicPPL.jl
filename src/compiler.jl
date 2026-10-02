@@ -407,8 +407,7 @@ function generate_tilde_literal(left, right)
     @gensym value
     return quote
         $value, __varinfo__ = $(DynamicPPL.tilde_observe!!)(
-            $(DynamicPPL.getprefix)(__model__),
-            $(DynamicPPL._prefix_template)(__model__.prefix),
+            __model__.prefix,
             $(DynamicPPL.check_tilde_rhs)($right),
             $left,
             nothing,
@@ -558,8 +557,7 @@ function generate_tilde(left, right; is_argument=false)
             )
 
             $value, __varinfo__ = $(DynamicPPL.tilde_observe!!)(
-                $(DynamicPPL.getprefix)(__model__),
-                $(DynamicPPL._prefix_template)(__model__.prefix),
+                __model__.prefix,
                 $(DynamicPPL.check_tilde_rhs)($dist),
                 $supplied_val,
                 $vn,
