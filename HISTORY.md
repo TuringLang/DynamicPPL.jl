@@ -114,7 +114,7 @@ Context binding accessors are removed: `conditioned(context)`/`fixed(context)` �
 
 Context observation hooks are removed: `tilde_observe!!(::AbstractContext, ...)` overloads → `accumulate_observe!!` implementations. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-Observation calls change: `tilde_observe!!(ctx, dist, value, vn, template, vi)` → `tilde_observe!!(prefix, prefix_template, dist, value, vn, template, vi)`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+Observation calls take the model's prefix instead of a context: `tilde_observe!!(ctx, dist, value, vn, template, vi)` → `tilde_observe!!(prefix, dist, value, vn, template, vi)`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501), [#1502](https://github.com/TuringLang/DynamicPPL.jl/pull/1502).
 
 Submodel latent calls require the parent model: `tilde_assume!!(ctx, submodel, vn, template, vi)` → `tilde_assume!!(parent, ctx, submodel, vn, template, vi)`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 

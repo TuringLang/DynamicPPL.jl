@@ -86,9 +86,6 @@ function _compose_prefix_templates(prefix::PrefixTemplate, inner)
     )
 end
 
-_prefix_template(::Union{Nothing,VarName}) = nothing
-_prefix_template(prefix::PrefixTemplate) = prefix
-
 _getprefix(prefix::Union{Nothing,VarName}) = prefix
 _getprefix(prefix::PrefixTemplate) = maybe_prefix(_getprefix(prefix.inner), prefix.prefix)
 
@@ -426,12 +423,13 @@ function prefix(model::Model, x)
 end
 
 function _prefix_varname_and_template(vn::VarName, template::Any, model::Model)
-    return _prefix_varname_and_template(vn, template, getprefix(model), model.prefix)
+    return _prefix_varname_and_template(vn, template, model.prefix)
 end
-function _prefix_varname_and_template(vn::VarName, template, prefix, prefix_template)
+function _prefix_varname_and_template(vn::VarName, template, prefix)
     prefix === nothing && return vn, template
-    pt = prefix_template === nothing ? prefix : prefix_template
-    return AbstractPPL.prefix(vn, prefix), _apply_prefix_template(pt, template)
+    return (
+        AbstractPPL.prefix(vn, _getprefix(prefix)), _apply_prefix_template(prefix, template)
+    )
 end
 
 function tilde_assume!!(
@@ -464,7 +462,7 @@ function _check_tilde_value(value, vn, role::Union{Condition,Fix})
 end
 
 """
-    tilde_observe!!(prefix, prefix_template, right::Distribution, left, vn, template, vi)
+    tilde_observe!!(prefix, right::Distribution, left, vn, template, vi)
 
 Accumulate an observation and return `(left, vi)` with the updated varinfo.
 
@@ -472,18 +470,17 @@ Accumulate an observation and return `(left, vi)` with the updated varinfo.
 the variable name before prefixing, or `nothing` for a literal. `template` describes the
 top-level variable's storage; literals use `NoTemplate()`.
 
-Apply `prefix` (a `VarName` or `nothing`) and its storage template `prefix_template`,
-then delegate to [`accumulate_observe!!`](@ref). The compiler passes this metadata directly
-so observations do not box the model. Every observation calls this function, independently
+Apply `prefix`, the model's single prefix value (`nothing`, a `VarName`, or a
+`PrefixTemplate` containing storage metadata), then delegate to [`accumulate_observe!!`](@ref).
+The compiler passes this metadata directly so observations do not box the model.
+Every observation calls this function, independently
 of the evaluation context. Fixed LHS variables bypass it and do not contribute to the log probability.
 """
-function tilde_observe!!(
-    prefix, prefix_template, right::Distribution, left, vn, template, vi
-)
+function tilde_observe!!(prefix, right::Distribution, left, vn, template, vi)
     vn, template = if vn === nothing
         vn, NoTemplate()
     else
-        _prefix_varname_and_template(vn, template, prefix, prefix_template)
+        _prefix_varname_and_template(vn, template, prefix)
     end
     left = _check_tilde_value(left, vn, Condition())
     vi = accumulate_observe!!(vi, right, left, vn, template)

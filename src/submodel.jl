@@ -302,8 +302,6 @@ end
     return model.f(args...; kwargs...)
 end
 
-function tilde_observe!!(
-    prefix, prefix_template, ::DynamicPPL.Submodel, left, ::Nothing, template, vi
-)
+function tilde_observe!!(prefix, ::DynamicPPL.Submodel, left, ::Nothing, template, vi)
     throw(ArgumentError("`x ~ to_submodel(...)` is not supported when `x` is a literal"))
 end

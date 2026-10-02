@@ -330,7 +330,8 @@ addresses. Prefixes are not transferred; apply `prefix` to `new` again.
 
 Replace context overloads of `tilde_observe!!` with `accumulate_observe!!` implementations.
 For direct observation calls, replace `tilde_observe!!(ctx, dist, value, vn, template, vi)`
-with the current signature `tilde_observe!!(prefix, prefix_template, dist, value, vn, template, vi)`.
+with `tilde_observe!!(prefix, dist, value, vn, template, vi)`, where `prefix` is the model's
+prefix value (`nothing`, a `VarName`, or a `PrefixTemplate`).
 For submodel latent calls, replace `tilde_assume!!(ctx, submodel, vn, template, vi)` with
 `tilde_assume!!(parent, ctx, submodel, vn, template, vi)`.
 Replace `store_coloneq_value!!(ctx, vn, value, template, vi)` with
