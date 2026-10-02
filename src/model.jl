@@ -1569,7 +1569,7 @@ end
 
 """
     condition(model::Model; values...)
-    condition(model::Model, values::NamedTuple)
+    condition(model::Model, values..., [schema])
 
 Return a `Model` which treats the LHS variables bound by `values` as observations: they replace
 sampling and contribute to the likelihood.
@@ -1700,12 +1700,9 @@ demo_mv (generic function with 4 methods)
 
 julia> model = demo_mv();
 
-julia> observations = @vnt begin
-           @template m=zeros(2)
-           m[2] := 1.0
-       end;
+julia> using AbstractPPL: of, @of
 
-julia> conditioned_model = condition(model, observations);
+julia> conditioned_model = condition(model, @varname(m[2]) => 1.0, @of(m = of(Array, 2)));
 
 julia> # `m[1]` is sampled while `m[2]` is observed.
        m = conditioned_model(); (m[1] != 1.0 && m[2] == 1.0)
@@ -1725,21 +1722,16 @@ julia> try
 true
 ```
 
-But you _can_ do this if you use `VarName` pairs or a `VarNamedTuple` as the underlying storage
-instead:
-
-```jldoctest condition
-julia> vnt = @vnt begin
-           @template m = zeros(2)
-           m[2] := 1.0
-       end
-VarNamedTuple
-└─ m => PartialArray size=(2,) data::Vector{Float64}
-        └─ (2,) => 1.0
-
-julia> m = condition(model, vnt)(); (m[1] != 1.0 && m[2] == 1.0)
-true
-```
+Use `VarName` pairs with a binding schema as above. A schema supplies storage without
+observing or fixing any values. It is an AbstractPPL `OfNamedTuple` type, equivalently
+written `of((m=of(Array, 2),))`, and may appear anywhere among the positional inputs,
+at most once per call. Keywords remain binding data; `|` does not take a schema.
+An existing owner within the layer being edited takes precedence; conflicting storage
+throws `ArgumentError`. Schema entries for arguments, unrelated names, or names the call
+does not bind also throw `ArgumentError`. Resolve symbolic sizes before binding.
+Use whole bindings for custom arrays and structs that `of` cannot describe.
+Values DynamicPPL produces, such as `rand(model)` and `conditioned(model)`, are
+[`VarNamedTuple`](@ref)s and can be passed straight back for round trips.
 
 ## Nested models
 
@@ -1979,7 +1971,8 @@ end
 function _convert_binding_template(value, template, optic::AbstractPPL.AbstractOptic, vn)
     template isa NoTemplate && return value
     head = AbstractPPL.ohead(optic)
-    head = head isa AbstractPPL.Index ? AbstractPPL.concretize_top_level(head, template) : head
+    head =
+        head isa AbstractPPL.Index ? AbstractPPL.concretize_top_level(head, template) : head
     if optic.child isa AbstractPPL.Iden
         return _convert_partial_argument_binding(
             ModelValue{Condition}(value), template, head, vn
@@ -2449,11 +2442,19 @@ conditioned(model::Model) = _select_model_values(
 
 """
     fix(model::Model; values...)
-    fix(model::Model, values::NamedTuple)
+    fix(model::Model, values..., [schema])
 
 Return a `Model` which treats the LHS variables bound by `values` as constants: they replace
 sampling and contribute no log probability. Fixed argument LHS variables reset to their bound
 value when their tilde statement runs, even if the body has computed a different value.
+
+Use `NamedTuple`s or keywords for whole top-level values, `VarName` pairs for any address,
+and one positional binding schema for partially bound locals, as in
+`fix(model, @varname(z[2]) => 1.0, @of(z = of(Array, 3)))` (`using AbstractPPL: of, @of`).
+Schema entries must name local LHS top symbols bound by the call; arguments, unrelated names,
+unused entries, a second schema, and storage conflicting with an existing owner throw
+`ArgumentError`. The owner in the fixed layer takes precedence over the schema.
+Values DynamicPPL produces as [`VarNamedTuple`](@ref)s can be passed straight back for round trips.
 
 Whole bindings use the supplied object without copying. A partial binding snapshots the
 remaining parts when it splits a whole binding; later changes to the supplied container's

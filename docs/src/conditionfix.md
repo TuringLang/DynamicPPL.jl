@@ -91,6 +91,7 @@ As an example, one could define a linear regression model as follows:
 
 ```@example 1
 using DynamicPPL, Distributions
+using AbstractPPL: of, @of
 
 @model function linear_regression(x)
     m ~ Normal(0, 1)
@@ -155,13 +156,10 @@ does not recompute them.
 Keyword-splat arguments support whole replacements; their entries cannot be bound separately.
 
 To condition the model on observed data, we can use the `condition` function, or its alias `|`.
-The most robust way of conditioning is to provide a `VarNamedTuple` that holds the values to condition on.
+Use a `NamedTuple` or keyword arguments to bind whole top-level values.
 
 ```@example 1
-# Construct a `VarNamedTuple` that holds the conditioning values.
-observations = @vnt begin
-    y := y_data
-end
+observations = (; y=y_data)
 
 # Equivalently: conditioned_model = condition(model, observations).
 cond_model = model | observations
@@ -193,8 +191,7 @@ and this quantity can be used by MCMC algorithms to draw samples from the poster
 We can illustrate this by fixing the intercept `c` to its true value:
 
 ```@example 1
-# Construct a `VarNamedTuple` that holds the fixed values.
-fix_values = VarNamedTuple(; c=true_c)
+fix_values = (; c=true_c)
 
 fixed_model = fix(model, fix_values)
 ```
@@ -213,59 +210,46 @@ mean(vnt[@varname(y)] for vnt in [rand(fixed_model) for _ in 1:1000])
 
 ## Supplying parameters to condition or fix on
 
-In the above examples we have provided the conditioning and fixing values as `VarNamedTuple`s.
-Internally, DynamicPPL stores the values as `VarNamedTuple`s, and it is strongly recommended that you construct them this way.
-
-For convenience, both `condition` and `fix` also accept a variety of different input formats:
-
-```julia
-# NamedTuple
-model | (; y=y_data)
-
-# Ordered tuple of pairs
-model | (@varname(y) => y_data,)
-
-# Pair
-model | (@varname(y) => y_data)
-```
-
-**Note, however, that these alternative input formats are not necessarily rich enough to capture all the necessary information.
-We recommend using `VarNamedTuple`s directly in all cases.**
-
-For example, if you only wanted to condition `y[1]` but not the other `y[i]`'s, you cannot specify this via a `NamedTuple`, since `NamedTuple`s require `Symbol`s as keys.
-
-You can easily specify this via `VarNamedTuple` and its helper macro [`@vnt`](@ref):
+Use `NamedTuple`s or keywords for whole top-level values and `VarName` pairs for any
+address. Positional inputs and tuples of these inputs are applied left to right.
+`AbstractDict` inputs and `Symbol` pairs such as `:y => y_data` throw `ArgumentError`.
+Values DynamicPPL produces, such as `rand(model)` and `conditioned(model)`, are
+[`VarNamedTuple`](@ref)s and can be passed straight back to `condition` or `fix` for round trips.
 
 ```@example 1
-vnt = @vnt begin
-    y[1] := y_data[1]
-end
+condition(model, (; y=y_data))
+condition(model; y=y_data)
+fix(model, @varname(c) => true_c)
 ```
 
-Note that in this case since the `VarNamedTuple` has no knowledge of the length or shape of `y`, DynamicPPL will assume that `y` is a `Base.Vector` of unknown length (hence the `GrowableArray` above).
-
-This will work fine as long as `y` is indeed a `Base.Vector`.
-However, if you want to avoid this, you should provide the full shape of `y` when defining the `VarNamedTuple`:
+To observe only `y[1]`, use a `VarName` pair and a **binding schema** supplying the
+shape and element type of the local storage:
 
 ```@example 1
-vnt = @vnt begin
-    @template y = y_data
-    y[1] := y_data[1]
-end
-```
-
-Now, the variable `y` is known to have the same shape and type as `y_data`.
-
-!!! warning
-    
-    If you use custom array types in DynamicPPL that have different indexing semantics from `Base.Array`, then the templating shown here becomes mandatory. For example, `OffsetArray`s may behave incorrectly if templates are not supplied.
-
-If we run the model again, we should find that `y[1]` is no longer sampled:
-
-```@example 1
-cond_model_partial = model | vnt
+cond_model_partial = condition(
+    model, @varname(y[1]) => y_data[1], @of(y = of(Array, length(y_data)))
+)
 rand(cond_model_partial)
 ```
+
+A binding schema is an AbstractPPL `OfNamedTuple` type; `of((y=of(Array, length(y_data)),))`
+is equivalent. It may appear anywhere among the positional inputs, at most once per call,
+and supplies storage without binding any values. Keywords remain binding data; `|` does
+not take a schema. `fix` accepts the same positional schema syntax.
+
+The most recent owner within the layer being edited takes precedence over a schema;
+conflicting storage throws `ArgumentError`. Schema entries must name local LHS top symbols
+bound by that call: arguments, unrelated names, and unused entries throw `ArgumentError`.
+Model arguments already supply their storage, so partial argument bindings need no schema.
+Without storage, indexed local bindings infer a growable array and warn, and cannot resolve
+`end` or `:`. Symbolic sizes in an `of` type must be resolved before binding.
+An `of` type fixed before evaluation has a fixed element type, so runtime bindings into
+submodels under ForwardDiff or ReverseDiff need a schema built from running values
+(`@of(z = of(Array, typeof(m), n))`) or a whole binding.
+
+For storage that `of` cannot describe, such as custom arrays or structs, bind a whole value.
+Partial bindings convert exactly to their storage's element or field type: `1` in a
+`Float64` slot becomes `1.0`, while `1.5` in an `Int` slot and `0.1` in a `Float32` slot throw.
 
 ## Missing data
 
