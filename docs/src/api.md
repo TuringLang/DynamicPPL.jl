@@ -93,12 +93,14 @@ Base.rand(::Random.AbstractRNG, ::LogDensityFunction, ::AbstractInitStrategy)
 A [`Model`](@ref) can be conditioned on a set of observations with [`AbstractPPL.condition`](@ref) or its alias [`|`](@ref).
 
 ```@docs
-|(::Model, ::Union{Tuple,NamedTuple,AbstractDict{<:VarName}})
+|(::Model, ::Union{NamedTuple,AbstractDict,Pair,Tuple,VarNamedTuple})
 condition
 DynamicPPL.conditioned
 ```
 
-Similarly, one can specify with [`AbstractPPL.decondition`](@ref) that certain, or all, random variables are not observed.
+[`AbstractPPL.decondition`](@ref) removes observations of either origin, including those
+shadowed by fixed bindings. The LHS variable becomes latent unless still fixed.
+See [Binding rules](@ref) for accepted inputs and the two binding layers.
 
 ```@docs
 decondition
@@ -126,7 +128,8 @@ DynamicPPL.fixed
 
 The difference between [`DynamicPPL.fix`](@ref) and [`DynamicPPL.condition`](@ref) is described in the docstring of [`DynamicPPL.fix`](@ref) above.
 
-Similarly, we can revert this with [`DynamicPPL.unfix`](@ref), i.e. return the variables to their original meaning:
+[`DynamicPPL.unfix`](@ref) removes fixed bindings, uncovering observations below them
+or leaving the LHS variable latent. Observations removed by `decondition` stay removed:
 
 ```@docs
 DynamicPPL.unfix

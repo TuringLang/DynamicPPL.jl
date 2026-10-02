@@ -82,7 +82,7 @@ end
         end
     end
 
-    @testset "evaluation-local binding APIs" begin
+    @testset "child namespace binding APIs" begin
         @model function inspect_child(x=[0.0, 1.0]; metadata=0)
             for i in eachindex(x)
                 x[i] ~ Normal()

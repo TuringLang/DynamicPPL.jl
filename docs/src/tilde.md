@@ -12,7 +12,11 @@ This page goes into more detail about exactly *how* initialisation strategies, t
 ## The `@model` macro
 
 Each tilde-statement, say, `x ~ Normal()`, is transformed by the `@model` macro into something like the following pseudocode (the functions like `is_fixed` do not have those exact names in DynamicPPL but are conceptually equivalent).
-Each supplied binding has one role, conditioned or fixed; model arguments supply default conditioned bindings.
+The effective binding determines the LHS variable's role; see [Binding rules](@ref).
+Arguments on the LHS supply observations by default. Every argument binding replaces
+the argument before the body runs, so an observed argument LHS variable reads its current
+body value; a local LHS variable reads its binding at the tilde. Fixed argument LHS
+variables reset to the bound value at the tilde and require static shape.
 If you're interested in the gory details you can run `@macroexpand @model f() = x ~ Normal()` in the REPL.
 
 ```julia
@@ -26,7 +30,8 @@ begin
         raw_x = get_fixed_value(__model__, vn)
 
     elseif is_conditioned(__model__, vn)
-        conditioned_x = get_conditioned_value(__model__, vn)
+        # Conceptual branch: the compiler knows whether x is an argument.
+        conditioned_x = is_argument(x) ? x : get_conditioned_value(__model__, vn)
         raw_x, __varinfo__ = tilde_observe!!(
             __prefix__, __prefix_template__, dist, conditioned_x, vn, template, __varinfo__
         )

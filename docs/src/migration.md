@@ -203,3 +203,22 @@ params = BangBang.setindex!!(params, TransformedValue(2.0, NoTransform()), @varn
 _, vi = init!!(Xoshiro(468), model, vi, InitFromParams(params, nothing), UnlinkAll())
 vi
 ```
+
+## Binding arguments and data
+
+Arguments on the LHS are observed by default. Replace placeholder-based latent data,
+including `@model gdemo(x=missing)` called as `gdemo()`, with
+`decondition(gdemo(), @varname(x))`; allocating `x` in the body does not remove its
+argument-supplied observation. `missing` and `nothing`, including nested values, throw
+where a tilde reads them. See [Missing data](@ref) for a complete example.
+
+Fixed bindings now shadow observations: `unfix` uncovers the layer below, while
+`decondition` removes observations even beneath a fixed binding. Explicit observations
+of arguments act through the argument before the body, just like argument-supplied data.
+
+Replace dictionary binding inputs with NamedTuples/keywords or ordered `VarName` pairs;
+`:x => v` remains shorthand for `@varname(x) => v`. Supply local partial storage with one
+positional `@of(...)` binding schema (`using AbstractPPL: of, @of`). Produced
+`VarNamedTuple` values remain accepted. Address and independently declared type errors
+are checked when binding; submodel addresses and shared signature constraints may wait
+until evaluation. See [Binding rules](@ref) for both contracts and their exceptions.

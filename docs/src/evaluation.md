@@ -75,9 +75,11 @@ supplies `x`. Its transform strategy determines the transformed value and Jacobi
 Accumulators receive those results to compute densities or record values; evaluation
 does not read previously recorded parameters from `VarInfo`.
 
-For a conditioned observation such as `y ~ Normal(x, 1)`, the model supplies `y` and
-the likelihood accumulator scores it. Literal observations such as `0 ~ Normal(x, 1)`
-use the same observation path. Fixed values are not scored, and tracked assignments
+For an observed LHS variable such as `y ~ Normal(x, 1)`, the effective binding supplies
+`y` and the likelihood accumulator scores it. An argument binding acts before the body
+runs, and the tilde reads the argument's current body value; a local LHS variable reads
+its binding at the tilde. See the argument contract in [Binding rules](@ref).
+Literal observations such as `0 ~ Normal(x, 1)` use the same observation path. Fixed values are not scored, and tracked assignments
 such as `z := x + y` are recorded when requested. None of these operations uses the
 context to select a latent value.
 
@@ -118,7 +120,7 @@ record a [`VectorValueAccumulator`](@ref) and pass `get_vector_values(recorded)`
 
 This separation specifies data flow, not purity: evaluation can advance the RNG, and
 ordinary Julia mutations in a model body still take effect.
-For density evaluation, LHS variables get their values from supplied parameters rather than sampling.
+For density evaluation, latent LHS variables get their values from supplied parameters rather than sampling.
 
 ## Accumulators
 
