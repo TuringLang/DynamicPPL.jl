@@ -20,6 +20,18 @@ function _contains_missing(values::Union{Tuple,NamedTuple})
     return any(_contains_missing, values)
 end
 
+_contains_nothing(::Any) = false
+_contains_nothing(::Nothing) = true
+_contains_nothing(value::Base.Pairs) = _contains_nothing(values(value))
+_contains_nothing(value::TransformedValue) = _contains_nothing(get_internal_value(value))
+_contains_nothing(::AbstractArray{<:Number}) = false
+function _contains_nothing(values::AbstractArray)
+    return any(
+        i -> isassigned(values, i) && _contains_nothing(values[i]), eachindex(values)
+    )
+end
+_contains_nothing(values::Union{Tuple,NamedTuple}) = any(_contains_nothing, values)
+
 struct ModelValue{R<:Union{Condition,ArgumentCondition,Fix},T}
     value::T
     function ModelValue{R}(value::T) where {R<:Union{Condition,ArgumentCondition,Fix},T}
@@ -1486,8 +1498,8 @@ See also: [`decondition`](@ref), [`conditioned`](@ref)
 Within each layer, later bindings replace earlier ones where they overlap: a whole binding
 replaces the entire value; a partial binding changes part of an already-bound value and
 preserves the rest. Fixed bindings shadow observations until removed with `unfix`.
-Subvariables of one LHS variable cannot have different roles. A value containing `missing`
-is rejected when a tilde statement observes or fixes it, naming the LHS variable. Parts of
+Subvariables of one LHS variable cannot have different roles. A value containing `missing` or
+`nothing` is rejected when a tilde statement observes or fixes it, naming the LHS variable. Parts of
 an argument or binding that no tilde statement reads may contain `missing`. It no longer
 marks an LHS variable as latent: omit its explicit binding or use [`decondition`](@ref) to
 make an argument LHS variable latent; see [Missing data](@ref).
@@ -2124,7 +2136,7 @@ value when their tilde statement runs, even if the body has computed a different
 Whole bindings use the supplied object without copying. A partial binding snapshots the
 remaining parts when it splits a whole binding; later changes to the supplied container's
 entries are not reflected in those parts. The model body must not mutate bound values,
-directly or through a `view`. `missing` rejection has the scope and remedies documented
+directly or through a `view`. `missing` and `nothing` rejection has the scope and remedies documented
 in [`condition`](@ref). Replacement, unused bindings, and
 argument restrictions follow [`condition`](@ref). See [Binding rules](@ref) for the shared rules, including the
 cost of partial bindings on array arguments, and [`to_submodel`](@ref) for submodels.
@@ -2506,9 +2518,16 @@ end
 
 function _check_tilde_value(value, vn, role::Union{Condition,Fix})
     remove = role isa Fix ? "unfix" : "decondition"
-    _contains_missing(value) && throw(
+    absent = if _contains_missing(value)
+        "missing"
+    elseif _contains_nothing(value)
+        "nothing"
+    else
+        nothing
+    end
+    absent === nothing || throw(
         ArgumentError(
-            "LHS variable `$vn` contains `missing`; make it latent with `$remove`."
+            "LHS variable `$vn` contains `$absent`; make it latent with `$remove`."
         ),
     )
     return value

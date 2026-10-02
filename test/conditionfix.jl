@@ -333,7 +333,7 @@ end
             @test conditioned(unused(value))[@varname(p)] === value
             @test getloglikelihood(VarInfo(Xoshiro(1), unused(value))) ==
                 logpdf(Normal(), 1.0)
-            @test_throws MethodError VarInfo(Xoshiro(1), observed(value))
+            @test_throws r"ArgumentError: .*nothing.*decondition" VarInfo(Xoshiro(1), observed(value))
         end
         nested = placeholder_scalar(VarNamedTuple(; a=nothing, b=1.0))
         @test conditioned(nested)[@varname(y.a)] === nothing
@@ -2093,6 +2093,24 @@ end
     @test layer_parent(unfix(fix(observed; x=5.0)))(Xoshiro(1)) == 2.0
     prefixed = DynamicPPL.prefix(fix(observed; x=5.0), @varname(a))
     @test unfix(prefixed, @varname(a.x))(Xoshiro(1)) == 2.0
+end
+
+@testset "nothing is rejected only where a tilde reads it" begin
+    @model absence_field(p) = p.a ~ Normal()
+    @model absence_array(x) = x ~ product_distribution([Normal(), Normal()])
+    for absent in (missing, nothing)
+        message = "LHS variable `p.a` contains `$absent`; make it latent with `decondition`."
+        @test_throws message absence_field((a=absent, b=1.0))(Xoshiro(1))
+        @test absence_field((a=1.0, b=absent))(Xoshiro(1)) == 1.0
+        @test_throws "LHS variable `x` contains `$absent`" absence_array([1.0, absent])(
+            Xoshiro(1)
+        )
+        @test_throws "make it latent with `unfix`" fix(
+            absence_field((a=1.0, b=2.0)); p=(a=absent, b=2.0)
+        )(
+            Xoshiro(1)
+        )
+    end
 end
 
 @info "Completed $(@__FILE__) in $(now() - __now__)."

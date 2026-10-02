@@ -68,7 +68,7 @@
   - `conditioned` and `fixed` return plain values, independent of binding history:
     `VarNamedTuple`, `PartialArray`, or ordinary values. Partial removal or mixed
     roles produce plain partial values, not the original container type.
-  - Whole `missing`/`nothing` arguments and values containing `missing` throw
+  - Whole `missing`/`nothing` arguments and values containing either throw
     `ArgumentError` naming the LHS variable where a tilde reads them; make data latent
     with `decondition` (see [Missing data](@ref)).
     `InitFromParams` rejects `missing` when the parameter is read during initialization,
