@@ -80,6 +80,31 @@ module NoImportDPPLTest
 end
 
 @testset "compiler.jl" begin
+    @testset "bound argument type diagnostics name only mismatches" begin
+        @model two_typed_arguments(x::Float64, y) = (x ~ Normal(); y ~ Normal())
+        @model keyword_typed_arguments(x; y::Float64) = (x ~ Normal(); y ~ Normal())
+        @model function splatted_typed_arguments(x::Float64, ys::Float64...)
+            x ~ Normal()
+            for i in eachindex(ys)
+                ys[i] ~ Normal()
+            end
+        end
+        for (model, name) in (
+            (condition(two_typed_arguments(1.0, 2.0); x=1), "x"),
+            (condition(keyword_typed_arguments(1.0; y=2.0); y=2), "y"),
+            (condition(splatted_typed_arguments(1.0, 2.0, 3.0); x=1), "x"),
+        )
+            message = "Bound value does not match the declared argument type in model `$(nameof(model))`: `$name` declared as Float64, supplied Int64"
+            err = try
+                model(Xoshiro(1))
+            catch e
+                e
+            end
+            @test err isa ArgumentError
+            @test err.msg == message
+        end
+    end
+
     @testset "model macro" begin
         @model function testmodel_comp(x, y)
             s ~ InverseGamma(2, 3)
