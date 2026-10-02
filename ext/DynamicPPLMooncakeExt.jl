@@ -44,7 +44,7 @@ Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
 
 # Reconstruction support depends only on types and methods.
 Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
-    typeof(DynamicPPL._argument_reconstructible),Type,Type
+    typeof(DynamicPPL._argument_reconstructible),Any,NamedTuple
 }
 
 # Storage type selection returns only type metadata; copying payloads stays differentiable.

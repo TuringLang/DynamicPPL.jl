@@ -3021,6 +3021,28 @@ struct ImmutableInnerState
     x::Vector{Float64}
     ImmutableInnerState() = new([0.0])
 end
+struct AbstractFieldInnerState
+    x::Float64
+    y::Any
+    AbstractFieldInnerState(x::Float64, ::Symbol) = new(x, 0.0)
+end
+struct CustomConstructorState
+    x::Float64
+    y::Any
+    CustomConstructorState(x::Float64, y::Float64, ::Nothing) = new(x, y)
+end
+function DynamicPPL.ConstructionBase.constructorof(::Type{CustomConstructorState})
+    return (x::Float64, y::Float64) -> CustomConstructorState(x, y, nothing)
+end
+struct CustomSetterState
+    x::Float64
+    CustomSetterState(x::Float64, ::Nothing) = new(x)
+end
+function DynamicPPL.ConstructionBase.setproperties(
+    ::CustomSetterState, patch::NamedTuple{(:x,)}
+)
+    return CustomSetterState(patch.x, nothing)
+end
 mutable struct UndefinedInnerState
     x::Float64
     unused::Vector{Float64}
@@ -3044,10 +3066,26 @@ end
         result = returned(decondition(immutable_inner(source)), (s=2.0,))
         @test result.x == [0.0]
         @test result.x !== source.x
-        @test_throws ArgumentError condition(
+        @test_throws r"ArgumentError: .*ImmutableInnerState" condition(
             immutable_inner(source), @varname(s.x) => [2.0]
         )
         @test source.x == [0.0]
+    end
+    @testset "reconstruction follows method dispatch" begin
+        @model reconstructible(s) = (s.x ~ Normal(); s)
+        for bind in (condition, fix)
+            # Inference sees y::Any and cannot rule out the Symbol constructor,
+            # but the stored Float64 cannot be passed to that constructor.
+            @test_throws r"ArgumentError: .*AbstractFieldInnerState" bind(
+                reconstructible(AbstractFieldInnerState(0.0, :init)), @varname(s.x) => 2.0
+            )
+            for source in
+                (CustomConstructorState(0.0, 1.0, nothing), CustomSetterState(0.0, nothing))
+                result = returned(bind(reconstructible(source), @varname(s.x) => 2.0), (;))
+                @test result.x == 2.0
+                @test source.x == 0.0
+            end
+        end
     end
     @testset "undefined reference field" begin
         @model undefined_inner(s) = (s.x ~ Normal(); s)
