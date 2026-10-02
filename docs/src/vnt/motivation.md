@@ -154,11 +154,11 @@ When calling functions such as `returned` or `predict` on the chain, we have to 
     ```
 
 Another problem was when conditioning on values.
-In such cases, you had to condition on `x` in full, rather than its LHS subvariables:
+The binding API now accepts ordered pairs rather than dictionaries, allowing whole and partial bindings:
 
 ```julia
-model = f4() | Dict(@varname(x) => [1.0, -1.0])  # This would work.
-model = f4() | Dict(@varname(x[1]) => 1.0, @varname(x[2]) => -1.0)  # This would not.
+model = f4() | (@varname(x) => [1.0, -1.0])  # Whole binding.
+model = f4() | (@varname(x[1]) => 1.0, @varname(x[2]) => -1.0)  # Partial bindings.
 ```
 
 Finally, we are unable to properly use different indexing schemes.

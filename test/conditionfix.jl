@@ -420,11 +420,7 @@ end
         end;
         y)
         for bind in (condition, fix),
-            input in (
-                (@varname(y[2]) => 3.0,),
-                (Dict(@varname(y[2]) => 3.0),),
-                ((@varname(y[2]) => 3.0,),),
-            )
+            input in ((@varname(y[2]) => 3.0,), ((@varname(y[2]) => 3.0,),))
 
             m = @test_logs bind(template_lhs_variables([1.0, 2.0]), input...)
             @test m() == [1.0, 3.0]
@@ -779,8 +775,7 @@ end
         for bind in (condition, fix)
             for model in
                 (ordinary(1), decondition(ordinary(1)), setthreadsafe(ordinary(1), true))
-                for values in
-                    ((; n=2), (; n=nothing), (@varname(n) => 2,), Dict(@varname(n) => 2))
+                for values in ((; n=2), (; n=nothing), (@varname(n) => 2,))
                     @test_throws r"ArgumentError: .*`n`.*left-hand side of `~`.*construct" bind(
                         model, values
                     )
@@ -1089,7 +1084,7 @@ end
             op(model; x),
             op(model, VarNamedTuple(; x)),
             op(model, (; x)),
-            op(model, Dict(@varname(x) => x)),
+            op(model, (@varname(x) => x,)),
             op(model, @varname(x) => x),
             op(model, (@varname(x) => x,)),
         )
@@ -1099,7 +1094,7 @@ end
         if op === condition
             test_logp_correct(condition, model | VarNamedTuple(; x), x)
             test_logp_correct(condition, model | (; x), x)
-            test_logp_correct(condition, model | Dict(@varname(x) => x), x)
+            test_logp_correct(condition, model | (@varname(x) => x,), x)
             test_logp_correct(condition, model | (@varname(x) => x), x)
             test_logp_correct(condition, model | (@varname(x) => x,), x)
         end
@@ -2061,8 +2056,8 @@ end
         end
         for op in (condition, fix)
             model = partial_array_model()
-            nested = op(partial_array_parent(model), Dict(@varname(child.x[1, 1]) => 1.5))
-            model = op(model, Dict(@varname(x[1, 1]) => 1.5))
+            nested = op(partial_array_parent(model), (@varname(child.x[1, 1]) => 1.5))
+            model = op(model, (@varname(x[1, 1]) => 1.5))
             for (partial_model, values) in
                 ((model, next_values), (nested, VarNamedTuple(; child=next_values)))
                 @test returned(op(partial_model, values), VarNamedTuple()) ==
@@ -2110,6 +2105,27 @@ end
         )(
             Xoshiro(1)
         )
+    end
+end
+
+@testset "binding input forms are ordered" begin
+    @model input_forms(x) = (x[1] ~ Normal(); x[2] ~ Normal(); x)
+    for bind in (condition, fix)
+        for invalid in (
+            Dict(@varname(x) => [2.0, 3.0]),
+            Dict(:x => [2.0, 3.0]),
+            pairs((; x=[2.0, 3.0])),
+            :x => [2.0, 3.0],
+            [@varname(x) => [2.0, 3.0]],
+            1,
+        )
+            @test_throws ArgumentError bind(input_forms([0.0, 0.0]), invalid)
+        end
+        m = bind(
+            input_forms([0.0, 0.0]),
+            ((; x=[1.0, 2.0]), @varname(x[1]) => 3.0, VarNamedTuple(; x=[4.0, 5.0])),
+        )
+        @test m(Xoshiro(1)) == [4.0, 5.0]
     end
 end
 

@@ -162,10 +162,10 @@ For example, consider model conditioning:
     return x .~ Normal()
 end
 
-cond_model = f() | Dict(@varname(x[1]) => 1.0, @varname(x[2]) => 2.0)
+cond_model = f() | (@varname(x[1]) => 1.0, @varname(x[2]) => 2.0)
 ```
 
-Right now, conditioning with a `Dict` will lead to the conditioning values being stored with `GrowableArray`s, which is not ideal.
+Right now, conditioning with pairs without a template will lead to the conditioning values being stored with `GrowableArray`s, which is not ideal.
 However, if the *model* carried with itself a skeleton VNT, then at the point where we condition the model, we could use that to reconstruct a VNT of conditioned values.
 This is not yet implemented, but is one of the use cases that we have in mind.
 
