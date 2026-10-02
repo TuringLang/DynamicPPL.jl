@@ -1420,13 +1420,29 @@ function _set_argument_property(result, ::Val{name}, value) where {name}
     end
     return _rebuild_argument_property(result, Val(name), value)
 end
-# This query inspects method/type metadata, never numerical payloads.
-function _argument_reconstructible(::Type{T}, ::Type{P}) where {T,P}
-    return Core.Compiler.return_type(ConstructionBase.setproperties, Tuple{T,P}) !== Union{}
+# Check dispatch, not inference: custom setters own their reconstruction protocol.
+function _argument_reconstructible(value::T, patch::P) where {T,P<:NamedTuple}
+    setter = ConstructionBase.setproperties
+    hasmethod(setter, Tuple{T,P}) || return false
+    # NamedTuples always support replacing existing properties.
+    T <: NamedTuple && all(name -> hasfield(T, name), fieldnames(P)) && return true
+    which(setter, Tuple{T,P}) !== which(setter, Tuple{Any,NamedTuple}) && return true
+    isempty(fieldnames(P)) && return true
+
+    # ConstructionBase's fallback uses properties in field order, with the patch
+    # taking precedence, then calls constructorof(T). Declared field types can be
+    # abstract, so inspect the actual unpatched property types as dispatch does.
+    names = fieldnames(T)
+    propertynames(value) === names || return false
+    all(name -> name in names, fieldnames(P)) || return false
+    types = map(names) do name
+        Core.Typeof(getproperty(hasfield(P, name) ? patch : value, name))
+    end
+    return hasmethod(ConstructionBase.constructorof(T), Tuple{types...})
 end
 function _rebuild_argument_property(result, ::Val{name}, value) where {name}
     patch = NamedTuple{(name,)}((value,))
-    _argument_reconstructible(typeof(result), typeof(patch)) || throw(
+    _argument_reconstructible(result, patch) || throw(
         ArgumentError(
             "Cannot rebuild argument of type $(typeof(result)) when binding property `$name`; provide a ConstructionBase.setproperties method or bind the whole value.",
         ),
@@ -2013,9 +2029,7 @@ function _convert_partial_argument_binding(
     end
     if optic isa AbstractPPL.Property && !ismutabletype(typeof(template))
         name = _binding_property_name(optic)
-        _argument_reconstructible(
-            typeof(template), NamedTuple{(name,),Tuple{typeof(converted)}}
-        ) || throw(
+        _argument_reconstructible(template, NamedTuple{(name,)}((converted,))) || throw(
             ArgumentError(
                 "Cannot rebuild argument of type $(typeof(template)) when binding property `$name`; provide a ConstructionBase.setproperties method or bind the whole value.",
             ),
