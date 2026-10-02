@@ -15,7 +15,12 @@ a convenience constructor that records vectorised values and log densities.
 `PrefixContext` and `extract_prefixes` are removed. Use `prefix(model, vn; template)`
 to set a prefix and `DynamicPPL.getprefix(model)` to read the combined prefix
 (`nothing` when absent). The `prefix` field stores internal metadata for LHS variable
-addresses and nested submodel namespace storage templates.
+addresses and nested submodel namespace storage templates. Replace `prefix(ctx, vn)` with
+`AbstractPPL.prefix(vn, DynamicPPL.getprefix(model))` for a prefixed model.
+
+Bindings outside a model's prefix now throw. Replace
+`condition(prefix(m, @varname(p)); y=v)` with
+`condition(prefix(m, @varname(p)), @varname(p.y) => v)`.
 
 To reuse previous values, extract them explicitly before evaluating:
 
