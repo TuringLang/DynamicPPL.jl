@@ -28,6 +28,8 @@ Indexed prefixes accept a prefix template: `prefix(m, @varname(a[2]))` → `pref
 
 Whole `missing`/`nothing` arguments, including defaults, now error when read, even after body reassignment: `f(missing)` → `decondition(f(missing), @varname(x))`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501), [#1464](https://github.com/TuringLang/DynamicPPL.jl/issues/1464).
 
+Partial bindings into whole `missing`/`nothing` arguments: deferred tilde values → binding-time `ArgumentError`; supply concrete argument storage or a whole binding. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+
 Observed or fixed values containing `missing`/`nothing` now error: placeholder bindings → `decondition`/`unfix` the corresponding LHS variables. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
 `InitFromParams` rejects `missing` instead of invoking its fallback: `InitFromParams((; x=missing))` → `InitFromParams((;))`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).

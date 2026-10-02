@@ -429,7 +429,7 @@ function generate_tilde(left, right; is_argument=false)
         get_top_level_symbol(left)
     end
 
-    @gensym vn role value dist supplied_val deferred
+    @gensym vn role value dist supplied_val
     lookup_role = if is_argument
         :($(DynamicPPL._get_argument_role)(
             __model__, $vn, $(VarName{get_top_level_symbol(left)}())
@@ -475,20 +475,13 @@ function generate_tilde(left, right; is_argument=false)
             end
             $(generate_tilde_assume(left, dist, vn))
         else
-            $deferred = $(
+            $supplied_val = $(
                 if is_argument
-                    :($(DynamicPPL._defer_argument_binding)(
-                        __model__, $(VarName{get_top_level_symbol(left)}())
-                    ))
+                    :($(Base).@views($left))
                 else
-                    true
+                    :($(DynamicPPL._get_model_data)(__model__, $vn))
                 end
             )
-            $supplied_val = if $deferred
-                $(DynamicPPL._get_model_data)(__model__, $vn)
-            else
-                $(Base).@views($left)
-            end
 
             $value, __varinfo__ = $(DynamicPPL.tilde_observe!!)(
                 $(DynamicPPL._model_prefix)(__model__),
@@ -499,9 +492,7 @@ function generate_tilde(left, right; is_argument=false)
                 $template,
                 __varinfo__,
             )
-            if $deferred
-                $(assign_or_set!!(left, value, vn))
-            end
+            $(is_argument ? nothing : assign_or_set!!(left, value, vn))
             $value
         end
     end
@@ -890,14 +881,7 @@ function prepare_model_argument(model::Model, vn::VarName, value)
     return prepare_model_argument(binding, value)
 end
 function prepare_model_argument(binding, value)
-    _defer_argument_binding(binding, value) && return value
     return _model_argument_value(binding, value)
-end
-
-function _defer_argument_binding(model::Model, vn::VarName{S}) where {S}
-    arguments = merge(model.args, model.defaults)
-    stored_name = haskey(arguments, S) ? S : Symbol("#splat#", S)
-    return _defer_argument_binding(_get_model_binding(model, vn), arguments[stored_name])
 end
 
 # Whole-variable hasvalue checks reject partial containers needed for argument preparation.

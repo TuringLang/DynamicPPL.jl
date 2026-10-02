@@ -354,8 +354,7 @@ function _get_model_data(model, vn)
 end
 function _get_model_data(model, vn, argument, local_value)
     binding = _get_model_binding(model, argument)
-    _defer_argument_binding(model, argument) ||
-        _check_fixed_shape(binding, local_value, AbstractPPL.getoptic(vn), vn)
+    _check_fixed_shape(binding, local_value, AbstractPPL.getoptic(vn), vn)
     return _get_model_data(model, vn)
 end
 
@@ -1109,11 +1108,6 @@ function _has_complete_model_data(values::VarNamedTuples.PartialArray)
            all(_has_complete_model_data, values.data)
 end
 
-function _defer_argument_binding(binding, value)
-    return value isa Union{Nothing,Missing} &&
-           binding isa Union{VarNamedTuple,VarNamedTuples.PartialArray}
-end
-
 function _model_argument_value(values::VarNamedTuples.PartialArray, template)
     if values.data isa ModelBindingArray
         template = values.data.template
@@ -1340,6 +1334,8 @@ no argument-supplied observations and its arguments cannot be bound.
 Whole `missing` or `nothing` arguments throw `ArgumentError` when a tilde reads their
 argument-supplied observations, even if the body replaces them. Use [`decondition`](@ref)
 to make their LHS variables latent.
+Partial bindings into whole `missing`/`nothing` arguments, even after deconditioning, throw
+`ArgumentError` when bound; supply a concrete argument such as `f(zeros(n))` or a whole binding.
 At a submodel tilde, an argument LHS variable receives the submodel return value. The
 argument supplies only its value before the tilde runs; its argument-supplied observation
 is ignored at that tilde, so it needs no deconditioning. See [Binding rules](@ref).
@@ -1606,9 +1602,13 @@ end
                     previous = _model_argument_binding(
                         _model_values(model.values), AbstractPPL.varname_to_optic(vn)
                     )
-                    binding = _prepare_argument_fields(
-                        prepare_model_argument(previous, argument), binding, vn
+                    argument = prepare_model_argument(previous, argument)
+                    argument isa Union{Nothing,Missing} && throw(
+                        ArgumentError(
+                            "Cannot make a partial binding of argument `$vn` with whole `$argument` storage; supply a concrete argument (e.g. `$(nameof(model))(zeros(n))`) or a whole binding instead.",
+                        ),
                     )
+                    binding = _prepare_argument_fields(argument, binding, vn)
                     values = templated_setindex!!(
                         values, binding, vn, values.data[AbstractPPL.getsym(vn)]
                     )
@@ -1780,6 +1780,8 @@ level deep, but nested mutable values remain shared and must not be mutated eith
 `missing`/`nothing` throw where a tilde reads them, naming the LHS variable. Unread parts
 may contain either; whole argument placeholders throw even if the body replaces them.
 Use [`decondition`](@ref) to make observations latent; see [Missing data](@ref).
+Partial bindings into whole `missing`/`nothing` arguments, even after deconditioning, throw
+`ArgumentError` when bound; supply a concrete argument such as `f(zeros(n))` or a whole binding.
 See [Binding rules](@ref) for the argument contract, binding contract and submodel rules,
 and [Performance](@ref binding-performance) for the cost of rebuilding partially bound array arguments.
 
@@ -2667,6 +2669,8 @@ or leaves the LHS variable latent if none remains; [`decondition`](@ref) removes
 observations even beneath a fixed binding.
 
 Inputs, conversion errors, aliasing and argument preparation follow [`condition`](@ref).
+Partial bindings into whole `missing`/`nothing` arguments, even after deconditioning, throw
+`ArgumentError` when bound; supply a concrete argument such as `f(zeros(n))` or a whole binding.
 Partial bindings copy the owner's container one level deep; nested mutable values remain
 shared and must not be mutated.
 For example, `fix(model, @varname(z[2]) => 1.0, @of(z = of(Array, 3)))` supplies local
