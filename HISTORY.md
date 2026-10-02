@@ -102,6 +102,8 @@ Conditioned argument LHS variables observe body-transformed values: observing th
 
 `AbstractContext` / `AbstractParentContext` subtyping → initialisation strategies for custom value selection and accumulators for custom output handling. These names are no longer exported. See [#1503](https://github.com/TuringLang/DynamicPPL.jl/pull/1503).
 
+`get_param_eltype(vi, context)` → `get_param_eltype(strategy)`: move custom context overloads to initialisation strategies. See [#1503](https://github.com/TuringLang/DynamicPPL.jl/pull/1503).
+
 `childcontext`, `setchildcontext`, `leafcontext`, and `setleafcontext` are removed: use a single `Context(rng, init_strategy, transform_strategy)` passed directly to evaluation instead of traversing or rebuilding a context hierarchy. See [#1503](https://github.com/TuringLang/DynamicPPL.jl/pull/1503).
 
 `make_evaluate_args_and_kwargs(m, vi)` → `DynamicPPL.make_evaluate_args_and_kwargs(m, ctx, vi)`, now `public`; the prepared positional arguments begin with `(m, ctx, vi)`. See [#1503](https://github.com/TuringLang/DynamicPPL.jl/pull/1503).
