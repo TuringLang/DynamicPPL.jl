@@ -1792,7 +1792,26 @@ function AbstractPPL.condition(model::Model, inputs...; values...)
     return _bind_inputs(Condition, model, inputs)
 end
 
-function _prepare_local_binding_types(model, values)
+# Binding preparation consults owners in the layer being edited.
+_binding_layer(::Type{Condition}, values) = _observation_values(values)
+_binding_layer(::Type{Fix}, values) = _fixed_values(values)
+function _binding_layer_model(::Type{R}, model) where {R}
+    layer = _binding_layer(R, model.values)
+    values = model.values isa LocalModelValues ? LocalModelValues(layer) : layer
+    return _reconstruct_model(model; values)
+end
+
+_binding_owner(::Type{R}, value) where {R} = NoTemplate()
+_binding_owner(::Type{R}, value::ModelValue) where {R} = value.value
+_binding_owner(::Type{R}, value::ModelValueTree) where {R} = _model_data(value)
+function _binding_owner(::Type{R}, value::VarNamedTuples.PartialArray) where {R}
+    value.data isa VarNamedTuples.GrowableArray && return NoTemplate()
+    # Selection unwraps the role tags while retaining storage for unbound entries.
+    selected = _select_model_node(R, value)
+    return selected isa VarNamedTuples.PartialArray ? selected.data : selected
+end
+
+function _prepare_local_binding_types(::Type{R}, model, values) where {R}
     metadata = _binding_metadata(model)
     _lhs_names(metadata) === nothing && return values
     prefix = _model_prefix(model)
@@ -1810,12 +1829,15 @@ function _prepare_local_binding_types(model, values)
         previous === nothing && continue
         update = local_values.data[name]
         vn = VarName{name}()
-        if previous isa ModelValue && update isa ModelValue
-            update.value isa typeof(previous.value) || throw(
-                ArgumentError(
-                    "Bound value at `$vn` must be an instance of template type $(typeof(previous.value)); supplied $(typeof(update.value)).",
-                ),
-            )
+        if update isa ModelValue
+            owner = _binding_owner(R, previous)
+            owner isa NoTemplate ||
+                update.value isa typeof(owner) ||
+                throw(
+                    ArgumentError(
+                        "Bound value at `$vn` must be an instance of template type $(typeof(owner)); supplied $(typeof(update.value)).",
+                    ),
+                )
         elseif previous isa ModelValue ||
             previous isa ModelValueTree ||
             _has_complete_model_data(previous)
@@ -1910,10 +1932,8 @@ function _schema_has_address(model, ::NamedTuple{names}, vn::VarName{sym}) where
 end
 
 function _bind_schema_input(::Type{R}, model, input, schema) where {R}
-    layer = R === Fix ? _fixed_values(model.values) : _observation_values(model.values)
-    layer_model = _reconstruct_model(
-        model; values=model.values isa LocalModelValues ? LocalModelValues(layer) : layer
-    )
+    layer_model = _binding_layer_model(R, model)
+    layer = _model_values(layer_model.values)
     templates = VarNamedTuple()
     for (name, storage) in pairs(schema)
         root = _model_value_varname(model.values, VarName{name}(), _model_prefix(model))
@@ -1990,11 +2010,13 @@ end
 
 function _bind_model(::Type{R}, model::Model, values...; preparation_model=model) where {R}
     model = _materialize_argument_values(model)
-    preparation_model = _materialize_argument_values(preparation_model)
+    preparation_model = _binding_layer_model(
+        R, _materialize_argument_values(preparation_model)
+    )
     values = _tag_model_values(R, _make_condfix_values(preparation_model, values...))
     values = _check_argument_bindings(preparation_model, values)
     _check_binding_addresses(model, values)
-    values = _prepare_local_binding_types(preparation_model, values)
+    values = _prepare_local_binding_types(R, preparation_model, values)
     observations = _observation_values(model.values)
     fixed_values = _fixed_values(model.values)
     values = if R === Fix
@@ -2007,7 +2029,7 @@ function _bind_model(::Type{R}, model::Model, values...; preparation_model=model
     elseif isempty(fixed_values)
         _merge_model_values(observations, values)
     else
-        ModelBindingLayers(_overlay_model_values(observations, values), fixed_values)
+        ModelBindingLayers(_merge_model_values(observations, values), fixed_values)
     end
     values = model.values isa LocalModelValues ? LocalModelValues(values) : values
     return _reconstruct_model(model; values)
@@ -2101,6 +2123,11 @@ function _make_condfix_values(model, values::Pair{<:VarName}...)
             _model_values(model.values), AbstractPPL.varname_to_optic(vn)
         )
         template = _binding_template(model, templates, vn)
+        _check_namedtuple_index(
+            ModelValue{Condition}(template),
+            AbstractPPL.getoptic(vn),
+            AbstractPPL.Property{AbstractPPL.getsym(vn)}(),
+        )
         _check_binding_template_bounds(template, AbstractPPL.getoptic(vn), vn)
         result = templated_setindex!!(result, value, vn, template)
     end
@@ -2210,7 +2237,7 @@ true
 function AbstractPPL.decondition(model::Model, syms::Union{Symbol,VarName}...)
     model = _materialize_argument_values(model)
     observations = _observation_values(model.values)
-    _check_removal_addresses(model, syms...)
+    _check_removal_addresses(observations, syms...)
     _check_model_removal(Condition, observations, syms...)
     values = _remove_model_values(Condition, observations, syms...)
     fixed_values = _fixed_values(model.values)
@@ -2219,18 +2246,13 @@ function AbstractPPL.decondition(model::Model, syms::Union{Symbol,VarName}...)
     return _reconstruct_model(model; values)
 end
 
-function _check_removal_addresses(model, names...)
+function _check_removal_addresses(values, names...)
     for name in names
         vn = name isa VarName ? name : VarName{name}()
         _check_shapeless_removal(
-            _model_values(model.values),
-            AbstractPPL.varname_to_optic(vn),
-            AbstractPPL.Iden(),
-            vn,
+            values, AbstractPPL.varname_to_optic(vn), AbstractPPL.Iden(), vn
         )
-        _check_namedtuple_index(
-            _model_values(model.values), AbstractPPL.varname_to_optic(vn)
-        )
+        _check_namedtuple_index(values, AbstractPPL.varname_to_optic(vn))
     end
     return nothing
 end
@@ -2637,7 +2659,7 @@ true
 function unfix(model::Model, syms::Union{Symbol,VarName}...)
     model = _materialize_argument_values(model)
     fixed_values = _fixed_values(model.values)
-    _check_removal_addresses(model, syms...)
+    _check_removal_addresses(fixed_values, syms...)
     _check_model_removal(Fix, fixed_values, syms...)
     fixed_values = _remove_model_values(Fix, fixed_values, syms...)
     observations = _observation_values(model.values)
