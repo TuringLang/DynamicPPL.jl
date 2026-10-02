@@ -26,9 +26,10 @@ dominated by timer floor, fixed overhead, and run-to-run variation. For those
 rows, raw `t(grad)` is more meaningful than `t(grad)/t(logdensity)`. These
 microbenchmarks can also vary noticeably across runs and machines.
 
-The CI comment shows the PR head table first and, when available, includes a
-collapsed `main` table for comparison. Treat the numbers as approximate and use
-the `main` table to spot likely regressions.
+The CI comment shows one fixed-width table in a code fence with `main` and `PR`
+primal times side by side, with commit links above the table. Gradient ratios
+are from the PR only. Missing `main` results appear as `—`. Treat the numbers as
+approximate and use the primal columns to spot likely regressions.
 
 ## PosteriorDB comparison
 
