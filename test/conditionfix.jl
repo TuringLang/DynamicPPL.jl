@@ -2792,6 +2792,17 @@ end
     @test copied_cycle !== cycle
 end
 
+mutable struct InnerConstructorState
+    x::Float64
+    InnerConstructorState() = new(0.0)
+end
+@testset "latent structs with inner constructors" begin
+    @model sample_inner_state(s) = (s.x ~ Normal(); s.x)
+    s = InnerConstructorState()
+    @test returned(decondition(sample_inner_state(s)), (s=(x=2.0,),)) == 2.0
+    @test s.x == 0.0
+end
+
 @info "Completed $(@__FILE__) in $(now() - __now__)."
 
 end

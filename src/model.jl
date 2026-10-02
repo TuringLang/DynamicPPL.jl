@@ -981,9 +981,43 @@ end
 function _copy_model_argument(value::Base.Pairs, memo::IdDict)
     return pairs(_copy_model_argument(values(value), memo))
 end
+# Julia's `new` bypasses inner constructors and remains visible to source-to-source AD.
+@generated function _allocate_model_argument(value::T) where {T}
+    fields = [:(getfield(value, $i)) for i in 1:fieldcount(T)]
+    defined = [:(isdefined(value, $i)) for i in 1:fieldcount(T)]
+    return quote
+        if $(foldl((a, b) -> :($a && $b), defined; init=true))
+            $(Expr(:new, T, fields...))
+        else
+            ccall(:jl_new_struct_uninit, Any, (Any,), T)::T
+        end
+    end
+end
 function _copy_model_argument(value, memo::IdDict)
     cached = get(memo, value, nothing)
     cached === nothing || return cached
+    T = typeof(value)
+    if ismutabletype(T) && fieldcount(T) > 0
+        # As in deepcopy, allocate before visiting fields to support cycles and inner
+        # constructors. The runtime setter also handles copied const fields.
+        result = _allocate_model_argument(value)
+        memo[value] = result
+        for i in 1:fieldcount(T)
+            if isdefined(value, i)
+                child = convert(
+                    fieldtype(T, i), _copy_model_argument(getfield(value, i), memo)
+                )
+                if isconst(T, i)
+                    ccall(
+                        :jl_set_nth_field, Cvoid, (Any, Csize_t, Any), result, i - 1, child
+                    )
+                else
+                    setfield!(result, i, child)
+                end
+            end
+        end
+        return result
+    end
     properties = ConstructionBase.getproperties(value)
     isempty(properties) && return deepcopy(value)
     result = ConstructionBase.setproperties(
