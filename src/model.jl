@@ -927,6 +927,16 @@ function _copy_model_argument(value::AbstractArray)
     return result
 end
 _copy_model_argument(value::Union{Tuple,NamedTuple}) = map(_copy_model_argument, value)
+function _copy_model_argument(value::AbstractDict)
+    # Keys identify storage in the model body, including identity-based dictionary keys.
+    # Only the values are latent storage; do not reconstruct collection implementation fields.
+    result = empty(value)
+    for (key, child) in value
+        result = BangBang.setindex!!(result, _copy_model_argument(child), key)
+    end
+    return result
+end
+_copy_model_argument(value::Base.Pairs) = pairs(_copy_model_argument(values(value)))
 function _copy_model_argument(value)
     properties = ConstructionBase.getproperties(value)
     isempty(properties) && return deepcopy(value)

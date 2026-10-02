@@ -431,6 +431,46 @@ end
         end
     end
 
+    @testset "deconditioned dictionary argument storage" begin
+        @model scalar_dictionary(x) = (x[:a] ~ Normal(); x)
+        for T in (Float32, Float64, BigFloat)
+            data = Dict(:a => T(1))
+            model = decondition(scalar_dictionary(data))
+            result = returned(model, (; x=Dict(:a => T(2))))
+            @test result == Dict(:a => T(2))
+            @test result isa typeof(data)
+            @test result !== data
+            @test data[:a] == T(1)
+        end
+
+        @model function nested_dictionary(x, key)
+            x[key][1] ~ Normal()
+            return x
+        end
+        data = pairs((; a=[1.0, 3.0]))
+        result = returned(decondition(nested_dictionary(data, :a)), (; x=(; a=[2.0, 3.0])))
+        @test result isa typeof(data)
+        @test result[:a] == [2.0, 3.0]
+        @test data[:a] == [1.0, 3.0]
+
+        @model dictionary_parent(child) = a ~ to_submodel(child)
+        # Dictionary keys name storage; identity keys must remain usable in the body.
+        for ctor in (Dict, IdDict)
+            key = Ref(:a)
+            data = ctor(key => [1.0, 3.0])
+            model = decondition(nested_dictionary(data, key))
+            params = (; x=ctor(key => [2.0, 3.0]))
+            for (m, p) in ((model, params), (dictionary_parent(model), (; a=params)))
+                result = returned(m, p)
+                @test result[key] == [2.0, 3.0]
+                @test result isa typeof(data)
+                @test result !== data
+                @test result[key] !== data[key]
+                @test data[key] == [1.0, 3.0]
+            end
+        end
+    end
+
     @testset "partly latent argument storage" begin
         for ctor in ((X, y) -> (; X, y), LatentRecord, MutableLatentRecord)
             d = ctor(zeros(1000, 1000), zeros(2))
