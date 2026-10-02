@@ -1618,7 +1618,8 @@ A binding owns shape at its address within its layer; partial edits preserve tha
 Binding an argument does not recompute construction-time defaults or select another method.
 
 Bound values are not copied; the body must not mutate them, including through aliases.
-Partial bindings snapshot the remaining parts of their whole owner when made.
+Partial bindings take a shallow snapshot when made: the owner's container is copied one
+level deep, but nested mutable values remain shared and must not be mutated either.
 `missing`/`nothing` throw where a tilde reads them, naming the LHS variable. Unread parts
 may contain either; whole argument placeholders throw even if the body replaces them.
 Use [`decondition`](@ref) to make observations latent; see [Missing data](@ref).
@@ -2475,6 +2476,8 @@ or leaves the LHS variable latent if none remains; [`decondition`](@ref) removes
 observations even beneath a fixed binding.
 
 Inputs, conversion errors, aliasing and argument preparation follow [`condition`](@ref).
+Partial bindings copy the owner's container one level deep; nested mutable values remain
+shared and must not be mutated.
 For example, `fix(model, @varname(z[2]) => 1.0, @of(z = of(Array, 3)))` supplies local
 storage (`using AbstractPPL: of, @of`). Owners in the fixed layer take precedence over
 the schema. Runtime bindings under ForwardDiff/ReverseDiff need storage compatible with
