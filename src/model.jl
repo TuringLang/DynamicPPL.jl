@@ -1556,7 +1556,11 @@ function _check_binding_template_bounds(
     return _check_binding_template_bounds(child, optic.child, vn)
 end
 function _check_binding_template_bounds(template, optic::AbstractPPL.Index, vn)
-    array = VarNamedTuples.template_array(template)
+    array = if template isa VarNamedTuples.PartialArray
+        template.data
+    else
+        VarNamedTuples.template_array(template)
+    end
     coptic = AbstractPPL.concretize_top_level(optic, array)
     inbounds = if array isa AbstractArray
         checkbounds(Bool, array, coptic.ix...; coptic.kw...)
@@ -2030,8 +2034,23 @@ function _make_condfix_values(model, values...)
 end
 _make_condfix_values(model, values::NamedTuple) = VarNamedTuple(values)
 _make_condfix_values(model, values::VarNamedTuple) = values
+
+_binding_storage(value) = value
+_binding_storage(::Union{Nothing,Missing,Number}) = NoTemplate()
+_binding_storage(value::ModelValue) = _binding_storage(value.value)
+_binding_storage(value::ModelValueTree) = _binding_storage(_model_data(value))
+_binding_storage(value::NamedTuple) = map(_binding_storage, value)
+_binding_storage(value::Tuple) = map(_binding_storage, collect(value))
+_binding_storage(value::VarNamedTuple) = VarNamedTuple(map(_binding_storage, value.data))
+function _binding_storage(value::VarNamedTuples.PartialArray)
+    # Inferred, growable storage has no owner to constrain subsequent indices.
+    value.data isa VarNamedTuples.GrowableArray && return NoTemplate()
+    return VarNamedTuples._map_values_recursive!!(_binding_storage, copy(value))
+end
+
 function _make_condfix_values(model, values::Pair{<:VarName}...)
-    templates = VarNamedTuple()
+    # Existing local owners also supply storage, including axes and nested fields.
+    templates = _binding_storage(_model_values(model.values))
     for (stored_name, argument) in pairs(merge(model.args, model.defaults))
         name = unsplat_symbol(stored_name)
         vn = _model_value_varname(model.values, VarName{name}(), _model_prefix(model))

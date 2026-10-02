@@ -10,6 +10,7 @@ using DynamicPPL
 using ForwardDiff: ForwardDiff
 using LinearAlgebra: I
 using LogDensityProblems: LogDensityProblems
+using OffsetArrays: OffsetArray
 using Test
 using Random: Xoshiro
 using StaticArrays: SVector
@@ -2295,6 +2296,72 @@ end
         @test_throws r"keyword-splat argument `x`.*replace the whole argument" bind(
             m, vn => 2.0
         )
+    end
+end
+
+@testset "local owners supply indexed binding storage" begin
+    @model function local_storage()
+        z = zeros(3)
+        for i in eachindex(z)
+            z[i] ~ Normal()
+        end
+        return z
+    end
+    @model function local_offset_storage()
+        z = OffsetArray(zeros(3), -1:1)
+        for i in eachindex(z)
+            z[i] ~ Normal()
+        end
+        return z
+    end
+    @model function local_nested_storage()
+        z = (a=[zeros(2), zeros(3)], b=zeros(2))
+        for i in eachindex(z.a), j in eachindex(z.a[i])
+            z.a[i][j] ~ Normal()
+        end
+        for i in eachindex(z.b)
+            z.b[i] ~ Normal()
+        end
+        return z
+    end
+    @model function local_storage_parent()
+        a ~ to_submodel(local_storage())
+        return a
+    end
+    for op in (condition, fix)
+        sampled = rand(Xoshiro(1), local_storage())
+        observed = conditioned(condition(local_storage(); z=ones(3)))
+        for input in (:z => ones(3), (z=ones(3),), sampled, observed)
+            original = input === sampled ? sampled[@varname(z)] : ones(3)
+            @test op(local_storage(), input, @varname(z[end]) => 2.0)(Xoshiro(1)) ==
+                [original[1], original[2], 2.0]
+            @test op(local_storage(), input, @varname(z[:]) => fill(2.0, 3))(Xoshiro(1)) ==
+                fill(2.0, 3)
+        end
+        owned = op(local_storage(); z=ones(3))
+        @test op(owned, @varname(z[end]) => 2.0)(Xoshiro(1)) == [1.0, 1.0, 2.0]
+        @test_throws ArgumentError op(owned, @varname(z[4]) => 2.0)
+        @test owned(Xoshiro(1)) == ones(3)
+        offset = OffsetArray(ones(3), -1:1)
+        result = op(local_offset_storage(), :z => offset, @varname(z[end]) => 2.0)(
+            Xoshiro(1)
+        )
+        @test axes(result) == axes(offset)
+        @test result == OffsetArray([1.0, 1.0, 2.0], -1:1)
+        nested = (a=[ones(2), ones(3)], b=ones(2))
+        result = op(local_nested_storage(), :z => nested, @varname(z.a[end][end]) => 2.0)(
+            Xoshiro(1)
+        )
+        @test result == (a=[ones(2), [1.0, 1.0, 2.0]], b=ones(2))
+        @test op(
+            local_storage_parent(), @varname(a.z) => ones(3), @varname(a.z[end]) => 2.0
+        )(
+            Xoshiro(1)
+        ) == [1.0, 1.0, 2.0]
+        prefixed = DynamicPPL.prefix(local_storage(), @varname(a.b))
+        @test op(prefixed, @varname(a.b.z) => ones(3), @varname(a.b.z[end]) => 2.0)(
+            Xoshiro(1)
+        ) == [1.0, 1.0, 2.0]
     end
 end
 
