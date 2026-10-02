@@ -30,7 +30,7 @@ end
         interface_only=true,
     )
 
-    @testset "evaluation-local partial binding" begin
+    @testset "runtime partial binding" begin
         @model function child(y)
             for i in eachindex(y)
                 y[i] ~ Normal()
@@ -49,7 +49,7 @@ end
         end
     end
 
-    @testset "evaluation-local abstract argument arrays" begin
+    @testset "runtime abstract argument arrays" begin
         @model function abstract_child(y)
             for i in eachindex(y)
                 y[i] ~ Normal()

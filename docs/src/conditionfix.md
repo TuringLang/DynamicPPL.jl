@@ -2,96 +2,93 @@
 
 ## Binding rules
 
-  - An *LHS variable* is the variable on the left-hand side of one execution of a tilde
-    statement, identified by its address. An *LHS subvariable* is a part of one LHS
-    variable, such as `x[1]` of `x ~ MvNormal(...)`. A *binding* pairs an address with
-    a value and is stored as conditioned or fixed. The effective binding sets the LHS
-    variable's *role*: observed values contribute to the likelihood; fixed values
-    contribute no log probability. Both replace sampling. With no effective binding,
-    the LHS variable is latent.
-    An *explicit binding* is made by `condition` or `fix`.
-    Fixed values must cover every LHS variable they bind with a static size and shape: changing a
-    fixed argument's size or shape in the body throws `ArgumentError` naming the LHS variable.
-    This restriction does not apply to conditioned values.
-  - An *argument LHS variable* is an LHS variable whose address's top symbol names a
-    model argument. With `@model`, the argument supplies an *argument-supplied
-    observation*: a conditioned binding. Binding an argument replaces its value
-    in the model body. Observed LHS variables use the value computed by the body; fixed LHS variables
-    reset to their bound value when their tilde statement runs.
-    `model.args` and `model.defaults` retain construction values when bindings change;
-    bindings live in the model's binding table, so use [`conditioned`](@ref) and
-    [`fixed`](@ref) to inspect effective observations and fixed values.
-    Direct `Model` construction with `args_on_lhs` records argument-supplied
-    observations for the listed arguments, just as `@model` does. Without
-    `args_on_lhs`, it records no argument-supplied observations and its arguments
-    cannot be bound.
-    A *submodel return value* is the value assigned to the LHS variable by a submodel
-    tilde (`a ~ to_submodel(...)`). If `a` is an argument, it supplies only the value
-    before the tilde runs; its argument-supplied observation is ignored at that tilde,
-    so it needs no `decondition`. A `NamedTuple` argument at a submodel tilde
-    does not supply a submodel namespace. Bind the child before `to_submodel`,
-    or use `@varname(a.x)` on a parent whose submodel LHS `a` is not an argument.
-  - Integer indices into NamedTuples are rejected in binding addresses and LHS variables;
-    use `x.a` instead of `x[1]` for `x = (a=1.0, b=2.0)` (Tuples retain integer indices).
-  - Fixed bindings shadow observations. Within each layer, later bindings replace earlier
-    ones where they overlap. A *whole binding* binds an
-    entire value; a *partial binding* binds part of a value already bound as a whole,
-    preserving the rest of its binding. Subvariables of one LHS variable cannot
-    have different roles; mixing roles throws `ArgumentError` during evaluation.
-  - The *effective binding* is the binding in force at an LHS variable. Precedence, highest
-    first: explicit bindings of enclosing models that reach it through its submodel
-    namespace, outermost first; then the explicit binding of the model containing
-    the tilde; then that model's argument-supplied observation. A parent's
-    argument-supplied observations never reach a child. With no effective binding,
-    the LHS variable is latent and gets its value from initialization.
-    The *submodel namespace* is the set of parent addresses that reach a child's
-    LHS variables, such as `@varname(a.x)`, or the child's unchanged names with
-    `auto_prefix=false` (unless the child was manually prefixed).
-  - Explicitly binding a submodel return value throws `ArgumentError` at the submodel
-    tilde. For an argument LHS variable, bindings below its address are rejected too,
-    during evaluation or at the `condition` or `fix` call when the argument's type
-    rules out the requested field. Bind the
-    child before wrapping it with `to_submodel` instead. Binding an argument with
-    no LHS variables, or a nonexistent field or index of an argument, throws at the `condition`
-    or `fix` call; construct the model with a new argument value instead.
-  - `decondition` removes this model's conditioned bindings; `unfix` removes its fixed
-    bindings at the requested names. A name matches if it equals, contains, or is contained in a
-    stored binding's address, with Symbol indices equivalent to properties.
-    A name with no match throws `ArgumentError`, including bindings supplied only by
-    a child. Decondition child argument-supplied observations before `to_submodel`. With no
-    names, all conditioned or fixed bindings, respectively, are removed. `unfix` uncovers the
-    explicit or argument-supplied observation below the fixed binding, or leaves the LHS
-    variable latent if no observation remains. Thus
-    `unfix(fix(decondition(m, :x); x=5.0), :x)` leaves `x` latent.
-    `decondition(m, :x)` removes explicit and argument-supplied observations at `x`;
-    an overlapping fixed binding remains in force.
-  - `conditioned` and `fixed` return plain values, independent of binding history:
-    `VarNamedTuple`, `PartialArray`, or ordinary values. Partial removal or mixed
-    roles produce plain partial values, not the original container type.
-  - Whole `missing`/`nothing` arguments and values containing either throw
-    `ArgumentError` naming the LHS variable where a tilde reads them; make data latent
-    with `decondition` (see [Missing data](@ref)).
-    `InitFromParams` rejects `missing` when the parameter is read during initialization,
-    not at construction. Leave unobserved values out instead.
-  - Whole bindings use the supplied object without copying. When a partial binding
-    splits a whole binding, the remaining parts are captured at that time; later
-    changes to the supplied container's entries are not reflected in those parts.
-    The model body must not mutate bound values, directly or through an alias such
-    as a `view`. Partial bindings on array arguments rebuild
-    the argument in O(length) per evaluation; prefer whole replacements for large arrays.
-    Under reverse-mode AD such as Mooncake, partial bindings can be far more expensive,
-    so bind whole arrays when gradients are needed.
-  - Unknown top symbols are rejected when a binding is made. Addresses crossing a
-    submodel namespace are checked when the child is reached. LHS variables in branches
-    that do not run are ignored.
-    Models with possible unprefixed submodels defer unknown top-symbol checks; [`check_model`](@ref) warns about bound names that no LHS variable of the model or its reached unprefixed children can use, since an untaken submodel branch could still use them.
+An **LHS variable** is the addressed left side of one execution of `~`; an **LHS subvariable** is part of it, such as `x[1]` of `x ~ MvNormal(...)`.
+Its **role** is latent (initialised), observed (scored in the likelihood), or fixed (no log probability).
+A **binding** supplies a bound value and an observed or fixed role: `condition`/`fix` make **explicit bindings**; arguments on the LHS supply **argument-supplied observations**.
+The **effective binding** wins: enclosing models' explicit bindings, outermost first; then this model's fixed binding, explicit observation, or argument-supplied observation. Without one, the LHS variable is latent.
+A parent's argument-supplied observations never reach a child.
+
+Observations form the lower layer, fixed bindings the upper. Within a layer, later bindings replace earlier ones where they overlap.
+
+| Operation     | Effect on this model's bindings                                                                             |
+|:------------- |:----------------------------------------------------------------------------------------------------------- |
+| `condition`   | Adds observations below fixed bindings.                                                                     |
+| `fix`         | Adds fixed bindings, shadowing observations.                                                                |
+| `decondition` | Removes observations of either origin, even under a fixed binding; otherwise makes the LHS variable latent. |
+| `unfix`       | Removes fixed bindings, uncovering the observation below, or leaving the LHS variable latent.               |
+
+Removal matches equal, enclosing or contained addresses (Symbol indices match properties); no match throws `ArgumentError`.
+Remove child-only bindings on the child before `to_submodel`; with no names, removal clears this model's corresponding layer.
+
+### Argument contract and shared constraints
+
+**Roles and values.** Subvariables of one LHS variable must have the same role; mixing roles throws `ArgumentError` at evaluation.
+Every bound LHS variable takes its value from its binding. A **local LHS variable** (whose top symbol is not an argument) reads it at its tilde.
+For an **argument LHS variable**, every binding, explicit or argument-supplied, acts through the argument: it replaces the argument before the body runs,
+and the tilde reads the argument's current value in the body; a fixed argument LHS variable is reset to its bound value at its tilde.
+Thus `f(data)` and `condition(f(...); x=data)` observe the same value even when the body transforms `x` first; observe raw data under a separate name.
+Deconditioned arguments keep their old values until their tilde. For direct construction and handwritten evaluator obligations, see [`Model`](@ref).
+
+**Shape.** A binding owns the shape of the value at its address, at any depth, within the layer being edited.
+Partial bindings/removals edit within the latest owner: binding `x=ones(3)` then removing `x[3]` preserves length three.
+Binding `x[1]` or `p.a` may resize that value if its type permits, never a container above it; slice/range/`:`/mask extents must match.
+Removing a binding returns its address to the next owner: the shadowed binding, enclosing binding, or argument.
+The body sets local storage's shape and may resize conditioned arguments. **Fixed values are static** and must cover every reached LHS variable below their address.
+Fixed argument tildes reject growth, shrinkage or reshaping with `ArgumentError` naming the LHS variable.
+
+**Addresses and submodels.** NamedTuple fields require names (`x.a`), never integer indices, in bindings and LHS variables; Tuples keep integer indices.
+Bindings on prefixed models must be at or below the prefix. A **submodel namespace** reaches child LHS variables through `a.x`, or unchanged names with `auto_prefix=false` (unless manually prefixed).
+A **submodel return value**, assigned by `a ~ to_submodel(...)`, cannot be explicitly bound: evaluation throws `ArgumentError`.
+If `a` is an argument, its observation is ignored there; explicit bindings below it also throw, possibly earlier if its type rules out the field.
+A NamedTuple argument provides no child namespace; bind the child before `to_submodel`.
+
+**Aliasing.** Bound values are not copied: never mutate them in the body, even through a `view`. Partial bindings snapshot their whole owner's remaining parts when made; later edits are not reflected there.
+
+Bindings unused by reached LHS variables are ignored, including branches or submodels that do not run.
+
+**Runtime bindings** are made inside the running body, e.g. `a ~ to_submodel(condition(child(y), @varname(y[1]) => m))`.
+Remade each evaluation, their values carry derivatives with respect to enclosing latent variables; bindings made beforehand hold values constant with respect to model parameters.
+
+**No data.** Use `decondition` to make observations latent. Whole `missing`/`nothing` arguments (even if replaced in the body) and bound values containing either throw `ArgumentError` at the reading tilde, naming the LHS variable; unread parts may contain either.
+See [Missing data](@ref). `InitFromParams` rejects `missing` when read, not at construction; omit unobserved values instead.
+
+### Binding contract
+
+**Inputs.** Use NamedTuples/keywords for whole top-level values, `VarName` pairs for any address (`:x => v` abbreviates `@varname(x) => v`), or produced `VarNamedTuple`s.
+Positional inputs and tuples apply left to right; every `AbstractDict` and unsupported input throws `ArgumentError`.
+One positional **binding schema**, an AbstractPPL `OfNamedTuple` type (`@of(z = of(Array, 3))`), supplies storage for partially bound local LHS variables and binds nothing.
+Import `of, @of` from AbstractPPL. Schemas may appear anywhere among inputs; keywords remain data, and `|` rejects schemas.
+Owners in the edited layer take precedence; conflicting storage, duplicate schemas, argument/unrelated entries or names not bound by the call throw `ArgumentError`.
+Schemas materialise with `zero(T)` at binding time; resolve symbolic sizes first. Bind whole values for storage `of` cannot describe.
+
+**Addresses.** Bind an LHS variable, part of one, or a child's LHS variable through its namespace.
+Binding-time checks reject covariates, nonexistent argument fields, out-of-storage indices and unknown top symbols, except for possible submodels.
+Child namespace checks wait until reached; shared unprefixed namespaces cannot reject unknown names independently of siblings.
+[`check_model`](@ref) warns about bound names that no LHS variable of the model or its reached unprefixed submodels can use.
+
+**Values.** Whole argument bindings must satisfy declared types (`Any` if undeclared), checked at binding time, and the full signature (shared parameters/`where` constraints checked during evaluation).
+Binding never selects another method. Whole bindings of local LHS variables must fit existing storage types, otherwise they set them; schemas also constrain shape.
+Partial bindings convert to the replaced element/field type: `1` into `Float64` becomes `1.0`; unconvertible values propagate Julia's conversion error
+(`1.5` into `Int` raises `InexactError`), while successful but lossy conversions (`0.1` into `Float32`) raise `ArgumentError`, all at binding time.
+Runtime AD values need compatible storage, e.g. `fill(zero(m), n)`. An `of` type fixed before evaluation fixes its element type;
+under ForwardDiff/ReverseDiff build the schema from running values (`@of(z = of(Array, typeof(m), n))`), or bind a whole value.
+
+**Storage.** Integers, `end`, ranges, `:`, logical masks and `CartesianIndex` need an argument, schema, earlier whole value, produced `VarNamedTuple`, or prefix template.
+Otherwise indexed local LHS variables infer a growable array and warn; `end`/`:` cannot be resolved. Property paths need no storage. Keyword-splat entries cannot be bound separately.
+
+**Defaults** run once at construction: binding `x` in `f(x, n=length(x))` keeps `n`; reconstruct the model to recompute them.
+
+## [Performance](@id binding-performance)
+
+Partial bindings rebuild array arguments in O(length) each evaluation. Under reverse-mode AD, measured costs are about 110 ns per element;
+bind whole arrays when gradients are needed. This is an indicative measurement, not a fixed cost.
 
 ## Example
 
-As an example, one could define a linear regression model as follows:
+Consider a linear regression model:
 
 ```@example 1
-using DynamicPPL, Distributions
+using DynamicPPL, Distributions, StableRNGs
 using AbstractPPL: of, @of
 
 @model function linear_regression(x)
@@ -116,10 +113,11 @@ This model has no observed data: none of its LHS variables have conditioned bind
 Let's create some synthetic data to work with:
 
 ```@example 1
+rng = StableRNG(1)
 true_m, true_c = 5.0, 3.0
 
 x = 0:0.1:0.5
-y_data = true_m .* x .+ true_c .+ randn(length(x))
+y_data = true_m .* x .+ true_c .+ randn(rng, length(x))
 ```
 
 If we run the model before conditioning on `y`, we will find that all of `m`, `c`, and `y` are drawn from the prior distribution.
@@ -127,34 +125,19 @@ If we run the model before conditioning on `y`, we will find that all of `m`, `c
 ```@example 1
 model = linear_regression(x)
 
-# Here, `rand(model)` samples from the prior distribution and returns a
+# Here, `rand(rng, model)` samples from the prior distribution and returns a
 # VarNamedTuple of latent LHS variables.
-rand(model)
+rand(rng, model)
 ```
 
-We could, for example, do this many times, and compute the prior mean of `y`.
-This is analogous to using Turing's `Prior()` sampler.
+Estimate the prior mean of `y` for a prior predictive check:
 
 ```@example 1
-vnts = [rand(model) for _ in 1:1000]
+vnts = [rand(rng, model) for _ in 1:1000]
 mean(vnt[@varname(y)] for vnt in vnts)
 ```
 
-This is useful for prior predictive checks, for example.
-
 ## Conditioning
-
-Binding a whole argument replaces its value, shape, and dispatch type parameters before
-the model body runs, provided it matches the declared argument types. For example, replacing
-`x::Vector{Float64}` with `[1, 2]` throws `ArgumentError`; use `[1.0, 2.0]` instead.
-Partial updates preserve the remaining stored values and their array
-templates. Values in partial bindings are converted to the argument array's element type;
-values that cannot be represented exactly throw `ArgumentError`.
-Arguments with unobserved entries retain their original storage template; the
-corresponding tilde statements fill those entries during evaluation.
-Defaults derived from an argument are evaluated at model construction; binding that argument
-does not recompute them.
-Keyword-splat arguments support whole replacements; their entries cannot be bound separately.
 
 To condition the model on observed data, we can use the `condition` function, or its alias `|`.
 Use a `NamedTuple` or keyword arguments to bind whole top-level values.
@@ -166,30 +149,30 @@ observations = (; y=y_data)
 cond_model = model | observations
 ```
 
-We can inspect the values that have been conditioned on, using the `conditioned` function:
+`conditioned` and `fixed` inspect bound values; `model.args`/`model.defaults` retain construction values.
+The accessors return plain values independent of history: partial removal or mixed roles may produce `VarNamedTuple`/`PartialArray` containers.
 
 ```@example 1
 conditioned(cond_model)
 ```
 
-If we were to run this model, we would now find that the `y[i]` LHS variables are observed, and thus they are not sampled:
+The observed `y[i]` LHS variables are no longer sampled:
 
 ```@example 1
-parameters = rand(cond_model)
+parameters = rand(rng, cond_model)
 ```
 
-We can't directly draw from the posterior using DynamicPPL (`rand` still draws from the prior).
-However, since these LHS variables are now observed, the log-likelihood associated with the newly provided `y` will be computed:
+`rand` still draws latent values from the prior; the observations now contribute to the likelihood:
 
 ```@example 1
 loglikelihood(cond_model, parameters)
 ```
 
-and this quantity can be used by MCMC algorithms to draw samples from the posterior distribution.
+MCMC algorithms use this likelihood to sample the posterior.
 
 ## Fixing
 
-We can illustrate this by fixing the intercept `c` to its true value:
+Fix the intercept `c` to its true value:
 
 ```@example 1
 fix_values = (; c=true_c)
@@ -200,22 +183,16 @@ fixed_model = fix(model, fix_values)
 and sampling from the prior again:
 
 ```@example 1
-parameters_fixed = rand(fixed_model)
+parameters_fixed = rand(rng, fixed_model)
 ```
 
-If we were to repeat this many times, we would find that `y` is drawn from its prior, but because `c` is fixed, the samples will reflect that:
+The prior draws of `y` now use the fixed intercept:
 
 ```@example 1
-mean(vnt[@varname(y)] for vnt in [rand(fixed_model) for _ in 1:1000])
+mean(vnt[@varname(y)] for vnt in [rand(rng, fixed_model) for _ in 1:1000])
 ```
 
 ## Supplying parameters to condition or fix on
-
-Use `NamedTuple`s or keywords for whole top-level values and `VarName` pairs for any
-address; `:y => y_data` is shorthand for `@varname(y) => y_data`. Positional inputs and
-tuples of these inputs are applied left to right. `AbstractDict` inputs throw `ArgumentError`.
-Values DynamicPPL produces, such as `rand(model)` and `conditioned(model)`, are
-[`VarNamedTuple`](@ref)s and can be passed straight back to `condition` or `fix` for round trips.
 
 ```@example 1
 condition(model, (; y=y_data))
@@ -230,49 +207,31 @@ shape and element type of the local storage:
 cond_model_partial = condition(
     model, @varname(y[1]) => y_data[1], @of(y = of(Array, length(y_data)))
 )
-rand(cond_model_partial)
+rand(rng, cond_model_partial)
 ```
 
-A binding schema is an AbstractPPL `OfNamedTuple` type; `of((y=of(Array, length(y_data)),))`
-is equivalent. It may appear anywhere among the positional inputs, at most once per call,
-and supplies storage without binding any values. Keywords remain binding data; `|` does
-not take a schema. `fix` accepts the same positional schema syntax.
-
-The most recent owner within the layer being edited takes precedence over a schema;
-conflicting storage throws `ArgumentError`. Schema entries must name local LHS top symbols
-bound by that call: arguments, unrelated names, and unused entries throw `ArgumentError`.
-Model arguments already supply their storage, so partial argument bindings need no schema.
-Without storage, indexed local bindings infer a growable array and warn, and cannot resolve
-`end` or `:`. Symbolic sizes in an `of` type must be resolved before binding.
-An `of` type fixed before evaluation has a fixed element type, so runtime bindings into
-submodels under ForwardDiff or ReverseDiff need a schema built from running values
-(`@of(z = of(Array, typeof(m), n))`) or a whole binding.
-
-For storage that `of` cannot describe, such as custom arrays or structs, bind a whole value.
-Partial bindings convert exactly to their storage's element or field type: `1` in a
-`Float64` slot becomes `1.0`, while `1.5` in an `Int` slot and `0.1` in a `Float32` slot throw.
+The schema describes local storage without observing or fixing it; `fix` accepts the same syntax.
+The equivalent functional spelling is `of((y=of(Array, length(y_data)),))`.
+Arguments already supply storage, so partial argument bindings need no schema. See [Binding rules](@ref) for the complete contract.
 
 ## Missing data
 
-A value containing `missing` is rejected when a tilde statement observes or fixes it.
-The `ArgumentError` names the LHS variable, rather than the LHS subvariable containing
-`missing`. Parts of an argument or binding that no tilde statement reads may contain
-`missing`: for `@model metadata_lhs(p) = p.a ~ Normal()`,
-`metadata_lhs((a=1.0, b=missing))` constructs and evaluates successfully, while
-`metadata_lhs((a=missing, b=1.0))` constructs but throws when evaluated, naming `p.a`.
-The same rule applies to explicit bindings from `condition` and `fix`.
+`missing` and `nothing` do not mark data latent. Both throw where a tilde reads them,
+including values nested in containers. Unread metadata may contain either:
+`@model metadata_lhs(p) = p.a ~ Normal()` accepts `(a=1.0, b=missing)`,
+but `(a=missing, b=1.0)` throws on evaluation, naming `p.a`.
 
-`missing` no longer marks an LHS variable as latent. Use `decondition(m, @varname(x))`
-to make an argument LHS variable latent before evaluation.
-Whole `missing` or `nothing` arguments also throw when the body replaces them before
-the tilde. To allocate latent data inside the body, use a `missing` default and
-`decondition` the argument:
+The default-argument idiom `@model gdemo(x=missing)` called as `gdemo()` also throws,
+even if the body first replaces `x` using `if x === missing; x = Vector{T}(undef, n); end`.
+Remove the argument-supplied observation with `decondition(gdemo(), @varname(x))`:
 
 ```@example missing-data
 using DynamicPPL, Distributions, StableRNGs
 
 @model function gdemo(x=missing)
-    x === missing && (x = zeros(2))
+    if x === missing
+        x = Vector{Float64}(undef, 2)
+    end
     for i in eachindex(x)
         x[i] ~ Normal()
     end
@@ -284,8 +243,7 @@ model(StableRNG(1))
 ```
 
 `gdemo()` stores the argument-supplied observation; `decondition` removes it so the body
-can allocate and sample `x`. A `nothing` inside a container remains bound data and fails
-in `logpdf` if read.
+can allocate and sample `x`.
 
 For an array whose indices are separate LHS variables, decondition only the desired
 indices. A single multivariate LHS variable cannot be partially conditioned:
