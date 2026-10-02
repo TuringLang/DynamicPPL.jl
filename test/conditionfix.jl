@@ -2641,7 +2641,8 @@ end
 @testset "binding edits use their layer's owner" begin
     @model layer_array(x) = (for i in eachindex(x)
         x[i] ~ Normal()
-    end; x)
+    end;
+    x)
     @model function layer_flexible(x)
         if x isa NamedTuple
             x.a ~ Normal()
@@ -2651,9 +2652,11 @@ end
         end
         return x
     end
-    @model layer_local() = (z = zeros(3); for i in eachindex(z)
+    @model layer_local() = (z = zeros(3);
+    for i in eachindex(z)
         z[i] ~ Normal()
-    end; z)
+    end;
+    z)
     @model layer_record() = (z = (a=1.0, b=2.0); z.a ~ Normal(); z.b ~ Normal(); z)
     @model layer_parent(child) = a ~ to_submodel(child)
 
@@ -2701,6 +2704,30 @@ end
         @test_throws "template type" bind(record; z=(a=1.0f0, b=2.0f0))
         @test bind(record; z=(a=3.0, b=4.0))(Xoshiro(1)) == (a=3.0, b=4.0)
     end
+end
+
+@testset "removal through whole bindings with nested tuples" begin
+    @model nested_tuple_fields(p) = (p.b[1] ~ Normal(); p.b[2] ~ Normal(); p)
+    @model tuple_removal_parent(child) = a ~ to_submodel(child)
+    data = (b=(1.0, 2.0),)
+    m = nested_tuple_fields(data)
+    latent = Dict(@varname(p.b[1]) => 8.0)
+    @test returned(decondition(m, @varname(p.b[1])), latent) == (b=(8.0, 2.0),)
+    for (bind, remove) in ((condition, decondition), (fix, unfix))
+        whole = bind(decondition(m); p=data)
+        partial = remove(whole, @varname(p.b[1]))
+        @test returned(partial, latent) == (b=(8.0, 2.0),)
+        @test returned(tuple_removal_parent(partial), Dict(@varname(a.p.b[1]) => 8.0)) ==
+            (b=(8.0, 2.0),)
+        @test_throws r"no .* binding is stored" remove(whole, @varname(p.b[3]))
+    end
+    @test unfix(fix(m; p=(b=(3.0, 4.0),)), @varname(p.b[1]))(Xoshiro(1)) == (b=(1.0, 4.0),)
+
+    @model deeper_tuple(p) = (p[1].b[1][1] ~ Normal(); p)
+    deep = deeper_tuple(((b=((1.0, 2.0),),),))
+    @test returned(
+        decondition(deep, @varname(p[1].b[1][1])), Dict(@varname(p[1].b[1][1]) => 8.0)
+    ) == ((b=((8.0, 2.0),),),)
 end
 
 @info "Completed $(@__FILE__) in $(now() - __now__)."
