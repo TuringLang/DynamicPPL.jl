@@ -913,10 +913,12 @@ function VarNamedTuples.unwrap_internal_array(tree::ModelValueTree)
 end
 
 # Latent storage belongs to this evaluation, but numerical leaves retain their AD identity.
+# Backends may need a different shallow copy to support subsequent argument assignments.
+_copy_model_argument_storage(value) = copy(value)
 _copy_model_argument(value::Union{Number,Type}) = value
-_copy_model_argument(value::AbstractArray{<:Number}) = copy(value)
+_copy_model_argument(value::AbstractArray{<:Number}) = _copy_model_argument_storage(value)
 function _copy_model_argument(value::AbstractArray)
-    result = copy(value)
+    result = _copy_model_argument_storage(value)
     for i in eachindex(value)
         if isassigned(value, i)
             result = BangBang.setindex!!(result, _copy_model_argument(value[i]), i)
@@ -964,7 +966,7 @@ function _model_argument_value(values::VarNamedTuples.PartialArray, template)
                 axes(template) != axes(values.data)
                 similar(template, axes(values.data))
             else
-                template isa Tuple ? template : copy(template)
+                template isa Tuple ? template : _copy_model_argument_storage(template)
             end
         for i in eachindex(template)
             if (result isa Tuple || checkbounds(Bool, result, i)) &&
