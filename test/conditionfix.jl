@@ -10,6 +10,7 @@ using LinearAlgebra: I
 using LogDensityProblems: LogDensityProblems
 using Test
 using Random: Xoshiro
+using StaticArrays: SVector
 
 @info "Testing $(@__FILE__)..."
 __now__ = now()
@@ -1151,6 +1152,32 @@ end
             @test !isassigned(data, 1)
             @test initialized_model() == [[1.0]]
         end
+    end
+
+    @testset "partial bindings of static-array arguments" begin
+        @model function static_argument(x)
+            x[1] ~ Normal()
+            x[2] ~ Normal()
+            return x
+        end
+        @model static_parent(child) = a ~ to_submodel(child)
+        data = SVector(1.0, 2.0)
+        original = static_argument(data)
+        for bind in (condition, fix)
+            changed = bind(original, @varname(x[1]) => 3.0)
+            @test changed(Xoshiro(1)) == SVector(3.0, 2.0)
+            @test static_parent(changed)(Xoshiro(1)) == SVector(3.0, 2.0)
+            @test original(Xoshiro(1)) === data
+            removed = decondition(changed, @varname(x[2]))
+            @test !haskey(conditioned(removed), @varname(x[2]))
+            @test bind(changed, @varname(x[2]) => 4.0f0)(Xoshiro(1)) == SVector(3.0, 4.0)
+            @test loglikelihood(changed, VarNamedTuple()) ≈
+                logpdf(Normal(), 2.0) + (bind === condition ? logpdf(Normal(), 3.0) : 0.0)
+        end
+        latent = decondition(original, @varname(x[1]))
+        @test !haskey(conditioned(latent), @varname(x[1]))
+        @test conditioned(latent)[@varname(x[2])] == 2.0
+        @test Set(keys(rand(Xoshiro(1), latent))) == Set([@varname(x[1])])
     end
 
     @testset "partial overrides preserve siblings" begin
