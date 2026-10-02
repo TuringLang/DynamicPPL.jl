@@ -55,7 +55,7 @@ Currently, DynamicPPL provides the transform strategies [`LinkAll`](@ref), [`Unl
 Their meanings should be fairly self-explanatory; here is a brief demonstration:
 
 ```@example 1
-params = @vnt begin
+params = DynamicPPL.@vnt begin
     x := 1.5
     y := 2.0
 end
@@ -97,7 +97,7 @@ function DynamicPPL.target_transform(l::LookupTransformsInVNT, vn::VarName)
     return l.transforms[vn]
 end
 
-link_x_only = LookupTransformsInVNT(@vnt begin
+link_x_only = LookupTransformsInVNT(DynamicPPL.@vnt begin
     x := DynamicLink()
     y := Unlink()
 end)

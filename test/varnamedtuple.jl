@@ -2541,6 +2541,11 @@ end
     )
 end
 
+@testset "internal macro is not exported" begin
+    @test !(Symbol("@vnt") in names(DynamicPPL))
+    @test isdefined(DynamicPPL, Symbol("@vnt"))
+end
+
 @info "Completed $(@__FILE__) in $(now() - __now__)."
 
 end

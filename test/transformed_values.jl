@@ -136,7 +136,7 @@ end
         (LinkSome(Set([@varname(y)]), UnlinkAll()), false, true),
     ]
         transforms = DynamicPPL.get_fixed_transforms(model, strategy)
-        expected = @vnt begin
+        expected = DynamicPPL.@vnt begin
             x := expected_transform(xdist, x_linked)
             y := expected_transform(ydist, y_linked)
         end
@@ -180,21 +180,21 @@ end
     end
 
     # If all are DynamicLink -> LinkAll
-    vnt_linked = @vnt begin
+    vnt_linked = DynamicPPL.@vnt begin
         x := TransformedValue([1.0], DynamicLink())
         y := TransformedValue([2.0, 3.0], DynamicLink())
     end
     @test DynamicPPL.infer_transform_strategy_from_values(vnt_linked) isa LinkAll
 
     # If all are Unlink -> UnlinkAll
-    vnt_unlinked = @vnt begin
+    vnt_unlinked = DynamicPPL.@vnt begin
         x := TransformedValue([1.0], Unlink())
         y := TransformedValue([2.0, 3.0], Unlink())
     end
     @test DynamicPPL.infer_transform_strategy_from_values(vnt_unlinked) isa UnlinkAll
 
     # Mixed -> WithTransforms
-    vnt_mixed = @vnt begin
+    vnt_mixed = DynamicPPL.@vnt begin
         x := TransformedValue([1.0], DynamicLink())
         y := TransformedValue([2.0, 3.0], Unlink())
     end
@@ -205,7 +205,7 @@ end
 
     # FixedTransform values -> WithTransforms
     ft = FixedTransform(Bijectors.VectorBijectors.from_linked_vec(Beta(2, 5)))
-    vnt_fixed = @vnt begin
+    vnt_fixed = DynamicPPL.@vnt begin
         x := TransformedValue([0.5], ft)
     end
     strategy = DynamicPPL.infer_transform_strategy_from_values(vnt_fixed)

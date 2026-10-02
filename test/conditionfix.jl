@@ -106,7 +106,7 @@ end
                 @test bind(model, whole => value)(Xoshiro(1)) == value
             end
         end
-        templated = @vnt begin
+        templated = DynamicPPL.@vnt begin
             @template x = zeros(1)
             x[1] := 5.0
         end
@@ -408,7 +408,7 @@ end
         @model indexed_lhs_argument(x) = (x[1] ~ Normal(); x)
         for bind in (condition, fix), x in ([1.0, 2.0], (1.0, 2.0))
             model = decondition(indexed_lhs_argument(x))
-            invalid = @vnt begin
+            invalid = DynamicPPL.@vnt begin
                 x[3] := 9.0
             end
             for values in ((@varname(x[3]) => 9.0), invalid)
@@ -1129,13 +1129,17 @@ end
             x[2:4] ~ MvNormal(zeros(3), I)
             return x
         end
-        templated = @vnt begin
+        templated = DynamicPPL.@vnt begin
             @template x = zeros(3)
             x[1] := 5.0
         end
         for bind in (condition, fix)
             for model in (whole_vector(), ranged_vector()),
-                values in ((@varname(x[1]) => 5.0,), (templated,))
+                values in (
+                    (@varname(x[1]) => 5.0,),
+                    (templated,),
+                    (@varname(x[1]) => 5.0, @of(x = of(Array, 3))),
+                )
 
                 @test_throws ArgumentError bind(model, values...)(Xoshiro(1))
             end
@@ -1436,7 +1440,7 @@ end
         result, _ = init!!(partial, VarInfo(), InitFromParams((; x=data)), UnlinkAll())
         @test result == reshape([[10.0f0], [20.0f0], [3.0f0], [4.0f0]], 2, 2)
 
-        observations = @vnt begin
+        observations = DynamicPPL.@vnt begin
             @template x = data
             x[1][1] := 10.0f0
         end
@@ -2029,19 +2033,21 @@ end
             x ~ MvNormal(zeros(3), I)
             return x
         end
-        templated = @vnt begin
+        templated = DynamicPPL.@vnt begin
             @template x = zeros(3)
             x[1] := 1.0
             x[2] := 2.0
             x[3] := 3.0
         end
-        untemplated = @vnt begin
+        untemplated = DynamicPPL.@vnt begin
             x[1] := 1.0
             x[2] := 2.0
             x[3] := 3.0
         end
         for op in (condition, fix)
             @test op(mvnorm(), templated)() == [1.0, 2.0, 3.0]
+            @test op(mvnorm(), @varname(x[:]) => [1.0, 2.0, 3.0], @of(x = of(Array, 3)))() ==
+                [1.0, 2.0, 3.0]
             @test_throws ArgumentError op(mvnorm(), untemplated)()
         end
     end
@@ -2055,7 +2061,7 @@ end
         @model function partial_array_parent(child_model)
             return child ~ to_submodel(child_model)
         end
-        next_values = @vnt begin
+        next_values = DynamicPPL.@vnt begin
             @template x = zeros(2, 2)
             x[2, 1] := 2.5
         end

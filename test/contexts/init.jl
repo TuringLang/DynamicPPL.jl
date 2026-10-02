@@ -228,7 +228,7 @@ using Test
         @testset "NT promotion to VNT" begin
             nt = (x=1.0, y=[2.0, 3.0], z="zzz")
             ifp = InitFromParams(nt)
-            vnt = @vnt begin
+            vnt = DynamicPPL.@vnt begin
                 x := 1.0
                 y := [2.0, 3.0]
                 z := "zzz"
@@ -240,7 +240,7 @@ using Test
                 @varname(x) => 1.0, @varname(y) => [2.0, 3.0], @varname(z) => "zzz"
             )
             ifp = InitFromParams(dict)
-            vnt = @vnt begin
+            vnt = DynamicPPL.@vnt begin
                 x := 1.0
                 y := [2.0, 3.0]
                 z := "zzz"
@@ -258,7 +258,7 @@ using Test
         @testset "given full set of parameters" begin
             # test_init_model has x ~ Normal() and y ~ MvNormal(zeros(2), I)
             my_x, my_y = 1.0, [2.0, 3.0]
-            vnt = @vnt begin
+            vnt = DynamicPPL.@vnt begin
                 x := my_x
                 y := my_y
             end
@@ -274,7 +274,7 @@ using Test
 
         @testset "given only partial parameters" begin
             my_x = 1.0
-            vnt = @vnt begin
+            vnt = DynamicPPL.@vnt begin
                 x := my_x
             end
 
@@ -311,7 +311,7 @@ using Test
                 )
 
                 # We also explicitly test the case where `y = missing`.
-                vnt_missing = @vnt begin
+                vnt_missing = DynamicPPL.@vnt begin
                     x := my_x
                     y := missing
                 end

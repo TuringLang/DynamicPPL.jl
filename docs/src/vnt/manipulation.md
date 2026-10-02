@@ -16,7 +16,7 @@ For example, this VNT contains a `PartialArray` which is *really* the same thing
 ```@example 1
 using DynamicPPL
 
-vnt = @vnt begin
+vnt = DynamicPPL.@vnt begin
     @template x = zeros(2)
     x[1] := 1.0
     x[2] := 2.0
@@ -90,7 +90,7 @@ Specifically, a skeleton of a VNT is one that contains enough template informati
 This is best illustrated by example:
 
 ```@example 1
-vnt = @vnt begin
+vnt = DynamicPPL.@vnt begin
     # We set x to be length-3 to avoid it ever being
     # densified, which would render this example moot.
     @template x = zeros(3)

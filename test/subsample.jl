@@ -13,6 +13,7 @@ using Distributions:
     loglikelihood,
     product_distribution,
     truncated
+using AbstractPPL: of, @of
 using DynamicPPL
 using FillArrays: Fill
 using ForwardDiff: ForwardDiff
@@ -375,11 +376,7 @@ end
             normal_location(), @varname(x) => data, @varname(z) => 1.0
         )
 
-        partial = @vnt begin
-            @template x = zeros(2)
-            x[1] := 0.0
-        end
-        model = condition(normal_location(), partial)
+        model = condition(normal_location(), @varname(x[1]) => 0.0, @of(x = of(Array, 2)))
         @test_throws ArgumentError independent_problem(model, 2)
     end
 

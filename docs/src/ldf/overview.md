@@ -29,7 +29,7 @@ For example, in the above example, we could store the information as follows:
 ```@example 1
 model = f()
 transform_strategy = LinkAll()
-ranges = @vnt begin
+ranges = DynamicPPL.@vnt begin
     x := 1:1
     y := 2:2
 end
