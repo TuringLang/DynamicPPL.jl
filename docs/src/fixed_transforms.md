@@ -18,7 +18,7 @@ function my_transform end
 
 # Store them in a VarNamedTuple. You can mix and match different transform
 # types here, as long as they are subtypes of `AbstractTransform`.
-vnt = DynamicPPL.@vnt begin
+vnt = @vnt begin
     a := FixedTransform(my_transform)
     b := Unlink()
 end
