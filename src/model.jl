@@ -2485,6 +2485,8 @@ AD values, e.g. `@of(z = of(Array, typeof(m), n))`, or a whole value.
 
 Fixed values must cover their LHS variables with a static size and shape. Changing a
 fixed argument's size or shape in the body throws `ArgumentError` naming the LHS variable.
+Shape validation stops at the LHS variable's address; it does not inspect nested values
+inside a whole structured LHS variable.
 A multivariate draw is one LHS variable: its subvariables cannot have different roles.
 Use separate LHS variables (`x[i] ~ ...`) to fix indices independently.
 
