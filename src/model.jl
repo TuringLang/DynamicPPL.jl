@@ -358,20 +358,20 @@ function _get_model_data(model, vn, argument, local_value)
     return _get_model_data(model, vn)
 end
 
+# Partial-binding storage does not own the shape of its enclosing container.
 function _check_fixed_shape(binding, local_value, optic, vn)
-    value = binding isa ModelValue ? binding.value : binding
-    array = value isa VarNamedTuples.PartialArray ? value.data : value
-    tuple = value isa ModelValueTree ? value.template : value
-    if tuple isa Tuple
-        local_value isa Tuple && length(tuple) == length(local_value) || _fixed_shape_error(
+    return _check_fixed_shape_child(binding, local_value, optic, vn)
+end
+function _check_fixed_shape(binding::ModelValue{Fix}, local_value, optic, vn)
+    value = binding.value
+    if value isa Tuple
+        local_value isa Tuple && length(value) == length(local_value) || _fixed_shape_error(
             vn, "a static size and shape; the model body changed its argument's length."
         )
-    elseif (array isa AbstractArray || local_value isa AbstractArray) && !(
-        value isa VarNamedTuples.PartialArray && array isa VarNamedTuples.GrowableArray
-    )
-        array isa AbstractArray &&
+    elseif value isa AbstractArray || local_value isa AbstractArray
+        value isa AbstractArray &&
             local_value isa AbstractArray &&
-            axes(array) == axes(local_value) || _fixed_shape_error(
+            axes(value) == axes(local_value) || _fixed_shape_error(
             vn, "a static size and shape; the model body changed its argument's shape."
         )
     end

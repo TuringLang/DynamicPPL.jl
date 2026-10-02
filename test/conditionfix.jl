@@ -2625,6 +2625,33 @@ end
     end
 end
 
+@testset "partial fixed shape ownership" begin
+    @model function partial_shape(x, change)
+        x = change(x)
+        x[1] ~ Normal()
+        return x
+    end
+    @model shape_parent(child) = a ~ to_submodel(child)
+    for change in (x -> x[1:1], x -> vcat(x, 3.0), x -> reshape(x, 1, 2))
+        m = fix(partial_shape([1.0, 2.0], change), @varname(x[1]) => 8.0)
+        @test m(Xoshiro(1)) == change([8.0, 2.0])
+        @test shape_parent(m)(Xoshiro(1)) == change([8.0, 2.0])
+    end
+    @model function nested_partial_shape(x, change)
+        x = change(x)
+        x[1][1] ~ Normal()
+        return x
+    end
+    m = fix(
+        nested_partial_shape([[1.0, 2.0], [3.0]], x -> x[1:1]), @varname(x[1]) => [8.0, 9.0]
+    )
+    @test m(Xoshiro(1)) == [[8.0, 9.0]]
+    m = fix(
+        nested_partial_shape([[1.0, 2.0]], x -> [x[1][1:1]]), @varname(x[1]) => [8.0, 9.0]
+    )
+    @test_throws r"ArgumentError: .*x\[1\]\[1\].*size and shape" m(Xoshiro(1))
+end
+
 @testset "binding edits use their layer's owner" begin
     @model layer_array(x) = (for i in eachindex(x)
         x[i] ~ Normal()
