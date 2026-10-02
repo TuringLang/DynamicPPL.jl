@@ -95,13 +95,7 @@ end
             (splatted_typed_arguments(1.0, 2.0, 3.0), (; x=1), "x"),
         )
             message = "Bound value at `$name` in model `$(nameof(model))` must be an instance of declared argument type Float64; supplied Int64."
-            err = try
-                condition(model, values)
-            catch e
-                e
-            end
-            @test err isa ArgumentError
-            @test err.msg == message
+            @test_throws ArgumentError(message) condition(model, values)
         end
     end
 
