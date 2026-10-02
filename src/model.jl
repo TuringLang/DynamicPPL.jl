@@ -125,6 +125,9 @@ function _overlay_model_node(previous::VarNamedTuple, fixed::VarNamedTuple)
     return _overlay_model_values(previous, fixed)
 end
 function _overlay_model_node(previous, fixed::VarNamedTuples.PartialArray)
+    eltype(fixed) <: ModelValue &&
+        _has_complete_model_data(fixed) &&
+        return _copy_model_node(fixed)
     previous isa ModelValue && (previous = _expand_model_binding(previous))
     if previous isa VarNamedTuples.PartialArray &&
         !(fixed.data isa VarNamedTuples.GrowableArray) &&
@@ -138,6 +141,12 @@ function _overlay_model_node(previous, fixed::VarNamedTuples.PartialArray)
             end
         end
         previous = VarNamedTuples.PartialArray(data, mask)
+    end
+    if previous isa VarNamedTuples.PartialArray && fixed.data isa ModelBindingArray
+        data = previous.data isa ModelBindingArray ? previous.data.data : previous.data
+        previous = VarNamedTuples.PartialArray(
+            ModelBindingArray(data, fixed.data.template), previous.mask
+        )
     end
     return _fold_model_indices(
         _copy_model_node(previous), fixed
@@ -397,9 +406,39 @@ function _tag_model_values(::Type{R}, values::VarNamedTuple) where {R}
     return map_pairs!!(pair -> ModelValue{R}(pair.second), copy(values))
 end
 
+# Keep the array owner through PartialArray's copies and element-type changes.
+struct ModelBindingArray{T,N,A<:AbstractArray{T,N},V<:AbstractArray} <: AbstractArray{T,N}
+    data::A
+    template::V
+end
+Base.size(value::ModelBindingArray) = size(value.data)
+Base.axes(value::ModelBindingArray) = axes(value.data)
+Base.getindex(value::ModelBindingArray, indices...) = getindex(value.data, indices...)
+function Base.isassigned(value::ModelBindingArray, indices::Vararg{Int})
+    return isassigned(value.data, indices...)
+end
+function Base.setindex!(value::ModelBindingArray, child, indices...)
+    setindex!(value.data, child, indices...)
+    return value
+end
+Base.copy(value::ModelBindingArray) = ModelBindingArray(copy(value.data), value.template)
+function Base.similar(value::ModelBindingArray, ::Type{T}) where {T}
+    return ModelBindingArray(similar(value.data, T), value.template)
+end
+function Base.similar(value::ModelBindingArray, ::Type{T}, dims::Dims) where {T}
+    return ModelBindingArray(similar(value.data, T, dims), value.template)
+end
+
 function _expand_model_binding(previous::ModelValue{R,<:AbstractArray}) where {R}
-    data = map(ModelValue{R}, previous.value)
-    return VarNamedTuples.PartialArray(data, fill!(similar(data, Bool), true))
+    value = previous.value
+    data = map(ModelValue{R}, value)
+    mask = fill!(similar(data, Bool), true)
+    # Arrays whose `similar` preserves their container already carry the owner type.
+    # Leave those visible to array-specific binding protocols (e.g. ComponentArrays).
+    if Core.Compiler.return_type(similar, Tuple{typeof(value)}) !== typeof(value)
+        data = ModelBindingArray(data, value)
+    end
+    return VarNamedTuples.PartialArray(data, mask)
 end
 function _expand_model_binding(previous::ModelValue{R,<:Base.Pairs}) where {R}
     return _expand_model_binding(ModelValue{R}(NamedTuple(previous.value)))
@@ -907,9 +946,24 @@ end
 _model_data(value) = value
 _model_data(value::ModelValue) = value.value
 _model_data(values::AbstractArray) = map(_model_data, values)
+function _model_data(values::ModelBindingArray)
+    return _restore_model_array(map(_model_data, values.data), values.template)
+end
+VarNamedTuples.unwrap_internal_array(values::ModelBindingArray) = _model_data(values)
+function _restore_model_array(data, template)
+    if axes(template) == axes(data) && !(data isa typeof(template))
+        result = _copy_model_argument_storage(template)
+        for i in eachindex(data)
+            result = BangBang.setindex!!(result, data[i], i)
+        end
+        return result
+    end
+    return data
+end
 _model_data(values::VarNamedTuple) = map(_model_data, values.data)
 function _model_data(values::VarNamedTuples.PartialArray)
-    return _model_data(VarNamedTuples.unwrap_internal_array(values))
+    data = VarNamedTuples.unwrap_internal_array(values)
+    return values.data isa ModelBindingArray ? data : _model_data(data)
 end
 function _model_data(tree::ModelValueTree)
     return if tree.values isa Tuple
@@ -933,6 +987,9 @@ end
 # Latent storage belongs to this evaluation, but numerical leaves retain their AD identity.
 # Backends may need a different shallow copy to support subsequent argument assignments.
 _copy_model_argument_storage(value) = copy(value)
+function _copy_model_argument_storage(value::SubArray)
+    return view(_copy_model_argument_storage(parent(value)), parentindices(value)...)
+end
 _copy_model_argument(value) = _copy_model_argument(value, IdDict())
 _copy_model_argument(value::Union{Number,Type}) = value
 _copy_model_argument(value::AbstractArray{<:Number}) = _copy_model_argument_storage(value)
@@ -1050,6 +1107,9 @@ function _defer_argument_binding(binding, value)
 end
 
 function _model_argument_value(values::VarNamedTuples.PartialArray, template)
+    if values.data isa ModelBindingArray
+        template = values.data.template
+    end
     return if _has_complete_model_data(values)
         _model_data(values)
     else
@@ -1070,6 +1130,12 @@ function _model_argument_value(values::VarNamedTuples.PartialArray, template)
         end
         _fold_model_indices(_set_model_argument, result, values)
     end
+end
+function _set_model_argument(result, value, optic::AbstractPPL.Index, template)
+    child_template = VarNamedTuples.maybe_index_template(result, optic)
+    return BangBang.setindex!!(
+        result, _model_argument_value(value, child_template), optic.ix...; optic.kw...
+    )
 end
 function _set_model_argument(result, value, optic, template)
     child_template = VarNamedTuples.maybe_index_template(result, optic)

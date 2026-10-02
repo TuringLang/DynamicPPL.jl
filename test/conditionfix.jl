@@ -2803,6 +2803,35 @@ end
     @test s.x == 0.0
 end
 
+@testset "partial bindings preserve array types" begin
+    @model typed_static_argument(x::SVector{2,Float64}) = (
+        x[1] ~ Normal(); x[2] ~ Normal(); x
+    )
+    @model typed_view_argument(x::SubArray) = (x[1] ~ Normal(); x[2] ~ Normal(); x)
+    for (model, x) in (
+        (typed_static_argument, SVector(1.0, 2.0)),
+        (typed_view_argument, view([1.0, 2.0], :)),
+    )
+        for bind in (condition, fix)
+            result = bind(model(x), @varname(x[1]) => 3.0)(Xoshiro(1))
+            @test result isa typeof(x)
+            @test result == [3.0, 2.0]
+            @test x == [1.0, 2.0]
+        end
+    end
+    @model replacement_array(x) = (x[1] ~ Normal(); x[2] ~ Normal(); x)
+    for owner in (Float32[1, 2], SVector(1.0f0, 2.0f0), view(Float32[1, 2], :))
+        for bind in (condition, fix)
+            changed = bind(replacement_array(view([1.0, 2.0], :)); x=owner)
+            changed = bind(changed, @varname(x[1]) => 3)
+            changed = bind(changed, @varname(x[2]) => 4)
+            result = changed(Xoshiro(1))
+            @test result isa typeof(owner)
+            @test result == [3, 4]
+        end
+    end
+end
+
 @info "Completed $(@__FILE__) in $(now() - __now__)."
 
 end
