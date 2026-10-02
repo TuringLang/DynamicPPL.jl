@@ -5,6 +5,11 @@ Construct a `VarNamedTuple` from a block of assignments. Each assignment should 
 `var := value`, where `var` is a variable name. This is best illustrated by
 example:
 
+!!! note "Internal use"
+    `@vnt` and its `@template` are intended for internal use within DynamicPPL. Public code
+    should describe storage with AbstractPPL's `of` function or `@of` macro instead, for
+    example `condition(m, @varname(z[2]) => 1.0, @of(z = of(Array, 3)))`.
+
 ```jldoctest
 julia> using DynamicPPL
 
