@@ -82,7 +82,9 @@ DynamicPPL are also accepted. Positional inputs and tuples apply left to right. 
 `AbstractDict` and other unsupported input throws `ArgumentError`.
 
 A **binding schema** is an AbstractPPL `OfNamedTuple` type, such as `@of(z = of(Array, 3))`. It
-supplies storage for partially bound local LHS variables without binding them. Import `of, @of`
+supplies storage for partially bound local LHS variables without binding them. A binding
+schema shapes the binding, not the model's storage: the body still sets each local's size, and
+bound indices outside it are unused. Import `of, @of`
 from AbstractPPL. One binding schema may appear anywhere among positional inputs. Keywords
 remain binding data, and `|` rejects binding schemas. Owners in the edited layer take
 precedence. Conflicting storage or duplicate binding schemas throw `ArgumentError`. Entries for
