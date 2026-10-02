@@ -451,6 +451,12 @@ function _check_fixed_shape(
         local_value isa Tuple && length(value) == length(local_value) || _fixed_shape_error(
             vn, "a static size and shape; the model body changed its argument's length."
         )
+    elseif value isa Union{NamedTuple,Base.Pairs}
+        local_value isa Union{NamedTuple,Base.Pairs} &&
+            length(value) == length(local_value) &&
+            all(name -> haskey(local_value, name), keys(value)) || _fixed_shape_error(
+            vn, "a static size and shape; the model body changed its argument's fields."
+        )
     elseif value isa AbstractArray || local_value isa AbstractArray
         value isa AbstractArray &&
             local_value isa AbstractArray &&
