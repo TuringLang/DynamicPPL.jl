@@ -87,6 +87,12 @@ jobs:
     if: ${{ !cancelled() && needs.benchmark-pr.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: julia-actions/setup-julia@v3
+        with:
+          version: '1'
       - uses: actions/download-artifact@v8
         with:
           name: benchmark-pr
@@ -102,24 +108,23 @@ jobs:
           head_sha='${{ github.event.pull_request.head.sha }}'
           main_sha='${{ needs.benchmark-main.outputs.sha }}'
           main_status='${{ needs.benchmark-main.result }}'
+          main_table=()
+          if [[ "$main_status" == "success" ]]; then
+            main_table=(main/results.md)
+          fi
+          julia benchmarks/report.jl '${{ github.repository }}' "$head_sha" "$main_sha" \
+            head/results.md "${main_table[@]}" > table.html
           {
             echo "<!-- benchmark-report -->"
-            echo "## Benchmarks @ ${head_sha}"
+            echo "## Benchmarks"
             echo ""
             echo "**Performance Ratio:** gradient time divided by log-density time."
             echo ""
             echo "For very small models these ratios are noisy across runs and machines; raw primal and gradient timings are more reliable. The benchmarks are aimed at DynamicPPL developers and mainly catch obvious allocation or type-stability regressions. See [benchmark notes](https://github.com/TuringLang/DynamicPPL.jl/tree/main/benchmarks#interpreting-results) for details."
             echo ""
-            cat head/results.md
+            cat table.html
             echo ""
-            if [[ "$main_status" == "success" ]]; then
-              echo "<details><summary>Main @ ${main_sha}</summary>"
-              echo ""
-              cat main/results.md
-              echo ""
-              echo "</details>"
-              echo ""
-            else
+            if [[ "$main_status" != "success" ]]; then
               echo "Main benchmark job did not succeed (\`${main_status}\`) — see workflow logs."
               echo ""
             fi
