@@ -9,6 +9,68 @@ using Distributions
 
 export check_model, has_static_constraints
 
+# Accumulators see distributions and values, not submodel calls (or fixed LHS variables).
+# Keep reached models only during check_model, using the existing context traversal.
+struct BindingCheckContext{C<:AbstractContext} <: DynamicPPL.AbstractParentContext
+    context::C
+    models::Vector{Model}
+    namespaces::Set{Symbol}
+    lock::ReentrantLock
+end
+DynamicPPL.childcontext(ctx::BindingCheckContext) = ctx.context
+function DynamicPPL.setchildcontext(ctx::BindingCheckContext, child::AbstractContext)
+    return BindingCheckContext(child, ctx.models, ctx.namespaces, ctx.lock)
+end
+
+function DynamicPPL.tilde_assume!!(
+    parent::Model,
+    ctx::BindingCheckContext,
+    submodel::DynamicPPL.Submodel{M,AutoPrefix},
+    vn::VarName,
+    template,
+    vi::AbstractVarInfo,
+) where {M<:Model,AutoPrefix}
+    if AutoPrefix || DynamicPPL._model_prefix(submodel.model) !== nothing
+        # This child and its descendants have their own namespace.
+        namespace = AutoPrefix ? vn : DynamicPPL._model_prefix(submodel.model)
+        lock(ctx.lock) do
+            push!(ctx.namespaces, DynamicPPL.AbstractPPL.getsym(namespace))
+        end
+        return DynamicPPL.tilde_assume!!(parent, ctx.context, submodel, vn, template, vi)
+    end
+    lock(ctx.lock) do
+        push!(ctx.models, submodel.model)
+    end
+    # Retain the checking context for unprefixed descendants, while delegating the
+    # actual evaluation to the ordinary submodel method.
+    return invoke(
+        DynamicPPL.tilde_assume!!,
+        Tuple{Model,AbstractContext,typeof(submodel),VarName,Any,AbstractVarInfo},
+        parent,
+        ctx,
+        submodel,
+        vn,
+        template,
+        vi,
+    )
+end
+
+function _warn_unused_binding_names(model, ctx::BindingCheckContext)
+    names = copy(ctx.namespaces)
+    for reached in ctx.models
+        lhs = DynamicPPL._lhs_names(DynamicPPL._binding_metadata(reached))
+        # Handwritten models do not promise complete LHS metadata.
+        lhs === nothing && return nothing
+        union!(names, lhs)
+    end
+    for name in keys(DynamicPPL._submodel_values(model, nothing).data)
+        if name ∉ names
+            @warn "Binding `$name` has no LHS top symbol in this model or any reached unprefixed submodel. It may be unused; an unprefixed submodel in an untaken branch could still use it."
+        end
+    end
+    return nothing
+end
+
 """
     DebugAccumulator <: AbstractAccumulator
 
@@ -94,6 +156,9 @@ derived from model inputs. Use `rng` to control reproducibility if needed.
 
 - Empty models emit a warning, but do not fail (since they are not incorrect *per se*)
 
+- Bindings without an LHS top symbol in the model or reached unprefixed submodels warn,
+  but do not fail: an untaken submodel branch could still use them.
+
 # Keyword arguments
 
 - `error_on_failure::Bool`: Whether to throw an error (instead of just returning `false`) if
@@ -162,7 +227,12 @@ function check_model(
         DynamicPPL.DebugRawValueAccumulator(),
     ))
     init_strategy = InitFromPrior()
-    _, vi = DynamicPPL.init!!(rng, model, vi, init_strategy, UnlinkAll())
+    binding_context = BindingCheckContext(
+        model.context, Model[model], Set{Symbol}(), ReentrantLock()
+    )
+    checked_model = DynamicPPL.contextualize(model, binding_context)
+    _, vi = DynamicPPL.init!!(rng, checked_model, vi, init_strategy, UnlinkAll())
+    _warn_unused_binding_names(model, binding_context)
 
     params = get_raw_values(vi)
     # This adds one evaluation per `check_model` call, not per ordinary model evaluation.
