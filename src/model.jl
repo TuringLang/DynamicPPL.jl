@@ -2546,14 +2546,10 @@ function AbstractPPL.condition(model::Model; values...)
 end
 
 """
-    _make_condfix_values(vals...)
+    _make_condfix_values(model, values...)
 
-Convert different types of input to a `VarNamedTuple` of values, suitable for storage in a
-`Model`.
-
-This handles all the cases where `vals` is either already a `NamedTuple` or `VarNamedTuple`
-(e.g. `model | (x=1, y=2)`), as well as if they are splatted (e.g. `condition(model, x=1,
-y=2)`).
+Convert normalised binding values to a `VarNamedTuple`.
+Input ordering, keyword arguments and schemas are handled by the binding entry points.
 """
 function _make_condfix_values(model, values...)
     throw(
