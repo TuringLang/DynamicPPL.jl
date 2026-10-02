@@ -138,6 +138,40 @@ end
     end
 end
 
+@testset "runtime bindings retain writable latent argument entries" begin
+    @model function child(y)
+        y = y .+ 1
+        y[1] ~ Normal()
+        y[2] ~ Normal()
+        return y
+    end
+    @model function parent(bind, make_array)
+        m ~ Normal()
+        return a ~ to_submodel(bind(decondition(child(make_array(m))), @varname(y[1]) => m))
+    end
+    for bind in (condition, fix),
+        make_array in (m -> fill(zero(m), 2), m -> fill(zero(m), 2, 1))
+
+        model = parent(bind, make_array)
+        _, vi = DynamicPPL.init!!(
+            Xoshiro(123456),
+            model,
+            VarInfo(VectorValueAccumulator()),
+            InitFromPrior(),
+            UnlinkAll(),
+        )
+        ldf = LogDensityFunction(model, getlogjoint, vi; adtype=AutoReverseDiff())
+        params = [2.0, 6.0]
+        value, gradient = LogDensityProblems.logdensity_and_gradient(ldf, params)
+        expected = logpdf(Normal(), 2.0) + logpdf(Normal(), 6.0)
+        bind === condition && (expected += logpdf(Normal(), 3.0))
+        @test value ≈ expected
+        @test gradient ≈ [bind === condition ? -5.0 : -2.0, -6.0]
+        @test gradient ≈
+            ForwardDiff.gradient(x -> LogDensityProblems.logdensity(ldf, x), params)
+    end
+end
+
 @testset "runtime schemas preserve tracked values" begin
     @model function schema_child(T, n)
         z = zeros(T, n)
