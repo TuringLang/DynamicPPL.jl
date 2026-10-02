@@ -90,6 +90,23 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
         @test conditioned(covariate(0.0, 1.0)) == VarNamedTuple(; y=1.0)
     end
 
+    @testset "direct construction validates argument LHS names" begin
+        for args_on_lhs in ((:typo,), [:y, :typo])
+            @test_throws r"ArgumentError: .*typo.*argument" DynamicPPL.Model{false}(
+                identity, (; y=1.0), (;); args_on_lhs
+            )
+        end
+        for (args, defaults, name) in (
+            ((; y=1.0), (;), :y),
+            ((;), (; y=1.0), :y),
+            (NamedTuple{(Symbol("#splat#ys"),)}(((1.0,),)), (;), :ys),
+            ((;), NamedTuple{(Symbol("#splat#kw"),)}(((; y=1.0),)), :kw),
+        )
+            model = DynamicPPL.Model{false}(identity, args, defaults; args_on_lhs=(name,))
+            @test DynamicPPL._args_on_lhs(model) === (name,)
+        end
+    end
+
     @testset "direct construction records argument-supplied observations" begin
         @model positional_lhs(y, mu) = y ~ Normal(mu)
         @model keyword_lhs(; y, mu) = y ~ Normal(mu)
