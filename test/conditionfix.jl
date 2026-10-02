@@ -1051,7 +1051,7 @@ end
             end
         end
         for bind in (condition, fix)
-            @test_throws "Cannot bind `y[0]`: index is outside the argument template at `y`" bind(
+            @test_throws "Cannot bind `y[0]`: index is outside the storage at `y`" bind(
                 elements(nothing), @varname(y[0]) => 9.0
             )
             @test_throws r"ArgumentError: .*y\[3\]" bind(
