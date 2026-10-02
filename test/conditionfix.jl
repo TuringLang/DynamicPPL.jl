@@ -2460,6 +2460,35 @@ end
     end
 end
 
+@testset "whole binding schemas under prefixes" begin
+    @model function whole_schema_local()
+        x = zeros(2)
+        x[1] ~ Normal()
+        x[2] ~ Normal()
+        return x
+    end
+    @model whole_schema_parent(child) = a ~ to_submodel(child)
+    plain = whole_schema_local()
+    prefixed = prefix(plain, @varname(p))
+    nested = prefix(prefixed, @varname(q))
+    sliced = prefix(plain, @varname(p[:]); template=zeros(2))
+    for op in (condition, fix),
+        (model, address) in (
+            (plain, @varname(x)),
+            (prefixed, @varname(p.x)),
+            (nested, @varname(q.p.x)),
+            (sliced, @varname(p[:].x)),
+        )
+
+        schema = @of(x = of(Array, 2))
+        bound = op(model, schema, address => [1.0, 2.0])
+        @test bound(Xoshiro(1)) == [1.0, 2.0]
+        @test whole_schema_parent(bound)(Xoshiro(1)) == [1.0, 2.0]
+        @test_throws ArgumentError op(model, schema, address => ones(Float32, 2))
+        @test_throws ArgumentError op(model, schema, address => ones(3))
+    end
+end
+
 @testset "binding schemas under slice namespaces" begin
     @model function slice_schema_local()
         z = zeros(3)

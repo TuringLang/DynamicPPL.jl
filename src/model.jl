@@ -2271,7 +2271,9 @@ function _convert_binding_template(value, template, optic::AbstractPPL.AbstractO
     head = AbstractPPL.ohead(optic)
     head =
         head isa AbstractPPL.Index ? AbstractPPL.concretize_top_level(head, template) : head
-    if optic.child isa AbstractPPL.Iden
+    # VarNamedTuple nodes describe namespaces, not fields of the bound value.
+    # Descend to the local root before applying whole-value schema checks.
+    if optic.child isa AbstractPPL.Iden && !(template isa VarNamedTuple)
         return _convert_partial_argument_binding(
             ModelValue{Condition}(value), template, head, vn
         ).value
