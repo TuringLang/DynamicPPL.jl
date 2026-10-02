@@ -498,7 +498,7 @@ InitContext
 
 Customise latent value selection with an [initialisation strategy](init.md) supplied to `InitContext`.
 `tilde_assume!!` dispatches on that context to initialise, transform, and accumulate a latent value.
-Every observation calls `tilde_observe!!(prefix, prefix_template, right, left, vn, template, vi)`, which applies the prefix metadata and calls `accumulate_observe!!` without dispatching on a context.
+Every observation calls `tilde_observe!!(prefix, right, left, vn, template, vi)`, which applies the prefix metadata and calls `accumulate_observe!!` without dispatching on a context.
 
 ```@docs
 tilde_assume!!
