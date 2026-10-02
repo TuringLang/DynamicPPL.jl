@@ -806,10 +806,12 @@ function build_output(modeldef, linenumbernode, lhs_names, may_have_submodels=()
             (n, t, is_splat, _) in vcat(args_split, kwargs_split) if n in args_on_lhs
         ]
         # Dispatch again after replacement so the body's type parameters match its inputs.
+        # Check applicability first: when it is statically true, Mooncake can discard the
+        # value-identity branch instead of recording it for every submodel evaluation.
         evaluatordef[:body] = MacroTools.@q begin
             $replaced = false
             $(prepare_args...)
-            if $replaced && !$(Base.applicable)($(definition[:name]), $(callargs...))
+            if !$(Base.applicable)($(definition[:name]), $(callargs...)) && $replaced
                 $(Core.throw)(
                     $(ArgumentError)(
                         $(Base.string)(
