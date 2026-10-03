@@ -503,7 +503,16 @@ function generate_tilde(left, right; is_argument=false)
             if !($dist isa $(DynamicPPL.Submodel))
                 $(generate_input_provenance_check(left, vn))
             end
-            $(generate_tilde_assume(left, dist, vn))
+            $value, __varinfo__ = $(DynamicPPL.tilde_assume!!)(
+                __model__,
+                __context__,
+                $(DynamicPPL.check_tilde_rhs)($dist),
+                $vn,
+                $template,
+                __varinfo__,
+            )
+            $(assign_or_set!!(left, value, vn))
+            $value
         else
             $supplied_val = $(
                 if is_argument
@@ -562,23 +571,6 @@ function generate_input_provenance_check(left::Union{Expr,Symbol}, vn)
                 $(DynamicPPL.maybe_prefix)($vn, $(DynamicPPL._model_prefix)(__model__)),
             )
         end
-    end
-end
-
-function generate_tilde_assume(left, right, vn)
-    @gensym value
-    template = left isa Symbol ? :($(NoTemplate)()) : get_top_level_symbol(left)
-    return quote
-        $value, __varinfo__ = $(DynamicPPL.tilde_assume!!)(
-            __model__,
-            __context__,
-            $(DynamicPPL.check_tilde_rhs)($right),
-            $vn,
-            $template,
-            __varinfo__,
-        )
-        $(assign_or_set!!(left, value, vn))
-        $value
     end
 end
 
