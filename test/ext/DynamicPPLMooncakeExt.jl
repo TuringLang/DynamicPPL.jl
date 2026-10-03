@@ -15,6 +15,72 @@ using DynamicPPL
 using DynamicPPL.TestUtils.AD: run_ad
 using Test: @test, @testset, @inferred
 
+struct RuntimeBindingRecord{A,B}
+    a::A
+    b::B
+end
+@model function runtime_record_child(p)
+    p.a ~ Normal()
+    p.b ~ Normal(p.a)
+    return p.a + p.b
+end
+@model function runtime_record_parent(op)
+    m ~ Normal()
+    child = if op === decondition
+        decondition(runtime_record_child(RuntimeBindingRecord(m, 2m)), @varname(p.a))
+    elseif op === unfix
+        unfix(
+            fix(
+                decondition(runtime_record_child(RuntimeBindingRecord(m, 2m)));
+                p=RuntimeBindingRecord(m, 2m),
+            ),
+            @varname(p.a)
+        )
+    else
+        op(runtime_record_child(RuntimeBindingRecord(m, 2m)), @varname(p.a) => 3m)
+    end
+    a ~ to_submodel(child)
+    return z ~ Normal(a)
+end
+@testset "runtime struct bindings" begin
+    for op in (condition, fix, decondition, unfix)
+        x = op in (condition, fix) ? [0.3, 0.5] : [0.3, 0.4, 0.5]
+        expected = if op in (condition, fix)
+            (
+                logpdf(Normal(), x[1]) +
+                (op === condition ? logpdf(Normal(), 3x[1]) : 0) +
+                logpdf(Normal(3x[1]), 2x[1]) +
+                logpdf(Normal(5x[1]), x[2]),
+                [
+                    (op === condition ? -10x[1] : -x[1]) - x[1] + 5(x[2] - 5x[1]),
+                    5x[1] - x[2],
+                ],
+            )
+        elseif op === decondition
+            (-3.945754132818691, [-1.7, -0.7, 0.5])
+        else
+            (
+                logpdf(Normal(), x[1]) +
+                logpdf(Normal(), x[2]) +
+                logpdf(Normal(x[2] + 2x[1]), x[3]),
+                [-1.3, -0.9, 0.5],
+            )
+        end
+        for ad in (AutoForwardDiff(), AutoMooncake())
+            @testset "$op $ad" begin
+                model = runtime_record_parent(op)
+                _, vi = DynamicPPL.init!!(
+                    StableRNG(1), model, VarInfo(VectorValueAccumulator()), InitFromPrior()
+                )
+                ldf = LogDensityFunction(model, getlogjoint_internal, vi; adtype=ad)
+                value, gradient = logdensity_and_gradient(ldf, x)
+                @test value ≈ expected[1]
+                @test gradient ≈ expected[2]
+            end
+        end
+    end
+end
+
 @testset "dense scalar argument overlay rule" begin
     ext = Base.get_extension(DynamicPPL, :DynamicPPLMooncakeExt)
     mode = isdefined(Mooncake, :ReverseMode) ? (; mode=Mooncake.ReverseMode) : (;)
