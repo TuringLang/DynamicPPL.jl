@@ -3286,6 +3286,10 @@ function _recursive_remove(::Type{R}, model, names) where {R}
     requested =
         isempty(names) ? (nothing,) : map(n -> n isa Symbol ? VarName{n}() : n, names)
     for vn in requested
+        if vn !== nothing && AbstractPPL.is_dynamic(AbstractPPL.getoptic(vn))
+            template = _binding_storage(_binding_template(model, values, vn))
+            vn = _concretize_prefix(vn, template)
+        end
         local_name = _local_removal_name(model, vn)
         crosses_return = _removal_crosses_return_argument(
             model, local_name, _submodel_layer(R, model)
