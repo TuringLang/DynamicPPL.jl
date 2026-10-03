@@ -364,6 +364,7 @@ function _get_model_binding(model, vn)
     )
 end
 function _get_argument_role(model, vn, argument)
+    _check_deferred_argument_removals(model, argument)
     binding = _get_model_binding(model, argument)
     # TODO: remove once users have migrated off the `x === missing; x = ...` placeholder idiom.
     if binding isa ModelValue{ArgumentCondition} && binding.value isa Union{Missing,Nothing}
@@ -3282,15 +3283,31 @@ function _remove_marked(::Type{R}, values, r::ModelRemoval) where {R}
     return removed
 end
 
-# An argument receiving a submodel return value supplies no observation at that
-# tilde. Its placeholder or container is not storage for a child's namespace.
+# A whole argument observation can always be cleared. A descendant absent
+# from its storage may instead name a runtime child's variable; defer that
+# case until the tilde's RHS distinguishes a distribution from a submodel.
 function _removal_crosses_return_argument(model, vn, values)
     vn === nothing && return false
+    optic = AbstractPPL.getoptic(vn)
+    optic isa AbstractPPL.Iden && return false
     name = AbstractPPL.getsym(vn)
-    name in _args_on_lhs(model) && name in _submodel_namespaces(_binding_metadata(model)) ||
+    name in _args_on_lhs(model) && _may_have_submodels(_binding_metadata(model)) ||
         return false
     binding = _model_argument_binding(values, AbstractPPL.Property{name}())
-    return binding isa ModelValue{ArgumentCondition}
+    return binding isa ModelValue{ArgumentCondition} &&
+           !VarNamedTuples._haskey_optic(binding, optic)
+end
+function _check_deferred_argument_removals(model, argument)
+    isempty(_removals(Condition, model.values)) && return nothing
+    values = _submodel_layer(Condition, model)
+    for r in _submodel_removals(Condition, model, nothing)
+        r.name === nothing && continue
+        AbstractPPL.getsym(r.name) === AbstractPPL.getsym(argument) || continue
+        if _removal_crosses_return_argument(model, r.name, values)
+            _check_model_removal(Condition, values, r.name)
+        end
+    end
+    return nothing
 end
 function _local_removal_name(model, vn)
     prefix = model.values isa LocalModelValues ? nothing : _model_prefix(model)
@@ -3423,6 +3440,7 @@ function _apply_parent_removals(
         metadata = _binding_metadata(child)
         names = _lhs_names(metadata)
         own =
+            !crosses_return &&
             r.name !== nothing &&
             names !== nothing &&
             AbstractPPL.getsym(r.name) in names &&
