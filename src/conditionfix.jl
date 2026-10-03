@@ -2510,6 +2510,9 @@ function _make_condfix_values(model, pair::Pair{<:VarName})
     end
     _check_partial_binding(_model_values(model.values), AbstractPPL.varname_to_optic(vn))
     template = _binding_template(model, templates, vn)
+    vn = VarName{AbstractPPL.getsym(vn)}(
+        _normalize_binding_optic(template, AbstractPPL.getoptic(vn))
+    )
     _check_partial_binding(
         ModelValue{Condition}(template),
         AbstractPPL.getoptic(vn),
@@ -2518,6 +2521,30 @@ function _make_condfix_values(model, pair::Pair{<:VarName})
     _check_binding_template_bounds(template, AbstractPPL.getoptic(vn), vn)
     return templated_setindex!!(VarNamedTuple(), value, vn, template)
 end
+# NamedTuple Symbol indices and properties address the same field. Canonicalise
+# before constructing storage, whose indexed nodes otherwise describe arrays.
+_has_symbol_binding_index(::AbstractPPL.Iden) = false
+function _has_symbol_binding_index(optic)
+    return optic isa AbstractPPL.Index{Tuple{Symbol},NamedTuple{(),Tuple{}}} ||
+           _has_symbol_binding_index(optic.child)
+end
+function _normalize_binding_optic(template, optic)
+    _has_symbol_binding_index(optic) || return optic
+    head = AbstractPPL.ohead(optic)
+    if template isa Union{NamedTuple,VarNamedTuple} &&
+        head isa AbstractPPL.Index{Tuple{Symbol},NamedTuple{(),Tuple{}}}
+        head = AbstractPPL.Property{only(head.ix)}()
+    end
+    optic.child isa AbstractPPL.Iden && return head
+    if head isa AbstractPPL.Index
+        head = AbstractPPL.concretize_top_level(
+            head, VarNamedTuples.template_array(template)
+        )
+    end
+    child = _binding_child_template(template, head)
+    return _normalize_binding_optic(child, optic.child) ∘ head
+end
+
 function _binding_template(model, templates::VarNamedTuple, vn::VarName)
     template = get(templates.data, AbstractPPL.getsym(vn), NoTemplate())
     prefix = _model_prefix(model)

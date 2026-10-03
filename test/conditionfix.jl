@@ -3364,4 +3364,19 @@ end
     end
 end
 
+@testset "NamedTuple Symbol-index binding pairs" begin
+    @model symbol_named(x) = (x[:a] ~ Normal(); return x)
+    @model symbol_nested(x) = (x[:a][1][:b] ~ Normal(); return x)
+    for bind in (condition, fix)
+        @test bind(symbol_named((a=1.0,)), @varname(x[:a]) => 2.0)(Xoshiro(1)) == (a=2.0,)
+        @test bind(symbol_nested((a=[(b=1.0,)],)), @varname(x[:a][1][:b]) => 2.0)(
+            Xoshiro(1)
+        ) == (a=[(b=2.0,)],)
+        @test bind(symbol_nested((a=[(b=1.0,)],)), @varname(x[:a][end][:b]) => 2.0)(
+            Xoshiro(1)
+        ) == (a=[(b=2.0,)],)
+        @test_throws ArgumentError bind(symbol_named((a=1.0,)), @varname(x[1]) => 2.0)
+    end
+end
+
 end
