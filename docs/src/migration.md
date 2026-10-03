@@ -229,6 +229,12 @@ Explicit observations of arguments now act through the argument before the body:
 `condition(f(1); x=2)` observes as `f(2)` does. Replace attempts to observe the original
 bound `x` after transforming it in the body with a separate LHS variable for the raw data.
 
+Parent bindings at child addresses now require `DynamicPPL.Recursive()`:
+`condition(m, @varname(a.x) => v)` becomes
+`condition(m, DynamicPPL.Recursive(), @varname(a.x) => v)`, and likewise for `fix`.
+Replace `m | (@varname(a.x) => v)` with that explicit `condition` call.
+Without the marker, bindings affect only the model's own LHS variables.
+
 Fixed bindings shadow observations. Replace reliance on `unfix` restoring construction-time
 arguments with explicit `condition` or `decondition` calls to retain or remove the desired
 observations. `unfix` uncovers only surviving observations; `decondition` removes them even
@@ -268,7 +274,7 @@ such as `decondition(m, @varname(x[1]))` for `x ~ MvNormal(...)`, with a model d
 separate LHS variables when their roles must differ.
 
 Submodel return values cannot be bound. For local `a ~ to_submodel(child())`, replace
-`condition(m; a=value)` with `condition(m, @varname(a.x) => value)` to observe the child's
+`condition(m; a=value)` with `condition(m, DynamicPPL.Recursive(), @varname(a.x) => value)` to observe the child's
 `x`. If `a` is a model argument, bind the child before `to_submodel`; explicit bindings at
 or below `a` are rejected.
 
@@ -305,7 +311,8 @@ the corresponding `fixed(m)` operations. Replace role inspection through `inargn
 `contextual_isfixed`, or `hasmissing` with inspection of `conditioned(m)` and `fixed(m)`.
 
 To rebuild a model with new arguments while keeping its bindings, previously
-`contextualize(new, old.context)`, transfer the bindings stored on `old`:
+`contextualize(new, old.context)`, transfer the bindings stored on `old`. For bindings
+confined to the model's own LHS variables:
 
 ```julia
 new = decondition(new)                         # drop new's own observations
@@ -313,6 +320,11 @@ new = condition(new, conditioned(unfix(old)))  # old's observations, also those 
 new = fix(new, fixed(old))
 ```
 
+`decondition(new)` removes only the new model's own observations. Transfer a recursive
+binding group with `condition(new, DynamicPPL.Recursive(), values)` or the corresponding
+`fix` call, including groups with child addresses. For mixed scopes, replay each group with
+its original choice of `Recursive()`: the plain-value listings do not retain that choice.
+Reapply recursive removals separately; the listings omit removal markers.
 `conditioned` and `fixed` list only bindings stored on `old`, not those held by its
 submodels; `new` rebuilds its submodels from its own arguments. `old`'s argument-supplied
 observations become explicit observations of `new`, so they replace `new`'s arguments at those

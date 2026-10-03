@@ -88,6 +88,10 @@ Base.rand(::Random.AbstractRNG, ::LogDensityFunction, ::AbstractInitStrategy)
 
 (although note that this is a limited interface as it only generates parameters; please see [the documentation](@ref ldf-model) for more information on how to combine `LogDensityFunction` with `init!!` more generally.)
 
+```@docs
+DynamicPPL.Recursive
+```
+
 ## Condition and decondition
 
 A [`Model`](@ref) can be conditioned on a set of observations with [`AbstractPPL.condition`](@ref) or its alias [`|`](@ref).

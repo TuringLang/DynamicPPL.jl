@@ -6,12 +6,23 @@ struct Condition end
 struct ArgumentCondition end
 struct Fix end
 
-struct ModelValue{R<:Union{Condition,ArgumentCondition,Fix},T}
+"""
+    Recursive()
+
+Apply bindings or removals throughout a model and its submodels. Pass this marker
+immediately after the model to `condition`, `fix`, `decondition`, or `unfix`.
+Recursive listing with `conditioned` or `fixed` is not supported.
+"""
+struct Recursive end
+
+struct ModelValue{R<:Union{Condition,ArgumentCondition,Fix},T,Recursive}
     value::T
-    function ModelValue{R}(value::T) where {R<:Union{Condition,ArgumentCondition,Fix},T}
+    function ModelValue{R}(
+        value::T, ::Val{S}=Val(true)
+    ) where {R<:Union{Condition,ArgumentCondition,Fix},T,S}
         (R === Condition || R === ArgumentCondition || R === Fix) ||
             throw(ArgumentError("A model value must have one concrete role"))
-        return new{R,T}(value)
+        return new{R,T,S}(value)
     end
 end
 
@@ -89,11 +100,13 @@ function unsplat_symbol(s::Symbol)
 end
 
 # The existing argument metadata slot also carries macro-known LHS addresses.
-struct ModelBindingMetadata{Arguments,LHS,Submodels,Types} end
+struct ModelBindingMetadata{Arguments,LHS,Submodels,Types,Namespaces} end
 _args_on_lhs(::ModelBindingMetadata{A}) where {A} = A
 _args_on_lhs(names::Union{Tuple,Vector{Symbol}}) = Tuple(names)
 _lhs_names(::ModelBindingMetadata{A,L}) where {A,L} = L
 _lhs_names(::Tuple) = nothing
+_submodel_namespaces(::ModelBindingMetadata{A,L,S,T,N}) where {A,L,S,T,N} = N
+_submodel_namespaces(::Tuple) = ()
 _may_have_submodels(::ModelBindingMetadata{A,L,S}) where {A,L,S} = !isempty(S)
 _submodel_lhs_names(::ModelBindingMetadata{A,L,S}) where {A,L,S} = S
 _may_have_submodels(::Tuple) = true

@@ -159,14 +159,28 @@ function model(mod, linenumbernode, expr, warn)
     # Generate main body
     lhs_names = Symbol[]
     may_have_submodels = Symbol[]
+    submodel_namespaces = Symbol[]
     arguments = map(
         arg -> first(MacroTools.splitarg(arg)), vcat(modeldef[:args], modeldef[:kwargs])
     )
     modeldef[:body] = generate_mainbody(
-        mod, modeldef[:body], warn, true; lhs_names, arguments, may_have_submodels
+        mod,
+        modeldef[:body],
+        warn,
+        true;
+        lhs_names,
+        arguments,
+        may_have_submodels,
+        submodel_namespaces,
     )
 
-    return build_output(modeldef, linenumbernode, lhs_names, Tuple(may_have_submodels))
+    return build_output(
+        modeldef,
+        linenumbernode,
+        lhs_names,
+        Tuple(may_have_submodels),
+        Tuple(submodel_namespaces),
+    )
 end
 
 """
@@ -217,9 +231,17 @@ generate_mainbody(
     lhs_names=Symbol[],
     arguments=Symbol[],
     may_have_submodels=Symbol[],
+    submodel_namespaces=Symbol[],
 ) = generate_mainbody!(
     mod,
-    (; internal=Symbol[], lhs_names, arguments, may_have_submodels, shadowed=Symbol[]),
+    (;
+        internal=Symbol[],
+        lhs_names,
+        arguments,
+        may_have_submodels,
+        submodel_namespaces,
+        shadowed=Symbol[],
+    ),
     expr,
     warn,
     warn_threads,
@@ -316,6 +338,13 @@ function generate_mainbody!(mod, found, expr::Expr, warn, warn_threads)
         L = generate_mainbody!(mod, found, L, warn, warn_threads)
         if !isliteral(L)
             root = get_top_level_symbol(L)
+            if Meta.isexpr(R, :call) && (
+                R.args[1] === :to_submodel ||
+                R.args[1] === GlobalRef(DynamicPPL, :to_submodel) ||
+                R.args[1] == :(DynamicPPL.to_submodel)
+            )
+                push!(found.submodel_namespaces, root)
+            end
             if !(
                 Meta.isexpr(R, :call) &&
                 !(R.args[1] in found.arguments) &&
@@ -682,7 +711,9 @@ end
 
 Builds the output expression.
 """
-function build_output(modeldef, linenumbernode, lhs_names, may_have_submodels=())
+function build_output(
+    modeldef, linenumbernode, lhs_names, may_have_submodels=(), submodel_namespaces=()
+)
     args = transform_args(modeldef[:args])
     kwargs = transform_args(modeldef[:kwargs])
 
@@ -851,6 +882,7 @@ function build_output(modeldef, linenumbernode, lhs_names, may_have_submodels=()
                 $(QuoteNode(Tuple(unique(lhs_names)))),
                 $(QuoteNode(Tuple(unique(may_have_submodels)))),
                 $argument_types,
+                $(QuoteNode(Tuple(unique(submodel_namespaces)))),
             }(),
         )
     end

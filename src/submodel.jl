@@ -46,7 +46,7 @@ LHS variable values to the left-hand side.
 Conceptually, `to_submodel(model)` is a `returned_value(model)` wrapper: its value is the
 model's return value, not its latent LHS variable values.
 
-Condition or fix a submodel through its submodel namespace in the parent: for example,
+Pass `DynamicPPL.Recursive()` to condition or fix a submodel through its namespace in the parent: for example,
 `@varname(a.x)` in `a ~ to_submodel(child())`. With `auto_prefix=false`, use the child's
 names unchanged. Parent explicit bindings override the child's explicit bindings and
 argument-supplied observations at the same address; parent argument-supplied observations never reach a child.
@@ -172,12 +172,12 @@ _submodel_namespace(value::ModelValueTree{<:NamedTuple}) = value.values
 function _submodel_namespace(
     value::ModelValue{R,<:NamedTuple}
 ) where {R<:Union{Condition,Fix}}
-    return _tag_model_values(R, VarNamedTuple(value.value))
+    return _tag_model_values(R, VarNamedTuple(value.value), _binding_scope(value))
 end
 function _submodel_namespace(
     value::ModelValue{R,<:VarNamedTuple}
 ) where {R<:Union{Condition,Fix}}
-    return _tag_model_values(R, value.value)
+    return _tag_model_values(R, value.value, _binding_scope(value))
 end
 function _submodel_namespace(::Union{ModelValue,ModelValueTree})
     throw(
@@ -259,14 +259,11 @@ function tilde_assume!!(
     child_values = _submodel_values(submodel.model, nothing)
     child_model = _reconstruct_model(submodel.model; values=LocalModelValues(child_values))
     parent_values = _check_argument_bindings(
-        child_model,
-        _remove_model_values(
-            ArgumentCondition, _submodel_values(parent_model, local_prefix)
-        ),
+        child_model, _inherited_model_values(_submodel_values(parent_model, local_prefix))
     )
     # Shared unprefixed names may belong to the parent or another child.
     if AutoPrefix || _model_prefix(submodel.model) !== nothing
-        _check_binding_addresses(child_model, parent_values)
+        _check_binding_addresses(child_model, parent_values, true)
     end
     owners = (
         _submodel_fixed_owners(submodel.model, nothing)...,

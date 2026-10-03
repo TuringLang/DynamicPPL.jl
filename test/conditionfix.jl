@@ -589,16 +589,21 @@ end
             @test result() isa Vector{Float64}
             @test result() == [1.0, 2.0]
             @test eltype(DynamicPPL._get_model_binding(result, @varname(y))) === Union{
-                DynamicPPL.ModelValue{DynamicPPL.Condition,Float64},
-                DynamicPPL.ModelValue{DynamicPPL.ArgumentCondition,Float64},
-                DynamicPPL.ModelValue{DynamicPPL.Fix,Float64},
+                DynamicPPL.ModelValue{DynamicPPL.Condition,Float64,true},
+                DynamicPPL.ModelValue{DynamicPPL.Condition,Float64,false},
+                DynamicPPL.ModelValue{DynamicPPL.ArgumentCondition,Float64,true},
+                DynamicPPL.ModelValue{DynamicPPL.ArgumentCondition,Float64,false},
+                DynamicPPL.ModelValue{DynamicPPL.Fix,Float64,true},
+                DynamicPPL.ModelValue{DynamicPPL.Fix,Float64,false},
             }
             @test_throws r"ArgumentError: .*represent" bind(
                 constructor([1.0, 2.0]), @varname(y[1]) => big(2)^100 + 1
             )()
         end
         @model wrapped_elements() = a ~ to_submodel(elements([1.0, 2.0]))
-        @test condition(wrapped_elements(), @varname(a.y[1]) => 1)() isa Vector{Float64}
+        @test condition(
+            wrapped_elements(), DynamicPPL.Recursive(), @varname(a.y[1]) => 1
+        )() isa Vector{Float64}
         for bind in (condition, fix)
             bindings = (@varname(y) => Float32[1, 2], @varname(y[1]) => 3)
             @test bind(elements([1.0, 2.0]), bindings...)() isa Vector{Float32}
@@ -704,7 +709,11 @@ end
         @model nested_local_lhs_variables() = child ~ to_submodel(local_lhs_variables())
         for model in (
             fix(local_lhs_variables(); x=[2.0]),
-            fix(nested_local_lhs_variables(), @varname(child.x) => [2.0]),
+            fix(
+                nested_local_lhs_variables(),
+                DynamicPPL.Recursive(),
+                @varname(child.x) => [2.0],
+            ),
         )
             @test_throws r"ArgumentError: .*x\[2\].*coverage.*size and shape" model(
                 Xoshiro(1)
@@ -938,7 +947,7 @@ end
             outer_arg(), @varname(a.x)
         )
         for (bind, remove) in ((condition, decondition), (fix, unfix))
-            parent = bind(outer_arg(), @varname(a.x) => 2.0)
+            parent = bind(outer_arg(), DynamicPPL.Recursive(), @varname(a.x) => 2.0)
             @test remove(parent, @varname(a.x))(Xoshiro(1)) == 1.0
             @test_throws r"ArgumentError: .*`a.x`" remove(
                 remove(parent, @varname(a.x)), @varname(a.x)
@@ -1040,14 +1049,15 @@ end
                 ),
             )
                 @testset "$bind $name" begin
-                    complete = bind(unbound, whole)
+                    complete = bind(unbound, DynamicPPL.Recursive(), whole)
                     root = first(keys(whole)) === :x ? @varname(x) : @varname(a)
                     @test select(complete)[root] === first(whole)
                     expected = DynamicPPL.templated_setindex!!(
                         VarNamedTuple(), 2.0, retained, template
                     )
                     partial = remove(complete, removed)
-                    @test select(partial) == select(bind(unbound, expected))
+                    @test select(partial) ==
+                        select(bind(unbound, DynamicPPL.Recursive(), expected))
                     @test select(partial) == expected
                     @test select(partial)[retained] == 2.0
                     if template isa NoTemplate
@@ -1056,14 +1066,18 @@ end
                         @test select(partial).data[first(keys(whole))] isa
                             DynamicPPL.VarNamedTuples.PartialArray
                     end
-                    mixed = other(complete, removed => 3.0)
+                    mixed = other(complete, DynamicPPL.Recursive(), removed => 3.0)
                     @test select(mixed) == (bind === fix ? select(complete) : expected)
                     @test select(remove(mixed, retained)) == (
                         bind === fix ? select(remove(complete, retained)) : VarNamedTuple()
                     )
                     for original in (complete, partial, mixed)
                         rebuilt = fix(
-                            condition(unbound, conditioned(original)), fixed(original)
+                            condition(
+                                unbound, DynamicPPL.Recursive(), conditioned(original)
+                            ),
+                            DynamicPPL.Recursive(),
+                            fixed(original),
                         )
                         result, vi = init!!(
                             Xoshiro(42), original, VarInfo(), InitFromPrior(), UnlinkAll()
@@ -1447,7 +1461,9 @@ end
             end
             @test fix(original; x=T(3))() == T(3)
             @test condition(original; x=T(3))() == T(4)
-            nested = condition(wrapped_input(original), @varname(a.x) => T(3))
+            nested = condition(
+                wrapped_input(original), DynamicPPL.Recursive(), @varname(a.x) => T(3)
+            )
             @test nested() == T(4)
             @test loglikelihood(nested, VarNamedTuple()) ≈ logpdf(Normal(), T(4))
         end
@@ -1523,8 +1539,9 @@ end
             )
             @test third() == expected
             expected_parent = reshape([[T(30)], [T(20)], [T(3)], [T(4)]], 2, 2)
-            @test third_op(outer_array(second), @varname(a.x[1][1]) => T(30))() ==
-                expected_parent
+            @test third_op(
+                outer_array(second), DynamicPPL.Recursive(), @varname(a.x[1][1]) => T(30)
+            )() == expected_parent
             @test first()[2][1] == T(2)
             @test original() == data
             @test loglikelihood(third, VarNamedTuple()) ≈
@@ -1566,7 +1583,9 @@ end
             (model, vn) in
             ((scalar_lhs(1.0), @varname(a[1])), (scalar_return(0.0), @varname(a.x)))
 
-            @test_throws r"ArgumentError: .*`a`.*decondition" bind(model, vn => 2.0)
+            @test_throws r"ArgumentError: .*`a`.*decondition" bind(
+                model, DynamicPPL.Recursive(), vn => 2.0
+            )
         end
     end
 
@@ -1646,7 +1665,7 @@ end
             b ~ to_submodel(inner(x))
             return (; a, b)
         end
-        transformed = condition(outer(0.0), @varname(b.y) => 1.0)
+        transformed = condition(outer(0.0), DynamicPPL.Recursive(), @varname(b.y) => 1.0)
         @test isempty(keys(VarInfo(transformed)))
         @test transformed().a == 0.0
         @test transformed().b == 1.0
@@ -1742,7 +1761,9 @@ end
                 first_op === condition && last_op === condition ? logpdf(Normal(), 3) : 0
             )
             nested = last_op(
-                nested_fields(base), @varname(child.x.a) => oftype(replacement.a, 4)
+                nested_fields(base),
+                DynamicPPL.Recursive(),
+                @varname(child.x.a) => oftype(replacement.a, 4),
             )
             @test typeof(nested()) === typeof(replacement)
             @test nested().a == 4
@@ -1767,9 +1788,11 @@ end
             @test result.b == 2
         end
         parent = condition(
-            nested_fields(fields((; a=0.0))), @varname(child.x) => (; a=1.0, b=2.0)
+            nested_fields(fields((; a=0.0))),
+            DynamicPPL.Recursive(),
+            @varname(child.x) => (; a=1.0, b=2.0),
         )
-        parent = fix(parent, @varname(child.x.a) => 3.0)
+        parent = fix(parent, DynamicPPL.Recursive(), @varname(child.x.a) => 3.0)
         result, _ = @inferred evaluate!!(
             parent,
             InitContext(
@@ -1783,9 +1806,11 @@ end
         @model array_fields(x) = (x[1].a ~ Normal(); return x)
         parent = condition(
             nested_fields(array_fields(Any[(; a=0.0)])),
+            DynamicPPL.Recursive(),
             @varname(child.x[1]) => (; a=1.0, b=2.0),
         )
-        @test fix(parent, @varname(child.x[1].a) => 3.0)() == [(; a=3.0, b=2.0)]
+        @test fix(parent, DynamicPPL.Recursive(), @varname(child.x[1].a) => 3.0)() ==
+            [(; a=3.0, b=2.0)]
         partial = condition(
             decondition(array_fields(Any[(; a=0.0)])), @varname(x[1]) => (; a=1.0, b=2.0)
         )
@@ -1812,8 +1837,12 @@ end
 
         @model namespace_child(x, y) = (x ~ Normal(); y ~ Normal(); return (x, y))
         @model namespace_parent() = child ~ to_submodel(namespace_child(0.0, 0.0))
-        parent = condition(namespace_parent(); child=(; x=1.0, y=2.0))
-        parent = decondition(fix(parent, @varname(child.x) => 3.0), @varname(child.y))
+        parent = condition(
+            namespace_parent(), DynamicPPL.Recursive(); child=(; x=1.0, y=2.0)
+        )
+        parent = decondition(
+            fix(parent, DynamicPPL.Recursive(), @varname(child.x) => 3.0), @varname(child.y)
+        )
         @test parent() == (3.0, 0.0)
     end
 
@@ -1835,8 +1864,9 @@ end
             @test loglikelihood(changed, VarNamedTuple()) ≈
                 (first_op === condition ? logpdf(Normal(), T(3)) : zero(T)) +
                   (last_op === condition ? logpdf(Normal(), T(4)) : zero(T))
-            @test last_op(nested_tuple(first), @varname(child.x[2]) => T(4))() ==
-                (T(3), T(4))
+            @test last_op(
+                nested_tuple(first), DynamicPPL.Recursive(), @varname(child.x[2]) => T(4)
+            )() == (T(3), T(4))
         end
         @model tuple_with_record(x) = (x[1].a ~ Normal(); return x)
         changed = fix(tuple_with_record(((; a=1.0), 2.0)), @varname(x[1].a) => 3.0)
@@ -1922,7 +1952,11 @@ end
         end
         @model nested_observation(m) = a ~ to_submodel(m)
         for op in (condition, fix), T in (Float32, BigFloat)
-            nested = op(nested_observation(typed_observation([0.0])), @varname(a.x) => T[2])
+            nested = op(
+                nested_observation(typed_observation([0.0])),
+                DynamicPPL.Recursive(),
+                @varname(a.x) => T[2],
+            )
             @test nested() == (T, T[2])
         end
         @model function ordinary_input(x)
@@ -2021,8 +2055,9 @@ end
         @test logjoint(argument_parent(unfix(fix(m; x=[5.0, 6.0]))), (;)) ≈
             sum(logpdf.(Normal(), [1.0, 2.0]))
         p = DynamicPPL.prefix(argument_lhs(1.0), @varname(a))
-        @test logjoint(unfix(fix(p, @varname(a.x) => 5.0), @varname(a.x)), (;)) ≈
-            logpdf(Normal(), 1.0)
+        @test logjoint(
+            unfix(fix(p, DynamicPPL.Recursive(), @varname(a.x) => 5.0), @varname(a.x)), (;)
+        ) ≈ logpdf(Normal(), 1.0)
     end
 
     @testset "partial removal retains replacement shape" begin
@@ -2110,7 +2145,9 @@ end
             inner_model = inner_op(inner(); x=1.0)
             @test outer(inner_model)() == 1.0
             for outer_op in (condition, fix)
-                transformed = outer_op(outer(inner_model), @varname(a.x) => 2.0)
+                transformed = outer_op(
+                    outer(inner_model), DynamicPPL.Recursive(), @varname(a.x) => 2.0
+                )
                 @test transformed() == 2.0
                 @test logjoint(transformed, VarNamedTuple()) ==
                     (outer_op === condition ? logpdf(Normal(), 2.0) : 0.0)
@@ -2171,12 +2208,17 @@ end
         end
         for op in (condition, fix)
             model = partial_array_model()
-            nested = op(partial_array_parent(model), (@varname(child.x[1, 1]) => 1.5))
+            nested = op(
+                partial_array_parent(model),
+                DynamicPPL.Recursive(),
+                (@varname(child.x[1, 1]) => 1.5),
+            )
             model = op(model, (@varname(x[1, 1]) => 1.5))
             for (partial_model, values) in
                 ((model, next_values), (nested, VarNamedTuple(; child=next_values)))
-                @test returned(op(partial_model, values), VarNamedTuple()) ==
-                    [1.5 0.0; 2.5 0.0]
+                @test returned(
+                    op(partial_model, DynamicPPL.Recursive(), values), VarNamedTuple()
+                ) == [1.5 0.0; 2.5 0.0]
             end
         end
     end
@@ -2229,7 +2271,11 @@ end
     @model address_parent() = a ~ to_submodel(address_child())
     @model address_unprefixed() = a ~ to_submodel(address_child(), false)
     @model address_callable(Normal) = a ~ Normal()
-    @test condition(address_callable(() -> to_submodel(address_child(), false)); y=2.0)(
+    @test condition(
+        address_callable(() -> to_submodel(address_child(), false)),
+        DynamicPPL.Recursive();
+        y=2.0,
+    )(
         Xoshiro(1)
     ) == 2.0
     for bind in (condition, fix)
@@ -2240,10 +2286,16 @@ end
         @test_throws ArgumentError bind(address_model([0.0]); n=1.0)
         @test_throws ArgumentError bind(address_model([0.0]), @varname(x[2]) => 1.0)
         @test bind(address_model([0.0]); branch=2.0)(Xoshiro(1)) == [0.0]
-        @test bind(address_parent(), @varname(a.y) => 2.0)(Xoshiro(1)) == 2.0
-        @test_throws ArgumentError bind(address_parent(), @varname(a.z) => 2.0)(Xoshiro(1))
-        @test bind(address_unprefixed(); y=2.0)(Xoshiro(1)) == 2.0
-        @test bind(address_unprefixed(); z=2.0)(Xoshiro(1)) ==
+        @test bind(address_parent(), DynamicPPL.Recursive(), @varname(a.y) => 2.0)(
+            Xoshiro(1)
+        ) == 2.0
+        @test_throws ArgumentError bind(
+            address_parent(), DynamicPPL.Recursive(), @varname(a.z) => 2.0
+        )(
+            Xoshiro(1)
+        )
+        @test bind(address_unprefixed(), DynamicPPL.Recursive(); y=2.0)(Xoshiro(1)) == 2.0
+        @test bind(address_unprefixed(), DynamicPPL.Recursive(); z=2.0)(Xoshiro(1)) ==
             address_unprefixed()(Xoshiro(1))
     end
 end
@@ -2417,7 +2469,10 @@ end
         )
         @test result == (a=[ones(2), [1.0, 1.0, 2.0]], b=ones(2))
         @test op(
-            local_storage_parent(), @varname(a.z) => ones(3), @varname(a.z[end]) => 2.0
+            local_storage_parent(),
+            DynamicPPL.Recursive(),
+            @varname(a.z) => ones(3),
+            @varname(a.z[end]) => 2.0,
         )(
             Xoshiro(1)
         ) == [1.0, 1.0, 2.0]
@@ -2556,7 +2611,9 @@ end
             model, @varname(a[:].z[2]) => 0.1, @of(z = of(Array, Float32, 3))
         )
         nested = DynamicPPL.prefix(model, @varname(b[1:2]); template=zeros(2))
-        @test op(nested, @varname(b[1:2].a[:].z[2]) => 1.0, schema)(Xoshiro(1))[2] == 1.0
+        @test op(nested, DynamicPPL.Recursive(), @varname(b[1:2].a[:].z[2]) => 1.0, schema)(
+            Xoshiro(1)
+        )[2] == 1.0
     end
 end
 
@@ -3237,5 +3294,26 @@ end
 end
 
 @info "Completed $(@__FILE__) in $(now() - __now__)."
+
+@testset "recursive binding scope" begin
+    @model child(y=2.0) = y ~ Normal()
+    @model parent() = a ~ to_submodel(child())
+    @model function shared(y)
+        y ~ Normal()
+        a ~ to_submodel(child(), false)
+        return (y, a)
+    end
+    for bind in (condition, fix)
+        @test_throws ArgumentError bind(parent(), @varname(a.y) => 3.0)
+        @test_throws ArgumentError bind(parent(); unknown=3.0)
+        @test bind(shared(1.0); y=3.0)() == (3.0, 2.0)
+        @test bind(parent(), DynamicPPL.Recursive(), @varname(a.y) => 3.0)() == 3.0
+        @test bind(shared(1.0), DynamicPPL.Recursive(); y=3.0)() == (3.0, 3.0)
+        @test bind(prefix(child(), @varname(a)), @varname(a.y) => 3.0)() == 3.0
+    end
+    @test_throws ArgumentError (parent() | (@varname(a.y) => 3.0))
+    @test_throws ArgumentError conditioned(parent(), DynamicPPL.Recursive())
+    @test_throws ArgumentError fixed(parent(), DynamicPPL.Recursive())
+end
 
 end

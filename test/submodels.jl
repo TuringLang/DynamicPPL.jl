@@ -48,11 +48,11 @@ end
         @model child() = z ~ Normal()
         @model parent(y) = (a ~ to_submodel(child()); y ~ Normal(a))
         for bind in (condition, fix)
-            bound = bind(parent(0.0); a=1.0)
+            bound = bind(parent(0.0), DynamicPPL.Recursive(); a=1.0)
             @test_throws r"Cannot explicitly bind a submodel return value\. Remove the explicit binding.*@varname\(a.z\)" bound(
                 Xoshiro(1)
             )
-            model = bind(parent(0.0), @varname(a.z) => 1.0)
+            model = bind(parent(0.0), DynamicPPL.Recursive(), @varname(a.z) => 1.0)
             @test loglikelihood(model, VarNamedTuple()) ≈
                 logpdf(Normal(1.0), 0.0) +
                   (bind === condition ? logpdf(Normal(), 1.0) : 0.0)
@@ -75,7 +75,7 @@ end
         @test logjoint(overlap([1.0, 2.0]), (; mu=0.0)) ≈ expected
         @test logjoint(renamed([1.0, 2.0]), (; mu=0.0)) ≈ expected
         for bind in (condition, fix)
-            model = bind(renamed([1.0, 2.0]), @varname(y) => 5.0)
+            model = bind(renamed([1.0, 2.0]), DynamicPPL.Recursive(), @varname(y) => 5.0)
             expected = logpdf(Normal(), 1.0)
             bind === condition && (expected += logpdf(Normal(), 5.0))
             @test loglikelihood(model, (; mu=0.0)) ≈ expected
@@ -96,15 +96,18 @@ end
             return b[2]
         end
         child = inspect_child()
-        parent = condition(inspect_parent(child), @varname(a.x[1]) => 2.0)
+        parent = condition(
+            inspect_parent(child), DynamicPPL.Recursive(), @varname(a.x[1]) => 2.0
+        )
         for model in (parent, inspect_outer(parent))
             local_model = model(Xoshiro(1))
-            @test conditioned(local_model) ==
-                conditioned(condition(child, @varname(x[1]) => 2.0))
+            @test conditioned(local_model) == conditioned(
+                condition(child, DynamicPPL.Recursive(), @varname(x[1]) => 2.0)
+            )
             @test isempty(fixed(local_model))
             for (bind, remove, accessor) in
                 ((condition, decondition, conditioned), (fix, unfix, fixed))
-                edited = bind(local_model, @varname(x[2]) => 3.0)
+                edited = bind(local_model, DynamicPPL.Recursive(), @varname(x[2]) => 3.0)
                 @test accessor(edited)[@varname(x[2])] == 3.0
                 @test accessor(edited(Xoshiro(1)))[@varname(x[2])] == 3.0
                 removed = remove(edited, @varname(x[2]))
@@ -114,7 +117,7 @@ end
                 vn = model === parent ? @varname(a.x[2]) : @varname(b[2].a.x[2])
                 @test haskey(values, vn) == (remove === decondition)
                 @test_throws r"ArgumentError: Argument `metadata`" bind(
-                    local_model; metadata=1
+                    local_model, DynamicPPL.Recursive(); metadata=1
                 )
             end
         end
@@ -126,10 +129,10 @@ end
         @model scalar_argument(a=0.0) = a ~ Normal()
         for bind in (condition, fix)
             @test_throws r"If `a` holds a submodel return value, condition or fix the child model before wrapping it with `to_submodel`" bind(
-                submodel_return(), @varname(a.x) => 2.0
+                submodel_return(), DynamicPPL.Recursive(), @varname(a.x) => 2.0
             )()
             @test_throws r"For other bindings, use `decondition\(model, @varname\(a\)\)` first" bind(
-                scalar_argument(), @varname(a.x) => 2.0
+                scalar_argument(), DynamicPPL.Recursive(), @varname(a.x) => 2.0
             )
         end
     end
@@ -140,9 +143,15 @@ end
         @model keyword_splat_return_value(; kw...) = kw[:y] ~ to_submodel(splat_child())
         for bind in (condition, fix)
             positional = bind(
-                positional_return_value((; x=0.0)), @varname(args[1].x) => 2.0
+                positional_return_value((; x=0.0)),
+                DynamicPPL.Recursive(),
+                @varname(args[1].x) => 2.0,
             )
-            keyword = bind(keyword_splat_return_value(; y=(; x=0.0)); kw=(; y=(; x=2.0)))
+            keyword = bind(
+                keyword_splat_return_value(; y=(; x=0.0)),
+                DynamicPPL.Recursive();
+                kw=(; y=(; x=2.0)),
+            )
             for model in (positional, keyword)
                 @test_throws ArgumentError model(Xoshiro(1))
             end
@@ -152,27 +161,36 @@ end
     @testset "argument LHS variables receive submodel return values" begin
         @model child() = (x ~ Normal(); x)
         @model function dynamic_return_value(a)
-            sub = to_submodel(fix(child(); x=2.0))
+            sub = to_submodel(fix(child(), DynamicPPL.Recursive(); x=2.0))
             a ~ sub
             return a
         end
         @model function indexed_return_value(a)
-            a[1] ~ to_submodel(fix(child(); x=2.0))
+            a[1] ~ to_submodel(fix(child(), DynamicPPL.Recursive(); x=2.0))
             return a
         end
-        @model keyword_return_value(; a=0.0) = a ~ to_submodel(fix(child(); x=2.0))
+        @model keyword_return_value(; a=0.0) =
+            a ~ to_submodel(fix(child(), DynamicPPL.Recursive(); x=2.0))
         @model nested(m) = b ~ to_submodel(m)
         @testset "binding accessors list submodel return values before evaluation" begin
             model = dynamic_return_value(3.0)
             @test conditioned(model)[@varname(a)] == 3.0
             @test isempty(conditioned(decondition(model, :a)))
-            @test fixed(fix(model; a=1.0))[@varname(a)] == 1.0
+            @test fixed(fix(model, DynamicPPL.Recursive(); a=1.0))[@varname(a)] == 1.0
         end
         for bind in (condition, fix)
             for model in (
-                bind(dynamic_return_value((; x=0.0)), @varname(a.x) => 2.0),
-                bind(dynamic_return_value(0.0); a=(; x=2.0)),
-                bind(indexed_return_value([(; x=0.0)]), @varname(a[1].x) => 2.0),
+                bind(
+                    dynamic_return_value((; x=0.0)),
+                    DynamicPPL.Recursive(),
+                    @varname(a.x) => 2.0,
+                ),
+                bind(dynamic_return_value(0.0), DynamicPPL.Recursive(); a=(; x=2.0)),
+                bind(
+                    indexed_return_value([(; x=0.0)]),
+                    DynamicPPL.Recursive(),
+                    @varname(a[1].x) => 2.0,
+                ),
             )
                 @test_throws r"ArgumentError: .*submodel return value" model(Xoshiro(1))
             end
@@ -189,7 +207,7 @@ end
             @test decondition(model, :a)(Xoshiro(1)) == expected
             for bind in (condition, fix)
                 address = expected isa AbstractArray ? @varname(a[1]) : @varname(a)
-                bound = bind(model, address => 3.0)
+                bound = bind(model, DynamicPPL.Recursive(), address => 3.0)
                 @test_throws r"ArgumentError: .*submodel return value" bound(Xoshiro(1))
             end
         end
@@ -213,13 +231,30 @@ end
         @model local_parent() = a ~ to_submodel(child(0.0))
         for bind in (condition, fix)
             models = (
-                bind(decondition(return_value_parent((; x=0.0))), @varname(a.x) => 2.0),
-                bind(decondition(return_value_parent((; x=0.0))); a=(; x=2.0)),
-                bind(decondition(keyword_parent()); a=(; x=2.0)),
-                bind(decondition(indexed_parent([(; x=0.0)], 1)), @varname(a[1].x) => 2.0),
-                bind(decondition(indexed_parent([(; x=0.0)], 1)); a=[(; x=2.0)]),
+                bind(
+                    decondition(return_value_parent((; x=0.0))),
+                    DynamicPPL.Recursive(),
+                    @varname(a.x) => 2.0,
+                ),
+                bind(
+                    decondition(return_value_parent((; x=0.0))),
+                    DynamicPPL.Recursive();
+                    a=(; x=2.0),
+                ),
+                bind(decondition(keyword_parent()), DynamicPPL.Recursive(); a=(; x=2.0)),
+                bind(
+                    decondition(indexed_parent([(; x=0.0)], 1)),
+                    DynamicPPL.Recursive(),
+                    @varname(a[1].x) => 2.0,
+                ),
+                bind(
+                    decondition(indexed_parent([(; x=0.0)], 1)),
+                    DynamicPPL.Recursive();
+                    a=[(; x=2.0)],
+                ),
                 bind(
                     decondition(dynamic_parent((; x=0.0), to_submodel(child(0.0)))),
+                    DynamicPPL.Recursive(),
                     @varname(a.x) => 2.0,
                 ),
             )
@@ -228,15 +263,22 @@ end
                     Xoshiro(1)
                 )
             end
-            @test bind(local_parent(), @varname(a.x) => 2.0)(Xoshiro(1)) == 2.0
-            @test bind(local_parent(); a=(; x=2.0))(Xoshiro(1)) == 2.0
+            @test bind(local_parent(), DynamicPPL.Recursive(), @varname(a.x) => 2.0)(
+                Xoshiro(1)
+            ) == 2.0
+            @test bind(local_parent(), DynamicPPL.Recursive(); a=(; x=2.0))(Xoshiro(1)) ==
+                2.0
             @test_throws r"ArgumentError: .*submodel return value" bind(
-                outer(decondition(return_value_parent((; x=0.0)))), @varname(b.a.x) => 2.0
+                outer(decondition(return_value_parent((; x=0.0)))),
+                DynamicPPL.Recursive(),
+                @varname(b.a.x) => 2.0,
             )(
                 Xoshiro(1)
             )
-            @test bind(dynamic_parent(0.0, Normal()); a=2.0)(Xoshiro(1)) == 2.0
-            replacement = mu -> bind(child(mu); x=2.0)
+            @test bind(dynamic_parent(0.0, Normal()), DynamicPPL.Recursive(); a=2.0)(
+                Xoshiro(1)
+            ) == 2.0
+            replacement = mu -> bind(child(mu), DynamicPPL.Recursive(); x=2.0)
             model = decondition(return_value_parent((; x=0.0); rhs=replacement))
             @test model(Xoshiro(1)) == (0.0, 2.0)
             @test logjoint(model, VarNamedTuple()) ==
@@ -250,8 +292,10 @@ end
         @model nested(m) = outer ~ to_submodel(m)
         for child_model in (child(), prefix(child(), @varname(b)))
             for m in (
-                condition(decondition(manual(0.0, child_model)); a=3.0),
-                fix(decondition(manual(0.0, child_model)); a=3.0),
+                condition(
+                    decondition(manual(0.0, child_model)), DynamicPPL.Recursive(); a=3.0
+                ),
+                fix(decondition(manual(0.0, child_model)), DynamicPPL.Recursive(); a=3.0),
             )
                 for model in (m, nested(m))
                     @test_throws "Cannot explicitly bind a submodel return value" model(
@@ -270,7 +314,7 @@ end
         baseline = @allocated init!!(unbound, accs, strategy, UnlinkAll())
         for bindings in
             ((@varname(x[1].y) => 0.0,), Tuple(@varname(x[i].y) => 0.0 for i in 1:100))
-            model = condition(unbound, bindings...)
+            model = condition(unbound, DynamicPPL.Recursive(), bindings...)
             init!!(model, accs, strategy, UnlinkAll())
             @test (@allocated init!!(model, accs, strategy, UnlinkAll())) <= baseline + 128
         end
@@ -286,8 +330,8 @@ end
         end
 
         model = nested_observations(zeros(2))
-        model = condition(model, @varname(a.x[1].y) => 2.0)
-        model = fix(model, @varname(a.x[2].y) => 3.0)
+        model = condition(model, DynamicPPL.Recursive(), @varname(a.x[1].y) => 2.0)
+        model = fix(model, DynamicPPL.Recursive(), @varname(a.x[2].y) => 3.0)
         params = mu -> VarNamedTuple(; a=VarNamedTuple(; mu))
         density = mu -> logjoint(model, params(mu))
         @test density(0.25) ≈ logpdf(Normal(), 0.25) + logpdf(Normal(0.25, 1), 2.0)
@@ -309,12 +353,12 @@ end
                 VarNamedTuple(), 2.0, pair.first, zeros(2)
             )
             for form in (pair, bindings)
-                model = bind(range_parent(), form)
+                model = bind(range_parent(), DynamicPPL.Recursive(), form)
                 @test model(Xoshiro(1)) == [2.0, 2.0]
                 @test range_nested(model)(Xoshiro(1)) == [2.0, 2.0]
             end
             @test_throws "Cannot explicitly bind a submodel return value" bind(
-                range_parent(); a=zeros(2)
+                range_parent(), DynamicPPL.Recursive(); a=zeros(2)
             )(
                 Xoshiro(1)
             )
@@ -332,7 +376,7 @@ end
 
             original = prefix(leaf, name; template)
             vn = AbstractPPL.prefix(@varname(x), name)
-            bound = bind(original, vn => 4.0)
+            bound = bind(original, DynamicPPL.Recursive(), vn => 4.0)
             @test bound(Xoshiro(1)) == 4.0
             @test template_parent(bound)(Xoshiro(1)) == 4.0
             @test loglikelihood(bound, VarNamedTuple()) ≈
@@ -347,7 +391,9 @@ end
         for name in (@varname(a), @varname(a[1]), @varname(a[:]), @varname(a[1:2])),
             (bind, accessor) in ((condition, conditioned), (fix, fixed))
 
-            child = prefix(bind(slice_leaf(); x=3.0), name; template=zeros(2))
+            child = prefix(
+                bind(slice_leaf(), DynamicPPL.Recursive(); x=3.0), name; template=zeros(2)
+            )
             bindings = accessor(child)
             @test keys(bindings) == [AbstractPPL.prefix(@varname(x), name)]
             @test bindings[AbstractPPL.prefix(@varname(x), name)] == 3.0
@@ -356,6 +402,7 @@ end
             @test slice_parent(child)(Xoshiro(1)) == 3.0
             parent = bind(
                 slice_parent(prefix(slice_leaf(), name; template=zeros(2))),
+                DynamicPPL.Recursive(),
                 DynamicPPL.templated_setindex!!(VarNamedTuple(), (; x=4.0), name, zeros(2)),
             )
             @test parent(Xoshiro(1)) == 4.0
@@ -375,7 +422,7 @@ end
         @model explicit_child(child) =
             unused ~ to_submodel(prefix(child, @varname(inner)), false)
         for op in (condition, fix), parent in (dynamic_parent, nested_parent)
-            child = op(observed_child(); x=2.0)
+            child = op(observed_child(), DynamicPPL.Recursive(); x=2.0)
             model = parent(child)
             @test model() == [2.0 0.0 0.0; 0.0 0.0 2.0]
             @test isempty(keys(VarInfo(model)))
@@ -386,7 +433,7 @@ end
                 likelihoods = pointwise_loglikelihoods(model, InitFromPrior())
                 @test likelihoods[vn] == logpdf(Normal(), 2.0)
             end
-            changed = condition(model, vn => 3.0)
+            changed = condition(model, DynamicPPL.Recursive(), vn => 3.0)
             @test changed() == [2.0 0.0 0.0; 0.0 0.0 3.0]
 
             model = parent(explicit_child(child))
@@ -395,7 +442,7 @@ end
             else
                 @varname(b.a[1].inner.x)
             end
-            changed = condition(model, vn => 3.0)
+            changed = condition(model, DynamicPPL.Recursive(), vn => 3.0)
             @test changed() == [3.0 0.0 0.0; 0.0 0.0 2.0]
         end
     end
@@ -482,12 +529,12 @@ end
             @model function outer()
                 return a ~ to_submodel(inner())
             end
-            inner_op = op(inner(), (@varname(x) => x_val))
+            inner_op = op(inner(), DynamicPPL.Recursive(), (@varname(x) => x_val))
             @model function outer2()
                 return a ~ to_submodel(inner_op)
             end
             with_inner_op = outer2()
-            with_outer_op = op(outer(), (@varname(a.x) => x_val))
+            with_outer_op = op(outer(), DynamicPPL.Recursive(), (@varname(a.x) => x_val))
 
             # No conditioning/fixing
             @test Set(keys(VarInfo(outer()))) == Set([@varname(a.x), @varname(a.y)])
@@ -520,8 +567,8 @@ end
                 return a ~ to_submodel(inner_op, false)
             end
             with_inner_op = outer2()
-            inner_op = op(inner(), (@varname(x) => x_val))
-            with_outer_op = op(outer(), (@varname(x) => x_val))
+            inner_op = op(inner(), DynamicPPL.Recursive(), (@varname(x) => x_val))
+            with_outer_op = op(outer(), DynamicPPL.Recursive(), (@varname(x) => x_val))
 
             # No conditioning/fixing
             @test Set(keys(VarInfo(outer()))) == Set([@varname(x), @varname(y)])
@@ -549,12 +596,12 @@ end
             @model function outer()
                 return a ~ to_submodel(prefix(inner(), :b), false)
             end
-            inner_op = op(inner(), (@varname(x) => x_val))
+            inner_op = op(inner(), DynamicPPL.Recursive(), (@varname(x) => x_val))
             @model function outer2()
                 return a ~ to_submodel(prefix(inner_op, :b), false)
             end
             with_inner_op = outer2()
-            with_outer_op = op(outer(), (@varname(b.x) => x_val))
+            with_outer_op = op(outer(), DynamicPPL.Recursive(), (@varname(b.x) => x_val))
 
             # No conditioning/fixing
             @test Set(keys(VarInfo(outer()))) == Set([@varname(b.x), @varname(b.y)])
@@ -592,7 +639,7 @@ end
 
             # Check that we can condition/fix on any of them from the outside
             for vn in expected_vns
-                op_g = op(g(), (vn => 1.0))
+                op_g = op(g(), DynamicPPL.Recursive(), (vn => 1.0))
                 vnt = rand(op_g)
                 @test Set(keys(vnt)) == symdiff(expected_vns, Set([vn]))
             end
@@ -619,16 +666,16 @@ end
                   logpdf(Normal(), raw_vals[@varname(a.b.y)])
 
             # Conditioning/fixing at the top level
-            op_h = op(h(), (@varname(a.b.x) => x_val))
+            op_h = op(h(), DynamicPPL.Recursive(), (@varname(a.b.x) => x_val))
 
             # Conditioning/fixing at the second level
-            op_g = op(g(), (@varname(b.x) => x_val))
+            op_g = op(g(), DynamicPPL.Recursive(), (@varname(b.x) => x_val))
             @model function h2()
                 return a ~ to_submodel(op_g)
             end
 
             # Conditioning/fixing at the very bottom
-            op_f = op(f(), (@varname(x) => x_val))
+            op_f = op(f(), DynamicPPL.Recursive(), (@varname(x) => x_val))
             @model function g2()
                 return _unused ~ to_submodel(prefix(op_f, :b), false)
             end
@@ -656,7 +703,9 @@ end
             return a ~ to_submodel(f(inner_x))
         end
 
-        vnt = rand(Xoshiro(1), condition(g(0.0), @varname(a.x) => 1.0))
+        vnt = rand(
+            Xoshiro(1), condition(g(0.0), DynamicPPL.Recursive(), @varname(a.x) => 1.0)
+        )
         @test Set(keys(vnt)) == Set([@varname(a.y)])
 
         @model latent_g() = a ~ to_submodel(decondition(f(0.0)))
@@ -677,11 +726,17 @@ end
         @model namespace_inner() = (x ~ Normal(); y ~ Normal(); z ~ Normal(); (x, y, z))
         @model namespace_outer() = a ~ to_submodel(namespace_inner())
         for first_bind in (condition, fix), bind in (condition, fix)
-            original = first_bind(namespace_outer(); a=(; x=1.0))
-            extended = bind(original, @varname(a.y) => 2.0)
-            @test bind(extended, @varname(a.z) => 3.0)(Xoshiro(1)) == (1.0, 2.0, 3.0)
-            expanded = bind(original, @varname(a.x) => 1.0)
-            @test bind(bind(expanded, @varname(a.y) => 2.0), @varname(a.z) => 3.0)(
+            original = first_bind(namespace_outer(), DynamicPPL.Recursive(); a=(; x=1.0))
+            extended = bind(original, DynamicPPL.Recursive(), @varname(a.y) => 2.0)
+            @test bind(extended, DynamicPPL.Recursive(), @varname(a.z) => 3.0)(
+                Xoshiro(1)
+            ) == (1.0, 2.0, 3.0)
+            expanded = bind(original, DynamicPPL.Recursive(), @varname(a.x) => 1.0)
+            @test bind(
+                bind(expanded, DynamicPPL.Recursive(), @varname(a.y) => 2.0),
+                DynamicPPL.Recursive(),
+                @varname(a.z) => 3.0,
+            )(
                 Xoshiro(1)
             ) == (1.0, 2.0, 3.0)
         end
@@ -700,17 +755,21 @@ end
         end
         for bind in (condition, fix)
             @test_throws r"ArgumentError: .*submodel return value" bind(
-                decondition(scalar_return_value(0.0)), @varname(a.x) => 2.0
+                decondition(scalar_return_value(0.0)),
+                DynamicPPL.Recursive(),
+                @varname(a.x) => 2.0,
             )(
                 Xoshiro(1)
             )
             @test_throws r"ArgumentError: .*submodel return value" bind(
-                decondition(indexed_return_value([0.0])), @varname(a[1].x) => 2.0
+                decondition(indexed_return_value([0.0])),
+                DynamicPPL.Recursive(),
+                @varname(a[1].x) => 2.0,
             )(
                 Xoshiro(1)
             )
             @test_throws r"ArgumentError: .*submodel return value" bind(
-                decondition(indexed_return_value([0.0])), namespace
+                decondition(indexed_return_value([0.0])), DynamicPPL.Recursive(), namespace
             )(
                 Xoshiro(1)
             )
@@ -781,7 +840,7 @@ end
 
             model = outer()
             @test only(keys(VarInfo(model))) == @varname(a.x)
-            op_model = op(model, (@varname(a.x) => 1.0))
+            op_model = op(model, DynamicPPL.Recursive(), (@varname(a.x) => 1.0))
             @test isempty(keys(VarInfo(op_model)))
 
             deop_model = deop(op_model)
@@ -877,7 +936,8 @@ end
         return (a, b)
     end
     for bind in (condition, fix)
-        @test bind(shared_parent(); x=1.0, y=2.0)(Xoshiro(1)) == (1.0, 2.0)
+        @test bind(shared_parent(), DynamicPPL.Recursive(); x=1.0, y=2.0)(Xoshiro(1)) ==
+            (1.0, 2.0)
     end
 end
 
