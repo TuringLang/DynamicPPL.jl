@@ -224,6 +224,10 @@ when read, not at construction. Omit unobserved values instead.
 
 ### Binding contract
 
+Partial argument bindings act through arrays, tuples, NamedTuples and plain struct fields
+(properties must match fields). Other containers, such as dictionaries, throw
+`ArgumentError` at binding time; bind or `decondition` the whole value instead.
+
 Use NamedTuples or keyword arguments for whole top-level values, and `VarName` pairs for any
 address. The pair `:x => v` abbreviates `@varname(x) => v`. `VarNamedTuple`s produced by
 DynamicPPL are also accepted. Positional inputs and tuples apply left to right. Every

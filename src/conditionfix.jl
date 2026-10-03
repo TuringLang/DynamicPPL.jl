@@ -511,8 +511,37 @@ end
 function _expand_model_binding(previous::ModelValue{R,<:Tuple}) where {R}
     return ModelValueTree(previous.value, map(ModelValue{R}, previous.value))
 end
+# The fallback expands records through fields and later writes/rebuilds those fields.
+# Collection internals, scalar representations and runtime handles are not records,
+# even when their public properties happen to equal their implementation fields.
+function _model_binding_properties(value, address=nothing)
+    value isa NamedTuple && return keys(value)
+    T = typeof(value)
+    if !isstructtype(T) ||
+        value isa Union{
+            AbstractDict,AbstractSet,AbstractString,Number,Ref,Module,Function,Task,IO,Type
+        } ||
+        which(getproperty, Tuple{T,Symbol}) !== which(getproperty, Tuple{Any,Symbol})
+        _unsupported_partial_binding(value, address)
+    end
+    names = propertynames(value)
+    names === fieldnames(T) || _unsupported_partial_binding(value, address)
+    return names
+end
+function _unsupported_partial_binding(value, address)
+    location = if address === nothing
+        "value"
+    else
+        "argument `$(AbstractPPL.getsym(address))` at `$address`"
+    end
+    message = "Cannot partially bind $location through container type $(typeof(value)); bind or decondition the whole value instead."
+    value isa AbstractDict && (message *= " Or use a NamedTuple/array argument.")
+    throw(ArgumentError(message))
+end
 function _expand_model_binding(previous::ModelValue{R}) where {R}
-    fields = _defined_model_properties(previous.value, Val(propertynames(previous.value)))
+    fields = _defined_model_properties(
+        previous.value, Val(_model_binding_properties(previous.value))
+    )
     return ModelValueTree(previous.value, _tag_model_values(R, VarNamedTuple(fields)))
 end
 _defined_model_properties(value, ::Val{()}) = NamedTuple()
@@ -754,10 +783,39 @@ function _model_role_at(
     return _model_role_at(values, AbstractPPL.Property{only(optic.ix)}(optic.child), vn)
 end
 
-function _check_namedtuple_index(value, optic, prefix=AbstractPPL.Iden())
+# Binding preparation validates before expansion, while the full address is available.
+# The compiler's evaluation-time NamedTuple check does not validate containers.
+function _check_partial_binding(value, optic, prefix=AbstractPPL.Iden())
+    return _check_namedtuple_index(value, optic, prefix; check_container=true)
+end
+function _check_namedtuple_index(
+    value, optic, prefix=AbstractPPL.Iden(); check_container=false
+)
     optic isa AbstractPPL.Iden && return nothing
     template = value isa ModelValue ? value.value : value
     template = template isa ModelValueTree ? template.template : template
+    if check_container &&
+        value isa ModelValue &&
+        !(
+            template isa Union{
+                AbstractArray,
+                Tuple,
+                NamedTuple,
+                Base.Pairs,
+                NoTemplate,
+                Missing,
+                Nothing,
+                VarNamedTuple,
+                VarNamedTuples.PartialArray,
+                VarNamedTuples.NestedTemplate,
+                VarNamedTuples.SkipTemplate,
+            }
+        ) &&
+        !(template isa Number && isempty(propertynames(template)))
+        address = AbstractPPL.optic_to_varname(optic ∘ prefix)
+        _model_binding_properties(template, address)
+        optic isa AbstractPPL.Property || _unsupported_partial_binding(template, address)
+    end
     if template isa NamedTuple && optic isa AbstractPPL.Index
         index = AbstractPPL.concretize_top_level(optic, template)
         if index.ix isa Tuple{Integer}
@@ -774,7 +832,7 @@ function _check_namedtuple_index(value, optic, prefix=AbstractPPL.Iden())
     optic.child isa AbstractPPL.Iden && return nothing
     head = AbstractPPL.ohead(optic)
     child = _model_argument_binding(value, head)
-    return _check_namedtuple_index(child, optic.child, head ∘ prefix)
+    return _check_namedtuple_index(child, optic.child, head ∘ prefix; check_container)
 end
 
 @generated function _merge_model_values(
@@ -805,7 +863,7 @@ function _check_model_binding(
     check_bounds=true,
 )
     _fold_model_indices(nothing, updates) do _, update, optic, _
-        _check_namedtuple_index(previous, optic, AbstractPPL.varname_to_optic(vn))
+        _check_partial_binding(previous, optic, AbstractPPL.varname_to_optic(vn))
         if previous isa ModelValue
             compatible = if updates isa VarNamedTuples.PartialArray
                 previous.value isa Union{AbstractArray,Tuple}
@@ -1700,7 +1758,7 @@ function _prepare_argument_fields(
     template, bindings::Union{VarNamedTuple,VarNamedTuples.PartialArray}, vn
 )
     return _fold_model_indices(copy(bindings), bindings) do result, binding, optic, storage
-        _check_namedtuple_index(
+        _check_partial_binding(
             ModelValue{Condition}(template), optic, AbstractPPL.varname_to_optic(vn)
         )
         if template isa Union{AbstractArray,Tuple} && optic isa AbstractPPL.Index
@@ -2390,11 +2448,11 @@ function _make_condfix_values(model, values::Pair{<:VarName}...)
                 )
             end
         end
-        _check_namedtuple_index(
+        _check_partial_binding(
             _model_values(model.values), AbstractPPL.varname_to_optic(vn)
         )
         template = _binding_template(model, templates, vn)
-        _check_namedtuple_index(
+        _check_partial_binding(
             ModelValue{Condition}(template),
             AbstractPPL.getoptic(vn),
             AbstractPPL.Property{AbstractPPL.getsym(vn)}(),
@@ -2521,10 +2579,10 @@ end
 function _check_removal_addresses(values, names...)
     for name in names
         vn = name isa VarName ? name : VarName{name}()
+        _check_partial_binding(values, AbstractPPL.varname_to_optic(vn))
         _check_shapeless_removal(
             values, AbstractPPL.varname_to_optic(vn), AbstractPPL.Iden(), vn
         )
-        _check_namedtuple_index(values, AbstractPPL.varname_to_optic(vn))
     end
     return nothing
 end
@@ -2548,7 +2606,7 @@ end
 function _check_model_removal(::Type{R}, values, args...) where {R}
     for arg in args
         vn = arg isa VarName ? arg : VarName{arg}()
-        _check_namedtuple_index(values, AbstractPPL.varname_to_optic(vn))
+        _check_partial_binding(values, AbstractPPL.varname_to_optic(vn))
         binding = _model_argument_binding(values, AbstractPPL.varname_to_optic(vn))
         VarNamedTuples._mapreduce_recursive(
             pair -> _matches_model_role(R, pair.second), |, binding, vn, false

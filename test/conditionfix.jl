@@ -53,6 +53,62 @@ end
     return d
 end
 
+struct VirtualBindingRecord
+    a::Float64
+end
+Base.propertynames(::VirtualBindingRecord) = (:field,)
+Base.getproperty(x::VirtualBindingRecord, ::Symbol) = getfield(x, :a)
+
+@testset "partial argument containers are checked at binding time" begin
+    @model dictionary_argument(x) = (x[:a] ~ Normal(); x[:b] ~ Normal(); x)
+    @model nested_dictionary_argument(x) = (x.d[:a] ~ Normal(); x.d[:b] ~ Normal(); x)
+    @model nested_property_argument(x) = (x.s.field ~ Normal(); x)
+    @model record_argument(x) = (x.a ~ Normal(); x.b ~ Normal(); x)
+    dictionary = Dict(:a => missing, :b => 2.0)
+    virtual = VirtualBindingRecord(1.0)
+    for (model, address, container) in (
+        (dictionary_argument(dictionary), @varname(x[:a]), dictionary),
+        (nested_dictionary_argument((d=dictionary,)), @varname(x.d[:a]), dictionary),
+        (nested_property_argument((s=virtual,)), @varname(x.s.field), virtual),
+    )
+        message = [
+            "ArgumentError:",
+            "argument `x`",
+            "`$address`",
+            string(typeof(container)),
+            "whole",
+        ]
+        container isa AbstractDict && push!(message, "NamedTuple")
+        matches = err -> all(part -> occursin(part, err), message)
+        @test_throws matches decondition(model, address)
+        for bind in (condition, fix)
+            @test_throws matches bind(model, address => 3.0)
+            @test_throws matches bind(decondition(model), address => 3.0)
+        end
+        @test_throws matches unfix(fix(model; x=model.args.x), address)
+    end
+    # Whole dictionaries, including those nested in supported containers, remain valid.
+    data = Dict(:a => 1.0, :b => 2.0)
+    for (model, value) in (
+        (dictionary_argument(data), data),
+        (nested_dictionary_argument((d=data,)), (d=data,)),
+    )
+        @test returned(model, (;)) == value
+        for bind in (condition, fix)
+            @test returned(bind(model; x=value), (;)) == value
+        end
+        @test returned(decondition(model, @varname(x)), (x=value,)) == value
+        @test returned(unfix(fix(model; x=value), @varname(x)), (;)) == value
+    end
+    source = ObservationRecord(1.0, 2.0)
+    for bind in (condition, fix)
+        result = returned(bind(record_argument(source), @varname(x.a) => 3.0), (;))
+        @test result === ObservationRecord(3.0, 2.0)
+    end
+    result = returned(decondition(record_argument(source), @varname(x.a)), (x=(a=3.0,),))
+    @test result === ObservationRecord(3.0, 2.0)
+end
+
 @testset "condition and fix" begin
     @testset "structured arguments supply partial binding storage" begin
         @model fields_storage(p) = (p.a[1] ~ Normal(); p.a[2] ~ Normal(); p.a)
