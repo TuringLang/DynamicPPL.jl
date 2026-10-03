@@ -2673,15 +2673,7 @@ function _check_model_removal(::Type{R}, values, args...) where {R}
         vn = arg isa VarName ? arg : VarName{arg}()
         _check_partial_binding(values, AbstractPPL.varname_to_optic(vn))
         binding = _model_argument_binding(values, AbstractPPL.varname_to_optic(vn))
-        VarNamedTuples._mapreduce_recursive(
-            pair -> _matches_model_role(R, pair.second), |, binding, vn, false
-        ) && continue
-        mapreduce(
-            pair -> subsumes(vn, pair.first) && _matches_model_role(R, pair.second),
-            |,
-            values;
-            init=false,
-        ) && continue
+        _has_removable(R, values, vn, binding) && continue
         role = R === Condition ? "conditioned" : "fixed"
         message = "Cannot remove `$vn`: no $role binding is stored at this address."
         if VarNamedTuples._mapreduce_recursive(
@@ -3237,6 +3229,9 @@ end
 
 function _has_removable(::Type{R}, values, vn) where {R}
     binding = _model_argument_binding(values, AbstractPPL.varname_to_optic(vn))
+    return _has_removable(R, values, vn, binding)
+end
+function _has_removable(::Type{R}, values, vn, binding) where {R}
     VarNamedTuples._mapreduce_recursive(
         pair -> _matches_model_role(R, pair.second), |, binding, vn, false
     ) && return true
