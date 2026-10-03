@@ -162,8 +162,23 @@ bindings replace earlier ones where they overlap.
 | `unfix`       | Removes fixed bindings, uncovering the observation below, or leaving the LHS variable latent.               |
 
 Removal matches equal, enclosing, or contained addresses, with Symbol indices matching
-properties. Without `Recursive()`, removal clears only bindings stored on this model;
-with no names it clears that model's corresponding layer.
+properties. Without `Recursive()`, removal clears only bindings stored on this model, at any
+address; with no names it clears that model's corresponding layer. This includes bindings the
+model made at child addresses: adding such a binding needs `Recursive()`, because it reaches
+into the child's namespace, but removing it does not, because it is stored on the model. On a
+removal, `Recursive()` decides depth, that is, whether to also clear what the child holds:
+
+```julia
+R = DynamicPPL.Recursive()
+@model leaf(x=2.0) = x ~ Normal()
+@model outer() = a ~ to_submodel(leaf())   # the child observes x = 2.0
+m = condition(outer(), R, @varname(a.x) => 3.0)
+decondition(m, @varname(a.x))     # the child's x = 2.0 applies again
+decondition(m, R, @varname(a.x))  # a.x is latent
+```
+
+The child's value returns because bindings at one address resolve outermost first: the
+parent's 3.0 only shadowed the child's 2.0, so removing it uncovers the next binding inward.
 
 With `DynamicPPL.Recursive()`, `decondition` removes observations of either origin at every
 depth, leaving fixed bindings; `unfix` removes fixed bindings, uncovering observations below.
