@@ -367,7 +367,6 @@ function _get_model_binding(model, vn)
 end
 function _get_argument_role(model, vn, argument)
     _check_deferred_removals(model, vn)
-    _check_deferred_argument_removals(model, argument)
     binding = _get_model_binding(model, argument)
     # TODO: remove once users have migrated off the `x === missing; x = ...` placeholder idiom.
     if binding isa ModelValue{ArgumentCondition} && binding.value isa Union{Missing,Nothing}
@@ -3455,18 +3454,6 @@ function _check_deferred_removals(removals::Tuple, ::Type{R}, model, vn) where {
     return nothing
 end
 
-function _check_deferred_argument_removals(model, argument)
-    isempty(_removals(Condition, model.values)) && return nothing
-    values = _submodel_layer(Condition, model)
-    for r in _submodel_removals(Condition, model, nothing)
-        r.name === nothing && continue
-        AbstractPPL.getsym(r.name) === AbstractPPL.getsym(argument) || continue
-        if _removal_crosses_return_argument(model, r.name, values)
-            _check_model_removal(Condition, values, r.name)
-        end
-    end
-    return nothing
-end
 function _local_removal_name(model, vn)
     prefix = model.values isa LocalModelValues ? nothing : _model_prefix(model)
     if vn === nothing || prefix === nothing

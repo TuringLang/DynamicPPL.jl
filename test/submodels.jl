@@ -1058,6 +1058,95 @@ end
     end
 end
 
+@testset "deferred removals ignore sibling LHS addresses" begin
+    rec = DynamicPPL.Recursive()
+    @model removal_sibling_leaf(x=2.0) = x ~ Normal()
+    @model function removal_siblings(a, child, run)
+        if run
+            a.child ~ to_submodel(child)
+        end
+        a.obs ~ Normal()
+        return a
+    end
+    @model function removal_index_siblings(a, child, run)
+        if run
+            a[1] ~ to_submodel(child)
+        end
+        a[2] ~ Normal()
+        return a
+    end
+    @model removal_sibling_parent(child) = b ~ to_submodel(child)
+    for (bind, remove) in ((condition, decondition), (fix, unfix)), run in (true, false)
+        child = bind(removal_sibling_leaf(); x=3.0)
+        for (m, name) in (
+            (removal_siblings((child=0.0, obs=1.0), child, run), @varname(a.child.x)),
+            (removal_index_siblings([0.0, 1.0], child, run), @varname(a[1].x)),
+        )
+            for (model, address) in (
+                (m, name),
+                (prefix(m, @varname(p)), AbstractPPL.prefix(name, @varname(p))),
+                (removal_sibling_parent(m), AbstractPPL.prefix(name, @varname(b))),
+            )
+                removed = remove(model, rec, address)
+                @test keys(rand(Xoshiro(1), removed)) ==
+                    (run && bind === condition ? [address] : VarName[])
+                value = removed(Xoshiro(1))
+                @test last(value) == 1.0
+                @test !run || bind !== fix || first(value) == 2.0
+            end
+        end
+    end
+    # Missing removals still fail when the overlapping child actually runs.
+    for run in (true, false)
+        m = removal_siblings((child=0.0, obs=1.0), decondition(removal_sibling_leaf()), run)
+        removed = decondition(m, rec, @varname(a.child.x))
+        if run
+            @test_throws ArgumentError removed(Xoshiro(1))
+        else
+            @test removed(Xoshiro(1)) == (child=0.0, obs=1.0)
+        end
+    end
+end
+
+@testset "unreached sibling removals do not depend on argument expansion" begin
+    rec = DynamicPPL.Recursive()
+    @model removal_expansion_leaf(y=2.0) = y ~ Normal()
+    @model function removal_expansion_branch(a, observed)
+        if observed
+            a.keep ~ Normal()
+            a.x ~ Normal()
+        else
+            a ~ to_submodel(removal_expansion_leaf())
+        end
+        return a
+    end
+    @model removal_expansion_parent(child) = b ~ to_submodel(child)
+    for (bind, remove) in ((condition, decondition), (fix, unfix)), partial in (false, true)
+        m = removal_expansion_branch((keep=1.0, x=2.0), true)
+        bind === fix && (m = fix(m; a=(keep=1.0, x=2.0)))
+        partial && (m = remove(m, @varname(a.keep)))
+        for (model, address) in (
+            (m, @varname(a.y)),
+            (prefix(m, @varname(p)), @varname(p.a.y)),
+            (removal_expansion_parent(m), @varname(b.a.y)),
+        )
+            @test remove(model, rec, address)(Xoshiro(1)) == model(Xoshiro(1))
+        end
+    end
+    # The same child address is checked when its branch executes.
+    child = removal_expansion_branch((keep=1.0, x=2.0), false)
+    @test keys(rand(Xoshiro(1), decondition(child, rec, @varname(a.y)))) == [@varname(a.y)]
+    @test_throws ArgumentError decondition(child, rec, @varname(a.absent))(Xoshiro(1))
+    # Expanding an argument does not bypass checks at an overlapping whole LHS.
+    @model removal_expansion_whole(a) =
+        a ~ product_distribution((keep=Normal(), x=Normal()))
+    for partial in (false, true)
+        m = removal_expansion_whole((keep=1.0, x=2.0))
+        partial && (m = decondition(m, @varname(a.keep)))
+        @test_throws r"Cannot remove `a.y`" decondition(m, rec, @varname(a.y))(Xoshiro(1))
+    end
+end
+
 @testset "recursive removal storage and scope" begin
     rec = DynamicPPL.Recursive()
     @model function indexed(x)
