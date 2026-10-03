@@ -330,7 +330,8 @@ Reapply recursive removals separately; the listings omit removal markers.
 `conditioned` and `fixed` list only bindings stored on `old`, not those held by its
 submodels; `new` rebuilds its submodels from its own arguments. `old`'s argument-supplied
 observations become explicit observations of `new`, so they replace `new`'s arguments at those
-addresses. Prefixes are not transferred; apply `prefix` to `new` again.
+addresses. The listings keep `old`'s prefixed addresses, so apply `old`'s prefix to `new`
+before replaying them.
 
 Replace context overloads of `tilde_observe!!` with `accumulate_observe!!` implementations.
 For direct observation calls, replace `tilde_observe!!(ctx, dist, value, vn, template, vi)`

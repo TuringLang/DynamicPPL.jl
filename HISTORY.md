@@ -72,7 +72,7 @@ Partly removing bindings of one multivariate LHS variable now errors: `deconditi
 
 Enclosing explicit bindings override child bindings, including fixed ones: child-fixed precedence → outermost explicit binding precedence. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501), [#1012](https://github.com/TuringLang/DynamicPPL.jl/issues/1012).
 
-Submodel return values cannot be bound: `condition(m; a=value)` → `condition(m, @varname(a.x) => value)` for child LHS variable `x`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501), [#1246](https://github.com/TuringLang/DynamicPPL.jl/issues/1246).
+Submodel return values cannot be bound: `condition(m; a=value)` → `condition(m, DynamicPPL.Recursive(), @varname(a.x) => value)` for child LHS variable `x` of a local `a`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501), [#1246](https://github.com/TuringLang/DynamicPPL.jl/issues/1246).
 
 Argument arrays whose element type includes `Missing` lose defensive copies: mutating observed storage → copy before mutation. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
