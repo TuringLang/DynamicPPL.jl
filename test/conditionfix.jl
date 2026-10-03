@@ -3334,6 +3334,21 @@ mutable struct ConstBindingState
     x::Float64
     ConstBindingState() = new(0.0, 0.0)
 end
+mutable struct ConstNestedBindingState
+    const x::Vector{Float64}
+end
+@testset "nested bindings check enclosing field replacement" begin
+    @model nested_field_binding(s) = (s.x[1] ~ Normal(); s)
+    for source in (ConstNestedBindingState([0.0]), ImmutableInnerState()),
+        bind in (condition, fix)
+
+        @test_throws r"ArgumentError: .*whole value" bind(
+            nested_field_binding(source), @varname(s.x[1]) => 2.0
+        )
+        @test source.x == [0.0]
+    end
+end
+
 @testset "const fields require a whole replacement" begin
     @model const_binding_state(s) = (s.x ~ Normal(s.offset); s)
     for bind in (condition, fix)

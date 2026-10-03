@@ -1921,6 +1921,8 @@ function _prepare_argument_fields(
             else
                 child = VarNamedTuples._getindex_optic(template, optic, vn)
                 binding = _prepare_argument_fields(child, binding, address)
+                # Preparing a nested binding also replaces its enclosing field.
+                _check_partial_argument_replacement(template, optic, child)
             end
         end
         return VarNamedTuples._setindex_optic!!(
@@ -1960,6 +1962,11 @@ function _convert_partial_argument_binding(
             "Cannot exactly represent partial binding at `$vn` in storage element type $T",
         ),
     )
+    _check_partial_argument_replacement(template, optic, converted)
+    return _model_value_like(binding, converted)
+end
+
+function _check_partial_argument_replacement(template, optic, value)
     if optic isa AbstractPPL.Property && ismutabletype(typeof(template))
         name = _binding_property_name(optic)
         if hasfield(typeof(template), name) && isconst(typeof(template), name)
@@ -1972,13 +1979,13 @@ function _convert_partial_argument_binding(
     end
     if optic isa AbstractPPL.Property && !ismutabletype(typeof(template))
         name = _binding_property_name(optic)
-        _argument_reconstructible(template, NamedTuple{(name,)}((converted,))) || throw(
+        _argument_reconstructible(template, NamedTuple{(name,)}((value,))) || throw(
             ArgumentError(
                 "Cannot rebuild argument of type $(typeof(template)) when binding property `$name`; provide a ConstructionBase.setproperties method or bind the whole value.",
             ),
         )
     end
-    return _model_value_like(binding, converted)
+    return nothing
 end
 _check_binding_template_bounds(template, ::AbstractPPL.Iden, vn) = nothing
 function _check_binding_template_bounds(
