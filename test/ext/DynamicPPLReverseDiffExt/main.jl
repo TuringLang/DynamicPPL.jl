@@ -251,3 +251,26 @@ end
         @test gradient ≈ [-2x[1] - x[2], -x[1] - 2x[2]]
     end
 end
+
+@testset "copied tracked views retain parent buffers" begin
+    @model function view_child(p)
+        y ~ Normal(p.a[1])
+        return p.b ~ Normal()
+    end
+    @model function view_parent(make_view)
+        m ~ MvNormal(zeros(1), ones(1))
+        return a ~ to_submodel(decondition(view_child((a=make_view(m), b=0.0))))
+    end
+    for make_view in (m -> view(m, 1:1), m -> view(reshape(m, 1, 1), :, 1)),
+        (_, adtype) in ADTYPES
+
+        ldf = LogDensityFunction(view_parent(make_view); adtype)
+        for x in ([0.3, 0.7, 0.9], [-0.4, 0.2, -0.3], [0.3, 0.7, 0.9])
+            density, gradient = LogDensityProblems.logdensity_and_gradient(ldf, x)
+            @test density ≈ sum(logpdf.(Normal(), [x[1], x[2] - x[1], x[3]]))
+            @test gradient ≈ [x[2] - 2x[1], x[1] - x[2], -x[3]]
+            @test gradient ≈
+                ForwardDiff.gradient(z -> LogDensityProblems.logdensity(ldf, z), x)
+        end
+    end
+end
