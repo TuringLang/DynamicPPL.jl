@@ -38,6 +38,65 @@ function Mooncake.rrule!!(
     return output, pullback
 end
 
+# Dense scalar overlays need no per-element reverse program for binding metadata.
+# Keep nested/block bindings, custom arrays and other numeric types on the generic path.
+const ScalarArgumentBinding = Union{
+    DynamicPPL.ModelValue{DynamicPPL.ArgumentCondition,Float64,true},
+    DynamicPPL.ModelValue{DynamicPPL.ArgumentCondition,Float64,false},
+    DynamicPPL.ModelValue{DynamicPPL.Condition,Float64,true},
+    DynamicPPL.ModelValue{DynamicPPL.Condition,Float64,false},
+    DynamicPPL.ModelValue{DynamicPPL.Fix,Float64,true},
+    DynamicPPL.ModelValue{DynamicPPL.Fix,Float64,false},
+}
+const DenseArgumentBindings = DynamicPPL.VarNamedTuples.PartialArray{
+    T,1,Vector{T},Vector{Bool}
+} where {T<:ScalarArgumentBinding}
+const ArgumentName = Union{Nothing,DynamicPPL.VarName{S,AbstractPPL.Iden} where {S}}
+@static if isdefined(Mooncake, :ReverseMode)
+    Mooncake.@is_primitive Mooncake.DefaultCtx Mooncake.ReverseMode Tuple{
+        typeof(DynamicPPL._model_argument_value),
+        DenseArgumentBindings,
+        Vector{Float64},
+        ArgumentName,
+    }
+else
+    Mooncake.@is_primitive Mooncake.DefaultCtx Tuple{
+        typeof(DynamicPPL._model_argument_value),
+        DenseArgumentBindings,
+        Vector{Float64},
+        ArgumentName,
+    }
+end
+function Mooncake.rrule!!(
+    ::Mooncake.CoDual{typeof(DynamicPPL._model_argument_value)},
+    values::Mooncake.CoDual{<:DenseArgumentBindings},
+    template::Mooncake.CoDual{Vector{Float64}},
+    vn::Mooncake.CoDual{<:ArgumentName},
+)
+    bindings = Mooncake.primal(values)
+    original, dtemplate = Mooncake.arrayify(template)
+    output = Mooncake.zero_fcodual(
+        DynamicPPL._model_argument_value(bindings, original, Mooncake.primal(vn))
+    )
+    dy = Mooncake.tangent(output)
+    dvalues = Mooncake.tangent(values).data.data
+    # Each output is either a bound scalar or a surviving template element.
+    # Preparation may resize the template; removed elements have zero cotangent.
+    function overlay_pullback!!(::Mooncake.NoRData)
+        for i in eachindex(dy)
+            if bindings.mask[i]
+                dvalues[i] = Mooncake.increment!!(
+                    dvalues[i], Mooncake.Tangent((value=dy[i],))
+                )
+            elseif i <= length(dtemplate)
+                dtemplate[i] += dy[i]
+            end
+        end
+        return ntuple(_ -> Mooncake.NoRData(), 4)
+    end
+    return output, overlay_pullback!!
+end
+
 Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
     typeof(DynamicPPL._argument_may_need_adapter),Type
 }

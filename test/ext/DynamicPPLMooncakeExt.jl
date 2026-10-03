@@ -13,7 +13,80 @@ using LogDensityProblems: LogDensityProblems, logdensity_and_gradient, dimension
 using StableRNGs: StableRNG
 using DynamicPPL
 using DynamicPPL.TestUtils.AD: run_ad
-using Test: @test, @testset
+using Test: @test, @testset, @inferred
+
+@testset "dense scalar argument overlay rule" begin
+    ext = Base.get_extension(DynamicPPL, :DynamicPPLMooncakeExt)
+    mode = isdefined(Mooncake, :ReverseMode) ? (; mode=Mooncake.ReverseMode) : (;)
+    function check_overlay(values, mask, template, vn)
+        bindings = DynamicPPL.VarNamedTuples.PartialArray(values, mask)
+        _, pullback = @inferred Mooncake.rrule!!(
+            Mooncake.zero_fcodual(DynamicPPL._model_argument_value),
+            Mooncake.zero_fcodual(bindings),
+            Mooncake.zero_fcodual(template),
+            Mooncake.zero_fcodual(vn),
+        )
+        @inferred pullback(Mooncake.NoRData())
+        return Mooncake.TestUtils.test_rule(
+            StableRNG(123456),
+            DynamicPPL._model_argument_value,
+            bindings,
+            template,
+            vn;
+            unsafe_perturb=true,
+            mode...,
+        )
+    end
+    for role in (DynamicPPL.ArgumentCondition, DynamicPPL.Condition, DynamicPPL.Fix),
+        scope in (true, false)
+
+        values = [DynamicPPL.ModelValue{role}(Float64(i), Val(scope)) for i in 1:3]
+        for mask in ([true, true, true], [false, true, false], [false, false, false]),
+            n in (3, 5)
+
+            check_overlay(values, mask, collect(1.0:n), @varname(x))
+        end
+    end
+    values = ext.ScalarArgumentBinding[
+        DynamicPPL.ModelValue{DynamicPPL.Condition}(1.0, Val(true)),
+        DynamicPPL.ModelValue{DynamicPPL.Fix}(2.0, Val(false)),
+        DynamicPPL.ModelValue{DynamicPPL.ArgumentCondition}(3.0, Val(true)),
+    ]
+    for (mask, template) in (
+        ([true, true, true], Float64[]),
+        ([false, true, true], [0.0]),
+        ([true, false, true], zeros(3)),
+        ([true, false, true], zeros(5)),
+    )
+        check_overlay(values, mask, template, nothing)
+    end
+    check_overlay(ext.ScalarArgumentBinding[], Bool[], [1.0], nothing)
+    # Unset binding slots must not be read, even when their data is uninitialised.
+    partial = Vector{ext.ScalarArgumentBinding}(undef, 3)
+    partial[2] = values[2]
+    check_overlay(partial, [false, true, false], zeros(3), @varname(x))
+
+    # Both the bound payloads and the surviving template entries are differentiable.
+    function objective(z)
+        data = [DynamicPPL.ModelValue{DynamicPPL.Condition}(z[i]) for i in 1:3]
+        bindings = DynamicPPL.VarNamedTuples.PartialArray(data, [true, false, true])
+        result = DynamicPPL._model_argument_value(bindings, z[4:8], @varname(x))
+        return sum(i * result[i] for i in eachindex(result))
+    end
+    x = collect(1.0:8.0)
+    prep = DifferentiationInterface.prepare_gradient(objective, AutoMooncake(), x)
+    for z in (x, -x, x)
+        gradient = DifferentiationInterface.gradient(objective, prep, AutoMooncake(), z)
+        @test gradient ≈ [1, 0, 3, 0, 2, 0, 0, 0]
+        numerical = map(eachindex(z)) do i
+            plus, minus = copy(z), copy(z)
+            plus[i] += 1e-5
+            minus[i] -= 1e-5
+            (objective(plus) - objective(minus)) / 2e-5
+        end
+        @test gradient ≈ numerical
+    end
+end
 
 @model function partial_observations(y)
     m ~ Normal()
