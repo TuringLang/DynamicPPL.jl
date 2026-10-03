@@ -2656,9 +2656,11 @@ Only the matching conditioned parts are removed. A name with no match throws
 `ArgumentError`, including names with only fixed bindings. With no names, removing all
 observations is always valid.
 
-By default, only bindings stored on this model are removed. With `DynamicPPL.Recursive()`,
-removal also reaches enclosed models, including argument-supplied observations and runtime
-bindings. With no names it clears the observation layer at every depth. Fixed bindings remain.
+By default, only bindings stored on this model are removed, at any address. This includes
+a child address bound with `DynamicPPL.Recursive()`; the child's own binding there then
+applies again, because bindings at one address resolve outermost first. With
+`DynamicPPL.Recursive()`, removal also reaches enclosed models, including argument-supplied
+observations and runtime bindings. With no names it clears the observation layer at every depth. Fixed bindings remain.
 A named removal with no match throws at removal time when decidable, otherwise when the
 relevant child is reached; untaken branches are ignored. Removing the same address twice throws.
 `check_model` warns about recursive removals unused by all reached models.
@@ -3158,6 +3160,7 @@ function unfix(model::Model, syms::Union{Symbol,VarName}...)
 end
 
 function _local_remove(::Type{R}, model, names) where {R}
+    # Child addresses bound here with `Recursive()` are stored here, so they are removed here.
     model = _materialize_argument_values(model)
     layer = _binding_layer(R, model.values)
     _check_removal_addresses(layer, names...)
