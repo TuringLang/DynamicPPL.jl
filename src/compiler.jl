@@ -153,13 +153,34 @@ macro model(expr, warn=false)
     return esc(model(__module__, __source__, expr, warn))
 end
 
+# Binding-time namespace checks must not evaluate indices from the model body.
+_static_lhs_address(name::Symbol) = VarName{name}()
+_static_lhs_address(other) = nothing
+function _static_lhs_address(expr::Expr)
+    if Meta.isexpr(expr, :.) && expr.args[2] isa QuoteNode
+        parent = _static_lhs_address(expr.args[1])
+        parent === nothing && return nothing
+        return VarName{AbstractPPL.getsym(parent)}(
+            AbstractPPL.Property{expr.args[2].value}() ∘ AbstractPPL.getoptic(parent)
+        )
+    elseif Meta.isexpr(expr, :ref) && all(i -> i isa Integer, expr.args[2:end])
+        parent = _static_lhs_address(expr.args[1])
+        parent === nothing && return nothing
+        return VarName{AbstractPPL.getsym(parent)}(
+            AbstractPPL.Index(Tuple(expr.args[2:end]), NamedTuple()) ∘
+            AbstractPPL.getoptic(parent),
+        )
+    end
+    return nothing
+end
+
 function model(mod, linenumbernode, expr, warn)
     modeldef = build_model_definition(expr)
 
     # Generate main body
     lhs_names = Symbol[]
     may_have_submodels = Symbol[]
-    submodel_namespaces = Symbol[]
+    lhs_addresses = Tuple{VarName,Bool}[]
     arguments = map(
         arg -> first(MacroTools.splitarg(arg)), vcat(modeldef[:args], modeldef[:kwargs])
     )
@@ -171,15 +192,11 @@ function model(mod, linenumbernode, expr, warn)
         lhs_names,
         arguments,
         may_have_submodels,
-        submodel_namespaces,
+        lhs_addresses,
     )
 
     return build_output(
-        modeldef,
-        linenumbernode,
-        lhs_names,
-        Tuple(may_have_submodels),
-        Tuple(submodel_namespaces),
+        modeldef, linenumbernode, lhs_names, Tuple(may_have_submodels), Tuple(lhs_addresses)
     )
 end
 
@@ -231,7 +248,7 @@ generate_mainbody(
     lhs_names=Symbol[],
     arguments=Symbol[],
     may_have_submodels=Symbol[],
-    submodel_namespaces=Symbol[],
+    lhs_addresses=Tuple{VarName,Bool}[],
 ) = generate_mainbody!(
     mod,
     (;
@@ -239,7 +256,7 @@ generate_mainbody(
         lhs_names,
         arguments,
         may_have_submodels,
-        submodel_namespaces,
+        lhs_addresses,
         shadowed=Symbol[],
     ),
     expr,
@@ -340,9 +357,9 @@ function generate_mainbody!(mod, found, expr::Expr, warn, warn_threads)
             else
                 nothing
             end
-            if constructor === to_submodel
-                push!(found.submodel_namespaces, root)
-            end
+            # Dynamic indices may overlap any address under their root.
+            address = something(_static_lhs_address(L), VarName{root}())
+            push!(found.lhs_addresses, (address, constructor === to_submodel))
             if !(
                 (constructor isa Type && constructor <: Distribution) ||
                 constructor === independent_distribution
@@ -701,7 +718,7 @@ end
 Builds the output expression.
 """
 function build_output(
-    modeldef, linenumbernode, lhs_names, may_have_submodels=(), submodel_namespaces=()
+    modeldef, linenumbernode, lhs_names, may_have_submodels=(), lhs_addresses=()
 )
     args = transform_args(modeldef[:args])
     kwargs = transform_args(modeldef[:kwargs])
@@ -871,7 +888,7 @@ function build_output(
                 $(QuoteNode(Tuple(unique(lhs_names)))),
                 $(QuoteNode(Tuple(unique(may_have_submodels)))),
                 $argument_types,
-                $(QuoteNode(Tuple(unique(submodel_namespaces)))),
+                $(QuoteNode(Tuple(unique(lhs_addresses)))),
             }(),
         )
     end

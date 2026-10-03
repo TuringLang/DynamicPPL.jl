@@ -128,13 +128,13 @@ function unsplat_symbol(s::Symbol)
 end
 
 # The existing argument metadata slot also carries macro-known LHS addresses.
-struct ModelBindingMetadata{Arguments,LHS,Submodels,Types,Namespaces} end
+struct ModelBindingMetadata{Arguments,LHS,Submodels,Types,Addresses} end
 _args_on_lhs(::ModelBindingMetadata{A}) where {A} = A
 _args_on_lhs(names::Union{Tuple,Vector{Symbol}}) = Tuple(names)
 _lhs_names(::ModelBindingMetadata{A,L}) where {A,L} = L
 _lhs_names(::Tuple) = nothing
-_submodel_namespaces(::ModelBindingMetadata{A,L,S,T,N}) where {A,L,S,T,N} = N
-_submodel_namespaces(::Tuple) = ()
+_lhs_addresses(::ModelBindingMetadata{A,L,S,T,N}) where {A,L,S,T,N} = N
+_lhs_addresses(::Tuple) = ()
 _may_have_submodels(::ModelBindingMetadata{A,L,S}) where {A,L,S} = !isempty(S)
 _submodel_lhs_names(::ModelBindingMetadata{A,L,S}) where {A,L,S} = S
 _may_have_submodels(::Tuple) = true

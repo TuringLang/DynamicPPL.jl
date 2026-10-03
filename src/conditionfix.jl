@@ -1827,11 +1827,26 @@ function _check_binding_addresses(model, values, recursive=false)
         _submodel_values(values, _model_prefix(model))
     end
     for name in keys(local_values.data)
-        name in names && (recursive || name ∉ _submodel_namespaces(metadata)) || throw(
+        name in names || throw(
             ArgumentError(
                 "Cannot bind `$name`: it is not an LHS top symbol of this model. Use DynamicPPL.Recursive() to bind a child model through its submodel namespace.",
             ),
         )
+    end
+    if !recursive
+        addresses = _lhs_addresses(metadata)
+        for vn in keys(local_values)
+            overlaps(address) = subsumes(address, vn) || subsumes(vn, address)
+            namespace = any(p -> last(p) && overlaps(first(p)), addresses)
+            own = any(p -> !last(p) && overlaps(first(p)), addresses)
+            namespace &&
+                !own &&
+                throw(
+                    ArgumentError(
+                        "Cannot bind `$vn`: it names a submodel namespace. Use DynamicPPL.Recursive() to bind a child model through its submodel namespace.",
+                    ),
+                )
+        end
     end
     return nothing
 end
