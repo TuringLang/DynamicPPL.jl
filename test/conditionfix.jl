@@ -416,6 +416,32 @@ end
     end
 
     @testset "deconditioned dictionary argument storage" begin
+        @testset "keys cannot retain latent storage" begin
+            @model function key_storage(x, key)
+                μ = x[key][1]
+                x[key][1] ~ Normal(μ)
+                return x
+            end
+            @model field_storage(x) = (x.a[1] ~ Normal(); x.a[1])
+            for ctor in (Dict, IdDict)
+                data = Real[0.0]
+                key = Ref(data)
+                model = decondition(key_storage(ctor(key => data), key))
+                params = (; x=ctor(key => [2.0]))
+                for _ in 1:2
+                    @test_throws r"ArgumentError:.*argument `x`.*dictionary key" logjoint(
+                        model, params
+                    )
+                    @test data == [0.0]
+                end
+                model = decondition(field_storage((; a=data, lookup=ctor(data => 1))))
+                @test_throws r"ArgumentError:.*argument `x`.*dictionary key" returned(
+                    model, (; x=(; a=[2.0]))
+                )
+                @test data == [0.0]
+            end
+        end
+
         @model scalar_dictionary(x) = (x[:a] ~ Normal(); x)
         for T in (Float32, Float64, BigFloat)
             data = Dict(:a => T(1))

@@ -878,7 +878,7 @@ end
 
 function prepare_model_argument(model::Model, vn::VarName, value)
     binding = _get_model_binding(model, vn)
-    return prepare_model_argument(binding, value)
+    return _model_argument_value(binding, value, vn)
 end
 function prepare_model_argument(binding, value)
     return _model_argument_value(binding, value)
