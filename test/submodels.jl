@@ -1024,6 +1024,40 @@ end
     end
 end
 
+@testset "deferred recursive removals overlap whole LHS variables" begin
+    rec = DynamicPPL.Recursive()
+    @model function removal_whole(t, run=true)
+        run && (t ~ product_distribution((a=Normal(),)))
+        return nothing
+    end
+    @model removal_whole_local() = t ~ product_distribution((a=Normal(),))
+    @model function removal_runtime(child)
+        rhs = to_submodel(child)
+        return a ~ rhs
+    end
+    for (bind, remove) in ((condition, decondition), (fix, unfix))
+        child = decondition(removal_whole((a=2.0,)))
+        for (model, name, whole_name) in (
+            (child, @varname(t.a), @varname(t)),
+            (removal_whole_local(), @varname(t.a), @varname(t)),
+            (prefix(child, @varname(p)), @varname(p.t.a), @varname(p.t)),
+            (removal_runtime(removal_runtime(child)), @varname(a.a.t.a), @varname(a.a.t)),
+        )
+            removed = remove(model, rec, name)
+            @test_throws ArgumentError removed(Xoshiro(1))
+            matched = remove(bind(model, rec, whole_name => (a=2.0,)), rec, name)
+            @test whole_name in keys(rand(Xoshiro(1), matched))
+        end
+        skipped = decondition(removal_whole((a=2.0,), false))
+        @test remove(skipped, rec, @varname(t.a))(Xoshiro(1)) === nothing
+        @test remove(removal_runtime(skipped), rec, @varname(a.t.a))(Xoshiro(1)) === nothing
+        # A child's removal cannot count an enclosing binding as its own match.
+        removed_child = remove(child, rec, @varname(t.a))
+        enclosing = bind(removal_runtime(removed_child), rec, @varname(a.t) => (a=2.0,))
+        @test_throws ArgumentError enclosing(Xoshiro(1))
+    end
+end
+
 @testset "recursive removal storage and scope" begin
     rec = DynamicPPL.Recursive()
     @model function indexed(x)
