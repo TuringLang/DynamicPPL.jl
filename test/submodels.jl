@@ -1076,4 +1076,39 @@ end
     end
 end
 
+@testset "recursive removal resolves indexed prefixes" begin
+    rec = DynamicPPL.Recursive()
+    @model prefix_removal_leaf(x=2.0) = x ~ Normal()
+    @model function prefix_removal_array(x)
+        for i in eachindex(x)
+            x[i] ~ Normal()
+        end
+        return x
+    end
+    @test keys(
+        rand(
+            Xoshiro(1), decondition(prefix_removal_array([1.0, 2.0]), rec, @varname(x[end]))
+        ),
+    ) == [@varname(x[2])]
+    @model prefix_removal_parent(m) = a ~ to_submodel(m)
+    for (bind, remove) in ((condition, decondition), (fix, unfix))
+        child = prefix(
+            bind(prefix_removal_leaf(); x=3.0), @varname(p[end]); template=zeros(2)
+        )
+        removed = remove(child, rec, @varname(p[end].x))
+        @test isempty(bind === condition ? conditioned(removed) : fixed(removed))
+        @test_throws ArgumentError remove(removed, rec, @varname(p[2].x))
+        if bind === condition
+            @test keys(rand(Xoshiro(1), removed)) == [@varname(p[2].x)]
+        else
+            @test removed(Xoshiro(1)) == 2.0
+        end
+    end
+    model = prefix(
+        prefix_removal_parent(prefix_removal_leaf()), @varname(p[end]); template=zeros(2)
+    )
+    removed = decondition(model, rec, @varname(p[end].a.x))
+    @test keys(rand(Xoshiro(1), removed)) == [@varname(p[2].a.x)]
+end
+
 end
