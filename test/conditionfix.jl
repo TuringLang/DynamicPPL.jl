@@ -49,6 +49,25 @@ __now__ = now()
     end
 end
 
+@model tuplemodel(x) = (
+    x[1][1] ~ Normal(); x[1][2] ~ Normal(); x[2][1] ~ Normal(); x[2][2] ~ Normal(); x
+)
+@testset "nested tuple fixes survive deconditioning" begin
+    m = fix(
+        tuplemodel(((1.0, 2.0), (3.0, 4.0))),
+        @varname(x[1][1]) => 12.0,
+        @varname(x[2][1]) => 10.0,
+    )
+    removed = decondition(m, @varname(x[2]))
+    @test removed(Xoshiro(1)) == ((12.0, 2.0), (10.0, rand(Xoshiro(1), Normal())))
+    @test removed(Xoshiro(1))[1] == (12.0, 2.0)
+    @test removed(Xoshiro(1))[2][1] == 10.0
+    @test m(Xoshiro(1)) == ((12.0, 2.0), (10.0, 4.0))
+    rng = Xoshiro(1)
+    @test unfix(removed)(Xoshiro(1)) ==
+        ((1.0, 2.0), (rand(rng, Normal()), rand(rng, Normal())))
+end
+
 struct ObservationRecord{A,B}
     a::A
     b::B

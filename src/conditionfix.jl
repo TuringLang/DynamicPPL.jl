@@ -120,6 +120,7 @@ function _overlay_model_node(previous::VarNamedTuple, fixed::VarNamedTuple, owne
     return _overlay_model_values(previous, fixed, owners, vn)
 end
 function _overlay_model_node(previous, fixed::VarNamedTuples.PartialArray, owners, vn)
+    previous isa NoModelBinding && return _copy_model_node(fixed)
     eltype(fixed) <: ModelValue &&
         _has_complete_model_data(fixed) &&
         return _copy_model_node(fixed)
