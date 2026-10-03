@@ -1058,4 +1058,22 @@ end
     )
 end
 
+@testset "recursive unfix releases whole shape owners" begin
+    rec = DynamicPPL.Recursive()
+    @model owner_parent(m) = a ~ to_submodel(m)
+    @model function owner_grows(x)
+        x = vcat(x, 0.0)
+        for i in eachindex(x)
+            x[i] ~ Normal()
+        end
+        return x
+    end
+    old = fix(owner_grows(zeros(2)); x=ones(2))
+    expected = fix(unfix(old), @varname(x[1]) => 2.0)(Xoshiro(1))
+    for names in ((), (@varname(a.x),))
+        model = fix(unfix(owner_parent(old), rec, names...), rec, @varname(a.x[1]) => 2.0)
+        @test model(Xoshiro(1)) == expected
+    end
+end
+
 end

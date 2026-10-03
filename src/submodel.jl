@@ -273,9 +273,10 @@ Evaluate `submodel` under `parent_model`.
         context,
         AutoPrefix || _model_prefix(submodel.model) !== nothing,
     )
-    child_layers = ModelBindingLayers(
-        observations, fixed, _submodel_fixed_owners(submodel.model, nothing)
-    )
+    child_owners = filter(_submodel_fixed_owners(submodel.model, nothing)) do owner
+        !any(r -> _removal_covers(r, owner), fixed_removals)
+    end
+    child_layers = ModelBindingLayers(observations, fixed, child_owners)
     child_values = _model_values(child_layers)
     child_model = _reconstruct_model(submodel.model; values=LocalModelValues(child_values))
     parent_values = _check_argument_bindings(
@@ -285,10 +286,7 @@ Evaluate `submodel` under `parent_model`.
     if AutoPrefix || _model_prefix(submodel.model) !== nothing
         _check_binding_addresses(child_model, parent_values, true)
     end
-    owners = (
-        _submodel_fixed_owners(submodel.model, nothing)...,
-        _submodel_fixed_owners(parent_model, local_prefix)...,
-    )
+    owners = (child_owners..., _submodel_fixed_owners(parent_model, local_prefix)...)
     values = LocalModelValues(
         _with_removals(
             _merge_model_values(child_values, parent_values),
