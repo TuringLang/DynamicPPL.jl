@@ -2336,6 +2336,7 @@ function _bind_inputs(::Type{R}, model::Model, inputs::Tuple, recursive=false) w
         throw(ArgumentError("At most one binding schema is allowed per call."))
     values = filter(x -> !(x isa Type{<:AbstractPPL.OfNamedTuple}), inputs)
     isempty(schemas) && return _bind_ordered_inputs(R, model, values, recursive)
+    model = _materialize_argument_values(model)
     schema = VarNamedTuples.materialize_template(only(schemas))
     for name in keys(schema)
         name in map(unsplat_symbol, keys(merge(model.args, model.defaults))) && throw(
@@ -2348,7 +2349,7 @@ function _bind_inputs(::Type{R}, model::Model, inputs::Tuple, recursive=false) w
             ArgumentError("Binding schema entry `$name` is not a local LHS top symbol.")
         )
         root = _model_value_varname(model.values, VarName{name}(), _model_prefix(model))
-        any(v -> _input_binds_root(v, root), values) ||
+        any(v -> _input_binds_root(v, root, model), values) ||
             throw(ArgumentError("Binding schema entry `$name` is not bound by this call."))
     end
     for value in values
@@ -2356,10 +2357,28 @@ function _bind_inputs(::Type{R}, model::Model, inputs::Tuple, recursive=false) w
     end
     return model
 end
-_input_binds_root(value::Pair{<:VarName}, root) = subsumes(root, first(value))
-_input_binds_root(value::NamedTuple, root) = haskey(value, AbstractPPL.getsym(root))
-_input_binds_root(value::VarNamedTuple, root) = any(vn -> subsumes(root, vn), keys(value))
-_input_binds_root(value, root) = false
+# Resolve only the namespace prefix here. Local indices may use argument or
+# schema storage, which is selected later while preparing each binding.
+function _schema_binding_address(model, vn)
+    prefix = _model_prefix(model)
+    if !(model.values isa LocalModelValues) &&
+        prefix !== nothing &&
+        AbstractPPL.getsym(prefix) === AbstractPPL.getsym(vn)
+        template = _apply_prefix_template(_model_prefix_template(model), NoTemplate())
+        return _concretize_prefix(
+            vn, template; depth=optic_skip_length(AbstractPPL.getoptic(prefix))
+        )
+    end
+    return vn
+end
+function _input_binds_root(value::Pair{<:VarName}, root, model)
+    return subsumes(root, _schema_binding_address(model, first(value)))
+end
+_input_binds_root(value::NamedTuple, root, model) = haskey(value, AbstractPPL.getsym(root))
+function _input_binds_root(value::VarNamedTuple, root, model)
+    return any(vn -> subsumes(root, _schema_binding_address(model, vn)), keys(value))
+end
+_input_binds_root(value, root, model) = false
 
 _schema_storage(value::ModelValue) = value.value
 _schema_storage(value::ModelValueTree) = _model_data(value)
@@ -2421,6 +2440,7 @@ function _bind_schema_input(::Type{R}, model, input, schema, recursive=false) wh
     entries = is_pair ? (input,) : pairs(plain)
     prepared = copy(plain)
     for (vn, value) in entries
+        vn = _schema_binding_address(model, vn)
         uses_schema = _schema_has_address(model, schema, vn)
         if !uses_schema
             is_pair && return _bind_model(

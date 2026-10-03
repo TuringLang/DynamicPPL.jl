@@ -2630,6 +2630,62 @@ end
     end
 end
 
+@testset "binding schemas resolve dynamic prefix indices" begin
+    @model function end_schema_local()
+        x = zeros(3)
+        for i in eachindex(x)
+            x[i] ~ Normal()
+        end
+        return x
+    end
+    @model end_schema_parent(child) = a ~ to_submodel(child)
+    model = prefix(end_schema_local(), @varname(p[end]); template=zeros(2))
+    nested = prefix(model, @varname(q[end]); template=zeros(2))
+    for bind in (condition, fix),
+        (m, dynamic, concrete) in (
+            (model, @varname(p[end].x[3]), @varname(p[2].x[3])),
+            (model, @varname(p[end].x[end]), @varname(p[2].x[3])),
+            (nested, @varname(q[end].p[end].x[3]), @varname(q[2].p[2].x[3])),
+        )
+
+        schema = @of(x = of(Array, 3))
+        bound = bind(m, schema, dynamic => 9.0)
+        @test bound(Xoshiro(1)) == bind(m, schema, concrete => 9.0)(Xoshiro(1))
+        @test bound(Xoshiro(1))[3] == 9.0
+        @test end_schema_parent(bound)(Xoshiro(1))[3] == 9.0
+    end
+    for bind in (condition, fix)
+        @test_throws ArgumentError bind(
+            model, @of(x = of(Array, 3)), @varname(p[1].x[3]) => 9.0
+        )
+    end
+end
+
+@testset "binding schemas beside argument storage" begin
+    @model function mixed_schema(y)
+        x = zeros(3)
+        x[3] ~ Normal()
+        y[2] ~ Normal()
+        return (x[3], y[2])
+    end
+    model = mixed_schema(zeros(2))
+    for bind in (condition, fix)
+        @test bind(
+            model, @of(x = of(Array, 3)), @varname(y[end]) => 4.0, @varname(x[3]) => 9.0
+        )(
+            Xoshiro(1)
+        ) == (9.0, 4.0)
+        @test bind(
+            prefix(model, @varname(p[end]); template=zeros(2)),
+            @of(x = of(Array, 3)),
+            @varname(p[end].y[end]) => 4.0,
+            @varname(p[end].x[3]) => 9.0,
+        )(
+            Xoshiro(1)
+        ) == (9.0, 4.0)
+    end
+end
+
 @testset "binding schemas under slice namespaces" begin
     @model function slice_schema_local()
         z = zeros(3)

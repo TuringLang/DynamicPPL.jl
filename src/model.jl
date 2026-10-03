@@ -359,20 +359,26 @@ function _prefix_values(values::VarNamedTuple, vn::VarName, template)
 end
 
 # Prefix templates can cross submodel boundaries without reading parent return values.
-function _concretize_prefix(vn::VarName{S}, template) where {S}
-    return VarName{S}(_concretize_prefix(AbstractPPL.getoptic(vn), template))
+function _concretize_prefix(vn::VarName{S}, template; depth=typemax(Int)) where {S}
+    return VarName{S}(_concretize_prefix(AbstractPPL.getoptic(vn), template; depth))
 end
-_concretize_prefix(optic::AbstractPPL.Iden, template) = optic
-function _concretize_prefix(optic::AbstractPPL.Property{S}, template) where {S}
-    AbstractPPL.is_dynamic(optic) || return optic
-    child = _concretize_prefix(optic.child, VarNamedTuples.SharedGetProperty{S}()(template))
+_concretize_prefix(optic::AbstractPPL.Iden, template; depth=typemax(Int)) = optic
+function _concretize_prefix(
+    optic::AbstractPPL.Property{S}, template; depth=typemax(Int)
+) where {S}
+    (depth == 0 || !AbstractPPL.is_dynamic(optic)) && return optic
+    child = _concretize_prefix(
+        optic.child, VarNamedTuples.SharedGetProperty{S}()(template); depth=depth - 1
+    )
     return AbstractPPL.Property{S}(child)
 end
-function _concretize_prefix(optic::AbstractPPL.Index, template)
-    AbstractPPL.is_dynamic(optic) || return optic
+function _concretize_prefix(optic::AbstractPPL.Index, template; depth=typemax(Int))
+    (depth == 0 || !AbstractPPL.is_dynamic(optic)) && return optic
     optic = AbstractPPL.concretize_top_level(optic, VarNamedTuples.template_array(template))
-    AbstractPPL.is_dynamic(optic.child) || return optic
-    child = _concretize_prefix(optic.child, VarNamedTuples.index_template(template, optic))
+    (depth == 1 || !AbstractPPL.is_dynamic(optic.child)) && return optic
+    child = _concretize_prefix(
+        optic.child, VarNamedTuples.index_template(template, optic); depth=depth - 1
+    )
     return AbstractPPL.Index(optic.ix, optic.kw, child)
 end
 
