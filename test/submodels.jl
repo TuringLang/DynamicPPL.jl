@@ -317,7 +317,8 @@ end
         for bindings in
             ((@varname(x[1].y) => 0.0,), Tuple(@varname(x[i].y) => 0.0 for i in 1:100))
             model = condition(unbound, DynamicPPL.Recursive(), bindings...)
-            init!!(model, accs, strategy, UnlinkAll())
+            # Keep the conditioned indexed path concrete as well as allocation-bounded.
+            @test @inferred(init!!(model, accs, strategy, UnlinkAll())) isa Tuple
             @test (@allocated init!!(model, accs, strategy, UnlinkAll())) <= baseline + 128
         end
     end

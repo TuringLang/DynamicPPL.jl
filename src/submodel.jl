@@ -229,7 +229,7 @@ end
 
 Evaluate `submodel` under `parent_model`.
 """
-function tilde_assume!!(
+@inline function tilde_assume!!(
     parent_model::Model,
     context::AbstractContext,
     submodel::Submodel{M,AutoPrefix},
