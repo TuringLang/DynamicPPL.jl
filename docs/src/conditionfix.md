@@ -170,6 +170,7 @@ depth, leaving fixed bindings; `unfix` removes fixed bindings, uncovering observ
 The no-name forms clear their layer throughout. A named removal that finds nothing throws:
 at removal time when decidable, otherwise when the relevant child is reached. Each reached
 instance is checked; untaken branches are ignored. Removing an address twice throws.
+`check_model` warns about recursive removals that no reached model uses.
 
 A removal belongs to the model that makes it. It reaches enclosed models, including those
 built or bound in the body, but cannot remove an enclosing model's binding. Prefixing moves

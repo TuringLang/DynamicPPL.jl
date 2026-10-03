@@ -2551,6 +2551,7 @@ removal also reaches enclosed models, including argument-supplied observations a
 bindings. With no names it clears the observation layer at every depth. Fixed bindings remain.
 A named removal with no match throws at removal time when decidable, otherwise when the
 relevant child is reached; untaken branches are ignored. Removing the same address twice throws.
+`check_model` warns about recursive removals unused by all reached models.
 
 The removal belongs to this model, moves with `prefix`, and cannot remove an enclosing
 model's bindings. Its next observation at that address replaces the removal. Removals hold
@@ -3206,6 +3207,7 @@ function _prefix_removal(r::ModelRemoval, prefix)
         map(vn -> maybe_prefix(vn, prefix), r.exceptions),
         r.matched,
         r.required,
+        r.token,
     )
 end
 function _removal_covers(r, vn)
@@ -3218,7 +3220,7 @@ function _replace_removal(r, addresses)
         r.exceptions...,
         filter(vn -> r.name === nothing || subsumes(r.name, vn), addresses)...,
     )
-    return (ModelRemoval(r.name, exceptions, r.matched, r.required),)
+    return (ModelRemoval(r.name, exceptions, r.matched, r.required, r.token),)
 end
 function _replace_removals(previous, values, ::Type{R}, addresses) where {R}
     edited = mapreduce(
@@ -3351,7 +3353,7 @@ function _select_removal(r, prefix)
         ex -> AbstractPPL.unprefix(ex, prefix),
         filter(ex -> subsumes(prefix, ex), r.exceptions),
     )
-    return (ModelRemoval(name, exceptions, r.matched, r.required),)
+    return (ModelRemoval(name, exceptions, r.matched, r.required, r.token),)
 end
 function _submodel_removals(::Type{R}, model, prefix) where {R}
     prefix = _model_value_varname(model.values, prefix, _model_prefix(model))
@@ -3373,6 +3375,9 @@ end
 
 # DebugUtils can record use through its context without storing mutable state in a model.
 _record_removal_use(context, role, marker) = nothing
+function _record_removal_use(context::AbstractParentContext, role, marker)
+    return _record_removal_use(childcontext(context), role, marker)
+end
 function _apply_parent_removals(
     ::Type{R}, child, values, ::Tuple{}, context, check_unknown
 ) where {R}
@@ -3415,7 +3420,7 @@ function _apply_parent_removals(
     values, rest = _apply_parent_removals(
         R, child, values, Base.tail(markers), context, check_unknown
     )
-    marker = ModelRemoval(r.name, r.exceptions, r.matched || matched, r.required)
+    marker = ModelRemoval(r.name, r.exceptions, r.matched || matched, r.required, r.token)
     return values, (marker, rest...)
 end
 

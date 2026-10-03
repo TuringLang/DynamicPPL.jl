@@ -34,6 +34,12 @@ struct ModelRemoval{N,E<:Tuple}
     exceptions::E
     matched::Bool
     required::Bool
+    # Identity only: Ref{Nothing} carries no mutable evaluation data. Copies and
+    # namespace selections deliberately share it; unlike gensym it is collectible.
+    token::Base.RefValue{Nothing}
+end
+function ModelRemoval(name, exceptions, matched, required)
+    return ModelRemoval(name, exceptions, matched, required, Ref(nothing))
 end
 
 # Fixed bindings preserve the observation layer they shadow.
