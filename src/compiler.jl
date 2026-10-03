@@ -264,12 +264,6 @@ function _known_constructor(mod, expr)
         nothing
     end
 end
-function _known_distribution_constructor(mod, expr)
-    constructor = _known_constructor(mod, expr)
-    return (constructor isa Type && constructor <: Distribution) ||
-           constructor === independent_distribution
-end
-
 generate_mainbody!(mod, found, x, warn, warn_threads) = x
 function generate_mainbody!(mod, found, sym::Symbol, warn, warn_threads)
     if warn && sym in INTERNALNAMES && sym ∉ found.internal
@@ -341,15 +335,17 @@ function generate_mainbody!(mod, found, expr::Expr, warn, warn_threads)
         L = generate_mainbody!(mod, found, L, warn, warn_threads)
         if !isliteral(L)
             root = get_top_level_symbol(L)
-            if Meta.isexpr(R, :call) &&
-                !(R.args[1] in found.arguments) &&
-                _known_constructor(mod, R.args[1]) === to_submodel
+            constructor = if Meta.isexpr(R, :call) && !(R.args[1] in found.arguments)
+                _known_constructor(mod, R.args[1])
+            else
+                nothing
+            end
+            if constructor === to_submodel
                 push!(found.submodel_namespaces, root)
             end
             if !(
-                Meta.isexpr(R, :call) &&
-                !(R.args[1] in found.arguments) &&
-                _known_distribution_constructor(mod, R.args[1])
+                (constructor isa Type && constructor <: Distribution) ||
+                constructor === independent_distribution
             )
                 push!(found.may_have_submodels, root)
             end
