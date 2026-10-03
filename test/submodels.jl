@@ -992,6 +992,38 @@ end
     end
 end
 
+@testset "unmatched recursive removals of local LHS variables" begin
+    rec = DynamicPPL.Recursive()
+    @model removal_scalar() = x ~ Normal()
+    @model function removal_parent()
+        m ~ Normal()
+        a ~ to_submodel(removal_scalar())
+        return m
+    end
+    @model function removal_fields()
+        m = (x=zeros(1),)
+        m.x[1] ~ Normal()
+        a ~ to_submodel(removal_scalar())
+        return m
+    end
+    @model removal_wrapper(child) = b ~ to_submodel(child)
+    for (bind, remove) in ((condition, decondition), (fix, unfix))
+        for (model, name) in
+            ((removal_parent(), @varname(m)), (removal_fields(), @varname(m.x[1])))
+            @test_throws ArgumentError remove(model, rec, name)
+            @test_throws ArgumentError remove(
+                prefix(model, @varname(p)), rec, DynamicPPL.maybe_prefix(name, @varname(p))
+            )
+            deferred = remove(
+                removal_wrapper(model), rec, DynamicPPL.maybe_prefix(name, @varname(b))
+            )
+            @test_throws ArgumentError deferred(Xoshiro(1))
+            matched = remove(bind(model, name => 2.0), rec, name)
+            @test name in keys(rand(Xoshiro(1), matched))
+        end
+    end
+end
+
 @testset "recursive removal storage and scope" begin
     rec = DynamicPPL.Recursive()
     @model function indexed(x)

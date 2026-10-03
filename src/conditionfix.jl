@@ -3407,6 +3407,16 @@ function _local_removal_name(model, vn)
     )
 end
 
+# A known distribution LHS cannot defer an unmatched removal to a child.
+# Unknown RHS expressions must still be classified when their tilde executes.
+function _removal_names_own_lhs(metadata, vn)
+    names = _lhs_names(metadata)
+    return vn !== nothing &&
+           names !== nothing &&
+           AbstractPPL.getsym(vn) in names &&
+           AbstractPPL.getsym(vn) ∉ _submodel_lhs_names(metadata)
+end
+
 function _recursive_remove(::Type{R}, model, names) where {R}
     model = _materialize_argument_values(model)
     values = _binding_layer(R, model.values)
@@ -3433,7 +3443,11 @@ function _recursive_remove(::Type{R}, model, names) where {R}
                         "Cannot remove `$vn` twice: it is already recursively removed."
                     ),
                 )
-            if !matched && !_may_have_submodels(_binding_metadata(model))
+            metadata = _binding_metadata(model)
+            if !matched && (
+                _removal_names_own_lhs(metadata, local_name) ||
+                !_may_have_submodels(metadata)
+            )
                 _check_model_removal(R, values, vn)
             end
         end
@@ -3522,13 +3536,7 @@ function _apply_parent_removals(
         (r.name === nothing ? !isempty(values) : _has_removable(R, values, r.name))
     if !matched && !r.matched && r.required
         metadata = _binding_metadata(child)
-        names = _lhs_names(metadata)
-        own =
-            !crosses_return &&
-            r.name !== nothing &&
-            names !== nothing &&
-            AbstractPPL.getsym(r.name) in names &&
-            AbstractPPL.getsym(r.name) ∉ _submodel_namespaces(metadata)
+        own = _removal_names_own_lhs(metadata, r.name)
         if own || (check_unknown && !_may_have_submodels(metadata))
             if r.name === nothing
                 throw(
