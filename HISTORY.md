@@ -120,6 +120,8 @@ Context-based tracked assignment storage is removed: `store_coloneq_value!!(ctx,
 
 `VarInfo()` no longer records parameter values: use `VarInfo(VectorValueAccumulator(), DynamicPPL.default_accumulators()...)` to record vectorised values and log densities. See [#1500](https://github.com/TuringLang/DynamicPPL.jl/pull/1500).
 
+`keys(VarInfo())` and other value queries: empty results → `ArgumentError`; add a `VectorValueAccumulator`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+
 `vi.values` is removed: use `get_vector_values(vi)`. See [#1500](https://github.com/TuringLang/DynamicPPL.jl/pull/1500).
 
 `get_values(vi)`: always-present `vi.values` → the `VarNamedTuple` of vectorised `TransformedValue`s in the optional `VectorValueAccumulator`; throws `ArgumentError` if that accumulator is absent. See [#1500](https://github.com/TuringLang/DynamicPPL.jl/pull/1500).

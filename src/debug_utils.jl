@@ -369,7 +369,12 @@ function gen_evaluator_call_with_types(
     model::Model,
     varinfo::AbstractVarInfo=VarInfo(model);
     context::AbstractContext=InitContext(
-        isempty(varinfo) ? InitFromPrior() : InitFromParams(get_values(varinfo), nothing),
+        if !DynamicPPL.hasacc(varinfo, Val(DynamicPPL.VECTORVAL_ACCNAME)) ||
+            isempty(varinfo)
+            InitFromPrior()
+        else
+            InitFromParams(get_values(varinfo), nothing)
+        end,
         UnlinkAll(),
     ),
 )
