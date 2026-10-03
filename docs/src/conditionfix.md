@@ -171,6 +171,17 @@ LHS variable is also reset to its bound value at its tilde. Thus `f(data)` and
 observe raw data, use a separate name. Deconditioned arguments keep their old values until their
 tilde. See [`Model`](@ref) for direct construction and handwritten evaluator obligations.
 
+The two rules differ when the body writes the variable before its tilde:
+
+```@example 1
+@model observe_argument(x) = (x = 3.0; x ~ Normal(); x)
+@model observe_local() = (x = 3.0; x ~ Normal(); x)
+condition(observe_argument(0.0); x=1.0)(), condition(observe_local(); x=1.0)()
+```
+
+The conditioned argument observes `3.0`, the value the body leaves in it, as
+`observe_argument(1.0)` does; the conditioned local LHS variable observes the bound `1.0`.
+
 A binding owns the shape of the value at its address, at any depth, within the layer being
 edited. Partial bindings and removals use the latest owner: binding `x=ones(3)` then removing
 `x[3]` preserves length three. Binding `x[1]` or `p.a` may resize that value if its type
