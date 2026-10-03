@@ -2364,7 +2364,8 @@ function _make_condfix_values(model, values::Pair{<:VarName}...)
         )
         template =
             previous === nothing ? argument : prepare_model_argument(previous, argument)
-        template isa AbstractArray || continue
+        template = _binding_storage(template)
+        template isa NoTemplate && continue
         templates = templated_setindex!!(
             templates,
             template,

@@ -1,6 +1,6 @@
 module DynamicPPLConditionFixTests
 
-using AbstractPPL: of, @of
+using AbstractPPL: AbstractPPL, of, @of
 using Dates: now
 using ADTypes: AutoForwardDiff
 using ComponentArrays: ComponentVector
@@ -54,6 +54,28 @@ end
 end
 
 @testset "condition and fix" begin
+    @testset "structured arguments supply partial binding storage" begin
+        @model fields_storage(p) = (p.a[1] ~ Normal(); p.a[2] ~ Normal(); p.a)
+        @model tuple_storage(p) = (p[1] ~ Normal(); p[2] ~ Normal(); p)
+        cases = (
+            (fields_storage((a=[1.0, 2.0],)), @varname(p.a)),
+            (fields_storage(ObservationRecord([1.0, 2.0], nothing)), @varname(p.a)),
+            (tuple_storage((1.0, 2.0)), @varname(p)),
+        )
+        for (model, root) in cases, bind in (condition, fix), latent in (false, true)
+            base = latent ? decondition(model) : model
+            for (optic, value, expected) in (
+                (@varname(x[end]), 3.0, [1.0, 3.0]),
+                (@varname(x[:]), [3.0, 4.0], [3.0, 4.0]),
+                (@varname(x[[true, false]]), [3.0], [3.0, 2.0]),
+            )
+                address = AbstractPPL.append_optic(root, AbstractPPL.getoptic(optic))
+                edited = bind(base, address => value)
+                supplied = root == @varname(p) ? (p=[1.0, 2.0],) : (p=(a=[1.0, 2.0],),)
+                @test collect(returned(edited, supplied)) == expected
+            end
+        end
+    end
     @testset "partial argument bindings need concrete storage" begin
         @model function placeholder_indices(x=missing)
             (ismissing(x) || x === nothing) && (x = zeros(1))
