@@ -42,6 +42,11 @@ Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
     typeof(DynamicPPL._argument_may_need_adapter),Type
 }
 
+# Ownership validation only inspects identity and returns no numerical result.
+Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
+    typeof(DynamicPPL._check_argument_key_storage),Any,Any
+}
+
 # Reconstruction support depends only on types and methods.
 Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
     typeof(DynamicPPL._argument_reconstructible),Any,NamedTuple

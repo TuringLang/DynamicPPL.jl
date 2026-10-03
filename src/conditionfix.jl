@@ -1115,7 +1115,7 @@ function _retain_argument_children!(memo, value::AbstractDict, seen)
     for (key, child) in value
         # Keys are addresses also used by other arguments and the model body.
         memo[key] = key
-        _argument_graph!(keys, key)
+        _argument_graph!(keys, key, true)
         _retain_argument_leaves!(memo, key, seen)
         _retain_argument_leaves!(memo, child, seen)
     end
@@ -1127,7 +1127,7 @@ end
 # Resolve the optional adapter from type metadata so ordinary preparation remains
 # inferred even when ReverseDiff's type-changing facade adapter is loaded.
 _argument_ad_storage(::Type) = false
-function _argument_adapter_expr(T, seen)
+function _argument_storage_expr(query, T, seen)
     T <: Union{Number,Type,Symbol,AbstractString} && return false
     T in seen && return false
     push!(seen, T)
@@ -1140,14 +1140,19 @@ function _argument_adapter_expr(T, seen)
     else
         fieldtypes(T)
     end
-    result = :(_argument_ad_storage($T))
+    result = :($query($T))
     for child in children
-        result = :($result || $(_argument_adapter_expr(child, seen)))
+        result = :($result || $(_argument_storage_expr(query, child, seen)))
     end
     return result
 end
 @generated function _argument_may_need_adapter(::Type{T}) where {T}
-    return _argument_adapter_expr(T, Set{Any}())
+    return _argument_storage_expr(_argument_ad_storage, T, Set{Any}())
+end
+_argument_dict_storage(::Type) = false
+_argument_dict_storage(::Type{<:AbstractDict}) = true
+@generated function _argument_may_have_keys(::Type{T}) where {T}
+    return _argument_storage_expr(_argument_dict_storage, T, Set{Any}())
 end
 function _copy_model_argument(value)
     copied = deepcopy(ModelArgumentCopy(value))
@@ -1160,6 +1165,10 @@ end
 _copy_model_argument(value::Union{Number,Type}) = value
 # With numerical leaves preserved, copying a single dense numeric array is shallow.
 _copy_model_argument(value::Array{<:Number}) = copy(value)
+function _copy_model_argument(value, vn)
+    _check_argument_key_storage(value, vn)
+    return _copy_model_argument(value)
+end
 # ReverseDiff supplies writable storage for its immutable tracked-array facade.
 _writable_model_argument(value) = value
 
@@ -1184,22 +1193,62 @@ function _retain_bound_argument_storage!(memo, storage::ModelArgumentStorage)
     end
     return nothing
 end
-function _argument_graph!(seen, value)
+function _argument_graph!(seen, value, include_keys=false)
     isbits(value) && return nothing
     value isa Union{Number,Type,Symbol,AbstractString,Module} && return nothing
     value in seen && return nothing
     push!(seen, value)
+    if value isa AbstractDict
+        for (key, child) in value
+            include_keys && _argument_graph!(seen, key, true)
+            _argument_graph!(seen, child, include_keys)
+        end
+        include_keys || return nothing
+    end
     if value isa AbstractArray && !isbitstype(eltype(value))
         for i in eachindex(value)
-            isassigned(value, i) && _argument_graph!(seen, value[i])
+            isassigned(value, i) && _argument_graph!(seen, value[i], include_keys)
         end
     end
     # Include backing storage, especially parents of views and reshaped arrays.
     for i in 1:fieldcount(typeof(value))
-        isdefined(value, i) && _argument_graph!(seen, getfield(value, i))
+        isdefined(value, i) && _argument_graph!(seen, getfield(value, i), include_keys)
     end
     return nothing
 end
+
+# Keys are retained as addresses, including their reachable graph. Such storage
+# cannot also be latent: retaining it would let tilde assignment mutate the caller,
+# while copying it would break key identity or aliases. Bound values stay in place.
+function _check_argument_key_storage(value, vn)
+    _argument_may_have_keys(typeof(value)) || return nothing
+    graph = Base.IdSet{Any}()
+    _argument_graph!(graph, value)
+    any(x -> x isa AbstractDict, graph) || return nothing
+    latent = if value isa ModelArgumentStorage
+        result = Base.IdSet{Any}()
+        _argument_storage_policy!(result, Base.IdSet{Any}(), value)
+        result
+    else
+        graph
+    end
+    retained = Base.IdSet{Any}()
+    for node in graph
+        node isa AbstractDict || continue
+        for key in keys(node)
+            _argument_graph!(retained, key, true)
+        end
+    end
+    if any(x -> x in latent, retained)
+        throw(
+            ArgumentError(
+                "Cannot copy model argument `$vn`: a dictionary key reaches latent storage. Use a key that does not alias latent storage.",
+            ),
+        )
+    end
+    return nothing
+end
+_check_argument_key_storage(::Union{Number,Type,Array{<:Number}}, vn) = nothing
 function _argument_storage_policy!(latent, bound, storage)
     value, children = storage.value, storage.children
     push!(latent, value)
@@ -1307,13 +1356,17 @@ end
 
 _model_argument_value(value, template) = value
 _model_argument_value(::Nothing, template) = _copy_model_argument(template)
+_model_argument_value(value, template, vn) = _model_argument_value(value, template)
+_model_argument_value(::Nothing, template, vn) = _copy_model_argument(template, vn)
 _model_argument_value(value::ModelValue, template) = value.value
 _model_argument_value(values::AbstractArray, template) = _model_data(values)
 function _model_argument_value(
-    values::Union{ModelValueTree,VarNamedTuple,VarNamedTuples.PartialArray}, template
+    values::Union{ModelValueTree,VarNamedTuple,VarNamedTuples.PartialArray},
+    template,
+    vn=nothing,
 )
     storage = _argument_storage(values, template)
-    return _apply_model_bindings(values, _copy_model_argument(storage))
+    return _apply_model_bindings(values, _copy_model_argument(storage, vn))
 end
 
 _apply_model_bindings(value, storage) = value
