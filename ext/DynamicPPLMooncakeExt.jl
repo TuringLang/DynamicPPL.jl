@@ -40,39 +40,39 @@ end
 
 # Dense scalar overlays need no per-element reverse program for binding metadata.
 # Keep nested/block bindings, custom arrays and other numeric types on the generic path.
-const ScalarArgumentBinding = Union{
-    DynamicPPL.ModelValue{DynamicPPL.ArgumentCondition,Float64,true},
-    DynamicPPL.ModelValue{DynamicPPL.ArgumentCondition,Float64,false},
-    DynamicPPL.ModelValue{DynamicPPL.Condition,Float64,true},
-    DynamicPPL.ModelValue{DynamicPPL.Condition,Float64,false},
-    DynamicPPL.ModelValue{DynamicPPL.Fix,Float64,true},
-    DynamicPPL.ModelValue{DynamicPPL.Fix,Float64,false},
+const ScalarArgumentBinding{T<:Base.IEEEFloat} = Union{
+    DynamicPPL.ModelValue{DynamicPPL.ArgumentCondition,T,true},
+    DynamicPPL.ModelValue{DynamicPPL.ArgumentCondition,T,false},
+    DynamicPPL.ModelValue{DynamicPPL.Condition,T,true},
+    DynamicPPL.ModelValue{DynamicPPL.Condition,T,false},
+    DynamicPPL.ModelValue{DynamicPPL.Fix,T,true},
+    DynamicPPL.ModelValue{DynamicPPL.Fix,T,false},
 }
-const DenseArgumentBindings = DynamicPPL.VarNamedTuples.PartialArray{
-    T,1,Vector{T},Vector{Bool}
-} where {T<:ScalarArgumentBinding}
+const DenseArgumentBindings{T} = DynamicPPL.VarNamedTuples.PartialArray{
+    B,1,Vector{B},Vector{Bool}
+} where {B<:ScalarArgumentBinding{T}}
 const ArgumentName = Union{Nothing,DynamicPPL.VarName{S,AbstractPPL.Iden} where {S}}
 @static if isdefined(Mooncake, :ReverseMode)
     Mooncake.@is_primitive Mooncake.DefaultCtx Mooncake.ReverseMode Tuple{
         typeof(DynamicPPL._model_argument_value),
-        DenseArgumentBindings,
-        Vector{Float64},
+        DenseArgumentBindings{T},
+        Vector{T},
         ArgumentName,
-    }
+    } where {T<:Base.IEEEFloat}
 else
     Mooncake.@is_primitive Mooncake.DefaultCtx Tuple{
         typeof(DynamicPPL._model_argument_value),
-        DenseArgumentBindings,
-        Vector{Float64},
+        DenseArgumentBindings{T},
+        Vector{T},
         ArgumentName,
-    }
+    } where {T<:Base.IEEEFloat}
 end
 function Mooncake.rrule!!(
     ::Mooncake.CoDual{typeof(DynamicPPL._model_argument_value)},
-    values::Mooncake.CoDual{<:DenseArgumentBindings},
-    template::Mooncake.CoDual{Vector{Float64}},
+    values::Mooncake.CoDual{<:DenseArgumentBindings{T}},
+    template::Mooncake.CoDual{Vector{T}},
     vn::Mooncake.CoDual{<:ArgumentName},
-)
+) where {T<:Base.IEEEFloat}
     bindings = Mooncake.primal(values)
     original, dtemplate = Mooncake.arrayify(template)
     output = Mooncake.zero_fcodual(
