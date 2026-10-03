@@ -133,6 +133,13 @@ schema. See [Binding rules](@ref) for the complete contract.
 
 ## Binding rules
 
+By default, `condition` and `fix` bind only the model's own LHS variables.
+A child address requires `DynamicPPL.Recursive()`, for example
+`condition(parent, DynamicPPL.Recursive(), @varname(a.x) => 1.0)`.
+`|` remains non-recursive. A prefixed model's own LHS variables still belong to it.
+Explicit recursive bindings take precedence from the outermost model inward;
+argument-supplied observations never bind a child's LHS variables.
+
 An **LHS variable** is the addressed left-hand side of one execution of `~`. An **LHS
 subvariable** is part of it, such as `x[1]` of `x ~ MvNormal(...)`. An LHS variable's **role**
 is latent (initialised), observed (scored in the likelihood), or fixed (no log probability). A
@@ -204,7 +211,7 @@ Explicitly binding a **submodel return value**, assigned by `a ~ to_submodel(...
 `ArgumentError` during evaluation. If `a` is an argument, its observation is ignored at this
 tilde. When `a` is a model argument, explicit bindings at or below `a` also throw, possibly
 at binding time if its type excludes the requested field. When `a` is local, `a.x` can bind
-the child's `x`. A NamedTuple argument provides no submodel namespace, so bind the child
+the child's `x` with `Recursive()`. A NamedTuple argument provides no submodel namespace, so bind the child
 before `to_submodel`.
 Bindings unused by reached LHS variables are ignored, including branches or submodels not run.
 
@@ -246,8 +253,8 @@ whole values for storage that `of` cannot describe.
 
 Bindings must address LHS variables, parts of them, or child LHS variables through a submodel
 namespace. Binding-time checks reject covariates, nonexistent argument fields, indices outside
-storage, and unknown top symbols except for possible submodels. Child namespace checks wait
-until the submodel is reached. Shared unprefixed namespaces cannot reject unknown names
+storage, and unknown top symbols. Only recursive calls allow possible unprefixed submodel names
+and defer child namespace checks until the submodel is reached. Shared unprefixed namespaces cannot reject unknown names
 independently of siblings. [`check_model`](@ref) warns about bound names that no LHS
 variable in the model or its reached unprefixed submodels can use.
 

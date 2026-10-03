@@ -53,7 +53,8 @@ module Issue537 end
 
 module NoImportDPPLTest
     using Distributions
-    using DynamicPPL: @model, fix, condition, decondition, VarNamedTuple, to_submodel
+    using DynamicPPL:
+        @model, fix, condition, decondition, VarNamedTuple, to_submodel, Recursive
     using Test: @testset, @test
     using Random: Xoshiro
     # This module tests that the compiler interpolates all necessary DynamicPPL identifiers so
@@ -75,7 +76,7 @@ module NoImportDPPLTest
         @test rand(Xoshiro(1), decondition(f(1.0))) isa VarNamedTuple
         @test rand(Xoshiro(1), condition(f(1.0), (; x=2.0))) isa VarNamedTuple
         @test rand(Xoshiro(1), fix(f(1.0), (; x=2.0))) isa VarNamedTuple
-        @test rand(Xoshiro(1), fix(f(1.0), (; a=(; b=2.0)))) isa VarNamedTuple
+        @test rand(Xoshiro(1), fix(f(1.0), Recursive(), (; a=(; b=2.0)))) isa VarNamedTuple
     end
 end
 
@@ -495,14 +496,14 @@ end
         @test @varname(y) ∉ ks
 
         # Observation in nested model.
-        m = condition(decondition(demo2(0.0, 0.0)); x=1000.0)
+        m = condition(decondition(demo2(0.0, 0.0)), DynamicPPL.Recursive(); x=1000.0)
         vi = VarInfo(m)
         ks = keys(vi)
         @test @varname(x) ∉ ks
         @test @varname(y) ∈ ks
 
         # Observe all.
-        m = condition(demo2(0.0, 0.0); x=1000.0, y=0.5)
+        m = condition(demo2(0.0, 0.0), DynamicPPL.Recursive(); x=1000.0, y=0.5)
         vi = VarInfo(m)
         ks = keys(vi)
         @test isempty(ks)
