@@ -30,9 +30,9 @@ function DynamicPPL.tilde_assume!!(
     template,
     vi::AbstractVarInfo,
 ) where {M<:Model,AutoPrefix}
-    if AutoPrefix || DynamicPPL._model_prefix(submodel.model) !== nothing
+    if AutoPrefix || DynamicPPL.getprefix(submodel.model) !== nothing
         # This child and its descendants have their own namespace.
-        namespace = AutoPrefix ? vn : DynamicPPL._model_prefix(submodel.model)
+        namespace = AutoPrefix ? vn : DynamicPPL.getprefix(submodel.model)
         lock(ctx.lock) do
             push!(ctx.namespaces, DynamicPPL.AbstractPPL.getsym(namespace))
         end

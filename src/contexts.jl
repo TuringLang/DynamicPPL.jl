@@ -16,7 +16,7 @@ abstract type AbstractParentContext <: AbstractContext end
 
 Return the descendant context of `context`.
 """
-childcontext
+function childcontext end
 
 """
     setchildcontext(parent::AbstractParentContext, child::AbstractContext)
@@ -24,22 +24,8 @@ childcontext
 Reconstruct `parent` but now using `child` is its [`childcontext`](@ref),
 effectively updating the child context.
 
-# Examples
-```jldoctest; setup=:(using Random)
-julia> using DynamicPPL: InitContext, PrefixContext
-
-julia> ctx = PrefixContext(@varname(a));
-
-julia> DynamicPPL.childcontext(ctx)
-DefaultContext()
-
-julia> ctx_prior = DynamicPPL.setchildcontext(ctx, InitContext(MersenneTwister(23), InitFromPrior(), UnlinkAll()));
-
-julia> DynamicPPL.childcontext(ctx_prior)
-InitContext{MersenneTwister, InitFromPrior, UnlinkAll}(MersenneTwister(23), InitFromPrior(), UnlinkAll())
-```
 """
-setchildcontext
+function setchildcontext end
 
 """
     leafcontext(context::AbstractContext)
