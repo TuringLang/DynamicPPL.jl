@@ -1128,6 +1128,12 @@ end
 _model_data(value) = value
 _model_data(value::ModelValue) = value.value
 _model_data(values::AbstractArray) = map(_model_data, values)
+function _model_data(values::Array{<:ModelValue{<:Any,T}}) where {T}
+    # The roles/scopes may form a union even when every payload has the same type.
+    # Allocate from that payload type; map's inferred eltype can widen on Julia 1.10.
+    isconcretetype(T) || return map(_model_data, values)
+    return map!(_model_data, similar(values, T), values)
+end
 function _model_data(values::ModelBindingArray)
     return _restore_model_array(map(_model_data, values.data), values.template)
 end
@@ -1389,17 +1395,23 @@ _argument_storage(value, template) = ModelArgumentLeaf(true)
 function _argument_storage(tree::ModelValueTree, template)
     return _argument_storage(tree.values, tree.template)
 end
-function _argument_storage(values::VarNamedTuple, template)
-    template isa NoTemplate && return nothing
-    children = map(keys(values.data)) do name
-        hasproperty(template, name) || throw(
-            ArgumentError(
-                "Cannot override nonexistent property `$name` of $(typeof(template)). If it holds a submodel return value, condition or fix the child model before wrapping it with `to_submodel`.",
-            ),
-        )
-        _argument_child_storage(values.data[name], template, AbstractPPL.Property{name}())
+# Keep property names static so heterogeneous sibling types do not get merged.
+@generated function _argument_storage(values::VarNamedTuple{names}, template) where {names}
+    children = map(names) do name
+        :(_argument_property_storage(values.data.$name, template, Val($(QuoteNode(name)))))
     end
-    return ModelArgumentStorage(template, NamedTuple{keys(values.data)}(children))
+    return quote
+        template isa NoTemplate && return nothing
+        ModelArgumentStorage(template, NamedTuple{$names}(($(children...),)))
+    end
+end
+function _argument_property_storage(value, template, ::Val{name}) where {name}
+    hasproperty(template, name) || throw(
+        ArgumentError(
+            "Cannot override nonexistent property `$name` of $(typeof(template)). If it holds a submodel return value, condition or fix the child model before wrapping it with `to_submodel`.",
+        ),
+    )
+    return _argument_child_storage(value, template, AbstractPPL.Property{name}())
 end
 function _argument_storage(values::Tuple, template::Tuple)
     children = map(values, template) do value, child
@@ -1440,15 +1452,18 @@ function _argument_storage(values::VarNamedTuples.PartialArray, template)
         end
         template = resized
     end
-    children = map(CartesianIndices(values.mask)) do i
-        values.mask[i] || return ModelArgumentLeaf(false)
-        value = values.data[i]
-        if value isa VarNamedTuples.ArrayLikeBlock
-            _argument_child_storage(
-                value.block, template, AbstractPPL.Index(value.ix, value.kw)
-            )
-        else
-            _argument_child_storage(value, template, AbstractPPL.Index(Tuple(i), (;)))
+    # Capture the final template by value, rather than boxing the reassigned argument.
+    children = let template = template
+        map(CartesianIndices(values.mask)) do i
+            values.mask[i] || return ModelArgumentLeaf(false)
+            value = values.data[i]
+            if value isa VarNamedTuples.ArrayLikeBlock
+                _argument_child_storage(
+                    value.block, template, AbstractPPL.Index(value.ix, value.kw)
+                )
+            else
+                _argument_child_storage(value, template, AbstractPPL.Index(Tuple(i), (;)))
+            end
         end
     end
     return ModelArgumentStorage(template, children)

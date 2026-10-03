@@ -18,6 +18,37 @@ using StaticArrays: SVector
 @info "Testing $(@__FILE__)..."
 __now__ = now()
 
+@testset "partial argument preparation inference" begin
+    @model array_argument(x) = x[1] ~ Normal()
+    @model named_argument(x) = x.a[1] ~ Normal()
+    for T in (Float32, Float64, BigFloat, ForwardDiff.Dual{Nothing,Float64,1})
+        data = T[1, 2, 3]
+        for (original, address, template) in (
+            (array_argument(data), @varname(x[1]), data),
+            (named_argument((a=data, b=T(4))), @varname(x.a[1]), (a=data, b=T(4))),
+        )
+            for bind in (condition, fix, decondition)
+                model = if bind === decondition
+                    bind(original, address)
+                else
+                    bind(original, address => zero(T))
+                end
+                actual = @inferred DynamicPPL.prepare_model_argument(
+                    model, @varname(x), template
+                )
+                expected_data = bind === decondition ? data : T[0, 2, 3]
+                expected =
+                    template isa NamedTuple ? (a=expected_data, b=T(4)) : expected_data
+                @test actual == expected
+                prepared_data = actual isa NamedTuple ? actual.a : actual
+                @test prepared_data !== data
+                prepared_data[2] = T(5)
+                @test data == T[1, 2, 3]
+            end
+        end
+    end
+end
+
 struct ObservationRecord{A,B}
     a::A
     b::B
