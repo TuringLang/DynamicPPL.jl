@@ -355,6 +355,7 @@ function _model_role_at(values::VarNamedTuples.PartialArray, optic::AbstractPPL.
     return _model_role_at(getindex(values.data, optic.ix...; optic.kw...), optic.child, vn)
 end
 function _get_model_role(model, vn)
+    _check_deferred_removals(model, vn)
     vn = _model_value_varname(model.values, vn, _model_prefix(model))
     return _model_role_at(_model_values(model.values), AbstractPPL.varname_to_optic(vn), vn)
 end
@@ -365,6 +366,7 @@ function _get_model_binding(model, vn)
     )
 end
 function _get_argument_role(model, vn, argument)
+    _check_deferred_removals(model, vn)
     _check_deferred_argument_removals(model, argument)
     binding = _get_model_binding(model, argument)
     # TODO: remove once users have migrated off the `x === missing; x = ...` placeholder idiom.
@@ -3381,6 +3383,32 @@ function _removal_crosses_return_argument(model, vn, values)
     return binding isa ModelValue{ArgumentCondition} &&
            !VarNamedTuples._haskey_optic(binding, optic)
 end
+# Role lookup runs only for distribution RHSs. A removal at, above, or below
+# this LHS must already have matched in its own layer or an enclosed model.
+function _check_deferred_removals(model, vn)
+    _check_deferred_removals(_removals(Condition, model.values), Condition, model, vn)
+    _check_deferred_removals(_removals(Fix, model.values), Fix, model, vn)
+    return nothing
+end
+# Most models have no removal markers: skip even address normalization in that case.
+_check_deferred_removals(::Tuple{}, ::Type{R}, model, vn) where {R} = nothing
+function _check_deferred_removals(removals::Tuple, ::Type{R}, model, vn) where {R}
+    vn = _model_value_varname(model.values, vn, _model_prefix(model))
+    for r in removals
+        r.required && !r.matched || continue
+        if _removal_covers(r, vn) || (r.name !== nothing && subsumes(vn, r.name))
+            name = r.name === nothing ? vn : r.name
+            layer = R === Condition ? "conditioned" : "fixed"
+            throw(
+                ArgumentError(
+                    "Cannot remove `$name`: no $layer binding is stored at this address."
+                ),
+            )
+        end
+    end
+    return nothing
+end
+
 function _check_deferred_argument_removals(model, argument)
     isempty(_removals(Condition, model.values)) && return nothing
     values = _submodel_layer(Condition, model)
