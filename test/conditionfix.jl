@@ -2885,7 +2885,27 @@ end
     @test s.x == 0.0
 end
 
+struct UninferredSimilarVector{T} <: AbstractVector{T}
+    data::Vector{T}
+end
+Base.size(x::UninferredSimilarVector) = size(x.data)
+Base.getindex(x::UninferredSimilarVector, i::Int) = x.data[i]
+Base.setindex!(x::UninferredSimilarVector, value, i::Int) = (x.data[i] = value; x)
+function Base.similar(x::UninferredSimilarVector, ::Type{T}, dims::Dims) where {T}
+    return UninferredSimilarVector(similar(x.data, T, dims))
+end
+function Base.similar(x::UninferredSimilarVector)
+    return Base.inferencebarrier(UninferredSimilarVector(similar(x.data)))
+end
+
 @testset "partial bindings preserve array types" begin
+    # An imprecise inference result must not hide a container-preserving array.
+    x = UninferredSimilarVector([1.0, 2.0])
+    expanded = DynamicPPL._expand_model_binding(
+        DynamicPPL.ModelValue{DynamicPPL.Condition}(x)
+    )
+    @test expanded.data isa UninferredSimilarVector
+
     @model typed_view_argument(x::SubArray) = (x[1] ~ Normal(); x[2] ~ Normal(); x)
     x = view([1.0, 2.0], :)
     for bind in (condition, fix)

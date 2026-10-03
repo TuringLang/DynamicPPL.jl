@@ -500,7 +500,7 @@ function _expand_model_binding(previous::ModelValue{R,<:AbstractArray}) where {R
     end
     # Arrays whose `similar` preserves their container already carry the owner type.
     # Leave those visible to array-specific binding protocols (e.g. ComponentArrays).
-    if Core.Compiler.return_type(similar, Tuple{typeof(value)}) !== typeof(value)
+    if typeof(similar(value)) !== typeof(value)
         data = ModelBindingArray(data, value)
     end
     return VarNamedTuples.PartialArray(data, mask)
