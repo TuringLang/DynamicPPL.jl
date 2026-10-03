@@ -2870,6 +2870,68 @@ end
     @test_throws r"ArgumentError: .*x\[1\]\[1\].*size and shape" m(Xoshiro(1))
 end
 
+@testset "layer overlay preserves whole-binding extents" begin
+    @model function child(x)
+        for i in eachindex(x)
+            x[i] ~ Normal()
+        end
+        return x
+    end
+    @model parent(child) = a ~ to_submodel(child)
+    for shape in (identity, x -> reshape(x, :, 1)), recursive in (false, true)
+        scope = recursive ? (DynamicPPL.Recursive(),) : ()
+        base = child(shape(zeros(2)))
+        base = recursive ? parent(base) : base
+        whole = recursive ? @varname(a.x) : @varname(x)
+        first = recursive ? @varname(a.x[1]) : @varname(x[1])
+        second = recursive ? @varname(a.x[2]) : @varname(x[2])
+        m = condition(base, scope..., whole => shape([1.0, 2.0, 3.0]))
+        m = fix(m, scope..., first => 9.0, second => 9.0)
+        @test m(StableRNG(1)) == shape([9.0, 9.0, 3.0])
+        @test logjoint(m, (;)) ≈ logpdf(Normal(), 3.0)
+        for (observed, fixed) in
+            (([1.0, 2.0, 3.0], [4.0, 5.0]), ([1.0, 2.0], [4.0, 5.0, 6.0]))
+            for order in (false, true)
+                m = if order
+                    condition(
+                        fix(base, scope..., whole => shape(fixed)),
+                        scope...,
+                        whole => shape(observed),
+                    )
+                else
+                    fix(
+                        condition(base, scope..., whole => shape(observed)),
+                        scope...,
+                        whole => shape(fixed),
+                    )
+                end
+                m = unfix(m, scope..., second)
+                expected = copy(fixed)
+                expected[2] = observed[2]
+                @test m(StableRNG(1)) == shape(expected)
+                @test logjoint(m, (;)) ≈ logpdf(Normal(), observed[2])
+                released = unfix(m, scope..., whole)
+                @test released(StableRNG(1)) == shape(observed)
+                @test logjoint(released, (;)) ≈ sum(logpdf.(Normal(), observed))
+            end
+        end
+    end
+    @model function shared(x)
+        for i in eachindex(x)
+            x[i] ~ Normal()
+        end
+        a ~ to_submodel(child((0.0, 0.0)), false)
+        return (x, a)
+    end
+    # A local whole owner cannot resize an unprefixed child's recursive overlay.
+    m = fix(shared((0.0, 0.0)); x=(4.0, 5.0))
+    m = condition(m, DynamicPPL.Recursive(), @varname(x) => (1.0, 2.0, 3.0))
+    m = fix(m, DynamicPPL.Recursive(), @varname(x[1]) => 9.0)
+    @test m(StableRNG(1)) == ((9.0, 5.0), (9.0, 2.0, 3.0))
+    m = fix(m, DynamicPPL.Recursive(), @varname(x[2]) => 8.0)
+    @test m(StableRNG(1)) == ((9.0, 8.0), (9.0, 8.0, 3.0))
+end
+
 @testset "incomplete local owner conversion" begin
     @model function localz()
         z = zeros(3)
@@ -3874,6 +3936,12 @@ const BC_ADDRESSES = let d = Dict{Tuple,Any}()
         d[(:a, :b, :x, i)] = @varname(a.b.x[i])
     end
     for (p, v) in collect(d)
+        if first(p) in (:x, :t)
+            d[(:a, p...)] = AbstractPPL.prefix(v, @varname(a))
+            d[(:a, :b, p...)] = AbstractPPL.prefix(v, @varname(a.b))
+        end
+    end
+    for (p, v) in collect(d)
         d[(:p, p...)] = AbstractPPL.prefix(v, @varname(p))
     end
     d
@@ -4056,6 +4124,41 @@ function bc_shape_corpus()
             push!(ops, BCOp(bind, false, (p..., 3), 7.0))
             push!(samples, (c, copy(ops)))
             push!(ops, BCOp(remove, false, p, nothing))
+            push!(samples, (c, copy(ops)))
+        end
+    end
+    # Cross-layer owners of different extents, including a complete partial mask.
+    for kind in (:array, :tuple, :nested_named, :nested_tuple), depth in (0, 1, 2)
+        c = BCCase(kind, true, depth, false, false)
+        p = (bc_namespace(c)..., (
+            if kind == :nested_named
+                (:t, :a)
+            elseif kind == :nested_tuple
+                (:x, 1)
+            else
+                (:x,)
+            end
+        )...)
+        recursive = depth > 0
+        shape(x) = kind == :tuple ? Tuple(x) : x
+        for bind in (:condition, :fix)
+            other = bind == :condition ? :fix : :condition
+            ops = [
+                BCOp(bind, recursive, p, shape([4.0, 5.0, 6.0])),
+                BCOp(other, recursive, (p..., 1), 7.0),
+                BCOp(other, recursive, (p..., 2), 8.0),
+            ]
+            push!(samples, (c, ops))
+        end
+        for (nobs, nfix) in ((3, 2), (2, 3)), reverse_order in (false, true)
+            ops = [
+                BCOp(:condition, recursive, p, shape(collect(1.0:nobs))),
+                BCOp(:fix, recursive, p, shape(collect(4.0:(3 + nfix)))),
+            ]
+            reverse_order && reverse!(ops)
+            push!(ops, BCOp(:unfix, recursive, (p..., 2), nothing))
+            push!(samples, (c, copy(ops)))
+            push!(ops, BCOp(:unfix, recursive, p, nothing))
             push!(samples, (c, copy(ops)))
         end
     end

@@ -121,11 +121,13 @@ function _overlay_model_node(previous::VarNamedTuple, fixed::VarNamedTuple, owne
 end
 function _overlay_model_node(previous, fixed::VarNamedTuples.PartialArray, owners, vn)
     previous isa NoModelBinding && return _copy_model_node(fixed)
-    eltype(fixed) <: ModelValue &&
+    owns_shape =
+        fixed.mask isa ModelBindingArray || any(owner -> subsumes(owner, vn), owners)
+    owns_shape &&
+        eltype(fixed) <: ModelValue &&
         _has_complete_model_data(fixed) &&
         return _copy_model_node(fixed)
     previous isa ModelValue && (previous = _expand_model_binding(previous))
-    owns_shape = any(owner -> subsumes(owner, vn), owners)
     if previous isa VarNamedTuples.PartialArray &&
         !(fixed.data isa VarNamedTuples.GrowableArray) &&
         axes(previous) != axes(fixed) &&
@@ -145,22 +147,9 @@ function _overlay_model_node(previous, fixed::VarNamedTuples.PartialArray, owner
                 lo == 1 ? Base.OneTo(hi) : (lo:hi)
             end
         end
-        data = similar(previous.data, eltype(previous), merged_axes)
-        mask = fill!(similar(data, Bool), false)
-        for i in CartesianIndices(data)
-            if checkbounds(Bool, previous.data, i) && previous.mask[i]
-                data[i] = previous.data[i]
-                mask[i] = true
-            end
-        end
-        previous = VarNamedTuples.PartialArray(data, mask)
+        previous = _resize_model_binding(previous, merged_axes)
     end
-    if previous isa VarNamedTuples.PartialArray && fixed.data isa ModelBindingArray
-        data = previous.data isa ModelBindingArray ? previous.data.data : previous.data
-        previous = VarNamedTuples.PartialArray(
-            ModelBindingArray(data, fixed.data.template), previous.mask
-        )
-    end
+    previous = _inherit_model_array_owner(previous, fixed)
     return _fold_model_indices(
         _copy_model_node(previous), fixed
     ) do result, update, optic, template
@@ -183,8 +172,12 @@ function _overlay_model_node(
     end
     return fixed
 end
+_inherits_shape(::Any) = false
+_inherits_shape(value::ModelValue) = _inherits_binding(value)
+_inherits_shape(::ModelValueTree{T,V,S}) where {T,V,S} = S
 function _overlay_model_node(previous, fixed::ModelValueTree, owners, vn)
-    owns_shape = any(owner -> subsumes(owner, vn), owners)
+    owns_shape = _inherits_shape(fixed) || any(owner -> subsumes(owner, vn), owners)
+    inherited_shape = _inherits_shape(fixed) || (!owns_shape && _inherits_shape(previous))
     template = if !owns_shape && previous isa ModelValue
         previous.value
     elseif !owns_shape && previous isa ModelValueTree
@@ -217,17 +210,24 @@ function _overlay_model_node(previous, fixed::ModelValueTree, owners, vn)
         !all(name -> hasproperty(template, name), keys(values.data))
         template = fixed.template
     end
-    return ModelValueTree(template, values)
+    return ModelValueTree(template, values, Val(inherited_shape))
 end
 
 function Base.:(==)(a::ModelValueTree, b::ModelValueTree)
-    return a.template == b.template && a.values == b.values
+    return _inherits_shape(a) == _inherits_shape(b) &&
+           a.template == b.template &&
+           a.values == b.values
 end
 function Base.isequal(a::ModelValueTree, b::ModelValueTree)
-    return isequal(a.template, b.template) && isequal(a.values, b.values)
+    return _inherits_shape(a) == _inherits_shape(b) &&
+           isequal(a.template, b.template) &&
+           isequal(a.values, b.values)
 end
 function Base.hash(value::ModelValueTree, h::UInt)
-    return hash(value.template, hash(value.values, hash(:ModelValueTree, h)))
+    return hash(
+        _inherits_shape(value),
+        hash(value.template, hash(value.values, hash(:ModelValueTree, h))),
+    )
 end
 
 function VarNamedTuples._getindex_optic(
@@ -544,7 +544,9 @@ function _expand_model_binding(previous::ModelValue{R,<:Base.Pairs}) where {R}
 end
 function _expand_model_binding(previous::ModelValue{R,<:Tuple}) where {R}
     return ModelValueTree(
-        previous.value, map(x -> _model_value_like(previous, x), previous.value)
+        previous.value,
+        map(x -> _model_value_like(previous, x), previous.value),
+        Val(_inherits_binding(previous)),
     )
 end
 # The fallback expands records through fields and later writes/rebuilds those fields.
@@ -581,6 +583,7 @@ function _expand_model_binding(previous::ModelValue{R}) where {R}
     return ModelValueTree(
         previous.value,
         _tag_model_values(R, VarNamedTuple(fields), _binding_scope(previous)),
+        Val(_inherits_binding(previous)),
     )
 end
 _defined_model_properties(value, ::Val{()}) = NamedTuple()
@@ -662,7 +665,7 @@ function VarNamedTuples._setindex_optic!!(
     values = VarNamedTuples._setindex_optic!!(
         copy(tree.values), value, optic, template, permissions
     )
-    return ModelValueTree(tree.template, values)
+    return ModelValueTree(tree, values)
 end
 function VarNamedTuples._setindex_optic!!(
     tree::ModelValueTree{<:Tuple}, value, optic::AbstractPPL.Index, template, permissions
@@ -687,7 +690,7 @@ function VarNamedTuples._setindex_optic!!(
             previous, value, optic.child, child_template, permissions
         )
     end
-    return ModelValueTree(tree.template, Base.setindex(tree.values, updated, i))
+    return ModelValueTree(tree, Base.setindex(tree.values, updated, i))
 end
 
 function VarNamedTuples._mapreduce_recursive(
@@ -729,7 +732,7 @@ function VarNamedTuples._map_values_recursive!!(f, tree::ModelValueTree)
             end
         end
     end
-    return ModelValueTree(tree.template, values)
+    return ModelValueTree(tree, values)
 end
 function VarNamedTuples._map_pairs_recursive!!(f, tree::ModelValueTree, vn)
     values = if tree.values isa VarNamedTuple
@@ -748,13 +751,13 @@ function VarNamedTuples._map_pairs_recursive!!(f, tree::ModelValueTree, vn)
             end
         end
     end
-    return ModelValueTree(tree.template, values)
+    return ModelValueTree(tree, values)
 end
 
 function _empty_model_tree(tree::ModelValueTree)
     values =
         tree.values isa Tuple ? map(_ -> NoModelBinding(), tree.values) : VarNamedTuple()
-    return ModelValueTree(tree.template, values)
+    return ModelValueTree(tree, values)
 end
 function VarNamedTuples.make_leaf(
     value,
@@ -973,7 +976,7 @@ _copy_model_node(value::Union{VarNamedTuple,VarNamedTuples.PartialArray}) = copy
 function _copy_model_node(value::ModelValueTree)
     values =
         value.values isa Tuple ? map(_copy_model_node, value.values) : copy(value.values)
-    return ModelValueTree(value.template, values)
+    return ModelValueTree(value, values)
 end
 _merge_model_node(previous, updates) = updates
 _merge_model_node(previous, ::NoModelBinding) = previous
@@ -991,9 +994,7 @@ function _merge_model_node(previous, updates::VarNamedTuple)
         return _merge_model_node(_expand_model_binding(previous), updates)
     previous isa VarNamedTuple && return _merge_model_values(previous, updates)
     if previous isa ModelValueTree
-        return ModelValueTree(
-            previous.template, _merge_model_values(previous.values, updates)
-        )
+        return ModelValueTree(previous, _merge_model_values(previous.values, updates))
     end
     return _merge_model_indices(previous, updates)
 end
@@ -1004,33 +1005,43 @@ function _merge_model_node(previous, updates::VarNamedTuples.PartialArray)
         _merge_model_indices(previous, updates)
     end
 end
-# An expanded recursive whole binding carries its own extent across a child
-# boundary. The child's construction-time argument must not regain ownership.
+# A whole binding keeps its extent after partial edits, both within a layer
+# and across a child boundary. Partial masks alone never establish an owner.
+function _resize_model_binding(previous::VarNamedTuples.PartialArray, axes)
+    data = similar(previous.data, eltype(previous), axes)
+    mask = fill!(similar(data, Bool), false)
+    for i in CartesianIndices(data)
+        if checkbounds(Bool, previous.data, i) && previous.mask[i]
+            data[i] = previous.data[i]
+            mask[i] = true
+        end
+    end
+    return VarNamedTuples.PartialArray(data, mask)
+end
+function _inherit_model_array_owner(previous, updates)
+    previous isa VarNamedTuples.PartialArray || return previous
+    data, mask = previous.data, previous.mask
+    if updates.data isa ModelBindingArray
+        data = data isa ModelBindingArray ? data.data : data
+        data = ModelBindingArray(data, updates.data.template)
+    end
+    if updates.mask isa ModelBindingArray
+        data = data isa ModelBindingArray ? data.data : data
+        mask = mask isa ModelBindingArray ? mask.data : mask
+        data = ModelBindingArray(data, updates.mask.template)
+        mask = ModelBindingArray(mask, updates.mask.template)
+    end
+    return VarNamedTuples.PartialArray(data, mask)
+end
 function _merge_model_node(
     previous, updates::VarNamedTuples.PartialArray{T,N,D,<:ModelBindingArray{Bool,N}}
 ) where {T,N,D<:AbstractArray{T,N}}
     previous isa NoModelBinding && return copy(updates)
     previous isa ModelValue && (previous = _expand_model_binding(previous))
-    if previous isa VarNamedTuples.PartialArray
-        data, mask = previous.data, previous.mask
-        if axes(data) != axes(updates.data)
-            data = similar(data, eltype(data), axes(updates.data))
-            mask = fill!(similar(data, Bool), false)
-            for i in CartesianIndices(data)
-                if checkbounds(Bool, previous.data, i) && previous.mask[i]
-                    data[i] = previous.data[i]
-                    mask[i] = true
-                end
-            end
-        end
-        data = data isa ModelBindingArray ? data.data : data
-        mask = mask isa ModelBindingArray ? mask.data : mask
-        previous = VarNamedTuples.PartialArray(
-            ModelBindingArray(data, updates.mask.template),
-            ModelBindingArray(mask, updates.mask.template),
-        )
+    if previous isa VarNamedTuples.PartialArray && axes(previous) != axes(updates)
+        previous = _resize_model_binding(previous, axes(updates))
     end
-    return _merge_model_indices(previous, updates)
+    return _merge_model_indices(_inherit_model_array_owner(previous, updates), updates)
 end
 function _check_model_binding(
     previous,
@@ -1120,10 +1131,10 @@ function _merge_model_node(previous, updates::ModelValueTree)
             update = updates.values[i]
             return child isa NoModelBinding ? update : _merge_model_node(child, update)
         end
-        return ModelValueTree(updates.template, values)
+        return ModelValueTree(updates, values)
     end
     fields = _merge_model_fields(previous, updates, Val(propertynames(updates.template)))
-    return ModelValueTree(updates.template, VarNamedTuple(fields))
+    return ModelValueTree(updates, VarNamedTuple(fields))
 end
 function VarNamedTuples._merge(
     previous::ModelValueTree, updates::ModelValueTree, ::Val{true}
@@ -2867,7 +2878,7 @@ end
 function _remove_model_binding(
     ::Type{R}, tree::ModelValueTree, optic::AbstractPPL.Property
 ) where {R}
-    return ModelValueTree(tree.template, _remove_model_binding(R, tree.values, optic))
+    return ModelValueTree(tree, _remove_model_binding(R, tree.values, optic))
 end
 function _remove_model_binding(
     ::Type{R},
@@ -2887,7 +2898,7 @@ function _remove_model_binding(
     indices = getindex(ntuple(identity, length(tree.values)), optic.ix...)
     if indices isa Integer
         child = _remove_model_binding(R, tree.values[indices], optic.child)
-        return ModelValueTree(tree.template, Base.setindex(tree.values, child, indices))
+        return ModelValueTree(tree, Base.setindex(tree.values, child, indices))
     end
     selected = ModelValueTree(
         getindex(tree.template, optic.ix...), getindex(tree.values, optic.ix...)
@@ -2897,7 +2908,7 @@ function _remove_model_binding(
     for (i, child) in zip(indices, removed.values)
         values = Base.setindex(values, child, i)
     end
-    return ModelValueTree(tree.template, values)
+    return ModelValueTree(tree, values)
 end
 function _remove_model_binding(
     ::Type{R}, values::VarNamedTuples.PartialArray, optic::AbstractPPL.Index
