@@ -2768,6 +2768,10 @@ end
 
 Return this model's conditioned values as plain values, independent of binding history.
 
+The result is not recursive: it lists only bindings stored on `model`. Observations held by
+submodels, including their argument-supplied observations and bindings made inside the
+model body, are not listed, because those submodels exist only during evaluation.
+
 This may include argument-supplied observations that evaluation ignores when their argument LHS variables
 receive submodel return values.
 
@@ -3024,6 +3028,10 @@ end
     fixed(model::Model)
 
 Return this model's fixed values as plain values, independent of binding history.
+
+The result is not recursive: it lists only bindings stored on `model`. Fixed bindings held by
+submodels, including bindings made inside the model body, are not listed, because those
+submodels exist only during evaluation.
 
 For argument LHS variables that receive submodel return values, `conditioned` lists argument-supplied observations
 that evaluation ignores, while `fixed` lists explicit bindings that evaluation rejects.
