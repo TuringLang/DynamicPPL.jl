@@ -14,6 +14,8 @@ using OffsetArrays: OffsetArray
 using Test
 using Random: Xoshiro
 using StaticArrays: SVector
+using StableRNGs: StableRNG
+using Logging: NullLogger, with_logger
 
 @info "Testing $(@__FILE__)..."
 __now__ = now()
@@ -3412,5 +3414,732 @@ end
         @test_throws ArgumentError bind(symbol_named((a=1.0,)), @varname(x[1]) => 2.0)
     end
 end
+
+# --- Binding contract: independent oracle, generator, and implementation adapter ---
+
+# Independent oracle, written from the binding rules in docs/src/conditionfix.md
+# before running the implementation. It uses no DynamicPPL APIs.
+struct BCCase
+    kind::Symbol                 # scalar, array, tuple, named, multivariate
+    argument::Bool
+    depth::Int
+    childfixed::Bool
+    runtime::Bool
+end
+struct BCOp
+    verb::Symbol
+    recursive::Bool
+    path::Union{Nothing,Tuple}
+    value::Any
+end
+bc_contains(p, q) = length(p) <= length(q) && q[1:length(p)] == p
+bc_related(p, q) = bc_contains(p, q) || bc_contains(q, p)
+bc_rootname(c) = c.kind in (:named, :namedwhole, :nested_named) ? :t : :x
+bc_namespace(c) =
+    if c.depth == 0
+        ()
+    elseif c.depth == 1
+        (:a,)
+    else
+        (:a, :b)
+    end
+bc_basepath(c) = (bc_namespace(c)..., bc_rootname(c))
+function bc_basevalue(c)
+    return if c.kind == :nested_named
+        (a=[2.0, 3.0], b=4.0)
+    elseif c.kind == :nested_tuple
+        ([2.0, 3.0], 4.0)
+    elseif c.kind == :scalar
+        2.0
+    elseif c.kind in (:named, :namedwhole)
+        (a=2.0, b=3.0)
+    elseif c.kind in (:tuple, :tuplewhole)
+        (2.0, 3.0)
+    else
+        [2.0, 3.0]
+    end
+end
+function bc_leaves(p, x)
+    x isa NamedTuple && return reduce(
+        vcat, [bc_leaves((p..., k), v) for (k, v) in pairs(x)]; init=Pair{Tuple,Any}[]
+    )
+    (x isa Tuple || x isa AbstractArray) && return reduce(
+        vcat,
+        [bc_leaves((p..., i), v) for (i, v) in enumerate(x)];
+        init=Pair{Tuple,Any}[],
+    )
+    return Pair{Tuple,Any}[p => x]
+end
+function bc_at(value, path)
+    for k in path
+        value = k isa Symbol ? getproperty(value, k) : value[k]
+    end
+    return value
+end
+function bc_replace_at(value, path, replacement)
+    isempty(path) && return replacement
+    k = first(path)
+    child = bc_replace_at(bc_at(value, (k,)), Base.tail(path), replacement)
+    value isa NamedTuple && return merge(value, NamedTuple{(k,)}((child,)))
+    value isa Tuple && return ntuple(i -> i == k ? child : value[i], length(value))
+    result = copy(value)
+    result[k] = child
+    return result
+end
+function bc_shape(c, owners)
+    result = bc_basevalue(c)
+    bp = bc_basepath(c)
+    for p in sort!(collect(keys(owners)); by=length)
+        bc_contains(bp, p) &&
+            (result = bc_replace_at(result, p[(length(bp) + 1):end], owners[p]))
+    end
+    return result
+end
+mutable struct BCLayer
+    obs::Dict{Tuple,Any}
+    fixed::Dict{Tuple,Any}
+    noobs::Set{Tuple}
+    nofixed::Set{Tuple}
+    owners::Dict{Tuple,Any}
+    fixowners::Dict{Tuple,Any}
+end
+BCLayer() = BCLayer(Dict(), Dict(), Set(), Set(), Dict(), Dict())
+mutable struct BCReference
+    case::BCCase
+    layers::Vector{BCLayer}
+    prefixed::Bool
+    pending::Vector{Tuple}
+end
+function bc_reference(c)
+    ls = [BCLayer() for _ in 0:(c.depth)]
+    p = bc_basepath(c)
+    v = c.runtime ? :twice_parent : bc_basevalue(c)
+    if c.argument
+        merge!(ls[end].obs, Dict(bc_leaves(p, v)))
+        ls[end].owners[p] = bc_basevalue(c)
+    end
+    if c.childfixed
+        v = if c.kind == :scalar
+            4.0
+        elseif c.kind in (:named, :namedwhole)
+            (a=4.0, b=5.0)
+        elseif c.kind in (:tuple, :tuplewhole)
+            (4.0, 5.0)
+        else
+            [4.0, 5.0]
+        end
+        merge!(ls[end].fixed, Dict(bc_leaves(p, v)))
+        ls[end].fixowners[p] = v
+    end
+    return BCReference(c, ls, false, Tuple[])
+end
+function bc_universe(c)
+    p = bc_basepath(c)
+    ps = if c.kind in (:nested_named, :nested_tuple)
+        first.(bc_leaves(p, bc_basevalue(c)))
+    elseif c.kind == :scalar
+        [p]
+    elseif c.kind in (:named, :namedwhole)
+        [(p..., :a), (p..., :b)]
+    else
+        [(p..., i) for i in 1:4]
+    end
+    ps = Tuple[ps...]
+    c.depth > 0 && push!(ps, (:m,))
+    c.depth > 1 && push!(ps, (:a, :q))
+    return ps
+end
+function bc_own(c, p)
+    c.depth == 0 && return first(p) == bc_rootname(c)
+    return first(p) == :m
+end
+function bc_lookup(r, p)
+    blockobs = false
+    blockfix = false
+    for l in r.layers
+        !blockfix && haskey(l.fixed, p) && return (:fixed, l.fixed[p])
+        !blockobs && haskey(l.obs, p) && return (:observed, l.obs[p])
+        blockobs |= p in l.noobs
+        blockfix |= p in l.nofixed
+    end
+    return (:latent, 0.25)
+end
+function bc_stored(r, p, fixed)
+    blocked = false
+    for l in r.layers
+        d = fixed ? l.fixed : l.obs
+        !blocked && haskey(d, p) && return true
+        blocked |= p in (fixed ? l.nofixed : l.noobs)
+    end
+    return false
+end
+function bc_apply_reference!(r, op; clear_markers=false)
+    op.verb == :prefix && (r.prefixed = true; return :ok)
+    op.verb in (:conditioned, :fixed) && return :call
+    p = op.path
+    if p !== nothing && r.prefixed
+        (isempty(p) || first(p) != :p) && return :call
+        p = Base.tail(p)
+    end
+    c, l = r.case, first(r.layers)
+    adding = op.verb in (:condition, :fix)
+    fixed = op.verb in (:fix, :unfix)
+    d = fixed ? l.fixed : l.obs
+    masks = fixed ? l.nofixed : l.noobs
+    owners = fixed ? l.fixowners : l.owners
+    p === nothing && adding && return :ok
+    addresses = bc_universe(c)
+    for layer in r.layers
+        append!(addresses, keys(layer.obs), keys(layer.fixed), layer.noobs, layer.nofixed)
+        for owners in (layer.owners, layer.fixowners), (address, value) in owners
+            append!(addresses, first.(bc_leaves(address, value)))
+        end
+    end
+    unique!(addresses)
+    targets = p === nothing ? addresses : filter(q -> bc_related(p, q), addresses)
+    if adding
+        (!op.recursive && !bc_own(c, p)) && return :call
+        isempty(targets) && return c.depth == 0 ? :call : :evaluation
+        bp = bc_basepath(c)
+        # Supported partial paths must fit the edited layer's latest shape owner.
+        if bc_contains(bp, p) && length(p) > length(bp)
+            template = bc_shape(c, owners)
+            template = bc_at(template, p[(length(bp) + 1):(end - 1)])
+            k = last(p)
+            if template isa NamedTuple
+                k isa Symbol && haskey(template, k) || return :call
+            elseif template isa Tuple || template isa AbstractArray
+                k isa Int && 1 <= k <= length(template) || return :call
+            else
+                return :call
+            end
+        end
+        for q in collect(keys(d))
+            bc_contains(p, q) && delete!(d, q)
+        end
+        merge!(d, Dict(bc_leaves(p, op.value)))
+        for q in targets
+            delete!(masks, q)
+        end
+        for q in collect(keys(owners))
+            bc_contains(p, q) && delete!(owners, q)
+        end
+        owners[p] = op.value
+        filter!(r.pending) do pending
+            pfixed, qs = pending
+            pfixed == fixed && filter!(q -> !bc_contains(p, q), qs)
+            !isempty(qs)
+        end
+    else
+        found = any(q -> op.recursive ? bc_stored(r, q, fixed) : haskey(d, q), targets)
+        if p !== nothing && !found
+            all(q -> q in masks, targets) && return :call
+            # A whole NamedTuple uses a runtime distribution constructor; its RHS
+            # is classified at evaluation, just like a possible child model.
+            if op.recursive && ((c.depth > 0 && !bc_own(c, p)) || c.kind == :namedwhole)
+                push!(r.pending, (fixed, copy(targets)))
+            else
+                return :call
+            end
+        end
+        if p === nothing && (op.recursive || clear_markers)
+            filter!(entry -> entry[1] != fixed, r.pending)
+            empty!(masks)
+        end
+        for q in targets
+            delete!(d, q)
+            op.recursive && push!(masks, q)
+        end
+        for q in collect(keys(owners))
+            (p === nothing || bc_contains(p, q)) && delete!(owners, q)
+        end
+    end
+    return :ok
+end
+function bc_expected(r)
+    c = r.case
+    bp = bc_basepath(c)
+    # Argument storage follows the highest surviving shape owner; locals keep body storage.
+    template = bc_basevalue(c)
+    if c.argument
+        for l in reverse(r.layers)
+            for owners in (l.owners, l.fixowners)
+                for p in sort!(collect(keys(owners)); by=length)
+                    bc_contains(bp, p) && (
+                        template = bc_replace_at(
+                            template, p[(length(bp) + 1):end], owners[p]
+                        )
+                    )
+                end
+            end
+        end
+    end
+    ps = Tuple[first.(bc_leaves(bp, template))...]
+    c.depth > 0 && pushfirst!(ps, (:m,))
+    c.depth > 1 && insert!(ps, 2, (:a, :q))
+    out = Dict{Tuple,Tuple{Symbol,Any}}()
+    for p in ps
+        role, value = bc_lookup(r, p)
+        value === :twice_parent && (value = 2 * out[(:m,)][2])
+        out[p] = (role, value)
+    end
+    if c.kind in (:multivariate, :tuplewhole, :namedwhole)
+        ks = c.kind == :namedwhole ? (:a, :b) : (1, 2)
+        entries = [out[(bp..., i)] for i in ks]
+        all(e -> e[1] == entries[1][1], entries) || return (:evaluation, out)
+        for i in ks
+            delete!(out, (bp..., i))
+        end
+        out[bp] = (entries[1][1], bc_structured(c, last.(entries)))
+    end
+    if r.prefixed
+        out = Dict((:p, k...) => v for (k, v) in out)
+    end
+    return (:ok, out)
+end
+function bc_predict(c, ops; clear_markers=false)
+    r = bc_reference(c)
+    for (i, op) in enumerate(ops)
+        stage = bc_apply_reference!(r, op; clear_markers)
+        stage == :call && return (stage, i, nothing)
+        stage == :evaluation && return (:evaluation, length(ops), nothing)
+    end
+    !isempty(r.pending) && return (:evaluation, length(ops), nothing)
+    stage, out = bc_expected(r)
+    return (stage, length(ops), out)
+end
+function bc_structured(c, xs)
+    return if c.kind == :namedwhole
+        (a=xs[1], b=xs[2])
+    elseif c.kind == :tuplewhole
+        Tuple(xs)
+    else
+        xs
+    end
+end
+
+# Implementation adapter: models return all reached values, including fixed ones.
+@model function bc_scalar_arg(x)
+    x ~ Normal()
+    return (; x)
+end
+@model function bc_scalar_local()
+    x ~ Normal()
+    return (; x)
+end
+@model function bc_array_arg(x)
+    for i in eachindex(x)
+        x[i] ~ Normal()
+    end
+    return (; x)
+end
+@model function bc_array_local()
+    x = zeros(2)
+    for i in eachindex(x)
+        x[i] ~ Normal()
+    end
+    return (; x)
+end
+@model function bc_tuple_arg(x)
+    for i in eachindex(x)
+        x[i] ~ Normal()
+    end
+    return (; x)
+end
+@model function bc_tuple_local()
+    x = (0.0, 0.0)
+    for i in eachindex(x)
+        x[i] ~ Normal()
+    end
+    return (; x)
+end
+@model function bc_named_arg(t)
+    t.a ~ Normal()
+    t.b ~ Normal()
+    return (; t)
+end
+@model function bc_named_local()
+    t = (a=0.0, b=0.0)
+    t.a ~ Normal()
+    t.b ~ Normal()
+    return (; t)
+end
+@model function bc_nested_named_arg(t)
+    for i in eachindex(t.a)
+        t.a[i] ~ Normal()
+    end
+    t.b ~ Normal()
+    return (; t)
+end
+@model function bc_nested_tuple_arg(x)
+    for i in eachindex(x[1])
+        x[1][i] ~ Normal()
+    end
+    x[2] ~ Normal()
+    return (; x)
+end
+@model function bc_mv_arg(x)
+    x ~ MvNormal(zeros(2), 1.0)
+    return (; x)
+end
+@model function bc_mv_local()
+    x ~ MvNormal(zeros(2), 1.0)
+    return (; x)
+end
+# A tuple-valued product of two standard normals, used only with BCQuarter initialisation.
+struct BCTupleNormal <: Distributions.ContinuousMultivariateDistribution end
+Base.length(::BCTupleNormal) = 2
+Distributions.logpdf(::BCTupleNormal, x::Tuple) = sum(logpdf.(Normal(), x))
+Distributions.loglikelihood(d::BCTupleNormal, x::Tuple) = logpdf(d, x)
+@model function bc_tuple_whole(x)
+    x ~ BCTupleNormal()
+    return (; x)
+end
+@model function bc_named_whole(t)
+    t ~ product_distribution((a=Normal(), b=Normal()))
+    return (; t)
+end
+@model function bc_middle(child)
+    q ~ Normal()
+    b ~ to_submodel(child)
+    return (; q, b)
+end
+@model function bc_outer(child)
+    m ~ Normal()
+    a ~ to_submodel(child)
+    return (; m, a)
+end
+@model function bc_runtime_outer()
+    m ~ Normal()
+    a ~ to_submodel(condition(bc_scalar_arg(2.0); x=2m))
+    return (; m, a)
+end
+function bc_model(c)
+    c.runtime && return bc_runtime_outer()
+    constructors = Dict(
+        :tuplewhole => (bc_tuple_whole, bc_tuple_whole),
+        :namedwhole => (bc_named_whole, bc_named_whole),
+        :nested_named => (bc_nested_named_arg, bc_nested_named_arg),
+        :nested_tuple => (bc_nested_tuple_arg, bc_nested_tuple_arg),
+        :scalar => (bc_scalar_arg, bc_scalar_local),
+        :array => (bc_array_arg, bc_array_local),
+        :tuple => (bc_tuple_arg, bc_tuple_local),
+        :named => (bc_named_arg, bc_named_local),
+        :multivariate => (bc_mv_arg, bc_mv_local),
+    )
+    f, g = constructors[c.kind]
+    m = c.argument ? f(bc_basevalue(c)) : g()
+    if c.childfixed
+        v = if c.kind == :scalar
+            4.0
+        elseif c.kind in (:named, :namedwhole)
+            (a=4.0, b=5.0)
+        elseif c.kind in (:tuple, :tuplewhole)
+            (4.0, 5.0)
+        else
+            [4.0, 5.0]
+        end
+        m = fix(m, (bc_rootname(c) == :x ? @varname(x) : @varname(t)) => v)
+    end
+    c.depth == 2 && (m = bc_middle(m))
+    c.depth > 0 && (m = bc_outer(m))
+    return m
+end
+# Addresses are built once via @varname; the reference uses only tuples.
+const BC_ADDRESSES = let d = Dict{Tuple,Any}()
+    for (p, v) in [
+        ((:x,), @varname(x)),
+        ((:t,), @varname(t)),
+        ((:m,), @varname(m)),
+        ((:a, :q), @varname(a.q)),
+        ((:t, :a), @varname(t.a)),
+        ((:t, :b), @varname(t.b)),
+        ((:a, :x), @varname(a.x)),
+        ((:a, :t), @varname(a.t)),
+        ((:a, :t, :a), @varname(a.t.a)),
+        ((:a, :t, :b), @varname(a.t.b)),
+        ((:a, :b, :x), @varname(a.b.x)),
+        ((:a, :b, :t), @varname(a.b.t)),
+        ((:a, :b, :t, :a), @varname(a.b.t.a)),
+        ((:a, :b, :t, :b), @varname(a.b.t.b)),
+    ]
+        d[p] = v
+    end
+    for i in 1:4
+        d[(:t, :a, i)] = @varname(t.a[i])
+        d[(:x, 1, i)] = @varname(x[1][i])
+        d[(:x, i)] = @varname(x[i])
+        d[(:t, i)] = @varname(t[i])
+        d[(:a, :x, i)] = @varname(a.x[i])
+        d[(:a, :b, :x, i)] = @varname(a.b.x[i])
+    end
+    for (p, v) in collect(d)
+        d[(:p, p...)] = AbstractPPL.prefix(v, @varname(p))
+    end
+    d
+end
+function bc_apply_actual(m, op)
+    @nospecialize m
+    op.verb == :prefix && return prefix(m, @varname(p))
+    f = getfield(DynamicPPL, op.verb)
+    args = op.recursive ? (DynamicPPL.Recursive(),) : ()
+    op.path === nothing && return f(m, args...)
+    v = BC_ADDRESSES[op.path]
+    return if op.verb in (:condition, :fix)
+        f(m, args..., v => deepcopy(op.value))
+    else
+        f(m, args..., v)
+    end
+end
+struct BCTrace <: DynamicPPL.AbstractAccumulator
+    events::Vector{Tuple{String,Symbol,Any}}
+end
+BCTrace() = BCTrace(Tuple{String,Symbol,Any}[])
+DynamicPPL.accumulator_name(::BCTrace) = :BCTrace
+DynamicPPL.reset(::BCTrace) = BCTrace()
+Base.copy(t::BCTrace) = BCTrace(deepcopy(t.events))
+function DynamicPPL.accumulate_assume!!(t::BCTrace, val, tval, jac, vn, dist, template)
+    push!(t.events, (string(vn), :latent, deepcopy(val)))
+    return t
+end
+function DynamicPPL.accumulate_observe!!(t::BCTrace, dist, val, vn, template)
+    push!(t.events, (string(vn), :observed, deepcopy(val)))
+    return t
+end
+struct BCQuarter <: DynamicPPL.AbstractInitStrategy end
+function DynamicPPL.init(rng, vn, dist::Distribution, ::BCQuarter)
+    v = if dist isa BCTupleNormal
+        (0.25, 0.25)
+    elseif dist isa Distributions.ProductNamedTupleDistribution
+        (a=0.25, b=0.25)
+    elseif dist isa MultivariateDistribution
+        fill(0.25, length(dist))
+    else
+        0.25
+    end
+    return DynamicPPL.TransformedValue(v, DynamicPPL.NoTransform())
+end
+function bc_actual(c, ops)
+    m = bc_model(c)
+    for (i, op) in enumerate(ops)
+        try
+            m = bc_apply_actual(m, op)
+        catch e
+            return (:call, i, e)
+        end
+    end
+    try
+        vi = VarInfo(BCTrace(), LogPriorAccumulator(), LogLikelihoodAccumulator())
+        value, vi = init!!(StableRNG(17), m, vi, BCQuarter(), UnlinkAll())
+        trace = DynamicPPL.getacc(vi, Val(:BCTrace))
+        vals = Dict(bc_leaves((), value))
+        if c.kind in (:multivariate, :tuplewhole, :namedwhole)
+            bp = bc_basepath(c)
+            ks = c.kind == :namedwhole ? (:a, :b) : (1, 2)
+            vals[bp] = bc_structured(c, [pop!(vals, (bp..., i)) for i in ks])
+        end
+        any(o -> o.verb == :prefix, ops) &&
+            (vals = Dict((:p, p...) => v for (p, v) in vals))
+        roles = Dict(vn => role for (vn, role, _) in trace.events)
+        result = Dict(
+            p => (get(roles, string(BC_ADDRESSES[p]), :fixed), v) for (p, v) in vals
+        )
+        # Returned observed/latent values must agree with what the evaluator scored.
+        scored = Dict(vn => v for (vn, _, v) in trace.events)
+        for (p, (_, value)) in result
+            vn = string(BC_ADDRESSES[p])
+            haskey(scored, vn) &&
+                scored[vn] != value &&
+                error("BCTrace/return mismatch at $vn")
+        end
+        return (:ok, length(ops), (result, getlogprior(vi), getloglikelihood(vi)))
+    catch e
+        return (:evaluation, length(ops), e)
+    end
+end
+function bc_agrees(pred, act)
+    pred[1:2] == act[1:2] || return false
+    pred[1] != :ok && return act[3] isa ArgumentError || act[3] isa BoundsError
+    exp, (got, lp, ll) = pred[3], act[3]
+    exp == got || return false
+    function bc_density(role)
+        return sum(
+            (
+                sum(logpdf(Normal(), x) for (_, x) in bc_leaves((), v)) for
+                (r, v) in values(exp) if r == role
+            );
+            init=0.0,
+        )
+    end
+    return isapprox(lp, bc_density(:latent); atol=1e-12) &&
+           isapprox(ll, bc_density(:observed); atol=1e-12)
+end
+function bc_sequence(rng, c, n)
+    ops = BCOp[]
+    prefixed = false
+    for _ in 1:n
+        if !prefixed && rand(rng) < 0.07
+            push!(ops, BCOp(:prefix, false, nothing, nothing))
+            prefixed = true
+            continue
+        end
+        verb = rand(rng, (:condition, :fix, :decondition, :unfix))
+        bp = bc_basepath(c)
+        paths = if c.kind == :scalar
+            [bp]
+        elseif c.kind in (:named, :namedwhole)
+            [bp, (bp..., :a), (bp..., :b)]
+        else
+            [bp, (bp..., 1), (bp..., 2)]
+        end
+        paths = Tuple[paths...]
+        c.depth > 0 && push!(paths, (:m,))
+        c.depth > 1 && push!(paths, (:a, :q))
+        p = rand(rng) < 0.15 ? nothing : rand(rng, paths)
+        v = Float64(rand(rng, -3:3))
+        if p == bp && c.kind != :scalar
+            v = if c.kind in (:named, :namedwhole)
+                (a=v, b=v + 1)
+            elseif c.kind in (:tuple, :tuplewhole)
+                (v, v + 1)
+            else
+                [v, v + 1]
+            end
+        end
+        p !== nothing && prefixed && (p = (:p, p...))
+        push!(ops, BCOp(verb, rand(rng, Bool), p, v))
+    end
+    return ops
+end
+function bc_corpus()
+    rng = StableRNG(1501)
+    cs = vcat(
+        [
+            BCCase(k, a, 0, false, false) for
+            k in (:scalar, :array, :tuple, :named, :multivariate) for a in (false, true)
+        ],
+        [
+            BCCase(:namedwhole, true, 0, false, false),
+            BCCase(:tuplewhole, true, 0, false, false),
+            BCCase(:scalar, true, 1, true, false),
+            BCCase(:array, true, 2, false, false),
+            BCCase(:scalar, true, 1, false, true),
+        ],
+    )
+    # Keep longer histories and local no-name removals; directed cases cover short edits.
+    # Generate skipped histories too, so trimming preserves the StableRNG stream.
+    return [
+        (c, ops) for c in cs for i in 1:6 for
+        ops in (bc_sequence(rng, c, i),) if i > 2 || any(
+            op -> op.verb in (:decondition, :unfix) && !op.recursive && op.path === nothing,
+            ops,
+        )
+    ]
+end
+
+function bc_shape_corpus()
+    samples = Tuple{BCCase,Vector{BCOp}}[]
+    for kind in (:array, :tuple, :nested_named, :nested_tuple)
+        c = BCCase(kind, true, 0, false, false)
+        p = if kind == :nested_named
+            (:t, :a)
+        elseif kind == :nested_tuple
+            (:x, 1)
+        else
+            (:x,)
+        end
+        whole = kind == :tuple ? (4.0, 5.0, 6.0) : [4.0, 5.0, 6.0]
+        for bind in (:condition, :fix)
+            remove = bind == :condition ? :decondition : :unfix
+            ops = [BCOp(bind, false, p, whole), BCOp(remove, false, (p..., 3), nothing)]
+            push!(samples, (c, copy(ops)))
+            push!(ops, BCOp(bind, false, (p..., 3), 7.0))
+            push!(samples, (c, copy(ops)))
+            push!(ops, BCOp(remove, false, p, nothing))
+            push!(samples, (c, copy(ops)))
+        end
+    end
+    return samples
+end
+
+function bc_contract_corpus()
+    samples = Tuple{BCCase,Vector{BCOp}}[]
+    for fixed in (false, true), recursive in (false, true)
+        c = BCCase(:scalar, true, 1, fixed, false)
+        for (bind, remove) in ((:condition, :decondition), (:fix, :unfix))
+            ops = [
+                BCOp(bind, true, (:a, :x), 3.0), BCOp(remove, recursive, (:a, :x), nothing)
+            ]
+            push!(samples, (c, copy(ops)))
+            push!(ops, BCOp(bind, true, (:a, :x), 7.0))
+            push!(samples, (c, copy(ops)))
+        end
+    end
+    for kind in (:scalar, :named, :array)
+        c = BCCase(kind, true, 0, false, false)
+        for verb in (:conditioned, :fixed)
+            push!(samples, (c, [BCOp(verb, true, nothing, nothing)]))
+        end
+    end
+    for verb in (:condition, :fix)
+        push!(
+            samples,
+            (BCCase(:named, true, 0, false, false), [BCOp(verb, false, (:t, 1), 1.0)]),
+        )
+        push!(
+            samples,
+            (BCCase(:array, true, 0, false, false), [BCOp(verb, false, (:x, 4), 1.0)]),
+        )
+    end
+    return samples
+end
+
+@model function bc_shared_namespace(x, child)
+    x ~ Normal()
+    a ~ to_submodel(child, false)
+    return (; x, a)
+end
+
+@testset "binding contract: randomized differential test" begin
+    samples = vcat(bc_corpus(), bc_shape_corpus(), bc_contract_corpus())
+    # Local indexed bindings intentionally exercise the documented growable-array fallback.
+    with_logger(NullLogger()) do
+        for (c, ops) in samples
+            predicted, observed = bc_predict(c, ops), bc_actual(c, ops)
+            # The rules leave open whether a no-name local removal erases recursive markers.
+            alternate = bc_predict(c, ops; clear_markers=true)
+            @test bc_agrees(predicted, observed) || bc_agrees(alternate, observed)
+        end
+    end
+    let
+        c = BCCase(:scalar, false, 1, false, false)
+        for verb in (:decondition, :unfix)
+            ops = [BCOp(verb, true, (:m,), nothing)]
+            observed = bc_actual(c, ops)
+            @test bc_agrees(bc_predict(c, ops), observed)
+        end
+    end
+    let
+        for (child, expected_child) in
+            ((bc_scalar_arg(3.0), (:observed, 3.0)), (bc_scalar_local(), (:latent, 0.25)))
+            m = bc_shared_namespace(2.0, child)
+            value, vi = init!!(
+                StableRNG(1), m, VarInfo(BCTrace()), BCQuarter(), UnlinkAll()
+            )
+            events = DynamicPPL.getacc(vi, Val(:BCTrace)).events
+            @test events == [("x", :observed, 2.0), ("x", expected_child...)]
+            @test value.x == 2.0
+            @test value.a.x == expected_child[2]
+        end
+        # A removal on the child cannot erase a binding held by its parent.
+        child = decondition(bc_scalar_arg(2.0), DynamicPPL.Recursive(), @varname(x))
+        m = condition(bc_outer(child), DynamicPPL.Recursive(), @varname(a.x) => 3.0)
+        value, vi = init!!(StableRNG(1), m, VarInfo(BCTrace()), BCQuarter(), UnlinkAll())
+        @test value.a.x == 3.0
+        @test last(DynamicPPL.getacc(vi, Val(:BCTrace)).events) == ("a.x", :observed, 3.0)
+    end
+end
+
+# --- End binding contract ---
 
 end
