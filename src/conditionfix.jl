@@ -2626,19 +2626,7 @@ true
 ```
 """
 function AbstractPPL.decondition(model::Model, syms::Union{Symbol,VarName}...)
-    model = _materialize_argument_values(model)
-    observations = _observation_values(model.values)
-    _check_removal_addresses(observations, syms...)
-    _check_model_removal(Condition, observations, syms...)
-    values = _remove_model_values(Condition, observations, syms...)
-    fixed_values = _fixed_values(model.values)
-    isempty(fixed_values) ||
-        (values = ModelBindingLayers(values, fixed_values, _fixed_owners(model.values)))
-    values = model.values isa LocalModelValues ? LocalModelValues(values) : values
-    values = _with_removals(
-        values, _removals(Condition, model.values), _removals(Fix, model.values)
-    )
-    return _reconstruct_model(model; values)
+    return _local_remove(Condition, model, syms)
 end
 
 function _check_removal_addresses(values, names...)
@@ -3057,17 +3045,25 @@ true
 ```
 """
 function unfix(model::Model, syms::Union{Symbol,VarName}...)
+    return _local_remove(Fix, model, syms)
+end
+
+function _local_remove(::Type{R}, model, names) where {R}
     model = _materialize_argument_values(model)
-    fixed_values = _fixed_values(model.values)
-    _check_removal_addresses(fixed_values, syms...)
-    _check_model_removal(Fix, fixed_values, syms...)
-    fixed_values = _remove_model_values(Fix, fixed_values, syms...)
-    observations = _observation_values(model.values)
+    layer = _binding_layer(R, model.values)
+    _check_removal_addresses(layer, names...)
+    _check_model_removal(R, layer, names...)
+    layer = _remove_model_values(R, layer, names...)
+    observations = R === Condition ? layer : _observation_values(model.values)
+    fixed_values = R === Fix ? layer : _fixed_values(model.values)
     values = if isempty(fixed_values)
         observations
     else
-        owners = filter(_fixed_owners(model.values)) do owner
-            any(vn -> subsumes(owner, vn) || subsumes(vn, owner), keys(fixed_values))
+        owners = _fixed_owners(model.values)
+        if R === Fix
+            owners = filter(owners) do owner
+                any(vn -> subsumes(owner, vn) || subsumes(vn, owner), keys(fixed_values))
+            end
         end
         ModelBindingLayers(observations, fixed_values, owners)
     end
