@@ -528,11 +528,12 @@ function _expand_model_binding(previous::ModelValue{R,<:AbstractArray}) where {R
             data[i] = _model_value_like(previous, value[i])
         end
     end
-    # Arrays whose `similar` preserves their container already carry the owner type.
-    # Leave those visible to array-specific binding protocols (e.g. ComponentArrays).
+    # Keep container-preserving data visible to array-specific binding protocols.
     if typeof(similar(value)) !== typeof(value)
         data = ModelBindingArray(data, value)
     end
+    # The mask carries recursive ownership without hiding the data's array type.
+    _inherits_binding(previous) && (mask = ModelBindingArray(mask, value))
     return VarNamedTuples.PartialArray(data, mask)
 end
 function _expand_model_binding(previous::ModelValue{R,<:Base.Pairs}) where {R}
@@ -751,6 +752,22 @@ function _empty_model_tree(tree::ModelValueTree)
     values =
         tree.values isa Tuple ? map(_ -> NoModelBinding(), tree.values) : VarNamedTuple()
     return ModelValueTree(tree.template, values)
+end
+function VarNamedTuples.make_leaf(
+    value,
+    optic::AbstractPPL.Index,
+    template::VarNamedTuples.PartialArray{T,N,D,<:ModelBindingArray{Bool,N}},
+) where {T,N,D<:AbstractArray{T,N}}
+    leaf = invoke(
+        VarNamedTuples.make_leaf,
+        Tuple{Any,AbstractPPL.Index,VarNamedTuples.PartialArray},
+        value,
+        optic,
+        template,
+    )
+    return VarNamedTuples.PartialArray(
+        leaf.data, ModelBindingArray(leaf.mask, template.mask.template)
+    )
 end
 function VarNamedTuples.make_leaf(value, optic::AbstractPPL.Index, template::ModelValue)
     return VarNamedTuples.make_leaf(value, optic, _expand_model_binding(template))
@@ -984,6 +1001,61 @@ function _merge_model_node(previous, updates::VarNamedTuples.PartialArray)
         _merge_model_indices(previous, updates)
     end
 end
+# An expanded recursive whole binding carries its own extent across a child
+# boundary. The child's construction-time argument must not regain ownership.
+function _merge_model_node(
+    previous, updates::VarNamedTuples.PartialArray{T,N,D,<:ModelBindingArray{Bool,N}}
+) where {T,N,D<:AbstractArray{T,N}}
+    previous isa NoModelBinding && return copy(updates)
+    previous isa ModelValue && (previous = _expand_model_binding(previous))
+    if previous isa VarNamedTuples.PartialArray
+        data, mask = previous.data, previous.mask
+        if axes(data) != axes(updates.data)
+            data = similar(data, eltype(data), axes(updates.data))
+            mask = fill!(similar(data, Bool), false)
+            for i in CartesianIndices(data)
+                if checkbounds(Bool, previous.data, i) && previous.mask[i]
+                    data[i] = previous.data[i]
+                    mask[i] = true
+                end
+            end
+        end
+        data = data isa ModelBindingArray ? data.data : data
+        mask = mask isa ModelBindingArray ? mask.data : mask
+        previous = VarNamedTuples.PartialArray(
+            ModelBindingArray(data, updates.mask.template),
+            ModelBindingArray(mask, updates.mask.template),
+        )
+    end
+    return _merge_model_indices(previous, updates)
+end
+function _check_model_binding(
+    previous,
+    updates::VarNamedTuples.PartialArray{T,N,D,<:ModelBindingArray{Bool,N}},
+    vn;
+    check_bounds=true,
+) where {T,N,D<:AbstractArray{T,N}}
+    return invoke(
+        _check_model_binding,
+        Tuple{Any,Union{VarNamedTuple,VarNamedTuples.PartialArray},Any},
+        previous,
+        updates,
+        vn;
+        check_bounds=false,
+    )
+end
+function _prepare_argument_fields(
+    template, bindings::VarNamedTuples.PartialArray{T,N,D,<:ModelBindingArray{Bool,N}}, vn
+) where {T,N,D<:AbstractArray{T,N}}
+    return invoke(
+        _prepare_argument_fields,
+        Tuple{Any,Union{VarNamedTuple,VarNamedTuples.PartialArray},Any},
+        bindings.mask.template,
+        bindings,
+        vn,
+    )
+end
+
 function _merge_model_index(previous, update, optic, template)
     child = _model_argument_binding(previous, optic)
     value = child === nothing ? _copy_model_node(update) : _merge_model_node(child, update)
@@ -1439,6 +1511,7 @@ end
 function _argument_storage(values::VarNamedTuples.PartialArray, template)
     _has_complete_model_data(values) && return ModelArgumentLeaf(true)
     values.data isa ModelBindingArray && (template = values.data.template)
+    values.mask isa ModelBindingArray && (template = values.mask.template)
     if template isa AbstractArray &&
         !(values.data isa VarNamedTuples.GrowableArray) &&
         axes(template) != axes(values.data)
