@@ -3502,6 +3502,61 @@ end
     @test_throws ArgumentError fixed(parent(), DynamicPPL.Recursive())
 end
 
+@testset "own LHS bindings beside submodel namespaces" begin
+    @model binding_leaf(x=2.0) = x ~ Normal()
+    @model function binding_branch(a, observed)
+        if observed
+            a ~ Normal()
+        else
+            a ~ to_submodel(binding_leaf())
+        end
+        return a
+    end
+    @model function binding_siblings(a)
+        a.child ~ to_submodel(binding_leaf())
+        a.obs ~ Normal()
+        return a
+    end
+    @model function binding_indices(a)
+        a[1] ~ to_submodel(binding_leaf())
+        a[2] ~ Normal()
+        return a
+    end
+    @model function binding_dynamic_index(a, index)
+        a[index] ~ to_submodel(binding_leaf())
+        a[2] ~ Normal()
+        return a
+    end
+    @model binding_parent(m) = b ~ to_submodel(m)
+    for bind in (condition, fix)
+        @test bind(binding_dynamic_index(zeros(2), 1), @varname(a[2]) => 3.0)(Xoshiro(1)) ==
+            [2.0, 3.0]
+        @test_throws ArgumentError bind(
+            binding_dynamic_index(zeros(2), 1), @varname(a[1]) => 3.0
+        )
+        @test bind(binding_branch(1.0, true); a=3.0)(Xoshiro(1)) == 3.0
+        return_branch = bind(binding_branch(1.0, false); a=3.0)
+        @test_throws ArgumentError return_branch(Xoshiro(1))
+        for (m, address, expected, child_address) in (
+            (
+                binding_siblings((child=0.0, obs=1.0)),
+                @varname(a.obs),
+                (child=2.0, obs=3.0),
+                @varname(a.child)
+            ),
+            (binding_indices(zeros(2)), @varname(a[2]), [2.0, 3.0], @varname(a[1])),
+        )
+            bound = bind(m, address => 3.0)
+            @test bound(Xoshiro(1)) == expected
+            @test binding_parent(bound)(Xoshiro(1)) == expected
+            @test_throws ArgumentError bind(m, child_address => 3.0)
+            pm = prefix(m, @varname(p))
+            @test bind(pm, AbstractPPL.prefix(address, @varname(p)) => 3.0)(Xoshiro(1)) ==
+                expected
+        end
+    end
+end
+
 @testset "recursive unfix releases fixed shape ownership" begin
     @model function grows(x)
         x = vcat(x, 0.0)
@@ -4043,8 +4098,7 @@ function DynamicPPL.init(rng, vn, dist::Distribution, ::BCQuarter)
     end
     return DynamicPPL.TransformedValue(v, DynamicPPL.NoTransform())
 end
-function bc_actual(c, ops)
-    m = bc_model(c)
+function bc_actual(c, ops, m=bc_model(c))
     for (i, op) in enumerate(ops)
         try
             m = bc_apply_actual(m, op)
@@ -4259,6 +4313,16 @@ end
     return (; x, a)
 end
 
+@model function bc_named_branch(t, observed)
+    if observed
+        t.a ~ Normal()
+        t.b ~ Normal()
+    else
+        t ~ to_submodel(bc_scalar_arg(2.0))
+    end
+    return (; t)
+end
+
 @testset "binding contract: randomized differential test" begin
     samples = vcat(bc_corpus(), bc_shape_corpus(), bc_contract_corpus())
     # Local indexed bindings intentionally exercise the documented growable-array fallback.
@@ -4268,6 +4332,17 @@ end
             # The rules leave open whether a no-name local removal erases recursive markers.
             alternate = bc_predict(c, ops; clear_markers=true)
             @test bc_agrees(predicted, observed) || bc_agrees(alternate, observed)
+        end
+    end
+    let c = BCCase(:named, true, 0, false, false), rng = StableRNG(1504)
+        for i in 1:12
+            # Reuse generated binding histories with an untaken return-value branch.
+            ops = filter(
+                op -> op.verb in (:condition, :fix, :prefix), bc_sequence(rng, c, i)
+            )
+            observed = bc_actual(c, ops, bc_named_branch(bc_basevalue(c), true))
+            @test bc_agrees(bc_predict(c, ops), observed) ||
+                bc_agrees(bc_predict(c, ops; clear_markers=true), observed)
         end
     end
     let
