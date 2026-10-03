@@ -268,8 +268,10 @@ Known-invalid addresses now throw. Replace bindings of covariates with model rec
 correct unknown LHS names, nonexistent fields, and indices outside storage. Replace
 NamedTuple integer addresses such as `x[1]` with field addresses such as `x.a`, both in
 bindings and on the LHS. Replace removal of absent bindings with removal of stored
-observations or fixed bindings only. Decondition child argument-supplied observations on
-the child before `to_submodel`. Replace partial removal from one multivariate LHS variable,
+observations or fixed bindings only. To remove a child's argument-supplied observation from
+its parent, use `decondition(parent, DynamicPPL.Recursive(), @varname(a.x))`.
+Use `decondition(parent, DynamicPPL.Recursive())` for prior prediction throughout the model;
+`unfix(parent, DynamicPPL.Recursive())` uncovers observations at every depth. Replace partial removal from one multivariate LHS variable,
 such as `decondition(m, @varname(x[1]))` for `x ~ MvNormal(...)`, with a model declaring
 separate LHS variables when their roles must differ.
 
