@@ -10,42 +10,46 @@ using Distributions
 export check_model, has_static_constraints
 
 # Accumulators see distributions and values, not submodel calls (or fixed LHS variables).
-# Keep reached models only during check_model, using the existing context traversal.
-struct BindingCheckContext{C<:AbstractContext} <: DynamicPPL.AbstractParentContext
-    context::C
+# Track reached models only during check_model through its initialisation strategy.
+struct BindingCheckStrategy{S<:AbstractInitStrategy} <: AbstractInitStrategy
+    strategy::S
     models::Vector{Model}
     namespaces::Set{Symbol}
     lock::ReentrantLock
 end
-DynamicPPL.childcontext(ctx::BindingCheckContext) = ctx.context
-function DynamicPPL.setchildcontext(ctx::BindingCheckContext, child::AbstractContext)
-    return BindingCheckContext(child, ctx.models, ctx.namespaces, ctx.lock)
+function DynamicPPL.init(rng, vn, dist, strategy::BindingCheckStrategy)
+    return DynamicPPL.init(rng, vn, dist, strategy.strategy)
+end
+function DynamicPPL.get_param_eltype(strategy::BindingCheckStrategy)
+    return DynamicPPL.get_param_eltype(strategy.strategy)
 end
 
 function DynamicPPL.tilde_assume!!(
     parent::Model,
-    ctx::BindingCheckContext,
+    ctx::Context{<:Random.AbstractRNG,<:BindingCheckStrategy},
     submodel::DynamicPPL.Submodel{M,AutoPrefix},
     vn::VarName,
     template,
     vi::AbstractVarInfo,
 ) where {M<:Model,AutoPrefix}
+    checking = ctx.strategy
     if AutoPrefix || DynamicPPL.getprefix(submodel.model) !== nothing
         # This child and its descendants have their own namespace.
         namespace = AutoPrefix ? vn : DynamicPPL.getprefix(submodel.model)
-        lock(ctx.lock) do
-            push!(ctx.namespaces, DynamicPPL.AbstractPPL.getsym(namespace))
+        lock(checking.lock) do
+            push!(checking.namespaces, DynamicPPL.AbstractPPL.getsym(namespace))
         end
-        return DynamicPPL.tilde_assume!!(parent, ctx.context, submodel, vn, template, vi)
+        context = Context(ctx.rng, checking.strategy, ctx.transform_strategy)
+        return DynamicPPL.tilde_assume!!(parent, context, submodel, vn, template, vi)
     end
-    lock(ctx.lock) do
-        push!(ctx.models, submodel.model)
+    lock(checking.lock) do
+        push!(checking.models, submodel.model)
     end
-    # Retain the checking context for unprefixed descendants, while delegating the
+    # Retain the checking strategy for unprefixed descendants, while delegating the
     # actual evaluation to the ordinary submodel method.
     return invoke(
         DynamicPPL.tilde_assume!!,
-        Tuple{Model,AbstractContext,typeof(submodel),VarName,Any,AbstractVarInfo},
+        Tuple{Model,Context,typeof(submodel),VarName,Any,AbstractVarInfo},
         parent,
         ctx,
         submodel,
@@ -55,7 +59,7 @@ function DynamicPPL.tilde_assume!!(
     )
 end
 
-function _warn_unused_binding_names(model, ctx::BindingCheckContext)
+function _warn_unused_binding_names(model, ctx::BindingCheckStrategy)
     names = copy(ctx.namespaces)
     for reached in ctx.models
         lhs = DynamicPPL._lhs_names(DynamicPPL._binding_metadata(reached))
@@ -226,13 +230,11 @@ function check_model(
         PriorDistributionAccumulator(),
         DynamicPPL.DebugRawValueAccumulator(),
     ))
-    init_strategy = InitFromPrior()
-    binding_context = BindingCheckContext(
-        model.context, Model[model], Set{Symbol}(), ReentrantLock()
+    checking = BindingCheckStrategy(
+        InitFromPrior(), Model[model], Set{Symbol}(), ReentrantLock()
     )
-    checked_model = DynamicPPL.contextualize(model, binding_context)
-    _, vi = DynamicPPL.init!!(rng, checked_model, vi, init_strategy, UnlinkAll())
-    _warn_unused_binding_names(model, binding_context)
+    _, vi = DynamicPPL.init!!(rng, model, vi, checking, UnlinkAll())
+    _warn_unused_binding_names(model, checking)
 
     params = get_raw_values(vi)
     # This adds one evaluation per `check_model` call, not per ordinary model evaluation.
@@ -356,7 +358,7 @@ Generate the evaluator call and the types of the arguments.
 - `varinfo::AbstractVarInfo`: The varinfo to use when evaluating the model. Default: `VarInfo(model)`.
 
 # Keyword Arguments
-- `context::AbstractContext`: The evaluation context. Defaults to the values supplied in `varinfo`,
+- `context::Context`: The evaluation context. Defaults to the values supplied in `varinfo`,
   unlinked, or `InitFromPrior()` when `varinfo` has no values.
 
 # Returns
@@ -368,7 +370,7 @@ A 2-tuple with the following elements:
 function gen_evaluator_call_with_types(
     model::Model,
     varinfo::AbstractVarInfo=VarInfo(model);
-    context::AbstractContext=InitContext(
+    context::Context=Context(
         if !DynamicPPL.hasacc(varinfo, Val(DynamicPPL.VECTORVAL_ACCNAME)) ||
             isempty(varinfo)
             InitFromPrior()
@@ -378,9 +380,7 @@ function gen_evaluator_call_with_types(
         UnlinkAll(),
     ),
 )
-    args, kwargs = DynamicPPL.make_evaluate_args_and_kwargs(
-        setleafcontext(model, context), varinfo
-    )
+    args, kwargs = DynamicPPL.make_evaluate_args_and_kwargs(model, context, varinfo)
     f, args, kwargs = DynamicPPL._model_evaluator(model.f, args, kwargs)
     return if isempty(kwargs)
         (f, Base.typesof(args...))
@@ -401,7 +401,7 @@ This simply calls `@code_warntype` on the model's evaluator, filling in internal
 - `varinfo::AbstractVarInfo`: The varinfo to use when evaluating the model. Default: `VarInfo(model)`.
 
 # Keyword Arguments
-- `context::AbstractContext`: The evaluation context. Defaults to the values supplied in `varinfo`,
+- `context::Context`: The evaluation context. Defaults to the values supplied in `varinfo`,
   unlinked, or `InitFromPrior()` when `varinfo` has no values.
 """
 function model_warntype(
@@ -423,7 +423,7 @@ This simply calls `@code_typed` on the model's evaluator, filling in internal ar
 - `varinfo::AbstractVarInfo`: The varinfo to use when evaluating the model. Default: `VarInfo(model)`.
 
 # Keyword Arguments
-- `context::AbstractContext`: The evaluation context. Defaults to the values supplied in `varinfo`,
+- `context::Context`: The evaluation context. Defaults to the values supplied in `varinfo`,
   unlinked, or `InitFromPrior()` when `varinfo` has no values.
 """
 function model_typed(

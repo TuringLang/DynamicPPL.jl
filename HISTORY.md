@@ -12,7 +12,7 @@ Re-evaluation and `LogDensityFunction` construction no longer copy fixed transfo
 
 `pointwise_loglikelihoods` and `pointwise_logdensities` now record observations for threadsafe models, such as `setthreadsafe(model, true)`; previously they were silently omitted. See [#1500](https://github.com/TuringLang/DynamicPPL.jl/pull/1500).
 
-Added `evaluate!!(model, context, vi)` to evaluate with an explicit leaf context and collect outputs in `vi`, such as `evaluate!!(model, InitContext(rng, InitFromPrior(), UnlinkAll()), VarInfo())`. See [#1500](https://github.com/TuringLang/DynamicPPL.jl/pull/1500).
+Added `evaluate!!(model, context, vi)` to evaluate with an explicit `Context` and collect outputs in `vi`, such as `evaluate!!(model, Context(rng, InitFromPrior(), UnlinkAll()), VarInfo())`. See [#1500](https://github.com/TuringLang/DynamicPPL.jl/pull/1500), [#1503](https://github.com/TuringLang/DynamicPPL.jl/pull/1503).
 
 `TransformedValue`, `FixedTransform`, `WithTransforms`, `LinkSome`, and `UnlinkSome` now hash consistently with `isequal`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
@@ -99,6 +99,26 @@ Debug introspection may return a body callable distinct from `model.f`: assuming
 Context-based address prefixing is removed: `prefix(ctx, vn)` → `AbstractPPL.prefix(vn, DynamicPPL.getprefix(model))` for prefixed models. See [#1502](https://github.com/TuringLang/DynamicPPL.jl/pull/1502).
 
 Bindings outside a model’s prefix now throw: `condition(prefix(m, :p); y=v)` → `condition(prefix(m, :p), @varname(p.y) => v)`. See [#1502](https://github.com/TuringLang/DynamicPPL.jl/pull/1502).
+
+`DefaultContext()`/`InitContext(...)` are removed → `Context(rng, init_strategy, transform_strategy)` with explicit parameter inputs and output transforms. See [#1503](https://github.com/TuringLang/DynamicPPL.jl/pull/1503), [#1469](https://github.com/TuringLang/DynamicPPL.jl/issues/1469).
+
+`Model.context`, `contextualize`, and two-argument evaluation are removed: `evaluate!!(contextualize(m, ctx), vi)` → `evaluate!!(m, ctx, vi)`. See [#1503](https://github.com/TuringLang/DynamicPPL.jl/pull/1503).
+
+Evaluation no longer reads recorded parameters: implicit `VarInfo` reuse → `Context(rng, InitFromParams(get_vector_values(vi), nothing), strategy)`. See [#1503](https://github.com/TuringLang/DynamicPPL.jl/pull/1503).
+
+Handwritten evaluator signatures change: `f(model, vi, args...)` → `f(model, ctx::Context, vi, args...)`. See [#1503](https://github.com/TuringLang/DynamicPPL.jl/pull/1503).
+
+`Model` constructors no longer accept contexts: `Model{false}(f, args, defaults, ctx)` → `Model{false}(f, args, defaults)`; pass `ctx` to evaluation. See [#1503](https://github.com/TuringLang/DynamicPPL.jl/pull/1503).
+
+`make_evaluate_args_and_kwargs(m, vi)` → public `DynamicPPL.make_evaluate_args_and_kwargs(m, ctx, vi)`; prepared arguments now begin with `(m, ctx, vi)`. See [#1503](https://github.com/TuringLang/DynamicPPL.jl/pull/1503).
+
+Custom `AbstractContext`/`AbstractParentContext` subtyping is unsupported, and both exports disappear: `tilde_assume!!` context overloads → initialisation strategies; output hooks → accumulators. See [#1503](https://github.com/TuringLang/DynamicPPL.jl/pull/1503).
+
+`get_param_eltype(vi, context)` → `get_param_eltype(strategy)`; move custom context overloads to initialisation strategies. See [#1503](https://github.com/TuringLang/DynamicPPL.jl/pull/1503).
+
+`childcontext`, `setchildcontext`, `leafcontext`, and `setleafcontext` are removed: context hierarchy traversal/reconstruction → pass one `Context` directly to evaluation. See [#1503](https://github.com/TuringLang/DynamicPPL.jl/pull/1503).
+
+`DynamicPPL.evaluate_nowarn!!(m, vi)` is removed → `evaluate!!(m, ctx, vi)`. See [#1503](https://github.com/TuringLang/DynamicPPL.jl/pull/1503).
 
 `@vnt` is no longer exported: `@vnt` → `DynamicPPL.@vnt` or explicitly import it. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 

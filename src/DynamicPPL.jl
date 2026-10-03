@@ -138,17 +138,8 @@ export AbstractVarInfo,
     get_range_and_transform,
     get_all_ranges_and_transforms,
     get_logdensity_callable,
-    # Leaf contexts
-    AbstractContext,
-    contextualize,
-    DefaultContext,
-    InitContext,
-    # Parent contexts
-    AbstractParentContext,
-    childcontext,
-    setchildcontext,
-    leafcontext,
-    setleafcontext,
+    # Contexts
+    Context,
     # Tilde pipeline
     tilde_assume!!,
     tilde_observe!!,
@@ -224,7 +215,7 @@ export AbstractVarInfo,
     generated_quantities,
     typed_identity
 
-@compat public getprefix
+@compat public make_evaluate_args_and_kwargs, store_coloneq_value!!, getprefix
 
 # Reexport
 using Distributions: loglikelihood
@@ -240,6 +231,7 @@ Abstract supertype for data structures that capture random variables when execut
 probabilistic model and accumulate log densities such as the log likelihood or the
 log joint probability of the model.
 
+Implement `getaccs` and `setaccs!!` to provide an output container.
 See also: [`VarInfo`](@ref).
 """
 abstract type AbstractVarInfo <: AbstractModelTrace end
@@ -262,7 +254,6 @@ using .VarNamedTuples:
 
 include("transformed_values.jl")
 include("contexts.jl")
-include("contexts/default.jl")
 include("contexts/init.jl")
 include("model.jl")
 include("conditionfix.jl")
