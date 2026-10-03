@@ -1154,4 +1154,39 @@ end
     end
 end
 
+@testset "recursive partial edits preserve replacement shape" begin
+    rec = DynamicPPL.Recursive()
+    @model function shaped_child(y, mu)
+        for i in eachindex(y)
+            y[i] ~ Normal(mu)
+        end
+        return y
+    end
+    @model function shaped_parent(n)
+        mu ~ Normal()
+        a ~ to_submodel(shaped_child(zeros(n), mu))
+        return a
+    end
+    for (n, replacement) in ((3, [1.0, 2.0]), (2, [1.0, 2.0, 3.0]))
+        for (bind, remove) in ((condition, decondition), (fix, unfix))
+            whole = bind(shaped_parent(n), rec, @varname(a.y) => replacement)
+            edited = bind(whole, rec, @varname(a.y[1]) => 4.0)
+            expected = [4.0; replacement[2:end]]
+            @test returned(edited, (mu=0.3,)) == expected
+            partial = remove(whole, rec, @varname(a.y[1]))
+            @test returned(
+                partial, VarNamedTuple((@varname(mu) => 0.3, @varname(a.y[1]) => 4.0))
+            ) == (bind === condition ? expected : [0.0; replacement[2:end]])
+            for backend in (AutoForwardDiff(), AutoMooncake(; config=nothing))
+                ldf = LogDensityFunction(edited; adtype=backend)
+                value, gradient = LogDensityProblems.logdensity_and_gradient(ldf, [0.3])
+                @test value ≈
+                    logpdf(Normal(), 0.3) +
+                      (bind === condition ? sum(logpdf.(Normal(0.3), expected)) : 0.0)
+                @test gradient ≈ [bind === condition ? sum(expected .- 0.3) - 0.3 : -0.3]
+            end
+        end
+    end
+end
+
 end
