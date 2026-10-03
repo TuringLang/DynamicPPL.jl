@@ -4,7 +4,9 @@
 forms: `VarInfo(accs...)`, `VarInfo(accs::Tuple)`, and `VarInfo(accs::AccumulatorTuple)`.
 The old `VarInfo{Tfm,T,Accs}` is now `VarInfo{Accs}`; update dispatch that uses the old
 type parameters. Transform strategies are evaluation inputs, not part of the output type.
-`VarInfo()` records log densities, not parameter values. Add a `RawValueAccumulator`
+`VarInfo()` records log densities, not parameter values; after evaluation its `keys` are
+empty, without an error. Recording values is opt-in because most evaluations, such as
+sampling and gradients, need only log densities. Add a `RawValueAccumulator`
 or `VectorValueAccumulator` when those outputs are needed, for example
 `VarInfo(VectorValueAccumulator(), DynamicPPL.default_accumulators()...)`; `VarInfo(model)` remains
 a convenience constructor that records vectorised values and log densities.
@@ -300,6 +302,20 @@ and their `_nested` variants with `haskey(conditioned(m), vn)`, `conditioned(m)[
 the corresponding `fixed(m)` operations. Replace role inspection through `inargnames`,
 `inmissings`, `getmissings`, `isassumption`, `isfixed`, `contextual_isassumption`,
 `contextual_isfixed`, or `hasmissing` with inspection of `conditioned(m)` and `fixed(m)`.
+
+To rebuild a model with new arguments while keeping its bindings, previously
+`contextualize(new, old.context)`, transfer the bindings stored on `old`:
+
+```julia
+new = decondition(new)                         # drop new's own observations
+new = condition(new, conditioned(unfix(old)))  # old's observations, also those under fixes
+new = fix(new, fixed(old))
+```
+
+`conditioned` and `fixed` list only bindings stored on `old`, not those held by its
+submodels; `new` rebuilds its submodels from its own arguments. `old`'s argument-supplied
+observations become explicit observations of `new`, so they replace `new`'s arguments at those
+addresses. Prefixes are not transferred; apply `prefix` to `new` again.
 
 Replace context overloads of `tilde_observe!!` with `accumulate_observe!!` implementations.
 For direct observation calls, replace `tilde_observe!!(ctx, dist, value, vn, template, vi)`
