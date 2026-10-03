@@ -1111,4 +1111,47 @@ end
     @test keys(rand(Xoshiro(1), removed)) == [@varname(p[2].a.x)]
 end
 
+@testset "recursive removal classifies the executed RHS" begin
+    rec = DynamicPPL.Recursive()
+    @model removal_leaf(x) = x ~ Normal()
+    @model function removal_branch(a, observed)
+        if observed
+            a ~ Normal()
+        else
+            a ~ to_submodel(removal_leaf(missing))
+        end
+        return a
+    end
+    @model function removal_dynamic(a)
+        child = to_submodel(removal_leaf(missing))
+        a ~ child
+        return a
+    end
+    @model removal_outer(m) = b ~ to_submodel(m)
+    m = decondition(removal_branch(1.0, true), rec, @varname(a))
+    @test keys(rand(Xoshiro(1), m)) == [@varname(a)]
+    @test keys(
+        rand(
+            Xoshiro(1),
+            unfix(
+                decondition(fix(removal_branch(1.0, true), rec; a=2.0), rec, @varname(a))
+            ),
+        ),
+    ) == [@varname(a)]
+    m = decondition(removal_outer(removal_branch(1.0, true)), rec, @varname(b.a))
+    @test keys(rand(Xoshiro(1), m)) == [@varname(b.a)]
+    @test_throws ArgumentError decondition(
+        removal_branch(missing, true), rec, @varname(a.x)
+    )(
+        Xoshiro(1)
+    )
+    for child in (removal_dynamic(missing), removal_branch(missing, false))
+        @test keys(rand(Xoshiro(1), decondition(child, rec, @varname(a.x)))) ==
+            [@varname(a.x)]
+        @test keys(
+            rand(Xoshiro(1), decondition(removal_outer(child), rec, @varname(b.a.x)))
+        ) == [@varname(b.a.x)]
+    end
+end
+
 end
