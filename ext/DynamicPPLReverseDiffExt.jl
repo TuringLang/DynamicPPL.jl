@@ -18,9 +18,18 @@ function DynamicPPL._retain_argument_children!(memo, value::ReverseDiff.TrackedA
     # A tracked array is an immutable facade. Keep its tape and origin buffers so
     # reads of a copied facade still connect to the enclosing differentiation.
     memo[DynamicPPL.ModelArgumentCopy] = true
-    memo[ReverseDiff.value(value)] = ReverseDiff.value(value)
-    memo[ReverseDiff.deriv(value)] = ReverseDiff.deriv(value)
+    _retain_buffer!(memo, ReverseDiff.value(value))
+    _retain_buffer!(memo, ReverseDiff.deriv(value))
     memo[ReverseDiff.tape(value)] = ReverseDiff.tape(value)
+    return nothing
+end
+
+# Views and reshapes also need their parent buffers: deepcopy may rebuild a
+# wrapper through its parent even when the wrapper itself is in the memo.
+function _retain_buffer!(memo, buffer)
+    memo[buffer] = buffer
+    storage = parent(buffer)
+    storage === buffer || _retain_buffer!(memo, storage)
     return nothing
 end
 
