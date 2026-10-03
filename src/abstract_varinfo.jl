@@ -419,6 +419,9 @@ end
     keys(vi::AbstractVarInfo)
 
 Return an iterator over all `vns` in `vi`.
+
+For `VarInfo` and `ThreadSafeVarInfo`, throw an `ArgumentError` if no
+`VectorValueAccumulator` is present.
 """ Base.keys
 
 """
@@ -528,6 +531,9 @@ This is useful when using a sampling algorithm that assumes an empty `vi`, e.g. 
     isempty(vi::AbstractVarInfo)
 
 Return true if `vi` is empty and false otherwise.
+
+For `VarInfo` and `ThreadSafeVarInfo`, throw an `ArgumentError` if no
+`VectorValueAccumulator` is present.
 """ Base.isempty
 
 """
@@ -675,6 +681,7 @@ Return `true` if all variables in `vi` have a transform of `DynamicLink`, and fa
     otherwise.
 
 If `vns` is provided, then only check if this/these varname(s) are transformed.
+Without `vns`, a `VarInfo` with no `VectorValueAccumulator` throws an `ArgumentError`.
 
 !!! warning
     Not all implementations of `AbstractVarInfo` support transforming only a subset of

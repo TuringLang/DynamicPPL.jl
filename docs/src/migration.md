@@ -4,8 +4,9 @@
 forms: `VarInfo(accs...)`, `VarInfo(accs::Tuple)`, and `VarInfo(accs::AccumulatorTuple)`.
 The old `VarInfo{Tfm,T,Accs}` is now `VarInfo{Accs}`; update dispatch that uses the old
 type parameters. Transform strategies are evaluation inputs, not part of the output type.
-`VarInfo()` records log densities, not parameter values; after evaluation its `keys` are
-empty, without an error. Recording values is opt-in because most evaluations, such as
+`VarInfo()` records log densities, not parameter values; `keys`, `haskey`, `length`, `values`
+and `isempty` throw `ArgumentError` without a `VectorValueAccumulator`.
+Recording values is opt-in because most evaluations, such as
 sampling and gradients, need only log densities. Add a `RawValueAccumulator`
 or `VectorValueAccumulator` when those outputs are needed, for example
 `VarInfo(VectorValueAccumulator(), DynamicPPL.default_accumulators()...)`; `VarInfo(model)` remains
