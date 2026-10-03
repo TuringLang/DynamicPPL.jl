@@ -1,28 +1,137 @@
-"""
-    struct Model{F,argnames,defaultnames,missings,Targs,Tdefaults,Ctx<:AbstractContext,Threaded}
-        f::F
-        args::NamedTuple{argnames,Targs}
-        defaults::NamedTuple{defaultnames,Tdefaults}
-        context::Ctx=DefaultContext()
+# ------------
+# Model values
+# ------------
+
+struct Condition end
+struct ArgumentCondition end
+struct Fix end
+
+struct ModelValue{R<:Union{Condition,ArgumentCondition,Fix},T}
+    value::T
+    function ModelValue{R}(value::T) where {R<:Union{Condition,ArgumentCondition,Fix},T}
+        (R === Condition || R === ArgumentCondition || R === Fix) ||
+            throw(ArgumentError("A model value must have one concrete role"))
+        return new{R,T}(value)
     end
+end
 
-A `Model` struct with model evaluation function of type `F`, arguments of names `argnames`
-types `Targs`, default arguments of names `defaultnames` with types `Tdefaults`, missing
-arguments `missings`, and evaluation context of type `Ctx`.
+struct NoModelBinding end
 
-Here `argnames`, `defaultargnames`, and `missings` are tuples of symbols, e.g. `(:a, :b)`.
-`context` is by default `DefaultContext()`.
+# Fixed bindings preserve the observation layer they shadow.
+struct ModelBindingLayers{O<:VarNamedTuple,F<:VarNamedTuple,V<:VarNamedTuple,A<:Tuple}
+    observations::O
+    fixed::F
+    values::V
+    # Whole fixed owners survive expansion into partial storage.
+    owners::A
+end
 
-An argument with a type of `Missing` will be in `missings` by default. However, in
-non-traditional use-cases `missings` can be defined differently. All variables in `missings`
-are treated as random variables rather than observations.
+# Child bindings selected from the parent's submodel namespace use the child's storage shape.
+struct LocalModelValues{V<:Union{VarNamedTuple,ModelBindingLayers},A<:Tuple}
+    values::V
+    owners::A
+end
 
-The `Threaded` type parameter indicates whether the model requires threadsafe evaluation
-(i.e., whether the model contains statements which modify the internal VarInfo that are
-executed in parallel). By default, this is set to `false`.
+# Default arguments need no enclosing namespace storage during evaluation.
+struct UnprefixedArgumentValues{V<:VarNamedTuple}
+    values::V
+end
 
-The default arguments are used internally when constructing instances of the same model with
-different arguments.
+# Partial bindings retain the container from which their fields or tuple elements came.
+struct ModelValueTree{T,V<:Union{VarNamedTuple,Tuple}}
+    template::T
+    values::V
+    function ModelValueTree(template::T, values::V) where {T,V<:Union{VarNamedTuple,Tuple}}
+        if values isa Tuple
+            template isa Tuple && length(template) == length(values) ||
+                throw(ArgumentError("Tuple bindings must preserve their template's length"))
+        else
+            all(name -> hasproperty(template, name), keys(values.data)) ||
+                throw(ArgumentError("Field bindings must belong to their template"))
+        end
+        return new{T,V}(template, values)
+    end
+end
+
+# ----------------
+# Model definition
+# ----------------
+
+struct PrefixTemplate{V<:VarName,T,I}
+    prefix::V
+    template::T
+    inner::I
+end
+_apply_prefix_template(::Nothing, template) = template
+function _apply_prefix_template(prefix::VarName, template)
+    return SkipTemplate{optic_skip_length(AbstractPPL.getoptic(prefix)) + 1}(template)
+end
+function _apply_prefix_template(prefix::PrefixTemplate, template)
+    return VarNamedTuples.nested_template(
+        AbstractPPL.getoptic(prefix.prefix),
+        prefix.template,
+        _apply_prefix_template(prefix.inner, template),
+    )
+end
+_compose_prefix_templates(::Nothing, inner) = inner
+function _compose_prefix_templates(prefix::VarName, inner)
+    return PrefixTemplate(prefix, NoTemplate(), inner)
+end
+function _compose_prefix_templates(prefix::PrefixTemplate, inner)
+    return PrefixTemplate(
+        prefix.prefix, prefix.template, _compose_prefix_templates(prefix.inner, inner)
+    )
+end
+
+is_splat_symbol(s::Symbol) = startswith(string(s), "#splat#")
+function unsplat_symbol(s::Symbol)
+    return is_splat_symbol(s) ? Symbol(chopprefix(string(s), "#splat#")) : s
+end
+
+# The existing argument metadata slot also carries macro-known LHS addresses.
+struct ModelBindingMetadata{Arguments,LHS,Submodels,Types} end
+_args_on_lhs(::ModelBindingMetadata{A}) where {A} = A
+_args_on_lhs(names::Union{Tuple,Vector{Symbol}}) = Tuple(names)
+_lhs_names(::ModelBindingMetadata{A,L}) where {A,L} = L
+_lhs_names(::Tuple) = nothing
+_may_have_submodels(::ModelBindingMetadata{A,L,S}) where {A,L,S} = !isempty(S)
+_submodel_lhs_names(::ModelBindingMetadata{A,L,S}) where {A,L,S} = S
+_may_have_submodels(::Tuple) = true
+
+_declared_argument_type(::Tuple, name) = Any
+function _declared_argument_type(::ModelBindingMetadata{A,L,S,T}, name) where {A,L,S,T}
+    return fieldtype(T, name)
+end
+
+function _reconstruct_model end
+
+"""
+    Model{Threaded}(f, args::NamedTuple, defaults::NamedTuple, context=DefaultContext(); args_on_lhs=())
+
+Store a model function, arguments, and context. Prefer [`@model`](@ref) for construction.
+The names of arguments with LHS variables are stored as immutable type metadata.
+Set `args_on_lhs` to the tuple of argument names that occur on the left-hand side of
+`~`, for example `Model{false}(f, (; y=1.0), (;); args_on_lhs=(:y,))`.
+These arguments record argument-supplied observations, just as with `@model`, and can
+be bound with [`condition`](@ref) or [`fix`](@ref). Use [`decondition`](@ref) to remove
+argument-supplied observations. Without `args_on_lhs`, direct construction records
+no argument-supplied observations and its arguments cannot be bound.
+Whole `missing` or `nothing` arguments throw `ArgumentError` when a tilde reads their
+argument-supplied observations, even if the body replaces them. Use [`decondition`](@ref)
+to make their LHS variables latent.
+Partial bindings into whole `missing`/`nothing` arguments, even after deconditioning, throw
+`ArgumentError` when bound; supply a concrete argument such as `f(zeros(n))` or a whole binding.
+At a submodel tilde, an argument LHS variable receives the submodel return value. The
+argument supplies only its value before the tilde runs; its argument-supplied observation
+is ignored at that tilde, so it needs no deconditioning. See [Binding rules](@ref).
+
+Handwritten evaluators are responsible for the argument preparation and binding-aware tilde
+protocol generated by `@model`. In particular, prepare argument LHS variables with
+`prepare_model_argument` before the body, resolve their roles with `_get_argument_role`,
+and validate observed or fixed values with `_check_tilde_value`. Calling `tilde_observe!!`
+directly does not perform binding lookup or the whole-placeholder check. The constructor
+records observations; it does not wrap a handwritten evaluator to enforce this protocol.
+These helpers are internal; prefer reusing an evaluator generated by `@model`.
 
 !!! note "Why keep `Model.f`?"
     Local models can capture variables from the enclosing function:
@@ -45,75 +154,90 @@ different arguments.
     the method, but world age prevents the running `run_analysis` from calling it directly.
     We'd need a bridge such as `invokelatest` and separate storage for captures. Keeping `f`
     avoids both.
-
-# Examples
-
-```julia
-julia> Model(f, (x = 1.0, y = 2.0))
-Model{typeof(f),(:x, :y),(),(),Tuple{Float64,Float64},Tuple{}}(f, (x = 1.0, y = 2.0), NamedTuple())
-
-julia> Model(f, (x = 1.0, y = 2.0), (x = 42,))
-Model{typeof(f),(:x, :y),(:x,),(),Tuple{Float64,Float64},Tuple{Int64}}(f, (x = 1.0, y = 2.0), (x = 42,))
-
-julia> Model{(:y,)}(f, (x = 1.0, y = 2.0), (x = 42,)) # with special definition of missings
-Model{typeof(f),(:x, :y),(:x,),(:y,),Tuple{Float64,Float64},Tuple{Int64}}(f, (x = 1.0, y = 2.0), (x = 42,))
-```
 """
 struct Model{
-    F,argnames,defaultnames,missings,Targs,Tdefaults,Ctx<:AbstractContext,Threaded
+    F,
+    argnames,
+    defaultnames,
+    Targs,
+    Tdefaults,
+    C<:AbstractContext,
+    Values<:Union{
+        VarNamedTuple,ModelBindingLayers,LocalModelValues,UnprefixedArgumentValues
+    },
+    Threaded,
+    ArgsOnLHS,
 } <: AbstractProbabilisticProgram
     f::F
     args::NamedTuple{argnames,Targs}
     defaults::NamedTuple{defaultnames,Tdefaults}
-    context::Ctx
-
-    @doc """
-        Model{Threaded,missings}(f, args::NamedTuple, defaults::NamedTuple)
-
-    Create a model with evaluation function `f` and missing arguments overwritten by
-    `missings`.
-    """
-    function Model{Threaded,missings}(
+    context::C
+    values::Values
+    function Model{Threaded}(
         f::F,
-        args::NamedTuple{argnames,Targs},
-        defaults::NamedTuple{defaultnames,Tdefaults},
-        context::Ctx=DefaultContext(),
-    ) where {missings,F,argnames,Targs,defaultnames,Tdefaults,Ctx,Threaded}
-        return new{F,argnames,defaultnames,missings,Targs,Tdefaults,Ctx,Threaded}(
-            f, args, defaults, context
+        args::NamedTuple{A,Ta},
+        defaults::NamedTuple{D,Td},
+        context::C,
+        values::V;
+        args_on_lhs::Union{Tuple{Vararg{Symbol}},Vector{Symbol},ModelBindingMetadata}=(),
+    ) where {F,A,Ta,D,Td,C,V,Threaded}
+        mapreduce(
+            pair -> pair.second isa ModelValue, &, _model_values(values); init=true
+        ) || throw(ArgumentError("Model values must carry a condition or fix role"))
+        argument_names = _args_on_lhs(args_on_lhs)
+        metadata = args_on_lhs isa ModelBindingMetadata ? args_on_lhs : argument_names
+        for name in argument_names
+            name in (_argument_names(args)..., _argument_names(defaults)...) || throw(
+                ArgumentError(
+                    "`$name` in `args_on_lhs` is not an argument or default name"
+                ),
+            )
+        end
+        return new{F,A,D,Ta,Td,C,V,Threaded,metadata}(f, args, defaults, context, values)
+    end
+    # Internal reconstruction reuses already-validated bindings.
+    function DynamicPPL._reconstruct_model(
+        model::Model{F,A,D,Ta,Td}, context::C, values::V, ::Val{Threaded}
+    ) where {F,A,D,Ta,Td,C,V,Threaded}
+        return new{F,A,D,Ta,Td,C,V,Threaded,_binding_metadata(model)}(
+            model.f, model.args, model.defaults, context, values
         )
     end
 end
 
-"""
-    Model(f, args::NamedTuple[, defaults::NamedTuple = ()])
-
-Create a model with evaluation function `f` and missing arguments deduced from `args`.
-
-Default arguments `defaults` are used internally when constructing instances of the same
-model with different arguments.
-"""
-@generated function Model{Threaded}(
-    f::F,
-    args::NamedTuple{argnames,Targs},
-    defaults::NamedTuple{kwargnames,Tkwargs},
-    context::AbstractContext=DefaultContext(),
-) where {Threaded,F,argnames,Targs,kwargnames,Tkwargs}
-    missing_args = Tuple(
-        name for (name, typ) in zip(argnames, Targs.types) if typ <: Missing
-    )
-    missing_kwargs = Tuple(
-        name for (name, typ) in zip(kwargnames, Tkwargs.types) if typ <: Missing
-    )
-    return :(Model{Threaded,$(missing_args..., missing_kwargs...)}(
-        f, args, defaults, context
-    ))
+function _binding_metadata(
+    ::Model{F,A,D,Ta,Td,C,V,Threaded,ArgsOnLHS}
+) where {F,A,D,Ta,Td,C,V,Threaded,ArgsOnLHS}
+    return ArgsOnLHS
 end
 
-function Model{Threaded}(
-    f, args::NamedTuple, context::AbstractContext=DefaultContext(); kwargs...
+_args_on_lhs(model::Model) = _args_on_lhs(_binding_metadata(model))
+
+Base.@constprop :aggressive function Model{Threaded}(
+    f,
+    args::NamedTuple,
+    defaults::NamedTuple,
+    context::AbstractContext=DefaultContext();
+    args_on_lhs::Union{Tuple{Vararg{Symbol}},Vector{Symbol},ModelBindingMetadata}=(),
 ) where {Threaded}
-    return Model{Threaded}(f, args, NamedTuple(kwargs), context)
+    values = _argument_defaults(merge(args, defaults), Val(_args_on_lhs(args_on_lhs)))
+    return Model{Threaded}(f, args, defaults, context, values; args_on_lhs)
+end
+
+"""
+    Model{Threaded}(f, args::NamedTuple; kwargs...)
+
+Create a model with evaluation function `f` and arguments `args`.
+
+Arguments are ordinary inputs; no argument-supplied observations or metadata about
+argument LHS variables are recorded, and these arguments cannot be bound.
+Use [`@model`](@ref) or the constructor accepting `defaults` and `args_on_lhs` to
+construct a model with argument-supplied observations.
+
+Keyword arguments `kwargs` are stored in the model's `defaults` field.
+"""
+function Model{Threaded}(f, args::NamedTuple; kwargs...) where {Threaded}
+    return Model{Threaded}(f, args, NamedTuple(kwargs))
 end
 
 """
@@ -122,31 +246,35 @@ end
 Return whether `model` has been marked as needing threadsafe evaluation (using
 `setthreadsafe`).
 """
-function requires_threadsafe(
-    ::Model{F,A,D,M,Ta,Td,Ctx,Threaded}
-) where {F,A,D,M,Ta,Td,Ctx,Threaded}
-    return Threaded
+requires_threadsafe(::Model{F,A,D,Ta,Td,C,V,Threaded}) where {F,A,D,Ta,Td,C,V,Threaded} =
+    Threaded
+function _reconstruct_model(model::Model; context=model.context, values=model.values)
+    return _reconstruct_model(model, context, values, Val(requires_threadsafe(model)))
 end
 
 """
     contextualize(model::Model, context::AbstractContext)
 
-Return a new `Model` with the same evaluation function and other arguments, but
-with its underlying context set to `context`.
+Return a model with its context replaced by `context`.
 """
 function contextualize(model::Model, context::AbstractContext)
-    return Model{requires_threadsafe(model)}(model.f, model.args, model.defaults, context)
+    if model.values isa UnprefixedArgumentValues && (
+        last(extract_prefixes(context)) != _model_prefix(model) ||
+        _prefix_template(context) !== _model_prefix_template(model)
+    )
+        model = _materialize_argument_values(model)
+    end
+    return _reconstruct_model(model; context)
 end
-
-"""
-    setleafcontext(model::Model, context::AbstractContext)
-
-Return a new `Model` with its leaf context set to `context`. This is a convenience shortcut
-for `contextualize(model, setleafcontext(model.context, context)`).
-"""
+"""Return a model with its leaf context replaced by `context`."""
 function setleafcontext(model::Model, context::AbstractContext)
     return contextualize(model, setleafcontext(model.context, context))
 end
+_model_prefix(model::Model) = last(extract_prefixes(model.context))
+_prefix_template(::AbstractContext) = nothing
+_prefix_template(context::AbstractParentContext) = _prefix_template(childcontext(context))
+_prefix_template(context::PrefixContext) = context.template
+_model_prefix_template(model::Model) = _prefix_template(model.context)
 
 """
     setthreadsafe(model::Model, threadsafe::Bool)
@@ -167,582 +295,51 @@ Setting `threadsafe` to `true` increases the overhead in evaluating the model. P
 [the Turing.jl docs](https://turinglang.org/docs/usage/threadsafe-evaluation/) for more
 details.
 """
-function setthreadsafe(model::Model{F,A,D,M}, threadsafe::Bool) where {F,A,D,M}
+function setthreadsafe(model::Model, threadsafe::Bool)
     return if requires_threadsafe(model) == threadsafe
         model
     else
-        Model{threadsafe,M}(model.f, model.args, model.defaults, model.context)
+        _reconstruct_model(model, model.context, model.values, Val(threadsafe))
     end
 end
 
-"""
-    model | (x = 1.0, ...)
-
-Return a `Model` which now treats variables on the right-hand side as observations.
-
-See [`condition`](@ref) for more information and examples.
-"""
-Base.:|(model::Model, values::Union{NamedTuple,AbstractDict,Pair,Tuple,VarNamedTuple}) =
-    condition(model, values)
-
-"""
-    condition(model::Model; values...)
-    condition(model::Model, values::NamedTuple)
-
-Return a `Model` which now treats the variables in `values` as observations.
-
-See also: [`decondition`](@ref), [`conditioned`](@ref)
-
-# Limitations
-
-This does currently _not_ work with variables that are
-provided to the model as arguments, e.g. `@model function demo(x) ... end`
-means that `condition` will not affect the variable `x`.
-
-Therefore if one wants to make use of `condition` and [`decondition`](@ref)
-one should not be specifying any random variables as arguments.
-
-This is done for the sake of backwards compatibility.
-
-# Examples
-## Simple univariate model
-```jldoctest condition
-julia> using Distributions
-
-julia> @model function demo()
-           m ~ Normal()
-           x ~ Normal(m, 1)
-           return (; m=m, x=x)
-       end
-demo (generic function with 2 methods)
-
-julia> model = demo();
-
-julia> m, x = model(); (m != 1.0 && x != 100.0)
-true
-
-julia> # Create a new instance which treats `x` as observed
-       # with value `100.0`, and similarly for `m=1.0`.
-       conditioned_model = condition(model, x=100.0, m=1.0);
-
-julia> m, x = conditioned_model(); (m == 1.0 && x == 100.0)
-true
-
-julia> # Let's only condition on `x = 100.0`.
-       conditioned_model = condition(model, x = 100.0);
-
-julia> m, x = conditioned_model(); (m != 1.0 && x == 100.0)
-true
-
-julia> # We can also use the nicer `|` syntax.
-       conditioned_model = model | (x = 100.0, );
-
-julia> m, x = conditioned_model(); (m != 1.0 && x == 100.0)
-true
-```
-
-In the above we have specified the conditioning variables via keyword arguments. You can also
-provide a `NamedTuple`, `AbstractDict{<:VarName}`, or a `VarNamedTuple`; internally these are
-all converted to a `VarNamedTuple`.
-
-For example, here we use a `Dict`:
-
-```jldoctest condition
-julia> conditioned_model_dict = condition(model, Dict(@varname(x) => 100.0));
-
-julia> m, x = conditioned_model_dict(); (m != 1.0 && x == 100.0)
-true
-
-julia> # There's also an option using `|` by letting the right-hand side be a tuple
-       # with elements of type `Pair{<:VarName}`, i.e. `vn => value` with `vn isa VarName`.
-       conditioned_model_pairs = model | (@varname(x) => 100.0);
-
-julia> m, x = conditioned_model_pairs(); (m != 1.0 && x == 100.0)
-true
-```
-
-## Condition only a part of a multivariate variable
-
-When conditioning on multiple variables at a time, we can use `missing` to signal that a
-part of the variable should not be conditioned on.
-
-However, note that in this case each element of the multivariate random variable must be on
-its own tilde-statement. In other words, if we write `m ~ MvNormal(...)`, then we cannot
-condition on only `m[1]`. Attempting to do so may abort model evaluation with an unrelated
-`DimensionMismatch`, or the conditioning may be silently ignored, with `m` sampled afresh.
-(In principle, for some distributions this can be possible, specifically when the
-distribution can be factorised into independent components, like an MvNormal with a
-diagonal covariance matrix. However, this is not currently implemented.)
-
-```jldoctest condition
-julia> @model function demo_mv(::Type{TV}=Float64) where {TV}
-           m = Vector{TV}(undef, 2)
-           m[1] ~ Normal()
-           m[2] ~ Normal()
-           return m
-       end
-demo_mv (generic function with 4 methods)
-
-julia> model = demo_mv();
-
-julia> conditioned_model = condition(model, m = [missing, 1.0]);
-
-julia> # (✓) `m[1]` sampled while `m[2]` is fixed
-       m = conditioned_model(); (m[1] != 1.0 && m[2] == 1.0)
-true
-```
-
-Intuitively one might also expect to be able to write `model | (m[2] = 1.0, )`. You cannot
-do this with a `NamedTuple` because the `VarName` `m[2]` cannot be represented as a `Symbol`
-(i.e., `Symbol("m[2]")` is not the same as `@varname(m[2])`).
-
-```jldoctest condition
-julia> # (×) `m[2]` is not set to 1.0.
-       m = condition(model, var"m[2]" = 1.0)(); m[2] == 1.0
-false
-```
-
-But you _can_ do this if you use a `Dict` or a `VarNamedTuple` as the underlying storage
-instead:
-
-```jldoctest condition
-julia> vnt = @vnt begin
-           @template m = zeros(2)
-           m[2] := 1.0
-       end
-VarNamedTuple
-└─ m => PartialArray size=(2,) data::Vector{Float64}
-        └─ (2,) => 1.0
-
-julia> m = condition(model, vnt)(); (m[1] != 1.0 && m[2] == 1.0)
-true
-```
-
-## Nested models
-
-`condition` also supports the use of nested models through the use of [`to_submodel`](@ref).
-
-```jldoctest condition
-julia> @model demo_inner() = m ~ Normal()
-demo_inner (generic function with 2 methods)
-
-julia> @model function demo_outer()
-           # By default, `to_submodel` prefixes the variables using the left-hand side of `~`.
-           inner ~ to_submodel(demo_inner())
-           return inner
-       end
-demo_outer (generic function with 2 methods)
-
-julia> model = demo_outer();
-
-julia> model() ≠ 1.0
-true
-
-julia> # To condition the variable inside `demo_inner` we need to refer to it as `inner.m`.
-       conditioned_model = model | (@varname(inner.m) => 1.0, );
-
-julia> conditioned_model()
-1.0
-
-julia> # If you attempt to condition on `inner` itself, it must refer to the prefixed
-       # latent variables, not the return value. For example, this will work:
-       conditioned_model2 = model | (inner = (m = 1.0,), );
-
-julia> conditioned_model2()
-1.0
-
-julia> # However, if `inner` does not contain `m` inside it as a field, this will not
-       # result in any conditioning:
-       conditioned_model_fail = model | (inner = "something else", );
-
-julia> conditioned_model_fail == 1.0
-false
-```
-"""
-function AbstractPPL.condition(model::Model, values...)
-    # Positional arguments - need to handle cases carefully
-    return contextualize(
-        model, CondFixContext{Condition}(_make_condfix_values(values...), model.context)
+function _prefix_values(values::ModelBindingLayers, vn::VarName, template)
+    return ModelBindingLayers(
+        _prefix_values(values.observations, vn, template),
+        _prefix_values(values.fixed, vn, template),
+        map(owner -> maybe_prefix(owner, vn), values.owners),
     )
 end
-function AbstractPPL.condition(model::Model; values...)
-    return contextualize(
-        model, CondFixContext{Condition}(VarNamedTuple(NamedTuple(values)), model.context)
-    )
+function _prefix_values(values::VarNamedTuple, vn::VarName, template)
+    isempty(values) && return values
+    return templated_setindex!!(VarNamedTuple(), values, vn, template)
 end
 
-"""
-    _make_condfix_values(vals...)
-
-Convert different types of input to a `VarNamedTuple` of values, suitable for storage in a
-`CondFixContext`.
-
-This handles all the cases where `vals` is either already a `NamedTuple` or `AbstractDict`
-(e.g. `model | (x=1, y=2)`), as well as if they are splatted (e.g. `condition(model, x=1,
-y=2)`).
-"""
-_make_condfix_values(values::NamedTuple) = VarNamedTuple(values)
-_make_condfix_values(values::VarNamedTuple) = values
-_make_condfix_values(values::AbstractDict{<:VarName}) = VarNamedTuple(pairs(values))
-function _make_condfix_values(values::Pair{<:Union{VarName,Symbol}}...)
-    pairs = map(
-        v -> ((v.first isa Symbol ? VarName{v.first}() : v.first) => v.second), values
-    )
-    return VarNamedTuple(pairs)
+# Prefix templates can cross submodel boundaries without reading parent return values.
+function _concretize_prefix(vn::VarName{S}, template) where {S}
+    return VarName{S}(_concretize_prefix(AbstractPPL.getoptic(vn), template))
 end
-function _make_condfix_values(values::NTuple{N,Pair{<:Union{VarName,Symbol}}}) where {N}
-    return _make_condfix_values(values...)
+_concretize_prefix(optic::AbstractPPL.Iden, template) = optic
+function _concretize_prefix(optic::AbstractPPL.Property{S}, template) where {S}
+    AbstractPPL.is_dynamic(optic) || return optic
+    child = _concretize_prefix(optic.child, VarNamedTuples.SharedGetProperty{S}()(template))
+    return AbstractPPL.Property{S}(child)
+end
+function _concretize_prefix(optic::AbstractPPL.Index, template)
+    AbstractPPL.is_dynamic(optic) || return optic
+    optic = AbstractPPL.concretize_top_level(optic, VarNamedTuples.template_array(template))
+    AbstractPPL.is_dynamic(optic.child) || return optic
+    child = _concretize_prefix(optic.child, VarNamedTuples.index_template(template, optic))
+    return AbstractPPL.Index(optic.ix, optic.kw, child)
 end
 
-"""
-    decondition(model::Model)
-    decondition(model::Model, variables...)
-
-Return a `Model` for which `variables...` are _not_ conditioned on. If no `variables` are
-provided, then all conditioned variables will be removed.
-
-Note that this function cannot decondition variables that are provided as arguments to the
-model function itself; it can only decondition variables that were provided via `condition`
-or `|`.
-
-This is essentially the inverse of [`condition`](@ref).
-
-# Examples
-```jldoctest decondition
-julia> using Distributions
-
-julia> @model function demo()
-           m ~ Normal()
-           x ~ Normal(m, 1)
-           return (; m=m, x=x)
-       end
-demo (generic function with 2 methods)
-
-julia> conditioned_model = condition(demo(), m = 1.0, x = 10.0);
-
-julia> conditioned_model()
-(m = 1.0, x = 10.0)
-
-julia> # By specifying the `VarName` to `decondition`.
-       model = decondition(conditioned_model, @varname(m));
-
-julia> (m, x) = model(); (m ≠ 1.0 && x == 10.0)
-true
-
-julia> # `decondition` also accepts symbols, although VarNames are preferable for
-       # type stability reasons.
-       model = decondition(conditioned_model, :m);
-
-julia> (m, x) = model(); (m ≠ 1.0 && x == 10.0)
-true
-
-julia> # `decondition` multiple at once:
-       (m, x) = decondition(model, :m, :x)(); (m ≠ 1.0 && x ≠ 10.0)
-true
-
-julia> # `decondition` without any symbols will `decondition` all variables.
-       (m, x) = decondition(model)(); (m ≠ 1.0 && x ≠ 10.0)
-true
-```
-
-Note that `decondition` is only guaranteed to work when you decondition variables that were
-explicitly provided to `condition` earlier. In this example we condition on `@varname(m)`
-but decondition on `@varname(m[1])`, which fails because `m[1]` was not explicitly
-conditioned on:
-
-```jldoctest decondition
-julia> @model function demo_mv(::Type{TV}=Float64) where {TV}
-           m = Vector{TV}(undef, 2)
-           m[1] ~ Normal()
-           m[2] ~ Normal()
-           return m
-       end
-demo_mv (generic function with 4 methods)
-
-julia> model = demo_mv();
-
-julia> conditioned_model = condition(model, @varname(m) => [1.0, 2.0]);
-
-julia> conditioned_model()
-2-element Vector{Float64}:
- 1.0
- 2.0
-
-julia> deconditioned_model = decondition(conditioned_model, @varname(m[1]));
-
-julia> deconditioned_model()  # (×) `m[1]` is still conditioned
-2-element Vector{Float64}:
- 1.0
- 2.0
-```
-"""
-function AbstractPPL.decondition(model::Model, syms::Union{Symbol,VarName}...)
-    return contextualize(model, decondition_context(model.context, syms...))
-end
+maybe_prefix(vn::VarName, ::Nothing) = vn
+maybe_prefix(::Nothing, ::Nothing) = nothing
+maybe_prefix(::Nothing, prefix::VarName) = prefix
+maybe_prefix(vn::VarName, prefix::VarName) = AbstractPPL.prefix(vn, prefix)
 
 """
-    conditioned(model::Model)
-
-Return the conditioned values in `model`.
-
-# Examples
-```jldoctest
-julia> using Distributions
-
-julia> using DynamicPPL: conditioned, contextualize, PrefixContext, CondFixContext, Condition
-
-julia> @model function demo()
-           m ~ Normal()
-           x ~ Normal(m, 1)
-       end
-demo (generic function with 2 methods)
-
-julia> m = demo();
-
-julia> # Returns all the variables we have conditioned on + their values.
-       conditioned(condition(m, x=100.0, m=1.0))
-VarNamedTuple
-├─ x => 100.0
-└─ m => 1.0
-
-julia> # Nested ones also work. (Note that `PrefixContext` also prefixes
-       # the variables of any `CondFixContext` that is _inside_ it.)
-       new_context = PrefixContext(@varname(a), CondFixContext{Condition}(VarNamedTuple(m=1.0,)));
-       cm = condition(contextualize(m, new_context), x=100.0);
-
-julia> conditioned(cm)
-VarNamedTuple
-├─ a => VarNamedTuple
-│       └─ m => 1.0
-└─ x => 100.0
-
-julia> # Since we conditioned on `a.m`, it is not treated as a random variable.
-       # However, `a.x` will still be a random variable.
-       keys(VarInfo(cm))
-1-element Vector{VarName}:
- a.x
-
-julia> # We can also condition on `a.m` _outside_ of the PrefixContext:
-       cm = condition(contextualize(m, PrefixContext(@varname(a))), (@varname(a.m) => 1.0));
-
-julia> conditioned(cm)
-VarNamedTuple
-└─ a => VarNamedTuple
-        └─ m => 1.0
-
-julia> # Now `a.x` will be sampled.
-       keys(VarInfo(cm))
-1-element Vector{VarName}:
- a.x
-```
-"""
-conditioned(model::Model) = conditioned(model.context)
-
-"""
-    fix(model::Model; values...)
-    fix(model::Model, values::NamedTuple)
-
-Return a `Model` which now treats the variables in `values` as fixed.
-
-See also: [`unfix`](@ref), [`fixed`](@ref)
-
-!!! warning "Fixing applies to whole variables"
-    Variables are treated as they occur in the model. A variable drawn from a multivariate
-    distribution in a single tilde-statement (e.g. `x ~ MvNormal(...)`) is a *single* random
-    variable, so a subset of its components cannot be fixed independently; only fixing the
-    variable in its entirety is supported. Attempting to fix a subset may silently collapse
-    the variable to just the supplied components, or leave it entirely unfixed and sampled
-    from the prior. Declare components in a loop (`x[i] ~ ...`) if you need to fix them
-    individually.
-
-# Examples
-## Simple univariate model
-```jldoctest fix
-julia> using Distributions
-
-julia> @model function demo()
-           m ~ Normal()
-           x ~ Normal(m, 1)
-           return (; m=m, x=x)
-       end
-demo (generic function with 2 methods)
-
-julia> model = demo();
-
-julia> m, x = model(); (m ≠ 1.0 && x ≠ 100.0)
-true
-
-julia> # Create a new instance which treats `x` as observed
-       # with value `100.0`, and similarly for `m=1.0`.
-       fixed_model = fix(model, x=100.0, m=1.0);
-
-julia> m, x = fixed_model(); (m == 1.0 && x == 100.0)
-true
-
-julia> # Let's only fix on `x = 100.0`.
-       fixed_model = fix(model, x = 100.0);
-
-julia> m, x = fixed_model(); (m != 1.0 && x == 100.0)
-true
-```
-
-## Other ways of specifying fixed values
-
-Specifying fixed values can be done exactly in the same way as for [`condition`](@ref);
-please see its docstring for more examples.
-
-## Difference from `condition`
-
-The only difference between fixing and conditioning is as follows:
-
-- Conditioned variables are considered to be observations, and are thus included in the
-  computation log-joint and log-likelihood, but not the log-prior.
-- Fixed variables are considered to be constant, and are thus not included
-  in any log-probability computations.
-
-```jldoctest; setup=:(using DynamicPPL, Distributions)
-julia> @model function demo()
-           m ~ Normal()
-           x ~ Normal(m, 1)
-           return (; m=m, x=x)
-       end
-demo (generic function with 2 methods)
-
-julia> model = demo();
-
-julia> model_fixed = fix(model, m = 1.0);
-
-julia> model_conditioned = condition(model, m = 1.0);
-
-julia> logjoint(model_fixed, (x=1.0,))
--0.9189385332046728
-
-julia> logjoint(model_conditioned, (x=1.0,))
--2.3378770664093453
-
-julia> # The difference is the missing log-probability of `m`:
-       logpdf(Normal(), 1.0)
--1.4189385332046727
-```
-"""
-function fix(model::Model, values...)
-    return contextualize(
-        model, CondFixContext{Fix}(_make_condfix_values(values...), model.context)
-    )
-end
-function fix(model::Model; values...)
-    return contextualize(
-        model, CondFixContext{Fix}(VarNamedTuple(NamedTuple(values)), model.context)
-    )
-end
-
-"""
-    unfix(model::Model)
-    unfix(model::Model, variables...)
-
-Return a `Model` for which `variables...` are _not_ considered fixed. If no `variables` are
-provided, then all fixed variables will be removed.
-
-This is essentially the inverse of [`fix`](@ref).
-
-Conceptually this is very similar to [`decondition`](@ref) and thus the same limitations
-apply; please see its docstring for more details.
-
-# Examples
-```jldoctest unfix
-julia> using Distributions
-
-julia> @model function demo()
-           m ~ Normal()
-           x ~ Normal(m, 1)
-           return (; m=m, x=x)
-       end
-demo (generic function with 2 methods)
-
-julia> fixed_model = fix(demo(), m = 1.0, x = 10.0);
-
-julia> fixed_model()
-(m = 1.0, x = 10.0)
-
-julia> # By specifying the `VarName` to `unfix`.
-       model = unfix(fixed_model, @varname(m));
-
-julia> (m, x) = model(); (m != 1.0 && x == 10.0)
-true
-
-julia> # When `NamedTuple` is used as the underlying, you can also provide
-       # the symbol directly (though the `@varname` approach is preferable if
-       # if the variable is known at compile-time).
-       model = unfix(fixed_model, :m);
-
-julia> (m, x) = model(); (m != 1.0 && x == 10.0)
-true
-
-julia> # `unfix` multiple at once:
-       (m, x) = unfix(model, :m, :x)(); (m != 1.0 && x != 10.0)
-true
-
-julia> # `unfix` without any symbols will `unfix` all variables.
-       (m, x) = unfix(model)(); (m != 1.0 && x != 10.0)
-true
-```
-"""
-unfix(model::Model, syms::Union{Symbol,VarName}...) =
-    contextualize(model, unfix_context(model.context, syms...))
-
-"""
-    fixed(model::Model)
-
-Return the fixed values in `model`.
-
-# Examples
-```jldoctest
-julia> using Distributions
-
-julia> using DynamicPPL: fixed, contextualize, PrefixContext, CondFixContext, Fix
-
-julia> @model function demo()
-           m ~ Normal()
-           x ~ Normal(m, 1)
-       end
-demo (generic function with 2 methods)
-
-julia> m = demo();
-
-julia> # Returns all the variables we have fixed on + their values.
-       fixed(fix(m, x=100.0, m=1.0))
-VarNamedTuple
-├─ x => 100.0
-└─ m => 1.0
-
-julia> # The rest of this is the same as the `condition` example above.
-       fm = fix(contextualize(m, PrefixContext(@varname(a), CondFixContext{Fix}(VarNamedTuple(m=1.0)))), x=100.0);
-
-julia> Set(keys(fixed(fm))) == Set([@varname(a.m), @varname(x)])
-true
-
-julia> keys(VarInfo(fm))
-1-element Vector{VarName}:
- a.x
-
-julia> # We can also fix `a.m` _outside_ of the PrefixContext:
-       fm = fix(contextualize(m, PrefixContext(@varname(a))), (@varname(a.m) => 1.0));
-
-julia> fixed(fm)
-VarNamedTuple
-└─ a => VarNamedTuple
-        └─ m => 1.0
-
-julia> # Now `a.x` will be sampled.
-       keys(VarInfo(fm))
-1-element Vector{VarName}:
- a.x
-```
-"""
-fixed(model::Model) = fixed(model.context)
-
-"""
-    prefix(model::Model, x::VarName)
+    prefix(model::Model, x::VarName; template=NoTemplate())
     prefix(model::Model, x::Val{sym})
     prefix(model::Model, x::Any)
 
@@ -752,6 +349,9 @@ Return `model` but with all random variables prefixed by `x`, where `x` is eithe
 - for any other type, `x` is converted to a Symbol and then to a `VarName`. Note that
   this will introduce runtime overheads so is not recommended unless absolutely
   necessary.
+
+For an indexed prefix, `template` supplies the enclosing container's shape and resolves
+`begin` and `end` indices.
 
 # Examples
 
@@ -772,12 +372,133 @@ VarNamedTuple
                 └─ x => 1
 ```
 """
-prefix(model::Model, x::VarName) = contextualize(model, PrefixContext(x, model.context))
+function prefix(model::Model, x::VarName; template=NoTemplate())
+    template = VarNamedTuples.materialize_template(template)
+    x = _concretize_prefix(x, template)
+    model = _materialize_argument_values(model)
+    values =
+        if model.values isa VarNamedTuple &&
+            _model_prefix(model) === nothing &&
+            !isempty(model.values) &&
+            mapreduce(
+                pair -> pair.second isa ModelValue{ArgumentCondition},
+                &,
+                model.values;
+                init=true,
+            )
+            UnprefixedArgumentValues(model.values)
+        else
+            _prefix_values(model.values, x, template)
+        end
+    return _prefix_model(model, x, template, values)
+end
+function _prefix_model(model::Model, x::VarName, template, values)
+    model_prefix = maybe_prefix(_model_prefix(model), x)
+    prefix_template =
+        if template isa NoTemplate && _model_prefix_template(model) === nothing
+            nothing
+        else
+            inner = if _model_prefix_template(model) === nothing
+                _model_prefix(model)
+            else
+                _model_prefix_template(model)
+            end
+            PrefixTemplate(x, template, inner)
+        end
+    context = PrefixContext(
+        model_prefix, first(extract_prefixes(model.context)), prefix_template
+    )
+    return _reconstruct_model(model; context, values)
+end
 function prefix(model::Model, ::Val{sym}) where {sym}
-    return contextualize(model, PrefixContext(VarName{sym}(), model.context))
+    return prefix(model, VarName{sym}())
 end
 function prefix(model::Model, x)
-    return contextualize(model, PrefixContext(VarName{Symbol(x)}(), model.context))
+    return prefix(model, VarName{Symbol(x)}())
+end
+
+function _prefix_varname_and_template(vn::VarName, template::Any, model::Model)
+    return _prefix_varname_and_template(
+        vn, template, _model_prefix(model), _model_prefix_template(model)
+    )
+end
+function _prefix_varname_and_template(vn::VarName, template, prefix, prefix_template)
+    prefix === nothing && return vn, template
+    pt = prefix_template === nothing ? prefix : prefix_template
+    return AbstractPPL.prefix(vn, prefix), _apply_prefix_template(pt, template)
+end
+
+function tilde_assume!!(
+    model::Model,
+    context::AbstractContext,
+    right::Distribution,
+    vn::VarName,
+    template::Any,
+    vi::AbstractVarInfo,
+)
+    vn, template = _prefix_varname_and_template(vn, template, model)
+    return tilde_assume!!(context, right, vn, template, vi)
+end
+
+function _check_tilde_value(value, vn, role::Union{Condition,Fix})
+    remove = role isa Fix ? "unfix" : "decondition"
+    absent = if _contains_missing(value)
+        "missing"
+    elseif _contains_nothing(value)
+        "nothing"
+    else
+        nothing
+    end
+    absent === nothing || throw(
+        ArgumentError(
+            "LHS variable `$vn` contains `$absent`; make it latent with `$remove`."
+        ),
+    )
+    return value
+end
+
+"""
+    tilde_observe!!(prefix, prefix_template, right::Distribution, left, vn, template, vi)
+
+Accumulate an observation and return `(left, vi)` with the updated varinfo.
+
+`left` is supplied by the model's conditioned values or by a literal expression. `vn` is
+the variable name before prefixing, or `nothing` for a literal. `template` describes the
+top-level variable's storage; literals use `NoTemplate()`.
+
+Apply `prefix` (a `VarName` or `nothing`) and its storage template `prefix_template`,
+then delegate to [`accumulate_observe!!`](@ref). The compiler passes this metadata directly
+so observations do not box the model. Every observation calls this function, independently
+of the evaluation context. Fixed LHS variables bypass it and do not contribute to the log probability.
+"""
+function tilde_observe!!(
+    prefix, prefix_template, right::Distribution, left, vn, template, vi
+)
+    vn, template = if vn === nothing
+        vn, NoTemplate()
+    else
+        _prefix_varname_and_template(vn, template, prefix, prefix_template)
+    end
+    left = _check_tilde_value(left, vn, Condition())
+    vi = accumulate_observe!!(vi, right, left, vn, template)
+    return left, vi
+end
+
+"""
+    store_coloneq_value!!(model::Model, vn::VarName, right, template, vi)
+
+Store a tracked assignment's value in the raw-value accumulator and return the updated `vi`.
+
+Apply the model's prefix to `vn` and its storage `template`. The evaluator calls this
+function only when tracked-value extraction is enabled; no context hook is involved.
+"""
+function store_coloneq_value!!(
+    model::Model, vn::VarName, right::Any, template::Any, vi::AbstractVarInfo
+)
+    vn, template = _prefix_varname_and_template(vn, template, model)
+    return map_accumulator!!(
+        acc -> store_colon_eq!!(acc, vn, right, template), vi, Val(RAW_VALUE_ACCNAME)
+    )
 end
 
 """
@@ -870,7 +591,7 @@ If the leaf context is a `DefaultContext`, then this function:
   stored, then the transform strategy will treat that variable as linked; likewise for
   unlinked)
 - uses the accumulators inside `varinfo` (resetting them before evaluation);
-- records the values of executed sites in the reset value accumulator, omitting sites
+- records the values of executed LHS variables in the reset value accumulator, omitting LHS variables
   that are no longer executed.
 
 The long-term plan for this method is to:
@@ -949,16 +670,14 @@ function _evaluate!!(model::Model, varinfo::AbstractVarInfo)
     return model.f(args...; kwargs...)
 end
 
-is_splat_symbol(s::Symbol) = startswith(string(s), "#splat#")
-
 """
     make_evaluate_args_and_kwargs(model, varinfo)
 
 Return the arguments and keyword arguments to be passed to the evaluator of the model, i.e. `model.f`e.
 """
 @generated function make_evaluate_args_and_kwargs(
-    model::Model{_F,argnames}, varinfo::AbstractVarInfo
-) where {_F,argnames}
+    model::Model{_F,argnames,defaultnames}, varinfo::AbstractVarInfo
+) where {_F,argnames,defaultnames}
     unwrap_args = [
         if is_splat_symbol(var)
             :(
@@ -972,9 +691,13 @@ Return the arguments and keyword arguments to be passed to the evaluator of the 
             ))
         end for var in argnames
     ]
+    unwrap_kwargs = [
+        is_splat_symbol(var) ? :(model.defaults.$var...) : :($var = model.defaults.$var) for
+        var in defaultnames
+    ]
     return quote
         args = (model, varinfo, $(unwrap_args...))
-        kwargs = model.defaults
+        kwargs = (; $(unwrap_kwargs...))
         return args, kwargs
     end
 end
@@ -1004,19 +727,16 @@ function get_param_eltype(::AbstractVarInfo, ctx::InitContext)
     return get_param_eltype(ctx.strategy)
 end
 
+@generated function _argument_names(::NamedTuple{names}) where {names}
+    return QuoteNode(map(unsplat_symbol, names))
+end
+
 """
     getargnames(model::Model)
 
 Get a tuple of the argument names of the `model`.
 """
 getargnames(model::Model{_F,argnames}) where {argnames,_F} = argnames
-
-"""
-    getmissings(model::Model)
-
-Get a tuple of the names of the missing arguments of the `model`.
-"""
-getmissings(model::Model{_F,_a,_d,missings}) where {missings,_F,_a,_d} = missings
 
 """
     nameof(model::Model)
@@ -1058,7 +778,7 @@ julia> @model function demo(x)
                x[i] ~ Normal(m, 1.0)
            end
        end
-demo (generic function with 2 methods)
+demo (generic function with 3 methods)
 
 julia> # Using a `NamedTuple`.
        logjoint(demo([1.0]), (m = 100.0, ))
@@ -1102,7 +822,7 @@ julia> @model function demo(x)
                x[i] ~ Normal(m, 1.0)
            end
        end
-demo (generic function with 2 methods)
+demo (generic function with 3 methods)
 
 julia> # Using a `NamedTuple`.
        logprior(demo([1.0]), (m = 100.0, ))
@@ -1143,7 +863,7 @@ julia> @model function demo(x)
                x[i] ~ Normal(m, 1.0)
            end
        end
-demo (generic function with 2 methods)
+demo (generic function with 3 methods)
 
 julia> # Using a `NamedTuple`.
        loglikelihood(demo([1.0]), (m = 100.0, ))

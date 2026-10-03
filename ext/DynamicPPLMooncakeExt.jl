@@ -38,6 +38,39 @@ function Mooncake.rrule!!(
     return output, pullback
 end
 
+Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
+    typeof(DynamicPPL._argument_may_need_adapter),Type
+}
+
+# Ownership validation only inspects identity and returns no numerical result.
+Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
+    typeof(DynamicPPL._check_argument_key_storage),Any,Any
+}
+
+# Reconstruction support depends only on types and methods.
+Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
+    typeof(DynamicPPL._argument_reconstructible),Any,NamedTuple
+}
+
+# Storage type selection returns only type metadata; copying payloads stays differentiable.
+Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
+    typeof(DynamicPPL.VarNamedTuples._concretised_eltype),
+    DynamicPPL.VarNamedTuples.PartialArray,
+}
+
+# Logging has no numerical result, even when storage is constructed during evaluation.
+Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
+    typeof(DynamicPPL.VarNamedTuples._warn_growable_array_creation),Any
+}
+
+# Role queries return only discrete tags, never bound values.
+Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
+    typeof(DynamicPPL._get_argument_role),Vararg
+}
+Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
+    typeof(DynamicPPL._get_model_role),Vararg
+}
+
 # These are purely optimisations (although quite significant ones sometimes, especially for
 # _get_range_and_transform).
 Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{typeof(is_transformed),Vararg}

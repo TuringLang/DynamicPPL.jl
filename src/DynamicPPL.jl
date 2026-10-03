@@ -50,7 +50,6 @@ export AbstractVarInfo,
     VarInfo,
     get_values,
     VarNamedTuple,
-    @vnt,
     map_pairs!!,
     map_values!!,
     apply!!,
@@ -265,9 +264,8 @@ include("contexts.jl")
 include("contexts/default.jl")
 include("contexts/init.jl")
 include("contexts/prefix.jl")
-include("contexts/conditionfix.jl")  # Must come after contexts/prefix.jl
 include("model.jl")
-include("varname.jl")
+include("conditionfix.jl")
 include("distribution_wrappers.jl")
 include("distributions.jl")
 include("submodel.jl")

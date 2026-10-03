@@ -1,13 +1,16 @@
 module VarNamedTupleTests
 
+using AbstractPPL: of, @of
 using Dates: now
 @info "Testing $(@__FILE__)..."
 __now__ = now()
 
+using Distributions: Normal
+using Random: Xoshiro
 using Combinatorics: Combinatorics
 using OrderedCollections: OrderedDict
 using Test: @inferred, @test, @test_throws, @testset, @test_broken, @test_logs
-using DynamicPPL: DynamicPPL, @varname, VarNamedTuple, subset, @vnt
+using DynamicPPL: DynamicPPL, @model, @varname, VarNamedTuple, subset, @vnt
 using DynamicPPL.VarNamedTuples:
     PartialArray,
     ArrayLikeBlock,
@@ -180,6 +183,33 @@ function Base.similar(
 end
 
 @testset "VarNamedTuple" begin
+    @testset "PartialArray element type narrowing" begin
+        data = Vector{Any}(undef, 3)
+        data[1:2] = [1, "two"]
+        for (values, mask) in (
+            (Any[1, 2, 3], trues(3)),
+            (Real[1, 2.0, 3], trues(3)),
+            (Union{Nothing,Int}[1, nothing, 3], trues(3)),
+            (data, [true, true, false]),
+            (data, [true, false, false]),
+            (data, falses(3)),
+        )
+            expected = foldl(
+                typejoin,
+                (typeof(values[i]) for i in eachindex(mask) if mask[i]);
+                init=Union{},
+            )
+            pa = PartialArray(values, mask)
+            result = DynamicPPL.VarNamedTuples._concretise_eltype!!(pa)
+            @test eltype(result) === expected
+            @test result.mask === mask
+            @test result.data[mask] == values[mask]
+            if expected === eltype(pa)
+                @test result === pa
+            end
+        end
+    end
+
     @testset "dynamic indices into array leaves" begin
         for x in ([1.0, 2.0], view([1.0, 2.0], :), OA.OffsetArray([1.0, 2.0], 3:4))
             vnt = VarNamedTuple(; x)
@@ -188,6 +218,7 @@ end
             @test haskey(vnt, @varname(x[begin:end]))
             @test !haskey(vnt, @varname(x[begin - 1]))
             @test !haskey(vnt, @varname(x[end + 1]))
+            @test vnt[@varname(x[begin:end])] == [1.0, 2.0]
         end
         @test haskey(VarNamedTuple(; x=[1.0 2.0; 3.0 4.0]), @varname(x[end, end]))
     end
@@ -775,6 +806,16 @@ end
         vnt = VarNamedTuple()
         vnt = @inferred(templated_setindex!!(vnt, 1, @varname(a[1][1]), [[randn()]]))
         @test @inferred(getindex(vnt, @varname(a[1][1]))) == 1
+        vnt = @inferred(templated_setindex!!(vnt, 2, @varname(a[1][1]), [[0]]))
+        @test vnt[@varname(a[1][1])] == 2
+        @test_throws UndefRefError templated_setindex!!(
+            vnt, 3, @varname(a[1][1]), Vector{Vector{Int}}(undef, 1)
+        )
+        template = [(; data=zeros(2))]
+        vn = @varname(nested[1].data[:])
+        vnt = @inferred(templated_setindex!!(vnt, SizedThing((2,)), vn, template))
+        vnt = @inferred(templated_setindex!!(vnt, SizedThing((2,)), vn, template))
+        @test vnt[vn] == SizedThing((2,))
         vnt = @inferred(templated_setindex!!(vnt, 1, @varname(ab[1:2][1]), randn(2)))
         @test @inferred(getindex(vnt, @varname(ab[1]))) == 1
         @test @inferred(getindex(vnt, @varname(ab[1:2][1]))) == 1
@@ -2459,6 +2500,50 @@ end
         v13s = VarNamedTuple(; x=CA.ComponentArray(; a=nothing, b=nothing))
         test_skeleton(v13, v13s)
     end
+end
+
+@testset "of templates" begin
+    @test templated_setindex!!(VarNamedTuple(), 2.0, @varname(z[end]), of(Array, 3))[@varname(
+        z[3]
+    )] === 2.0
+    v = @vnt begin
+        @template z = @of(a = of(Array, 3))
+        z.a[end] := 2.0
+    end
+    @test v[@varname(z.a[3])] === 2.0
+    T = of(Array, 3)
+    v = @vnt begin
+        @template T
+        T[end] := 3.0
+    end
+    @test v[@varname(T[3])] === 3.0
+    @model of_prefix() = x ~ Normal()
+    @test only(
+        keys(
+            rand(
+                Xoshiro(1),
+                DynamicPPL.prefix(of_prefix(), @varname(a[end]); template=of(Array, 3)),
+            ),
+        ),
+    ) == @varname(a[3].x)
+    @test only(
+        keys(
+            rand(
+                Xoshiro(1),
+                DynamicPPL.prefix(
+                    of_prefix(), @varname(a.z[end]); template=@of(z = of(Array, 3))
+                ),
+            ),
+        ),
+    ) == @varname(a.z[3].x)
+    @test_throws ErrorException templated_setindex!!(
+        VarNamedTuple(), 2.0, @varname(z[1]), of(Array, :n)
+    )
+end
+
+@testset "internal macro is not exported" begin
+    @test !(Symbol("@vnt") in names(DynamicPPL))
+    @test isdefined(DynamicPPL, Symbol("@vnt"))
 end
 
 @info "Completed $(@__FILE__) in $(now() - __now__)."

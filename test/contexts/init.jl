@@ -1,4 +1,4 @@
-module DynamicPPLInitContextTests
+module DynamicPPLContextTests
 
 using Dates: now
 @info "Testing $(@__FILE__)..."
@@ -12,7 +12,7 @@ using Random: Xoshiro
 using StableRNGs: StableRNG
 using Test
 
-@testset "InitContext" begin
+@testset "Context" begin
     @model function test_init_model()
         x ~ Normal()
         y ~ MvNormal(fill(x, 2), I)
@@ -209,12 +209,26 @@ using Test
     end
 
     @testset "InitFromParams" begin
+        @testset "wrapped missing values are rejected before transformation" begin
+            @model missing_parameter() = x ~ Normal()
+            for value in (
+                TransformedValue(missing, NoTransform()),
+                TransformedValue([missing], Unlink()),
+            )
+                strategy = InitFromParams((; x=value), nothing)
+                context = InitContext(Xoshiro(1), strategy, UnlinkAll())
+                @test_throws ArgumentError evaluate!!(
+                    missing_parameter(), context, VarInfo(())
+                )
+            end
+        end
+
         # Once we've checked that NTs and Dicts are internally promoted to VNTs, the rest of
         # the tests only need to check that InitFromParams(::VNT) is handled correctly.
         @testset "NT promotion to VNT" begin
             nt = (x=1.0, y=[2.0, 3.0], z="zzz")
             ifp = InitFromParams(nt)
-            vnt = @vnt begin
+            vnt = DynamicPPL.@vnt begin
                 x := 1.0
                 y := [2.0, 3.0]
                 z := "zzz"
@@ -226,7 +240,7 @@ using Test
                 @varname(x) => 1.0, @varname(y) => [2.0, 3.0], @varname(z) => "zzz"
             )
             ifp = InitFromParams(dict)
-            vnt = @vnt begin
+            vnt = DynamicPPL.@vnt begin
                 x := 1.0
                 y := [2.0, 3.0]
                 z := "zzz"
@@ -244,7 +258,7 @@ using Test
         @testset "given full set of parameters" begin
             # test_init_model has x ~ Normal() and y ~ MvNormal(zeros(2), I)
             my_x, my_y = 1.0, [2.0, 3.0]
-            vnt = @vnt begin
+            vnt = DynamicPPL.@vnt begin
                 x := my_x
                 y := my_y
             end
@@ -260,7 +274,7 @@ using Test
 
         @testset "given only partial parameters" begin
             my_x = 1.0
-            vnt = @vnt begin
+            vnt = DynamicPPL.@vnt begin
                 x := my_x
             end
 
@@ -297,12 +311,12 @@ using Test
                 )
 
                 # We also explicitly test the case where `y = missing`.
-                vnt_missing = @vnt begin
+                vnt_missing = DynamicPPL.@vnt begin
                     x := my_x
                     y := missing
                 end
-                @test_throws ErrorException(
-                    "A `missing` value was provided for the variable `y`."
+                @test_throws ArgumentError(
+                    "A `missing` value was provided for `y`; omit absent initial parameters instead.",
                 ) DynamicPPL.init!!(
                     model, empty_vi, InitFromParams(vnt_missing, nothing), UnlinkAll()
                 )

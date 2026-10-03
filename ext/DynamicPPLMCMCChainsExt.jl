@@ -145,6 +145,7 @@ function AbstractMCMC.to_samples(
             # If it's there then we can add it into the VNT.
             top_sym = AbstractPPL.getsym(vn)
             val = getindex_varname(chain, sample_idx, vn, chain_idx)
+            ismissing(val) && continue
             # This call to get() is type unstable, but I tried writing a generated function
             # that was type stable and it's really no different in terms of performance.
             # Presumably this is minimal compared to the rest of the work we do in this
@@ -332,8 +333,8 @@ in `chain`, and return the resulting `Chains`.
 
 The `model` passed to `predict` is often different from the one used to generate `chain`.
 Typically, the model from which `chain` originated treats certain variables as observed (i.e.,
-data points), while the model you pass to `predict` may mark these same variables as missing
-or unobserved. Calling `predict` then leverages the previously inferred parameter values to
+data points), while the model you pass to `predict` leaves these same variables unconditioned.
+Calling `predict` then uses the previously inferred parameter values to
 simulate what new, unobserved data might look like, given your posterior beliefs.
 
 For each parameter configuration in `chain`:
@@ -354,12 +355,12 @@ many variables the time goes into building the `Chains` object rather than into 
 
 !!! warning "Variables are treated as they occur in the model"
     A variable drawn from a multivariate distribution in a single tilde-statement
-    (e.g. `x ~ MvNormal(...)` or `x ~ filldist(Normal(), n)`) is a *single* random
-    variable, not a collection of i.i.d. components. `predict` cannot fix a subset of
-    such a variable's components while resampling the rest; if `chain` supplies only
-    some components, the whole variable is silently resampled from the prior — the
+    (e.g. `x ~ MvNormal(...)` or `x ~ filldist(Normal(), n)`) is a *single*
+    LHS variable, not a collection of i.i.d. LHS variables. `predict` cannot fix a subset of
+    its LHS subvariables while resampling the rest; if `chain` supplies only
+    some subvariables, the whole LHS variable is silently resampled from the prior — the
     predictions will look plausible but ignore what the chain says about that variable.
-    To treat components individually, declare them in a loop, e.g.
+    To treat array entries individually, declare separate LHS variables in a loop, e.g.
     `for i in eachindex(x); x[i] ~ Normal(); end`.
 
 # Examples
@@ -384,7 +385,7 @@ ground_truth_β = 2.0
 # Generate predictions for two test points
 xs_test = [10.1, 10.2]
 
-m_train = linear_reg(xs_test, fill(missing, length(xs_test)))
+m_train = decondition(linear_reg(xs_test, zeros(length(xs_test))), @varname(y))
 
 predictions = DynamicPPL.AbstractPPL.predict(
     Random.default_rng(), m_train, β_chain
@@ -559,7 +560,7 @@ julia> @model function demo(xs, y)
            end
            y ~ Normal(m, √s)
        end
-demo (generic function with 2 methods)
+demo (generic function with 3 methods)
 
 julia> # Example observations.
        model = demo([1.0, 2.0, 3.0], [4.0]);

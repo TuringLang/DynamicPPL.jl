@@ -93,12 +93,14 @@ Base.rand(::Random.AbstractRNG, ::LogDensityFunction, ::AbstractInitStrategy)
 A [`Model`](@ref) can be conditioned on a set of observations with [`AbstractPPL.condition`](@ref) or its alias [`|`](@ref).
 
 ```@docs
-|(::Model, ::Union{Tuple,NamedTuple,AbstractDict{<:VarName}})
+|(::Model, ::Union{NamedTuple,AbstractDict,Pair,Tuple,VarNamedTuple})
 condition
 DynamicPPL.conditioned
 ```
 
-Similarly, one can specify with [`AbstractPPL.decondition`](@ref) that certain, or all, random variables are not observed.
+[`AbstractPPL.decondition`](@ref) removes observations of either origin, including those
+shadowed by fixed bindings. The LHS variable becomes latent unless still fixed.
+See [Binding rules](@ref) for accepted inputs and the two binding layers.
 
 ```@docs
 decondition
@@ -126,7 +128,8 @@ DynamicPPL.fixed
 
 The difference between [`DynamicPPL.fix`](@ref) and [`DynamicPPL.condition`](@ref) is described in the docstring of [`DynamicPPL.fix`](@ref) above.
 
-Similarly, we can revert this with [`DynamicPPL.unfix`](@ref), i.e. return the variables to their original meaning:
+[`DynamicPPL.unfix`](@ref) removes fixed bindings, uncovering observations below them
+or leaving the LHS variable latent. Observations removed by `decondition` stay removed:
 
 ```@docs
 DynamicPPL.unfix
@@ -150,8 +153,8 @@ predict
 The typical workflow for posterior prediction involves:
 
  1. Fitting a model to observed data to obtain posterior samples
- 2. Creating a new model instance with some variables marked as missing (unobserved)
- 3. Using `predict` to generate samples for these missing variables based on the posterior parameter samples
+ 2. Creating a new model instance with the prediction LHS variables left unconditioned
+ 3. Using `predict` to sample these LHS variables based on the posterior parameter samples
 
 When using `predict` with `MCMCChains.Chains`, you can control which variables are included in the output with the `include_all` parameter:
 
@@ -478,7 +481,7 @@ All contexts are subtypes of `AbstractPPL.AbstractContext`.
 Contexts are split into two kinds:
 
 **Leaf contexts**: These are the most important contexts as they ultimately decide how model evaluation proceeds.
-For example, `DefaultContext` evaluates the model using values stored inside a VarInfo's metadata, whereas `InitContext` obtains new values either by sampling or from a known set of parameters.
+For example, `DefaultContext` reuses values recorded by a `VectorValueAccumulator`, whereas `InitContext` obtains values either by sampling or from supplied parameters.
 DynamicPPL has more leaf contexts which are used for internal purposes, but these are the two that are exported.
 
 ```@docs
@@ -486,7 +489,9 @@ DefaultContext
 InitContext
 ```
 
-To implement a leaf context, you need to subtype `AbstractPPL.AbstractContext` and implement the `tilde_assume!!` and `tilde_observe!!` methods for your context.
+Customise latent value selection with an [initialisation strategy](init.md) supplied to `InitContext`.
+`tilde_assume!!` dispatches on that context to initialise, transform, and accumulate a latent value.
+Every observation calls `tilde_observe!!(prefix, prefix_template, right, left, vn, template, vi)`, which applies the prefix metadata and calls `accumulate_observe!!` without dispatching on a context.
 
 ```@docs
 tilde_assume!!
@@ -494,10 +499,10 @@ tilde_observe!!
 ```
 
 **Parent contexts**: These essentially act as 'modifiers' for leaf contexts.
-For example, `PrefixContext` adds a prefix to all variable names during evaluation, while `CondFixContext` marks certain variables as being either conditioned or fixed.
+`PrefixContext` supplies address metadata. Conditioned and fixed values are stored on the model.
 
 To implement a parent context, you have to subtype `DynamicPPL.AbstractParentContext`, and implement the `childcontext` and `setchildcontext` methods.
-If needed, you can also implement `tilde_assume!!` and `tilde_observe!!` for your context.
+If needed, you can also implement `tilde_assume!!` for your context.
 This is optional; the default implementation is to simply delegate to the child context.
 
 ```@docs

@@ -6,22 +6,25 @@ useful when implementing stochastic objectives in inference packages such as Adv
 and AdvancedHMC.
 
 Write the observation with `independent_distribution` and supply its complete dataset by
-conditioning, rather than as a model argument:
+conditioning or as a model argument. Subsampling replaces the observation with array
+wrappers, which must satisfy the model's argument signature. A concrete annotation such as
+`y::Vector{Float64}` rejects these wrappers. Leave subsampled observation arguments untyped
+or use an abstract array type such as `AbstractVector{Float64}`:
 
 ```@example subsampling
-using Distributions, DynamicPPL, ForwardDiff, LogDensityProblems
+using Distributions, DynamicPPL, ForwardDiff, LogDensityProblems, StableRNGs
 
-@model function location_model(scales)
+@model function location_model(x::AbstractVector{Float64}, scales)
     μ ~ Normal(0, 1)
     return x ~ independent_distribution(i -> Normal(μ, scales[i]), length(scales))
 end
 
 scales = [0.5, 1.0, 1.5, 2.0]
 data = [-1.0, 0.0, 1.0, 2.0]
-model = location_model(scales) | (x=data,)
+model = location_model(data, scales)
 
 select_first_and_third(rng, N) = [1, 3]
-ldf = subsample(model, select_first_and_third, length(data))
+ldf = subsample(StableRNG(1), model, select_first_and_third, length(data))
 
 θ = [0.25]
 logdensity = LogDensityProblems.logdensity(ldf, θ)
@@ -91,10 +94,11 @@ multiplicity of element ``i`` in the returned indices, unbiased scaling requires
 ``\mathbb{E}[C_i / n] = 1 / N``. For fixed ``n``, this reduces to
 ``\mathbb{E}[C_i] = n / N``.
 
-Construction neither scores nor reads the full conditioned dataset; a shape-only structural
+Construction neither scores nor reads the full dataset; a shape-only structural
 probe fails if the model attempts to inspect it. DynamicPPL copies only the selected
-observations, so their likelihood requires `O(n)` work. Model arguments are retained
-unchanged and may therefore still contain dataset-sized covariates. The model must have
-exactly one conditioned observation using `independent_distribution`, with no later
+observations, so their likelihood requires `O(n)` work. An argument supplying the observation
+is replaced by a subsampling wrapper; other arguments are retained unchanged and may still
+contain dataset-sized covariates. The model must have exactly one observation using
+`independent_distribution`, supplied by conditioning or an argument, with no later
 probability-bearing statement. Additional likelihood contributions through `@addlogprob!`
 are rejected.

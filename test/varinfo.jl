@@ -70,16 +70,35 @@ end
 
     @testset "no recorded values" begin
         for vi in (VarInfo(), DynamicPPL.ThreadSafeVarInfo(VarInfo()))
-            @test @inferred isempty(vi)
-            @test isempty(@inferred keys(vi))
-            @test isempty(@inferred values(vi))
-            @test !(@inferred haskey(vi, @varname(x)))
-            @test (@inferred length(vi)) == 0
+            @test_throws ArgumentError isempty(vi)
+            @test_throws ArgumentError keys(vi)
+            @test_throws ArgumentError values(vi)
+            @test_throws ArgumentError haskey(vi, @varname(x))
+            @test_throws ArgumentError length(vi)
+            @test_throws ArgumentError is_transformed(vi)
             @test_throws ArgumentError get_vector_values(vi)
             @test_throws ArgumentError internal_values_as_vector(vi)
             @test_throws ArgumentError vi[:]
             @test_throws ArgumentError eltype(vi)
             @test_throws ArgumentError DynamicPPL.get_transformed_value(vi, @varname(x))
+        end
+    end
+
+    @testset "recorded values" begin
+        for wrap in (identity, DynamicPPL.ThreadSafeVarInfo)
+            vi = wrap(VarInfo(VectorValueAccumulator()))
+            @test isempty(vi)
+            @test isempty(keys(vi))
+            @test isempty(values(vi))
+            @test !haskey(vi, @varname(x))
+            @test length(vi) == 0
+
+            vi = wrap(VarInfo(Xoshiro(1), value_model()))
+            @test !isempty(vi)
+            @test collect(keys(vi)) == [@varname(x)]
+            @test collect(values(vi)) == collect(values(get_vector_values(vi)))
+            @test haskey(vi, @varname(x))
+            @test length(vi) == 1
         end
     end
 

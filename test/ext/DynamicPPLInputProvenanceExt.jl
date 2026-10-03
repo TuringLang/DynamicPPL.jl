@@ -4,10 +4,25 @@ using DynamicPPL
 using ForwardDiff: ForwardDiff
 using Distributions: MvNormal, Normal
 using LinearAlgebra: I
+using Random: Xoshiro
 using SparseArrays: AbstractSparseMatrixCSC, nnz, sparse, sparsevec, spzeros
 using Test: @test, @test_logs, @testset
 
 @testset "input provenance warning" begin
+    @testset "submodel return values are not observations" begin
+        @model inner() = z ~ Normal()
+        @model outerarg(a, rhs) = a ~ rhs
+        @model outerkeyword(; a=3.0) = a ~ to_submodel(inner())
+        @model outerindexed(a) = a[1] ~ to_submodel(inner())
+        @model nested(m) = b ~ to_submodel(m)
+        for model in
+            (outerarg(3.0, to_submodel(inner())), outerkeyword(), outerindexed([3.0]))
+            for wrapped in (model, nested(model))
+                @test (@test_logs check_model(Xoshiro(1), wrapped))
+            end
+        end
+    end
+
     @model function derived_observation(y; sigma=1.0)
         m ~ Normal(0, sigma)
         v = exp(y) + sigma
@@ -15,6 +30,15 @@ using Test: @test, @test_logs, @testset
     end
     @test_logs (:warn, r"v.*derived from a model input.*classified as latent") check_model(
         derived_observation(1.0)
+    )
+
+    @model function derived_from_observed_input(y)
+        y ~ Normal()
+        v = exp(y)
+        return v ~ Normal()
+    end
+    @test_logs (:warn, r"Variable v.*derived from a model input") check_model(
+        derived_from_observed_input(1.0)
     )
 
     @model function unsupported_after_finding(y)
@@ -54,6 +78,19 @@ using Test: @test, @test_logs, @testset
     end
     @test_logs (:warn, r"Variable x\[1\].*derived from a model input") check_model(
         derived_index(1.0)
+    )
+
+    @model function derived_dynamic_indices(y)
+        x = exp.([y, y])
+        x[begin] ~ Normal()
+        x[end] ~ Normal()
+        z = exp(y)
+        return z ~ Normal()
+    end
+    @test_logs (:warn, r"Variable x.*derived from a model input") (
+        :warn, r"Variable x.*derived from a model input"
+    ) (:warn, r"Variable z.*derived from a model input") check_model(
+        derived_dynamic_indices(1.0)
     )
 
     @model function derived_property(y)
