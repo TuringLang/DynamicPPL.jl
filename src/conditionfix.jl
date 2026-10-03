@@ -2378,14 +2378,14 @@ function _convert_binding_template(value, template, optic::AbstractPPL.AbstractO
 end
 
 function _bind_model(
-    ::Type{R}, model::Model, values...; preparation_model=model, recursive=false
+    ::Type{R}, model::Model, values; preparation_model=model, recursive=false
 ) where {R}
     model = _materialize_argument_values(model)
     preparation_model = _binding_layer_model(
         R, _materialize_argument_values(preparation_model)
     )
     values = _tag_model_values(
-        R, _make_condfix_values(preparation_model, values...), Val(recursive)
+        R, _make_condfix_values(preparation_model, values), Val(recursive)
     )
     values = _check_argument_bindings(preparation_model, values)
     _check_binding_addresses(model, values, recursive)
@@ -2441,12 +2441,12 @@ function AbstractPPL.condition(model::Model; values...)
 end
 
 """
-    _make_condfix_values(model, values...)
+    _make_condfix_values(model, values)
 
 Convert normalised binding values to a `VarNamedTuple`.
 Input ordering, keyword arguments and schemas are handled by the binding entry points.
 """
-function _make_condfix_values(model, values...)
+function _make_condfix_values(model, values)
     throw(
         ArgumentError(
             "Bindings require a VarNamedTuple, NamedTuple, or VarName pairs (or an ordered tuple of these); use keywords for whole values or @varname(x) => value for an address. AbstractDict inputs are not supported.",
@@ -2469,21 +2469,15 @@ function _binding_storage(value::VarNamedTuples.PartialArray)
     return VarNamedTuples._map_values_recursive!!(_binding_storage, copy(value))
 end
 
-_binding_storage(values::VarNamedTuple, ::Tuple{}) = VarNamedTuple()
-function _binding_storage(values::VarNamedTuple, pairs::Tuple{Pair,Vararg{Pair}})
-    templates = _binding_storage(values, Base.tail(pairs))
-    name = AbstractPPL.getsym(first(first(pairs)))
-    if haskey(templates.data, name) || !haskey(values.data, name)
-        return templates
+function _make_condfix_values(model, pair::Pair{<:VarName})
+    # Only traverse the addressed root; unrelated partial storage can be large.
+    previous_values = _model_values(model.values)
+    name = AbstractPPL.getsym(first(pair))
+    templates = if haskey(previous_values.data, name)
+        VarNamedTuple(NamedTuple{(name,)}((_binding_storage(previous_values.data[name]),)))
+    else
+        VarNamedTuple()
     end
-    storage = _binding_storage(values.data[name])
-    return VarNamedTuple(merge(templates.data, NamedTuple{(name,)}((storage,))))
-end
-
-function _make_condfix_values(model, values::Pair{<:VarName}...)
-    # Existing local owners also supply storage, including axes and nested fields.
-    # Only traverse roots addressed by these pairs; unrelated partial storage can be large.
-    templates = _binding_storage(_model_values(model.values), values)
     for (stored_name, argument) in pairs(merge(model.args, model.defaults))
         name = unsplat_symbol(stored_name)
         vn = _model_value_varname(model.values, VarName{name}(), _model_prefix(model))
@@ -2501,36 +2495,28 @@ function _make_condfix_values(model, values::Pair{<:VarName}...)
             _binding_template(model, _model_values(model.values), vn),
         )
     end
-    result = VarNamedTuple()
-    for (name, value) in values
-        vn = name
-        for stored_name in keys(model.defaults)
-            is_splat_symbol(stored_name) || continue
-            argument = unsplat_symbol(stored_name)
-            root = _model_value_varname(
-                model.values, VarName{argument}(), _model_prefix(model)
+    vn, value = pair
+    for stored_name in keys(model.defaults)
+        is_splat_symbol(stored_name) || continue
+        argument = unsplat_symbol(stored_name)
+        root = _model_value_varname(model.values, VarName{argument}(), _model_prefix(model))
+        if root != vn && subsumes(root, vn)
+            throw(
+                ArgumentError(
+                    "Entries of keyword-splat argument `$argument` cannot be bound; replace the whole argument with `condition` or `fix` instead.",
+                ),
             )
-            if root != vn && subsumes(root, vn)
-                throw(
-                    ArgumentError(
-                        "Entries of keyword-splat argument `$argument` cannot be bound; replace the whole argument with `condition` or `fix` instead.",
-                    ),
-                )
-            end
         end
-        _check_partial_binding(
-            _model_values(model.values), AbstractPPL.varname_to_optic(vn)
-        )
-        template = _binding_template(model, templates, vn)
-        _check_partial_binding(
-            ModelValue{Condition}(template),
-            AbstractPPL.getoptic(vn),
-            AbstractPPL.Property{AbstractPPL.getsym(vn)}(),
-        )
-        _check_binding_template_bounds(template, AbstractPPL.getoptic(vn), vn)
-        result = templated_setindex!!(result, value, vn, template)
     end
-    return result
+    _check_partial_binding(_model_values(model.values), AbstractPPL.varname_to_optic(vn))
+    template = _binding_template(model, templates, vn)
+    _check_partial_binding(
+        ModelValue{Condition}(template),
+        AbstractPPL.getoptic(vn),
+        AbstractPPL.Property{AbstractPPL.getsym(vn)}(),
+    )
+    _check_binding_template_bounds(template, AbstractPPL.getoptic(vn), vn)
+    return templated_setindex!!(VarNamedTuple(), value, vn, template)
 end
 function _binding_template(model, templates::VarNamedTuple, vn::VarName)
     template = get(templates.data, AbstractPPL.getsym(vn), NoTemplate())
