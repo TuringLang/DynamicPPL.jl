@@ -351,4 +351,27 @@ end
 
 @info "Completed $(@__FILE__) in $(now() - __now__)."
 
+@testset "unused recursive removals" begin
+    rec = DynamicPPL.Recursive()
+    @model leaf(x) = x ~ Normal()
+    @model function branch(run)
+        z ~ Normal()
+        if run
+            a ~ to_submodel(leaf(1.0))
+        end
+        return nothing
+    end
+    unused = decondition(branch(false), rec, @varname(a.x))
+    @test_logs (:warn, r"Recursive removal.*a.x.*unused") check_model(Xoshiro(1), unused)
+    @test_logs check_model(Xoshiro(1), decondition(branch(true), rec, @varname(a.x)))
+    @test_logs (:warn, r"Recursive removal.*p.a.x.*unused") check_model(
+        Xoshiro(1), prefix(unused, @varname(p))
+    )
+    @model outer(m) = b ~ to_submodel(m)
+    @test_logs (:warn, r"Recursive removal.*a.x.*unused") check_model(
+        Xoshiro(1), outer(unused)
+    )
+    @test_logs check_model(Xoshiro(1), outer(decondition(branch(true), rec, @varname(a.x))))
+end
+
 end # module

@@ -16,10 +16,32 @@ struct BindingCheckContext{C<:AbstractContext} <: DynamicPPL.AbstractParentConte
     models::Vector{Model}
     namespaces::Set{Symbol}
     lock::ReentrantLock
+    track_names::Bool
+    removals::Dict{Base.RefValue{Nothing},String}
+    used_removals::Set{Base.RefValue{Nothing}}
+end
+function BindingCheckContext(context, models, namespaces, lock)
+    return BindingCheckContext(
+        context,
+        models,
+        namespaces,
+        lock,
+        true,
+        Dict{Base.RefValue{Nothing},String}(),
+        Set{Base.RefValue{Nothing}}(),
+    )
 end
 DynamicPPL.childcontext(ctx::BindingCheckContext) = ctx.context
 function DynamicPPL.setchildcontext(ctx::BindingCheckContext, child::AbstractContext)
-    return BindingCheckContext(child, ctx.models, ctx.namespaces, ctx.lock)
+    return BindingCheckContext(
+        child,
+        ctx.models,
+        ctx.namespaces,
+        ctx.lock,
+        ctx.track_names,
+        ctx.removals,
+        ctx.used_removals,
+    )
 end
 
 function DynamicPPL.tilde_assume!!(
@@ -30,19 +52,31 @@ function DynamicPPL.tilde_assume!!(
     template,
     vi::AbstractVarInfo,
 ) where {M<:Model,AutoPrefix}
-    if AutoPrefix || DynamicPPL._model_prefix(submodel.model) !== nothing
-        # This child and its descendants have their own namespace.
-        namespace = AutoPrefix ? vn : DynamicPPL._model_prefix(submodel.model)
+    _register_removals!(ctx, submodel.model)
+    prefixed = AutoPrefix || DynamicPPL._model_prefix(submodel.model) !== nothing
+    if ctx.track_names
         lock(ctx.lock) do
-            push!(ctx.namespaces, DynamicPPL.AbstractPPL.getsym(namespace))
+            if prefixed
+                namespace = AutoPrefix ? vn : DynamicPPL._model_prefix(submodel.model)
+                push!(ctx.namespaces, DynamicPPL.AbstractPPL.getsym(namespace))
+            else
+                push!(ctx.models, submodel.model)
+            end
         end
-        return DynamicPPL.tilde_assume!!(parent, ctx.context, submodel, vn, template, vi)
     end
-    lock(ctx.lock) do
-        push!(ctx.models, submodel.model)
+    # All descendants participate in removal checks. Only unprefixed descendants
+    # can justify binding names in the root model's namespace.
+    if prefixed
+        ctx = BindingCheckContext(
+            ctx.context,
+            ctx.models,
+            ctx.namespaces,
+            ctx.lock,
+            false,
+            ctx.removals,
+            ctx.used_removals,
+        )
     end
-    # Retain the checking context for unprefixed descendants, while delegating the
-    # actual evaluation to the ordinary submodel method.
     return invoke(
         DynamicPPL.tilde_assume!!,
         Tuple{Model,AbstractContext,typeof(submodel),VarName,Any,AbstractVarInfo},
@@ -53,6 +87,36 @@ function DynamicPPL.tilde_assume!!(
         template,
         vi,
     )
+end
+
+function _register_removals!(ctx::BindingCheckContext, model)
+    lock(ctx.lock) do
+        for role in (DynamicPPL.Condition, DynamicPPL.Fix)
+            for marker in DynamicPPL._removals(role, model.values)
+                name = marker.name === nothing ? "all addresses" : string(marker.name)
+                layer = role === DynamicPPL.Condition ? "observations" : "fixed bindings"
+                get!(
+                    ctx.removals,
+                    marker.token,
+                    "Recursive removal of $layer at `$name` is unused by any reached model.",
+                )
+                marker.matched && push!(ctx.used_removals, marker.token)
+            end
+        end
+    end
+    return nothing
+end
+function DynamicPPL._record_removal_use(ctx::BindingCheckContext, role, marker)
+    lock(ctx.lock) do
+        push!(ctx.used_removals, marker.token)
+    end
+    return nothing
+end
+function _warn_unused_removals(ctx::BindingCheckContext)
+    for (token, message) in ctx.removals
+        token in ctx.used_removals || @warn message
+    end
+    return nothing
 end
 
 function _warn_unused_binding_names(model, ctx::BindingCheckContext)
@@ -230,9 +294,11 @@ function check_model(
     binding_context = BindingCheckContext(
         model.context, Model[model], Set{Symbol}(), ReentrantLock()
     )
+    _register_removals!(binding_context, model)
     checked_model = DynamicPPL.contextualize(model, binding_context)
     _, vi = DynamicPPL.init!!(rng, checked_model, vi, init_strategy, UnlinkAll())
     _warn_unused_binding_names(model, binding_context)
+    _warn_unused_removals(binding_context)
 
     params = get_raw_values(vi)
     # This adds one evaluation per `check_model` call, not per ordinary model evaluation.
