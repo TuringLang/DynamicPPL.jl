@@ -131,31 +131,23 @@ function _vnt(input)
             for arg in expr.args[2:end]
                 if arg isa LineNumberNode
                     continue
-                elseif arg isa Symbol
-                    # e.g. @template x
-                    if arg in keys(symbols_to_templates)
-                        error("duplicate template definition for symbol: $arg")
-                    end
-                    new_sym = gensym()
-                    push!(output.args, :($new_sym = materialize_template($(esc(arg)))))
-                    symbols_to_templates[arg] = new_sym
+                end
+                sym, template_expr, separator = if arg isa Symbol
+                    (arg, arg, ": ")
                 elseif Meta.isexpr(arg, :(=))
-                    # e.g. @template y = x
-                    sym, template_expr = arg.args
-                    if sym in keys(symbols_to_templates)
-                        error("duplicate template definition for symbol $sym")
-                    end
-                    # evaluate the template expression one time so that we don't
-                    # reevaluate it every time we set a value in the VNT
-                    new_sym = gensym()
-                    push!(
-                        output.args,
-                        :($new_sym = materialize_template($(esc(template_expr)))),
-                    )
-                    symbols_to_templates[sym] = new_sym
+                    (arg.args[1], arg.args[2], " ")
                 else
                     error("unexpected argument to `@template`: $arg")
                 end
+                if sym in keys(symbols_to_templates)
+                    error("duplicate template definition for symbol$separator$sym")
+                end
+                # Evaluate and materialize either spelling's template exactly once.
+                new_sym = gensym()
+                push!(
+                    output.args, :($new_sym = materialize_template($(esc(template_expr))))
+                )
+                symbols_to_templates[sym] = new_sym
             end
         elseif Meta.isexpr(expr, :(:=))
             lhs, rhs = expr.args
