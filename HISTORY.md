@@ -2,6 +2,8 @@
 
 **Breaking:** Parent bindings now require explicit recursion: `condition(m, @varname(a.x) => v)` → `condition(m, DynamicPPL.Recursive(), @varname(a.x) => v)`; likewise for `fix`. `|` binds only the model's own LHS variables. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
+Recursive removal is now explicit: decondition a child before wrapping it → `decondition(parent, DynamicPPL.Recursive(), @varname(a.x))`; likewise `unfix` removes child fixes. No-name recursive forms clear their layer at every depth. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+
 `VarNamedTuple` membership resolves `begin` and `end` against the stored array. See [#1490](https://github.com/TuringLang/DynamicPPL.jl/pull/1490).
 
 `ComponentVector` properties, including nested fields and slices, use consistent indices for membership, retrieval, and updates. See [#1491](https://github.com/TuringLang/DynamicPPL.jl/pull/1491).

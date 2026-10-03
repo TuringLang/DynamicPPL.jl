@@ -61,7 +61,8 @@ parent, `a` must not be a model argument. Explicit bindings at or below an argum
 variable receiving a submodel return value also throw during evaluation, or at the
 `condition` or `fix` call when the argument's type
 already rules out the requested field. Condition or fix the child before wrapping it instead.
-To remove a child's argument-supplied observations, decondition the child before wrapping it.
+To remove a child's argument-supplied observations from the parent, use
+`decondition(parent, DynamicPPL.Recursive(), @varname(a.x))`.
 See [Binding rules](@ref).
 
 `Submodel` is not a `Distribution`; it provides this tilde behavior but no standalone
@@ -256,10 +257,29 @@ function tilde_assume!!(
     else
         _model_prefix(submodel.model)
     end
-    child_values = _submodel_values(submodel.model, nothing)
+    observations, observation_removals = _apply_parent_removals(
+        Condition,
+        submodel.model,
+        _submodel_layer(Condition, submodel.model),
+        _submodel_removals(Condition, parent_model, local_prefix),
+        context,
+        AutoPrefix || _model_prefix(submodel.model) !== nothing,
+    )
+    fixed, fixed_removals = _apply_parent_removals(
+        Fix,
+        submodel.model,
+        _submodel_layer(Fix, submodel.model),
+        _submodel_removals(Fix, parent_model, local_prefix),
+        context,
+        AutoPrefix || _model_prefix(submodel.model) !== nothing,
+    )
+    child_layers = ModelBindingLayers(
+        observations, fixed, _submodel_fixed_owners(submodel.model, nothing)
+    )
+    child_values = _model_values(child_layers)
     child_model = _reconstruct_model(submodel.model; values=LocalModelValues(child_values))
     parent_values = _check_argument_bindings(
-        child_model, _inherited_model_values(_submodel_values(parent_model, local_prefix))
+        child_model, _submodel_inherited_values(parent_model, local_prefix)
     )
     # Shared unprefixed names may belong to the parent or another child.
     if AutoPrefix || _model_prefix(submodel.model) !== nothing
@@ -269,7 +289,17 @@ function tilde_assume!!(
         _submodel_fixed_owners(submodel.model, nothing)...,
         _submodel_fixed_owners(parent_model, local_prefix)...,
     )
-    values = LocalModelValues(_merge_model_values(child_values, parent_values), owners)
+    values = LocalModelValues(
+        _with_removals(
+            _merge_model_values(child_values, parent_values),
+            (
+                _submodel_removals(Condition, submodel.model, nothing)...,
+                observation_removals...,
+            ),
+            (_submodel_removals(Fix, submodel.model, nothing)..., fixed_removals...),
+        ),
+        owners,
+    )
     return _evaluate_submodel!!(
         parent_model, context, submodel, left_vn, template, vi, values
     )

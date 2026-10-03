@@ -3311,9 +3311,26 @@ end
         @test bind(shared(1.0), DynamicPPL.Recursive(); y=3.0)() == (3.0, 3.0)
         @test bind(prefix(child(), @varname(a)), @varname(a.y) => 3.0)() == 3.0
     end
+    @test fix(condition(shared(1.0), DynamicPPL.Recursive(); y=4.0); y=3.0)() == (3.0, 4.0)
     @test_throws ArgumentError (parent() | (@varname(a.y) => 3.0))
     @test_throws ArgumentError conditioned(parent(), DynamicPPL.Recursive())
     @test_throws ArgumentError fixed(parent(), DynamicPPL.Recursive())
+end
+
+@testset "recursive unfix releases fixed shape ownership" begin
+    @model function grows(x)
+        x = vcat(x, 0.0)
+        for i in eachindex(x)
+            x[i] ~ Normal()
+        end
+        return x
+    end
+    old = fix(grows(zeros(2)); x=ones(2))
+    for remove in
+        (m -> unfix(m, @varname(x)), m -> unfix(m, DynamicPPL.Recursive(), @varname(x)))
+        model = fix(remove(old), @varname(x[1]) => 2.0)
+        @test model(Xoshiro(1))[1:2] == [2.0, 0.0]
+    end
 end
 
 end

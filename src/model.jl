@@ -28,13 +28,25 @@ end
 
 struct NoModelBinding end
 
+# A removal has no value or storage. Exceptions are later bindings in this layer.
+struct ModelRemoval{N,E<:Tuple}
+    name::N
+    exceptions::E
+    matched::Bool
+    required::Bool
+end
+
 # Fixed bindings preserve the observation layer they shadow.
-struct ModelBindingLayers{O<:VarNamedTuple,F<:VarNamedTuple,V<:VarNamedTuple,A<:Tuple}
+struct ModelBindingLayers{
+    O<:VarNamedTuple,F<:VarNamedTuple,V<:VarNamedTuple,A<:Tuple,OR<:Tuple,FR<:Tuple
+}
     observations::O
     fixed::F
     values::V
     # Whole fixed owners survive expansion into partial storage.
     owners::A
+    observation_removals::OR
+    fixed_removals::FR
 end
 
 # Child bindings selected from the parent's submodel namespace use the child's storage shape.
@@ -321,6 +333,8 @@ function _prefix_values(values::ModelBindingLayers, vn::VarName, template)
         _prefix_values(values.observations, vn, template),
         _prefix_values(values.fixed, vn, template),
         map(owner -> maybe_prefix(owner, vn), values.owners),
+        map(r -> _prefix_removal(r, vn), values.observation_removals),
+        map(r -> _prefix_removal(r, vn), values.fixed_removals),
     )
 end
 function _prefix_values(values::VarNamedTuple, vn::VarName, template)

@@ -5,6 +5,8 @@ using AbstractPPL: AbstractPPL
 using Distributions
 using DimensionalData: DimArray, X, Y
 using ForwardDiff: ForwardDiff
+using ADTypes: AutoForwardDiff, AutoMooncake
+using Mooncake: Mooncake
 using LogDensityProblems: LogDensityProblems
 using Test
 using Random: Xoshiro
@@ -939,6 +941,120 @@ end
         @test bind(shared_parent(), DynamicPPL.Recursive(); x=1.0, y=2.0)(Xoshiro(1)) ==
             (1.0, 2.0)
     end
+end
+
+@testset "recursive removals" begin
+    rec = DynamicPPL.Recursive()
+    @model observation(counts, mu) = counts ~ Normal(mu)
+    @model function generator()
+        mu ~ Normal()
+        y ~ to_submodel(observation(missing, mu))
+        return (mu, y)
+    end
+    latent = decondition(generator(), rec, @varname(y.counts))
+    @test keys(rand(Xoshiro(1), latent)) == [@varname(mu), @varname(y.counts)]
+    @test returned(
+        latent, VarNamedTuple((@varname(mu) => 1.0, @varname(y.counts) => 2.0))
+    ) == (1.0, 2.0)
+    @model leaf(x=2.0) = x ~ Normal()
+    @model parent(m) = a ~ to_submodel(m)
+    @model outer(m) = b ~ to_submodel(m)
+    fixed_child = parent(fix(leaf(); x=5.0))
+    @test unfix(fixed_child, rec, @varname(a.x))() == 2.0
+    @test decondition(fixed_child, rec, @varname(a.x))() == 5.0
+    @test unfix(fixed_child, rec)() == 2.0
+    @test isempty(conditioned(decondition(parent(leaf()), rec)))
+    @test keys(rand(Xoshiro(1), decondition(parent(leaf()), rec))) == [@varname(a.x)]
+    removed = decondition(parent(leaf()), rec, @varname(a.x))
+    @test_throws ArgumentError decondition(removed, rec, @varname(a.x))
+    @test condition(removed, rec, @varname(a.x) => 3.0)() == 3.0
+    @test condition(outer(removed), rec, @varname(b.a.x) => 4.0)() == 4.0
+    @test keys(rand(Xoshiro(1), prefix(removed, @varname(p)))) == [@varname(p.a.x)]
+    @test keys(rand(Xoshiro(1), outer(removed))) == [@varname(b.a.x)]
+    @test_throws ArgumentError unfix(leaf(), rec, @varname(x))
+    @test_throws ArgumentError unfix(parent(leaf()), rec, @varname(a.x))()
+    @test_throws ArgumentError decondition(parent(decondition(leaf())), rec, @varname(a.x))()
+    @test fixed(unfix(fixed_child, rec)) == VarNamedTuple()
+    @model function runtime()
+        mu ~ Normal()
+        a ~ to_submodel(condition(leaf(); x=2mu))
+        return a
+    end
+    @test keys(rand(Xoshiro(2), decondition(runtime(), rec, @varname(a.x)))) ==
+        [@varname(mu), @varname(a.x)]
+    for backend in (AutoForwardDiff(), AutoMooncake(; config=nothing))
+        ldf = LogDensityFunction(latent; adtype=backend)
+        @test LogDensityProblems.dimension(ldf) == 2
+        value, grad = LogDensityProblems.logdensity_and_gradient(ldf, [1.0, 2.0])
+        @test value ≈ logpdf(Normal(), 1.0) + logpdf(Normal(1.0), 2.0)
+        @test grad ≈ [0.0, -1.0]
+    end
+end
+
+@testset "recursive removal storage and scope" begin
+    rec = DynamicPPL.Recursive()
+    @model function indexed(x)
+        for i in eachindex(x)
+            x[i] ~ Normal()
+        end
+        return x
+    end
+    @model parent(m) = a ~ to_submodel(m)
+    child = condition(indexed(zeros(2)); x=ones(3))
+    @test length(decondition(parent(child), rec, @varname(a.x))(Xoshiro(1))) == 2
+    @test unfix(parent(fix(indexed(zeros(2)); x=ones(3))), rec, @varname(a.x))() == zeros(2)
+    partial = decondition(parent(child), rec, @varname(a.x[2]))
+    @test returned(partial, VarNamedTuple((@varname(a.x[2]) => 5.0,))) == [1.0, 5.0, 1.0]
+    @test condition(decondition(parent(child), rec), rec, @varname(a.x) => [4.0, 5.0])() ==
+        [4.0, 5.0]
+    @test returned(
+        condition(
+            decondition(parent(indexed(zeros(2))), rec), rec, @varname(a.x[1]) => 4.0
+        ),
+        VarNamedTuple((@varname(a.x[2]) => 5.0,)),
+    ) == [4.0, 5.0]
+    @model scalar(x) = x ~ Normal()
+    @model function shared(x)
+        x ~ Normal()
+        a ~ to_submodel(scalar(2.0), false)
+        return (x, a)
+    end
+    both = decondition(shared(1.0), rec, @varname(x))
+    @test condition(both; x=3.0)() == (3.0, 2.0)
+    @test isempty(conditioned(decondition(decondition(parent(child), rec), rec)))
+    @model branch(run) = (run && (a ~ to_submodel(scalar(1.0))); nothing)
+    @test decondition(branch(false), rec, @varname(a.x))() === nothing
+    @model function repeated()
+        for i in 1:2
+            unused ~ to_submodel(i == 1 ? scalar(1.0) : decondition(scalar(1.0)), false)
+        end
+    end
+    @test_throws ArgumentError decondition(repeated(), rec, @varname(x))()
+end
+
+@testset "recursive removal namespace boundaries" begin
+    rec = DynamicPPL.Recursive()
+    @model leaf(x) = x ~ Normal()
+    @model parent(a) = a ~ to_submodel(leaf(missing))
+    @test keys(rand(Xoshiro(1), decondition(parent(missing), rec, @varname(a.x)))) ==
+        [@varname(a.x)]
+    @model function sharearr(x)
+        x[1] ~ Normal()
+        x[2] ~ Normal()
+        a ~ to_submodel(arr([2.0, 2.0]), false)
+        return (x, a)
+    end
+    @model function arr(x)
+        x[1] ~ Normal()
+        x[2] ~ Normal()
+        return x
+    end
+    m = condition(sharearr([0.0, 0.0]), rec; x=[4.0, 4.0])
+    @test condition(m, @varname(x[1]) => 3.0)() == ([3.0, 4.0], [2.0, 4.0])
+    @model ownprefix() = a ~ to_submodel(leaf(1.0))
+    @test_throws ArgumentError decondition(
+        prefix(ownprefix(), @varname(p)), rec, @varname(q.x)
+    )
 end
 
 end

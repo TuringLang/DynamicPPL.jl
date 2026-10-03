@@ -162,8 +162,35 @@ bindings replace earlier ones where they overlap.
 | `unfix`       | Removes fixed bindings, uncovering the observation below, or leaving the LHS variable latent.               |
 
 Removal matches equal, enclosing, or contained addresses, with Symbol indices matching
-properties. It throws `ArgumentError` if nothing matches. Remove child-only bindings on the
-child before `to_submodel`. With no names, removal clears this model's corresponding layer.
+properties. Without `Recursive()`, removal clears only bindings stored on this model;
+with no names it clears that model's corresponding layer.
+
+With `DynamicPPL.Recursive()`, `decondition` removes observations of either origin at every
+depth, leaving fixed bindings; `unfix` removes fixed bindings, uncovering observations below.
+The no-name forms clear their layer throughout. A named removal that finds nothing throws:
+at removal time when decidable, otherwise when the relevant child is reached. Each reached
+instance is checked; untaken branches are ignored. Removing an address twice throws.
+
+A removal belongs to the model that makes it. It reaches enclosed models, including those
+built or bound in the body, but cannot remove an enclosing model's binding. Prefixing moves
+the removal with the model. A later binding in the same layer replaces it at that address.
+The removal holds no value or shape: the next binding or argument supplies storage.
+`conditioned` and `fixed` list stored values only; passing `Recursive()` to either throws
+`ArgumentError` because recursive listing is not supported.
+
+For example, a parent can make a child's observation latent even when it constructs the
+child inside its body:
+
+```@example recursive-removal
+using DynamicPPL, Distributions, Random
+@model observation(counts) = counts ~ Normal()
+@model generator() = y ~ to_submodel(observation(missing))
+latent = decondition(generator(), DynamicPPL.Recursive(), @varname(y.counts))
+haskey(rand(Xoshiro(1), latent), @varname(y.counts))
+```
+
+The newly latent variable is an ordinary parameter, including for `InitFromParams` and
+`LogDensityFunction`; parameter order follows evaluation order.
 
 ### Argument contract and shared constraints
 

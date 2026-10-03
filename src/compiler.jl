@@ -247,8 +247,8 @@ generate_mainbody(
     warn_threads,
 )
 
-function _known_distribution_constructor(mod, expr)
-    constructor = if expr isa Symbol && isdefined(mod, expr)
+function _known_constructor(mod, expr)
+    return if expr isa Symbol && isdefined(mod, expr)
         getfield(mod, expr)
     elseif expr isa GlobalRef && isdefined(expr.mod, expr.name)
         getfield(expr.mod, expr.name)
@@ -263,6 +263,9 @@ function _known_distribution_constructor(mod, expr)
     else
         nothing
     end
+end
+function _known_distribution_constructor(mod, expr)
+    constructor = _known_constructor(mod, expr)
     return (constructor isa Type && constructor <: Distribution) ||
            constructor === independent_distribution
 end
@@ -338,11 +341,9 @@ function generate_mainbody!(mod, found, expr::Expr, warn, warn_threads)
         L = generate_mainbody!(mod, found, L, warn, warn_threads)
         if !isliteral(L)
             root = get_top_level_symbol(L)
-            if Meta.isexpr(R, :call) && (
-                R.args[1] === :to_submodel ||
-                R.args[1] === GlobalRef(DynamicPPL, :to_submodel) ||
-                R.args[1] == :(DynamicPPL.to_submodel)
-            )
+            if Meta.isexpr(R, :call) &&
+                !(R.args[1] in found.arguments) &&
+                _known_constructor(mod, R.args[1]) === to_submodel
                 push!(found.submodel_namespaces, root)
             end
             if !(
