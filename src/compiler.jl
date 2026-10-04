@@ -258,11 +258,31 @@ generate_mainbody(
         may_have_submodels,
         lhs_addresses,
         shadowed=Symbol[],
+        rebound=_rebound_names(expr),
     ),
     expr,
     warn,
     warn_threads,
 )
+
+# A body-local name may shadow a global constructor anywhere in its scope.
+function _rebound_names(expr)
+    names = Symbol[]
+    MacroTools.prewalk(expr) do node
+        if Meta.isexpr(node, :(=)) ||
+            Meta.isexpr(node, :local) ||
+            Meta.isexpr(node, :function) ||
+            Meta.isexpr(node, :->) ||
+            Meta.isexpr(node, :let)
+            MacroTools.prewalk(first(node.args)) do lhs
+                lhs isa Symbol && push!(names, lhs)
+                return lhs
+            end
+        end
+        return node
+    end
+    return names
+end
 
 function _known_constructor(mod, expr)
     return if expr isa Symbol && isdefined(mod, expr)
@@ -352,11 +372,14 @@ function generate_mainbody!(mod, found, expr::Expr, warn, warn_threads)
         L = generate_mainbody!(mod, found, L, warn, warn_threads)
         if !isliteral(L)
             root = get_top_level_symbol(L)
-            constructor = if Meta.isexpr(R, :call) && !(R.args[1] in found.arguments)
-                _known_constructor(mod, R.args[1])
-            else
-                nothing
-            end
+            constructor =
+                if Meta.isexpr(R, :call) &&
+                    !(R.args[1] in found.arguments) &&
+                    !(R.args[1] in found.rebound)
+                    _known_constructor(mod, R.args[1])
+                else
+                    nothing
+                end
             # Dynamic indices may overlap any address under their root.
             address = something(_static_lhs_address(L), VarName{root}())
             push!(found.lhs_addresses, (address, constructor === to_submodel))
