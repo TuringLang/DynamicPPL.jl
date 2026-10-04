@@ -1395,4 +1395,38 @@ end
     end
 end
 
+@model shadow_child() = a ~ Distributions.Normal()
+@model function shadow_parent(x=0.0; run=true)
+    Normal = m -> to_submodel(m, false)
+    run && (x ~ Normal(shadow_child()))
+    return x
+end
+@model function shadow_named()
+    function Normal(m)
+        return to_submodel(m, false)
+    end
+    x ~ Normal(shadow_child())
+    return x
+end
+@model function shadow_closure()
+    f = Normal -> begin
+        x ~ Normal(shadow_child())
+        x
+    end
+    return f(m -> to_submodel(m, false))
+end
+@model function shadow_let()
+    let Normal = m -> to_submodel(m, false)
+        x ~ Normal(shadow_child())
+        return x
+    end
+end
+@testset "locally rebound constructors" begin
+    for bind in (condition, fix),
+        model in (shadow_parent(), shadow_named(), shadow_closure(), shadow_let())
+
+        @test bind(model, DynamicPPL.Recursive(), @varname(a) => 2.0)(Xoshiro(1)) == 2.0
+    end
+end
+
 end
