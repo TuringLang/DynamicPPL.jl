@@ -3437,7 +3437,8 @@ function _check_deferred_removals(model, vn)
 end
 # Most models have no removal markers: skip even address normalization in that case.
 _check_deferred_removals(::Tuple{}, ::Type{R}, model, vn) where {R} = nothing
-function _check_deferred_removals(removals::Tuple, ::Type{R}, model, vn) where {R}
+# Julia 1.11 overflows the stack when this is inlined into a model body.
+@noinline function _check_deferred_removals(removals::Tuple, ::Type{R}, model, vn) where {R}
     vn = _model_value_varname(model.values, vn, _model_prefix(model))
     for r in removals
         r.required && !r.matched || continue
