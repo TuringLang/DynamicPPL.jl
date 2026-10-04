@@ -418,9 +418,11 @@ end
                     @test_throws expected bind(m, address => 3.0)
                 end
                 for remove in (decondition, unfix)
-                    expected = if remove === unfix && origin !== fix
-                        "no fixed binding is stored"
-                    elseif remove === decondition && origin === fix
+                    if remove === unfix && origin !== fix
+                        @test conditioned(remove(m, address)) == conditioned(m)
+                        continue
+                    end
+                    expected = if remove === decondition && origin === fix
                         "supplies no template"
                     else
                         message
@@ -460,12 +462,11 @@ end
                 @test_throws message update(m, @varname(x[1]) => 4.0)
             end
             for remove in (decondition, unfix)
-                expected = if remove === unfix && bind === condition
-                    "no fixed binding is stored"
+                if remove === unfix && bind === condition
+                    @test remove(m, @varname(x[1]))(Xoshiro(1)) == m(Xoshiro(1))
                 else
-                    message
+                    @test_throws message remove(m, @varname(x[1]))
                 end
-                @test_throws expected remove(m, @varname(x[1]))
             end
         end
         for value in ((1.0, 2.0), [1.0, 2.0]),
@@ -545,9 +546,7 @@ end
         )
         @test partially_observed(Xoshiro(1)) == [1.0, rand(Xoshiro(1), Normal())]
         @test keys(VarInfo(Xoshiro(1), partially_observed)) == [@varname(x[2])]
-        @test_throws "Cannot remove `x`: no fixed binding is stored at this address." unfix(
-            placeholder_array(), :x
-        )
+        @test isempty(fixed(unfix(placeholder_array(), :x)))
 
         @model container_field(p) = p.b ~ Normal()
         @model container_index(p) = p[2] ~ Normal()
@@ -1086,16 +1085,19 @@ end
         end
     end
 
-    @testset "removal requires a stored binding of the requested role" begin
+    @testset "removal of valid addresses is idempotent" begin
         @model scalar() = x ~ Normal()
         @model inner_arg(x=1.0) = x ~ Normal()
         @model outer_arg() = a ~ to_submodel(inner_arg())
-        for (bind, remove, other_role) in
-            ((condition, unfix, "conditioned"), (fix, decondition, "fixed"))
-            @test_throws r"ArgumentError: .*`x`.*no .* binding" remove(
-                bind(scalar(); x=1.0), :x
+        for (bind, remove) in ((condition, unfix), (fix, decondition)),
+            scope in ((), (DynamicPPL.Recursive(),))
+
+            @test remove(bind(scalar(); x=1.0), scope..., @varname(x))(Xoshiro(1)) == 1.0
+            @test keys(rand(Xoshiro(1), remove(scalar(), scope..., @varname(x)))) ==
+                [@varname(x)]
+            @test_throws r"ArgumentError: .*`unknown`" remove(
+                scalar(), scope..., @varname(unknown)
             )
-            @test_throws r"ArgumentError: .*`unknown`" remove(scalar(), :unknown)
             @test isempty(keys(conditioned(remove(scalar()))))
             @test isempty(keys(fixed(remove(scalar()))))
         end
@@ -1107,17 +1109,13 @@ end
             partial = remove(bind(indexed(data); x=data), @varname(x[2]))
             @test isempty(select(remove(partial, @varname(x[1:2][1]))))
             @test isempty(select(remove(partial, @varname(x[1:2]))))
-            @test_throws r"ArgumentError: .*`x\[2\]`" remove(partial, @varname(x[2]))
+            @test select(remove(partial, @varname(x[2]))) == select(partial)
         end
-        @test_throws r"ArgumentError: .*`a.x`.*[Dd]econdition.*child.*to_submodel" decondition(
-            outer_arg(), @varname(a.x)
-        )
+        @test decondition(outer_arg(), @varname(a.x))(Xoshiro(1)) == 1.0
         for (bind, remove) in ((condition, decondition), (fix, unfix))
             parent = bind(outer_arg(), @varname(a.x) => 2.0)
             @test remove(parent, @varname(a.x))(Xoshiro(1)) == 1.0
-            @test_throws r"ArgumentError: .*`a.x`" remove(
-                remove(parent, @varname(a.x)), @varname(a.x)
-            )
+            @test remove(remove(parent, @varname(a.x)), @varname(a.x))(Xoshiro(1)) == 1.0
         end
     end
 
@@ -1290,7 +1288,7 @@ end
             partial = remove(matrix, @varname(x[2]))
             @test !haskey(select(remove(partial, @varname(x[2:3]))), @varname(x[3]))
             @test_throws ArgumentError remove(matrix, @varname(z))
-            @test_throws ArgumentError remove(matrix, @varname(x[8]))
+            @test select(remove(matrix, @varname(x[8]))) == select(matrix)
             for (model, first, sibling) in (
                 (
                     field_lhs_variables(ComponentVector(; a=1.0, b=2.0)),
@@ -1767,7 +1765,7 @@ end
             @test_throws ArgumentError remove(original, @varname(absent))
             record = bind(record_observations(); t=(; a=1.0, b=2.0))
             @test !haskey(select(remove(record, @varname(t.a))), @varname(t.a))
-            @test_throws ArgumentError remove(record, @varname(t.absent))
+            @test select(remove(record, @varname(t.absent))) == select(record)
         end
         original = condition(record_observations(); t=(; a=1.0, b=2.0))
         expanded = fix(original, @varname(t.b) => 5.0)
@@ -3181,7 +3179,7 @@ end
         @test returned(partial, latent) == (b=(8.0, 2.0),)
         @test returned(tuple_removal_parent(partial), Dict(@varname(a.p.b[1]) => 8.0)) ==
             (b=(8.0, 2.0),)
-        @test_throws r"no .* binding is stored" remove(whole, @varname(p.b[3]))
+        @test remove(whole, @varname(p.b[3]))(Xoshiro(1)) == data
     end
     @test unfix(fix(m; p=(b=(3.0, 4.0),)), @varname(p.b[1]))(Xoshiro(1)) == (b=(1.0, 4.0),)
 

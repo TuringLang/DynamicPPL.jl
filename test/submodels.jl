@@ -816,14 +816,17 @@ end
     @test isempty(conditioned(decondition(parent(leaf()), rec)))
     @test keys(rand(Xoshiro(1), decondition(parent(leaf()), rec))) == [@varname(a.x)]
     removed = decondition(parent(leaf()), rec, @varname(a.x))
-    @test_throws ArgumentError decondition(removed, rec, @varname(a.x))
+    @test keys(rand(Xoshiro(1), decondition(removed, rec, @varname(a.x)))) ==
+        [@varname(a.x)]
     @test condition(removed, @varname(a.x) => 3.0)() == 3.0
     @test condition(outer(removed), @varname(b.a.x) => 4.0)() == 4.0
     @test keys(rand(Xoshiro(1), prefix(removed, @varname(p)))) == [@varname(p.a.x)]
     @test keys(rand(Xoshiro(1), outer(removed))) == [@varname(b.a.x)]
-    @test_throws ArgumentError unfix(leaf(), rec, @varname(x))
-    @test_throws ArgumentError unfix(parent(leaf()), rec, @varname(a.x))()
-    @test_throws ArgumentError decondition(parent(decondition(leaf())), rec, @varname(a.x))()
+    @test unfix(leaf(), rec, @varname(x))(Xoshiro(1)) == 2.0
+    @test unfix(parent(leaf()), rec, @varname(a.x))(Xoshiro(1)) == 2.0
+    @test keys(
+        rand(Xoshiro(1), decondition(parent(decondition(leaf())), rec, @varname(a.x)))
+    ) == [@varname(a.x)]
     @test fixed(unfix(fixed_child, rec)) == VarNamedTuple()
     @model function runtime()
         mu ~ Normal()
@@ -859,14 +862,16 @@ end
     for (bind, remove) in ((condition, decondition), (fix, unfix))
         for (model, name) in
             ((removal_parent(), @varname(m)), (removal_fields(), @varname(m.x[1])))
-            @test_throws ArgumentError remove(model, rec, name)
-            @test_throws ArgumentError remove(
-                prefix(model, @varname(p)), rec, DynamicPPL.maybe_prefix(name, @varname(p))
+            @test name in keys(rand(Xoshiro(1), remove(model, rec, name)))
+            prefixed_name = DynamicPPL.maybe_prefix(name, @varname(p))
+            @test prefixed_name in keys(
+                rand(Xoshiro(1), remove(prefix(model, @varname(p)), rec, prefixed_name))
             )
             deferred = remove(
                 removal_wrapper(model), rec, DynamicPPL.maybe_prefix(name, @varname(b))
             )
-            @test_throws ArgumentError deferred(Xoshiro(1))
+            @test DynamicPPL.maybe_prefix(name, @varname(b)) in
+                keys(rand(Xoshiro(1), deferred))
             matched = remove(bind(model, name => 2.0), rec, name)
             @test name in keys(rand(Xoshiro(1), matched))
         end
@@ -880,7 +885,6 @@ end
         return nothing
     end
     @model removal_whole_local() = t ~ product_distribution((a=Normal(),))
-    @model removal_literal(child) = a ~ to_submodel(child)
     @model function removal_runtime(child)
         rhs = to_submodel(child)
         return a ~ rhs
@@ -893,7 +897,7 @@ end
             (prefix(child, @varname(p)), @varname(p.t.a), @varname(p.t)),
             (removal_runtime(removal_runtime(child)), @varname(a.a.t.a), @varname(a.a.t)),
         )
-            @test_throws ArgumentError remove(model, rec, name)
+            @test whole_name in keys(rand(Xoshiro(1), remove(model, rec, name)))
             matched = remove(bind(model, whole_name => (a=2.0,)), rec, name)
             @test whole_name in keys(rand(Xoshiro(1), matched))
         end
@@ -902,14 +906,16 @@ end
             (skipped, @varname(t.a), @varname(t)),
             (removal_runtime(skipped), @varname(a.t.a), @varname(a.t)),
         )
-            @test_throws ArgumentError remove(model, rec, name)
+            @test remove(model, rec, name)(Xoshiro(1)) === nothing
             @test remove(bind(model, whole_name => (a=2.0,)), rec, name)(Xoshiro(1)) ===
                 nothing
         end
-        # A child's removal cannot count an enclosing binding as its own match.
-        removed_child = remove(removal_literal(child), rec, @varname(a.t.a))
-        enclosing = bind(removal_literal(removed_child), @varname(a.a.t) => (a=2.0,))
-        @test_throws ArgumentError enclosing(Xoshiro(1))
+        # A child's removal cannot clear an enclosing binding.
+        removed_child = remove(removal_runtime(child), rec, @varname(a.t.a))
+        enclosing = bind(removal_runtime(removed_child), @varname(a.a.t) => (a=2.0,))
+        @test enclosing(Xoshiro(1)) === nothing
+        @test isempty(keys(rand(Xoshiro(1), enclosing)))
+        @test logjoint(enclosing, (;)) ≈ (bind === condition ? logpdf(Normal(), 2.0) : 0.0)
     end
 end
 
@@ -938,6 +944,40 @@ end
             @varname(a.obs)
         )
         @test wrap(skipped)(Xoshiro(1)).obs isa Real
+    end
+end
+
+@testset "recursive removals through computed and branched submodels" begin
+    rec = DynamicPPL.Recursive()
+    @model removal_child() = t ~ Normal()
+    @model function removal_mixed(child, c)
+        if c
+            a ~ Normal()
+        else
+            a ~ to_submodel(child)
+        end
+        return a
+    end
+    @model function removal_rhs(child)
+        rhs = to_submodel(child)
+        return a ~ rhs
+    end
+    my_sub(child) = to_submodel(child)
+    @model removal_call(child) = a ~ my_sub(child)
+    for (bind, remove) in ((condition, decondition), (fix, unfix))
+        child = bind(removal_child(); t=2.0)
+        for parent in (m -> removal_mixed(m, false), removal_rhs, removal_call)
+            model = parent(child)
+            @test model(Xoshiro(1)) == 2.0
+            removed = remove(model, rec, @varname(a.t))
+            @test keys(rand(Xoshiro(1), removed)) == [@varname(a.t)]
+            @test logjoint(removed, (; a=(; t=0.5))) ≈ logpdf(Normal(), 0.5)
+            @test keys(rand(Xoshiro(1), remove(removed, rec, @varname(a.t)))) ==
+                [@varname(a.t)]
+        end
+        @test keys(
+            rand(Xoshiro(1), remove(removal_mixed(child, true), rec, @varname(a.t)))
+        ) == [@varname(a)]
     end
 end
 
@@ -979,6 +1019,10 @@ end
     @test_throws r"x.*Prefix.*Recursive" both(Xoshiro(1))
     @test condition(both; x=3.0)(Xoshiro(1)) == (3.0, 3.0)
     @test isempty(conditioned(decondition(decondition(parent(child), rec), rec)))
+    once = decondition(parent(child), rec, @varname(a.x))
+    twice = decondition(once, rec, @varname(a.x))
+    @test typeof(twice) == typeof(once)
+    @test_logs DynamicPPL.DebugUtils.check_model(Xoshiro(1), twice)
     @model branch(run) = (run && (a ~ to_submodel(scalar(1.0))); nothing)
     @test decondition(branch(false), rec, @varname(a.x))() === nothing
     @model function repeated()
@@ -986,7 +1030,7 @@ end
             unused ~ to_submodel(i == 1 ? scalar(1.0) : decondition(scalar(1.0)), false)
         end
     end
-    @test_throws ArgumentError decondition(repeated(), rec, @varname(x))()
+    @test decondition(repeated(), rec, @varname(x))(Xoshiro(1)) === nothing
 end
 
 @testset "recursive removal namespace boundaries" begin
@@ -1058,7 +1102,7 @@ end
         )
         removed = remove(child, rec, @varname(p[end].x))
         @test isempty(bind === condition ? conditioned(removed) : fixed(removed))
-        @test_throws ArgumentError remove(removed, rec, @varname(p[2].x))
+        @test remove(removed, rec, @varname(p[2].x))(Xoshiro(1)) == removed(Xoshiro(1))
         if bind === condition
             @test keys(rand(Xoshiro(1), removed)) == [@varname(p[2].x)]
         else
@@ -1105,8 +1149,10 @@ end
         Xoshiro(1)
     )
     for child in (removal_dynamic(missing), removal_branch(missing, false))
-        @test_throws r"ArgumentError: Cannot remove `a.x`" decondition(
+        @test_throws r"ArgumentError: Submodel tilde .*model argument `a`.*local LHS" decondition(
             child, rec, @varname(a.x)
+        )(
+            Xoshiro(1)
         )
         @test_throws r"ArgumentError: Submodel tilde .*model argument `a`.*local LHS" decondition(
             removal_outer(child), rec, @varname(b.a.x)
@@ -1169,7 +1215,7 @@ end
     return :ok
 end
 @model skipped_removal_parent(run) = a ~ to_submodel(skipped_removal_leaf(run))
-@testset "removals wait for the addressed tilde" begin
+@testset "unmatched removals ignore whether the tilde is reached" begin
     for remove in (decondition, unfix)
         m = remove(skipped_removal_parent(false), DynamicPPL.Recursive(), @varname(a.x))
         @test m(Xoshiro(1)) == :ok
@@ -1177,18 +1223,21 @@ end
             m
         )
         m = remove(skipped_removal_parent(true), DynamicPPL.Recursive(), @varname(a.x))
-        @test_throws ArgumentError m(Xoshiro(1))
+        @test m(Xoshiro(1)) == :ok
     end
 end
 
 @model address_leaf() = x ~ Normal()
 @model address_parent(m) = a ~ to_submodel(m)
-@testset "deferred removal addresses" begin
+@testset "unused nested removal addresses" begin
     for remove in (decondition, unfix), name in (@varname(a.a.x), @varname(a.a.absent))
         m = remove(
             address_parent(address_parent(address_leaf())), DynamicPPL.Recursive(), name
         )
-        @test_throws "Cannot remove `$name`" m(Xoshiro(1))
+        @test keys(rand(Xoshiro(1), m)) == [@varname(a.a.x)]
+        @test_logs (:warn, r"Recursive removal.*unused") DynamicPPL.DebugUtils.check_model(
+            Xoshiro(1), m
+        )
     end
 end
 

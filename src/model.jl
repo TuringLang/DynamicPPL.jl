@@ -29,14 +29,13 @@ struct NoModelBinding end
 struct ModelRemoval{N,E<:Tuple}
     name::N
     exceptions::E
-    matched::Bool
-    required::Bool
+    matched::Bool # Used only by check_model to warn about unused removals.
     # Identity only: Ref{Nothing} carries no mutable evaluation data. Copies and
     # namespace selections deliberately share it; unlike gensym it is collectible.
     token::Base.RefValue{Nothing}
 end
-function ModelRemoval(name, exceptions, matched, required)
-    return ModelRemoval(name, exceptions, matched, required, Ref(nothing))
+function ModelRemoval(name, exceptions, matched)
+    return ModelRemoval(name, exceptions, matched, Ref(nothing))
 end
 
 # Fixed bindings preserve the observation layer they shadow.
@@ -133,10 +132,6 @@ _lhs_names(::Tuple) = nothing
 _lhs_addresses(::ModelBindingMetadata{A,L,S,T,N}) where {A,L,S,T,N} = N
 _lhs_addresses(::Tuple) = ()
 _has_unprefixed_submodel(::ModelBindingMetadata{A,L,S}) where {A,L,S} = S
-function _may_have_submodels(metadata::ModelBindingMetadata)
-    return _has_unprefixed_submodel(metadata) || any(last, _lhs_addresses(metadata))
-end
-_may_have_submodels(::Tuple) = true
 
 _declared_argument_type(::Tuple, name) = Any
 function _declared_argument_type(::ModelBindingMetadata{A,L,S,T}, name) where {A,L,S,T}

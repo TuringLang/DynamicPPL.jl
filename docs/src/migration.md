@@ -261,8 +261,8 @@ edits with indices of the latest enclosing bound value: after `condition(f(zeros
 Known-invalid addresses now throw. Replace bindings of covariates with model reconstruction;
 correct unknown LHS names, nonexistent fields, and indices outside storage. Replace
 NamedTuple integer addresses such as `x[1]` with field addresses such as `x.a`, both in
-bindings and on the LHS. Replace removal of absent bindings with removal of stored
-observations or fixed bindings only. To remove a child's argument-supplied observation from
+bindings and on the LHS. Removing a valid address with no stored binding is a no-op.
+To remove a child's argument-supplied observation from
 its parent, use `decondition(parent, DynamicPPL.Recursive(), @varname(a.x))`.
 Use `decondition(parent, DynamicPPL.Recursive())` for prior prediction throughout the model;
 `unfix(parent, DynamicPPL.Recursive())` uncovers observations at every depth. Replace partial removal from one multivariate LHS variable,

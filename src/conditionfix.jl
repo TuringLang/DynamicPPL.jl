@@ -357,7 +357,6 @@ function _model_role_at(values::VarNamedTuples.PartialArray, optic::AbstractPPL.
     return _model_role_at(getindex(values.data, optic.ix...; optic.kw...), optic.child, vn)
 end
 function _get_model_role(model, vn)
-    _check_deferred_removals(model, vn)
     vn = _model_value_varname(model.values, vn, _model_prefix(model))
     return _model_role_at(_model_values(model.values), AbstractPPL.varname_to_optic(vn), vn)
 end
@@ -368,7 +367,6 @@ function _get_model_binding(model, vn)
     )
 end
 function _get_argument_role(model, vn, argument)
-    _check_deferred_removals(model, vn)
     binding = _get_model_binding(model, argument)
     # TODO: remove once users have migrated off the `x === missing; x = ...` placeholder idiom.
     if binding isa ModelValue{ArgumentCondition} && binding.value isa Union{Missing,Nothing}
@@ -2826,17 +2824,17 @@ that value at the tilde and is used by subsequent body statements.
 
 A name matches when it equals, contains, or is contained in a stored binding's address.
 NamedTuple integer indices are rejected: use `x.a` instead of `x[1]`; Tuples keep integer indices.
-Only the matching conditioned parts are removed. A name with no match throws
-`ArgumentError`, including names with only fixed bindings. With no names, removing all
-observations is always valid.
+Only the matching conditioned parts are removed. Removing an already latent or only fixed
+LHS variable is a no-op. A name with no LHS variable throws `ArgumentError` when the model
+can decide. `check_model` warns about recursive removals that no reached model uses; a local
+removal at a child address that names nothing is a silent no-op.
 
 By default, only bindings stored on this model are removed, at any address. This includes
 a child address bound on this model; the child's own binding there then
 applies again, because bindings at one address resolve outermost first. With
 `DynamicPPL.Recursive()`, removal also reaches enclosed models, including argument-supplied
 observations and runtime bindings. With no names it clears the observation layer at every depth. Fixed bindings remain.
-A named removal with no match throws at removal time when decidable, otherwise when the
-relevant child is reached; untaken branches are ignored. Removing the same address twice throws.
+Removing the same valid address twice is a no-op, both at the call and at evaluation.
 `check_model` warns about recursive removals unused by all reached models.
 
 The removal belongs to this model, moves with `prefix`, and cannot remove an enclosing
@@ -2944,32 +2942,6 @@ function _check_shapeless_removal(binding, optic, prefix, vn)
     head = AbstractPPL.ohead(optic)
     child = _model_argument_binding(binding, head)
     return _check_shapeless_removal(child, optic.child, head ∘ prefix, vn)
-end
-
-function _check_model_removal(
-    ::Type{R}, values, args...; prefix=nothing, shared=false
-) where {R}
-    for arg in args
-        vn = arg isa VarName ? arg : VarName{arg}()
-        _check_partial_binding(values, AbstractPPL.varname_to_optic(vn))
-        binding = _model_argument_binding(values, AbstractPPL.varname_to_optic(vn))
-        _has_removable(R, values, vn, binding) && continue
-        role = R === Condition ? "conditioned" : "fixed"
-        message = "Cannot remove `$(maybe_prefix(vn, prefix))`: no $role binding is stored at this address."
-        if VarNamedTuples._mapreduce_recursive(
-            pair -> pair.second isa ModelValue, |, binding, vn, false
-        )
-            other = R === Condition ? "fixed" : "conditioned"
-            message *= " The stored binding is $other."
-        elseif R === Condition && !(AbstractPPL.getoptic(vn) isa AbstractPPL.Iden)
-            message *= " If this is a child model's argument, decondition the child model before wrapping it with `to_submodel`."
-        end
-        shared && (
-            message *= " If this name belongs to an unprefixed submodel, prefix the submodel or remove without Recursive()."
-        )
-        throw(ArgumentError(message))
-    end
-    return nothing
 end
 
 function _remove_model_values(::Type{R}, values::VarNamedTuple) where {R}
@@ -3286,8 +3258,8 @@ end
 
 Remove this model's fixed bindings at `names...`, or all fixed bindings if no names
 are supplied. NamedTuple integer indices are rejected: use `x.a` instead of `x[1]`; Tuples keep integer indices.
-Matching and the unsupported partial and shared-address cases follow [`decondition`](@ref). A name with no stored fixed match throws `ArgumentError`,
-including a name supplied only by a child submodel or only conditioned on this model.
+Matching and the unsupported partial and shared-address cases follow [`decondition`](@ref).
+Removing a valid address with no stored fixed binding is a no-op.
 Pass `DynamicPPL.Recursive()` to remove fixed bindings from enclosed models too, including
 runtime bindings. With no names it clears the fixed layer at every depth, uncovering
 observations below. Named removals, prefixing, and later replacement follow [`decondition`](@ref).
@@ -3349,11 +3321,8 @@ function _local_remove(::Type{R}, model, names) where {R}
     # Child addresses bound here are stored here, so they are removed here.
     model = _materialize_argument_values(model)
     layer = _binding_layer(R, model.values)
-    foreach(
-        vn -> _check_binding_operation(model, vn isa Symbol ? VarName{vn}() : vn), names
-    )
+    foreach(vn -> _check_removal_name(model, vn isa Symbol ? VarName{vn}() : vn), names)
     _check_removal_addresses(layer, names...)
-    _check_model_removal(R, layer, names...)
     layer = _remove_model_values(R, layer, names...)
     observations = R === Condition ? layer : _observation_values(model.values)
     fixed_values = R === Fix ? layer : _fixed_values(model.values)
@@ -3481,7 +3450,6 @@ function _prefix_removal(r::ModelRemoval, prefix)
         maybe_prefix(r.name, prefix),
         map(vn -> maybe_prefix(vn, prefix), r.exceptions),
         r.matched,
-        r.required,
         r.token,
     )
 end
@@ -3495,7 +3463,7 @@ function _replace_removal(r, addresses)
         r.exceptions...,
         filter(vn -> r.name === nothing || subsumes(r.name, vn), addresses)...,
     )
-    return (ModelRemoval(r.name, exceptions, r.matched, r.required, r.token),)
+    return (ModelRemoval(r.name, exceptions, r.matched, r.token),)
 end
 function _replace_removals(previous, values, ::Type{R}, addresses) where {R}
     edited = mapreduce(
@@ -3511,9 +3479,6 @@ end
 
 function _has_removable(::Type{R}, values, vn) where {R}
     binding = _model_argument_binding(values, AbstractPPL.varname_to_optic(vn))
-    return _has_removable(R, values, vn, binding)
-end
-function _has_removable(::Type{R}, values, vn, binding) where {R}
     VarNamedTuples._mapreduce_recursive(
         pair -> _matches_model_role(R, pair.second), |, binding, vn, false
     ) && return true
@@ -3541,38 +3506,6 @@ function _remove_marked(::Type{R}, values, r::ModelRemoval) where {R}
     return removed
 end
 
-# Role lookup runs only for distribution RHSs. A removal at, above, or below
-# this LHS must already have matched in its own layer or an enclosed model.
-function _check_deferred_removals(model, vn)
-    _check_deferred_removals(_removals(Condition, model.values), Condition, model, vn)
-    _check_deferred_removals(_removals(Fix, model.values), Fix, model, vn)
-    return nothing
-end
-# Most models have no removal markers: skip even address normalization in that case.
-_check_deferred_removals(::Tuple{}, ::Type{R}, model, vn) where {R} = nothing
-# Julia 1.11 overflows the stack when this is inlined into a model body.
-@noinline function _check_deferred_removals(removals::Tuple, ::Type{R}, model, vn) where {R}
-    vn = _model_value_varname(model.values, vn, _model_prefix(model))
-    for r in removals
-        r.required && !r.matched || continue
-        if _removal_covers(r, vn) || (r.name !== nothing && subsumes(vn, r.name))
-            name = r.name === nothing ? vn : r.name
-            name = if model.values isa LocalModelValues
-                maybe_prefix(name, _model_prefix(model))
-            else
-                name
-            end
-            layer = R === Condition ? "conditioned" : "fixed"
-            message = "Cannot remove `$name`: no $layer binding is stored at this address."
-            _may_have_submodels(_binding_metadata(model)) && (
-                message *= " If this name belongs to an unprefixed submodel, prefix the submodel or remove without Recursive()."
-            )
-            throw(ArgumentError(message))
-        end
-    end
-    return nothing
-end
-
 function _local_removal_name(model, vn)
     prefix = model.values isa LocalModelValues ? nothing : _model_prefix(model)
     if vn === nothing || prefix === nothing
@@ -3585,6 +3518,21 @@ function _local_removal_name(model, vn)
     throw(
         ArgumentError("Cannot remove `$vn`: it is outside this model's prefix `$prefix`.")
     )
+end
+
+function _check_removal_name(model, vn)
+    local_name = _local_removal_name(model, _schema_binding_address(model, vn))
+    metadata = _binding_metadata(model)
+    names = _lhs_names(metadata)
+    if local_name !== nothing &&
+        names !== nothing &&
+        !_has_unprefixed_submodel(metadata) &&
+        AbstractPPL.getsym(local_name) ∉ names
+        throw(
+            ArgumentError("Cannot remove `$vn`: it is not an LHS top symbol of this model.")
+        )
+    end
+    return nothing
 end
 
 function _check_shared_removals(parent, child)
@@ -3620,39 +3568,20 @@ function _recursive_remove(::Type{R}, model, names) where {R}
     requested =
         isempty(names) ? (nothing,) : map(n -> n isa Symbol ? VarName{n}() : n, names)
     for vn in requested
-        vn === nothing || _check_binding_operation(model, vn)
+        vn === nothing || _check_removal_name(model, vn)
         if vn !== nothing && AbstractPPL.is_dynamic(AbstractPPL.getoptic(vn))
             template = _binding_storage(_binding_template(model, values, vn))
             vn = _concretize_prefix(vn, template)
         end
-        local_name = _local_removal_name(model, vn)
         matched = vn === nothing ? !isempty(values) : _has_removable(R, values, vn)
-        if vn !== nothing
-            !matched &&
-                any(r -> _removal_covers(r, vn), markers) &&
-                throw(
-                    ArgumentError(
-                        "Cannot remove `$vn` twice: it is already recursively removed."
-                    ),
-                )
-            metadata = _binding_metadata(model)
-            if !matched && (
-                (
-                    local_name !== nothing && any(
-                        pair ->
-                            !last(pair) &&
-                                AbstractPPL.getsym(first(pair)) ===
-                                AbstractPPL.getsym(local_name),
-                        _lhs_addresses(metadata),
-                    )
-                ) || !_may_have_submodels(metadata)
-            )
-                _check_model_removal(R, values, vn; shared=_may_have_submodels(metadata))
-            end
-        end
-        marker = ModelRemoval(vn, (), matched, vn !== nothing)
+        marker = ModelRemoval(vn, (), matched)
         matched && (values = _remove_marked(R, values, marker))
-        markers = vn === nothing ? (marker,) : (markers..., marker)
+        # A covering marker already removes `vn`; another would only change the model type.
+        if vn === nothing
+            markers = (marker,)
+        elseif !any(r -> _removal_covers(r, vn), markers)
+            markers = (markers..., marker)
+        end
     end
     observations = R === Condition ? values : _observation_values(model.values)
     fixed = R === Fix ? values : _fixed_values(model.values)
@@ -3690,7 +3619,7 @@ function _select_removal(r, prefix)
         ex -> AbstractPPL.unprefix(ex, prefix),
         filter(ex -> subsumes(prefix, ex), r.exceptions),
     )
-    return (ModelRemoval(name, exceptions, r.matched, r.required, r.token),)
+    return (ModelRemoval(name, exceptions, r.matched, r.token),)
 end
 function _submodel_removals(::Type{R}, model, prefix) where {R}
     prefix = _model_value_varname(model.values, prefix, _model_prefix(model))
@@ -3715,49 +3644,15 @@ _record_removal_use(context, role, marker) = nothing
 function _record_removal_use(context::AbstractParentContext, role, marker)
     return _record_removal_use(childcontext(context), role, marker)
 end
+_apply_parent_removals(::Type{R}, values, ::Tuple{}, context) where {R} = values
 function _apply_parent_removals(
-    ::Type{R}, child, values, ::Tuple{}, context, check_unknown, prefix
-) where {R}
-    return values, ()
-end
-function _apply_parent_removals(
-    ::Type{R},
-    child,
-    values,
-    markers::Tuple{ModelRemoval,Vararg{ModelRemoval}},
-    context,
-    check_unknown,
-    prefix,
+    ::Type{R}, values, markers::Tuple{ModelRemoval,Vararg{ModelRemoval}}, context
 ) where {R}
     r = first(markers)
     matched = r.name === nothing ? !isempty(values) : _has_removable(R, values, r.name)
-    if !matched && !r.matched && r.required
-        metadata = _binding_metadata(child)
-        own =
-            r.name !== nothing && any(
-                pair ->
-                    !last(pair) &&
-                        AbstractPPL.getsym(first(pair)) === AbstractPPL.getsym(r.name),
-                _lhs_addresses(metadata),
-            )
-        if !own && check_unknown && !_may_have_submodels(metadata)
-            if r.name === nothing
-                throw(
-                    ArgumentError(
-                        "Cannot recursively remove namespace `$prefix`: no $(R === Condition ? "conditioned" : "fixed") binding is stored here.",
-                    ),
-                )
-            end
-            _check_model_removal(R, values, r.name; prefix)
-        end
-    end
     matched && _record_removal_use(context, R, r)
     matched && (values = _remove_marked(R, values, r))
-    values, rest = _apply_parent_removals(
-        R, child, values, Base.tail(markers), context, check_unknown, prefix
-    )
-    marker = ModelRemoval(r.name, r.exceptions, r.matched || matched, r.required, r.token)
-    return values, (marker, rest...)
+    return _apply_parent_removals(R, values, Base.tail(markers), context)
 end
 
 # Filter each layer before overlaying: a local fix must not hide an observation

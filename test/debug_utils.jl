@@ -345,6 +345,15 @@ end
         end
         return nothing
     end
+    for (bind, remove) in ((condition, decondition), (fix, unfix))
+        parent = condition(branch(true), @varname(a.x) => 2.0)
+        @test_logs (:warn, r"Recursive removal.*a.typo.*unused") check_model(
+            Xoshiro(1), remove(parent, rec, @varname(a.typo))
+        )
+        @test_logs check_model(
+            Xoshiro(1), remove(bind(branch(true), @varname(a.x) => 2.0), rec, @varname(a.x))
+        )
+    end
     unused = decondition(branch(false), rec, @varname(a.x))
     @test_logs (:warn, r"Recursive removal.*a.x.*unused") check_model(Xoshiro(1), unused)
     @test_logs check_model(Xoshiro(1), decondition(branch(true), rec, @varname(a.x)))
