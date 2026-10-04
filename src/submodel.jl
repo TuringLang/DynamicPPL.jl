@@ -264,6 +264,7 @@ Evaluate `submodel` under `parent_model`.
         _submodel_removals(Condition, parent_model, local_prefix),
         context,
         AutoPrefix || _model_prefix(submodel.model) !== nothing,
+        maybe_prefix(local_prefix, _model_prefix(parent_model)),
     )
     fixed, fixed_removals = _apply_parent_removals(
         Fix,
@@ -272,6 +273,7 @@ Evaluate `submodel` under `parent_model`.
         _submodel_removals(Fix, parent_model, local_prefix),
         context,
         AutoPrefix || _model_prefix(submodel.model) !== nothing,
+        maybe_prefix(local_prefix, _model_prefix(parent_model)),
     )
     child_owners = filter(_submodel_fixed_owners(submodel.model, nothing)) do owner
         !any(r -> _removal_covers(r, owner), fixed_removals)

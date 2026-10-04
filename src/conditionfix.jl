@@ -2875,14 +2875,14 @@ function _check_shapeless_removal(binding, optic, prefix, vn)
     return _check_shapeless_removal(child, optic.child, head ∘ prefix, vn)
 end
 
-function _check_model_removal(::Type{R}, values, args...) where {R}
+function _check_model_removal(::Type{R}, values, args...; prefix=nothing) where {R}
     for arg in args
         vn = arg isa VarName ? arg : VarName{arg}()
         _check_partial_binding(values, AbstractPPL.varname_to_optic(vn))
         binding = _model_argument_binding(values, AbstractPPL.varname_to_optic(vn))
         _has_removable(R, values, vn, binding) && continue
         role = R === Condition ? "conditioned" : "fixed"
-        message = "Cannot remove `$vn`: no $role binding is stored at this address."
+        message = "Cannot remove `$(maybe_prefix(vn, prefix))`: no $role binding is stored at this address."
         if VarNamedTuples._mapreduce_recursive(
             pair -> pair.second isa ModelValue, |, binding, vn, false
         )
@@ -3505,6 +3505,11 @@ _check_deferred_removals(::Tuple{}, ::Type{R}, model, vn) where {R} = nothing
         r.required && !r.matched || continue
         if _removal_covers(r, vn) || (r.name !== nothing && subsumes(vn, r.name))
             name = r.name === nothing ? vn : r.name
+            name = if model.values isa LocalModelValues
+                maybe_prefix(name, _model_prefix(model))
+            else
+                name
+            end
             layer = R === Condition ? "conditioned" : "fixed"
             throw(
                 ArgumentError(
@@ -3640,7 +3645,7 @@ function _record_removal_use(context::AbstractParentContext, role, marker)
     return _record_removal_use(childcontext(context), role, marker)
 end
 function _apply_parent_removals(
-    ::Type{R}, child, values, ::Tuple{}, context, check_unknown
+    ::Type{R}, child, values, ::Tuple{}, context, check_unknown, prefix
 ) where {R}
     return values, ()
 end
@@ -3651,6 +3656,7 @@ function _apply_parent_removals(
     markers::Tuple{ModelRemoval,Vararg{ModelRemoval}},
     context,
     check_unknown,
+    prefix,
 ) where {R}
     r = first(markers)
     crosses_return = _removal_crosses_return_argument(child, r.name, values)
@@ -3664,17 +3670,17 @@ function _apply_parent_removals(
             if r.name === nothing
                 throw(
                     ArgumentError(
-                        "Cannot recursively remove this namespace: no $(R === Condition ? "conditioned" : "fixed") binding is stored here.",
+                        "Cannot recursively remove namespace `$prefix`: no $(R === Condition ? "conditioned" : "fixed") binding is stored here.",
                     ),
                 )
             end
-            _check_model_removal(R, values, r.name)
+            _check_model_removal(R, values, r.name; prefix)
         end
     end
     matched && _record_removal_use(context, R, r)
     crosses_return || (values = _remove_marked(R, values, r))
     values, rest = _apply_parent_removals(
-        R, child, values, Base.tail(markers), context, check_unknown
+        R, child, values, Base.tail(markers), context, check_unknown, prefix
     )
     marker = ModelRemoval(r.name, r.exceptions, r.matched || matched, r.required, r.token)
     return values, (marker, rest...)
