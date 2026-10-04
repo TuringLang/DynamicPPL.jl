@@ -122,6 +122,29 @@ end
     end
 end
 
+@model smaller_fixed(p) = (p.a ~ Normal(); p.b ~ Normal(); p)
+@model smaller_fixed_parent() = a ~ to_submodel(smaller_fixed((a=1.0, b=2.0, c=3.0)))
+@testset "fixed field owner keeps its fields" begin
+    for recursive in (false, true)
+        m = if recursive
+            fix(smaller_fixed_parent(), DynamicPPL.Recursive(), @varname(a.p) => (a=4.0, b=5.0))
+        else
+            fix(smaller_fixed((a=1.0, b=2.0, c=3.0)); p=(a=4.0, b=5.0))
+        end
+        address = recursive ? @varname(a.p.b) : @varname(p.b)
+        partial = unfix(m, address)
+        @test partial(Xoshiro(1)) == (a=4.0, b=2.0)
+        rebound = if recursive
+            fix(m, DynamicPPL.Recursive(), address => 6.0)
+        else
+            fix(m, address => 6.0)
+        end
+        @test rebound(Xoshiro(1)) == (a=4.0, b=6.0)
+        @test unfix(partial)(Xoshiro(1)) == (a=1.0, b=2.0, c=3.0)
+        @test logjoint(partial, (;)) ≈ logpdf(Normal(), 2.0)
+    end
+end
+
 @testset "partial argument preparation inference" begin
     @model array_argument(x) = x[1] ~ Normal()
     @model named_argument(x) = x.a[1] ~ Normal()
