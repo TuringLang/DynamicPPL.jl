@@ -64,8 +64,6 @@ Known-invalid binding addresses now throw, including covariates, unknown LHS nam
 
 NamedTuple integer addresses are rejected in bindings and LHS variables: `x[1]` → `x.a`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-`decondition`/`unfix` reject unmatched addresses: removing absent bindings → remove only stored observations/fixed bindings; decondition child argument-supplied observations on the child model. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
-
 Partly removing bindings of one multivariate LHS variable now errors: `decondition(m, @varname(x[1]))` for `x ~ MvNormal(...)` → declare separate LHS variables. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
 `fix` shadows observations; `unfix` reveals surviving observations or latent values: restoring original arguments → retain or remove observations explicitly with `condition`/`decondition`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
