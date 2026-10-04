@@ -4,6 +4,8 @@
 
 Recursive removal is now explicit: decondition a child before wrapping it → `decondition(parent, DynamicPPL.Recursive(), @varname(a.x))`; likewise `unfix` removes child fixes. No-name recursive forms clear their layer at every depth. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
+Bindings now reject named recursive removals across shared unprefixed LHS addresses, partial edits of submodel-return arguments, edits below slice prefixes, and partial bindings through tuples nested in arrays or structs; errors name the address and supported alternative.
+
 `VarNamedTuple` membership resolves `begin` and `end` against the stored array. See [#1490](https://github.com/TuringLang/DynamicPPL.jl/pull/1490).
 
 `ComponentVector` properties, including nested fields and slices, use consistent indices for membership, retrieval, and updates. See [#1491](https://github.com/TuringLang/DynamicPPL.jl/pull/1491).
@@ -20,7 +22,7 @@ Added `evaluate!!(model, context, vi)` to evaluate with an explicit leaf context
 
 `TransformedValue`, `FixedTransform`, `WithTransforms`, `LinkSome`, and `UnlinkSome` now hash consistently with `isequal`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-`subsample` and `independent_problem` accept argument-supplied observations: `condition(f(); y=data)` → `f(data)` for models with argument `y`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+`subsample` accepts argument-supplied observations: `condition(f(); y=data)` → `f(data)` for models with argument `y`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
 Indexed prefixes accept a prefix template: `prefix(m, @varname(a[2]))` → `prefix(m, @varname(a[end]); template=zeros(2))`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 

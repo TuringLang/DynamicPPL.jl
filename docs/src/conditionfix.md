@@ -189,7 +189,8 @@ instance is checked; untaken branches are ignored. Removing an address twice thr
 
 A removal belongs to the model that makes it. It reaches enclosed models, including those
 built or bound in the body, but cannot remove an enclosing model's binding. Prefixing moves
-the removal with the model. A later binding in the same layer replaces it at that address.
+the removal with the model. A later recursive binding in the same layer replaces it at that
+address; a local binding leaves recursive removal markers in force.
 The removal holds no value or shape: the next binding or argument supplies storage.
 `conditioned` and `fixed` list stored values only; passing `Recursive()` to either throws
 `ArgumentError` because recursive listing is not supported.
@@ -207,6 +208,22 @@ haskey(rand(Xoshiro(1), latent), @varname(y.counts))
 
 The newly latent variable is an ordinary parameter, including for `InitFromParams` and
 `LogDensityFunction`; parameter order follows evaluation order.
+
+The supported set excludes these operations. Each throws `ArgumentError` naming the
+address and a supported alternative, when the operation is made if decidable, otherwise
+at the tilde:
+
+  - Named recursive removal of a name shared by this model's own LHS and an unprefixed
+    submodel: prefix the submodel, or remove without `Recursive()`.
+  - Partial binding or removal below an argument that any branch uses as a submodel return
+    value or namespace: bind or remove the whole argument instead. Whole bindings still
+    cannot explicitly bind a reached submodel return value.
+  - Binding or removal below a slice or colon prefix, such as `p[1:2].x`: edit before
+    prefixing, or use an integer-indexed prefix.
+  - Partial binding through a tuple nested inside an array or struct: bind the enclosing
+    element whole. Tuples nested only in tuples or NamedTuples remain supported.
+
+Whole bindings and removals remain subject to the usual rules.
 
 ### Argument contract and shared constraints
 
@@ -243,7 +260,8 @@ The body sets the shape of local storage and may resize conditioned arguments. F
 retain their size and shape and cover every reached LHS variable below their address. Fixed
 argument tildes reject growth, shrinkage, or reshaping with an `ArgumentError` naming the LHS
 variable. Shape validation stops at the LHS variable's address; it does not inspect nested
-values inside a whole structured LHS variable.
+values inside a whole structured LHS variable. In-place mutation of a whole fixed argument
+is not detected, because it also mutates the stored binding; the body must not mutate it.
 
 NamedTuple fields must be addressed by name (`x.a`), never by integer index, in both bindings
 and LHS variables. Tuples retain integer indices. Bindings on prefixed models must be at or
@@ -280,7 +298,9 @@ Partial argument bindings act through arrays, tuples, NamedTuples and plain stru
 
 Use NamedTuples or keyword arguments for whole top-level values, and `VarName` pairs for any
 address. The pair `:x => v` abbreviates `@varname(x) => v`. `VarNamedTuple`s produced by
-DynamicPPL are also accepted. Positional inputs and tuples apply left to right. Every
+DynamicPPL are also accepted. However, `conditioned(m)` includes argument-supplied values
+ignored at submodel-return tildes; remove those entries before passing the listing to
+`condition`, since explicit bindings of return values are rejected. Positional inputs and tuples apply left to right. Every
 `AbstractDict` and other unsupported input throws `ArgumentError`.
 
 A **binding schema** is an AbstractPPL `OfNamedTuple` type, such as `@of(z = of(Array, 3))`. It
