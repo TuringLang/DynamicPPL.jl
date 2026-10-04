@@ -314,13 +314,21 @@ the corresponding `fixed(m)` operations. Replace role inspection through `inargn
 
 To rebuild a model with new arguments while keeping its bindings, previously
 `contextualize(new, old.context)`, transfer the bindings stored on `old`. For bindings
-confined to the model's own LHS variables:
+confined to the model's own LHS variables, whose partial bindings fit the new model's
+storage:
 
 ```julia
 new = decondition(new)                         # drop new's own observations
 new = condition(new, conditioned(unfix(old)))  # old's observations, also those under fixes
 new = fix(new, fixed(old))
 ```
+
+If an earlier binding changed storage shape, replay that binding before its partial
+removals. For example, replay `condition(new; x=ones(3))` before
+`decondition(new, @varname(x[1]))` when the original argument had length two. Transferring
+only the surviving listing cannot reconstruct the enlarged owner. Omit argument-supplied
+entries that hold submodel return values: evaluation ignores them, but explicit bindings
+at those addresses are rejected.
 
 `decondition(new)` removes only the new model's own observations. Transfer a recursive
 binding group with `condition(new, DynamicPPL.Recursive(), values)` or the corresponding

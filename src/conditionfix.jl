@@ -2122,6 +2122,10 @@ level deep, but nested mutable values remain shared and must not be mutated eith
 `missing`/`nothing` throw where a tilde reads them, naming the LHS variable. Unread parts
 may contain either; whole argument placeholders throw even if the body replaces them.
 Use [`decondition`](@ref) to make observations latent; see [Missing data](@ref).
+Partial edits below arguments used as submodel returns or namespaces in any branch throw;
+bind or remove the whole argument. Bindings below slice or colon prefixes throw; bind before
+prefixing or use an integer-indexed prefix. Partial bindings through tuples nested in arrays
+or structs throw; bind the enclosing element whole. See [Binding rules](@ref).
 Partial bindings into whole `missing`/`nothing` arguments, even after deconditioning, throw
 `ArgumentError` when bound; supply a concrete argument such as `f(zeros(n))` or a whole binding.
 See [Binding rules](@ref) for the argument contract, binding contract and submodel rules,
@@ -2237,7 +2241,9 @@ throws `ArgumentError`. Schema entries for arguments, unrelated names, or names 
 does not bind also throw `ArgumentError`. Resolve symbolic sizes before binding.
 Use whole bindings for custom arrays and structs that `of` cannot describe.
 Values DynamicPPL produces, such as `rand(model)` and `conditioned(model)`, are
-[`VarNamedTuple`](@ref)s and can be passed straight back for round trips.
+[`VarNamedTuple`](@ref)s and can be passed back for round trips, except that `conditioned`
+entries for arguments holding submodel return values must be omitted: evaluation ignores
+those argument values, but rejects explicit bindings at their addresses.
 
 ## Nested models
 
@@ -2908,8 +2914,14 @@ relevant child is reached; untaken branches are ignored. Removing the same addre
 `check_model` warns about recursive removals unused by all reached models.
 
 The removal belongs to this model, moves with `prefix`, and cannot remove an enclosing
-model's bindings. Its next observation at that address replaces the removal. Removals hold
+model's bindings. Its next recursive observation at that address replaces the removal;
+non-recursive bindings leave the marker in force. Removals hold
 no value or shape and are omitted from `conditioned`.
+
+Named recursive removals shared by an own LHS and an unprefixed submodel throw; prefix the
+child or remove without `Recursive()`. Partial removals below submodel-return arguments
+throw; remove the whole argument. Removals below slice or colon prefixes throw; remove before
+prefixing or use an integer-indexed prefix. See [Binding rules](@ref).
 
 Removal preserves the shape of the owner in the observation layer; it does not restore
 an observation overwritten by an earlier [`condition`](@ref).
@@ -3249,7 +3261,8 @@ or leaves the LHS variable latent if none remains; [`decondition`](@ref) removes
 observations even beneath a fixed binding.
 
 Bindings are local by default; pass `DynamicPPL.Recursive()` to reach submodels.
-Inputs, conversion errors, aliasing and argument preparation follow [`condition`](@ref).
+Inputs, unsupported partial bindings, conversion errors, aliasing and argument preparation
+follow [`condition`](@ref).
 Partial bindings into whole `missing`/`nothing` arguments, even after deconditioning, throw
 `ArgumentError` when bound; supply a concrete argument such as `f(zeros(n))` or a whole binding.
 Partial bindings copy the owner's container one level deep; nested mutable values remain
@@ -3260,7 +3273,9 @@ the schema. Runtime bindings under ForwardDiff/ReverseDiff need storage compatib
 AD values, e.g. `@of(z = of(Array, typeof(m), n))`, or a whole value.
 
 Fixed values must cover their LHS variables with a static size and shape. Changing a
-fixed argument's size or shape in the body throws `ArgumentError` naming the LHS variable.
+fixed argument's size or shape by replacement in the body throws `ArgumentError` naming the
+LHS variable. In-place mutation of a whole fixed argument is not detected: it also mutates
+the stored binding, and the body must not do it.
 Shape validation stops at the LHS variable's address; it does not inspect nested values
 inside a whole structured LHS variable.
 A multivariate draw is one LHS variable: its subvariables cannot have different roles.
@@ -3347,7 +3362,7 @@ end
 
 Remove this model's fixed bindings at `names...`, or all fixed bindings if no names
 are supplied. NamedTuple integer indices are rejected: use `x.a` instead of `x[1]`; Tuples keep integer indices.
-Matching follows [`decondition`](@ref). A name with no stored fixed match throws `ArgumentError`,
+Matching and the unsupported partial and shared-address cases follow [`decondition`](@ref). A name with no stored fixed match throws `ArgumentError`,
 including a name supplied only by a child submodel or only conditioned on this model.
 Pass `DynamicPPL.Recursive()` to remove fixed bindings from enclosed models too, including
 runtime bindings. With no names it clears the fixed layer at every depth, uncovering
@@ -3462,6 +3477,7 @@ submodels exist only during evaluation.
 
 For argument LHS variables that receive submodel return values, `conditioned` lists argument-supplied observations
 that evaluation ignores, while `fixed` lists explicit bindings that evaluation rejects.
+Omit these argument entries before passing a `conditioned` listing back to `condition`.
 
 The result is a `VarNamedTuple` containing ordinary or partial values. After partial
 removal or mixed roles, containers become plain partial values (`VarNamedTuple` or
