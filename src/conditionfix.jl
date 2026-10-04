@@ -1844,7 +1844,7 @@ function _check_binding_addresses(model, values)
             )
         end
     end
-    _may_have_submodels(metadata) && return nothing
+    _has_unprefixed_submodel(metadata) && return nothing
     local_values = if model.values isa LocalModelValues || _model_prefix(model) === nothing
         values
     else
@@ -1853,7 +1853,9 @@ function _check_binding_addresses(model, values)
     for name in keys(local_values.data)
         name in names || throw(
             ArgumentError(
-                "Cannot bind `$name`: it is not an LHS top symbol of this model."
+                "Cannot bind `$name`: it is not an LHS top symbol of this model. Only " *
+                "a literal `to_submodel(child, false)` tilde lets an unprefixed child " *
+                "own other names.",
             ),
         )
     end
@@ -3585,16 +3587,6 @@ function _local_removal_name(model, vn)
     )
 end
 
-# A known distribution LHS cannot defer an unmatched removal to a child.
-# Unknown RHS expressions must still be classified when their tilde executes.
-function _removal_names_own_lhs(metadata, vn)
-    names = _lhs_names(metadata)
-    return vn !== nothing &&
-           names !== nothing &&
-           AbstractPPL.getsym(vn) in names &&
-           AbstractPPL.getsym(vn) ∉ _submodel_lhs_names(metadata)
-end
-
 function _check_shared_removals(parent, child)
     names = _lhs_names(_binding_metadata(child))
     names === nothing && return nothing
@@ -3645,8 +3637,15 @@ function _recursive_remove(::Type{R}, model, names) where {R}
                 )
             metadata = _binding_metadata(model)
             if !matched && (
-                _removal_names_own_lhs(metadata, local_name) ||
-                !_may_have_submodels(metadata)
+                (
+                    local_name !== nothing && any(
+                        pair ->
+                            !last(pair) &&
+                                AbstractPPL.getsym(first(pair)) ===
+                                AbstractPPL.getsym(local_name),
+                        _lhs_addresses(metadata),
+                    )
+                ) || !_may_have_submodels(metadata)
             )
                 _check_model_removal(R, values, vn; shared=_may_have_submodels(metadata))
             end
@@ -3734,7 +3733,13 @@ function _apply_parent_removals(
     matched = r.name === nothing ? !isempty(values) : _has_removable(R, values, r.name)
     if !matched && !r.matched && r.required
         metadata = _binding_metadata(child)
-        own = _removal_names_own_lhs(metadata, r.name)
+        own =
+            r.name !== nothing && any(
+                pair ->
+                    !last(pair) &&
+                        AbstractPPL.getsym(first(pair)) === AbstractPPL.getsym(r.name),
+                _lhs_addresses(metadata),
+            )
         if !own && check_unknown && !_may_have_submodels(metadata)
             if r.name === nothing
                 throw(

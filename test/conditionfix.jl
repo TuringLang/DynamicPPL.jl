@@ -2405,11 +2405,26 @@ end
     @model address_child() = y ~ Normal()
     @model address_parent() = a ~ to_submodel(address_child())
     @model address_unprefixed() = a ~ to_submodel(address_child(), false)
-    @model address_callable(Normal) = a ~ Normal()
-    @test condition(address_callable(() -> to_submodel(address_child(), false)); y=2.0)(
-        Xoshiro(1)
-    ) == 2.0
+    @model address_truncated() = x ~ truncated(Normal(); lower=0)
+    @model address_filldist() = x ~ filldist(Normal(), 2)
+    @model address_runtime(rhs) = x ~ rhs
+    @model address_dynamic_flag(flag) = a ~ to_submodel(address_child(), flag)
+    @model address_qualified() = a ~ DynamicPPL.to_submodel(address_child(), false)
     for bind in (condition, fix)
+        for (model, value) in (
+            (address_truncated(), 1.0),
+            (address_filldist(), [1.0, 2.0]),
+            (address_runtime(Normal()), 1.0),
+        )
+            @test_throws r"Cannot bind `typo`.*not an LHS top symbol" bind(model; typo=1.0)
+            @test bind(model; x=value)(Xoshiro(1)) == value
+        end
+        @test_throws r"Cannot bind `y`.*not an LHS top symbol" bind(address_parent(); y=2.0)
+        @test_throws r"Cannot bind `y`.*not an LHS top symbol" bind(
+            address_dynamic_flag(false); y=2.0
+        )
+        @test bind(address_dynamic_flag(true), @varname(a.y) => 2.0)(Xoshiro(1)) == 2.0
+        @test bind(address_qualified(); y=2.0)(Xoshiro(1)) == 2.0
         @test_throws ArgumentError bind(address_model([0.0]); z=1.0)
         @test_throws ArgumentError bind(
             DynamicPPL.prefix(address_model([0.0]), @varname(p)); z=1.0

@@ -179,7 +179,7 @@ function model(mod, linenumbernode, expr, warn)
 
     # Generate main body
     lhs_names = Symbol[]
-    may_have_submodels = Symbol[]
+    has_unprefixed_submodel = Ref(false)
     lhs_addresses = Tuple{VarName,Bool}[]
     arguments = map(
         arg -> first(MacroTools.splitarg(arg)), vcat(modeldef[:args], modeldef[:kwargs])
@@ -191,12 +191,12 @@ function model(mod, linenumbernode, expr, warn)
         true;
         lhs_names,
         arguments,
-        may_have_submodels,
+        has_unprefixed_submodel,
         lhs_addresses,
     )
 
     return build_output(
-        modeldef, linenumbernode, lhs_names, Tuple(may_have_submodels), Tuple(lhs_addresses)
+        modeldef, linenumbernode, lhs_names, has_unprefixed_submodel[], Tuple(lhs_addresses)
     )
 end
 
@@ -247,7 +247,7 @@ generate_mainbody(
     warn_threads;
     lhs_names=Symbol[],
     arguments=Symbol[],
-    may_have_submodels=Symbol[],
+    has_unprefixed_submodel=Ref(false),
     lhs_addresses=Tuple{VarName,Bool}[],
 ) = generate_mainbody!(
     mod,
@@ -255,52 +255,15 @@ generate_mainbody(
         internal=Symbol[],
         lhs_names,
         arguments,
-        may_have_submodels,
+        has_unprefixed_submodel,
         lhs_addresses,
         shadowed=Symbol[],
-        rebound=_rebound_names(expr),
     ),
     expr,
     warn,
     warn_threads,
 )
 
-# A body-local name may shadow a global constructor anywhere in its scope.
-function _rebound_names(expr)
-    names = Symbol[]
-    MacroTools.prewalk(expr) do node
-        if Meta.isexpr(node, :(=)) ||
-            Meta.isexpr(node, :local) ||
-            Meta.isexpr(node, :function) ||
-            Meta.isexpr(node, :->) ||
-            Meta.isexpr(node, :let)
-            MacroTools.prewalk(first(node.args)) do lhs
-                lhs isa Symbol && push!(names, lhs)
-                return lhs
-            end
-        end
-        return node
-    end
-    return names
-end
-
-function _known_constructor(mod, expr)
-    return if expr isa Symbol && isdefined(mod, expr)
-        getfield(mod, expr)
-    elseif expr isa GlobalRef && isdefined(expr.mod, expr.name)
-        getfield(expr.mod, expr.name)
-    elseif Meta.isexpr(expr, :.) && expr.args[1] isa Symbol && isdefined(mod, expr.args[1])
-        owner = getfield(mod, expr.args[1])
-        name = expr.args[2]
-        if owner isa Module && name isa QuoteNode && isdefined(owner, name.value)
-            getfield(owner, name.value)
-        else
-            nothing
-        end
-    else
-        nothing
-    end
-end
 generate_mainbody!(mod, found, x, warn, warn_threads) = x
 function generate_mainbody!(mod, found, sym::Symbol, warn, warn_threads)
     if warn && sym in INTERNALNAMES && sym ∉ found.internal
@@ -372,23 +335,18 @@ function generate_mainbody!(mod, found, expr::Expr, warn, warn_threads)
         L = generate_mainbody!(mod, found, L, warn, warn_threads)
         if !isliteral(L)
             root = get_top_level_symbol(L)
-            constructor =
-                if Meta.isexpr(R, :call) &&
-                    !(R.args[1] in found.arguments) &&
-                    !(R.args[1] in found.rebound)
-                    _known_constructor(mod, R.args[1])
-                else
-                    nothing
-                end
+            is_submodel =
+                Meta.isexpr(R, :call) && R.args[1] in (
+                    :to_submodel,
+                    :(DynamicPPL.to_submodel),
+                    GlobalRef(DynamicPPL, :to_submodel),
+                )
+            # Only a literal unprefixed child can introduce unknown top symbols.
+            found.has_unprefixed_submodel[] |=
+                is_submodel && length(R.args) == 3 && R.args[3] === false
             # Dynamic indices may overlap any address under their root.
             address = something(_static_lhs_address(L), VarName{root}())
-            push!(found.lhs_addresses, (address, constructor === to_submodel))
-            if !(
-                (constructor isa Type && constructor <: Distribution) ||
-                constructor === independent_distribution
-            )
-                push!(found.may_have_submodels, root)
-            end
+            push!(found.lhs_addresses, (address, is_submodel))
             root in found.shadowed && throw(
                 ArgumentError(
                     "LHS root `$root` shadows model argument `$root`; rename the inner function parameter.",
@@ -741,7 +699,7 @@ end
 Builds the output expression.
 """
 function build_output(
-    modeldef, linenumbernode, lhs_names, may_have_submodels=(), lhs_addresses=()
+    modeldef, linenumbernode, lhs_names, has_unprefixed_submodel=false, lhs_addresses=()
 )
     args = transform_args(modeldef[:args])
     kwargs = transform_args(modeldef[:kwargs])
@@ -909,7 +867,7 @@ function build_output(
             args_on_lhs=$(ModelBindingMetadata){
                 $(QuoteNode(Tuple(args_on_lhs))),
                 $(QuoteNode(Tuple(unique(lhs_names)))),
-                $(QuoteNode(Tuple(unique(may_have_submodels)))),
+                $has_unprefixed_submodel,
                 $argument_types,
                 $(QuoteNode(Tuple(unique(lhs_addresses)))),
             }(),

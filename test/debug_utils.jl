@@ -29,7 +29,8 @@ end
             end
         end
         @model function binding_parent(run=true, child=binding_child())
-            x ~ Normal()
+            x ~ truncated(Normal(); lower=0)
+            w ~ filldist(Normal(), 2)
             if run
                 a ~ to_submodel(child, false)
             end
