@@ -1458,6 +1458,12 @@ _check_argument_key_storage(::Union{Number,Type,Array{<:Number}}, vn) = nothing
 function _argument_storage_policy!(latent, bound, storage)
     value, children = storage.value, storage.children
     push!(latent, value)
+    # Array headers and their backing memory must follow the same copy policy.
+    # Julia 1.10 stores the memory directly; later versions expose a MemoryRef.
+    if value isa Array && hasfield(typeof(value), :ref)
+        push!(latent, value.ref)
+        push!(latent, value.ref.mem)
+    end
     # Partial views still need private backing storage, even when their parent is
     # also a fully bound branch elsewhere in the argument graph.
     if value isa AbstractArray && parent(value) !== value
