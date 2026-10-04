@@ -41,12 +41,9 @@ end
 # Dense scalar overlays need no per-element reverse program for binding metadata.
 # Keep nested/block bindings, custom arrays and other numeric types on the generic path.
 const ScalarArgumentBinding{T<:Base.IEEEFloat} = Union{
-    DynamicPPL.ModelValue{DynamicPPL.ArgumentCondition,T,true},
-    DynamicPPL.ModelValue{DynamicPPL.ArgumentCondition,T,false},
-    DynamicPPL.ModelValue{DynamicPPL.Condition,T,true},
-    DynamicPPL.ModelValue{DynamicPPL.Condition,T,false},
-    DynamicPPL.ModelValue{DynamicPPL.Fix,T,true},
-    DynamicPPL.ModelValue{DynamicPPL.Fix,T,false},
+    DynamicPPL.ModelValue{DynamicPPL.ArgumentCondition,T},
+    DynamicPPL.ModelValue{DynamicPPL.Condition,T},
+    DynamicPPL.ModelValue{DynamicPPL.Fix,T},
 }
 const DenseArgumentBindings{T} = DynamicPPL.VarNamedTuples.PartialArray{
     B,1,Vector{B},Vector{Bool}

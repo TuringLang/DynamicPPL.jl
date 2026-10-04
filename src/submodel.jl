@@ -46,7 +46,7 @@ LHS variable values to the left-hand side.
 Conceptually, `to_submodel(model)` is a `returned_value(model)` wrapper: its value is the
 model's return value, not its latent LHS variable values.
 
-Pass `DynamicPPL.Recursive()` to condition or fix a submodel through its namespace in the parent: for example,
+Condition or fix a submodel through its namespace in the parent: for example,
 `@varname(a.x)` in `a ~ to_submodel(child())`. With `auto_prefix=false`, use the child's
 names unchanged. Parent explicit bindings override the child's explicit bindings and
 argument-supplied observations at the same address; parent argument-supplied observations never reach a child.
@@ -172,12 +172,12 @@ _submodel_namespace(value::ModelValueTree{<:NamedTuple}) = value.values
 function _submodel_namespace(
     value::ModelValue{R,<:NamedTuple}
 ) where {R<:Union{Condition,Fix}}
-    return _tag_model_values(R, VarNamedTuple(value.value), _binding_scope(value))
+    return _tag_model_values(R, VarNamedTuple(value.value))
 end
 function _submodel_namespace(
     value::ModelValue{R,<:VarNamedTuple}
 ) where {R<:Union{Condition,Fix}}
-    return _tag_model_values(R, value.value, _binding_scope(value))
+    return _tag_model_values(R, value.value)
 end
 function _submodel_namespace(::Union{ModelValue,ModelValueTree})
     throw(
@@ -285,7 +285,7 @@ Evaluate `submodel` under `parent_model`.
     )
     # Shared unprefixed names may belong to the parent or another child.
     if AutoPrefix || _model_prefix(submodel.model) !== nothing
-        _check_binding_addresses(child_model, parent_values, true)
+        _check_binding_addresses(child_model, parent_values)
     end
     owners = (child_owners..., _submodel_fixed_owners(parent_model, local_prefix)...)
     values = LocalModelValues(

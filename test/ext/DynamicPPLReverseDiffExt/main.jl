@@ -285,9 +285,9 @@ end
     μ ~ Normal()
     m = condition(wrapped_child(fill(zero(μ), 2), μ); y=[1 + μ, 1 + 2μ, 1 + 3μ])
     if recursive
-        m = condition(wrapped_namespace(m), DynamicPPL.Recursive())
+        m = wrapped_namespace(m)
         for i in 1:nfixed
-            m = fix(m, DynamicPPL.Recursive(), (@varname(a.y[i])) => (i + 1) * μ)
+            m = fix(m, (@varname(a.y[i])) => (i + 1) * μ)
         end
     else
         for i in 1:nfixed

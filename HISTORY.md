@@ -1,7 +1,5 @@
 # 0.43.0 (unreleased)
 
-**Breaking:** Parent bindings now require explicit recursion: `condition(m, @varname(a.x) => v)` → `condition(m, DynamicPPL.Recursive(), @varname(a.x) => v)`; likewise for `fix`. `|` binds only the model's own LHS variables. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
-
 Recursive removal is now explicit: decondition a child before wrapping it → `decondition(parent, DynamicPPL.Recursive(), @varname(a.x))`; likewise `unfix` removes child fixes. No-name recursive forms clear their layer at every depth. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
 Bindings now reject named recursive removals across shared unprefixed LHS addresses, partial edits of submodel-return arguments, edits below slice prefixes, and partial bindings through tuples nested in arrays or structs; errors name the address and supported alternative.
@@ -74,7 +72,7 @@ Partly removing bindings of one multivariate LHS variable now errors: `deconditi
 
 Enclosing explicit bindings override child bindings, including fixed ones: child-fixed precedence → outermost explicit binding precedence. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501), [#1012](https://github.com/TuringLang/DynamicPPL.jl/issues/1012).
 
-Submodel return values cannot be bound: `condition(m; a=value)` → `condition(m, DynamicPPL.Recursive(), @varname(a.x) => value)` for child LHS variable `x` of a local `a`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501), [#1246](https://github.com/TuringLang/DynamicPPL.jl/issues/1246).
+Submodel return values cannot be bound: `condition(m; a=value)` → `condition(m, @varname(a.x) => value)` for child LHS variable `x` of a local `a`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501), [#1246](https://github.com/TuringLang/DynamicPPL.jl/issues/1246).
 
 Argument arrays whose element type includes `Missing` lose defensive copies: mutating observed storage → copy before mutation. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 

@@ -1,8 +1,7 @@
-_binding_scope(::ModelValue{R,T,S}) where {R,T,S} = Val(S)
 function _model_value_like(value::ModelValue{R}, x) where {R}
-    return ModelValue{R}(x, _binding_scope(value))
+    return ModelValue{R}(x)
 end
-_inherits_binding(::ModelValue{R,T,S}) where {R,T,S} = S && R !== ArgumentCondition
+_inherits_binding(::ModelValue{R}) where {R} = R !== ArgumentCondition
 function _inherited_model_values(values::VarNamedTuple)
     return _prune_model_bindings(
         VarNamedTuples._map_values_recursive!!(
@@ -491,8 +490,8 @@ function _check_fixed_shape_child(
     )
 end
 
-function _tag_model_values(::Type{R}, values::VarNamedTuple, scope=Val(true)) where {R}
-    return map_pairs!!(pair -> ModelValue{R}(pair.second, scope), copy(values))
+function _tag_model_values(::Type{R}, values::VarNamedTuple) where {R}
+    return map_pairs!!(pair -> ModelValue{R}(pair.second), copy(values))
 end
 
 # Keep storage templates separate from whole-binding shape ownership.
@@ -534,7 +533,7 @@ end
 function _expand_model_binding(previous::ModelValue{R,<:AbstractArray}) where {R}
     value = previous.value
     T = if isconcretetype(eltype(value))
-        ModelValue{R,eltype(value),typeof(previous).parameters[3]}
+        ModelValue{R,eltype(value)}
     else
         ModelValue{R}
     end
@@ -597,7 +596,7 @@ function _expand_model_binding(previous::ModelValue{R}) where {R}
     )
     return ModelValueTree(
         previous.value,
-        _tag_model_values(R, VarNamedTuple(fields), _binding_scope(previous)),
+        _tag_model_values(R, VarNamedTuple(fields)),
         Val(_inherits_binding(previous)),
     )
 end
@@ -1040,9 +1039,7 @@ function _inherit_model_array_owner(previous, updates)
         data = ModelBindingArray(data, updates.data.template)
     end
     if _inherits_shape(updates.mask)
-        data = data isa ModelBindingArray ? data.data : data
         mask = mask isa ModelBindingArray ? mask.data : mask
-        data = ModelBindingArray(data, updates.mask.template)
         mask = ModelBindingArray(mask, updates.mask.template, Val(true))
     end
     return VarNamedTuples.PartialArray(data, mask)
@@ -1202,14 +1199,7 @@ function VarNamedTuples._concretise_eltype!!(
     isconcretetype(T) || return invoke(
         VarNamedTuples._concretise_eltype!!, Tuple{VarNamedTuples.PartialArray}, pa
     )
-    ET = Union{
-        ModelValue{Condition,T,true},
-        ModelValue{Condition,T,false},
-        ModelValue{ArgumentCondition,T,true},
-        ModelValue{ArgumentCondition,T,false},
-        ModelValue{Fix,T,true},
-        ModelValue{Fix,T,false},
-    }
+    ET = Union{ModelValue{Condition,T},ModelValue{ArgumentCondition,T},ModelValue{Fix,T}}
     eltype(pa) === ET && return pa
     data = similar(pa.data, ET)
     for i in eachindex(pa.mask)
@@ -1232,10 +1222,16 @@ _model_data(value) = value
 _model_data(value::ModelValue) = value.value
 _model_data(values::AbstractArray) = map(_model_data, values)
 function _model_data(values::Array{<:ModelValue{<:Any,T}}) where {T}
-    # The roles/scopes may form a union even when every payload has the same type.
+    # The roles may form a union even when every payload has the same type.
     # Allocate from that payload type; map's inferred eltype can widen on Julia 1.10.
     isconcretetype(T) || return map(_model_data, values)
     return map!(_model_data, similar(values, T), values)
+end
+# Payload types may also differ; promote them, as `map` takes their typejoin.
+function _model_data(values::Array{<:ModelValue})
+    data = map(_model_data, values)
+    (isempty(data) || isconcretetype(eltype(data))) && return data
+    return convert(Array{mapreduce(typeof, promote_type, data)}, data)
 end
 function _model_data(values::ModelBindingArray)
     return _restore_model_array(map(_model_data, values.data), values.template)
@@ -1546,18 +1542,21 @@ function _argument_child_storage(value, template, optic)
 end
 function _argument_storage(values::VarNamedTuples.PartialArray, template)
     _has_complete_model_data(values) && return ModelArgumentLeaf(true)
+    original = template
     values.data isa ModelBindingArray && (template = values.data.template)
     _inherits_shape(values.mask) && (template = values.mask.template)
+    original = original isa AbstractArray ? original : template
     if template isa AbstractArray &&
         !(values.data isa VarNamedTuples.GrowableArray) &&
-        axes(template) != axes(values.data)
-        resized = similar(template, axes(values.data))
+        (template !== original || axes(template) != axes(values.data))
+        T = promote_type(eltype(template), eltype(original))
+        resized = similar(template, T, axes(values.data))
         # A new extent still keeps stale argument values at surviving latent indices.
-        for i in eachindex(template)
+        for i in eachindex(original)
             if checkbounds(Bool, resized, i) &&
                 !haskey(values, i) &&
-                isassigned(template, i)
-                resized[i] = template[i]
+                isassigned(original, i)
+                resized[i] = original[i]
             end
         end
         template = resized
@@ -1828,10 +1827,10 @@ See [`condition`](@ref) for more information and examples.
 Base.:|(model::Model, values::Union{NamedTuple,AbstractDict,Pair,Tuple,VarNamedTuple}) =
     _bind_ordered_inputs(Condition, model, _binding_inputs(values))
 
-@inline function _check_binding_addresses(model, values::VarNamedTuple{()}, recursive::Bool)
+@inline function _check_binding_addresses(model, values::VarNamedTuple{()})
     return nothing
 end
-function _check_binding_addresses(model, values, recursive=false)
+function _check_binding_addresses(model, values)
     metadata = _binding_metadata(model)
     names = _lhs_names(metadata)
     names === nothing && return nothing
@@ -1845,7 +1844,7 @@ function _check_binding_addresses(model, values, recursive=false)
             )
         end
     end
-    recursive && _may_have_submodels(metadata) && return nothing
+    _may_have_submodels(metadata) && return nothing
     local_values = if model.values isa LocalModelValues || _model_prefix(model) === nothing
         values
     else
@@ -1854,24 +1853,9 @@ function _check_binding_addresses(model, values, recursive=false)
     for name in keys(local_values.data)
         name in names || throw(
             ArgumentError(
-                "Cannot bind `$name`: it is not an LHS top symbol of this model. Use DynamicPPL.Recursive() to bind a child model through its submodel namespace.",
+                "Cannot bind `$name`: it is not an LHS top symbol of this model."
             ),
         )
-    end
-    if !recursive
-        addresses = _lhs_addresses(metadata)
-        for vn in keys(local_values)
-            overlaps(address) = subsumes(address, vn) || subsumes(vn, address)
-            namespace = any(p -> last(p) && overlaps(first(p)), addresses)
-            own = any(p -> !last(p) && overlaps(first(p)), addresses)
-            namespace &&
-                !own &&
-                throw(
-                    ArgumentError(
-                        "Cannot bind `$vn`: it names a submodel namespace. Use DynamicPPL.Recursive() to bind a child model through its submodel namespace.",
-                    ),
-                )
-        end
     end
     return nothing
 end
@@ -2078,17 +2062,16 @@ end
 
 """
     condition(model::Model; values...)
-    condition(model::Model, [DynamicPPL.Recursive()], values..., [schema])
+    condition(model::Model, values..., [schema])
 
 Return a `Model` which treats the LHS variables bound by `values` as observations: they replace
 sampling and contribute to the likelihood.
 
 See also: [`decondition`](@ref), [`conditioned`](@ref)
 
-By default, bindings address only this model's own LHS variables. Pass
-`DynamicPPL.Recursive()` immediately after the model to bind child LHS variables;
-outermost explicit bindings win. `|` remains non-recursive. A model's own prefix
-does not make its LHS variables child variables.
+Bindings are stored on this model and reach LHS variables at or below their addresses,
+including child addresses such as `a.x`. Outermost explicit bindings win. A binding
+at a name shared with an unprefixed child binds both models. `|` follows the same rule.
 
 Fixed bindings shadow observations. Within each layer, later bindings replace earlier
 ones where they overlap. Subvariables of one LHS variable must have the same role.
@@ -2107,7 +2090,7 @@ An `of` type fixed before evaluation fixes its element type: runtime bindings un
 ForwardDiff/ReverseDiff need `@of(z = of(Array, typeof(m), n))` or a whole value.
 
 Addresses and independently declared types are checked at binding time; submodel checks
-wait until reached only with `Recursive()`, and unused bindings are ignored. Whole argument values must also fit
+wait until reached, and unused bindings are ignored. Whole argument values must also fit
 the full signature (shared type constraints are checked during evaluation); whole bindings of local LHS
 variables must fit their storage type. Partial values convert to the replaced
 element/field type: Julia conversion errors propagate (`1.5` into `Int` raises
@@ -2271,19 +2254,19 @@ julia> model() ≠ 1.0
 true
 
 julia> # To condition the LHS variable inside `demo_inner` we need to refer to it as `inner.m`.
-       conditioned_model = condition(model, DynamicPPL.Recursive(), @varname(inner.m) => 1.0);
+       conditioned_model = condition(model, @varname(inner.m) => 1.0);
 
 julia> conditioned_model()
 1.0
 
 julia> # Binding `inner` supplies a submodel namespace. For example, this will work:
-       conditioned_model2 = condition(model, DynamicPPL.Recursive(); inner=(m=1.0,));
+       conditioned_model2 = condition(model; inner=(m=1.0,));
 
 julia> conditioned_model2()
 1.0
 
 julia> # Conditioning a submodel's return value is not supported.
-       conditioned_model_fail = condition(model, DynamicPPL.Recursive(); inner="something else");
+       conditioned_model_fail = condition(model; inner="something else");
 
 julia> try
            conditioned_model_fail()
@@ -2401,17 +2384,17 @@ end
 _binding_inputs(value) = (value,)
 _binding_inputs((name, value)::Pair{Symbol}) = (VarName{name}() => value,)
 
-function _bind_ordered_inputs(::Type{R}, model, values, recursive=false) where {R}
-    return foldl((m, v) -> _bind_model(R, m, v; recursive), values; init=model)
+function _bind_ordered_inputs(::Type{R}, model, values) where {R}
+    return foldl((m, v) -> _bind_model(R, m, v), values; init=model)
 end
 
-function _bind_inputs(::Type{R}, model::Model, inputs::Tuple, recursive=false) where {R}
+function _bind_inputs(::Type{R}, model::Model, inputs::Tuple) where {R}
     inputs = _binding_inputs(inputs)
     schemas = filter(x -> x isa Type{<:AbstractPPL.OfNamedTuple}, inputs)
     length(schemas) <= 1 ||
         throw(ArgumentError("At most one binding schema is allowed per call."))
     values = filter(x -> !(x isa Type{<:AbstractPPL.OfNamedTuple}), inputs)
-    isempty(schemas) && return _bind_ordered_inputs(R, model, values, recursive)
+    isempty(schemas) && return _bind_ordered_inputs(R, model, values)
     model = _materialize_argument_values(model)
     schema = VarNamedTuples.materialize_template(only(schemas))
     for name in keys(schema)
@@ -2429,7 +2412,7 @@ function _bind_inputs(::Type{R}, model::Model, inputs::Tuple, recursive=false) w
             throw(ArgumentError("Binding schema entry `$name` is not bound by this call."))
     end
     for value in values
-        model = _bind_schema_input(R, model, value, schema, recursive)
+        model = _bind_schema_input(R, model, value, schema)
     end
     return model
 end
@@ -2541,7 +2524,7 @@ function _schema_has_address(model, ::NamedTuple{names}, vn::VarName{sym}) where
     end
 end
 
-function _bind_schema_input(::Type{R}, model, input, schema, recursive=false) where {R}
+function _bind_schema_input(::Type{R}, model, input, schema) where {R}
     layer_model = _binding_layer_model(R, model)
     layer = _model_values(layer_model.values)
     templates = VarNamedTuple()
@@ -2574,9 +2557,7 @@ function _bind_schema_input(::Type{R}, model, input, schema, recursive=false) wh
         vn = _schema_binding_address(model, vn)
         uses_schema = _schema_has_address(model, schema, vn)
         if !uses_schema
-            is_pair && return _bind_model(
-                R, model, input; preparation_model=layer_model, recursive
-            )
+            is_pair && return _bind_model(R, model, input; preparation_model=layer_model)
             continue
         end
         template = _binding_template(model, templates, vn)
@@ -2586,7 +2567,7 @@ function _bind_schema_input(::Type{R}, model, input, schema, recursive=false) wh
         prepared = templated_setindex!!(prepared, value, vn, template)
     end
     input = prepared
-    return _bind_model(R, model, input; preparation_model=layer_model, recursive)
+    return _bind_model(R, model, input; preparation_model=layer_model)
 end
 
 function _convert_binding_template(value, template, ::AbstractPPL.Iden, vn)
@@ -2623,18 +2604,14 @@ function _convert_binding_template(value, template, optic::AbstractPPL.AbstractO
     return _convert_binding_template(value, child, optic.child, vn)
 end
 
-function _bind_model(
-    ::Type{R}, model::Model, values; preparation_model=model, recursive=false
-) where {R}
+function _bind_model(::Type{R}, model::Model, values; preparation_model=model) where {R}
     model = _materialize_argument_values(model)
     preparation_model = _binding_layer_model(
         R, _materialize_argument_values(preparation_model)
     )
-    values = _tag_model_values(
-        R, _make_condfix_values(preparation_model, values), Val(recursive)
-    )
+    values = _tag_model_values(R, _make_condfix_values(preparation_model, values))
     values = _check_argument_bindings(preparation_model, values)
-    _check_binding_addresses(model, values, recursive)
+    _check_binding_addresses(model, values)
     values = _prepare_local_binding_types(R, preparation_model, values)
     new_addresses = Tuple(keys(values))
     observations = _observation_values(model.values)
@@ -2679,11 +2656,7 @@ function _bind_model(
         )
     end
     values = model.values isa LocalModelValues ? LocalModelValues(values) : values
-    values = if recursive
-        _replace_removals(model.values, values, R, new_addresses)
-    else
-        _with_removals(values, _removals(Condition, model.values), _removals(Fix, model.values))
-    end
+    values = _replace_removals(model.values, values, R, new_addresses)
     return _reconstruct_model(model; values)
 end
 function AbstractPPL.condition(model::Model; values...)
@@ -2856,7 +2829,7 @@ Only the matching conditioned parts are removed. A name with no match throws
 observations is always valid.
 
 By default, only bindings stored on this model are removed, at any address. This includes
-a child address bound with `DynamicPPL.Recursive()`; the child's own binding there then
+a child address bound on this model; the child's own binding there then
 applies again, because bindings at one address resolve outermost first. With
 `DynamicPPL.Recursive()`, removal also reaches enclosed models, including argument-supplied
 observations and runtime bindings. With no names it clears the observation layer at every depth. Fixed bindings remain.
@@ -2865,8 +2838,7 @@ relevant child is reached; untaken branches are ignored. Removing the same addre
 `check_model` warns about recursive removals unused by all reached models.
 
 The removal belongs to this model, moves with `prefix`, and cannot remove an enclosing
-model's bindings. Its next recursive observation at that address replaces the removal;
-non-recursive bindings leave the marker in force. Removals hold
+model's bindings. Its next observation at that address replaces the removal. Removals hold
 no value or shape and are omitted from `conditioned`.
 
 Named recursive removals shared by an own LHS and an unprefixed submodel throw; prefix the
@@ -3131,11 +3103,10 @@ end
 
 """
     conditioned(model::Model)
-    conditioned(model::Model, DynamicPPL.Recursive())
 
 Return this model's conditioned values as plain values, independent of binding history.
 
-Passing `DynamicPPL.Recursive()` throws `ArgumentError`: recursive listing is not supported.
+Bindings held by children are not listed.
 The result lists only bindings stored on `model`. Observations held by
 submodels, including their argument-supplied observations and bindings made inside the
 model body, are not listed, because those submodels exist only during evaluation.
@@ -3201,7 +3172,7 @@ conditioned(model::Model) = _select_model_values(
 
 """
     fix(model::Model; values...)
-    fix(model::Model, [DynamicPPL.Recursive()], values..., [schema])
+    fix(model::Model, values..., [schema])
 
 Return a `Model` which treats the LHS variables bound by `values` as constants: they replace
 sampling and contribute no log probability. Fixed argument LHS variables reset to their bound
@@ -3211,7 +3182,7 @@ Fixed bindings shadow observations. [`unfix`](@ref) uncovers the observation bel
 or leaves the LHS variable latent if none remains; [`decondition`](@ref) removes
 observations even beneath a fixed binding.
 
-Bindings are local by default; pass `DynamicPPL.Recursive()` to reach submodels.
+Bindings reach child addresses too; outermost explicit bindings win.
 Inputs, unsupported partial bindings, conversion errors, aliasing and argument preparation
 follow [`condition`](@ref).
 Partial bindings into whole `missing`/`nothing` arguments, even after deconditioning, throw
@@ -3373,7 +3344,7 @@ function unfix(model::Model, syms::Union{Symbol,VarName}...)
 end
 
 function _local_remove(::Type{R}, model, names) where {R}
-    # Child addresses bound here with `Recursive()` are stored here, so they are removed here.
+    # Child addresses bound here are stored here, so they are removed here.
     model = _materialize_argument_values(model)
     layer = _binding_layer(R, model.values)
     foreach(
@@ -3417,11 +3388,10 @@ end
 
 """
     fixed(model::Model)
-    fixed(model::Model, DynamicPPL.Recursive())
 
 Return this model's fixed values as plain values, independent of binding history.
 
-Passing `DynamicPPL.Recursive()` throws `ArgumentError`: recursive listing is not supported.
+Bindings held by children are not listed.
 The result lists only bindings stored on `model`. Fixed bindings held by
 submodels, including bindings made inside the model body, are not listed, because those
 submodels exist only during evaluation.
@@ -3482,21 +3452,6 @@ julia> # Now `a.x` will be sampled.
 """
 fixed(model::Model) =
     _select_model_values(Fix, _model_values(_materialize_argument_values(model).values))
-
-function AbstractPPL.condition(model::Model, ::Recursive, inputs...; values...)
-    inputs = isempty(values) ? inputs : (inputs..., NamedTuple(values))
-    return _bind_inputs(Condition, model, inputs, true)
-end
-function fix(model::Model, ::Recursive, inputs...; values...)
-    inputs = isempty(values) ? inputs : (inputs..., NamedTuple(values))
-    return _bind_inputs(Fix, model, inputs, true)
-end
-function conditioned(::Model, ::Recursive)
-    throw(ArgumentError("Recursive listing is not supported by conditioned."))
-end
-function fixed(::Model, ::Recursive)
-    throw(ArgumentError("Recursive listing is not supported by fixed."))
-end
 
 # Recursive removals are stored separately from values and therefore own no shape.
 _removals(::Type, values) = ()

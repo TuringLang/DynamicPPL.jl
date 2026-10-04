@@ -135,10 +135,8 @@ end
         @test !is_overlay_primitive(bindings, [0.0], @varname(x))
     end
     @testset "$T" for T in (Float32, Float64)
-        for role in (DynamicPPL.ArgumentCondition, DynamicPPL.Condition, DynamicPPL.Fix),
-            scope in (true, false)
-
-            values = [DynamicPPL.ModelValue{role}(T(i), Val(scope)) for i in 1:3]
+        for role in (DynamicPPL.ArgumentCondition, DynamicPPL.Condition, DynamicPPL.Fix)
+            values = [DynamicPPL.ModelValue{role}(T(i)) for i in 1:3]
             for mask in ([true, true, true], [false, true, false], [false, false, false]),
                 n in (3, 5)
 
@@ -146,9 +144,9 @@ end
             end
         end
         values = ext.ScalarArgumentBinding{T}[
-            DynamicPPL.ModelValue{DynamicPPL.Condition}(T(1), Val(true)),
-            DynamicPPL.ModelValue{DynamicPPL.Fix}(T(2), Val(false)),
-            DynamicPPL.ModelValue{DynamicPPL.ArgumentCondition}(T(3), Val(true)),
+            DynamicPPL.ModelValue{DynamicPPL.Condition}(T(1)),
+            DynamicPPL.ModelValue{DynamicPPL.Fix}(T(2)),
+            DynamicPPL.ModelValue{DynamicPPL.ArgumentCondition}(T(3)),
         ]
         for (mask, template) in (
             ([true, true, true], T[]),

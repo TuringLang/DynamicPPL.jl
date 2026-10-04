@@ -9,20 +9,17 @@ struct Fix end
 """
     Recursive()
 
-Apply bindings or removals throughout a model and its submodels. Pass this marker
-immediately after the model to `condition`, `fix`, `decondition`, or `unfix`.
-Recursive listing with `conditioned` or `fixed` is not supported.
+Remove bindings throughout a model and its submodels. Pass this marker
+immediately after the model to `decondition` or `unfix`.
 """
 struct Recursive end
 
-struct ModelValue{R<:Union{Condition,ArgumentCondition,Fix},T,Recursive}
+struct ModelValue{R<:Union{Condition,ArgumentCondition,Fix},T}
     value::T
-    function ModelValue{R}(
-        value::T, ::Val{S}=Val(true)
-    ) where {R<:Union{Condition,ArgumentCondition,Fix},T,S}
+    function ModelValue{R}(value::T) where {R<:Union{Condition,ArgumentCondition,Fix},T}
         (R === Condition || R === ArgumentCondition || R === Fix) ||
             throw(ArgumentError("A model value must have one concrete role"))
-        return new{R,T,S}(value)
+        return new{R,T}(value)
     end
 end
 
