@@ -37,54 +37,37 @@ end
         warning = r"Binding `zz` has no LHS top symbol"
         for bind in (condition, fix)
             @test_logs (:warn, warning) @test check_model(
-                Xoshiro(1),
-                bind(binding_parent(), DynamicPPL.Recursive(); zz=1.0);
-                error_on_failure=true,
+                Xoshiro(1), bind(binding_parent(); zz=1.0); error_on_failure=true
             )
-            @test_logs @test check_model(
-                Xoshiro(1), bind(binding_parent(), DynamicPPL.Recursive(); z=1.0)
-            )
+            @test_logs @test check_model(Xoshiro(1), bind(binding_parent(); z=1.0))
             # Metadata includes untaken LHS branches in a reached child.
             @test_logs @test check_model(
-                Xoshiro(1),
-                bind(
-                    binding_parent(true, binding_child(false)),
-                    DynamicPPL.Recursive();
-                    z=1.0,
-                ),
+                Xoshiro(1), bind(binding_parent(true, binding_child(false)); z=1.0)
             )
             # An unreached child can own a valid name, so this must only warn.
             @test_logs (:warn, r"Binding `z` has no LHS top symbol") @test check_model(
-                Xoshiro(1),
-                bind(binding_parent(false), DynamicPPL.Recursive(); z=1.0);
-                error_on_failure=true,
+                Xoshiro(1), bind(binding_parent(false); z=1.0); error_on_failure=true
             )
             @test_throws ArgumentError bind(binding_child(); zz=1.0)
         end
         @model binding_middle() = b ~ to_submodel(binding_child(false), false)
         @test_logs @test check_model(
-            Xoshiro(1),
-            condition(
-                binding_parent(true, binding_middle()), DynamicPPL.Recursive(); z=1.0
-            ),
+            Xoshiro(1), condition(binding_parent(true, binding_middle()); z=1.0)
         )
         @test_logs @test check_model(
-            Xoshiro(1),
-            prefix(condition(binding_parent(), DynamicPPL.Recursive(); z=1.0), @varname(p)),
+            Xoshiro(1), prefix(condition(binding_parent(); z=1.0), @varname(p))
         )
         @model binding_prefixed() = b ~ to_submodel(binding_child(false))
         # A prefixed descendant's names cannot justify a binding in the parent namespace.
         for child in (binding_prefixed(), prefix(binding_middle(), @varname(p)))
             @test_logs (:warn, r"Binding `z` has no LHS top symbol") @test check_model(
-                Xoshiro(1),
-                condition(binding_parent(true, child), DynamicPPL.Recursive(); z=1.0),
+                Xoshiro(1), condition(binding_parent(true, child); z=1.0)
             )
         end
         @test_logs @test check_model(
             Xoshiro(1),
             condition(
                 binding_parent(true, prefix(binding_child(), @varname(p))),
-                DynamicPPL.Recursive(),
                 @varname(p.z) => 1.0,
             ),
         )

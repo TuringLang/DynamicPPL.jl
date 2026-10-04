@@ -133,12 +133,25 @@ schema. See [Binding rules](@ref) for the complete contract.
 
 ## Binding rules
 
-By default, `condition` and `fix` bind only the model's own LHS variables.
-A child address requires `DynamicPPL.Recursive()`, for example
-`condition(parent, DynamicPPL.Recursive(), @varname(a.x) => 1.0)`.
-`|` remains non-recursive. A prefixed model's own LHS variables still belong to it.
-Explicit recursive bindings take precedence from the outermost model inward;
+`condition` and `fix` store bindings on the called model at any address in its namespace,
+including child addresses: `condition(parent, @varname(a.x) => 1.0)` binds the child's `x`.
+`|` follows the same rule. Explicit bindings take precedence from the outermost model inward;
 argument-supplied observations never bind a child's LHS variables.
+A binding at a name shared with an unprefixed child binds both:
+
+```@example shared-binding
+using DynamicPPL, Distributions, Random
+@model leaf(x) = x ~ Normal()
+@model function shared(x, child)
+    x ~ Normal()
+    a ~ to_submodel(child, false)
+    return (x, a)
+end
+condition(shared(2.0, leaf(3.0)), @varname(x) => 1.0)(Xoshiro(1)) # (1.0, 1.0)
+```
+
+Produced values round-trip with prefixed and unprefixed children:
+`condition(model, rand(rng, model))` observes the sampled LHS variables.
 
 An **LHS variable** is the addressed left-hand side of one execution of `~`. An **LHS
 subvariable** is part of it, such as `x[1]` of `x ~ MvNormal(...)`. An LHS variable's **role**
@@ -164,17 +177,15 @@ bindings replace earlier ones where they overlap.
 Removal matches equal, enclosing, or contained addresses, with Symbol indices matching
 properties. Without `Recursive()`, removal clears only bindings stored on this model, at any
 address; with no names it clears that model's corresponding layer. This includes bindings the
-model made at child addresses: adding such a binding needs `Recursive()`, because it reaches
-into the child's namespace, but removing it does not, because it is stored on the model. On a
-removal, `Recursive()` decides depth, that is, whether to also clear what the child holds:
+model made at child addresses. On a removal, `Recursive()` decides depth, that is, whether
+to also clear what the child holds:
 
 ```julia
-R = DynamicPPL.Recursive()
 @model leaf(x=2.0) = x ~ Normal()
 @model outer() = a ~ to_submodel(leaf())   # the child observes x = 2.0
-m = condition(outer(), R, @varname(a.x) => 3.0)
+m = condition(outer(), @varname(a.x) => 3.0)
 decondition(m, @varname(a.x))     # the child's x = 2.0 applies again
-decondition(m, R, @varname(a.x))  # a.x is latent
+decondition(m, DynamicPPL.Recursive(), @varname(a.x))  # a.x is latent
 ```
 
 The child's value returns because bindings at one address resolve outermost first: the
@@ -189,11 +200,9 @@ instance is checked; untaken branches are ignored. Removing an address twice thr
 
 A removal belongs to the model that makes it. It reaches enclosed models, including those
 built or bound in the body, but cannot remove an enclosing model's binding. Prefixing moves
-the removal with the model. A later recursive binding in the same layer replaces it at that
-address; a local binding leaves recursive removal markers in force.
+the removal with the model. A later binding in the same layer replaces it at that address.
 The removal holds no value or shape: the next binding or argument supplies storage.
-`conditioned` and `fixed` list stored values only; passing `Recursive()` to either throws
-`ArgumentError` because recursive listing is not supported.
+`conditioned` and `fixed` list stored values only and take no `Recursive()` argument.
 
 For example, a parent can make a child's observation latent even when it constructs the
 child inside its body:
@@ -272,7 +281,7 @@ Explicitly binding a **submodel return value**, assigned by `a ~ to_submodel(...
 `ArgumentError` during evaluation. If `a` is an argument, its observation is ignored at this
 tilde. When `a` is a model argument, explicit bindings at or below `a` also throw, possibly
 at binding time if its type excludes the requested field. When `a` is local, `a.x` can bind
-the child's `x` with `Recursive()`. A NamedTuple argument provides no submodel namespace, so bind the child
+the child's `x`. A NamedTuple argument provides no submodel namespace, so bind the child
 before `to_submodel`.
 Bindings unused by reached LHS variables are ignored, including branches or submodels not run.
 
@@ -316,7 +325,7 @@ whole values for storage that `of` cannot describe.
 
 Bindings must address LHS variables, parts of them, or child LHS variables through a submodel
 namespace. Binding-time checks reject covariates, nonexistent argument fields, indices outside
-storage, and unknown top symbols. Only recursive calls allow possible unprefixed submodel names
+storage, and unknown top symbols. Models with possible submodels allow unprefixed submodel names
 and defer child namespace checks until the submodel is reached. Shared unprefixed namespaces cannot reject unknown names
 independently of siblings. [`check_model`](@ref) warns about bound names that no LHS
 variable in the model or its reached unprefixed submodels can use.
