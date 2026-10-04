@@ -4490,4 +4490,20 @@ end
     end
 end
 
+struct ClosedTuple
+    a::Tuple{Float64,Float64}
+end
+@model closed_tuple(x) = (x[1][1] ~ Normal(); x)
+@model closed_struct(x) = (x.a[1] ~ Normal(); x)
+@testset "nested tuple bindings" begin
+    for bind in (condition, fix),
+        (m, vn) in (
+            (closed_tuple([(1.0, 2.0)]), @varname(x[1][1])),
+            (closed_struct(ClosedTuple((1.0, 2.0))), @varname(x.a[1])),
+        )
+
+        @test_throws r"x.*enclosing element whole" bind(m, vn => 9.0)
+    end
+end
+
 end
