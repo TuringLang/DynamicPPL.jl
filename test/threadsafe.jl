@@ -63,11 +63,11 @@ end
             vi = @inferred DynamicPPL.ThreadSafeVarInfo(VarInfo(LogPriorAccumulator()), T)
             @test getlogprior(vi) isa promote_type(DynamicPPL.LogProbType, float(T))
         end
-        for T in (Any, Union{})
+        for T in (Any, Union{}), init in (0.0f0, big"0.0")
             vi = @inferred DynamicPPL.ThreadSafeVarInfo(
-                VarInfo(LogPriorAccumulator(big"0.0")), T
+                VarInfo(LogPriorAccumulator(init)), T
             )
-            @test getlogprior(vi) isa BigFloat
+            @test getlogprior(vi) isa typeof(init)
         end
 
         discrete = setthreadsafe(discrete_parameter(), true)
