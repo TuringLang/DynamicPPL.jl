@@ -274,3 +274,46 @@ end
         end
     end
 end
+
+@model function wrapped_child(y, μ)
+    for i in eachindex(y)
+        y[i] ~ Normal(μ)
+    end
+    return sum(y)
+end
+@model function wrapped_parent(nfixed, recursive)
+    μ ~ Normal()
+    m = condition(wrapped_child(fill(zero(μ), 2), μ); y=[1 + μ, 1 + 2μ, 1 + 3μ])
+    if recursive
+        m = condition(wrapped_namespace(m), DynamicPPL.Recursive())
+        for i in 1:nfixed
+            m = fix(m, DynamicPPL.Recursive(), (@varname(a.y[i])) => (i + 1) * μ)
+        end
+    else
+        for i in 1:nfixed
+            m = fix(m, (@varname(y[i])) => (i + 1) * μ)
+        end
+    end
+    s ~ to_submodel(m)
+    return 0.7 ~ Normal(s)
+end
+@model wrapped_namespace(m) = a ~ to_submodel(m)
+@testset "runtime wrapped storage keeps observations" begin
+    for nfixed in (1, 2), recursive in (false, true), compile in (false, true)
+        model = wrapped_parent(nfixed, recursive)
+        ldf = LogDensityFunction(model; adtype=AutoReverseDiff(; compile))
+        function oracle(μ)
+            return logpdf(Normal(), μ) +
+                   sum(logpdf(Normal(μ), 1 + i * μ) for i in (nfixed + 1):3) +
+                   logpdf(
+                       Normal(sum((i <= nfixed ? (i + 1) * μ : 1 + i * μ) for i in 1:3)),
+                       0.7,
+                   )
+        end
+        for μ in (0.3, 0.4)
+            val, grad = LogDensityProblems.logdensity_and_gradient(ldf, [μ])
+            @test val ≈ oracle(μ)
+            @test only(grad) ≈ (oracle(μ + 1e-5) - oracle(μ - 1e-5)) / 2e-5
+        end
+    end
+end

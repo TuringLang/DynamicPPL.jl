@@ -20,6 +20,36 @@ using Logging: NullLogger, with_logger
 @info "Testing $(@__FILE__)..."
 __now__ = now()
 
+@model function observed_view(x)
+    for i in eachindex(x)
+        x[i] ~ Normal()
+    end
+    return x
+end
+@model observed_view_parent(x) = a ~ to_submodel(observed_view(x))
+@testset "storage wrappers do not own binding shape" begin
+    for nfixed in (1, 2), recursive in (false, true)
+        m = if recursive
+            condition(
+                observed_view_parent(view(zeros(2), :)),
+                DynamicPPL.Recursive(),
+                @varname(a.x) => [1.0, 2.0, 3.0],
+            )
+        else
+            condition(observed_view(view(zeros(2), :)); x=[1.0, 2.0, 3.0])
+        end
+        for i in 1:nfixed
+            m = if recursive
+                fix(m, DynamicPPL.Recursive(), (@varname(a.x[i])) => 9.0)
+            else
+                fix(m, (@varname(x[i])) => 9.0)
+            end
+        end
+        @test m(Xoshiro(1)) == vcat(fill(9.0, nfixed), [1.0, 2.0, 3.0][(nfixed + 1):end])
+        @test logjoint(m, (;)) ≈ sum(logpdf.(Normal(), [1.0, 2.0, 3.0][(nfixed + 1):end]))
+    end
+end
+
 @testset "partial argument preparation inference" begin
     @model array_argument(x) = x[1] ~ Normal()
     @model named_argument(x) = x.a[1] ~ Normal()
