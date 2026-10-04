@@ -168,7 +168,6 @@ to_submodel(m::Model, auto_prefix::Bool=true) = Submodel{typeof(m),auto_prefix}(
 # ---------------------------
 
 _submodel_namespace(values::VarNamedTuple) = values
-_submodel_namespace(::ModelValue{ArgumentCondition}) = VarNamedTuple()
 _submodel_namespace(value::ModelValueTree{<:NamedTuple}) = value.values
 function _submodel_namespace(
     value::ModelValue{R,<:NamedTuple}
@@ -237,24 +236,19 @@ Evaluate `submodel` under `parent_model`.
     template,
     vi::AbstractVarInfo,
 ) where {M<:Model,AutoPrefix}
-    !AutoPrefix &&
-        _model_prefix(submodel.model) === nothing &&
-        _check_shared_removals(parent_model, submodel.model)
-    _check_return_argument_edits(parent_model, left_vn)
-    namespace = _remove_model_values(
-        ArgumentCondition, _submodel_values(parent_model, left_vn)
-    )
-    if !isempty(namespace) && (
-        AbstractPPL.getsym(left_vn) in _argument_names(parent_model.args) ||
-        AbstractPPL.getsym(left_vn) in _argument_names(parent_model.defaults)
-    )
+    name = AbstractPPL.getsym(left_vn)
+    if name in
+        (_argument_names(parent_model.args)..., _argument_names(parent_model.defaults)...)
         throw(
             ArgumentError(
-                "Cannot bind internal variables below `$left_vn`, which holds a submodel return value. " *
-                "Condition or fix the child model before wrapping it with `to_submodel`.",
+                "Submodel tilde `$left_vn` is rooted at model argument `$name`. " *
+                "Use a local LHS variable, or bind the child's variables with `condition`.",
             ),
         )
     end
+    !AutoPrefix &&
+        _model_prefix(submodel.model) === nothing &&
+        _check_shared_removals(parent_model, submodel.model)
     left_vn = AutoPrefix ? _concretize_prefix(left_vn, template) : left_vn
     local_prefix = if AutoPrefix
         maybe_prefix(_model_prefix(submodel.model), left_vn)

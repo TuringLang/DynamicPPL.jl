@@ -584,12 +584,28 @@ end
         @model placeholder_parent(a=nothing) = (
             a ~ to_submodel(decondition(placeholder_scalar())); a
         )
+        @model local_placeholder_parent() =
+            a ~ to_submodel(decondition(placeholder_scalar()))
         parent = placeholder_parent()
         @test conditioned(parent)[@varname(a)] === nothing
-        @test keys(VarInfo(Xoshiro(1), parent)) == [@varname(a.y)]
-        @test parent(Xoshiro(1)) == rand(Xoshiro(1), Normal())
+        @test_throws r"ArgumentError: Submodel tilde .*model argument `a`.*local LHS" VarInfo(
+            Xoshiro(1), parent
+        )
+        @test_throws r"ArgumentError: Submodel tilde .*model argument `a`.*local LHS" parent(
+            Xoshiro(1)
+        )
+        @test keys(VarInfo(Xoshiro(1), local_placeholder_parent())) == [@varname(a.y)]
+        @test local_placeholder_parent()(Xoshiro(1)) == rand(Xoshiro(1), Normal())
         for bind in (condition, fix)
-            @test_throws ArgumentError bind(parent; a=1.0)(Xoshiro(1))
+            bound = bind(parent, DynamicPPL.Recursive(); a=1.0)
+            @test_throws r"ArgumentError: Submodel tilde .*model argument `a`.*local LHS" bound(
+                Xoshiro(1)
+            )
+            @test bind(
+                local_placeholder_parent(), DynamicPPL.Recursive(), @varname(a.y) => 1.0
+            )(
+                Xoshiro(1)
+            ) == 1.0
         end
 
         direct = DynamicPPL.Model{false}(placeholder_array().f, (; x=nothing), (;))
@@ -1760,7 +1776,7 @@ end
             @test_throws r"ArgumentError: .*`a`.*decondition" bind(
                 scalar_lhs(1.0), DynamicPPL.Recursive(), @varname(a[1]) => 2.0
             )
-            @test_throws r"ArgumentError: .*a.x.*whole argument" bind(
+            @test_throws r"ArgumentError: .*`a`.*decondition" bind(
                 scalar_return(0.0), DynamicPPL.Recursive(), @varname(a.x) => 2.0
             )
         end
@@ -3624,14 +3640,28 @@ end
         a[2] ~ Normal()
         return a
     end
+    @model function local_siblings()
+        a = (obs=0.0, child=0.0)
+        a.obs ~ Normal()
+        a.child ~ to_submodel(binding_leaf())
+        return a
+    end
     @model binding_parent(m) = b ~ to_submodel(m)
     for bind in (condition, fix)
-        @test_throws r"a\[2\].*whole argument" bind(
-            binding_dynamic_index(zeros(2), 1), @varname(a[2]) => 3.0
+        bound = bind(binding_dynamic_index(zeros(2), 1), @varname(a[2]) => 3.0)
+        @test_throws r"ArgumentError: Submodel tilde .*model argument `a`.*local LHS" bound(
+            Xoshiro(1)
         )
-        @test_throws ArgumentError bind(
-            binding_dynamic_index(zeros(2), 1), @varname(a[1]) => 3.0
+        bound = bind(
+            binding_dynamic_index(zeros(2), 1),
+            DynamicPPL.Recursive(),
+            @varname(a[1]) => 3.0,
         )
+        @test_throws r"ArgumentError: Submodel tilde .*model argument `a`.*local LHS" bound(
+            Xoshiro(1)
+        )
+        @test bind(local_siblings(), @varname(a.obs) => 3.0)(Xoshiro(1)) ==
+            (obs=3.0, child=2.0)
         @test bind(binding_branch(1.0, true); a=3.0)(Xoshiro(1)) == 3.0
         return_branch = bind(binding_branch(1.0, false); a=3.0)
         @test_throws ArgumentError return_branch(Xoshiro(1))
@@ -3639,11 +3669,18 @@ end
             (binding_siblings((child=0.0, obs=1.0)), @varname(a.obs), @varname(a.child)),
             (binding_indices(zeros(2)), @varname(a[2]), @varname(a[1])),
         )
-            @test_throws r"whole argument" bind(m, address => 3.0)
-            @test_throws r"whole argument" bind(m, child_address => 3.0)
+            bound = bind(m, address => 3.0)
+            @test_throws r"ArgumentError: Submodel tilde .*model argument `a`.*local LHS" bound(
+                Xoshiro(1)
+            )
+            bound = bind(m, DynamicPPL.Recursive(), child_address => 3.0)
+            @test_throws r"ArgumentError: Submodel tilde .*model argument `a`.*local LHS" bound(
+                Xoshiro(1)
+            )
             pm = prefix(m, @varname(p))
-            @test_throws r"p.a.*whole argument" bind(
-                pm, AbstractPPL.prefix(address, @varname(p)) => 3.0
+            bound = bind(pm, AbstractPPL.prefix(address, @varname(p)) => 3.0)
+            @test_throws r"ArgumentError: Submodel tilde .*model argument `a`.*local LHS" bound(
+                Xoshiro(1)
             )
         end
     end
@@ -4430,11 +4467,20 @@ end
             @test bc_agrees(predicted, observed) || bc_agrees(alternate, observed)
         end
     end
-    # An untaken submodel-return branch still excludes partial argument edits.
-    for bind in (condition, fix), remove in (decondition, unfix)
-        m = bc_named_branch((a=1.0, b=2.0), true)
-        @test_throws r"t.a.*whole argument" bind(m, @varname(t.a) => 3.0)
-        @test_throws r"t.a.*whole argument" remove(m, @varname(t.a))
+    # Partial edits are valid until an argument-rooted submodel tilde is reached.
+    for (bind, remove) in ((condition, decondition), (fix, unfix))
+        observed = bind(bc_named_branch((a=1.0, b=2.0), true), @varname(t.a) => 3.0)
+        @test observed(StableRNG(1)).t.a == 3.0
+        @test remove(observed, @varname(t.a))(StableRNG(1)).t.a isa Real
+        submodel = bind(bc_named_branch((a=1.0, b=2.0), false), @varname(t.a) => 3.0)
+        @test_throws r"ArgumentError: Submodel tilde .*model argument `t`.*local LHS" submodel(
+            StableRNG(1)
+        )
+        @test_throws r"ArgumentError: Submodel tilde .*model argument `t`.*local LHS" remove(
+            submodel, @varname(t.a)
+        )(
+            StableRNG(1)
+        )
     end
     let
         c = BCCase(:scalar, false, 1, false, false)
@@ -4509,25 +4555,33 @@ end
     a.child ~ to_submodel(closed_leaf())
     return a
 end
-@testset "return argument partial edits" begin
-    for bind in (condition, fix), run in (true, false)
-        @test_throws r"a\[1\].*whole argument" bind(
-            closed_branch([1.0, 2.0], run), @varname(a[1]) => 4.0
+@testset "argument submodel tildes after partial edits" begin
+    @model function local_sibling()
+        a = (obs=0.0, child=0.0)
+        a.obs ~ Normal()
+        a.child ~ to_submodel(closed_leaf())
+        return a
+    end
+    for (bind, remove) in ((condition, decondition), (fix, unfix))
+        observed = bind(closed_branch([1.0, 2.0], true), @varname(a[1]) => 4.0)
+        @test observed(StableRNG(1)) == [4.0, 2.0]
+        @test remove(observed, @varname(a[1]))(StableRNG(1))[2] == 2.0
+        submodel = bind(closed_branch([1.0, 2.0], false), @varname(a[1]) => 4.0)
+        @test_throws r"ArgumentError: Submodel tilde .*model argument `a`.*local LHS" submodel(
+            StableRNG(1)
+        )
+        @test_throws r"ArgumentError: Submodel tilde .*model argument `a`.*local LHS" remove(
+            submodel, @varname(a[1])
+        )(
+            StableRNG(1)
         )
     end
-    for remove in (decondition, unfix), run in (true, false)
-        @test_throws r"a\[1\].*whole argument" remove(
-            closed_branch([1.0, 2.0], run), @varname(a[1])
-        )
-    end
-    @test_throws r"a.obs.*whole argument" decondition(
-        closed_sibling((obs=1.0, child=missing)), @varname(a.obs)
+    sibling = decondition(closed_sibling((obs=1.0, child=0.0)), @varname(a.obs))
+    @test_throws r"ArgumentError: Submodel tilde .*model argument `a`.*local LHS" sibling(
+        StableRNG(1)
     )
-    @test_throws r"a.child.x.*whole argument" decondition(
-        closed_sibling((obs=1.0, child=missing)),
-        DynamicPPL.Recursive(),
-        @varname(a.child.x)
-    )
+    @test condition(local_sibling(), @varname(a.obs) => 2.0)(StableRNG(1)) ==
+        (obs=2.0, child=3.0)
 end
 
 end
