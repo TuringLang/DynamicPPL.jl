@@ -1367,4 +1367,21 @@ end
     @test loglikelihood(m, (;)) ≈ logpdf(Normal(), 3.0)
 end
 
+@model function skipped_removal_leaf(run)
+    run && (x ~ Normal())
+    return :ok
+end
+@model skipped_removal_parent(run) = a ~ to_submodel(skipped_removal_leaf(run))
+@testset "removals wait for the addressed tilde" begin
+    for remove in (decondition, unfix)
+        m = remove(skipped_removal_parent(false), DynamicPPL.Recursive(), @varname(a.x))
+        @test m(Xoshiro(1)) == :ok
+        @test_logs (:warn, r"removal") match_mode = :any DynamicPPL.DebugUtils.check_model(
+            m
+        )
+        m = remove(skipped_removal_parent(true), DynamicPPL.Recursive(), @varname(a.x))
+        @test_throws ArgumentError m(Xoshiro(1))
+    end
+end
+
 end
