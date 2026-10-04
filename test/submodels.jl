@@ -355,10 +355,12 @@ end
             bindings = DynamicPPL.templated_setindex!!(
                 VarNamedTuple(), 2.0, pair.first, zeros(2)
             )
-            for form in (pair, bindings)
-                model = bind(range_parent(), DynamicPPL.Recursive(), form)
-                @test model(Xoshiro(1)) == [2.0, 2.0]
-                @test range_nested(model)(Xoshiro(1)) == [2.0, 2.0]
+            for form in (pair, bindings), wrap in (identity, range_nested)
+                @test_throws r"a\[.*before prefixing" wrap(
+                    bind(range_parent(), DynamicPPL.Recursive(), form)
+                )(
+                    Xoshiro(1)
+                )
             end
             @test_throws "Cannot explicitly bind a submodel return value" bind(
                 range_parent(), DynamicPPL.Recursive(); a=zeros(2)
@@ -379,6 +381,12 @@ end
 
             original = prefix(leaf, name; template)
             vn = AbstractPPL.prefix(@varname(x), name)
+            if name == @varname(p[:])
+                @test_throws r"p\[.*before prefixing" bind(
+                    original, DynamicPPL.Recursive(), vn => 4.0
+                )
+                continue
+            end
             bound = bind(original, DynamicPPL.Recursive(), vn => 4.0)
             @test bound(Xoshiro(1)) == 4.0
             @test template_parent(bound)(Xoshiro(1)) == 4.0

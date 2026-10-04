@@ -257,6 +257,7 @@ Evaluate `submodel` under `parent_model`.
     else
         _model_prefix(submodel.model)
     end
+    _check_slice_namespace(parent_model, local_prefix)
     observations, observation_removals = _apply_parent_removals(
         Condition,
         submodel.model,
