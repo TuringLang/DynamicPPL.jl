@@ -2739,12 +2739,8 @@ end
     nested = prefix(prefixed, @varname(q))
     sliced = prefix(plain, @varname(p[:]); template=zeros(2))
     for op in (condition, fix),
-        (model, address) in (
-            (plain, @varname(x)),
-            (prefixed, @varname(p.x)),
-            (nested, @varname(q.p.x)),
-            (sliced, @varname(p[:].x)),
-        )
+        (model, address) in
+        ((plain, @varname(x)), (prefixed, @varname(p.x)), (nested, @varname(q.p.x)))
 
         schema = @of(x = of(Array, 2))
         bound = op(model, schema, address => [1.0, 2.0])
@@ -2752,6 +2748,11 @@ end
         @test whole_schema_parent(bound)(Xoshiro(1)) == [1.0, 2.0]
         @test_throws ArgumentError op(model, schema, address => ones(Float32, 2))
         @test_throws ArgumentError op(model, schema, address => ones(3))
+    end
+    for op in (condition, fix)
+        @test_throws r"p\[.*before prefixing" op(
+            sliced, @of(x = of(Array, 2)), @varname(p[:].x) => [1.0, 2.0]
+        )
     end
 end
 
@@ -2811,42 +2812,13 @@ end
     end
 end
 
-@testset "binding schemas under slice namespaces" begin
-    @model function slice_schema_local()
-        z = zeros(3)
-        for i in eachindex(z)
-            z[i] ~ Normal()
-        end
-        return z
-    end
-    @model function slice_schema_parent(child)
-        b ~ to_submodel(child)
-        return b
-    end
-    schema = @of(z = of(Array, 3))
-    for op in (condition, fix)
-        for (prefix, address) in (
-            (@varname(a[:]), @varname(a[:].z[2])),
-            (@varname(a[1:2]), @varname(a[1:2].z[2])),
-            (@varname(a[:]), @varname(a[1:2].z[2])),
-            (@varname(a[2:2]), @varname(a[2:2].z[2])),
+@testset "binding schemas reject slice namespaces" begin
+    @model slice_schema_local() = z ~ Normal()
+    for bind in (condition, fix), p in (@varname(a[:]), @varname(a[1:2]))
+        m = DynamicPPL.prefix(slice_schema_local(), p; template=zeros(2))
+        @test_throws r"a\[.*before prefixing" bind(
+            m, @varname(a[:].z) => 1.0, @of(z = of(Array, 3))
         )
-            model = DynamicPPL.prefix(slice_schema_local(), prefix; template=zeros(2))
-            bound = op(model, address => 1.0, schema)
-            @test bound(Xoshiro(1)) == op(model, address => 1.0)(Xoshiro(1))
-            @test slice_schema_parent(bound)(Xoshiro(1)) == bound(Xoshiro(1))
-        end
-        model = DynamicPPL.prefix(slice_schema_local(), @varname(a[:]); template=zeros(2))
-        @test op(model, @varname(a[:].z[end]) => 1.0, schema)(Xoshiro(1))[3] == 1.0
-        @test op(model, @varname(a[:].z[:]) => ones(3), schema)(Xoshiro(1)) == ones(3)
-        @test_throws ArgumentError op(model, @varname(a[:].z[4]) => 1.0, schema)
-        @test_throws ArgumentError op(
-            model, @varname(a[:].z[2]) => 0.1, @of(z = of(Array, Float32, 3))
-        )
-        nested = DynamicPPL.prefix(model, @varname(b[1:2]); template=zeros(2))
-        @test op(nested, DynamicPPL.Recursive(), @varname(b[1:2].a[:].z[2]) => 1.0, schema)(
-            Xoshiro(1)
-        )[2] == 1.0
     end
 end
 
@@ -4504,5 +4476,18 @@ end
 end
 
 # --- End binding contract ---
+
+@model closed_leaf(x=3.0) = x ~ Normal()
+@testset "slice prefix edits" begin
+    for (bind, remove) in ((condition, decondition), (fix, unfix)),
+        scope in ((), (DynamicPPL.Recursive(),)),
+        p in (@varname(p[1:2]), @varname(p[:]))
+
+        m = prefix(bind(closed_leaf(); x=4.0), p; template=zeros(2))
+        vn = p == @varname(p[:]) ? @varname(p[:].x) : @varname(p[1:2].x)
+        @test_throws r"p\[.*\.x.*before prefixing" bind(m, scope..., vn => 5.0)
+        @test_throws r"p\[.*\.x.*before prefixing" remove(m, scope..., vn)
+    end
+end
 
 end

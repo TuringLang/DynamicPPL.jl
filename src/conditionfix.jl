@@ -2430,7 +2430,59 @@ function _bind_inputs(::Type{R}, model::Model, inputs::Tuple, recursive=false) w
 end
 # Resolve only the namespace prefix here. Local indices may use argument or
 # schema storage, which is selected later while preparing each binding.
+_has_slice_index(::AbstractPPL.Iden) = false
+function _has_slice_index(optic)
+    return (
+        optic isa AbstractPPL.Index &&
+        any(i -> !(i isa Union{Integer,CartesianIndex}), optic.ix)
+    ) || _has_slice_index(optic.child)
+end
+function _check_slice_binding(vn, prefix; own_prefix=false)
+    prefix === nothing && return nothing
+    below =
+        subsumes(prefix, vn) || (
+            own_prefix &&
+            AbstractPPL.getsym(vn) === AbstractPPL.getsym(prefix) &&
+            optic_skip_length(AbstractPPL.getoptic(vn)) >
+            optic_skip_length(AbstractPPL.getoptic(prefix))
+        )
+    if _has_slice_index(AbstractPPL.getoptic(prefix)) && prefix != vn && below
+        throw(
+            ArgumentError(
+                "Cannot edit `$vn` below slice prefix `$prefix`; bind or remove before prefixing, or use an integer-indexed prefix.",
+            ),
+        )
+    end
+    return nothing
+end
+function _check_binding_operation(model, vn)
+    _check_slice_binding(vn, _model_prefix(model); own_prefix=true)
+    for (address, submodel) in _lhs_addresses(_binding_metadata(model))
+        submodel || continue
+        _check_slice_binding(
+            vn, _model_value_varname(model.values, address, _model_prefix(model))
+        )
+    end
+    return nothing
+end
+function _check_slice_namespace(model, prefix)
+    prefix === nothing && return nothing
+    _has_slice_index(AbstractPPL.getoptic(prefix)) || return nothing
+    prefix = _model_value_varname(model.values, prefix, _model_prefix(model))
+    for role in (Condition, Fix)
+        values = _select_model_values(role, _model_values(model.values))
+        for vn in keys(values)
+            _check_slice_binding(vn, prefix)
+        end
+    end
+    for role in (Condition, Fix), r in _removals(role, model.values)
+        r.name === nothing || _check_slice_binding(r.name, prefix)
+    end
+    return nothing
+end
+
 function _schema_binding_address(model, vn)
+    _check_binding_operation(model, vn)
     prefix = _model_prefix(model)
     if !(model.values isa LocalModelValues) &&
         prefix !== nothing &&
@@ -2644,7 +2696,10 @@ function _make_condfix_values(model, values)
     )
 end
 _make_condfix_values(model, values::NamedTuple) = VarNamedTuple(values)
-_make_condfix_values(model, values::VarNamedTuple) = values
+function _make_condfix_values(model, values::VarNamedTuple)
+    foreach(vn -> _check_binding_operation(model, vn), keys(values))
+    return values
+end
 
 _binding_storage(value) = value
 _binding_storage(::Union{Nothing,Missing,Number}) = NoTemplate()
@@ -2660,6 +2715,7 @@ function _binding_storage(value::VarNamedTuples.PartialArray)
 end
 
 function _make_condfix_values(model, pair::Pair{<:VarName})
+    _check_binding_operation(model, first(pair))
     # Only traverse the addressed root; unrelated partial storage can be large.
     previous_values = _model_values(model.values)
     name = AbstractPPL.getsym(first(pair))
@@ -3271,6 +3327,9 @@ function _local_remove(::Type{R}, model, names) where {R}
     # Child addresses bound here with `Recursive()` are stored here, so they are removed here.
     model = _materialize_argument_values(model)
     layer = _binding_layer(R, model.values)
+    foreach(
+        vn -> _check_binding_operation(model, vn isa Symbol ? VarName{vn}() : vn), names
+    )
     _check_removal_addresses(layer, names...)
     _check_model_removal(R, layer, names...)
     layer = _remove_model_values(R, layer, names...)
@@ -3552,6 +3611,7 @@ function _recursive_remove(::Type{R}, model, names) where {R}
     requested =
         isempty(names) ? (nothing,) : map(n -> n isa Symbol ? VarName{n}() : n, names)
     for vn in requested
+        vn === nothing || _check_binding_operation(model, vn)
         if vn !== nothing && AbstractPPL.is_dynamic(AbstractPPL.getoptic(vn))
             template = _binding_storage(_binding_template(model, values, vn))
             vn = _concretize_prefix(vn, template)
