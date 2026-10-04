@@ -1354,4 +1354,17 @@ end
     end
 end
 
+@model depth_leaf(x) = x ~ Normal()
+@model depth_parent(x, child) = (x ~ Normal(); a ~ to_submodel(child, false); a)
+@testset "local bindings retain recursive removals" begin
+    m = condition(
+        decondition(depth_parent(2.0, depth_leaf(3.0)), DynamicPPL.Recursive()); x=7.0
+    )
+    @test loglikelihood(m, (; x=5.0)) ≈ logpdf(Normal(), 7.0)
+    m = fix(
+        unfix(depth_parent(2.0, fix(depth_leaf(3.0); x=9.0)), DynamicPPL.Recursive()); x=7.0
+    )
+    @test loglikelihood(m, (;)) ≈ logpdf(Normal(), 3.0)
+end
+
 end
