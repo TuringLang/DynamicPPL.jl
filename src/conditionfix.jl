@@ -3660,7 +3660,7 @@ function _apply_parent_removals(
     if !matched && !r.matched && r.required
         metadata = _binding_metadata(child)
         own = _removal_names_own_lhs(metadata, r.name)
-        if own || (check_unknown && !_may_have_submodels(metadata))
+        if !own && check_unknown && !_may_have_submodels(metadata)
             if r.name === nothing
                 throw(
                     ArgumentError(
