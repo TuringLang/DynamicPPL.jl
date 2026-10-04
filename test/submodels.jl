@@ -125,176 +125,60 @@ end
         end
     end
 
-    @testset "scalar partial-binding errors identify submodel return values" begin
-        @model child_value() = x ~ Normal()
-        @model submodel_return(a=0.0) = a ~ to_submodel(child_value())
-        @model scalar_argument(a=0.0) = a ~ Normal()
-        for bind in (condition, fix)
-            @test_throws r"a.x.*whole argument" bind(
-                submodel_return(), DynamicPPL.Recursive(), @varname(a.x) => 2.0
-            )()
-            @test_throws r"For other bindings, use `decondition\(model, @varname\(a\)\)` first" bind(
-                scalar_argument(), DynamicPPL.Recursive(), @varname(a.x) => 2.0
-            )
-        end
-    end
-
-    @testset "splatted arguments receive submodel return values" begin
-        @model splat_child() = x ~ Normal()
-        @model positional_return_value(args...) = args[1] ~ to_submodel(splat_child())
-        @model keyword_splat_return_value(; kw...) = kw[:y] ~ to_submodel(splat_child())
-        for bind in (condition, fix)
-            @test_throws r"args\[1\].x.*whole argument" bind(
-                positional_return_value((; x=0.0)),
-                DynamicPPL.Recursive(),
-                @varname(args[1].x) => 2.0,
-            )
-            keyword = bind(
-                keyword_splat_return_value(; y=(; x=0.0)),
-                DynamicPPL.Recursive();
-                kw=(; y=(; x=2.0)),
-            )
-            @test_throws ArgumentError keyword(Xoshiro(1))
-        end
-    end
-
-    @testset "argument LHS variables receive submodel return values" begin
-        @model child() = (x ~ Normal(); x)
-        @model function dynamic_return_value(a)
-            sub = to_submodel(fix(child(), DynamicPPL.Recursive(); x=2.0))
-            a ~ sub
-            return a
-        end
-        @model function indexed_return_value(a)
-            a[1] ~ to_submodel(fix(child(), DynamicPPL.Recursive(); x=2.0))
-            return a
-        end
-        @model keyword_return_value(; a=0.0) =
-            a ~ to_submodel(fix(child(), DynamicPPL.Recursive(); x=2.0))
-        @model nested(m) = b ~ to_submodel(m)
-        @testset "binding accessors list submodel return values before evaluation" begin
-            model = dynamic_return_value(3.0)
-            @test conditioned(model)[@varname(a)] == 3.0
-            @test isempty(conditioned(decondition(model, :a)))
-            @test fixed(fix(model, DynamicPPL.Recursive(); a=1.0))[@varname(a)] == 1.0
-        end
-        for bind in (condition, fix)
-            @test_throws r"a.x.*whole argument" bind(
-                dynamic_return_value((x=0.0,)), DynamicPPL.Recursive(), @varname(a.x) => 2.0
-            )(
-                Xoshiro(1)
-            )
-            @test_throws r"a\[1\].x.*whole argument" bind(
-                indexed_return_value([(x=0.0,)]),
-                DynamicPPL.Recursive(),
-                @varname(a[1].x) => 2.0,
-            )
-            @test_throws r"submodel return value" bind(
-                dynamic_return_value(0.0), DynamicPPL.Recursive(); a=(x=2.0,)
-            )(
-                Xoshiro(1)
-            )
-        end
-        for (model, expected) in (
-            (dynamic_return_value(0.0), 2.0),
-            (indexed_return_value([0.0]), [2.0]),
-            (keyword_return_value(), 2.0),
-        )
-            for wrapped in (model, nested(model))
-                @test wrapped(Xoshiro(1)) == expected
-                @test isempty(keys(VarInfo(Xoshiro(1), wrapped)))
-            end
-            @test decondition(model, :a)(Xoshiro(1)) == expected
-            for bind in (condition, fix)
-                address = expected isa AbstractArray ? @varname(a[1]) : @varname(a)
-                @test_throws r"ArgumentError: .*submodel return value" bind(
-                    model, DynamicPPL.Recursive(), address => 3.0
-                )(
-                    Xoshiro(1)
-                )
-            end
-        end
-    end
-
-    @testset "bindings below argument LHS variables receiving submodel return values are rejected" begin
-        @model child(mu) = x ~ Normal(mu)
-        @model function return_value_parent(a; rhs=child)
-            mu = a.x
-            a ~ to_submodel(rhs(mu))
-            return mu, a
-        end
-        @model function indexed_parent(a, i)
-            mu = a[i].x
-            a[i] ~ to_submodel(child(mu))
-            return mu, a
-        end
-        @model keyword_parent(; a=(; x=0.0)) = a ~ to_submodel(child(a.x))
-        @model dynamic_parent(a, rhs) = a ~ rhs
+    @testset "submodel tildes reject model arguments" begin
+        @model child() = z ~ Normal()
+        @model argument_return(x=0.0) = x ~ to_submodel(child())
+        @model indexed_return(x) = x[1] ~ to_submodel(child())
+        @model property_return(x) = x.a ~ to_submodel(child())
+        @model keyword_return(; x=0.0) = x ~ to_submodel(child())
+        @model runtime_return(x, rhs) = x ~ rhs
+        @model unprefixed_return(x) = x ~ to_submodel(child(), false)
+        @model splatted_return(x...) = x[1] ~ to_submodel(child())
+        @model keyword_splatted_return(; x...) = x.a ~ to_submodel(child())
+        @model local_return() = x ~ to_submodel(child())
         @model outer(m) = b ~ to_submodel(m)
-        @model local_parent() = a ~ to_submodel(child(0.0))
-        for bind in (condition, fix)
-            models = (
-                () -> bind(
-                    decondition(return_value_parent((; x=0.0))),
-                    DynamicPPL.Recursive(),
-                    @varname(a.x) => 2.0,
-                ),
-                () -> bind(
-                    decondition(return_value_parent((; x=0.0))),
-                    DynamicPPL.Recursive();
-                    a=(; x=2.0),
-                ),
-                () -> bind(
-                    decondition(keyword_parent()), DynamicPPL.Recursive(); a=(; x=2.0)
-                ),
-                () -> bind(
-                    decondition(indexed_parent([(; x=0.0)], 1)),
-                    DynamicPPL.Recursive(),
-                    @varname(a[1].x) => 2.0,
-                ),
-                () -> bind(
-                    decondition(indexed_parent([(; x=0.0)], 1)),
-                    DynamicPPL.Recursive();
-                    a=[(; x=2.0)],
-                ),
-                () -> bind(
-                    decondition(dynamic_parent((; x=0.0), to_submodel(child(0.0)))),
-                    DynamicPPL.Recursive(),
-                    @varname(a.x) => 2.0,
-                ),
-            )
-            for build in models, wrap in (identity, outer)
-                @test_throws r"ArgumentError: .*submodel return value" wrap(build())(
-                    Xoshiro(1)
-                )
+        err = r"ArgumentError: Submodel tilde .*model argument `x`.*local LHS.*condition"
+        for (model, address, value) in (
+            (argument_return(), @varname(x), 2.0),
+            (argument_return(missing), @varname(x), 2.0),
+            (argument_return(nothing), @varname(x), 2.0),
+            (indexed_return([0.0]), @varname(x[1]), 2.0),
+            (property_return((a=0.0,)), @varname(x.a), 2.0),
+            (keyword_return(), @varname(x), 2.0),
+            (runtime_return(0.0, to_submodel(child())), @varname(x), 2.0),
+            (unprefixed_return(0.0), @varname(x), 2.0),
+            (splatted_return(0.0), @varname(x[1]), 2.0),
+            (keyword_splatted_return(; a=0.0), @varname(x), (a=2.0,)),
+        )
+            for wrapped in (model, prefix(model, @varname(p)), outer(model))
+                @test_throws err wrapped(Xoshiro(1))
+                @test_throws err decondition(wrapped)(Xoshiro(1))
+                @test outer(local_return())(Xoshiro(1)) isa Real
             end
-            @test bind(local_parent(), DynamicPPL.Recursive(), @varname(a.x) => 2.0)(
-                Xoshiro(1)
-            ) == 2.0
-            @test bind(local_parent(), DynamicPPL.Recursive(); a=(; x=2.0))(Xoshiro(1)) ==
-                2.0
-            @test_throws r"ArgumentError: .*submodel return value" bind(
-                outer(decondition(return_value_parent((; x=0.0)))),
-                DynamicPPL.Recursive(),
-                @varname(b.a.x) => 2.0,
-            )(
-                Xoshiro(1)
-            )
-            @test bind(dynamic_parent(0.0, Normal()), DynamicPPL.Recursive(); a=2.0)(
-                Xoshiro(1)
-            ) == 2.0
-            replacement = mu -> bind(child(mu), DynamicPPL.Recursive(); x=2.0)
-            model = decondition(return_value_parent((; x=0.0); rhs=replacement))
-            @test model(Xoshiro(1)) == (0.0, 2.0)
-            @test logjoint(model, VarNamedTuple()) ==
-                (bind === condition ? logpdf(Normal(), 2.0) : 0.0)
+            for bind in (condition, fix)
+                bound = bind(model, DynamicPPL.Recursive(), address => value)
+                @test_throws err bound(Xoshiro(1))
+                local_model = bind(
+                    local_return(), DynamicPPL.Recursive(), @varname(x.z) => 2.0
+                )
+                @test local_model(Xoshiro(1)) == 2.0
+            end
         end
+        # A runtime RHS is classified at the tilde, and ordinary assignment stays Julia.
+        @test runtime_return(2.0, Normal())(Xoshiro(1)) == 2.0
+        @model function assigned_return(x)
+            a ~ to_submodel(fix(child(); z=2.0))
+            x = a
+            return x ~ Normal()
+        end
+        @test loglikelihood(assigned_return(0.0), VarNamedTuple()) == logpdf(Normal(), 2.0)
     end
 
     @testset "submodel return bindings with manual prefixes" begin
         @model child() = x ~ Normal()
         @model manual(a, m) = a ~ to_submodel(m, false)
         @model nested(m) = outer ~ to_submodel(m)
+        @model local_manual(m) = a ~ to_submodel(m, false)
         for child_model in (child(), prefix(child(), @varname(b)))
             for m in (
                 condition(
@@ -303,9 +187,10 @@ end
                 fix(decondition(manual(0.0, child_model)), DynamicPPL.Recursive(); a=3.0),
             )
                 for model in (m, nested(m))
-                    @test_throws "Cannot explicitly bind a submodel return value" model(
+                    @test_throws r"ArgumentError: Submodel tilde .*model argument `a`.*local LHS" model(
                         Xoshiro(1)
                     )
+                    @test nested(local_manual(child_model))(Xoshiro(1)) isa Real
                 end
             end
         end
@@ -463,7 +348,8 @@ end
 
     @testset "parent array templates" begin
         @model leaf_template() = x ~ Normal()
-        @model function matrix_template(a)
+        @model function matrix_template(storage)
+            a = copy(storage)
             a[1] ~ to_submodel(leaf_template())
             a[2, 2] ~ to_submodel(leaf_template())
             return a
@@ -731,9 +617,18 @@ end
             a[1] ~ to_submodel(observed_child())
             return a
         end
-        @test parent_with_return_value(zeros(1))() == [2.0]
-        @test decondition(parent_with_return_value(zeros(1)))() == [2.0]
-        @test isempty(keys(VarInfo(decondition(parent_with_return_value(zeros(1))))))
+        for model in (
+            parent_with_return_value(zeros(1)),
+            decondition(parent_with_return_value(zeros(1))),
+        )
+            @test_throws r"ArgumentError: Submodel tilde .*model argument `a`.*local LHS" model(
+                Xoshiro(1)
+            )
+            @test_throws r"ArgumentError: Submodel tilde .*model argument `a`.*local LHS" VarInfo(
+                Xoshiro(1), model
+            )
+            @test g(2.0)(Xoshiro(1)) isa Real
+        end
     end
 
     @testset "extending named-tuple submodel namespaces" begin
@@ -753,40 +648,6 @@ end
             )(
                 Xoshiro(1)
             ) == (1.0, 2.0, 3.0)
-        end
-    end
-
-    @testset "submodel namespaces reject arguments receiving submodel return values" begin
-        @model inner_return_value() = x ~ Normal()
-        @model scalar_return_value(a) = a ~ to_submodel(inner_return_value())
-        @model function indexed_return_value(a)
-            one(a[1])
-            return a[1] ~ to_submodel(inner_return_value())
-        end
-        namespace = DynamicPPL.@vnt begin
-            @template a = [(; x=0.0)]
-            a[1].x := 2.0
-        end
-        for bind in (condition, fix)
-            @test_throws r"ArgumentError: .*submodel return value" bind(
-                decondition(scalar_return_value(0.0)),
-                DynamicPPL.Recursive(),
-                @varname(a.x) => 2.0,
-            )(
-                Xoshiro(1)
-            )
-            @test_throws r"ArgumentError: .*submodel return value" bind(
-                decondition(indexed_return_value([0.0])),
-                DynamicPPL.Recursive(),
-                @varname(a[1].x) => 2.0,
-            )(
-                Xoshiro(1)
-            )
-            @test_throws r"ArgumentError: .*submodel return value" bind(
-                decondition(indexed_return_value([0.0])), DynamicPPL.Recursive(), namespace
-            )(
-                Xoshiro(1)
-            )
         end
     end
 
@@ -1069,8 +930,7 @@ end
     end
 end
 
-@testset "partial edits below return arguments are rejected" begin
-    rec = DynamicPPL.Recursive()
+@testset "argument submodel tildes reject sibling edits only when reached" begin
     @model removal_sibling_leaf(x=2.0) = x ~ Normal()
     @model function removal_siblings(a, run)
         run && (a.child ~ to_submodel(removal_sibling_leaf()))
@@ -1078,18 +938,23 @@ end
         return a
     end
     @model removal_sibling_parent(child) = b ~ to_submodel(child)
-    for remove in (decondition, unfix), run in (true, false)
-        m = removal_siblings((child=missing, obs=1.0), run)
-        @test_throws r"a.obs.*whole argument" remove(m, @varname(a.obs))
-        @test_throws r"a.child.x.*whole argument" remove(m, rec, @varname(a.child.x))
-        @test_throws r"p.a.child.x.*whole argument" remove(
-            prefix(m, @varname(p)), rec, @varname(p.a.child.x)
+    for (bind, remove) in ((condition, decondition), (fix, unfix)),
+        wrap in (identity, m -> prefix(m, @varname(p)), removal_sibling_parent)
+
+        reached = remove(
+            bind(removal_siblings((child=0.0, obs=1.0), true), @varname(a.obs) => 3.0),
+            @varname(a.obs)
         )
-        @test_throws r"b.a.child.x.*whole argument" remove(
-            removal_sibling_parent(m), rec, @varname(b.a.child.x)
+        @test_throws r"ArgumentError: Submodel tilde .*model argument `a`.*local LHS" wrap(
+            reached
         )(
             Xoshiro(1)
         )
+        skipped = remove(
+            bind(removal_siblings((child=0.0, obs=1.0), false), @varname(a.obs) => 3.0),
+            @varname(a.obs)
+        )
+        @test wrap(skipped)(Xoshiro(1)).obs isa Real
     end
 end
 
@@ -1148,7 +1013,13 @@ end
     rec = DynamicPPL.Recursive()
     @model leaf(x) = x ~ Normal()
     @model parent(a) = a ~ to_submodel(leaf(missing))
-    @test_throws r"a.x.*whole argument" decondition(parent(missing), rec, @varname(a.x))
+    @test_throws r"ArgumentError: Submodel tilde .*model argument `a`.*local LHS" decondition(
+        parent(missing), rec, @varname(a.x)
+    )(
+        Xoshiro(1)
+    )
+    @model local_parent() = a ~ to_submodel(decondition(leaf(missing)))
+    @test local_parent()(Xoshiro(1)) isa Real
     @model function sharearr(x)
         x[1] ~ Normal()
         x[2] ~ Normal()
@@ -1256,10 +1127,12 @@ end
         Xoshiro(1)
     )
     for child in (removal_dynamic(missing), removal_branch(missing, false))
-        @test_throws r"a.x.*whole argument" decondition(child, rec, @varname(a.x))(
+        @test_throws r"ArgumentError: Submodel tilde .*model argument `a`.*local LHS" decondition(
+            child, rec, @varname(a.x)
+        )(
             Xoshiro(1)
         )
-        @test_throws r"b.a.x.*whole argument" decondition(
+        @test_throws r"ArgumentError: Submodel tilde .*model argument `a`.*local LHS" decondition(
             removal_outer(child), rec, @varname(b.a.x)
         )(
             Xoshiro(1)
@@ -1370,9 +1243,11 @@ end
     end
 end
 @testset "locally rebound constructors" begin
-    for bind in (condition, fix),
-        model in (shadow_parent(), shadow_named(), shadow_closure(), shadow_let())
-
+    @test_throws r"ArgumentError: Submodel tilde .*model argument `x`.*local LHS" shadow_parent()(
+        Xoshiro(1)
+    )
+    @test shadow_parent(; run=false)(Xoshiro(1)) == 0.0
+    for bind in (condition, fix), model in (shadow_named(), shadow_closure(), shadow_let())
         @test bind(model, DynamicPPL.Recursive(), @varname(a) => 2.0)(Xoshiro(1)) == 2.0
     end
 end
@@ -1404,8 +1279,15 @@ end
         for edit in
             (m -> decondition(m, vn), m -> condition(m, vn => 4.0), m -> fix(m, vn => 4.0))
             m = edit(runtime_return(arg, to_submodel(runtime_return_leaf())))
-            @test_throws r"a.*whole argument" m(Xoshiro(1))
-            @test_throws r"b.a.*whole argument" runtime_return_outer(m)(Xoshiro(1))
+            @test_throws r"ArgumentError: Submodel tilde .*model argument `a`.*local LHS" m(
+                Xoshiro(1)
+            )
+            @test_throws r"ArgumentError: Submodel tilde .*model argument `a`.*local LHS" runtime_return_outer(
+                m
+            )(
+                Xoshiro(1)
+            )
+            @test runtime_return_outer(runtime_return_leaf())(Xoshiro(1)) == 3.0
         end
     end
 end

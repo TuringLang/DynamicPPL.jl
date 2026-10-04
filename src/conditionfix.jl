@@ -947,7 +947,6 @@ function _check_model_binding(
             compatible || throw(
                 ArgumentError(
                     "Cannot bind parts below `$vn` with value of type $(typeof(previous.value)). " *
-                    "If `$vn` holds a submodel return value, condition or fix the child model before wrapping it with `to_submodel`. " *
                     "For other bindings, use `decondition(model, @varname($vn))` first.",
                 ),
             )
@@ -1518,7 +1517,7 @@ end
 function _argument_property_storage(value, template, ::Val{name}) where {name}
     hasproperty(template, name) || throw(
         ArgumentError(
-            "Cannot override nonexistent property `$name` of $(typeof(template)). If it holds a submodel return value, condition or fix the child model before wrapping it with `to_submodel`.",
+            "Cannot override nonexistent property `$name` of $(typeof(template))."
         ),
     )
     return _argument_child_storage(value, template, AbstractPPL.Property{name}())
@@ -1961,7 +1960,7 @@ function _prepare_argument_fields(
             !VarNamedTuples._haskey_optic(template, optic)
             throw(
                 ArgumentError(
-                    "Cannot override nonexistent field `$(AbstractPPL.append_optic(vn, optic))` of argument `$vn`. If it holds a submodel return value, condition or fix the child model before wrapping it with `to_submodel`.",
+                    "Cannot override nonexistent field `$(AbstractPPL.append_optic(vn, optic))` of argument `$vn`.",
                 ),
             )
         end
@@ -2469,58 +2468,10 @@ function _check_binding_operation(model, vn)
             vn, _model_value_varname(model.values, address, _model_prefix(model))
         )
     end
-    _check_return_argument_address(model, vn)
     return nothing
 end
 function _binding_display_name(model, vn)
     return model.values isa LocalModelValues ? maybe_prefix(vn, _model_prefix(model)) : vn
-end
-function _unsupported_return_partial(vn, root)
-    throw(
-        ArgumentError(
-            "Cannot partially edit `$vn`: argument `$root` can hold a submodel return value or namespace; bind or remove the whole argument instead.",
-        ),
-    )
-end
-function _check_return_argument_address(
-    model, vn; local_names=false, display_prefix=nothing
-)
-    for (address, submodel) in _lhs_addresses(_binding_metadata(model))
-        name = AbstractPPL.getsym(address)
-        submodel && name in _args_on_lhs(model) || continue
-        root = if local_names
-            VarName{name}()
-        else
-            _model_value_varname(model.values, VarName{name}(), _model_prefix(model))
-        end
-        root != vn &&
-            subsumes(root, vn) &&
-            _unsupported_return_partial(
-                maybe_prefix(vn, display_prefix), maybe_prefix(root, display_prefix)
-            )
-    end
-    return nothing
-end
-function _check_return_argument_edits(model, left_vn)
-    name = AbstractPPL.getsym(left_vn)
-    name in _args_on_lhs(model) || return nothing
-    root = _model_value_varname(model.values, VarName{name}(), _model_prefix(model))
-    for vn in keys(_model_values(model.values))
-        root != vn &&
-            subsumes(root, vn) &&
-            _unsupported_return_partial(
-                _binding_display_name(model, vn), _binding_display_name(model, root)
-            )
-    end
-    for role in (Condition, Fix), r in _removals(role, model.values)
-        r.name === nothing && continue
-        root != r.name &&
-            subsumes(root, r.name) &&
-            _unsupported_return_partial(
-                _binding_display_name(model, r.name), _binding_display_name(model, root)
-            )
-    end
-    return nothing
 end
 function _check_slice_namespace(model, prefix)
     prefix === nothing && return nothing
@@ -3825,9 +3776,6 @@ function _apply_parent_removals(
     prefix,
 ) where {R}
     r = first(markers)
-    r.name === nothing || _check_return_argument_address(
-        child, r.name; local_names=true, display_prefix=prefix
-    )
     matched = r.name === nothing ? !isempty(values) : _has_removable(R, values, r.name)
     if !matched && !r.matched && r.required
         metadata = _binding_metadata(child)
