@@ -130,7 +130,7 @@ end
         @model submodel_return(a=0.0) = a ~ to_submodel(child_value())
         @model scalar_argument(a=0.0) = a ~ Normal()
         for bind in (condition, fix)
-            @test_throws r"If `a` holds a submodel return value, condition or fix the child model before wrapping it with `to_submodel`" bind(
+            @test_throws r"a.x.*whole argument" bind(
                 submodel_return(), DynamicPPL.Recursive(), @varname(a.x) => 2.0
             )()
             @test_throws r"For other bindings, use `decondition\(model, @varname\(a\)\)` first" bind(
@@ -144,7 +144,7 @@ end
         @model positional_return_value(args...) = args[1] ~ to_submodel(splat_child())
         @model keyword_splat_return_value(; kw...) = kw[:y] ~ to_submodel(splat_child())
         for bind in (condition, fix)
-            positional = bind(
+            @test_throws r"args\[1\].x.*whole argument" bind(
                 positional_return_value((; x=0.0)),
                 DynamicPPL.Recursive(),
                 @varname(args[1].x) => 2.0,
@@ -154,9 +154,7 @@ end
                 DynamicPPL.Recursive();
                 kw=(; y=(; x=2.0)),
             )
-            for model in (positional, keyword)
-                @test_throws ArgumentError model(Xoshiro(1))
-            end
+            @test_throws ArgumentError keyword(Xoshiro(1))
         end
     end
 
@@ -181,21 +179,21 @@ end
             @test fixed(fix(model, DynamicPPL.Recursive(); a=1.0))[@varname(a)] == 1.0
         end
         for bind in (condition, fix)
-            for model in (
-                bind(
-                    dynamic_return_value((; x=0.0)),
-                    DynamicPPL.Recursive(),
-                    @varname(a.x) => 2.0,
-                ),
-                bind(dynamic_return_value(0.0), DynamicPPL.Recursive(); a=(; x=2.0)),
-                bind(
-                    indexed_return_value([(; x=0.0)]),
-                    DynamicPPL.Recursive(),
-                    @varname(a[1].x) => 2.0,
-                ),
+            @test_throws r"a.x.*whole argument" bind(
+                dynamic_return_value((x=0.0,)), DynamicPPL.Recursive(), @varname(a.x) => 2.0
+            )(
+                Xoshiro(1)
             )
-                @test_throws r"ArgumentError: .*submodel return value" model(Xoshiro(1))
-            end
+            @test_throws r"a\[1\].x.*whole argument" bind(
+                indexed_return_value([(x=0.0,)]),
+                DynamicPPL.Recursive(),
+                @varname(a[1].x) => 2.0,
+            )
+            @test_throws r"submodel return value" bind(
+                dynamic_return_value(0.0), DynamicPPL.Recursive(); a=(x=2.0,)
+            )(
+                Xoshiro(1)
+            )
         end
         for (model, expected) in (
             (dynamic_return_value(0.0), 2.0),
@@ -209,8 +207,11 @@ end
             @test decondition(model, :a)(Xoshiro(1)) == expected
             for bind in (condition, fix)
                 address = expected isa AbstractArray ? @varname(a[1]) : @varname(a)
-                bound = bind(model, DynamicPPL.Recursive(), address => 3.0)
-                @test_throws r"ArgumentError: .*submodel return value" bound(Xoshiro(1))
+                @test_throws r"ArgumentError: .*submodel return value" bind(
+                    model, DynamicPPL.Recursive(), address => 3.0
+                )(
+                    Xoshiro(1)
+                )
             end
         end
     end
@@ -233,35 +234,37 @@ end
         @model local_parent() = a ~ to_submodel(child(0.0))
         for bind in (condition, fix)
             models = (
-                bind(
+                () -> bind(
                     decondition(return_value_parent((; x=0.0))),
                     DynamicPPL.Recursive(),
                     @varname(a.x) => 2.0,
                 ),
-                bind(
+                () -> bind(
                     decondition(return_value_parent((; x=0.0))),
                     DynamicPPL.Recursive();
                     a=(; x=2.0),
                 ),
-                bind(decondition(keyword_parent()), DynamicPPL.Recursive(); a=(; x=2.0)),
-                bind(
+                () -> bind(
+                    decondition(keyword_parent()), DynamicPPL.Recursive(); a=(; x=2.0)
+                ),
+                () -> bind(
                     decondition(indexed_parent([(; x=0.0)], 1)),
                     DynamicPPL.Recursive(),
                     @varname(a[1].x) => 2.0,
                 ),
-                bind(
+                () -> bind(
                     decondition(indexed_parent([(; x=0.0)], 1)),
                     DynamicPPL.Recursive();
                     a=[(; x=2.0)],
                 ),
-                bind(
+                () -> bind(
                     decondition(dynamic_parent((; x=0.0), to_submodel(child(0.0)))),
                     DynamicPPL.Recursive(),
                     @varname(a.x) => 2.0,
                 ),
             )
-            for model in models, wrapped in (model, outer(model))
-                @test_throws r"ArgumentError: .*submodel return value.*Condition.*child.*to_submodel" wrapped(
+            for build in models, wrap in (identity, outer)
+                @test_throws r"ArgumentError: .*submodel return value" wrap(build())(
                     Xoshiro(1)
                 )
             end
@@ -1066,92 +1069,27 @@ end
     end
 end
 
-@testset "deferred removals ignore sibling LHS addresses" begin
+@testset "partial edits below return arguments are rejected" begin
     rec = DynamicPPL.Recursive()
     @model removal_sibling_leaf(x=2.0) = x ~ Normal()
-    @model function removal_siblings(a, child, run)
-        if run
-            a.child ~ to_submodel(child)
-        end
+    @model function removal_siblings(a, run)
+        run && (a.child ~ to_submodel(removal_sibling_leaf()))
         a.obs ~ Normal()
         return a
     end
-    @model function removal_index_siblings(a, child, run)
-        if run
-            a[1] ~ to_submodel(child)
-        end
-        a[2] ~ Normal()
-        return a
-    end
     @model removal_sibling_parent(child) = b ~ to_submodel(child)
-    for (bind, remove) in ((condition, decondition), (fix, unfix)), run in (true, false)
-        child = bind(removal_sibling_leaf(); x=3.0)
-        for (m, name) in (
-            (removal_siblings((child=0.0, obs=1.0), child, run), @varname(a.child.x)),
-            (removal_index_siblings([0.0, 1.0], child, run), @varname(a[1].x)),
+    for remove in (decondition, unfix), run in (true, false)
+        m = removal_siblings((child=missing, obs=1.0), run)
+        @test_throws r"a.obs.*whole argument" remove(m, @varname(a.obs))
+        @test_throws r"a.child.x.*whole argument" remove(m, rec, @varname(a.child.x))
+        @test_throws r"p.a.child.x.*whole argument" remove(
+            prefix(m, @varname(p)), rec, @varname(p.a.child.x)
         )
-            for (model, address) in (
-                (m, name),
-                (prefix(m, @varname(p)), AbstractPPL.prefix(name, @varname(p))),
-                (removal_sibling_parent(m), AbstractPPL.prefix(name, @varname(b))),
-            )
-                removed = remove(model, rec, address)
-                @test keys(rand(Xoshiro(1), removed)) ==
-                    (run && bind === condition ? [address] : VarName[])
-                value = removed(Xoshiro(1))
-                @test last(value) == 1.0
-                @test !run || bind !== fix || first(value) == 2.0
-            end
-        end
-    end
-    # Missing removals still fail when the overlapping child actually runs.
-    for run in (true, false)
-        m = removal_siblings((child=0.0, obs=1.0), decondition(removal_sibling_leaf()), run)
-        removed = decondition(m, rec, @varname(a.child.x))
-        if run
-            @test_throws ArgumentError removed(Xoshiro(1))
-        else
-            @test removed(Xoshiro(1)) == (child=0.0, obs=1.0)
-        end
-    end
-end
-
-@testset "unreached sibling removals do not depend on argument expansion" begin
-    rec = DynamicPPL.Recursive()
-    @model removal_expansion_leaf(y=2.0) = y ~ Normal()
-    @model function removal_expansion_branch(a, observed)
-        if observed
-            a.keep ~ Normal()
-            a.x ~ Normal()
-        else
-            a ~ to_submodel(removal_expansion_leaf())
-        end
-        return a
-    end
-    @model removal_expansion_parent(child) = b ~ to_submodel(child)
-    for (bind, remove) in ((condition, decondition), (fix, unfix)), partial in (false, true)
-        m = removal_expansion_branch((keep=1.0, x=2.0), true)
-        bind === fix && (m = fix(m; a=(keep=1.0, x=2.0)))
-        partial && (m = remove(m, @varname(a.keep)))
-        for (model, address) in (
-            (m, @varname(a.y)),
-            (prefix(m, @varname(p)), @varname(p.a.y)),
-            (removal_expansion_parent(m), @varname(b.a.y)),
+        @test_throws r"b.a.child.x.*whole argument" remove(
+            removal_sibling_parent(m), rec, @varname(b.a.child.x)
+        )(
+            Xoshiro(1)
         )
-            @test remove(model, rec, address)(Xoshiro(1)) == model(Xoshiro(1))
-        end
-    end
-    # The same child address is checked when its branch executes.
-    child = removal_expansion_branch((keep=1.0, x=2.0), false)
-    @test keys(rand(Xoshiro(1), decondition(child, rec, @varname(a.y)))) == [@varname(a.y)]
-    @test_throws ArgumentError decondition(child, rec, @varname(a.absent))(Xoshiro(1))
-    # Expanding an argument does not bypass checks at an overlapping whole LHS.
-    @model removal_expansion_whole(a) =
-        a ~ product_distribution((keep=Normal(), x=Normal()))
-    for partial in (false, true)
-        m = removal_expansion_whole((keep=1.0, x=2.0))
-        partial && (m = decondition(m, @varname(a.keep)))
-        @test_throws r"Cannot remove `a.y`" decondition(m, rec, @varname(a.y))(Xoshiro(1))
     end
 end
 
@@ -1210,8 +1148,7 @@ end
     rec = DynamicPPL.Recursive()
     @model leaf(x) = x ~ Normal()
     @model parent(a) = a ~ to_submodel(leaf(missing))
-    @test keys(rand(Xoshiro(1), decondition(parent(missing), rec, @varname(a.x)))) ==
-        [@varname(a.x)]
+    @test_throws r"a.x.*whole argument" decondition(parent(missing), rec, @varname(a.x))
     @model function sharearr(x)
         x[1] ~ Normal()
         x[2] ~ Normal()
@@ -1319,11 +1256,14 @@ end
         Xoshiro(1)
     )
     for child in (removal_dynamic(missing), removal_branch(missing, false))
-        @test keys(rand(Xoshiro(1), decondition(child, rec, @varname(a.x)))) ==
-            [@varname(a.x)]
-        @test keys(
-            rand(Xoshiro(1), decondition(removal_outer(child), rec, @varname(b.a.x)))
-        ) == [@varname(b.a.x)]
+        @test_throws r"a.x.*whole argument" decondition(child, rec, @varname(a.x))(
+            Xoshiro(1)
+        )
+        @test_throws r"b.a.x.*whole argument" decondition(
+            removal_outer(child), rec, @varname(b.a.x)
+        )(
+            Xoshiro(1)
+        )
     end
 end
 
@@ -1436,5 +1376,21 @@ end
         @test bind(model, DynamicPPL.Recursive(), @varname(a) => 2.0)(Xoshiro(1)) == 2.0
     end
 end
+
+@testset "partial runtime return arguments are rejected" begin
+    @model runtime_return_leaf(x=3.0) = x ~ Normal()
+    @model runtime_return(a, rhs) = a ~ rhs
+    @model runtime_return_outer(m) = b ~ to_submodel(m)
+    for arg in ([1.0, 2.0], (1.0, 2.0), (x=1.0, y=2.0))
+        vn = arg isa NamedTuple ? @varname(a.x) : @varname(a[1])
+        for edit in
+            (m -> decondition(m, vn), m -> condition(m, vn => 4.0), m -> fix(m, vn => 4.0))
+            m = edit(runtime_return(arg, to_submodel(runtime_return_leaf())))
+            @test_throws r"a.*whole argument" m(Xoshiro(1))
+            @test_throws r"b.a.*whole argument" runtime_return_outer(m)(Xoshiro(1))
+        end
+    end
+end
+
 
 end

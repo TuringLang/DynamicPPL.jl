@@ -2463,6 +2463,57 @@ function _check_binding_operation(model, vn)
             vn, _model_value_varname(model.values, address, _model_prefix(model))
         )
     end
+    _check_return_argument_address(model, vn)
+    return nothing
+end
+function _binding_display_name(model, vn)
+    return model.values isa LocalModelValues ? maybe_prefix(vn, _model_prefix(model)) : vn
+end
+function _unsupported_return_partial(vn, root)
+    throw(
+        ArgumentError(
+            "Cannot partially edit `$vn`: argument `$root` can hold a submodel return value or namespace; bind or remove the whole argument instead.",
+        ),
+    )
+end
+function _check_return_argument_address(
+    model, vn; local_names=false, display_prefix=nothing
+)
+    for (address, submodel) in _lhs_addresses(_binding_metadata(model))
+        name = AbstractPPL.getsym(address)
+        submodel && name in _args_on_lhs(model) || continue
+        root = if local_names
+            VarName{name}()
+        else
+            _model_value_varname(model.values, VarName{name}(), _model_prefix(model))
+        end
+        root != vn &&
+            subsumes(root, vn) &&
+            _unsupported_return_partial(
+                maybe_prefix(vn, display_prefix), maybe_prefix(root, display_prefix)
+            )
+    end
+    return nothing
+end
+function _check_return_argument_edits(model, left_vn)
+    name = AbstractPPL.getsym(left_vn)
+    name in _args_on_lhs(model) || return nothing
+    root = _model_value_varname(model.values, VarName{name}(), _model_prefix(model))
+    for vn in keys(_model_values(model.values))
+        root != vn &&
+            subsumes(root, vn) &&
+            _unsupported_return_partial(
+                _binding_display_name(model, vn), _binding_display_name(model, root)
+            )
+    end
+    for role in (Condition, Fix), r in _removals(role, model.values)
+        r.name === nothing && continue
+        root != r.name &&
+            subsumes(root, r.name) &&
+            _unsupported_return_partial(
+                _binding_display_name(model, r.name), _binding_display_name(model, root)
+            )
+    end
     return nothing
 end
 function _check_slice_namespace(model, prefix)
@@ -3561,20 +3612,6 @@ function _remove_marked(::Type{R}, values, r::ModelRemoval) where {R}
     return removed
 end
 
-# A whole argument observation can always be cleared. A descendant absent
-# from its storage may instead name a runtime child's variable; defer that
-# case until the tilde's RHS distinguishes a distribution from a submodel.
-function _removal_crosses_return_argument(model, vn, values)
-    vn === nothing && return false
-    optic = AbstractPPL.getoptic(vn)
-    optic isa AbstractPPL.Iden && return false
-    name = AbstractPPL.getsym(vn)
-    name in _args_on_lhs(model) && _may_have_submodels(_binding_metadata(model)) ||
-        return false
-    binding = _model_argument_binding(values, AbstractPPL.Property{name}())
-    return binding isa ModelValue{ArgumentCondition} &&
-           !VarNamedTuples._haskey_optic(binding, optic)
-end
 # Role lookup runs only for distribution RHSs. A removal at, above, or below
 # this LHS must already have matched in its own layer or an enclosed model.
 function _check_deferred_removals(model, vn)
@@ -3644,12 +3681,7 @@ function _recursive_remove(::Type{R}, model, names) where {R}
             vn = _concretize_prefix(vn, template)
         end
         local_name = _local_removal_name(model, vn)
-        crosses_return = _removal_crosses_return_argument(
-            model, local_name, _submodel_layer(R, model)
-        )
-        matched =
-            !crosses_return &&
-            (vn === nothing ? !isempty(values) : _has_removable(R, values, vn))
+        matched = vn === nothing ? !isempty(values) : _has_removable(R, values, vn)
         if vn !== nothing
             !matched &&
                 any(r -> _removal_covers(r, vn), markers) &&
@@ -3667,7 +3699,7 @@ function _recursive_remove(::Type{R}, model, names) where {R}
             end
         end
         marker = ModelRemoval(vn, (), matched, vn !== nothing)
-        crosses_return || (values = _remove_marked(R, values, marker))
+        matched && (values = _remove_marked(R, values, marker))
         markers = vn === nothing ? (marker,) : (markers..., marker)
     end
     observations = R === Condition ? values : _observation_values(model.values)
@@ -3746,10 +3778,10 @@ function _apply_parent_removals(
     prefix,
 ) where {R}
     r = first(markers)
-    crosses_return = _removal_crosses_return_argument(child, r.name, values)
-    matched =
-        !crosses_return &&
-        (r.name === nothing ? !isempty(values) : _has_removable(R, values, r.name))
+    r.name === nothing || _check_return_argument_address(
+        child, r.name; local_names=true, display_prefix=prefix
+    )
+    matched = r.name === nothing ? !isempty(values) : _has_removable(R, values, r.name)
     if !matched && !r.matched && r.required
         metadata = _binding_metadata(child)
         own = _removal_names_own_lhs(metadata, r.name)
@@ -3765,7 +3797,7 @@ function _apply_parent_removals(
         end
     end
     matched && _record_removal_use(context, R, r)
-    crosses_return || (values = _remove_marked(R, values, r))
+    matched && (values = _remove_marked(R, values, r))
     values, rest = _apply_parent_removals(
         R, child, values, Base.tail(markers), context, check_unknown, prefix
     )
