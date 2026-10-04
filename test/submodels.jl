@@ -1384,4 +1384,15 @@ end
     end
 end
 
+@model address_leaf() = x ~ Normal()
+@model address_parent(m) = a ~ to_submodel(m)
+@testset "deferred removal addresses" begin
+    for remove in (decondition, unfix), name in (@varname(a.a.x), @varname(a.a.absent))
+        m = remove(
+            address_parent(address_parent(address_leaf())), DynamicPPL.Recursive(), name
+        )
+        @test_throws "Cannot remove `$name`" m(Xoshiro(1))
+    end
+end
+
 end
