@@ -200,6 +200,10 @@ function _overlay_model_node(previous, fixed::ModelValueTree, owners, vn)
         previous isa ModelValue && (previous = _expand_model_binding(previous))
         previous = previous isa ModelValueTree ? previous.values : previous
         if previous isa VarNamedTuple
+            if owns_shape
+                names = filter(name -> hasproperty(template, name), keys(previous.data))
+                previous = VarNamedTuple(NamedTuple{names}(previous.data))
+            end
             _overlay_model_values(previous, fixed.values, owners, vn)
         else
             fixed.values
