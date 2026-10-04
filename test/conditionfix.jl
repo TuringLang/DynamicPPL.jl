@@ -50,6 +50,43 @@ end
     end
 end
 
+@model function aliased_argument(y)
+    for i in eachindex(y), j in eachindex(y[i])
+        y[i][j] ~ Normal()
+    end
+    return y
+end
+@model function aliased_fields(y)
+    for j in eachindex(y.u)
+        y.u[j] ~ Normal()
+        y.v[j] ~ Normal()
+    end
+    return y
+end
+struct AliasedFields{U,V}
+    u::U
+    v::V
+end
+@testset "latent arrays own backing storage" begin
+    for sibling in (identity, x -> view(x, :)), container in (:array, :namedtuple, :struct)
+        inner = [1.0, 2.0]
+        if container === :array
+            m = decondition(aliased_argument([inner, sibling(inner)]), @varname(y[1][1]))
+            params = (; y=[[5.0]])
+        else
+            value = if container === :namedtuple
+                (u=inner, v=sibling(inner))
+            else
+                AliasedFields(inner, sibling(inner))
+            end
+            m = decondition(aliased_fields(value), @varname(y.u[1]))
+            params = (; y=(u=[5.0],))
+        end
+        @test logjoint(m, params) ≈ sum(logpdf.(Normal(), [5.0, 2.0, 1.0, 2.0]))
+        @test inner == [1.0, 2.0]
+    end
+end
+
 @testset "partial argument preparation inference" begin
     @model array_argument(x) = x[1] ~ Normal()
     @model named_argument(x) = x.a[1] ~ Normal()
