@@ -3009,7 +3009,9 @@ function _check_shapeless_removal(binding, optic, prefix, vn)
     return _check_shapeless_removal(child, optic.child, head ∘ prefix, vn)
 end
 
-function _check_model_removal(::Type{R}, values, args...; prefix=nothing) where {R}
+function _check_model_removal(
+    ::Type{R}, values, args...; prefix=nothing, shared=false
+) where {R}
     for arg in args
         vn = arg isa VarName ? arg : VarName{arg}()
         _check_partial_binding(values, AbstractPPL.varname_to_optic(vn))
@@ -3025,6 +3027,9 @@ function _check_model_removal(::Type{R}, values, args...; prefix=nothing) where 
         elseif R === Condition && !(AbstractPPL.getoptic(vn) isa AbstractPPL.Iden)
             message *= " If this is a child model's argument, decondition the child model before wrapping it with `to_submodel`."
         end
+        shared && (
+            message *= " If this name belongs to an unprefixed submodel, prefix the submodel or remove without Recursive()."
+        )
         throw(ArgumentError(message))
     end
     return nothing
@@ -3634,11 +3639,11 @@ _check_deferred_removals(::Tuple{}, ::Type{R}, model, vn) where {R} = nothing
                 name
             end
             layer = R === Condition ? "conditioned" : "fixed"
-            throw(
-                ArgumentError(
-                    "Cannot remove `$name`: no $layer binding is stored at this address."
-                ),
+            message = "Cannot remove `$name`: no $layer binding is stored at this address."
+            _may_have_submodels(_binding_metadata(model)) && (
+                message *= " If this name belongs to an unprefixed submodel, prefix the submodel or remove without Recursive()."
             )
+            throw(ArgumentError(message))
         end
     end
     return nothing
@@ -3668,6 +3673,32 @@ function _removal_names_own_lhs(metadata, vn)
            AbstractPPL.getsym(vn) ∉ _submodel_lhs_names(metadata)
 end
 
+function _check_shared_removals(parent, child)
+    names = _lhs_names(_binding_metadata(child))
+    names === nothing && return nothing
+    for role in (Condition, Fix), r in _removals(role, parent.values)
+        r.name === nothing && continue
+        vn = _local_removal_name(parent, r.name)
+        if vn !== nothing &&
+            any(
+                pair ->
+                    !last(pair) && (subsumes(vn, first(pair)) || subsumes(first(pair), vn)),
+                _lhs_addresses(_binding_metadata(parent)),
+            ) &&
+            any(
+                pair -> subsumes(vn, first(pair)) || subsumes(first(pair), vn),
+                _lhs_addresses(_binding_metadata(child)),
+            )
+            throw(
+                ArgumentError(
+                    "Cannot recursively remove `$(_binding_display_name(parent, r.name))`: it names both this model's LHS and an unprefixed submodel address. Prefix the submodel or remove without Recursive().",
+                ),
+            )
+        end
+    end
+    return nothing
+end
+
 function _recursive_remove(::Type{R}, model, names) where {R}
     model = _materialize_argument_values(model)
     values = _binding_layer(R, model.values)
@@ -3695,7 +3726,7 @@ function _recursive_remove(::Type{R}, model, names) where {R}
                 _removal_names_own_lhs(metadata, local_name) ||
                 !_may_have_submodels(metadata)
             )
-                _check_model_removal(R, values, vn)
+                _check_model_removal(R, values, vn; shared=_may_have_submodels(metadata))
             end
         end
         marker = ModelRemoval(vn, (), matched, vn !== nothing)

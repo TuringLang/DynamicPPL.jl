@@ -1132,7 +1132,7 @@ end
         return (x, a)
     end
     both = decondition(shared(1.0), rec, @varname(x))
-    @test condition(both; x=3.0)() == (3.0, 2.0)
+    @test_throws r"x.*Prefix.*Recursive" condition(both; x=3.0)(Xoshiro(1))
     @test isempty(conditioned(decondition(decondition(parent(child), rec), rec)))
     @model branch(run) = (run && (a ~ to_submodel(scalar(1.0))); nothing)
     @test decondition(branch(false), rec, @varname(a.x))() === nothing
@@ -1377,6 +1377,24 @@ end
     end
 end
 
+@model closed_leaf(x=3.0) = x ~ Normal()
+@model closed_shared(x, child) = (x ~ Normal(); a ~ to_submodel(child, false); a)
+@model closed_shared_runtime(x, child, dist) = (x ~ dist; a ~ to_submodel(child, false); a)
+@testset "shared removal" begin
+    for remove in (decondition, unfix),
+        m in (
+            closed_shared(2.0, fix(closed_leaf(); x=4.0)),
+            closed_shared_runtime(2.0, fix(closed_leaf(); x=4.0), Normal()),
+        )
+
+        @test_throws r"x.*[Pp]refix.*Recursive" remove(
+            m, DynamicPPL.Recursive(), @varname(x)
+        )(
+            Xoshiro(1)
+        )
+    end
+end
+
 @testset "partial runtime return arguments are rejected" begin
     @model runtime_return_leaf(x=3.0) = x ~ Normal()
     @model runtime_return(a, rhs) = a ~ rhs
@@ -1391,6 +1409,5 @@ end
         end
     end
 end
-
 
 end
