@@ -1829,6 +1829,9 @@ See [`condition`](@ref) for more information and examples.
 Base.:|(model::Model, values::Union{NamedTuple,AbstractDict,Pair,Tuple,VarNamedTuple}) =
     _bind_ordered_inputs(Condition, model, _binding_inputs(values))
 
+@inline function _check_binding_addresses(model, values::VarNamedTuple{()}, recursive::Bool)
+    return nothing
+end
 function _check_binding_addresses(model, values, recursive=false)
     metadata = _binding_metadata(model)
     names = _lhs_names(metadata)
