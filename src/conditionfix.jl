@@ -2619,7 +2619,11 @@ function _bind_model(
         )
     end
     values = model.values isa LocalModelValues ? LocalModelValues(values) : values
-    values = _replace_removals(model.values, values, R, new_addresses)
+    values = if recursive
+        _replace_removals(model.values, values, R, new_addresses)
+    else
+        _with_removals(values, _removals(Condition, model.values), _removals(Fix, model.values))
+    end
     return _reconstruct_model(model; values)
 end
 function AbstractPPL.condition(model::Model; values...)

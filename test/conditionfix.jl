@@ -3916,17 +3916,21 @@ function bc_apply_reference!(r, op; clear_markers=false)
             bc_contains(p, q) && delete!(d, q)
         end
         merge!(d, Dict(bc_leaves(p, op.value)))
-        for q in targets
-            delete!(masks, q)
+        if op.recursive
+            for q in targets
+                delete!(masks, q)
+            end
         end
         for q in collect(keys(owners))
             bc_contains(p, q) && delete!(owners, q)
         end
         owners[p] = op.value
-        filter!(r.pending) do pending
-            pfixed, qs = pending
-            pfixed == fixed && filter!(q -> !bc_contains(p, q), qs)
-            !isempty(qs)
+        if op.recursive
+            filter!(r.pending) do pending
+                pfixed, qs = pending
+                pfixed == fixed && filter!(q -> !bc_contains(p, q), qs)
+                !isempty(qs)
+            end
         end
     else
         found = any(q -> op.recursive ? bc_stored(r, q, fixed) : haskey(d, q), targets)
