@@ -873,13 +873,14 @@ end
     end
 end
 
-@testset "deferred recursive removals overlap whole LHS variables" begin
+@testset "recursive removals overlap whole LHS variables" begin
     rec = DynamicPPL.Recursive()
     @model function removal_whole(t, run=true)
         run && (t ~ product_distribution((a=Normal(),)))
         return nothing
     end
     @model removal_whole_local() = t ~ product_distribution((a=Normal(),))
+    @model removal_literal(child) = a ~ to_submodel(child)
     @model function removal_runtime(child)
         rhs = to_submodel(child)
         return a ~ rhs
@@ -892,17 +893,22 @@ end
             (prefix(child, @varname(p)), @varname(p.t.a), @varname(p.t)),
             (removal_runtime(removal_runtime(child)), @varname(a.a.t.a), @varname(a.a.t)),
         )
-            removed = remove(model, rec, name)
-            @test_throws ArgumentError removed(Xoshiro(1))
+            @test_throws ArgumentError remove(model, rec, name)
             matched = remove(bind(model, whole_name => (a=2.0,)), rec, name)
             @test whole_name in keys(rand(Xoshiro(1), matched))
         end
         skipped = decondition(removal_whole((a=2.0,), false))
-        @test remove(skipped, rec, @varname(t.a))(Xoshiro(1)) === nothing
-        @test remove(removal_runtime(skipped), rec, @varname(a.t.a))(Xoshiro(1)) === nothing
+        for (model, name, whole_name) in (
+            (skipped, @varname(t.a), @varname(t)),
+            (removal_runtime(skipped), @varname(a.t.a), @varname(a.t)),
+        )
+            @test_throws ArgumentError remove(model, rec, name)
+            @test remove(bind(model, whole_name => (a=2.0,)), rec, name)(Xoshiro(1)) ===
+                nothing
+        end
         # A child's removal cannot count an enclosing binding as its own match.
-        removed_child = remove(child, rec, @varname(t.a))
-        enclosing = bind(removal_runtime(removed_child), @varname(a.t) => (a=2.0,))
+        removed_child = remove(removal_literal(child), rec, @varname(a.t.a))
+        enclosing = bind(removal_literal(removed_child), @varname(a.a.t) => (a=2.0,))
         @test_throws ArgumentError enclosing(Xoshiro(1))
     end
 end
@@ -1099,10 +1105,8 @@ end
         Xoshiro(1)
     )
     for child in (removal_dynamic(missing), removal_branch(missing, false))
-        @test_throws r"ArgumentError: Submodel tilde .*model argument `a`.*local LHS" decondition(
+        @test_throws r"ArgumentError: Cannot remove `a.x`" decondition(
             child, rec, @varname(a.x)
-        )(
-            Xoshiro(1)
         )
         @test_throws r"ArgumentError: Submodel tilde .*model argument `a`.*local LHS" decondition(
             removal_outer(child), rec, @varname(b.a.x)
@@ -1185,42 +1189,6 @@ end
             address_parent(address_parent(address_leaf())), DynamicPPL.Recursive(), name
         )
         @test_throws "Cannot remove `$name`" m(Xoshiro(1))
-    end
-end
-
-@model shadow_child() = a ~ Distributions.Normal()
-@model function shadow_parent(x=0.0; run=true)
-    Normal = m -> to_submodel(m, false)
-    run && (x ~ Normal(shadow_child()))
-    return x
-end
-@model function shadow_named()
-    function Normal(m)
-        return to_submodel(m, false)
-    end
-    x ~ Normal(shadow_child())
-    return x
-end
-@model function shadow_closure()
-    f = Normal -> begin
-        x ~ Normal(shadow_child())
-        x
-    end
-    return f(m -> to_submodel(m, false))
-end
-@model function shadow_let()
-    let Normal = m -> to_submodel(m, false)
-        x ~ Normal(shadow_child())
-        return x
-    end
-end
-@testset "locally rebound constructors" begin
-    @test_throws r"ArgumentError: Submodel tilde .*model argument `x`.*local LHS" shadow_parent()(
-        Xoshiro(1)
-    )
-    @test shadow_parent(; run=false)(Xoshiro(1)) == 0.0
-    for bind in (condition, fix), model in (shadow_named(), shadow_closure(), shadow_let())
-        @test bind(model, @varname(a) => 2.0)(Xoshiro(1)) == 2.0
     end
 end
 

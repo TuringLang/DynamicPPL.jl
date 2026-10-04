@@ -323,12 +323,14 @@ arguments, unrelated names, or names not bound by the call also throw `ArgumentE
 schemas are converted with `zero(T)` at binding time, so resolve symbolic sizes first. Bind
 whole values for storage that `of` cannot describe.
 
-Bindings must address LHS variables, parts of them, or child LHS variables through a submodel
-namespace. Binding-time checks reject covariates, nonexistent argument fields, indices outside
-storage, and unknown top symbols. Models with possible submodels allow unprefixed submodel names
-and defer child namespace checks until the submodel is reached. Shared unprefixed namespaces cannot reject unknown names
-independently of siblings. [`check_model`](@ref) warns about bound names that no LHS
-variable in the model or its reached unprefixed submodels can use.
+Bindings must address LHS variables, parts of them, or child LHS variables through a
+submodel namespace. Binding-time checks reject covariates, nonexistent argument fields,
+indices outside storage, and unknown top symbols. Only a literal `to_submodel(child, false)`
+tilde allows unknown top symbols, since its unprefixed child may own them. Other right-hand
+sides, including `truncated(...)` and `filldist(...)`, do not relax this check. Child
+namespace checks wait until the child is reached. Shared unprefixed namespaces cannot reject
+unknown names independently of siblings. [`check_model`](@ref) warns about bound names that
+no LHS variable in the model or its reached unprefixed submodels can use.
 
 Whole argument bindings must satisfy declared types (`Any` if undeclared) at binding time. The
 full signature must also hold, with shared type parameters and `where` constraints checked
