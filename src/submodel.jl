@@ -237,6 +237,9 @@ Evaluate `submodel` under `parent_model`.
     template,
     vi::AbstractVarInfo,
 ) where {M<:Model,AutoPrefix}
+    !AutoPrefix &&
+        _model_prefix(submodel.model) === nothing &&
+        _check_shared_removals(parent_model, submodel.model)
     _check_return_argument_edits(parent_model, left_vn)
     namespace = _remove_model_values(
         ArgumentCondition, _submodel_values(parent_model, left_vn)
