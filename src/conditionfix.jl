@@ -2305,9 +2305,50 @@ function _binding_owner(::Type{R}, value::VarNamedTuples.PartialArray) where {R}
     return selected isa VarNamedTuples.PartialArray ? selected.data : selected
 end
 
+function _prepare_local_binding_type(::Type{R}, previous, update, vn, addresses) where {R}
+    if previous isa Union{
+        ModelValue{<:Any,<:Union{NamedTuple,VarNamedTuple}},ModelValueTree{<:NamedTuple}
+    } && any(address -> last(address) && first(address) == vn, addresses)
+        previous = _submodel_namespace(previous)
+    end
+    owner = _binding_owner(R, previous)
+    owner isa NoTemplate &&
+        return _prepare_local_binding_children(R, previous, update, vn, addresses)
+    if update isa ModelValue
+        update.value isa typeof(owner) || throw(
+            ArgumentError(
+                "Bound value at `$vn` must be an instance of template type $(typeof(owner)); supplied $(typeof(update.value)).",
+            ),
+        )
+        return update
+    end
+    return _prepare_argument_fields(owner, update, vn)
+end
+function _prepare_local_binding_children(
+    ::Type{R}, previous, update, vn, addresses
+) where {R}
+    return update
+end
+function _prepare_local_binding_children(
+    ::Type{R},
+    previous,
+    updates::Union{VarNamedTuple,VarNamedTuples.PartialArray},
+    vn,
+    addresses,
+) where {R}
+    previous === nothing && return updates
+    # Namespace nodes supply no storage themselves; owners live at their children.
+    return _fold_model_indices(copy(updates), updates) do result, update, optic, storage
+        child = _model_argument_binding(previous, optic)
+        prepared = _prepare_local_binding_type(
+            R, child, update, AbstractPPL.append_optic(vn, optic), addresses
+        )
+        VarNamedTuples._setindex_optic!!(
+            result, prepared, optic, storage, VarNamedTuples.AllowAll()
+        )
+    end
+end
 function _prepare_local_binding_types(::Type{R}, model, values) where {R}
-    metadata = _binding_metadata(model)
-    _lhs_names(metadata) === nothing && return values
     prefix = _model_prefix(model)
     local_values = if model.values isa LocalModelValues || prefix === nothing
         values
@@ -2317,29 +2358,18 @@ function _prepare_local_binding_types(::Type{R}, model, values) where {R}
     local_previous = _submodel_values(model, nothing)
     for name in keys(local_values.data)
         name in _args_on_lhs(model) && continue
-        name in _lhs_names(metadata) || continue
-        name in _submodel_lhs_names(metadata) && continue
         previous = get(local_previous.data, name, nothing)
         previous === nothing && continue
-        update = local_values.data[name]
-        vn = VarName{name}()
-        if update isa ModelValue
-            owner = _binding_owner(R, previous)
-            owner isa NoTemplate ||
-                update.value isa typeof(owner) ||
-                throw(
-                    ArgumentError(
-                        "Bound value at `$vn` must be an instance of template type $(typeof(owner)); supplied $(typeof(update.value)).",
-                    ),
-                )
-        else
-            owner = _binding_owner(R, previous)
-            owner isa NoTemplate && continue
-            update = _prepare_argument_fields(owner, update, vn)
-            local_values = VarNamedTuple(
-                merge(local_values.data, NamedTuple{(name,)}((update,)))
-            )
-        end
+        update = _prepare_local_binding_type(
+            R,
+            previous,
+            local_values.data[name],
+            VarName{name}(),
+            _lhs_addresses(_binding_metadata(model)),
+        )
+        local_values = VarNamedTuple(
+            merge(local_values.data, NamedTuple{(name,)}((update,)))
+        )
     end
     return if model.values isa LocalModelValues || prefix === nothing
         local_values

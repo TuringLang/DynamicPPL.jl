@@ -87,6 +87,41 @@ end
     end
 end
 
+@model leaf_owner() = (x = zeros(1); x[1] ~ Normal(); x)
+@model parent_owner() = a ~ to_submodel(leaf_owner())
+@model function indexed_owner()
+    a = Vector{Any}(undef, 1)
+    return a[1] ~ to_submodel(leaf_owner())
+end
+@model property_owner() = (p = (a=zeros(1),); p.a[1] ~ Normal(); p)
+@testset "nested owners validate replacement types" begin
+    for bind in (condition, fix)
+        m = bind(parent_owner(), DynamicPPL.Recursive(), @varname(a.x) => Float32[1])
+        @test_throws ArgumentError bind(m, DynamicPPL.Recursive(), @varname(a.x[1]) => 0.1)
+        @test_throws ArgumentError bind(m, DynamicPPL.Recursive(), @varname(a.x) => [1.0])
+        indexed = bind(
+            indexed_owner(), DynamicPPL.Recursive(), @varname(a[1].x) => Float32[1]
+        )
+        @test_throws ArgumentError bind(
+            indexed, DynamicPPL.Recursive(), @varname(a[1].x[1]) => 0.1
+        )
+        @test_throws ArgumentError bind(
+            indexed, DynamicPPL.Recursive(), @varname(a[1].x) => [1.0]
+        )
+        m = bind(property_owner(), @varname(p.a) => Float32[1])
+        @test_throws ArgumentError bind(m, @varname(p.a[1]) => 0.1)
+        @test_throws ArgumentError bind(m, @varname(p.a) => [1.0])
+        for value in (0.5, 1)
+            valid = bind(m, @varname(p.a[1]) => value)
+            listed = bind === condition ? conditioned(valid) : fixed(valid)
+            @test listed[@varname(p.a[1])] === Float32(value)
+        end
+        resized = bind(m, @varname(p.a) => Float32[1, 2])
+        listed = bind === condition ? conditioned(resized) : fixed(resized)
+        @test listed[@varname(p.a)] == Float32[1, 2]
+    end
+end
+
 @testset "partial argument preparation inference" begin
     @model array_argument(x) = x[1] ~ Normal()
     @model named_argument(x) = x.a[1] ~ Normal()
