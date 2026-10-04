@@ -516,6 +516,8 @@ end
 Base.keys(vnt::VarNamedTuple) = mapreduce(first, push!, vnt; init=VarName[])
 Base.values(vnt::VarNamedTuple) = mapreduce(pair -> pair.second, push!, vnt; init=Any[])
 
+# Counts stored values and array cells, not addresses, so it can differ from
+# `length(keys(vnt))`: an `ArrayLikeBlock` over three cells counts three.
 function Base.length(vnt::VarNamedTuple)
     len = 0
     for subdata in vnt.data
