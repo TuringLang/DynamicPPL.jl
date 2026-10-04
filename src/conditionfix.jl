@@ -121,8 +121,7 @@ function _overlay_model_node(previous::VarNamedTuple, fixed::VarNamedTuple, owne
 end
 function _overlay_model_node(previous, fixed::VarNamedTuples.PartialArray, owners, vn)
     previous isa NoModelBinding && return _copy_model_node(fixed)
-    owns_shape =
-        fixed.mask isa ModelBindingArray || any(owner -> subsumes(owner, vn), owners)
+    owns_shape = _inherits_shape(fixed.mask) || any(owner -> subsumes(owner, vn), owners)
     owns_shape &&
         eltype(fixed) <: ModelValue &&
         _has_complete_model_data(fixed) &&
@@ -492,11 +491,18 @@ function _tag_model_values(::Type{R}, values::VarNamedTuple, scope=Val(true)) wh
     return map_pairs!!(pair -> ModelValue{R}(pair.second, scope), copy(values))
 end
 
-# Keep the array owner through PartialArray's copies and element-type changes.
-struct ModelBindingArray{T,N,A<:AbstractArray{T,N},V<:AbstractArray} <: AbstractArray{T,N}
+# Keep storage templates separate from whole-binding shape ownership.
+# S records the same inherited ownership as ModelValueTree.
+struct ModelBindingArray{T,N,S,A<:AbstractArray{T,N},V<:AbstractArray} <: AbstractArray{T,N}
     data::A
     template::V
 end
+function ModelBindingArray(
+    data::AbstractArray{T,N}, template, ::Val{S}=Val(false)
+) where {T,N,S}
+    return ModelBindingArray{T,N,S,typeof(data),typeof(template)}(data, template)
+end
+_inherits_shape(::ModelBindingArray{T,N,S}) where {T,N,S} = S
 Base.size(value::ModelBindingArray) = size(value.data)
 Base.axes(value::ModelBindingArray) = axes(value.data)
 Base.getindex(value::ModelBindingArray, indices...) = getindex(value.data, indices...)
@@ -507,12 +513,18 @@ function Base.setindex!(value::ModelBindingArray, child, indices...)
     setindex!(value.data, child, indices...)
     return value
 end
-Base.copy(value::ModelBindingArray) = ModelBindingArray(copy(value.data), value.template)
+function Base.copy(value::ModelBindingArray)
+    return ModelBindingArray(copy(value.data), value.template, Val(_inherits_shape(value)))
+end
 function Base.similar(value::ModelBindingArray, ::Type{T}) where {T}
-    return ModelBindingArray(similar(value.data, T), value.template)
+    return ModelBindingArray(
+        similar(value.data, T), value.template, Val(_inherits_shape(value))
+    )
 end
 function Base.similar(value::ModelBindingArray, ::Type{T}, dims::Dims) where {T}
-    return ModelBindingArray(similar(value.data, T, dims), value.template)
+    return ModelBindingArray(
+        similar(value.data, T, dims), value.template, Val(_inherits_shape(value))
+    )
 end
 
 function _expand_model_binding(previous::ModelValue{R,<:AbstractArray}) where {R}
@@ -535,7 +547,7 @@ function _expand_model_binding(previous::ModelValue{R,<:AbstractArray}) where {R
         data = ModelBindingArray(data, value)
     end
     # The mask carries recursive ownership without hiding the data's array type.
-    _inherits_binding(previous) && (mask = ModelBindingArray(mask, value))
+    _inherits_binding(previous) && (mask = ModelBindingArray(mask, value, Val(true)))
     return VarNamedTuples.PartialArray(data, mask)
 end
 function _expand_model_binding(previous::ModelValue{R,<:Base.Pairs}) where {R}
@@ -761,7 +773,7 @@ end
 function VarNamedTuples.make_leaf(
     value,
     optic::AbstractPPL.Index,
-    template::VarNamedTuples.PartialArray{T,N,D,<:ModelBindingArray{Bool,N}},
+    template::VarNamedTuples.PartialArray{T,N,D,<:ModelBindingArray{Bool,N,true}},
 ) where {T,N,D<:AbstractArray{T,N}}
     leaf = invoke(
         VarNamedTuples.make_leaf,
@@ -771,7 +783,7 @@ function VarNamedTuples.make_leaf(
         template,
     )
     return VarNamedTuples.PartialArray(
-        leaf.data, ModelBindingArray(leaf.mask, template.mask.template)
+        leaf.data, ModelBindingArray(leaf.mask, template.mask.template, Val(true))
     )
 end
 function VarNamedTuples.make_leaf(value, optic::AbstractPPL.Index, template::ModelValue)
@@ -1024,16 +1036,16 @@ function _inherit_model_array_owner(previous, updates)
         data = data isa ModelBindingArray ? data.data : data
         data = ModelBindingArray(data, updates.data.template)
     end
-    if updates.mask isa ModelBindingArray
+    if _inherits_shape(updates.mask)
         data = data isa ModelBindingArray ? data.data : data
         mask = mask isa ModelBindingArray ? mask.data : mask
         data = ModelBindingArray(data, updates.mask.template)
-        mask = ModelBindingArray(mask, updates.mask.template)
+        mask = ModelBindingArray(mask, updates.mask.template, Val(true))
     end
     return VarNamedTuples.PartialArray(data, mask)
 end
 function _merge_model_node(
-    previous, updates::VarNamedTuples.PartialArray{T,N,D,<:ModelBindingArray{Bool,N}}
+    previous, updates::VarNamedTuples.PartialArray{T,N,D,<:ModelBindingArray{Bool,N,true}}
 ) where {T,N,D<:AbstractArray{T,N}}
     previous isa NoModelBinding && return copy(updates)
     previous isa ModelValue && (previous = _expand_model_binding(previous))
@@ -1044,7 +1056,7 @@ function _merge_model_node(
 end
 function _check_model_binding(
     previous,
-    updates::VarNamedTuples.PartialArray{T,N,D,<:ModelBindingArray{Bool,N}},
+    updates::VarNamedTuples.PartialArray{T,N,D,<:ModelBindingArray{Bool,N,true}},
     vn;
     check_bounds=true,
 ) where {T,N,D<:AbstractArray{T,N}}
@@ -1058,7 +1070,9 @@ function _check_model_binding(
     )
 end
 function _prepare_argument_fields(
-    template, bindings::VarNamedTuples.PartialArray{T,N,D,<:ModelBindingArray{Bool,N}}, vn
+    template,
+    bindings::VarNamedTuples.PartialArray{T,N,D,<:ModelBindingArray{Bool,N,true}},
+    vn,
 ) where {T,N,D<:AbstractArray{T,N}}
     return invoke(
         _prepare_argument_fields,
@@ -1524,7 +1538,7 @@ end
 function _argument_storage(values::VarNamedTuples.PartialArray, template)
     _has_complete_model_data(values) && return ModelArgumentLeaf(true)
     values.data isa ModelBindingArray && (template = values.data.template)
-    values.mask isa ModelBindingArray && (template = values.mask.template)
+    _inherits_shape(values.mask) && (template = values.mask.template)
     if template isa AbstractArray &&
         !(values.data isa VarNamedTuples.GrowableArray) &&
         axes(template) != axes(values.data)
