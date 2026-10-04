@@ -1147,6 +1147,16 @@ end
     end
 end
 
+@testset "matched recursive removal at evaluation" begin
+    rec = DynamicPPL.Recursive()
+    @model leaf(x) = x ~ Normal()
+    @model parent(m) = a ~ to_submodel(m)
+    m = decondition(
+        condition(parent(leaf(2.0)), rec, @varname(a.x) => 3.0), rec, @varname(a.x)
+    )
+    @test logjoint(m, (; a=(; x=0.5))) ≈ logpdf(Normal(), 0.5)
+end
+
 @testset "recursive removal storage and scope" begin
     rec = DynamicPPL.Recursive()
     @model function indexed(x)
