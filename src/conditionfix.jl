@@ -2696,8 +2696,29 @@ function _make_condfix_values(model, values)
     )
 end
 _make_condfix_values(model, values::NamedTuple) = VarNamedTuple(values)
+function _check_nested_tuple_binding(value, optic, vn, nested=false)
+    optic isa AbstractPPL.Iden && return nothing
+    raw = value isa ModelValue ? value.value : value
+    raw = raw isa ModelValueTree ? raw.template : raw
+    if nested && raw isa Tuple
+        throw(
+            ArgumentError(
+                "Cannot partially bind `$vn` through a tuple nested in an array or struct; bind the enclosing element whole.",
+            ),
+        )
+    end
+    nested |= !(raw isa Union{Tuple,NamedTuple,VarNamedTuple,Nothing,NoTemplate})
+    child = _model_argument_binding(value, AbstractPPL.ohead(optic))
+    return _check_nested_tuple_binding(child, optic.child, vn, nested)
+end
+
 function _make_condfix_values(model, values::VarNamedTuple)
-    foreach(vn -> _check_binding_operation(model, vn), keys(values))
+    for vn in keys(values)
+        _check_binding_operation(model, vn)
+        _check_nested_tuple_binding(
+            _model_values(model.values), AbstractPPL.varname_to_optic(vn), vn
+        )
+    end
     return values
 end
 
@@ -2716,6 +2737,9 @@ end
 
 function _make_condfix_values(model, pair::Pair{<:VarName})
     _check_binding_operation(model, first(pair))
+    _check_nested_tuple_binding(
+        _model_values(model.values), AbstractPPL.varname_to_optic(first(pair)), first(pair)
+    )
     # Only traverse the addressed root; unrelated partial storage can be large.
     previous_values = _model_values(model.values)
     name = AbstractPPL.getsym(first(pair))
@@ -2756,6 +2780,9 @@ function _make_condfix_values(model, pair::Pair{<:VarName})
     end
     _check_partial_binding(_model_values(model.values), AbstractPPL.varname_to_optic(vn))
     template = _binding_template(model, templates, vn)
+    _check_nested_tuple_binding(
+        ModelValue{Condition}(template), AbstractPPL.getoptic(vn), vn
+    )
     vn = VarName{AbstractPPL.getsym(vn)}(
         _normalize_binding_optic(template, AbstractPPL.getoptic(vn))
     )
