@@ -3249,6 +3249,9 @@ end
         )
         @test_throws "Cannot remove" remove(prefixed_owner, scope..., @varname(q[2].x[6]))
         prefixed = prefix(unbound, @varname(q[2]))
+        @test_throws ArgumentError(
+            "Cannot bind `q[1].x`: it is outside this model's prefix `q[2]`."
+        ) bind(prefixed, @varname(q[1].x) => ones(3))
         @test select(remove(prefixed, scope..., @varname(q[2].x[3]))) == select(prefixed)
         @test_throws "Cannot remove" remove(prefixed, scope..., @varname(q[1].x))
         @test_throws "Cannot remove" remove(prefixed, scope..., @varname(x))
@@ -3276,6 +3279,27 @@ end
         namespace = bind(removal_child(m); a=(x=ones(3),))
         @test bind(namespace, @varname(a.typo) => 2.0) isa Model
         @test select(remove(namespace, scope..., @varname(a.typo))) == select(namespace)
+    end
+    # An empty fixed layer has no owner; overlaying it must still fit the stored observation.
+    for (original, whole, valid, invalid) in (
+        (local_array(), @varname(x), @varname(x[3]), @varname(x[8])),
+        (removal_child(m), @varname(a.x), @varname(a.x[3]), @varname(a.x[8])),
+    )
+        observed = condition(original, whole => ones(3))
+        for bind in (condition, fix)
+            @test_throws ArgumentError(
+                "Cannot bind `$invalid`: index is outside the storage at `$(DynamicPPL.getsym(invalid))`",
+            ) bind(observed, invalid => 1.0)
+        end
+        bound = fix(observed, valid => 2.0)
+        @test fixed(bound)[valid] == 2.0
+        @test conditioned(unfix(bound, valid)) == conditioned(observed)
+        for scope in ((), (DynamicPPL.Recursive(),))
+            @test_throws "index is outside the storage" decondition(
+                observed, scope..., invalid
+            )
+            @test isempty(fixed(unfix(observed, scope..., invalid)))
+        end
     end
 end
 
