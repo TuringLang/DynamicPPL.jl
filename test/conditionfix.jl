@@ -2177,13 +2177,13 @@ end
         end
     end
 
-    @testset "unfix restores slice-prefixed arguments" begin
-        @model slice_argument(x=1.0) = x ~ Normal()
+    @testset "unfix restores index-prefixed arguments" begin
+        @model prefixed_argument(x=1.0) = x ~ Normal()
         m = DynamicPPL.prefix(
-            fix(slice_argument(); x=3.0), @varname(p[1:2]); template=zeros(2)
+            fix(prefixed_argument(); x=3.0), @varname(p[2]); template=zeros(2)
         )
         restored = unfix(m)
-        @test conditioned(restored)[@varname(p[1:2].x)] == 1.0
+        @test conditioned(restored)[@varname(p[2].x)] == 1.0
         @test returned(restored, (;)) == 1.0
         @test loglikelihood(restored, (;)) ≈ logpdf(Normal(), 1.0)
     end
@@ -2652,7 +2652,6 @@ end
     plain = whole_schema_local()
     prefixed = prefix(plain, @varname(p))
     nested = prefix(prefixed, @varname(q))
-    sliced = prefix(plain, @varname(p[:]); template=zeros(2))
     for op in (condition, fix),
         (model, address) in
         ((plain, @varname(x)), (prefixed, @varname(p.x)), (nested, @varname(q.p.x)))
@@ -2663,11 +2662,6 @@ end
         @test whole_schema_parent(bound)(Xoshiro(1)) == [1.0, 2.0]
         @test_throws ArgumentError op(model, schema, address => ones(Float32, 2))
         @test_throws ArgumentError op(model, schema, address => ones(3))
-    end
-    for op in (condition, fix)
-        @test_throws r"p\[.*before prefixing" op(
-            sliced, @of(x = of(Array, 2)), @varname(p[:].x) => [1.0, 2.0]
-        )
     end
 end
 
@@ -2724,16 +2718,6 @@ end
         )(
             Xoshiro(1)
         ) == (9.0, 4.0)
-    end
-end
-
-@testset "binding schemas reject slice namespaces" begin
-    @model slice_schema_local() = z ~ Normal()
-    for bind in (condition, fix), p in (@varname(a[:]), @varname(a[1:2]))
-        m = DynamicPPL.prefix(slice_schema_local(), p; template=zeros(2))
-        @test_throws r"a\[.*before prefixing" bind(
-            m, @varname(a[:].z) => 1.0, @of(z = of(Array, 3))
-        )
     end
 end
 
@@ -4834,18 +4818,6 @@ end
 # --- End binding contract ---
 
 @model closed_leaf(x=3.0) = x ~ Normal()
-@testset "slice prefix edits" begin
-    for (bind, remove) in ((condition, decondition), (fix, unfix)),
-        scope in ((), (DynamicPPL.Recursive(),)),
-        p in (@varname(p[1:2]), @varname(p[:]))
-
-        m = prefix(bind(closed_leaf(); x=4.0), p; template=zeros(2))
-        vn = p == @varname(p[:]) ? @varname(p[:].x) : @varname(p[1:2].x)
-        @test_throws r"p\[.*\.x.*before prefixing" bind(m, vn => 5.0)
-        @test_throws r"p\[.*\.x.*before prefixing" remove(m, scope..., vn)
-    end
-end
-
 @model function closed_branch(a, run)
     if run
         a[1] ~ Normal()

@@ -227,43 +227,17 @@ end
         @test size(likelihoods.data.a.data.x) == (2,)
     end
 
-    @testset "range-prefixed submodel namespace bindings" begin
-        @model range_child() = (x ~ Normal(); [x, x])
-        @model range_parent() = (a = zeros(2); a[1:2] ~ to_submodel(range_child()); a)
-        @model range_nested(child) = outer ~ to_submodel(child)
-        for bind in (condition, fix)
-            pair = @varname(a[1:2].x) => 2.0
-            bindings = DynamicPPL.templated_setindex!!(
-                VarNamedTuple(), 2.0, pair.first, zeros(2)
-            )
-            for form in (pair, bindings), wrap in (identity, range_nested)
-                @test_throws r"a\[.*before prefixing" wrap(bind(range_parent(), form))(
-                    Xoshiro(1)
-                )
-            end
-            @test_throws "Cannot explicitly bind a submodel return value" bind(
-                range_parent(); a=zeros(2)
-            )(
-                Xoshiro(1)
-            )
-        end
-    end
-
     @testset "binding construction uses prefix templates" begin
         @model template_leaf() = x ~ Normal()
         @model template_covariate(z) = x ~ Normal(z[1])
         @model template_parent(child) = outer ~ to_submodel(child)
         for (name, template) in
-            ((@varname(p[:]), zeros(2)), (@varname(p[0]), OffsetArray(zeros(2), 0:1))),
+            ((@varname(p[2]), zeros(2)), (@varname(p[0]), OffsetArray(zeros(2), 0:1))),
             bind in (condition, fix),
             leaf in (template_leaf(), template_covariate(zeros(2)))
 
             original = prefix(leaf, name; template)
             vn = AbstractPPL.prefix(@varname(x), name)
-            if name == @varname(p[:])
-                @test_throws r"p\[.*before prefixing" bind(original, vn => 4.0)
-                continue
-            end
             bound = bind(original, vn => 4.0)
             @test bound(Xoshiro(1)) == 4.0
             @test template_parent(bound)(Xoshiro(1)) == 4.0
@@ -272,11 +246,11 @@ end
         end
     end
 
-    @testset "slice prefixes resolve explicit bindings" begin
+    @testset "property and integer prefixes resolve explicit bindings" begin
         @model slice_leaf() = x ~ Normal()
         @model slice_parent(child) = unused ~ to_submodel(child, false)
         @model slice_nested(child) = outer ~ to_submodel(child)
-        for name in (@varname(a), @varname(a[1]), @varname(a[:]), @varname(a[1:2])),
+        for name in (@varname(a), @varname(a[1])),
             (bind, accessor) in ((condition, conditioned), (fix, fixed))
 
             child = prefix(bind(slice_leaf(); x=3.0), name; template=zeros(2))
@@ -1310,6 +1284,91 @@ end
         @test model(Xoshiro(1)) == 1.0
         @test loglikelihood(model, (;)) ≈ logpdf(Normal(), 1.0)
     end
+end
+
+@testset "prefixes require scalar integer indices" begin
+    @model prefix_leaf() = x ~ Dirac(3.0)
+    @model prefix_nested(child) = outer ~ to_submodel(child)
+    @model function indexed_return(index, auto_prefix=true)
+        a = zeros(2, 2)
+        a[index] ~ to_submodel(prefix_leaf(), auto_prefix)
+        return a
+    end
+    @model vector_return() = (x ~ Dirac(3.0); [x, x])
+    @model function sliced_return(index, auto_prefix=true)
+        a = zeros(2)
+        a[index] ~ to_submodel(vector_return(), auto_prefix)
+        return a
+    end
+    @model function dynamic_slice_return(auto_prefix=true)
+        a = zeros(2)
+        a[begin:end] ~ to_submodel(vector_return(), auto_prefix)
+        return a
+    end
+    for index in (1:2, :, [true, false], [1, 2], true, 1.0, :field),
+        template in (NoTemplate(), zeros(2)),
+        wrap in (identity, prefix_nested)
+
+        @test_throws r"ArgumentError: Prefix index .* is not a scalar integer" prefix(
+            wrap(prefix_leaf()), @varname(p[index]); template
+        )
+        @test prefix(wrap(prefix_leaf()), @varname(p[1]); template)(Xoshiro(1)) == 3.0
+        @test_throws r"ArgumentError: Prefix index .* is not a scalar integer" wrap(
+            indexed_return(index)
+        )(
+            Xoshiro(1)
+        )
+        @test wrap(indexed_return(1))(Xoshiro(1))[1] == 3.0
+    end
+    for index in (1:2, :, [true, true]), wrap in (identity, prefix_nested)
+        @test_throws r"ArgumentError: Prefix index .* is not a scalar integer" wrap(
+            sliced_return(index)
+        )(
+            Xoshiro(1)
+        )
+        @test wrap(sliced_return(index, false))(Xoshiro(1)) == [3.0, 3.0]
+    end
+    @test_throws r"ArgumentError: Prefix index .* is not a scalar integer" dynamic_slice_return()(
+        Xoshiro(1)
+    )
+    @test dynamic_slice_return(false)(Xoshiro(1)) == [3.0, 3.0]
+    @test_throws r"ArgumentError: `begin` and `end` in a prefix need a template" prefix(
+        prefix_leaf(), @varname(p[end])
+    )
+    @test prefix(prefix_leaf(), @varname(p[end]); template=zeros(2))(Xoshiro(1)) == 3.0
+    @test_throws r"ArgumentError: Prefix index .* is not a scalar integer" prefix(
+        prefix_leaf(), @varname(p[begin:end]); template=zeros(2)
+    )
+    for name in (@varname(p[1].q[:]), @varname(p[1:2].q[end]))
+        @test_throws r"ArgumentError: Prefix index .* is not a scalar integer" prefix(
+            prefix_leaf(), name; template=[(q=zeros(2),), (q=zeros(2),)]
+        )
+        model = prefix(
+            prefix_leaf(), @varname(p[2].q[end]); template=[(q=zeros(2),), (q=zeros(2),)]
+        )
+        @test DynamicPPL._model_prefix(model) == @varname(p[2].q[2])
+        @test model(Xoshiro(1)) == 3.0
+    end
+    for (name, canonical) in (
+        (@varname(p[begin]), @varname(p[1])),
+        (@varname(p[end]), @varname(p[4])),
+        (@varname(p[end, end]), @varname(p[2, 2])),
+        (@varname(p[CartesianIndex(1, 2)]), @varname(p[1, 2])),
+        (@varname(p[CartesianIndex(1), 2]), @varname(p[1, 2])),
+    )
+        for leaf in (prefix_leaf(), condition(prefix_leaf(); x=3.0))
+            model = prefix(leaf, name; template=zeros(2, 2))
+            @test DynamicPPL._model_prefix(model) == canonical
+            @test model(Xoshiro(1)) == 3.0
+            @test prefix_nested(model)(Xoshiro(1)) == 3.0
+        end
+    end
+    cartesian = indexed_return(CartesianIndex(1, 2))
+    @test keys(rand(Xoshiro(1), cartesian)) == [@varname(a[1, 2].x)]
+    @test keys(rand(Xoshiro(1), prefix_nested(cartesian))) == [@varname(outer.a[1, 2].x)]
+    canonicalize(vn) = DynamicPPL._concretize_prefix(vn, zeros(2, 2); prefix=Val(true))
+    @test (@inferred canonicalize(@varname(p[CartesianIndex(1, 2)].q))) ==
+        @varname(p[1, 2].q)
 end
 
 end
