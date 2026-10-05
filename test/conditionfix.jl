@@ -318,10 +318,11 @@ end
                 (placeholder_indices(absent), decondition(placeholder_indices(absent)))
                 @test_throws message bind(model, @varname(x[1]) => 2.0)
                 @test_throws message bind(model, (@varname(x[1]) => 2.0,))
-                @test_throws message bind(model, templated)
+                @test bind(model, templated)(Xoshiro(1)) ==
+                    (3.0, bind === condition ? 3.0 : 2.0)
                 @test_throws message bind(model, of((;)), @varname(x[1]) => 2.0)
                 @test_throws message model | (@varname(x[1]) => 2.0)
-                @test_throws message model | templated
+                @test (model | templated)(Xoshiro(1)) == (3.0, 3.0)
                 whole = bind(model; x=[2.0])
                 @test whole(Xoshiro(1)) == (3.0, bind === condition ? 3.0 : 2.0)
             end
@@ -337,6 +338,55 @@ end
             @test decondition(placeholder_indices(absent))(Xoshiro(1)) ==
                 (1.0, rand(Xoshiro(1), Normal()))
             @test fields(Xoshiro(1)) == (a=rand(Xoshiro(1), Normal()),)
+        end
+        @model function gdemo(x=missing)
+            (ismissing(x) || x === nothing) && (x = zeros(2))
+            for i in eachindex(x)
+                x[i] ~ Normal()
+            end
+            return x
+        end
+        @model keyword_gdemo(; x=nothing) = (x[1] ~ Normal(); x[2] ~ Normal(); x)
+        @model typed_gdemo(x::Union{Nothing,Vector{Int}}=nothing) = (
+            x[1] ~ Normal(); x[2] ~ Normal(); x
+        )
+        @model produced_parent(child) = a ~ to_submodel(child)
+        draws = rand(Xoshiro(1), decondition(gdemo()))
+        incomplete = conditioned(
+            decondition(condition(gdemo(zeros(2)); x=[2.0, 3.0]), @varname(x[2]))
+        )
+        for model in (gdemo(), gdemo(nothing), keyword_gdemo()), bind in (condition, fix)
+            bound = bind(model, draws)
+            @test bound(Xoshiro(2)) == draws[@varname(x)]
+            @test logjoint(bound, (;)) ≈
+                (bind === condition ? sum(logpdf.(Normal(), draws[@varname(x)])) : 0.0)
+            @test (model | draws)(Xoshiro(2)) == draws[@varname(x)]
+            @test_throws message bind(model, incomplete)
+            @test_throws message model | incomplete
+            @test produced_parent(bound)(Xoshiro(2)) == draws[@varname(x)]
+            parent_draws = rand(Xoshiro(1), produced_parent(decondition(gdemo())))
+            @test bind(produced_parent(model), parent_draws)(Xoshiro(2)) ==
+                parent_draws[@varname(a.x)]
+        end
+        @model function nested_gdemo(x=nothing)
+            x === nothing && (x = [zeros(2)])
+            x[1][1] ~ Normal()
+            x[1][2] ~ Normal()
+            return x
+        end
+        nested_draws = rand(Xoshiro(1), decondition(nested_gdemo()))
+        nested_incomplete = conditioned(
+            decondition(nested_gdemo([[2.0, 3.0]]), @varname(x[1][2]))
+        )
+        for bind in (condition, fix)
+            @test bind(nested_gdemo(), nested_draws)(Xoshiro(2)) ==
+                [nested_draws[@varname(x[1])]]
+            @test_throws message bind(nested_gdemo(), nested_incomplete)
+        end
+        for bind in (condition, fix)
+            @test_throws "declared argument type" bind(typed_gdemo(), draws)
+            integers = conditioned(condition(gdemo([2, 3]), @varname(x[1]) => 2))
+            @test bind(typed_gdemo(), integers)(Xoshiro(2)) == [2, 3]
         end
         concrete = condition(
             decondition(placeholder_indices(zeros(1))), @varname(x[1]) => 2.0
@@ -2385,6 +2435,8 @@ end
 
 @testset "binding input forms are ordered" begin
     @model input_forms(x) = (x[1] ~ Normal(); x[2] ~ Normal(); x)
+    @test_throws MethodError input_forms(zeros(2)) | Dict(@varname(x) => [2.0, 3.0])
+    @test (input_forms(zeros(2)) | (; x=[2.0, 3.0]))(Xoshiro(1)) == [2.0, 3.0]
     for bind in (condition, fix)
         for invalid in (Dict(@varname(x) => [2.0, 3.0]), 1)
             @test_throws ArgumentError bind(input_forms([0.0, 0.0]), invalid)

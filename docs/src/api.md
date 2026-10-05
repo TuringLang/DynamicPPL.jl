@@ -100,7 +100,7 @@ DynamicPPL.Recursive
 A [`Model`](@ref) can be conditioned on a set of observations with [`AbstractPPL.condition`](@ref) or its alias [`|`](@ref).
 
 ```@docs
-|(::Model, ::Union{NamedTuple,AbstractDict,Pair,Tuple,VarNamedTuple})
+|(::Model, ::Union{NamedTuple,Pair,Tuple,VarNamedTuple})
 condition
 DynamicPPL.conditioned
 ```

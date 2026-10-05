@@ -1868,7 +1868,7 @@ Return a `Model` which now treats variables on the right-hand side as observatio
 
 See [`condition`](@ref) for more information and examples.
 """
-Base.:|(model::Model, values::Union{NamedTuple,AbstractDict,Pair,Tuple,VarNamedTuple}) =
+Base.:|(model::Model, values::Union{NamedTuple,Pair,Tuple,VarNamedTuple}) =
     _bind_ordered_inputs(Condition, model, _binding_inputs(values))
 
 function _check_binding_addresses(model, values)
@@ -1910,14 +1910,6 @@ end
             vn = _model_value_varname(model.values, VarName{name}(), _model_prefix(model))
             binding = _model_argument_binding(values, AbstractPPL.varname_to_optic(vn))
             if name in _args_on_lhs(model)
-                if binding isa ModelValue
-                    T = _declared_argument_type(_binding_metadata(model), stored_name)
-                    binding.value isa T || throw(
-                        ArgumentError(
-                            "Bound value at `$vn` in model `$(nameof(model))` must be an instance of declared argument type $T; supplied $(typeof(binding.value)).",
-                        ),
-                    )
-                end
                 if binding isa Union{VarNamedTuple,VarNamedTuples.PartialArray}
                     if $(
                         is_splat_symbol(stored_name) &&
@@ -1934,14 +1926,29 @@ end
                         _model_values(model.values), AbstractPPL.varname_to_optic(vn)
                     )
                     argument = prepare_model_argument(previous, argument)
-                    argument isa Union{Nothing,Missing} && throw(
-                        ArgumentError(
-                            "Cannot make a partial binding of argument `$vn` with whole `$argument` storage; supply a concrete argument (e.g. `$(nameof(model))(zeros(n))`) or a whole binding instead.",
-                        ),
-                    )
-                    binding = _prepare_argument_fields(argument, binding, vn)
+                    if argument isa Union{Nothing,Missing}
+                        _has_complete_model_data(binding) || throw(
+                            ArgumentError(
+                                "Cannot make a partial binding of argument `$vn` with whole `$argument` storage; supply a concrete argument (e.g. `$(nameof(model))(zeros(n))`) or a whole binding instead.",
+                            ),
+                        )
+                        binding = ModelValue{typeof(_model_role(binding, vn))}(
+                            _model_data(binding)
+                        )
+                    else
+                        binding = _prepare_argument_fields(argument, binding, vn)
+                    end
                     values = templated_setindex!!(
                         values, binding, vn, values.data[AbstractPPL.getsym(vn)]
+                    )
+                end
+                if binding isa ModelValue
+                    value = binding.value
+                    T = _declared_argument_type(_binding_metadata(model), stored_name)
+                    value isa T || throw(
+                        ArgumentError(
+                            "Bound value at `$vn` in model `$(nameof(model))` must be an instance of declared argument type $T; supplied $(typeof(value)).",
+                        ),
                     )
                 end
             else
