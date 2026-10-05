@@ -365,8 +365,10 @@ costs (about 110 ns per element) are indicative, not fixed. Bind whole arrays fo
 either also throw there. Both errors name the LHS variable. Unread parts may contain either. For
 example, `@model metadata_lhs(p) = p.a ~ Normal()` accepts `(a=1.0, b=missing)`, but
 `(a=missing, b=1.0)` throws on evaluation, naming `p.a`.
-Partial bindings into whole `missing`/`nothing` arguments, even after deconditioning, throw
-`ArgumentError` when bound; supply a concrete argument such as `f(zeros(n))` or a whole binding.
+Incomplete partial bindings into whole `missing`/`nothing` arguments, even after
+deconditioning, throw `ArgumentError` when bound; supply a concrete argument such as
+`f(zeros(n))` or a whole binding. A produced `VarNamedTuple` array entry whose mask is complete
+binds as a whole value and supplies its own storage.
 
 The default-argument idiom `@model gdemo(x=missing)` called as `gdemo()` also throws, even if
 the body first replaces `x` using `if x === missing; x = Vector{T}(undef, n); end`. Remove the
@@ -388,6 +390,13 @@ end
 
 model = decondition(gdemo(), @varname(x))
 model(StableRNG(1))
+```
+
+Complete sampled arrays can then be bound back to the placeholder model:
+
+```@example missing-data
+values = rand(StableRNG(1), model)
+condition(gdemo(), values)(StableRNG(2)) == values[@varname(x)]
 ```
 
 For an array whose indices are separate LHS variables, decondition only the desired indices. A
