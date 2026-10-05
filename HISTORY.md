@@ -66,7 +66,7 @@ Known-invalid binding addresses now throw, including covariates, unknown LHS nam
 
 `decondition` and `unfix` now reject the addresses bindings reject when the model can decide: covariates, names with no LHS variable, nonexistent fields, and indices outside storage. Previously these removals were silent; correct the address. Removing a valid address with no binding, including removing it twice, is a no-op. Child-address typos in recursive removals are reported by `check_model`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-NamedTuple integer addresses are rejected in bindings and LHS variables: `x[1]` → `x.a`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+Indexed NamedTuple addresses are rejected in bindings, removals and LHS variables: `x[1]` or `x[:a]` → `x.a`; ranges, colons and vectors of indices are also rejected. Ordinary Julia indexing in the body is unaffected. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
 Partly removing bindings of one multivariate LHS variable now errors: `decondition(m, @varname(x[1]))` for `x ~ MvNormal(...)` → declare separate LHS variables. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 

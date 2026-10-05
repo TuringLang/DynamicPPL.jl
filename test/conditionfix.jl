@@ -220,11 +220,7 @@ Base.getproperty(x::VirtualBindingRecord, ::Symbol) = getfield(x, :a)
         (nested_property_argument((s=virtual,)), @varname(x.s.field), virtual),
     )
         message = [
-            "ArgumentError:",
-            "argument `x`",
-            "`$address`",
-            string(typeof(container)),
-            "whole",
+            "ArgumentError:", "owner", "`$address`", string(typeof(container)), "whole"
         ]
         container isa AbstractDict && push!(message, "NamedTuple")
         matches = err -> all(part -> occursin(part, err), message)
@@ -661,6 +657,11 @@ end
         @model indexed_keywords(; kwargs...) = (
             kwargs[:x] ~ Normal(); kwargs[:y] ~ Normal(); kwargs
         )
+        observed = indexed_keywords(; x=2.0, y=5.0)
+        removed = decondition(observed, @varname(kwargs[:x]))
+        @test removed(Xoshiro(1))[:x] == rand(Xoshiro(1), Normal())
+        @test removed(Xoshiro(1))[:y] == 5.0
+        @test observed(Xoshiro(1))[:x] == 2.0
         for value in ((; x=3.0, y=4.0), pairs((; x=3.0, y=4.0)))
             m = fix(indexed_keywords(; x=2.0, y=5.0); kwargs=value)
             if value isa Base.Pairs
@@ -669,6 +670,8 @@ end
                 )
             else
                 @test loglikelihood(unfix(m, @varname(kwargs[:x])), (;)) ==
+                    logpdf(Normal(), 2.0)
+                @test loglikelihood(unfix(m, @varname(kwargs.x)), (;)) ==
                     logpdf(Normal(), 2.0)
             end
             @test loglikelihood(unfix(m, :kwargs), (;)) ==
@@ -1929,8 +1932,17 @@ end
         @model elements(x) = (x[1] ~ Normal(); x[2] ~ Normal(); x)
         replaced_tuple = fix(elements((1.0, 2.0)); x=[3.0, 4.0])
         @test fix(replaced_tuple, @varname(x[1]) => 5.0)(Xoshiro(1)) == [5.0, 4.0]
-        @test_throws ArgumentError unfix(replaced_tuple, @varname(x[1]))
+        for scope in ((), (DynamicPPL.Recursive(),))
+            @test unfix(replaced_tuple, scope..., @varname(x[1]))(Xoshiro(1)) == [1.0, 4.0]
+            @test unfix(replaced, scope..., @varname(x.a))(Xoshiro(1)) == (a=1.0, b=4.0)
+        end
         @test unfix(replaced_tuple, @varname(x))(Xoshiro(1)) == (1.0, 2.0)
+        tuple_loglik =
+            p -> loglikelihood(
+                unfix(fix(elements((p, 2p)); x=[3p, 4p]), @varname(x[1])), (;)
+            )
+        @test tuple_loglik(2.0) ≈ logpdf(Normal(), 2.0)
+        @test ForwardDiff.derivative(tuple_loglik, 2.0) ≈ -2.0
 
         base = condition(fields(ObservationRecord(0.0, 0.0)); x=ReplacementRecord(1.0, 2.0))
         loglik =
@@ -3144,7 +3156,7 @@ end
         @test_throws "Cannot bind parts below `t.present` with value of type Float64. For other bindings, use `decondition(model, @varname(t.present))` first" bind(
             m, @varname(t.present[1]) => 2.0
         )
-        @test_throws "Cannot remove `x.a`: cannot partially edit argument `x` at `x.a` through container type Vector{Float64}; remove the whole value instead." remove(
+        @test_throws "Cannot remove `x.a`: cannot partially edit array owner `x` at `x.a` through container type Vector{Float64}; remove the whole value `x` instead." remove(
             m, scope..., @varname(x.a)
         )
         @test_throws "Cannot remove `t[1]`: integer indexing into a NamedTuple is unsupported; use `t.present` instead." remove(
@@ -3755,18 +3767,215 @@ end
     end
 end
 
-@testset "NamedTuple Symbol-index binding pairs" begin
-    @model symbol_named(x) = (x[:a] ~ Normal(); return x)
-    @model symbol_nested(x) = (x[:a][1][:b] ~ Normal(); return x)
+@testset "NamedTuple fields use property addresses" begin
+    @model fields(x) = (x.a ~ Normal(); x.b ~ Normal(); x)
+    @model nested_fields(x) = (x.a[1].b ~ Normal(); x)
+    @model indexed(x, i) = (x[i] ~ Normal(); x)
+    @model local_indexed(i) = (x = (a=1.0, b=2.0); x[i] ~ Normal(); x)
+    @model parent(c) = child ~ to_submodel(c)
+    @model local_fields() = (x = (a=0.0, b=0.0); x.a ~ Normal(); x.b ~ Normal(); x)
+    data = (a=1.0, b=2.0)
+    for (index, message, removal) in (
+        (
+            1,
+            "Integer indexing into a NamedTuple at `x[1]` is unsupported; use `x.a` instead.",
+            "Cannot remove `x[1]`: integer indexing into a NamedTuple is unsupported; use `x.a` instead.",
+        ),
+        (
+            :a,
+            "Symbol indexing into a NamedTuple at `x[:a]` is unsupported; use `x.a` instead.",
+            "Cannot remove `x[:a]`: Symbol indexing into a NamedTuple is unsupported; use `x.a` instead.",
+        ),
+    )
+        vn = @varname(x[index])
+        @test_throws ArgumentError(message) indexed(data, index)(Xoshiro(1))
+        @test_throws ArgumentError(message) local_indexed(index)(Xoshiro(1))
+        @test fields(data)(Xoshiro(1)) == data
+        # Ordinary indexing in the body is unaffected.
+        @model body_index(x, i) = (x.a ~ Normal(); x[i])
+        @test body_index(data, index)(Xoshiro(1)) == 1.0
+        for (bind, remove) in ((condition, decondition), (fix, unfix))
+            for model in (fields(data), bind(local_fields(); x=data))
+                @test_throws ArgumentError(message) bind(model, vn => 3.0)
+                @test bind(model, @varname(x.a) => 3.0)(Xoshiro(1)) == (a=3.0, b=2.0)
+                for scope in ((), (DynamicPPL.Recursive(),))
+                    @test_throws ArgumentError(removal) remove(model, scope..., vn)
+                    @test remove(model, scope..., @varname(x.a))(Xoshiro(1)).b == 2.0
+                end
+            end
+            child_vn = AbstractPPL.append_optic(
+                @varname(child), AbstractPPL.varname_to_optic(vn)
+            )
+            @test_throws ArgumentError bind(parent(fields(data)), child_vn => 3.0)(
+                Xoshiro(1)
+            )
+            @test bind(parent(fields(data)), @varname(child.x.a) => 3.0)(Xoshiro(1)) ==
+                (a=3.0, b=2.0)
+            @test_throws ArgumentError remove(
+                parent(bind(fields(data); x=data)), DynamicPPL.Recursive(), child_vn
+            )(
+                Xoshiro(1)
+            )
+            @test remove(
+                parent(bind(fields(data); x=data)),
+                DynamicPPL.Recursive(),
+                @varname(child.x.a)
+            )(
+                Xoshiro(1)
+            ).b == 2.0
+        end
+    end
+    for (vn, message, removal) in (
+        (
+            @varname(x[1, end]),
+            "Indexing into a NamedTuple at `x[1, DynamicIndex(end)]` is unsupported; use a field name instead.",
+            "Cannot remove `x[1, DynamicIndex(end)]`: indexing into a NamedTuple is unsupported; use a field name instead.",
+        ),
+        (
+            @varname(x[1:2]),
+            "Indexing into a NamedTuple at `x[1:2]` is unsupported; use a field name instead.",
+            "Cannot remove `x[1:2]`: indexing into a NamedTuple is unsupported; use a field name instead.",
+        ),
+        (
+            @varname(x[:]),
+            "Indexing into a NamedTuple at `x[:]` is unsupported; use a field name instead.",
+            "Cannot remove `x[:]`: indexing into a NamedTuple is unsupported; use a field name instead.",
+        ),
+        (
+            @varname(x[[1]]),
+            "Indexing into a NamedTuple at `x[[1]]` is unsupported; use a field name instead.",
+            "Cannot remove `x[[1]]`: indexing into a NamedTuple is unsupported; use a field name instead.",
+        ),
+        (
+            @varname(x[end]),
+            "Integer indexing into a NamedTuple at `x[DynamicIndex(end)]` is unsupported; use `x.b` instead.",
+            "Cannot remove `x[DynamicIndex(end)]`: integer indexing into a NamedTuple is unsupported; use `x.b` instead.",
+        ),
+    )
+        for (bind, remove) in ((condition, decondition), (fix, unfix))
+            for model in (fields(data), bind(local_fields(); x=data))
+                @test_throws ArgumentError(message) bind(model, vn => 3.0)
+                for scope in ((), (DynamicPPL.Recursive(),))
+                    @test_throws ArgumentError(removal) remove(model, scope..., vn)
+                end
+            end
+            @test_throws ArgumentError(message) bind(local_fields(), vn => 3.0)(Xoshiro(1))
+        end
+    end
+    for (vn, message) in (
+            (
+                @varname(x[1]),
+                "Integer indexing into a NamedTuple at `x[1]` is unsupported; use `x.a` instead.",
+            ),
+            (
+                @varname(x[:a]),
+                "Symbol indexing into a NamedTuple at `x[:a]` is unsupported; use `x.a` instead.",
+            ),
+        ),
+        bind in (condition, fix)
+
+        @test_throws ArgumentError(message) bind(local_fields(), vn => 3.0)(Xoshiro(1))
+    end
+    # Parent bindings cannot inspect the child's local storage until evaluation.
     for bind in (condition, fix)
-        @test bind(symbol_named((a=1.0,)), @varname(x[:a]) => 2.0)(Xoshiro(1)) == (a=2.0,)
-        @test bind(symbol_nested((a=[(b=1.0,)],)), @varname(x[:a][1][:b]) => 2.0)(
-            Xoshiro(1)
-        ) == (a=[(b=2.0,)],)
-        @test bind(symbol_nested((a=[(b=1.0,)],)), @varname(x[:a][end][:b]) => 2.0)(
-            Xoshiro(1)
-        ) == (a=[(b=2.0,)],)
-        @test_throws ArgumentError bind(symbol_named((a=1.0,)), @varname(x[1]) => 2.0)
+        @test_throws ArgumentError(
+            "Integer indexing into a NamedTuple at `child.x[1]` is unsupported; use `child.x.a` instead.",
+        ) bind(parent(local_fields()), @varname(child.x[1]) => 3.0)(Xoshiro(1))
+        @test_throws ArgumentError(
+            "Integer indexing into a NamedTuple at `x[1]` is unsupported; use `x.a` instead.",
+        ) bind(local_fields(), VarNamedTuple((@varname(x[1]) => 3.0,)))
+    end
+    for (bind, remove) in ((condition, decondition), (fix, unfix))
+        model = bind(nested_fields((a=[(b=1.0,)],)); x=(a=[(b=1.0,)],))
+        for vn in (@varname(x[:a][1].b), @varname(x.a[end][:b]), @varname(x.a[1][1]))
+            @test_throws ArgumentError bind(model, vn => 2.0)
+            @test bind(model, @varname(x.a[1].b) => 2.0)(Xoshiro(1)) == (a=[(b=2.0,)],)
+            @test_throws ArgumentError remove(model, vn)
+            @test remove(model, @varname(x.a[1].b))(Xoshiro(1)).a[1].b isa Real
+        end
+    end
+end
+
+@testset "partial edit errors name the enclosing owner" begin
+    @model nested(x) = (x.t[1] ~ Normal(); x)
+    @model local_nested() = (x = (t=(1.0, 2.0),); x.t[1] ~ Normal(); x)
+    @model parent(c) = child ~ to_submodel(c)
+    data = (t=(1.0, 2.0),)
+    for (bind, remove) in ((condition, decondition), (fix, unfix)),
+        model in (nested(data), bind(local_nested(); x=data))
+
+        @test_throws ArgumentError(
+            "Cannot partially bind tuple owner `x.t` at `x.t[1]` through container type Tuple{Float64, Float64}; bind or decondition the whole value `x.t` instead.",
+        ) bind(model, @varname(x.t[1]) => 3.0)
+        @test bind(model, @varname(x.t) => (3.0, 4.0))(Xoshiro(1)).t[1] == 3.0
+        bound = bind(model; x=data)
+        for scope in ((), (DynamicPPL.Recursive(),))
+            @test_throws ArgumentError(
+                "Cannot remove `x.t[1]`: cannot partially edit tuple owner `x.t` at `x.t[1]` through container type Tuple{Float64, Float64}; remove the whole value `x.t` instead.",
+            ) remove(bound, scope..., @varname(x.t[1]))
+            @test isempty(
+                (bind === condition ? conditioned : fixed)(
+                    remove(bound, scope..., @varname(x.t))
+                ),
+            )
+        end
+        stored = bind(parent(nested(data)), @varname(child.x) => data)
+        @test_throws ArgumentError(
+            "Cannot partially bind tuple owner `child.x.t` at `child.x.t[1]` through container type Tuple{Float64, Float64}; bind or decondition the whole value `child.x.t` instead.",
+        ) bind(stored, @varname(child.x.t[1]) => 3.0)
+        @test bind(stored, @varname(child.x.t) => (3.0, 4.0))(Xoshiro(1)) == (t=(3.0, 4.0),)
+    end
+end
+
+@testset "replacement arrays overlay supported observations" begin
+    @model elements(x) = (x[1] ~ Normal(); x[2] ~ Normal(); x)
+    @model parent(c) = child ~ to_submodel(c)
+    @model nested(x) = (x.t[1] ~ Normal(); x)
+    @model prefixed_child() = a ~ to_submodel(nested((t=(1.0, 2.0),)))
+    for original in ((1.0, 2.0), [1.0, 2.0]), replacement in ([3.0, 4.0], [3.0, 4.0, 5.0])
+        expected = copy(replacement)
+        expected[1] = 1.0
+        for model in (
+            unfix(fix(elements(original); x=replacement), @varname(x[1])),
+            unfix(
+                fix(parent(elements(original)), @varname(child.x) => replacement),
+                @varname(child.x[1])
+            ),
+            unfix(
+                parent(fix(elements(original); x=replacement)),
+                DynamicPPL.Recursive(),
+                @varname(child.x[1])
+            ),
+        )
+            @test model(Xoshiro(1)) == expected
+            @test loglikelihood(model, (;)) == logpdf(Normal(), 1.0)
+        end
+    end
+    for (original, message) in (
+        (
+            Dict(1 => 1.0, 2 => 2.0),
+            "Cannot partially bind dictionary owner `x` at `x[2]` through container type Dict{Int64, Float64}; bind or decondition the whole value `x` instead. Or use a NamedTuple/array argument.",
+        ),
+        (
+            (a=1.0, b=2.0),
+            "Integer indexing into a NamedTuple at `x[2]` is unsupported; use `x.b` instead.",
+        ),
+        (
+            ObservationRecord(1.0, 2.0),
+            "Cannot partially bind struct owner `x` at `x[2]` through container type Main.DynamicPPLConditionFixTests.ObservationRecord{Float64, Float64}; bind or decondition the whole value `x` instead.",
+        ),
+    )
+        model = fix(elements(original); x=[3.0, 4.0])
+        @test model(Xoshiro(1)) == [3.0, 4.0]
+        @test_throws ArgumentError(message) unfix(model, @varname(x[1]))(Xoshiro(1))
+    end
+    @test_throws ArgumentError(
+        "Cannot partially bind dictionary owner `x` at `x[1]` through container type Dict{Int64, Float64}; bind or decondition the whole value `x` instead. Or use a NamedTuple/array argument.",
+    ) fix(elements(Dict(1 => 1.0, 2 => 2.0)), @varname(x[1]) => 3.0)
+    for bind in (condition, fix)
+        @test_throws ArgumentError(
+            "Cannot partially bind tuple owner `a.x.t` at `a.x.t[1]` through container type Tuple{Float64, Float64}; bind or decondition the whole value `a.x.t` instead.",
+        ) bind(prefixed_child(), @varname(a.x.t[1]) => 3.0)(Xoshiro(1))
     end
 end
 

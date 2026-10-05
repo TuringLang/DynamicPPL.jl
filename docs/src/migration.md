@@ -268,15 +268,15 @@ edits with indices of the latest enclosing bound value: after `condition(f(zeros
 
 Known-invalid addresses now throw. Replace bindings of covariates with model reconstruction;
 correct unknown LHS names, nonexistent fields, and indices outside storage. Replace
-NamedTuple integer addresses such as `x[1]` with field addresses such as `x.a`, both in
-bindings and on the LHS. `decondition` and `unfix` reject the same addresses when the
-model can decide: covariates, names with no LHS variable, nonexistent fields, and indices
-outside storage. Previously such removals were silent. Removing a
-valid address with no stored binding, including removing it twice, is a no-op.
-To remove a child's argument-supplied observation from
-its parent, use `decondition(parent, DynamicPPL.Recursive(), @varname(a.x))`.
-Use `decondition(parent, DynamicPPL.Recursive())` for prior prediction throughout the model;
-`unfix(parent, DynamicPPL.Recursive())` uncovers observations at every depth. Replace partial removal from one multivariate LHS variable,
+NamedTuple integer or Symbol addresses such as `x[1]` or `x[:a]` with field addresses such
+as `x.a`, both in bindings and on the LHS. `decondition` and `unfix` reject the same
+addresses when the model can decide: covariates, names with no LHS variable, nonexistent
+fields, and indices outside storage. Previously such removals were silent. Removing a valid
+address with no stored binding, including removing it twice, is a no-op. To remove a child's
+argument-supplied observation from its parent, use `decondition(parent,
+DynamicPPL.Recursive(), @varname(a.x))`. Use `decondition(parent, DynamicPPL.Recursive())`
+for prior prediction throughout the model; `unfix(parent, DynamicPPL.Recursive())` uncovers
+observations at every depth. Replace partial removal from one multivariate LHS variable,
 such as `decondition(m, @varname(x[1]))` for `x ~ MvNormal(...)`, with a model declaring
 separate LHS variables when their roles must differ.
 

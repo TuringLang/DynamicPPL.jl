@@ -459,7 +459,7 @@ function generate_tilde(left, right; is_argument=false)
             __model__, $vn, $(VarName{get_top_level_symbol(left)}())
         ))
     else
-        :($(DynamicPPL._get_model_role)(__model__, $vn))
+        :($(DynamicPPL._get_model_role)(__model__, $vn, $template))
     end
 
     fixed_data = if is_argument

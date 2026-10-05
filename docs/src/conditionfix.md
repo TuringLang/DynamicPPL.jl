@@ -174,11 +174,10 @@ bindings replace earlier ones where they overlap.
 | `decondition` | Removes observations of either origin, even under a fixed binding; otherwise makes the LHS variable latent. |
 | `unfix`       | Removes fixed bindings, uncovering the observation below, or leaving the LHS variable latent.               |
 
-Removal matches equal, enclosing, or contained addresses, with Symbol indices matching
-properties. Without `Recursive()`, removal clears only bindings stored on this model, at any
-address; with no names it clears that model's corresponding layer. This includes bindings the
-model made at child addresses. On a removal, `Recursive()` decides depth, that is, whether
-to also clear what the child holds:
+Removal matches equal, enclosing, or contained addresses. Without `Recursive()`, removal
+clears only bindings stored on this model, at any address; with no names it clears that
+model's corresponding layer. This includes bindings the model made at child addresses. On
+a removal, `Recursive()` decides depth, that is, whether to also clear what the child holds:
 
 ```julia
 @model leaf(x=2.0) = x ~ Normal()
@@ -270,10 +269,12 @@ variable. Shape validation stops at the LHS variable's address; it does not insp
 values inside a whole structured LHS variable. In-place mutation of a whole fixed argument
 is not detected, because it also mutates the stored binding; the body must not mutate it.
 
-NamedTuple fields must be addressed by name (`x.a`), never by integer index, in both bindings
-and LHS variables. Tuple observations and complete local LHS variables retain integer indices. Bindings on prefixed models must be at or
-below the prefix. A **submodel namespace** reaches child LHS variables through addresses such as
-`a.x`, or through unchanged names with `auto_prefix=false` unless manually prefixed.
+NamedTuple fields must be addressed by name (`x.a`), never by index (including `x[1]`,
+`x[:a]`, or `x[:]`), in bindings, removals and LHS variables. Ordinary Julia indexing in the
+body is unaffected. Tuple observations and complete local LHS variables retain integer
+indices. Bindings on prefixed models must be at or below the prefix. A **submodel namespace**
+reaches child LHS variables through addresses such as `a.x`, or through unchanged names with
+`auto_prefix=false` unless manually prefixed.
 
 A submodel tilde must use a local LHS variable. If `a` is a model argument,
 `a ~ to_submodel(child())`, `a[1] ~ to_submodel(child())`, and
