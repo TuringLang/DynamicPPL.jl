@@ -269,7 +269,9 @@ Evaluate `submodel` under `parent_model`.
     child_values = _model_values(child_layers)
     child_model = _reconstruct_model(submodel.model; values=LocalModelValues(child_values))
     parent_values = _check_argument_bindings(
-        child_model, _submodel_inherited_values(parent_model, local_prefix)
+        child_model,
+        _submodel_inherited_values(parent_model, local_prefix),
+        maybe_prefix(local_prefix, _model_prefix(parent_model)),
     )
     # Shared unprefixed names may belong to the parent or another child.
     if AutoPrefix || _model_prefix(submodel.model) !== nothing
@@ -278,7 +280,11 @@ Evaluate `submodel` under `parent_model`.
     owners = (child_owners..., _submodel_fixed_owners(parent_model, local_prefix)...)
     values = LocalModelValues(
         _with_removals(
-            _merge_model_values(child_values, parent_values),
+            _merge_model_values(
+                child_values,
+                parent_values,
+                maybe_prefix(local_prefix, _model_prefix(parent_model)),
+            ),
             (
                 _submodel_removals(Condition, submodel.model, nothing)...,
                 observation_removals...,
