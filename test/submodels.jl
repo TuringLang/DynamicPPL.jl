@@ -1117,11 +1117,9 @@ end
     ) == [@varname(a)]
     m = decondition(removal_outer(removal_branch(1.0, true)), rec, @varname(b.a))
     @test keys(rand(Xoshiro(1), m)) == [@varname(b.a)]
-    @test_throws ArgumentError decondition(
-        removal_branch(missing, true), rec, @varname(a.x)
-    )(
-        Xoshiro(1)
-    )
+    @test keys(
+        rand(Xoshiro(1), decondition(removal_branch(missing, true), rec, @varname(a.x)))
+    ) == [@varname(a)]
     for child in (removal_dynamic(missing), removal_branch(missing, false))
         @test_throws r"ArgumentError: Submodel tilde .*model argument `a`.*local LHS" decondition(
             child, rec, @varname(a.x)

@@ -282,7 +282,9 @@ _model_role(::VarNamedTuple, vn::VarName) = _partial_binding_error(vn)
 function _partial_binding_error(vn)
     return throw(
         ArgumentError(
-            "LHS variable `$vn` must be bound as a whole; bind all its subvariables or none.",
+            "LHS variable `$vn` has both bound and unbound subvariables, such as observed " *
+            "and `missing` elements; write element-wise tildes (`x[i] ~ ...`), or bind or " *
+            "decondition all of `$vn`.",
         ),
     )
 end
@@ -382,15 +384,6 @@ function _get_model_binding(model, vn)
 end
 function _get_argument_role(model, vn, argument)
     binding = _get_model_binding(model, argument)
-    # TODO: remove once users have migrated off the `x === missing; x = ...` placeholder idiom.
-    if binding isa ModelValue{ArgumentCondition} && binding.value isa Union{Missing,Nothing}
-        vn = maybe_prefix(vn, _model_prefix(model))
-        throw(
-            ArgumentError(
-                "LHS variable `$vn` contains `$(binding.value)`; make it latent with `decondition`.",
-            ),
-        )
-    end
     # A whole argument keeps its role when body computations change its shape or fields.
     return binding isa ModelValue ? _model_role(binding, vn) : _get_model_role(model, vn)
 end
@@ -1946,12 +1939,11 @@ Partial array bindings and removals require `Array` or Array-backed `OffsetArray
 decondition the whole value, or use `collect` if losing axes or metadata is acceptable.
 Partial bindings take a shallow snapshot when made: the owner's container is copied one
 level deep, but nested mutable values remain shared and must not be mutated either.
-`missing`/`nothing` throw where a tilde reads them, naming the LHS variable. Unread parts
-may contain either; whole argument placeholders throw even if the body replaces them.
-Use [`decondition`](@ref) to make observations latent; see [Missing data](@ref).
+Bound values containing `missing` or `nothing` throw when the binding is made; use
+[`decondition`](@ref) to make observations latent; see [Missing data](@ref).
 Partial bindings or removals that rebuild tuple or struct owners
 throw at any depth; bind or remove the enclosing owner whole. See [Binding rules](@ref).
-Incomplete partial bindings into whole `missing`/`nothing` arguments, even after deconditioning, throw
+Incomplete partial bindings into whole `missing`/`nothing` arguments throw
 `ArgumentError` when bound; supply a concrete argument such as `f(zeros(n))` or a whole binding.
 See [Binding rules](@ref) for the argument contract, binding contract and submodel rules,
 and [Performance](@ref binding-performance) for the cost of rebuilding partially bound array arguments.
@@ -2403,7 +2395,9 @@ function _bind_model(::Type{R}, model::Model, values; preparation_model=model) w
     preparation_model = _binding_layer_model(
         R, _materialize_argument_values(preparation_model)
     )
-    values = _tag_model_values(R, _make_condfix_values(preparation_model, values))
+    values = _make_condfix_values(preparation_model, values)
+    _check_bound_placeholders(R, values)
+    values = _tag_model_values(R, values)
     values = _check_argument_bindings(preparation_model, values)
     _check_binding_addresses(model, values)
     values = _prepare_local_binding_types(R, preparation_model, values)
@@ -2480,6 +2474,22 @@ function _make_condfix_values(model, values::VarNamedTuple)
         )
     end
     return values
+end
+
+function _check_bound_placeholders(::Type{R}, values::VarNamedTuple) where {R}
+    (_contains_missing(values) || _contains_nothing(values)) || return nothing
+    vn = first(
+        vn for
+        (vn, value) in pairs(values) if _contains_missing(value) || _contains_nothing(value)
+    )
+    remove = R === Fix ? "unfix" : "decondition"
+    throw(
+        ArgumentError(
+            "Cannot bind `$vn` to a value containing `missing` or `nothing`; bindings " *
+            "cannot hold placeholders. To make it latent, leave it unbound or use " *
+            "`$remove(model, @varname($vn))`.",
+        ),
+    )
 end
 
 _binding_storage(value) = value
@@ -2746,27 +2756,8 @@ function _check_removal_addresses(values, names...)
     for name in names
         vn = name isa VarName ? name : VarName{name}()
         _check_partial_binding(values, AbstractPPL.varname_to_optic(vn); operation="remove")
-        _check_shapeless_removal(
-            values, AbstractPPL.varname_to_optic(vn), AbstractPPL.Iden(), vn
-        )
     end
     return nothing
-end
-
-function _check_shapeless_removal(binding, optic, prefix, vn)
-    optic isa AbstractPPL.Iden && return nothing
-    if binding isa ModelValue && binding.value isa Union{Missing,Nothing}
-        root = AbstractPPL.optic_to_varname(prefix)
-        remove = binding isa ModelValue{Fix} ? "unfix" : "decondition"
-        throw(
-            ArgumentError(
-                "Cannot remove part `$vn`: the whole value `$(binding.value)` at `$root` supplies no template. Use `$remove(model, @varname($root))` to remove the whole binding.",
-            ),
-        )
-    end
-    head = AbstractPPL.ohead(optic)
-    child = _model_argument_binding(binding, head)
-    return _check_shapeless_removal(child, optic.child, head ∘ prefix, vn)
 end
 
 function _remove_model_values(::Type{R}, values::VarNamedTuple) where {R}
@@ -2802,6 +2793,8 @@ end
 function _remove_model_values(
     ::Type{R}, values::VarNamedTuple, args::Union{Symbol,VarName}...
 ) where {R}
+    # Copy each top-level array once per call, not once per name.
+    owned = Symbol[]
     for arg in args
         vn = arg isa VarName ? arg : VarName{arg}()
         if _model_argument_binding(values, AbstractPPL.varname_to_optic(vn)) === nothing
@@ -2820,7 +2813,19 @@ function _remove_model_values(
                 init=values,
             )
         else
-            values = _remove_model_binding(R, values, AbstractPPL.varname_to_optic(vn))
+            sym, optic = AbstractPPL.getsym(vn), AbstractPPL.getoptic(vn)
+            previous = values.data[sym]
+            if sym in owned &&
+                previous isa VarNamedTuples.PartialArray &&
+                optic isa AbstractPPL.Index
+                child = _remove_model_binding(R, previous, optic, true)
+                child === previous || (
+                    values = VarNamedTuple(merge(values.data, NamedTuple{(sym,)}((child,))))
+                )
+            else
+                values = _remove_model_binding(R, values, AbstractPPL.varname_to_optic(vn))
+                values.data[sym] === previous || push!(owned, sym)
+            end
         end
     end
     return _prune_model_bindings(values)
@@ -2849,11 +2854,12 @@ function _remove_model_binding(
     return ModelValueTree(tree, _remove_model_binding(R, tree.values, optic))
 end
 function _remove_model_binding(
-    ::Type{R}, values::VarNamedTuples.PartialArray, optic::AbstractPPL.Index
+    ::Type{R}, values::VarNamedTuples.PartialArray, optic::AbstractPPL.Index, owned=false
 ) where {R}
     optic = AbstractPPL.concretize_top_level(optic, values.data)
     checkbounds(Bool, values.data, optic.ix...; optic.kw...) || return values
-    selected = if VarNamedTuples._is_multiindex(values.data, optic.ix...; optic.kw...)
+    multiindex = VarNamedTuples._is_multiindex(values.data, optic.ix...; optic.kw...)
+    selected = if multiindex
         VarNamedTuples._subset_partialarray(values, optic.ix...; optic.kw...)
     elseif haskey(values, optic.ix...; optic.kw...)
         getindex(values, optic.ix...; optic.kw...)
@@ -2861,13 +2867,27 @@ function _remove_model_binding(
         return values
     end
     child = _remove_model_binding(R, selected, optic.child)
-    return VarNamedTuples._setindex_optic!!(
-        copy(values),
+    child === selected && return values
+    template, values = values, owned ? values : copy(values)
+    # Removed elements are unmasked in place, so many removals share one copy.
+    if child isa NoModelBinding &&
+        !(getindex(values.data, optic.ix...; optic.kw...) isa VarNamedTuples.ArrayLikeBlock)
+        setindex!(values.mask, false, optic.ix...; optic.kw...)
+        return values
+    end
+    values = VarNamedTuples._setindex_optic!!(
+        values,
         child,
         AbstractPPL.Index(optic.ix, optic.kw),
-        values,
+        template,
         VarNamedTuples.AllowAll(),
     )
+    # Setting a slice copies only its masked entries, so unmask those removed below it.
+    if multiindex && child isa VarNamedTuples.PartialArray
+        mask = view(values.mask, optic.ix...; optic.kw...)
+        mask .&= child.mask
+    end
+    return values
 end
 
 """
@@ -2951,7 +2971,7 @@ observations even beneath a fixed binding.
 Bindings reach child addresses too; outermost explicit bindings win.
 Inputs, unsupported partial bindings, conversion errors, aliasing and argument preparation
 follow [`condition`](@ref).
-Incomplete partial bindings into whole `missing`/`nothing` arguments, even after deconditioning, throw
+Incomplete partial bindings into whole `missing`/`nothing` arguments throw
 `ArgumentError` when bound; supply a concrete argument such as `f(zeros(n))` or a whole binding.
 Partial bindings copy the owner's container one level deep; nested mutable values remain
 shared and must not be mutated.

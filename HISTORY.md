@@ -38,13 +38,13 @@ Indexed prefixes accept a prefix template: `prefix(m, @varname(a[2]))` → `pref
 
 On newer DynamicPPL versions, MLD’s generic API requires a manually constructed log-density adapter; no drop-in model-level replacement is currently available. Migration of the integration into MLD is proposed in [MLD #47](https://github.com/ElOceanografo/MarginalLogDensities.jl/pull/47).
 
-Whole `missing`/`nothing` arguments, including defaults, now error when read, even after body reassignment: `f(missing)` → `decondition(f(missing), @varname(x))`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501), [#1464](https://github.com/TuringLang/DynamicPPL.jl/issues/1464).
+`missing` no longer marks data latent except in two argument forms, decided at construction: a whole `missing`/`nothing` argument on the LHS, including defaults, and `missing` elements one index into a top-level `Array`, `OffsetArray`, `ComponentArray` or `DimArray` argument. Other placeholders throw where a tilde reads them: `f([[1.0, missing]])` → `decondition(f([[1.0, 0.0]]), @varname(x[1][2]))`; `missing` in views or static arrays → `collect(v)`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501), [#1464](https://github.com/TuringLang/DynamicPPL.jl/issues/1464).
 
 Partial bindings into whole `missing`/`nothing` arguments: deferred tilde values → binding-time `ArgumentError`; supply concrete argument storage or a whole binding. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
 Partial bindings into dictionaries and other unsupported argument containers throw at binding time: `decondition(f(Dict(:a=>missing, ...)), @varname(x[:a]))` → bind or decondition the whole dictionary, or use a NamedTuple argument. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-Observed or fixed values containing `missing`/`nothing` now error: placeholder bindings → `decondition`/`unfix` the corresponding LHS variables. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+`condition` and `fix` values containing `missing`/`nothing` anywhere throw when the binding is made: `condition(m; x=missing)` → `decondition(m, @varname(x))`; `fix(m; x=nothing)` → `unfix(m, @varname(x))`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
 `InitFromParams` rejects `missing` instead of invoking its fallback: `InitFromParams((; x=missing))` → `InitFromParams((;))`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
@@ -80,7 +80,7 @@ A submodel tilde rooted at a model argument now throws `ArgumentError` when it r
 
 Submodel return values cannot be bound: `condition(m; a=value)` → `condition(m, @varname(a.x) => value)` for child LHS variable `x` of a local `a`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501), [#1246](https://github.com/TuringLang/DynamicPPL.jl/issues/1246).
 
-Argument arrays whose element type includes `Missing` lose defensive copies: mutating observed storage → copy before mutation. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+Argument arrays without `missing` elements are used without copying, even when their element type includes `Missing`; arrays with `missing` elements are snapshotted at construction: mutating argument storage after construction → construct the model again. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
 Partial bindings snapshot remaining storage: mutating original arguments after binding → rebuild the partial binding. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 

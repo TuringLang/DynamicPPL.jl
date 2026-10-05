@@ -372,20 +372,37 @@ costs (about 110 ns per element) are indicative, not fixed. Bind whole arrays fo
 
 ## Missing data
 
-`missing` and `nothing` do not mark data latent. Whole `missing` or `nothing` arguments throw
-`ArgumentError` at the reading tilde, even if replaced in the body. Bound values containing
-either also throw there. Both errors name the LHS variable. Unread parts may contain either. For
-example, `@model metadata_lhs(p) = p.a ~ Normal()` accepts `(a=1.0, b=missing)`, but
-`(a=missing, b=1.0)` throws on evaluation, naming `p.a`.
-Incomplete partial bindings into whole `missing`/`nothing` arguments, even after
-deconditioning, throw `ArgumentError` when bound; supply a concrete argument such as
-`f(zeros(n))` or a whole binding. A produced `VarNamedTuple` array entry whose mask is complete
-binds as a whole value and supplies its own storage.
+An argument on the LHS supplies no observation in two cases, decided when the model is
+constructed. A whole `missing` or `nothing` argument, whether positional, keyword or default,
+makes its LHS variables latent, exactly as `decondition(model, @varname(x))` does. A `missing`
+element `x[i]` or `x[i, j]` of a top-level argument array leaves that element latent, exactly
+as deconditioning it does. The array's element type must admit `Missing`, and it must be one
+that partial edits support (see [Binding contract](@ref)); other arrays holding `missing`, such
+as views, throw at construction, and `collect(v)` converts them. Arguments that do not occur
+on the LHS are never inspected.
 
-The default-argument idiom `@model gdemo(x=missing)` called as `gdemo()` also throws, even if
-the body first replaces `x` using `if x === missing; x = Vector{T}(undef, n); end`. Remove the
-stored argument-supplied observation with `decondition(gdemo(), @varname(x))` so the body can
-allocate and sample `x`:
+Later changes to the argument do not change these roles. An array holding `missing` is
+snapshotted at construction, so mutating it afterwards has no effect, whereas a fully
+observed array is used in place.
+
+Every other `missing` or `nothing` throws `ArgumentError` where a tilde reads it, naming the
+LHS variable: `nothing` elements, `missing` deeper down (`x[i][j]`), and placeholders in
+tuples, NamedTuple fields or struct fields. Unread parts may hold either: `@model
+metadata_lhs(p) = p.a ~ Normal()` accepts `(a=1.0, b=missing)`, but `(a=missing, b=1.0)`
+throws on evaluation, naming `p.a`. A multivariate LHS variable such as `x ~ MvNormal(...)` is
+latent when all its elements are `missing`, observed when none are, and throws when it has
+both.
+
+Bindings never hold placeholders: a `condition` or `fix` value containing `missing` or
+`nothing` anywhere throws when the binding is made. Use `decondition` or `unfix` instead. In
+consequence, `conditioned(f((a=1.0, b=missing)))` lists the placeholder, and passing that
+listing back to `condition` throws. Incomplete partial bindings into whole `missing`/`nothing`
+arguments also throw `ArgumentError` when bound; supply a concrete argument such as
+`f(zeros(n))` or a whole binding. A produced `VarNamedTuple` array entry whose mask is
+complete binds as a whole value and supplies its own storage.
+
+The body may replace a placeholder argument; each tilde then writes its draw into the new
+storage:
 
 ```@example missing-data
 using DynamicPPL, Distributions, StableRNGs
@@ -400,7 +417,7 @@ using DynamicPPL, Distributions, StableRNGs
     return x
 end
 
-model = decondition(gdemo(), @varname(x))
+model = gdemo()
 model(StableRNG(1))
 ```
 
@@ -411,6 +428,8 @@ values = rand(StableRNG(1), model)
 condition(gdemo(), values)(StableRNG(2)) == values[@varname(x)]
 ```
 
-For an array whose indices are separate LHS variables, decondition only the desired indices. A
-single multivariate LHS variable cannot be partially conditioned: `x ~ MvNormal(...)` rejects a
-value containing `missing`, naming `x`.
+`missing` elements leave only those elements latent:
+
+```@example missing-data
+keys(rand(StableRNG(1), gdemo(Union{Missing,Float64}[1.0, missing])))
+```
