@@ -2,6 +2,8 @@
 
 Recursive removal is now explicit: decondition a child before wrapping it → `decondition(parent, DynamicPPL.Recursive(), @varname(a.x))`; likewise `unfix` removes child fixes. No-name recursive forms clear their layer at every depth. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
+Partial array bindings and removals now accept only `Array` and Array-backed `OffsetArray`, `ComponentArray` and `DimArray`. Views, reshapes, transpose/adjoint wrappers, immutable or tracked arrays, ranges, `MVector`, `SizedArray` and `BitArray` require a whole binding/removal, or `collect` where losing metadata is acceptable.
+
 Bindings now reject edits below slice prefixes and partial bindings through tuples nested in arrays or structs; errors name the address and supported alternative.
 
 `VarNamedTuple` membership resolves `begin` and `end` against the stored array. See [#1490](https://github.com/TuringLang/DynamicPPL.jl/pull/1490).

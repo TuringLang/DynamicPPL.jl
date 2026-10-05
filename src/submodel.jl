@@ -253,10 +253,14 @@ Evaluate `submodel` under `parent_model`.
     observation_removals = _submodel_removals(Condition, parent_model, local_prefix)
     fixed_removals = _submodel_removals(Fix, parent_model, local_prefix)
     observations = _apply_parent_removals(
-        Condition, _submodel_layer(Condition, submodel.model), observation_removals, context
+        Condition,
+        _submodel_layer(Condition, submodel.model),
+        observation_removals,
+        context,
+        submodel.model,
     )
     fixed = _apply_parent_removals(
-        Fix, _submodel_layer(Fix, submodel.model), fixed_removals, context
+        Fix, _submodel_layer(Fix, submodel.model), fixed_removals, context, submodel.model
     )
     child_owners = filter(_submodel_fixed_owners(submodel.model, nothing)) do owner
         !any(r -> _removal_covers(r, owner), fixed_removals)

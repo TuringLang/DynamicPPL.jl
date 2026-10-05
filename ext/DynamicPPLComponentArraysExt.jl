@@ -11,6 +11,10 @@ using DynamicPPL.VarNamedTuples:
 using ComponentArrays: ComponentArrays, ComponentVector
 using AbstractPPL
 
+function DynamicPPL._partial_binding_array(value::ComponentArrays.ComponentArray)
+    return ComponentArrays.getdata(value) isa Array
+end
+
 # Resolve properties through the component axes, including nested fields and slices.
 function _property_to_index(
     template::ComponentVector, optic::AbstractPPL.Property{S}
@@ -19,6 +23,13 @@ function _property_to_index(
     return AbstractPPL.Index(
         (_resolve_indices(optic, indices),), NamedTuple(), AbstractPPL.Iden()
     )
+end
+
+# Component properties select root storage; their temporary views are not owners.
+function DynamicPPL._partial_binding_selector(
+    template::ComponentVector, optic::AbstractPPL.Property
+)
+    return true
 end
 
 # A ComponentVector of the template's linear indices. Structural checks run against this
