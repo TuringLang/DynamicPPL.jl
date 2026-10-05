@@ -52,15 +52,9 @@ names unchanged. Parent explicit bindings override the child's explicit bindings
 argument-supplied observations at the same address; parent argument-supplied observations never reach a child.
 
 Binding the return value throws `ArgumentError` at the submodel tilde during evaluation.
-At a submodel tilde, an argument LHS variable receives the submodel return value. The
-argument supplies only its value before the tilde runs; its argument-supplied observation
-is ignored at that tilde, so it needs no [`decondition`](@ref).
-This includes `NamedTuple` arguments: their fields supply the value before the tilde,
-not bindings of the child's LHS variables. To bind `@varname(a.x)` on the
-parent, `a` must not be a model argument. Explicit bindings at or below an argument LHS
-variable receiving a submodel return value also throw during evaluation, or at the
-`condition` or `fix` call when the argument's type
-already rules out the requested field. Condition or fix the child before wrapping it instead.
+A submodel tilde whose LHS is rooted at a model argument throws `ArgumentError` when
+it runs, including indexed and field addresses. Use a local LHS variable; bind the
+child's LHS variables with `condition`.
 To remove a child's argument-supplied observations from the parent, use
 `decondition(parent, DynamicPPL.Recursive(), @varname(a.x))`.
 See [Binding rules](@ref).
@@ -183,7 +177,7 @@ function _submodel_namespace(::Union{ModelValue,ModelValueTree})
     throw(
         ArgumentError(
             "Cannot explicitly bind a submodel return value. Remove the explicit binding, " *
-            "or bind the child's variables by prefixed name (e.g. `@varname(a.z)` when `a` is not a model argument).",
+            "or bind the child's variables by prefixed name (e.g. `@varname(a.z)`).",
         ),
     )
 end

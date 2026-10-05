@@ -2,7 +2,7 @@
 
 Recursive removal is now explicit: decondition a child before wrapping it → `decondition(parent, DynamicPPL.Recursive(), @varname(a.x))`; likewise `unfix` removes child fixes. No-name recursive forms clear their layer at every depth. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-Bindings now reject named recursive removals across shared unprefixed LHS addresses, partial edits of submodel-return arguments, edits below slice prefixes, and partial bindings through tuples nested in arrays or structs; errors name the address and supported alternative.
+Bindings now reject edits below slice prefixes and partial bindings through tuples nested in arrays or structs; errors name the address and supported alternative.
 
 `VarNamedTuple` membership resolves `begin` and `end` against the stored array. See [#1490](https://github.com/TuringLang/DynamicPPL.jl/pull/1490).
 
@@ -44,7 +44,7 @@ Observed or fixed values containing `missing`/`nothing` now error: placeholder b
 
 `InitFromParams` rejects `missing` instead of invoking its fallback: `InitFromParams((; x=missing))` → `InitFromParams((;))`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-`condition` and `fix` reject dictionaries: `condition(m, Dict(@varname(x) => v))` → `condition(m, @varname(x) => v)`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+`condition` and `fix` reject dictionaries: `condition(m, Dict(@varname(x) => v))` → `condition(m, @varname(x) => v)`. `|` no longer accepts `AbstractDict`: `m | Dict(@varname(x) => v)` → `m | (@varname(x) => v)` or `m | (x=v,)`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
 Partial local bindings use a positional binding schema: `@vnt`/`@template` storage → `condition(m, @varname(z[2]) => 1.0, @of(z=of(Array, 3)))`, importing `of, @of` from AbstractPPL. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
@@ -62,6 +62,8 @@ Fixed bindings require coverage and unchanged shape at each LHS variable: resizi
 
 Known-invalid binding addresses now throw, including covariates, unknown LHS names, nonexistent fields, and out-of-bounds indices: binding non-LHS arguments → reconstruct the model. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
+`decondition` and `unfix` now reject the addresses bindings reject when the model can decide: covariates, names with no LHS variable, nonexistent fields, and indices outside storage. Previously these removals were silent; correct the address. Removing a valid address with no binding, including removing it twice, is a no-op. Child-address typos in recursive removals are reported by `check_model`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+
 NamedTuple integer addresses are rejected in bindings and LHS variables: `x[1]` → `x.a`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
 Partly removing bindings of one multivariate LHS variable now errors: `decondition(m, @varname(x[1]))` for `x ~ MvNormal(...)` → declare separate LHS variables. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
@@ -69,6 +71,8 @@ Partly removing bindings of one multivariate LHS variable now errors: `deconditi
 `fix` shadows observations; `unfix` reveals surviving observations or latent values: restoring original arguments → retain or remove observations explicitly with `condition`/`decondition`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
 Enclosing explicit bindings override child bindings, including fixed ones: child-fixed precedence → outermost explicit binding precedence. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501), [#1012](https://github.com/TuringLang/DynamicPPL.jl/issues/1012).
+
+A submodel tilde rooted at a model argument now throws `ArgumentError` when it runs, including indexed and field addresses: `a ~ to_submodel(child())` with argument `a` → `result ~ to_submodel(child())` with local `result`. Bind the child's LHS variables with `condition`, or copy the return value afterwards with `a = result`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
 Submodel return values cannot be bound: `condition(m; a=value)` → `condition(m, @varname(a.x) => value)` for child LHS variable `x` of a local `a`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501), [#1246](https://github.com/TuringLang/DynamicPPL.jl/issues/1246).
 

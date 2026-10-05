@@ -2135,9 +2135,10 @@ Observe raw data under a separate name if the body transforms the argument first
 
 Use NamedTuples/keywords for whole top-level values, `VarName` pairs for any address
 (`:x => v` abbreviates `@varname(x) => v`), or a [`VarNamedTuple`](@ref) produced by
-DynamicPPL. Positional inputs and tuples apply left to right. Every `AbstractDict` throws
-`ArgumentError`. One positional binding schema, e.g. `@of(z = of(Array, 3))`, supplies
-storage for partially bound local LHS variables without binding values (`using AbstractPPL: of, @of`).
+DynamicPPL. Positional inputs and tuples apply left to right. `condition` rejects every
+`AbstractDict` with `ArgumentError`; `model | dict` has no method. One positional binding
+schema, e.g. `@of(z = of(Array, 3))`, supplies storage for partially bound local LHS variables
+without binding values (`using AbstractPPL: of, @of`).
 Existing owners in the observation layer take precedence over schemas; conflicts throw.
 An `of` type fixed before evaluation fixes its element type: runtime bindings under
 ForwardDiff/ReverseDiff need `@of(z = of(Array, typeof(m), n))` or a whole value.
@@ -2157,11 +2158,10 @@ level deep, but nested mutable values remain shared and must not be mutated eith
 `missing`/`nothing` throw where a tilde reads them, naming the LHS variable. Unread parts
 may contain either; whole argument placeholders throw even if the body replaces them.
 Use [`decondition`](@ref) to make observations latent; see [Missing data](@ref).
-Partial edits below arguments used as submodel returns or namespaces in any branch throw;
-bind or remove the whole argument. Bindings below slice or colon prefixes throw; bind before
+Bindings below slice or colon prefixes throw; bind before
 prefixing or use an integer-indexed prefix. Partial bindings through tuples nested in arrays
 or structs throw; bind the enclosing element whole. See [Binding rules](@ref).
-Partial bindings into whole `missing`/`nothing` arguments, even after deconditioning, throw
+Incomplete partial bindings into whole `missing`/`nothing` arguments, even after deconditioning, throw
 `ArgumentError` when bound; supply a concrete argument such as `f(zeros(n))` or a whole binding.
 See [Binding rules](@ref) for the argument contract, binding contract and submodel rules,
 and [Performance](@ref binding-performance) for the cost of rebuilding partially bound array arguments.
@@ -2205,7 +2205,8 @@ true
 
 In the above we have specified the LHS variables to observe via keyword arguments. You can also
 provide a `NamedTuple`, a `VarNamedTuple`, or `VarName` pairs. Tuples of these inputs
-are applied left to right. Other inputs, including every `AbstractDict`, throw `ArgumentError`.
+are applied left to right. Other inputs to `condition`, including every `AbstractDict`,
+throw `ArgumentError`; `|` has no `AbstractDict` method.
 
 For example, here we use a `VarName` pair:
 
@@ -2276,19 +2277,14 @@ throws `ArgumentError`. Schema entries for arguments, unrelated names, or names 
 does not bind also throw `ArgumentError`. Resolve symbolic sizes before binding.
 Use whole bindings for custom arrays and structs that `of` cannot describe.
 Values DynamicPPL produces, such as `rand(model)` and `conditioned(model)`, are
-[`VarNamedTuple`](@ref)s and can be passed back for round trips, except that `conditioned`
-entries for arguments holding submodel return values must be omitted: evaluation ignores
-those argument values, but rejects explicit bindings at their addresses.
+[`VarNamedTuple`](@ref)s and can be passed back for round trips.
 
 ## Nested models
 
 `condition` also supports the use of nested models through the use of [`to_submodel`](@ref).
 
-At a submodel tilde, an argument LHS variable receives the submodel return value. The
-argument supplies only its value before the tilde runs; its argument-supplied observation
-is ignored at that tilde. Explicit bindings
-at or below that address are rejected during evaluation, including named-tuple submodel namespaces.
-Condition or fix the child model before wrapping it with `to_submodel` instead.
+A submodel tilde whose LHS is rooted at a model argument throws `ArgumentError` when
+it runs. Use a local LHS variable and bind the child through its namespace, as below.
 
 ```jldoctest condition
 julia> @model demo_inner() = m ~ Normal()
@@ -2300,6 +2296,15 @@ julia> @model function demo_outer()
            return inner
        end
 demo_outer (generic function with 2 methods)
+
+julia> @model argument_outer(inner) = inner ~ to_submodel(demo_inner());
+
+julia> try
+           argument_outer(0.0)()
+       catch err
+           err isa ArgumentError
+       end
+true
 
 julia> model = demo_outer();
 
@@ -2916,8 +2921,7 @@ model's bindings. Its next observation at that address replaces the removal. Rem
 no value or shape and are omitted from `conditioned`.
 
 Named recursive removals shared by an own LHS and an unprefixed submodel throw; prefix the
-child or remove without `Recursive()`. Partial removals below submodel-return arguments
-throw; remove the whole argument. Removals below slice or colon prefixes throw; remove before
+child or remove without `Recursive()`. Removals below slice or colon prefixes throw; remove before
 prefixing or use an integer-indexed prefix. See [Binding rules](@ref).
 
 Removal preserves the shape of the owner in the observation layer; it does not restore
@@ -3159,9 +3163,6 @@ The result lists only bindings stored on `model`. Observations held by
 submodels, including their argument-supplied observations and bindings made inside the
 model body, are not listed, because those submodels exist only during evaluation.
 
-This may include argument-supplied observations that evaluation ignores when their argument LHS variables
-receive submodel return values.
-
 The result is a `VarNamedTuple` containing ordinary or partial values. After partial
 removal or mixed roles, containers become plain partial values (`VarNamedTuple` or
 `PartialArray`), not the original container type.
@@ -3233,7 +3234,7 @@ observations even beneath a fixed binding.
 Bindings reach child addresses too; outermost explicit bindings win.
 Inputs, unsupported partial bindings, conversion errors, aliasing and argument preparation
 follow [`condition`](@ref).
-Partial bindings into whole `missing`/`nothing` arguments, even after deconditioning, throw
+Incomplete partial bindings into whole `missing`/`nothing` arguments, even after deconditioning, throw
 `ArgumentError` when bound; supply a concrete argument such as `f(zeros(n))` or a whole binding.
 Partial bindings copy the owner's container one level deep; nested mutable values remain
 shared and must not be mutated.
@@ -3442,10 +3443,6 @@ Bindings held by children are not listed.
 The result lists only bindings stored on `model`. Fixed bindings held by
 submodels, including bindings made inside the model body, are not listed, because those
 submodels exist only during evaluation.
-
-For argument LHS variables that receive submodel return values, `conditioned` lists argument-supplied observations
-that evaluation ignores, while `fixed` lists explicit bindings that evaluation rejects.
-Omit these argument entries before passing a `conditioned` listing back to `condition`.
 
 The result is a `VarNamedTuple` containing ordinary or partial values. After partial
 removal or mixed roles, containers become plain partial values (`VarNamedTuple` or

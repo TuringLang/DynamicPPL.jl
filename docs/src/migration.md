@@ -237,7 +237,9 @@ ones. To retain a child's fixed value, remove the enclosing observation with
 `decondition(parent, @varname(a.x))` or the enclosing fixed binding with `unfix`.
 
 Replace `condition(m, Dict(@varname(x) => v))` with `condition(m, @varname(x) => v)`,
-a NamedTuple, or keyword arguments. `:x => v` remains shorthand for `@varname(x) => v`.
+a NamedTuple, or keyword arguments. Likewise, replace `m | Dict(@varname(x) => v)` with
+`m | (@varname(x) => v)` or `m | (x=v,)`; `|` no longer accepts `AbstractDict`.
+`:x => v` remains shorthand for `@varname(x) => v`.
 Replace `@vnt` or `@template` storage for partial local bindings with a positional binding
 schema, for example `condition(m, @varname(z[2]) => 1.0, @of(z = of(Array, 3)))`, importing
 `of, @of` from AbstractPPL. Produced `VarNamedTuple` values remain accepted. `@vnt` is no
@@ -261,7 +263,10 @@ edits with indices of the latest enclosing bound value: after `condition(f(zeros
 Known-invalid addresses now throw. Replace bindings of covariates with model reconstruction;
 correct unknown LHS names, nonexistent fields, and indices outside storage. Replace
 NamedTuple integer addresses such as `x[1]` with field addresses such as `x.a`, both in
-bindings and on the LHS. Removing a valid address with no stored binding is a no-op.
+bindings and on the LHS. `decondition` and `unfix` reject the same addresses when the
+model can decide: covariates, names with no LHS variable, nonexistent fields, and indices
+outside storage. Previously such removals were silent. Removing a
+valid address with no stored binding, including removing it twice, is a no-op.
 To remove a child's argument-supplied observation from
 its parent, use `decondition(parent, DynamicPPL.Recursive(), @varname(a.x))`.
 Use `decondition(parent, DynamicPPL.Recursive())` for prior prediction throughout the model;
@@ -271,8 +276,10 @@ separate LHS variables when their roles must differ.
 
 Submodel return values cannot be bound. For local `a ~ to_submodel(child())`, replace
 `condition(m; a=value)` with `condition(m, @varname(a.x) => value)` to observe the child's
-`x`. If `a` is a model argument, bind the child before `to_submodel`; explicit bindings at
-or below `a` are rejected.
+`x`. Submodel tildes rooted at a model argument now throw `ArgumentError` when they run,
+including indexed and field addresses. Replace `a ~ to_submodel(child())` with
+`result ~ to_submodel(child())` when `a` is an argument. Bind the child's LHS variables
+with `condition`; if needed, copy its return value afterwards with `a = result`.
 
 Argument arrays whose element type includes `Missing` are no longer defensively copied.
 Replace mutation of bound storage with mutation of a copy. Partial bindings snapshot the
@@ -320,9 +327,7 @@ new = fix(new, fixed(old))
 If an earlier binding changed storage shape, replay that binding before its partial
 removals. For example, replay `condition(new; x=ones(3))` before
 `decondition(new, @varname(x[1]))` when the original argument had length two. Transferring
-only the surviving listing cannot reconstruct the enlarged owner. Omit argument-supplied
-entries that hold submodel return values: evaluation ignores them, but explicit bindings
-at those addresses are rejected.
+only the surviving listing cannot reconstruct the enlarged owner.
 
 `decondition(new)` removes only the new model's own observations. Transfer a
 binding group with `condition(new, values)` or the corresponding
