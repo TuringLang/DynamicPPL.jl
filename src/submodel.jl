@@ -243,13 +243,12 @@ Evaluate `submodel` under `parent_model`.
     !AutoPrefix &&
         _model_prefix(submodel.model) === nothing &&
         _check_shared_removals(parent_model, submodel.model)
-    left_vn = AutoPrefix ? _concretize_prefix(left_vn, template) : left_vn
+    left_vn = AutoPrefix ? _concretize_prefix(left_vn, template; prefix=Val(true)) : left_vn
     local_prefix = if AutoPrefix
         maybe_prefix(_model_prefix(submodel.model), left_vn)
     else
         _model_prefix(submodel.model)
     end
-    _check_slice_namespace(parent_model, local_prefix)
     observation_removals = _submodel_removals(Condition, parent_model, local_prefix)
     fixed_removals = _submodel_removals(Fix, parent_model, local_prefix)
     observations = _apply_parent_removals(

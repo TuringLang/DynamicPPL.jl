@@ -345,26 +345,59 @@ function _prefix_values(values::VarNamedTuple, vn::VarName, template)
 end
 
 # Prefix templates can cross submodel boundaries without reading parent return values.
-function _concretize_prefix(vn::VarName{S}, template; depth=typemax(Int)) where {S}
-    return VarName{S}(_concretize_prefix(AbstractPPL.getoptic(vn), template; depth))
+function _concretize_prefix(vn::VarName{S}, template; kwargs...) where {S}
+    return VarName{S}(_concretize_prefix(AbstractPPL.getoptic(vn), template; kwargs...))
 end
-_concretize_prefix(optic::AbstractPPL.Iden, template; depth=typemax(Int)) = optic
+_concretize_prefix(optic::AbstractPPL.Iden, template; kwargs...) = optic
 function _concretize_prefix(
-    optic::AbstractPPL.Property{S}, template; depth=typemax(Int)
+    optic::AbstractPPL.Property{S}, template; depth=typemax(Int), prefix=Val(false)
 ) where {S}
-    (depth == 0 || !AbstractPPL.is_dynamic(optic)) && return optic
-    child = _concretize_prefix(
-        optic.child, VarNamedTuples.SharedGetProperty{S}()(template); depth=depth - 1
-    )
+    (prefix isa Val{false} && (depth == 0 || !AbstractPPL.is_dynamic(optic))) &&
+        return optic
+    child_template = if AbstractPPL.is_dynamic(optic.child)
+        VarNamedTuples.SharedGetProperty{S}()(template)
+    else
+        NoTemplate()
+    end
+    child = _concretize_prefix(optic.child, child_template; depth=depth - 1, prefix)
     return AbstractPPL.Property{S}(child)
 end
-function _concretize_prefix(optic::AbstractPPL.Index, template; depth=typemax(Int))
-    (depth == 0 || !AbstractPPL.is_dynamic(optic)) && return optic
-    optic = AbstractPPL.concretize_top_level(optic, VarNamedTuples.template_array(template))
-    (depth == 1 || !AbstractPPL.is_dynamic(optic.child)) && return optic
-    child = _concretize_prefix(
-        optic.child, VarNamedTuples.index_template(template, optic); depth=depth - 1
-    )
+function _concretize_prefix(
+    optic::AbstractPPL.Index, template; depth=typemax(Int), prefix=Val(false)
+)
+    (prefix isa Val{false} && (depth == 0 || !AbstractPPL.is_dynamic(optic))) &&
+        return optic
+    if any(i -> i isa AbstractPPL.DynamicIndex, optic.ix)
+        template isa NoTemplate && throw(
+            ArgumentError(
+                "`begin` and `end` in a prefix need a template; pass `template=`."
+            ),
+        )
+        optic = AbstractPPL.concretize_top_level(
+            optic, VarNamedTuples.template_array(template)
+        )
+    end
+    if prefix isa Val{true}
+        indices = mapreduce(
+            i -> i isa CartesianIndex ? Tuple(i) : (i,),
+            (a, b) -> (a..., b...),
+            optic.ix;
+            init=(),
+        )
+        all(i -> i isa Integer && !(i isa Bool), indices) && isempty(optic.kw) || throw(
+            ArgumentError(
+                "Prefix index [$(join(map(repr, optic.ix), ", "))] is not a scalar integer; prefixes require properties and integer indices. Use an integer-indexed prefix, or to_submodel(model, false) for a sliced return LHS.",
+            ),
+        )
+        optic = AbstractPPL.Index(indices, optic.kw, optic.child)
+    end
+    prefix isa Val{false} && depth == 1 && return optic
+    child_template = if AbstractPPL.is_dynamic(optic.child)
+        VarNamedTuples.index_template(template, optic)
+    else
+        NoTemplate()
+    end
+    child = _concretize_prefix(optic.child, child_template; depth=depth - 1, prefix)
     return AbstractPPL.Index(optic.ix, optic.kw, child)
 end
 
@@ -386,7 +419,9 @@ Return `model` but with all random variables prefixed by `x`, where `x` is eithe
   necessary.
 
 For an indexed prefix, `template` supplies the enclosing container's shape and resolves
-`begin` and `end` indices.
+`begin` and `end` indices. Prefixes accept properties and scalar integer indices
+(excluding `Bool`); `CartesianIndex` is expanded into integer coordinates. Ranges,
+colons and masks are rejected.
 
 # Examples
 
@@ -408,8 +443,10 @@ VarNamedTuple
 ```
 """
 function prefix(model::Model, x::VarName; template=NoTemplate())
+    AbstractPPL.is_dynamic(AbstractPPL.getoptic(x)) &&
+        (template = VarNamedTuples.materialize_template(template))
+    x = _concretize_prefix(x, template; prefix=Val(true))
     template = VarNamedTuples.materialize_template(template)
-    x = _concretize_prefix(x, template)
     model = _materialize_argument_values(model)
     values =
         if model.values isa VarNamedTuple &&

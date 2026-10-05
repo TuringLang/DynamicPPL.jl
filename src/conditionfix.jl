@@ -1949,8 +1949,7 @@ level deep, but nested mutable values remain shared and must not be mutated eith
 `missing`/`nothing` throw where a tilde reads them, naming the LHS variable. Unread parts
 may contain either; whole argument placeholders throw even if the body replaces them.
 Use [`decondition`](@ref) to make observations latent; see [Missing data](@ref).
-Bindings below slice or colon prefixes throw; bind before
-prefixing or use an integer-indexed prefix. Partial bindings or removals that rebuild tuple or struct owners
+Partial bindings or removals that rebuild tuple or struct owners
 throw at any depth; bind or remove the enclosing owner whole. See [Binding rules](@ref).
 Incomplete partial bindings into whole `missing`/`nothing` arguments, even after deconditioning, throw
 `ArgumentError` when bound; supply a concrete argument such as `f(zeros(n))` or a whole binding.
@@ -2265,64 +2264,10 @@ function _bind_inputs(::Type{R}, model::Model, inputs::Tuple) where {R}
     end
     return model
 end
-# Resolve only the namespace prefix here. Local indices may use argument or
-# schema storage, which is selected later while preparing each binding.
-_has_slice_index(::AbstractPPL.Iden) = false
-function _has_slice_index(optic)
-    return (
-        optic isa AbstractPPL.Index &&
-        any(i -> !(i isa Union{Integer,CartesianIndex}), optic.ix)
-    ) || _has_slice_index(optic.child)
-end
-function _check_slice_binding(vn, prefix; own_prefix=false)
-    prefix === nothing && return nothing
-    below =
-        subsumes(prefix, vn) || (
-            own_prefix &&
-            AbstractPPL.getsym(vn) === AbstractPPL.getsym(prefix) &&
-            optic_skip_length(AbstractPPL.getoptic(vn)) >
-            optic_skip_length(AbstractPPL.getoptic(prefix))
-        )
-    if _has_slice_index(AbstractPPL.getoptic(prefix)) && prefix != vn && below
-        throw(
-            ArgumentError(
-                "Cannot edit `$vn` below slice prefix `$prefix`; bind or remove before prefixing, or use an integer-indexed prefix.",
-            ),
-        )
-    end
-    return nothing
-end
-function _check_binding_operation(model, vn)
-    _check_slice_binding(vn, _model_prefix(model); own_prefix=true)
-    for (address, submodel) in _lhs_addresses(_binding_metadata(model))
-        submodel || continue
-        _check_slice_binding(
-            vn, _model_value_varname(model.values, address, _model_prefix(model))
-        )
-    end
-    return nothing
-end
 function _binding_display_name(model, vn)
     return model.values isa LocalModelValues ? maybe_prefix(vn, _model_prefix(model)) : vn
 end
-function _check_slice_namespace(model, prefix)
-    prefix === nothing && return nothing
-    _has_slice_index(AbstractPPL.getoptic(prefix)) || return nothing
-    prefix = _model_value_varname(model.values, prefix, _model_prefix(model))
-    for role in (Condition, Fix)
-        values = _select_model_values(role, _model_values(model.values))
-        for vn in keys(values)
-            _check_slice_binding(vn, prefix)
-        end
-    end
-    for role in (Condition, Fix), r in _removals(role, model.values)
-        r.name === nothing || _check_slice_binding(r.name, prefix)
-    end
-    return nothing
-end
-
 function _schema_binding_address(model, vn)
-    _check_binding_operation(model, vn)
     prefix = _model_prefix(model)
     if !(model.values isa LocalModelValues) &&
         prefix !== nothing &&
@@ -2528,7 +2473,6 @@ end
 _make_condfix_values(model, values::NamedTuple) = VarNamedTuple(values)
 function _make_condfix_values(model, values::VarNamedTuple)
     for vn in keys(values)
-        _check_binding_operation(model, vn)
         _binding_template(model, _model_values(model.values), vn) isa NoTemplate &&
             _check_local_property_index(model, vn)
         _check_partial_binding(
@@ -2725,8 +2669,7 @@ model's bindings. Its next observation at that address replaces the removal. Rem
 no value or shape and are omitted from `conditioned`.
 
 Named recursive removals shared by an own LHS and an unprefixed submodel throw; prefix the
-child or remove without `Recursive()`. Removals below slice or colon prefixes throw; remove before
-prefixing or use an integer-indexed prefix. See [Binding rules](@ref).
+child or remove without `Recursive()`. See [Binding rules](@ref).
 
 Removal preserves the shape of the owner in the observation layer; it does not restore
 an observation overwritten by an earlier [`condition`](@ref).

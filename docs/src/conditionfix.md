@@ -218,14 +218,15 @@ haskey(rand(Xoshiro(1), latent), @varname(y.counts))
 The newly latent variable is an ordinary parameter, including for `InitFromParams` and
 `LogDensityFunction`; parameter order follows evaluation order.
 
-The supported set excludes these operations. Each throws `ArgumentError` naming the
-address and a supported alternative, when the operation is made if decidable, otherwise
-at the tilde:
+The supported set excludes these operations. Each throws `ArgumentError` with a
+supported alternative, when the operation is made if decidable, otherwise at the tilde:
 
   - Named recursive removal of a name shared by this model's own LHS and an unprefixed
     submodel: prefix the submodel, or remove without `Recursive()`.
-  - Binding or removal below a slice or colon prefix, such as `p[1:2].x`: edit before
-    prefixing, or use an integer-indexed prefix.
+  - A slice, colon or mask in an explicit or automatic prefix, such as `p[1:2]`:
+    use properties and scalar integer indices (not `Bool`). `CartesianIndex` is
+    expanded into integer coordinates; `begin` and `end` use the prefix template.
+    A sliced return LHS remains allowed with `to_submodel(child, false)`.
   - Partial binding or removal through a tuple or struct owner, at any depth: bind or
     remove the enclosing tuple or struct whole.
 
