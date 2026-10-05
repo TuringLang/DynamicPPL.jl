@@ -3883,8 +3883,8 @@ end
 
 # --- Binding contract: independent oracle, generator, and implementation adapter ---
 
-# Independent oracle, written from the binding rules in docs/src/conditionfix.md
-# before running the implementation. It uses no DynamicPPL APIs.
+# Independent oracle based on the binding rules in docs/src/conditionfix.md,
+# refined through differential checks. It uses no DynamicPPL APIs.
 struct BCCase
     kind::Symbol                 # scalar, array, tuple, named, multivariate
     argument::Bool
@@ -3894,7 +3894,7 @@ struct BCCase
 end
 struct BCOp
     verb::Symbol
-    recursive::Bool
+    recursive::Bool              # decondition/unfix only
     path::Union{Nothing,Tuple}
     value::Any
 end
@@ -3974,7 +3974,6 @@ mutable struct BCReference
     case::BCCase
     layers::Vector{BCLayer}
     prefixed::Bool
-    pending::Vector{Tuple}
 end
 function bc_reference(c)
     ls = [BCLayer() for _ in 0:(c.depth)]
@@ -3997,7 +3996,7 @@ function bc_reference(c)
         merge!(ls[end].fixed, Dict(bc_leaves(p, v)))
         ls[end].fixowners[p] = v
     end
-    return BCReference(c, ls, false, Tuple[])
+    return BCReference(c, ls, false)
 end
 function bc_universe(c)
     p = bc_basepath(c)
@@ -4015,10 +4014,6 @@ function bc_universe(c)
     c.depth > 1 && push!(ps, (:a, :q))
     return ps
 end
-function bc_own(c, p)
-    c.depth == 0 && return first(p) == bc_rootname(c)
-    return first(p) == :m
-end
 function bc_lookup(r, p)
     blockobs = false
     blockfix = false
@@ -4030,18 +4025,8 @@ function bc_lookup(r, p)
     end
     return (:latent, 0.25)
 end
-function bc_stored(r, p, fixed)
-    blocked = false
-    for l in r.layers
-        d = fixed ? l.fixed : l.obs
-        !blocked && haskey(d, p) && return true
-        blocked |= p in (fixed ? l.nofixed : l.noobs)
-    end
-    return false
-end
-function bc_apply_reference!(r, op; clear_markers=false)
+function bc_apply_reference!(r, op)
     op.verb == :prefix && (r.prefixed = true; return :ok)
-    op.verb in (:conditioned, :fixed) && return :call
     p = op.path
     if p !== nothing && r.prefixed
         (isempty(p) || first(p) != :p) && return :call
@@ -4063,8 +4048,8 @@ function bc_apply_reference!(r, op; clear_markers=false)
     end
     unique!(addresses)
     targets = p === nothing ? addresses : filter(q -> bc_related(p, q), addresses)
-    if adding
-        (!op.recursive && !bc_own(c, p)) && return :call
+    # Bindings and named removals accept the same addresses.
+    if p !== nothing
         isempty(targets) && return c.depth == 0 ? :call : :evaluation
         bp = bc_basepath(c)
         # Supported partial paths must fit the edited layer's latest shape owner.
@@ -4080,42 +4065,21 @@ function bc_apply_reference!(r, op; clear_markers=false)
                 return :call
             end
         end
+    end
+    if adding
         for q in collect(keys(d))
             bc_contains(p, q) && delete!(d, q)
         end
         merge!(d, Dict(bc_leaves(p, op.value)))
-        if op.recursive
-            for q in targets
-                delete!(masks, q)
-            end
+        # Any binding in this layer replaces the removal at its address.
+        for q in targets
+            delete!(masks, q)
         end
         for q in collect(keys(owners))
             bc_contains(p, q) && delete!(owners, q)
         end
         owners[p] = op.value
-        if op.recursive
-            filter!(r.pending) do pending
-                pfixed, qs = pending
-                pfixed == fixed && filter!(q -> !bc_contains(p, q), qs)
-                !isempty(qs)
-            end
-        end
     else
-        found = any(q -> op.recursive ? bc_stored(r, q, fixed) : haskey(d, q), targets)
-        if p !== nothing && !found
-            all(q -> q in masks, targets) && return :call
-            # A whole NamedTuple uses a runtime distribution constructor; its RHS
-            # is classified at evaluation, just like a possible child model.
-            if op.recursive && ((c.depth > 0 && !bc_own(c, p)) || c.kind == :namedwhole)
-                push!(r.pending, (fixed, copy(targets)))
-            else
-                return :call
-            end
-        end
-        if p === nothing && (op.recursive || clear_markers)
-            filter!(entry -> entry[1] != fixed, r.pending)
-            empty!(masks)
-        end
         for q in targets
             delete!(d, q)
             op.recursive && push!(masks, q)
@@ -4157,6 +4121,12 @@ function bc_expected(r)
         ks = c.kind == :namedwhole ? (:a, :b) : (1, 2)
         entries = [out[(bp..., i)] for i in ks]
         all(e -> e[1] == entries[1][1], entries) || return (:evaluation, out)
+        # Current implementation limitation: growable indexed storage cannot
+        # establish a whole multivariate binding, even when all elements are bound.
+        if c.kind == :multivariate && !c.argument && entries[1][1] != :latent
+            any(l -> haskey(l.owners, bp) || haskey(l.fixowners, bp), r.layers) ||
+                return (:evaluation, out)
+        end
         for i in ks
             delete!(out, (bp..., i))
         end
@@ -4167,14 +4137,13 @@ function bc_expected(r)
     end
     return (:ok, out)
 end
-function bc_predict(c, ops; clear_markers=false)
+function bc_predict(c, ops)
     r = bc_reference(c)
     for (i, op) in enumerate(ops)
-        stage = bc_apply_reference!(r, op; clear_markers)
+        stage = bc_apply_reference!(r, op)
         stage == :call && return (stage, i, nothing)
         stage == :evaluation && return (:evaluation, length(ops), nothing)
     end
-    !isempty(r.pending) && return (:evaluation, length(ops), nothing)
     stage, out = bc_expected(r)
     return (stage, length(ops), out)
 end
@@ -4324,6 +4293,7 @@ const BC_ADDRESSES = let d = Dict{Tuple,Any}()
         ((:a, :q), @varname(a.q)),
         ((:t, :a), @varname(t.a)),
         ((:t, :b), @varname(t.b)),
+        ((:t, :absent), @varname(t.absent)),
         ((:a, :x), @varname(a.x)),
         ((:a, :t), @varname(a.t)),
         ((:a, :t, :a), @varname(a.t.a)),
@@ -4358,7 +4328,8 @@ function bc_apply_actual(m, op)
     @nospecialize m
     op.verb == :prefix && return prefix(m, @varname(p))
     f = getfield(DynamicPPL, op.verb)
-    args = op.recursive ? (DynamicPPL.Recursive(),) : ()
+    args =
+        op.verb in (:decondition, :unfix) && op.recursive ? (DynamicPPL.Recursive(),) : ()
     op.path === nothing && return f(m, args...)
     v = BC_ADDRESSES[op.path]
     return if op.verb in (:condition, :fix)
@@ -4449,7 +4420,7 @@ function bc_agrees(pred, act)
     return isapprox(lp, bc_density(:latent); atol=1e-12) &&
            isapprox(ll, bc_density(:observed); atol=1e-12)
 end
-function bc_sequence(rng, c, n)
+function bc_sequence(rng, c, n; invalid_removals=false)
     ops = BCOp[]
     prefixed = false
     for _ in 1:n
@@ -4481,8 +4452,15 @@ function bc_sequence(rng, c, n)
                 [v, v + 1]
             end
         end
+        if invalid_removals &&
+            verb in (:decondition, :unfix) &&
+            c.kind != :scalar &&
+            rand(rng) < 0.25
+            p = (bp..., c.kind in (:named, :namedwhole) ? :absent : 4)
+        end
         p !== nothing && prefixed && (p = (:p, p...))
-        push!(ops, BCOp(verb, rand(rng, Bool), p, v))
+        recursive = rand(rng, Bool) && verb in (:decondition, :unfix)
+        push!(ops, BCOp(verb, recursive, p, v))
     end
     return ops
 end
@@ -4509,6 +4487,16 @@ function bc_corpus()
             op -> op.verb in (:decondition, :unfix) && !op.recursive && op.path === nothing,
             ops,
         )
+    ]
+end
+
+function bc_invalid_removal_corpus()
+    # A separate stream leaves every existing random history unchanged.
+    rng = StableRNG(1502)
+    return [
+        (c, bc_sequence(rng, c, n; invalid_removals=true)) for
+        kind in (:array, :tuple, :named, :multivariate, :tuplewhole, :namedwhole) for
+        c in (BCCase(kind, true, 0, false, false),) for n in 1:6
     ]
 end
 
@@ -4546,26 +4534,25 @@ function bc_shape_corpus()
                 (:x,)
             end
         )...)
-        recursive = depth > 0
         shape(x) = kind == :tuple ? Tuple(x) : x
         for bind in (:condition, :fix)
             other = bind == :condition ? :fix : :condition
             ops = [
-                BCOp(bind, recursive, p, shape([4.0, 5.0, 6.0])),
-                BCOp(other, recursive, (p..., 1), 7.0),
-                BCOp(other, recursive, (p..., 2), 8.0),
+                BCOp(bind, false, p, shape([4.0, 5.0, 6.0])),
+                BCOp(other, false, (p..., 1), 7.0),
+                BCOp(other, false, (p..., 2), 8.0),
             ]
             push!(samples, (c, ops))
         end
         for (nobs, nfix) in ((3, 2), (2, 3)), reverse_order in (false, true)
             ops = [
-                BCOp(:condition, recursive, p, shape(collect(1.0:nobs))),
-                BCOp(:fix, recursive, p, shape(collect(4.0:(3 + nfix)))),
+                BCOp(:condition, false, p, shape(collect(1.0:nobs))),
+                BCOp(:fix, false, p, shape(collect(4.0:(3 + nfix)))),
             ]
             reverse_order && reverse!(ops)
-            push!(ops, BCOp(:unfix, recursive, (p..., 2), nothing))
+            push!(ops, BCOp(:unfix, false, (p..., 2), nothing))
             push!(samples, (c, copy(ops)))
-            push!(ops, BCOp(:unfix, recursive, p, nothing))
+            push!(ops, BCOp(:unfix, false, p, nothing))
             push!(samples, (c, copy(ops)))
         end
     end
@@ -4578,20 +4565,46 @@ function bc_contract_corpus()
         c = BCCase(:scalar, true, 1, fixed, false)
         for (bind, remove) in ((:condition, :decondition), (:fix, :unfix))
             ops = [
-                BCOp(bind, true, (:a, :x), 3.0), BCOp(remove, recursive, (:a, :x), nothing)
+                BCOp(bind, false, (:a, :x), 3.0), BCOp(remove, recursive, (:a, :x), nothing)
             ]
             push!(samples, (c, copy(ops)))
-            push!(ops, BCOp(bind, true, (:a, :x), 7.0))
+            push!(ops, BCOp(remove, recursive, (:a, :x), nothing))
+            push!(samples, (c, copy(ops)))
+            push!(ops, BCOp(bind, false, (:a, :x), 7.0))
+            push!(samples, (c, copy(ops)))
+            push!(ops, BCOp(remove, false, (:a, :x), nothing))
             push!(samples, (c, copy(ops)))
         end
     end
-    for kind in (:scalar, :named, :array)
-        c = BCCase(kind, true, 0, false, false)
-        for verb in (:conditioned, :fixed)
-            push!(samples, (c, [BCOp(verb, true, nothing, nothing)]))
+    # Recursive removals must reach bindings two submodels below the caller.
+    for fixed in (false, true), remove in (:decondition, :unfix)
+        c = BCCase(:scalar, true, 2, fixed, false)
+        for p in ((:a, :b, :x), nothing)
+            push!(samples, (c, [BCOp(remove, true, p, nothing)]))
         end
     end
+    # Clearing the local table must preserve earlier recursive removal markers.
+    for fixed in (false, true), remove in (:decondition, :unfix)
+        c = BCCase(:scalar, true, 1, fixed, false)
+        ops = [BCOp(remove, true, (:a, :x), nothing), BCOp(remove, false, nothing, nothing)]
+        push!(samples, (c, ops))
+    end
     for verb in (:condition, :fix)
+        for argument in (false, true)
+            c = BCCase(:multivariate, argument, 0, false, false)
+            ops = [BCOp(verb, false, (:x, 1), 2.0), BCOp(verb, false, (:x, 2), 3.0)]
+            push!(samples, (c, ops))
+            push!(samples, (c, [BCOp(verb, false, (:x,), [2.0, 3.0])]))
+        end
+    end
+    for verb in (:condition, :fix, :decondition, :unfix)
+        push!(
+            samples,
+            (
+                BCCase(:named, true, 0, false, false),
+                [BCOp(verb, false, (:t, :absent), 1.0)],
+            ),
+        )
         push!(
             samples,
             (BCCase(:named, true, 0, false, false), [BCOp(verb, false, (:t, 1), 1.0)]),
@@ -4621,15 +4634,21 @@ end
 end
 
 @testset "binding contract: randomized differential test" begin
-    samples = vcat(bc_corpus(), bc_shape_corpus(), bc_contract_corpus())
+    samples = vcat(
+        bc_corpus(), bc_shape_corpus(), bc_contract_corpus(), bc_invalid_removal_corpus()
+    )
     # Local indexed bindings intentionally exercise the documented growable-array fallback.
     with_logger(NullLogger()) do
         for (c, ops) in samples
             predicted, observed = bc_predict(c, ops), bc_actual(c, ops)
-            # The rules leave open whether a no-name local removal erases recursive markers.
-            alternate = bc_predict(c, ops; clear_markers=true)
-            @test bc_agrees(predicted, observed) || bc_agrees(alternate, observed)
+            @test bc_agrees(predicted, observed)
         end
+    end
+    # Recursive scope belongs only to removals; bindings already accept child addresses.
+    for bind in (condition, fix)
+        m = bc_outer(bc_scalar_arg(2.0))
+        @test bind(m, @varname(a.x) => 3.0)(StableRNG(1)).a.x == 3.0
+        @test_throws ArgumentError bind(m, DynamicPPL.Recursive(), @varname(a.x) => 3.0)
     end
     # Partial edits are valid until an argument-rooted submodel tilde is reached.
     for (bind, remove) in ((condition, decondition), (fix, unfix))
@@ -4665,6 +4684,16 @@ end
             @test events == [("x", :observed, 2.0), ("x", expected_child...)]
             @test value.x == 2.0
             @test value.a.x == expected_child[2]
+        end
+        # Any binding replaces the marker, including in a shared namespace.
+        for (bind, remove) in ((condition, decondition), (fix, unfix))
+            child = bind(bc_scalar_arg(3.0); x=4.0)
+            m = remove(bc_shared_namespace(2.0, child), DynamicPPL.Recursive())
+            m = bind(m; x=7.0)
+            value = m(StableRNG(1))
+            @test value.x == value.a.x == 7.0
+            # Removing only the new binding uncovers the child's binding again.
+            @test remove(m, @varname(x))(StableRNG(1)).a.x == 4.0
         end
         # A removal on the child cannot erase a binding held by its parent.
         child = decondition(bc_scalar_arg(2.0), DynamicPPL.Recursive(), @varname(x))
