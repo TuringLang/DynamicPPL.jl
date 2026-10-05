@@ -418,14 +418,14 @@ end
                     @test_throws expected bind(m, address => 3.0)
                 end
                 for remove in (decondition, unfix)
-                    if remove === unfix && origin !== fix
+                    if remove === unfix && origin === condition
                         @test conditioned(remove(m, address)) == conditioned(m)
                         continue
                     end
                     expected = if remove === decondition && origin === fix
                         "supplies no template"
                     else
-                        message
+                        "Cannot remove"
                     end
                     @test_throws expected remove(m, address)
                 end
@@ -462,11 +462,7 @@ end
                 @test_throws message update(m, @varname(x[1]) => 4.0)
             end
             for remove in (decondition, unfix)
-                if remove === unfix && bind === condition
-                    @test remove(m, @varname(x[1]))(Xoshiro(1)) == m(Xoshiro(1))
-                else
-                    @test_throws message remove(m, @varname(x[1]))
-                end
+                @test_throws "Cannot remove" remove(m, @varname(x[1]))
             end
         end
         for value in ((1.0, 2.0), [1.0, 2.0]),
@@ -1288,7 +1284,9 @@ end
             partial = remove(matrix, @varname(x[2]))
             @test !haskey(select(remove(partial, @varname(x[2:3]))), @varname(x[3]))
             @test_throws ArgumentError remove(matrix, @varname(z))
-            @test select(remove(matrix, @varname(x[8]))) == select(matrix)
+            @test_throws "Cannot remove `x[8]`" remove(matrix, @varname(x[8]))
+            unbound = remove(matrix, @varname(x))
+            @test select(remove(unbound, @varname(x[3]))) == select(unbound)
             for (model, first, sibling) in (
                 (
                     field_lhs_variables(ComponentVector(; a=1.0, b=2.0)),
@@ -1765,7 +1763,9 @@ end
             @test_throws ArgumentError remove(original, @varname(absent))
             record = bind(record_observations(); t=(; a=1.0, b=2.0))
             @test !haskey(select(remove(record, @varname(t.a))), @varname(t.a))
-            @test select(remove(record, @varname(t.absent))) == select(record)
+            @test_throws "Cannot remove `t.absent`" remove(record, @varname(t.absent))
+            unbound = remove(record, @varname(t))
+            @test select(remove(unbound, @varname(t.a))) == select(unbound)
         end
         original = condition(record_observations(); t=(; a=1.0, b=2.0))
         expanded = fix(original, @varname(t.b) => 5.0)
@@ -3146,7 +3146,7 @@ end
     m = decondition(fix(layer_flexible([1.0, 2.0]); x=(a=1.0,)), @varname(x[1]))
     @test m(Xoshiro(1)) == (a=1.0,)
     @test returned(unfix(m), (; x=[8.0, 9.0])) == [8.0, 2.0]
-    @test_throws "Integer indexing into a NamedTuple" unfix(
+    @test_throws "Cannot remove `x[1]`: integer indexing into a NamedTuple" unfix(
         fix(layer_flexible([1.0, 2.0]); x=(a=1.0,)), @varname(x[1])
     )
 
@@ -3166,6 +3166,119 @@ end
     end
 end
 
+@testset "binding and removal address validation agree" begin
+    @model removal_addresses(x, t, p) = (
+        x[1] ~ Normal(); x[3] ~ Normal(); t.present ~ Normal(); p.b[1] ~ Normal()
+    )
+    @model removal_child(c) = a ~ to_submodel(c)
+    @model removal_unprefixed(c) = a ~ to_submodel(c, false)
+    @model local_fields() = (t = (present=1.0,); t.present ~ Normal())
+    @model local_array() = (x = zeros(3); x[1] ~ Normal(); x)
+    @model indexed_child(c) = p[1] ~ to_submodel(c)
+    @model removal_matrix(x) = (x[1, 1] ~ Normal(); x[2, 2] ~ Normal())
+    @model removal_tuple(p) = (p[1] ~ Normal(); p[2] ~ Normal())
+    m = removal_addresses(zeros(3), (present=1.0,), (b=(1.0, 2.0),))
+    addresses = (
+        (@varname(x[3]), true),
+        (@varname(x[8]), false),
+        (@varname(t.present), true),
+        (@varname(t.absent), false),
+        (@varname(t.present[1]), false),
+        (@varname(x.a), false),
+        (@varname(t[1]), false),
+        (@varname(p[1]), false),
+        (@varname(p.b[2]), true),
+        (@varname(p.b[3]), false),
+        (@varname(absent), false),
+    )
+    for (bind, remove, select) in
+        ((condition, decondition, conditioned), (fix, unfix, fixed)),
+        scope in ((), (DynamicPPL.Recursive(),))
+
+        unbound = remove(m)
+        @test_throws "Cannot bind parts below `t.present` with value of type Float64. For other bindings, use `decondition(model, @varname(t.present))` first" bind(
+            m, @varname(t.present[1]) => 2.0
+        )
+        @test_throws "Cannot remove `x.a`: cannot partially edit argument `x` at `x.a` through container type Vector{Float64}; remove the whole value instead." remove(
+            m, scope..., @varname(x.a)
+        )
+        @test_throws "Cannot remove `t[1]`: integer indexing into a NamedTuple is unsupported; use `t.present` instead." remove(
+            m, scope..., @varname(t[1])
+        )
+        for (vn, valid) in addresses
+            if valid
+                @test haskey(select(bind(unbound, vn => 2.0)), vn)
+                removed = remove(unbound, scope..., vn)
+                @test select(removed) == select(unbound)
+                @test select(remove(removed, scope..., vn)) == select(unbound)
+            else
+                @test_throws ArgumentError bind(unbound, vn => 2.0)
+                @test_throws "Cannot remove `$vn`" remove(unbound, scope..., vn)
+                @test_throws "Cannot remove `$vn`" remove(m, scope..., vn)
+            end
+        end
+        # Dynamic addresses use argument storage even when the edited layer is empty.
+        for (original, dynamic, concrete) in (
+            (m, @varname(x[end]), @varname(x[3])),
+            (m, @varname(p.b[end]), @varname(p.b[2])),
+            (removal_matrix(zeros(2, 2)), @varname(x[end, end]), @varname(x[2, 2])),
+            (removal_tuple((1.0, 2.0)), @varname(p[end]), @varname(p[2])),
+        )
+            empty_layer = remove(original)
+            @test select(bind(empty_layer, dynamic => 2.0)) ==
+                select(bind(empty_layer, concrete => 2.0))
+            for model in (original, empty_layer, bind(empty_layer, concrete => 2.0))
+                removed = remove(model, scope..., dynamic)
+                @test select(removed) == select(remove(model, scope..., concrete))
+                @test select(remove(removed, scope..., dynamic)) == select(removed)
+            end
+        end
+        # The edited layer's current owner supplies bounds, including below a field.
+        owned = bind(m; x=ones(5), p=(b=(1.0, 2.0, 3.0),))
+        for vn in (@varname(x[5]), @varname(p.b[3]))
+            @test bind(owned, vn => 2.0) isa Model
+            @test !haskey(select(remove(owned, scope..., vn)), vn)
+        end
+        for vn in (@varname(x[6]), @varname(p.b[4]))
+            @test_throws ArgumentError bind(owned, vn => 2.0)
+            @test_throws "Cannot remove `$vn`" remove(owned, scope..., vn)
+        end
+        prefixed_owner = prefix(owned, @varname(q[2]))
+        @test !haskey(
+            select(remove(prefixed_owner, scope..., @varname(q[2].x))), @varname(q[2].x)
+        )
+        @test_throws "Cannot remove" remove(prefixed_owner, scope..., @varname(q[2].x[6]))
+        prefixed = prefix(unbound, @varname(q[2]))
+        @test select(remove(prefixed, scope..., @varname(q[2].x[3]))) == select(prefixed)
+        @test_throws "Cannot remove" remove(prefixed, scope..., @varname(q[1].x))
+        @test_throws "Cannot remove" remove(prefixed, scope..., @varname(x))
+        @test_throws "Cannot remove" remove(prefixed, scope..., @varname(q[2].x[8]))
+        # Child storage is unknown here, and literal unprefixed children relax top symbols.
+        for (parent, vn) in
+            ((removal_child(m), @varname(a.typo)), (removal_unprefixed(m), @varname(typo)))
+            @test haskey(select(bind(parent, vn => 2.0)), vn)
+            @test isempty(select(remove(parent, scope..., vn)))
+        end
+        local_prefixed = prefix(bind(local_array(); x=ones(3)), @varname(q[2]))
+        @test_throws ArgumentError bind(local_prefixed, @varname(q[2].x[8]) => 2.0)
+        @test_throws "Cannot remove" remove(local_prefixed, scope..., @varname(q[2].x[8]))
+        indexed = bind(indexed_child(local_array()), @varname(p[1].x) => ones(3))
+        @test_throws ArgumentError bind(indexed, @varname(p[1].x[8]) => 2.0)
+        @test_throws "Cannot remove" remove(indexed, scope..., @varname(p[1].x[8]))
+        @test !haskey(
+            select(remove(indexed, scope..., @varname(p[1].x[3]))), @varname(p[1].x[3])
+        )
+        local_bound = bind(local_fields(); t=(present=1.0,))
+        @test_throws ArgumentError bind(local_bound, @varname(t.absent) => 2.0)
+        @test_throws "Cannot remove `t.absent`" remove(
+            local_bound, scope..., @varname(t.absent)
+        )
+        namespace = bind(removal_child(m); a=(x=ones(3),))
+        @test bind(namespace, @varname(a.typo) => 2.0) isa Model
+        @test select(remove(namespace, scope..., @varname(a.typo))) == select(namespace)
+    end
+end
+
 @testset "removal through whole bindings with nested tuples" begin
     @model nested_tuple_fields(p) = (p.b[1] ~ Normal(); p.b[2] ~ Normal(); p)
     @model tuple_removal_parent(child) = a ~ to_submodel(child)
@@ -3179,7 +3292,8 @@ end
         @test returned(partial, latent) == (b=(8.0, 2.0),)
         @test returned(tuple_removal_parent(partial), Dict(@varname(a.p.b[1]) => 8.0)) ==
             (b=(8.0, 2.0),)
-        @test remove(whole, @varname(p.b[3]))(Xoshiro(1)) == data
+        @test_throws "Cannot remove `p.b[3]`" remove(whole, @varname(p.b[3]))
+        @test returned(remove(partial, @varname(p.b[1])), latent) == (b=(8.0, 2.0),)
     end
     @test unfix(fix(m; p=(b=(3.0, 4.0),)), @varname(p.b[1]))(Xoshiro(1)) == (b=(1.0, 4.0),)
 
@@ -4513,6 +4627,12 @@ end
         )
 
         @test_throws r"x.*enclosing element whole" bind(m, vn => 9.0)
+        remove = bind === condition ? decondition : unfix
+        for scope in ((), (DynamicPPL.Recursive(),))
+            @test_throws "Cannot remove `$vn`: cannot partially edit through a tuple nested in an array or struct; remove the enclosing element whole." remove(
+                m, scope..., vn
+            )
+        end
     end
 end
 
