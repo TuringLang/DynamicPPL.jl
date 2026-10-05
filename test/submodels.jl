@@ -144,7 +144,7 @@ end
             (keyword_return(), @varname(x), 2.0),
             (runtime_return(0.0, to_submodel(child())), @varname(x), 2.0),
             (unprefixed_return(0.0), @varname(x), 2.0),
-            (splatted_return(0.0), @varname(x[1]), 2.0),
+            (splatted_return(0.0), @varname(x), (2.0,)),
             (keyword_splatted_return(; a=0.0), @varname(x), (a=2.0,)),
         )
             for wrapped in (model, prefix(model, @varname(p)), outer(model))
@@ -1263,7 +1263,7 @@ end
     @model runtime_return_leaf(x=3.0) = x ~ Normal()
     @model runtime_return(a, rhs) = a ~ rhs
     @model runtime_return_outer(m) = b ~ to_submodel(m)
-    for arg in ([1.0, 2.0], (1.0, 2.0), (x=1.0, y=2.0))
+    for arg in ([1.0, 2.0], (x=1.0, y=2.0))
         vn = arg isa NamedTuple ? @varname(a.x) : @varname(a[1])
         for edit in
             (m -> decondition(m, vn), m -> condition(m, vn => 4.0), m -> fix(m, vn => 4.0))

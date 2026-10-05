@@ -62,29 +62,22 @@ struct UnprefixedArgumentValues{V<:VarNamedTuple}
     values::V
 end
 
-# Partial bindings retain the container from which their fields or tuple elements came.
+# Partial bindings retain the NamedTuple from which their fields came.
 # S records whether that whole owner reaches child namespaces.
-struct ModelValueTree{T,V<:Union{VarNamedTuple,Tuple},S}
+struct ModelValueTree{T,V<:VarNamedTuple,S}
     template::T
     values::V
     function ModelValueTree(
         template::T, values::V, ::Val{S}=Val(false)
-    ) where {T,V<:Union{VarNamedTuple,Tuple},S}
-        if values isa Tuple
-            template isa Tuple && length(template) == length(values) ||
-                throw(ArgumentError("Tuple bindings must preserve their template's length"))
-        else
-            all(name -> hasproperty(template, name), keys(values.data)) ||
-                throw(ArgumentError("Field bindings must belong to their template"))
-        end
+    ) where {T,V<:VarNamedTuple,S}
+        all(name -> hasproperty(template, name), keys(values.data)) ||
+            throw(ArgumentError("Field bindings must belong to their template"))
         return new{T,V,S}(template, values)
     end
 end
 
 # Copies and partial edits retain the whole owner's recursive scope.
-function ModelValueTree(
-    tree::ModelValueTree{T,V,S}, values::Union{VarNamedTuple,Tuple}
-) where {T,V,S}
+function ModelValueTree(tree::ModelValueTree{T,V,S}, values::VarNamedTuple) where {T,V,S}
     return ModelValueTree(tree.template, values, Val(S))
 end
 

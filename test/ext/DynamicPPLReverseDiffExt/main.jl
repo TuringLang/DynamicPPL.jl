@@ -89,14 +89,18 @@ end
         (z -> child((a=[z],), y -> y.a[1]), @varname(y)),
         (z -> child([z, zero(z)], first), @varname(y[1])),
         (z -> child([[z], [zero(z)]], y -> y[1][1]), @varname(y[1])),
-        (z -> child(([z], [zero(z)]), y -> y[1][1]), @varname(y[1])),
         (z -> record_child((a=[z], b=[zero(z)])), @varname(y.a)),
         (z -> child(ArgumentRecord([z], [zero(z)]), y -> y.a[1]), @varname(y)),
         (z -> child(ArgumentRecord([z], Float64), y -> y.a[1]), @varname(y)),
         (z -> child(MutableArgumentRecord([z], [zero(z)]), y -> y.a[1]), @varname(y)),
-        (z -> record_child(ArgumentRecord([z], [zero(z)])), @varname(y.a)),
-        (z -> record_child(MutableArgumentRecord([z], [zero(z)])), @varname(y.a)),
     )
+    for value in
+        (([0.4], [0.0]), ArgumentRecord([0.4], [0.0]), MutableArgumentRecord([0.4], [0.0]))
+        model = value isa Tuple ? child(value, y -> y[1][1]) : record_child(value)
+        address = value isa Tuple ? @varname(y[1]) : @varname(y.a)
+        @test_throws ArgumentError decondition(model, address)
+        @test isempty(conditioned(decondition(model, @varname(y))))
+    end
     params = [0.4, 0.7, 0.9]
     for (make_child, vn) in cases, threadsafe in (false, true)
         model = setthreadsafe(parent(make_child, vn), threadsafe)

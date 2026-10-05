@@ -4,7 +4,7 @@ Recursive removal is now explicit: decondition a child before wrapping it → `d
 
 Partial array bindings and removals now accept only `Array` and Array-backed `OffsetArray`, `ComponentArray` and `DimArray`. Views, reshapes, transpose/adjoint wrappers, immutable or tracked arrays, ranges, `MVector`, `SizedArray` and `BitArray` require a whole binding/removal, or `collect` where losing metadata is acceptable.
 
-Bindings now reject edits below slice prefixes and partial bindings through tuples nested in arrays or structs; errors name the address and supported alternative.
+Bindings now reject edits below slice prefixes and partial bindings or removals that rebuild tuple or struct owners at any depth; replace or remove the enclosing owner whole. Argument observations and complete local LHS bindings remain supported.
 
 `VarNamedTuple` membership resolves `begin` and `end` against the stored array. See [#1490](https://github.com/TuringLang/DynamicPPL.jl/pull/1490).
 

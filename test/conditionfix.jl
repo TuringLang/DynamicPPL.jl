@@ -65,22 +65,14 @@ end
     end
     return y
 end
-struct AliasedFields{U,V}
-    u::U
-    v::V
-end
 @testset "latent arrays own backing storage" begin
-    for sibling in (identity, x -> view(x, :)), container in (:array, :namedtuple, :struct)
+    for sibling in (identity, x -> view(x, :)), container in (:array, :namedtuple)
         inner = [1.0, 2.0]
         if container === :array
             m = decondition(aliased_argument([inner, sibling(inner)]), @varname(y[1][1]))
             params = (; y=[[5.0]])
         else
-            value = if container === :namedtuple
-                (u=inner, v=sibling(inner))
-            else
-                AliasedFields(inner, sibling(inner))
-            end
+            value = (u=inner, v=sibling(inner))
             m = decondition(aliased_fields(value), @varname(y.u[1]))
             params = (; y=(u=[5.0],))
         end
@@ -174,25 +166,6 @@ end
     end
 end
 
-@model tuplemodel(x) = (
-    x[1][1] ~ Normal(); x[1][2] ~ Normal(); x[2][1] ~ Normal(); x[2][2] ~ Normal(); x
-)
-@testset "nested tuple fixes survive deconditioning" begin
-    m = fix(
-        tuplemodel(((1.0, 2.0), (3.0, 4.0))),
-        @varname(x[1][1]) => 12.0,
-        @varname(x[2][1]) => 10.0,
-    )
-    removed = decondition(m, @varname(x[2]))
-    @test removed(Xoshiro(1)) == ((12.0, 2.0), (10.0, rand(Xoshiro(1), Normal())))
-    @test removed(Xoshiro(1))[1] == (12.0, 2.0)
-    @test removed(Xoshiro(1))[2][1] == 10.0
-    @test m(Xoshiro(1)) == ((12.0, 2.0), (10.0, 4.0))
-    rng = Xoshiro(1)
-    @test unfix(removed)(Xoshiro(1)) ==
-        ((1.0, 2.0), (rand(rng, Normal()), rand(rng, Normal())))
-end
-
 struct ObservationRecord{A,B}
     a::A
     b::B
@@ -277,22 +250,21 @@ Base.getproperty(x::VirtualBindingRecord, ::Symbol) = getfield(x, :a)
     end
     source = ObservationRecord(1.0, 2.0)
     for bind in (condition, fix)
-        result = returned(bind(record_argument(source), @varname(x.a) => 3.0), (;))
-        @test result === ObservationRecord(3.0, 2.0)
+        @test_throws ArgumentError bind(record_argument(source), @varname(x.a) => 3.0)
+        @test returned(
+            bind(record_argument(source); x=ObservationRecord(3.0, 2.0)), (;)
+        ) === ObservationRecord(3.0, 2.0)
     end
-    result = returned(decondition(record_argument(source), @varname(x.a)), (x=(a=3.0,),))
-    @test result === ObservationRecord(3.0, 2.0)
+    @test_throws ArgumentError decondition(record_argument(source), @varname(x.a))
+    @test returned(decondition(record_argument(source)), (x=(a=3.0, b=2.0),)) ===
+        ObservationRecord(3.0, 2.0)
 end
 
 @testset "condition and fix" begin
     @testset "structured arguments supply partial binding storage" begin
         @model fields_storage(p) = (p.a[1] ~ Normal(); p.a[2] ~ Normal(); p.a)
         @model tuple_storage(p) = (p[1] ~ Normal(); p[2] ~ Normal(); p)
-        cases = (
-            (fields_storage((a=[1.0, 2.0],)), @varname(p.a)),
-            (fields_storage(ObservationRecord([1.0, 2.0], nothing)), @varname(p.a)),
-            (tuple_storage((1.0, 2.0)), @varname(p)),
-        )
+        cases = ((fields_storage((a=[1.0, 2.0],)), @varname(p.a)),)
         for (model, root) in cases, bind in (condition, fix), latent in (false, true)
             base = latent ? decondition(model) : model
             for (optic, value, expected) in (
@@ -527,7 +499,7 @@ end
                 @test_throws "Cannot remove" remove(m, @varname(x[1]))
             end
         end
-        for value in ((1.0, 2.0), [1.0, 2.0]),
+        for value in ([1.0, 2.0],),
             (bind, remove) in ((condition, decondition), (fix, unfix))
 
             m = bind(integer_lhs(value), @varname(x[1]) => 3.0)
@@ -691,8 +663,14 @@ end
         )
         for value in ((; x=3.0, y=4.0), pairs((; x=3.0, y=4.0)))
             m = fix(indexed_keywords(; x=2.0, y=5.0); kwargs=value)
-            @test loglikelihood(unfix(m, @varname(kwargs[:x])), (;)) ==
-                logpdf(Normal(), 2.0)
+            if value isa Base.Pairs
+                @test_throws r"ArgumentError: .*kwargs.*Base.Pairs.*whole value" unfix(
+                    m, @varname(kwargs[:x])
+                )
+            else
+                @test loglikelihood(unfix(m, @varname(kwargs[:x])), (;)) ==
+                    logpdf(Normal(), 2.0)
+            end
             @test loglikelihood(unfix(m, :kwargs), (;)) ==
                 logpdf(Normal(), 2.0) + logpdf(Normal(), 5.0)
         end
@@ -700,7 +678,7 @@ end
 
     @testset "deconditioned arguments retain index bounds" begin
         @model indexed_lhs_argument(x) = (x[1] ~ Normal(); x)
-        for bind in (condition, fix), x in ([1.0, 2.0], (1.0, 2.0))
+        for bind in (condition, fix), x in ([1.0, 2.0],)
             model = decondition(indexed_lhs_argument(x))
             invalid = DynamicPPL.@vnt begin
                 x[3] := 9.0
@@ -791,7 +769,7 @@ end
     end
 
     @testset "partly latent argument storage" begin
-        for ctor in ((X, y) -> (; X, y), LatentRecord, MutableLatentRecord)
+        for ctor in ((X, y) -> (; X, y),)
             d = ctor(zeros(1000, 1000), zeros(2))
             m = decondition(selective_copy(d), @varname(d.y))
             result, _ = init!!(
@@ -859,7 +837,10 @@ end
             (positional(2.0), (; args=(3.0,)), :args, @varname(args[1])),
             (keywords(; x=2.0), (; kwargs=(; x=3.0)), :kwargs, @varname(kwargs.x)),
         )
-            for name in (whole, part)
+            if whole === :args
+                @test_throws ArgumentError unfix(fix(m; value...), part)
+            end
+            for name in (whole === :args ? (whole,) : (whole, part))
                 restored = unfix(fix(m; value...), name)
                 @test loglikelihood(restored, (;)) ≈ logpdf(Normal(), 2.0)
             end
@@ -1102,7 +1083,7 @@ end
 
     @testset "expanded partial bindings validate their extent" begin
         @model indexed(y) = (y[1] ~ Normal(); y[2] ~ Normal(); y)
-        for data in ([1.0, 2.0], (1.0, 2.0)), bind in (condition, fix)
+        for data in ([1.0, 2.0],), bind in (condition, fix)
             model = bind(indexed(data), @varname(y[1]) => 4.0)
             @test_throws r"ArgumentError: .*`y\[3\]`.*outside.*`y`" bind(
                 model, @varname(y[3]) => 9.0
@@ -1110,8 +1091,7 @@ end
             @test_throws r"ArgumentError: .*outside" bind(
                 model, @varname(y[2:3]) => [8.0, 9.0]
             )
-            @test bind(model, @varname(y[2]) => 5.0)(Xoshiro(1)) ==
-                (data isa Tuple ? (4.0, 5.0) : [4.0, 5.0])
+            @test bind(model, @varname(y[2]) => 5.0)(Xoshiro(1)) == [4.0, 5.0]
         end
     end
 
@@ -1160,7 +1140,7 @@ end
             @test isempty(keys(fixed(remove(scalar()))))
         end
         @model indexed(x) = (x[1] ~ Normal(); x[2] ~ Normal(); x)
-        for data in ([1.0, 2.0], (1.0, 2.0)),
+        for data in ([1.0, 2.0],),
             (bind, remove, select) in
             ((condition, decondition, conditioned), (fix, unfix, fixed))
 
@@ -1220,30 +1200,6 @@ end
                     @varname(x.a),
                     @varname(x.b),
                     NoTemplate(),
-                ),
-                (
-                    "tuple",
-                    tuple_lhs_variables(),
-                    (; x=(1.0, 2.0)),
-                    @varname(x[1]),
-                    @varname(x[2]),
-                    zeros(2),
-                ),
-                (
-                    "tuple trailing removal",
-                    tuple_lhs_variables(),
-                    (; x=(2.0, 1.0)),
-                    @varname(x[2]),
-                    @varname(x[1]),
-                    zeros(1),
-                ),
-                (
-                    "tuple argument",
-                    decondition(array_lhs_variables((1.0, 2.0))),
-                    (; x=(1.0, 2.0)),
-                    @varname(x[1]),
-                    @varname(x[2]),
-                    zeros(2),
                 ),
                 (
                     "nested",
@@ -1373,7 +1329,7 @@ end
 
     @testset "unfix restores the last fixed LHS variable's argument-supplied observation" begin
         @model restored_indices(x) = (x[1] ~ Normal(); x[2] ~ Normal(); x)
-        for original in ([1.0, 2.0], (1.0, 2.0))
+        for original in ([1.0, 2.0],)
             bound = fix(decondition(restored_indices(original)), @varname(x[1]) => 5.0)
             for names in ((), (@varname(x),), (@varname(x[1]),))
                 restored = unfix(bound, names...)
@@ -1896,39 +1852,6 @@ end
         @test ForwardDiff.derivative(logp, 1.0) == 1.0
     end
 
-    @testset "partial property overrides preserve struct fields" begin
-        @model function record_lhs_variables(x)
-            x.a ~ Normal()
-            x.b[1] ~ Normal()
-            x.b[2] ~ Normal()
-            return x
-        end
-        data = ObservationRecord(1.0, [2.0, 3.0])
-        for first_op in (condition, fix), last_op in (condition, fix)
-            original = first_op(record_lhs_variables(data); x=data)
-            changed = last_op(original, @varname(x.a) => 4.0, @varname(x.b[1]) => 5.0)
-            result = changed()
-            @test result isa ObservationRecord
-            @test result.a == (first_op === fix && last_op === condition ? 1.0 : 4.0)
-            @test result.b ==
-                (first_op === fix && last_op === condition ? [2.0, 3.0] : [5.0, 3.0])
-            @test isempty(keys(VarInfo(changed)))
-            @test logjoint(changed, VarNamedTuple()) ≈
-                (first_op === condition ? logpdf(Normal(), 3.0) : 0.0) + (
-                if first_op === condition && last_op === condition
-                    sum(logpdf.(Normal(), [4.0, 5.0]))
-                else
-                    0.0
-                end
-            )
-            @test original().a == data.a == 1.0
-            @test original().b == data.b == [2.0, 3.0]
-        end
-        @test_throws ArgumentError condition(
-            record_lhs_variables(data), @varname(x.unknown) => 1.0
-        )
-    end
-
     @testset "property overrides retain replacement containers" begin
         @model fields(x) = (x.a ~ Normal(); return x)
         @model nested_fields(m) = child ~ to_submodel(m)
@@ -1936,8 +1859,7 @@ end
             last_op in (condition, fix),
             (original, replacement) in (
                 ((; a=0.0f0), (; a=1.0f0, b=2.0f0)),
-                (ObservationRecord(0.0f0, 0.0f0), ReplacementRecord(1.0f0, 2.0f0)),
-                (ObservationRecord(big"0", big"0"), (; a=big"1", b=big"2")),
+                ((; a=big"0", b=big"0"), (; a=big"1", b=big"2")),
             )
 
             base = first_op(fields(original); x=replacement)
@@ -2000,22 +1922,37 @@ end
         )
         @test fix(partial, @varname(x[1].a) => 3.0)() == [(; a=3.0, b=2.0)]
 
+        replaced = fix(fields(ObservationRecord(1.0, 2.0)); x=(a=3.0, b=4.0))
+        @test fix(replaced, @varname(x.a) => 5.0)(Xoshiro(1)) == (a=5.0, b=4.0)
+        @test unfix(replaced, @varname(x.a))(Xoshiro(1)) == (a=1.0, b=4.0)
+
+        @model elements(x) = (x[1] ~ Normal(); x[2] ~ Normal(); x)
+        replaced_tuple = fix(elements((1.0, 2.0)); x=[3.0, 4.0])
+        @test fix(replaced_tuple, @varname(x[1]) => 5.0)(Xoshiro(1)) == [5.0, 4.0]
+        @test_throws ArgumentError unfix(replaced_tuple, @varname(x[1]))
+        @test unfix(replaced_tuple, @varname(x))(Xoshiro(1)) == (1.0, 2.0)
+
         base = condition(fields(ObservationRecord(0.0, 0.0)); x=ReplacementRecord(1.0, 2.0))
         loglik =
             p -> loglikelihood(
-                condition(fields(ReplacementRecord(zero(p), zero(p))), @varname(x.a) => p),
+                condition(
+                    fields(ReplacementRecord(zero(p), zero(p)));
+                    x=ReplacementRecord(p, zero(p)),
+                ),
                 VarNamedTuple(),
             )
         @test ForwardDiff.derivative(loglik, 3.0) == -3.0
-        selected = conditioned(condition(base, @varname(x.a) => 3.0))
+        @test_throws ArgumentError condition(base, @varname(x.a) => 3.0)
+        selected = conditioned(condition(base; x=ReplacementRecord(3.0, 2.0)))
         @test conditioned(base)[@varname(x)] isa ReplacementRecord
         @test condition(fields(ObservationRecord(0.0, 0.0)), conditioned(base))() isa
             ReplacementRecord
         @test selected[@varname(x)] isa ReplacementRecord
         @test condition(fields(ObservationRecord(0.0, 0.0)), selected)().a == 3.0
-        mixed = fix(base, @varname(x.a) => 3.0)
+        @test_throws ArgumentError fix(base, @varname(x.a) => 3.0)
+        mixed = fix(base; x=ReplacementRecord(3.0, 2.0))
         supplied = merge(conditioned(mixed), fixed(mixed))
-        @test supplied[@varname(x)] isa VarNamedTuple
+        @test supplied[@varname(x)] isa ReplacementRecord
         @test supplied[@varname(x.a)] == 3.0
         @test supplied[@varname(x.b)] == 2.0
 
@@ -2024,69 +1961,6 @@ end
         parent = condition(namespace_parent(); child=(; x=1.0, y=2.0))
         parent = decondition(fix(parent, @varname(child.x) => 3.0), @varname(child.y))
         @test parent() == (3.0, 0.0)
-    end
-
-    @testset "indexed tuple bindings preserve tuples and roles" begin
-        @model tuple_lhs_variables(x) = (x[1] ~ Normal(); x[2] ~ Normal(); return x)
-        @model nested_tuple(m) = child ~ to_submodel(m)
-        for T in (Float32, BigFloat),
-            first_op in (condition, fix),
-            last_op in (condition, fix)
-
-            original = tuple_lhs_variables((T(1), T(2)))
-            first = first_op(original, @varname(x[1]) => T(3))
-            changed = last_op(first, @varname(x[2]) => T(4))
-            @test changed() == (T(3), T(4))
-            @test Tuple(merge(conditioned(changed), fixed(changed))[@varname(x)]) ==
-                (T(3), T(4))
-            @test original() == (T(1), T(2))
-            @test first() == (T(3), T(2))
-            @test loglikelihood(changed, VarNamedTuple()) ≈
-                (first_op === condition ? logpdf(Normal(), T(3)) : zero(T)) +
-                  (last_op === condition ? logpdf(Normal(), T(4)) : zero(T))
-            @test last_op(nested_tuple(first), @varname(child.x[2]) => T(4))() ==
-                (T(3), T(4))
-        end
-        @model tuple_with_record(x) = (x[1].a ~ Normal(); return x)
-        changed = fix(tuple_with_record(((; a=1.0), 2.0)), @varname(x[1].a) => 3.0)
-        @test changed() == ((; a=3.0), 2.0)
-        @model tuple_with_indexed(x) = (x[1][1] ~ Normal(); return x)
-        @model tuple_with_nested_record(x) = (x[1].a[1] ~ Normal(); return x)
-        for (original, vn, expected) in (
-            (tuple_with_record(((; a=1.0),)), @varname(x[1].a), ((; a=3.0),)),
-            (tuple_with_indexed(((1.0,),)), @varname(x[1][1]), ((3.0,),)),
-            (tuple_with_indexed(([1.0],)), @varname(x[1][1]), ([3.0],)),
-            (
-                tuple_with_nested_record(((; a=(1.0,)),)),
-                @varname(x[1].a[1]),
-                ((; a=(3.0,)),),
-            ),
-        )
-            fixed_model = fix(original, vn => 3.0)
-            @test fixed(fixed_model)[vn] == 3.0
-            @test decondition(fixed_model)() == expected
-            @test fixed(decondition(fixed_model))[vn] == 3.0
-            conditioned_model = condition(fix(original; x=expected), vn => 3.0)
-            @test isempty(conditioned(conditioned_model))
-            @test conditioned(unfix(conditioned_model))[vn] == 3.0
-            @test merge(conditioned(fixed_model), fixed(fixed_model))[@varname(x)] ==
-                expected
-            rebuilt = fix(
-                condition(decondition(original), conditioned(fixed_model)),
-                fixed(fixed_model),
-            )
-            @test rebuilt(Xoshiro(42)) == expected
-            nested = nested_tuple(fixed_model)
-            @test decondition(nested)() == expected
-        end
-        loglik =
-            p -> loglikelihood(
-                condition(
-                    tuple_lhs_variables((zero(p), oftype(p, 2))), @varname(x[1]) => p
-                ),
-                VarNamedTuple(),
-            )
-        @test ForwardDiff.derivative(loglik, 3.0) == -3.0
     end
 
     @testset "observation role lookup does not copy slices" begin
@@ -3094,16 +2968,16 @@ end
         for i in eachindex(x)
             x[i] ~ Normal()
         end
-        a ~ to_submodel(child((0.0, 0.0)), false)
+        a ~ to_submodel(child([0.0, 0.0]), false)
         return (x, a)
     end
     # A whole fixed owner also supplies the unprefixed child's shape.
-    m = fix(shared((0.0, 0.0)); x=(4.0, 5.0))
-    m = condition(m, @varname(x) => (1.0, 2.0, 3.0))
+    m = fix(shared([0.0, 0.0]); x=[4.0, 5.0])
+    m = condition(m, @varname(x) => [1.0, 2.0, 3.0])
     m = fix(m, @varname(x[1]) => 9.0)
-    @test m(StableRNG(1)) == ((9.0, 5.0), (9.0, 5.0))
+    @test m(StableRNG(1)) == ([9.0, 5.0], [9.0, 5.0])
     m = fix(m, @varname(x[2]) => 8.0)
-    @test m(StableRNG(1)) == ((9.0, 8.0), (9.0, 8.0))
+    @test m(StableRNG(1)) == ([9.0, 8.0], [9.0, 8.0])
 end
 
 @testset "incomplete local owner conversion" begin
@@ -3248,7 +3122,7 @@ end
     @model indexed_child(c) = p[1] ~ to_submodel(c)
     @model removal_matrix(x) = (x[1, 1] ~ Normal(); x[2, 2] ~ Normal())
     @model removal_tuple(p) = (p[1] ~ Normal(); p[2] ~ Normal())
-    m = removal_addresses(zeros(3), (present=1.0,), (b=(1.0, 2.0),))
+    m = removal_addresses(zeros(3), (present=1.0,), (b=[1.0, 2.0],))
     addresses = (
         (@varname(x[3]), true),
         (@varname(x[8]), false),
@@ -3293,7 +3167,6 @@ end
             (m, @varname(x[end]), @varname(x[3])),
             (m, @varname(p.b[end]), @varname(p.b[2])),
             (removal_matrix(zeros(2, 2)), @varname(x[end, end]), @varname(x[2, 2])),
-            (removal_tuple((1.0, 2.0)), @varname(p[end]), @varname(p[2])),
         )
             empty_layer = remove(original)
             @test select(bind(empty_layer, dynamic => 2.0)) ==
@@ -3305,7 +3178,7 @@ end
             end
         end
         # The edited layer's current owner supplies bounds, including below a field.
-        owned = bind(m; x=ones(5), p=(b=(1.0, 2.0, 3.0),))
+        owned = bind(m; x=ones(5), p=(b=[1.0, 2.0, 3.0],))
         for vn in (@varname(x[5]), @varname(p.b[3]))
             @test bind(owned, vn => 2.0) isa Model
             @test !haskey(select(remove(owned, scope..., vn)), vn)
@@ -3372,31 +3245,6 @@ end
             @test isempty(fixed(unfix(observed, scope..., invalid)))
         end
     end
-end
-
-@testset "removal through whole bindings with nested tuples" begin
-    @model nested_tuple_fields(p) = (p.b[1] ~ Normal(); p.b[2] ~ Normal(); p)
-    @model tuple_removal_parent(child) = a ~ to_submodel(child)
-    data = (b=(1.0, 2.0),)
-    m = nested_tuple_fields(data)
-    latent = Dict(@varname(p.b[1]) => 8.0)
-    @test returned(decondition(m, @varname(p.b[1])), latent) == (b=(8.0, 2.0),)
-    for (bind, remove) in ((condition, decondition), (fix, unfix))
-        whole = bind(decondition(m); p=data)
-        partial = remove(whole, @varname(p.b[1]))
-        @test returned(partial, latent) == (b=(8.0, 2.0),)
-        @test returned(tuple_removal_parent(partial), Dict(@varname(a.p.b[1]) => 8.0)) ==
-            (b=(8.0, 2.0),)
-        @test_throws "Cannot remove `p.b[3]`" remove(whole, @varname(p.b[3]))
-        @test returned(remove(partial, @varname(p.b[1])), latent) == (b=(8.0, 2.0),)
-    end
-    @test unfix(fix(m; p=(b=(3.0, 4.0),)), @varname(p.b[1]))(Xoshiro(1)) == (b=(1.0, 4.0),)
-
-    @model deeper_tuple(p) = (p[1].b[1][1] ~ Normal(); p)
-    deep = deeper_tuple(((b=((1.0, 2.0),),),))
-    @test returned(
-        decondition(deep, @varname(p[1].b[1][1])), Dict(@varname(p[1].b[1][1]) => 8.0)
-    ) == ((b=((8.0, 2.0),),),)
 end
 
 struct PlaceholderState{T}
@@ -3764,56 +3612,6 @@ mutable struct UndefinedInnerState
     unused::Vector{Float64}
     UndefinedInnerState() = new(1.0)
 end
-@testset "partial structs use Julia storage semantics" begin
-    @testset "mutable inner constructor" begin
-        @model partial_inner(s) = (s.x ~ Normal(); s.y ~ Normal(); s)
-        source = PartialInnerState()
-        for bind in (condition, fix)
-            result = returned(bind(partial_inner(source), @varname(s.x) => 2.0), (;))
-            @test (result.x, result.y) == (2.0, 1.0)
-            @test source.x == 0.0
-        end
-        result = returned(decondition(partial_inner(source), @varname(s.x)), (s=(x=2.0,),))
-        @test (result.x, result.y) == (2.0, 1.0)
-    end
-    @testset "immutable inner constructor" begin
-        @model immutable_inner(s) = (original = s; s = 0.0; s ~ Normal(); original)
-        source = ImmutableInnerState()
-        result = returned(decondition(immutable_inner(source)), (s=2.0,))
-        @test result.x == [0.0]
-        @test result.x !== source.x
-        @test_throws r"ArgumentError: .*ImmutableInnerState" condition(
-            immutable_inner(source), @varname(s.x) => [2.0]
-        )
-        @test source.x == [0.0]
-    end
-    @testset "reconstruction follows method dispatch" begin
-        @model reconstructible(s) = (s.x ~ Normal(); s)
-        for bind in (condition, fix)
-            # Inference sees y::Any and cannot rule out the Symbol constructor,
-            # but the stored Float64 cannot be passed to that constructor.
-            @test_throws r"ArgumentError: .*AbstractFieldInnerState" bind(
-                reconstructible(AbstractFieldInnerState(0.0, :init)), @varname(s.x) => 2.0
-            )
-            for source in
-                (CustomConstructorState(0.0, 1.0, nothing), CustomSetterState(0.0, nothing))
-                result = returned(bind(reconstructible(source), @varname(s.x) => 2.0), (;))
-                @test result.x == 2.0
-                @test source.x == 0.0
-            end
-        end
-    end
-    @testset "undefined reference field" begin
-        @model undefined_inner(s) = (s.x ~ Normal(); s)
-        source = UndefinedInnerState()
-        for bind in (condition, fix)
-            result = returned(bind(undefined_inner(source), @varname(s.x) => 2.0), (;))
-            @test result.x == 2.0
-            @test !isdefined(result, :unused)
-            @test source.x == 1.0
-        end
-    end
-end
 mutable struct ConstBindingState
     const offset::Float64
     x::Float64
@@ -3830,6 +3628,8 @@ end
         @test_throws r"ArgumentError: .*whole value" bind(
             nested_field_binding(source), @varname(s.x[1]) => 2.0
         )
+        whole = bind(nested_field_binding(source); s=source)
+        @test (bind === condition ? conditioned : fixed)(whole)[@varname(s)] === source
         @test source.x == [0.0]
     end
 end
@@ -3837,9 +3637,12 @@ end
 @testset "const fields require a whole replacement" begin
     @model const_binding_state(s) = (s.x ~ Normal(s.offset); s)
     for bind in (condition, fix)
-        @test_throws r"ArgumentError: .*const.*ConstBindingState" bind(
+        @test_throws r"ArgumentError: .*ConstBindingState" bind(
             const_binding_state(ConstBindingState()), @varname(s.offset) => 0.0
         )
+        @test bind(const_binding_state(ConstBindingState()); s=ConstBindingState())(
+            Xoshiro(1)
+        ).x == 0.0
     end
 end
 
@@ -4138,6 +3941,35 @@ function bc_apply_reference!(r, op)
     if p !== nothing
         isempty(targets) && return c.depth == 0 ? :call : :evaluation
         bp = bc_basepath(c)
+        for layer in r.layers
+            layer === l || (adding || op.recursive) || continue
+            candidates = fixed ? merge(layer.owners, layer.fixowners) : layer.owners
+            for (owner, value) in candidates
+                bc_contains(owner, p) && length(p) > length(owner) || continue
+                !fixed &&
+                    layer !== l &&
+                    any(q -> bc_contains(q, p), keys(l.fixowners)) &&
+                    continue
+                for key in p[(length(owner) + 1):end]
+                    value isa Tuple && return layer === l ? :call : :evaluation
+                    if value isa NamedTuple
+                        key isa Symbol && haskey(value, key) || break
+                    elseif value isa AbstractArray
+                        key isa Int && checkbounds(Bool, value, key) || break
+                    else
+                        break
+                    end
+                    value = bc_at(value, (key,))
+                end
+            end
+        end
+        if c.argument &&
+            bc_contains(bp, p) &&
+            length(p) > length(bp) &&
+            bc_basevalue(c) isa Tuple &&
+            !(c.depth > 0 && !fixed && any(q -> bc_contains(q, p), keys(l.fixowners)))
+            return c.depth == 0 ? :call : :evaluation
+        end
         # Supported partial paths must fit the edited layer's latest shape owner.
         if bc_contains(bp, p) && length(p) > length(bp)
             template = bc_shape(c, owners)
@@ -4805,28 +4637,6 @@ end
     end
 end
 
-struct ClosedTuple
-    a::Tuple{Float64,Float64}
-end
-@model closed_tuple(x) = (x[1][1] ~ Normal(); x)
-@model closed_struct(x) = (x.a[1] ~ Normal(); x)
-@testset "nested tuple bindings" begin
-    for bind in (condition, fix),
-        (m, vn) in (
-            (closed_tuple([(1.0, 2.0)]), @varname(x[1][1])),
-            (closed_struct(ClosedTuple((1.0, 2.0))), @varname(x.a[1])),
-        )
-
-        @test_throws r"x.*enclosing element whole" bind(m, vn => 9.0)
-        remove = bind === condition ? decondition : unfix
-        for scope in ((), (DynamicPPL.Recursive(),))
-            @test_throws "Cannot remove `$vn`: cannot partially edit through a tuple nested in an array or struct; remove the enclosing element whole." remove(
-                m, scope..., vn
-            )
-        end
-    end
-end
-
 @model function closed_branch(a, run)
     if run
         a[1] ~ Normal()
@@ -4867,6 +4677,137 @@ end
     )
     @test condition(local_sibling(), @varname(a.obs) => 2.0)(StableRNG(1)) ==
         (obs=2.0, child=3.0)
+end
+
+@testset "tuple and struct owners require whole edits" begin
+    @model element(x) = (x[1] ~ Normal(); x)
+    @model field(x) = (x.a ~ Normal(); x)
+    @model array_tuple(x) = (x[1][1] ~ Normal(); x)
+    @model named_tuple(x) = (x.a[1] ~ Normal(); x)
+    @model tuple_array(x) = (x[1][1] ~ Normal(); x)
+    @model array_struct(x) = (x[1].a ~ Normal(); x)
+    @model struct_array(x) = (x.a[1] ~ Normal(); x)
+    @model named_struct(x) = (x.a.a ~ Normal(); x)
+    @model parent(child) = a ~ to_submodel(child)
+    cases = (
+        (element, (1.0, 2.0), @varname(x[1]), @varname(x), (3.0, 2.0)),
+        (
+            field,
+            ObservationRecord(1.0, 2.0),
+            @varname(x.a),
+            @varname(x),
+            ObservationRecord(3.0, 2.0),
+        ),
+        (array_tuple, [(1.0, 2.0)], @varname(x[1][1]), @varname(x[1]), (3.0, 2.0)),
+        (named_tuple, (a=(1.0, 2.0),), @varname(x.a[1]), @varname(x.a), (3.0, 2.0)),
+        (tuple_array, ([1.0, 2.0],), @varname(x[1][1]), @varname(x), ([3.0, 2.0],)),
+        (
+            array_struct,
+            [ObservationRecord(1.0, 2.0)],
+            @varname(x[1].a),
+            @varname(x[1]),
+            ObservationRecord(3.0, 2.0),
+        ),
+        (
+            struct_array,
+            ObservationRecord([1.0, 2.0], 0.0),
+            @varname(x.a[1]),
+            @varname(x),
+            ObservationRecord([3.0, 2.0], 0.0),
+        ),
+        (
+            named_struct,
+            (a=ObservationRecord(1.0, 2.0),),
+            @varname(x.a.a),
+            @varname(x.a),
+            ObservationRecord(3.0, 2.0),
+        ),
+    )
+    for (make, data, address, owner, replacement) in cases
+        model = make(data)
+        @test loglikelihood(model, (;)) ≈ logpdf(Normal(), 1.0)
+        for (bind, remove) in ((condition, decondition), (fix, unfix))
+            for base in (model, bind(model; x=data), decondition(model))
+                @test_throws r"ArgumentError: .*x.*(Tuple|Record).*whole value" bind(
+                    base, address => 9.0
+                )
+                whole = bind(base, owner => replacement)
+                @test loglikelihood(whole, (;)) ≈
+                    (bind === condition ? logpdf(Normal(), 3.0) : 0.0)
+            end
+            bound = bind(model; x=data)
+            for scope in ((), (DynamicPPL.Recursive(),))
+                @test_throws r"ArgumentError: .*x.*(Tuple|Record).*whole value" remove(
+                    bound, scope..., address
+                )
+                @test isempty(
+                    (bind === condition ? conditioned : fixed)(
+                        remove(bound, scope..., @varname(x))
+                    ),
+                )
+            end
+            child_address = AbstractPPL.append_optic(
+                @varname(a), AbstractPPL.varname_to_optic(address)
+            )
+            @test_throws ArgumentError bind(parent(model), child_address => 9.0)(Xoshiro(1))
+            @test loglikelihood(bind(parent(model), @varname(a.x) => data), (;)) ≈
+                (bind === condition ? logpdf(Normal(), 1.0) : 0.0)
+        end
+    end
+    @model pairs_argument(x) = (x[:a] ~ Normal(); x)
+    data = pairs((a=1.0, b=2.0))
+    model = pairs_argument(data)
+    @test loglikelihood(model, (;)) ≈ logpdf(Normal(), 1.0)
+    for (bind, remove) in ((condition, decondition), (fix, unfix))
+        @test_throws r"ArgumentError: .*Base.Pairs.*whole value" bind(
+            model, @varname(x[:a]) => 3.0
+        )
+        whole = bind(model; x=data)
+        @test (bind === condition ? conditioned : fixed)(whole)[@varname(x)] === data
+        @test_throws r"ArgumentError: .*Base.Pairs.*whole value" remove(
+            whole, @varname(x[:a])
+        )
+        @test isempty(
+            (bind === condition ? conditioned : fixed)(remove(whole, @varname(x)))
+        )
+    end
+    @model local_fields() = (
+        x = ObservationRecord(0.0, 0.0); x.a ~ Normal(); x.b ~ Normal(); x
+    )
+    @model local_tuple() = (x = (0.0, 0.0); x = ((x[1] ~ Normal()), (x[2] ~ Normal())); x)
+    @model local_array() = (x = zeros(2); x[1] ~ Normal(); x[2] ~ Normal(); x)
+    for (model, producer) in
+        ((local_fields(), local_fields()), (local_tuple(), local_array()))
+        values = rand(Xoshiro(42), producer)
+        for bind in (condition, fix)
+            @test isempty(keys(VarInfo(Xoshiro(42), bind(model, values))))
+            for (address, value) in pairs(values)
+                @test (bind === condition ? conditioned : fixed)(
+                    bind(model, address => value)
+                )[address] == value
+            end
+        end
+    end
+    @model struct_observation(s) = (s.x ~ Normal(); s)
+    for source in (
+        PartialInnerState(),
+        AbstractFieldInnerState(0.0, :init),
+        CustomConstructorState(0.0, 1.0, nothing),
+        CustomSetterState(0.0, nothing),
+        UndefinedInnerState(),
+    )
+        model = struct_observation(source)
+        for bind in (condition, fix)
+            @test_throws r"ArgumentError: .*whole value" bind(model, @varname(s.x) => 2.0)
+            whole = bind(model; s=source)
+            @test (bind === condition ? conditioned : fixed)(whole)[@varname(s)] === source
+        end
+    end
+    @model immutable_inner(s) = (original = s; s = 0.0; s ~ Normal(); original)
+    source = ImmutableInnerState()
+    result = returned(decondition(immutable_inner(source)), (s=2.0,))
+    @test result.x == [0.0]
+    @test result.x !== source.x
 end
 
 end

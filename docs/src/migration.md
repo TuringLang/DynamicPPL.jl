@@ -236,6 +236,12 @@ beneath a fixed binding. Enclosing explicit bindings override child bindings, in
 ones. To retain a child's fixed value, remove the enclosing observation with
 `decondition(parent, @varname(a.x))` or the enclosing fixed binding with `unfix`.
 
+Replace partial edits of tuple or struct owners with whole replacements, at any depth:
+`fix(f((1.0, 2.0)), @varname(x[1]) => 9.0)` becomes `fix(f((1.0, 2.0)); x=(9.0, 2.0))`.
+Partial removals likewise require removing the enclosing owner whole. Reading argument
+observations and binding complete local LHS addresses, including produced `VarNamedTuple`s,
+remain supported.
+
 Replace `condition(m, Dict(@varname(x) => v))` with `condition(m, @varname(x) => v)`,
 a NamedTuple, or keyword arguments. Likewise, replace `m | Dict(@varname(x) => v)` with
 `m | (@varname(x) => v)` or `m | (x=v,)`; `|` no longer accepts `AbstractDict`.

@@ -185,20 +185,15 @@ function _overlay_model_node(previous, fixed::ModelValueTree, owners, vn)
     else
         fixed.template
     end
-    values = if fixed.values isa Tuple
-        template = length(template) < length(fixed.template) ? fixed.template : template
-        ntuple(length(template)) do i
-            optic = AbstractPPL.Index((i,), (;))
-            child = _previous_model_child(previous, optic)
-            _overlay_model_node(
-                child,
-                get(fixed.values, i, NoModelBinding()),
-                owners,
-                AbstractPPL.append_optic(vn, optic),
+    values = begin
+        if previous isa ModelValue
+            # Read the shadowed value through the replacement's fields without rebuilding it.
+            previous = VarNamedTuple(
+                _merge_model_fields(
+                    previous, _empty_model_tree(fixed), Val(propertynames(template))
+                ),
             )
         end
-    else
-        previous isa ModelValue && (previous = _expand_model_binding(previous))
         previous = previous isa ModelValueTree ? previous.values : previous
         if previous isa VarNamedTuple
             if owns_shape
@@ -210,8 +205,7 @@ function _overlay_model_node(previous, fixed::ModelValueTree, owners, vn)
             fixed.values
         end
     end
-    if values isa VarNamedTuple &&
-        !all(name -> hasproperty(template, name), keys(values.data))
+    if !all(name -> hasproperty(template, name), keys(values.data))
         template = fixed.template
     end
     return ModelValueTree(template, values, Val(inherited_shape))
@@ -277,7 +271,7 @@ function _model_role(value::VarNamedTuples.ArrayLikeBlock, vn::VarName)
 end
 function _model_role(tree::ModelValueTree, vn::VarName)
     return if VarNamedTuples._haskey_optic(tree, AbstractPPL.Iden())
-        values = tree.values isa VarNamedTuple ? tree.values.data : tree.values
+        values = tree.values.data
         _model_role(values, vn)
     else
         _model_role(tree.values, vn)
@@ -533,33 +527,6 @@ function _expand_model_binding(previous::ModelValue{R,<:AbstractArray}) where {R
     _inherits_binding(previous) && (mask = ModelBindingArray(mask, value))
     return VarNamedTuples.PartialArray(data, mask)
 end
-function _expand_model_binding(previous::ModelValue{R,<:Base.Pairs}) where {R}
-    return _expand_model_binding(_model_value_like(previous, NamedTuple(previous.value)))
-end
-function _expand_model_binding(previous::ModelValue{R,<:Tuple}) where {R}
-    return ModelValueTree(
-        previous.value,
-        map(x -> _model_value_like(previous, x), previous.value),
-        Val(_inherits_binding(previous)),
-    )
-end
-# The fallback expands records through fields and later writes/rebuilds those fields.
-# Collection internals, scalar representations and runtime handles are not records,
-# even when their public properties happen to equal their implementation fields.
-function _model_binding_properties(value, address=nothing, operation="bind")
-    value isa NamedTuple && return keys(value)
-    T = typeof(value)
-    if !isstructtype(T) ||
-        value isa Union{
-            AbstractDict,AbstractSet,AbstractString,Number,Ref,Module,Function,Task,IO,Type
-        } ||
-        which(getproperty, Tuple{T,Symbol}) !== which(getproperty, Tuple{Any,Symbol})
-        _unsupported_partial_binding(value, address; operation)
-    end
-    names = propertynames(value)
-    names === fieldnames(T) || _unsupported_partial_binding(value, address; operation)
-    return names
-end
 function _unsupported_partial_binding(value, address; operation="bind")
     location = if address === nothing
         "value"
@@ -576,28 +543,16 @@ function _unsupported_partial_binding(value, address; operation="bind")
     value isa AbstractDict && (message *= " Or use a NamedTuple/array argument.")
     throw(ArgumentError(message))
 end
-function _expand_model_binding(previous::ModelValue{R}) where {R}
-    fields = _defined_model_properties(
-        previous.value, Val(_model_binding_properties(previous.value))
-    )
+function _expand_model_binding(previous::ModelValue{R,<:NamedTuple}) where {R}
+    fields = previous.value
     return ModelValueTree(
         previous.value,
         _tag_model_values(R, VarNamedTuple(fields)),
         Val(_inherits_binding(previous)),
     )
 end
-_defined_model_properties(value, ::Val{()}) = NamedTuple()
-function _defined_model_properties(value, ::Val{names}) where {names}
-    name = first(names)
-    rest = _defined_model_properties(value, Val(Base.tail(names)))
-    return if hasfield(typeof(value), name) && !isdefined(value, name)
-        rest
-    else
-        merge(NamedTuple{(name,)}((getproperty(value, name),)), rest)
-    end
-end
 function VarNamedTuples._setindex_optic!!(
-    previous::ModelValue{R,<:Union{AbstractArray,Tuple}},
+    previous::ModelValue{R,<:AbstractArray},
     value,
     optic::AbstractPPL.Index,
     template,
@@ -624,38 +579,14 @@ function VarNamedTuples._getindex_optic(
 )
     return VarNamedTuples._getindex_optic(tree.values, optic, vn)
 end
-function VarNamedTuples._getindex_optic(
-    tree::ModelValueTree{<:Tuple}, optic::AbstractPPL.Index, vn
-)
-    optic = AbstractPPL.concretize_top_level(optic, tree.template)
-    return VarNamedTuples._getindex_optic(
-        getindex(tree.values, optic.ix...; optic.kw...), optic.child, vn
-    )
-end
-
 function VarNamedTuples._haskey_optic(tree::ModelValueTree, optic::AbstractPPL.Property)
     return VarNamedTuples._haskey_optic(tree.values, optic)
 end
-function VarNamedTuples._haskey_optic(
-    tree::ModelValueTree{<:Tuple}, optic::AbstractPPL.Index
-)
-    value = _model_tuple_getindex(tree, optic)
-    return !(value isa NoModelBinding) && VarNamedTuples._haskey_optic(value, optic.child)
-end
 function VarNamedTuples._haskey_optic(tree::ModelValueTree, ::AbstractPPL.Iden)
-    values = tree.values
-    if values isa VarNamedTuple
-        return all(propertynames(tree.template)) do name
-            haskey(values.data, name) &&
-                VarNamedTuples._haskey_optic(values.data[name], AbstractPPL.Iden())
-        end
+    return all(propertynames(tree.template)) do name
+        haskey(tree.values.data, name) &&
+            VarNamedTuples._haskey_optic(tree.values.data[name], AbstractPPL.Iden())
     end
-    return all(
-        value ->
-            !(value isa NoModelBinding) &&
-                VarNamedTuples._haskey_optic(value, AbstractPPL.Iden()),
-        values,
-    )
 end
 
 function VarNamedTuples._setindex_optic!!(
@@ -667,98 +598,21 @@ function VarNamedTuples._setindex_optic!!(
     )
     return ModelValueTree(tree, values)
 end
-function VarNamedTuples._setindex_optic!!(
-    tree::ModelValueTree{<:Tuple}, value, optic::AbstractPPL.Index, template, permissions
-)
-    optic = AbstractPPL.concretize_top_level(optic, tree.template)
-    length(optic.ix) == 1 && only(optic.ix) isa Integer && isempty(optic.kw) ||
-        throw(ArgumentError("Tuple bindings require a single integer index"))
-    i = only(optic.ix)
-    previous = tree.values[i]
-    previous = if previous isa Union{VarNamedTuple,VarNamedTuples.PartialArray}
-        copy(previous)
-    else
-        previous
-    end
-    child_template = template isa ModelValueTree ? template.values[i] : tree.template[i]
-    updated = if previous isa NoModelBinding
-        permissions isa VarNamedTuples.MustOverwrite &&
-            throw(VarNamedTuples.MustOverwriteError(permissions))
-        VarNamedTuples.make_leaf(value, optic.child, child_template)
-    else
-        VarNamedTuples._setindex_optic!!(
-            previous, value, optic.child, child_template, permissions
-        )
-    end
-    return ModelValueTree(tree, Base.setindex(tree.values, updated, i))
-end
-
 function VarNamedTuples._mapreduce_recursive(
     f, op, tree::ModelValueTree{T,<:VarNamedTuple}, vn, init
 ) where {T}
     return VarNamedTuples._mapreduce_recursive(f, op, tree.values, vn, init)
 end
-@generated function VarNamedTuples._mapreduce_recursive(
-    f, op, tree::ModelValueTree{T,V}, vn, init
-) where {T,V<:Tuple}
-    exs = map(1:fieldcount(V)) do i
-        quote
-            if !(tree.values[$i] isa NoModelBinding)
-                result = VarNamedTuples._mapreduce_recursive(
-                    f,
-                    op,
-                    tree.values[$i],
-                    AbstractPPL.append_optic(vn, AbstractPPL.Index(($i,), (;))),
-                    result,
-                )
-            end
-        end
-    end
-    return quote
-        result = init
-        $(exs...)
-        result
-    end
-end
 function VarNamedTuples._map_values_recursive!!(f, tree::ModelValueTree)
-    values = if tree.values isa VarNamedTuple
-        map_values!!(f, copy(tree.values))
-    else
-        map(tree.values) do value
-            if value isa NoModelBinding
-                value
-            else
-                VarNamedTuples._map_values_recursive!!(f, _copy_model_node(value))
-            end
-        end
-    end
-    return ModelValueTree(tree, values)
+    return ModelValueTree(tree, map_values!!(f, copy(tree.values)))
 end
 function VarNamedTuples._map_pairs_recursive!!(f, tree::ModelValueTree, vn)
-    values = if tree.values isa VarNamedTuple
-        VarNamedTuples._map_pairs_recursive!!(f, copy(tree.values), vn)
-    else
-        ntuple(length(tree.values)) do i
-            value = tree.values[i]
-            if value isa NoModelBinding
-                value
-            else
-                VarNamedTuples._map_pairs_recursive!!(
-                    f,
-                    _copy_model_node(value),
-                    AbstractPPL.append_optic(vn, AbstractPPL.Index((i,), (;))),
-                )
-            end
-        end
-    end
-    return ModelValueTree(tree, values)
+    return ModelValueTree(
+        tree, VarNamedTuples._map_pairs_recursive!!(f, copy(tree.values), vn)
+    )
 end
 
-function _empty_model_tree(tree::ModelValueTree)
-    values =
-        tree.values isa Tuple ? map(_ -> NoModelBinding(), tree.values) : VarNamedTuple()
-    return ModelValueTree(tree, values)
-end
+_empty_model_tree(tree::ModelValueTree) = ModelValueTree(tree, VarNamedTuple())
 function VarNamedTuples.make_leaf(
     value,
     optic::AbstractPPL.Index,
@@ -788,13 +642,6 @@ function VarNamedTuples.make_leaf(
         _empty_model_tree(template), value, optic, template, VarNamedTuples.AllowAll()
     )
 end
-function VarNamedTuples.make_leaf(
-    value, optic::AbstractPPL.Index, template::ModelValueTree{<:Tuple}
-)
-    return VarNamedTuples._setindex_optic!!(
-        _empty_model_tree(template), value, optic, template, VarNamedTuples.AllowAll()
-    )
-end
 function (::VarNamedTuples.SharedGetProperty{S})(value::ModelValue) where {S}
     return VarNamedTuples.SharedGetProperty{S}()(value.value)
 end
@@ -804,26 +651,8 @@ end
 function _model_role_at(tree::ModelValueTree, optic::AbstractPPL.Property, vn)
     return _model_role_at(tree.values, optic, vn)
 end
-function _model_tuple_getindex(tree::ModelValueTree{<:Tuple}, optic::AbstractPPL.Index)
-    optic = AbstractPPL.concretize_top_level(optic, tree.template)
-    isempty(optic.kw) && checkbounds(Bool, Base.OneTo(length(tree.values)), optic.ix...) ||
-        return NoModelBinding()
-    return getindex(tree.values, optic.ix...)
-end
-function _model_role_at(tree::ModelValueTree{<:Tuple}, optic::AbstractPPL.Index, vn)
-    value = _model_tuple_getindex(tree, optic)
-    return value isa NoModelBinding ? nothing : _model_role_at(value, optic.child, vn)
-end
 function _model_argument_binding(tree::ModelValueTree, optic::AbstractPPL.Property)
     return _model_argument_binding(tree.values, optic)
-end
-function _model_argument_binding(tree::ModelValueTree{<:Tuple}, optic::AbstractPPL.Index)
-    optic = AbstractPPL.concretize_top_level(optic, tree.template)
-    value = _model_tuple_getindex(tree, optic)
-    if value isa Tuple
-        value = ModelValueTree(getindex(tree.template, optic.ix...), value)
-    end
-    return value isa NoModelBinding ? nothing : _model_argument_binding(value, optic.child)
 end
 function _model_argument_binding(
     values::Union{VarNamedTuple,ModelValueTree{<:NamedTuple}},
@@ -860,7 +689,6 @@ end
     prefix=AbstractPPL.Iden();
     check_container=false,
     operation="bind",
-    nested=false,
     check_owner=true,
 )
     optic isa AbstractPPL.Iden && return nothing
@@ -874,41 +702,24 @@ end
             template, AbstractPPL.optic_to_varname(optic ∘ prefix); operation
         )
     end
-    if check_container && nested && template isa Tuple
-        vn = AbstractPPL.optic_to_varname(optic ∘ prefix)
-        advice = if operation == "remove"
-            "remove the enclosing element whole"
-        else
-            "bind the enclosing element whole"
-        end
-        message = "Cannot $operation `$vn`: cannot partially edit through a tuple nested in an array or struct; $advice."
-        throw(ArgumentError(message))
-    end
-    nested |= !(template isa Union{Tuple,NamedTuple,VarNamedTuple,Nothing,NoTemplate})
-    if check_container &&
-        value isa ModelValue &&
-        !(
-            template isa Union{
-                AbstractArray,
-                Tuple,
-                NamedTuple,
-                Base.Pairs,
-                NoTemplate,
-                Missing,
-                Nothing,
-                VarNamedTuple,
-                VarNamedTuples.PartialArray,
-                VarNamedTuples.NestedTemplate,
-                VarNamedTuples.SkipTemplate,
-            }
-        )
+    if check_container && !(
+        template isa Union{
+            AbstractArray,
+            NamedTuple,
+            NoTemplate,
+            Missing,
+            Nothing,
+            VarNamedTuple,
+            VarNamedTuples.PartialArray,
+            VarNamedTuples.NestedTemplate,
+            VarNamedTuples.SkipTemplate,
+        }
+    )
         if operation == "bind" && template isa Number && isempty(propertynames(template))
             _incompatible_partial_binding(template, AbstractPPL.optic_to_varname(prefix))
         end
         address = AbstractPPL.optic_to_varname(optic ∘ prefix)
-        _model_binding_properties(template, address, operation)
-        optic isa AbstractPPL.Property ||
-            _unsupported_partial_binding(template, address; operation)
+        _unsupported_partial_binding(template, address; operation)
     end
     if check_container &&
         template isa AbstractArray &&
@@ -945,7 +756,6 @@ end
         head ∘ prefix;
         check_container,
         operation,
-        nested,
         check_owner=!_partial_binding_selector(template, optic),
     )
 end
@@ -990,7 +800,7 @@ function _check_model_binding(
         _check_partial_binding(previous, optic, AbstractPPL.varname_to_optic(vn))
         if previous isa ModelValue
             compatible = if updates isa VarNamedTuples.PartialArray
-                previous.value isa Union{AbstractArray,Tuple}
+                previous.value isa AbstractArray
             else
                 previous.value isa NamedTuple ||
                     all(name -> hasproperty(previous.value, name), keys(updates.data))
@@ -1001,19 +811,11 @@ function _check_model_binding(
         if check_bounds &&
             child === nothing &&
             (
-                (
-                    previous isa ModelValue && previous.value isa Union{AbstractArray,Tuple}
-                ) ||
-                (
+                (previous isa ModelValue && previous.value isa AbstractArray) || (
                     previous isa VarNamedTuples.PartialArray &&
                     optic isa AbstractPPL.Index &&
                     !(previous.data isa VarNamedTuples.GrowableArray) &&
                     !checkbounds(Bool, previous.data, optic.ix...; optic.kw...)
-                ) ||
-                (
-                    previous isa ModelValueTree{<:Tuple} &&
-                    optic isa AbstractPPL.Index &&
-                    !checkbounds(Bool, Base.OneTo(length(previous.values)), optic.ix...)
                 )
             )
             address = AbstractPPL.append_optic(vn, optic)
@@ -1034,8 +836,7 @@ end
 _copy_model_node(value) = value
 _copy_model_node(value::Union{VarNamedTuple,VarNamedTuples.PartialArray}) = copy(value)
 function _copy_model_node(value::ModelValueTree)
-    values =
-        value.values isa Tuple ? map(_copy_model_node, value.values) : copy(value.values)
+    values = copy(value.values)
     return ModelValueTree(value, values)
 end
 _merge_model_node(previous, updates) = updates
@@ -1103,6 +904,11 @@ function _check_model_binding(
     vn;
     check_bounds=true,
 ) where {T,N,D<:AbstractArray{T,N}}
+    # A complete replacement overlays no part of the shadowed owner.
+    !check_bounds &&
+        eltype(updates) <: ModelValue &&
+        _has_complete_model_data(updates) &&
+        return nothing
     return invoke(
         _check_model_binding,
         Tuple{Any,Union{VarNamedTuple,VarNamedTuples.PartialArray},Any},
@@ -1179,14 +985,6 @@ function _previous_model_child(previous, optic)
     return value === nothing ? NoModelBinding() : value
 end
 function _merge_model_node(previous, updates::ModelValueTree)
-    if updates.values isa Tuple
-        values = ntuple(length(updates.values)) do i
-            child = _previous_model_child(previous, AbstractPPL.Index((i,), (;)))
-            update = updates.values[i]
-            return child isa NoModelBinding ? update : _merge_model_node(child, update)
-        end
-        return ModelValueTree(updates, values)
-    end
     fields = _merge_model_fields(previous, updates, Val(propertynames(updates.template)))
     return ModelValueTree(updates, VarNamedTuple(fields))
 end
@@ -1542,16 +1340,6 @@ function _argument_property_storage(value, template, ::Val{name}) where {name}
     )
     return _argument_child_storage(value, template, AbstractPPL.Property{name}())
 end
-function _argument_storage(values::Tuple, template::Tuple)
-    children = map(values, template) do value, child
-        if value isa NoModelBinding
-            ModelArgumentLeaf(false)
-        else
-            _argument_storage(value, child)
-        end
-    end
-    return ModelArgumentStorage(template, children)
-end
 _argument_child_storage(::ModelValue, template, optic) = ModelArgumentLeaf(true)
 _argument_child_storage(::NoModelBinding, template, optic) = ModelArgumentLeaf(false)
 function _argument_child_storage(value, template, optic)
@@ -1624,11 +1412,6 @@ function _apply_model_bindings(values::VarNamedTuples.PartialArray, ::ModelArgum
 end
 function _apply_model_bindings(tree::ModelValueTree, storage)
     return _apply_model_bindings(tree.values, storage)
-end
-function _apply_model_bindings(values::Tuple, storage)
-    return map(values, storage.value, storage.children) do value, original, child
-        value isa NoModelBinding ? original : _apply_model_bindings(value, child)
-    end
 end
 @generated function _apply_model_bindings(
     values::VarNamedTuple{names}, storage
@@ -1809,18 +1592,7 @@ function _plain_model_values(values::VarNamedTuple)
 end
 function _plain_model_values(tree::ModelValueTree)
     VarNamedTuples._haskey_optic(tree, AbstractPPL.Iden()) && return _model_data(tree)
-    values = if tree.values isa Tuple
-        # Tuple entries are indexed bindings, not a complete array replacement.
-        mask = [!(value isa NoModelBinding) for value in tree.values]
-        last = findlast(mask)
-        VarNamedTuples.PartialArray(
-            VarNamedTuples.GrowableArray(collect(tree.values[1:last])),
-            VarNamedTuples.GrowableArray(mask[1:last]),
-        )
-    else
-        tree.values
-    end
-    return _plain_model_values(values)
+    return _plain_model_values(tree.values)
 end
 function _plain_model_values(values::VarNamedTuples.PartialArray)
     return _fold_model_indices(empty(values), values) do selected, value, optic, template
@@ -1967,8 +1739,6 @@ function _prepare_argument_fields(
             else
                 child = VarNamedTuples._getindex_optic(template, optic, vn)
                 binding = _prepare_argument_fields(child, binding, address)
-                # Preparing a nested binding also replaces its enclosing field.
-                _check_partial_argument_replacement(template, optic, child)
             end
         end
         return VarNamedTuples._setindex_optic!!(
@@ -1997,8 +1767,6 @@ function _convert_partial_argument_binding(
             multi = child isa AbstractArray
             multi ? eltype(child) : typeof(child)
         end
-    elseif template isa Tuple && !multi
-        fieldtype(typeof(template), only(optic.ix))
     else
         Any
     end
@@ -2008,31 +1776,9 @@ function _convert_partial_argument_binding(
             "Cannot exactly represent partial binding at `$vn` in storage element type $T",
         ),
     )
-    _check_partial_argument_replacement(template, optic, converted)
     return _model_value_like(binding, converted)
 end
 
-function _check_partial_argument_replacement(template, optic, value)
-    if optic isa AbstractPPL.Property && ismutabletype(typeof(template))
-        name = _binding_property_name(optic)
-        if hasfield(typeof(template), name) && isconst(typeof(template), name)
-            throw(
-                ArgumentError(
-                    "Cannot bind const property `$name` of argument type $(typeof(template)); bind the whole value instead.",
-                ),
-            )
-        end
-    end
-    if optic isa AbstractPPL.Property && !ismutabletype(typeof(template))
-        name = _binding_property_name(optic)
-        _argument_reconstructible(template, NamedTuple{(name,)}((value,))) || throw(
-            ArgumentError(
-                "Cannot rebuild argument of type $(typeof(template)) when binding property `$name`; provide a ConstructionBase.setproperties method or bind the whole value.",
-            ),
-        )
-    end
-    return nothing
-end
 function _check_binding_template_bounds(
     template, ::AbstractPPL.Iden, vn; operation="bind", check_fields=false
 )
@@ -2141,8 +1887,8 @@ level deep, but nested mutable values remain shared and must not be mutated eith
 may contain either; whole argument placeholders throw even if the body replaces them.
 Use [`decondition`](@ref) to make observations latent; see [Missing data](@ref).
 Bindings below slice or colon prefixes throw; bind before
-prefixing or use an integer-indexed prefix. Partial bindings through tuples nested in arrays
-or structs throw; bind the enclosing element whole. See [Binding rules](@ref).
+prefixing or use an integer-indexed prefix. Partial bindings or removals that rebuild tuple or struct owners
+throw at any depth; bind or remove the enclosing owner whole. See [Binding rules](@ref).
 Incomplete partial bindings into whole `missing`/`nothing` arguments, even after deconditioning, throw
 `ArgumentError` when bound; supply a concrete argument such as `f(zeros(n))` or a whole binding.
 See [Binding rules](@ref) for the argument contract, binding contract and submodel rules,
@@ -2732,7 +2478,6 @@ _binding_storage(::Union{Nothing,Missing,Number}) = NoTemplate()
 _binding_storage(value::ModelValue) = _binding_storage(value.value)
 _binding_storage(value::ModelValueTree) = _binding_storage(_model_data(value))
 _binding_storage(value::NamedTuple) = map(_binding_storage, value)
-_binding_storage(value::Tuple) = map(_binding_storage, collect(value))
 _binding_storage(value::VarNamedTuple) = VarNamedTuple(map(_binding_storage, value.data))
 function _binding_storage(value::VarNamedTuples.PartialArray)
     # Inferred, growable storage has no owner to constrain subsequent indices.
@@ -2883,7 +2628,7 @@ A latent argument retains its old value before its tilde; its sampled value repl
 that value at the tilde and is used by subsequent body statements.
 
 A name matches when it equals, contains, or is contained in a stored binding's address.
-NamedTuple integer indices are rejected: use `x.a` instead of `x[1]`; Tuples keep integer indices.
+NamedTuple integer indices are rejected: use `x.a` instead of `x[1]`; Tuple observations and complete local LHS variables keep integer indices.
 Only the matching conditioned parts are removed. Removing an already latent or only fixed
 LHS variable is a no-op. A name with no LHS variable throws `ArgumentError` when the model
 can decide, using the same address checks as bindings: argument fields, storage bounds,
@@ -3094,26 +2839,6 @@ function _remove_model_binding(
 end
 
 function _remove_model_binding(
-    ::Type{R}, tree::ModelValueTree{<:Tuple}, optic::AbstractPPL.Index
-) where {R}
-    optic = AbstractPPL.concretize_top_level(optic, tree.template)
-    checkbounds(Bool, Base.OneTo(length(tree.values)), optic.ix...) || return tree
-    indices = getindex(ntuple(identity, length(tree.values)), optic.ix...)
-    if indices isa Integer
-        child = _remove_model_binding(R, tree.values[indices], optic.child)
-        return ModelValueTree(tree, Base.setindex(tree.values, child, indices))
-    end
-    selected = ModelValueTree(
-        getindex(tree.template, optic.ix...), getindex(tree.values, optic.ix...)
-    )
-    removed = _remove_model_binding(R, selected, optic.child)
-    values = tree.values
-    for (i, child) in zip(indices, removed.values)
-        values = Base.setindex(values, child, i)
-    end
-    return ModelValueTree(tree, values)
-end
-function _remove_model_binding(
     ::Type{R}, values::VarNamedTuples.PartialArray, optic::AbstractPPL.Index
 ) where {R}
     optic = AbstractPPL.concretize_top_level(optic, values.data)
@@ -3314,7 +3039,7 @@ end
     unfix(model::Model, [DynamicPPL.Recursive()], names...)
 
 Remove this model's fixed bindings at `names...`, or all fixed bindings if no names
-are supplied. NamedTuple integer indices are rejected: use `x.a` instead of `x[1]`; Tuples keep integer indices.
+are supplied. NamedTuple integer indices are rejected: use `x.a` instead of `x[1]`; Tuple observations and complete local LHS variables keep integer indices.
 Matching and the unsupported partial and shared-address cases follow [`decondition`](@ref).
 Removing a valid address with no stored fixed binding is a no-op.
 Pass `DynamicPPL.Recursive()` to remove fixed bindings from enclosed models too, including
