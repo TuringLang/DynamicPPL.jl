@@ -214,11 +214,11 @@ vi
 
 ## Binding arguments and data
 
-Arguments on the LHS are observed by default. Replace placeholder-based latent data,
-including `@model gdemo(x=missing)` called as `gdemo()`, with
-`decondition(gdemo(), @varname(x))`; allocating `x` in the body does not remove its
-argument-supplied observation. `missing` and `nothing`, including nested values, throw
-where a tilde reads them. See [Missing data](@ref) for a complete example.
+Arguments on the LHS are observed by default. A whole `missing` or `nothing` argument,
+including `@model gdemo(x=missing)` called as `gdemo()`, and `missing` elements of a top-level
+argument array still supply no observation. Other `missing` and `nothing` values, such as
+`x[i][j]` or NamedTuple fields, throw where a tilde reads them; replace them with
+`decondition(model, @varname(...))`. See [Missing data](@ref) for a complete example.
 
 For placeholder values in explicit bindings, replace `condition(m; x=missing)` with
 `decondition(m, @varname(x))` when `x` is observed, and `fix(m; x=nothing)` with
@@ -287,8 +287,9 @@ including indexed and field addresses. Replace `a ~ to_submodel(child())` with
 `result ~ to_submodel(child())` when `a` is an argument. Bind the child's LHS variables
 with `condition`; if needed, copy its return value afterwards with `a = result`.
 
-Argument arrays whose element type includes `Missing` are no longer defensively copied.
-Replace mutation of bound storage with mutation of a copy. Partial bindings snapshot the
+Argument arrays are no longer defensively copied unless they hold `missing` elements, which
+are snapshotted at construction. Replace mutation of argument storage after construction
+with constructing the model again. Partial bindings snapshot the
 remaining storage: replace mutation of original arguments after binding with rebuilding the
 partial binding. Replace manual merges of argument data into `conditioned(m)` with
 `conditioned(m)` itself; replace inspection of shadowed observations there with

@@ -124,12 +124,11 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
         end
         for original in (positional_lhs(nothing, 0.0), keyword_lhs(; y=nothing, mu=0.0))
             direct = @inferred direct_lhs(original)
-            @test conditioned(direct)[@varname(y)] === nothing
-            @test_throws r"ArgumentError: .*`y`.*nothing.*decondition" direct(Xoshiro(1))
-            @test keys(VarInfo(Xoshiro(1), decondition(direct))) == [@varname(y)]
+            @test isempty(conditioned(direct))
+            @test keys(VarInfo(Xoshiro(1), direct)) == [@varname(y)]
             restored = unfix(fix(direct; y=2.0))
-            @test conditioned(restored)[@varname(y)] === nothing
-            @test_throws r"ArgumentError: .*`y`.*nothing.*decondition" restored(Xoshiro(1))
+            @test isempty(conditioned(restored))
+            @test keys(VarInfo(Xoshiro(1), restored)) == [@varname(y)]
         end
     end
 

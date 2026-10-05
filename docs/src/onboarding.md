@@ -112,8 +112,9 @@ If the intent is to add a likelihood term for a derived value, prefer
 dot-tilde pipeline was removed.
 
 Model arguments provide argument-supplied observations; `decondition` removes them and
-`condition` replaces them. `missing` does not select stochastic roles. Test the
-data shapes you support, including arrays of arrays and mutable structs.
+`condition` replaces them. Roles come only from bindings: the constructor turns
+placeholder arguments into removals (see [Missing data](@ref)). Test the data shapes you
+support, including arrays of arrays and mutable structs.
 
 ### Test contexts with nested models
 

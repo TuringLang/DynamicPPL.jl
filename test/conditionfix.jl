@@ -212,7 +212,7 @@ Base.getproperty(x::VirtualBindingRecord, ::Symbol) = getfield(x, :a)
     @model nested_dictionary_argument(x) = (x.d[:a] ~ Normal(); x.d[:b] ~ Normal(); x)
     @model nested_property_argument(x) = (x.s.field ~ Normal(); x)
     @model record_argument(x) = (x.a ~ Normal(); x.b ~ Normal(); x)
-    dictionary = Dict(:a => missing, :b => 2.0)
+    dictionary = Dict(:a => 1.0, :b => 2.0)
     virtual = VirtualBindingRecord(1.0)
     for (model, address, container) in (
         (dictionary_argument(dictionary), @varname(x[:a]), dictionary),
@@ -409,14 +409,15 @@ end
         end
     end
 
-    @testset "missing diagnostics follow the LHS variable role" begin
+    @testset "bindings reject placeholders when made" begin
         @model missing_binding() = x ~ Normal()
-        for (bind, remove) in ((condition, decondition), (fix, unfix))
-            bound = bind(missing_binding(); x=missing)
-            @test_throws "LHS variable `x` contains `missing`; make it latent with `$remove`." bound(
-                Xoshiro(1)
+        for (bind, remove) in ((condition, decondition), (fix, unfix)),
+            absent in (missing, nothing)
+
+            @test_throws "Cannot bind `x` to a value containing `missing` or `nothing`; bindings cannot hold placeholders. To make it latent, leave it unbound or use `$remove(model, @varname(x))`." bind(
+                missing_binding(); x=absent
             )
-            @test remove(bound, @varname(x))(Xoshiro(1)) isa Real
+            @test bind(missing_binding(); x=1.0)(Xoshiro(1)) == 1.0
         end
     end
 
@@ -448,16 +449,13 @@ end
                     @test_throws expected bind(m, address => 3.0)
                 end
                 for remove in (decondition, unfix)
-                    if remove === unfix && origin === condition
+                    # The other layer has no storage, so the removal cannot be decided.
+                    if origin !== identity && (remove === unfix) === (origin === condition)
                         @test conditioned(remove(m, address)) == conditioned(m)
+                        @test fixed(remove(m, address)) == fixed(m)
                         continue
                     end
-                    expected = if remove === decondition && origin === fix
-                        "supplies no template"
-                    else
-                        "Cannot remove"
-                    end
-                    @test_throws expected remove(m, address)
+                    @test_throws "Cannot remove" remove(m, address)
                 end
                 @test_throws message m(Xoshiro(1))
             end
@@ -505,7 +503,7 @@ end
         end
     end
 
-    @testset "whole nothing arguments require decondition" begin
+    @testset "whole nothing arguments supply no observation" begin
         @model function placeholder_array(x=nothing)
             x === nothing && (x = zeros(2))
             for i in 1:2
@@ -538,10 +536,8 @@ end
             ),
             model in models
 
-            @test conditioned(model)[vn] === nothing
-            @test_throws r"ArgumentError: .*nothing.*decondition" model(Xoshiro(1))
-            latent = decondition(model, vn)
-            vi = VarInfo(Xoshiro(1), latent)
+            @test isempty(conditioned(model))
+            vi = VarInfo(Xoshiro(1), model)
             @test keys(vi) == names
             @test getloglikelihood(vi) == 0
             expected = if value isa Vector
@@ -549,22 +545,15 @@ end
             else
                 rand(Xoshiro(1), Normal())
             end
-            @test latent(Xoshiro(1)) == expected
-            @test decondition(model)(Xoshiro(1)) == expected
+            @test model(Xoshiro(1)) == expected
+            @test decondition(model, vn)(Xoshiro(1)) == expected
             for (bind, remove) in ((condition, decondition), (fix, unfix))
                 bound = bind(model, vn => value)
                 @test bound(Xoshiro(1)) == value
                 @test isempty(keys(VarInfo(Xoshiro(1), bound)))
                 restored = remove(bound, vn)
-                if remove === decondition
-                    @test isempty(conditioned(restored))
-                    @test keys(VarInfo(Xoshiro(1), restored)) == names
-                else
-                    @test conditioned(restored)[vn] === nothing
-                    @test_throws r"ArgumentError: .*nothing.*decondition" restored(
-                        Xoshiro(1)
-                    )
-                end
+                @test isempty(conditioned(restored))
+                @test keys(VarInfo(Xoshiro(1), restored)) == names
             end
         end
         partially_observed = condition(
@@ -598,7 +587,7 @@ end
         @model local_placeholder_parent() =
             a ~ to_submodel(decondition(placeholder_scalar()))
         parent = placeholder_parent()
-        @test conditioned(parent)[@varname(a)] === nothing
+        @test isempty(conditioned(parent))
         @test_throws r"ArgumentError: Submodel tilde .*model argument `a`.*local LHS" VarInfo(
             Xoshiro(1), parent
         )
@@ -619,6 +608,15 @@ end
         @test isempty(conditioned(direct))
         @test isempty(DynamicPPL._args_on_lhs(direct))
         @test keys(VarInfo(Xoshiro(1), direct)) == [@varname(x[1]), @varname(x[2])]
+        declared = DynamicPPL.Model{false}(
+            placeholder_array().f, (; x=nothing), (;); args_on_lhs=(:x,)
+        )
+        @test isempty(conditioned(declared))
+        @test keys(VarInfo(Xoshiro(1), declared)) == [@varname(x[1]), @varname(x[2])]
+        observed = DynamicPPL.Model{false}(
+            placeholder_array().f, (; x=[1.0, 2.0]), (;); args_on_lhs=(:x,)
+        )
+        @test conditioned(observed)[@varname(x)] == [1.0, 2.0]
     end
 
     @testset "keyword splat partial bindings are explicit errors" begin
@@ -639,18 +637,16 @@ end
         for value in ((; x=1.0, y=missing), (; x=1.0, y=[(a=missing,)]))
             @test keyword_observation(; value...)(Xoshiro(1))[:x] == 1.0
             for bind in (condition, fix), replacement in (value, pairs(value))
-                @test bind(keyword_observation(; x=1.0); kw=replacement)(Xoshiro(1))[:x] ==
-                    1.0
+                @test_throws r"ArgumentError: Cannot bind `kw`.*`missing`" bind(
+                    keyword_observation(; x=1.0); kw=replacement
+                )
             end
+        end
+        for bind in (condition, fix)
+            @test bind(keyword_observation(; x=1.0); kw=(; x=2.0))(Xoshiro(1))[:x] == 2.0
         end
         model = keyword_observation(; x=missing)
         @test_throws r"ArgumentError: .*`kw\[:x\]`.*decondition" model(Xoshiro(1))
-        for (bind, remove) in ((condition, decondition), (fix, unfix))
-            bound = bind(keyword_observation(; x=1.0); kw=(; x=missing))
-            @test_throws "LHS variable `kw[:x]` contains `missing`; make it latent with `$remove`." bound(
-                Xoshiro(1)
-            )
-        end
     end
 
     @testset "keyword splat index removal" begin
@@ -869,17 +865,22 @@ end
     @testset "partly unbound LHS variables" begin
         @model mv_argument(x) = x ~ MvNormal(zeros(2), I)
         @model mv_local() = x ~ MvNormal(zeros(2), I)
-        @test_throws r"ArgumentError: .*x.*whole" VarInfo(
+        @test_throws r"ArgumentError: .*`x`.*bound and unbound" VarInfo(
             decondition(mv_argument([1.0, 2.0]), @varname(x[1]))
         )
         for (bind, remove) in ((condition, decondition), (fix, unfix))
-            @test_throws r"ArgumentError: .*x.*whole" VarInfo(
+            @test_throws r"ArgumentError: .*`x`.*bound and unbound" VarInfo(
                 remove(bind(mv_local(); x=[1.0, 2.0]), @varname(x[1]))
             )
-            @test_throws r"ArgumentError: .*x.*whole" VarInfo(
+            @test_throws r"ArgumentError: .*`x`.*bound and unbound" VarInfo(
                 bind(mv_local(), @varname(x[2]) => 2.0)
             )
         end
+        @test_throws "LHS variable `x` has both bound and unbound subvariables, such as observed and `missing` elements; write element-wise tildes (`x[i] ~ ...`), or bind or decondition all of `x`." VarInfo(
+            mv_argument(Union{Missing,Float64}[missing, 2.0])
+        )
+        @test keys(VarInfo(Xoshiro(1), mv_argument(fill(missing, 2)))) == [@varname(x)]
+        @test isempty(keys(VarInfo(Xoshiro(1), mv_argument([1.0, 2.0]))))
     end
 
     @testset "nonexistent argument fields" begin
@@ -962,8 +963,7 @@ end
         )()
     end
 
-    @testset "whole $value arguments reject body replacement" for value in
-                                                                  (missing, nothing)
+    @testset "whole $value arguments supply no observation" for value in (missing, nothing)
         @model function missing_placeholder(x=missing, ::Type{T}=Float64) where {T}
             if x isa Union{Missing,Nothing}
                 x = Vector{T}(undef, 2)
@@ -976,42 +976,32 @@ end
             return x
         end
         model = missing_placeholder(value)
-        @test_throws r"ArgumentError: .*`x\[1\]`.*(missing|nothing).*decondition" model(
-            Xoshiro(1)
-        )
-        @test_throws r"ArgumentError: .*`x\[1\]`.*(missing|nothing).*decondition" loglikelihood(
-            model, (; s=0.0)
-        )
-        @test keys(rand(Xoshiro(1), decondition(model))) ==
-            [@varname(s), @varname(x[1]), @varname(x[2])]
-        @test keys(rand(Xoshiro(1), decondition(model, @varname(x)))) ==
-            [@varname(s), @varname(x[1]), @varname(x[2])]
+        names = [@varname(s), @varname(x[1]), @varname(x[2])]
+        @test isempty(conditioned(model))
+        @test keys(rand(Xoshiro(1), model)) == names
+        @test loglikelihood(model, (; s=0.0, x=[0.5, 0.25])) == 0
+        @test keys(rand(Xoshiro(1), decondition(model, @varname(x)))) == names
         @test condition(model; x=[1.0, 2.0])(Xoshiro(1)) == [1.0, 2.0]
+        # Each draw replaces the body's storage, so derivatives reach later statements.
+        logp(v) = logjoint(model, (; s=v[1], x=v[2:3]))
+        v = [0.1, 0.2, 0.3]
+        @test ForwardDiff.gradient(logp, v) ≈ [-v[1] + sum(v[2:3] .- v[1]); v[1] .- v[2:3]]
 
         @model function missing_keyword(; x)
             x isa Union{Missing,Nothing} && (x = (a=7.0,))
             return x.a ~ Normal()
         end
-        @test_throws r"ArgumentError: .*`x.a`.*(missing|nothing).*decondition" missing_keyword(;
-            x=value
-        )(
-            Xoshiro(1)
-        )
+        @test missing_keyword(; x=value)(Xoshiro(1)) == rand(Xoshiro(1), Normal())
         @model nested_missing() = child ~ to_submodel(missing_placeholder(value))
-        @test_throws r"ArgumentError: .*`child.x\[1\]`.*(missing|nothing).*decondition" nested_missing()(
-            Xoshiro(1)
-        )
+        @test keys(rand(Xoshiro(1), nested_missing())) ==
+            [@varname(child.s), @varname(child.x[1]), @varname(child.x[2])]
         @model unchanged_missing(x) = x ~ Normal()
-        @test_throws "LHS variable `x` contains `$value`; make it latent with `decondition`." unchanged_missing(
-            value
-        )(
-            Xoshiro(1)
-        )
+        @test unchanged_missing(value)(Xoshiro(1)) == rand(Xoshiro(1), Normal())
         @model unread_missing(x, read) = read ? (x ~ Normal()) : x
         @test unread_missing(value, false)(Xoshiro(1)) === value
     end
 
-    @testset "placeholders are rejected only when an LHS variable reads them" begin
+    @testset "placeholders are rejected when an LHS variable reads them" begin
         @model metadata_lhs(p) = (p.a ~ Normal(); p.a)
         @model indexed_observation(y) = begin
             for i in 1:2
@@ -1020,7 +1010,6 @@ end
             y
         end
         @model whole_observation(y) = y ~ MvNormal(zeros(2), I)
-        @model scalar_observation(y) = y ~ Normal()
         @model product_observation(y) = y ~ product_distribution([Normal(), Normal()])
         for p in (
             (a=1.0, b=missing),
@@ -1030,53 +1019,122 @@ end
         )
             @test metadata_lhs(p)(Xoshiro(1)) == 1.0
             for bind in (condition, fix)
-                @test bind(metadata_lhs((a=1.0, b=2.0)); p)(Xoshiro(1)) == 1.0
+                @test_throws r"ArgumentError: Cannot bind `p`" bind(
+                    metadata_lhs((a=1.0, b=2.0)); p
+                )
             end
         end
-        for bind in (
-            identity,
-            m -> condition(m; y=[1.0, 2.0, missing]),
-            m -> fix(m; y=[1.0, 2.0, missing]),
+        # Argument data may hold placeholders that bindings reject.
+        target = metadata_lhs((a=0.0, b=0.0))
+        @test_throws r"ArgumentError: Cannot bind `p`.*decondition\(model, @varname\(p\)\)" condition(
+            target, conditioned(metadata_lhs((a=1.0, b=missing)))
         )
-            @test isequal(
-                bind(indexed_observation([1.0, 2.0, missing]))(Xoshiro(1)),
-                [1.0, 2.0, missing],
-            )
+        @test condition(target, conditioned(metadata_lhs((a=1.0, b=2.0))))(Xoshiro(1)) ==
+            1.0
+        y = Union{Missing,Float64}[1.0, 2.0, missing]
+        @test isequal(indexed_observation(y)(Xoshiro(1)), y)
+        for (constructor, value, absent, vn) in (
+            (metadata_lhs, (a=missing, b=1.0), missing, @varname(p.a)),
+            (metadata_lhs, (a=nothing, b=1.0), nothing, @varname(p.a)),
+            (indexed_observation, [1.0, nothing], nothing, @varname(y[2])),
+            (whole_observation, [1.0, nothing], nothing, @varname(y)),
+            (product_observation, [1.0, nothing], nothing, @varname(y)),
+        )
+            message = "ArgumentError: LHS variable `$vn` contains `$absent`. Only a whole `missing`/`nothing` argument or a `missing` element `x[i]`/`x[i, j]` of a top-level array argument marks data unobserved; otherwise use `decondition(model, @varname($vn))`, or decondition the enclosing value if it is a tuple or struct."
+            @test_throws message constructor(value)(Xoshiro(1))
         end
-        for absent in (missing, nothing),
-            (constructor, values, vn) in (
-                (metadata_lhs, (; p=(a=absent, b=1.0)), @varname(p.a)),
-                (indexed_observation, (; y=[1.0, absent]), @varname(y[2])),
-                (whole_observation, (; y=[1.0, absent]), @varname(y)),
-                (product_observation, (; y=[1.0, absent]), @varname(y)),
-                (scalar_observation, (; y=absent), @varname(y)),
+        for constructor in (whole_observation, product_observation)
+            @test_throws r"ArgumentError: .*`y`.*both bound and unbound" constructor([
+                1.0, missing
+            ])(
+                Xoshiro(1)
             )
+            @test keys(VarInfo(Xoshiro(1), constructor([missing, missing]))) ==
+                [@varname(y)]
+            @test isempty(keys(VarInfo(Xoshiro(1), constructor([1.0, 2.0]))))
+        end
+    end
 
-            message = "ArgumentError: LHS variable `$vn` contains `$absent`; make it latent with `decondition`."
-            model = constructor(only(values))
-            @test_throws message model(Xoshiro(1))
-            for bind in (condition, fix)
-                bound = bind(model; values...)
-                diagnostic = if bind === fix
-                    replace(message, "decondition" => "unfix")
-                else
-                    message
-                end
-                @test_throws diagnostic bound(Xoshiro(1))
+    @testset "missing elements of argument arrays supply no observation" begin
+        @model function elements(x)
+            m ~ Normal()
+            for i in eachindex(x)
+                x[i] ~ Normal(m, 1)
             end
+            return x
         end
-        @test decondition(scalar_observation(missing))(Xoshiro(1)) isa Real
+        data = Union{Missing,Float64}[missing, 2.0, missing]
+        model = elements(data)
+        names = [@varname(m), @varname(x[1]), @varname(x[3])]
+        @test keys(rand(Xoshiro(1), model)) == names
+        @test keys(conditioned(model)) == [@varname(x[2])]
+        @test logjoint(model, (; m=0.0, x=[0.5, 0.0, 0.25])) ≈
+            sum(logpdf.(Normal(), [0.0, 0.5, 2.0, 0.25]))
+        @test isequal(data, Union{Missing,Float64}[missing, 2.0, missing])
+        # The construction snapshot ignores later mutation of the argument.
+        data[2] = 7.0
+        @test logjoint(model, (; m=0.0, x=[0.5, 0.0, 0.25])) ≈
+            sum(logpdf.(Normal(), [0.0, 0.5, 2.0, 0.25]))
+        ldf = LogDensityFunction(model; adtype=AutoForwardDiff())
+        v = [0.1, 0.2, 0.3]
+        _, gradient = LogDensityProblems.logdensity_and_gradient(ldf, v)
+        @test gradient ≈ [-v[1] + v[2] + 2.0 + v[3] - 3v[1], v[1] - v[2], v[1] - v[3]]
+        @test keys(rand(Xoshiro(1), condition(model; x=[1.0, 2.0, 3.0]))) == [@varname(m)]
+        @test keys(rand(Xoshiro(1), fix(model, @varname(x[1]) => 0.5))) ==
+            [@varname(m), @varname(x[3])]
+
+        for (x, latent) in (
+            (Union{Missing,Float64}[1.0 missing; missing 4.0], [(2, 1), (1, 2)]),
+            (OffsetArray(Union{Missing,Float64}[missing, 2.0], 0:1), [(0,)]),
+            (fill(missing, 2), [(1,), (2,)]),
+            (Union{Missing,Int}[3, missing], [(2,)]),
+            (Union{Missing,Float64}[1.0, 2.0], []),
+        )
+            expected = [VarName{:x}(AbstractPPL.Index(i, (;))) for i in latent]
+            @test keys(rand(Xoshiro(1), elements(x))) == [@varname(m); expected]
+        end
+        @test returned(elements(Union{Missing,Int}[3, missing]), (m=0.0, x=[0.0, 0.25])) ==
+            [3, 0.25]
+
+        @model child(y, mu) = (
+            for i in eachindex(y)
+                y[i] ~ Normal(mu, 1)
+            end
+        )
+        @model parent(y) = (mu ~ Normal(); obs ~ to_submodel(child(y, mu)))
+        @test keys(rand(Xoshiro(1), parent(Union{Missing,Float64}[missing, 1.0]))) ==
+            [@varname(mu), @varname(obs.y[1])]
+
+        # Arrays that cannot be rebuilt reject `missing` elements at construction.
+        for x in (
+            view(Union{Missing,Float64}[missing, 2.0], :),
+            SVector{2,Union{Missing,Float64}}(missing, 2.0),
+        )
+            @test_throws r"ArgumentError: Argument `x` has `missing` elements.*collect\(x\)" elements(
+                x
+            )
+            @test keys(rand(Xoshiro(1), elements(collect(x)))) ==
+                [@varname(m), @varname(x[1])]
+        end
+        @model covariate(X, y) = (
+            for i in eachindex(y)
+                y[i] ~ Normal(X[i, 1], 1)
+            end
+        )
+        @test isempty(
+            keys(rand(Xoshiro(1), covariate(Union{Missing,Float64}[1.0 missing], [0.1])))
+        )
     end
 
     @testset "named tuple LHS variables require whole bindings" begin
         @model named_lhs() = x ~ product_distribution((a=Normal(), b=Normal()))
         for (bind, remove) in ((condition, decondition), (fix, unfix))
             partial = bind(named_lhs(), @varname(x.a) => 1.0)
-            @test_throws r"ArgumentError: .*`x`.*bound as a whole" partial(Xoshiro(1))
+            @test_throws r"ArgumentError: .*`x`.*bound and unbound" partial(Xoshiro(1))
             whole = bind(named_lhs(); x=(; a=1.0, b=2.0))
             @test whole(Xoshiro(1)) == (; a=1.0, b=2.0)
             @test bind(whole, @varname(x.a) => 3.0)(Xoshiro(1)) == (; a=3.0, b=2.0)
-            @test_throws r"ArgumentError: .*`x`.*bound as a whole" remove(
+            @test_throws r"ArgumentError: .*`x`.*bound and unbound" remove(
                 whole, @varname(x.b)
             )(
                 Xoshiro(1)
@@ -1105,7 +1163,7 @@ end
         for bind in (condition, fix)
             for model in
                 (ordinary(1), decondition(ordinary(1)), setthreadsafe(ordinary(1), true))
-                for values in ((; n=2), (; n=nothing), (@varname(n) => 2,))
+                for values in ((; n=2), (@varname(n) => 2,))
                     @test_throws r"ArgumentError: .*`n`.*left-hand side of `~`.*construct" bind(
                         model, values
                     )
@@ -1475,7 +1533,7 @@ end
             return x
         end
         unused_model = optional_lhs(false)
-        for bind in (condition, fix), name in (@varname(y),), data in (1.0, missing)
+        for bind in (condition, fix), name in (@varname(y),), data in (1.0,)
             bound = bind(unused_model, name => data)
             value, vi = init!!(Xoshiro(1), unused_model, VarInfo(), InitFromPrior())
             bound_value, bound_vi = init!!(Xoshiro(1), bound, VarInfo(), InitFromPrior())
@@ -1494,17 +1552,15 @@ end
             @test_throws message logjoint(
                 wrap(field_observation(MissingRecord(missing))), (;)
             )
-            for op in (condition, fix)
-                field_model = op(
-                    field_observation(MissingRecord(1.0)); x=MissingRecord(missing)
-                )
-                diagnostic = if op === fix
-                    Regex(replace(message.pattern, "decondition" => "unfix"))
-                else
-                    message
-                end
-                @test_throws diagnostic logjoint(wrap(field_model), (;))
-            end
+            @test logjoint(wrap(field_observation(MissingRecord(1.0))), (;)) ≈
+                logpdf(Normal(), 1.0)
+        end
+        for op in (condition, fix)
+            @test_throws r"ArgumentError: Cannot bind `x`.*`missing`" op(
+                field_observation(MissingRecord(1.0)); x=MissingRecord(missing)
+            )
+            bound = op(field_observation(MissingRecord(1.0)); x=MissingRecord(2.0))
+            @test logjoint(bound, (;)) == (op === condition ? logpdf(Normal(), 2.0) : 0)
         end
     end
 
@@ -2463,16 +2519,14 @@ end
     end
 end
 
-@testset "partial removal of shapeless observations" begin
+@testset "removals from placeholder arguments are no-ops" begin
     @model allocated_placeholder(x=missing) = (
         (ismissing(x) || x === nothing) && (x = zeros(2)); x[1] ~ Normal(); x
     )
-    for value in (missing, nothing)
-        @test_throws r"Cannot remove part.*no template.*decondition" decondition(
-            allocated_placeholder(value), @varname(x[1])
-        )
-        @test length(decondition(allocated_placeholder(value), @varname(x))(Xoshiro(1))) ==
-            2
+    for value in (missing, nothing), vn in (@varname(x), @varname(x[1]))
+        model = decondition(allocated_placeholder(value), vn)
+        @test isempty(conditioned(model))
+        @test keys(rand(Xoshiro(1), model)) == [@varname(x[1])]
     end
 end
 
@@ -3258,20 +3312,16 @@ Distributions.loglikelihood(d::PlaceholderStateNormal, p::PlaceholderState) = lo
     @model state_parent(child) = a ~ to_submodel(child)
     for value in (nothing, missing)
         original = state_lhs(PlaceholderState(value))
-        for m in (
-            original,
-            condition(original; p=PlaceholderState(value)),
-            fix(original; p=PlaceholderState(value)),
+        @test_throws "LHS variable `p` contains `$value`" logjoint(original, (;))
+        @test_throws "LHS variable `a.p` contains `$value`" logjoint(
+            state_parent(original), (;)
         )
-            @test_throws "LHS variable `p` contains `$value`" logjoint(m, (;))
-            @test_throws "LHS variable `a.p` contains `$value`" logjoint(
-                state_parent(m), (;)
-            )
-        end
         # A field not read by a tilde may still contain a placeholder.
+        p = ObservationRecord(1.0, PlaceholderState(value))
+        @test state_field(p)(Xoshiro(1)) == 1.0
         for bind in (condition, fix)
-            p = ObservationRecord(1.0, PlaceholderState(value))
-            @test bind(state_field(p); p=p)(Xoshiro(1)) == 1.0
+            @test_throws r"ArgumentError: Cannot bind `p`" bind(original; p=original.args.p)
+            @test_throws r"ArgumentError: Cannot bind `p`" bind(state_field(p); p=p)
         end
     end
     for T in (Float32, Float64, BigFloat)
