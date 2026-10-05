@@ -108,12 +108,6 @@ Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
     typeof(DynamicPPL._argument_reconstructible),Any,NamedTuple
 }
 
-# Container validation returns only property names, never numerical payloads.
-# Keep the instance-level propertynames check and method reflection outside AD.
-Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
-    typeof(DynamicPPL._model_binding_properties),Vararg
-}
-
 # Storage type selection returns only type metadata; copying payloads stays differentiable.
 Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
     typeof(DynamicPPL.VarNamedTuples._concretised_eltype),

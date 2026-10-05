@@ -13,7 +13,7 @@ using LogDensityProblems: LogDensityProblems, logdensity_and_gradient, dimension
 using StableRNGs: StableRNG
 using DynamicPPL
 using DynamicPPL.TestUtils.AD: run_ad
-using Test: @test, @testset, @inferred
+using Test: @test, @testset, @inferred, @test_throws
 
 struct RuntimeBindingRecord{A,B}
     a::A
@@ -24,25 +24,19 @@ end
     p.b ~ Normal(p.a)
     return p.a + p.b
 end
-@model function runtime_record_parent(op)
+@model function runtime_record_parent(op, wrap)
     m ~ Normal()
     child = if op === decondition
-        decondition(runtime_record_child(RuntimeBindingRecord(m, 2m)), @varname(p.a))
+        decondition(runtime_record_child(wrap(m, 2m)), @varname(p.a))
     elseif op === unfix
-        unfix(
-            fix(
-                decondition(runtime_record_child(RuntimeBindingRecord(m, 2m)));
-                p=RuntimeBindingRecord(m, 2m),
-            ),
-            @varname(p.a)
-        )
+        unfix(fix(decondition(runtime_record_child(wrap(m, 2m))); p=wrap(m, 2m)), @varname(p.a))
     else
-        op(runtime_record_child(RuntimeBindingRecord(m, 2m)), @varname(p.a) => 3m)
+        op(runtime_record_child(wrap(m, 2m)), @varname(p.a) => 3m)
     end
     a ~ to_submodel(child)
     return z ~ Normal(a)
 end
-@testset "runtime struct bindings" begin
+@testset "runtime record bindings" begin
     for op in (condition, fix, decondition, unfix)
         x = op in (condition, fix) ? [0.3, 0.5] : [0.3, 0.4, 0.5]
         expected = if op in (condition, fix)
@@ -68,7 +62,10 @@ end
         end
         for ad in (AutoForwardDiff(), AutoMooncake())
             @testset "$op $ad" begin
-                model = runtime_record_parent(op)
+                @test_throws ArgumentError runtime_record_parent(op, RuntimeBindingRecord)(
+                    StableRNG(1)
+                )
+                model = runtime_record_parent(op, (a, b) -> (; a, b))
                 _, vi = DynamicPPL.init!!(
                     StableRNG(1), model, VarInfo(VectorValueAccumulator()), InitFromPrior()
                 )
@@ -241,8 +238,8 @@ end
             )
             return z ~ Normal(a + m)
         end
-        for (T, slice) in
-            ((Real, false), (Any, false), (Tuple, false), (Real, true), (Any, true))
+        @test_throws ArgumentError abstract_parent(Val(Tuple))(StableRNG(1))
+        for (T, slice) in ((Real, false), (Any, false), (Real, true), (Any, true))
             model = abstract_parent(Val(T); slice=slice)
             _, vi = DynamicPPL.init!!(
                 StableRNG(123456),

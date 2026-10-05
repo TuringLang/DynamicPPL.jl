@@ -227,8 +227,8 @@ at the tilde:
     submodel: prefix the submodel, or remove without `Recursive()`.
   - Binding or removal below a slice or colon prefix, such as `p[1:2].x`: edit before
     prefixing, or use an integer-indexed prefix.
-  - Partial binding through a tuple nested inside an array or struct: bind the enclosing
-    element whole. Tuples nested only in tuples or NamedTuples remain supported.
+  - Partial binding or removal through a tuple or struct owner, at any depth: bind or
+    remove the enclosing tuple or struct whole.
 
 Whole bindings and removals remain subject to the usual rules.
 
@@ -271,7 +271,7 @@ values inside a whole structured LHS variable. In-place mutation of a whole fixe
 is not detected, because it also mutates the stored binding; the body must not mutate it.
 
 NamedTuple fields must be addressed by name (`x.a`), never by integer index, in both bindings
-and LHS variables. Tuples retain integer indices. Bindings on prefixed models must be at or
+and LHS variables. Tuple observations and complete local LHS variables retain integer indices. Bindings on prefixed models must be at or
 below the prefix. A **submodel namespace** reaches child LHS variables through addresses such as
 `a.x`, or through unchanged names with `auto_prefix=false` unless manually prefixed.
 
@@ -302,8 +302,10 @@ when read, not at construction. Omit unobserved values instead.
 
 ### Binding contract
 
-Partial argument bindings act through supported arrays, tuples, NamedTuples and plain struct fields
-(properties must match fields). Other containers, such as dictionaries, throw
+Partial argument bindings act through supported arrays and NamedTuples.
+Tuple and struct owners cannot be partially rebuilt, even inside arrays or NamedTuples.
+Whole replacement, argument observations through their fields or indices, and complete local
+LHS bindings (including produced `VarNamedTuple`s) remain supported. Other containers, such as dictionaries, throw
 `ArgumentError` at binding time; bind or `decondition` the whole value instead.
 
 Partial array bindings and removals (including `decondition`) rebuild only `Array` and
