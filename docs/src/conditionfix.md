@@ -211,7 +211,7 @@ child inside its body:
 ```@example recursive-removal
 using DynamicPPL, Distributions, Random
 @model observation(counts) = counts ~ Normal()
-@model generator() = y ~ to_submodel(observation(missing))
+@model generator() = y ~ to_submodel(observation(2.0))
 latent = decondition(generator(), DynamicPPL.Recursive(), @varname(y.counts))
 haskey(rand(Xoshiro(1), latent), @varname(y.counts))
 ```
@@ -225,9 +225,6 @@ at the tilde:
 
   - Named recursive removal of a name shared by this model's own LHS and an unprefixed
     submodel: prefix the submodel, or remove without `Recursive()`.
-  - Partial binding or removal below an argument that any branch uses as a submodel return
-    value or namespace: bind or remove the whole argument instead. Whole bindings still
-    cannot explicitly bind a reached submodel return value.
   - Binding or removal below a slice or colon prefix, such as `p[1:2].x`: edit before
     prefixing, or use an integer-indexed prefix.
   - Partial binding through a tuple nested inside an array or struct: bind the enclosing
@@ -278,12 +275,15 @@ and LHS variables. Tuples retain integer indices. Bindings on prefixed models mu
 below the prefix. A **submodel namespace** reaches child LHS variables through addresses such as
 `a.x`, or through unchanged names with `auto_prefix=false` unless manually prefixed.
 
-Explicitly binding a **submodel return value**, assigned by `a ~ to_submodel(...)`, throws
-`ArgumentError` during evaluation. If `a` is an argument, its observation is ignored at this
-tilde. When `a` is a model argument, explicit bindings at or below `a` also throw, possibly
-at binding time if its type excludes the requested field. When `a` is local, `a.x` can bind
-the child's `x`. A NamedTuple argument provides no submodel namespace, so bind the child
-before `to_submodel`.
+A submodel tilde must use a local LHS variable. If `a` is a model argument,
+`a ~ to_submodel(child())`, `a[1] ~ to_submodel(child())`, and
+`a.x ~ to_submodel(child())` throw `ArgumentError` when the tilde runs. Use a new local
+name and condition the child's LHS variables to supply observations. Ordinary Julia assignment
+can still copy the return value into an argument; a later distribution tilde observes
+that argument's current value.
+
+Explicitly binding a **submodel return value**, assigned by local `a ~ to_submodel(...)`,
+also throws `ArgumentError` during evaluation. Bind `a.x` to observe the child's `x`.
 Bindings unused by reached LHS variables are ignored, including branches or submodels not run.
 
 Bound values are not copied, so the body must not mutate them, even through a `view`. Partial
@@ -308,10 +308,9 @@ Partial argument bindings act through arrays, tuples, NamedTuples and plain stru
 
 Use NamedTuples or keyword arguments for whole top-level values, and `VarName` pairs for any
 address. The pair `:x => v` abbreviates `@varname(x) => v`. `VarNamedTuple`s produced by
-DynamicPPL are also accepted. However, `conditioned(m)` includes argument-supplied values
-ignored at submodel-return tildes; remove those entries before passing the listing to
-`condition`, since explicit bindings of return values are rejected. Positional inputs and tuples apply left to right. Every
-`AbstractDict` and other unsupported input throws `ArgumentError`.
+DynamicPPL are also accepted. Positional inputs and tuples apply left to right.
+`condition` and `fix` reject every `AbstractDict` and other unsupported input with
+`ArgumentError`; `model | dict` throws `MethodError`. Use a NamedTuple or ordered pairs.
 
 A **binding schema** is an AbstractPPL `OfNamedTuple` type, such as `@of(z = of(Array, 3))`. It
 supplies storage for partially bound local LHS variables without binding them. A binding
