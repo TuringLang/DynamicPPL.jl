@@ -194,9 +194,10 @@ parent's 3.0 only shadowed the child's 2.0, so removing it uncovers the next bin
 With `DynamicPPL.Recursive()`, `decondition` removes observations of either origin at every
 depth, leaving fixed bindings; `unfix` removes fixed bindings, uncovering observations below.
 The no-name forms clear their layer throughout. Removing a valid address with no binding is
-a no-op, at the call and at evaluation, including removing the same address twice. Unknown
-own names throw when the model can decide. `check_model` warns about recursive removals that
-no reached model uses; a local removal at a child address that names nothing is a silent no-op.
+a no-op, at the call and at evaluation, including removing the same address twice. Removals
+reject the addresses bindings reject when the model can decide: unknown top symbols,
+nonexistent fields, and indices outside storage. `check_model` warns about recursive removals
+that no reached model uses; a local removal at a child address that names nothing is a silent no-op.
 
 A removal belongs to the model that makes it. It reaches enclosed models, including those
 built or bound in the body, but cannot remove an enclosing model's binding. Prefixing moves
