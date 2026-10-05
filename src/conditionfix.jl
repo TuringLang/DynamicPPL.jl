@@ -151,11 +151,13 @@ function _overlay_model_node(previous, fixed::VarNamedTuples.PartialArray, owner
     return _fold_model_indices(
         _copy_model_node(previous), fixed
     ) do result, update, optic, template
+        address = AbstractPPL.append_optic(vn, optic)
+        _check_binding_template_bounds(result, optic, address)
         child = _model_argument_binding(result, optic)
         value = if child === nothing
             update
         else
-            _overlay_model_node(child, update, owners, AbstractPPL.append_optic(vn, optic))
+            _overlay_model_node(child, update, owners, address)
         end
         VarNamedTuples._setindex_optic!!(
             result, value, optic, template, VarNamedTuples.AllowAll()
