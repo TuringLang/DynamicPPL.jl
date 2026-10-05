@@ -494,18 +494,12 @@ function _tag_model_values(::Type{R}, values::VarNamedTuple) where {R}
     return map_pairs!!(pair -> ModelValue{R}(pair.second), copy(values))
 end
 
-# Keep storage templates separate from whole-binding shape ownership.
-# S records the same inherited ownership as ModelValueTree.
-struct ModelBindingArray{T,N,S,A<:AbstractArray{T,N},V<:AbstractArray} <: AbstractArray{T,N}
+# The mask records inherited whole-binding shape ownership.
+struct ModelBindingArray{T,N,A<:AbstractArray{T,N},V<:AbstractArray} <: AbstractArray{T,N}
     data::A
     template::V
 end
-function ModelBindingArray(
-    data::AbstractArray{T,N}, template, ::Val{S}=Val(false)
-) where {T,N,S}
-    return ModelBindingArray{T,N,S,typeof(data),typeof(template)}(data, template)
-end
-_inherits_shape(::ModelBindingArray{T,N,S}) where {T,N,S} = S
+_inherits_shape(::ModelBindingArray) = true
 Base.size(value::ModelBindingArray) = size(value.data)
 Base.axes(value::ModelBindingArray) = axes(value.data)
 Base.getindex(value::ModelBindingArray, indices...) = getindex(value.data, indices...)
@@ -517,17 +511,7 @@ function Base.setindex!(value::ModelBindingArray, child, indices...)
     return value
 end
 function Base.copy(value::ModelBindingArray)
-    return ModelBindingArray(copy(value.data), value.template, Val(_inherits_shape(value)))
-end
-function Base.similar(value::ModelBindingArray, ::Type{T}) where {T}
-    return ModelBindingArray(
-        similar(value.data, T), value.template, Val(_inherits_shape(value))
-    )
-end
-function Base.similar(value::ModelBindingArray, ::Type{T}, dims::Dims) where {T}
-    return ModelBindingArray(
-        similar(value.data, T, dims), value.template, Val(_inherits_shape(value))
-    )
+    return ModelBindingArray(copy(value.data), value.template)
 end
 
 function _expand_model_binding(previous::ModelValue{R,<:AbstractArray}) where {R}
@@ -545,12 +529,8 @@ function _expand_model_binding(previous::ModelValue{R,<:AbstractArray}) where {R
             data[i] = _model_value_like(previous, value[i])
         end
     end
-    # Keep container-preserving data visible to array-specific binding protocols.
-    if typeof(similar(value)) !== typeof(value)
-        data = ModelBindingArray(data, value)
-    end
     # The mask carries recursive ownership without hiding the data's array type.
-    _inherits_binding(previous) && (mask = ModelBindingArray(mask, value, Val(true)))
+    _inherits_binding(previous) && (mask = ModelBindingArray(mask, value))
     return VarNamedTuples.PartialArray(data, mask)
 end
 function _expand_model_binding(previous::ModelValue{R,<:Base.Pairs}) where {R}
@@ -591,6 +571,8 @@ function _unsupported_partial_binding(value, address; operation="bind")
     else
         "Cannot partially bind $location through container type $(typeof(value)); bind or decondition the whole value instead."
     end
+    value isa AbstractArray &&
+        (message *= " Or use collect(v) if losing axes or metadata is acceptable.")
     value isa AbstractDict && (message *= " Or use a NamedTuple/array argument.")
     throw(ArgumentError(message))
 end
@@ -780,7 +762,7 @@ end
 function VarNamedTuples.make_leaf(
     value,
     optic::AbstractPPL.Index,
-    template::VarNamedTuples.PartialArray{T,N,D,<:ModelBindingArray{Bool,N,true}},
+    template::VarNamedTuples.PartialArray{T,N,D,<:ModelBindingArray{Bool,N}},
 ) where {T,N,D<:AbstractArray{T,N}}
     leaf = invoke(
         VarNamedTuples.make_leaf,
@@ -790,7 +772,7 @@ function VarNamedTuples.make_leaf(
         template,
     )
     return VarNamedTuples.PartialArray(
-        leaf.data, ModelBindingArray(leaf.mask, template.mask.template, Val(true))
+        leaf.data, ModelBindingArray(leaf.mask, template.mask.template)
     )
 end
 function VarNamedTuples.make_leaf(value, optic::AbstractPPL.Index, template::ModelValue)
@@ -859,6 +841,12 @@ function _model_role_at(
     return _model_role_at(values, AbstractPPL.Property{only(optic.ix)}(optic.child), vn)
 end
 
+# Partial edits rebuild only explicitly supported storage families. Package extensions
+# admit metadata wrappers only when their backing storage is an Array.
+_partial_binding_array(::AbstractArray) = false
+_partial_binding_array(::Array) = true
+_partial_binding_selector(template, optic) = false
+
 # Binding preparation validates before expansion, while the full address is available.
 # The compiler's evaluation-time NamedTuple check does not validate containers.
 @inline function _check_partial_binding(
@@ -873,10 +861,19 @@ end
     check_container=false,
     operation="bind",
     nested=false,
+    check_owner=true,
 )
     optic isa AbstractPPL.Iden && return nothing
     template = value isa ModelValue ? value.value : value
     template = template isa ModelValueTree ? template.template : template
+    if check_container &&
+        check_owner &&
+        template isa AbstractArray &&
+        !_partial_binding_array(template)
+        _unsupported_partial_binding(
+            template, AbstractPPL.optic_to_varname(optic ∘ prefix); operation
+        )
+    end
     if check_container && nested && template isa Tuple
         vn = AbstractPPL.optic_to_varname(optic ∘ prefix)
         advice = if operation == "remove"
@@ -943,7 +940,13 @@ end
     head = AbstractPPL.ohead(optic)
     child = _model_argument_binding(value, head)
     return _check_namedtuple_index(
-        child, optic.child, head ∘ prefix; check_container, operation, nested
+        child,
+        optic.child,
+        head ∘ prefix;
+        check_container,
+        operation,
+        nested,
+        check_owner=!_partial_binding_selector(template, optic),
     )
 end
 
@@ -1078,18 +1081,14 @@ end
 function _inherit_model_array_owner(previous, updates)
     previous isa VarNamedTuples.PartialArray || return previous
     data, mask = previous.data, previous.mask
-    if updates.data isa ModelBindingArray
-        data = data isa ModelBindingArray ? data.data : data
-        data = ModelBindingArray(data, updates.data.template)
-    end
     if _inherits_shape(updates.mask)
         mask = mask isa ModelBindingArray ? mask.data : mask
-        mask = ModelBindingArray(mask, updates.mask.template, Val(true))
+        mask = ModelBindingArray(mask, updates.mask.template)
     end
     return VarNamedTuples.PartialArray(data, mask)
 end
 function _merge_model_node(
-    previous, updates::VarNamedTuples.PartialArray{T,N,D,<:ModelBindingArray{Bool,N,true}}
+    previous, updates::VarNamedTuples.PartialArray{T,N,D,<:ModelBindingArray{Bool,N}}
 ) where {T,N,D<:AbstractArray{T,N}}
     previous isa NoModelBinding && return copy(updates)
     previous isa ModelValue && (previous = _expand_model_binding(previous))
@@ -1100,7 +1099,7 @@ function _merge_model_node(
 end
 function _check_model_binding(
     previous,
-    updates::VarNamedTuples.PartialArray{T,N,D,<:ModelBindingArray{Bool,N,true}},
+    updates::VarNamedTuples.PartialArray{T,N,D,<:ModelBindingArray{Bool,N}},
     vn;
     check_bounds=true,
 ) where {T,N,D<:AbstractArray{T,N}}
@@ -1114,9 +1113,7 @@ function _check_model_binding(
     )
 end
 function _prepare_argument_fields(
-    template,
-    bindings::VarNamedTuples.PartialArray{T,N,D,<:ModelBindingArray{Bool,N,true}},
-    vn,
+    template, bindings::VarNamedTuples.PartialArray{T,N,D,<:ModelBindingArray{Bool,N}}, vn
 ) where {T,N,D<:AbstractArray{T,N}}
     return invoke(
         _prepare_argument_fields,
@@ -1277,24 +1274,9 @@ function _model_data(values::Array{<:ModelValue})
     (isempty(data) || isconcretetype(eltype(data))) && return data
     return convert(Array{mapreduce(typeof, promote_type, data)}, data)
 end
-function _model_data(values::ModelBindingArray)
-    return _restore_model_array(map(_model_data, values.data), values.template)
-end
-VarNamedTuples.unwrap_internal_array(values::ModelBindingArray) = _model_data(values)
-function _restore_model_array(data, template)
-    if axes(template) == axes(data) && !(data isa typeof(template))
-        result = _writable_model_argument(_copy_model_argument(template))
-        for i in eachindex(data)
-            result = BangBang.setindex!!(result, data[i], i)
-        end
-        return result
-    end
-    return data
-end
 _model_data(values::VarNamedTuple) = map(_model_data, values.data)
 function _model_data(values::VarNamedTuples.PartialArray)
-    data = VarNamedTuples.unwrap_internal_array(values)
-    return values.data isa ModelBindingArray ? data : _model_data(data)
+    return _model_data(VarNamedTuples.unwrap_internal_array(values))
 end
 _model_data(tree::ModelValueTree) = _model_argument_value(tree, tree.template)
 function VarNamedTuples.unwrap_internal_array(tree::ModelValueTree)
@@ -1418,8 +1400,6 @@ function _copy_model_argument(value, vn)
     _check_argument_key_storage(value, vn)
     return _copy_model_argument(value)
 end
-# ReverseDiff supplies writable storage for its immutable tracked-array facade.
-_writable_model_argument(value) = value
 
 # A partial binding can contain nested shape owners. Copy their templates with the
 # argument in one graph so overlapping templates use the same identity table.
@@ -1587,7 +1567,6 @@ end
 function _argument_storage(values::VarNamedTuples.PartialArray, template)
     _has_complete_model_data(values) && return ModelArgumentLeaf(true)
     original = template
-    values.data isa ModelBindingArray && (template = values.data.template)
     _inherits_shape(values.mask) && (template = values.mask.template)
     original = original isa AbstractArray ? original : template
     if template isa AbstractArray &&
@@ -1720,7 +1699,7 @@ function _rebuild_argument_property(result, ::Val{name}, value) where {name}
     return ConstructionBase.setproperties(result, patch)
 end
 function _apply_model_bindings(values::VarNamedTuples.PartialArray, storage)
-    result = _writable_model_argument(storage.value)
+    result = storage.value
     mask =
         if eltype(values) <: VarNamedTuples.ArrayLikeBlock ||
             VarNamedTuples.ArrayLikeBlock <: eltype(values)
@@ -2153,6 +2132,9 @@ A binding owns shape at its address within its layer; partial edits preserve tha
 Binding an argument does not recompute construction-time defaults or select another method.
 
 Bound values are not copied; the body must not mutate them, including through aliases.
+Partial array bindings and removals require `Array` or Array-backed `OffsetArray`,
+`ComponentArray` or `DimArray` owners along the edited path. For other arrays, bind or
+decondition the whole value, or use `collect` if losing axes or metadata is acceptable.
 Partial bindings take a shallow snapshot when made: the owner's container is copied one
 level deep, but nested mutable values remain shared and must not be mutated either.
 `missing`/`nothing` throw where a tilde reads them, naming the LHS variable. Unread parts
@@ -2998,7 +2980,7 @@ end
 function _check_removal_addresses(values, names...)
     for name in names
         vn = name isa VarName ? name : VarName{name}()
-        _check_partial_binding(values, AbstractPPL.varname_to_optic(vn))
+        _check_partial_binding(values, AbstractPPL.varname_to_optic(vn); operation="remove")
         _check_shapeless_removal(
             values, AbstractPPL.varname_to_optic(vn), AbstractPPL.Iden(), vn
         )
@@ -3711,15 +3693,21 @@ _record_removal_use(context, role, marker) = nothing
 function _record_removal_use(context::AbstractParentContext, role, marker)
     return _record_removal_use(childcontext(context), role, marker)
 end
-_apply_parent_removals(::Type{R}, values, ::Tuple{}, context) where {R} = values
+_apply_parent_removals(::Type{R}, values, ::Tuple{}, context, model) where {R} = values
 function _apply_parent_removals(
-    ::Type{R}, values, markers::Tuple{ModelRemoval,Vararg{ModelRemoval}}, context
+    ::Type{R}, values, markers::Tuple{ModelRemoval,Vararg{ModelRemoval}}, context, model
 ) where {R}
     r = first(markers)
+    if r.name !== nothing
+        # An absent binding still has to satisfy the argument's storage rules.
+        # Both the selected layer and the removal address are local to this child.
+        local_model = _reconstruct_model(model; values=LocalModelValues(values))
+        _binding_address_template(local_model, values, r.name; operation="remove")
+    end
     matched = r.name === nothing ? !isempty(values) : _has_removable(R, values, r.name)
     matched && _record_removal_use(context, R, r)
     matched && (values = _remove_marked(R, values, r))
-    return _apply_parent_removals(R, values, Base.tail(markers), context)
+    return _apply_parent_removals(R, values, Base.tail(markers), context, model)
 end
 
 # Filter each layer before overlaying: a local fix must not hide an observation

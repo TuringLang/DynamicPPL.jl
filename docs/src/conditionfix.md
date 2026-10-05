@@ -302,9 +302,18 @@ when read, not at construction. Omit unobserved values instead.
 
 ### Binding contract
 
-Partial argument bindings act through arrays, tuples, NamedTuples and plain struct fields
+Partial argument bindings act through supported arrays, tuples, NamedTuples and plain struct fields
 (properties must match fields). Other containers, such as dictionaries, throw
 `ArgumentError` at binding time; bind or `decondition` the whole value instead.
+
+Partial array bindings and removals (including `decondition`) rebuild only `Array` and
+Array-backed `OffsetArray`, `ComponentArray` and `DimArray` storage. Each owner along the
+edited path must be supported; untouched leaves are unrestricted. Views, reshapes,
+`Transpose`/`Adjoint`, immutable arrays, ranges, ReverseDiff tracked arrays, `MVector`,
+`SizedArray` and `BitArray` throw `ArgumentError`. Bind or decondition the whole value,
+or use `collect(v)` if losing axes or metadata is acceptable. Whole operations retain support
+for all array types. A child partially deconditioned inside a model may therefore work with
+ForwardDiff but throw with ReverseDiff when its argument is a tracked array.
 
 Use NamedTuples or keyword arguments for whole top-level values, and `VarName` pairs for any
 address. The pair `:x => v` abbreviates `@varname(x) => v`. `VarNamedTuple`s produced by

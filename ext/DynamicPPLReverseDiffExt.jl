@@ -6,12 +6,6 @@ using ReverseDiff
 @inline DynamicPPL.maybe_view_ad(vect::ReverseDiff.TrackedArray, range) =
     getindex(vect, range)
 
-# `copy` returns the same non-writable TrackedArray. Keep its scalar tape connections
-# while allocating storage that argument reconstruction and latent tildes can update.
-function DynamicPPL._writable_model_argument(value::ReverseDiff.TrackedArray)
-    return map(identity, value)
-end
-
 DynamicPPL._argument_ad_storage(::Type{<:ReverseDiff.TrackedArray}) = true
 DynamicPPL._copy_model_argument(value::ReverseDiff.TrackedArray) = map(identity, value)
 function DynamicPPL._retain_argument_children!(memo, value::ReverseDiff.TrackedArray, seen)

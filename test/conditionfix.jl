@@ -3,17 +3,17 @@ module DynamicPPLConditionFixTests
 using AbstractPPL: AbstractPPL, of, @of
 using Dates: now
 using ADTypes: AutoForwardDiff
-using ComponentArrays: ComponentVector
+using ComponentArrays: ComponentVector, getaxes
 using Distributions
 using DimensionalData: DimArray, X
 using DynamicPPL
 using ForwardDiff: ForwardDiff
-using LinearAlgebra: I
+using LinearAlgebra: I, Transpose, Adjoint
 using LogDensityProblems: LogDensityProblems
 using OffsetArrays: OffsetArray
 using Test
 using Random: Xoshiro
-using StaticArrays: SVector
+using StaticArrays: SVector, MVector, SizedArray
 using StableRNGs: StableRNG
 using Logging: NullLogger, with_logger
 
@@ -27,22 +27,28 @@ __now__ = now()
     return x
 end
 @model observed_view_parent(x) = a ~ to_submodel(observed_view(x))
-@testset "storage wrappers do not own binding shape" begin
-    for nfixed in (1, 2), recursive in (false, true)
-        m = if recursive
-            condition(observed_view_parent(view(zeros(2), :)), @varname(a.x) => [1.0, 2.0, 3.0])
-        else
-            condition(observed_view(view(zeros(2), :)); x=[1.0, 2.0, 3.0])
-        end
-        for i in 1:nfixed
+@testset "partial edits check argument storage beneath another layer" begin
+    for recursive in (false, true)
+        vn = recursive ? @varname(a.x[1]) : @varname(x[1])
+        for wrap in (identity, x -> view(x, :))
             m = if recursive
-                fix(m, (@varname(a.x[i])) => 9.0)
+                observed_view_parent(wrap(zeros(2)))
             else
-                fix(m, (@varname(x[i])) => 9.0)
+                observed_view(wrap(zeros(2)))
+            end
+            m = if recursive
+                condition(m, @varname(a.x) => [1.0, 2.0, 3.0])
+            else
+                condition(m; x=[1.0, 2.0, 3.0])
+            end
+            if wrap === identity
+                @test fix(m, vn => 9.0)(Xoshiro(1)) == [9.0, 2.0, 3.0]
+            elseif recursive
+                @test_throws ArgumentError fix(m, vn => 9.0)(Xoshiro(1))
+            else
+                @test_throws ArgumentError fix(m, vn => 9.0)
             end
         end
-        @test m(Xoshiro(1)) == vcat(fill(9.0, nfixed), [1.0, 2.0, 3.0][(nfixed + 1):end])
-        @test logjoint(m, (;)) ≈ sum(logpdf.(Normal(), [1.0, 2.0, 3.0][(nfixed + 1):end]))
     end
 end
 
@@ -98,6 +104,12 @@ end
         indexed = bind(indexed_owner(), @varname(a[1].x) => Float32[1])
         @test_throws ArgumentError bind(indexed, @varname(a[1].x[1]) => 0.1)
         @test_throws ArgumentError bind(indexed, @varname(a[1].x) => [1.0])
+        for (owner, address) in ((m, @varname(a.x[1])), (indexed, @varname(a[1].x[1])))
+            valid = bind(owner, address => 0.5)
+            listed = bind === condition ? conditioned(valid) : fixed(valid)
+            @test listed[address] === 0.5f0
+            @test valid(Xoshiro(1)) == [0.5f0]
+        end
         m = bind(property_owner(), @varname(p.a) => Float32[1])
         @test_throws ArgumentError bind(m, @varname(p.a[1]) => 0.1)
         @test_throws ArgumentError bind(m, @varname(p.a) => [1.0])
@@ -1551,34 +1563,6 @@ end
         end
     end
 
-    @testset "partial bindings of static-array arguments" begin
-        @model function static_argument(x::SVector{2,Float64})
-            x[1] ~ Normal()
-            x[2] ~ Normal()
-            return x
-        end
-        @model static_parent(child) = a ~ to_submodel(child)
-        data = SVector(1.0, 2.0)
-        original = static_argument(data)
-        for bind in (condition, fix)
-            changed = bind(original, @varname(x[1]) => 3.0)
-            result = changed(Xoshiro(1))
-            @test result isa typeof(data)
-            @test result == SVector(3.0, 2.0)
-            @test static_parent(changed)(Xoshiro(1)) == SVector(3.0, 2.0)
-            @test original(Xoshiro(1)) === data
-            removed = decondition(changed, @varname(x[2]))
-            @test !haskey(conditioned(removed), @varname(x[2]))
-            @test bind(changed, @varname(x[2]) => 4.0f0)(Xoshiro(1)) == SVector(3.0, 4.0)
-            @test loglikelihood(changed, VarNamedTuple()) ≈
-                logpdf(Normal(), 2.0) + (bind === condition ? logpdf(Normal(), 3.0) : 0.0)
-        end
-        latent = decondition(original, @varname(x[1]))
-        @test !haskey(conditioned(latent), @varname(x[1]))
-        @test conditioned(latent)[@varname(x[2])] == 2.0
-        @test Set(keys(rand(Xoshiro(1), latent))) == Set([@varname(x[1])])
-    end
-
     @testset "partial overrides preserve siblings" begin
         @model function indexed()
             x = zeros(2, 2)
@@ -2213,6 +2197,41 @@ end
             )
             changed = op(changed, @varname(x[1]) => expected[1])
             @test changed() == expected
+        end
+    end
+
+    @testset "ComponentVector partial addresses retain validation" begin
+        @model component_argument(x) = (x.a[1] ~ Normal(); x.b ~ Normal(); x)
+        data = ComponentVector(; a=[1.0, 2.0], b=3.0)
+        for (bind, remove, listing) in
+            ((condition, decondition, conditioned), (fix, unfix, fixed))
+            for vn in
+                (@varname(x.b[1]), @varname(x.a[1][1]), @varname(x.zzz), @varname(x.a[5]))
+                @test_throws ArgumentError bind(component_argument(data), vn => 9.0)
+                @test_throws ArgumentError remove(component_argument(data), vn)
+                @test_throws ArgumentError remove(
+                    bind(component_argument(data); x=data), vn
+                )
+            end
+            for vn in (@varname(x.a[1]), @varname(x.b))
+                valid = bind(component_argument(data), vn => 9.0)
+                @test listing(valid)[vn] == 9.0
+                result = valid(Xoshiro(1))
+                @test result isa typeof(data)
+                @test result.a[2] == 2.0
+                @test vn == @varname(x.b) ? result.b == 9.0 : result.a[1] == 9.0
+                removed = remove(valid, vn)
+                @test !haskey(listing(removed), vn)
+                if bind === condition
+                    @test haskey(rand(Xoshiro(1), removed), vn)
+                else
+                    @test removed(Xoshiro(1)) == data
+                end
+            end
+        end
+        for vn in (@varname(x.a[1]), @varname(x.b))
+            @test haskey(rand(Xoshiro(1), decondition(component_argument(data), vn)), vn)
+            @test unfix(component_argument(data), vn)(Xoshiro(1)) == data
         end
     end
 
@@ -3453,45 +3472,110 @@ end
     @test s.x == 0.0
 end
 
-struct UninferredSimilarVector{T} <: AbstractVector{T}
-    data::Vector{T}
-end
-Base.size(x::UninferredSimilarVector) = size(x.data)
-Base.getindex(x::UninferredSimilarVector, i::Int) = x.data[i]
-Base.setindex!(x::UninferredSimilarVector, value, i::Int) = (x.data[i] = value; x)
-function Base.similar(x::UninferredSimilarVector, ::Type{T}, dims::Dims) where {T}
-    return UninferredSimilarVector(similar(x.data, T, dims))
-end
-function Base.similar(x::UninferredSimilarVector)
-    return Base.inferencebarrier(UninferredSimilarVector(similar(x.data)))
-end
-
-@testset "partial bindings preserve array types" begin
-    # An imprecise inference result must not hide a container-preserving array.
-    x = UninferredSimilarVector([1.0, 2.0])
-    expanded = DynamicPPL._expand_model_binding(
-        DynamicPPL.ModelValue{DynamicPPL.Condition}(x)
-    )
-    @test expanded.data isa UninferredSimilarVector
-
-    @model typed_view_argument(x::SubArray) = (x[1] ~ Normal(); x[2] ~ Normal(); x)
-    x = view([1.0, 2.0], :)
-    for bind in (condition, fix)
-        result = bind(typed_view_argument(x), @varname(x[1]) => 3.0)(Xoshiro(1))
-        @test result isa typeof(x)
-        @test result == [3.0, 2.0]
-        @test x == [1.0, 2.0]
-    end
-    @model replacement_array(x) = (x[1] ~ Normal(); x[2] ~ Normal(); x)
-    for owner in (Float32[1, 2], SVector(1.0f0, 2.0f0), view(Float32[1, 2], :))
-        for bind in (condition, fix)
-            changed = bind(replacement_array(view([1.0, 2.0], :)); x=owner)
-            changed = bind(changed, @varname(x[1]) => 3)
-            changed = bind(changed, @varname(x[2]) => 4)
-            result = changed(Xoshiro(1))
-            @test result isa typeof(owner)
-            @test result == [3, 4]
+@testset "partial edits admit named array storage families" begin
+    @model function array_storage(x)
+        for i in eachindex(x)
+            x[i] ~ Normal()
         end
+        return x
+    end
+    @model storage_parent(child) = a ~ to_submodel(child)
+    @model nested_storage(x) = (x.a[1] ~ Normal(); x.a[2] ~ Normal(); x)
+    @model indexed_storage(x) = (x[1][1] ~ Normal(); x[1][2] ~ Normal(); x)
+    components = ComponentVector(; a=1.0, b=2.0)
+    supported = (
+        [1.0, 2.0], OffsetArray([1.0, 2.0], 0:1), components, DimArray([1.0, 2.0], X)
+    )
+    rejected = (
+        view([1.0, 2.0], :),
+        reshape(view([1.0, 2.0], :), 2, 1),
+        Transpose([1.0, 2.0]),
+        Adjoint([1.0, 2.0]),
+        SVector(1.0, 2.0),
+        1.0:2.0,
+        MVector(1.0, 2.0),
+        SizedArray{Tuple{2}}([1.0, 2.0]),
+        BitArray([true, false]),
+        OffsetArray(view([1.0, 2.0], :), 0:1),
+        ComponentVector(view([1.0, 2.0], :), getaxes(components)),
+        DimArray(view([1.0, 2.0], :), X),
+    )
+    for data in rejected,
+        (bind, remove, listing) in
+        ((condition, decondition, conditioned), (fix, unfix, fixed))
+        # Each rejected family retains whole bindings and whole removal.
+        whole = bind(array_storage(data); x=data)
+        @test listing(whole)[@varname(x)] === data
+        @test !haskey(listing(remove(whole, @varname(x))), @varname(x))
+        i = lastindex(data)
+        vn = @varname(x[i])
+        message = r"x.*container type.*whole.*collect"
+        @test_throws message bind(array_storage(data), vn => 1)
+        @test_throws message remove(whole, vn)
+        removal_message = r"ArgumentError: Cannot remove.*x.*container type.*whole.*collect"
+        @test_throws removal_message remove(array_storage(data), vn)
+        @test_throws removal_message remove(array_storage(data), DynamicPPL.Recursive(), vn)
+        @test_throws removal_message remove(
+            storage_parent(array_storage(data)), DynamicPPL.Recursive(), @varname(a.x[i])
+        )(
+            Xoshiro(1)
+        )
+        @test_throws removal_message remove(
+            storage_parent(whole), DynamicPPL.Recursive(), @varname(a.x[i])
+        )(
+            Xoshiro(1)
+        )
+        @test_throws message bind(
+            storage_parent(array_storage(data)), @varname(a.x[i]) => 1
+        )(
+            Xoshiro(1)
+        )
+        @test_throws message bind(nested_storage((a=data,)), @varname(x.a[i]) => 1)
+        @test_throws message remove(
+            bind(nested_storage((a=data,)); x=(a=data,)), @varname(x.a[i])
+        )
+        @test_throws message bind(indexed_storage([data]), @varname(x[1][i]) => 1)
+        @test_throws message decondition(indexed_storage([data]), @varname(x[1][i]))
+        # Untouched leaves need no reconstruction, even when they are unsupported arrays.
+        @test listing(bind(nested_storage((a=data,)), @varname(x.a) => data))[@varname(
+            x.a
+        )] === data
+    end
+    for good in supported,
+        (bind, remove, listing) in
+        ((condition, decondition, conditioned), (fix, unfix, fixed))
+
+        j = lastindex(good)
+        @test unfix(array_storage(good), @varname(x[j]))(Xoshiro(1)) == good
+        @test unfix(array_storage(good), DynamicPPL.Recursive(), @varname(x[j]))(
+            Xoshiro(1)
+        ) == good
+        @test unfix(
+            storage_parent(array_storage(good)), DynamicPPL.Recursive(), @varname(a.x[j])
+        )(
+            Xoshiro(1)
+        ) == good
+        valid = bind(bind(array_storage(good); x=good), @varname(x[j]) => 3.0)
+        @test listing(valid)[@varname(x[j])] == 3.0
+        @test axes(listing(valid)[@varname(x)]) == axes(good)
+        expected = copy(good)
+        expected[j] = 3.0
+        @test valid(Xoshiro(1)) == expected
+        @test valid(Xoshiro(1)) isa typeof(good)
+        @test storage_parent(valid)(Xoshiro(1)) == expected
+        removed = remove(storage_parent(valid), DynamicPPL.Recursive(), @varname(a.x[j]))
+        @test returned(removed, Dict(@varname(a.x[j]) => 4.0))[j] ==
+            (bind === condition ? 4.0 : good[j])
+        @test !haskey(listing(remove(valid, @varname(x[j]))), @varname(x[j]))
+        @test !haskey(
+            conditioned(decondition(array_storage(good), @varname(x[j]))), @varname(x[j])
+        )
+        @test listing(bind(nested_storage((a=good,)), @varname(x.a[j]) => 3.0))[@varname(
+            x.a[j]
+        )] == 3.0
+        @test listing(bind(indexed_storage([good]), @varname(x[1][j]) => 3.0))[@varname(
+            x[1][j]
+        )] == 3.0
     end
 end
 
@@ -3634,8 +3718,10 @@ end
         return (x.a[2], x.b[2])
     end
     data = Real[0.0, 0.0]
+    removed = decondition(partial_latent_view((a=view(data, :), b=data)), @varname(x.a))
+    @test_throws r"x.a\[1\].*SubArray.*whole" condition(removed, @varname(x.a[1]) => 1.0)
     model = condition(
-        decondition(partial_latent_view((a=view(data, :), b=data)), @varname(x.a)),
+        decondition(partial_latent_view((a=data, b=data)), @varname(x.a)),
         @varname(x.a[1]) => 1.0,
     )
     @test returned(model, (x=(a=[0.0, 2.0],),)) == (2.0, 0.0)

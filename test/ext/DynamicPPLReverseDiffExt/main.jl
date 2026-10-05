@@ -9,7 +9,7 @@ using ForwardDiff: ForwardDiff  # run_ad uses FD for correctness test
 using LogDensityProblems: LogDensityProblems
 using Random: Xoshiro
 using ReverseDiff: ReverseDiff
-using Test: @test, @testset
+using Test: @test, @testset, @test_throws
 
 ADTYPES = (
     ("ReverseDiff", AutoReverseDiff(; compile=false)),
@@ -126,15 +126,28 @@ end
 
 @testset "runtime bindings preserve AD values" begin
     @model runtime_child(y) = (y[1] ~ Normal(); y[2] ~ Normal())
-    @model function runtime_parent(bind, partial)
+    @model function runtime_parent(bind, partial, make_array)
         m ~ Normal()
-        child = runtime_child(fill(zero(m), 2))
+        child = runtime_child(make_array(m))
         bound = partial ? bind(child, @varname(y[1]) => 2m) : bind(child; y=[2m, zero(m)])
         a ~ to_submodel(bound)
         return m
     end
     for bind in (condition, fix), partial in (false, true)
-        ldf = LogDensityFunction(runtime_parent(bind, partial); adtype=AutoReverseDiff())
+        ldf = LogDensityFunction(
+            runtime_parent(bind, partial, m -> fill(zero(m), 2)); adtype=AutoReverseDiff()
+        )
+        if partial
+            @test_throws r"TrackedArray.*whole" LogDensityProblems.logdensity_and_gradient(
+                ldf, [0.3]
+            )
+        else
+            _, gradient = LogDensityProblems.logdensity_and_gradient(ldf, [0.3])
+            @test gradient ≈ [bind === condition ? -1.5 : -0.3]
+        end
+        ldf = LogDensityFunction(
+            runtime_parent(bind, partial, m -> [zero(m), zero(m)]); adtype=AutoReverseDiff()
+        )
         _, gradient = LogDensityProblems.logdensity_and_gradient(ldf, [0.3])
         @test gradient ≈ [bind === condition ? -1.5 : -0.3]
     end
@@ -152,7 +165,7 @@ end
         return a ~ to_submodel(bind(decondition(child(make_array(m))), @varname(y[1]) => m))
     end
     for bind in (condition, fix),
-        make_array in (m -> fill(zero(m), 2), m -> fill(zero(m), 2, 1))
+        make_array in (m -> [zero(m), zero(m)], m -> reshape([zero(m), zero(m)], 2, 1))
 
         model = parent(bind, make_array)
         _, vi = DynamicPPL.init!!(
@@ -283,7 +296,7 @@ end
 end
 @model function wrapped_parent(nfixed, recursive)
     μ ~ Normal()
-    m = condition(wrapped_child(fill(zero(μ), 2), μ); y=[1 + μ, 1 + 2μ, 1 + 3μ])
+    m = condition(wrapped_child([zero(μ), zero(μ)], μ); y=[1 + μ, 1 + 2μ, 1 + 3μ])
     if recursive
         m = wrapped_namespace(m)
         for i in 1:nfixed
@@ -315,5 +328,45 @@ end
             @test val ≈ oracle(μ)
             @test only(grad) ≈ (oracle(μ + 1e-5) - oracle(μ - 1e-5)) / 2e-5
         end
+    end
+end
+
+@testset "tracked arrays require whole binding operations" begin
+    @model tracked_child(x) = (x[1] ~ Normal(); x[2] ~ Normal(); x)
+    ReverseDiff.gradient([0.3, 0.4]) do x
+        for (bind, remove, listing) in
+            ((condition, decondition, conditioned), (fix, unfix, fixed))
+            whole = bind(tracked_child(x); x=x)
+            @test listing(whole)[@varname(x)] === x
+            @test !haskey(listing(remove(whole, @varname(x))), @varname(x))
+            @test_throws r"x\[1\].*TrackedArray.*whole" bind(
+                tracked_child(x), @varname(x[1]) => x[1]
+            )
+            @test_throws r"x\[1\].*TrackedArray.*whole" remove(whole, @varname(x[1]))
+            @test_throws r"x\[1\].*TrackedArray.*whole" decondition(
+                tracked_child(x), @varname(x[1])
+            )
+            scalars = map(identity, x)
+            valid = bind(tracked_child(scalars), @varname(x[1]) => x[1])
+            @test listing(valid)[@varname(x[1])] == x[1]
+            @test !haskey(listing(remove(valid, @varname(x[1]))), @varname(x[1]))
+        end
+        sum(x)
+    end
+
+    @model function view_argument(x)
+        μ = x[1]
+        x[1] ~ Normal()
+        return 0.0 ~ Normal(μ + x[1])
+    end
+    density =
+        x -> logjoint(decondition(view_argument(view(x, :)), @varname(x)), (; x=[0.7]))
+    for x in ([0.3], [-0.4])
+        @test density(x) ≈ logpdf(Normal(), 0.7) + logpdf(Normal(), x[1] + 0.7)
+        @test ReverseDiff.gradient(density, x) ≈ -x .- 0.7
+        @test ReverseDiff.gradient(density, x) ≈ ForwardDiff.gradient(density, x)
+        h = 1e-5
+        @test only(ReverseDiff.gradient(density, x)) ≈
+            (density(x .+ h) - density(x .- h)) / (2h)
     end
 end
