@@ -1126,6 +1126,25 @@ end
         )
     end
 
+    @testset "observed Union{Missing,T} arrays without missing elements" begin
+        @model mv_argument(x) = x ~ MvNormal(zeros(2), I)
+        for x in ([1.0, 2.0], Union{Missing,Float64}[1.0, 2.0])
+            @test loglikelihood(mv_argument(x), (;)) ≈
+                logpdf(MvNormal(zeros(2), I), [1.0, 2.0])
+        end
+        @model function columns(X)
+            m ~ Normal()
+            X[:, 1] ~ MvNormal(fill(m, 2), I)
+            X[:, 2] ~ MvNormal(fill(m, 2), I)
+            return nothing
+        end
+        model = columns(Union{Missing,Float64}[1.0 missing; 2.0 missing])
+        ldf = LogDensityFunction(model; adtype=AutoForwardDiff())
+        v = [0.1, 0.2, 0.3]
+        _, gradient = LogDensityProblems.logdensity_and_gradient(ldf, v)
+        @test gradient ≈ [3.0 + v[2] + v[3] - 5v[1], v[1] - v[2], v[1] - v[3]]
+    end
+
     @testset "named tuple LHS variables require whole bindings" begin
         @model named_lhs() = x ~ product_distribution((a=Normal(), b=Normal()))
         for (bind, remove) in ((condition, decondition), (fix, unfix))
