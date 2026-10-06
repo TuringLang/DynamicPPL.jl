@@ -305,13 +305,11 @@ end
                 @test (model | templated)(Xoshiro(1)) == (3.0, 3.0)
                 whole = bind(model; x=[2.0])
                 @test whole(Xoshiro(1)) == (3.0, bind === condition ? 3.0 : 2.0)
+                @test bind(whole, @varname(x[1]) => 4.0)(Xoshiro(1)) ==
+                    (5.0, bind === condition ? 5.0 : 4.0)
+                @test bind(model, :x => [2.0], @varname(x[1]) => 4.0)(Xoshiro(1)) ==
+                    (5.0, bind === condition ? 5.0 : 4.0)
             end
-            latent = decondition(placeholder_indices(absent))
-            whole = bind(latent; x=[2.0])
-            @test bind(whole, @varname(x[1]) => 4.0)(Xoshiro(1)) ==
-                (5.0, bind === condition ? 5.0 : 4.0)
-            @test bind(latent, :x => [2.0], @varname(x[1]) => 4.0)(Xoshiro(1)) ==
-                (5.0, bind === condition ? 5.0 : 4.0)
             fields = decondition(placeholder_fields(absent))
             @test_throws message bind(fields, @varname(p.a) => 2.0)
             @test bind(fields; p=(a=2.0,))(Xoshiro(1)) == (a=2.0,)
@@ -338,6 +336,11 @@ end
         for model in (gdemo(), gdemo(nothing), keyword_gdemo()), bind in (condition, fix)
             bound = bind(model, draws)
             @test bound(Xoshiro(2)) == draws[@varname(x)]
+            partial = bind(bound, @varname(x[1]) => 9.0)
+            @test partial(Xoshiro(2)) == [9.0, draws[@varname(x[2])]]
+            remove = bind === condition ? decondition : unfix
+            @test keys(rand(Xoshiro(1), remove(partial, @varname(x[1])))) ==
+                [@varname(x[1])]
             @test logjoint(bound, (;)) ≈
                 (bind === condition ? sum(logpdf.(Normal(), draws[@varname(x)])) : 0.0)
             @test (model | draws)(Xoshiro(2)) == draws[@varname(x)]
