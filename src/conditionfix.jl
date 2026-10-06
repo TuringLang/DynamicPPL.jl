@@ -288,13 +288,29 @@ function _partial_binding_error(vn)
         ),
     )
 end
+function _untemplated_parts_error(vn)
+    return throw(
+        ArgumentError(
+            "LHS variable `$vn` is bound by parts, which cannot form a multivariate value " *
+            "in storage without a template. To bind all of `$vn`, bind its whole value in " *
+            "one binding, or supply storage with a model argument or a binding schema; to " *
+            "leave some elements unbound, write element-wise tildes (`x[i] ~ ...`).",
+        ),
+    )
+end
 function _model_role(values::VarNamedTuples.PartialArray, vn::VarName)
     !(values.data isa VarNamedTuples.GrowableArray) &&
         all(values.mask) &&
         return _model_role(values.data, vn)
     any(values.mask) || return nothing
     role = _model_role(values.data[values.mask], vn)
-    return role === nothing ? nothing : _partial_binding_error(vn)
+    role === nothing && return nothing
+    # Growable storage knows only the supplied indices, so without a hole it cannot show
+    # that the LHS variable is partly unbound.
+    values.data isa VarNamedTuples.GrowableArray &&
+        all(values.mask) &&
+        _untemplated_parts_error(vn)
+    return _partial_binding_error(vn)
 end
 function _model_role(values::Union{AbstractArray,Tuple,NamedTuple}, vn::VarName)
     isempty(values) && throw(ArgumentError("Cannot determine the role of empty `$vn`"))

@@ -2387,7 +2387,9 @@ end
             @test op(mvnorm(), templated)() == [1.0, 2.0, 3.0]
             @test op(mvnorm(), @varname(x[:]) => [1.0, 2.0, 3.0], @of(x = of(Array, 3)))() ==
                 [1.0, 2.0, 3.0]
-            @test_throws ArgumentError op(mvnorm(), untemplated)()
+            @test_throws "bound by parts" op(mvnorm(), untemplated)()
+            holes = (@varname(x[1]) => 1.0, @varname(x[3]) => 3.0)
+            @test_throws "both bound and unbound" op(mvnorm(), holes...)()
         end
     end
     @testset "merging growable and templated conditions (#1481)" begin
@@ -4546,8 +4548,8 @@ function bc_expected(r)
         ks = c.kind == :namedwhole ? (:a, :b) : (1, 2)
         entries = [out[(bp..., i)] for i in ks]
         all(e -> e[1] == entries[1][1], entries) || return (:evaluation, out)
-        # Current implementation limitation: growable indexed storage cannot
-        # establish a whole multivariate binding, even when all elements are bound.
+        # Element-wise bindings in growable storage (no argument or schema) cannot
+        # form a whole multivariate value, even when they cover it; this throws.
         if c.kind == :multivariate && !c.argument && entries[1][1] != :latent
             any(l -> haskey(l.owners, bp) || haskey(l.fixowners, bp), r.layers) ||
                 return (:evaluation, out)
