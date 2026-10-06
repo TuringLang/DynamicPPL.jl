@@ -1,9 +1,9 @@
 using AbstractPPL: of, @of
-using ADTypes: AutoReverseDiff
+using ADTypes: AutoForwardDiff, AutoReverseDiff
 using DifferentiationInterface
 using DynamicPPL
 using DynamicPPL.TestUtils: ALL_MODELS
-using DynamicPPL.TestUtils.AD: run_ad
+using DynamicPPL.TestUtils.AD: run_ad, WithExpectedResult
 using Distributions: MvNormal, Normal, logpdf
 using ForwardDiff: ForwardDiff  # run_ad uses FD for correctness test
 using LogDensityProblems: LogDensityProblems
@@ -372,5 +372,61 @@ end
         h = 1e-5
         @test only(ReverseDiff.gradient(density, x)) ≈
             (density(x .+ h) - density(x .- h)) / (2h)
+    end
+end
+
+@model function replaced_argument(x=missing)
+    x === missing && (x = zeros(2))
+    x[1] ~ Normal()
+    return x[2] ~ Normal(x[1])
+end
+@model function replaced_keyword(; x=missing)
+    x === missing && (x = zeros(2))
+    x[1] ~ Normal()
+    return x[2] ~ Normal(x[1])
+end
+@model function partly_missing(x)
+    x[1] ~ Normal()
+    x[2] ~ Normal(x[1])
+    x[3] ~ Normal(x[2])
+    return x
+end
+@model function partly_missing_parent(make_data)
+    m ~ Normal()
+    a ~ to_submodel(partly_missing(make_data(m)))
+    return 0.5 ~ Normal(a[3])
+end
+@testset "placeholder argument gradients" begin
+    # The placeholder pattern depends only on the arguments, so compiled tapes are valid.
+    a, b, c = 0.3, -0.4, 0.8
+    chain = (logpdf(Normal(), a) + logpdf(Normal(a), b), [b - 2a, a - b])
+    # The parent observes `a.x[2] = d` with `dd = ∂d/∂m`; parameters are `m`, `a.x[1]`, `a.x[3]`.
+    function parent_result(d, dd)
+        value = sum(logpdf.(Normal(), [a, b])) + logpdf(Normal(b), d) + logpdf(Normal(d), c)
+        value += logpdf(Normal(c), 0.5)
+        return value, [-a + dd * (b - d + c - d), d - 2b, d - 2c + 0.5]
+    end
+    data = Union{Missing,Float64}[missing, 1.5, missing]
+    cases = (
+        (replaced_argument(), [a, b], chain...),
+        (replaced_keyword(), [a, b], chain...),
+        (
+            partly_missing(data),
+            [a, b],
+            logpdf(Normal(), a) + logpdf(Normal(a), 1.5) + logpdf(Normal(1.5), b),
+            [1.5 - 2a, 1.5 - b],
+        ),
+        (partly_missing_parent(_ -> data), [a, b, c], parent_result(1.5, 0)...),
+        (
+            partly_missing_parent(m -> Union{Missing,typeof(m)}[missing, 2m, missing]),
+            [a, b, c],
+            parent_result(2a, 2)...,
+        ),
+    )
+    for (model, params, value, gradient) in cases,
+        adtype in (AutoForwardDiff(), last.(ADTYPES)...)
+
+        test = WithExpectedResult(value, gradient)
+        @test run_ad(model, adtype; params, test, verbose=false) isa Any
     end
 end
