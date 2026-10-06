@@ -923,10 +923,20 @@ function _model_argument_binding(
         nothing
     end
 end
+function _model_slice_storage(values::VarNamedTuples.PartialArray, optic::AbstractPPL.Index)
+    if values.data isa VarNamedTuples.GrowableArray &&
+        all(i -> i isa Union{Integer,AbstractVector{<:Integer}}, optic.ix) &&
+        any(i -> i isa AbstractVector, optic.ix) &&
+        !checkbounds(Bool, values.data, optic.ix...; optic.kw...)
+        values = VarNamedTuples.grow_to_indices!!(values, optic.ix...; optic.kw...)
+    end
+    return values
+end
 function _model_argument_binding(
     values::VarNamedTuples.PartialArray, optic::AbstractPPL.Index
 )
     optic = AbstractPPL.concretize_top_level(optic, values.data)
+    values = _model_slice_storage(values, optic)
     checkbounds(Bool, values, optic.ix...; optic.kw...) || return nothing
     selected = if VarNamedTuples._is_multiindex(values.data, optic.ix...; optic.kw...)
         subset = VarNamedTuples._subset_partialarray(values, optic.ix...; optic.kw...)

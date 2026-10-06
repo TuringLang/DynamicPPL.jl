@@ -970,6 +970,8 @@ end
 # and across a child boundary. Partial masks alone never establish an owner.
 function _resize_model_binding(previous::VarNamedTuples.PartialArray, axes)
     data = similar(previous.data, eltype(previous), axes)
+    previous.data isa VarNamedTuples.GrowableArray &&
+        (data = VarNamedTuples.GrowableArray(data))
     mask = fill!(similar(data, Bool), false)
     for i in CartesianIndices(data)
         if checkbounds(Bool, previous.data, i) && previous.mask[i]
@@ -2078,20 +2080,31 @@ function _check_binding_template_bounds(
     else
         true
     end
-    inbounds || throw(
-        ArgumentError(
-            "Cannot $operation `$vn`: index is outside the storage at `$(_storage_address(vn, optic))`",
-        ),
-    )
+    inbounds || _outside_storage_error(optic, vn, operation)
     if !(coptic.child isa AbstractPPL.Iden)
         child = if template isa VarNamedTuples.PartialArray
             _model_argument_binding(template, AbstractPPL.ohead(coptic))
         else
             VarNamedTuples.index_template(template, coptic)
         end
-        _check_binding_template_bounds(child, coptic.child, vn; operation, check_fields)
+        # Without storage below it, a slice still bounds the next index by its shape.
+        next = coptic.child
+        if next isa AbstractPPL.Index &&
+            VarNamedTuples._is_multiindex(array, coptic.ix...; coptic.kw...) &&
+            VarNamedTuples.template_array(child) isa
+            Union{NoTemplate,VarNamedTuples.SkipTemplate,Missing} &&
+            all(i -> i isa Union{Integer,AbstractVector{<:Integer}}, next.ix)
+            shape = CartesianIndices(Base.index_shape(coptic.ix...))
+            checkbounds(Bool, shape, next.ix...) ||
+                _outside_storage_error(next, vn, operation)
+        end
+        _check_binding_template_bounds(child, next, vn; operation, check_fields)
     end
     return nothing
+end
+@noinline function _outside_storage_error(optic, vn, operation)
+    message = "Cannot $operation `$vn`: index is outside the storage at `$(_storage_address(vn, optic))`"
+    throw(ArgumentError(message))
 end
 
 """
@@ -2704,6 +2717,32 @@ function _binding_storage(value::VarNamedTuples.PartialArray)
     value.data isa VarNamedTuples.GrowableArray && return NoTemplate()
     return VarNamedTuples._map_values_recursive!!(_binding_storage, copy(value))
 end
+# Whole bindings own their shape even inside growable storage or its slices.
+_binding_address_storage(value, optic) = _binding_storage(value)
+function _binding_address_storage(
+    ::VarNamedTuples.PartialArray{<:Any,<:Any,<:SubArray},
+    ::Union{AbstractPPL.Iden,AbstractPPL.Property},
+)
+    return NoTemplate()
+end
+function _binding_address_storage(
+    value::VarNamedTuples.PartialArray, optic::AbstractPPL.Index
+)
+    value.data isa Union{VarNamedTuples.GrowableArray,SubArray} &&
+        all(i -> i isa Union{Integer,AbstractVector{<:Integer}}, optic.ix) ||
+        return _binding_storage(value)
+    child = _model_argument_binding(value, AbstractPPL.ohead(optic))
+    child === nothing && return NoTemplate()
+    return VarNamedTuples.SkipTemplate{1}(_binding_address_storage(child, optic.child))
+end
+function _binding_address_storage(
+    value::VarNamedTuple, optic::AbstractPPL.Property{S}
+) where {S}
+    storage = _binding_storage(value)
+    haskey(value.data, S) || return storage
+    child = _binding_address_storage(value.data[S], optic.child)
+    return VarNamedTuple(merge(storage.data, NamedTuple{(S,)}((child,))))
+end
 
 @generated function _binding_address_template(
     model::Model, values, address; operation="bind"
@@ -2743,7 +2782,9 @@ end
     end
     return quote
         $(arguments...)
-        return _binding_storage(_binding_template(model, values, address))
+        return _binding_address_storage(
+            _binding_template(model, values, address), AbstractPPL.getoptic(address)
+        )
     end
 end
 
@@ -2789,11 +2830,6 @@ end
         !_has_unprefixed_submodel(metadata) &&
         AbstractPPL.getsym(local_name) ∉ names
         _binding_name_error(vn, operation)
-    end
-    previous = get(values.data, AbstractPPL.getsym(vn), NoTemplate())
-    if previous isa VarNamedTuples.PartialArray &&
-        previous.data isa VarNamedTuples.GrowableArray
-        _check_binding_template_bounds(previous, AbstractPPL.getoptic(vn), vn; operation)
     end
     for stored_name in keys(model.defaults)
         is_splat_symbol(stored_name) || continue
@@ -3129,17 +3165,20 @@ function _remove_model_binding(
     ::Type{R}, values::VarNamedTuples.PartialArray, optic::AbstractPPL.Index, owned=false
 ) where {R}
     optic = AbstractPPL.concretize_top_level(optic, values.data)
-    checkbounds(Bool, values, optic.ix...; optic.kw...) || return values
+    original = values
+    values = _model_slice_storage(values, optic)
+    checkbounds(Bool, values, optic.ix...; optic.kw...) || return original
     multiindex = VarNamedTuples._is_multiindex(values.data, optic.ix...; optic.kw...)
     selected = if multiindex
         VarNamedTuples._subset_partialarray(values, optic.ix...; optic.kw...)
     elseif haskey(values, optic.ix...; optic.kw...)
         getindex(values, optic.ix...; optic.kw...)
     else
-        return values
+        return original
     end
+    values === original || (selected = _resize_model_binding(selected, axes(selected)))
     child = _remove_model_binding(R, selected, optic.child)
-    child === selected && return values
+    child === selected && return original
     template, values = values, owned ? values : copy(values)
     # Removed elements are unmasked in place, so many removals share one copy.
     if child isa NoModelBinding &&
@@ -3159,7 +3198,11 @@ function _remove_model_binding(
         mask = view(values.mask, optic.ix...; optic.kw...)
         mask .&= child.mask
     end
-    return values
+    return if axes(values) == axes(original)
+        values
+    else
+        _resize_model_binding(values, axes(original))
+    end
 end
 
 """

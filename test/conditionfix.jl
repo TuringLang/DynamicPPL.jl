@@ -3342,6 +3342,13 @@ end
             @varname(p.x[8]),
             @varname(p.x[end]),
         ),
+        (
+            prefix(local_array(), @varname(q[2])),
+            @varname(q[2].x),
+            @varname(q[2].x[3]),
+            @varname(q[2].x[8]),
+            @varname(q[2].x[end]),
+        ),
     )
         observed = condition(original, whole => ones(3))
         for bind in (condition, fix)
@@ -3363,6 +3370,136 @@ end
                 observed, scope..., invalid
             )
             @test isempty(fixed(unfix(observed, scope..., invalid)))
+        end
+    end
+    # Growable prefix storage owns no shape, but the whole bindings stored in it do.
+    q2 = prefix(local_array(), @varname(q[2]))
+    q2x, q2end = @varname(q[2].x), @varname(q[2].x[end])
+    for whole in (
+        q2x => ones(3),
+        @varname(q[2]) => (x=ones(3),),
+        @varname(q) => [(x=ones(2),), (x=ones(3),)],
+    )
+        @test conditioned(condition(condition(q2, whole), q2end => 2.0))[q2x] == [1, 1, 2]
+        @test conditioned(condition(q2, whole, q2end => 2.0))[q2x] == [1, 1, 2]
+    end
+    observed = condition(
+        prefix(local_array(), @varname(p.q[2])), @varname(p.q[2].x) => ones(3)
+    )
+    observed = condition(observed, @varname(p.q[2].x[end]) => 2.0)
+    @test conditioned(observed)[@varname(p.q[2].x)] == [1, 1, 2]
+    for (bind, remove, select) in
+        ((condition, decondition, conditioned), (fix, unfix, fixed))
+        observed = bind(q2, q2x => ones(3))
+        @test select(remove(observed, q2end)) ==
+            select(remove(observed, @varname(q[2].x[3])))
+    end
+    @model function nested_vectors()
+        x = Vector{Vector{Float64}}(undef, 3)
+        x[1] ~ MvNormal(zeros(3), I)
+        return x
+    end
+    observed = condition(nested_vectors(), @varname(x[1]) => ones(3))
+    @test conditioned(condition(observed, @varname(x[1][end]) => 2.0))[@varname(x[1])] ==
+        [1, 1, 2]
+    @test conditioned(condition(observed, @varname(x[1:1][1][2]) => 2.0))[@varname(x[1])] ==
+        [1, 2, 1]
+    for (bind, remove, select) in
+        ((condition, decondition, conditioned), (fix, unfix, fixed))
+        bound = bind(nested_vectors(), @varname(x[1]) => ones(3))
+        @test_throws "no storage at `x[2]`" bind(bound, @varname(x[2][end]) => 2.0)
+        @test_throws "no storage at `x[2]`" remove(bound, @varname(x[2][end]))
+        fresh = bind(nested_vectors(), @varname(x[1:2][2][1]) => 5.0)
+        @test select(fresh)[@varname(x[2][1])] == 5.0
+        for original in (nested_vectors(), bound)
+            for (address, value, owner) in (
+                (@varname(x[1:2][3]), ones(3), @varname(x[1:2])),
+                (@varname(x[[1, 2]][3]), ones(3), @varname(x[[1, 2]])),
+                (@varname(x[1:1][2][1]), 5.0, @varname(x[1:1])),
+            )
+                @test_throws "Cannot bind `$address`: index is outside the storage at `$owner`" bind(
+                    original, address => value
+                )
+                @test_throws "Cannot remove `$address`: index is outside the storage at `$owner`" remove(
+                    original, address
+                )
+            end
+        end
+        bound = bind(bound, @varname(x[2]) => ones(3))
+        @test_throws "Cannot bind `x[1:2][1][5]`: index is outside the storage at `x[1:2][1]`" bind(
+            bound, @varname(x[1:2][1][5]) => 5.0
+        )
+        @test_throws "Cannot remove `x[1:2][2][5]`: index is outside the storage at `x[1:2][2]`" remove(
+            bound, @varname(x[1:2][2][5])
+        )
+    end
+    @testset "slices beyond stored entries" begin
+        for (bind, remove, select) in
+            ((condition, decondition, conditioned), (fix, unfix, fixed))
+            bound = bind(
+                nested_vectors(), @varname(x[1]) => ones(3), @varname(x[2]) => ones(5)
+            )
+            for (invalid, last, owner) in (
+                (@varname(x[2:3][1][6]), @varname(x[2:3][1][end]), @varname(x[2:3][1])),
+                (
+                    @varname(x[[2, 3]][1][6]),
+                    @varname(x[[2, 3]][1][end]),
+                    @varname(x[[2, 3]][1])
+                ),
+            )
+                @test_throws "Cannot bind `$invalid`: index is outside the storage at `$owner`" bind(
+                    bound, invalid => 9.0
+                )
+                @test_throws "Cannot remove `$invalid`: index is outside the storage at `$owner`" remove(
+                    bound, invalid
+                )
+                @test select(bind(bound, last => 9.0)) ==
+                    select(bind(bound, @varname(x[2][5]) => 9.0))
+                @test select(remove(bound, last)) ==
+                    select(remove(bound, @varname(x[2][5])))
+            end
+            @test_throws "no storage" bind(bound, @varname(x[2:3][2][end]) => 9.0)
+            @test_throws "no storage" remove(bound, @varname(x[2:3][2][end]))
+            @test select(remove(bound, @varname(x[2:3][2][1]))) == select(bound)
+            @test select(bound)[@varname(x[2])] == ones(5)
+            for address in (@varname(x[2:3][1][5]), @varname(x[2:3][1]))
+                removed = remove(bound, address)
+                storage = if bind === condition
+                    DynamicPPL._observation_values(removed.values)
+                else
+                    DynamicPPL._fixed_values(removed.values)
+                end
+                @test storage.data.x.data isa DynamicPPL.VarNamedTuples.GrowableArray
+                @test size(storage.data.x) == (2,)
+                @test select(bind(removed, @varname(x[3]) => ones(2)))[@varname(x[3])] ==
+                    ones(2)
+            end
+            if bind === condition
+                layered = fix(bound, @varname(x[3]) => ones(2))
+                @test fixed(remove(layered, @varname(x[2:3][1]))) == fixed(layered)
+            end
+        end
+    end
+    @testset "slices of growable matrices" begin
+        @model function nested_matrix()
+            x = Matrix{Vector{Float64}}(undef, 2, 2)
+            x[2, 1] ~ MvNormal(zeros(5), I)
+            return x
+        end
+        for (bind, remove, select) in
+            ((condition, decondition, conditioned), (fix, unfix, fixed))
+            bound = bind(nested_matrix(), @varname(x[2, 1]) => ones(5))
+            removed = remove(bound, @varname(x[2, 1:2][1][5]))
+            @test select(removed) == select(remove(bound, @varname(x[2, 1][5])))
+            @test select(bind(removed, @varname(x[2, 2]) => ones(2)))[@varname(x[2, 2])] ==
+                ones(2)
+            for k in (5, 6)
+                address = @varname(x[1:4][2][k])
+                @test_throws ArgumentError bind(bound, address => 9.0)
+                @test_throws "Cannot expand a GrowableArray with 2 dimensions" remove(
+                    bound, address
+                )
+            end
         end
     end
     observed = condition(local_array(), @varname(x) => ones(3))
