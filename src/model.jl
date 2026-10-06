@@ -588,9 +588,16 @@ function tilde_observe!!(
         _prefix_varname_and_template(vn, template, prefix, prefix_template)
     end
     left = _check_tilde_value(left, vn, Condition())
-    vi = accumulate_observe!!(vi, right, left, vn, template)
+    vi = accumulate_observe!!(vi, right, _nonmissing_eltype(left), vn, template)
     return left, vi
 end
+
+# Distributions take `AbstractArray{<:Real}`, so narrow a `Union{Missing,T}` array, which
+# holds no `missing` after `_check_tilde_value`. `convert` returns other arrays uncopied.
+function _nonmissing_eltype(x::AbstractArray{T}) where {T}
+    return convert(AbstractArray{nonmissingtype(T)}, x)
+end
+_nonmissing_eltype(x) = x
 
 """
     store_coloneq_value!!(model::Model, vn::VarName, right, template, vi)
