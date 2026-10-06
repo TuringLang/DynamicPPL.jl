@@ -667,6 +667,17 @@ end
 function _model_role_at(tree::ModelValueTree, optic::AbstractPPL.Property, vn)
     return _model_role_at(tree.values, optic, vn)
 end
+# Bindings stored by field cannot be read by index, nor bindings stored by index by field.
+function _model_role_at(::Union{VarNamedTuple,ModelValueTree}, ::AbstractPPL.Index, vn)
+    return _binding_kind_error(vn, "an index", "fields")
+end
+function _model_role_at(::VarNamedTuples.PartialArray, ::AbstractPPL.Property, vn)
+    return _binding_kind_error(vn, "a field", "indices")
+end
+@noinline function _binding_kind_error(vn, read, stored)
+    message = "Cannot read LHS variable `$vn`: its tilde uses $read, but its binding is stored by $stored; bind it with the address the tilde uses, or bind the whole value."
+    throw(ArgumentError(message))
+end
 function _model_argument_binding(tree::ModelValueTree, optic::AbstractPPL.Property)
     return _model_argument_binding(tree.values, optic)
 end
@@ -1835,6 +1846,31 @@ function _convert_partial_argument_binding(
     return _model_value_like(binding, converted)
 end
 
+# The address of the storage that `optic`, a suffix of `vn`'s optic, indexes into.
+function _storage_address(vn, optic)
+    owner = AbstractPPL.varname_to_optic(vn)
+    for _ in 1:_optic_length(optic)
+        owner = AbstractPPL.oinit(owner)
+    end
+    return AbstractPPL.optic_to_varname(owner)
+end
+_optic_length(::AbstractPPL.Iden) = 0
+_optic_length(optic::AbstractPPL.AbstractOptic) = 1 + _optic_length(optic.child)
+@noinline function _no_index_storage_error(optic, vn, operation)
+    owner = _storage_address(vn, optic)
+    key = length(optic.ix) == 1 ? only(optic.ix) : nothing
+    advice = if key isa Symbol
+        field = AbstractPPL.Property{key}(optic.child) ∘ AbstractPPL.varname_to_optic(owner)
+        "NamedTuple fields use `$(AbstractPPL.optic_to_varname(field))`"
+    elseif operation == "remove"
+        "use integer indices"
+    else
+        "use integer indices, or supply storage with a whole binding or a binding schema"
+    end
+    message = "Cannot $operation `$vn`: no storage at `$owner` in the layer being edited to resolve this index; $advice."
+    throw(ArgumentError(message))
+end
+
 function _check_binding_template_bounds(
     template, ::AbstractPPL.Iden, vn; operation="bind", check_fields=false
 )
@@ -1847,7 +1883,7 @@ function _check_binding_template_bounds(
     if check_fields && template isa NamedTuple && !haskey(template, S)
         throw(
             ArgumentError(
-                "Cannot $operation `$vn`: nonexistent field `$S` in storage at `$(AbstractPPL.getsym(vn))`.",
+                "Cannot $operation `$vn`: nonexistent field `$S` in storage at `$(_storage_address(vn, optic))`.",
             ),
         )
     end
@@ -1864,6 +1900,10 @@ function _check_binding_template_bounds(
     else
         VarNamedTuples.template_array(template)
     end
+    # Without storage, `end`, `:` and Symbol indices cannot be resolved.
+    array isa Union{NoTemplate,VarNamedTuples.SkipTemplate,Missing} &&
+        !all(i -> i isa Union{Integer,AbstractVector{<:Integer}}, optic.ix) &&
+        _no_index_storage_error(optic, vn, operation)
     coptic = AbstractPPL.concretize_top_level(optic, array)
     inbounds = if array isa VarNamedTuples.GrowableArray
         true
@@ -1880,7 +1920,7 @@ function _check_binding_template_bounds(
     end
     inbounds || throw(
         ArgumentError(
-            "Cannot $operation `$vn`: index is outside the storage at `$(AbstractPPL.getsym(vn))`",
+            "Cannot $operation `$vn`: index is outside the storage at `$(_storage_address(vn, optic))`",
         ),
     )
     if !(coptic.child isa AbstractPPL.Iden)
