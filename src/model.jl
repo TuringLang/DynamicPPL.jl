@@ -248,8 +248,17 @@ Base.@constprop :aggressive function Model{Threaded}(
 ) where {Threaded}
     values = _argument_defaults(merge(args, defaults), Val(_args_on_lhs(args_on_lhs)))
     model = Model{Threaded}(f, args, defaults, context, values; args_on_lhs)
-    names = _placeholder_names(merge(args, defaults), Val(_args_on_lhs(args_on_lhs)))
-    return isempty(names) ? model : decondition(model, names...)
+    found = _placeholder_names(merge(args, defaults), Val(_args_on_lhs(args_on_lhs)))
+    return all(isempty, found) ? model : _remove_placeholders(model, found)
+end
+
+# One removal per argument: whole placeholders as a tuple, which keeps the model type
+# inferable, and array elements as a vector, since splatting it would compile per count.
+_remove_placeholders(model, ::Tuple{}) = model
+function _remove_placeholders(model, found::Tuple)
+    names = first(found)
+    model = isempty(names) ? model : _local_remove(Condition, model, names)
+    return _remove_placeholders(model, Base.tail(found))
 end
 
 # Placeholders in arguments on the LHS supply no observation: a whole `missing` or `nothing`
@@ -262,7 +271,7 @@ end
         name in args_on_lhs || return :(())
         return :(_placeholder_names($(VarName{name}()), arguments.$stored_name))
     end
-    return :(($(map(x -> :($x...), found)...),))
+    return :(($(found...),))
 end
 _placeholder_names(vn::VarName, ::Union{Missing,Nothing}) = (vn,)
 _placeholder_names(::VarName, value) = ()

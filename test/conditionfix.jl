@@ -1126,6 +1126,31 @@ end
         )
     end
 
+    @testset "constructors take any count of missing elements without compiling" begin
+        @model function counts(x)
+            m ~ Normal()
+            for i in eachindex(x)
+                x[i] ~ Normal(m, 1)
+            end
+        end
+        data(latent) = Union{Missing,Float64}[i in latent ? missing : i for i in 1:6]
+        for latent in ([], [3], [2, 5], [1, 2, 4, 6], 1:5, 1:6)
+            model = counts(data(latent))
+            names = [VarName{:x}(AbstractPPL.Index((i,), (;))) for i in latent]
+            @test keys(rand(Xoshiro(1), model)) == [@varname(m); names]
+            @test logjoint(model, (; m=0.0, x=fill(0.5, 6))) ≈
+                logpdf(Normal(), 0.0) +
+                  sum(i -> logpdf(Normal(), i in latent ? 0.5 : i), 1:6)
+        end
+        x = data([1, 3, 4])
+        Base.cumulative_compile_timing(true)
+        compile_time = Base.cumulative_compile_time_ns()[1]
+        counts(x)
+        compile_time = Base.cumulative_compile_time_ns()[1] - compile_time
+        Base.cumulative_compile_timing(false)
+        @test compile_time == 0
+    end
+
     @testset "observed Union{Missing,T} arrays without missing elements" begin
         @model mv_argument(x) = x ~ MvNormal(zeros(2), I)
         for x in ([1.0, 2.0], Union{Missing,Float64}[1.0, 2.0])
