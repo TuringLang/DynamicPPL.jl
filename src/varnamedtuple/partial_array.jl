@@ -77,7 +77,7 @@ Base.collect(ga::GrowableArray) = collect(ga.data)
 Base.similar(ga::GrowableArray, ::Type{T}) where {T} = GrowableArray(similar(ga.data, T))
 Base.similar(ga::GrowableArray, sz::Tuple) = GrowableArray(similar(ga.data, sz))
 # single-element indexing
-Base.getindex(ga::GrowableArray, ix::Vararg{Int}) = getindex(ga.data, ix...)
+Base.getindex(ga::GrowableArray, ix::Vararg{Integer}) = getindex(ga.data, ix...)
 function Base.copyto!(dest::GrowableArray, src::GrowableArray, args...)
     return copyto!(dest.data, src.data, args...)
 end
