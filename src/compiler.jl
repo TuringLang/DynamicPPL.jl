@@ -419,12 +419,12 @@ function generate_tilde_literal(left, right)
     end
 end
 
-assign_or_set!!(lhs::Symbol, rhs, vn) = drop_escape(:($lhs = $rhs))
-function assign_or_set!!(lhs::Expr, rhs, vn)
+assign_or_set!!(lhs::Symbol, rhs, vn, set=_set_lhs) = drop_escape(:($lhs = $rhs))
+function assign_or_set!!(lhs::Expr, rhs, vn, set=_set_lhs)
     left_top_sym = get_top_level_symbol(lhs)
     return drop_escape(
         :(
-            $left_top_sym = $(_set_lhs)(
+            $left_top_sym = $(set)(
                 $left_top_sym,
                 $(AbstractPPL.with_mutation)($(AbstractPPL.getoptic)($vn)),
                 $rhs,
@@ -437,6 +437,14 @@ _set_lhs(object, optic, value) = Accessors.set(object, optic, value)
 # A keyword splat must stay `Base.Pairs`, as plain Julia presents it to the body.
 function _set_lhs(object::Base.Pairs, optic, value)
     return pairs(Accessors.set(values(object), optic, value))
+end
+# A fixed argument already holds its value unless the body changed it. Skip the write when
+# it holds that very value, so storage that cannot take the write, such as a range, works;
+# equality is not enough, as the body may point the address at latent storage. A mutable
+# value is written back without comparing, since reading a slice to compare it allocates.
+function _set_fixed_lhs(object, optic, value)
+    ismutable(value) && return _set_lhs(object, optic, value)
+    return optic(object) === value ? object : _set_lhs(object, optic, value)
 end
 
 """
@@ -492,7 +500,7 @@ function generate_tilde(left, right; is_argument=false)
                 $(DynamicPPL.maybe_prefix)($vn, $(DynamicPPL._model_prefix)(__model__)),
                 $role,
             )
-            $(assign_or_set!!(left, value, vn))
+            $(assign_or_set!!(left, value, vn, is_argument ? _set_fixed_lhs : _set_lhs))
         elseif $role === nothing
             if !($dist isa $(DynamicPPL.Submodel))
                 $(generate_input_provenance_check(left, vn))

@@ -7,6 +7,7 @@ using ComponentArrays: ComponentVector, getaxes
 using Distributions
 using DimensionalData: DimArray, X
 using DynamicPPL
+using FillArrays: Fill
 using ForwardDiff: ForwardDiff
 using LinearAlgebra: I, Transpose, Adjoint
 using LogDensityProblems: LogDensityProblems
@@ -3567,6 +3568,42 @@ end
             x[1][j]
         )] == 3.0
     end
+end
+
+@testset "arguments in unwritable storage" begin
+    @model function range_storage(x)
+        for i in eachindex(x)
+            x[i] ~ Normal()
+        end
+        return x
+    end
+    @model function inner_storage(x)
+        for i in eachindex(x), j in eachindex(x[i])
+            x[i][j] ~ Normal()
+        end
+        return x
+    end
+    for data in (1:2, 1.0:2.0, SVector(big(1.0), big(2.0)), Fill(big(1.0), 2))
+        # Whole bindings work, including ones whose value cannot be written to.
+        for bind in (condition, fix)
+            @test bind(range_storage(data); x=[3.0, 4.0])(Xoshiro(1)) == [3.0, 4.0]
+            @test bind(range_storage(data); x=data)(Xoshiro(1)) === data
+        end
+        @test unfix(fix(range_storage(data); x=[3.0, 4.0]))(Xoshiro(1)) === data
+        @test fix(inner_storage([data]); x=[data])(Xoshiro(1)) == [data]
+    end
+end
+
+@testset "fixed argument writes replace aliased storage" begin
+    @model function aliased_argument(x)
+        x = (a=x.b, b=x.b)
+        x.a ~ MvNormal(zeros(1), I)
+        x.b[1] ~ Normal()
+        return x
+    end
+    # The fixed value equals, but is not, the latent storage the body put at `x.a`.
+    model = fix(aliased_argument((a=0.0:0.0, b=[0.0])), @varname(x.a) => 0.0:0.0)
+    @test decondition(model, @varname(x.b))(Xoshiro(1)).a === 0.0:0.0
 end
 
 @testset "untouched unassigned argument entries" begin
