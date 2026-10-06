@@ -354,8 +354,12 @@ end
 end
 function _model_role_at(values::VarNamedTuples.PartialArray, optic::AbstractPPL.Index, vn)
     optic = AbstractPPL.concretize_top_level(optic, values.data)
+    if !VarNamedTuples._matches_ndims(values, optic.ix)
+        any(values.mask) && _growable_ndims_error(values, optic, vn)
+        return nothing
+    end
     if !checkbounds(Bool, values.data, optic.ix...; optic.kw...)
-        # Storage bounds describe supplied indices, so an out-of-bounds LHS variable may overlap.
+        # An out-of-bounds LHS slice may still overlap supplied indices.
         for indices in Iterators.product(Base.to_indices(values.data, optic.ix)...)
             checkbounds(Bool, values.data, indices...; optic.kw...) || continue
             getindex(values.mask, indices...; optic.kw...) || continue
@@ -370,6 +374,28 @@ function _model_role_at(values::VarNamedTuples.PartialArray, optic::AbstractPPL.
     end
     haskey(values, optic.ix...; optic.kw...) || return nothing
     return _model_role_at(getindex(values.data, optic.ix...; optic.kw...), optic.child, vn)
+end
+@noinline function _growable_ndims_error(values, optic, vn)
+    owner = _storage_address(vn, optic)
+    stored = first(i for i in CartesianIndices(values.mask) if values.mask[i])
+    bound = AbstractPPL.append_optic(owner, AbstractPPL.Index(Tuple(stored), (;)))
+    indices(n) = n == 1 ? "1 index" : "$n indices"
+    n = length(Base.index_ndims(optic.ix...))
+    distinction = if n == 1 || ndims(values) == 1
+        "; linear and Cartesian indices are distinct"
+    else
+        ""
+    end
+    throw(
+        ArgumentError(
+            "`$owner` has growable bindings with $(indices(ndims(values))) (e.g. `$bound`), " *
+            "but tilde `$vn` uses $(indices(n))$distinction. " *
+            "Bind addresses with the tilde's index count, or supply storage for `$owner` " *
+            "with an argument or a binding schema (`@of`). In the schema, use the " *
+            "binding call's local LHS top symbol and namespace path, omitting any " *
+            "explicit model prefix.",
+        ),
+    )
 end
 function _get_model_role(model, vn, template=NoTemplate())
     root = _model_value_varname(
@@ -390,7 +416,11 @@ function _get_model_role(model, vn, template=NoTemplate())
         end
     end
     vn = _model_value_varname(model.values, vn, _model_prefix(model))
-    return _model_role_at(_model_values(model.values), AbstractPPL.varname_to_optic(vn), vn)
+    return _model_role_at(
+        _model_values(model.values),
+        AbstractPPL.varname_to_optic(vn),
+        _binding_display_name(model, vn),
+    )
 end
 function _get_model_binding(model, vn)
     vn = _model_value_varname(model.values, vn, _model_prefix(model))
@@ -3099,7 +3129,7 @@ function _remove_model_binding(
     ::Type{R}, values::VarNamedTuples.PartialArray, optic::AbstractPPL.Index, owned=false
 ) where {R}
     optic = AbstractPPL.concretize_top_level(optic, values.data)
-    checkbounds(Bool, values.data, optic.ix...; optic.kw...) || return values
+    checkbounds(Bool, values, optic.ix...; optic.kw...) || return values
     multiindex = VarNamedTuples._is_multiindex(values.data, optic.ix...; optic.kw...)
     selected = if multiindex
         VarNamedTuples._subset_partialarray(values, optic.ix...; optic.kw...)

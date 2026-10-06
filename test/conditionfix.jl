@@ -3397,6 +3397,162 @@ end
     @test condition(cartesian_local(), conditioned(model))(Xoshiro(1))[2, 1] == 3.0
 end
 
+@testset "growable storage keeps linear and Cartesian addresses distinct" begin
+    @model growable_leaf() = (x = zeros(2, 2); x[2, 1] ~ Normal(); x)
+    @model growable_y() = (y = zeros(2, 2); y[2, 1] ~ Normal(); y)
+    @model growable_auto(child=growable_leaf()) = (a ~ to_submodel(child); a)
+    @model growable_linear() = (x = zeros(2); x[2] ~ Normal(); x)
+    @model growable_parent() = (
+        p = Matrix{Any}(undef, 1, 2); p[1, 2] ~ to_submodel(growable_leaf()); p
+    )
+    @model growable_slice() = (x = zeros(2, 1); x[1:2, 1] ~ MvNormal(zeros(2), I); x)
+    @model growable_argument(x) = (x[2, 1] ~ Normal(); x)
+    @model growable_mixed() = (x = zeros(2, 2); x[1] ~ Normal(); x[2, 2] ~ Normal(); x)
+    @model growable_first() = (x = zeros(2, 2); x[1, 1] ~ Normal(); x)
+    @model growable_colon() = (x = zeros(2, 1); x[:, 1] ~ MvNormal(zeros(2), I); x)
+    @model growable_cube() = (x = zeros(2, 2, 2); x[1, 2, 1] ~ Normal(); x)
+    advice(owner) =
+        "Bind addresses with the tilde's index count, or supply storage for `$owner` " *
+        "with an argument or a binding schema (`@of`). In the schema, use the " *
+        "binding call's local LHS top symbol and namespace path, omitting any " *
+        "explicit model prefix."
+    distinct = ArgumentError(
+        "`x` has growable bindings with 1 index (e.g. `x[2]`), but tilde `x[2, 1]` " *
+        "uses 2 indices; linear and Cartesian indices are distinct. " *
+        advice("x"),
+    )
+    with_logger(NullLogger()) do
+        for (bind, remove, listed) in
+            ((condition, decondition, conditioned), (fix, unfix, fixed))
+            linear = bind(growable_leaf(), @varname(x[2]) => 3.0)
+            @test_throws distinct linear(Xoshiro(1))
+            @test listed(remove(linear, @varname(x[2, 1]))) == listed(linear)
+            @test DynamicPPL._get_model_binding(linear, @varname(x[2, 1])) === nothing
+            @test bind(growable_leaf(), @varname(x[2, 1]) => 3.0)(Xoshiro(1))[2, 1] == 3.0
+            @test bind(growable_linear(), @varname(x[2]) => 3.0)(Xoshiro(1))[2] == 3.0
+            @test_throws ArgumentError(
+                "`x` has growable bindings with 2 indices (e.g. `x[2, 1]`), but tilde " *
+                "`x[2]` uses 1 index; linear and Cartesian indices are distinct. " *
+                advice("x"),
+            ) bind(growable_linear(), @varname(x[2, 1]) => 3.0)(Xoshiro(1))
+            prefixed = bind(growable_parent(), @varname(p[1, 2].x[2]) => 3.0)
+            @test_throws ArgumentError(
+                "`p[1, 2].x` has growable bindings with 1 index (e.g. `p[1, 2].x[2]`), " *
+                "but tilde `p[1, 2].x[2, 1]` uses 2 indices; linear and Cartesian " *
+                "indices are distinct. " *
+                advice("p[1, 2].x"),
+            ) prefixed(Xoshiro(1))
+            @test_throws ArgumentError(
+                "`a.x` has growable bindings with 1 index (e.g. `a.x[2]`), but tilde " *
+                "`a.x[2, 1]` uses 2 indices; linear and Cartesian indices are distinct. " *
+                advice("a.x"),
+            ) bind(prefix(growable_leaf(), @varname(a)), @varname(a.x[2]) => 3.0)(
+                Xoshiro(1)
+            )
+            @test_throws ArgumentError(
+                "`y` has growable bindings with 1 index (e.g. `y[2]`), but tilde " *
+                "`y[2, 1]` uses 2 indices; linear and Cartesian indices are distinct. " *
+                advice("y"),
+            ) bind(growable_y(), @varname(y[2]) => 3.0)(Xoshiro(1))
+            @test bind(growable_y(), @of(y = of(Array, 2, 2)), @varname(y[2]) => 3.0)(
+                Xoshiro(1)
+            )[
+                2, 1
+            ] == 3.0
+            for model in (
+                bind(growable_auto(), @varname(a.x[2]) => 3.0),
+                growable_auto(bind(growable_leaf(), @varname(x[2]) => 3.0)),
+            )
+                @test_throws ArgumentError(
+                    "`a.x` has growable bindings with 1 index (e.g. `a.x[2]`), but tilde " *
+                    "`a.x[2, 1]` uses 2 indices; linear and Cartesian indices are distinct. " *
+                    advice("a.x"),
+                ) model(Xoshiro(1))
+            end
+            @test bind(
+                growable_auto(), @of(a = (x=of(Array, 2, 2),)), @varname(a.x[2]) => 3.0
+            )(
+                Xoshiro(1)
+            )[
+                2, 1
+            ] == 3.0
+            @test growable_auto(
+                bind(growable_leaf(), @of(x = of(Array, 2, 2)), @varname(x[2]) => 3.0)
+            )(
+                Xoshiro(1)
+            )[
+                2, 1
+            ] == 3.0
+            @test bind(
+                prefix(growable_leaf(), @varname(a)),
+                @of(x = of(Array, 2, 2)),
+                @varname(a.x[2]) => 3.0,
+            )(
+                Xoshiro(1)
+            )[
+                2, 1
+            ] == 3.0
+            prefixed = bind(growable_parent(), @varname(p[1, 2].x[2, 1]) => 3.0)
+            @test prefixed(Xoshiro(1))[1, 2][2, 1] == 3.0
+            explicit = bind(
+                prefix(growable_leaf(), @varname(a)), @varname(a.x[2, 1]) => 3.0
+            )
+            @test explicit(Xoshiro(1))[2, 1] == 3.0
+            sibling = bind(growable_parent(), @varname(p[1, 1].x[2]) => 3.0)
+            @test sibling(Xoshiro(1))[1, 2] == growable_leaf()(Xoshiro(1))
+            @test bind(growable_argument(zeros(2, 2)), @varname(x[2]) => 3.0)(Xoshiro(1))[
+                2, 1
+            ] == 3.0
+            @test bind(growable_leaf(), @of(x = of(Array, 2, 2)), @varname(x[2]) => 3.0)(
+                Xoshiro(1)
+            )[
+                2, 1
+            ] == 3.0
+            sliced = bind(growable_slice(), @varname(x[1:2]) => [5.0, 6.0])
+            @test_throws "linear and Cartesian indices are distinct" sliced(Xoshiro(1))
+            @test listed(remove(sliced, @varname(x[1:2, 1]))) == listed(sliced)
+            @test DynamicPPL._get_model_binding(sliced, @varname(x[1:2, 1])) === nothing
+            storage = DynamicPPL._get_model_binding(sliced, @varname(x))
+            role = bind === condition ? DynamicPPL.Condition : DynamicPPL.Fix
+            @test DynamicPPL._remove_model_binding(
+                role, storage, AbstractPPL.getoptic(@varname(x[1:2, 1]))
+            ) === storage
+            @test isempty(listed(remove(sliced, @varname(x[1:2]))))
+            @test bind(growable_slice(), @varname(x[1:2, 1]) => [5.0, 6.0])(Xoshiro(1)) ==
+                [5.0; 6.0;;]
+            @test_throws "tilde `x[2, 2]` uses 2 indices" bind(
+                growable_mixed(), @varname(x[1]) => 3.0
+            )(
+                Xoshiro(1)
+            )
+            @test bind(growable_mixed(), @of(x = of(Array, 2, 2)), @varname(x[1]) => 3.0)(
+                Xoshiro(1)
+            )[1] == 3.0
+            @test bind(growable_leaf(), @varname(x[1:0]) => Float64[])(Xoshiro(1)) ==
+                growable_leaf()(Xoshiro(1))
+            @test_throws ArgumentError(
+                "`x` has growable bindings with 1 index (e.g. `x[2]`), but tilde " *
+                "`x[1, 1]` uses 2 indices; linear and Cartesian indices are distinct. " *
+                advice("x"),
+            ) bind(growable_first(), @varname(x[2]) => 3.0)(Xoshiro(1))
+            @test_throws ArgumentError(
+                "`x` has growable bindings with 1 index (e.g. `x[1]`), but tilde " *
+                "`x[:, 1]` uses 2 indices; linear and Cartesian indices are distinct. " *
+                advice("x"),
+            ) bind(growable_colon(), @varname(x[1:2]) => [5.0, 6.0])(Xoshiro(1))
+            @test bind(growable_colon(), @varname(x[1:2, 1]) => [5.0, 6.0])(Xoshiro(1)) ==
+                [5.0; 6.0;;]
+            @test_throws ArgumentError(
+                "`x` has growable bindings with 2 indices (e.g. `x[1, 2]`), but tilde " *
+                "`x[1, 2, 1]` uses 3 indices. " *
+                advice("x"),
+            ) bind(growable_cube(), @varname(x[1, 2]) => 3.0)(Xoshiro(1))
+            @test bind(growable_cube(), @varname(x[1, 2, 1]) => 3.0)(Xoshiro(1))[1, 2, 1] ==
+                3.0
+        end
+    end
+end
+
 struct PlaceholderState{T}
     value::T
 end

@@ -927,7 +927,7 @@ function _model_argument_binding(
     values::VarNamedTuples.PartialArray, optic::AbstractPPL.Index
 )
     optic = AbstractPPL.concretize_top_level(optic, values.data)
-    checkbounds(Bool, values.data, optic.ix...; optic.kw...) || return nothing
+    checkbounds(Bool, values, optic.ix...; optic.kw...) || return nothing
     selected = if VarNamedTuples._is_multiindex(values.data, optic.ix...; optic.kw...)
         subset = VarNamedTuples._subset_partialarray(values, optic.ix...; optic.kw...)
         if all(subset.mask) &&

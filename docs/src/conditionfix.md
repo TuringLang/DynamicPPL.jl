@@ -375,6 +375,14 @@ binding schema, earlier whole value, produced `VarNamedTuple`, or prefix templat
 indexed local LHS variables infer a growable array and warn, and `end` or `:` cannot be
 resolved. Property paths need no storage. Keyword-splat entries cannot be bound separately.
 
+With growable storage, every tilde for a symbol must use the same number of indices as its
+bindings; otherwise evaluation throws `ArgumentError`. Linear and Cartesian addresses are
+distinct: binding `x[2]` does not bind `x[2, 1]`. This also applies when the model itself mixes
+index counts on one local symbol, such as `x = zeros(2, 2); x[1] ~ Normal(); x[2, 2] ~ Normal()`.
+To bind such a symbol by parts, supply storage with a binding schema (`@of(x = of(Array, 2, 2))`)
+or a model argument. Allocating the local array inside the model does not supply binding
+storage. With storage, bindings follow Julia's indexing semantics.
+
 Defaults are evaluated once at construction. Binding `x` in `f(x, n=length(x))` keeps `n`.
 Construct the model again to recompute defaults.
 

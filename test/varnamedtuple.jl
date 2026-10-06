@@ -855,6 +855,31 @@ end
             @test_throws ArgumentError grow_to_indices!!(pa, 1)
         end
 
+        @testset "lookups need one index per dimension" begin
+            vnt = setindex!!(VarNamedTuple(), 1.0, @varname(x[2]))
+            @test !haskey(vnt, @varname(x[2, 1]))
+            @test_throws BoundsError vnt[@varname(x[2, 1])]
+            @test !haskey(vnt, @varname(x[1:2, 1][2]))
+            @test_throws BoundsError vnt[@varname(x[1:2, 1][2])]
+            @test vnt[@varname(x[1:2][2])] == 1.0
+            vnt = setindex!!(VarNamedTuple(), 1.0, @varname(x[2, 1]))
+            @test !haskey(vnt, @varname(x[2]))
+            @test_throws BoundsError vnt[@varname(x[2])]
+            @test !haskey(vnt, @varname(x[1:2][2]))
+            @test_throws BoundsError vnt[@varname(x[1:2][2])]
+            @test vnt[@varname(x[1:2, 1][2])] == 1.0
+            @test vnt[@varname(x[CartesianIndex(2, 1)])] == 1.0
+            for inds in ([CartesianIndex(2, 1)], CartesianIndices((2:2, 1:1)))
+                @test @inferred(haskey(vnt, @varname(x[inds])))
+                @test vnt[@varname(x[inds])] == fill(1.0, size(inds))
+            end
+            templated = templated_setindex!!(
+                VarNamedTuple(), 1.0, @varname(x[2, 1]), zeros(2, 1)
+            )
+            @test haskey(templated, @varname(x[2]))
+            @test templated[@varname(x[1:2][2])] == 1.0
+        end
+
         @testset "Data is correctly copied when expanding" begin
             x = randn(2, 3)
             vnt = VarNamedTuple()
