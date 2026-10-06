@@ -314,10 +314,23 @@ Partial array bindings and removals (including `decondition`) rebuild only `Arra
 Array-backed `OffsetArray`, `ComponentArray` and `DimArray` storage. Each owner along the
 edited path must be supported; untouched leaves are unrestricted. Views, reshapes,
 `Transpose`/`Adjoint`, immutable arrays, ranges, ReverseDiff tracked arrays, `MVector`,
-`SizedArray` and `BitArray` throw `ArgumentError`. Bind or decondition the whole value,
-or use `collect(v)` if losing axes or metadata is acceptable. Whole operations retain support
-for all array types. A child partially deconditioned inside a model may therefore work with
-ForwardDiff but throw with ReverseDiff when its argument is a tracked array.
+`SizedArray` and `BitArray` throw `ArgumentError`, so a child partially deconditioned inside a
+model may work with ForwardDiff but throw with ReverseDiff when its argument is a tracked
+array. Bind or decondition the whole value, or use `collect(v)` if losing axes or metadata is
+acceptable. Whole operations support all array types, except as follows.
+
+Latent draws are written into the argument, and DynamicPPL never converts an argument
+implicitly. An argument held in immutable array storage, such as a range, an `SVector`, an
+`SMatrix` or a `Fill`, or holding one in a NamedTuple, tuple or array, therefore cannot be made
+latent. Storage is unwrapped through `parent`; `MVector`, `SizedArray`, views of mutable
+arrays and SparseArrays types are accepted, while another immutable array type without a
+`parent` method is rejected even if it holds mutable buffers. A `decondition` or `unfix` that
+would leave such an argument latent throws `ArgumentError` when called, even when the tilde
+draws the argument whole (`x ~ MvNormal(...)`); a parent's recursive removal throws when the
+model is evaluated. Pass `collect(x)` instead, or `missing` when the tilde draws `x` whole.
+A read-only wrapper over a mutable parent, such as `Symmetric` or `Diagonal`, and immutable
+storage inside a struct field or a `Dict` are not detected and fail at evaluation. Whole
+`condition` and `fix` of such an argument remain supported.
 
 Use NamedTuples or keyword arguments for whole top-level values, and `VarName` pairs for any
 address. The pair `:x => v` abbreviates `@varname(x) => v`. `VarNamedTuple`s produced by

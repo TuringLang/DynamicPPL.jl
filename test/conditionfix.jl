@@ -14,6 +14,7 @@ using LogDensityProblems: LogDensityProblems
 using OffsetArrays: OffsetArray
 using Test
 using Random: Xoshiro
+using SparseArrays: SparseVector, sparsevec
 using StaticArrays: SVector, MVector, SizedArray
 using StableRNGs: StableRNG
 using Logging: NullLogger, with_logger
@@ -3494,10 +3495,13 @@ end
     for data in rejected,
         (bind, remove, listing) in
         ((condition, decondition, conditioned), (fix, unfix, fixed))
-        # Each rejected family retains whole bindings and whole removal.
+        # Each rejected family retains whole bindings and whole removal; immutable
+        # storage cannot be made latent, as tested in "arguments in unwritable storage".
         whole = bind(array_storage(data); x=data)
         @test listing(whole)[@varname(x)] === data
-        @test !haskey(listing(remove(whole, @varname(x))), @varname(x))
+        if bind === fix || !(data isa Union{SVector,AbstractRange})
+            @test !haskey(listing(remove(whole, @varname(x))), @varname(x))
+        end
         i = lastindex(data)
         vn = @varname(x[i])
         message = r"x.*container type.*whole.*collect"
@@ -3570,6 +3574,12 @@ end
     end
 end
 
+mutable struct LazyArgumentStorage{T} <: AbstractVector{T}
+    n::Int
+end
+Base.size(x::LazyArgumentStorage) = (x.n,)
+Base.getindex(::LazyArgumentStorage{T}, i::Int) where {T} = T(1:i)
+
 @testset "arguments in unwritable storage" begin
     @model function range_storage(x)
         for i in eachindex(x)
@@ -3583,6 +3593,13 @@ end
         end
         return x
     end
+    @model range_parent(child) = a ~ to_submodel(child)
+    @model whole_storage(x) = (x ~ MvNormal(zeros(2), I); x)
+    @model keyword_storage(; x=1.0:2.0) = (x ~ MvNormal(zeros(2), I); x)
+    function message(vn, storage)
+        return "Argument `$vn` is a `$(typeof(storage))`, which cannot hold latent draws; " *
+               "pass a mutable copy of the array at `$vn`, e.g. made with `collect`."
+    end
     for data in (1:2, 1.0:2.0, SVector(big(1.0), big(2.0)), Fill(big(1.0), 2))
         # Whole bindings work, including ones whose value cannot be written to.
         for bind in (condition, fix)
@@ -3591,7 +3608,62 @@ end
         end
         @test unfix(fix(range_storage(data); x=[3.0, 4.0]))(Xoshiro(1)) === data
         @test fix(inner_storage([data]); x=[data])(Xoshiro(1)) == [data]
+        @test_throws message("x", data) decondition(range_storage(data))
+        @test_throws message("x", data) decondition(range_storage(data), @varname(x))
+        @test_throws message("x", data) decondition(
+            range_storage(data), DynamicPPL.Recursive()
+        )
+        @test_throws message("x", data) unfix(
+            decondition(fix(range_storage(data); x=[3.0, 4.0]))
+        )
+        @test_throws message("a.x", data) decondition(
+            range_parent(range_storage(data)), DynamicPPL.Recursive(), @varname(a.x)
+        )(
+            Xoshiro(1)
+        )
+        # The call cannot see that a whole tilde writes nothing into the argument.
+        @test_throws message("x", data) decondition(whole_storage(data))
+        @test length(decondition(range_storage(collect(data)))(Xoshiro(1))) == 2
     end
+    range = 1.0:2.0
+    @test_throws message("x", range) decondition(keyword_storage())
+    for (vn, storage, data) in (
+        ("x.a", range, (a=range,)),
+        ("x[1]", range, (range,)),
+        ("x[2]", range, [[1.0], range]),
+        ("x[1]", SVector(1.0, 2.0), [SVector(1.0, 2.0)]),
+    )
+        @test_throws message(vn, storage) decondition(whole_storage(data))
+    end
+    for data in (
+        [1.0, 2.0],
+        MVector(1.0, 2.0),
+        ComponentVector(; a=1.0, b=2.0),
+        OffsetArray([1.0, 2.0], 0:1),
+        view([1.0, 2.0, 3.0], 1:2),
+        BitVector([true, false]),
+        (a=[1.0, 2.0],),
+        [[1.0], [2.0]],
+        sparsevec([1.0, 2.0]),
+    )
+        @test length(decondition(whole_storage(data))(Xoshiro(1))) == 2
+    end
+    @test decondition(range_storage(sparsevec([1.0, 2.0])))(Xoshiro(1)) isa SparseVector
+    lazy = LazyArgumentStorage{UnitRange{Int}}(2)
+    @test_throws message("x[1]", 1:1) decondition(inner_storage(lazy))
+    @test decondition(inner_storage(LazyArgumentStorage{Vector{Int}}(2))) isa
+        DynamicPPL.Model
+    @static if isdefined(Base, :Memory)
+        data = Memory{Any}(undef, 1)
+        data[1] = range
+        @test_throws message("x[1]", range) decondition(inner_storage(data))
+        data[1] = collect(range)
+        @test decondition(inner_storage(data)) isa DynamicPPL.Model
+    end
+    # A self-referential argument must not make the check walk without end.
+    cyclic = Any[1.0, 2.0]
+    cyclic[2] = cyclic
+    @test decondition(range_storage(cyclic)) isa DynamicPPL.Model
 end
 
 @testset "fixed argument writes replace aliased storage" begin

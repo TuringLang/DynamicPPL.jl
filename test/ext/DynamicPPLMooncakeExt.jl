@@ -10,6 +10,7 @@ using DifferentiationInterface: DifferentiationInterface
 using Distributions: Normal, MvNormal, logpdf
 using ForwardDiff: ForwardDiff
 using LogDensityProblems: LogDensityProblems, logdensity_and_gradient, dimension
+using OffsetArrays: OffsetArray
 using StableRNGs: StableRNG
 using DynamicPPL
 using DynamicPPL.TestUtils.AD: run_ad, WithExpectedResult
@@ -491,6 +492,24 @@ end
 
         test = WithExpectedResult(value, gradient)
         @test run_ad(model, adtype; params, test, verbose=false) isa Any
+    end
+end
+
+@testset "latent arguments holding arrays of arrays" begin
+    @model function nested_argument(x)
+        for i in eachindex(x), j in eachindex(x[i])
+            x[i][j] ~ Normal(i)
+        end
+    end
+    for x in (
+        Any[[0.0], [0.0, 0.0]],
+        view([[0.0], [0.0, 0.0]], 1:2),
+        OffsetArray([[0.0], [0.0, 0.0]], 1:2),
+        [[0.0], [0.0, 0.0]],
+    )
+        model = decondition(nested_argument(x))
+        ldf = LogDensityFunction(model; adtype=AutoMooncake())
+        @test logdensity_and_gradient(ldf, fill(0.1, 3))[2] ≈ [0.9, 1.9, 1.9]
     end
 end
 

@@ -19,6 +19,7 @@ using LogDensityProblems: LogDensityProblems
 using LinearAlgebra: LinearAlgebra, Cholesky
 using LogExpFunctions: LogExpFunctions
 using SpecialFunctions: SpecialFunctions
+using SparseArrays: SparseArrays
 
 using DocStringExtensions
 

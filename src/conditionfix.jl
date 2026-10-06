@@ -1231,6 +1231,9 @@ function _argument_storage_expr(query, T, seen)
         return true
     elseif T <: Array
         (eltype(T),)
+    elseif T <: AbstractArray
+        # Elements need not be stored in fields, as in `Memory` or a lazy array.
+        (eltype(T), fieldtypes(T)...)
     else
         fieldtypes(T)
     end
@@ -1260,8 +1263,83 @@ _copy_model_argument(value::Union{Number,Type}) = value
 # With numerical leaves preserved, copying a single dense numeric array is shallow.
 _copy_model_argument(value::Array{<:Number}) = copy(value)
 function _copy_model_argument(value, vn)
+    _check_latent_storage(value, vn)
     _check_argument_key_storage(value, vn)
     return _copy_model_argument(value)
+end
+
+# Latent draws are written into the argument's own storage, which ranges, static and fill
+# arrays cannot take. SparseArrays types are immutable structs over mutable buffers, and the
+# argument copy adapts AD storage such as a ReverseDiff tracked array.
+_writable_storage(::Type{T}) where {T} = ismutabletype(T) || _argument_ad_storage(T)
+function _writable_storage(
+    ::Type{<:Union{SparseArrays.SparseVector,SparseArrays.SparseMatrixCSC}}
+)
+    return true
+end
+_unwritable_storage_type(::Type) = false
+_unwritable_storage_type(::Type{T}) where {T<:AbstractArray} = !_writable_storage(T)
+# Skips the walk below, on every evaluation, for argument types that hold no such storage.
+@generated function _argument_may_be_unwritable(::Type{T}) where {T}
+    return _argument_storage_expr(_unwritable_storage_type, T, Set{Any}())
+end
+# The innermost parent of an array, which holds its elements.
+_array_storage(value) = value
+function _array_storage(value::AbstractArray)
+    storage = parent(value)
+    return storage === value ? value : _array_storage(storage)
+end
+# Returns the address and value of the first unwritable storage below `vn`. A read-only
+# wrapper over a mutable parent is not detected, and neither are struct fields or `Dict`s.
+_unwritable_storage(value, vn, seen) = nothing
+function _unwritable_storage(value::Union{Tuple,NamedTuple}, vn, seen)
+    for (key, child) in pairs(value)
+        optic =
+            key isa Symbol ? AbstractPPL.Property{key}() : AbstractPPL.Index((key,), (;))
+        found = _unwritable_storage(child, AbstractPPL.append_optic(vn, optic), seen)
+        found === nothing || return found
+    end
+    return nothing
+end
+function _unwritable_storage(value::AbstractArray, vn, seen)
+    _writable_storage(typeof(_array_storage(value))) || return vn => value
+    eltype(value) <: Number && return nothing
+    # A self-referential argument would otherwise be walked without end.
+    value in seen && return nothing
+    push!(seen, value)
+    for i in CartesianIndices(value)
+        isassigned(value, i) || continue
+        optic = AbstractPPL.Index(Tuple(i), (;))
+        found = _unwritable_storage(value[i], AbstractPPL.append_optic(vn, optic), seen)
+        found === nothing || return found
+    end
+    return nothing
+end
+function _check_latent_storage(value, vn)
+    _argument_may_be_unwritable(typeof(value)) || return nothing
+    found = _unwritable_storage(value, vn, Base.IdSet{Any}())
+    found === nothing && return nothing
+    address, storage = found
+    # Model arguments keep their types: never convert one to make room for latent draws.
+    throw(
+        ArgumentError(
+            "Argument `$address` is a `$(typeof(storage))`, which cannot hold latent " *
+            "draws; pass a mutable copy of the array at `$address`, e.g. made with `collect`.",
+        ),
+    )
+end
+# Applies the check above when a removal is made rather than when the model runs.
+function _check_latent_arguments(model)
+    arguments = merge(model.args, model.defaults)
+    lhs = _args_on_lhs(_binding_metadata(model))
+    map(keys(arguments), values(arguments)) do stored_name, value
+        _argument_may_be_unwritable(typeof(value)) || return nothing
+        vn = VarName{unsplat_symbol(stored_name)}()
+        AbstractPPL.getsym(vn) in lhs &&
+            _get_model_binding(model, vn) === nothing &&
+            _check_latent_storage(value, maybe_prefix(vn, _model_prefix(model)))
+    end
+    return model
 end
 
 # A partial binding can contain nested shape owners. Copy their templates with the
@@ -3273,7 +3351,7 @@ function _local_remove(::Type{R}, model, names) where {R}
     values = _with_removals(
         values, _removals(Condition, model.values), _removals(Fix, model.values)
     )
-    return _reconstruct_model(model; values)
+    return _check_latent_arguments(_reconstruct_model(model; values))
 end
 
 @generated function _argument_defaults(
@@ -3521,7 +3599,7 @@ function _recursive_remove(::Type{R}, model, names) where {R}
         R === Fix ? markers : _removals(Fix, model.values),
     )
     layers = model.values isa LocalModelValues ? LocalModelValues(layers) : layers
-    return _reconstruct_model(model; values=layers)
+    return _check_latent_arguments(_reconstruct_model(model; values=layers))
 end
 function AbstractPPL.decondition(model::Model, ::Recursive, names::Union{Symbol,VarName}...)
     return _recursive_remove(Condition, model, names)
