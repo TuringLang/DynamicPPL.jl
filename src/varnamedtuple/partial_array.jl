@@ -357,6 +357,15 @@ function _can_get_arraylikeblock(pa_data::AbstractArray)
     return true
 end
 
+# Linear or trailing-singleton indices into growable storage would alias other addresses.
+function _matches_ndims(pa::PartialArray, inds)
+    pa.data isa GrowableArray || return true
+    return length(Base.index_ndims(inds...)) == ndims(pa)
+end
+function Base.checkbounds(::Type{Bool}, pa::PartialArray, inds...; kw...)
+    return _matches_ndims(pa, inds) && checkbounds(Bool, pa.mask, inds...; kw...)
+end
+
 """
     Base.getindex(pa::PartialArray, inds::Vararg{Any}; kw...)
 
@@ -366,7 +375,7 @@ requested indices correspond to an ArrayLikeBlock.
 """
 function Base.getindex(pa::PartialArray, inds::Vararg{Any}; kw...)
     # Check the mask first. We defer bounds checking to the sub-arrays.
-    if !(all(getindex(pa.mask, inds...; kw...)))
+    if !(_matches_ndims(pa, inds) && all(getindex(pa.mask, inds...; kw...)))
         throw(BoundsError(pa, (inds..., kw)))
     end
     val = getindex(pa.data, inds...; kw...)
@@ -420,8 +429,7 @@ function Base.getindex(pa::PartialArray, inds::Vararg{Any}; kw...)
 end
 
 function Base.haskey(pa::PartialArray, inds::Vararg{Any}; kw...)
-    hasall =
-        checkbounds(Bool, pa.mask, inds...; kw...) && all(view(pa.mask, inds...; kw...))
+    hasall = checkbounds(Bool, pa, inds...; kw...) && all(view(pa.mask, inds...; kw...))
 
     # If not for ArrayLikeBlocks, we could just return hasall directly. However, we need to
     # check that if any ArrayLikeBlocks are included, they are fully included.
@@ -659,6 +667,7 @@ function _subset_partialarray(pa::PartialArray, inds::Vararg{Any}; kw...)
         any(ind -> ind isa AbstractPPL.DynamicIndex || ind isa Colon, inds)
         _warn_growable_array_extraction()
     end
+    _matches_ndims(pa, inds) || throw(BoundsError(pa, inds))
     new_data = view(pa.data, inds...; kw...)
     new_mask = view(pa.mask, inds...; kw...)
     return PartialArray(new_data, new_mask)
