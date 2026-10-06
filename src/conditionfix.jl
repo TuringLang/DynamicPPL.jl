@@ -2260,6 +2260,7 @@ function _binding_display_name(model, vn)
     return model.values isa LocalModelValues ? maybe_prefix(vn, _model_prefix(model)) : vn
 end
 function _schema_binding_address(model, vn)
+    vn = _expand_cartesian(vn)
     prefix = _model_prefix(model)
     if !(model.values isa LocalModelValues) &&
         prefix !== nothing &&

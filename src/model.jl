@@ -420,12 +420,7 @@ function _concretize_prefix(
         )
     end
     if prefix isa Val{true}
-        indices = mapreduce(
-            i -> i isa CartesianIndex ? Tuple(i) : (i,),
-            (a, b) -> (a..., b...),
-            optic.ix;
-            init=(),
-        )
+        indices = _expand_cartesian(optic.ix)
         all(i -> i isa Integer && !(i isa Bool), indices) && isempty(optic.kw) || throw(
             ArgumentError(
                 "Prefix index [$(join(map(repr, optic.ix), ", "))] is not a scalar integer; prefixes require properties and integer indices. Use an integer-indexed prefix, or to_submodel(model, false) for a sliced return LHS.",
@@ -441,6 +436,25 @@ function _concretize_prefix(
     end
     child = _concretize_prefix(optic.child, child_template; depth=depth - 1, prefix)
     return AbstractPPL.Index(optic.ix, optic.kw, child)
+end
+
+# `CartesianIndex` is one spelling of integer coordinates; addresses store the coordinates.
+function _expand_cartesian(ix::Tuple)
+    return mapreduce(
+        i -> i isa CartesianIndex ? Tuple(i) : (i,), (a, b) -> (a..., b...), ix; init=()
+    )
+end
+function _expand_cartesian(vn::VarName{S}) where {S}
+    return VarName{S}(_expand_cartesian(AbstractPPL.getoptic(vn)))
+end
+_expand_cartesian(optic::AbstractPPL.Iden) = optic
+function _expand_cartesian(optic::AbstractPPL.Property{S}) where {S}
+    return AbstractPPL.Property{S}(_expand_cartesian(optic.child))
+end
+function _expand_cartesian(optic::AbstractPPL.Index)
+    return AbstractPPL.Index(
+        _expand_cartesian(optic.ix), optic.kw, _expand_cartesian(optic.child)
+    )
 end
 
 maybe_prefix(vn::VarName, ::Nothing) = vn

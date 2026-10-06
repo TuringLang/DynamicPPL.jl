@@ -1367,6 +1367,15 @@ end
     canonicalize(vn) = DynamicPPL._concretize_prefix(vn, zeros(2, 2); prefix=Val(true))
     @test (@inferred canonicalize(@varname(p[CartesianIndex(1, 2)].q))) ==
         @varname(p[1, 2].q)
+    # Bindings and removals accept either spelling of the prefix, but not a linear index.
+    model = prefix(prefix_leaf(), @varname(p[CartesianIndex(1, 2)]))
+    for name in (@varname(p[CartesianIndex(1, 2)].x), @varname(p[1, 2].x))
+        bound = conditioned(condition(model, name => 3.0))
+        @test keys(bound) == [@varname(p[1, 2].x)]
+        @test conditioned(condition(model, bound)) == bound
+        @test isempty(fixed(unfix(fix(model, @varname(p[1, 2].x) => 3.0), name)))
+    end
+    @test_throws r"outside this model's prefix" condition(model, @varname(p[3].x) => 3.0)
     # `Int32` indices address the same storage as `Int` indices.
     model = prefix(prefix_leaf(), @varname(p[Int32(2)]))
     @test keys(conditioned(condition(model, @varname(p[2].x) => 3.0))) == [@varname(p[2].x)]
