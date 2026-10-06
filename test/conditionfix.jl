@@ -3344,6 +3344,15 @@ end
     end
 end
 
+@testset "`CartesianIndex` addresses store integer coordinates" begin
+    @model cartesian_local() = (x = zeros(2, 2); x[CartesianIndex(2, 1)] ~ Normal(); x)
+    model = @test_logs (:warn, r"growable") condition(
+        cartesian_local(), @varname(x[CartesianIndex(2, 1)]) => 3.0
+    )
+    @test model(Xoshiro(1))[2, 1] == 3.0
+    @test condition(cartesian_local(), conditioned(model))(Xoshiro(1))[2, 1] == 3.0
+end
+
 struct PlaceholderState{T}
     value::T
 end
