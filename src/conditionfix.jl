@@ -2752,9 +2752,8 @@ function AbstractPPL.decondition(model::Model, syms::Union{Symbol,VarName}...)
     return _local_remove(Condition, model, syms)
 end
 
-function _check_removal_addresses(values, names...)
-    for name in names
-        vn = name isa VarName ? name : VarName{name}()
+function _check_removal_addresses(values, names)
+    for vn in names
         _check_partial_binding(values, AbstractPPL.varname_to_optic(vn); operation="remove")
     end
     return nothing
@@ -2790,13 +2789,19 @@ function _prune_model_bindings_recursive(values::VarNamedTuple)
     )
 end
 
-function _remove_model_values(
-    ::Type{R}, values::VarNamedTuple, args::Union{Symbol,VarName}...
-) where {R}
+function _remove_model_values(::Type{R}, values::VarNamedTuple, names) where {R}
+    # Element names `x[i]`/`x[i, j]` under a whole array binding are removed after the
+    # prune, in one pass over the array instead of one table edit per name. Without
+    # element names, `()` keeps the other removals inferable.
+    elements = if any(vn -> _is_element_index(AbstractPPL.getoptic(vn)), names)
+        _element_symbols(R, values, names)
+    else
+        ()
+    end
     # Copy each top-level array once per call, not once per name.
     owned = Symbol[]
-    for arg in args
-        vn = arg isa VarName ? arg : VarName{arg}()
+    for vn in names
+        AbstractPPL.getsym(vn) in elements && continue
         if _model_argument_binding(values, AbstractPPL.varname_to_optic(vn)) === nothing
             values = mapfoldl(
                 identity,
@@ -2828,7 +2833,73 @@ function _remove_model_values(
             end
         end
     end
-    return _prune_model_bindings(values)
+    values = _prune_model_bindings(values)
+    for sym in elements
+        child = _remove_model_elements(values.data[sym], sym, names)
+        values = VarNamedTuple(
+            if child isa NoModelBinding
+                Base.structdiff(values.data, NamedTuple{(sym,)})
+            else
+                merge(values.data, NamedTuple{(sym,)}((child,)))
+            end,
+        )
+    end
+    return values
+end
+
+function _element_symbols(::Type{R}, values, names) where {R}
+    syms = Symbol[]
+    for vn in names
+        sym = AbstractPPL.getsym(vn)
+        sym in syms || push!(syms, sym)
+    end
+    return filter!(syms) do sym
+        previous = get(values.data, sym, nothing)
+        previous isa ModelValue{<:Any,<:AbstractArray} &&
+            _matches_model_role(R, previous) &&
+            all(names) do vn
+                optic = AbstractPPL.getoptic(vn)
+                AbstractPPL.getsym(vn) !== sym || (
+                    _is_element_index(optic) &&
+                    length(optic.ix) == ndims(previous.value) &&
+                    checkbounds(Bool, previous.value, optic.ix...)
+                )
+            end
+    end
+end
+_is_element_index(optic) = false
+function _is_element_index(
+    ::AbstractPPL.Index{<:Tuple{Vararg{Int}},NamedTuple{(),Tuple{}},AbstractPPL.Iden}
+)
+    return true
+end
+# Matches expanding, unmasking and pruning: the element type is the join of the kept elements.
+function _remove_model_elements(
+    previous::ModelValue{R,<:AbstractArray}, sym, names
+) where {R}
+    value = previous.value
+    mask = similar(value, Bool)
+    for i in eachindex(mask, value)
+        mask[i] = isassigned(value, i)
+    end
+    for vn in names
+        AbstractPPL.getsym(vn) === sym && (mask[AbstractPPL.getoptic(vn).ix...] = false)
+    end
+    # Always `typejoin`: on Julia 1.11-1.13 a `t <: T || (T = t)` guard leaves `T == Union{}`.
+    T = Union{}
+    for i in eachindex(mask, value)
+        mask[i] && (T = typejoin(T, typeof(_model_value_like(previous, value[i]))))
+    end
+    T === Union{} && return NoModelBinding()
+    data = _fill_model_elements!(similar(value, T), previous, mask)
+    _inherits_binding(previous) && (mask = ModelBindingArray(mask, value))
+    return VarNamedTuples.PartialArray(data, mask)
+end
+function _fill_model_elements!(data, previous, mask)
+    for i in eachindex(data, mask)
+        mask[i] && (data[i] = _model_value_like(previous, previous.value[i]))
+    end
+    return data
 end
 
 function _remove_model_binding(::Type{R}, value, optic::AbstractPPL.AbstractOptic) where {R}
@@ -3130,6 +3201,7 @@ function unfix(model::Model, syms::Union{Symbol,VarName}...)
     return _local_remove(Fix, model, syms)
 end
 
+# An empty `names` removes every binding of role `R`.
 function _local_remove(::Type{R}, model, names) where {R}
     # Child addresses bound here are stored here, so they are removed here.
     model = _materialize_argument_values(model)
@@ -3137,8 +3209,12 @@ function _local_remove(::Type{R}, model, names) where {R}
     names = let layer = layer
         map(vn -> _check_removal_name(model, layer, vn isa Symbol ? VarName{vn}() : vn), names)
     end
-    _check_removal_addresses(layer, names...)
-    layer = _remove_model_values(R, layer, names...)
+    _check_removal_addresses(layer, names)
+    layer = if isempty(names)
+        _remove_model_values(R, layer)
+    else
+        _remove_model_values(R, layer, names)
+    end
     observations = R === Condition ? layer : _observation_values(model.values)
     fixed_values = R === Fix ? layer : _fixed_values(model.values)
     values = if isempty(fixed_values)
@@ -3301,9 +3377,12 @@ function _has_removable(::Type{R}, values, vn) where {R}
     )
 end
 function _remove_marked(::Type{R}, values, r::ModelRemoval) where {R}
-    names = r.name === nothing ? () : (r.name,)
-    _check_removal_addresses(values, names...)
-    removed = _remove_model_values(R, values, names...)
+    removed = if r.name === nothing
+        _remove_model_values(R, values)
+    else
+        _check_removal_addresses(values, (r.name,))
+        _remove_model_values(R, values, (r.name,))
+    end
     # Later bindings carve exceptions out of a broad removal. Keep their original
     # storage when restoring a partial subtree.
     for ex in r.exceptions
