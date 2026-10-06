@@ -837,7 +837,7 @@ end
         @testset "grow_to_indices!! on PartialArray->GrowableArray" begin
             pa = PartialArray(GrowableArray(ones(2)), GrowableArray([false, true]))
             @test_throws BoundsError pa[1]
-            @test pa[2] == 1.0
+            @test pa[2] == pa[Int32(2)] == 1.0
             pa = grow_to_indices!!(pa, 1:3)
             @test size(pa.data) == (3,)
             @test_throws BoundsError pa[1]

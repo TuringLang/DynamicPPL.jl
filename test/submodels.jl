@@ -1367,6 +1367,13 @@ end
     canonicalize(vn) = DynamicPPL._concretize_prefix(vn, zeros(2, 2); prefix=Val(true))
     @test (@inferred canonicalize(@varname(p[CartesianIndex(1, 2)].q))) ==
         @varname(p[1, 2].q)
+    # `Int32` indices address the same storage as `Int` indices.
+    model = prefix(prefix_leaf(), @varname(p[Int32(2)]))
+    @test keys(conditioned(condition(model, @varname(p[2].x) => 3.0))) == [@varname(p[2].x)]
+    model = condition(prefix(prefix_leaf(), @varname(p[2])), @varname(p[2].x) => 3.0)
+    @test isempty(conditioned(decondition(model, @varname(p[Int32(2)].x))))
+    model = condition(indexed_return(Int32(2)), @varname(a[2].x) => 3.0)
+    @test model(Xoshiro(1))[2] == 3.0
 end
 
 end
