@@ -3322,16 +3322,35 @@ end
         @test select(remove(namespace, scope..., @varname(a.typo))) == select(namespace)
     end
     # An empty fixed layer has no owner; overlaying it must still fit the stored observation.
-    for (original, whole, valid, invalid) in (
-        (local_array(), @varname(x), @varname(x[3]), @varname(x[8])),
-        (removal_child(m), @varname(a.x), @varname(a.x[3]), @varname(a.x[8])),
+    for (original, whole, valid, invalid, last) in (
+        (local_array(), @varname(x), @varname(x[3]), @varname(x[8]), @varname(x[end])),
+        (
+            removal_child(m),
+            @varname(a.x),
+            @varname(a.x[3]),
+            @varname(a.x[8]),
+            @varname(a.x[end]),
+        ),
+        (
+            prefix(local_array(), @varname(p)),
+            @varname(p.x),
+            @varname(p.x[3]),
+            @varname(p.x[8]),
+            @varname(p.x[end]),
+        ),
     )
         observed = condition(original, whole => ones(3))
         for bind in (condition, fix)
             @test_throws ArgumentError(
-                "Cannot bind `$invalid`: index is outside the storage at `$(DynamicPPL.getsym(invalid))`",
+                "Cannot bind `$invalid`: index is outside the storage at `$whole`"
             ) bind(observed, invalid => 1.0)
         end
+        # `end` resolves against storage in the edited layer only.
+        @test conditioned(condition(observed, last => 2.0)) ==
+            conditioned(condition(observed, valid => 2.0))
+        @test_throws "Cannot bind `$last`: no storage at `$whole`" fix(
+            observed, last => 2.0
+        )
         bound = fix(observed, valid => 2.0)
         @test fixed(bound)[valid] == 2.0
         @test conditioned(unfix(bound, valid)) == conditioned(observed)
@@ -3342,6 +3361,27 @@ end
             @test isempty(fixed(unfix(observed, scope..., invalid)))
         end
     end
+    observed = condition(local_array(), @varname(x) => ones(3))
+    bound = fix(observed, @of(x = of(Array, 3)), @varname(x[end]) => 2.0)
+    @test fixed(bound)[@varname(x[3])] == 2.0
+    child = removal_child(local_fields())
+    @test condition(child, @varname(a.t.present) => 1.0)(Xoshiro(1)) == 1.0
+    @test_throws "NamedTuple fields use `a.t.present`" condition(
+        child, @varname(a.t[:present]) => 1.0
+    )
+end
+
+@testset "tildes read bindings stored by the same address kind" begin
+    @model kind_elements() = (x = zeros(2); x[1] ~ Normal(); x)
+    @model kind_fields(x) = (x.a ~ Normal(); x.b ~ Normal())
+    @test condition(kind_elements(), @varname(x[1]) => 1.0)(Xoshiro(1))[1] == 1.0
+    mismatched = condition(kind_elements(), @varname(x.a) => 1.0)
+    @test_throws "Cannot read LHS variable `x[1]`" mismatched(Xoshiro(1))
+    fields = condition(kind_fields((a=1.0, b=2.0)); x=(a=3.0, b=4.0))
+    @test decondition(fields, @varname(x.a))(Xoshiro(1)) == 4.0
+    replaced = condition(kind_fields((a=1.0, b=2.0)); x=[3.0, 4.0])
+    mismatched = decondition(replaced, @varname(x[1]))
+    @test_throws "Cannot read LHS variable `x.a`" mismatched(Xoshiro(1))
 end
 
 @testset "`CartesianIndex` addresses store integer coordinates" begin
