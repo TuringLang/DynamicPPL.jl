@@ -12,6 +12,7 @@ using LinearAlgebra: I
 # Loads the renderer used by the docstring test.
 using REPL: REPL
 using Random: Random, Xoshiro
+using StableRNGs: StableRNG
 using Test
 
 macro custom(expr)
@@ -120,7 +121,8 @@ end
         end
         @test length(methods(testmodel01)) == 6
         f0_mm = decondition(testmodel01())
-        @test mean(f0_mm() for _ in 1:1000) ≈ 0.0 atol = 0.1
+        rng = StableRNG(468)
+        @test mean(f0_mm(rng) for _ in 1:1000) ≈ 0.0 atol = 0.1
 
         # Test #544
         @model function testmodel02(x=zeros(2))
@@ -130,7 +132,7 @@ end
         end
         @test length(methods(testmodel02)) == 6
         f0_mm = decondition(testmodel02())
-        @test all(x -> isapprox(x, 0; atol=0.1), mean(f0_mm() for _ in 1:1000))
+        @test all(x -> isapprox(x, 0; atol=0.1), mean(f0_mm(rng) for _ in 1:1000))
 
         @model function testmodel03(x=false)
             x ~ Bernoulli(0.5)
