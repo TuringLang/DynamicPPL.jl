@@ -7,6 +7,7 @@ __now__ = now()
 
 using Distributions: Normal
 using Random: Xoshiro
+using ForwardDiff: Dual
 using Combinatorics: Combinatorics
 using OrderedCollections: OrderedDict
 using Test: @inferred, @test, @test_throws, @testset, @test_broken, @test_logs
@@ -32,6 +33,44 @@ using DimensionalData: DimensionalData as DD
 using InvertedIndices: InvertedIndices as II
 using OffsetArrays: OffsetArrays as OA
 using ComponentArrays: ComponentArrays as CA
+
+@testset "binding templates from VarNamedTuple storage" begin
+    for x in (1, 1.0, 1.0f0, big"1.0")
+        @test typeof(zero(of(VarNamedTuple(; x))).x) === typeof(x)
+    end
+    @test (@inferred of(VarNamedTuple(; x=1.0))) === @of(x = of(Float64))
+    for T in (Float32, Float64, BigFloat, Int32, Bool), dims in ((), (3,), (2, 3))
+        x = fill(one(T), dims)
+        template = of(VarNamedTuple(; x))
+        @test typeof(zero(template).x) === typeof(x)
+        @test size(zero(template).x) == dims
+    end
+    partial = templated_setindex!!(
+        VarNamedTuple(), big"0.5", @varname(y[1]), Vector{BigFloat}(undef, 3)
+    )
+    @test !isassigned(partial.data.y.data, 2)
+    @test of(partial) === @of(y = of(Array, BigFloat, 3))
+    @test of(VarNamedTuple(; p=partial)) === @of(p = @of(y = of(Array, BigFloat, 3)))
+    @test of(VarNamedTuple(; p=(y=zeros(2),))) === @of(p = @of(y = of(Array, 2)))
+    for x in (true, Int32(1), big"1", 1//2, Dual(1.0, 1.0), "value", (1, 2))
+        @test_throws ArgumentError of(VarNamedTuple(; x))
+    end
+    for x in (
+        OA.OffsetArray(ones(3), -1:1),
+        CA.ComponentArray(; a=1.0, b=ones(2)),
+        DD.DimArray(ones(2), (DD.X([10, 20]),)),
+        view(ones(2), :),
+        ["a", "b"],
+    )
+        @test_throws ArgumentError of(VarNamedTuple(; x))
+        @test_throws ArgumentError of(VarNamedTuple(; p=VarNamedTuple(; x)))
+    end
+    for mask in ([true, false], [true, true])
+        growable = PartialArray(GrowableArray(ones(2)), GrowableArray(mask))
+        @test_throws ArgumentError of(VarNamedTuple(; y=growable))
+        @test_throws ArgumentError of(VarNamedTuple(; p=VarNamedTuple(; y=growable)))
+    end
+end
 
 struct GetSetTestCase
     # The VarName being set.
