@@ -191,7 +191,7 @@ end
     end
 end
 
-@testset "runtime schemas preserve tracked values" begin
+@testset "runtime templates preserve tracked values" begin
     @model function schema_child(T, n)
         z = zeros(T, n)
         for i in eachindex(z)

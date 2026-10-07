@@ -54,6 +54,7 @@ function ModelBindingLayers(
     owners::Tuple=Tuple(keys(fixed)),
     observation_removals::Tuple=(),
     fixed_removals::Tuple=(),
+    templates::Tuple=(),
 )
     return ModelBindingLayers(
         observations,
@@ -62,6 +63,7 @@ function ModelBindingLayers(
         owners,
         observation_removals,
         fixed_removals,
+        templates,
     )
 end
 _model_values(values::ModelBindingLayers) = values.values
@@ -2027,7 +2029,7 @@ _optic_length(optic::AbstractPPL.AbstractOptic) = 1 + _optic_length(optic.child)
     elseif operation == "remove"
         "use integer indices"
     else
-        "use integer indices, or supply storage with a whole binding or a binding schema"
+        "use integer indices, or supply storage with a whole binding or a binding template"
     end
     message = "Cannot $operation `$vn`: no storage at `$owner` in the layer being edited to resolve this index; $advice."
     throw(ArgumentError(message))
@@ -2109,7 +2111,7 @@ end
 
 """
     condition(model::Model; values...)
-    condition(model::Model, values..., [schema])
+    condition(model::Model, values..., [template])
 
 Return a `Model` which treats the LHS variables bound by `values` as observations: they replace
 sampling and contribute to the likelihood.
@@ -2131,9 +2133,9 @@ Use NamedTuples/keywords for whole top-level values, `VarName` pairs for any add
 (`:x => v` abbreviates `@varname(x) => v`), or a [`VarNamedTuple`](@ref) produced by
 DynamicPPL. Positional inputs and tuples apply left to right. `condition` rejects every
 `AbstractDict` with `ArgumentError`; `model | dict` has no method. One positional binding
-schema, e.g. `@of(z = of(Array, 3))`, supplies storage for partially bound local LHS variables
+template, e.g. `@of(z = of(Array, 3))`, supplies storage for partially bound local LHS variables
 without binding values (`using AbstractPPL: of, @of`).
-Existing owners in the observation layer take precedence over schemas; conflicts throw.
+Existing owners in the observation layer take precedence over templates; conflicts throw.
 An `of` type fixed before evaluation fixes its element type: runtime bindings under
 ForwardDiff/ReverseDiff need `@of(z = of(Array, typeof(m), n))` or a whole value.
 
@@ -2263,13 +2265,14 @@ julia> try
 true
 ```
 
-Use `VarName` pairs with a binding schema as above. A schema supplies storage without
+Use `VarName` pairs with a binding template as above. A template supplies storage without
 observing or fixing any values. It is an AbstractPPL `OfNamedTuple` type, equivalently
 written `of((m=of(Array, 2),))`, and may appear anywhere among the positional inputs,
-at most once per call. Keywords remain binding data; `|` does not take a schema.
+at most once per call. Keywords remain binding data; `|` does not take a template.
 An existing owner within the layer being edited takes precedence; conflicting storage
-throws `ArgumentError`. Schema entries for arguments, unrelated names, or names the call
-does not bind also throw `ArgumentError`. Resolve symbolic sizes before binding.
+throws `ArgumentError`. Template entries for arguments and names the call does not bind
+are ignored. Templates use absolute names, as in `rand(model)` output: for a model
+prefixed with `p`, use `@of(p = @of(z = of(Array, 3)))`. Resolve symbolic sizes before binding.
 Use whole bindings for custom arrays and structs that `of` cannot describe.
 Values DynamicPPL produces, such as `rand(model)` and `conditioned(model)`, are
 [`VarNamedTuple`](@ref)s and can be passed back for round trips.
@@ -2430,7 +2433,127 @@ function _prepare_local_binding_types(::Type{R}, model, values) where {R}
     end
 end
 
-# Flatten ordered input groups without interpreting keyword values as schemas.
+_binding_templates(values) = ()
+_binding_templates(values::ModelBindingLayers) = values.templates
+_binding_templates(values::LocalModelValues) = _binding_templates(values.values)
+function _with_binding_templates(values, templates::Tuple)
+    isempty(templates) && return values
+    return ModelBindingLayers(
+        _observation_values(values),
+        _fixed_values(values),
+        _model_values(values),
+        _fixed_owners(values),
+        _removals(Condition, values),
+        _removals(Fix, values),
+        templates,
+    )
+end
+function _with_binding_templates(values::LocalModelValues, templates::Tuple)
+    return LocalModelValues(
+        _with_binding_templates(values.values, templates), values.owners
+    )
+end
+function _prefix_binding_template(t::ModelBindingTemplate{R}, prefix) where {R}
+    return ModelBindingTemplate{R}(maybe_prefix(t.name, prefix), t.storage)
+end
+function _binding_template_entries(::Type{R}, schema::NamedTuple, prefix=nothing) where {R}
+    return mapreduce((a, b) -> (a..., b...), pairs(schema); init=()) do (name, storage)
+        address = maybe_prefix(VarName{name}(), prefix)
+        if storage isa NamedTuple
+            _binding_template_entries(R, storage, address)
+        else
+            (ModelBindingTemplate{R}(address, storage),)
+        end
+    end
+end
+function _surviving_binding_templates(previous, values, ::Type{R}, replaced=()) where {R}
+    return filter(_binding_templates(previous)) do t
+        !(t isa ModelBindingTemplate{R}) && return true
+        return !any(vn -> subsumes(vn, t.name), replaced) &&
+               _has_removable(R, _binding_layer(R, values), t.name)
+    end
+end
+function _submodel_binding_templates(model, prefix)
+    prefix = _model_value_varname(model.values, prefix, _model_prefix(model))
+    return mapreduce((a, b) -> (a..., b...), _binding_templates(model.values); init=()) do t
+        prefix === nothing && return (t,)
+        subsumes(prefix, t.name) || return ()
+        return (_unprefix_binding_template(t, prefix),)
+    end
+end
+function _unprefix_binding_template(t::ModelBindingTemplate{R}, prefix) where {R}
+    return ModelBindingTemplate{R}(AbstractPPL.unprefix(t.name, prefix), t.storage)
+end
+struct ConflictingBindingTemplates end
+function _template_schema(schema, t::ModelBindingTemplate{R}, values) where {R}
+    binding = _model_argument_binding(
+        _binding_layer(R, values), AbstractPPL.varname_to_optic(t.name)
+    )
+    owner = _binding_owner(R, binding)
+    storage = if owner isa NoTemplate || _same_schema_storage(owner, t.storage)
+        t.storage
+    else
+        ConflictingBindingTemplates()
+    end
+    previous = haskey(schema, t.name) ? schema[t.name] : storage
+    storage =
+        _same_schema_storage(previous, storage) ? storage : ConflictingBindingTemplates()
+    return setindex!!(schema, storage, t.name)
+end
+function _filter_binding_schema(model, schema::NamedTuple, prefix=nothing; owned_here::Bool)
+    metadata = _binding_metadata(model)
+    if _lhs_names(metadata) === nothing || !any(last, _lhs_addresses(metadata))
+        return owned_here ? schema : (;)
+    end
+    names = filter(keys(schema)) do name
+        address = maybe_prefix(VarName{name}(), prefix)
+        if schema[name] isa NamedTuple
+            return !isempty(_filter_binding_schema(model, schema[name], address; owned_here))
+        end
+        owned =
+            _lhs_names(metadata) === nothing ||
+            any(_lhs_addresses(metadata)) do (lhs, submodel)
+                !submodel && (subsumes(lhs, address) || subsumes(address, lhs))
+            end
+        return owned == owned_here
+    end
+    return NamedTuple{names}(
+        map(names) do name
+            value = schema[name]
+            if value isa NamedTuple
+                _filter_binding_schema(
+                    model, value, maybe_prefix(VarName{name}(), prefix); owned_here
+                )
+            else
+                value
+            end
+        end,
+    )
+end
+function _prepare_inherited_templates(model, values, templates)
+    isempty(templates) && return values
+    result = VarNamedTuple()
+    arguments = map(unsplat_symbol, keys(merge(model.args, model.defaults)))
+    for role in (Condition, Fix)
+        schema = VarNamedTuple()
+        for t in templates
+            t isa ModelBindingTemplate{role} || continue
+            AbstractPPL.getsym(t.name) in arguments && continue
+            schema = _template_schema(schema, t, values)
+        end
+        schema = _filter_binding_schema(model, _model_data(schema); owned_here=true)
+        selected = _select_model_values(role, values)
+        prepared = if isempty(schema)
+            selected
+        else
+            _prepare_schema_input(role, model, selected, schema)
+        end
+        result = _merge_model_values(result, _tag_model_values(role, prepared))
+    end
+    return result
+end
+
+# Flatten ordered input groups without interpreting keyword values as templates.
 function _binding_inputs(values::Tuple)
     return mapreduce(_binding_inputs, (a, b) -> (a..., b...), values; init=())
 end
@@ -2445,30 +2568,101 @@ function _bind_inputs(::Type{R}, model::Model, inputs::Tuple) where {R}
     inputs = _binding_inputs(inputs)
     schemas = filter(x -> x isa Type{<:AbstractPPL.OfNamedTuple}, inputs)
     length(schemas) <= 1 ||
-        throw(ArgumentError("At most one binding schema is allowed per call."))
+        throw(ArgumentError("At most one binding template is allowed per call."))
     values = filter(x -> !(x isa Type{<:AbstractPPL.OfNamedTuple}), inputs)
     isempty(schemas) && return _bind_ordered_inputs(R, model, values)
     model = _materialize_argument_values(model)
     schema = VarNamedTuples.materialize_template(only(schemas))
-    for name in keys(schema)
-        name in map(unsplat_symbol, keys(merge(model.args, model.defaults))) && throw(
-            ArgumentError(
-                "Binding schema entry `$name` names a model argument; use its existing storage.",
-            ),
-        )
-        names = _lhs_names(_binding_metadata(model))
-        (names !== nothing && name in names) || throw(
-            ArgumentError("Binding schema entry `$name` is not a local LHS top symbol.")
-        )
-        root = _model_value_varname(model.values, VarName{name}(), _model_prefix(model))
-        any(v -> _input_binds_root(v, root, model), values) ||
-            throw(ArgumentError("Binding schema entry `$name` is not bound by this call."))
-    end
+    schema = _local_binding_schema(model, schema, values)
+    arguments = map(unsplat_symbol, keys(merge(model.args, model.defaults)))
+    schema = NamedTuple{filter(name -> !(name in arguments), keys(schema))}(schema)
+    schema = _bound_binding_schema(model, schema, values)
+    deferred = _filter_binding_schema(model, schema; owned_here=false)
+    schema = _filter_binding_schema(model, schema; owned_here=true)
     for value in values
         model = _bind_schema_input(R, model, value, schema)
     end
-    return model
+    isempty(deferred) && return model
+    templates = _binding_template_entries(
+        R, deferred, model.values isa LocalModelValues ? nothing : _model_prefix(model)
+    )
+    bindings = _with_binding_templates(
+        model.values, _merge_binding_templates(_binding_templates(model.values), templates)
+    )
+    return _reconstruct_model(model; values=bindings)
 end
+function _bound_binding_schema(model, schema::NamedTuple, values, prefix=nothing)
+    selected = map(keys(schema)) do name
+        address = maybe_prefix(VarName{name}(), prefix)
+        storage = schema[name]
+        if storage isa NamedTuple
+            _bound_binding_schema(model, storage, values, address)
+        else
+            root = _model_value_varname(model.values, address, _model_prefix(model))
+            any(v -> _input_binds_root(v, root, model), values) ? storage : nothing
+        end
+    end
+    selected_schema = NamedTuple{keys(schema)}(selected)
+    names = filter(keys(schema)) do name
+        storage = selected_schema[name]
+        storage !== nothing && !(storage isa NamedTuple && isempty(storage))
+    end
+    return NamedTuple{names}(selected_schema)
+end
+_same_binding_template_name(a, b) = false
+function _same_binding_template_name(
+    a::ModelBindingTemplate{R}, b::ModelBindingTemplate{R}
+) where {R}
+    return a.name == b.name
+end
+function _merge_binding_templates(previous::Tuple, updates::Tuple)
+    return foldl(updates; init=previous) do templates, update
+        index = findfirst(templates) do t
+            _same_binding_template_name(t, update)
+        end
+        index === nothing && return (templates..., update)
+        return Base.setindex(
+            templates, _merge_binding_template(templates[index], update), index
+        )
+    end
+end
+function _merge_binding_template(a::ModelBindingTemplate{R}, b) where {R}
+    storage = if _same_schema_storage(a.storage, b.storage)
+        a.storage
+    else
+        ConflictingBindingTemplates()
+    end
+    return ModelBindingTemplate{R}(a.name, storage)
+end
+
+function _local_binding_schema(model, schema, values)
+    prefix = _model_prefix(model)
+    prefix === nothing && return schema
+    local_schema = _schema_namespace(schema, AbstractPPL.varname_to_optic(prefix))
+    for name in keys(schema)
+        root = maybe_prefix(VarName{name}(), prefix)
+        if (name !== AbstractPPL.getsym(prefix) || !(local_schema isa NamedTuple)) &&
+            any(v -> _input_binds_root(v, root, model), values)
+            throw(
+                ArgumentError(
+                    "Binding template entry `$name` uses a local name; use the absolute name `$root`.",
+                ),
+            )
+        end
+    end
+    return local_schema isa NamedTuple ? local_schema : NamedTuple()
+end
+
+_schema_namespace(value, ::AbstractPPL.Iden) = value
+_schema_namespace(value, ::AbstractPPL.AbstractOptic) = nothing
+function _schema_namespace(value::NamedTuple, optic::AbstractPPL.Property{S}) where {S}
+    return haskey(value, S) ? _schema_namespace(value[S], optic.child) : nothing
+end
+
+function _schema_namespace(value::VarNamedTuple, optic::AbstractPPL.Property)
+    return _schema_namespace(value.data, optic)
+end
+
 function _binding_display_name(model, vn)
     return model.values isa LocalModelValues ? maybe_prefix(vn, _model_prefix(model)) : vn
 end
@@ -2486,11 +2680,21 @@ function _schema_binding_address(model, vn)
     return vn
 end
 function _input_binds_root(value::Pair{<:VarName}, root, model)
-    return subsumes(root, _schema_binding_address(model, first(value)))
+    address = _schema_binding_address(model, first(value))
+    subsumes(root, address) && return true
+    subsumes(address, root) || return false
+    storage = last(value)
+    storage isa Union{NamedTuple,VarNamedTuple} || return true
+    relative = AbstractPPL.unprefix(root, address)
+    return _schema_namespace(storage, AbstractPPL.varname_to_optic(relative)) !== nothing
 end
-_input_binds_root(value::NamedTuple, root, model) = haskey(value, AbstractPPL.getsym(root))
+function _input_binds_root(value::NamedTuple, root, model)
+    return any(pairs(value)) do (name, data)
+        _input_binds_root(VarName{name}() => data, root, model)
+    end
+end
 function _input_binds_root(value::VarNamedTuple, root, model)
-    return any(vn -> subsumes(root, _schema_binding_address(model, vn)), keys(value))
+    return any(pair -> _input_binds_root(pair, root, model), pairs(value))
 end
 _input_binds_root(value, root, model) = false
 
@@ -2514,22 +2718,72 @@ function _same_schema_storage(a::VarNamedTuple, b::NamedTuple)
     )
 end
 
-function _schema_has_address(model, ::NamedTuple{names}, vn::VarName{sym}) where {names,sym}
-    if model.values isa LocalModelValues || _model_prefix(model) === nothing
-        return sym in names
+function _schema_has_address(model, schema::NamedTuple, vn::VarName)
+    local_name = _local_removal_name(model, vn; operation="bind")
+    local_name === nothing && return !isempty(schema)
+    return _schema_has_optic(schema, AbstractPPL.varname_to_optic(local_name))
+end
+_schema_has_optic(value, ::AbstractPPL.AbstractOptic) = true
+_schema_has_optic(value::NamedTuple, ::AbstractPPL.Iden) = true
+function _schema_has_optic(value::NamedTuple, optic::AbstractPPL.Property{S}) where {S}
+    return haskey(value, S) && _schema_has_optic(value[S], optic.child)
+end
+
+_check_deferred_schema(storage, root, input, model) = nothing
+function _check_deferred_schema(::ConflictingBindingTemplates, root, input, model)
+    throw(
+        ArgumentError(
+            "Binding template storage for `$(_binding_display_name(model, root))` conflicts with its existing owner.",
+        ),
+    )
+end
+function _check_deferred_schema(storage::NamedTuple, root, input, model)
+    for (name, child) in pairs(storage)
+        child_root = AbstractPPL.append_optic(root, AbstractPPL.Property{name}())
+        _input_binds_root(input, child_root, model) || continue
+        _check_deferred_schema(child, child_root, input, model)
     end
-    return any(names) do name
-        root = _model_value_varname(model.values, VarName{name}(), _model_prefix(model))
-        subsumes(root, vn) || subsumes(vn, root)
+    return nothing
+end
+
+function _check_schema_owner(owner, storage, root, input, model)
+    _same_schema_storage(owner, storage) || throw(
+        ArgumentError(
+            "Binding template storage for `$root` conflicts with its existing owner."
+        ),
+    )
+    return nothing
+end
+function _check_schema_owner(
+    owner::Union{NamedTuple,VarNamedTuple}, storage::NamedTuple, root, input, model
+)
+    for (name, child_storage) in pairs(storage)
+        child_root = AbstractPPL.append_optic(root, AbstractPPL.Property{name}())
+        _input_binds_root(input, child_root, model) || continue
+        data = owner isa VarNamedTuple ? owner.data : owner
+        haskey(data, name) || continue
+        _check_schema_owner(
+            _schema_storage(data[name]), child_storage, child_root, input, model
+        )
     end
+    return nothing
 end
 
 function _bind_schema_input(::Type{R}, model, input, schema) where {R}
     layer_model = _binding_layer_model(R, model)
+    prepared = _prepare_schema_input(R, model, input, schema, layer_model)
+    return _bind_model(R, model, prepared; preparation_model=layer_model)
+end
+
+function _prepare_schema_input(
+    ::Type{R}, model, input, schema, layer_model=_binding_layer_model(R, model)
+) where {R}
     layer = _model_values(layer_model.values)
     templates = VarNamedTuple()
     for (name, storage) in pairs(schema)
         root = _model_value_varname(model.values, VarName{name}(), _model_prefix(model))
+        _input_binds_root(input, root, model) || continue
+        _check_deferred_schema(storage, root, input, model)
         previous = _model_argument_binding(layer, AbstractPPL.varname_to_optic(root))
         if previous !== nothing
             owner = if previous isa Union{VarNamedTuples.PartialArray,VarNamedTuple}
@@ -2537,11 +2791,7 @@ function _bind_schema_input(::Type{R}, model, input, schema) where {R}
             else
                 _schema_storage(previous)
             end
-            _same_schema_storage(owner, storage) || throw(
-                ArgumentError(
-                    "Binding schema storage for `$name` conflicts with its existing owner.",
-                ),
-            )
+            _check_schema_owner(owner, storage, root, input, model)
             storage =
                 owner isa Union{VarNamedTuple,VarNamedTuples.PartialArray} ? storage : owner
         end
@@ -2552,12 +2802,15 @@ function _bind_schema_input(::Type{R}, model, input, schema) where {R}
     is_pair = input isa Pair{<:VarName}
     plain = is_pair ? VarNamedTuple() : _make_condfix_values(layer_model, input)
     entries = is_pair ? (input,) : pairs(plain)
-    prepared = copy(plain)
+    prepared = VarNamedTuple()
     for (vn, value) in entries
         vn = _schema_binding_address(model, vn)
         uses_schema = _schema_has_address(model, schema, vn)
         if !uses_schema
-            is_pair && return _bind_model(R, model, input; preparation_model=layer_model)
+            is_pair && return _make_condfix_values(layer_model, input)
+            prepared = templated_setindex!!(
+                prepared, value, vn, _binding_template(model, plain, vn)
+            )
             continue
         end
         template = _binding_template(model, templates, vn)
@@ -2566,8 +2819,7 @@ function _bind_schema_input(::Type{R}, model, input, schema) where {R}
         value = _convert_binding_template(value, template, optic, vn)
         prepared = templated_setindex!!(prepared, value, vn, template)
     end
-    input = prepared
-    return _bind_model(R, model, input; preparation_model=layer_model)
+    return prepared
 end
 
 function _convert_binding_template(value, template, ::AbstractPPL.Iden, vn)
@@ -2578,7 +2830,7 @@ function _convert_binding_template(value, template, ::AbstractPPL.Iden, vn)
         ),
     )
     _same_schema_storage(value, template) || throw(
-        ArgumentError("Bound value at `$vn` conflicts with its binding schema storage.")
+        ArgumentError("Bound value at `$vn` conflicts with its binding template storage."),
     )
     return value
 end
@@ -2594,7 +2846,7 @@ function _convert_binding_template(value, template, optic::AbstractPPL.AbstractO
     head =
         head isa AbstractPPL.Index ? AbstractPPL.concretize_top_level(head, template) : head
     # VarNamedTuple nodes describe namespaces, not fields of the bound value.
-    # Descend to the local root before applying whole-value schema checks.
+    # Descend to the local root before applying whole-value template checks.
     if optic.child isa AbstractPPL.Iden && !(template isa VarNamedTuple)
         return _convert_partial_argument_binding(
             ModelValue{Condition}(value), template, head, vn
@@ -2659,6 +2911,9 @@ function _bind_model(::Type{R}, model::Model, values; preparation_model=model) w
     end
     values = model.values isa LocalModelValues ? LocalModelValues(values) : values
     values = _replace_removals(model.values, values, R, new_addresses)
+    values = _with_binding_templates(
+        values, _surviving_binding_templates(model.values, values, R, new_addresses)
+    )
     return _reconstruct_model(model; values)
 end
 function AbstractPPL.condition(model::Model; values...)
@@ -2669,7 +2924,7 @@ end
     _make_condfix_values(model, values)
 
 Convert normalised binding values to a `VarNamedTuple`.
-Input ordering, keyword arguments and schemas are handled by the binding entry points.
+Input ordering, keyword arguments and templates are handled by the binding entry points.
 """
 function _make_condfix_values(model, values)
     throw(
@@ -2794,7 +3049,7 @@ function _make_condfix_values(model, pair::Pair{<:VarName})
 end
 
 # Property LHS addresses describe named binding storage even when local Julia storage
-# does not exist yet. Use that schema only for spelling checks, never as a shape owner.
+# does not exist yet. Use that template only for spelling checks, never as a shape owner.
 function _check_local_property_index(model, vn; operation="bind")
     local_name = _local_removal_name(model, vn; operation)
     local_name === nothing && return nothing
@@ -3273,7 +3528,7 @@ conditioned(model::Model) = _select_model_values(
 
 """
     fix(model::Model; values...)
-    fix(model::Model, values..., [schema])
+    fix(model::Model, values..., [template])
 
 Return a `Model` which treats the LHS variables bound by `values` as constants: they replace
 sampling and contribute no log probability. Fixed argument LHS variables reset to their bound
@@ -3292,7 +3547,7 @@ Partial bindings copy the owner's container one level deep; nested mutable value
 shared and must not be mutated.
 For example, `fix(model, @varname(z[2]) => 1.0, @of(z = of(Array, 3)))` supplies local
 storage (`using AbstractPPL: of, @of`). Owners in the fixed layer take precedence over
-the schema. Runtime bindings under ForwardDiff/ReverseDiff need storage compatible with
+the template. Runtime bindings under ForwardDiff/ReverseDiff need storage compatible with
 AD values, e.g. `@of(z = of(Array, typeof(m), n))`, or a whole value.
 
 Fixed values must cover their LHS variables with a static size and shape. Changing a
@@ -3476,6 +3731,9 @@ function _local_remove(::Type{R}, model, names) where {R}
     values = _with_removals(
         values, _removals(Condition, model.values), _removals(Fix, model.values)
     )
+    values = _with_binding_templates(
+        values, _surviving_binding_templates(model.values, values, R)
+    )
     return _check_latent_arguments(_reconstruct_model(model; values))
 end
 
@@ -3569,6 +3827,7 @@ function _with_removals(values, observations::Tuple, fixed::Tuple)
         _fixed_owners(values),
         observations,
         fixed,
+        _binding_templates(values),
     )
 end
 function _with_removals(values::LocalModelValues, observations::Tuple, fixed::Tuple)
@@ -3724,6 +3983,9 @@ function _recursive_remove(::Type{R}, model, names) where {R}
         R === Fix ? markers : _removals(Fix, model.values),
     )
     layers = model.values isa LocalModelValues ? LocalModelValues(layers) : layers
+    layers = _with_binding_templates(
+        layers, _surviving_binding_templates(model.values, layers, R)
+    )
     return _check_latent_arguments(_reconstruct_model(model; values=layers))
 end
 function AbstractPPL.decondition(model::Model, ::Recursive, names::Union{Symbol,VarName}...)

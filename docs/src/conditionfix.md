@@ -118,7 +118,7 @@ condition(model; y=y_data)
 fix(model, @varname(c) => true_c)
 ```
 
-To observe only `y[1]`, use a `VarName` pair and a binding schema to supply the shape and
+To observe only `y[1]`, use a `VarName` pair and a binding template to supply the shape and
 element type of local storage:
 
 ```@example 1
@@ -129,7 +129,7 @@ rand(rng, cond_model_partial)
 ```
 
 `fix` accepts the same syntax. The equivalent functional spelling is `of((y=of(Array, length(y_data)),))`. Arguments already supply storage, so partial argument bindings need no
-schema. See [Binding rules](@ref) for the complete contract.
+template. See [Binding rules](@ref) for the complete contract.
 
 ## Binding rules
 
@@ -338,16 +338,50 @@ DynamicPPL are also accepted. Positional inputs and tuples apply left to right.
 `condition` and `fix` reject every `AbstractDict` and other unsupported input with
 `ArgumentError`; `model | dict` throws `MethodError`. Use a NamedTuple or ordered pairs.
 
-A **binding schema** is an AbstractPPL `OfNamedTuple` type, such as `@of(z = of(Array, 3))`. It
+A **binding template** is an AbstractPPL `OfNamedTuple` type, such as `@of(z = of(Array, 3))`. It
 supplies storage for partially bound local LHS variables without binding them. A binding
-schema shapes the binding, not the model's storage: the body still sets each local's size, and
+template shapes the binding, not the model's storage: the body still sets each local's size, and
 bound indices outside it are unused. Import `of, @of`
-from AbstractPPL. One binding schema may appear anywhere among positional inputs. Keywords
-remain binding data, and `|` rejects binding schemas. Owners in the edited layer take
-precedence. Conflicting storage or duplicate binding schemas throw `ArgumentError`. Entries for
-arguments, unrelated names, or names not bound by the call also throw `ArgumentError`. Binding
-schemas are converted with `zero(T)` at binding time, so resolve symbolic sizes first. Bind
+from AbstractPPL. One binding template may appear anywhere among positional inputs. Keywords
+remain binding data, and `|` rejects binding templates. Owners in the edited layer take
+precedence. Conflicting storage or duplicate binding templates throw `ArgumentError`. Entries for
+arguments and names not bound by the call are ignored. Templates use absolute names, as in
+`rand(model)` output: for `prefix(m, @varname(p))`, use `@of(p = @of(z = of(Array, 3)))`.
+Deferred entries stay with bindings in the edited layer and follow `prefix`. Removing the
+last binding beneath an entry drops it; partial removals retain it for surviving bindings.
+A later whole binding supplies the new storage. Across submodels, outer bindings and template
+entries take precedence; recursive removals also clear child entries with their bindings.
+
+Binding templates are converted with `zero(T)` at binding time, so resolve symbolic sizes first. Bind
 whole values for storage that `of` cannot describe.
+
+A sample can supply a binding template with `of(rand(rng, model))`. This describes storage,
+not observations: array values and partial masks are discarded, while shape and element type
+are retained. It is a snapshot; rebuild it when the sample layout changes. Plain numeric
+arrays, exactly representable scalars and nested namespaces are supported. Custom arrays,
+growable entries and scalars whose type `of` would widen are rejected.
+
+An indexed prefix, such as `prefix(model, @varname(p[1, 2]))`, cannot take a template: the
+template grammar cannot express indexed namespaces such as `p[1, 2].y`, so `of(rand(rng, model))`
+throws for such samples. Supply storage before applying the indexed prefix, or through an
+argument.
+
+```jldoctest binding_template
+julia> using DynamicPPL, Distributions; using AbstractPPL: of; using StableRNGs: StableRNG
+
+julia> @model function template_demo()
+           y = zeros(3)
+           for i in eachindex(y)
+               y[i] ~ Normal()
+           end
+           return y
+       end;
+
+julia> m = template_demo(); template = of(rand(StableRNG(1), m));
+
+julia> condition(m, @varname(y[1]) => 0.5, template)(StableRNG(2))[1]
+0.5
+```
 
 Bindings must address LHS variables, parts of them, or child LHS variables through a
 submodel namespace. Binding-time checks reject covariates, nonexistent argument fields,
@@ -361,19 +395,27 @@ no LHS variable in the model or its reached unprefixed submodels can use.
 Whole argument bindings must satisfy declared types (`Any` if undeclared) at binding time. The
 full signature must also hold, with shared type parameters and `where` constraints checked
 during evaluation. Binding never selects another method. Whole bindings of local LHS variables
-must fit existing storage types, or set them if absent. Binding schemas also constrain shape.
+must fit existing storage types, or set them if absent. Binding templates also constrain shape.
 
-Partial bindings convert values to the replaced element or field type at binding time. For
+Templates for a child's variables are applied when that child runs, so its arguments keep
+their own storage. At the parent, use concrete indices or establish a whole binding first;
+`end` and `:` cannot be resolved from a template before the child is known. To use them,
+bind the child directly before passing it to `to_submodel`.
+
+Partial bindings convert values to the replaced element or field type at binding time
+(or when the child runs for a binding made through its parent). For
 example, `1` becomes `1.0` in `Float64`. Unconvertible values propagate Julia's conversion
 error, such as `InexactError` for `1.5` into `Int`. Successful but lossy conversions, such as
 `0.1` into `Float32`, raise `ArgumentError`. Runtime AD values need compatible storage, such as
 `fill(zero(m), n)`. An `of` type fixed before evaluation fixes its element type. Under
-ForwardDiff or ReverseDiff, build the binding schema from running values (`@of(z = of(Array, typeof(m), n))`), or bind a whole value.
+ForwardDiff or ReverseDiff, build the binding template from running values (`@of(z = of(Array, typeof(m), n))`), or bind a whole value.
 
 Integer indices, `end`, ranges, `:`, logical masks, and `CartesianIndex` need an argument,
-binding schema, earlier whole value, produced `VarNamedTuple`, or prefix template. Otherwise,
+binding template, earlier whole value, produced `VarNamedTuple`, or prefix template. Otherwise,
 indexed local LHS variables infer a growable array and warn, and `end` or `:` cannot be
-resolved. Property paths need no storage. Keyword-splat entries cannot be bound separately.
+resolved. Property paths need no storage. An indexed prefix has the template limitation described
+above; establish its storage before applying the prefix, or supply it through an argument.
+Keyword-splat entries cannot be bound separately.
 
 With growable storage, every tilde for a symbol must use the same number of indices as its
 bindings; otherwise evaluation throws `ArgumentError`. Linear and Cartesian addresses are
