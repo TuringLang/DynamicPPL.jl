@@ -6210,4 +6210,11 @@ end
     @test decondition(observed, @varname(x[]))(Xoshiro(123)) == draw
 end
 
+@testset "cyclic covariates survive removal" begin
+    @model cyclic_covariate(y, x) = y ~ Normal()
+    cycle = Any[nothing]
+    cycle[1] = cycle
+    @test decondition(cyclic_covariate(0.0, cycle)) isa Model
+end
+
 end
