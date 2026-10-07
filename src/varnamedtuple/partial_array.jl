@@ -110,6 +110,7 @@ end
 largest_index(ix::Integer) = ix
 largest_index(r::AbstractUnitRange) = last(r)
 largest_index(r::AbstractVector{<:Integer}) = maximum(r)
+largest_index(r::AbstractVector{Bool}) = length(r)
 function largest_index(x)
     throw(
         ArgumentError(
@@ -125,16 +126,20 @@ function get_maximum_size_from_indices(ix...; kw...)
     return tuple(map(largest_index, ix)...)
 end
 
+_selected_indices(ix::AbstractVector{Bool}) = Base.OneTo(count(ix))
+_selected_indices(ix) = ix
+_selected_index_shape(ix...) = Base.index_shape(map(_selected_indices, ix)...)
+
 # This determines the required size for setting into the indices ix. Note that ix is not
 # splatted! and this function takes no keywords! For example, if ix is (3:5,1), this
 # function will return (3,); but get_maximum_size_from_indices will return (5, 1).
 @generated function get_required_size_from_indices(ix::Tuple)
     x = Expr(:tuple)
     for (i, ti) in enumerate(ix.parameters)
-        if ti <: AbstractVector{<:Integer}
+        if ti <: AbstractVector{Bool}
+            push!(x.args, :(count(ix[$i])))
+        elseif ti <: AbstractVector{<:Integer}
             push!(x.args, :(length(ix[$i])))
-        elseif i isa Colon
-            error("nope")
         end
     end
     return x
@@ -502,7 +507,7 @@ end
 @generated function _ndims_static(::T) where {T<:Tuple}
     i = 0
     for x in T.parameters
-        if x <: AbstractVector{<:Int} || x <: Colon
+        if x <: AbstractVector{<:Integer} || x <: Colon
             i += 1
         end
     end
@@ -517,7 +522,7 @@ end
 end
 @generated function _is_multiindex_static(::T) where {T<:Tuple}
     for x in T.parameters
-        if x <: AbstractVector{<:Int} || x <: Colon
+        if x <: AbstractVector{<:Integer} || x <: Colon
             return :(return true)
         end
     end

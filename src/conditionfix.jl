@@ -2094,7 +2094,7 @@ function _check_binding_template_bounds(
             VarNamedTuples.template_array(child) isa
             Union{NoTemplate,VarNamedTuples.SkipTemplate,Missing} &&
             all(i -> i isa Union{Integer,AbstractVector{<:Integer}}, next.ix)
-            shape = CartesianIndices(Base.index_shape(coptic.ix...))
+            shape = CartesianIndices(VarNamedTuples._selected_index_shape(coptic.ix...))
             checkbounds(Bool, shape, next.ix...) ||
                 _outside_storage_error(next, vn, operation)
         end
