@@ -182,13 +182,17 @@ end
 index_template(template::SkipTemplate, optic) = decrease_skip(template)
 index_template(template, optic) = NoTemplate()
 function index_template(template::AbstractArray, optic)
-    return getindex(template, optic.ix...; optic.kw...)
+    return if _is_multiindex(template, optic.ix...; optic.kw...)
+        view(template, optic.ix...; optic.kw...)
+    else
+        getindex(template, optic.ix...; optic.kw...)
+    end
 end
 maybe_index_template(template, optic) = index_template(template, optic)
 function maybe_index_template(template::AbstractArray, optic)
     return if _is_multiindex(template, optic.ix...; optic.kw...) ||
         isassigned(template, optic.ix...; optic.kw...)
-        getindex(template, optic.ix...; optic.kw...)
+        index_template(template, optic)
     else
         NoTemplate()
     end

@@ -98,12 +98,21 @@ Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
     typeof(DynamicPPL._argument_may_need_adapter),Type
 }
 
-# Ownership validation only inspects identity and returns no numerical result.
+# Storage validation returns no numerical result.
 Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
     typeof(DynamicPPL._check_argument_key_storage),Any,Any
 }
 Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
     typeof(DynamicPPL._check_latent_storage),Any,Any
+}
+Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
+    typeof(DynamicPPL._check_assigned_binding_storage),Any,Any,Any
+}
+
+Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
+    typeof(DynamicPPL.VarNamedTuples._haskey_optic),
+    DynamicPPL.ModelValue{<:Any,<:AbstractArray},
+    AbstractPPL.Index,
 }
 
 # Reconstruction support depends only on types and methods.
