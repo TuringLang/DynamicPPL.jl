@@ -423,20 +423,32 @@ assign_or_set!!(lhs::Symbol, rhs, vn, set=_set_lhs) = drop_escape(:($lhs = $rhs)
 function assign_or_set!!(lhs::Expr, rhs, vn, set=_set_lhs)
     left_top_sym = get_top_level_symbol(lhs)
     return drop_escape(
-        :(
-            $left_top_sym = $(set)(
-                $left_top_sym,
-                $(AbstractPPL.with_mutation)($(AbstractPPL.getoptic)($vn)),
-                $rhs,
-            )
-        ),
+        :($left_top_sym = $(set)($left_top_sym, $(AbstractPPL.getoptic)($vn), $rhs))
     )
 end
 
-_set_lhs(object, optic, value) = Accessors.set(object, optic, value)
+_set_lhs(object, optic, value) = _set_lhs_optic(object, optic, value)
+_set_lhs_optic(object, ::AbstractPPL.Iden, value) = value
+function _set_lhs_optic(object, optic::AbstractPPL.Property{S}, value) where {S}
+    child = _set_lhs_optic(getproperty(object, S), optic.child, value)
+    return BangBang.setproperty!!(object, S, child)
+end
+function _set_lhs_optic(object, optic::AbstractPPL.Index, value)
+    optic = AbstractPPL.concretize_top_level(optic, object)
+    child = if optic.child isa AbstractPPL.Iden
+        value
+    else
+        _set_lhs_optic(getindex(object, optic.ix...; optic.kw...), optic.child, value)
+    end
+    return if isempty(optic.kw)
+        _setindex!!(object, child, optic.ix...)
+    else
+        setindex!(object, child, optic.ix...; optic.kw...)
+    end
+end
 # A keyword splat must stay `Base.Pairs`, as plain Julia presents it to the body.
 function _set_lhs(object::Base.Pairs, optic, value)
-    return pairs(Accessors.set(values(object), optic, value))
+    return pairs(_set_lhs_optic(values(object), optic, value))
 end
 # A fixed argument already holds its value unless the body changed it. Skip the write when
 # it holds that very value, so storage that cannot take the write, such as a range, works;

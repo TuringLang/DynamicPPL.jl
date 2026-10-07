@@ -380,7 +380,7 @@ end
     stored = first(i for i in CartesianIndices(values.mask) if values.mask[i])
     bound = AbstractPPL.append_optic(owner, AbstractPPL.Index(Tuple(stored), (;)))
     indices(n) = n == 1 ? "1 index" : "$n indices"
-    n = length(Base.index_ndims(optic.ix...))
+    n = VarNamedTuples._index_ndims(optic.ix...)
     distinction = if n == 1 || ndims(values) == 1
         "; linear and Cartesian indices are distinct"
     else
@@ -1738,7 +1738,7 @@ function _set_argument_index(result, value, indices...; kwargs...)
         setindex!(result, value, indices...; kwargs...)
         return result
     end
-    return BangBang.setindex!!(result, value, indices...; kwargs...)
+    return _setindex!!(result, value, indices...; kwargs...)
 end
 function _rebuild_argument_property(result::NamedTuple, ::Val{name}, value) where {name}
     return ConstructionBase.setproperties(result, NamedTuple{(name,)}((value,)))

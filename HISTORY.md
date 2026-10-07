@@ -1,5 +1,7 @@
 # 0.43.0 (unreleased)
 
+Partial bindings without a template now require the same index count as the tilde that reads them; mismatches throw `ArgumentError` → match the tilde address or supply whole storage.
+
 Recursive removal is now explicit: decondition a child before wrapping it → `decondition(parent, DynamicPPL.Recursive(), @varname(a.x))`; likewise `unfix` removes child fixes. No-name recursive forms clear their layer at every depth. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
 Partial array bindings and removals now accept only `Array` and Array-backed `OffsetArray`, `ComponentArray` and `DimArray`. Views, reshapes, transpose/adjoint wrappers, immutable or tracked arrays, ranges, `MVector`, `SizedArray` and `BitArray` require a whole binding/removal, or `collect` where losing metadata is acceptable.

@@ -5667,4 +5667,87 @@ end
     @test result.x !== source.x
 end
 
+@testset "multidimensional index collections preserve addresses" begin
+    @model indexed_observation(idx) = (x = zeros(1, 1); x[idx] ~ MvNormal(zeros(1), I); x)
+    for idx in (trues(1, 1), [CartesianIndex(1, 1)])
+        for bind in (condition, fix)
+            result = bind(indexed_observation(idx), @varname(x[1, 1]) => 5.0)(Xoshiro(1))
+            @test result == [5.0;;]
+        end
+    end
+end
+
+@testset "deferred indices preserve index counts" begin
+    @model scalar_end() = (x = zeros(1, 1); x[CartesianIndex(end, end)] ~ Normal(); x)
+    @model scalar_begin() = (x = zeros(1, 1); x[CartesianIndex(begin, begin)] ~ Normal(); x)
+    @model vector_end() = (
+        x = zeros(1, 1); x[[CartesianIndex(end, end)]] ~ MvNormal(zeros(1), I); x
+    )
+    @model mask_end() = (x = zeros(1, 1); x[trues(end, end)] ~ MvNormal(zeros(1), I); x)
+    @model parent(child) = a ~ to_submodel(child)
+    for model in (scalar_end(), scalar_begin(), vector_end(), mask_end())
+        for bind in (condition, fix)
+            for (nested, matched, mismatched) in (
+                (model, @varname(x[1, 1]), @varname(x[1])),
+                (parent(model), @varname(a.x[1, 1]), @varname(a.x[1])),
+            )
+                @test bind(nested, matched => 5.0)(Xoshiro(1)) == [5.0;;]
+                @test_throws r"growable bindings with 1 index .*but tilde .* uses 2 indices" bind(
+                    nested, mismatched => 5.0
+                )(
+                    Xoshiro(1)
+                )
+            end
+        end
+    end
+end
+
+@testset "zero-dimensional addresses" begin
+    @model scalar_array() = (x = fill(0.0); x[] ~ Normal(); x)
+    @model vector_array() = (x = zeros(1); x[1] ~ Normal(); x)
+    @model argument_array(x) = x[] ~ Normal()
+    @model parent_array() = a ~ to_submodel(scalar_array())
+    draw = rand(Xoshiro(123), Normal())
+    @test scalar_array()(Xoshiro(123)) == fill(draw)
+    values = rand(Xoshiro(123), scalar_array())
+    @test values[@varname(x[])] == draw
+    @test condition(scalar_array(), values)(Xoshiro(123)) == fill(draw)
+    @test logjoint(scalar_array(), (; x=fill(0.5))) ≈ logpdf(Normal(), 0.5)
+    for (bind, remove) in ((condition, decondition), (fix, unfix))
+        bound = bind(scalar_array(), @varname(x[]) => 5.0)
+        @test bound(Xoshiro(123)) == fill(5.0)
+        @test bind(scalar_array(), @varname(x[CartesianIndex()]) => 5.0)(Xoshiro(123)) ==
+            fill(5.0)
+        @test remove(bound, @varname(x[]))(Xoshiro(123)) == fill(draw)
+        @test bind(vector_array(), @varname(x[1]) => 5.0)(Xoshiro(123)) == [5.0]
+        for (model, address, message) in (
+            (
+                scalar_array(),
+                @varname(x[1]),
+                r"growable bindings with 1 index .*but tilde `x\[\]` uses 0 indices",
+            ),
+            (
+                vector_array(),
+                @varname(x[]),
+                r"growable bindings with 0 indices .*but tilde `x\[1\]` uses 1 index",
+            ),
+        )
+            @test_throws message bind(model, address => 5.0)(Xoshiro(123))
+        end
+        for model in (parent_array(), prefix(scalar_array(), @varname(a)))
+            @test bind(model, @varname(a.x[]) => 5.0)(Xoshiro(123)) == fill(5.0)
+            @test_throws r"growable bindings with 1 index .*but tilde `a.x\[\]` uses 0 indices" bind(
+                model, @varname(a.x[1]) => 5.0
+            )(
+                Xoshiro(123)
+            )
+        end
+    end
+    @model nested_array() = (x = (; a=fill(0.0)); x.a[] ~ Normal(); x.a)
+    @test nested_array()(Xoshiro(123)) == fill(draw)
+    observed = argument_array(fill(0.0))
+    @test observed(Xoshiro(123)) == 0.0
+    @test decondition(observed, @varname(x[]))(Xoshiro(123)) == draw
+end
+
 end
