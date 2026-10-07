@@ -22,6 +22,30 @@ using Logging: NullLogger, with_logger
 @info "Testing $(@__FILE__)..."
 __now__ = now()
 
+@testset "binding listings hide unbound storage" begin
+    @model listing_local() = y[1] ~ Normal()
+    for (bind, listing) in ((condition, conditioned), (fix, fixed)),
+        T in (Float64, BigFloat)
+
+        m = bind(listing_local(), @varname(y[1]) => T(0.5), @of(y = of(Array, T, 3)))
+        values = listing(m)
+        @test collect(keys(values)) == [@varname(y[1])]
+        @test_throws BoundsError values[@varname(y[2])]
+        @test !occursin("#undef", repr(values))
+        values.data.y.data[2:3] .= T(987654)
+        for mime in (nothing, MIME"text/plain"())
+            displayed = mime === nothing ? repr(values) : repr(mime, values)
+            @test occursin("0.5", displayed)
+            @test !occursin("987654", displayed)
+        end
+        @test if bind === condition
+            fixed(fix(listing_local(), values)) == values
+        else
+            conditioned(condition(listing_local(), values)) == values
+        end
+    end
+end
+
 @model function observed_view(x)
     for i in eachindex(x)
         x[i] ~ Normal()
