@@ -1064,6 +1064,39 @@ end
             end
         end
 
+        @testset "Empty integer index extents" begin
+            for inds in (
+                Int[],
+                Int32[],
+                BigInt[],
+                Int32(3):Int32(2),
+                3:2,
+                0:-1,
+                3:2:2,
+                1:-1:2,
+                Base.OneTo(0),
+            )
+                @test @inferred(
+                    DynamicPPL.VarNamedTuples.get_maximum_size_from_indices(inds, 2)
+                ) == (0, 2)
+                for initial in
+                    (VarNamedTuple(), setindex!!(VarNamedTuple(), 1.0, @varname(x[1])))
+                    empty_slice = setindex!!(
+                        deepcopy(initial), Float64[], @varname(x[inds])
+                    )
+                    @test size(empty_slice.data.x) == (isempty(initial) ? 0 : 1,)
+                    @test empty_slice[@varname(x[inds])] == Float64[]
+                end
+                matrix = setindex!!(VarNamedTuple(), zeros(0, 2), @varname(x[inds, 1:2]))
+                @test size(matrix.data.x) == (0, 2)
+            end
+            for inds in ([3, 1], Int32[3, 1], BigInt[3, 1], 1:3, 3:-1:1, Base.OneTo(3))
+                @test @inferred(
+                    DynamicPPL.VarNamedTuples.get_maximum_size_from_indices(inds)
+                ) == (3,)
+            end
+        end
+
         @testset "Slice growth uses the selected shape" begin
             for address in (
                 @varname(x[2, 1:2][1]),
