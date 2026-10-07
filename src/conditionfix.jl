@@ -1333,11 +1333,14 @@ function _check_latent_arguments(model)
     arguments = merge(model.args, model.defaults)
     lhs = _args_on_lhs(_binding_metadata(model))
     map(keys(arguments), values(arguments)) do stored_name, value
-        _argument_may_be_unwritable(typeof(value)) || return nothing
+        _argument_may_be_unwritable(typeof(value)) ||
+            _argument_may_be_unwritable(typeof(model.values)) ||
+            return nothing
         vn = VarName{unsplat_symbol(stored_name)}()
-        AbstractPPL.getsym(vn) in lhs &&
-            _get_model_binding(model, vn) === nothing &&
-            _check_latent_storage(value, maybe_prefix(vn, _model_prefix(model)))
+        AbstractPPL.getsym(vn) in lhs || return nothing
+        binding = _get_model_binding(model, vn)
+        storage = binding === nothing ? value : _argument_storage(binding, value)
+        _check_latent_storage(storage, maybe_prefix(vn, _model_prefix(model)))
     end
     return model
 end
@@ -1351,6 +1354,39 @@ end
 struct ModelArgumentStorage{T,C}
     value::T
     children::C
+end
+@inline function _unwritable_storage(storage::ModelArgumentStorage, vn, seen)
+    # Binding listings materialize values without making their gaps latent.
+    vn === nothing && return nothing
+    value = storage.value
+    value isa Union{Tuple,NamedTuple,AbstractArray} || return nothing
+    # Partial binding validation already rejects immutable numeric array storage.
+    value isa AbstractArray && eltype(value) <: Number && return nothing
+    indices = value isa AbstractArray ? CartesianIndices(value) : keys(value)
+    return _first_unwritable_storage(indices) do key
+        value isa AbstractArray && !isassigned(value, key) && return nothing
+        plan = get(storage.children, key, ModelArgumentLeaf(false))
+        plan isa ModelArgumentLeaf && plan.bound && return nothing
+        optic = if key isa Symbol
+            AbstractPPL.Property{key}()
+        else
+            AbstractPPL.Index(key isa CartesianIndex ? Tuple(key) : (key,), (;))
+        end
+        child = plan isa ModelArgumentStorage ? plan : value[key]
+        return _unwritable_storage(child, AbstractPPL.append_optic(vn, optic), seen)
+    end
+end
+@inline function _first_unwritable_storage(f, indices::Tuple)
+    isempty(indices) && return nothing
+    found = f(first(indices))
+    return found === nothing ? _first_unwritable_storage(f, Base.tail(indices)) : found
+end
+function _first_unwritable_storage(f, indices)
+    for key in indices
+        found = f(key)
+        found === nothing || return found
+    end
+    return nothing
 end
 # Fully bound branches need no private storage. Mark latent reachability first:
 # a bound branch may alias a latent one, which still needs an independent copy.
