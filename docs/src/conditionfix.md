@@ -347,6 +347,8 @@ remain binding data, and `|` rejects binding templates. Owners in the edited lay
 precedence. Conflicting storage or duplicate binding templates throw `ArgumentError`. Entries for
 arguments and names not bound by the call are ignored. Templates use absolute names, as in
 `rand(model)` output: for `prefix(m, @varname(p))`, use `@of(p = @of(z = of(Array, 3)))`.
+`check_model` warns about template entries that no LHS variable in the model or its reached
+submodels could use. A child in an untaken branch might still use them.
 Deferred entries stay with bindings in the edited layer and follow `prefix`. Removing the
 last binding beneath an entry drops it; partial removals retain it for surviving bindings.
 A later whole binding supplies the new storage. Across submodels, outer bindings and template
