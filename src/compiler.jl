@@ -972,8 +972,10 @@ end
 
 """
     convert_model_argument(param_eltype, model_argument)
+    convert_model_argument(varinfo, context, model_argument)
 
 Promote type arguments to the parameter element type; leave value arguments unchanged.
+The three-argument form queries the parameter element type only for type arguments.
 """
 convert_model_argument(param_eltype, model_argument) = model_argument
 # These methods handle arguments that are types rather than values.
@@ -986,6 +988,11 @@ end
 # An unknown parameter element type must not erase concrete type arguments.
 convert_model_argument(::Type{Any}, t::Type{<:Union{Real,AbstractArray}}) = t
 convert_model_argument(::Type{Any}, t::TypeWrap{T}) where {T} = t
+
+convert_model_argument(varinfo, context, argument) = convert_model_argument(Any, argument)
+function convert_model_argument(varinfo, context, argument::Union{Type,TypeWrap})
+    return convert_model_argument(get_param_eltype(varinfo, context), argument)
+end
 
 """
     promote_model_type_argument(param_eltype, ::Type{T}) where {T}
