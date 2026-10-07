@@ -108,8 +108,8 @@ end
 
 # Helper functions to determine the largest index from various index types.
 largest_index(ix::Integer) = ix
-largest_index(r::AbstractUnitRange) = last(r)
-largest_index(r::AbstractVector{<:Integer}) = maximum(r)
+largest_index(r::AbstractUnitRange) = isempty(r) ? zero(eltype(r)) : last(r)
+largest_index(r::AbstractVector{<:Integer}) = isempty(r) ? zero(eltype(r)) : maximum(r)
 largest_index(r::AbstractVector{Bool}) = length(r)
 function largest_index(x)
     throw(

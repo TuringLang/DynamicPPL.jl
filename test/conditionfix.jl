@@ -3970,6 +3970,26 @@ end
             end
         end
     end
+    @testset "empty selection children" begin
+        for (bind, remove, select) in
+            ((condition, decondition, conditioned), (fix, unfix, fixed))
+            bound = bind(local_array(), @varname(x[1]) => 1.0)
+            for inds in (Int[], 3:2, 0:-1, 3:2:2, 1:-1:2, Base.OneTo(0), falses(3))
+                invalid = @varname(x[inds][1])
+                owner = @varname(x[inds])
+                @test_throws "Cannot bind `$invalid`: index is outside the storage at `$owner`" bind(
+                    bound, invalid => 9.0
+                )
+                @test_throws "Cannot remove `$invalid`: index is outside the storage at `$owner`" remove(
+                    bound, invalid
+                )
+                @test select(bind(bound, owner => Float64[])) == select(bound)
+                @test select(remove(bound, owner)) == select(bound)
+            end
+            @test select(bind(bound, @varname(x[[1]][1]) => 9.0))[@varname(x[1])] == 9.0
+            @test isempty(select(remove(bound, @varname(x[[1]][1]))))
+        end
+    end
     @testset "slices of growable matrices" begin
         @model function nested_matrix()
             x = Matrix{Vector{Float64}}(undef, 2, 2)
@@ -3981,8 +4001,14 @@ end
             bound = bind(nested_matrix(), @varname(x[2, 1]) => ones(5))
             @test select(bind(bound, @varname(x[2, 1:2][1][5]) => 9.0)) ==
                 select(bind(bound, @varname(x[2, 1][5]) => 9.0))
-            for invalid in
-                (@varname(x[2, 1:2][1][6]), @varname(x[1:2, 1][2][6]), @varname(x[2, 1][6]))
+            for invalid in (
+                @varname(x[2, 1:2][1][6]),
+                @varname(x[1:2, 1][2][6]),
+                @varname(x[2, 1][6]),
+                @varname(x[Int[], 1][1]),
+                @varname(x[2, Int[]][1]),
+                @varname(x[falses(2), 1][1]),
+            )
                 @test_throws "Cannot bind `$invalid`: index is outside the storage" bind(
                     bound, invalid => 9.0
                 )
