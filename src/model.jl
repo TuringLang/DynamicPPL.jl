@@ -818,15 +818,9 @@ Return the arguments and keyword arguments to be passed to the evaluator of the 
 ) where {_F,argnames,defaultnames}
     unwrap_args = [
         if is_splat_symbol(var)
-            :(
-                $convert_model_argument(
-                    $get_param_eltype(varinfo, model.context), model.args.$var
-                )...
-            )
+            :($convert_model_argument(varinfo, model.context, model.args.$var)...)
         else
-            :($convert_model_argument(
-                $get_param_eltype(varinfo, model.context), model.args.$var
-            ))
+            :($convert_model_argument(varinfo, model.context, model.args.$var))
         end for var in argnames
     ]
     unwrap_kwargs = [

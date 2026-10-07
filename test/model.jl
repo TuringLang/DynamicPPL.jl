@@ -60,7 +60,57 @@ end
 
 const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
 
+struct ArgumentEltypeCounter <: DynamicPPL.AbstractInitStrategy
+    calls::Base.RefValue{Int}
+end
+function DynamicPPL.get_param_eltype(strategy::ArgumentEltypeCounter)
+    strategy.calls[] += 1
+    return Float64
+end
+
+struct CustomModelArgument end
+DynamicPPL.convert_model_argument(T, ::CustomModelArgument) = (:converted, T)
+DynamicPPL.convert_model_argument(T, ::Type{CustomModelArgument}) = (:converted_type, T)
+
 @testset "model.jl" begin
+    @testset "parameter eltype is queried only for type arguments" begin
+        @model passthrough(x) = x
+        @model splatted(xs...) = xs
+        value = [1.0f0]
+        for (model, expected) in (
+            (passthrough(1.0f0), 1.0f0),
+            (passthrough(value), value),
+            (splatted(1, 2.0), (1, 2.0)),
+            (passthrough(CustomModelArgument()), (:converted, Any)),
+        )
+            calls = Ref(0)
+            result, _ = init!!(
+                Xoshiro(1),
+                model,
+                VarInfo(DynamicPPL.AccumulatorTuple()),
+                ArgumentEltypeCounter(calls),
+            )
+            @test result === expected
+            @test calls[] == 0
+        end
+        for (argument, expected) in (
+            (Float32, Float64),
+            (Vector{Float32}, Vector{Float64}),
+            (DynamicPPL.TypeWrap{Float32}(), DynamicPPL.TypeWrap{Float64}()),
+            (CustomModelArgument, (:converted_type, Float64)),
+        )
+            calls = Ref(0)
+            result, _ = init!!(
+                Xoshiro(1),
+                passthrough(argument),
+                VarInfo(DynamicPPL.AccumulatorTuple()),
+                ArgumentEltypeCounter(calls),
+            )
+            @test result === expected
+            @test calls[] == 1
+        end
+    end
+
     @testset "immutable metadata for arguments with LHS variables" begin
         @model argument_lhs(x) = x ~ Normal()
         @test isbitstype(typeof(DynamicPPL.Model{false}(identity, (;), (;))))
