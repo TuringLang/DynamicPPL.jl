@@ -326,6 +326,9 @@ end
         end
 
         @testset "Array indices" begin
+            for value in (0.42, 0.42f0, big"0.42")
+                test_get_set(GetSetTestCase(@varname(c[]), value, fill(0.0), []))
+            end
             test_get_set(GetSetTestCase(@varname(c[2]), 0.42, zeros(3), []))
             # Should still be type stable even though the eltype of the template is different, since
             # the eltype is taken from the value.

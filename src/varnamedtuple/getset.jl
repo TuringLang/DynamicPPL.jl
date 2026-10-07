@@ -138,7 +138,7 @@ function _setindex_optic!!(
 )
     perms isa MustNotOverwrite && throw(MustNotOverwriteError(perms))
     coptic = AbstractPPL.concretize_top_level(optic, arr)
-    return BangBang.setindex!!(arr, value, coptic.ix...; coptic.kw...)
+    return DynamicPPL._setindex!!(arr, value, coptic.ix...; coptic.kw...)
 end
 function _setindex_optic!!(
     nt::NamedTuple{names},

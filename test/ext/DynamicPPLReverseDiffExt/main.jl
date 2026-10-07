@@ -430,3 +430,16 @@ end
         @test run_ad(model, adtype; params, test, verbose=false) isa Any
     end
 end
+
+@testset "zero-dimensional LHS gradients" begin
+    @model scalar_array() = (x = fill(0.0); x[] ~ Normal(); x)
+    @model argument_array(x) = x[] ~ Normal()
+    for model in (scalar_array(), decondition(argument_array(fill(0.0)), @varname(x[])))
+        @test run_ad(
+            model,
+            AutoReverseDiff();
+            params=[0.5],
+            test=WithExpectedResult(logpdf(Normal(), 0.5), [-0.5]),
+        ) isa Any
+    end
+end

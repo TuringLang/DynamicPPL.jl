@@ -363,9 +363,17 @@ function _can_get_arraylikeblock(pa_data::AbstractArray)
 end
 
 # Linear or trailing-singleton indices into growable storage would alias other addresses.
+function _index_ndims(inds...)
+    n = length(Base.index_ndims(inds...))
+    for ind in inds
+        ind isa AbstractArray{Bool} || continue
+        n += ndims(ind) - 1
+    end
+    return n
+end
 function _matches_ndims(pa::PartialArray, inds)
     pa.data isa GrowableArray || return true
-    return length(Base.index_ndims(inds...)) == ndims(pa)
+    return _index_ndims(inds...) == ndims(pa)
 end
 function Base.checkbounds(::Type{Bool}, pa::PartialArray, inds...; kw...)
     return _matches_ndims(pa, inds) && checkbounds(Bool, pa.mask, inds...; kw...)
@@ -611,7 +619,7 @@ function BangBang.setindex!!(pa::PartialArray, value, inds::Vararg{Any}; kw...)
     if _needs_arraylikeblock(new_data, value, inds...; kw...)
         idx_sz = size(@view new_data[inds..., kw...])
         alb = ArrayLikeBlock(value, inds, NamedTuple(kw), idx_sz)
-        new_data = setindex!!(new_data, fill(alb, idx_sz...), inds...; kw...)
+        new_data = DynamicPPL._setindex!!(new_data, fill(alb, idx_sz...), inds...; kw...)
         fill!(view(new_mask, inds...; kw...), true)
     else
         if value isa PartialArray
@@ -655,11 +663,11 @@ function BangBang.setindex!!(pa::PartialArray, value, inds::Vararg{Any}; kw...)
             else
                 # Overwriting one element of a PA with another PA. The PA is the value
                 # itself! -- i.e. nested PAs! This can happen with things like x[1][1]
-                new_data = setindex!!(new_data, value, inds...; kw...)
+                new_data = DynamicPPL._setindex!!(new_data, value, inds...; kw...)
                 setindex!(new_mask, true, inds...; kw...)
             end
         else
-            new_data = setindex!!(new_data, value, inds...; kw...)
+            new_data = DynamicPPL._setindex!!(new_data, value, inds...; kw...)
             fill!(view(new_mask, inds...; kw...), true)
         end
     end

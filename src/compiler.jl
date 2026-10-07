@@ -420,7 +420,7 @@ function generate_tilde_literal(left, right)
 end
 
 function set_tilde_value!!(::AbstractVarInfo, object, value, vn::VarName)
-    return _set_lhs(object, AbstractPPL.with_mutation(AbstractPPL.getoptic(vn)), value)
+    return _set_lhs(object, AbstractPPL.getoptic(vn), value)
 end
 
 assign_or_set!!(lhs::Symbol, rhs, vn, set=set_tilde_value!!) = drop_escape(:($lhs = $rhs))
@@ -429,10 +429,28 @@ function assign_or_set!!(lhs::Expr, rhs, vn, set=set_tilde_value!!)
     return drop_escape(:($left_top_sym = $(set)(__varinfo__, $left_top_sym, $rhs, $vn)))
 end
 
-_set_lhs(object, optic, value) = Accessors.set(object, optic, value)
+_set_lhs(object, optic, value) = _set_lhs_optic(object, optic, value)
+_set_lhs_optic(object, ::AbstractPPL.Iden, value) = value
+function _set_lhs_optic(object, optic::AbstractPPL.Property{S}, value) where {S}
+    child = _set_lhs_optic(getproperty(object, S), optic.child, value)
+    return BangBang.setproperty!!(object, S, child)
+end
+function _set_lhs_optic(object, optic::AbstractPPL.Index, value)
+    optic = AbstractPPL.concretize_top_level(optic, object)
+    child = if optic.child isa AbstractPPL.Iden
+        value
+    else
+        _set_lhs_optic(getindex(object, optic.ix...; optic.kw...), optic.child, value)
+    end
+    return if isempty(optic.kw)
+        _setindex!!(object, child, optic.ix...)
+    else
+        setindex!(object, child, optic.ix...; optic.kw...)
+    end
+end
 # A keyword splat must stay `Base.Pairs`, as plain Julia presents it to the body.
 function _set_lhs(object::Base.Pairs, optic, value)
-    return pairs(Accessors.set(values(object), optic, value))
+    return pairs(_set_lhs_optic(values(object), optic, value))
 end
 # A fixed argument already holds its value unless the body changed it. Skip the write when
 # it holds that very value, so storage that cannot take the write, such as a range, works;
