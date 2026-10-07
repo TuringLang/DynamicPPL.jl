@@ -151,10 +151,27 @@ _parameter_eltype(value) = Any
 function _parameter_eltype(values::Union{Tuple,NamedTuple})
     return mapreduce(_parameter_eltype, promote_type, values; init=Union{})
 end
+_parameter_eltype(values::VarNamedTuple) = _parameter_eltype(values.data)
+_parameter_eltype(value::VarNamedTuples.ArrayLikeBlock) = _parameter_eltype(value.block)
+function _parameter_eltype(values::VarNamedTuples.PartialArray)
+    T = Union{}
+    visited = nothing
+    for i in CartesianIndices(values.mask)
+        if values.mask[i] && (visited === nothing || !visited[i])
+            value = values.data[i]
+            if value isa VarNamedTuples.ArrayLikeBlock
+                if visited === nothing
+                    visited = fill!(similar(BitArray, axes(values.mask)), false)
+                end
+                visited[value.ix..., value.kw...] .= true
+            end
+            T = promote_type(T, _parameter_eltype(value))
+        end
+    end
+    return T
+end
 function get_param_eltype(p::InitFromParams{<:VarNamedTuple})
-    return mapreduce(
-        pair -> _parameter_eltype(pair.second), promote_type, p.params; init=Union{}
-    )
+    return _parameter_eltype(p.params)
 end
 # For NamedTuple and Dict, we just convert to VNT internally. This saves us from having to
 # implement separate `init()` methods for those. It also means that when someone provides
