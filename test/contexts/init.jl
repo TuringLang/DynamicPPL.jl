@@ -7,12 +7,69 @@ __now__ = now()
 using Bijectors: Bijectors
 using Distributions
 using DynamicPPL
+using DynamicPPL.VarNamedTuples: PartialArray, ArrayLikeBlock
+using ForwardDiff: Dual
 using LinearAlgebra: I
 using Random: Xoshiro
 using StableRNGs: StableRNG
+using StaticArrays: SVector
 using Test
 
+struct CountingRealVector <: AbstractVector{Real}
+    data::Vector{Real}
+    reads::Base.RefValue{Int}
+end
+Base.size(x::CountingRealVector) = size(x.data)
+Base.isassigned(x::CountingRealVector, i::Int) = isassigned(x.data, i)
+Base.getindex(x::CountingRealVector, i::Int) = (x.reads[] += 1; x.data[i])
+
 @testset "Context" begin
+    @testset "parameter element types" begin
+        param_eltype(x) = DynamicPPL.get_param_eltype(InitFromParams(VarNamedTuple(; x=x)))
+        for T in (Float32, Float64, BigFloat, Dual{Nothing,Float64,1})
+            x = one(T)
+            nested = PartialArray(fill(VarNamedTuple(; z=x), 100, 2), trues(100, 2))
+            @test param_eltype(nested) === T
+            @test @allocated(param_eltype(nested)) < 1024
+            @test param_eltype(SVector(x, x)) === T
+            @test param_eltype((x, (; y=[x]))) === T
+            @test param_eltype(TransformedValue([x], NoTransform())) === T
+        end
+        @test param_eltype(PartialArray(Any[1.0f0, "unused"], [true, false])) === Float32
+        @test param_eltype(PartialArray(Any[1.0f0, "used"], [true, true])) === Any
+        @test param_eltype(PartialArray(Vector{Any}(undef, 2), falses(2))) === Union{}
+        @test param_eltype(PartialArray(Float32[], Bool[])) === Union{}
+        @test param_eltype(Any[1.0f0, big"2.0"]) === BigFloat
+        @test param_eltype(()) === Union{}
+        @test DynamicPPL.get_param_eltype(InitFromParams(VarNamedTuple())) === Union{}
+        block = ArrayLikeBlock((1.0f0, 2.0), (1:2,), (;), (2,))
+        @test param_eltype(PartialArray(fill(block, 2), trues(2))) === Float64
+        for mask in (SVector(true, true), SVector(true, false), SVector(false, true))
+            @test param_eltype(PartialArray(fill(block, 2), mask)) === Float64
+        end
+
+        n = 100
+        counted = CountingRealVector(Real[Float64(i) for i in 1:n], Ref(0))
+        params = DynamicPPL.templated_setindex!!(
+            VarNamedTuple(),
+            TransformedValue(counted, NoTransform()),
+            @varname(x[1:n]),
+            zeros(n + 1),
+        )
+        mask = copy(params.data.x.mask)
+        counted.reads[] = 0
+        @test param_eltype(params) === Float64
+        @test counted.reads[] == n
+        @test params.data.x.mask == mask
+        params = DynamicPPL.templated_setindex!!(
+            params, big"1.0", @varname(x[n + 1]), zeros(n + 1)
+        )
+        counted.reads[] = 0
+        @test param_eltype(params) === BigFloat
+        @test counted.reads[] == n
+        @test all(params.data.x.mask)
+    end
+
     @model function test_init_model()
         x ~ Normal()
         y ~ MvNormal(fill(x, 2), I)
