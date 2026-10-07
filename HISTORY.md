@@ -2,6 +2,8 @@
 
 Partial bindings without a template now require the same index count as the tilde that reads them; mismatches throw `ArgumentError` → match the tilde address or supply whole storage.
 
+Compact displays of `conditioned` and `fixed` listings now show only bound entries, hiding unassigned slots in masked storage.
+
 `AbstractPPL.of(vnt::VarNamedTuple)` creates a snapshot binding template from plain numeric arrays, exactly representable scalars, and nested namespaces. Partial entries describe their full backing arrays; custom arrays, growable storage, and scalars whose types would widen throw `ArgumentError`. Rebuild after layout changes.
 
 Recursive removal is now explicit: decondition a child before wrapping it → `decondition(parent, DynamicPPL.Recursive(), @varname(a.x))`; likewise `unfix` removes child fixes. No-name recursive forms clear their layer at every depth. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).

@@ -11,6 +11,18 @@ function Base.show(io::IO, vnt::VarNamedTuple)
     return nothing
 end
 
+function Base.show(io::IO, pa::PartialArray)
+    print(io, "PartialArray(size=", size(pa.data))
+    for idx in CartesianIndices(pa.data)
+        pa.mask[idx] || continue
+        print(io, ", ")
+        show(io, Tuple(idx))
+        print(io, " => ")
+        show(io, pa.data[idx])
+    end
+    return print(io, ")")
+end
+
 const MAX_KEYS_OR_INDICES = 8
 
 function vnt_pretty_print(io::IO, pa::PartialArray, prefix::String, depth::Int)
