@@ -302,20 +302,25 @@ Evaluate `submodel` under `parent_model`.
         ()
     else
         filter(child_templates) do t
-        role = t isa ModelBindingTemplate{Condition} ? Condition : Fix
-        layer = _binding_layer(role, parent_values)
-        removals = role === Condition ? observation_removals : fixed_removals
-        return !any(r -> _removal_covers(r, t.name), removals) &&
-               _has_removable(role, _binding_layer(role, child_layers), t.name) &&
-               !any(vn -> subsumes(vn, t.name), keys(layer)) &&
-               !any(
-                   p -> p isa ModelBindingTemplate{role} && p.name == t.name,
-                   inherited_templates,
-               )
-    end
+            role = t isa ModelBindingTemplate{Condition} ? Condition : Fix
+            layer = _binding_layer(role, parent_values)
+            removals = role === Condition ? observation_removals : fixed_removals
+            return !any(r -> _removal_covers(r, t.name), removals) &&
+                   _has_removable(role, _binding_layer(role, child_layers), t.name) &&
+                   !any(vn -> subsumes(vn, t.name), keys(layer)) &&
+                   !any(
+                       p -> p isa ModelBindingTemplate{role} && p.name == t.name,
+                       inherited_templates,
+                   )
+        end
     end
     templates = (templates..., inherited_templates...)
     values = _with_binding_templates(values, templates)
+    isempty(observation_removals) && isempty(fixed_removals) ||
+        _check_shared_latent_storage(
+            _reconstruct_model(submodel.model; values),
+            maybe_prefix(local_prefix, _model_prefix(parent_model)),
+        )
     return _evaluate_submodel!!(
         parent_model, context, submodel, left_vn, template, vi, values
     )

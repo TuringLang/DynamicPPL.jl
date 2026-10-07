@@ -114,6 +114,9 @@ Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
     DynamicPPL.ModelValue{<:Any,<:AbstractArray},
     AbstractPPL.Index,
 }
+Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
+    typeof(DynamicPPL._check_shared_latent_storage),DynamicPPL.Model,Vararg{Any}
+}
 
 # Reconstruction support depends only on types and methods.
 Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{

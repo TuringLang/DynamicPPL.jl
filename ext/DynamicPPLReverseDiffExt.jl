@@ -8,7 +8,22 @@ using ReverseDiff
 
 DynamicPPL._argument_ad_storage(::Type{<:ReverseDiff.TrackedArray}) = true
 DynamicPPL._copy_model_argument(value::ReverseDiff.TrackedArray) = map(identity, value)
-function DynamicPPL._retain_argument_children!(memo, value::ReverseDiff.TrackedArray, seen)
+# Every tracked value reaches the shared tape, which is not argument storage.
+DynamicPPL._argument_may_alias(::Type{ReverseDiff.InstructionTape}) = false
+DynamicPPL._reached_latent(latent, ::ReverseDiff.InstructionTape, seen, memory) = nothing
+# Scalar origins and derivative buffers belong to the tape, not argument storage.
+function DynamicPPL._argument_may_alias(::Type{<:ReverseDiff.TrackedReal{V}}) where {V}
+    return DynamicPPL._argument_may_alias(V)
+end
+function DynamicPPL._foreach_argument_child(f::F, value::ReverseDiff.TrackedReal) where {F}
+    return f(ReverseDiff.value(value))
+end
+function DynamicPPL._argument_opaque_value(
+    ::Union{ReverseDiff.TrackedArray,ReverseDiff.TrackedReal}
+)
+    return true
+end
+function DynamicPPL._retain_argument_value!(memo, value::ReverseDiff.TrackedArray, seen)
     # A tracked array is an immutable facade. Keep its tape and origin buffers so
     # reads of a copied facade still connect to the enclosing differentiation.
     memo[DynamicPPL.ModelArgumentCopy] = true
