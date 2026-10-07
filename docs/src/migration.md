@@ -247,7 +247,7 @@ a NamedTuple, or keyword arguments. Likewise, replace `m | Dict(@varname(x) => v
 `m | (@varname(x) => v)` or `m | (x=v,)`; `|` no longer accepts `AbstractDict`.
 `:x => v` remains shorthand for `@varname(x) => v`.
 Replace `@vnt` or `@template` storage for partial local bindings with a positional binding
-schema, for example `condition(m, @varname(z[2]) => 1.0, @of(z = of(Array, 3)))`, importing
+template, for example `condition(m, @varname(z[2]) => 1.0, @of(z = of(Array, 3)))`, importing
 `of, @of` from AbstractPPL. Produced `VarNamedTuple` values remain accepted. `@vnt` is no
 longer exported; replace unqualified uses with `DynamicPPL.@vnt` or explicitly import it.
 

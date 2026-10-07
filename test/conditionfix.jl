@@ -22,6 +22,264 @@ using Logging: NullLogger, with_logger
 @info "Testing $(@__FILE__)..."
 __now__ = now()
 
+@testset "sample binding templates" begin
+    @model function template_vector(x=zeros(2))
+        y = zeros(3)
+        for i in eachindex(y)
+            y[i] ~ Normal()
+        end
+        x[1] ~ Normal()
+        return y
+    end
+    @model function template_matrix()
+        y = zeros(2, 3)
+        for i in eachindex(y)
+            y[i] ~ Normal()
+        end
+        return y
+    end
+    @model template_child() = a ~ to_submodel(template_vector())
+    @model template_unprefixed() = a ~ to_submodel(template_vector(), false)
+    for bind in (condition, fix)
+        for (m, address) in (
+            (template_vector(), @varname(y[1])),
+            (template_matrix(), @varname(y[1, 1])),
+            (prefix(template_vector(), @varname(p)), @varname(p.y[1])),
+            (template_child(), @varname(a.y[1])),
+            (template_unprefixed(), @varname(y[1])),
+        )
+            sample = rand(StableRNG(1), m)
+            bound = bind(m, address => 0.5, of(sample))
+            listing = bind === condition ? conditioned(bound) : fixed(bound)
+            @test listing[address] == 0.5
+            @test bound(StableRNG(2))[1] == 0.5
+        end
+        pm = prefix(template_vector(), @varname(p))
+        @test bind(pm, @varname(p.y[end]) => 0.5, of(rand(StableRNG(1), pm)))(
+            StableRNG(2)
+        )[end] == 0.5
+        m = template_vector()
+        @test bind(
+            m,
+            @varname(y[1]) => 0.5,
+            @of(y = of(Array, 3), typo = of(Int), x = of(Array, 100))
+        )(
+            StableRNG(1)
+        )[1] == 0.5
+        owned = bind(m, @varname(y) => ones(3))
+        @test bind(owned, @varname(x[1]) => 0.5, @of(y = of(Array, 100)))(StableRNG(1)) ==
+            ones(3)
+        @test bind(m, @varname(x[1]) => 0.5, @of(x = of(Array, Int, 100)))(StableRNG(1)) isa
+            Vector
+        @test bind(template_unprefixed(), @varname(y[3]) => 0.5, @of(y = of(Array, 3)))(
+            StableRNG(1)
+        )[end] == 0.5
+        child = template_child()
+        owned_child = bind(child, @varname(a.x) => ones(2))
+        @test bind(
+            owned_child,
+            @varname(a.y[3]) => 0.5,
+            @of(a = @of(y = of(Array, 3), x = of(Array, 100)))
+        )(
+            StableRNG(1)
+        )[end] == 0.5
+        partial = bind(m, @varname(y[1]) => 0.5, of(rand(StableRNG(1), m)))
+        listing = bind === condition ? conditioned(partial) : fixed(partial)
+        @test bind(partial, @varname(y[end]) => 0.75, of(listing))(StableRNG(1))[[1, 3]] ==
+            [0.5, 0.75]
+    end
+end
+
+@testset "deferred templates live with bindings" begin
+    @model function template_table_leaf()
+        y = zeros(2)
+        y[1] ~ Normal()
+        y[2] ~ Normal()
+        return y
+    end
+    @model template_table_parent() = a ~ to_submodel(template_table_leaf(), false)
+    @model template_table_nested(child) = b ~ to_submodel(child, false)
+
+    for bind in (condition, fix)
+        remove = bind === condition ? decondition : unfix
+        model = bind(
+            template_table_parent(),
+            @varname(y[1]) => 1.0,
+            @of(y = of(Array, 2), unused = of(Array, 4)),
+        )
+        @test model(Xoshiro(1))[1] == 1.0
+        @test !haskey(
+            bind === condition ? conditioned(model) : fixed(model), @varname(unused)
+        )
+        prefixed = prefix(model, @varname(p))
+        @test prefixed(Xoshiro(1))[1] == 1.0
+
+        cleared = remove(model, @varname(y[1]))
+        rebound = bind(cleared, @varname(y[2]) => 2.0, @of(y = of(Array, 3)))
+        @test rebound(Xoshiro(1))[2] == 2.0
+
+        owned = bind(model, @varname(y) => [3.0, 4.0])
+        @test owned(Xoshiro(1)) == [3.0, 4.0]
+        child = bind(
+            template_table_parent(), @varname(y[1]) => 1.0, @of(y = of(Array, Int, 2))
+        )
+        nested = template_table_nested(child)
+        @test bind(nested, @varname(y) => [0.5, 1.5])(Xoshiro(1)) == [0.5, 1.5]
+        @test bind(
+            nested, @varname(y[1]) => 0.5, @varname(y[2]) => 1.5, @of(y = of(Array, 2))
+        )(
+            Xoshiro(1)
+        ) == [0.5, 1.5]
+        cleared = remove(nested, DynamicPPL.Recursive(), @varname(y))
+        @test bind(cleared, @varname(y[1]) => 0.5, @varname(y[2]) => 1.5)(Xoshiro(1)) ==
+            [0.5, 1.5]
+        @test_throws InexactError bind(remove(nested), @varname(y[2]) => 0.5)(Xoshiro(1))
+        retained = bind(child, @varname(y[2]) => 2.0)
+        retained = remove(retained, @varname(y[1]))
+        @test_throws InexactError bind(retained, @varname(y[1]) => 0.5)(Xoshiro(1))
+        listing = bind === condition ? conditioned(child) : fixed(child)
+        @test collect(keys(listing)) == [@varname(y[1])]
+        other_remove = bind === condition ? unfix : decondition
+        @test_throws InexactError bind(other_remove(child), @varname(y[2]) => 0.5)(
+            Xoshiro(1)
+        )
+    end
+end
+
+@testset "child argument templates" begin
+    @model function child_argument(x=zeros(2))
+        x[1] ~ Normal()
+        x[2] ~ Normal()
+        return x
+    end
+    @model auto_parent() = a ~ to_submodel(child_argument())
+    @model shared_parent() = a ~ to_submodel(child_argument(), false)
+    for bind in (condition, fix)
+        @test_throws ArgumentError bind(
+            auto_parent(), @varname(a.x[end]) => 1.0, @of(a = @of(x = of(Array, 1)))
+        )
+        @test_throws ArgumentError bind(
+            shared_parent(), @varname(x[end]) => 1.0, @of(x = of(Array, 1))
+        )
+        @test bind(child_argument(), @varname(x[end]) => 1.0, @of(x = of(Array, Int, 100)))(
+            Xoshiro(1)
+        ) == [0.0, 1.0]
+        for (m, first, last, all, schema) in (
+            (
+                auto_parent(),
+                @varname(a.x[1]),
+                @varname(a.x[end]),
+                @varname(a.x[:]),
+                @of(a = @of(x = of(Array, Int, 100)))
+            ),
+            (
+                shared_parent(),
+                @varname(x[1]),
+                @varname(x[end]),
+                @varname(x[:]),
+                @of(x = of(Array, Int, 100))
+            ),
+        )
+            @test bind(m, first => 0.5)(Xoshiro(1)) == [0.5, 0.0]
+            @test bind(m, first => 0.5, schema)(Xoshiro(1)) == [0.5, 0.0]
+            @test_throws ArgumentError bind(m, last => 1.0, schema)
+            @test_throws ArgumentError bind(m, all => [0.5, 1.5], schema)
+        end
+    end
+end
+
+@testset "deferred template storage" begin
+    @model function leaf(x=zeros(2))
+        y = zeros(2)
+        for i in 1:2
+            x[i] ~ Normal()
+        end
+        y ~ MvNormal(zeros(2), I)
+        return x, y
+    end
+    @model parent() = a ~ to_submodel(leaf())
+    @model shared() = a ~ to_submodel(leaf(), false)
+    @model grandparent() = b ~ to_submodel(parent())
+    for bind in (condition, fix)
+        for (m, x, y1, y2, schema) in (
+            (
+                parent(),
+                @varname(a.x[2]),
+                @varname(a.y[1]),
+                @varname(a.y[2]),
+                @of(a = @of(x = of(Array, Int, 1), y = of(Array, 2)))
+            ),
+            (
+                shared(),
+                @varname(x[2]),
+                @varname(y[1]),
+                @varname(y[2]),
+                @of(x = of(Array, Int, 1), y = of(Array, 2))
+            ),
+            (
+                grandparent(),
+                @varname(b.a.x[2]),
+                @varname(b.a.y[1]),
+                @varname(b.a.y[2]),
+                @of(b = @of(a = @of(x = of(Array, Int, 1), y = of(Array, 2))))
+            ),
+            (
+                prefix(parent(), @varname(p)),
+                @varname(p.a.x[2]),
+                @varname(p.a.y[1]),
+                @varname(p.a.y[2]),
+                @of(p = @of(a = @of(x = of(Array, Int, 1), y = of(Array, 2))))
+            ),
+        )
+            m = bind(m, x => 0.5, y1 => 1.0, y2 => 2.0, schema)
+            @test m(Xoshiro(1)) == ([0.0, 0.5], [1.0, 2.0])
+        end
+        m = bind(parent(), @varname(a.y[1]) => 0.5, @of(a = @of(y = of(Array, Int, 2))))
+        @test_throws InexactError m(Xoshiro(1))
+        argument = bind(
+            parent(), @varname(a.x[1]) => 0.5, @of(a = @of(x = of(Array, Int, 1)))
+        )
+        argument = bind(argument, @varname(a.x[2]) => 1.5, @of(a = @of(x = of(Array, 100))))
+        @test argument(Xoshiro(1))[1] == [0.5, 1.5]
+        original = bind(
+            parent(), @varname(a.y[1]) => 1.0, @of(a = @of(y = of(Array, Int, 2)))
+        )
+        for recursive in (false, true)
+            remove = bind === condition ? decondition : unfix
+            cleared =
+                recursive ? remove(original, DynamicPPL.Recursive()) : remove(original)
+            rebound = bind(cleared, @varname(a.y) => [0.5, 1.5])
+            @test rebound(Xoshiro(1))[2] == [0.5, 1.5]
+        end
+        conflict = bind(
+            original, @varname(a.y[2]) => 1.0, @of(a = @of(y = of(Array, Int, 3)))
+        )
+        @test_throws "conflicts with its existing owner" conflict(Xoshiro(1))
+    end
+end
+
+@model function resized_template_child()
+    y = zeros(4)
+    for i in eachindex(y)
+        y[i] ~ Normal()
+    end
+    return y
+end
+@model resized_template_parent() = a ~ to_submodel(resized_template_child())
+@testset "deferred whole owners" begin
+    for (bind, remove) in ((condition, decondition), (fix, unfix))
+        m = bind(
+            resized_template_parent(),
+            @varname(a.y[1]) => 1.0,
+            @of(a = @of(y = of(Array, 3)))
+        )
+        m = bind(m, @varname(a.y) => ones(4))
+        m = remove(m, @varname(a.y[2]))
+        m = bind(m, @varname(a.y[4]) => 2.0)
+        @test m(Xoshiro(1))[[1, 3, 4]] == [1.0, 1.0, 2.0]
+    end
+end
+
 @testset "binding listings hide unbound storage" begin
     @model listing_local() = y[1] ~ Normal()
     for (bind, listing) in ((condition, conditioned), (fix, fixed)),
@@ -2704,7 +2962,7 @@ end
     end
 end
 
-@testset "binding schemas" begin
+@testset "binding templates" begin
     @model function schema_local(n=3, T=Float64)
         z = zeros(T, n)
         for i in eachindex(z)
@@ -2713,6 +2971,7 @@ end
         return z
     end
     @model schema_arg(z) = z ~ MvNormal(zeros(length(z)), ones(length(z)))
+    @model prefix_collision() = p ~ Normal()
     for op in (condition, fix)
         schema = @of(z = of(Array, 3))
         pair = @varname(z[2]) => 1.0
@@ -2727,11 +2986,16 @@ end
             @test length(op === condition ? conditioned(m) : fixed(m)) >= 1
         end
         @test op(schema_local(), pair, of((z=of(Array, 3),)))(Xoshiro(1))[2] == 1.0
-        @test_throws ArgumentError op(schema_local(), schema)
+        @test op(schema_local(), schema)(Xoshiro(1)) == schema_local()(Xoshiro(1))
         @test_throws ArgumentError op(schema_local(), pair, schema, schema)
-        @test_throws ArgumentError op(schema_local(), pair, @of(w = of(Array, 3)))
-        @test_throws ArgumentError op(schema_local(), pair, @of(n = of(Int)))
-        @test_throws ArgumentError op(schema_arg(zeros(3)), pair, schema)
+        @test op(schema_local(), pair, @of(z = of(Array, 3), w = of(Array, 3)))(
+            Xoshiro(1)
+        )[2] == 1.0
+        @test op(schema_local(), pair, @of(z = of(Array, 3), n = of(Int)))(Xoshiro(1))[2] ==
+            1.0
+        @test (op === condition ? conditioned : fixed)(
+            op(schema_arg(zeros(3)), pair, @of(z = of(Array, 8)))
+        )[@varname(z[2])] == 1.0
         owned = op(schema_local(); z=[2.0, 3.0, 4.0])
         @test op(owned, pair, schema)(Xoshiro(1)) == [2.0, 1.0, 4.0]
         @test_throws ArgumentError op(owned, pair, @of(z = of(Array, 4)))
@@ -2743,8 +3007,20 @@ end
         partial = op(schema_local(), pair, schema)
         @test op(partial, (z=ones(3),), schema)(Xoshiro(1)) == ones(3)
         @test op(partial, @varname(z[3]) => 4.0, schema)(Xoshiro(1))[2:3] == [1.0, 4.0]
+        collision = prefix(prefix_collision(), @varname(p))
+        @test_throws "use the absolute name `p.p`" op(
+            collision, @varname(p.p) => 1.0, @of(p = of(Float64))
+        )
+        @test op(collision, @varname(p.p) => 1.0, @of(p = @of(p = of(Float64))))(
+            Xoshiro(1)
+        ) == 1.0
         prefixed = DynamicPPL.prefix(schema_local(), @varname(a))
-        @test op(prefixed, @varname(a.z[2]) => 1.0, schema)(Xoshiro(1))[2] == 1.0
+        @test_throws "use the absolute name `a.z`" op(
+            prefixed, @varname(a.z[2]) => 1.0, schema
+        )
+        @test op(prefixed, @varname(a.z[2]) => 1.0, @of(a = @of(z = of(Array, 3))))(
+            Xoshiro(1)
+        )[2] == 1.0
     end
     # A fixed layer must not determine an observation's storage, or vice versa.
     m = fix(condition(schema_local(); z=ones(3)); z=ones(4))
@@ -2770,7 +3046,57 @@ end
     end
 end
 
-@testset "whole binding schemas under prefixes" begin
+@testset "deferred binding templates" begin
+    @model function deferred_leaf()
+        y = zeros(2)
+        for i in eachindex(y)
+            y[i] ~ Normal()
+        end
+        return y
+    end
+    @model function deferred_middle()
+        x ~ Normal()
+        z ~ to_submodel(deferred_leaf(), false)
+        return (x, z)
+    end
+    @model deferred_outer(child) = a ~ to_submodel(child)
+    allocation(model, rng) = @allocated model(rng)
+    for bind in (condition, fix)
+        template = @of(y = of(Array, 2))
+        child = bind(deferred_middle(), @varname(y[2]) => 0.5, template)
+        model = deferred_outer(child)
+        plain = bind(model, @varname(a.x) => 1.0)
+        @test plain(Xoshiro(1))[2][2] == 0.5
+        for input in (
+            @varname(a.x) => 1.0,
+            @varname(a) => (x=1.0,),
+            (a=(x=1.0,),),
+            VarNamedTuple(; a=(x=1.0,)),
+        )
+            @test bind(model, input)(Xoshiro(1)) == plain(Xoshiro(1))
+            @test bind(model, input, @of(a = @of(y = of(Array, Int, 2))))(Xoshiro(1)) ==
+                plain(Xoshiro(1))
+        end
+        repeated = child
+        for _ in 1:20
+            repeated = bind(repeated, @varname(y[2]) => 0.5, template)
+        end
+        @test repeated(Xoshiro(1)) == child(Xoshiro(1))
+        @test typeof(repeated) === typeof(child)
+        rng = Xoshiro(1)
+        allocation(child, rng)
+        allocation(repeated, rng)
+        @test minimum(allocation(repeated, rng) for _ in 1:5) ==
+            minimum(allocation(child, rng) for _ in 1:5)
+        for conflicting in (@of(y = of(Array, 3)), @of(y = of(Array, Int, 2)))
+            @test_throws ArgumentError bind(child, @varname(y[2]) => 1.0, conflicting)(
+                Xoshiro(1)
+            )
+        end
+    end
+end
+
+@testset "whole binding templates under prefixes" begin
     @model function whole_schema_local()
         x = zeros(2)
         x[1] ~ Normal()
@@ -2785,7 +3111,13 @@ end
         (model, address) in
         ((plain, @varname(x)), (prefixed, @varname(p.x)), (nested, @varname(q.p.x)))
 
-        schema = @of(x = of(Array, 2))
+        schema = if model === plain
+            @of(x = of(Array, 2))
+        elseif model === prefixed
+            @of(p = @of(x = of(Array, 2)))
+        else
+            @of(q = @of(p = @of(x = of(Array, 2))))
+        end
         bound = op(model, schema, address => [1.0, 2.0])
         @test bound(Xoshiro(1)) == [1.0, 2.0]
         @test whole_schema_parent(bound)(Xoshiro(1)) == [1.0, 2.0]
@@ -2794,7 +3126,7 @@ end
     end
 end
 
-@testset "binding schemas resolve dynamic prefix indices" begin
+@testset "binding templates resolve dynamic prefix indices" begin
     @model function end_schema_local()
         x = zeros(3)
         for i in eachindex(x)
@@ -2813,8 +3145,17 @@ end
         )
 
         schema = @of(x = of(Array, 3))
-        bound = bind(m, schema, dynamic => 9.0)
-        @test bound(Xoshiro(1)) == bind(m, schema, concrete => 9.0)(Xoshiro(1))
+        @test_throws ArgumentError bind(m, schema, dynamic => 9.0)
+        owned = prefix(
+            bind(end_schema_local(), schema, @varname(x[end]) => 9.0),
+            @varname(p[end]);
+            template=zeros(2),
+        )
+        if m === nested
+            owned = prefix(owned, @varname(q[end]); template=zeros(2))
+        end
+        bound = bind(owned, dynamic => 9.0)
+        @test bound(Xoshiro(1)) == bind(owned, concrete => 9.0)(Xoshiro(1))
         @test bound(Xoshiro(1))[3] == 9.0
         @test end_schema_parent(bound)(Xoshiro(1))[3] == 9.0
     end
@@ -2825,7 +3166,7 @@ end
     end
 end
 
-@testset "binding schemas beside argument storage" begin
+@testset "binding templates beside argument storage" begin
     @model function mixed_schema(y)
         x = zeros(3)
         x[3] ~ Normal()
@@ -2840,8 +3181,11 @@ end
             Xoshiro(1)
         ) == (9.0, 4.0)
         @test bind(
-            prefix(model, @varname(p[end]); template=zeros(2)),
-            @of(x = of(Array, 3)),
+            prefix(
+                bind(model, @of(x = of(Array, 3)), @varname(x[3]) => 9.0),
+                @varname(p[end]);
+                template=zeros(2),
+            ),
             @varname(p[end].y[end]) => 4.0,
             @varname(p[end].x[3]) => 9.0,
         )(
@@ -2850,7 +3194,7 @@ end
     end
 end
 
-@testset "schema exact conversion" begin
+@testset "template exact conversion" begin
     @model function typed_schema()
         z = zeros(3)
         for i in eachindex(z)
@@ -2886,7 +3230,7 @@ end
     end
 end
 
-@testset "schema storage ownership" begin
+@testset "template storage ownership" begin
     @model function schema_fields()
         z = (a=zeros(3), b=zeros(2))
         for i in eachindex(z.a)
@@ -2950,7 +3294,7 @@ end
     end
     return z, w
 end
-@testset "schemas preserve other input storage" begin
+@testset "templates preserve other input storage" begin
     v = DynamicPPL.@vnt begin
         @template w = zeros(5)
         w[2] := 4.0
@@ -2970,7 +3314,7 @@ end
     w ~ Normal()
     return z, w
 end
-@testset "schemas with keyword binding data" begin
+@testset "templates with keyword binding data" begin
     for op in (condition, fix)
         @test op(keyword_schema(), @of(z = of(Array, 3)), @varname(z[2]) => 1.0; w=2.0)(
             Xoshiro(1)
@@ -3713,7 +4057,7 @@ end
             ] == 3.0
             @test bind(
                 prefix(growable_leaf(), @varname(a)),
-                @of(x = of(Array, 2, 2)),
+                @of(a = @of(x = of(Array, 2, 2))),
                 @varname(a.x[2]) => 3.0,
             )(
                 Xoshiro(1)

@@ -38,9 +38,23 @@ function ModelRemoval(name, exceptions, matched)
     return ModelRemoval(name, exceptions, matched, Ref(nothing))
 end
 
+struct ModelBindingTemplate{R,N,T}
+    name::N
+    storage::T
+end
+function ModelBindingTemplate{R}(name::N, storage::T) where {R,N,T}
+    return ModelBindingTemplate{R,N,T}(name, storage)
+end
+
 # Fixed bindings preserve the observation layer they shadow.
 struct ModelBindingLayers{
-    O<:VarNamedTuple,F<:VarNamedTuple,V<:VarNamedTuple,A<:Tuple,OR<:Tuple,FR<:Tuple
+    O<:VarNamedTuple,
+    F<:VarNamedTuple,
+    V<:VarNamedTuple,
+    A<:Tuple,
+    OR<:Tuple,
+    FR<:Tuple,
+    BT<:Tuple,
 }
     observations::O
     fixed::F
@@ -49,6 +63,7 @@ struct ModelBindingLayers{
     owners::A
     observation_removals::OR
     fixed_removals::FR
+    templates::BT
 end
 
 # Child bindings selected from the parent's submodel namespace use the child's storage shape.
@@ -379,6 +394,7 @@ function _prefix_values(values::ModelBindingLayers, vn::VarName, template)
         map(owner -> maybe_prefix(owner, vn), values.owners),
         map(r -> _prefix_removal(r, vn), values.observation_removals),
         map(r -> _prefix_removal(r, vn), values.fixed_removals),
+        map(t -> _prefix_binding_template(t, vn), values.templates),
     )
 end
 function _prefix_values(values::VarNamedTuple, vn::VarName, template)

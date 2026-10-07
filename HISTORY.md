@@ -6,6 +6,10 @@ Compact displays of `conditioned` and `fixed` listings now show only bound entri
 
 `AbstractPPL.of(vnt::VarNamedTuple)` creates a snapshot binding template from plain numeric arrays, exactly representable scalars, and nested namespaces. Partial entries describe their full backing arrays; custom arrays, growable storage, and scalars whose types would widen throw `ArgumentError`. Rebuild after layout changes.
 
+Binding templates now use absolute names for prefixed models: `@of(y = of(Array, 3))` → `@of(p = @of(y = of(Array, 3)))` for `prefix(m, @varname(p))`.
+
+Unused and argument entries in binding templates: `ArgumentError` → ignored; arguments keep their existing storage.
+
 Recursive removal is now explicit: decondition a child before wrapping it → `decondition(parent, DynamicPPL.Recursive(), @varname(a.x))`; likewise `unfix` removes child fixes. No-name recursive forms clear their layer at every depth. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
 Partial array bindings and removals now accept only `Array` and Array-backed `OffsetArray`, `ComponentArray` and `DimArray`. Views, reshapes, transpose/adjoint wrappers, immutable or tracked arrays, ranges, `MVector`, `SizedArray` and `BitArray` require a whole binding/removal, or `collect` where losing metadata is acceptable.
@@ -60,7 +64,7 @@ Partial bindings into dictionaries and other unsupported argument containers thr
 
 `condition` and `fix` reject dictionaries: `condition(m, Dict(@varname(x) => v))` → `condition(m, @varname(x) => v)`. `|` no longer accepts `AbstractDict`: `m | Dict(@varname(x) => v)` → `m | (@varname(x) => v)` or `m | (x=v,)`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-Partial local bindings use a positional binding schema: `@vnt`/`@template` storage → `condition(m, @varname(z[2]) => 1.0, @of(z=of(Array, 3)))`, importing `of, @of` from AbstractPPL. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+Partial local bindings use a positional binding template: `@vnt`/`@template` storage → `condition(m, @varname(z[2]) => 1.0, @of(z=of(Array, 3)))`, importing `of, @of` from AbstractPPL. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
 Explicit observations now replace argument-supplied observations before the body: ignored `condition(f(1); x=2)` → the observations of `f(2)`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501), [#958](https://github.com/TuringLang/DynamicPPL.jl/issues/958).
 
@@ -177,7 +181,6 @@ Each sample is drawn with its own random number generator, seeded from `rng` bef
 Those predictions differ from the single-threaded ones for that same `rng`, which draws every sample from one stream.
 See [#1170](https://github.com/TuringLang/DynamicPPL.jl/issues/1170).
 
-`check_model` now warns when a latent tilde statement overwrites a value computed from a model input.
 The check runs only when ForwardDiff is loaded and is best effort, so it can miss dependencies through untaken branches, conditions, and code it cannot differentiate.
 See [#1465](https://github.com/TuringLang/DynamicPPL.jl/pull/1465).
 

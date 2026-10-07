@@ -249,6 +249,7 @@ Evaluate `submodel` under `parent_model`.
     else
         _model_prefix(submodel.model)
     end
+    inherited_templates = _submodel_binding_templates(parent_model, local_prefix)
     observation_removals = _submodel_removals(Condition, parent_model, local_prefix)
     fixed_removals = _submodel_removals(Fix, parent_model, local_prefix)
     observations = _apply_parent_removals(
@@ -269,7 +270,11 @@ Evaluate `submodel` under `parent_model`.
     child_model = _reconstruct_model(submodel.model; values=LocalModelValues(child_values))
     parent_values = _check_argument_bindings(
         child_model,
-        _submodel_inherited_values(parent_model, local_prefix),
+        _prepare_inherited_templates(
+            child_model,
+            _submodel_inherited_values(parent_model, local_prefix),
+            inherited_templates,
+        ),
         maybe_prefix(local_prefix, _model_prefix(parent_model)),
     )
     # Shared unprefixed names may belong to the parent or another child.
@@ -292,6 +297,25 @@ Evaluate `submodel` under `parent_model`.
         ),
         owners,
     )
+    child_templates = _submodel_binding_templates(submodel.model, nothing)
+    templates = if isempty(child_templates)
+        ()
+    else
+        filter(child_templates) do t
+        role = t isa ModelBindingTemplate{Condition} ? Condition : Fix
+        layer = _binding_layer(role, parent_values)
+        removals = role === Condition ? observation_removals : fixed_removals
+        return !any(r -> _removal_covers(r, t.name), removals) &&
+               _has_removable(role, _binding_layer(role, child_layers), t.name) &&
+               !any(vn -> subsumes(vn, t.name), keys(layer)) &&
+               !any(
+                   p -> p isa ModelBindingTemplate{role} && p.name == t.name,
+                   inherited_templates,
+               )
+    end
+    end
+    templates = (templates..., inherited_templates...)
+    values = _with_binding_templates(values, templates)
     return _evaluate_submodel!!(
         parent_model, context, submodel, left_vn, template, vi, values
     )
