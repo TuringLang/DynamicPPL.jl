@@ -495,6 +495,22 @@ end
     end
 end
 
+@testset "latent branches beside immutable observations" begin
+    @model function partial_fields(x)
+        x.a[1][1] ~ Normal()
+        return 0.0 ~ Normal(x.b[1])
+    end
+    model = decondition(
+        partial_fields((a=Any[[0.0], [1.0, 2.0]], b=1.0:2.0)), @varname(x.a)
+    )
+    for adtype in (AutoForwardDiff(), AutoMooncake())
+        ldf = LogDensityFunction(model; adtype)
+        value, gradient = logdensity_and_gradient(ldf, [0.3])
+        @test value ≈ logpdf(Normal(), 0.3) + logpdf(Normal(1.0), 0.0)
+        @test gradient ≈ [-0.3]
+    end
+end
+
 @testset "latent arguments holding arrays of arrays" begin
     @model function nested_argument(x)
         for i in eachindex(x), j in eachindex(x[i])

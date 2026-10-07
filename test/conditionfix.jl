@@ -3666,6 +3666,65 @@ Base.getindex(::LazyArgumentStorage{T}, i::Int) where {T} = T(1:i)
     @test decondition(range_storage(cyclic)) isa DynamicPPL.Model
 end
 
+@testset "latent branches of partially bound arguments" begin
+    @model function fields(x)
+        for i in eachindex(x.a)
+            x.a[i] ~ Normal()
+        end
+        return x
+    end
+    @model function arrays(x)
+        for i in eachindex(x[1])
+            x[1][i] ~ Normal()
+        end
+        return x
+    end
+    @model parent(child) = q ~ to_submodel(child)
+    range = 1.0:2.0
+    bad = (a=range, b=[0.0])
+    good = (a=[1.0, 2.0], b=range)
+    message = r"Argument `x.a`.*cannot hold latent draws"
+    @test_throws message decondition(fields(bad), @varname(x.a))
+    @test_throws r"Argument `x\[1\]`.*cannot hold latent draws" decondition(
+        arrays([range, [3.0]]), @varname(x[1])
+    )
+    @test_throws r"Argument `p.x.a`.*cannot hold latent draws" decondition(
+        prefix(fields(bad), @varname(p)), @varname(p.x.a)
+    )
+    @test_throws r"Argument `q.x.a`.*cannot hold latent draws" decondition(
+        parent(fields(bad)), DynamicPPL.Recursive(), @varname(q.x.a)
+    )(
+        Xoshiro(1)
+    )
+    for original in (bad, (a=[1.0, 2.0], b=[0.0]))
+        @test_throws message decondition(condition(fields(original); x=bad), @varname(x.a))
+        @test_throws message unfix(decondition(fix(fields(original); x=bad)), @varname(x.a))
+    end
+    for model in (
+        decondition(fields(good), @varname(x.a)),
+        decondition(condition(fields(bad); x=good), @varname(x.a)),
+        unfix(decondition(fix(fields(bad); x=good)), @varname(x.a)),
+        decondition(prefix(fields(good), @varname(p)), @varname(p.x.a)),
+        decondition(parent(fields(good)), DynamicPPL.Recursive(), @varname(q.x.a)),
+    )
+        result = model(Xoshiro(1))
+        @test result.a isa Vector{Float64}
+        @test result.a != good.a
+        @test result.b === range
+    end
+    @test decondition(arrays([[1.0, 2.0], range]), @varname(x[1]))(Xoshiro(1))[2] === range
+    @test unfix(fix(fields(bad); x=good), @varname(x.a))(Xoshiro(1)).a === range
+    @test decondition(fix(fields(bad); x=good), @varname(x.a))(Xoshiro(1)).a == good.a
+    for storage in ((range,), [range, [3.0]], view(range, :))
+        @test_throws r"cannot hold latent draws" decondition(
+            fields((a=storage, b=[0.0])), @varname(x.a)
+        )
+    end
+    cyclic = Any[0.0]
+    cyclic[1] = cyclic
+    @test decondition(fields((a=cyclic, b=range)), @varname(x.a)) isa DynamicPPL.Model
+end
+
 @testset "fixed argument writes replace aliased storage" begin
     @model function aliased_argument(x)
         x = (a=x.b, b=x.b)
