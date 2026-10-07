@@ -1547,6 +1547,17 @@ end
             @test remove(parent, @varname(a.x))(Xoshiro(1)) == 1.0
             @test remove(remove(parent, @varname(a.x)), @varname(a.x))(Xoshiro(1)) == 1.0
         end
+
+        @model nested_matrix() = (x[2, 1] ~ MvNormal(zeros(5), 1))
+        for (bind, remove, select) in
+            ((condition, decondition, conditioned), (fix, unfix, fixed))
+            bound = bind(nested_matrix(), @varname(x[2, 1]) => ones(5))
+            removed = remove(bound, @varname(x[1:2, 1][2][5]))
+            @test keys(select(removed)) == [@varname(x[2, 1][i]) for i in 1:4]
+            @test values(select(removed)) == ones(4)
+            @test select(remove(removed, @varname(x[1:2, 1][2][5]))) == select(removed)
+            @test select(bound)[@varname(x[2, 1])] == ones(5)
+        end
     end
 
     @testset "nested slices retain bound siblings" begin
