@@ -1906,6 +1906,61 @@ end
         end
     end
 
+    @testset "unassigned array addresses" begin
+        @model unassigned_local() = x[2] ~ MvNormal(zeros(5), 1)
+        @model unassigned_parent() = a ~ to_submodel(unassigned_local())
+        for (bind, remove, listed) in
+            ((condition, decondition, conditioned), (fix, unfix, fixed)),
+            (model, root) in
+            ((unassigned_local(), @varname(x)), (unassigned_parent(), @varname(a.x))),
+            assigned in (false, true)
+
+            x = Vector{Vector{Float64}}(undef, 3)
+            assigned && fill!(x, ones(5))
+            x[2] = ones(5)
+            m = bind(model, root => x)
+            address(vn) = AbstractPPL.append_optic(root, AbstractPPL.getoptic(vn))
+            for vn in (@varname(x[1]), @varname(x[2]))
+                target = address(vn)
+                @test listed(bind(m, target => ones(2)))[target] == ones(2)
+                removed = remove(m, target)
+                for result in (removed, remove(removed, target))
+                    if assigned || vn == @varname(x[2])
+                        @test !haskey(listed(result), target)
+                    else
+                        @test listed(result)[address(@varname(x[2]))] == ones(5)
+                    end
+                end
+            end
+            for vn in (@varname(x[[1, 2]][2][5]), @varname(x[1:2][2][5]))
+                target = address(vn)
+                @test listed(bind(m, target => 2.0))[address(@varname(x[2][5]))] == 2.0
+                removed = remove(m, target)
+                @test !haskey(listed(removed), address(@varname(x[2][5])))
+                @test listed(removed)[address(@varname(x[2][4]))] == 1.0
+                @test !haskey(listed(remove(removed, target)), address(@varname(x[2][5])))
+            end
+            for vn in (@varname(x[1][1]), @varname(x[[1, 2]][1][1]), @varname(x[1:2][1][1]))
+                target = address(vn)
+                if assigned
+                    @test listed(bind(m, target => 2.0))[address(@varname(x[1][1]))] == 2.0
+                    @test !haskey(listed(remove(m, target)), address(@varname(x[1][1])))
+                else
+                    message = "Cannot resolve `$target`: child storage is unassigned."
+                    @test_throws ArgumentError(message) bind(m, target => 2.0)
+                    @test_throws ArgumentError(message) remove(m, target)
+                end
+            end
+            numeric = bind(model, root => ones(3))
+            @test listed(bind(numeric, address(@varname(x[1])) => 2.0))[address(
+                @varname(x[1])
+            )] == 2.0
+            @test !haskey(
+                listed(remove(numeric, address(@varname(x[1])))), address(@varname(x[1]))
+            )
+        end
+    end
+
     @testset "argument storage can be initialized in the model body" begin
         @model function initialize_argument(x)
             fill!(x, [1.0])

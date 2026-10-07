@@ -728,6 +728,18 @@ function VarNamedTuples._haskey_optic(
 )
     return VarNamedTuples._haskey_optic(data.data, optic)
 end
+function VarNamedTuples._haskey_optic(
+    value::ModelValue{R,<:SubsamplingShape}, optic::AbstractPPL.Index
+) where {R<:Union{Condition,ArgumentCondition,Fix}}
+    head = AbstractPPL.ohead(optic)
+    VarNamedTuples._haskey_optic(value.value, head) || return false
+    optic.child isa AbstractPPL.Iden && return true
+    child = VarNamedTuples._getindex_optic(value.value, head, @varname(_))
+    return VarNamedTuples._haskey_optic(_model_value_like(value, child), optic.child)
+end
+function VarNamedTuples.index_template(data::AbstractSubsamplingData, optic)
+    return getindex(data, optic.ix...; optic.kw...)
+end
 function Base.getindex(data::SubsamplingShape, indices...)
     return SubsamplingShape(view(data.data, indices...), data.root)
 end

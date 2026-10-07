@@ -250,6 +250,25 @@ function VarNamedTuples._haskey_optic(
     child = VarNamedTuples._getindex_optic(value.value, head, @varname(_))
     return VarNamedTuples._haskey_optic(_model_value_like(value, child), optic.child)
 end
+function VarNamedTuples._haskey_optic(
+    value::ModelValue{R,<:AbstractArray}, optic::AbstractPPL.Index
+) where {R<:Union{Condition,ArgumentCondition,Fix}}
+    array = value.value
+    optic = AbstractPPL.concretize_top_level(optic, array)
+    checkbounds(Bool, array, optic.ix...; optic.kw...) || return false
+    if !VarNamedTuples._is_multiindex(array, optic.ix...; optic.kw...)
+        isassigned(array, optic.ix...; optic.kw...) || return false
+    end
+    child = VarNamedTuples.index_template(array, optic)
+    return VarNamedTuples._haskey_optic(_model_value_like(value, child), optic.child)
+end
+function VarNamedTuples._getindex_optic(
+    value::ModelValue{R,<:AbstractArray}, optic::AbstractPPL.Index, vn
+) where {R}
+    optic = AbstractPPL.concretize_top_level(optic, value.value)
+    child = VarNamedTuples.index_template(value.value, optic)
+    return VarNamedTuples._getindex_optic(_model_value_like(value, child), optic.child, vn)
+end
 VarNamedTuples._haskey_optic(::ModelValue, ::AbstractPPL.Iden) = true
 function VarNamedTuples._haskey_optic(
     value::ModelValue{R,<:Tuple}, optic::AbstractPPL.Index
@@ -848,6 +867,17 @@ end
     end
 
     optic.child isa AbstractPPL.Iden && return nothing
+    check_child_owner = !_partial_binding_selector(template, optic)
+    if template isa AbstractArray && optic isa AbstractPPL.Index
+        coptic = AbstractPPL.concretize_top_level(optic, template)
+        if checkbounds(Bool, template, coptic.ix...; coptic.kw...)
+            check_child_owner &=
+                !VarNamedTuples._is_multiindex(template, coptic.ix...; coptic.kw...)
+            _check_assigned_binding_storage(
+                template, coptic, AbstractPPL.optic_to_varname(optic ∘ prefix)
+            )
+        end
+    end
     head = AbstractPPL.ohead(optic)
     child = _model_argument_binding(value, head)
     return _check_namedtuple_index(
@@ -856,7 +886,7 @@ end
         head ∘ prefix;
         check_container,
         operation,
-        check_owner=!_partial_binding_selector(template, optic),
+        check_owner=check_child_owner,
     )
 end
 
@@ -913,7 +943,11 @@ function _check_model_binding(
         if check_bounds &&
             child === nothing &&
             (
-                (previous isa ModelValue && previous.value isa AbstractArray) || (
+                (
+                    previous isa ModelValue &&
+                    previous.value isa AbstractArray &&
+                    !VarNamedTuples._haskey_optic(previous.value, optic)
+                ) || (
                     previous isa VarNamedTuples.PartialArray &&
                     optic isa AbstractPPL.Index &&
                     !(previous.data isa VarNamedTuples.GrowableArray) &&
@@ -2086,6 +2120,9 @@ function _check_binding_template_bounds(
     if !(coptic.child isa AbstractPPL.Iden)
         child = if template isa VarNamedTuples.PartialArray
             _model_argument_binding(template, AbstractPPL.ohead(coptic))
+        elseif template isa AbstractArray
+            _check_assigned_binding_storage(template, coptic, vn)
+            VarNamedTuples.index_template(template, coptic)
         else
             VarNamedTuples.index_template(template, coptic)
         end
@@ -2101,6 +2138,14 @@ function _check_binding_template_bounds(
                 _outside_storage_error(next, vn, operation)
         end
         _check_binding_template_bounds(child, next, vn; operation, check_fields)
+    end
+    return nothing
+end
+function _check_assigned_binding_storage(array, optic, vn)
+    if checkbounds(Bool, array, optic.ix...; optic.kw...) &&
+        !VarNamedTuples._is_multiindex(array, optic.ix...; optic.kw...) &&
+        !isassigned(array, optic.ix...; optic.kw...)
+        throw(ArgumentError("Cannot resolve `$vn`: child storage is unassigned."))
     end
     return nothing
 end
