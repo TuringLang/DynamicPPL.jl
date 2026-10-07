@@ -6,8 +6,105 @@ __now__ = now()
 
 using DynamicPPL, Distributions, Test
 using ForwardDiff: ForwardDiff
+using AbstractPPL: of, @of
 using LinearAlgebra: I
 using Random: Xoshiro
+
+@testset "unused binding template entries" begin
+    @model function template_child(x=zeros(2))
+        y = zeros(3)
+        for i in eachindex(y)
+            y[i] ~ Normal()
+        end
+        x[1] ~ Normal()
+        return y
+    end
+    @model function template_parent(run=true)
+        z ~ Normal()
+        if run
+            a ~ to_submodel(template_child())
+        end
+    end
+    @model template_shared() = a ~ to_submodel(template_child(), false)
+    @model template_outer(child) = b ~ to_submodel(child)
+    @model function template_fields()
+        z = (a=zeros(2),)
+        z.a[1] ~ Normal()
+        return z
+    end
+    @model template_field_child() = a ~ to_submodel(template_fields())
+    @model template_field_shared() = a ~ to_submodel(template_fields(), false)
+    for bind in (condition, fix)
+        for (m, valid, invalid, warning) in (
+            (
+                template_fields(),
+                @of(z = @of(a = of(Array, 2))),
+                @of(z = @of(typo = of(Array, 2))),
+                r"Binding template entry `z.typo`",
+            ),
+            (
+                template_field_shared(),
+                @of(z = @of(a = of(Array, 2))),
+                @of(z = @of(typo = of(Array, 2))),
+                r"Binding template entry `z.typo`",
+            ),
+            (
+                template_field_child(),
+                @of(a = @of(z = @of(a = of(Array, 2)))),
+                @of(a = @of(z = @of(typo = of(Array, 2)))),
+                r"Binding template entry `a.z.typo`",
+            ),
+            (
+                prefix(template_fields(), @varname(p)),
+                @of(p = @of(z = @of(a = of(Array, 2)))),
+                @of(p = @of(z = @of(typo = of(Array, 2)))),
+                r"Binding template entry `p.z.typo`",
+            ),
+        )
+            @test_logs @test check_model(Xoshiro(1), bind(m, valid))
+            @test_logs (:warn, warning) @test check_model(Xoshiro(1), bind(m, invalid))
+        end
+        m = bind(template_child(), @of(y = of(Array, 3), x = of(Array, 100)))
+        @test_logs @test check_model(Xoshiro(1), m)
+        typo = bind(template_child(), @of(typo = of(Array, 3)))
+        @test_logs (:warn, r"Binding template entry `typo` has no LHS variable") @test check_model(
+            Xoshiro(1), typo
+        )
+        @test_logs (:warn, r"Binding template entry `p.typo`") @test check_model(
+            Xoshiro(1), prefix(typo, @varname(p))
+        )
+        @test_logs (:warn, r"Binding template entry `b.typo`") @test check_model(
+            Xoshiro(1), template_outer(typo)
+        )
+        pm = prefix(template_child(), @varname(p))
+        @test_logs @test check_model(Xoshiro(1), bind(pm, @of(p = @of(y = of(Array, 3)))))
+        @test_logs (:warn, r"Binding template entry `p.typo`") @test check_model(
+            Xoshiro(1), bind(pm, @of(p = @of(typo = of(Int))))
+        )
+        for run in (true, false)
+            nested = bind(template_parent(run), @of(a = @of(y = of(Array, 3))))
+            if run
+                @test_logs @test check_model(Xoshiro(1), nested)
+            else
+                @test_logs (:warn, r"Binding template entry `a.y`") @test check_model(
+                    Xoshiro(1), nested
+                )
+            end
+        end
+        nested = bind(template_parent(), @of(a = @of(typo = of(Int))))
+        @test_logs (:warn, r"Binding template entry `a.typo`") @test check_model(
+            Xoshiro(1), nested
+        )
+        shared = bind(template_shared(), @varname(y[3]) => 0.5, @of(y = of(Array, 3)))
+        @test_logs @test check_model(Xoshiro(1), shared)
+        @test_logs (:warn, r"Binding template entry `typo`") @test check_model(
+            Xoshiro(1), bind(template_shared(), @of(typo = of(Int)))
+        )
+        @test_logs (:warn, r"Binding template entry `typo`") @test check_model(
+            Xoshiro(1), bind(typo, @of(typo = of(Int)))
+        )
+    end
+end
 
 function test_model_fails_check(model)
     issuccess = check_model(model)

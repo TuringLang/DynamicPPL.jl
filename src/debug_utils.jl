@@ -19,6 +19,7 @@ struct BindingCheckContext{C<:AbstractContext} <: DynamicPPL.AbstractParentConte
     track_names::Bool
     removals::Dict{Base.RefValue{Nothing},String}
     used_removals::Set{Base.RefValue{Nothing}}
+    template_models::Vector{Tuple{Model,Union{VarName,Nothing}}}
 end
 function BindingCheckContext(context, models, namespaces, lock)
     return BindingCheckContext(
@@ -29,6 +30,7 @@ function BindingCheckContext(context, models, namespaces, lock)
         true,
         Dict{Base.RefValue{Nothing},String}(),
         Set{Base.RefValue{Nothing}}(),
+        Tuple{Model,Union{VarName,Nothing}}[],
     )
 end
 DynamicPPL.childcontext(ctx::BindingCheckContext) = ctx.context
@@ -41,6 +43,7 @@ function DynamicPPL.setchildcontext(ctx::BindingCheckContext, child::AbstractCon
         ctx.track_names,
         ctx.removals,
         ctx.used_removals,
+        ctx.template_models,
     )
 end
 
@@ -53,6 +56,16 @@ function DynamicPPL.tilde_assume!!(
     vi::AbstractVarInfo,
 ) where {M<:Model,AutoPrefix}
     _register_removals!(ctx, submodel.model)
+    local_prefix = if AutoPrefix
+        namespace = DynamicPPL._concretize_prefix(vn, template; prefix=Val(true))
+        DynamicPPL.maybe_prefix(DynamicPPL._model_prefix(submodel.model), namespace)
+    else
+        DynamicPPL._model_prefix(submodel.model)
+    end
+    full_prefix = DynamicPPL.maybe_prefix(local_prefix, DynamicPPL._model_prefix(parent))
+    lock(ctx.lock) do
+        push!(ctx.template_models, (submodel.model, full_prefix))
+    end
     prefixed = AutoPrefix || DynamicPPL._model_prefix(submodel.model) !== nothing
     if ctx.track_names
         lock(ctx.lock) do
@@ -75,6 +88,7 @@ function DynamicPPL.tilde_assume!!(
             false,
             ctx.removals,
             ctx.used_removals,
+            ctx.template_models,
         )
     end
     return invoke(
@@ -130,6 +144,27 @@ function _warn_unused_binding_names(model, ctx::BindingCheckContext)
     for name in keys(DynamicPPL._submodel_values(model, nothing).data)
         if name ∉ names
             @warn "Binding `$name` has no LHS top symbol in this model or any reached unprefixed submodel. It may be unused; an unprefixed submodel in an untaken branch could still use it."
+        end
+    end
+    return nothing
+end
+
+function _warn_unused_templates(ctx::BindingCheckContext)
+    entries, lhs = Set{VarName}(), Set{VarName}()
+    for (model, prefix) in ctx.template_models
+        metadata = DynamicPPL._binding_metadata(model)
+        DynamicPPL._lhs_names(metadata) === nothing && return nothing
+        for (local_name, name) in DynamicPPL._binding_template_names(metadata)
+            push!(entries, local_name ? DynamicPPL.maybe_prefix(name, prefix) : name)
+        end
+        for (name, submodel) in DynamicPPL._lhs_addresses(metadata)
+            submodel && continue
+            push!(lhs, DynamicPPL.maybe_prefix(name, prefix))
+        end
+    end
+    for name in sort!(collect(entries); by=string)
+        if !any(root -> subsumes(root, name) || subsumes(name, root), lhs)
+            @warn "Binding template entry `$name` has no LHS variable in this model or any reached submodel. It may be unused; a submodel in an untaken branch could still use it."
         end
     end
     return nothing
@@ -220,6 +255,9 @@ derived from model inputs. Use `rng` to control reproducibility if needed.
 
 - Empty models emit a warning, but do not fail (since they are not incorrect *per se*)
 
+- Binding template entries without an LHS variable in the model or reached submodels warn,
+  but do not fail: an untaken submodel branch could still use them.
+
 - Bindings without an LHS top symbol in the model or reached unprefixed submodels warn,
   but do not fail: an untaken submodel branch could still use them.
 
@@ -295,10 +333,12 @@ function check_model(
         model.context, Model[model], Set{Symbol}(), ReentrantLock()
     )
     _register_removals!(binding_context, model)
+    push!(binding_context.template_models, (model, DynamicPPL._model_prefix(model)))
     checked_model = DynamicPPL.contextualize(model, binding_context)
     _, vi = DynamicPPL.init!!(rng, checked_model, vi, init_strategy, UnlinkAll())
     _warn_unused_binding_names(model, binding_context)
     _warn_unused_removals(binding_context)
+    _warn_unused_templates(binding_context)
 
     params = get_raw_values(vi)
     # This adds one evaluation per `check_model` call, not per ordinary model evaluation.

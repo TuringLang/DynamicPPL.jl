@@ -2,6 +2,8 @@
 
 Partial bindings without a template now require the same index count as the tilde that reads them; mismatches throw `ArgumentError` → match the tilde address or supply whole storage.
 
+`check_model` now warns about binding template entries with no LHS variable in the model or its reached submodels.
+
 Compact displays of `conditioned` and `fixed` listings now show only bound entries, hiding unassigned slots in masked storage.
 
 `AbstractPPL.of(vnt::VarNamedTuple)` creates a snapshot binding template from plain numeric arrays, exactly representable scalars, and nested namespaces. Partial entries describe their full backing arrays; custom arrays, growable storage, and scalars whose types would widen throw `ArgumentError`. Rebuild after layout changes.
@@ -181,6 +183,7 @@ Each sample is drawn with its own random number generator, seeded from `rng` bef
 Those predictions differ from the single-threaded ones for that same `rng`, which draws every sample from one stream.
 See [#1170](https://github.com/TuringLang/DynamicPPL.jl/issues/1170).
 
+`check_model` now warns when a latent tilde statement overwrites a value computed from a model input.
 The check runs only when ForwardDiff is loaded and is best effort, so it can miss dependencies through untaken branches, conditions, and code it cannot differentiate.
 See [#1465](https://github.com/TuringLang/DynamicPPL.jl/pull/1465).
 

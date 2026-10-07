@@ -2573,6 +2573,7 @@ function _bind_inputs(::Type{R}, model::Model, inputs::Tuple) where {R}
     isempty(schemas) && return _bind_ordered_inputs(R, model, values)
     model = _materialize_argument_values(model)
     schema = VarNamedTuples.materialize_template(only(schemas))
+    model = _record_binding_template(model, schema)
     schema = _local_binding_schema(model, schema, values)
     arguments = map(unsplat_symbol, keys(merge(model.args, model.defaults)))
     schema = NamedTuple{filter(name -> !(name in arguments), keys(schema))}(schema)
@@ -2633,6 +2634,30 @@ function _merge_binding_template(a::ModelBindingTemplate{R}, b) where {R}
         ConflictingBindingTemplates()
     end
     return ModelBindingTemplate{R}(a.name, storage)
+end
+function _binding_template_names(template::NamedTuple, prefix=nothing)
+    return mapreduce((a, b) -> (a..., b...), pairs(template); init=()) do (name, storage)
+        address = maybe_prefix(VarName{name}(), prefix)
+        storage isa NamedTuple ? _binding_template_names(storage, address) : (address,)
+    end
+end
+function _record_binding_template(model::Model, template)
+    prefix = _model_prefix(model)
+    names = map(_binding_template_names(template)) do name
+        local_name = prefix === nothing || (name != prefix && subsumes(prefix, name))
+        address =
+            local_name && prefix !== nothing ? AbstractPPL.unprefix(name, prefix) : name
+        return (local_name, address)
+    end
+    metadata = _with_binding_template_names(_binding_metadata(model), names)
+    return Model{requires_threadsafe(model)}(
+        model.f,
+        model.args,
+        model.defaults,
+        model.context,
+        model.values;
+        args_on_lhs=metadata,
+    )
 end
 
 function _local_binding_schema(model, schema, values)
