@@ -232,13 +232,13 @@ end
     end
     data = Real[0.0]
     alias_model = condition(
-        decondition(alias_copy((a=data, b=data, c=0.0))), @varname(x.c) => 0.0
+        decondition(alias_copy((a=data, b=copy(data), c=0.0))), @varname(x.c) => 0.0
     )
     ldf = LogDensityFunction(alias_model; adtype)
     for x in ([2.0], [-0.4])
         density, gradient = LogDensityProblems.logdensity_and_gradient(ldf, x)
-        @test density ≈ 3logpdf(Normal(), 0.0) - x[1]^2
-        @test gradient ≈ -2x
+        @test density ≈ 3logpdf(Normal(), 0.0) - x[1]^2 / 2
+        @test gradient ≈ -x
     end
 
     @model function nested_copy_child(x)
@@ -247,12 +247,13 @@ end
         return 0.0 ~ Normal(x.b[1])
     end
     @model function nested_copy_parent()
-        m ~ MvNormal(zeros(1), ones(1))
-        return a ~ to_submodel(decondition(nested_copy_child((a=m, b=m))))
+        m ~ MvNormal(zeros(1), ones(1, 1))
+        # `copy` of a tracked array returns the same storage; `m .+ 0` is distinct.
+        return a ~ to_submodel(decondition(nested_copy_child((a=m, b=m .+ 0))))
     end
     ldf = LogDensityFunction(nested_copy_parent(); adtype)
     _, gradient = LogDensityProblems.logdensity_and_gradient(ldf, [0.3, 0.7, 0.9])
-    @test gradient ≈ [0.1, -0.4, -1.8]
+    @test gradient ≈ [-0.2, -0.4, -0.9]
 
     @model function const_copy(s)
         s.x ~ Normal()
@@ -275,7 +276,7 @@ end
         return p.b ~ Normal()
     end
     @model function view_parent(make_view)
-        m ~ MvNormal(zeros(1), ones(1))
+        m ~ MvNormal(zeros(1), ones(1, 1))
         return a ~ to_submodel(decondition(view_child((a=make_view(m), b=0.0))))
     end
     for make_view in (m -> view(m, 1:1), m -> view(reshape(m, 1, 1), :, 1)),
@@ -375,6 +376,34 @@ end
     end
 end
 
+struct StorageReal <: Real
+    data::Vector{Float64}
+end
+@testset "tracked numeric wrappers with argument storage" begin
+    @model scalar_latent(x, covariate) = x[1] ~ Normal()
+    x = [0.0]
+    independent = ReverseDiff.TrackedReal(StorageReal(copy(x)), 0.0)
+    shared = ReverseDiff.TrackedReal(StorageReal(x), 0.0)
+    @test decondition(scalar_latent(x, independent), @varname(x)) isa Model
+    @test_throws "shared by `x` and `covariate`" decondition(
+        scalar_latent(x, shared), @varname(x)
+    )
+end
+
+@testset "repeated tracked numeric leaves" begin
+    @model numeric_child(x) = (x[1] ~ Normal(); x[2] ~ Normal(); x)
+    for partial in (false, true)
+        function density(θ)
+            scalar = θ[1]
+            model = numeric_child([scalar, scalar])
+            model = partial ? decondition(model, @varname(x[1])) : decondition(model)
+            return logjoint(model, (x=[0.7, θ[1]],))
+        end
+        @test density([0.3]) ≈ logpdf(Normal(), 0.7) + logpdf(Normal(), 0.3)
+        @test ReverseDiff.gradient(density, [0.3]) ≈ [-0.3]
+    end
+end
+
 @model function replaced_argument(x=missing)
     x === missing && (x = zeros(2))
     x[1] ~ Normal()
@@ -442,4 +471,78 @@ end
             test=WithExpectedResult(logpdf(Normal(), 0.5), [-0.5]),
         ) isa Any
     end
+end
+
+@testset "separate bindings may share latent argument storage" begin
+    @model function bound_storage(x)
+        x[1] ~ Normal()
+        y ~ MvNormal(zeros(1), ones(1, 1))
+        return 0.0 ~ Normal(y[1])
+    end
+    @model function bound_field(x)
+        x.a[1] ~ Normal()
+        x.b ~ MvNormal(zeros(1), ones(1, 1))
+        return 0.0 ~ Normal(x.b[1])
+    end
+    @model bound_parent(child) = s ~ to_submodel(child)
+    v = [0.0]
+    for bind in (condition, fix)
+        child = decondition(bound_storage(v))
+        field = decondition(bound_field((a=v, b=copy(v))), @varname(x.a))
+        models = (
+            bind(child, @varname(y) => v),
+            bind(bound_parent(child), @varname(s.y) => v),
+            bind(field, @varname(x.b) => v),
+            bind(bound_parent(field), @varname(s.x.b) => v),
+        )
+        expected =
+            logpdf(Normal(), 2.0) + (bind === condition ? 2 : 1) * logpdf(Normal(), 0.0)
+        for model in models
+            primal = LogDensityFunction(model, getlogjoint_internal, UnlinkAll())
+            @test LogDensityProblems.logdensity(primal, [2.0]) ≈ expected
+            for adtype in (AutoReverseDiff(), AutoReverseDiff(; compile=true))
+                ldf = LogDensityFunction(model, getlogjoint_internal, UnlinkAll(); adtype)
+                density, gradient = LogDensityProblems.logdensity_and_gradient(ldf, [2.0])
+                @test density ≈ expected
+                @test gradient ≈ [-2.0]
+            end
+        end
+    end
+    @test v == [0.0]
+end
+
+@testset "retained tracked argument buffers" begin
+    @model function tracked_argument(x)
+        μ = x.a[1]
+        x.a[1] ~ Normal()
+        0.0 ~ Normal(μ + x.a[1])
+        return x
+    end
+    function density(z)
+        model = decondition(tracked_argument((a=z,)))
+        result = returned(model, (x=(a=[0.7],),))
+        @test ReverseDiff.value(z) == [0.3]
+        @test ReverseDiff.value(result.a[1]) == 0.7
+        @test result.a !== z
+        return logjoint(model, (x=(a=[0.7],),))
+    end
+    z = [0.3]
+    @test density(z) ≈ logpdf(Normal(), 0.7) + logpdf(Normal(), 1.0)
+    @test ReverseDiff.gradient(density, z) ≈ [-1.0]
+    @test z == [0.3]
+end
+
+@testset "retained buffers reached by latent arguments" begin
+    @model function retained_buffer(x)
+        x.b[1][1] ~ Normal()
+        return x
+    end
+    z = ReverseDiff.track([0.3])
+    b = Any[[0.0]]
+    model = decondition(retained_buffer((a=z, b=b)))
+    b[1] = ReverseDiff.value(z)
+    @test_throws r"argument `x`.*retained storage.*latent path" returned(
+        model, (x=(b=[[0.7]],),)
+    )
+    @test ReverseDiff.value(z) == [0.3]
 end

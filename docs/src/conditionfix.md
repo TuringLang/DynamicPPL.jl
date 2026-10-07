@@ -302,6 +302,58 @@ values constant with respect to model parameters.
 See [Missing data](@ref) for making observations latent. `InitFromParams` rejects `missing`
 when read, not at construction. Omit unobserved values instead.
 
+### Storage written by latent tildes
+
+A latent tilde on an argument stores its draw in DynamicPPL's per-evaluation copy of the
+argument, so the caller's arrays are never written. The draw is written in place when the
+storage's element type can hold it. Otherwise, as when an AD number meets a `Vector{Float64}`
+or a float meets a `Vector{Int}`, and always for a whole tilde such as `x.a ~ MvNormal(...)`,
+the tilde replaces the array, and any other reference to the old array reads stale values.
+
+`decondition`, `unfix`, `condition` and `fix` therefore throw `ArgumentError` when storage
+reachable from a latent argument is shared within that argument (`f((a=v, b=v))`,
+`f([v, v])`), across arguments, or with a branch still observed through the argument.
+The model constructor also throws when `missing` placeholders expose such sharing;
+`Recursive()` removals throw during evaluation when the affected child is reached.
+Sharing is determined by memory, so reshapes, views and `unsafe_wrap` aliases count too.
+Pass independent storage, as in `f((a=v, b=copy(v)))`, and read a latent value through its
+own address. The check cannot see tilde shapes, so it also rejects shared storage that the
+body only reads, such as a distribution's mean, or wholly replaces.
+
+Storage shared only with a separate `condition` or `fix` value is accepted, including
+`condition(decondition(f(v)), @varname(y) => v)` and explicit bindings of argument branches.
+A branch replaced by an explicit binding no longer contributes its original storage.
+Sharing only among covariates or observations is also accepted.
+Under ReverseDiff, `copy(m)` of a tracked array retains its storage; use an allocating
+operation such as `m .+ 0` to obtain independent storage while preserving derivatives.
+
+When an argument has latent parts, copying it rejects dictionary keys anywhere inside it
+unless they are isbits values, `Symbol`s or `String`s. Use one of those key types or pass
+the dictionary as a separate covariate argument. Copying also rejects custom numbers in
+latent branches when their fields reach mutable storage, including immutable wrappers;
+keep the storage outside the number. Isbits numbers, `BigFloat`, `BigInt`, and AD values that
+an extension declares opaque remain supported, as do Base numbers whose fields recursively
+satisfy this rule. Fully bound and covariate arguments
+keep accepting arbitrary keys and custom numbers. Storage reachable from retained opaque
+values must not also be reached through an ordinary latent path; pass independent storage
+for that path.
+
+Aliases made in the model body are not detected:
+
+```julia
+@model function local_alias()
+    v = zeros(1)
+    w = v
+    v[1] ~ Normal()  # under AD, replaces `v`; `w` keeps the old array
+    return 0.0 ~ Normal(w[1])
+end
+```
+
+Take such an alias after the tilde, or allocate storage that holds the draws, such as
+`zeros(Real, 1)`. Replacing an array to fit a draw also changes the argument's type in the
+copy: for `@model g(x) = (x[1] ~ Normal(); x)`, `decondition(g(zeros(Int, 1)))()` returns a
+`Vector{Float64}`.
+
 ### Binding contract
 
 Partial argument bindings act through supported arrays and NamedTuples.

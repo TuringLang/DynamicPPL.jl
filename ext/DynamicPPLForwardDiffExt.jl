@@ -3,6 +3,8 @@ module DynamicPPLForwardDiffExt
 using DynamicPPL: ADTypes, DynamicPPL, LogDensityProblems
 using ForwardDiff
 
+DynamicPPL._argument_opaque_value(::ForwardDiff.Dual) = true
+
 # check if the AD type already has a tag
 use_dynamicppl_tag(::ADTypes.AutoForwardDiff{<:Any,Nothing}) = true
 use_dynamicppl_tag(::ADTypes.AutoForwardDiff) = false

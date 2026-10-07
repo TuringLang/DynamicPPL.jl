@@ -310,11 +310,11 @@ end
 @testset "aliased latent argument storage" begin
     @model function aliased_argument(x)
         x.a[1] ~ Normal()
-        return 0.0 ~ Normal(x.b[1], 1)
+        return 0.0 ~ Normal(x.a[1], 1)
     end
-    # Abstract storage can accept AD numbers without replacing either shared array.
     value = Real[0.0]
-    model = decondition(aliased_argument((a=value, b=value)))
+    @test_throws ArgumentError decondition(aliased_argument((a=value, b=value)))
+    model = decondition(aliased_argument((a=value, b=copy(value))))
     _, vi = init!!(
         StableRNG(123456),
         model,
@@ -369,7 +369,7 @@ end
     end
     data = Real[0.0]
     alias_model = condition(
-        decondition(alias_copy((a=data, b=data, c=0.0))), @varname(x.c) => 0.0
+        decondition(alias_copy((a=data, b=copy(data), c=0.0))), @varname(x.c) => 0.0
     )
     @model function const_copy(s)
         s.x ~ Normal()
@@ -395,8 +395,8 @@ end
         return 0.0 ~ Normal(x.b[1])
     end
     @model function nested_copy_parent()
-        m ~ MvNormal(zeros(1), ones(1))
-        return a ~ to_submodel(decondition(nested_copy_child((a=m, b=m))))
+        m ~ MvNormal(zeros(1), ones(1, 1))
+        return a ~ to_submodel(decondition(nested_copy_child((a=m, b=copy(m)))))
     end
     @model named_copy_child(p) = p.m ~ Normal(1)
     @model function named_copy_parent()
@@ -406,7 +406,7 @@ end
     for adtype in (AutoForwardDiff(), AutoMooncake())
         nested = LogDensityFunction(nested_copy_parent(); adtype)
         _, nested_gradient = logdensity_and_gradient(nested, [0.3, 0.7, 0.9])
-        @test nested_gradient ≈ [0.1, -0.4, -1.8]
+        @test nested_gradient ≈ [-0.2, -0.4, -0.9]
         named = LogDensityFunction(named_copy_parent(); adtype)
         for m in (0.0, 0.3)
             _, named_gradient = logdensity_and_gradient(named, [m])
@@ -415,8 +415,8 @@ end
         ldf = LogDensityFunction(alias_model; adtype)
         for x in ([2.0], [-0.4], [2.0])
             density, gradient = logdensity_and_gradient(ldf, x)
-            @test density ≈ 3logpdf(Normal(), 0.0) - x[1]^2
-            @test gradient ≈ -2x
+            @test density ≈ 3logpdf(Normal(), 0.0) - x[1]^2 / 2
+            @test gradient ≈ -x
         end
         ldf = LogDensityFunction(runtime_const_copy(); adtype)
         for x in ([0.3, 0.7], [-0.4, 0.2], [0.3, 0.7])
@@ -527,6 +527,44 @@ end
         ldf = LogDensityFunction(model; adtype=AutoMooncake())
         @test logdensity_and_gradient(ldf, fill(0.1, 3))[2] ≈ [0.9, 1.9, 1.9]
     end
+end
+
+@testset "separate bindings may share latent argument storage" begin
+    @model function bound_storage(x)
+        x[1] ~ Normal()
+        y ~ MvNormal(zeros(1), ones(1, 1))
+        return 0.0 ~ Normal(y[1])
+    end
+    @model function bound_field(x)
+        x.a[1] ~ Normal()
+        x.b ~ MvNormal(zeros(1), ones(1, 1))
+        return 0.0 ~ Normal(x.b[1])
+    end
+    @model bound_parent(child) = s ~ to_submodel(child)
+    v = [0.0]
+    for bind in (condition, fix)
+        child = decondition(bound_storage(v))
+        field = decondition(bound_field((a=v, b=copy(v))), @varname(x.a))
+        models = (
+            bind(child, @varname(y) => v),
+            bind(bound_parent(child), @varname(s.y) => v),
+            bind(field, @varname(x.b) => v),
+            bind(bound_parent(field), @varname(s.x.b) => v),
+        )
+        expected =
+            logpdf(Normal(), 2.0) + (bind === condition ? 2 : 1) * logpdf(Normal(), 0.0)
+        for model in models
+            primal = LogDensityFunction(model, getlogjoint_internal, UnlinkAll())
+            @test LogDensityProblems.logdensity(primal, [2.0]) ≈ expected
+            for adtype in (AutoMooncake(),)
+                ldf = LogDensityFunction(model, getlogjoint_internal, UnlinkAll(); adtype)
+                density, gradient = LogDensityProblems.logdensity_and_gradient(ldf, [2.0])
+                @test density ≈ expected
+                @test gradient ≈ [-2.0]
+            end
+        end
+    end
+    @test v == [0.0]
 end
 
 @info "Completed $(@__FILE__) in $(now() - __now__)."

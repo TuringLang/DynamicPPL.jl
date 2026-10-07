@@ -349,19 +349,15 @@ end
     end
     return y
 end
-@testset "latent arrays own backing storage" begin
-    for sibling in (identity, x -> view(x, :)), container in (:array, :namedtuple)
+@testset "latent arrays cannot share backing storage" begin
+    for sibling in (identity, x -> view(x, :))
         inner = [1.0, 2.0]
-        if container === :array
-            m = decondition(aliased_argument([inner, sibling(inner)]), @varname(y[1][1]))
-            params = (; y=[[5.0]])
-        else
-            value = (u=inner, v=sibling(inner))
-            m = decondition(aliased_fields(value), @varname(y.u[1]))
-            params = (; y=(u=[5.0],))
-        end
-        @test logjoint(m, params) ≈ sum(logpdf.(Normal(), [5.0, 2.0, 1.0, 2.0]))
-        @test inner == [1.0, 2.0]
+        @test_throws r"shared by `y` and `y`" decondition(
+            aliased_argument([inner, sibling(inner)]), @varname(y[1][1])
+        )
+        @test_throws r"shared by `y` and `y`" decondition(
+            aliased_fields((u=inner, v=sibling(inner))), @varname(y.u[1])
+        )
     end
 end
 
@@ -1000,17 +996,11 @@ end
             for ctor in (Dict, IdDict)
                 data = Real[0.0]
                 key = Ref(data)
-                model = decondition(key_storage(ctor(key => data), key))
-                params = (; x=ctor(key => [2.0]))
-                for _ in 1:2
-                    @test_throws r"ArgumentError:.*argument `x`.*dictionary key" logjoint(
-                        model, params
-                    )
-                    @test data == [0.0]
-                end
-                model = decondition(field_storage((; a=data, lookup=ctor(data => 1))))
-                @test_throws r"ArgumentError:.*argument `x`.*dictionary key" returned(
-                    model, (; x=(; a=[2.0]))
+                @test_throws r"shared by `x` and `x`" decondition(
+                    key_storage(ctor(key => data), key)
+                )
+                @test_throws r"shared by `x` and `x`" decondition(
+                    field_storage((; a=data, lookup=ctor(data => 1)))
                 )
                 @test data == [0.0]
             end
@@ -1036,22 +1026,6 @@ end
         @test result isa typeof(data)
         @test result[:a] == [2.0, 3.0]
         @test data[:a] == [1.0, 3.0]
-
-        @model dictionary_parent(child) = a ~ to_submodel(child)
-        # Dictionary keys name storage; identity keys must remain usable in the body.
-        for ctor in (Dict, IdDict), key in (Ref(:a), (Ref(:a),))
-            data = ctor(key => [1.0, 3.0])
-            model = decondition(nested_dictionary(data, key))
-            params = (; x=ctor(key => [2.0, 3.0]))
-            for (m, p) in ((model, params), (dictionary_parent(model), (; a=params)))
-                result = returned(m, p)
-                @test result[key] == [2.0, 3.0]
-                @test result isa typeof(data)
-                @test result !== data
-                @test result[key] !== data[key]
-                @test data[key] == [1.0, 3.0]
-            end
-        end
     end
 
     @testset "partly latent argument storage" begin
@@ -4253,25 +4227,86 @@ Distributions.loglikelihood(d::PlaceholderStateNormal, p::PlaceholderState) = lo
         -1.0
 end
 
-@testset "aliases in latent argument storage" begin
-    @model function aliased_argument(x)
+mutable struct CyclicStorage
+    value::Vector{Float64}
+    next::Any
+end
+@testset "shared latent argument storage throws" begin
+    @model function shared_fields(x)
         x.a[1] ~ Normal()
-        0.0 ~ Normal(x.b[1], 1)
-        return (x.a === x.b, x.a[1], x.b[1])
+        return 0.0 ~ Normal(x.b[1], 1)
     end
+    @model function whole_field(x)
+        x.a ~ MvNormal(zeros(1), I)
+        return 0.0 ~ Normal(x.b[1], 1)
+    end
+    @model function two(x, y)
+        x[1] ~ Normal()
+        return 0.0 ~ Normal(y[1], 1)
+    end
+    @model function bound_local(x)
+        x[1] ~ Normal()
+        y ~ MvNormal(zeros(1), I)
+        return 0.0 ~ Normal(y[1], 1)
+    end
+    @model cyclic(x) = x.value[1] ~ Normal()
+    @model parent(v) = s ~ to_submodel(shared_fields((a=v, b=v)))
+    shared = r"shared by `x` and `x`.*`\(a=v, b=copy\(v\)\)`"
     v = [0.0]
-    m = decondition(aliased_argument((a=v, b=v)))
-    p = (x=(a=[2.0],),)
-    @test returned(m, p) == (true, 2.0, 2.0)
-    @test loglikelihood(m, p) ≈ logpdf(Normal(2.0, 1), 0.0)
+    @test_throws shared decondition(whole_field((a=v, b=v)))
+    @test_throws shared decondition(shared_fields((a=v, b=v)), @varname(x.a))
+    @model keyword(x; y=x) = (x[1] ~ Normal(); 0.0 ~ Normal(y[1]))
+    @model default(x, y=x) = (x[1] ~ Normal(); 0.0 ~ Normal(y[1]))
+    @test_throws r"shared by `x` and `y`" decondition(keyword(v; y=v))
+    @test_throws r"shared by `x` and `y`" decondition(default(v))
+    @test_throws shared decondition(whole_field((a=v, b=reshape(v, 1, 1))))
+    GC.@preserve v begin
+        alias = unsafe_wrap(Array, pointer(v), 1)
+        @test_throws shared decondition(whole_field((a=v, b=alias)))
+    end
+    placeholder = fill(missing, 1)
+    @test_throws r"shared by `x` and `y`" two(placeholder, placeholder)
+    @test_throws r"shared by `x` and `y`" decondition(two(v, v), @varname(x))
+    for bind in (condition, fix)
+        model = decondition(
+            bind(shared_fields((a=v, b=v)), @varname(x.b) => [1.0]), @varname(x.a)
+        )
+        @test logjoint(model, (x=(a=[2.0],),)) ≈
+            logpdf(Normal(), 2.0) + logpdf(Normal(1.0), 0.0)
+    end
+    fixed_model = decondition(fix(shared_fields((a=v, b=v)); x=(a=[0.0], b=[0.0])))
+    @test_throws shared unfix(fixed_model)
+    cycle = CyclicStorage([0.0], nothing)
+    cycle.next = cycle
+    @test_throws r"shared by `x` and `x`" decondition(cyclic(cycle))
+    @model cyclic_array(x) = x[1][1] ~ Normal()
+    array_cycle = Any[[0.0], nothing]
+    array_cycle[2] = array_cycle
+    @test_throws r"shared by `x` and `x`" decondition(cyclic_array(array_cycle))
+    model = decondition(parent(v), DynamicPPL.Recursive(), @varname(s.x))
+    @test_throws r"shared by `s.x` and `s.x`" logjoint(model, (s=(x=(a=[2.0],),),))
+
+    # Distinct storage, and storage shared only by bound values and covariates.
+    @model function own_field(x)
+        x.a[1] ~ Normal()
+        return 0.0 ~ Normal(x.a[1], 1)
+    end
+    model = decondition(own_field((a=v, b=copy(v))))
+    ldf = LogDensityFunction(
+        model, getlogjoint_internal, UnlinkAll(); adtype=AutoForwardDiff()
+    )
+    density, gradient = LogDensityProblems.logdensity_and_gradient(ldf, [2.0])
+    @test density ≈ 2logpdf(Normal(), 2.0)
+    @test gradient ≈ [-4.0]
+    @test logjoint(condition(bound_local(v), @varname(y) => v), (;)) ≈
+        3logpdf(Normal(), 0.0)
     @test v == [0.0]
+
     copied = @inferred DynamicPPL._copy_model_argument((a=v, b=v))
     @test copied.a === copied.b
     @test copied.a !== v
-    cycle = Any[nothing]
-    cycle[1] = cycle
     copied_cycle = DynamicPPL._copy_model_argument(cycle)
-    @test copied_cycle[1] === copied_cycle
+    @test copied_cycle.next === copied_cycle
     @test copied_cycle !== cycle
 end
 
@@ -4485,7 +4520,8 @@ Base.getindex(::LazyArgumentStorage{T}, i::Int) where {T} = T(1:i)
     # A self-referential argument must not make the check walk without end.
     cyclic = Any[1.0, 2.0]
     cyclic[2] = cyclic
-    @test decondition(range_storage(cyclic)) isa DynamicPPL.Model
+    @test DynamicPPL._check_latent_storage(cyclic, @varname(x)) === nothing
+    @test_throws r"shared by `x` and `x`" decondition(range_storage(cyclic))
 end
 
 @testset "latent branches of partially bound arguments" begin
@@ -4544,7 +4580,9 @@ end
     end
     cyclic = Any[0.0]
     cyclic[1] = cyclic
-    @test decondition(fields((a=cyclic, b=range)), @varname(x.a)) isa DynamicPPL.Model
+    @test_throws r"shared by `x` and `x`" decondition(
+        fields((a=cyclic, b=range)), @varname(x.a)
+    )
 end
 
 @testset "fixed argument writes replace aliased storage" begin
@@ -4560,7 +4598,7 @@ end
 end
 
 @testset "untouched unassigned argument entries" begin
-    @model assigned_argument(x) = (x[1] ~ MvNormal(zeros(1), ones(1)); x)
+    @model assigned_argument(x) = (x[1] ~ MvNormal(zeros(1), ones(1, 1)); x)
     x = Vector{Vector{Float64}}(undef, 2)
     x[1] = [1.0]
     for bind in (condition, fix)
@@ -4596,6 +4634,186 @@ end
         @test_throws ArgumentError logjoint(cyclic_observation(x), (;))
     end
 end
+struct AliasField{T}
+    value::T
+end
+mutable struct MutableAliasField{T}
+    value::T
+end
+struct NumericAliasField{T} <: Number
+    value::T
+end
+mutable struct MutableNumericAliasField{T} <: Real
+    value::T
+end
+@testset "reachable argument storage" begin
+    @model covariate(x, y, read) = (x[1] ~ Normal(); 0.0 ~ Normal(read(y)))
+    wrappers = [
+        (AliasField, y -> y.value[1]),
+        (MutableAliasField, y -> y.value[1]),
+        (NumericAliasField, y -> y.value[1]),
+        (MutableNumericAliasField, y -> y.value[1]),
+        (v -> Dict(:value => v), y -> y[:value][1]),
+        (v -> Dict(v => 1), y -> first(keys(y))[1]),
+        (v -> Set([v]), y -> first(y)[1]),
+        (Ref, y -> y[][1]),
+        (v -> (() -> v[1]), y -> y()),
+    ]
+    @static if isdefined(Core, :Memory)
+        memory(v) = (m = Memory{typeof(v)}(undef, 1); m[1] = v; m)
+        for wrap in (identity, m -> view(m, :), m -> reshape(m, 1, 1))
+            push!(wrappers, (v -> wrap(memory(v)), y -> y[1][1]))
+        end
+    end
+    for (wrap, read) in wrappers
+        v = [0.0]
+        @test_throws ArgumentError decondition(covariate(v, wrap(v), read))
+        @test logjoint(decondition(covariate(v, wrap(copy(v)), read)), (x=[2.0],)) ≈
+            logpdf(Normal(), 2.0) + logpdf(Normal(), 0.0)
+    end
+end
+@testset "shared storage diagnostic addresses" begin
+    @model numeric_fields(x) = (x[1].value[1] ~ Normal(); 0.0 ~ Normal(x[2].value[1]))
+    n = MutableNumericAliasField([0.0])
+    @test_throws r"ArgumentError: .*shared by `x` and `x`" decondition(
+        numeric_fields([n, n])
+    )
+    @test decondition(numeric_fields([n, MutableNumericAliasField([0.0])])) isa Model
+    @model fields(x) = (x.a[1] ~ Normal(); x.b[1] ~ Normal(); x.c[1] ~ Normal())
+    v = [0.0]
+    replaced = condition(fields((a=v, b=v, c=v)), @varname(x.b) => copy(v))
+    @test_throws r"shared by `x` and `x`" decondition(
+        replaced, @varname(x.a), @varname(x.c)
+    )
+    @test decondition(condition(replaced, @varname(x.c) => copy(v)), @varname(x.a)) isa
+        Model
+    @model captured_covariate(x, y) = (x[1] ~ Normal(); 0.0 ~ Normal(y()))
+    captured = let r = Ref(v)
+        () -> r[][1]
+    end
+    @test_throws "shared by `x` and `y`" decondition(captured_covariate(v, captured))
+    @model indexed_covariate(x, y) = (x[1] ~ Normal(); 0.0 ~ Normal(y[1][1]))
+    for wrap in (a -> view(a, :), a -> OffsetArray(a, 0:0))
+        model = indexed_covariate(v, wrap([v]))
+        @test_throws "shared by `x` and `y`" decondition(model)
+        @test_throws "shared by `a.x` and `a.y`" decondition(prefix(model, @varname(a)))
+        @test decondition(indexed_covariate(v, wrap([copy(v)]))) isa Model
+    end
+end
+@testset "shared storage diagnostics name conflicting roles" begin
+    struct HiddenFieldDiagnostic
+        a::Vector{Float64}
+        shown::Vector{Float64}
+    end
+    Base.getproperty(x::HiddenFieldDiagnostic, name::Symbol) =
+        name === :a ? getfield(x, :shown) : getfield(x, name)
+    @model hidden_field_diagnostic(x, y) = (x[1] ~ Normal(); 0.0 ~ Normal(y.a[1]))
+    @model covariates_first_diagnostic(a, b, x) = (
+        x[1] ~ Normal(); 0.0 ~ Normal(a[1] + b[1])
+    )
+    @model partially_removed_diagnostic(x) = (
+        x.c[1] ~ Normal(); 0.0 ~ Normal(x.a[1] + x.b[1])
+    )
+    v = [0.0]
+    @test_throws r"shared by `x` and `y`" decondition(
+        hidden_field_diagnostic(v, HiddenFieldDiagnostic(v, copy(v)))
+    )
+    @test_throws r"shared by `x` and `a`" decondition(covariates_first_diagnostic(v, v, v))
+    @test decondition(covariates_first_diagnostic(v, v, copy(v))) isa Model
+    @test_throws r"shared by `x` and `x`" decondition(
+        partially_removed_diagnostic((a=v, b=v, c=v)), @varname(x.c)
+    )
+    @test decondition(
+        partially_removed_diagnostic((a=v, b=v, c=copy(v))), @varname(x.c)
+    ) isa Model
+    @model partial_with_covariate(y, x) = (x.a[1] ~ Normal(); 0.0 ~ Normal(y[1]))
+    @test_throws "shared by `x` and `x`" decondition(
+        partial_with_covariate(v, (a=v, b=v)), @varname(x.a)
+    )
+    @test decondition(partial_with_covariate(v, (a=copy(v), b=v)), @varname(x.a)) isa Model
+    struct WrappedDiagnostic
+        a::Vector{Float64}
+    end
+    @model wrapped_covariates(w1, w2, x) = (
+        x[1] ~ Normal(); 0.0 ~ Normal(w1.a[1] + w2.a[1])
+    )
+    @test_throws r"shared by `x` and `w1`" decondition(
+        wrapped_covariates(WrappedDiagnostic(v), WrappedDiagnostic(v), v)
+    )
+    @test decondition(
+        wrapped_covariates(WrappedDiagnostic(v), WrappedDiagnostic(v), copy(v))
+    ) isa Model
+end
+@testset "numeric argument leaves" begin
+    @model scalar_leaves(x) = (x[1] ~ Normal(); x[2] ~ Normal(); x)
+    x = fill(MutableNumericAliasField(1.0), 2)
+    @test decondition(scalar_leaves(x)) isa Model
+    @test decondition(scalar_leaves(x), @varname(x[1])) isa Model
+    for T in (BigFloat, BigInt)
+        x = fill(T(1), 2)
+        @test returned(decondition(scalar_leaves(x)), (x=T[2, 3],)) == T[2, 3]
+        @test returned(decondition(scalar_leaves(x), @varname(x[1])), (x=T[2, 3],)) ==
+            T[2, 1]
+    end
+end
+@testset "partial wrapped storage" begin
+    @model nested_partial(x) = (x[1][1] ~ Normal(); 0.0 ~ Normal(x[1][1]))
+    for wrap in (identity, v -> OffsetArray(v, 1:2))
+        v = [0.0]
+        @test_throws ArgumentError decondition(nested_partial(wrap([v, v])), @varname(x[1]))
+        @test logjoint(
+            decondition(nested_partial(wrap([v, copy(v)])), @varname(x[1])),
+            (x=[[2.0], [0.0]],),
+        ) ≈ 2logpdf(Normal(), 2.0)
+    end
+end
+
+@testset "argument alias traversal" begin
+    @model keyed_argument(x, k) = (x[1] ~ Normal(); 0.0 ~ Normal(first(keys(k))[1]))
+    for ctor in (Dict, IdDict)
+        v = [0.0]
+        @test_throws r"shared by `x` and `k`" decondition(keyed_argument(v, ctor(v => 1)))
+        @test logjoint(decondition(keyed_argument(v, ctor(copy(v) => 1))), (x=[2.0],)) ≈
+            logpdf(Normal(), 2.0) + logpdf(Normal(), 0.0)
+    end
+    @model nested_argument(x) = (x[1][1] ~ Normal(); 0.0 ~ Normal(x[1][1]))
+    for wrap in (v -> view(v, :), v -> OffsetArray(v, 1:length(v)))
+        @test logjoint(decondition(nested_argument(wrap([[0.0]]))), (x=[[2.0]],)) ≈
+            2logpdf(Normal(), 2.0)
+        v = [0.0]
+        @test_throws ArgumentError decondition(nested_argument(wrap([v, v])))
+    end
+    @model empty_arguments(x) = x.z[1] ~ Normal()
+    a = Float64[]
+    for b in (Float64[], copy(a))
+        @test logjoint(decondition(empty_arguments((; a, b, z=[0.0]))), (x=(z=[2.0],),)) ≈
+            logpdf(Normal(), 2.0)
+    end
+    @test_throws ArgumentError decondition(empty_arguments((a=a, b=a, z=[0.0])))
+    @model empty_cross_arguments(x, y) = x[1] ~ Normal()
+    @test_throws ArgumentError decondition(empty_cross_arguments(a, a))
+end
+@testset "recursive removals use inherited argument storage" begin
+    @model replaced_child(x) = (x.a[1] ~ Normal(); 0.0 ~ Normal(x.b[1]))
+    @model replaced_parent(c) = s ~ to_submodel(c)
+    v = [0.0]
+    for bind in (condition, fix)
+        source = replaced_parent(replaced_child((a=v, b=v)))
+        for replacement in (@varname(s.x.b) => [1.0], @varname(s.x) => (a=[0.0], b=[1.0]))
+            model = decondition(
+                bind(source, replacement), DynamicPPL.Recursive(), @varname(s.x.a)
+            )
+            expected = logpdf(Normal(1.0), 0.0)
+            if bind !== fix || first(replacement) !== @varname(s.x)
+                expected += logpdf(Normal(), 2.0)
+            end
+            @test logjoint(model, (s=(x=(a=[2.0],),),)) ≈ expected
+        end
+        model = decondition(source, DynamicPPL.Recursive(), @varname(s.x.a))
+        @test_throws ArgumentError logjoint(model, (s=(x=(a=[2.0],),),))
+    end
+end
+
 @testset "partial latent aliases and views" begin
     @model function copy_aliases(x)
         x.a[1] ~ Normal()
@@ -4605,26 +4823,21 @@ end
     end
     v = Real[0.0]
     source = copy_aliases((a=v, b=v, c=0.0))
-    models = (
-        decondition(source, @varname(x.a), @varname(x.b)),
-        condition(decondition(source), @varname(x.c) => 0.0),
-    )
-    for model in models
-        @test returned(model, (x=(a=[2.0],),)) == (true, 2.0, 2.0)
-        @test loglikelihood(model, (x=(a=[2.0],),)) ≈
-            logpdf(Normal(), 0.0) + logpdf(Normal(2.0), 0.0)
-        @test v == [0.0]
-    end
+    @test_throws ArgumentError decondition(source, @varname(x.a), @varname(x.b))
+    @model guarded_argument(x) = (x[1][1] ~ Normal(); z ~ Normal())
+    data = [[0.0], [0.0]]
+    guarded = decondition(guarded_argument(data))
+    data[2] = data[1]
+    @test_throws ArgumentError condition(guarded; z=0.0)
     @model function copy_views(x)
         x.a[2] ~ Normal()
         0.0 ~ Normal(x.b[1])
         return (x.a[2], x.b[1])
     end
     data = Real[0, 0, 0]
-    model = decondition(copy_views((a=view(data, 1:2), b=view(data, 2:3))))
-    @test returned(model, (x=(a=[0.0, 2.0],),)) == (2.0, 2.0)
-    @test loglikelihood(model, (x=(a=[0.0, 2.0],),)) ≈ logpdf(Normal(2.0), 0.0)
-    @test data == [0, 0, 0]
+    @test_throws r"shared by `x` and `x`" decondition(
+        copy_views((a=view(data, 1:2), b=view(data, 2:3)))
+    )
 end
 @testset "new binding extents preserve surviving latent storage" begin
     @model function stale_shape(x)
@@ -4680,7 +4893,7 @@ end
     end
 end
 
-@testset "bound view parents are not latent storage" begin
+@testset "latent views cannot share a bound parent" begin
     @model function latent_view(x)
         x.a[1] ~ Normal()
         0.0 ~ Normal(x.b[1])
@@ -4688,9 +4901,7 @@ end
     end
     data = Real[0.0]
     for value in ((a=view(data, :), b=data), (a=data, b=view(data, :)))
-        model = decondition(latent_view(value), @varname(x.a))
-        @test returned(model, (x=(a=[2.0],),)) == (2.0, 0.0)
-        @test data == [0.0]
+        @test_throws ArgumentError decondition(latent_view(value), @varname(x.a))
     end
     @model function partial_latent_view(x)
         x.a[1] ~ Normal()
@@ -4698,14 +4909,10 @@ end
         return (x.a[2], x.b[2])
     end
     data = Real[0.0, 0.0]
-    removed = decondition(partial_latent_view((a=view(data, :), b=data)), @varname(x.a))
-    @test_throws r"x.a\[1\].*SubArray.*whole" condition(removed, @varname(x.a[1]) => 1.0)
-    model = condition(
-        decondition(partial_latent_view((a=data, b=data)), @varname(x.a)),
-        @varname(x.a[1]) => 1.0,
+    removed = decondition(
+        partial_latent_view((a=view(data, :), b=copy(data))), @varname(x.a)
     )
-    @test returned(model, (x=(a=[0.0, 2.0],),)) == (2.0, 0.0)
-    @test data == [0.0, 0.0]
+    @test_throws r"x.a\[1\].*SubArray.*whole" condition(removed, @varname(x.a[1]) => 1.0)
 end
 
 mutable struct PartialInnerState
@@ -4776,6 +4983,181 @@ end
             Xoshiro(1)
         ).x == 0.0
     end
+end
+
+mutable struct CheckedNumber{T} <: Number
+    value::T
+end
+struct ImmutableCheckedNumber{T} <: Number
+    value::T
+end
+struct BufferReal <: Real
+    buffer::Vector{Float64}
+end
+@testset "unsupported latent argument leaves" begin
+    @model fields(x) = (x.a[1] ~ Normal(); x)
+    @model dictionary(x, k) = (x[k] ~ Normal(); x)
+    @model numeric(x) = (x.value[:k] ~ Normal(); x)
+    @model covariate(x, d) = (x[1] ~ Normal(); 0.0 ~ Normal(first(values(d))); x)
+    for ctor in (Dict, IdDict), key in ([1.0], Ref(1.0), ([1.0],))
+        data = ctor(key => 0.0)
+        model = decondition(dictionary(data, key))
+        @test_throws r"ArgumentError: .*argument `x`.*dictionary key.*isbits.*Symbol.*String.*separate covariate" returned(
+            model, (; x=ctor(key => 0.5))
+        )
+        @test logjoint(dictionary(data, key), (;)) ≈ logpdf(Normal(), 0.0)
+    end
+    key = Any[]
+    push!(key, key)
+    @test_throws r"ArgumentError: .*argument `x`.*dictionary key" returned(
+        decondition(dictionary(IdDict(key => 0.0), key)), (; x=IdDict(key => 0.5))
+    )
+    a = [0.0]
+    d = IdDict{Any,Any}()
+    model = decondition(fields((; a, d)), @varname(x.a))
+    d[Ref(1.0)] = 0.0
+    @test_throws r"ArgumentError: .*argument `x`.*dictionary key" returned(
+        model, (x=(a=[0.5],),)
+    )
+    @model child(c) = sub ~ to_submodel(c)
+    @test_throws r"ArgumentError: .*argument `sub.x`.*dictionary key" returned(
+        child(model), (sub=(x=(a=[0.5],),),)
+    )
+    for bind in (condition, fix)
+        bound = bind(fields((; a, d)), @varname(x.a) => [0.5])
+        @test returned(bound, (;)).d === d
+    end
+    n = CheckedNumber{Any}(0.0)
+    model = decondition(fields((a=[0.0], n=n)))
+    n.value = [0.0]
+    @test_throws r"ArgumentError: .*argument `x`.*CheckedNumber" returned(
+        model, (x=(a=[0.5],),)
+    )
+    for key in (:k, 1, "k")
+        model = decondition(dictionary(Dict(key => 0.0), key))
+        @test logjoint(model, (; x=Dict(key => 0.5))) ≈ logpdf(Normal(), 0.5)
+    end
+    @test logjoint(decondition(covariate([0.0], IdDict([1.0] => 0.0))), (x=[0.5],)) ≈
+        logpdf(Normal(), 0.5) + logpdf(Normal(), 0.0)
+    for n in (
+        CheckedNumber(Dict(:k => 0.0)),
+        CheckedNumber((buffer=[0.0],)),
+        ImmutableCheckedNumber([0.0]),
+        ImmutableCheckedNumber((buffer=[0.0],)),
+    )
+        model = decondition(fields((a=[0.0], n=n)))
+        @test_throws r"ArgumentError: .*argument `x`.*number `.*CheckedNumber.*reaches mutable storage.*outside the number" returned(
+            model, (x=(a=[0.5],),)
+        )
+        bound = decondition(fields((a=[0.0], n=n)), @varname(x.a))
+        @test logjoint(bound, (x=(a=[0.5],),)) ≈ logpdf(Normal(), 0.5)
+    end
+    n = CheckedNumber(Dict(:k => 0.0))
+    @test_throws r"ArgumentError: .*argument `x`.*CheckedNumber" returned(
+        decondition(numeric(n)), (x=(value=Dict(:k => 0.5),),)
+    )
+    @model numeric_buffer(x) = (x.value[1] ~ Normal(); x)
+    caller = [0.3]
+    model = decondition(numeric_buffer(ImmutableCheckedNumber(caller)))
+    @test_throws r"ArgumentError: .*argument `x`.*number `.*ImmutableCheckedNumber.*reaches mutable storage" returned(
+        model, (x=(value=[0.7],),)
+    )
+    @test caller == [0.3]
+    @model wrapped_buffer(x) = (x.re.buffer[1] ~ Normal(); x)
+    x = Complex{BufferReal}(BufferReal(caller), BufferReal([0.0]))
+    @test_throws r"ArgumentError: .*argument `x`.*reaches mutable storage" returned(
+        decondition(wrapped_buffer(x)), (x=(re=(buffer=[0.7],),),)
+    )
+    @test caller == [0.3]
+    for n in (
+        CheckedNumber(0.0),
+        ImmutableCheckedNumber(0.0),
+        BigInt(1),
+        big"1"//big"2",
+        Complex(big"0.0", big"1.0"),
+        ForwardDiff.Dual{Nothing}(0.0, 1.0),
+        ForwardDiff.Dual{Nothing}(big"0.0", big"1.0"),
+    )
+        @test logjoint(decondition(fields((a=[0.0], n=n))), (x=(a=[0.5],),)) ≈
+            logpdf(Normal(), 0.5)
+    end
+    @model scalar(x) = (x ~ Normal(); x)
+    for n in (
+        Complex(big"0.0", big"1.0"),
+        big"1"//big"2",
+        ForwardDiff.Dual{Nothing}(0.0, 1.0),
+        ForwardDiff.Dual{Nothing}(big"0.0", big"1.0"),
+    )
+        @test returned(decondition(scalar(n)), (; x=n)) === n
+    end
+    @model vector(x) = (x[1] ~ Normal(); x)
+    data = BigFloat[0.0]
+    model = decondition(vector(data))
+    @test returned(model, (x=BigFloat[0.5],)) == BigFloat[0.5]
+    @test logjoint(model, (x=BigFloat[0.5],)) ≈ logpdf(Normal(), big"0.5")
+    @test data == BigFloat[0.0]
+end
+
+@testset "top-level shared storage arguments" begin
+    @model function retained_key_arguments(d1, d2, x, y)
+        d1[:value][1] ~ Normal()
+        d2[:value][1] ~ Normal()
+        x[1] ~ Normal()
+        return 0.0 ~ Normal(y[1])
+    end
+    @model retained_key_parent(child) = s ~ to_submodel(child)
+    @model function partial_key_arguments(z, y)
+        z.d1[:value][1] ~ Normal()
+        z.d2[:value][1] ~ Normal()
+        z.x[1] ~ Normal()
+        z.kept[1] ~ Normal()
+        return 0.0 ~ Normal(y[1])
+    end
+    v = [0.0]
+    for ctor in (Dict, IdDict)
+        d1 = ctor{Any,Any}(v => 1, :value => [0.0])
+        d2 = ctor{Any,Any}(v => 2, :value => [0.0])
+        source = retained_key_arguments(d1, d2, v, v)
+        @test_throws "shared by `x` and `d1`" decondition(source)
+        @test_throws "shared by `p.x` and `p.d1`" decondition(prefix(source, @varname(p)))
+        nested = decondition(retained_key_parent(source), DynamicPPL.Recursive())
+        @test_throws "shared by `s.x` and `s.d1`" logjoint(nested, (s=(x=[2.0],),))
+        @test decondition(retained_key_arguments(d1, d2, copy(v), v)) isa Model
+        for x in (v, copy(v))
+            source = partial_key_arguments((; d1, d2, x, kept=[0.0]), v)
+            if x === v
+                @test_throws "shared by `z` and `z`" decondition(
+                    source, @varname(z.d1), @varname(z.d2), @varname(z.x)
+                )
+            else
+                @test decondition(source, @varname(z.d1), @varname(z.d2), @varname(z.x)) isa
+                    Model
+            end
+        end
+    end
+    @model identity_key_argument(x, d, k) = (x[1] ~ Normal(); 0.0 ~ Normal(d[k][1]))
+    k = Ref(3)
+    @test_throws "shared by `x` and `d`" decondition(
+        identity_key_argument(v, IdDict(k => v), k)
+    )
+    @test decondition(identity_key_argument(v, IdDict(k => copy(v)), k)) isa Model
+end
+struct RedirectedDiagnosticValue
+    value::Vector{Float64}
+end
+const RedirectedDiagnosticTuple = NamedTuple{
+    (:a, :shown),Tuple{Vector{Float64},RedirectedDiagnosticValue}
+}
+function Base.getproperty(x::RedirectedDiagnosticTuple, name::Symbol)
+    return name === :a ? getfield(x, :shown).value : getfield(x, name)
+end
+@testset "redirected named tuple diagnostic" begin
+    @model redirected_argument(x, y) = (x[1] ~ Normal(); 0.0 ~ Normal(y.a[1]))
+    v = [0.0]
+    y = (a=v, shown=RedirectedDiagnosticValue(copy(v)))
+    @test y.a !== v
+    @test_throws "shared by `x` and `y`" decondition(redirected_argument(v, y))
+    @test decondition(redirected_argument(copy(v), y)) isa Model
 end
 
 @info "Completed $(@__FILE__) in $(now() - __now__)."
@@ -6215,6 +6597,62 @@ end
     cycle = Any[nothing]
     cycle[1] = cycle
     @test decondition(cyclic_covariate(0.0, cycle)) isa Model
+end
+
+@testset "separate bindings may share latent argument storage" begin
+    @model function bound_storage(x)
+        x[1] ~ Normal()
+        y ~ MvNormal(zeros(1), ones(1, 1))
+        return 0.0 ~ Normal(y[1])
+    end
+    @model function bound_field(x)
+        x.a[1] ~ Normal()
+        x.b ~ MvNormal(zeros(1), ones(1, 1))
+        return 0.0 ~ Normal(x.b[1])
+    end
+    @model bound_parent(child) = s ~ to_submodel(child)
+    v = [0.0]
+    for bind in (condition, fix)
+        child = decondition(bound_storage(v))
+        field = decondition(bound_field((a=v, b=copy(v))), @varname(x.a))
+        models = (
+            bind(child, @varname(y) => v),
+            bind(bound_parent(child), @varname(s.y) => v),
+            bind(field, @varname(x.b) => v),
+            bind(bound_parent(field), @varname(s.x.b) => v),
+        )
+        expected =
+            logpdf(Normal(), 2.0) + (bind === condition ? 2 : 1) * logpdf(Normal(), 0.0)
+        for model in models
+            primal = LogDensityFunction(model, getlogjoint_internal, UnlinkAll())
+            @test LogDensityProblems.logdensity(primal, [2.0]) ≈ expected
+            for adtype in (AutoForwardDiff(),)
+                ldf = LogDensityFunction(model, getlogjoint_internal, UnlinkAll(); adtype)
+                density, gradient = LogDensityProblems.logdensity_and_gradient(ldf, [2.0])
+                @test density ≈ expected
+                @test gradient ≈ [-2.0]
+            end
+        end
+    end
+    @test v == [0.0]
+end
+
+@testset "concrete covariate traversal allocations" begin
+    @model independent_covariates(x, y) = x[1] ~ Normal()
+    function removal_allocations(model)
+        decondition(model, @varname(x))
+        return @allocated decondition(model, @varname(x))
+    end
+    small = independent_covariates([0.0], [[0.0]])
+    large = independent_covariates([0.0], [[0.0] for _ in 1:1000])
+    @test decondition(large, @varname(x)) isa Model
+    shared = [0.0]
+    @test_throws ArgumentError decondition(
+        independent_covariates(shared, [shared]), @varname(x)
+    )
+    removal_allocations(small)
+    removal_allocations(large)
+    @test removal_allocations(large) <= removal_allocations(small) + 1024
 end
 
 end
