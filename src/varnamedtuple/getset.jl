@@ -280,12 +280,9 @@ function _setindex_optic!!(
         end
     end
 
-    # If sub_value is a GrowableArray, we need to make sure it is grown to the right size to
-    # fit into the indices specified by `coptic`. This is the same logic as in
-    # `make_leaf_multiindex`. Again, if there is no GrowableArray underpinning sub_value
-    # then grow_to_indices!! is a no-op so won't hurt.
+    # A child slice grows in its own coordinates, with scalar dimensions dropped.
     grown_sub_value = if is_multiindex && sub_value isa PartialArray
-        grow_to_indices!!(sub_value, coptic.ix...; coptic.kw...)
+        grow_to_indices!!(sub_value, get_required_size_from_indices(coptic.ix)...; coptic.kw...)
     else
         sub_value
     end
@@ -438,16 +435,8 @@ function make_leaf_multiindex(value, coptic::AbstractPPL.Index, template)
     template = template_array(template)
     sub_value = _prepare_indexed_value(sub_value, template, coptic.ix...; coptic.kw...)
 
-    # Firstly, we need to make sure that sub_value has *exactly* the right size to fit into
-    # the indices specified by `coptic`. This might not always be the case. Consider
-    # _[2:3][1] without a template -- the inner `make_leaf` call will create a GrowableArray
-    # of size 1 (because that's the minimum size it infers from the inner indices), but we
-    # actually need a slice of length 2. (If there's a template, we don't have this problem,
-    # because the inner make_leaf will use the template to set the correct size of 2.) Note
-    # that `grow_to_indices!!` is a no-op for any PartialArray that doesn't contain a
-    # GrowableArray.
     grown_sub_value = if sub_value isa PartialArray
-        grow_to_indices!!(sub_value, coptic.ix...; coptic.kw...)
+        grow_to_indices!!(sub_value, get_required_size_from_indices(coptic.ix)...; coptic.kw...)
     else
         sub_value
     end

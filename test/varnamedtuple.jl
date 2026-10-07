@@ -926,6 +926,36 @@ end
             @test_throws BoundsError vnt[@varname(x[7])]
         end
 
+        @testset "Boolean mask extents" begin
+            for mask in ([false, true, true], BitVector([false, true, true]))
+                for initial in
+                    (VarNamedTuple(), setindex!!(VarNamedTuple(), 1.0, @varname(x[1])))
+                    masked = setindex!!(deepcopy(initial), [2.0, 3.0], @varname(x[mask]))
+                    indexed = setindex!!(
+                        deepcopy(initial), [2.0, 3.0], @varname(x[findall(mask)])
+                    )
+                    @test masked == indexed
+                    @test masked[@varname(x[3])] == 3.0
+                end
+            end
+        end
+
+        @testset "Slice growth uses the selected shape" begin
+            for address in (
+                @varname(x[2, 1:2][1]),
+                @varname(x[2:3, 1][1]),
+                @varname(x[[false, true, true], 1][1]),
+            )
+                for initial in
+                    (VarNamedTuple(), setindex!!(VarNamedTuple(), 1.0, @varname(x[2, 1])))
+                    sliced = @inferred(setindex!!(deepcopy(initial), 2.0, address))
+                    indexed = setindex!!(deepcopy(initial), 2.0, @varname(x[2, 1]))
+                    @test sliced[@varname(x[2, 1])] == indexed[@varname(x[2, 1])] == 2.0
+                    @test count(sliced.data.x.mask) == 1
+                end
+            end
+        end
+
         @testset "GrowableArrays only need to grow when setting slices" begin
             # For VarNames like x[1:2][1], we need to make the inner GrowableArray (which is
             # initially created with length 1) grow to fit the indices 1:2. However, for

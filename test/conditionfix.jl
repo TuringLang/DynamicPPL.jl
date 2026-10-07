@@ -3480,6 +3480,62 @@ end
             end
         end
     end
+    @testset "Boolean masks beyond stored entries" begin
+        for (bind, remove, select) in
+            ((condition, decondition, conditioned), (fix, unfix, fixed))
+            bound = bind(
+                nested_vectors(), @varname(x[1]) => ones(3), @varname(x[2]) => ones(5)
+            )
+            mask = [false, true, true]
+            address = @varname(x[mask][1][5])
+            @test select(bind(bound, address => 9.0)) ==
+                select(bind(bound, @varname(x[[2, 3]][1][5]) => 9.0))
+            @test select(remove(bound, address)) ==
+                select(remove(bound, @varname(x[[2, 3]][1][5])))
+            for invalid in (@varname(x[mask][1][6]), @varname(x[[2, 3]][1][6]))
+                @test_throws "Cannot bind `$invalid`: index is outside the storage" bind(
+                    bound, invalid => 9.0
+                )
+                @test_throws "Cannot remove `$invalid`: index is outside the storage" remove(
+                    bound, invalid
+                )
+            end
+            owned = bind(nested_vectors(); x=[ones(3), ones(5)])
+            for invalid in (@varname(x[mask]), @varname(x[[2, 3]]))
+                @test_throws "Cannot bind `$invalid`: index is outside the storage" bind(
+                    owned, invalid => [ones(5), ones(2)]
+                )
+                @test_throws "Cannot remove `$invalid`: index is outside the storage" remove(
+                    owned, invalid
+                )
+            end
+        end
+    end
+    @testset "Boolean mask children respect selected length" begin
+        for (bind, remove, select) in
+            ((condition, decondition, conditioned), (fix, unfix, fixed))
+            bound = bind(nested_vectors(), @varname(x[1]) => ones(3))
+            for convert_mask in (Vector{Bool}, BitVector)
+                mask = convert_mask([false, true, true])
+                address = @varname(x[mask][2])
+                @test select(bind(bound, address => ones(2))) ==
+                    select(bind(bound, @varname(x[3]) => ones(2)))
+                @test select(remove(bound, address)) == select(bound)
+                for invalid in (
+                    @varname(x[mask][3]),
+                    @varname(x[[2, 3]][3]),
+                    @varname(x[convert_mask([false, false, false])][1]),
+                )
+                    @test_throws "Cannot bind `$invalid`: index is outside the storage" bind(
+                        bound, invalid => ones(2)
+                    )
+                    @test_throws "Cannot remove `$invalid`: index is outside the storage" remove(
+                        bound, invalid
+                    )
+                end
+            end
+        end
+    end
     @testset "slices of growable matrices" begin
         @model function nested_matrix()
             x = Matrix{Vector{Float64}}(undef, 2, 2)
@@ -3489,6 +3545,17 @@ end
         for (bind, remove, select) in
             ((condition, decondition, conditioned), (fix, unfix, fixed))
             bound = bind(nested_matrix(), @varname(x[2, 1]) => ones(5))
+            @test select(bind(bound, @varname(x[2, 1:2][1][5]) => 9.0)) ==
+                select(bind(bound, @varname(x[2, 1][5]) => 9.0))
+            for invalid in
+                (@varname(x[2, 1:2][1][6]), @varname(x[1:2, 1][2][6]), @varname(x[2, 1][6]))
+                @test_throws "Cannot bind `$invalid`: index is outside the storage" bind(
+                    bound, invalid => 9.0
+                )
+                @test_throws "Cannot remove `$invalid`: index is outside the storage" remove(
+                    bound, invalid
+                )
+            end
             removed = remove(bound, @varname(x[2, 1:2][1][5]))
             @test select(removed) == select(remove(bound, @varname(x[2, 1][5])))
             @test select(bind(removed, @varname(x[2, 2]) => ones(2)))[@varname(x[2, 2])] ==
