@@ -481,7 +481,9 @@ function densify!!(pa::PartialArray)
     has_albs = (et <: ArrayLikeBlock || ArrayLikeBlock <: et)
     has_vnts = (et <: VarNamedTuple || VarNamedTuple <: et)
     if has_albs || has_vnts
-        new_data = map(densify!!, pa.data)
+        dense_values = map(densify!!, view(pa.data, pa.mask))
+        new_data = similar(pa.data, eltype(dense_values))
+        new_data[pa.mask] = dense_values
         return PartialArray(new_data, pa.mask)
     end
 

@@ -209,10 +209,40 @@ Base.eltype(::PartialArray{ElType}) where {ElType} = ElType
 Base.size(pa::PartialArray) = size(pa.data)
 Base.isassigned(pa::PartialArray, ix...; kw...) = isassigned(pa.data, ix...; kw...)
 
+function _copy_partial_array_data(
+    data::AbstractArray, mask::AbstractArray{Bool}, ::Type{T}=eltype(data)
+) where {T}
+    if isbitstype(eltype(data)) && T === eltype(data)
+        return copy(data)
+    end
+    result = similar(data, T)
+    @inbounds for i in eachindex(mask)
+        mask[i] && (result[i] = data[i])
+    end
+    return result
+end
+
+function _setindex_partial_array!!(data, mask, value, inds...; kw...)
+    if !isbitstype(eltype(data))
+        value_type = if value isa AbstractArray && _is_multiindex(data, inds...; kw...)
+            eltype(value)
+        else
+            typeof(value)
+        end
+        new_eltype = promote_type(eltype(data), value_type)
+        if !(new_eltype <: eltype(data)) || !BangBang.implements(setindex!, typeof(data))
+            data = _copy_partial_array_data(data, mask, new_eltype)
+        end
+        setindex!(data, value, inds...; kw...)
+        return data
+    end
+    return DynamicPPL._setindex!!(data, value, inds...; kw...)
+end
+
 function Base.copy(pa::PartialArray)
     # Make a shallow copy of pa, except for any VarNamedTuple elements, which we recursively
     # copy.
-    pa_copy = PartialArray(copy(pa.data), copy(pa.mask))
+    pa_copy = PartialArray(_copy_partial_array_data(pa.data, pa.mask), copy(pa.mask))
     et = eltype(pa)
     if (
         VarNamedTuple <: et ||
@@ -619,7 +649,9 @@ function BangBang.setindex!!(pa::PartialArray, value, inds::Vararg{Any}; kw...)
     if _needs_arraylikeblock(new_data, value, inds...; kw...)
         idx_sz = size(@view new_data[inds..., kw...])
         alb = ArrayLikeBlock(value, inds, NamedTuple(kw), idx_sz)
-        new_data = DynamicPPL._setindex!!(new_data, fill(alb, idx_sz...), inds...; kw...)
+        new_data = _setindex_partial_array!!(
+            new_data, new_mask, fill(alb, idx_sz...), inds...; kw...
+        )
         fill!(view(new_mask, inds...; kw...), true)
     else
         if value isa PartialArray
@@ -646,9 +678,13 @@ function BangBang.setindex!!(pa::PartialArray, value, inds::Vararg{Any}; kw...)
                 new_data = if new_eltype <: eltype(new_data)
                     new_data
                 else
-                    broadened = similar(new_data, new_eltype)
-                    copy!(broadened, new_data)
-                    broadened
+                    if isbitstype(eltype(new_data))
+                        broadened = similar(new_data, new_eltype)
+                        copy!(broadened, new_data)
+                        broadened
+                    else
+                        _copy_partial_array_data(new_data, new_mask, new_eltype)
+                    end
                 end
                 new_data_view = view(new_data, inds...; kw...)
                 new_mask_view = view(new_mask, inds...; kw...)
@@ -663,11 +699,13 @@ function BangBang.setindex!!(pa::PartialArray, value, inds::Vararg{Any}; kw...)
             else
                 # Overwriting one element of a PA with another PA. The PA is the value
                 # itself! -- i.e. nested PAs! This can happen with things like x[1][1]
-                new_data = DynamicPPL._setindex!!(new_data, value, inds...; kw...)
+                new_data = _setindex_partial_array!!(
+                    new_data, new_mask, value, inds...; kw...
+                )
                 setindex!(new_mask, true, inds...; kw...)
             end
         else
-            new_data = DynamicPPL._setindex!!(new_data, value, inds...; kw...)
+            new_data = _setindex_partial_array!!(new_data, new_mask, value, inds...; kw...)
             fill!(view(new_mask, inds...; kw...), true)
         end
     end
@@ -747,10 +785,10 @@ function _merge(pa1::PartialArray, pa2::PartialArray, recurse::Val)
     for i in eachindex(pa1.mask)
         if pa1.mask[i]
             new_elem, new_mask_val = _merge_element(pa1, pa2, i, recurse)
-            new_mask[i] = new_mask_val
             if new_mask_val
-                new_data = setindex!!(new_data, new_elem, i)
+                new_data = _setindex_partial_array!!(new_data, new_mask, new_elem, i)
             end
+            new_mask[i] = new_mask_val
         end
     end
     return _concretise_eltype!!(PartialArray(new_data, new_mask))

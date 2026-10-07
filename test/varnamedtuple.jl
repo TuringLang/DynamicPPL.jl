@@ -222,6 +222,88 @@ function Base.similar(
 end
 
 @testset "VarNamedTuple" begin
+    @testset "copying partially assigned arrays" begin
+        for value in ([1.0], 1.0),
+            wrap in (identity, x -> view(reshape(x, 2, 1), 1:2, 1), GrowableArray)
+
+            data = Vector{typeof(value)}(undef, 2)
+            data[2] = value
+            pa = PartialArray(wrap(data), wrap([false, true]))
+            copied = @inferred(copy(pa))
+            @test copied == pa
+            @test isequal(copied, pa)
+            @test copied.data !== pa.data
+            @test copied.mask !== pa.mask
+            @test copied[2] === value
+            @test merge(empty(pa), pa) == pa
+            @test !isempty(sprint(show, MIME"text/plain"(), pa))
+            vnt = VarNamedTuple(; x=pa)
+            @test keys(vnt) == [@varname(x[2])]
+            @test values(vnt) == [value]
+            @test collect(pairs(vnt)) == [@varname(x[2]) => value]
+            @test hash(pa) == hash(PartialArray(pa.data, copy(pa.mask)))
+            @test map_values!!(identity, copy(vnt)) == vnt
+            @test map_pairs!!(last, copy(vnt)) == vnt
+            @test subset(vnt, [@varname(x[2])]) == vnt
+            @test vnt[@varname(x[1:2][2])] === value
+            grown = if pa.data isa GrowableArray
+                grow_to_indices!!(pa, 3)
+            else
+                DynamicPPL.VarNamedTuples._grow_vector_to_axes(pa, (Base.OneTo(3),))
+            end
+            @test grown.mask == [false, true, false]
+            @test grown[2] === value
+        end
+    end
+
+    @testset "widening partially assigned arrays" begin
+        data = Vector{Vector{Float64}}(undef, 3)
+        data[2] = [1.0]
+        pa = PartialArray(view(data, :), [false, true, false])
+        widened = setindex!!(pa, PartialArray(["two"], [true]), 3:3)
+        @test widened.mask == [false, true, true]
+        @test widened[2] == [1.0]
+        @test widened[3] == "two"
+
+        for value in ("two", ["two"])
+            pa = PartialArray(view(data, :), [false, true, false])
+            widened = setindex!!(pa, value, value isa AbstractArray ? (3:3) : 3)
+            @test widened.mask == [false, true, true]
+            @test widened[2] == [1.0]
+            @test widened[3] == "two"
+        end
+        pa = PartialArray(view(data, :), [false, true, false])
+        merged = merge(PartialArray(["", "", "two"], [false, false, true]), pa)
+        @test merged.mask == [false, true, true]
+        @test merged[2] == [1.0]
+        @test merged[3] == "two"
+    end
+
+    @testset "inserting into partially assigned views" begin
+        for T in (Any, Vector{Float64}, Float64), assigned in (false, true)
+            value = T === Float64 ? 1.0 : [1.0]
+            data = Vector{T}(undef, 3)
+            assigned && fill!(data, value)
+            data[2] = value
+            vnt = VarNamedTuple(; x=PartialArray(view(data, :), [false, true, false]))
+            vnt = setindex!!(vnt, value, @varname(x[3]))
+            @test vnt[@varname(x[2])] == value
+            @test vnt[@varname(x[3])] == value
+            @test !haskey(vnt, @varname(x[1]))
+        end
+    end
+
+    @testset "densifying partially assigned arrays" begin
+        nested = VarNamedTuple(; y=PartialArray([1.0], [true]))
+        data = Vector{typeof(nested)}(undef, 2)
+        data[2] = nested
+        pa = PartialArray(data, [false, true])
+        dense = densify!!(pa)
+        @test dense.mask == pa.mask
+        @test dense[2] == VarNamedTuple(; y=[1.0])
+        @test pa[2].data.y isa PartialArray
+    end
+
     @testset "PartialArray element type narrowing" begin
         data = Vector{Any}(undef, 3)
         data[1:2] = [1, "two"]
