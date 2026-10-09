@@ -11,41 +11,42 @@ function _inherited_model_values(values::VarNamedTuple)
     )
 end
 
-_contains_missing(value) = _contains_placeholder(value, Missing, nothing)
-_contains_nothing(value) = _contains_placeholder(value, Nothing, nothing)
+# Base.any carries missing and stops at true, giving Missing precedence.
+const _NoPlaceholder = false
+const _NothingPlaceholder = missing
+const _MissingPlaceholder = true
 
-function _contains_placeholder(value, ::Type{P}, seen) where {P}
-    value isa P && return true
+function _classify_placeholder(value, seen=nothing)
+    value === missing && return _MissingPlaceholder
+    value === nothing && return _NothingPlaceholder
     if ismutabletype(typeof(value))
         seen === nothing && (seen = Base.IdSet{Any}())
-        value in seen && return false
+        value in seen && return _NoPlaceholder
         push!(seen, value)
     end
-    return _contains_placeholder_children(value, P, seen)
+    return _classify_placeholder_children(value, seen)
 end
-_contains_placeholder(::Union{Number,AbstractString,Symbol,Type}, ::Type, seen) = false
-_contains_placeholder(::AbstractArray{<:Number}, ::Type, seen) = false
+_classify_placeholder(::Union{Number,AbstractString,Symbol,Type}, seen) = _NoPlaceholder
+_classify_placeholder(::AbstractArray{<:Number}, seen) = _NoPlaceholder
 
-function _contains_placeholder_children(value, ::Type{P}, seen) where {P}
+function _classify_placeholder_children(value, seen)
     return any(1:fieldcount(typeof(value))) do i
-        isdefined(value, i) && _contains_placeholder(getfield(value, i), P, seen)
+        isdefined(value, i) && _classify_placeholder(getfield(value, i), seen)
     end
 end
-function _contains_placeholder_children(value::Base.Pairs, ::Type{P}, seen) where {P}
-    return _contains_placeholder(values(value), P, seen)
+function _classify_placeholder_children(value::Base.Pairs, seen)
+    return _classify_placeholder(values(value), seen)
 end
-function _contains_placeholder_children(value::TransformedValue, ::Type{P}, seen) where {P}
-    return _contains_placeholder(get_internal_value(value), P, seen)
+function _classify_placeholder_children(value::TransformedValue, seen)
+    return _classify_placeholder(get_internal_value(value), seen)
 end
-function _contains_placeholder_children(values::AbstractArray, ::Type{P}, seen) where {P}
+function _classify_placeholder_children(values::AbstractArray, seen)
     return any(eachindex(values)) do i
-        isassigned(values, i) && _contains_placeholder(values[i], P, seen)
+        isassigned(values, i) && _classify_placeholder(values[i], seen)
     end
 end
-function _contains_placeholder_children(
-    values::Union{Tuple,NamedTuple}, ::Type{P}, seen
-) where {P}
-    return any(value -> _contains_placeholder(value, P, seen), values)
+function _classify_placeholder_children(values::Union{Tuple,NamedTuple}, seen)
+    return any(value -> _classify_placeholder(value, seen), values)
 end
 
 function ModelBindingLayers(
@@ -3285,10 +3286,10 @@ function _make_condfix_values(model, values::VarNamedTuple)
 end
 
 function _check_bound_placeholders(::Type{R}, values::VarNamedTuple) where {R}
-    (_contains_missing(values) || _contains_nothing(values)) || return nothing
+    _classify_placeholder(values) === _NoPlaceholder && return nothing
     vn = first(
         vn for
-        (vn, value) in pairs(values) if _contains_missing(value) || _contains_nothing(value)
+        (vn, value) in pairs(values) if _classify_placeholder(value) !== _NoPlaceholder
     )
     remove = R === Fix ? "unfix" : "decondition"
     throw(
