@@ -5253,6 +5253,23 @@ end
     @test data == BigFloat[0.0]
 end
 
+@testset "Dual opacity follows its parts" begin
+    @model dual_buffer(x) = (x.value.buffer[1] ~ Normal(); x)
+    @model dual_scalar(x) = (x ~ Normal(); x)
+    struct DualBufferReal <: Real
+        buffer::Vector{Float64}
+    end
+    caller = [0.3]
+    x = ForwardDiff.Dual{Nothing,DualBufferReal,0}(
+        DualBufferReal(caller), ForwardDiff.Partials{0,DualBufferReal}(())
+    )
+    @test_throws r"number .*reaches mutable storage" logjoint(
+        decondition(dual_buffer(x)), (x=(value=(buffer=[0.7],),),)
+    )
+    y = ForwardDiff.Dual{Nothing}(0.3, 1.0)
+    @test returned(decondition(dual_scalar(y)), (; x=y)) === y
+end
+
 @testset "top-level shared storage arguments" begin
     @model function retained_key_arguments(d1, d2, x, y)
         d1[:value][1] ~ Normal()
