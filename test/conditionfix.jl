@@ -2709,7 +2709,12 @@ end
             @test op(mvnorm(), templated)() == [1.0, 2.0, 3.0]
             @test op(mvnorm(), @varname(x[:]) => [1.0, 2.0, 3.0], @of(x = of(Array, 3)))() ==
                 [1.0, 2.0, 3.0]
-            @test_throws "bound by parts" op(mvnorm(), untemplated)()
+            @test_throws ArgumentError(
+                "LHS variable `x` is bound by parts, which cannot form a multivariate value " *
+                "in storage without a template. To bind all of `x`, bind its whole value in " *
+                "one binding, or supply storage with a model argument or a binding template; to " *
+                "leave some elements unbound, write element-wise tildes (`x[i] ~ ...`).",
+            ) op(mvnorm(), untemplated)()
             holes = (@varname(x[1]) => 1.0, @varname(x[3]) => 3.0)
             @test_throws "both bound and unbound" op(mvnorm(), holes...)()
         end
@@ -4051,9 +4056,8 @@ end
     @model growable_cube() = (x = zeros(2, 2, 2); x[1, 2, 1] ~ Normal(); x)
     advice(owner) =
         "Bind addresses with the tilde's index count, or supply storage for `$owner` " *
-        "with an argument or a binding schema (`@of`). In the schema, use the " *
-        "binding call's local LHS top symbol and namespace path, omitting any " *
-        "explicit model prefix."
+        "with an argument or a binding template (`@of`). In the template, use " *
+        "absolute names, including any explicit model prefix."
     distinct = ArgumentError(
         "`x` has growable bindings with 1 index (e.g. `x[2]`), but tilde `x[2, 1]` " *
         "uses 2 indices; linear and Cartesian indices are distinct. " *
@@ -4087,6 +4091,12 @@ end
             ) bind(prefix(growable_leaf(), @varname(a)), @varname(a.x[2]) => 3.0)(
                 Xoshiro(1)
             )
+            model = prefix(growable_leaf(), @varname(p))
+            bound = bind(model, @of(p = @of(x = of(Array, 2, 2))), @varname(p.x[2]) => 3.0)
+            @test bound(Xoshiro(1))[2, 1] == 3.0
+            @test_throws ArgumentError(
+                "Binding template entry `x` uses a local name; use the absolute name `p.x`."
+            ) bind(model, @of(x = of(Array, 2, 2)), @varname(p.x[2]) => 3.0)
             @test_throws ArgumentError(
                 "`y` has growable bindings with 1 index (e.g. `y[2]`), but tilde " *
                 "`y[2, 1]` uses 2 indices; linear and Cartesian indices are distinct. " *

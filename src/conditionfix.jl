@@ -315,7 +315,7 @@ function _untemplated_parts_error(vn)
         ArgumentError(
             "LHS variable `$vn` is bound by parts, which cannot form a multivariate value " *
             "in storage without a template. To bind all of `$vn`, bind its whole value in " *
-            "one binding, or supply storage with a model argument or a binding schema; to " *
+            "one binding, or supply storage with a model argument or a binding template; to " *
             "leave some elements unbound, write element-wise tildes (`x[i] ~ ...`).",
         ),
     )
@@ -413,9 +413,8 @@ end
             "`$owner` has growable bindings with $(indices(ndims(values))) (e.g. `$bound`), " *
             "but tilde `$vn` uses $(indices(n))$distinction. " *
             "Bind addresses with the tilde's index count, or supply storage for `$owner` " *
-            "with an argument or a binding schema (`@of`). In the schema, use the " *
-            "binding call's local LHS top symbol and namespace path, omitting any " *
-            "explicit model prefix.",
+            "with an argument or a binding template (`@of`). In the template, use " *
+            "absolute names, including any explicit model prefix.",
         ),
     )
 end
