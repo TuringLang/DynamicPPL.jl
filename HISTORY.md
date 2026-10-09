@@ -28,7 +28,7 @@ Explicit and automatic submodel prefixes now require properties and scalar integ
 
 Bindings now reject partial bindings or removals that rebuild tuple or struct owners at any depth; replace or remove the enclosing owner whole. Argument observations and complete local LHS bindings remain supported.
 
-Growable `VarNamedTuple` storage, built from indexed bindings without a template, no longer matches lookups with a different number of indices: conditioning or fixing `x[2]` no longer binds `x[2, 1]`. Any tilde whose index count differs from the bindings for its symbol throws `ArgumentError`, including models that mix index counts on one local symbol. Such symbols need storage from a binding schema or argument to be bound by parts. Membership checks and removals treat differing index counts as distinct addresses. Storage with an argument or template keeps Julia's indexing semantics.
+Growable `VarNamedTuple` storage, built from indexed bindings without a template, no longer matches lookups with a different number of indices: conditioning or fixing `x[2]` no longer binds `x[2, 1]`. Any tilde whose index count differs from the bindings for its symbol throws `ArgumentError`, including models that mix index counts on one local symbol. Such symbols need storage from a binding template or argument to be bound by parts. Membership checks and removals treat differing index counts as distinct addresses. Storage with an argument or template keeps Julia's indexing semantics.
 
 `VarNamedTuple` membership resolves `begin` and `end` against the stored array. See [#1490](https://github.com/TuringLang/DynamicPPL.jl/pull/1490).
 

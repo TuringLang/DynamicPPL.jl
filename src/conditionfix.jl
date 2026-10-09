@@ -1336,9 +1336,7 @@ function _copy_model_argument(value, vn)
     return _copy_model_argument(value)
 end
 
-# Latent draws are written into the argument's own storage, which ranges, static and fill
-# arrays cannot take. SparseArrays types are immutable structs over mutable buffers, and the
-# argument copy adapts AD storage such as a ReverseDiff tracked array.
+# SparseArrays use mutable buffers; argument copies adapt supported AD storage.
 _writable_storage(::Type{T}) where {T} = ismutabletype(T) || _argument_ad_storage(T)
 function _writable_storage(
     ::Type{<:Union{SparseArrays.SparseVector,SparseArrays.SparseMatrixCSC}}
@@ -1388,7 +1386,7 @@ function _check_latent_storage(value, vn)
     found = _unwritable_storage(value, vn, Base.IdSet{Any}())
     found === nothing && return nothing
     address, storage = found
-    # Model arguments keep their types: never convert one to make room for latent draws.
+    # Latent copies may widen element types, but do not convert immutable array storage.
     throw(
         ArgumentError(
             "Argument `$address` is a `$(typeof(storage))`, which cannot hold latent " *
