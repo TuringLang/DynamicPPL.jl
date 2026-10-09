@@ -431,6 +431,14 @@ _set_lhs(object, optic, value) = _set_lhs_optic(object, optic, value)
 _set_lhs_optic(object, ::AbstractPPL.Iden, value) = value
 function _set_lhs_optic(object, optic::AbstractPPL.Property{S}, value) where {S}
     child = _set_lhs_optic(getproperty(object, S), optic.child, value)
+    getproperty(object, S) === child && return object
+    if ismutabletype(typeof(object)) && hasfield(typeof(object), S) && isconst(typeof(object), S)
+        throw(
+            ArgumentError(
+                "Cannot replace const property `$S` of argument type $(typeof(object)); bind the whole value instead.",
+            ),
+        )
+    end
     return BangBang.setproperty!!(object, S, child)
 end
 function _set_lhs_optic(object, optic::AbstractPPL.Index, value)

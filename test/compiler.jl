@@ -50,6 +50,14 @@ struct MyCoolStruct{T}
     a::T
 end
 
+mutable struct ConstArrayArgument
+    const a::Vector{Float64}
+end
+
+mutable struct MutableArrayArgument
+    a::Vector{Float64}
+end
+
 module Issue537 end
 
 module NoImportDPPLTest
@@ -81,6 +89,22 @@ module NoImportDPPLTest
 end
 
 @testset "compiler.jl" begin
+    @testset "latent writes preserve unchanged const fields" begin
+        @model function const_array_argument(c)
+            c.a[1] ~ Normal()
+            return c
+        end
+        for constructor in (ConstArrayArgument, MutableArrayArgument)
+            value = constructor([10.0])
+            result = rand(StableRNG(1), decondition(const_array_argument(value)))
+            @test result[@varname(c.a[1])] != 10.0
+            @test value.a == [10.0]
+        end
+        @test_throws ArgumentError DynamicPPL._set_lhs(
+            ConstArrayArgument([1.0]), getoptic(@varname(c.a)), [2.0]
+        )
+    end
+
     @testset "bound argument type diagnostics name only mismatches" begin
         @model two_typed_arguments(x::Float64, y) = (x ~ Normal(); y ~ Normal())
         @model keyword_typed_arguments(x; y::Float64) = (x ~ Normal(); y ~ Normal())
