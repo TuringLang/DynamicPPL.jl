@@ -131,6 +131,142 @@ rand(rng, cond_model_partial)
 `fix` accepts the same syntax. The equivalent functional spelling is `of((y=of(Array, length(y_data)),))`. Arguments already supply storage, so partial argument bindings need no
 template. See [Binding rules](@ref) for the complete contract.
 
+## Migrating from 0.42
+
+These examples use small models whose LHS variables can be bound separately:
+
+```jldoctest migration
+julia> using DynamicPPL, Distributions, StableRNGs
+
+julia> @model function elements(x)
+           x === missing && (x = zeros(2))
+           for i in eachindex(x)
+               x[i] ~ Normal()
+           end
+           return x
+       end;
+
+julia> @model fields(x) = (x.a ~ Normal(); x.b ~ Normal(); x);
+
+julia> @model nested(x) = (x[1][1] ~ Normal(); x[1][2] ~ Normal(); x);
+
+julia> struct Record
+           a::Int
+           b::Int
+       end
+```
+
+- Whole `missing` arguments and element-wise `missing` in supported argument arrays keep
+  working. Elsewhere, replace placeholders with concrete storage and decondition the parts:
+  `nested([[1.0, missing]])` → `decondition(nested([[1.0, 0.0]]), @varname(x[1][2]))`.
+  Explicit bindings never accept placeholders:
+  `condition(elements(zeros(2)); x=[1.0, missing])` → bind concrete data, then decondition
+  `x[2]`. Use `unfix` for placeholders formerly passed to `fix`.
+
+  ```jldoctest migration
+  julia> length(rand(StableRNG(1), elements(missing)))
+  2
+
+  julia> haskey(rand(StableRNG(1), elements([1.0, missing])), @varname(x[2]))
+  true
+
+  julia> m = decondition(nested([[1.0, 0.0]]), @varname(x[1][2]));
+
+  julia> haskey(rand(StableRNG(1), m), @varname(x[1][2]))
+  true
+
+  julia> m = decondition(condition(elements(zeros(2)); x=[1.0, 0.0]), @varname(x[2]));
+
+  julia> m(StableRNG(1))[1] == 1.0 && haskey(rand(StableRNG(1), m), @varname(x[2]))
+  true
+
+  julia> m = unfix(fix(decondition(elements(zeros(2))); x=[1.0, 0.0]), @varname(x[2]));
+
+  julia> haskey(rand(StableRNG(1), m), @varname(x[2]))
+  true
+  ```
+
+- Partial edits through views and other unsupported array storage now throw. For
+  `decondition(elements(view(zeros(2), :)), @varname(x[1]))`, pass `collect(v)` instead
+  if losing axes or metadata is acceptable. Whole deconditioning of immutable storage
+  also requires writable storage: `decondition(elements(1.0:2.0))` → collect the range.
+
+  ```jldoctest migration
+  julia> v = view(zeros(2), :);
+
+  julia> m = decondition(elements(collect(v)), @varname(x[1]));
+
+  julia> haskey(rand(StableRNG(1), m), @varname(x[1]))
+  true
+
+  julia> length(rand(StableRNG(1), decondition(elements(collect(1.0:2.0)))))
+  2
+  ```
+
+- Partial edits rebuilding tuples, structs or `Base.Pairs` now throw; bind or remove the
+  enclosing value whole. For example, `fix(elements((1.0, 2.0)), @varname(x[1]) => 9.0)`
+  → `fix(elements((1.0, 2.0)); x=(9.0, 2.0))`. A replacement in the other layer does not
+  enable a partial edit: `fix(condition(fields(Record(1, 2)); x=(a=3, b=4)),
+  @varname(x.a) => 5)` → fix the whole `x`. For
+  `fix(pairdata(pairs((a=1.0,))), @varname(x[:a]) => 3.0)`, use a whole `Base.Pairs` value.
+
+  ```jldoctest migration
+  julia> fix(elements((1.0, 2.0)); x=(9.0, 2.0))(StableRNG(1))
+  (9.0, 2.0)
+
+  julia> fix(condition(fields(Record(1, 2)); x=(a=3, b=4)); x=(a=5, b=4))(StableRNG(1))
+  (a = 5, b = 4)
+
+  julia> @model pairdata(x) = (x[:a] ~ Normal(); x);
+
+  julia> fixed(fix(pairdata(pairs((a=1.0,))); x=pairs((a=3.0,))))[@varname(x)][:a]
+  3.0
+  ```
+
+- NamedTuple fields now use properties in bindings, removals and tildes:
+  `x[1]` or `x[:a]` → `x.a`. Ordinary Julia indexing in the body is unchanged.
+
+  ```jldoctest migration
+  julia> condition(fields((a=1.0, b=2.0)), @varname(x.a) => 3.0)(StableRNG(1))
+  (a = 3.0, b = 2.0)
+
+  julia> haskey(rand(StableRNG(1), decondition(fields((a=1.0, b=2.0)), @varname(x.a))), @varname(x.a))
+  true
+  ```
+
+- Prefixes now require properties or non-`Bool` scalar integer indices:
+  `prefix(m, @varname(p[1:2]))` → `prefix(m, @varname(p[2]))`. For an automatically
+  prefixed sliced return LHS, use `to_submodel(child, false)` to keep the slice without a prefix.
+
+  ```jldoctest migration
+  julia> @model leaf(x=missing) = x ~ Normal();
+
+  julia> prefix(leaf(2.0), @varname(p[2]))(StableRNG(1))
+  2.0
+  ```
+
+- A named recursive removal cannot overlap a parent's LHS and an unprefixed child's LHS.
+  `decondition(shared(2.0, leaf(3.0)), DynamicPPL.Recursive(), @varname(x))` → remove
+  without `Recursive()` to clear only the parent's observation, or prefix the child.
+
+  ```jldoctest migration
+  julia> @model shared(x, child) = (x ~ Normal(); a ~ to_submodel(child, false); (x, a));
+
+  julia> decondition(shared(2.0, leaf(3.0)), @varname(x))(StableRNG(1))[2]
+  3.0
+  ```
+
+- A submodel tilde cannot be rooted at a model argument: `x ~ to_submodel(child)` with
+  argument `x` → use a local return name. Bind the child's LHS variables, or assign the
+  returned value to the argument afterwards.
+
+  ```jldoctest migration
+  julia> @model returned(x, child) = (result ~ to_submodel(child); x = result; x);
+
+  julia> returned(0.0, condition(leaf(); x=2.0))(StableRNG(1))
+  2.0
+  ```
+
 ## Binding rules
 
 `condition` and `fix` store bindings on the called model at any address in its namespace,
@@ -182,9 +318,9 @@ a tilde. Checks that need a child's arguments or an executed LHS wait until it i
 | Recursive ambiguity         | A named recursive removal overlapping both a parent's LHS and an unprefixed child's LHS is rejected. Binding the shared name and clearing a layer recursively without names remain allowed.                                                                                                                                                                                                                                                                                                                                                            | When the affected child is reached.                                                                                                                                                      |
 | Submodel LHS and prefixes   | A submodel tilde cannot be rooted at an enclosing model argument, including its indices or fields. Prefixes allow properties and non-Bool scalar integers after scalar Cartesian expansion; slices, colons and masks are rejected. `begin` and `end` need prefix storage.                                                                                                                                                                                                                                                                              | Argument-root rejection only when the submodel tilde executes; prefix grammar when applying an explicit prefix or entering an automatically prefixed child.                              |
 | Latent writeability         | Latent draws use a private per-evaluation copy, preserving the caller's argument. That copy may widen its element type with or without AD; a whole tilde replaces its value. Immutable backing arrays are rejected through `parent`, nested tuples/NamedTuples/arrays and latent branches of partially bound storage, even for a whole tilde. SparseArrays and supported AD storage are exempt. This is not a general object-graph writeability guarantee; see [Storage written by latent tildes](@ref) for limits.                                    | After removal exposes latent storage, including constructor placeholder removal; also before the body when preparing a latent argument copy. Recursive removals check reached children.  |
-| Numeric leaves              | A custom number in a latent branch is rejected if its fields reach mutable storage, even if the number itself is immutable. Isbits values, `BigFloat`, `BigInt`, extension-opaque AD values, and Base numbers whose fields recursively satisfy the exemption are allowed. Fully bound branches and covariates are exempt.                                                                                                                                                                                                                              | When preparing a latent argument copy, not unconditionally at binding/removal.                                                                                                           |
+| Numeric leaves              | A custom number in a latent branch is rejected if its fields reach mutable storage, even if the number itself is immutable. Isbits values, `BigFloat`, `BigInt`, AD values supported by package extensions, and Base numbers whose fields recursively satisfy the exemption are allowed. Fully bound branches and covariates are exempt.                                                                                                                                                                                                                              | When preparing a latent argument copy, not unconditionally at binding/removal.                                                                                                           |
 | Argument sharing            | Repeated latent memory within/across arguments or through an argument-observed branch is rejected, even if the body only reads or replaces it. Views, reshapes and `unsafe_wrap` aliases count. Original storage of explicitly replaced branches and separate explicit binding values do not count. Sharing only among observations/covariates is allowed. Errors identify argument roots, not full alias paths; aliases created by the body are not checked.                                                                                          | At binding/removal, including constructor placeholder removal; after inherited removals when a child is reached. No new sharing scan at each tilde.                                      |
-| Retained-copy overlap       | Storage retained by identity through an opaque value must not also be reached through an ordinary latent path. In particular, an opaque ReverseDiff value does not exempt a second ordinary path to its retained buffer.                                                                                                                                                                                                                                                                                                                               | When preparing a latent argument copy.                                                                                                                                                   |
+| Retained-copy overlap       | An argument containing an AD value and a separate array sharing its buffer throws when copied for sampling. Give the separate array independent storage.                                                                                                                                                                                                                                                                                                                               | When preparing a latent argument copy.                                                                                                                                                   |
 | Dictionary keys             | In an argument with latent parts, dictionary keys anywhere in its copied graph must be isbits values, `Symbol`s or `String`s, including keys in bound siblings. Non-isbits immutable keys can also be rejected. A wholly bound argument or separate covariate is exempt.                                                                                                                                                                                                                                                                               | When preparing a latent argument copy, not unconditionally at binding/removal.                                                                                                           |
 | Index arity                 | Growable lookup requires the consumed source dimensions to match its stored dimensionality; zero indices consume zero dimensions. An active mismatch at a tilde throws, while membership/removal can be false/no-op, subject to growth guards. Growth separately requires the number of supplied index arguments to match. Ordinary storage from an argument or template follows Julia indexing.                                                                                                                                                       | During binding/storage lookup, membership/removal and executed tildes; growth has its own additional guard.                                                                              |
 | Selection geometry          | Source extent, consumed dimensions and selected shape are distinct: a Boolean vector needs its full source extent but selects `count(mask)` entries; an empty integer selection has extent zero. Child indices are bounded by the selected shape. Without storage, indexed locals infer growable arrays and warn; `end` and `:` cannot resolve. Unsupported untemplated selectors, including CartesianIndex collections and multidimensional Boolean masks, still reject. Property paths need no storage.                                              | When constructing or indexing binding storage, including child-index bounds at binding/removal.                                                                                          |
@@ -342,8 +478,9 @@ with independent storage.
 
 For a dictionary in an argument with latent parts, use isbits, `Symbol` or `String` keys,
 or pass it as a separate covariate. For custom numbers whose fields reach mutable storage,
-keep that storage outside the number. For retained-copy overlap, supply independent storage
-on the ordinary latent path.
+keep that storage outside the number. An argument containing an AD value and a separate array
+sharing its buffer throws when copied for sampling. Give the separate array independent
+storage; for example, `b[1] = ReverseDiff.value(z)` → `b[1] = copy(ReverseDiff.value(z))`.
 
 The writeability check rejects ranges, `SVector`, `SMatrix` and `Fill` storage, but accepts
 `MVector`, `SizedArray`, views of mutable arrays and SparseArrays. An immutable wrapper
