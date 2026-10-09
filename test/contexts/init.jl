@@ -280,6 +280,19 @@ Base.getindex(x::CountingRealVector, i::Int) = (x.reads[] += 1; x.data[i])
             end
         end
 
+        @testset "initialization rejects missing but preserves nothing" begin
+            for wrap in (identity, x -> TransformedValue(x, NoTransform()))
+                strategy = InitFromParams((; x=wrap(nothing)), nothing)
+                value = DynamicPPL.init(Xoshiro(1), @varname(x), Normal(), strategy)
+                @test value isa TransformedValue
+                @test DynamicPPL.get_internal_value(value) === nothing
+                strategy = InitFromParams((; x=wrap(missing)), nothing)
+                @test_throws "A `missing` value was provided for `x`; omit absent initial parameters instead." DynamicPPL.init(
+                    Xoshiro(1), @varname(x), Normal(), strategy
+                )
+            end
+        end
+
         # Once we've checked that NTs and Dicts are internally promoted to VNTs, the rest of
         # the tests only need to check that InitFromParams(::VNT) is handled correctly.
         @testset "NT promotion to VNT" begin

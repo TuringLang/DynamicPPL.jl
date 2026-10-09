@@ -4646,6 +4646,151 @@ end
 mutable struct MutableNumericAliasField{T} <: Real
     value::T
 end
+mutable struct UndefinedPlaceholderField
+    value::Any
+    undefined::Any
+    UndefinedPlaceholderField(value) = new(value)
+end
+struct CountedNumericArray <: AbstractVector{Float64}
+    data::Vector{Float64}
+    reads::Base.RefValue{Int}
+end
+Base.size(x::CountedNumericArray) = size(x.data)
+Base.isassigned(x::CountedNumericArray, i::Int) = isassigned(x.data, i)
+function Base.getindex(x::CountedNumericArray, i::Int)
+    x.reads[] += 1
+    return x.data[i]
+end
+struct NumericArrayDistribution <: ContinuousMultivariateDistribution end
+Distributions.loglikelihood(::NumericArrayDistribution, ::CountedNumericArray) = 0.0
+
+@testset "placeholder consumer characterization" begin
+    @testset "missing takes precedence through nested and cyclic values" begin
+        cycle = CyclicObservation(true, nothing)
+        cycle.next = (cycle, nothing, missing)
+        array_cycle = Any[nothing]
+        push!(array_cycle, array_cycle, missing)
+        for value in (
+                (nothing, missing),
+                (missing, nothing),
+                (nothing, (a=[ObservationRecord(1.0, missing)],)),
+                (missing, (a=[ObservationRecord(1.0, nothing)],)),
+                cycle,
+                array_cycle,
+            ),
+            role in (DynamicPPL.Condition(), DynamicPPL.Fix())
+
+            @test_throws "LHS variable `x` contains `missing`" DynamicPPL._check_tilde_value(
+                value, @varname(x), role
+            )
+        end
+    end
+
+    @testset "bindings report the first offending pair" begin
+        @model binding_order() = (x ~ Normal(); y ~ Normal(); z ~ Normal())
+        for bind in (condition, fix),
+            (first_value, later_value) in ((nothing, missing), (missing, nothing)),
+            (first_vn, later_vn) in ((@varname(y), @varname(z)), (@varname(z), @varname(y)))
+
+            @test_throws "Cannot bind `$first_vn` to a value containing" bind(
+                binding_order(),
+                @varname(x) => 1.0,
+                first_vn => first_value,
+                later_vn => later_value,
+            )
+            values = NamedTuple{(
+                :x, AbstractPPL.getsym(first_vn), AbstractPPL.getsym(later_vn)
+            )}((1.0, first_value, later_value))
+            @test_throws "Cannot bind `$first_vn` to a value containing" bind(
+                binding_order(), values
+            )
+            @test_throws "Cannot bind `$first_vn` to a value containing" bind(
+                binding_order(), VarNamedTuple(values)
+            )
+            @test_throws "AbstractDict inputs are not supported" bind(
+                binding_order(),
+                Dict(@varname(x) => 1.0, first_vn => first_value, later_vn => later_value),
+            )
+        end
+    end
+
+    @testset "undefined fields, unassigned slots, pairs and transformed payloads" begin
+        slots = Vector{Any}(undef, 2)
+        slots[2] = 1.0
+        for role in (DynamicPPL.Condition(), DynamicPPL.Fix())
+            for value in (
+                UndefinedPlaceholderField(1.0),
+                slots,
+                pairs((a=1.0, b=2.0)),
+                TransformedValue(1.0, FixedTransform(missing)),
+            )
+                @test DynamicPPL._check_tilde_value(value, @varname(x), role) === value
+            end
+            for absent in (nothing, missing)
+                unassigned = Vector{Any}(undef, 2)
+                unassigned[2] = absent
+                for value in (
+                    UndefinedPlaceholderField(absent),
+                    unassigned,
+                    pairs((a=1.0, b=absent)),
+                    TransformedValue((1.0, absent), NoTransform()),
+                )
+                    @test_throws "LHS variable `x` contains `$absent`" DynamicPPL._check_tilde_value(
+                        value, @varname(x), role
+                    )
+                end
+            end
+        end
+    end
+
+    @testset "numeric opacity and consumer inference" begin
+        @model numeric_array(x=nothing) = x ~ NumericArrayDistribution()
+        value = CountedNumericArray([1.0, 2.0], Ref(0))
+        @test logjoint(numeric_array(value), (;)) == 0.0
+        @test value.reads[] == 0
+        for bind in (condition, fix)
+            value = CountedNumericArray([1.0, 2.0], Ref(0))
+            model = bind(numeric_array(), @varname(x) => value)
+            @test value.reads[] == 0
+            @test logjoint(model, (;)) == 0.0
+            @test value.reads[] == 0
+        end
+        for value in (
+            1.0,
+            [1.0, 2.0],
+            (1.0, 2.0),
+            NumericAliasField(nothing),
+            NumericAliasField(missing),
+            [NumericAliasField(nothing), NumericAliasField(missing)],
+        )
+            for role in (DynamicPPL.Condition(), DynamicPPL.Fix())
+                @test (@inferred DynamicPPL._check_tilde_value(
+                    value, @varname(x), role
+                )) === value
+                @test (@inferred DynamicPPL._check_bound_placeholders(
+                    typeof(role), VarNamedTuple(; x=value)
+                )) === nothing
+            end
+        end
+    end
+
+    @testset "body assignments create placeholders after construction" begin
+        @model function assigned_placeholder(x, value)
+            x.next = value
+            return x ~ CyclicObservationDistribution()
+        end
+        for bind in (condition, fix), value in (1.0, nothing, missing)
+            x = CyclicObservation(true, 1.0)
+            model = bind(assigned_placeholder(x, value); x=x)
+            if value === 1.0
+                @test logjoint(model, (;)) ≈ (bind === condition ? log(0.5) : 0.0)
+            else
+                @test_throws "LHS variable `x` contains `$value`" logjoint(model, (;))
+            end
+        end
+    end
+end
+
 @testset "reachable argument storage" begin
     @model covariate(x, y, read) = (x[1] ~ Normal(); 0.0 ~ Normal(read(y)))
     wrappers = [
