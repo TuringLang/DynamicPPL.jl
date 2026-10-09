@@ -602,9 +602,10 @@ function tilde_assume!!(
 end
 
 function _check_tilde_value(value, vn, ::Union{Condition,Fix})
-    absent = if _contains_missing(value)
+    placeholder = _classify_placeholder(value)
+    absent = if placeholder === _MissingPlaceholder
         "missing"
-    elseif _contains_nothing(value)
+    elseif placeholder === _NothingPlaceholder
         "nothing"
     else
         nothing
