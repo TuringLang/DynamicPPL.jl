@@ -77,6 +77,33 @@ function _writable_graph(value::DynamicPPL.ModelArgumentStorage, memo)
         _writable_graph(value.value, memo), _writable_graph(value.children, memo)
     )
 end
+function _writable_graph(value::Ref, memo)
+    haskey(memo, value) && return memo[value]
+    child = _writable_graph(value[], memo)
+    result = child === value[] ? value : Ref(child)
+    memo[value] = result
+    return result
+end
+function _writable_graph(value::Union{Dict,IdDict}, memo)
+    haskey(memo, value) && return memo[value]
+    pairs = Pair[]
+    changed = false
+    for (key, child) in value
+        adapted = _writable_graph(child, memo)
+        changed |= adapted !== child
+        push!(pairs, key => adapted)
+    end
+    changed || return value
+    value_type = if isempty(pairs)
+        valtype(typeof(value))
+    else
+        typejoin(valtype(typeof(value)), typeof.(last.(pairs))...)
+    end
+    dict_type = typeof(value).name.wrapper{keytype(typeof(value)),value_type}
+    result = dict_type(pairs)
+    memo[value] = result
+    return result
+end
 function _writable_graph(value::SubArray, memo)
     return get!(memo, value) do
         storage = _writable_graph(parent(value), memo)
@@ -106,7 +133,12 @@ function _writable_graph(value, memo)
         original = getfield(value, name)
         child = _writable_graph(original, memo)
         child === original && continue
-        result = DynamicPPL._set_argument_property(result, Val(name), child)
+        declared_type = Base.fieldtype(typeof(result), name)
+        result = if child isa declared_type && !isconst(typeof(result), name)
+            DynamicPPL._set_argument_property(result, Val(name), child)
+        else
+            DynamicPPL._rebuild_argument_property(result, Val(name), child)
+        end
     end
     return memo[value] = result
 end
