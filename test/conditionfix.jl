@@ -3141,6 +3141,58 @@ end
     end
 end
 
+@testset "child binding indices use layer storage" begin
+    @model function indexed_child()
+        y = zeros(2)
+        y[1] ~ Normal()
+        y[2] ~ Normal()
+        return y
+    end
+    @model indexed_parent() = z ~ to_submodel(indexed_child())
+    @model unprefixed_indexed_parent() = z ~ to_submodel(indexed_child(), false)
+    @model function indexed_argument_child(y=zeros(3))
+        y[1] ~ Normal()
+        y[2] ~ Normal()
+        y[3] ~ Normal()
+        return y
+    end
+    @model indexed_argument_parent() = z ~ to_submodel(indexed_argument_child())
+
+    for bind in (condition, fix)
+        q = bind(indexed_parent(), @varname(z.y[1]) => 1.0, @of(z = @of(y = of(Array, 2))))
+        result = q(Xoshiro(1))
+        @test length(result) == 2
+        @test result[1] == 1.0
+        @test_throws r"begin.*end.*:.*integer indices.*whole value(?!.*binding template)" bind(
+            q, @varname(z.y[end]) => 2.0
+        )
+        @test_throws r"begin.*end.*:.*integer indices.*whole value(?!.*binding template)" bind(
+            q, @varname(z.y[:]) => 2.0
+        )
+        @test bind(q, @varname(z.y[2]) => 2.0)(Xoshiro(1)) == [1.0, 2.0]
+
+        @test_throws r"begin.*end.*:.*integer indices(?!.*whole value)" decondition(
+            q, @varname(z.y[end])
+        )
+
+        unprefixed = bind(
+            unprefixed_indexed_parent(), @varname(y[1]) => 1.0, @of(y = of(Array, 2))
+        )
+        @test_throws r"begin.*end.*:.*integer indices.*whole value(?!.*binding template)" bind(
+            unprefixed, @varname(y[end]) => 2.0
+        )
+
+        argument = bind(
+            indexed_argument_parent(),
+            @varname(z.y[1]) => 1.0,
+            @of(z = @of(y = of(Array, 2))),
+        )
+        @test_throws r"begin.*end.*:.*integer indices.*whole value(?!.*binding template)" bind(
+            argument, @varname(z.y[end]) => 2.0
+        )
+    end
+end
+
 @testset "whole binding templates under prefixes" begin
     @model function whole_schema_local()
         x = zeros(2)

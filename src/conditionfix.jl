@@ -2320,12 +2320,18 @@ function _storage_address(vn, optic)
 end
 _optic_length(::AbstractPPL.Iden) = 0
 _optic_length(optic::AbstractPPL.AbstractOptic) = 1 + _optic_length(optic.child)
-@noinline function _no_index_storage_error(optic, vn, operation)
+@noinline function _no_index_storage_error(optic, vn, operation; child_name=false)
     owner = _storage_address(vn, optic)
     key = length(optic.ix) == 1 ? only(optic.ix) : nothing
     advice = if key isa Symbol
         field = AbstractPPL.Property{key}(optic.child) ∘ AbstractPPL.varname_to_optic(owner)
         "NamedTuple fields use `$(AbstractPPL.optic_to_varname(field))`"
+    elseif child_name
+        if operation == "remove"
+            "a `begin`, `end` or `:` index in a child's name resolves only against storage in the layer being edited; use integer indices"
+        else
+            "a `begin`, `end` or `:` index in a child's name resolves only against storage in the layer being edited; use integer indices or bind the whole value"
+        end
     elseif operation == "remove"
         "use integer indices"
     else
@@ -2336,12 +2342,17 @@ _optic_length(optic::AbstractPPL.AbstractOptic) = 1 + _optic_length(optic.child)
 end
 
 function _check_binding_template_bounds(
-    template, ::AbstractPPL.Iden, vn; operation="bind", check_fields=false
+    template, ::AbstractPPL.Iden, vn; operation="bind", check_fields=false, child_name=false
 )
     return nothing
 end
 function _check_binding_template_bounds(
-    template, optic::AbstractPPL.Property{S}, vn; operation="bind", check_fields=false
+    template,
+    optic::AbstractPPL.Property{S},
+    vn;
+    operation="bind",
+    check_fields=false,
+    child_name=false,
 ) where {S}
     template isa Union{ModelValue,ModelValueTree} && (template = _binding_storage(template))
     if check_fields && template isa NamedTuple && !haskey(template, S)
@@ -2353,10 +2364,17 @@ function _check_binding_template_bounds(
     end
     optic.child isa AbstractPPL.Iden && return nothing
     child = VarNamedTuples.SharedGetProperty{S}()(template)
-    return _check_binding_template_bounds(child, optic.child, vn; operation, check_fields)
+    return _check_binding_template_bounds(
+        child, optic.child, vn; operation, check_fields, child_name
+    )
 end
 function _check_binding_template_bounds(
-    template, optic::AbstractPPL.Index, vn; operation="bind", check_fields=false
+    template,
+    optic::AbstractPPL.Index,
+    vn;
+    operation="bind",
+    check_fields=false,
+    child_name=false,
 )
     template isa Union{ModelValue,ModelValueTree} && (template = _binding_storage(template))
     array = if template isa VarNamedTuples.PartialArray
@@ -2367,7 +2385,7 @@ function _check_binding_template_bounds(
     # Without storage, `end`, `:` and Symbol indices cannot be resolved.
     array isa Union{NoTemplate,VarNamedTuples.SkipTemplate,Missing} &&
         !all(i -> i isa Union{Integer,AbstractVector{<:Integer}}, optic.ix) &&
-        _no_index_storage_error(optic, vn, operation)
+        _no_index_storage_error(optic, vn, operation; child_name)
     coptic = AbstractPPL.concretize_top_level(optic, array)
     inbounds = if array isa VarNamedTuples.GrowableArray
         true
@@ -2403,7 +2421,7 @@ function _check_binding_template_bounds(
             checkbounds(Bool, shape, next.ix...) ||
                 _outside_storage_error(next, vn, operation)
         end
-        _check_binding_template_bounds(child, next, vn; operation, check_fields)
+        _check_binding_template_bounds(child, next, vn; operation, check_fields, child_name)
     end
     return nothing
 end
@@ -2811,22 +2829,22 @@ function _template_schema(schema, t::ModelBindingTemplate{R}, values) where {R}
         _same_schema_storage(previous, storage) ? storage : ConflictingBindingTemplates()
     return setindex!!(schema, storage, t.name)
 end
-function _filter_binding_schema(model, schema::NamedTuple, prefix=nothing; owned_here::Bool)
+function _binding_schema_owned(model, address)
     metadata = _binding_metadata(model)
     if _lhs_names(metadata) === nothing || !any(last, _lhs_addresses(metadata))
-        return owned_here ? schema : (;)
+        return true
     end
+    return any(_lhs_addresses(metadata)) do (lhs, submodel)
+        !submodel && (subsumes(lhs, address) || subsumes(address, lhs))
+    end
+end
+function _filter_binding_schema(model, schema::NamedTuple, prefix=nothing; owned_here::Bool)
     names = filter(keys(schema)) do name
         address = maybe_prefix(VarName{name}(), prefix)
         if schema[name] isa NamedTuple
             return !isempty(_filter_binding_schema(model, schema[name], address; owned_here))
         end
-        owned =
-            _lhs_names(metadata) === nothing ||
-            any(_lhs_addresses(metadata)) do (lhs, submodel)
-                !submodel && (subsumes(lhs, address) || subsumes(address, lhs))
-            end
-        return owned == owned_here
+        return _binding_schema_owned(model, address) == owned_here
     end
     return NamedTuple{names}(
         map(names) do name
@@ -3460,7 +3478,12 @@ end
             submodel && local_name !== nothing && subsumes(address, local_name)
         end
     _check_binding_template_bounds(
-        template, AbstractPPL.getoptic(vn), vn; operation, check_fields
+        template,
+        AbstractPPL.getoptic(vn),
+        vn;
+        operation,
+        check_fields,
+        child_name=local_name !== nothing && !_binding_schema_owned(model, local_name),
     )
     return vn, template
 end
