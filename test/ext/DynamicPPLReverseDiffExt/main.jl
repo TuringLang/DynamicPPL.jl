@@ -7,6 +7,7 @@ using DynamicPPL.TestUtils.AD: run_ad, WithExpectedResult
 using Distributions: MvNormal, Normal, logpdf
 using ForwardDiff: ForwardDiff  # run_ad uses FD for correctness test
 using LogDensityProblems: LogDensityProblems
+using LinearAlgebra: I
 using Random: Xoshiro
 using ReverseDiff: ReverseDiff
 using Test: @test, @testset, @test_throws
@@ -530,6 +531,75 @@ end
     @test density(z) ≈ logpdf(Normal(), 0.7) + logpdf(Normal(), 1.0)
     @test ReverseDiff.gradient(density, z) ≈ [-1.0]
     @test z == [0.3]
+end
+
+@testset "rebuilds adapted mutable argument owners" begin
+    mutable struct AdaptedRecord{T}
+        a::T
+    end
+    mutable struct ConstAdaptedRecord
+        const a::Any
+    end
+    @model function adapted_child(p)
+        μ = p.a[1]
+        p.a[1] ~ Normal()
+        return 0.0 ~ Normal(μ + p.a[1])
+    end
+    @model function adapted_parent(make=AdaptedRecord)
+        z ~ MvNormal(zeros(1), I)
+        return c ~ to_submodel(decondition(adapted_child(make(z))))
+    end
+    expected = logpdf(Normal(), 0.3) + logpdf(Normal(), 0.7) + logpdf(Normal(1.0), 0.0)
+    @testset "$make, $adtype" for make in (AdaptedRecord, ConstAdaptedRecord),
+        (_, adtype) in ADTYPES
+
+        ldf = LogDensityFunction(adapted_parent(make); adtype)
+        density, gradient = LogDensityProblems.logdensity_and_gradient(ldf, [0.3, 0.7])
+        @test density ≈ expected
+        @test gradient ≈ [-1.3, -1.7]
+    end
+    @test LogDensityProblems.logdensity_and_gradient(
+        LogDensityFunction(adapted_parent(); adtype=AutoForwardDiff()), [0.3, 0.7]
+    )[1] ≈ expected
+
+    @model function adapted_ref_child(x)
+        μ = x[][1]
+        x = [0.0]
+        x[1] ~ Normal()
+        return 0.0 ~ Normal(μ + x[1])
+    end
+    @model function adapted_ref_parent()
+        z ~ MvNormal(zeros(1), I)
+        return c ~ to_submodel(decondition(adapted_ref_child(Ref(z))))
+    end
+
+    @model function adapted_dict_child(x)
+        μ = x[:a][1]
+        x = [0.0]
+        x[1] ~ Normal()
+        return 0.0 ~ Normal(μ + x[1])
+    end
+    @model function adapted_dict_parent()
+        z ~ MvNormal(zeros(1), I)
+        return c ~ to_submodel(decondition(adapted_dict_child(Dict(:a => z))))
+    end
+
+    @model function adapted_iddict_parent()
+        z ~ MvNormal(zeros(1), I)
+        return c ~ to_submodel(decondition(adapted_dict_child(IdDict(:a => z))))
+    end
+    adapted = Base.get_extension(DynamicPPL, :DynamicPPLReverseDiffExt)._writable_graph(
+        Dict{Symbol,Any}(:a => ReverseDiff.track([0.3])), IdDict()
+    )
+    @test valtype(typeof(adapted)) === Any
+    for parent in (adapted_ref_parent, adapted_dict_parent, adapted_iddict_parent)
+        for (_, adtype) in ADTYPES
+            ldf = LogDensityFunction(parent(); adtype)
+            density, gradient = LogDensityProblems.logdensity_and_gradient(ldf, [0.3, 0.7])
+            @test density ≈ expected
+            @test gradient ≈ [-1.3, -1.7]
+        end
+    end
 end
 
 @testset "retained buffers reached by latent arguments" begin
