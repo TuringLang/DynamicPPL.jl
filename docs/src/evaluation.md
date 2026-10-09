@@ -203,10 +203,7 @@ Apart from `InitFromPrior()`, the main initialisation strategy that you are like
 
 ```@example 1
 # See the VarNamedTuple docs for examples.
-params = DynamicPPL.@vnt begin
-    x := 1.0
-    y := 0.5
-end
+params = rand(model)
 
 init_strategy = InitFromParams(params)
 retval, accs = DynamicPPL.init!!(model, accs, init_strategy, transform_strategy)
@@ -269,11 +266,7 @@ The transform strategy allows you to specify which variables are to be transform
 For example:
 
 ```@example 1
-params = DynamicPPL.@vnt begin
-    # These are always in untransformed space.
-    x := 1.0
-    y := 0.5
-end
+params = rand(model)
 init_strategy = InitFromParams(params)
 
 # This transform strategy specifies that all variables should be linked.

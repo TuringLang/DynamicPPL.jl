@@ -248,8 +248,7 @@ a NamedTuple, or keyword arguments. Likewise, replace `m | Dict(@varname(x) => v
 `:x => v` remains shorthand for `@varname(x) => v`.
 Replace `@vnt` or `@template` storage for partial local bindings with a positional binding
 template, for example `condition(m, @varname(z[2]) => 1.0, @of(z = of(Array, 3)))`, importing
-`of, @of` from AbstractPPL. Produced `VarNamedTuple` values remain accepted. `@vnt` is no
-longer exported; replace unqualified uses with `DynamicPPL.@vnt` or explicitly import it.
+`of, @of` from AbstractPPL. Produced `VarNamedTuple` values remain accepted.
 
 Whole bindings must satisfy declared argument types, local storage types, and shared
 signature constraints. Replace incompatible replacements with compatible storage, or
