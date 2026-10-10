@@ -15,13 +15,15 @@ struct UnimplementedStrategy <: AbstractInitStrategy end
 
 struct ObserveHookDistribution <: ContinuousUnivariateDistribution
     seen::Vector{Union{VarName,Nothing}}
+    prefixes::Vector{Any}
 end
 Distributions.logpdf(::ObserveHookDistribution, x::Real) = logpdf(Normal(), x)
 function DynamicPPL.tilde_observe!!(
-    prefix, prefix_template, dist::ObserveHookDistribution, left, vn, template, vi
+    prefix, dist::ObserveHookDistribution, left, vn, template, vi
 )
     push!(dist.seen, vn)
-    return tilde_observe!!(prefix, prefix_template, Normal(), left, vn, template, vi)
+    push!(dist.prefixes, prefix)
+    return tilde_observe!!(prefix, Normal(), left, vn, template, vi)
 end
 
 struct RecordingStrategy{S<:AbstractInitStrategy} <: AbstractInitStrategy
@@ -57,15 +59,47 @@ end
         end
         seen = Union{VarName,Nothing}[]
         model = condition(
-            observations(1.0, [2.0, 3.0], ObserveHookDistribution(seen)); z=4.0
+            observations(1.0, [2.0, 3.0], ObserveHookDistribution(seen, Any[])); z=4.0
         )
-        _, vi = DynamicPPL.evaluate_nowarn!!(model, VarInfo())
-        @test seen == [@varname(x), @varname(z), nothing, @varname(ys[1]), @varname(ys[2])]
-        @test getloglikelihood(vi) ≈ sum(logpdf.(Normal(), 0.0:4.0))
-        empty!(seen)
-        _, vi = DynamicPPL.evaluate_nowarn!!(outer(model), VarInfo())
-        @test length(seen) == 5
-        @test getloglikelihood(vi) ≈ sum(logpdf.(Normal(), 0.0:4.0))
+        templated = prefix(model, @varname(a[2, 3]); template=zeros(2, 3))
+        nested = outer(templated)
+        for m in (model, prefix(model, @varname(p)), templated, nested)
+            empty!(seen)
+            prefixes = model.args.dist.prefixes
+            empty!(prefixes)
+            acc = DynamicPPL.VNTAccumulator{DynamicPPL.POINTWISE_ACCNAME}(
+                DynamicPPL.PointwiseLogProb{false,true}()
+            )
+            _, vi = DynamicPPL.evaluate_nowarn!!(
+                m, VarInfo((DynamicPPL.default_accumulators()..., acc))
+            )
+            @test seen ==
+                [@varname(x), @varname(z), nothing, @varname(ys[1]), @varname(ys[2])]
+            @test length(prefixes) == 5
+            if m === nested
+                @test all(p -> p isa DynamicPPL.PrefixTemplate, prefixes)
+                @test all(p -> DynamicPPL._getprefix(p) == @varname(b.a[2, 3]), prefixes)
+            else
+                @test all(p -> p === m.prefix, prefixes)
+            end
+            @test getloglikelihood(vi) ≈ sum(logpdf.(Normal(), 0.0:4.0))
+            pointwise = DynamicPPL.get_pointwise_logprobs(vi)
+            observation_prefix = DynamicPPL._getprefix(first(prefixes))
+            for (vn, value) in (
+                (@varname(x), 1.0),
+                (@varname(z), 4.0),
+                (@varname(ys[1]), 2.0),
+                (@varname(ys[2]), 3.0),
+            )
+                name = DynamicPPL.maybe_prefix(vn, observation_prefix)
+                @test pointwise[name] ≈ logpdf(Normal(), value)
+            end
+            if m === templated
+                @test size(pointwise.data.a.data) == (2, 3)
+            elseif m === nested
+                @test size(pointwise.data.b.data.a.data) == (2, 3)
+            end
+        end
     end
 
     @testset "prefixed evaluation: $(model.f)" for model in DynamicPPL.TestUtils.ALL_MODELS
@@ -105,7 +139,7 @@ end
             for value in (one(T), T[1, 2])
                 for vn in (@varname(x), nothing)
                     result, vi = @inferred tilde_observe!!(
-                        nothing, NoTemplate(), dist, value, vn, NoTemplate(), VarInfo()
+                        nothing, dist, value, vn, NoTemplate(), VarInfo()
                     )
                     @test result === value
                     @test getloglikelihood(vi) ≈ loglikelihood(dist, value)
