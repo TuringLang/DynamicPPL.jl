@@ -22,6 +22,54 @@ using Logging: NullLogger, with_logger
 @info "Testing $(@__FILE__)..."
 __now__ = now()
 
+# Shared models for binding and removal cases with the same tilde structure.
+@model function array_model(x)
+    for i in eachindex(x)
+        x[i] ~ Normal()
+    end
+    return x
+end
+@model function y_model(y)
+    for i in eachindex(y)
+        y[i] ~ Normal()
+    end
+    return y
+end
+@model function nested_array_model(x)
+    for i in eachindex(x), j in eachindex(x[i])
+        x[i][j] ~ Normal()
+    end
+    return x
+end
+@model two_elements(x) = (x[1] ~ Normal(); x[2] ~ Normal(); x)
+@model two_fields(x) = (x.a ~ Normal(); x.b ~ Normal(); x)
+@model first_element(x) = (x[1] ~ Normal(); x)
+@model first_nested_element(x) = (x[1][1] ~ Normal(); x)
+@model first_field_element(x) = (x.a[1] ~ Normal(); x)
+@model scalar_model(x) = x ~ Normal()
+@model scalar_latent() = x ~ Normal()
+@model mv_observation(x) = x ~ MvNormal(zeros(2), I)
+@model mv_latent() = x ~ MvNormal(zeros(2), I)
+@model child_model(child) = a ~ to_submodel(child)
+@model named_child(c) = child ~ to_submodel(c)
+@model field_return(p) = (p.a ~ Normal(); p.a)
+@model tuple_field_element(x) = (x.t[1] ~ Normal(); x)
+@model function local_z()
+    z = zeros(3)
+    for i in eachindex(z)
+        z[i] ~ Normal()
+    end
+    return z
+end
+
+# Keep the two expectations separate: bind and removal diagnostics can differ.
+function test_edit_errors(
+    bind, remove, model, address, value, binding_error, removal_error=binding_error
+)
+    @test_throws binding_error bind(model, address => value)
+    @test_throws removal_error remove(model, address)
+end
+
 @testset "sample binding templates" begin
     @model function template_vector(x=zeros(2))
         y = zeros(3)
@@ -304,13 +352,7 @@ end
     end
 end
 
-@model function observed_view(x)
-    for i in eachindex(x)
-        x[i] ~ Normal()
-    end
-    return x
-end
-@model observed_view_parent(x) = a ~ to_submodel(observed_view(x))
+@model observed_view_parent(x) = a ~ to_submodel(array_model(x))
 @testset "partial edits check argument storage beneath another layer" begin
     for recursive in (false, true)
         vn = recursive ? @varname(a.x[1]) : @varname(x[1])
@@ -318,7 +360,7 @@ end
             m = if recursive
                 observed_view_parent(wrap(zeros(2)))
             else
-                observed_view(wrap(zeros(2)))
+                array_model(wrap(zeros(2)))
             end
             m = if recursive
                 condition(m, @varname(a.x) => [1.0, 2.0, 3.0])
@@ -370,13 +412,13 @@ end
 @model property_owner() = (p = (a=zeros(1),); p.a[1] ~ Normal(); p)
 @testset "nested owners validate replacement types" begin
     for bind in (condition, fix)
-        m = bind(parent_owner(), @varname(a.x) => Float32[1])
-        @test_throws ArgumentError bind(m, @varname(a.x[1]) => 0.1)
-        @test_throws ArgumentError bind(m, @varname(a.x) => [1.0])
-        indexed = bind(indexed_owner(), @varname(a[1].x) => Float32[1])
-        @test_throws ArgumentError bind(indexed, @varname(a[1].x[1]) => 0.1)
-        @test_throws ArgumentError bind(indexed, @varname(a[1].x) => [1.0])
-        for (owner, address) in ((m, @varname(a.x[1])), (indexed, @varname(a[1].x[1])))
+        for (model, whole, address) in (
+            (parent_owner(), @varname(a.x), @varname(a.x[1])),
+            (indexed_owner(), @varname(a[1].x), @varname(a[1].x[1])),
+        )
+            owner = bind(model, whole => Float32[1])
+            @test_throws ArgumentError bind(owner, address => 0.1)
+            @test_throws ArgumentError bind(owner, whole => [1.0])
             valid = bind(owner, address => 0.5)
             listed = bind === condition ? conditioned(valid) : fixed(valid)
             @test listed[address] === 0.5f0
@@ -491,7 +533,6 @@ Base.getproperty(x::VirtualBindingRecord, ::Symbol) = getfield(x, :a)
     @model dictionary_argument(x) = (x[:a] ~ Normal(); x[:b] ~ Normal(); x)
     @model nested_dictionary_argument(x) = (x.d[:a] ~ Normal(); x.d[:b] ~ Normal(); x)
     @model nested_property_argument(x) = (x.s.field ~ Normal(); x)
-    @model record_argument(x) = (x.a ~ Normal(); x.b ~ Normal(); x)
     dictionary = Dict(:a => 1.0, :b => 2.0)
     virtual = VirtualBindingRecord(1.0)
     for (model, address, container) in (
@@ -526,13 +567,12 @@ Base.getproperty(x::VirtualBindingRecord, ::Symbol) = getfield(x, :a)
     end
     source = ObservationRecord(1.0, 2.0)
     for bind in (condition, fix)
-        @test_throws ArgumentError bind(record_argument(source), @varname(x.a) => 3.0)
-        @test returned(
-            bind(record_argument(source); x=ObservationRecord(3.0, 2.0)), (;)
-        ) === ObservationRecord(3.0, 2.0)
+        @test_throws ArgumentError bind(two_fields(source), @varname(x.a) => 3.0)
+        @test returned(bind(two_fields(source); x=ObservationRecord(3.0, 2.0)), (;)) ===
+            ObservationRecord(3.0, 2.0)
     end
-    @test_throws ArgumentError decondition(record_argument(source), @varname(x.a))
-    @test returned(decondition(record_argument(source)), (x=(a=3.0, b=2.0),)) ===
+    @test_throws ArgumentError decondition(two_fields(source), @varname(x.a))
+    @test returned(decondition(two_fields(source)), (x=(a=3.0, b=2.0),)) ===
         ObservationRecord(3.0, 2.0)
 end
 
@@ -608,7 +648,6 @@ end
         @model typed_gdemo(x::Union{Nothing,Vector{Int}}=nothing) = (
             x[1] ~ Normal(); x[2] ~ Normal(); x
         )
-        @model produced_parent(child) = a ~ to_submodel(child)
         draws = rand(Xoshiro(1), decondition(gdemo()))
         incomplete = conditioned(
             decondition(condition(gdemo(zeros(2)); x=[2.0, 3.0]), @varname(x[2]))
@@ -626,9 +665,9 @@ end
             @test (model | draws)(Xoshiro(2)) == draws[@varname(x)]
             @test_throws message bind(model, incomplete)
             @test_throws message model | incomplete
-            @test produced_parent(bound)(Xoshiro(2)) == draws[@varname(x)]
-            parent_draws = rand(Xoshiro(1), produced_parent(decondition(gdemo())))
-            @test bind(produced_parent(model), parent_draws)(Xoshiro(2)) ==
+            @test child_model(bound)(Xoshiro(2)) == draws[@varname(x)]
+            parent_draws = rand(Xoshiro(1), child_model(decondition(gdemo())))
+            @test bind(child_model(model), parent_draws)(Xoshiro(2)) ==
                 parent_draws[@varname(a.x)]
         end
         @model function nested_gdemo(x=nothing)
@@ -671,9 +710,8 @@ end
     end
 
     @testset "unfix restores argument-supplied observations from declared argument LHS variables" begin
-        @model scalar_argument(x) = x ~ Normal()
         @model keyword_argument(; x) = x ~ Normal()
-        for observed in (scalar_argument(1.0), keyword_argument(; x=1.0))
+        for observed in (scalar_model(1.0), keyword_argument(; x=1.0))
             direct = DynamicPPL.Model{false}(
                 observed.f, observed.args, observed.defaults; args_on_lhs=(:x,)
             )
@@ -693,26 +731,23 @@ end
     end
 
     @testset "bindings reject placeholders when made" begin
-        @model missing_binding() = x ~ Normal()
         for (bind, remove) in ((condition, decondition), (fix, unfix)),
             absent in (missing, nothing)
 
             @test_throws "Cannot bind `x` to a value containing `missing` or `nothing`; bindings cannot hold placeholders. To make it latent, leave it unbound or use `$remove(model, @varname(x))`." bind(
-                missing_binding(); x=absent
+                scalar_latent(); x=absent
             )
-            @test bind(missing_binding(); x=1.0)(Xoshiro(1)) == 1.0
+            @test bind(scalar_latent(); x=1.0)(Xoshiro(1)) == 1.0
         end
     end
 
     @testset "NamedTuple bindings and LHS variables require field names" begin
-        @model integer_lhs(x) = (x[1] ~ Normal(); x)
         @model nested_integer_lhs(x) = (x.p[1] ~ Normal(); x)
-        @model array_integer_lhs(x) = (x[1][1] ~ Normal(); x)
         @model local_integer_lhs() = (x = (a=1.0, b=2.0); x[1] ~ Normal(); x)
         for (model, value, address, field) in (
-            (integer_lhs, (a=1.0, b=2.0), @varname(x[1]), "x.a"),
+            (first_element, (a=1.0, b=2.0), @varname(x[1]), "x.a"),
             (nested_integer_lhs, (p=(a=1.0, b=2.0),), @varname(x.p[1]), "x.p.a"),
-            (array_integer_lhs, [(a=1.0, b=2.0)], @varname(x[1][1]), "x[1].a"),
+            (first_nested_element, [(a=1.0, b=2.0)], @varname(x[1][1]), "x[1].a"),
         )
             message = ArgumentError(
                 "Integer indexing into a NamedTuple at `$address` is unsupported; use `$field` instead.",
@@ -752,11 +787,11 @@ end
         )
             @test_throws message m(Xoshiro(1))
         end
-        @test_throws "ArgumentError: Integer indexing into a NamedTuple at `x[1]` is unsupported; use a field name instead." integer_lhs((;))(
+        @test_throws "ArgumentError: Integer indexing into a NamedTuple at `x[1]` is unsupported; use a field name instead." first_element((;))(
             Xoshiro(1)
         )
         @test_throws "ArgumentError: Integer indexing into a NamedTuple at `x[3]` is unsupported; use a field name instead." fix(
-            integer_lhs((a=1.0, b=2.0)), @varname(x[3]) => 3.0
+            first_element((a=1.0, b=2.0)), @varname(x[3]) => 3.0
         )
         @model nested_integer_binding() = child ~ to_submodel(local_integer_lhs())
         @test_throws message nested_integer_binding()(Xoshiro(1))
@@ -766,9 +801,8 @@ end
                 VarNamedTuple((@varname(x[1]) => 3.0,)),
             )
         end
-        @model named_lhs(x) = (x.a ~ Normal(); x.b ~ Normal(); x)
         for bind in (condition, fix)
-            m = bind(named_lhs((a=1.0, b=2.0)), @varname(x.a) => 3.0)
+            m = bind(two_fields((a=1.0, b=2.0)), @varname(x.a) => 3.0)
             for update in (condition, fix)
                 @test_throws message update(m, @varname(x[1]) => 4.0)
             end
@@ -779,7 +813,7 @@ end
         for value in ([1.0, 2.0],),
             (bind, remove) in ((condition, decondition), (fix, unfix))
 
-            m = bind(integer_lhs(value), @varname(x[1]) => 3.0)
+            m = bind(first_element(value), @varname(x[1]) => 3.0)
             @test m(Xoshiro(1))[1] == 3.0
             expected = remove === unfix ? 1.0 : rand(Xoshiro(1), Normal())
             @test remove(m, @varname(x[1]))(Xoshiro(1))[1] == expected
@@ -959,9 +993,8 @@ end
     end
 
     @testset "deconditioned arguments retain index bounds" begin
-        @model indexed_lhs_argument(x) = (x[1] ~ Normal(); x)
         for bind in (condition, fix), x in ([1.0, 2.0],)
-            model = decondition(indexed_lhs_argument(x))
+            model = decondition(first_element(x))
             invalid = DynamicPPL.@vnt begin
                 x[3] := 9.0
             end
@@ -973,14 +1006,10 @@ end
     end
 
     @testset "argument binding templates" begin
-        @model template_lhs_variables(y) = (for i in eachindex(y)
-            y[i] ~ Normal()
-        end;
-        y)
         for bind in (condition, fix),
             input in ((@varname(y[2]) => 3.0,), ((@varname(y[2]) => 3.0,),))
 
-            m = @test_logs bind(template_lhs_variables([1.0, 2.0]), input...)
+            m = @test_logs bind(y_model([1.0, 2.0]), input...)
             @test m() == [1.0, 3.0]
         end
     end
@@ -1049,12 +1078,8 @@ end
     end
 
     @testset "partial bindings preserve argument element types" begin
-        @model elements(y) = (for i in eachindex(y)
-            y[i] ~ Normal()
-        end;
-        y)
         @model typed_elements(y::Vector{Float64}) = (y[1] ~ Normal(); y)
-        for bind in (condition, fix), constructor in (elements, typed_elements)
+        for bind in (condition, fix), constructor in (y_model, typed_elements)
             result = bind(constructor([1.0, 2.0]), @varname(y[1]) => 1)
             @test result() isa Vector{Float64}
             @test result() == [1.0, 2.0]
@@ -1067,24 +1092,22 @@ end
                 constructor([1.0, 2.0]), @varname(y[1]) => big(2)^100 + 1
             )()
         end
-        @model wrapped_elements() = a ~ to_submodel(elements([1.0, 2.0]))
+        @model wrapped_elements() = a ~ to_submodel(y_model([1.0, 2.0]))
         @test condition(wrapped_elements(), @varname(a.y[1]) => 1)() isa Vector{Float64}
         for bind in (condition, fix)
             bindings = (@varname(y) => Float32[1, 2], @varname(y[1]) => 3)
-            @test bind(elements([1.0, 2.0]), bindings...)() isa Vector{Float32}
-            @test bind(elements([1.0, 2.0]), bindings)() isa Vector{Float32}
+            @test bind(y_model([1.0, 2.0]), bindings...)() isa Vector{Float32}
+            @test bind(y_model([1.0, 2.0]), bindings)() isa Vector{Float32}
             inexact = (@varname(y) => [1.0, 2.0], @varname(y[1]) => big(2)^100 + 1)
-            @test_throws r"ArgumentError: .*represent" bind(
-                elements([1.0, 2.0]), inexact...
-            )
-            @test_throws r"ArgumentError: .*represent" bind(elements([1.0, 2.0]), inexact)
+            @test_throws r"ArgumentError: .*represent" bind(y_model([1.0, 2.0]), inexact...)
+            @test_throws r"ArgumentError: .*represent" bind(y_model([1.0, 2.0]), inexact)
         end
         for bind in (condition, fix)
-            @test_throws InexactError bind(elements([1, 2]), @varname(y[1]) => 1.5)
-            @test_throws MethodError bind(elements([1, 2]), @varname(y[1]) => "invalid")
+            @test_throws InexactError bind(y_model([1, 2]), @varname(y[1]) => 1.5)
+            @test_throws MethodError bind(y_model([1, 2]), @varname(y[1]) => "invalid")
         end
         for T in (Float32, BigFloat)
-            @test condition(elements(T[1, 2]), @varname(y[1]) => 3)() isa Vector{T}
+            @test condition(y_model(T[1, 2]), @varname(y[1]) => 3)() isa Vector{T}
         end
     end
 
@@ -1124,24 +1147,22 @@ end
     end
 
     @testset "partly unbound LHS variables" begin
-        @model mv_argument(x) = x ~ MvNormal(zeros(2), I)
-        @model mv_local() = x ~ MvNormal(zeros(2), I)
         @test_throws r"ArgumentError: .*`x`.*bound and unbound" VarInfo(
-            decondition(mv_argument([1.0, 2.0]), @varname(x[1]))
+            decondition(mv_observation([1.0, 2.0]), @varname(x[1]))
         )
         for (bind, remove) in ((condition, decondition), (fix, unfix))
             @test_throws r"ArgumentError: .*`x`.*bound and unbound" VarInfo(
-                remove(bind(mv_local(); x=[1.0, 2.0]), @varname(x[1]))
+                remove(bind(mv_latent(); x=[1.0, 2.0]), @varname(x[1]))
             )
             @test_throws r"ArgumentError: .*`x`.*bound and unbound" VarInfo(
-                bind(mv_local(), @varname(x[2]) => 2.0)
+                bind(mv_latent(), @varname(x[2]) => 2.0)
             )
         end
         @test_throws "LHS variable `x` has both bound and unbound subvariables, such as observed and `missing` elements; write element-wise tildes (`x[i] ~ ...`), or bind or decondition all of `x`." VarInfo(
-            mv_argument(Union{Missing,Float64}[missing, 2.0])
+            mv_observation(Union{Missing,Float64}[missing, 2.0])
         )
-        @test keys(VarInfo(Xoshiro(1), mv_argument(fill(missing, 2)))) == [@varname(x)]
-        @test isempty(keys(VarInfo(Xoshiro(1), mv_argument([1.0, 2.0]))))
+        @test keys(VarInfo(Xoshiro(1), mv_observation(fill(missing, 2)))) == [@varname(x)]
+        @test isempty(keys(VarInfo(Xoshiro(1), mv_observation([1.0, 2.0]))))
     end
 
     @testset "nonexistent argument fields" begin
@@ -1256,14 +1277,12 @@ end
         @model nested_missing() = child ~ to_submodel(missing_placeholder(value))
         @test keys(rand(Xoshiro(1), nested_missing())) ==
             [@varname(child.s), @varname(child.x[1]), @varname(child.x[2])]
-        @model unchanged_missing(x) = x ~ Normal()
-        @test unchanged_missing(value)(Xoshiro(1)) == rand(Xoshiro(1), Normal())
+        @test scalar_model(value)(Xoshiro(1)) == rand(Xoshiro(1), Normal())
         @model unread_missing(x, read) = read ? (x ~ Normal()) : x
         @test unread_missing(value, false)(Xoshiro(1)) === value
     end
 
     @testset "placeholders are rejected when an LHS variable reads them" begin
-        @model metadata_lhs(p) = (p.a ~ Normal(); p.a)
         @model indexed_observation(y) = begin
             for i in 1:2
                 y[i] ~ Normal()
@@ -1278,25 +1297,25 @@ end
             (a=1.0, b=[(missing,)]),
             MetadataRecord(1.0, missing),
         )
-            @test metadata_lhs(p)(Xoshiro(1)) == 1.0
+            @test field_return(p)(Xoshiro(1)) == 1.0
             for bind in (condition, fix)
                 @test_throws r"ArgumentError: Cannot bind `p`" bind(
-                    metadata_lhs((a=1.0, b=2.0)); p
+                    field_return((a=1.0, b=2.0)); p
                 )
             end
         end
         # Argument data may hold placeholders that bindings reject.
-        target = metadata_lhs((a=0.0, b=0.0))
+        target = field_return((a=0.0, b=0.0))
         @test_throws r"ArgumentError: Cannot bind `p`.*decondition\(model, @varname\(p\)\)" condition(
-            target, conditioned(metadata_lhs((a=1.0, b=missing)))
+            target, conditioned(field_return((a=1.0, b=missing)))
         )
-        @test condition(target, conditioned(metadata_lhs((a=1.0, b=2.0))))(Xoshiro(1)) ==
+        @test condition(target, conditioned(field_return((a=1.0, b=2.0))))(Xoshiro(1)) ==
             1.0
         y = Union{Missing,Float64}[1.0, 2.0, missing]
         @test isequal(indexed_observation(y)(Xoshiro(1)), y)
         for (constructor, value, absent, vn) in (
-            (metadata_lhs, (a=missing, b=1.0), missing, @varname(p.a)),
-            (metadata_lhs, (a=nothing, b=1.0), nothing, @varname(p.a)),
+            (field_return, (a=missing, b=1.0), missing, @varname(p.a)),
+            (field_return, (a=nothing, b=1.0), nothing, @varname(p.a)),
             (indexed_observation, [1.0, nothing], nothing, @varname(y[2])),
             (whole_observation, [1.0, nothing], nothing, @varname(y)),
             (product_observation, [1.0, nothing], nothing, @varname(y)),
@@ -1413,9 +1432,8 @@ end
     end
 
     @testset "observed Union{Missing,T} arrays without missing elements" begin
-        @model mv_argument(x) = x ~ MvNormal(zeros(2), I)
         for x in ([1.0, 2.0], Union{Missing,Float64}[1.0, 2.0])
-            @test loglikelihood(mv_argument(x), (;)) ≈
+            @test loglikelihood(mv_observation(x), (;)) ≈
                 logpdf(MvNormal(zeros(2), I), [1.0, 2.0])
         end
         @model function columns(X)
@@ -1490,27 +1508,26 @@ end
     end
 
     @testset "removal of valid addresses is idempotent" begin
-        @model scalar() = x ~ Normal()
         @model inner_arg(x=1.0) = x ~ Normal()
         @model outer_arg() = a ~ to_submodel(inner_arg())
         for (bind, remove) in ((condition, unfix), (fix, decondition)),
             scope in ((), (DynamicPPL.Recursive(),))
 
-            @test remove(bind(scalar(); x=1.0), scope..., @varname(x))(Xoshiro(1)) == 1.0
-            @test keys(rand(Xoshiro(1), remove(scalar(), scope..., @varname(x)))) ==
+            @test remove(bind(scalar_latent(); x=1.0), scope..., @varname(x))(Xoshiro(1)) ==
+                1.0
+            @test keys(rand(Xoshiro(1), remove(scalar_latent(), scope..., @varname(x)))) ==
                 [@varname(x)]
             @test_throws r"ArgumentError: .*`unknown`" remove(
-                scalar(), scope..., @varname(unknown)
+                scalar_latent(), scope..., @varname(unknown)
             )
-            @test isempty(keys(conditioned(remove(scalar()))))
-            @test isempty(keys(fixed(remove(scalar()))))
+            @test isempty(keys(conditioned(remove(scalar_latent()))))
+            @test isempty(keys(fixed(remove(scalar_latent()))))
         end
-        @model indexed(x) = (x[1] ~ Normal(); x[2] ~ Normal(); x)
         for data in ([1.0, 2.0],),
             (bind, remove, select) in
             ((condition, decondition, conditioned), (fix, unfix, fixed))
 
-            partial = remove(bind(indexed(data); x=data), @varname(x[2]))
+            partial = remove(bind(two_elements(data); x=data), @varname(x[2]))
             @test isempty(select(remove(partial, @varname(x[1:2][1]))))
             @test isempty(select(remove(partial, @varname(x[1:2]))))
             @test select(remove(partial, @varname(x[2]))) == select(partial)
@@ -1563,7 +1580,6 @@ end
             x[1].b ~ Normal()
             return x
         end
-        @model array_lhs_variables(x) = (x[1] ~ Normal(); x[2] ~ Normal(); x)
         @model inner2() = (x ~ Normal(); y ~ Normal(); (; x, y))
         @model outer() = a ~ to_submodel(inner2())
 
@@ -1588,7 +1604,7 @@ end
                 ),
                 (
                     "array argument",
-                    decondition(array_lhs_variables([1.0, 2.0])),
+                    decondition(two_elements([1.0, 2.0])),
                     (; x=[1.0, 2.0]),
                     @varname(x[1]),
                     @varname(x[2]),
@@ -1645,17 +1661,10 @@ end
     end
 
     @testset "removal resolves container addresses" begin
-        @model function matrix_lhs_variables(x)
-            for i in eachindex(x)
-                x[i] ~ Normal()
-            end
-            return x
-        end
-        @model field_lhs_variables(x) = (x.a ~ Normal(); x.b ~ Normal(); x)
         @model nested_field_lhs_variables(x) = (x[1].a ~ Normal(); x[1].b ~ Normal(); x)
         for (bind, remove, select) in
             ((condition, decondition, conditioned), (fix, unfix, fixed))
-            matrix = bind(matrix_lhs_variables([1.0 3.0; 2.0 4.0]); x=[1.0 3.0; 2.0 4.0])
+            matrix = bind(array_model([1.0 3.0; 2.0 4.0]); x=[1.0 3.0; 2.0 4.0])
             for (vn, indices) in (
                 (@varname(x[2]), [2]),
                 (@varname(x[2, 1]), [2]),
@@ -1683,11 +1692,7 @@ end
             unbound = remove(matrix, @varname(x))
             @test select(remove(unbound, @varname(x[3]))) == select(unbound)
             for (model, first, sibling) in (
-                (
-                    field_lhs_variables(ComponentVector(; a=1.0, b=2.0)),
-                    @varname(x.a),
-                    @varname(x.b)
-                ),
+                (two_fields(ComponentVector(; a=1.0, b=2.0)), @varname(x.a), @varname(x.b)),
                 (
                     nested_field_lhs_variables([ComponentVector(; a=1.0, b=2.0)]),
                     @varname(x[1].a),
@@ -1705,9 +1710,8 @@ end
     end
 
     @testset "unfix restores the last fixed LHS variable's argument-supplied observation" begin
-        @model restored_indices(x) = (x[1] ~ Normal(); x[2] ~ Normal(); x)
         for original in ([1.0, 2.0],)
-            bound = fix(decondition(restored_indices(original)), @varname(x[1]) => 5.0)
+            bound = fix(decondition(two_elements(original)), @varname(x[1]) => 5.0)
             for names in ((), (@varname(x),), (@varname(x[1]),))
                 restored = unfix(bound, names...)
                 @test collect(restored(Xoshiro(1))) == rand(Xoshiro(1), Normal(), 2)
@@ -1730,12 +1734,11 @@ end
             @test_throws "Cannot bind `y[0]`: index is outside the storage at `y`" bind(
                 elements(nothing), @varname(y[0]) => 9.0
             )
-            @test_throws r"ArgumentError: .*y\[3\]" bind(
-                elements([1.0, 2.0]), @varname(y[3]) => 9.0
-            )
-            @test_throws r"ArgumentError: .*y\[3\]" bind(
-                elements((1.0, 2.0)), @varname(y[3]) => 9.0
-            )
+            for data in ([1.0, 2.0], (1.0, 2.0))
+                @test_throws r"ArgumentError: .*y\[3\]" bind(
+                    elements(data), @varname(y[3]) => 9.0
+                )
+            end
         end
     end
 
@@ -1771,17 +1774,15 @@ end
             test_logp_correct(op, transformed, x)
         end
         if op === condition
-            test_logp_correct(condition, model | VarNamedTuple(; x), x)
-            test_logp_correct(condition, model | (; x), x)
-            test_logp_correct(condition, model | (@varname(x) => x,), x)
-            test_logp_correct(condition, model | (@varname(x) => x), x)
+            for input in (VarNamedTuple(; x), (; x), (@varname(x) => x,), @varname(x) => x)
+                test_logp_correct(condition, model | input, x)
+            end
         end
     end
 
     @testset "later bindings replace values within their layer" begin
-        @model return_x() = x ~ Normal()
         for first_op in (condition, fix), last_op in (condition, fix)
-            transformed = last_op(first_op(return_x(); x=1.0); x=2.0)
+            transformed = last_op(first_op(scalar_latent(); x=1.0); x=2.0)
             isfixed = first_op === fix || last_op === fix
             @test transformed() == (first_op === fix && last_op === condition ? 1.0 : 2.0)
             @test logjoint(transformed, VarNamedTuple()) ==
@@ -1792,7 +1793,6 @@ end
     end
 
     @testset "partial bindings must cover whole LHS variables" begin
-        @model whole_vector() = x ~ MvNormal(zeros(2), I)
         @model function ranged_vector()
             x = zeros(3)
             x[1:3] ~ MvNormal(zeros(3), I)
@@ -1808,7 +1808,7 @@ end
             x[1] := 5.0
         end
         for bind in (condition, fix)
-            for model in (whole_vector(), ranged_vector()),
+            for model in (mv_latent(), ranged_vector()),
                 values in (
                     (@varname(x[1]) => 5.0,),
                     (templated,),
@@ -1827,9 +1827,8 @@ end
     end
 
     @testset "one tilde cannot mix binding roles" begin
-        @model joint() = x ~ MvNormal(zeros(2), I)
         for (first_op, last_op) in ((condition, fix), (fix, condition))
-            mixed = last_op(first_op(joint(); x=[1.0, 2.0]), @varname(x[1]) => 3.0)
+            mixed = last_op(first_op(mv_latent(); x=[1.0, 2.0]), @varname(x[1]) => 3.0)
             if first_op === condition
                 @test_throws r"ArgumentError: .*condition and fix different parts" mixed(
                     Xoshiro(1)
@@ -2019,14 +2018,13 @@ end
         @model scalar_input(x=1.0) = (x += 1; x ~ Normal(); return x)
         @model keyword_input(; x=1.0) = (x += 1; x ~ Normal(); return x)
         @model repeated_input(x) = (x += 1; x ~ Normal(); x += 1; x ~ Normal(); return x)
-        @model wrapped_input(model) = a ~ to_submodel(model)
         @model expanded_array(x) = (x = vcat(x, oftype(first(x), 2)); x[2] ~ Normal(); x)
         @model expanded_record(x) = (x = (; x..., b=oftype(x.a, 2)); x.b ~ Normal(); x)
         for T in (Float32, Float64, BigFloat),
             changed in (expanded_array(T[1]), expanded_record((; a=T(1))))
 
             @test loglikelihood(changed, VarNamedTuple()) ≈ logpdf(Normal(), T(2))
-            @test wrapped_input(changed)() == changed()
+            @test child_model(changed)() == changed()
         end
         for T in (Float32, Float64, BigFloat),
             constructor in (scalar_input, x -> keyword_input(; x))
@@ -2038,7 +2036,7 @@ end
             end
             @test fix(original; x=T(3))() == T(3)
             @test condition(original; x=T(3))() == T(4)
-            nested = condition(wrapped_input(original), @varname(a.x) => T(3))
+            nested = condition(child_model(original), @varname(a.x) => T(3))
             @test nested() == T(4)
             @test loglikelihood(nested, VarNamedTuple()) ≈ logpdf(Normal(), T(4))
         end
@@ -2085,20 +2083,13 @@ end
     end
 
     @testset "successive nested array overrides retain shape" begin
-        @model function nested_array(x)
-            for i in eachindex(x), j in eachindex(x[i])
-                x[i][j] ~ Normal()
-            end
-            return x
-        end
-        @model outer_array(model) = a ~ to_submodel(model)
         for first_op in (condition, fix),
             second_op in (condition, fix),
             third_op in (condition, fix),
             T in (Float32, BigFloat)
 
             data = reshape([[T(i)] for i in 1:4], 2, 2)
-            original = nested_array(data)
+            original = nested_array_model(data)
             first = first_op(original, @varname(x[1][1]) => T(10))
             second = second_op(first, @varname(x[2][1]) => T(20))
             third = third_op(second, @varname(x[1, 1][1]) => T(30))
@@ -2114,7 +2105,7 @@ end
             )
             @test third() == expected
             expected_parent = reshape([[T(30)], [T(20)], [T(3)], [T(4)]], 2, 2)
-            @test third_op(outer_array(second), @varname(a.x[1][1]) => T(30))() ==
+            @test third_op(child_model(second), @varname(a.x[1][1]) => T(30))() ==
                 expected_parent
             @test first()[2][1] == T(2)
             @test original() == data
@@ -2131,12 +2122,14 @@ end
                   logpdf(Normal(), T(4))
         end
         data = reshape([[Float32(i)] for i in 1:4], 2, 2)
-        replaced = condition(nested_array([[0.0f0]]); x=data)
+        replaced = condition(nested_array_model([[0.0f0]]); x=data)
         replaced = fix(replaced, @varname(x[1][1]) => 10.0f0)
         replaced = condition(replaced, @varname(x[2][1]) => 20.0f0)
         @test replaced() == reshape([[10.0f0], [20.0f0], [3.0f0], [4.0f0]], 2, 2)
 
-        partial = condition(decondition(nested_array(data)), @varname(x[1][1]) => 10.0f0)
+        partial = condition(
+            decondition(nested_array_model(data)), @varname(x[1][1]) => 10.0f0
+        )
         partial = condition(partial, @varname(x[2][1]) => 20.0f0)
         result, _ = init!!(partial, VarInfo(), InitFromParams((; x=data)), UnlinkAll())
         @test result == reshape([[10.0f0], [20.0f0], [3.0f0], [4.0f0]], 2, 2)
@@ -2145,14 +2138,13 @@ end
             @template x = data
             x[1][1] := 10.0f0
         end
-        partial = @test_logs condition(decondition(nested_array(data)), observations)
+        partial = @test_logs condition(decondition(nested_array_model(data)), observations)
         @test size(conditioned(partial).data.x) == (2, 2)
     end
 
     @testset "invalid bindings below scalar values" begin
         @model scalar_lhs(a) = a ~ Normal()
-        @model scalar_child() = x ~ Normal()
-        @model scalar_return(a) = a ~ to_submodel(scalar_child())
+        @model scalar_return(a) = a ~ to_submodel(scalar_latent())
         for bind in (condition, fix)
             @test_throws r"ArgumentError: .*`a`.*decondition" bind(
                 scalar_lhs(1.0), @varname(a[1]) => 2.0
@@ -2200,14 +2192,13 @@ end
     end
 
     @testset "argument-supplied observations can be replaced and removed" begin
-        @model argument_model(x) = x ~ Normal()
         for initial in (1.0f0, 1.0, big"1.0")
-            original = argument_model(initial)
+            original = scalar_model(initial)
             @test original() === initial
             @test isempty(keys(VarInfo(original)))
             @test conditioned(original)[@varname(x)] === initial
             @test loglikelihood(original, VarNamedTuple()) == logpdf(Normal(), initial)
-            observed = condition(argument_model(initial); x=2.0)
+            observed = condition(scalar_model(initial); x=2.0)
             @test observed() == 2.0
             @test logjoint(observed, VarNamedTuple()) == logpdf(Normal(), 2.0)
             @test keys(VarInfo(Xoshiro(1), decondition(observed))) == [@varname(x)]
@@ -2248,16 +2239,10 @@ end
     end
 
     @testset "replacement arguments drive model execution" begin
-        @model function indexed_argument(x)
-            for i in eachindex(x)
-                x[i] ~ Normal()
-            end
-            return x
-        end
         for op in (condition, fix),
             data in ([1.0f0], BigFloat[1, 2, 3], DimArray([1.0, 2.0, 3.0], X))
 
-            original = indexed_argument(zeros(2))
+            original = array_model(zeros(2))
             changed = op(original; x=data)
             @test changed(Xoshiro(1)) === data
             @test isempty(keys(VarInfo(changed)))
@@ -2265,8 +2250,7 @@ end
                 (op === condition ? sum(logpdf.(Normal(), data)) : 0.0)
             @test original() == zeros(2)
         end
-        loglik =
-            x -> loglikelihood(condition(indexed_argument(zeros(2)); x), VarNamedTuple())
+        loglik = x -> loglikelihood(condition(array_model(zeros(2)); x), VarNamedTuple())
         @test ForwardDiff.gradient(loglik, [1.0, 2.0, 3.0]) ≈ [-1.0, -2.0, -3.0]
 
         @model function read_before_tilde(; x=1.0)
@@ -2356,8 +2340,7 @@ end
         @test fix(replaced, @varname(x.a) => 5.0)(Xoshiro(1)) == (a=5.0, b=4.0)
         @test unfix(replaced, @varname(x.a))(Xoshiro(1)) == (a=1.0, b=4.0)
 
-        @model elements(x) = (x[1] ~ Normal(); x[2] ~ Normal(); x)
-        replaced_tuple = fix(elements((1.0, 2.0)); x=[3.0, 4.0])
+        replaced_tuple = fix(two_elements((1.0, 2.0)); x=[3.0, 4.0])
         @test fix(replaced_tuple, @varname(x[1]) => 5.0)(Xoshiro(1)) == [5.0, 4.0]
         for scope in ((), (DynamicPPL.Recursive(),))
             @test unfix(replaced_tuple, scope..., @varname(x[1]))(Xoshiro(1)) == [1.0, 4.0]
@@ -2366,7 +2349,7 @@ end
         @test unfix(replaced_tuple, @varname(x))(Xoshiro(1)) == (1.0, 2.0)
         tuple_loglik =
             p -> loglikelihood(
-                unfix(fix(elements((p, 2p)); x=[3p, 4p]), @varname(x[1])), (;)
+                unfix(fix(two_elements((p, 2p)); x=[3p, 4p]), @varname(x[1])), (;)
             )
         @test tuple_loglik(2.0) ≈ logpdf(Normal(), 2.0)
         @test ForwardDiff.derivative(tuple_loglik, 2.0) ≈ -2.0
@@ -2416,14 +2399,8 @@ end
     end
 
     @testset "partial bindings retain the rest of a whole argument binding" begin
-        @model function indexed_replacement(x)
-            for i in eachindex(x)
-                x[i] ~ Normal()
-            end
-            return x
-        end
         for data in (Float32[1, 2, 3], BigFloat[1, 2, 3], DimArray([1.0, 2.0, 3.0], X))
-            original = condition(indexed_replacement(zeros(2)); x=data)
+            original = condition(array_model(zeros(2)); x=data)
             same = condition(original, @varname(x[1]) => data[1])
             @test same() == original() == data
             @test typeof(same()) === typeof(data)
@@ -2561,7 +2538,6 @@ end
     end
 
     @testset "unfix restores argument defaults" begin
-        @model argument_lhs(x) = x ~ Normal()
         @model argument_indices(x) = (
             for i in eachindex(x)
                 x[i] ~ Normal()
@@ -2574,23 +2550,16 @@ end
         @test logjoint(u, (;)) ≈ logpdf(Normal(), 1.0)
         @test fixed(u)[@varname(x[2])] == 6.0
         @test logjoint(unfix(u), (;)) ≈ sum(logpdf.(Normal(), [1.0, 2.0]))
-        @model argument_parent(child) = a ~ to_submodel(child)
-        @test logjoint(argument_parent(unfix(fix(m; x=[5.0, 6.0]))), (;)) ≈
+        @test logjoint(child_model(unfix(fix(m; x=[5.0, 6.0]))), (;)) ≈
             sum(logpdf.(Normal(), [1.0, 2.0]))
-        p = DynamicPPL.prefix(argument_lhs(1.0), @varname(a))
+        p = DynamicPPL.prefix(scalar_model(1.0), @varname(a))
         @test logjoint(unfix(fix(p, @varname(a.x) => 5.0), @varname(a.x)), (;)) ≈
             logpdf(Normal(), 1.0)
     end
 
     @testset "partial removal retains replacement shape" begin
-        @model function replacement_shape(x)
-            for i in eachindex(x)
-                x[i] ~ Normal()
-            end
-            return x
-        end
         for n in (2, 3), k in (1, n)
-            m = replacement_shape(zeros(5 - n))
+            m = array_model(zeros(5 - n))
             observed = decondition(condition(m; x=ones(n)), @varname(x[k]))
             expected = ones(n)
             expected[k] = 2.0
@@ -2627,44 +2596,39 @@ end
         @test isempty(conditioned(restored))
         @test fixed(restored)[@varname(x.a[2])] == 6.0
         @test logjoint(restored, (; x=(; a=[1.0, 2.0]))) ≈ logpdf(Normal(), 1.0)
-        @model restored_parent(child) = a ~ to_submodel(child)
-        @test returned(restored_parent(restored), (; a=(; x=(; a=[1.0, 2.0])))) ==
+        @test returned(child_model(restored), (; a=(; x=(; a=[1.0, 2.0])))) ==
             (; a=[1.0, 6.0])
-        @test logjoint(restored_parent(restored), (; a=(; x=(; a=[1.0, 2.0])))) ≈
+        @test logjoint(child_model(restored), (; a=(; x=(; a=[1.0, 2.0])))) ≈
             logpdf(Normal(), 1.0)
     end
 
     @testset "decondition and unfix" begin
-        conditioned_model = condition(model; x=1.0, y=2.0)
-        @test isempty(keys(VarInfo(conditioned_model)))
-        @test keys(VarInfo(decondition(conditioned_model))) == [@varname(x), @varname(y)]
-        @test isempty(keys(conditioned(decondition(conditioned_model))))
-        @test keys(conditioned(decondition(conditioned_model, :x))) == [@varname(y)]
-        @test keys(conditioned(decondition(conditioned_model, @varname(x)))) ==
-            [@varname(y)]
-
-        fixed_model = fix(model; x=1.0, y=2.0)
-        @test isempty(keys(fixed(unfix(fixed_model))))
-        @test keys(fixed(unfix(fixed_model, :x))) == [@varname(y)]
-        @test keys(fixed(unfix(fixed_model, @varname(x)))) == [@varname(y)]
-
-        nested_values = VarNamedTuple((@varname(a.x) => 1.0, @varname(b) => 2.0))
-        @test_throws ArgumentError condition(model, nested_values)
-        @test_throws ArgumentError fix(model, nested_values)
-
+        for (bind, remove, listing) in
+            ((condition, decondition, conditioned), (fix, unfix, fixed))
+            bound = bind(model; x=1.0, y=2.0)
+            @test isempty(keys(listing(remove(bound))))
+            for name in (:x, @varname(x))
+                @test keys(listing(remove(bound, name))) == [@varname(y)]
+            end
+            if bind === condition
+                @test isempty(keys(VarInfo(bound)))
+                @test keys(VarInfo(remove(bound))) == [@varname(x), @varname(y)]
+            end
+            nested_values = VarNamedTuple((@varname(a.x) => 1.0, @varname(b) => 2.0))
+            @test_throws ArgumentError bind(model, nested_values)
+        end
         mixed = fix(condition(model; x=1.0); y=2.0)
         @test fixed(decondition(mixed)) == fixed(mixed)
         @test conditioned(unfix(mixed)) == conditioned(mixed)
     end
 
     @testset "parent model values override submodel values" begin
-        @model inner() = x ~ Normal()
         @model function outer(inner_model)
             return a ~ to_submodel(inner_model)
         end
 
         for inner_op in (condition, fix)
-            inner_model = inner_op(inner(); x=1.0)
+            inner_model = inner_op(scalar_latent(); x=1.0)
             @test outer(inner_model)() == 1.0
             for outer_op in (condition, fix)
                 transformed = outer_op(outer(inner_model), @varname(a.x) => 2.0)
@@ -2747,45 +2711,38 @@ end
 end
 
 @testset "fixed bindings shadow observations" begin
-    @model layered(x) = x ~ Normal()
     for names in ((), (:x,), (@varname(x),))
-        latent = decondition(layered(1.0), :x)
+        latent = decondition(scalar_model(1.0), :x)
         @test isempty(conditioned(unfix(fix(latent; x=5.0), names...)))
-        observed = condition(layered(1.0); x=2.0)
+        observed = condition(scalar_model(1.0); x=2.0)
         @test conditioned(unfix(fix(observed; x=5.0), names...))[@varname(x)] == 2.0
         @test isempty(conditioned(unfix(decondition(fix(observed; x=5.0)), names...)))
     end
-    @test fix(condition(fix(layered(1.0); x=5.0); x=2.0); x=4.0)(Xoshiro(1)) == 4.0
-    @test unfix(condition(fix(layered(1.0); x=5.0); x=2.0))(Xoshiro(1)) == 2.0
-    @model layered_array(x) = (for i in eachindex(x)
-        x[i] ~ Normal()
-    end;
-    x)
-    resized = fix(layered_array(zeros(2)); x=ones(3))
+    @test fix(condition(fix(scalar_model(1.0); x=5.0); x=2.0); x=4.0)(Xoshiro(1)) == 4.0
+    @test unfix(condition(fix(scalar_model(1.0); x=5.0); x=2.0))(Xoshiro(1)) == 2.0
+    resized = fix(array_model(zeros(2)); x=ones(3))
     # The observation still owns length two beneath the resized fixed binding.
     @test_throws "outside the storage" condition(resized, @varname(x[3]) => 4.0)
     @test unfix(resized)(Xoshiro(1)) == zeros(2)
-    @model layer_parent(child) = a ~ to_submodel(child)
-    observed = condition(layered(1.0); x=2.0)
-    @test layer_parent(unfix(fix(observed; x=5.0)))(Xoshiro(1)) == 2.0
+    observed = condition(scalar_model(1.0); x=2.0)
+    @test child_model(unfix(fix(observed; x=5.0)))(Xoshiro(1)) == 2.0
     prefixed = DynamicPPL.prefix(fix(observed; x=5.0), @varname(a))
     @test unfix(prefixed, @varname(a.x))(Xoshiro(1)) == 2.0
 end
 
 @testset "binding input forms are ordered" begin
-    @model input_forms(x) = (x[1] ~ Normal(); x[2] ~ Normal(); x)
-    @test_throws MethodError input_forms(zeros(2)) | Dict(@varname(x) => [2.0, 3.0])
-    @test (input_forms(zeros(2)) | (; x=[2.0, 3.0]))(Xoshiro(1)) == [2.0, 3.0]
+    @test_throws MethodError two_elements(zeros(2)) | Dict(@varname(x) => [2.0, 3.0])
+    @test (two_elements(zeros(2)) | (; x=[2.0, 3.0]))(Xoshiro(1)) == [2.0, 3.0]
     for bind in (condition, fix)
         for invalid in (Dict(@varname(x) => [2.0, 3.0]), 1)
-            @test_throws ArgumentError bind(input_forms([0.0, 0.0]), invalid)
+            @test_throws ArgumentError bind(two_elements([0.0, 0.0]), invalid)
         end
         m = bind(
-            input_forms([0.0, 0.0]),
+            two_elements([0.0, 0.0]),
             ((; x=[1.0, 2.0]), @varname(x[1]) => 3.0, VarNamedTuple(; x=[4.0, 5.0])),
         )
         @test m(Xoshiro(1)) == [4.0, 5.0]
-        @test bind(input_forms([0.0, 0.0]), :x => [2.0, 3.0])(Xoshiro(1)) == [2.0, 3.0]
+        @test bind(two_elements([0.0, 0.0]), :x => [2.0, 3.0])(Xoshiro(1)) == [2.0, 3.0]
     end
 end
 
@@ -2808,16 +2765,15 @@ end
             @test_throws r"Cannot bind `typo`.*not an LHS top symbol" bind(model; typo=1.0)
             @test bind(model; x=value)(Xoshiro(1)) == value
         end
-        @test_throws r"Cannot bind `y`.*not an LHS top symbol" bind(address_parent(); y=2.0)
-        @test_throws r"Cannot bind `y`.*not an LHS top symbol" bind(
-            address_dynamic_flag(false); y=2.0
-        )
+        for model in (address_parent(), address_dynamic_flag(false))
+            @test_throws r"Cannot bind `y`.*not an LHS top symbol" bind(model; y=2.0)
+        end
         @test bind(address_dynamic_flag(true), @varname(a.y) => 2.0)(Xoshiro(1)) == 2.0
         @test bind(address_qualified(); y=2.0)(Xoshiro(1)) == 2.0
-        @test_throws ArgumentError bind(address_model([0.0]); z=1.0)
-        @test_throws ArgumentError bind(
-            DynamicPPL.prefix(address_model([0.0]), @varname(p)); z=1.0
-        )
+        for model in
+            (address_model([0.0]), DynamicPPL.prefix(address_model([0.0]), @varname(p)))
+            @test_throws ArgumentError bind(model; z=1.0)
+        end
         @test_throws ArgumentError bind(address_model([0.0]); n=1.0)
         @test_throws ArgumentError bind(address_model([0.0]), @varname(x[2]) => 1.0)
         @test bind(address_model([0.0]); branch=2.0)(Xoshiro(1)) == [0.0]
@@ -2831,18 +2787,15 @@ end
 
 @testset "bindings fit declared and template types" begin
     @model typed_binding(x::Float64) = x ~ Normal()
-    @model untyped_binding(x) = x ~ Normal()
-    @model typed_field(p) = (p.a ~ Normal(); p.a)
-    @model local_binding() = x ~ Normal()
     @model local_type_child() = z ~ Normal()
     @model local_type_parent() = (x ~ Normal(); a ~ to_submodel(local_type_child()))
     @test_throws ArgumentError condition(condition(local_type_parent(); x=1.0); x=2)
     for bind in (condition, fix)
         @test_throws ArgumentError bind(typed_binding(1.0); x=2)
-        @test bind(untyped_binding(1.0); x=2)(Xoshiro(1)) === 2
-        @test_throws ArgumentError bind(bind(local_binding(); x=1.0); x=2)
-        @test_throws ArgumentError bind(typed_field((a=0.0f0,)), @varname(p.a) => 0.1)
-        @test bind(typed_field((a=0.0,)), @varname(p.a) => 1)(Xoshiro(1)) === 1.0
+        @test bind(scalar_model(1.0); x=2)(Xoshiro(1)) === 2
+        @test_throws ArgumentError bind(bind(scalar_latent(); x=1.0); x=2)
+        @test_throws ArgumentError bind(field_return((a=0.0f0,)), @varname(p.a) => 0.1)
+        @test bind(field_return((a=0.0,)), @varname(p.a) => 1)(Xoshiro(1)) === 1.0
     end
 end
 
@@ -2942,13 +2895,6 @@ end
         @test preparation_allocations(large) <= preparation_allocations(small) + 1024
     end
 
-    @model function local_storage()
-        z = zeros(3)
-        for i in eachindex(z)
-            z[i] ~ Normal()
-        end
-        return z
-    end
     @model function local_offset_storage()
         z = OffsetArray(zeros(3), -1:1)
         for i in eachindex(z)
@@ -2967,20 +2913,20 @@ end
         return z
     end
     @model function local_storage_parent()
-        a ~ to_submodel(local_storage())
+        a ~ to_submodel(local_z())
         return a
     end
     for op in (condition, fix)
-        sampled = rand(Xoshiro(1), local_storage())
-        observed = conditioned(condition(local_storage(); z=ones(3)))
+        sampled = rand(Xoshiro(1), local_z())
+        observed = conditioned(condition(local_z(); z=ones(3)))
         for input in (:z => ones(3), (z=ones(3),), sampled, observed)
             original = input === sampled ? sampled[@varname(z)] : ones(3)
-            @test op(local_storage(), input, @varname(z[end]) => 2.0)(Xoshiro(1)) ==
+            @test op(local_z(), input, @varname(z[end]) => 2.0)(Xoshiro(1)) ==
                 [original[1], original[2], 2.0]
-            @test op(local_storage(), input, @varname(z[:]) => fill(2.0, 3))(Xoshiro(1)) ==
+            @test op(local_z(), input, @varname(z[:]) => fill(2.0, 3))(Xoshiro(1)) ==
                 fill(2.0, 3)
         end
-        owned = op(local_storage(); z=ones(3))
+        owned = op(local_z(); z=ones(3))
         @test op(owned, @varname(z[end]) => 2.0)(Xoshiro(1)) == [1.0, 1.0, 2.0]
         @test_throws ArgumentError op(owned, @varname(z[4]) => 2.0)
         @test owned(Xoshiro(1)) == ones(3)
@@ -3000,7 +2946,7 @@ end
         )(
             Xoshiro(1)
         ) == [1.0, 1.0, 2.0]
-        prefixed = DynamicPPL.prefix(local_storage(), @varname(a.b))
+        prefixed = DynamicPPL.prefix(local_z(), @varname(a.b))
         @test op(prefixed, @varname(a.b.z) => ones(3), @varname(a.b.z[end]) => 2.0)(
             Xoshiro(1)
         ) == [1.0, 1.0, 2.0]
@@ -3043,8 +2989,9 @@ end
         )[@varname(z[2])] == 1.0
         owned = op(schema_local(); z=[2.0, 3.0, 4.0])
         @test op(owned, pair, schema)(Xoshiro(1)) == [2.0, 1.0, 4.0]
-        @test_throws ArgumentError op(owned, pair, @of(z = of(Array, 4)))
-        @test_throws ArgumentError op(owned, pair, @of(z = of(Array, Float32, 3)))
+        for invalid in (@of(z = of(Array, 4)), @of(z = of(Array, Float32, 3)))
+            @test_throws ArgumentError op(owned, pair, invalid)
+        end
         @test op(schema_local(), (z=ones(3),), pair, schema)(Xoshiro(1)) == [1.0, 1.0, 1.0]
         @test op(schema_local(), @varname(z[end]) => 2.0, schema)(Xoshiro(1))[3] == 2.0
         @test isempty(conditioned(fix(schema_local(), pair, schema)))
@@ -3104,12 +3051,11 @@ end
         z ~ to_submodel(deferred_leaf(), false)
         return (x, z)
     end
-    @model deferred_outer(child) = a ~ to_submodel(child)
     allocation(model, rng) = @allocated model(rng)
     for bind in (condition, fix)
         template = @of(y = of(Array, 2))
         child = bind(deferred_middle(), @varname(y[2]) => 0.5, template)
-        model = deferred_outer(child)
+        model = child_model(child)
         plain = bind(model, @varname(a.x) => 1.0)
         @test plain(Xoshiro(1))[2][2] == 0.5
         for input in (
@@ -3163,12 +3109,11 @@ end
         result = q(Xoshiro(1))
         @test length(result) == 2
         @test result[1] == 1.0
-        @test_throws r"begin.*end.*:.*integer indices.*whole value(?!.*binding template)" bind(
-            q, @varname(z.y[end]) => 2.0
-        )
-        @test_throws r"begin.*end.*:.*integer indices.*whole value(?!.*binding template)" bind(
-            q, @varname(z.y[:]) => 2.0
-        )
+        for address in (@varname(z.y[end]), @varname(z.y[:]))
+            @test_throws r"begin.*end.*:.*integer indices.*whole value(?!.*binding template)" bind(
+                q, address => 2.0
+            )
+        end
         @test bind(q, @varname(z.y[2]) => 2.0)(Xoshiro(1)) == [1.0, 2.0]
 
         @test_throws r"begin.*end.*:.*integer indices(?!.*whole value)" decondition(
@@ -3178,18 +3123,17 @@ end
         unprefixed = bind(
             unprefixed_indexed_parent(), @varname(y[1]) => 1.0, @of(y = of(Array, 2))
         )
-        @test_throws r"begin.*end.*:.*integer indices.*whole value(?!.*binding template)" bind(
-            unprefixed, @varname(y[end]) => 2.0
-        )
-
         argument = bind(
             indexed_argument_parent(),
             @varname(z.y[1]) => 1.0,
             @of(z = @of(y = of(Array, 2))),
         )
-        @test_throws r"begin.*end.*:.*integer indices.*whole value(?!.*binding template)" bind(
-            argument, @varname(z.y[end]) => 2.0
-        )
+        for (model, address) in
+            ((unprefixed, @varname(y[end])), (argument, @varname(z.y[end])))
+            @test_throws r"begin.*end.*:.*integer indices.*whole value(?!.*binding template)" bind(
+                model, address => 2.0
+            )
+        end
     end
 end
 
@@ -3200,7 +3144,6 @@ end
         x[2] ~ Normal()
         return x
     end
-    @model whole_schema_parent(child) = a ~ to_submodel(child)
     plain = whole_schema_local()
     prefixed = prefix(plain, @varname(p))
     nested = prefix(prefixed, @varname(q))
@@ -3217,7 +3160,7 @@ end
         end
         bound = op(model, schema, address => [1.0, 2.0])
         @test bound(Xoshiro(1)) == [1.0, 2.0]
-        @test whole_schema_parent(bound)(Xoshiro(1)) == [1.0, 2.0]
+        @test child_model(bound)(Xoshiro(1)) == [1.0, 2.0]
         @test_throws ArgumentError op(model, schema, address => ones(Float32, 2))
         @test_throws ArgumentError op(model, schema, address => ones(3))
     end
@@ -3231,7 +3174,6 @@ end
         end
         return x
     end
-    @model end_schema_parent(child) = a ~ to_submodel(child)
     model = prefix(end_schema_local(), @varname(p[end]); template=zeros(2))
     nested = prefix(model, @varname(q[end]); template=zeros(2))
     for bind in (condition, fix),
@@ -3254,7 +3196,7 @@ end
         bound = bind(owned, dynamic => 9.0)
         @test bound(Xoshiro(1)) == bind(owned, concrete => 9.0)(Xoshiro(1))
         @test bound(Xoshiro(1))[3] == 9.0
-        @test end_schema_parent(bound)(Xoshiro(1))[3] == 9.0
+        @test child_model(bound)(Xoshiro(1))[3] == 9.0
     end
     for bind in (condition, fix)
         @test_throws ArgumentError bind(
@@ -3292,38 +3234,27 @@ end
 end
 
 @testset "template exact conversion" begin
-    @model function typed_schema()
-        z = zeros(3)
-        for i in eachindex(z)
-            z[i] ~ Normal()
-        end
-        return z
-    end
     for op in (condition, fix)
         @test_throws InexactError op(
-            typed_schema(), @varname(z[2]) => 1.5, @of(z = of(Array, Int, 3))
+            local_z(), @varname(z[2]) => 1.5, @of(z = of(Array, Int, 3))
         )
         @test_throws ArgumentError op(
-            typed_schema(), @varname(z[2]) => 0.1, @of(z = of(Array, Float32, 3))
+            local_z(), @varname(z[2]) => 0.1, @of(z = of(Array, Float32, 3))
         )
-        m = op(typed_schema(), @varname(z[2]) => 1, @of(z = of(Array, 3)))
+        m = op(local_z(), @varname(z[2]) => 1, @of(z = of(Array, 3)))
         @test (op === condition ? conditioned(m) : fixed(m))[@varname(z[2])] === 1.0
-        @test_throws ArgumentError op(
-            typed_schema(), @varname(z) => ones(Float32, 3), @of(z = of(Array, 3))
+        for input in (
+            @varname(z) => ones(Float32, 3),
+            (z=ones(Float32, 3),),
+            VarNamedTuple(; z=ones(Float32, 3)),
         )
+            @test_throws ArgumentError op(local_z(), input, @of(z = of(Array, 3)))
+        end
         @test_throws ArgumentError op(
-            typed_schema(), (z=ones(Float32, 3),), @of(z = of(Array, 3))
+            local_z(), @varname(z[:]) => [0.1, 0.2, 0.3], @of(z = of(Array, Float32, 3))
         )
-        @test_throws ArgumentError op(
-            typed_schema(),
-            @varname(z[:]) => [0.1, 0.2, 0.3],
-            @of(z = of(Array, Float32, 3))
-        )
-        m32 = op(typed_schema(), @varname(z[2]) => 1.0, @of(z = of(Array, Float32, 3)))
+        m32 = op(local_z(), @varname(z[2]) => 1.0, @of(z = of(Array, Float32, 3)))
         @test (op === condition ? conditioned(m32) : fixed(m32))[@varname(z[2])] === 1.0f0
-        @test_throws ArgumentError op(
-            typed_schema(), VarNamedTuple(; z=ones(Float32, 3)), @of(z = of(Array, 3))
-        )
     end
 end
 
@@ -3471,11 +3402,10 @@ end
         x[1] ~ Normal()
         return x
     end
-    @model shape_parent(child) = a ~ to_submodel(child)
     for change in (x -> x[1:1], x -> vcat(x, 3.0), x -> reshape(x, 1, 2))
         m = fix(partial_shape([1.0, 2.0], change), @varname(x[1]) => 8.0)
         @test m(Xoshiro(1)) == change([8.0, 2.0])
-        @test shape_parent(m)(Xoshiro(1)) == change([8.0, 2.0])
+        @test child_model(m)(Xoshiro(1)) == change([8.0, 2.0])
     end
     @model function nested_partial_shape(x, change)
         x = change(x)
@@ -3493,17 +3423,10 @@ end
 end
 
 @testset "layer overlay preserves whole-binding extents" begin
-    @model function child(x)
-        for i in eachindex(x)
-            x[i] ~ Normal()
-        end
-        return x
-    end
-    @model parent(child) = a ~ to_submodel(child)
     for shape in (identity, x -> reshape(x, :, 1)), recursive in (false, true)
         scope = recursive ? (DynamicPPL.Recursive(),) : ()
-        base = child(shape(zeros(2)))
-        base = recursive ? parent(base) : base
+        base = array_model(shape(zeros(2)))
+        base = recursive ? child_model(base) : base
         whole = recursive ? @varname(a.x) : @varname(x)
         first = recursive ? @varname(a.x[1]) : @varname(x[1])
         second = recursive ? @varname(a.x[2]) : @varname(x[2])
@@ -3534,7 +3457,7 @@ end
         for i in eachindex(x)
             x[i] ~ Normal()
         end
-        a ~ to_submodel(child([0.0, 0.0]), false)
+        a ~ to_submodel(array_model([0.0, 0.0]), false)
         return (x, a)
     end
     # A whole fixed owner also supplies the unprefixed child's shape.
@@ -3547,26 +3470,18 @@ end
 end
 
 @testset "incomplete local owner conversion" begin
-    @model function localz()
-        z = zeros(3)
-        for i in eachindex(z)
-            z[i] ~ Normal()
-        end
-        return z
-    end
-    @model local_owner_parent(child) = a ~ to_submodel(child)
     for (bind, remove, select) in
         ((condition, decondition, conditioned), (fix, unfix, fixed))
-        m = remove(bind(localz(); z=ones(Float32, 3)), @varname(z[2]))
+        m = remove(bind(local_z(); z=ones(Float32, 3)), @varname(z[2]))
         @test_throws ArgumentError bind(m, @varname(z[2]) => 0.1)
         changed = bind(m, @varname(z[2]) => 0.5)
         @test select(changed)[@varname(z[2])] === 0.5f0
-        @test local_owner_parent(changed)(Xoshiro(1)) == [1.0, 0.5, 1.0]
-        m = bind(localz(), @of(z = of(Array, Int, 3)), @varname(z[1]) => 1)
+        @test child_model(changed)(Xoshiro(1)) == [1.0, 0.5, 1.0]
+        m = bind(local_z(), @of(z = of(Array, Int, 3)), @varname(z[1]) => 1)
         @test_throws InexactError bind(m, @varname(z[2]) => 1.5)
         @test select(bind(m, @varname(z[2]) => 2.0))[@varname(z[2])] === 2
         # Reference-valued storage retains its type without reading the removed entry.
-        m = remove(bind(localz(); z=ones(BigFloat, 3)), @varname(z[2]))
+        m = remove(bind(local_z(); z=ones(BigFloat, 3)), @varname(z[2]))
         changed = bind(m, @varname(z[2]) => 2)
         @test select(changed)[@varname(z[2])] isa BigFloat
         @test changed(Xoshiro(1)) == [1.0, 2.0, 1.0]
@@ -3574,25 +3489,18 @@ end
 end
 
 @testset "first partial fix owns its layer" begin
-    @model function fixed_layer_array(x)
-        for i in eachindex(x)
-            x[i] ~ Normal()
-        end
-        return x
-    end
-    @model fixed_layer_parent(child) = a ~ to_submodel(child)
-    observed = condition(fixed_layer_array(zeros(3)); x=ones(1))
+    observed = condition(array_model(zeros(3)); x=ones(1))
     m = fix(observed, @varname(x[3]) => 9.0)
     @test fixed(m)[@varname(x[3])] == 9.0
     @test keys(conditioned(m)) == [@varname(x[1])]
     @test conditioned(m)[@varname(x[1])] == 1.0
     @test returned(m, (; x=[5.0, 6.0, 7.0])) == [1.0, 6.0, 9.0]
-    @test returned(fixed_layer_parent(m), (; a=(x=[5.0, 6.0, 7.0],))) == [1.0, 6.0, 9.0]
+    @test returned(child_model(m), (; a=(x=[5.0, 6.0, 7.0],))) == [1.0, 6.0, 9.0]
     @test fix(m, @varname(x[2]) => 8.0)(Xoshiro(1)) == [1.0, 8.0, 9.0]
     @test unfix(m)(Xoshiro(1)) == [1.0]
     @test unfix(m, @varname(x[3]))(Xoshiro(1)) == [1.0]
     @test_throws ArgumentError fix(observed, @varname(x[4]) => 9.0)
-    observed = condition(fixed_layer_array(zeros(3, 1)); x=ones(1, 3))
+    observed = condition(array_model(zeros(3, 1)); x=ones(1, 3))
     m = fix(observed, @varname(x[3, 1]) => 9.0)
     expected = fill(2.0, 3, 3)
     expected[1, :] .= 1.0
@@ -3602,18 +3510,13 @@ end
     @model owned_shrink(x) = (x = x[1:1]; x[1] ~ Normal(); x)
     m = fix(fix(owned_shrink([1.0, 2.0]); x=[3.0, 4.0]), @varname(x[1]) => 8.0)
     @test_throws "static size and shape" m(Xoshiro(1))
-    @test_throws "static size and shape" fixed_layer_parent(m)(Xoshiro(1))
-    @model fixed_layer_fields(x) = (x.a ~ Normal(); x.b ~ Normal(); x)
-    m = fix(condition(fixed_layer_fields((a=0.0, b=0.0)); x=(a=1.0,)), @varname(x.b) => 9.0)
+    @test_throws "static size and shape" child_model(m)(Xoshiro(1))
+    m = fix(condition(two_fields((a=0.0, b=0.0)); x=(a=1.0,)), @varname(x.b) => 9.0)
     @test m(Xoshiro(1)) == (a=1.0, b=9.0)
-    @test fixed_layer_parent(m)(Xoshiro(1)) == (a=1.0, b=9.0)
+    @test child_model(m)(Xoshiro(1)) == (a=1.0, b=9.0)
 end
 
 @testset "binding edits use their layer's owner" begin
-    @model layer_array(x) = (for i in eachindex(x)
-        x[i] ~ Normal()
-    end;
-    x)
     @model function layer_flexible(x)
         if x isa NamedTuple
             x.a ~ Normal()
@@ -3629,24 +3532,23 @@ end
     end;
     z)
     @model layer_record() = (z = (a=1.0, b=2.0); z.a ~ Normal(); z.b ~ Normal(); z)
-    @model layer_parent(child) = a ~ to_submodel(child)
 
-    m = fix(condition(layer_array(zeros(2)); x=ones(3)); x=zeros(2))
+    m = fix(condition(array_model(zeros(2)); x=ones(3)); x=zeros(2))
     for edit in
         (m -> condition(m, @varname(x[3]) => 7.0), m -> m | (@varname(x[3]) => 7.0,))
         changed = edit(m)
         @test changed(Xoshiro(1)) == zeros(2)
         @test unfix(changed)(Xoshiro(1)) == [1.0, 1.0, 7.0]
-        @test layer_parent(unfix(changed))(Xoshiro(1)) == [1.0, 1.0, 7.0]
+        @test child_model(unfix(changed))(Xoshiro(1)) == [1.0, 1.0, 7.0]
     end
-    m = fix(condition(layer_array(zeros(2)); x=ones(2)); x=zeros(3))
+    m = fix(condition(array_model(zeros(2)); x=ones(2)); x=zeros(3))
     @test_throws ArgumentError condition(m, @varname(x[3]) => 7.0)
-    m = fix(condition(layer_array(zeros(2)); x=Float32[1, 2]); x=zeros(2))
+    m = fix(condition(array_model(zeros(2)); x=Float32[1, 2]); x=zeros(2))
     @test_throws ArgumentError condition(m, @varname(x[1]) => 0.1)
     @test unfix(condition(m, @varname(x[1]) => 0.5))(Xoshiro(1)) == Float32[0.5, 2]
     @test eltype(unfix(condition(m, @varname(x[1]) => 0.5))(Xoshiro(1))) === Float32
 
-    m = condition(fix(layer_array(zeros(2)); x=zeros(3)); x=ones(2))
+    m = condition(fix(array_model(zeros(2)); x=zeros(3)); x=ones(2))
     @test fix(m, @varname(x[3]) => 7.0)(Xoshiro(1)) == [0.0, 0.0, 7.0]
     @test unfix(m)(Xoshiro(1)) == ones(2)
     m = fix(condition(layer_local(); z=ones(Float32, 3)); z=zeros(3))
@@ -3882,11 +3784,14 @@ end
                 (@varname(x[[1, 2]][3]), ones(3), @varname(x[[1, 2]])),
                 (@varname(x[1:1][2][1]), 5.0, @varname(x[1:1])),
             )
-                @test_throws "Cannot bind `$address`: index is outside the storage at `$owner`" bind(
-                    original, address => value
-                )
-                @test_throws "Cannot remove `$address`: index is outside the storage at `$owner`" remove(
-                    original, address
+                test_edit_errors(
+                    bind,
+                    remove,
+                    original,
+                    address,
+                    value,
+                    "Cannot bind `$address`: index is outside the storage at `$owner`",
+                    "Cannot remove `$address`: index is outside the storage at `$owner`",
                 )
             end
         end
@@ -3912,11 +3817,14 @@ end
                     @varname(x[[2, 3]][1])
                 ),
             )
-                @test_throws "Cannot bind `$invalid`: index is outside the storage at `$owner`" bind(
-                    bound, invalid => 9.0
-                )
-                @test_throws "Cannot remove `$invalid`: index is outside the storage at `$owner`" remove(
-                    bound, invalid
+                test_edit_errors(
+                    bind,
+                    remove,
+                    bound,
+                    invalid,
+                    9.0,
+                    "Cannot bind `$invalid`: index is outside the storage at `$owner`",
+                    "Cannot remove `$invalid`: index is outside the storage at `$owner`",
                 )
                 @test select(bind(bound, last => 9.0)) ==
                     select(bind(bound, @varname(x[2][5]) => 9.0))
@@ -3958,20 +3866,26 @@ end
             @test select(remove(bound, address)) ==
                 select(remove(bound, @varname(x[[2, 3]][1][5])))
             for invalid in (@varname(x[mask][1][6]), @varname(x[[2, 3]][1][6]))
-                @test_throws "Cannot bind `$invalid`: index is outside the storage" bind(
-                    bound, invalid => 9.0
-                )
-                @test_throws "Cannot remove `$invalid`: index is outside the storage" remove(
-                    bound, invalid
+                test_edit_errors(
+                    bind,
+                    remove,
+                    bound,
+                    invalid,
+                    9.0,
+                    "Cannot bind `$invalid`: index is outside the storage",
+                    "Cannot remove `$invalid`: index is outside the storage",
                 )
             end
             owned = bind(nested_vectors(); x=[ones(3), ones(5)])
             for invalid in (@varname(x[mask]), @varname(x[[2, 3]]))
-                @test_throws "Cannot bind `$invalid`: index is outside the storage" bind(
-                    owned, invalid => [ones(5), ones(2)]
-                )
-                @test_throws "Cannot remove `$invalid`: index is outside the storage" remove(
-                    owned, invalid
+                test_edit_errors(
+                    bind,
+                    remove,
+                    owned,
+                    invalid,
+                    [ones(5), ones(2)],
+                    "Cannot bind `$invalid`: index is outside the storage",
+                    "Cannot remove `$invalid`: index is outside the storage",
                 )
             end
         end
@@ -3991,11 +3905,14 @@ end
                     @varname(x[[2, 3]][3]),
                     @varname(x[convert_mask([false, false, false])][1]),
                 )
-                    @test_throws "Cannot bind `$invalid`: index is outside the storage" bind(
-                        bound, invalid => ones(2)
-                    )
-                    @test_throws "Cannot remove `$invalid`: index is outside the storage" remove(
-                        bound, invalid
+                    test_edit_errors(
+                        bind,
+                        remove,
+                        bound,
+                        invalid,
+                        ones(2),
+                        "Cannot bind `$invalid`: index is outside the storage",
+                        "Cannot remove `$invalid`: index is outside the storage",
                     )
                 end
             end
@@ -4008,11 +3925,14 @@ end
             for inds in (Int[], 3:2, 0:-1, 3:2:2, 1:-1:2, Base.OneTo(0), falses(3))
                 invalid = @varname(x[inds][1])
                 owner = @varname(x[inds])
-                @test_throws "Cannot bind `$invalid`: index is outside the storage at `$owner`" bind(
-                    bound, invalid => 9.0
-                )
-                @test_throws "Cannot remove `$invalid`: index is outside the storage at `$owner`" remove(
-                    bound, invalid
+                test_edit_errors(
+                    bind,
+                    remove,
+                    bound,
+                    invalid,
+                    9.0,
+                    "Cannot bind `$invalid`: index is outside the storage at `$owner`",
+                    "Cannot remove `$invalid`: index is outside the storage at `$owner`",
                 )
                 @test select(bind(bound, owner => Float64[])) == select(bound)
                 @test select(remove(bound, owner)) == select(bound)
@@ -4040,11 +3960,14 @@ end
                 @varname(x[2, Int[]][1]),
                 @varname(x[falses(2), 1][1]),
             )
-                @test_throws "Cannot bind `$invalid`: index is outside the storage" bind(
-                    bound, invalid => 9.0
-                )
-                @test_throws "Cannot remove `$invalid`: index is outside the storage" remove(
-                    bound, invalid
+                test_edit_errors(
+                    bind,
+                    remove,
+                    bound,
+                    invalid,
+                    9.0,
+                    "Cannot bind `$invalid`: index is outside the storage",
+                    "Cannot remove `$invalid`: index is outside the storage",
                 )
             end
             removed = remove(bound, @varname(x[2, 1:2][1][5]))
@@ -4110,11 +4033,13 @@ end
         "Bind addresses with the tilde's index count, or supply storage for `$owner` " *
         "with an argument or a binding template (`@of`). In the template, use " *
         "absolute names, including any explicit model prefix."
-    distinct = ArgumentError(
-        "`x` has growable bindings with 1 index (e.g. `x[2]`), but tilde `x[2, 1]` " *
-        "uses 2 indices; linear and Cartesian indices are distinct. " *
-        advice("x"),
+    mismatch(owner, example, lhs, stored, used; cartesian=true) = ArgumentError(
+        "`$owner` has growable bindings with $stored $(stored == 1 ? "index" : "indices") (e.g. `$example`), " *
+        "but tilde `$lhs` uses $used $(used == 1 ? "index" : "indices")$(cartesian ? "; " : ". ")" *
+        (cartesian ? "linear and Cartesian indices are distinct. " : "") *
+        advice(owner),
     )
+    distinct = mismatch("x", "x[2]", "x[2, 1]", 1, 2)
     with_logger(NullLogger()) do
         for (bind, remove, listed) in
             ((condition, decondition, conditioned), (fix, unfix, fixed))
@@ -4124,23 +4049,18 @@ end
             @test DynamicPPL._get_model_binding(linear, @varname(x[2, 1])) === nothing
             @test bind(growable_leaf(), @varname(x[2, 1]) => 3.0)(Xoshiro(1))[2, 1] == 3.0
             @test bind(growable_linear(), @varname(x[2]) => 3.0)(Xoshiro(1))[2] == 3.0
-            @test_throws ArgumentError(
-                "`x` has growable bindings with 2 indices (e.g. `x[2, 1]`), but tilde " *
-                "`x[2]` uses 1 index; linear and Cartesian indices are distinct. " *
-                advice("x"),
-            ) bind(growable_linear(), @varname(x[2, 1]) => 3.0)(Xoshiro(1))
+            @test_throws mismatch("x", "x[2, 1]", "x[2]", 2, 1) bind(
+                growable_linear(), @varname(x[2, 1]) => 3.0
+            )(
+                Xoshiro(1)
+            )
             prefixed = bind(growable_parent(), @varname(p[1, 2].x[2]) => 3.0)
-            @test_throws ArgumentError(
-                "`p[1, 2].x` has growable bindings with 1 index (e.g. `p[1, 2].x[2]`), " *
-                "but tilde `p[1, 2].x[2, 1]` uses 2 indices; linear and Cartesian " *
-                "indices are distinct. " *
-                advice("p[1, 2].x"),
-            ) prefixed(Xoshiro(1))
-            @test_throws ArgumentError(
-                "`a.x` has growable bindings with 1 index (e.g. `a.x[2]`), but tilde " *
-                "`a.x[2, 1]` uses 2 indices; linear and Cartesian indices are distinct. " *
-                advice("a.x"),
-            ) bind(prefix(growable_leaf(), @varname(a)), @varname(a.x[2]) => 3.0)(
+            @test_throws mismatch("p[1, 2].x", "p[1, 2].x[2]", "p[1, 2].x[2, 1]", 1, 2) prefixed(
+                Xoshiro(1)
+            )
+            @test_throws mismatch("a.x", "a.x[2]", "a.x[2, 1]", 1, 2) bind(
+                prefix(growable_leaf(), @varname(a)), @varname(a.x[2]) => 3.0
+            )(
                 Xoshiro(1)
             )
             model = prefix(growable_leaf(), @varname(p))
@@ -4149,11 +4069,11 @@ end
             @test_throws ArgumentError(
                 "Binding template entry `x` uses a local name; use the absolute name `p.x`."
             ) bind(model, @of(x = of(Array, 2, 2)), @varname(p.x[2]) => 3.0)
-            @test_throws ArgumentError(
-                "`y` has growable bindings with 1 index (e.g. `y[2]`), but tilde " *
-                "`y[2, 1]` uses 2 indices; linear and Cartesian indices are distinct. " *
-                advice("y"),
-            ) bind(growable_y(), @varname(y[2]) => 3.0)(Xoshiro(1))
+            @test_throws mismatch("y", "y[2]", "y[2, 1]", 1, 2) bind(
+                growable_y(), @varname(y[2]) => 3.0
+            )(
+                Xoshiro(1)
+            )
             @test bind(growable_y(), @of(y = of(Array, 2, 2)), @varname(y[2]) => 3.0)(
                 Xoshiro(1)
             )[
@@ -4163,11 +4083,7 @@ end
                 bind(growable_auto(), @varname(a.x[2]) => 3.0),
                 growable_auto(bind(growable_leaf(), @varname(x[2]) => 3.0)),
             )
-                @test_throws ArgumentError(
-                    "`a.x` has growable bindings with 1 index (e.g. `a.x[2]`), but tilde " *
-                    "`a.x[2, 1]` uses 2 indices; linear and Cartesian indices are distinct. " *
-                    advice("a.x"),
-                ) model(Xoshiro(1))
+                @test_throws mismatch("a.x", "a.x[2]", "a.x[2, 1]", 1, 2) model(Xoshiro(1))
             end
             @test bind(
                 growable_auto(), @of(a = (x=of(Array, 2, 2),)), @varname(a.x[2]) => 3.0
@@ -4230,23 +4146,23 @@ end
             )[1] == 3.0
             @test bind(growable_leaf(), @varname(x[1:0]) => Float64[])(Xoshiro(1)) ==
                 growable_leaf()(Xoshiro(1))
-            @test_throws ArgumentError(
-                "`x` has growable bindings with 1 index (e.g. `x[2]`), but tilde " *
-                "`x[1, 1]` uses 2 indices; linear and Cartesian indices are distinct. " *
-                advice("x"),
-            ) bind(growable_first(), @varname(x[2]) => 3.0)(Xoshiro(1))
-            @test_throws ArgumentError(
-                "`x` has growable bindings with 1 index (e.g. `x[1]`), but tilde " *
-                "`x[:, 1]` uses 2 indices; linear and Cartesian indices are distinct. " *
-                advice("x"),
-            ) bind(growable_colon(), @varname(x[1:2]) => [5.0, 6.0])(Xoshiro(1))
+            @test_throws mismatch("x", "x[2]", "x[1, 1]", 1, 2) bind(
+                growable_first(), @varname(x[2]) => 3.0
+            )(
+                Xoshiro(1)
+            )
+            @test_throws mismatch("x", "x[1]", "x[:, 1]", 1, 2) bind(
+                growable_colon(), @varname(x[1:2]) => [5.0, 6.0]
+            )(
+                Xoshiro(1)
+            )
             @test bind(growable_colon(), @varname(x[1:2, 1]) => [5.0, 6.0])(Xoshiro(1)) ==
                 [5.0; 6.0;;]
-            @test_throws ArgumentError(
-                "`x` has growable bindings with 2 indices (e.g. `x[1, 2]`), but tilde " *
-                "`x[1, 2, 1]` uses 3 indices. " *
-                advice("x"),
-            ) bind(growable_cube(), @varname(x[1, 2]) => 3.0)(Xoshiro(1))
+            @test_throws mismatch("x", "x[1, 2]", "x[1, 2, 1]", 2, 3; cartesian=false) bind(
+                growable_cube(), @varname(x[1, 2]) => 3.0
+            )(
+                Xoshiro(1)
+            )
             @test bind(growable_cube(), @varname(x[1, 2, 1]) => 3.0)(Xoshiro(1))[1, 2, 1] ==
                 3.0
         end
@@ -4264,20 +4180,18 @@ Distributions.loglikelihood(d::PlaceholderStateNormal, p::PlaceholderState) = lo
 
 @testset "placeholders in whole struct LHS values" begin
     @model state_lhs(p) = p ~ PlaceholderStateNormal()
-    @model state_field(p) = (p.a ~ Normal(); p.a)
-    @model state_parent(child) = a ~ to_submodel(child)
     for value in (nothing, missing)
         original = state_lhs(PlaceholderState(value))
         @test_throws "LHS variable `p` contains `$value`" logjoint(original, (;))
         @test_throws "LHS variable `a.p` contains `$value`" logjoint(
-            state_parent(original), (;)
+            child_model(original), (;)
         )
         # A field not read by a tilde may still contain a placeholder.
         p = ObservationRecord(1.0, PlaceholderState(value))
-        @test state_field(p)(Xoshiro(1)) == 1.0
+        @test field_return(p)(Xoshiro(1)) == 1.0
         for bind in (condition, fix)
             @test_throws r"ArgumentError: Cannot bind `p`" bind(original; p=original.args.p)
-            @test_throws r"ArgumentError: Cannot bind `p`" bind(state_field(p); p=p)
+            @test_throws r"ArgumentError: Cannot bind `p`" bind(field_return(p); p=p)
         end
     end
     for T in (Float32, Float64, BigFloat)
@@ -4384,13 +4298,6 @@ end
 end
 
 @testset "partial edits admit named array storage families" begin
-    @model function array_storage(x)
-        for i in eachindex(x)
-            x[i] ~ Normal()
-        end
-        return x
-    end
-    @model storage_parent(child) = a ~ to_submodel(child)
     @model nested_storage(x) = (x.a[1] ~ Normal(); x.a[2] ~ Normal(); x)
     @model indexed_storage(x) = (x[1][1] ~ Normal(); x[1][2] ~ Normal(); x)
     components = ComponentVector(; a=1.0, b=2.0)
@@ -4416,7 +4323,7 @@ end
         ((condition, decondition, conditioned), (fix, unfix, fixed))
         # Each rejected family retains whole bindings and whole removal; immutable
         # storage cannot be made latent, as tested in "arguments in unwritable storage".
-        whole = bind(array_storage(data); x=data)
+        whole = bind(array_model(data); x=data)
         @test listing(whole)[@varname(x)] === data
         if bind === fix || !(data isa Union{SVector,AbstractRange})
             @test !haskey(listing(remove(whole, @varname(x))), @varname(x))
@@ -4424,24 +4331,20 @@ end
         i = lastindex(data)
         vn = @varname(x[i])
         message = r"x.*container type.*whole.*collect"
-        @test_throws message bind(array_storage(data), vn => 1)
+        @test_throws message bind(array_model(data), vn => 1)
         @test_throws message remove(whole, vn)
         removal_message = r"ArgumentError: Cannot remove.*x.*container type.*whole.*collect"
-        @test_throws removal_message remove(array_storage(data), vn)
-        @test_throws removal_message remove(array_storage(data), DynamicPPL.Recursive(), vn)
-        @test_throws removal_message remove(
-            storage_parent(array_storage(data)), DynamicPPL.Recursive(), @varname(a.x[i])
-        )(
-            Xoshiro(1)
-        )
-        @test_throws removal_message remove(
-            storage_parent(whole), DynamicPPL.Recursive(), @varname(a.x[i])
-        )(
-            Xoshiro(1)
-        )
-        @test_throws message bind(
-            storage_parent(array_storage(data)), @varname(a.x[i]) => 1
-        )(
+        for scope in ((), (DynamicPPL.Recursive(),))
+            @test_throws removal_message remove(array_model(data), scope..., vn)
+        end
+        for model in (array_model(data), whole)
+            @test_throws removal_message remove(
+                child_model(model), DynamicPPL.Recursive(), @varname(a.x[i])
+            )(
+                Xoshiro(1)
+            )
+        end
+        @test_throws message bind(child_model(array_model(data)), @varname(a.x[i]) => 1)(
             Xoshiro(1)
         )
         @test_throws message bind(nested_storage((a=data,)), @varname(x.a[i]) => 1)
@@ -4460,29 +4363,27 @@ end
         ((condition, decondition, conditioned), (fix, unfix, fixed))
 
         j = lastindex(good)
-        @test unfix(array_storage(good), @varname(x[j]))(Xoshiro(1)) == good
-        @test unfix(array_storage(good), DynamicPPL.Recursive(), @varname(x[j]))(
-            Xoshiro(1)
-        ) == good
-        @test unfix(
-            storage_parent(array_storage(good)), DynamicPPL.Recursive(), @varname(a.x[j])
-        )(
-            Xoshiro(1)
-        ) == good
-        valid = bind(bind(array_storage(good); x=good), @varname(x[j]) => 3.0)
+        for model in (
+            unfix(array_model(good), @varname(x[j])),
+            unfix(array_model(good), DynamicPPL.Recursive(), @varname(x[j])),
+            unfix(child_model(array_model(good)), DynamicPPL.Recursive(), @varname(a.x[j])),
+        )
+            @test model(Xoshiro(1)) == good
+        end
+        valid = bind(bind(array_model(good); x=good), @varname(x[j]) => 3.0)
         @test listing(valid)[@varname(x[j])] == 3.0
         @test axes(listing(valid)[@varname(x)]) == axes(good)
         expected = copy(good)
         expected[j] = 3.0
         @test valid(Xoshiro(1)) == expected
         @test valid(Xoshiro(1)) isa typeof(good)
-        @test storage_parent(valid)(Xoshiro(1)) == expected
-        removed = remove(storage_parent(valid), DynamicPPL.Recursive(), @varname(a.x[j]))
+        @test child_model(valid)(Xoshiro(1)) == expected
+        removed = remove(child_model(valid), DynamicPPL.Recursive(), @varname(a.x[j]))
         @test returned(removed, Dict(@varname(a.x[j]) => 4.0))[j] ==
             (bind === condition ? 4.0 : good[j])
         @test !haskey(listing(remove(valid, @varname(x[j]))), @varname(x[j]))
         @test !haskey(
-            conditioned(decondition(array_storage(good), @varname(x[j]))), @varname(x[j])
+            conditioned(decondition(array_model(good), @varname(x[j]))), @varname(x[j])
         )
         @test listing(bind(nested_storage((a=good,)), @varname(x.a[j]) => 3.0))[@varname(
             x.a[j]
@@ -4500,19 +4401,6 @@ Base.size(x::LazyArgumentStorage) = (x.n,)
 Base.getindex(::LazyArgumentStorage{T}, i::Int) where {T} = T(1:i)
 
 @testset "arguments in unwritable storage" begin
-    @model function range_storage(x)
-        for i in eachindex(x)
-            x[i] ~ Normal()
-        end
-        return x
-    end
-    @model function inner_storage(x)
-        for i in eachindex(x), j in eachindex(x[i])
-            x[i][j] ~ Normal()
-        end
-        return x
-    end
-    @model range_parent(child) = a ~ to_submodel(child)
     @model whole_storage(x) = (x ~ MvNormal(zeros(2), I); x)
     @model keyword_storage(; x=1.0:2.0) = (x ~ MvNormal(zeros(2), I); x)
     function message(vn, storage)
@@ -4522,27 +4410,25 @@ Base.getindex(::LazyArgumentStorage{T}, i::Int) where {T} = T(1:i)
     for data in (1:2, 1.0:2.0, SVector(big(1.0), big(2.0)), Fill(big(1.0), 2))
         # Whole bindings work, including ones whose value cannot be written to.
         for bind in (condition, fix)
-            @test bind(range_storage(data); x=[3.0, 4.0])(Xoshiro(1)) == [3.0, 4.0]
-            @test bind(range_storage(data); x=data)(Xoshiro(1)) === data
+            @test bind(array_model(data); x=[3.0, 4.0])(Xoshiro(1)) == [3.0, 4.0]
+            @test bind(array_model(data); x=data)(Xoshiro(1)) === data
         end
-        @test unfix(fix(range_storage(data); x=[3.0, 4.0]))(Xoshiro(1)) === data
-        @test fix(inner_storage([data]); x=[data])(Xoshiro(1)) == [data]
-        @test_throws message("x", data) decondition(range_storage(data))
-        @test_throws message("x", data) decondition(range_storage(data), @varname(x))
-        @test_throws message("x", data) decondition(
-            range_storage(data), DynamicPPL.Recursive()
-        )
+        @test unfix(fix(array_model(data); x=[3.0, 4.0]))(Xoshiro(1)) === data
+        @test fix(nested_array_model([data]); x=[data])(Xoshiro(1)) == [data]
+        for names in ((), (@varname(x),), (DynamicPPL.Recursive(),))
+            @test_throws message("x", data) decondition(array_model(data), names...)
+        end
         @test_throws message("x", data) unfix(
-            decondition(fix(range_storage(data); x=[3.0, 4.0]))
+            decondition(fix(array_model(data); x=[3.0, 4.0]))
         )
         @test_throws message("a.x", data) decondition(
-            range_parent(range_storage(data)), DynamicPPL.Recursive(), @varname(a.x)
+            child_model(array_model(data)), DynamicPPL.Recursive(), @varname(a.x)
         )(
             Xoshiro(1)
         )
         # The call cannot see that a whole tilde writes nothing into the argument.
         @test_throws message("x", data) decondition(whole_storage(data))
-        @test length(decondition(range_storage(collect(data)))(Xoshiro(1))) == 2
+        @test length(decondition(array_model(collect(data)))(Xoshiro(1))) == 2
     end
     range = 1.0:2.0
     @test_throws message("x", range) decondition(keyword_storage())
@@ -4567,23 +4453,23 @@ Base.getindex(::LazyArgumentStorage{T}, i::Int) where {T} = T(1:i)
     )
         @test length(decondition(whole_storage(data))(Xoshiro(1))) == 2
     end
-    @test decondition(range_storage(sparsevec([1.0, 2.0])))(Xoshiro(1)) isa SparseVector
+    @test decondition(array_model(sparsevec([1.0, 2.0])))(Xoshiro(1)) isa SparseVector
     lazy = LazyArgumentStorage{UnitRange{Int}}(2)
-    @test_throws message("x[1]", 1:1) decondition(inner_storage(lazy))
-    @test decondition(inner_storage(LazyArgumentStorage{Vector{Int}}(2))) isa
+    @test_throws message("x[1]", 1:1) decondition(nested_array_model(lazy))
+    @test decondition(nested_array_model(LazyArgumentStorage{Vector{Int}}(2))) isa
         DynamicPPL.Model
     @static if isdefined(Base, :Memory)
         data = Memory{Any}(undef, 1)
         data[1] = range
-        @test_throws message("x[1]", range) decondition(inner_storage(data))
+        @test_throws message("x[1]", range) decondition(nested_array_model(data))
         data[1] = collect(range)
-        @test decondition(inner_storage(data)) isa DynamicPPL.Model
+        @test decondition(nested_array_model(data)) isa DynamicPPL.Model
     end
     # A self-referential argument must not make the check walk without end.
     cyclic = Any[1.0, 2.0]
     cyclic[2] = cyclic
     @test DynamicPPL._check_latent_storage(cyclic, @varname(x)) === nothing
-    @test_throws r"shared by `x` and `x`" decondition(range_storage(cyclic))
+    @test_throws r"shared by `x` and `x`" decondition(array_model(cyclic))
 end
 
 @testset "latent branches of partially bound arguments" begin
@@ -4763,12 +4649,11 @@ Distributions.loglikelihood(::NumericArrayDistribution, ::CountedNumericArray) =
             values = NamedTuple{(
                 :x, AbstractPPL.getsym(first_vn), AbstractPPL.getsym(later_vn)
             )}((1.0, first_value, later_value))
-            @test_throws "Cannot bind `$first_vn` to a value containing" bind(
-                binding_order(), values
-            )
-            @test_throws "Cannot bind `$first_vn` to a value containing" bind(
-                binding_order(), VarNamedTuple(values)
-            )
+            for input in (values, VarNamedTuple(values))
+                @test_throws "Cannot bind `$first_vn` to a value containing" bind(
+                    binding_order(), input
+                )
+            end
             @test_throws "AbstractDict inputs are not supported" bind(
                 binding_order(),
                 Dict(@varname(x) => 1.0, first_vn => first_value, later_vn => later_value),
@@ -4952,14 +4837,13 @@ end
     ) isa Model
 end
 @testset "numeric argument leaves" begin
-    @model scalar_leaves(x) = (x[1] ~ Normal(); x[2] ~ Normal(); x)
     x = fill(MutableNumericAliasField(1.0), 2)
-    @test decondition(scalar_leaves(x)) isa Model
-    @test decondition(scalar_leaves(x), @varname(x[1])) isa Model
+    @test decondition(two_elements(x)) isa Model
+    @test decondition(two_elements(x), @varname(x[1])) isa Model
     for T in (BigFloat, BigInt)
         x = fill(T(1), 2)
-        @test returned(decondition(scalar_leaves(x)), (x=T[2, 3],)) == T[2, 3]
-        @test returned(decondition(scalar_leaves(x), @varname(x[1])), (x=T[2, 3],)) ==
+        @test returned(decondition(two_elements(x)), (x=T[2, 3],)) == T[2, 3]
+        @test returned(decondition(two_elements(x), @varname(x[1])), (x=T[2, 3],)) ==
             T[2, 1]
     end
 end
@@ -5054,12 +4938,11 @@ end
         end
         return before
     end
-    @model parent(child) = a ~ to_submodel(child)
     for T in (Float32, Float64, BigFloat), original in (T[5], T[5, 6, 7])
         model = decondition(condition(stale_shape(original); x=T[1, 2, 3]), @varname(x[1]))
         @test returned(model, (x=T[9, 0, 0],)) == T(5)
         nested = decondition(
-            condition(parent(stale_shape(original)), @varname(a.x) => T[1, 2, 3]),
+            condition(child_model(stale_shape(original)), @varname(a.x) => T[1, 2, 3]),
             @varname(a.x[1]),
         )
         @test returned(nested, (a=(x=T[9, 0, 0],),)) == T(5)
@@ -5071,23 +4954,14 @@ end
     @test derivative == 1.0
 end
 @testset "child bindings promote mixed payload types" begin
-    @model function promote_child(x)
-        for i in eachindex(x)
-            x[i] ~ Normal()
-        end
-        return x
-    end
-    @model promote_parent(child) = a ~ to_submodel(child)
     model = decondition(
-        condition(
-            promote_parent(promote_child(zeros(3))), @varname(a.x) => Float32[1, 2, 3]
-        ),
+        condition(child_model(array_model(zeros(3))), @varname(a.x) => Float32[1, 2, 3]),
         @varname(a.x[1]),
     )
     @test returned(model, (a=(x=[9.0, 0.0, 0.0],),)) isa Vector{Float64}
     @model function promote_body(n)
         m ~ Normal()
-        a ~ to_submodel(promote_child(fill(m, n)))
+        a ~ to_submodel(array_model(fill(m, n)))
         return a
     end
     body = decondition(
@@ -5202,7 +5076,6 @@ struct BufferReal <: Real
     buffer::Vector{Float64}
 end
 @testset "unsupported latent argument leaves" begin
-    @model fields(x) = (x.a[1] ~ Normal(); x)
     @model dictionary(x, k) = (x[k] ~ Normal(); x)
     @model numeric(x) = (x.value[:k] ~ Normal(); x)
     @model covariate(x, d) = (x[1] ~ Normal(); 0.0 ~ Normal(first(values(d))); x)
@@ -5221,7 +5094,7 @@ end
     )
     a = [0.0]
     d = IdDict{Any,Any}()
-    model = decondition(fields((; a, d)), @varname(x.a))
+    model = decondition(first_field_element((; a, d)), @varname(x.a))
     d[Ref(1.0)] = 0.0
     @test_throws r"ArgumentError: .*argument `x`.*dictionary key" returned(
         model, (x=(a=[0.5],),)
@@ -5231,11 +5104,11 @@ end
         child(model), (sub=(x=(a=[0.5],),),)
     )
     for bind in (condition, fix)
-        bound = bind(fields((; a, d)), @varname(x.a) => [0.5])
+        bound = bind(first_field_element((; a, d)), @varname(x.a) => [0.5])
         @test returned(bound, (;)).d === d
     end
     n = CheckedNumber{Any}(0.0)
-    model = decondition(fields((a=[0.0], n=n)))
+    model = decondition(first_field_element((a=[0.0], n=n)))
     n.value = [0.0]
     @test_throws r"ArgumentError: .*argument `x`.*CheckedNumber" returned(
         model, (x=(a=[0.5],),)
@@ -5252,11 +5125,11 @@ end
         ImmutableCheckedNumber([0.0]),
         ImmutableCheckedNumber((buffer=[0.0],)),
     )
-        model = decondition(fields((a=[0.0], n=n)))
+        model = decondition(first_field_element((a=[0.0], n=n)))
         @test_throws r"ArgumentError: .*argument `x`.*number `.*CheckedNumber.*reaches mutable storage.*outside the number" returned(
             model, (x=(a=[0.5],),)
         )
-        bound = decondition(fields((a=[0.0], n=n)), @varname(x.a))
+        bound = decondition(first_field_element((a=[0.0], n=n)), @varname(x.a))
         @test logjoint(bound, (x=(a=[0.5],),)) ≈ logpdf(Normal(), 0.5)
     end
     n = CheckedNumber(Dict(:k => 0.0))
@@ -5285,7 +5158,7 @@ end
         ForwardDiff.Dual{Nothing}(0.0, 1.0),
         ForwardDiff.Dual{Nothing}(big"0.0", big"1.0"),
     )
-        @test logjoint(decondition(fields((a=[0.0], n=n))), (x=(a=[0.5],),)) ≈
+        @test logjoint(decondition(first_field_element((a=[0.0], n=n))), (x=(a=[0.5],),)) ≈
             logpdf(Normal(), 0.5)
     end
     @model scalar(x) = (x ~ Normal(); x)
@@ -5297,9 +5170,8 @@ end
     )
         @test returned(decondition(scalar(n)), (; x=n)) === n
     end
-    @model vector(x) = (x[1] ~ Normal(); x)
     data = BigFloat[0.0]
-    model = decondition(vector(data))
+    model = decondition(first_element(data))
     @test returned(model, (x=BigFloat[0.5],)) == BigFloat[0.5]
     @test logjoint(model, (x=BigFloat[0.5],)) ≈ logpdf(Normal(), big"0.5")
     @test data == BigFloat[0.0]
@@ -5443,14 +5315,12 @@ end
     end
     @model binding_parent(m) = b ~ to_submodel(m)
     for bind in (condition, fix)
-        bound = bind(binding_dynamic_index(zeros(2), 1), @varname(a[2]) => 3.0)
-        @test_throws r"ArgumentError: Submodel tilde .*model argument `a`.*local LHS" bound(
-            Xoshiro(1)
-        )
-        bound = bind(binding_dynamic_index(zeros(2), 1), @varname(a[1]) => 3.0)
-        @test_throws r"ArgumentError: Submodel tilde .*model argument `a`.*local LHS" bound(
-            Xoshiro(1)
-        )
+        for address in (@varname(a[2]), @varname(a[1]))
+            bound = bind(binding_dynamic_index(zeros(2), 1), address => 3.0)
+            @test_throws r"ArgumentError: Submodel tilde .*model argument `a`.*local LHS" bound(
+                Xoshiro(1)
+            )
+        end
         @test bind(local_siblings(), @varname(a.obs) => 3.0)(Xoshiro(1)) ==
             (obs=3.0, child=2.0)
         @test bind(binding_branch(1.0, true); a=3.0)(Xoshiro(1)) == 3.0
@@ -5460,19 +5330,16 @@ end
             (binding_siblings((child=0.0, obs=1.0)), @varname(a.obs), @varname(a.child)),
             (binding_indices(zeros(2)), @varname(a[2]), @varname(a[1])),
         )
-            bound = bind(m, address => 3.0)
-            @test_throws r"ArgumentError: Submodel tilde .*model argument `a`.*local LHS" bound(
-                Xoshiro(1)
+            for (model, target) in (
+                (m, address),
+                (m, child_address),
+                (prefix(m, @varname(p)), AbstractPPL.prefix(address, @varname(p))),
             )
-            bound = bind(m, child_address => 3.0)
-            @test_throws r"ArgumentError: Submodel tilde .*model argument `a`.*local LHS" bound(
-                Xoshiro(1)
-            )
-            pm = prefix(m, @varname(p))
-            bound = bind(pm, AbstractPPL.prefix(address, @varname(p)) => 3.0)
-            @test_throws r"ArgumentError: Submodel tilde .*model argument `a`.*local LHS" bound(
-                Xoshiro(1)
-            )
+                bound = bind(model, target => 3.0)
+                @test_throws r"ArgumentError: Submodel tilde .*model argument `a`.*local LHS" bound(
+                    Xoshiro(1)
+                )
+            end
         end
     end
 end
@@ -5494,34 +5361,24 @@ end
 end
 
 @testset "NamedTuple fields use property addresses" begin
-    @model fields(x) = (x.a ~ Normal(); x.b ~ Normal(); x)
     @model nested_fields(x) = (x.a[1].b ~ Normal(); x)
     @model indexed(x, i) = (x[i] ~ Normal(); x)
     @model local_indexed(i) = (x = (a=1.0, b=2.0); x[i] ~ Normal(); x)
-    @model parent(c) = child ~ to_submodel(c)
     @model local_fields() = (x = (a=0.0, b=0.0); x.a ~ Normal(); x.b ~ Normal(); x)
+    @model body_index(x, i) = (x.a ~ Normal(); x[i])
     data = (a=1.0, b=2.0)
-    for (index, message, removal) in (
-        (
-            1,
-            "Integer indexing into a NamedTuple at `x[1]` is unsupported; use `x.a` instead.",
-            "Cannot remove `x[1]`: integer indexing into a NamedTuple is unsupported; use `x.a` instead.",
-        ),
-        (
-            :a,
-            "Symbol indexing into a NamedTuple at `x[:a]` is unsupported; use `x.a` instead.",
-            "Cannot remove `x[:a]`: Symbol indexing into a NamedTuple is unsupported; use `x.a` instead.",
-        ),
-    )
+    for (index, kind) in ((1, "Integer"), (:a, "Symbol"))
+        address = index isa Symbol ? "x[:a]" : "x[1]"
+        message = "$kind indexing into a NamedTuple at `$address` is unsupported; use `x.a` instead."
+        removal = "Cannot remove `$address`: $(index isa Symbol ? kind : lowercase(kind)) indexing into a NamedTuple is unsupported; use `x.a` instead."
         vn = @varname(x[index])
         @test_throws ArgumentError(message) indexed(data, index)(Xoshiro(1))
         @test_throws ArgumentError(message) local_indexed(index)(Xoshiro(1))
-        @test fields(data)(Xoshiro(1)) == data
+        @test two_fields(data)(Xoshiro(1)) == data
         # Ordinary indexing in the body is unaffected.
-        @model body_index(x, i) = (x.a ~ Normal(); x[i])
         @test body_index(data, index)(Xoshiro(1)) == 1.0
         for (bind, remove) in ((condition, decondition), (fix, unfix))
-            for model in (fields(data), bind(local_fields(); x=data))
+            for model in (two_fields(data), bind(local_fields(); x=data))
                 @test_throws ArgumentError(message) bind(model, vn => 3.0)
                 @test bind(model, @varname(x.a) => 3.0)(Xoshiro(1)) == (a=3.0, b=2.0)
                 for scope in ((), (DynamicPPL.Recursive(),))
@@ -5532,18 +5389,21 @@ end
             child_vn = AbstractPPL.append_optic(
                 @varname(child), AbstractPPL.varname_to_optic(vn)
             )
-            @test_throws ArgumentError bind(parent(fields(data)), child_vn => 3.0)(
+            @test_throws ArgumentError bind(named_child(two_fields(data)), child_vn => 3.0)(
                 Xoshiro(1)
             )
-            @test bind(parent(fields(data)), @varname(child.x.a) => 3.0)(Xoshiro(1)) ==
-                (a=3.0, b=2.0)
+            @test bind(named_child(two_fields(data)), @varname(child.x.a) => 3.0)(
+                Xoshiro(1)
+            ) == (a=3.0, b=2.0)
             @test_throws ArgumentError remove(
-                parent(bind(fields(data); x=data)), DynamicPPL.Recursive(), child_vn
+                named_child(bind(two_fields(data); x=data)),
+                DynamicPPL.Recursive(),
+                child_vn,
             )(
                 Xoshiro(1)
             )
             @test remove(
-                parent(bind(fields(data); x=data)),
+                named_child(bind(two_fields(data); x=data)),
                 DynamicPPL.Recursive(),
                 @varname(child.x.a)
             )(
@@ -5551,35 +5411,17 @@ end
             ).b == 2.0
         end
     end
-    for (vn, message, removal) in (
-        (
-            @varname(x[1, end]),
-            "Indexing into a NamedTuple at `x[1, DynamicIndex(end)]` is unsupported; use a field name instead.",
-            "Cannot remove `x[1, DynamicIndex(end)]`: indexing into a NamedTuple is unsupported; use a field name instead.",
-        ),
-        (
-            @varname(x[1:2]),
-            "Indexing into a NamedTuple at `x[1:2]` is unsupported; use a field name instead.",
-            "Cannot remove `x[1:2]`: indexing into a NamedTuple is unsupported; use a field name instead.",
-        ),
-        (
-            @varname(x[:]),
-            "Indexing into a NamedTuple at `x[:]` is unsupported; use a field name instead.",
-            "Cannot remove `x[:]`: indexing into a NamedTuple is unsupported; use a field name instead.",
-        ),
-        (
-            @varname(x[[1]]),
-            "Indexing into a NamedTuple at `x[[1]]` is unsupported; use a field name instead.",
-            "Cannot remove `x[[1]]`: indexing into a NamedTuple is unsupported; use a field name instead.",
-        ),
-        (
-            @varname(x[end]),
-            "Integer indexing into a NamedTuple at `x[DynamicIndex(end)]` is unsupported; use `x.b` instead.",
-            "Cannot remove `x[DynamicIndex(end)]`: integer indexing into a NamedTuple is unsupported; use `x.b` instead.",
-        ),
+    for (vn, address, kind, field) in (
+        (@varname(x[1, end]), "x[1, DynamicIndex(end)]", "Indexing", "a field name"),
+        (@varname(x[1:2]), "x[1:2]", "Indexing", "a field name"),
+        (@varname(x[:]), "x[:]", "Indexing", "a field name"),
+        (@varname(x[[1]]), "x[[1]]", "Indexing", "a field name"),
+        (@varname(x[end]), "x[DynamicIndex(end)]", "Integer indexing", "`x.b`"),
     )
+        message = "$kind into a NamedTuple at `$address` is unsupported; use $field instead."
+        removal = "Cannot remove `$address`: $(lowercase(kind)) into a NamedTuple is unsupported; use $field instead."
         for (bind, remove) in ((condition, decondition), (fix, unfix))
-            for model in (fields(data), bind(local_fields(); x=data))
+            for model in (two_fields(data), bind(local_fields(); x=data))
                 @test_throws ArgumentError(message) bind(model, vn => 3.0)
                 for scope in ((), (DynamicPPL.Recursive(),))
                     @test_throws ArgumentError(removal) remove(model, scope..., vn)
@@ -5588,25 +5430,17 @@ end
             @test_throws ArgumentError(message) bind(local_fields(), vn => 3.0)(Xoshiro(1))
         end
     end
-    for (vn, message) in (
-            (
-                @varname(x[1]),
-                "Integer indexing into a NamedTuple at `x[1]` is unsupported; use `x.a` instead.",
-            ),
-            (
-                @varname(x[:a]),
-                "Symbol indexing into a NamedTuple at `x[:a]` is unsupported; use `x.a` instead.",
-            ),
-        ),
+    for (vn, kind) in ((@varname(x[1]), "Integer"), (@varname(x[:a]), "Symbol")),
         bind in (condition, fix)
 
+        message = "$kind indexing into a NamedTuple at `$vn` is unsupported; use `x.a` instead."
         @test_throws ArgumentError(message) bind(local_fields(), vn => 3.0)(Xoshiro(1))
     end
     # Parent bindings cannot inspect the child's local storage until evaluation.
     for bind in (condition, fix)
         @test_throws ArgumentError(
             "Integer indexing into a NamedTuple at `child.x[1]` is unsupported; use `child.x.a` instead.",
-        ) bind(parent(local_fields()), @varname(child.x[1]) => 3.0)(Xoshiro(1))
+        ) bind(named_child(local_fields()), @varname(child.x[1]) => 3.0)(Xoshiro(1))
         @test_throws ArgumentError(
             "Integer indexing into a NamedTuple at `x[1]` is unsupported; use `x.a` instead.",
         ) bind(local_fields(), VarNamedTuple((@varname(x[1]) => 3.0,)))
@@ -5623,12 +5457,10 @@ end
 end
 
 @testset "partial edit errors name the enclosing owner" begin
-    @model nested(x) = (x.t[1] ~ Normal(); x)
     @model local_nested() = (x = (t=(1.0, 2.0),); x.t[1] ~ Normal(); x)
-    @model parent(c) = child ~ to_submodel(c)
     data = (t=(1.0, 2.0),)
     for (bind, remove) in ((condition, decondition), (fix, unfix)),
-        model in (nested(data), bind(local_nested(); x=data))
+        model in (tuple_field_element(data), bind(local_nested(); x=data))
 
         @test_throws ArgumentError(
             "Cannot partially bind tuple owner `x.t` at `x.t[1]` through container type Tuple{Float64, Float64}; bind or decondition the whole value `x.t` instead.",
@@ -5645,7 +5477,7 @@ end
                 ),
             )
         end
-        stored = bind(parent(nested(data)), @varname(child.x) => data)
+        stored = bind(named_child(tuple_field_element(data)), @varname(child.x) => data)
         @test_throws ArgumentError(
             "Cannot partially bind tuple owner `child.x.t` at `child.x.t[1]` through container type Tuple{Float64, Float64}; bind or decondition the whole value `child.x.t` instead.",
         ) bind(stored, @varname(child.x.t[1]) => 3.0)
@@ -5654,21 +5486,18 @@ end
 end
 
 @testset "replacement arrays overlay supported observations" begin
-    @model elements(x) = (x[1] ~ Normal(); x[2] ~ Normal(); x)
-    @model parent(c) = child ~ to_submodel(c)
-    @model nested(x) = (x.t[1] ~ Normal(); x)
-    @model prefixed_child() = a ~ to_submodel(nested((t=(1.0, 2.0),)))
+    @model prefixed_child() = a ~ to_submodel(tuple_field_element((t=(1.0, 2.0),)))
     for original in ((1.0, 2.0), [1.0, 2.0]), replacement in ([3.0, 4.0], [3.0, 4.0, 5.0])
         expected = copy(replacement)
         expected[1] = 1.0
         for model in (
-            unfix(fix(elements(original); x=replacement), @varname(x[1])),
+            unfix(fix(two_elements(original); x=replacement), @varname(x[1])),
             unfix(
-                fix(parent(elements(original)), @varname(child.x) => replacement),
+                fix(named_child(two_elements(original)), @varname(child.x) => replacement),
                 @varname(child.x[1])
             ),
             unfix(
-                parent(fix(elements(original); x=replacement)),
+                named_child(fix(two_elements(original); x=replacement)),
                 DynamicPPL.Recursive(),
                 @varname(child.x[1])
             ),
@@ -5691,13 +5520,13 @@ end
             "Cannot partially bind struct owner `x` at `x[2]` through container type Main.DynamicPPLConditionFixTests.ObservationRecord{Float64, Float64}; bind or decondition the whole value `x` instead.",
         ),
     )
-        model = fix(elements(original); x=[3.0, 4.0])
+        model = fix(two_elements(original); x=[3.0, 4.0])
         @test model(Xoshiro(1)) == [3.0, 4.0]
         @test_throws ArgumentError(message) unfix(model, @varname(x[1]))(Xoshiro(1))
     end
     @test_throws ArgumentError(
         "Cannot partially bind dictionary owner `x` at `x[1]` through container type Dict{Int64, Float64}; bind or decondition the whole value `x` instead. Or use a NamedTuple/array argument.",
-    ) fix(elements(Dict(1 => 1.0, 2 => 2.0)), @varname(x[1]) => 3.0)
+    ) fix(two_elements(Dict(1 => 1.0, 2 => 2.0)), @varname(x[1]) => 3.0)
     for bind in (condition, fix)
         @test_throws ArgumentError(
             "Cannot partially bind tuple owner `a.x.t` at `a.x.t[1]` through container type Tuple{Float64, Float64}; bind or decondition the whole value `a.x.t` instead.",
@@ -6603,17 +6432,11 @@ end
 end
 
 @testset "tuple and struct owners require whole edits" begin
-    @model element(x) = (x[1] ~ Normal(); x)
     @model field(x) = (x.a ~ Normal(); x)
-    @model array_tuple(x) = (x[1][1] ~ Normal(); x)
-    @model named_tuple(x) = (x.a[1] ~ Normal(); x)
-    @model tuple_array(x) = (x[1][1] ~ Normal(); x)
     @model array_struct(x) = (x[1].a ~ Normal(); x)
-    @model struct_array(x) = (x.a[1] ~ Normal(); x)
     @model named_struct(x) = (x.a.a ~ Normal(); x)
-    @model parent(child) = a ~ to_submodel(child)
     cases = (
-        (element, (1.0, 2.0), @varname(x[1]), @varname(x), (3.0, 2.0)),
+        (first_element, (1.0, 2.0), @varname(x[1]), @varname(x), (3.0, 2.0)),
         (
             field,
             ObservationRecord(1.0, 2.0),
@@ -6621,9 +6444,15 @@ end
             @varname(x),
             ObservationRecord(3.0, 2.0),
         ),
-        (array_tuple, [(1.0, 2.0)], @varname(x[1][1]), @varname(x[1]), (3.0, 2.0)),
-        (named_tuple, (a=(1.0, 2.0),), @varname(x.a[1]), @varname(x.a), (3.0, 2.0)),
-        (tuple_array, ([1.0, 2.0],), @varname(x[1][1]), @varname(x), ([3.0, 2.0],)),
+        (first_nested_element, [(1.0, 2.0)], @varname(x[1][1]), @varname(x[1]), (3.0, 2.0)),
+        (first_field_element, (a=(1.0, 2.0),), @varname(x.a[1]), @varname(x.a), (3.0, 2.0)),
+        (
+            first_nested_element,
+            ([1.0, 2.0],),
+            @varname(x[1][1]),
+            @varname(x),
+            ([3.0, 2.0],),
+        ),
         (
             array_struct,
             [ObservationRecord(1.0, 2.0)],
@@ -6632,7 +6461,7 @@ end
             ObservationRecord(3.0, 2.0),
         ),
         (
-            struct_array,
+            first_field_element,
             ObservationRecord([1.0, 2.0], 0.0),
             @varname(x.a[1]),
             @varname(x),
@@ -6672,8 +6501,10 @@ end
             child_address = AbstractPPL.append_optic(
                 @varname(a), AbstractPPL.varname_to_optic(address)
             )
-            @test_throws ArgumentError bind(parent(model), child_address => 9.0)(Xoshiro(1))
-            @test loglikelihood(bind(parent(model), @varname(a.x) => data), (;)) ≈
+            @test_throws ArgumentError bind(child_model(model), child_address => 9.0)(
+                Xoshiro(1)
+            )
+            @test loglikelihood(bind(child_model(model), @varname(a.x) => data), (;)) ≈
                 (bind === condition ? logpdf(Normal(), 1.0) : 0.0)
         end
     end
@@ -6750,12 +6581,11 @@ end
         x = zeros(1, 1); x[[CartesianIndex(end, end)]] ~ MvNormal(zeros(1), I); x
     )
     @model mask_end() = (x = zeros(1, 1); x[trues(end, end)] ~ MvNormal(zeros(1), I); x)
-    @model parent(child) = a ~ to_submodel(child)
     for model in (scalar_end(), scalar_begin(), vector_end(), mask_end())
         for bind in (condition, fix)
             for (nested, matched, mismatched) in (
                 (model, @varname(x[1, 1]), @varname(x[1])),
-                (parent(model), @varname(a.x[1, 1]), @varname(a.x[1])),
+                (child_model(model), @varname(a.x[1, 1]), @varname(a.x[1])),
             )
                 @test bind(nested, matched => 5.0)(Xoshiro(1)) == [5.0;;]
                 @test_throws r"growable bindings with 1 index .*but tilde .* uses 2 indices" bind(
