@@ -53,6 +53,7 @@ Fixed stack overflows when removing bindings from models with cyclic covariates.
 Improved evaluation performance for indexed submodels.
 
 Improved placeholder-checking performance for heterogeneous arrays and tuples.
+Density evaluation accepts an explicit RNG: `DynamicPPL.logdensity_internal(args...)` → `DynamicPPL.logdensity_internal(args..., rng)`; append `rng` to `AbstractPPL.prepare`’s `context` tuple. See [#1504](https://github.com/TuringLang/DynamicPPL.jl/pull/1504).
 
 ## Breaking changes
 
@@ -169,6 +170,10 @@ Custom `AbstractContext`/`AbstractParentContext` subtyping is unsupported, and b
 `childcontext`, `setchildcontext`, `leafcontext`, and `setleafcontext` are removed: context hierarchy traversal/reconstruction → pass one `Context` directly to evaluation. See [#1503](https://github.com/TuringLang/DynamicPPL.jl/pull/1503).
 
 `DynamicPPL.evaluate_nowarn!!(m, vi)` is removed → `evaluate!!(m, ctx, vi)`. See [#1503](https://github.com/TuringLang/DynamicPPL.jl/pull/1503).
+
+`LogDensityFunction` shares RNG state across construction, evaluation, AD preparation, and sampling: implicit draws → `LogDensityFunction(m; rng)` and model-body `rand(__context__.rng, ...)`. See [#1504](https://github.com/TuringLang/DynamicPPL.jl/pull/1504), [#721](https://github.com/TuringLang/DynamicPPL.jl/issues/721).
+
+`rand(ldf)` uses `ldf.rng`: relying on the task-local RNG → `rand(Random.default_rng(), ldf)`. See [#1504](https://github.com/TuringLang/DynamicPPL.jl/pull/1504).
 
 `@vnt` is no longer exported: `@vnt` → `DynamicPPL.@vnt` or explicitly import it. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
