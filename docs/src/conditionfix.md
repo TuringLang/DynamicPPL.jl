@@ -154,118 +154,115 @@ julia> struct Record
            a::Int
            b::Int
        end
+
 ```
 
-- Whole `missing` arguments and element-wise `missing` in supported argument arrays keep
-  working. Elsewhere, replace placeholders with concrete storage and decondition the parts:
-  `nested([[1.0, missing]])` → `decondition(nested([[1.0, 0.0]]), @varname(x[1][2]))`.
-  Explicit bindings never accept placeholders:
-  `condition(elements(zeros(2)); x=[1.0, missing])` → bind concrete data, then decondition
-  `x[2]`. Use `unfix` for placeholders formerly passed to `fix`.
+  - Whole `missing` arguments and element-wise `missing` in supported argument arrays keep
+    working. Elsewhere, replace placeholders with concrete storage and decondition the parts:
+    `nested([[1.0, missing]])` → `decondition(nested([[1.0, 0.0]]), @varname(x[1][2]))`.
+    Explicit bindings never accept placeholders:
+    `condition(elements(zeros(2)); x=[1.0, missing])` → bind concrete data, then decondition
+    `x[2]`. Use `unfix` for placeholders formerly passed to `fix`.
+    
+    ```jldoctest migration
+    julia> length(rand(StableRNG(1), elements(missing)))
+    2
+    
+    julia> haskey(rand(StableRNG(1), elements([1.0, missing])), @varname(x[2]))
+    true
+    
+    julia> m = decondition(nested([[1.0, 0.0]]), @varname(x[1][2]));
+    
+    julia> haskey(rand(StableRNG(1), m), @varname(x[1][2]))
+    true
+    
+    julia> m = decondition(condition(elements(zeros(2)); x=[1.0, 0.0]), @varname(x[2]));
+    
+    julia> m(StableRNG(1))[1] == 1.0 && haskey(rand(StableRNG(1), m), @varname(x[2]))
+    true
+    
+    julia> m = unfix(fix(decondition(elements(zeros(2))); x=[1.0, 0.0]), @varname(x[2]));
+    
+    julia> haskey(rand(StableRNG(1), m), @varname(x[2]))
+    true
+    ```
 
-  ```jldoctest migration
-  julia> length(rand(StableRNG(1), elements(missing)))
-  2
-
-  julia> haskey(rand(StableRNG(1), elements([1.0, missing])), @varname(x[2]))
-  true
-
-  julia> m = decondition(nested([[1.0, 0.0]]), @varname(x[1][2]));
-
-  julia> haskey(rand(StableRNG(1), m), @varname(x[1][2]))
-  true
-
-  julia> m = decondition(condition(elements(zeros(2)); x=[1.0, 0.0]), @varname(x[2]));
-
-  julia> m(StableRNG(1))[1] == 1.0 && haskey(rand(StableRNG(1), m), @varname(x[2]))
-  true
-
-  julia> m = unfix(fix(decondition(elements(zeros(2))); x=[1.0, 0.0]), @varname(x[2]));
-
-  julia> haskey(rand(StableRNG(1), m), @varname(x[2]))
-  true
-  ```
-
-- Partial edits through views and other unsupported array storage now throw. For
-  `decondition(elements(view(zeros(2), :)), @varname(x[1]))`, pass `collect(v)` instead
-  if losing axes or metadata is acceptable. Whole deconditioning of immutable storage
-  also requires writable storage: `decondition(elements(1.0:2.0))` → collect the range.
-
-  ```jldoctest migration
-  julia> v = view(zeros(2), :);
-
-  julia> m = decondition(elements(collect(v)), @varname(x[1]));
-
-  julia> haskey(rand(StableRNG(1), m), @varname(x[1]))
-  true
-
-  julia> length(rand(StableRNG(1), decondition(elements(collect(1.0:2.0)))))
-  2
-  ```
-
-- Partial edits rebuilding tuples, structs or `Base.Pairs` now throw; bind or remove the
-  enclosing value whole. For example, `fix(elements((1.0, 2.0)), @varname(x[1]) => 9.0)`
-  → `fix(elements((1.0, 2.0)); x=(9.0, 2.0))`. A replacement in the other layer does not
-  enable a partial edit: `fix(condition(fields(Record(1, 2)); x=(a=3, b=4)),
-  @varname(x.a) => 5)` → fix the whole `x`. For
-  `fix(pairdata(pairs((a=1.0,))), @varname(x[:a]) => 3.0)`, use a whole `Base.Pairs` value.
-
-  ```jldoctest migration
-  julia> fix(elements((1.0, 2.0)); x=(9.0, 2.0))(StableRNG(1))
-  (9.0, 2.0)
-
-  julia> fix(condition(fields(Record(1, 2)); x=(a=3, b=4)); x=(a=5, b=4))(StableRNG(1))
-  (a = 5, b = 4)
-
-  julia> @model pairdata(x) = (x[:a] ~ Normal(); x);
-
-  julia> fixed(fix(pairdata(pairs((a=1.0,))); x=pairs((a=3.0,))))[@varname(x)][:a]
-  3.0
-  ```
-
-- NamedTuple fields now use properties in bindings, removals and tildes:
-  `x[1]` or `x[:a]` → `x.a`. Ordinary Julia indexing in the body is unchanged.
-
-  ```jldoctest migration
-  julia> condition(fields((a=1.0, b=2.0)), @varname(x.a) => 3.0)(StableRNG(1))
-  (a = 3.0, b = 2.0)
-
-  julia> haskey(rand(StableRNG(1), decondition(fields((a=1.0, b=2.0)), @varname(x.a))), @varname(x.a))
-  true
-  ```
-
-- Prefixes now require properties or non-`Bool` scalar integer indices:
-  `prefix(m, @varname(p[1:2]))` → `prefix(m, @varname(p[2]))`. For an automatically
-  prefixed sliced return LHS, use `to_submodel(child, false)` to keep the slice without a prefix.
-
-  ```jldoctest migration
-  julia> @model leaf(x=missing) = x ~ Normal();
-
-  julia> prefix(leaf(2.0), @varname(p[2]))(StableRNG(1))
-  2.0
-  ```
-
-- A named recursive removal cannot overlap a parent's LHS and an unprefixed child's LHS.
-  `decondition(shared(2.0, leaf(3.0)), DynamicPPL.Recursive(), @varname(x))` → remove
-  without `Recursive()` to clear only the parent's observation, or prefix the child.
-
-  ```jldoctest migration
-  julia> @model shared(x, child) = (x ~ Normal(); a ~ to_submodel(child, false); (x, a));
-
-  julia> decondition(shared(2.0, leaf(3.0)), @varname(x))(StableRNG(1))[2]
-  3.0
-  ```
-
-- A submodel tilde cannot be rooted at a model argument: `x ~ to_submodel(child)` with
-  argument `x` → use a local return name. Bind the child's LHS variables, or assign the
-  returned value to the argument afterwards.
-
-  ```jldoctest migration
-  julia> @model returned(x, child) = (result ~ to_submodel(child); x = result; x);
-
-  julia> returned(0.0, condition(leaf(); x=2.0))(StableRNG(1))
-  2.0
-  ```
+  - Partial edits through views and other unsupported array storage now throw. For
+    `decondition(elements(view(zeros(2), :)), @varname(x[1]))`, pass `collect(v)` instead
+    if losing axes or metadata is acceptable. Whole deconditioning of immutable storage
+    also requires writable storage: `decondition(elements(1.0:2.0))` → collect the range.
+    
+    ```jldoctest migration
+    julia> v = view(zeros(2), :);
+    
+    julia> m = decondition(elements(collect(v)), @varname(x[1]));
+    
+    julia> haskey(rand(StableRNG(1), m), @varname(x[1]))
+    true
+    
+    julia> length(rand(StableRNG(1), decondition(elements(collect(1.0:2.0)))))
+    2
+    ```
+  - Partial edits rebuilding tuples, structs or `Base.Pairs` now throw; bind or remove the
+    enclosing value whole. For example, `fix(elements((1.0, 2.0)), @varname(x[1]) => 9.0)`
+    → `fix(elements((1.0, 2.0)); x=(9.0, 2.0))`. A replacement in the other layer does not
+    enable a partial edit: `fix(condition(fields(Record(1, 2)); x=(a=3, b=4)), @varname(x.a) => 5)` → fix the whole `x`. For
+    `fix(pairdata(pairs((a=1.0,))), @varname(x[:a]) => 3.0)`, use a whole `Base.Pairs` value.
+    
+    ```jldoctest migration
+    julia> fix(elements((1.0, 2.0)); x=(9.0, 2.0))(StableRNG(1))
+    (9.0, 2.0)
+    
+    julia> fix(condition(fields(Record(1, 2)); x=(a=3, b=4)); x=(a=5, b=4))(StableRNG(1))
+    (a = 5, b = 4)
+    
+    julia> @model pairdata(x) = (x[:a] ~ Normal(); x);
+    
+    julia> fixed(fix(pairdata(pairs((a=1.0,))); x=pairs((a=3.0,))))[@varname(x)][:a]
+    3.0
+    ```
+  - NamedTuple fields now use properties in bindings, removals and tildes:
+    `x[1]` or `x[:a]` → `x.a`. Ordinary Julia indexing in the body is unchanged.
+    
+    ```jldoctest migration
+    julia> condition(fields((a=1.0, b=2.0)), @varname(x.a) => 3.0)(StableRNG(1))
+    (a = 3.0, b = 2.0)
+    
+    julia> haskey(
+               rand(StableRNG(1), decondition(fields((a=1.0, b=2.0)), @varname(x.a))), @varname(x.a)
+           )
+    true
+    ```
+  - Prefixes now require properties or non-`Bool` scalar integer indices:
+    `prefix(m, @varname(p[1:2]))` → `prefix(m, @varname(p[2]))`. For an automatically
+    prefixed sliced return LHS, use `to_submodel(child, false)` to keep the slice without a prefix.
+    
+    ```jldoctest migration
+    julia> @model leaf(x=missing) = x ~ Normal();
+    
+    julia> prefix(leaf(2.0), @varname(p[2]))(StableRNG(1))
+    2.0
+    ```
+  - A named recursive removal cannot overlap a parent's LHS and an unprefixed child's LHS.
+    `decondition(shared(2.0, leaf(3.0)), DynamicPPL.Recursive(), @varname(x))` → remove
+    without `Recursive()` to clear only the parent's observation, or prefix the child.
+    
+    ```jldoctest migration
+    julia> @model shared(x, child) = (x ~ Normal(); a ~ to_submodel(child, false); (x, a));
+    
+    julia> decondition(shared(2.0, leaf(3.0)), @varname(x))(StableRNG(1))[2]
+    3.0
+    ```
+  - A submodel tilde cannot be rooted at a model argument: `x ~ to_submodel(child)` with
+    argument `x` → use a local return name. Bind the child's LHS variables, or assign the
+    returned value to the argument afterwards.
+    
+    ```jldoctest migration
+    julia> @model returned(x, child) = (result ~ to_submodel(child); x = result; x);
+    
+    julia> returned(0.0, condition(leaf(); x=2.0))(StableRNG(1))
+    2.0
+    ```
 
 ## Binding rules
 
@@ -310,26 +307,26 @@ The table defines the supported binding rules and when each is checked. The
 Preparation means preparing model arguments before executing the body, not writing a draw at
 a tilde. Checks that need a child's arguments or an executed LHS wait until it is reached.
 
-| Rule                        | Contract                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | Checked when                                                                                                                                                                             |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Address interpretation      | Bindings and removals act on the called model's bindings and namespace, at or below its prefix. Scalar `CartesianIndex` expands to integer coordinates at every address depth; linear and Cartesian spellings remain distinct in growable storage. Dynamic prefix indices use available storage.                                                                                                                                                                                                                                                       | At binding/removal; inherited addresses when a child is reached.                                                                                                                         |
-| Model ownership             | Only declared LHS top symbols may be bound or removed when ownership is knowable. Covariates and separate keyword-splat entries cannot be bound. Only a literal `to_submodel(child, false)` tilde defers unknown top symbols to an unprefixed child; shared unprefixed namespaces cannot reject unknown names independently of siblings. Valid unmatched removals are no-ops, including repeated removals.                                                                                                                                             | At binding/removal where decidable; child ownership when reached. Direct construction checks the supplied argument metadata (see [`Model`](@ref)).                                       |
-| Field and container grammar | NamedTuple fields use properties, never indices, including at tildes. Partial edits traverse only NamedTuple owners, `Array`, and Array-backed `OffsetArray`, `ComponentArray` and `DimArray` owners; untouched leaves are unrestricted. Tuple/struct rebuilding and other array families are rejected. Whole replacement, argument observations through fields/indices, and complete local bindings remain supported. Ordinary Julia body indexing is unaffected.                                                                                     | At partial binding/removal; field spelling also at executed tildes. Whole operations still obey latent writeability and value rules.                                                     |
-| Recursive ambiguity         | A named recursive removal overlapping both a parent's LHS and an unprefixed child's LHS is rejected. Binding the shared name and clearing a layer recursively without names remain allowed.                                                                                                                                                                                                                                                                                                                                                            | When the affected child is reached.                                                                                                                                                      |
-| Submodel LHS and prefixes   | A submodel tilde cannot be rooted at an enclosing model argument, including its indices or fields. Prefixes allow properties and non-Bool scalar integers after scalar Cartesian expansion; slices, colons and masks are rejected. `begin` and `end` need prefix storage.                                                                                                                                                                                                                                                                              | Argument-root rejection only when the submodel tilde executes; prefix grammar when applying an explicit prefix or entering an automatically prefixed child.                              |
-| Latent writeability         | Latent draws use a private per-evaluation copy, preserving the caller's argument. That copy may widen its element type with or without AD; a whole tilde replaces its value. Immutable backing arrays are rejected through `parent`, nested tuples/NamedTuples/arrays and latent branches of partially bound storage, even for a whole tilde. SparseArrays and supported AD storage are exempt. This is not a general object-graph writeability guarantee; see [Storage written by latent tildes](@ref) for limits.                                    | After removal exposes latent storage, including constructor placeholder removal; also before the body when preparing a latent argument copy. Recursive removals check reached children.  |
-| Numeric leaves              | A custom number in a latent branch is rejected if its fields reach mutable storage, even if the number itself is immutable. Isbits values, `BigFloat`, `BigInt`, AD values supported by package extensions, and Base numbers whose fields recursively satisfy the exemption are allowed. Fully bound branches and covariates are exempt.                                                                                                                                                                                                                              | When preparing a latent argument copy, not unconditionally at binding/removal.                                                                                                           |
-| Argument sharing            | Repeated latent memory within/across arguments or through an argument-observed branch is rejected, even if the body only reads or replaces it. Views, reshapes and `unsafe_wrap` aliases count. Original storage of explicitly replaced branches and separate explicit binding values do not count. Sharing only among observations/covariates is allowed. Errors identify argument roots, not full alias paths; aliases created by the body are not checked.                                                                                          | At binding/removal, including constructor placeholder removal; after inherited removals when a child is reached. No new sharing scan at each tilde.                                      |
-| Retained-copy overlap       | An argument containing an AD value and a separate array sharing its buffer throws when copied for sampling. Give the separate array independent storage.                                                                                                                                                                                                                                                                                                                               | When preparing a latent argument copy.                                                                                                                                                   |
-| Dictionary keys             | In an argument with latent parts, dictionary keys anywhere in its copied graph must be isbits values, `Symbol`s or `String`s, including keys in bound siblings. Non-isbits immutable keys can also be rejected. A wholly bound argument or separate covariate is exempt.                                                                                                                                                                                                                                                                               | When preparing a latent argument copy, not unconditionally at binding/removal.                                                                                                           |
-| Index arity                 | Growable lookup requires the consumed source dimensions to match its stored dimensionality; zero indices consume zero dimensions. An active mismatch at a tilde throws, while membership/removal can be false/no-op, subject to growth guards. Growth separately requires the number of supplied index arguments to match. Ordinary storage from an argument or template follows Julia indexing.                                                                                                                                                       | During binding/storage lookup, membership/removal and executed tildes; growth has its own additional guard.                                                                              |
-| Selection geometry          | Source extent, consumed dimensions and selected shape are distinct: a Boolean vector needs its full source extent but selects `count(mask)` entries; an empty integer selection has extent zero. Child indices are bounded by the selected shape. Without storage, indexed locals infer growable arrays and warn; `end` and `:` cannot resolve. Unsupported untemplated selectors, including CartesianIndex collections and multidimensional Boolean masks, still reject. Property paths need no storage.                                              | When constructing or indexing binding storage, including child-index bounds at binding/removal.                                                                                          |
-| Constructor placeholders    | Only a whole top-level `missing`/`nothing` LHS argument (positional, keyword or default), or `missing` entries one index into a supported top-level argument array, remove observations at construction. The array element type must admit `Missing`; unassigned slots and covariates are skipped. Zero-dimensional arrays are included. Roles are not recomputed after mutation. Arrays with missing entries are snapshotted; fully observed arrays are used in place.                                                                                | User model construction, via ordinary removal. Internal reconstruction and the explicit-values constructor do not rerun this classification.                                             |
-| Explicit placeholders       | Explicit bindings reject `missing`/`nothing` reached through assigned array entries, tuple/NamedTuple entries or defined object fields. Numbers, numeric arrays, strings, symbols and types are opaque to this traversal. Use `decondition`/`unfix` instead. Incomplete partial bindings into a whole placeholder argument are rejected; a complete produced `VarNamedTuple` array entry binds whole and supplies storage.                                                                                                                             | When the explicit binding is made; this does not replace executed-value checks.                                                                                                          |
-| Executed placeholders       | An observed/fixed tilde rejects other placeholders in the value it reads, including nested argument data and body-created values, using the same traversal as explicit bindings. Unread parts may contain placeholders. `missing` takes diagnostic precedence over `nothing`. Latent draws are not reclassified as observations.                                                                                                                                                                                                                       | Only when the observed/fixed tilde executes.                                                                                                                                             |
-| Storage ownership           | The most recent binding at/above the address in the edited layer owns storage; initially arguments own theirs. A whole replacement changes that owner, and partial removal preserves its surviving shape. Removing an owner uncovers the shadowed binding, enclosing binding or argument. Fixed precedence during evaluation does not make the fixed layer own an observation-layer edit.                                                                                                                                                              | At binding/removal, within the layer being edited.                                                                                                                                       |
+| Rule                        | Contract                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | Checked when                                                                                                                                                                             |
+|:--------------------------- |:--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |:---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Address interpretation      | Bindings and removals act on the called model's bindings and namespace, at or below its prefix. Scalar `CartesianIndex` expands to integer coordinates at every address depth; linear and Cartesian spellings remain distinct in growable storage. Dynamic prefix indices use available storage.                                                                                                                                                                                                                                                                                                                                  | At binding/removal; inherited addresses when a child is reached.                                                                                                                         |
+| Model ownership             | Only declared LHS top symbols may be bound or removed when ownership is knowable. Covariates and separate keyword-splat entries cannot be bound. Only a literal `to_submodel(child, false)` tilde defers unknown top symbols to an unprefixed child; shared unprefixed namespaces cannot reject unknown names independently of siblings. Valid unmatched removals are no-ops, including repeated removals.                                                                                                                                                                                                                        | At binding/removal where decidable; child ownership when reached. Direct construction checks the supplied argument metadata (see [`Model`](@ref)).                                       |
+| Field and container grammar | NamedTuple fields use properties, never indices, including at tildes. Partial edits traverse only NamedTuple owners, `Array`, and Array-backed `OffsetArray`, `ComponentArray` and `DimArray` owners; untouched leaves are unrestricted. Tuple/struct rebuilding and other array families are rejected. Whole replacement, argument observations through fields/indices, and complete local bindings remain supported. Ordinary Julia body indexing is unaffected.                                                                                                                                                                | At partial binding/removal; field spelling also at executed tildes. Whole operations still obey latent writeability and value rules.                                                     |
+| Recursive ambiguity         | A named recursive removal overlapping both a parent's LHS and an unprefixed child's LHS is rejected. Binding the shared name and clearing a layer recursively without names remain allowed.                                                                                                                                                                                                                                                                                                                                                                                                                                       | When the affected child is reached.                                                                                                                                                      |
+| Submodel LHS and prefixes   | A submodel tilde cannot be rooted at an enclosing model argument, including its indices or fields. Prefixes allow properties and non-Bool scalar integers after scalar Cartesian expansion; slices, colons and masks are rejected. `begin` and `end` need prefix storage.                                                                                                                                                                                                                                                                                                                                                         | Argument-root rejection only when the submodel tilde executes; prefix grammar when applying an explicit prefix or entering an automatically prefixed child.                              |
+| Latent writeability         | Latent draws use a private per-evaluation copy, preserving the caller's argument. That copy may widen its element type with or without AD; a whole tilde replaces its value. Immutable backing arrays are rejected through `parent`, nested tuples/NamedTuples/arrays and latent branches of partially bound storage, even for a whole tilde. SparseArrays and supported AD storage are exempt. This is not a general object-graph writeability guarantee; see [Storage written by latent tildes](@ref) for limits.                                                                                                               | After removal exposes latent storage, including constructor placeholder removal; also before the body when preparing a latent argument copy. Recursive removals check reached children.  |
+| Numeric leaves              | A custom number in a latent branch is rejected if its fields reach mutable storage, even if the number itself is immutable. Isbits values, `BigFloat`, `BigInt`, AD values supported by package extensions, and Base numbers whose fields recursively satisfy the exemption are allowed. Fully bound branches and covariates are exempt.                                                                                                                                                                                                                                                                                          | When preparing a latent argument copy, not unconditionally at binding/removal.                                                                                                           |
+| Argument sharing            | Repeated latent memory within/across arguments or through an argument-observed branch is rejected, even if the body only reads or replaces it. Views, reshapes and `unsafe_wrap` aliases count. Original storage of explicitly replaced branches and separate explicit binding values do not count. Sharing only among observations/covariates is allowed. Errors identify argument roots, not full alias paths; aliases created by the body are not checked.                                                                                                                                                                     | At binding/removal, including constructor placeholder removal; after inherited removals when a child is reached. No new sharing scan at each tilde.                                      |
+| Retained-copy overlap       | An argument containing an AD value and a separate array sharing its buffer throws when copied for sampling. Give the separate array independent storage.                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | When preparing a latent argument copy.                                                                                                                                                   |
+| Dictionary keys             | In an argument with latent parts, dictionary keys anywhere in its copied graph must be isbits values, `Symbol`s or `String`s, including keys in bound siblings. Non-isbits immutable keys can also be rejected. A wholly bound argument or separate covariate is exempt.                                                                                                                                                                                                                                                                                                                                                          | When preparing a latent argument copy, not unconditionally at binding/removal.                                                                                                           |
+| Index arity                 | Growable lookup requires the consumed source dimensions to match its stored dimensionality; zero indices consume zero dimensions. An active mismatch at a tilde throws, while membership/removal can be false/no-op, subject to growth guards. Growth separately requires the number of supplied index arguments to match. Ordinary storage from an argument or template follows Julia indexing.                                                                                                                                                                                                                                  | During binding/storage lookup, membership/removal and executed tildes; growth has its own additional guard.                                                                              |
+| Selection geometry          | Source extent, consumed dimensions and selected shape are distinct: a Boolean vector needs its full source extent but selects `count(mask)` entries; an empty integer selection has extent zero. Child indices are bounded by the selected shape. Without storage, indexed locals infer growable arrays and warn; `end` and `:` cannot resolve. Unsupported untemplated selectors, including CartesianIndex collections and multidimensional Boolean masks, still reject. Property paths need no storage.                                                                                                                         | When constructing or indexing binding storage, including child-index bounds at binding/removal.                                                                                          |
+| Constructor placeholders    | Only a whole top-level `missing`/`nothing` LHS argument (positional, keyword or default), or `missing` entries one index into a supported top-level argument array, remove observations at construction. The array element type must admit `Missing`; unassigned slots and covariates are skipped. Zero-dimensional arrays are included. Roles are not recomputed after mutation. Arrays with missing entries are snapshotted; fully observed arrays are used in place.                                                                                                                                                           | User model construction, via ordinary removal. Internal reconstruction and the explicit-values constructor do not rerun this classification.                                             |
+| Explicit placeholders       | Explicit bindings reject `missing`/`nothing` reached through assigned array entries, tuple/NamedTuple entries or defined object fields. Numbers, numeric arrays, strings, symbols and types are opaque to this traversal. Use `decondition`/`unfix` instead. Incomplete partial bindings into a whole placeholder argument are rejected; a complete produced `VarNamedTuple` array entry binds whole and supplies storage.                                                                                                                                                                                                        | When the explicit binding is made; this does not replace executed-value checks.                                                                                                          |
+| Executed placeholders       | An observed/fixed tilde rejects other placeholders in the value it reads, including nested argument data and body-created values, using the same traversal as explicit bindings. Unread parts may contain placeholders. `missing` takes diagnostic precedence over `nothing`. Latent draws are not reclassified as observations.                                                                                                                                                                                                                                                                                                  | Only when the observed/fixed tilde executes.                                                                                                                                             |
+| Storage ownership           | The most recent binding at/above the address in the edited layer owns storage; initially arguments own theirs. A whole replacement changes that owner, and partial removal preserves its surviving shape. Removing an owner uncovers the shadowed binding, enclosing binding or argument. Fixed precedence during evaluation does not make the fixed layer own an observation-layer edit.                                                                                                                                                                                                                                         | At binding/removal, within the layer being edited.                                                                                                                                       |
 | Binding templates           | At most one positional binding template supplies storage without binding values; keywords remain data, and the pipe alias rejects templates. Templates use absolute names; argument and unused entries are ignored. Existing layer owners win and storage conflicts reject. Deferred entries follow surviving bindings and prefixes; removing their last binding drops them. Outer entries win in children. Template entries for every child's names are checked when that child runs. Templates materialize with `zero(T)` at binding time. See [Binding contract](@ref) for sample-derived templates and indexed-prefix limits. | At binding; deferred entries and conflicts when the child is reached. `check_model` warns about entries no reached LHS can use.                                                          |
-| Bounds, types and shape     | Parts must fit enclosing storage without resizing it and convert exactly to its element/field type. Whole argument bindings must satisfy declared types; whole local bindings fit existing storage types or set them if absent. Whole templated values also match shape. Untemplated parts cannot form a multivariate value; mixed roles within one LHS variable reject. Fixed owners must retain shape and cover reached LHS variables; shape checks stop at the LHS address and do not detect in-place mutation of a whole fixed argument.           | Bounds/types/conversion at binding (inherited bindings when the child runs); shared signature constraints at evaluation. Multivariate roles and fixed shape/coverage at executed tildes. |
+| Bounds, types and shape     | Parts must fit enclosing storage without resizing it and convert exactly to its element/field type. Whole argument bindings must satisfy declared types; whole local bindings fit existing storage types or set them if absent. Whole templated values also match shape. Untemplated parts cannot form a multivariate value; mixed roles within one LHS variable reject. Fixed owners must retain shape and cover reached LHS variables; shape checks stop at the LHS address and do not detect in-place mutation of a whole fixed argument.                                                                                      | Bounds/types/conversion at binding (inherited bindings when the child runs); shared signature constraints at evaluation. Multivariate roles and fixed shape/coverage at executed tildes. |
 
 ### [Entry-point and phase matrix](@id binding-phase-matrix)
 
@@ -338,7 +335,7 @@ not an unconditional rejection at binding or removal. Binding, lookup and remova
 accept identical index syntax.
 
 | Entry point                             | Address ownership                                                    | Writeability                                                                             | Sharing and copy                                                                                   | Indices                                                            | Placeholders                                                                             | Templates and shape                                                  |
-| --------------------------------------- | -------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+|:--------------------------------------- |:-------------------------------------------------------------------- |:---------------------------------------------------------------------------------------- |:-------------------------------------------------------------------------------------------------- |:------------------------------------------------------------------ |:---------------------------------------------------------------------------------------- |:-------------------------------------------------------------------- |
 | `condition` / pipe alias                | Address, model ownership and partial-container rules.                | Partial-container rule now; latent writeability/numeric leaves during later preparation. | Argument sharing now; retained-copy overlap and keys during checked copying.                       | Bounds, arity and selection geometry through storage operations.   | Explicit placeholders.                                                                   | Observation-layer owners and value checks; pipe takes no template.   |
 | `fix`                                   | Same binding address checks.                                         | Same partial-container rule; fully fixed storage needs no latent writes.                 | Same call/copy distinction as `condition`.                                                         | Same binding storage checks.                                       | Explicit placeholders; use `unfix` to remove.                                            | Fixed-layer owners and value checks.                                 |
 | `decondition`                           | Removal address checks; recursive ambiguity at reached child.        | Resulting latent storage now; numeric leaves during checked copying.                     | Argument sharing now; overlap and keys during checked copying.                                     | Removal uses bounds/geometry; growable mismatches can be no-ops.   | No recursive scan; constructor removal uses this path.                                   | Keep surviving observation owners and templates.                     |
@@ -541,7 +538,9 @@ throws for such samples. Supply storage before applying the indexed prefix, or t
 argument.
 
 ```jldoctest binding_template
-julia> using DynamicPPL, Distributions; using AbstractPPL: of; using StableRNGs: StableRNG
+julia> using DynamicPPL, Distributions;
+       using AbstractPPL: of;
+       using StableRNGs: StableRNG;
 
 julia> @model function template_demo()
            y = zeros(3)
@@ -551,7 +550,8 @@ julia> @model function template_demo()
            return y
        end;
 
-julia> m = template_demo(); template = of(rand(StableRNG(1), m));
+julia> m = template_demo();
+       template = of(rand(StableRNG(1), m));
 
 julia> condition(m, @varname(y[1]) => 0.5, template)(StableRNG(2))[1]
 0.5

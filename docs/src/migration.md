@@ -272,8 +272,7 @@ as `x.a`, both in bindings and on the LHS. `decondition` and `unfix` reject the 
 addresses when the model can decide: covariates, names with no LHS variable, nonexistent
 fields, and indices outside storage. Previously such removals were silent. Removing a valid
 address with no stored binding, including removing it twice, is a no-op. To remove a child's
-argument-supplied observation from its parent, use `decondition(parent,
-DynamicPPL.Recursive(), @varname(a.x))`. Use `decondition(parent, DynamicPPL.Recursive())`
+argument-supplied observation from its parent, use `decondition(parent, DynamicPPL.Recursive(), @varname(a.x))`. Use `decondition(parent, DynamicPPL.Recursive())`
 for prior prediction throughout the model; `unfix(parent, DynamicPPL.Recursive())` uncovers
 observations at every depth. Replace partial removal from one multivariate LHS variable,
 such as `decondition(m, @varname(x[1]))` for `x ~ MvNormal(...)`, with a model declaring
