@@ -340,4 +340,4 @@ There are, for the most part, only two places where templates are unavailable, a
   - Providing conditioned or fixed values.
 
 The first of these can be fixed by rerunning the model once to pick up the templates.
-The second cannot be truly fixed, but the [`DynamicPPL.@vnt`](@ref) macro allows users to manually provide templates themselves in cases where they are really needed.
+The second can be addressed by supplying a positional template with `of` or `@of` when needed.

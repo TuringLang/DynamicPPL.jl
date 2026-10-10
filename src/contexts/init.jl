@@ -126,7 +126,7 @@ See the docstring of [`DynamicPPL.get_param_eltype`](@ref) for more information 
 is needed.
 
 The argument `fallback` specifies how new values are to be obtained if they cannot be found
-in `params`, or they are specified as `missing`. `fallback` can either be an initialisation
+in `params`. Omit absent parameters rather than supplying `missing`. `fallback` can either be an initialisation
 strategy itself, in which case it will be used to obtain new values, or it can be `nothing`,
 in which case an error will be thrown. The default for `fallback` is `InitFromPrior()`.
 """
@@ -151,10 +151,27 @@ _parameter_eltype(value) = Any
 function _parameter_eltype(values::Union{Tuple,NamedTuple})
     return mapreduce(_parameter_eltype, promote_type, values; init=Union{})
 end
+_parameter_eltype(values::VarNamedTuple) = _parameter_eltype(values.data)
+_parameter_eltype(value::VarNamedTuples.ArrayLikeBlock) = _parameter_eltype(value.block)
+function _parameter_eltype(values::VarNamedTuples.PartialArray)
+    T = Union{}
+    visited = nothing
+    for i in CartesianIndices(values.mask)
+        if values.mask[i] && (visited === nothing || !visited[i])
+            value = values.data[i]
+            if value isa VarNamedTuples.ArrayLikeBlock
+                if visited === nothing
+                    visited = fill!(similar(BitArray, axes(values.mask)), false)
+                end
+                visited[value.ix..., value.kw...] .= true
+            end
+            T = promote_type(T, _parameter_eltype(value))
+        end
+    end
+    return T
+end
 function get_param_eltype(p::InitFromParams{<:VarNamedTuple})
-    return mapreduce(
-        pair -> _parameter_eltype(pair.second), promote_type, p.params; init=Union{}
-    )
+    return _parameter_eltype(p.params)
 end
 # For NamedTuple and Dict, we just convert to VNT internally. This saves us from having to
 # implement separate `init()` methods for those. It also means that when someone provides
@@ -176,11 +193,12 @@ function init(
 )
     return if hasvalue(p.params, vn, dist)
         x = getvalue(p.params, vn, dist)
-        if x === missing
-            p.fallback === nothing &&
-                error("A `missing` value was provided for the variable `$(vn)`.")
-            init(rng, vn, dist, p.fallback)
-        elseif x isa TransformedValue
+        _classify_placeholder(x) === _MissingPlaceholder && throw(
+            ArgumentError(
+                "A `missing` value was provided for `$vn`; omit absent initial parameters instead.",
+            ),
+        )
+        if x isa TransformedValue
             x
         else
             TransformedValue(x, NoTransform())
@@ -335,15 +353,4 @@ function tilde_assume!!(
     # We always return the untransformed value here, as that will determine
     # what the lhs of the tilde-statement is set to.
     return x, vi
-end
-
-function tilde_observe!!(
-    ::InitContext,
-    right::Distribution,
-    left,
-    vn::Union{VarName,Nothing},
-    template::Any,
-    vi::AbstractVarInfo,
-)
-    return left, accumulate_observe!!(vi, right, left, vn, template)
 end

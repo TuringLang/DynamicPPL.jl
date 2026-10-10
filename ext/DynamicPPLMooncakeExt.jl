@@ -38,6 +38,110 @@ function Mooncake.rrule!!(
     return output, pullback
 end
 
+# Dense scalar overlays need no per-element reverse program for binding metadata.
+# Keep nested/block bindings, custom arrays and other numeric types on the generic path.
+const ScalarArgumentBinding{T<:Base.IEEEFloat} = Union{
+    DynamicPPL.ModelValue{DynamicPPL.ArgumentCondition,T},
+    DynamicPPL.ModelValue{DynamicPPL.Condition,T},
+    DynamicPPL.ModelValue{DynamicPPL.Fix,T},
+}
+const DenseArgumentBindings{T} = DynamicPPL.VarNamedTuples.PartialArray{
+    B,1,Vector{B},Vector{Bool}
+} where {B<:ScalarArgumentBinding{T}}
+const ArgumentName = Union{Nothing,DynamicPPL.VarName{S,AbstractPPL.Iden} where {S}}
+@static if isdefined(Mooncake, :ReverseMode)
+    Mooncake.@is_primitive Mooncake.DefaultCtx Mooncake.ReverseMode Tuple{
+        typeof(DynamicPPL._model_argument_value),
+        DenseArgumentBindings{T},
+        Vector{T},
+        ArgumentName,
+    } where {T<:Base.IEEEFloat}
+else
+    Mooncake.@is_primitive Mooncake.DefaultCtx Tuple{
+        typeof(DynamicPPL._model_argument_value),
+        DenseArgumentBindings{T},
+        Vector{T},
+        ArgumentName,
+    } where {T<:Base.IEEEFloat}
+end
+function Mooncake.rrule!!(
+    ::Mooncake.CoDual{typeof(DynamicPPL._model_argument_value)},
+    values::Mooncake.CoDual{<:DenseArgumentBindings{T}},
+    template::Mooncake.CoDual{Vector{T}},
+    vn::Mooncake.CoDual{<:ArgumentName},
+) where {T<:Base.IEEEFloat}
+    bindings = Mooncake.primal(values)
+    original, dtemplate = Mooncake.arrayify(template)
+    output = Mooncake.zero_fcodual(
+        DynamicPPL._model_argument_value(bindings, original, Mooncake.primal(vn))
+    )
+    dy = Mooncake.tangent(output)
+    dvalues = Mooncake.tangent(values).data.data
+    # Each output is either a bound scalar or a surviving template element.
+    # Preparation may resize the template; removed elements have zero cotangent.
+    function overlay_pullback!!(::Mooncake.NoRData)
+        for i in eachindex(dy)
+            if bindings.mask[i]
+                dvalues[i] = Mooncake.increment!!(
+                    dvalues[i], Mooncake.Tangent((value=dy[i],))
+                )
+            elseif i <= length(dtemplate)
+                dtemplate[i] += dy[i]
+            end
+        end
+        return ntuple(_ -> Mooncake.NoRData(), 4)
+    end
+    return output, overlay_pullback!!
+end
+
+Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
+    typeof(DynamicPPL._argument_may_need_adapter),Type
+}
+
+# Storage validation returns no numerical result.
+Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
+    typeof(DynamicPPL._check_argument_key_storage),Any,Any
+}
+Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
+    typeof(DynamicPPL._check_latent_storage),Any,Any
+}
+Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
+    typeof(DynamicPPL._check_assigned_binding_storage),Any,Any,Any
+}
+
+Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
+    typeof(DynamicPPL.VarNamedTuples._haskey_optic),
+    DynamicPPL.ModelValue{<:Any,<:AbstractArray},
+    AbstractPPL.Index,
+}
+Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
+    typeof(DynamicPPL._check_shared_latent_storage),DynamicPPL.Model,Vararg{Any}
+}
+
+# Reconstruction support depends only on types and methods.
+Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
+    typeof(DynamicPPL._argument_reconstructible),Any,NamedTuple
+}
+
+# Storage type selection returns only type metadata; copying payloads stays differentiable.
+Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
+    typeof(DynamicPPL.VarNamedTuples._concretised_eltype),
+    DynamicPPL.VarNamedTuples.PartialArray,
+}
+
+# Logging has no numerical result, even when storage is constructed during evaluation.
+Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
+    typeof(DynamicPPL.VarNamedTuples._warn_growable_array_creation),Any
+}
+
+# Role queries return only discrete tags, never bound values.
+Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
+    typeof(DynamicPPL._get_argument_role),Vararg
+}
+Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
+    typeof(DynamicPPL._get_model_role),Vararg
+}
+
 # These are purely optimisations (although quite significant ones sometimes, especially for
 # _get_range_and_transform).
 Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{typeof(is_transformed),Vararg}

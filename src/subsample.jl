@@ -633,20 +633,6 @@ function _strict_independent_ldf(
     )
 end
 
-_unprefix_observation(::AbstractContext, observation::VarName) = observation
-function _unprefix_observation(context::PrefixContext, observation::VarName)
-    unprefixed = try
-        AbstractPPL.unprefix(observation, context.vn_prefix)
-    catch e
-        e isa ArgumentError || rethrow()
-        observation
-    end
-    return _unprefix_observation(childcontext(context), unprefixed)
-end
-function _unprefix_observation(context::AbstractParentContext, observation::VarName)
-    return _unprefix_observation(childcontext(context), observation)
-end
-
 function _conditioned_independent_observation(model::Model)
     values = conditioned(model)
     length(values) == 1 || throw(
@@ -655,12 +641,6 @@ function _conditioned_independent_observation(model::Model)
         ),
     )
     observation = only(keys(values))
-    unprefixed_observation = _unprefix_observation(model.context, observation)
-    inargnames(unprefixed_observation, model) && throw(
-        ArgumentError(
-            "the independent observation `$observation` must be supplied through `condition`, not as a model argument",
-        ),
-    )
     data = values[observation]
     data isa AbstractArray{<:Real} || throw(
         ArgumentError(
@@ -747,6 +727,18 @@ function VarNamedTuples._haskey_optic(
     data::SubsamplingShape, optic::VarNamedTuples.IndexWithoutChild
 )
     return VarNamedTuples._haskey_optic(data.data, optic)
+end
+function VarNamedTuples._haskey_optic(
+    value::ModelValue{R,<:SubsamplingShape}, optic::AbstractPPL.Index
+) where {R<:Union{Condition,ArgumentCondition,Fix}}
+    head = AbstractPPL.ohead(optic)
+    VarNamedTuples._haskey_optic(value.value, head) || return false
+    optic.child isa AbstractPPL.Iden && return true
+    child = VarNamedTuples._getindex_optic(value.value, head, @varname(_))
+    return VarNamedTuples._haskey_optic(_model_value_like(value, child), optic.child)
+end
+function VarNamedTuples.index_template(data::AbstractSubsamplingData, optic)
+    return getindex(data, optic.ix...; optic.kw...)
 end
 function Base.getindex(data::SubsamplingShape, indices...)
     return SubsamplingShape(view(data.data, indices...), data.root)

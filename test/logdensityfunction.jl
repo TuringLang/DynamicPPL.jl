@@ -44,10 +44,10 @@ end
 @testset "LogDensityFunction: constructors" begin
     dist = Beta(2, 2)
     @model f() = x ~ dist
-    expected_ral_unlinked = @vnt begin
+    expected_ral_unlinked = DynamicPPL.@vnt begin
         x := DynamicPPL.RangeAndTransform(1:1, Unlink())
     end
-    expected_ral_linked = @vnt begin
+    expected_ral_linked = DynamicPPL.@vnt begin
         x := DynamicPPL.RangeAndTransform(1:1, DynamicLink())
     end
     vi_unlinked = begin
@@ -294,7 +294,7 @@ end
     model = f()
 
     xraw, yraw = 0.5, [0.2, 0.3, 0.5]
-    raw_values = @vnt begin
+    raw_values = DynamicPPL.@vnt begin
         x := xraw
         y := yraw
     end

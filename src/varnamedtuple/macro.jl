@@ -1,14 +1,19 @@
 """
-    @vnt begin ... end
+    DynamicPPL.@vnt begin ... end
 
 Construct a `VarNamedTuple` from a block of assignments. Each assignment should be of the form
 `var := value`, where `var` is a variable name. This is best illustrated by
 example:
 
+!!! note "Internal use"
+    `@vnt` and its `@template` are intended for internal use within DynamicPPL. Public code
+    should describe storage with AbstractPPL's `of` function or `@of` macro instead, for
+    example `condition(m, @varname(z[2]) => 1.0, @of(z = of(Array, 3)))`.
+
 ```jldoctest
 julia> using DynamicPPL
 
-julia> @vnt begin
+julia> DynamicPPL.@vnt begin
            a := 1
            b := 2
        end
@@ -20,7 +25,7 @@ VarNamedTuple
 You can set entirely arbitrary variables:
 
 ```jldoctest; setup=:(using DynamicPPL)
-julia> @vnt begin
+julia> DynamicPPL.@vnt begin
            a.b.c.d.e := "hello"
        end
 VarNamedTuple
@@ -50,7 +55,7 @@ For example:
 ```jldoctest; setup=:(using DynamicPPL)
 julia> x = zeros(5); outside_y = zeros(3, 3);
 
-julia> @vnt begin
+julia> DynamicPPL.@vnt begin
             @template x y=outside_y
             x[1] := 1.0
             y[1, 1] := 2.0
@@ -73,7 +78,7 @@ results in simple cases, but is not recommended for general use. Please see the
 VarNamedTuple documentation for more details.
 
 ```jldoctest; setup=:(using DynamicPPL)
-julia> @vnt begin
+julia> DynamicPPL.@vnt begin
             # No template provided.
             x[1] := 1.0
             y[1, 1] := 2.0
@@ -113,7 +118,7 @@ end
 
 function _vnt(input)
     Meta.isexpr(input, :block) ||
-        error("`@vnt` expects a block expression (e.g. `@vnt begin ... end`)")
+        error("`@vnt` expects a block expression (e.g. `DynamicPPL.@vnt begin ... end`)")
     @gensym vnt
     symbols_to_templates = Dict{Symbol,Union{Expr,Symbol}}()
     output = Expr(:block)
@@ -126,26 +131,23 @@ function _vnt(input)
             for arg in expr.args[2:end]
                 if arg isa LineNumberNode
                     continue
-                elseif arg isa Symbol
-                    # e.g. @template x
-                    if arg in keys(symbols_to_templates)
-                        error("duplicate template definition for symbol: $arg")
-                    end
-                    symbols_to_templates[arg] = esc(arg)
+                end
+                sym, template_expr, separator = if arg isa Symbol
+                    (arg, arg, ": ")
                 elseif Meta.isexpr(arg, :(=))
-                    # e.g. @template y = x
-                    sym, template_expr = arg.args
-                    if sym in keys(symbols_to_templates)
-                        error("duplicate template definition for symbol $sym")
-                    end
-                    # evaluate the template expression one time so that we don't
-                    # reevaluate it every time we set a value in the VNT
-                    new_sym = gensym()
-                    push!(output.args, :($new_sym = $(esc(template_expr))))
-                    symbols_to_templates[sym] = new_sym
+                    (arg.args[1], arg.args[2], " ")
                 else
                     error("unexpected argument to `@template`: $arg")
                 end
+                if sym in keys(symbols_to_templates)
+                    error("duplicate template definition for symbol$separator$sym")
+                end
+                # Evaluate and materialize either spelling's template exactly once.
+                new_sym = gensym()
+                push!(
+                    output.args, :($new_sym = materialize_template($(esc(template_expr))))
+                )
+                symbols_to_templates[sym] = new_sym
             end
         elseif Meta.isexpr(expr, :(:=))
             lhs, rhs = expr.args

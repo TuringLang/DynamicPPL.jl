@@ -1,4 +1,4 @@
-module DynamicPPLInitContextTests
+module DynamicPPLContextTests
 
 using Dates: now
 @info "Testing $(@__FILE__)..."
@@ -7,12 +7,69 @@ __now__ = now()
 using Bijectors: Bijectors
 using Distributions
 using DynamicPPL
+using DynamicPPL.VarNamedTuples: PartialArray, ArrayLikeBlock
+using ForwardDiff: Dual
 using LinearAlgebra: I
 using Random: Xoshiro
 using StableRNGs: StableRNG
+using StaticArrays: SVector
 using Test
 
-@testset "InitContext" begin
+struct CountingRealVector <: AbstractVector{Real}
+    data::Vector{Real}
+    reads::Base.RefValue{Int}
+end
+Base.size(x::CountingRealVector) = size(x.data)
+Base.isassigned(x::CountingRealVector, i::Int) = isassigned(x.data, i)
+Base.getindex(x::CountingRealVector, i::Int) = (x.reads[] += 1; x.data[i])
+
+@testset "Context" begin
+    @testset "parameter element types" begin
+        param_eltype(x) = DynamicPPL.get_param_eltype(InitFromParams(VarNamedTuple(; x=x)))
+        for T in (Float32, Float64, BigFloat, Dual{Nothing,Float64,1})
+            x = one(T)
+            nested = PartialArray(fill(VarNamedTuple(; z=x), 100, 2), trues(100, 2))
+            @test param_eltype(nested) === T
+            @test @allocated(param_eltype(nested)) < 1024
+            @test param_eltype(SVector(x, x)) === T
+            @test param_eltype((x, (; y=[x]))) === T
+            @test param_eltype(TransformedValue([x], NoTransform())) === T
+        end
+        @test param_eltype(PartialArray(Any[1.0f0, "unused"], [true, false])) === Float32
+        @test param_eltype(PartialArray(Any[1.0f0, "used"], [true, true])) === Any
+        @test param_eltype(PartialArray(Vector{Any}(undef, 2), falses(2))) === Union{}
+        @test param_eltype(PartialArray(Float32[], Bool[])) === Union{}
+        @test param_eltype(Any[1.0f0, big"2.0"]) === BigFloat
+        @test param_eltype(()) === Union{}
+        @test DynamicPPL.get_param_eltype(InitFromParams(VarNamedTuple())) === Union{}
+        block = ArrayLikeBlock((1.0f0, 2.0), (1:2,), (;), (2,))
+        @test param_eltype(PartialArray(fill(block, 2), trues(2))) === Float64
+        for mask in (SVector(true, true), SVector(true, false), SVector(false, true))
+            @test param_eltype(PartialArray(fill(block, 2), mask)) === Float64
+        end
+
+        n = 100
+        counted = CountingRealVector(Real[Float64(i) for i in 1:n], Ref(0))
+        params = DynamicPPL.templated_setindex!!(
+            VarNamedTuple(),
+            TransformedValue(counted, NoTransform()),
+            @varname(x[1:n]),
+            zeros(n + 1),
+        )
+        mask = copy(params.data.x.mask)
+        counted.reads[] = 0
+        @test param_eltype(params) === Float64
+        @test counted.reads[] == n
+        @test params.data.x.mask == mask
+        params = DynamicPPL.templated_setindex!!(
+            params, big"1.0", @varname(x[n + 1]), zeros(n + 1)
+        )
+        counted.reads[] = 0
+        @test param_eltype(params) === BigFloat
+        @test counted.reads[] == n
+        @test all(params.data.x.mask)
+    end
+
     @model function test_init_model()
         x ~ Normal()
         y ~ MvNormal(fill(x, 2), I)
@@ -209,12 +266,39 @@ using Test
     end
 
     @testset "InitFromParams" begin
+        @testset "wrapped missing values are rejected before transformation" begin
+            @model missing_parameter() = x ~ Normal()
+            for value in (
+                TransformedValue(missing, NoTransform()),
+                TransformedValue([missing], Unlink()),
+            )
+                strategy = InitFromParams((; x=value), nothing)
+                context = InitContext(Xoshiro(1), strategy, UnlinkAll())
+                @test_throws ArgumentError evaluate!!(
+                    missing_parameter(), context, VarInfo(())
+                )
+            end
+        end
+
+        @testset "initialization rejects missing but preserves nothing" begin
+            for wrap in (identity, x -> TransformedValue(x, NoTransform()))
+                strategy = InitFromParams((; x=wrap(nothing)), nothing)
+                value = DynamicPPL.init(Xoshiro(1), @varname(x), Normal(), strategy)
+                @test value isa TransformedValue
+                @test DynamicPPL.get_internal_value(value) === nothing
+                strategy = InitFromParams((; x=wrap(missing)), nothing)
+                @test_throws "A `missing` value was provided for `x`; omit absent initial parameters instead." DynamicPPL.init(
+                    Xoshiro(1), @varname(x), Normal(), strategy
+                )
+            end
+        end
+
         # Once we've checked that NTs and Dicts are internally promoted to VNTs, the rest of
         # the tests only need to check that InitFromParams(::VNT) is handled correctly.
         @testset "NT promotion to VNT" begin
             nt = (x=1.0, y=[2.0, 3.0], z="zzz")
             ifp = InitFromParams(nt)
-            vnt = @vnt begin
+            vnt = DynamicPPL.@vnt begin
                 x := 1.0
                 y := [2.0, 3.0]
                 z := "zzz"
@@ -226,7 +310,7 @@ using Test
                 @varname(x) => 1.0, @varname(y) => [2.0, 3.0], @varname(z) => "zzz"
             )
             ifp = InitFromParams(dict)
-            vnt = @vnt begin
+            vnt = DynamicPPL.@vnt begin
                 x := 1.0
                 y := [2.0, 3.0]
                 z := "zzz"
@@ -244,7 +328,7 @@ using Test
         @testset "given full set of parameters" begin
             # test_init_model has x ~ Normal() and y ~ MvNormal(zeros(2), I)
             my_x, my_y = 1.0, [2.0, 3.0]
-            vnt = @vnt begin
+            vnt = DynamicPPL.@vnt begin
                 x := my_x
                 y := my_y
             end
@@ -260,7 +344,7 @@ using Test
 
         @testset "given only partial parameters" begin
             my_x = 1.0
-            vnt = @vnt begin
+            vnt = DynamicPPL.@vnt begin
                 x := my_x
             end
 
@@ -297,12 +381,12 @@ using Test
                 )
 
                 # We also explicitly test the case where `y = missing`.
-                vnt_missing = @vnt begin
+                vnt_missing = DynamicPPL.@vnt begin
                     x := my_x
                     y := missing
                 end
-                @test_throws ErrorException(
-                    "A `missing` value was provided for the variable `y`."
+                @test_throws ArgumentError(
+                    "A `missing` value was provided for `y`; omit absent initial parameters instead.",
                 ) DynamicPPL.init!!(
                     model, empty_vi, InitFromParams(vnt_missing, nothing), UnlinkAll()
                 )

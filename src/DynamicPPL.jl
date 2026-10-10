@@ -19,6 +19,7 @@ using LogDensityProblems: LogDensityProblems
 using LinearAlgebra: LinearAlgebra, Cholesky
 using LogExpFunctions: LogExpFunctions
 using SpecialFunctions: SpecialFunctions
+using SparseArrays: SparseArrays
 
 using DocStringExtensions
 
@@ -50,7 +51,6 @@ export AbstractVarInfo,
     VarInfo,
     get_values,
     VarNamedTuple,
-    @vnt,
     map_pairs!!,
     map_values!!,
     apply!!,
@@ -265,9 +265,9 @@ include("contexts.jl")
 include("contexts/default.jl")
 include("contexts/init.jl")
 include("contexts/prefix.jl")
-include("contexts/conditionfix.jl")  # Must come after contexts/prefix.jl
 include("model.jl")
-include("varname.jl")
+include("conditionfix.jl")
+@compat public Recursive
 include("distribution_wrappers.jl")
 include("distributions.jl")
 include("submodel.jl")

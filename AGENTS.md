@@ -43,6 +43,7 @@ Engineering:
   - Derive output containers from inputs with `similar`, or accept a destination buffer. Use `Base.maybeview` to avoid eager slices while supporting scalar and tuple indices.
   - Prefer small, dispatch-based protocols to large conditionals. Isolate backend behaviour in package extensions or narrow integration layers.
   - Check inference with `@inferred` or `@code_warntype` for generated code, custom containers, accumulators, transforms, and log-density paths. Benchmark generated functions, macro output, and hot paths.
+  - Before profiling an AD backend, check inference and inlining of the primal hot path: a boxed closure capture or a non-inlined call can cost more than a missing rule.
   - Use `StableRNGs` when doctests print random values.
 
 Public APIs:

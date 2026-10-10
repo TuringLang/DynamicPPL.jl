@@ -9,13 +9,173 @@ using Distributions
 
 export check_model, has_static_constraints
 
+# Accumulators see distributions and values, not submodel calls (or fixed LHS variables).
+# Keep reached models only during check_model, using the existing context traversal.
+struct BindingCheckContext{C<:AbstractContext} <: DynamicPPL.AbstractParentContext
+    context::C
+    models::Vector{Model}
+    namespaces::Set{Symbol}
+    lock::ReentrantLock
+    track_names::Bool
+    removals::Dict{Base.RefValue{Nothing},String}
+    used_removals::Set{Base.RefValue{Nothing}}
+    template_models::Vector{Tuple{Model,Union{VarName,Nothing}}}
+end
+function BindingCheckContext(context, models, namespaces, lock)
+    return BindingCheckContext(
+        context,
+        models,
+        namespaces,
+        lock,
+        true,
+        Dict{Base.RefValue{Nothing},String}(),
+        Set{Base.RefValue{Nothing}}(),
+        Tuple{Model,Union{VarName,Nothing}}[],
+    )
+end
+DynamicPPL.childcontext(ctx::BindingCheckContext) = ctx.context
+function DynamicPPL.setchildcontext(ctx::BindingCheckContext, child::AbstractContext)
+    return BindingCheckContext(
+        child,
+        ctx.models,
+        ctx.namespaces,
+        ctx.lock,
+        ctx.track_names,
+        ctx.removals,
+        ctx.used_removals,
+        ctx.template_models,
+    )
+end
+
+function DynamicPPL.tilde_assume!!(
+    parent::Model,
+    ctx::BindingCheckContext,
+    submodel::DynamicPPL.Submodel{M,AutoPrefix},
+    vn::VarName,
+    template,
+    vi::AbstractVarInfo,
+) where {M<:Model,AutoPrefix}
+    _register_removals!(ctx, submodel.model)
+    local_prefix = if AutoPrefix
+        namespace = DynamicPPL._concretize_prefix(vn, template; prefix=Val(true))
+        DynamicPPL.maybe_prefix(DynamicPPL._model_prefix(submodel.model), namespace)
+    else
+        DynamicPPL._model_prefix(submodel.model)
+    end
+    full_prefix = DynamicPPL.maybe_prefix(local_prefix, DynamicPPL._model_prefix(parent))
+    lock(ctx.lock) do
+        push!(ctx.template_models, (submodel.model, full_prefix))
+    end
+    prefixed = AutoPrefix || DynamicPPL._model_prefix(submodel.model) !== nothing
+    if ctx.track_names
+        lock(ctx.lock) do
+            if prefixed
+                namespace = AutoPrefix ? vn : DynamicPPL._model_prefix(submodel.model)
+                push!(ctx.namespaces, DynamicPPL.AbstractPPL.getsym(namespace))
+            else
+                push!(ctx.models, submodel.model)
+            end
+        end
+    end
+    # All descendants participate in removal checks. Only unprefixed descendants
+    # can justify binding names in the root model's namespace.
+    if prefixed
+        ctx = BindingCheckContext(
+            ctx.context,
+            ctx.models,
+            ctx.namespaces,
+            ctx.lock,
+            false,
+            ctx.removals,
+            ctx.used_removals,
+            ctx.template_models,
+        )
+    end
+    return invoke(
+        DynamicPPL.tilde_assume!!,
+        Tuple{Model,AbstractContext,typeof(submodel),VarName,Any,AbstractVarInfo},
+        parent,
+        ctx,
+        submodel,
+        vn,
+        template,
+        vi,
+    )
+end
+
+function _register_removals!(ctx::BindingCheckContext, model)
+    lock(ctx.lock) do
+        for role in (DynamicPPL.Condition, DynamicPPL.Fix)
+            for marker in DynamicPPL._removals(role, model.values)
+                name = marker.name === nothing ? "all addresses" : string(marker.name)
+                layer = role === DynamicPPL.Condition ? "observations" : "fixed bindings"
+                get!(
+                    ctx.removals,
+                    marker.token,
+                    "Recursive removal of $layer at `$name` is unused by any reached model.",
+                )
+                marker.matched && push!(ctx.used_removals, marker.token)
+            end
+        end
+    end
+    return nothing
+end
+function DynamicPPL._record_removal_use(ctx::BindingCheckContext, role, marker)
+    lock(ctx.lock) do
+        push!(ctx.used_removals, marker.token)
+    end
+    return nothing
+end
+function _warn_unused_removals(ctx::BindingCheckContext)
+    for (token, message) in ctx.removals
+        token in ctx.used_removals || @warn message
+    end
+    return nothing
+end
+
+function _warn_unused_binding_names(model, ctx::BindingCheckContext)
+    names = copy(ctx.namespaces)
+    for reached in ctx.models
+        lhs = DynamicPPL._lhs_names(DynamicPPL._binding_metadata(reached))
+        # Handwritten models do not promise complete LHS metadata.
+        lhs === nothing && return nothing
+        union!(names, lhs)
+    end
+    for name in keys(DynamicPPL._submodel_values(model, nothing).data)
+        if name ∉ names
+            @warn "Binding `$name` has no LHS top symbol in this model or any reached unprefixed submodel. It may be unused; an unprefixed submodel in an untaken branch could still use it."
+        end
+    end
+    return nothing
+end
+
+function _warn_unused_templates(ctx::BindingCheckContext)
+    entries, lhs = Set{VarName}(), Set{VarName}()
+    for (model, prefix) in ctx.template_models
+        metadata = DynamicPPL._binding_metadata(model)
+        DynamicPPL._lhs_names(metadata) === nothing && return nothing
+        for (local_name, name) in DynamicPPL._binding_template_names(metadata)
+            push!(entries, local_name ? DynamicPPL.maybe_prefix(name, prefix) : name)
+        end
+        for (name, submodel) in DynamicPPL._lhs_addresses(metadata)
+            submodel && continue
+            push!(lhs, DynamicPPL.maybe_prefix(name, prefix))
+        end
+    end
+    for name in sort!(collect(entries); by=string)
+        if !any(root -> subsumes(root, name) || subsumes(name, root), lhs)
+            @warn "Binding template entry `$name` has no LHS variable in this model or any reached submodel. It may be unused; a submodel in an untaken branch could still use it."
+        end
+    end
+    return nothing
+end
+
 """
     DebugAccumulator <: AbstractAccumulator
 
 An accumulator which checks calls at each tilde-statement for potential errors.
 
-Right now this accumulator only checks for `NaN` values on the left-hand side of observe
-statements, and partially `missing` values on the left-hand side of observe statements.
+This accumulator checks for `NaN` values on the left-hand side of observe statements.
 
 Other checks in `check_model` are accomplished via different accumulators.
 """
@@ -38,33 +198,6 @@ function DynamicPPL.combine(acc1::DebugAccumulator, acc2::DebugAccumulator)
 end
 
 """
-    _has_partial_missings(x, dist)
-
-Check if `x` is a container that contains partial `missing` values.
-"""
-_has_partial_missings(x, dist) = false
-function _has_partial_missings(x::AbstractArray, ::MultivariateDistribution)
-    for i in eachindex(x)
-        if isassigned(x, i) && ismissing(x[i])
-            return true
-        end
-    end
-    return false
-end
-function _has_partial_missings(
-    x::NamedTuple{names}, dists::Distributions.ProductNamedTupleDistribution
-) where {names}
-    for name in names
-        sub_value = x[name]
-        sub_dist = dists.dists[name]
-        if _has_partial_missings(sub_value, sub_dist)
-            return true
-        end
-    end
-    return false
-end
-
-"""
     _has_nans(x)
 
 Check if `x` is `NaN`, or contains any `NaN` values.
@@ -84,22 +217,6 @@ function DynamicPPL.accumulate_observe!!(
     acc::DebugAccumulator, right::Distribution, val, vn::Union{VarName,Nothing}, template
 )
     failed = acc.failed
-    if _has_partial_missings(val, right)
-        msg = if vn === nothing
-            "on the left-hand side of an observe statement"
-        else
-            "for variable $(vn) on the left-hand side of an observe statement"
-        end
-        full_msg =
-            "Encountered a container with one or more `missing` value(s) $msg." *
-            " To treat the variable on the left-hand side as a random variable, you" *
-            " should specify a single `missing` rather than a vector of `missing`s." *
-            " It is not currently possible to set part but not all of a distribution" *
-            " to be `missing`."
-        @warn full_msg
-        failed = true
-    end
-    # Check for NaN's as well
     if _has_nans(val)
         msg =
             "Encountered a NaN value on the left-hand side of an" *
@@ -137,6 +254,12 @@ derived from model inputs. Use `rng` to control reproducibility if needed.
 - (if `fail_if_discrete` is set) Usage of discrete distributions
 
 - Empty models emit a warning, but do not fail (since they are not incorrect *per se*)
+
+- Binding template entries without an LHS variable in the model or reached submodels warn,
+  but do not fail: an untaken submodel branch could still use them.
+
+- Bindings without an LHS top symbol in the model or reached unprefixed submodels warn,
+  but do not fail: an untaken submodel branch could still use them.
 
 # Keyword arguments
 
@@ -199,19 +322,6 @@ function check_model(
 )
     failed = false
 
-    # Check that a variable in the model arguments is neither conditioned nor fixed.
-    conditioned_vns = keys(DynamicPPL.conditioned(model.context))
-    for vn in conditioned_vns
-        if DynamicPPL.inargnames(vn, model)
-            @warn (
-                "Variable $(vn) is specified in both the model arguments and conditioned values." *
-                " Please either specify observed data via the model arguments, or through" *
-                " `condition` / `|`, not both."
-            )
-            failed = true
-        end
-    end
-
     # Run the model and collect the data we need
     vi = DynamicPPL.VarInfo((
         DebugAccumulator(),
@@ -219,7 +329,16 @@ function check_model(
         DynamicPPL.DebugRawValueAccumulator(),
     ))
     init_strategy = InitFromPrior()
-    _, vi = DynamicPPL.init!!(rng, model, vi, init_strategy, UnlinkAll())
+    binding_context = BindingCheckContext(
+        model.context, Model[model], Set{Symbol}(), ReentrantLock()
+    )
+    _register_removals!(binding_context, model)
+    push!(binding_context.template_models, (model, DynamicPPL._model_prefix(model)))
+    checked_model = DynamicPPL.contextualize(model, binding_context)
+    _, vi = DynamicPPL.init!!(rng, checked_model, vi, init_strategy, UnlinkAll())
+    _warn_unused_binding_names(model, binding_context)
+    _warn_unused_removals(binding_context)
+    _warn_unused_templates(binding_context)
 
     params = get_raw_values(vi)
     # This adds one evaluation per `check_model` call, not per ordinary model evaluation.
@@ -334,7 +453,7 @@ function has_static_constraints(model::Model; num_evals::Int=5)
 end
 
 """
-    gen_evaluator_call_with_types(model[, varinfo])
+    gen_evaluator_call_with_types(model[, varinfo]; context)
 
 Generate the evaluator call and the types of the arguments.
 
@@ -342,25 +461,42 @@ Generate the evaluator call and the types of the arguments.
 - `model::Model`: The model whose evaluator is of interest.
 - `varinfo::AbstractVarInfo`: The varinfo to use when evaluating the model. Default: `VarInfo(model)`.
 
+# Keyword Arguments
+- `context::AbstractContext`: The evaluation context. Defaults to the values supplied in `varinfo`,
+  unlinked, or `InitFromPrior()` when `varinfo` has no values.
+
 # Returns
 A 2-tuple with the following elements:
-- `f`: This is either `model.f` or `Core.kwcall`, depending on whether
-    the model has keyword arguments.
+- `f`: The model body function, or `Core.kwcall` if it takes keyword arguments.
+    Models with argument LHS variables use prepared arguments for their body function.
 - `argtypes::Type{<:Tuple}`: The types of the arguments for the evaluator.
 """
 function gen_evaluator_call_with_types(
-    model::Model, varinfo::AbstractVarInfo=VarInfo(model)
+    model::Model,
+    varinfo::AbstractVarInfo=VarInfo(model);
+    context::AbstractContext=InitContext(
+        if !DynamicPPL.hasacc(varinfo, Val(DynamicPPL.VECTORVAL_ACCNAME)) ||
+            isempty(varinfo)
+            InitFromPrior()
+        else
+            InitFromParams(get_values(varinfo), nothing)
+        end,
+        UnlinkAll(),
+    ),
 )
-    args, kwargs = DynamicPPL.make_evaluate_args_and_kwargs(model, varinfo)
+    args, kwargs = DynamicPPL.make_evaluate_args_and_kwargs(
+        setleafcontext(model, context), varinfo
+    )
+    f, args, kwargs = DynamicPPL._model_evaluator(model.f, args, kwargs)
     return if isempty(kwargs)
-        (model.f, Base.typesof(args...))
+        (f, Base.typesof(args...))
     else
-        (Core.kwcall, Tuple{typeof(kwargs),Core.Typeof(model.f),map(Core.Typeof, args)...})
+        (Core.kwcall, Tuple{typeof(kwargs),Core.Typeof(f),map(Core.Typeof, args)...})
     end
 end
 
 """
-    model_warntype(model[, varinfo]; optimize=true)
+    model_warntype(model[, varinfo, optimize=false]; context)
 
 Check the type stability of the model's evaluator, warning about any potential issues.
 
@@ -371,17 +507,18 @@ This simply calls `@code_warntype` on the model's evaluator, filling in internal
 - `varinfo::AbstractVarInfo`: The varinfo to use when evaluating the model. Default: `VarInfo(model)`.
 
 # Keyword Arguments
-- `optimize::Bool`: Whether to generate optimized code. Default: `false`.
+- `context::AbstractContext`: The evaluation context. Defaults to the values supplied in `varinfo`,
+  unlinked, or `InitFromPrior()` when `varinfo` has no values.
 """
 function model_warntype(
-    model::Model, varinfo::AbstractVarInfo=VarInfo(model), optimize::Bool=false
+    model::Model, varinfo::AbstractVarInfo=VarInfo(model), optimize::Bool=false; kwargs...
 )
-    ftype, argtypes = gen_evaluator_call_with_types(model, varinfo)
+    ftype, argtypes = gen_evaluator_call_with_types(model, varinfo; kwargs...)
     return InteractiveUtils.code_warntype(ftype, argtypes; optimize=optimize)
 end
 
 """
-    model_typed(model[, varinfo]; optimize=true)
+    model_typed(model[, varinfo, optimize=true]; context)
 
 Return the type inference for the model's evaluator.
 
@@ -392,12 +529,13 @@ This simply calls `@code_typed` on the model's evaluator, filling in internal ar
 - `varinfo::AbstractVarInfo`: The varinfo to use when evaluating the model. Default: `VarInfo(model)`.
 
 # Keyword Arguments
-- `optimize::Bool`: Whether to generate optimized code. Default: `true`.
+- `context::AbstractContext`: The evaluation context. Defaults to the values supplied in `varinfo`,
+  unlinked, or `InitFromPrior()` when `varinfo` has no values.
 """
 function model_typed(
-    model::Model, varinfo::AbstractVarInfo=VarInfo(model), optimize::Bool=true
+    model::Model, varinfo::AbstractVarInfo=VarInfo(model), optimize::Bool=true; kwargs...
 )
-    ftype, argtypes = gen_evaluator_call_with_types(model, varinfo)
+    ftype, argtypes = gen_evaluator_call_with_types(model, varinfo; kwargs...)
     return only(InteractiveUtils.code_typed(ftype, argtypes; optimize=optimize))
 end
 

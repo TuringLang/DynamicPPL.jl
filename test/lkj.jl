@@ -7,6 +7,7 @@ __now__ = now()
 using Distributions: LKJCholesky, LKJ, mean
 using DynamicPPL
 using LinearAlgebra
+using StableRNGs: StableRNG
 using Test
 
 function pd_from_triangular(X::AbstractMatrix, uplo::Char)
@@ -32,10 +33,11 @@ _lkj_atol = 0.05
 
 @testset "Sample from x ~ LKJ(2, 1)" begin
     model = lkj_prior_demo()
+    rng = StableRNG(468)
     for init_strategy in [InitFromPrior(), InitFromUniform()]
         corr_matrices = map(1:n_samples) do _
             accs = DynamicPPL.VarInfo(RawValueAccumulator(false))
-            _, accs = DynamicPPL.init!!(model, accs, init_strategy, UnlinkAll())
+            _, accs = DynamicPPL.init!!(rng, model, accs, init_strategy, UnlinkAll())
             corr_sample = DynamicPPL.get_raw_values(accs)[@varname(x)]
         end
         @test vec(mean(corr_matrices)) ≈ target_mean atol = _lkj_atol
@@ -44,10 +46,11 @@ end
 
 @testset "Sample from x ~ LKJCholesky(2, 1, $(uplo))" for uplo in ['U', 'L']
     model = lkj_chol_prior_demo(uplo)
+    rng = StableRNG(468)
     for init_strategy in [InitFromPrior(), InitFromUniform()]
         corr_matrices = map(1:n_samples) do _
             accs = DynamicPPL.VarInfo(RawValueAccumulator(false))
-            _, accs = DynamicPPL.init!!(model, accs, init_strategy, UnlinkAll())
+            _, accs = DynamicPPL.init!!(rng, model, accs, init_strategy, UnlinkAll())
             chol_sample = DynamicPPL.get_raw_values(accs)[@varname(x)]
             pd_from_triangular(chol_sample.UL.data, uplo)
         end

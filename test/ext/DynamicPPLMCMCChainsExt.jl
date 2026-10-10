@@ -4,6 +4,7 @@ using DynamicPPL, Distributions, MCMCChains, Test
 using AbstractMCMC: AbstractMCMC
 using AbstractPPL: AbstractPPL
 using Random: Random
+using StableRNGs: StableRNG
 
 function make_chain_from_prior(rng::Random.AbstractRNG, model::Model, n_iters::Int)
     vi = DynamicPPL.VarInfo((
@@ -94,7 +95,7 @@ end
             model = demo()
 
             chain = MCMCChains.Chains(
-                randn(1000, 2, 1),
+                randn(StableRNG(468), 1000, 2, 1),
                 [:x, :y],
                 Dict(:internals => [:y]);
                 info=(; varname_to_symbol=Dict(@varname(x) => :x)),

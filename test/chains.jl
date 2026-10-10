@@ -241,7 +241,8 @@ end
 end
 @testset "Prediction filtering preserves structured values" begin
     dist = product_distribution((; a=Normal(), b=Bernoulli(), c=MvNormal(zeros(2), 1)))
-    @model function m(y=Any[missing, missing])
+    @model function m()
+        y = Vector{Any}(undef, 2)
         y[1] ~ dist
         return y[2] ~ dist
     end

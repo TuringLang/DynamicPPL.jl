@@ -6,10 +6,13 @@ __now__ = now()
 
 using Distributions
 using DynamicPPL
+using AbstractPPL: getoptic
 using ForwardDiff: ForwardDiff
-using REPL: REPL
 using LinearAlgebra: I
-using Random: Random
+# Loads the renderer used by the docstring test.
+using REPL: REPL
+using Random: Random, Xoshiro
+using StableRNGs: StableRNG
 using Test
 
 macro custom(expr)
@@ -47,12 +50,21 @@ struct MyCoolStruct{T}
     a::T
 end
 
+mutable struct ConstArrayArgument
+    const a::Vector{Float64}
+end
+
+mutable struct MutableArrayArgument
+    a::Vector{Float64}
+end
+
 module Issue537 end
 
 module NoImportDPPLTest
     using Distributions
-    using DynamicPPL: @model, fix, condition, VarNamedTuple, to_submodel
+    using DynamicPPL: @model, fix, condition, decondition, VarNamedTuple, to_submodel
     using Test: @testset, @test
+    using Random: Xoshiro
     # This module tests that the compiler interpolates all necessary DynamicPPL identifiers so
     # that the user doesn't need to `using DynamicPPL` in order to use the model macro. This can
     # be important if e.g. the user is only loading Turing.
@@ -68,15 +80,89 @@ module NoImportDPPLTest
             z ~ Normal(y)
             return a ~ to_submodel(inner())
         end
-        @test rand(f(1.0)) isa VarNamedTuple
-        @test rand(f(missing)) isa VarNamedTuple
-        @test rand(condition(f(1.0), (; x=2.0))) isa VarNamedTuple
-        @test rand(fix(f(1.0), (; x=2.0))) isa VarNamedTuple
-        @test rand(fix(f(1.0), (; a=(; b=2.0)))) isa VarNamedTuple
+        @test rand(Xoshiro(1), f(1.0)) isa VarNamedTuple
+        @test rand(Xoshiro(1), decondition(f(1.0))) isa VarNamedTuple
+        @test rand(Xoshiro(1), condition(f(1.0), (; x=2.0))) isa VarNamedTuple
+        @test rand(Xoshiro(1), fix(f(1.0), (; x=2.0))) isa VarNamedTuple
+        @test rand(Xoshiro(1), fix(f(1.0), (; a=(; b=2.0)))) isa VarNamedTuple
     end
 end
 
 @testset "compiler.jl" begin
+    @testset "latent writes require placeholder storage" begin
+        @model function indexed_placeholder(x)
+            x[1] ~ Normal()
+            x[2] ~ Normal()
+            return x
+        end
+        @model function nested_index_placeholder(x)
+            x[1][1] ~ Normal()
+            return x
+        end
+        @model function field_placeholder(x)
+            x.a ~ Normal()
+            return x
+        end
+        @model function initialized_placeholder(x)
+            x === missing && (x = zeros(2))
+            x[1] ~ Normal()
+            x[2] ~ Normal()
+            return x
+        end
+        message = r"ArgumentError: .*`x\[(1|1\]\[1)\].*(missing|nothing).*concrete.*storage"
+        @test_throws message indexed_placeholder(missing)()
+        @test_throws message indexed_placeholder(nothing)()
+        @test_throws r"ArgumentError: .*`x\.a`.*missing.*concrete.*storage" field_placeholder(
+            missing
+        )()
+        @test_throws r"ArgumentError: .*`x\.a`.*nothing.*concrete.*storage" field_placeholder(
+            nothing
+        )()
+        @test_throws r"ArgumentError: .*`x\[1\]\[1\]`.*missing.*concrete.*storage" nested_index_placeholder(
+            missing
+        )()
+        @test_throws r"ArgumentError: .*`x\[1\]\[1\]`.*nothing.*concrete.*storage" nested_index_placeholder(
+            nothing
+        )()
+        @test initialized_placeholder(missing)() isa Vector{Float64}
+        @test indexed_placeholder(zeros(2))() isa Vector{Float64}
+    end
+
+    @testset "latent writes preserve unchanged const fields" begin
+        @model function const_array_argument(c)
+            c.a[1] ~ Normal()
+            return c
+        end
+        for constructor in (ConstArrayArgument, MutableArrayArgument)
+            value = constructor([10.0])
+            result = rand(StableRNG(1), decondition(const_array_argument(value)))
+            @test result[@varname(c.a[1])] != 10.0
+            @test value.a == [10.0]
+        end
+        @test_throws ArgumentError DynamicPPL._set_lhs(
+            ConstArrayArgument([1.0]), getoptic(@varname(c.a)), [2.0], @varname(c.a)
+        )
+    end
+
+    @testset "bound argument type diagnostics name only mismatches" begin
+        @model two_typed_arguments(x::Float64, y) = (x ~ Normal(); y ~ Normal())
+        @model keyword_typed_arguments(x; y::Float64) = (x ~ Normal(); y ~ Normal())
+        @model function splatted_typed_arguments(x::Float64, ys::Float64...)
+            x ~ Normal()
+            for i in eachindex(ys)
+                ys[i] ~ Normal()
+            end
+        end
+        for (model, values, name) in (
+            (two_typed_arguments(1.0, 2.0), (; x=1), "x"),
+            (keyword_typed_arguments(1.0; y=2.0), (; y=2), "y"),
+            (splatted_typed_arguments(1.0, 2.0, 3.0), (; x=1), "x"),
+        )
+            message = "Bound value at `$name` in model `$(nameof(model))` must be an instance of declared argument type Float64; supplied Int64."
+            @test_throws ArgumentError(message) condition(model, values)
+        end
+    end
+
     @testset "model macro" begin
         @model function testmodel_comp(x, y)
             s ~ InverseGamma(2, 3)
@@ -87,37 +173,36 @@ end
 
             return x, y
         end
-        @test length(methods(testmodel_comp)) == 2
+        # Argument LHS variables add a debug evaluator method.
+        @test length(methods(testmodel_comp)) == 3
         testmodel_comp(1.0, 1.2)
 
         # check if drawing from the prior works
-        @model function testmodel01(x=missing)
+        @model function testmodel01(x=0.0)
             x ~ Normal()
             return x
         end
-        @test length(methods(testmodel01)) == 4
-        f0_mm = testmodel01()
-        @test mean(f0_mm() for _ in 1:1000) ≈ 0.0 atol = 0.1
+        @test length(methods(testmodel01)) == 6
+        f0_mm = decondition(testmodel01())
+        rng = StableRNG(468)
+        @test mean(f0_mm(rng) for _ in 1:1000) ≈ 0.0 atol = 0.1
 
         # Test #544
-        @model function testmodel02(x=missing)
-            if x === missing
-                x = Vector{Float64}(undef, 2)
-            end
+        @model function testmodel02(x=zeros(2))
             x[1] ~ Normal()
             x[2] ~ Normal()
             return x
         end
-        @test length(methods(testmodel02)) == 4
-        f0_mm = testmodel02()
-        @test all(x -> isapprox(x, 0; atol=0.1), mean(f0_mm() for _ in 1:1000))
+        @test length(methods(testmodel02)) == 6
+        f0_mm = decondition(testmodel02())
+        @test all(x -> isapprox(x, 0; atol=0.1), mean(f0_mm(rng) for _ in 1:1000))
 
-        @model function testmodel03(x=missing)
+        @model function testmodel03(x=false)
             x ~ Bernoulli(0.5)
             return x
         end
-        f01_mm = testmodel03()
-        @test length(methods(testmodel03)) == 4
+        f01_mm = decondition(testmodel03())
+        @test length(methods(testmodel03)) == 6
         @test mean(f01_mm() for _ in 1:1000) ≈ 0.5 atol = 0.1
 
         # test if we get the correct return values
@@ -130,7 +215,7 @@ end
 
             return x1, x2
         end
-        @test length(methods(testmodel1)) == 2
+        @test length(methods(testmodel1)) == 3
         f1_mm = testmodel1(1.0, 10.0)
         @test f1_mm() == (1, 10)
 
@@ -148,7 +233,7 @@ end
 
             return x1, x2
         end
-        @test length(methods(testmodel2)) == 2
+        @test length(methods(testmodel2)) == 3
         f1_mm = testmodel2(; x1=1.0, x2=10.0)
         @test f1_mm() == (1, 10)
 
@@ -215,13 +300,6 @@ end
         end
         @test_throws MethodError testmodel_missing1()
 
-        # Test missing initialization for vector observation turned parameter
-        @model function testmodel_missing2(x)
-            x[1] ~ Bernoulli(0.5)
-            return x
-        end
-        @test_throws MethodError testmodel_missing2(missing)()
-
         # Test use of internal names
         @model function testmodel_missing3(x)
             x[1] ~ Bernoulli(0.5)
@@ -234,12 +312,8 @@ end
         varinfo = VarInfo(model)
         @test getlogjoint(varinfo) == lp
         @test varinfo_ isa AbstractVarInfo
-        # During the model evaluation, its leaf context is changed to an InitContext, so
-        # `model_` is not going to be equal to `model`. We can still check equality of `f`
-        # though.
         @test model_.f === model.f
-        @test model_.context isa DynamicPPL.InitContext
-        @test model_.context.rng isa Random.AbstractRNG
+        @test model_.context isa InitContext
 
         # disable warnings
         @model function testmodel_missing4(x)
@@ -271,15 +345,16 @@ end
                 x[i] ~ Normal(m, sqrt(s))
             end
         end
-        x = [1.0, missing]
-        VarInfo(gdemo(x))
-        @test ismissing(x[2])
+        x = [1.0, 0.0]
+        model = condition(decondition(gdemo(x)), @varname(x[1]) => 1.0)
+        VarInfo(model)
+        @test x == [1.0, 0.0]
 
         # https://github.com/TuringLang/Turing.jl/issues/1464#issuecomment-731153615
-        vi = VarInfo(gdemo(x))
+        vi = VarInfo(model)
         @test !haskey(vi, @varname(x[1]))
         @test haskey(vi, @varname(x[2]))
-        vi = VarInfo(gdemo(x))
+        vi = VarInfo(model)
         @test !haskey(vi, @varname(x[1]))
         @test haskey(vi, @varname(x[2]))
 
@@ -305,12 +380,10 @@ end
             return (; s=s, m=m, x=x, y=y, z=z)
         end
 
-        m_nonarray = testmodel_nonarray(
-            MyCoolStruct([missing, missing]), MyCoolStruct(missing)
+        m_nonarray = decondition(
+            testmodel_nonarray(MyCoolStruct(zeros(2)), MyCoolStruct(0.0))
         )
         result = m_nonarray()
-        @test !any(ismissing, result.x.a)
-        @test result.y.a !== missing
         @test result.x.a[end] > 10
         @test Set(keys(VarInfo(m_nonarray))) == Set([
             @varname(m),
@@ -402,7 +475,7 @@ end
             x = y
             return x
         end
-        @test only(keys(VarInfo(named_site()))) == @varname(y)
+        @test only(keys(rand(Xoshiro(1), named_site()))) == @varname(y)
         observed = condition(named_site(); y=2.0)
         @test observed() == 2.0
         @test loglikelihood(observed, VarNamedTuple()) == logpdf(Normal(), 2.0)
@@ -465,46 +538,46 @@ end
 
     @testset "to_submodel" begin
         # No prefix, 1 level.
-        @model function demo1(x)
+        @model function demo1()
             return x ~ Normal()
         end
-        @model function demo2(x, y)
-            _ignore ~ to_submodel(demo1(x), false)
+        @model function demo2(unused_x, y)
+            _ignore ~ to_submodel(demo1(), false)
             return y ~ Uniform()
         end
         # No observation.
-        m = demo2(missing, missing)
+        m = decondition(demo2(0.0, 0.0))
         vi = VarInfo(m)
         ks = keys(vi)
         @test @varname(x) ∈ ks
         @test @varname(y) ∈ ks
 
         # Observation in top-level.
-        m = demo2(missing, 1.0)
+        m = condition(decondition(demo2(0.0, 0.0)); y=1.0)
         vi = VarInfo(m)
         ks = keys(vi)
         @test @varname(x) ∈ ks
         @test @varname(y) ∉ ks
 
         # Observation in nested model.
-        m = demo2(1000.0, missing)
+        m = condition(decondition(demo2(0.0, 0.0)); x=1000.0)
         vi = VarInfo(m)
         ks = keys(vi)
         @test @varname(x) ∉ ks
         @test @varname(y) ∈ ks
 
         # Observe all.
-        m = demo2(1000.0, 0.5)
+        m = condition(demo2(0.0, 0.0); x=1000.0, y=0.5)
         vi = VarInfo(m)
         ks = keys(vi)
         @test isempty(ks)
 
         # Check values makes sense.
         @model function demo3(x, y)
-            _ignore ~ to_submodel(demo1(x), false)
+            _ignore ~ to_submodel(demo1(), false)
             return y ~ Normal(x)
         end
-        m = demo3(1000.0, missing)
+        m = decondition(demo3(1000.0, 0.0), :y)
         # Mean of `y` should be close to 1000.
         @test abs(mean([rand(m)[@varname(y)] for i in 1:10]) - 1000) ≤ 10
 
@@ -514,11 +587,11 @@ end
             return x
         end
         @model function demo_useval(x, y)
-            sub1 ~ to_submodel(demo_return(x))
-            sub2 ~ to_submodel(demo_return(y))
+            sub1 ~ to_submodel(decondition(demo_return(x)))
+            sub2 ~ to_submodel(decondition(demo_return(y)))
             return z ~ Normal(sub1 + sub2 + 100, 1.0)
         end
-        m = demo_useval(missing, missing)
+        m = demo_useval(0.0, 0.0)
         vi = VarInfo(m)
         ks = keys(vi)
         @test @varname(sub1.x) ∈ ks
@@ -625,7 +698,7 @@ end
 
         # Ensure we can specialize on arguments.
         @model demo(x) = x ~ Normal()
-        @test length(methods(demo)) == 4
+        @test length(methods(demo)) == 5
         @test f(demo(1.0))
         f(::Model{typeof(demo),(:x,)}) = false
         @test !f(demo(1.0))
@@ -699,20 +772,6 @@ end
         @test demo_ret_with_ret()() === Val(1)
     end
 
-    @testset "issue #368: hasmissing dispatch" begin
-        @test !DynamicPPL.hasmissing(typeof(Union{}[]))
-
-        # (nested) arrays with `Missing` eltypes
-        @test DynamicPPL.hasmissing(Vector{Union{Missing,Float64}})
-        @test DynamicPPL.hasmissing(Matrix{Union{Missing,Real}})
-        @test DynamicPPL.hasmissing(Vector{Matrix{Union{Missing,Float32}}})
-
-        # no `Missing`
-        @test !DynamicPPL.hasmissing(Vector{Float64})
-        @test !DynamicPPL.hasmissing(Matrix{Real})
-        @test !DynamicPPL.hasmissing(Vector{Matrix{Float32}})
-    end
-
     @testset "issue #393: anonymous argument with type parameter" begin
         @model f_393(::Val{ispredict}=Val(false)) where {ispredict} = ispredict ? 0 : 1
         @test f_393()() == 1
@@ -745,6 +804,89 @@ end
         # Empty `args...` and empty `kwargs...`.
         res = f_splat_test_2(1)()
         @test res == (1, (), 1, Int, NamedTuple())
+    end
+
+    @testset "keyword splat arguments with LHS variables preserve Julia semantics" begin
+        forward_keywords(; kw...) = kw
+        @model function keyword_replacement_body(; kw...)
+            kw[:y] ~ Normal()
+            return kw, kw[:y], keys(kw), values(kw), forward_keywords(; kw...)
+        end
+        model = keyword_replacement_body(; y=1.0)
+        for (prepared, expected) in (
+            (model, 1.0),
+            (condition(model; kw=(; y=2.0)), 2.0),
+            (fix(model; kw=(; y=2.0)), 2.0),
+            (condition(model; kw=pairs((; y=2.0))), 2.0),
+            (fix(model; kw=pairs((; y=2.0))), 2.0),
+            (condition(model; kw=Dict(:y => 2.0)), 2.0),
+            (fix(model; kw=Dict(:y => 2.0)), 2.0),
+            (unfix(fix(model; kw=(; y=2.0))), 1.0),
+        )
+            kw, y, names, vals, forwarded = prepared(Xoshiro(1))
+            @test typeof(kw) === typeof(forward_keywords(; y=expected))
+            @test y === expected
+            @test names === (:y,)
+            @test vals === (; y=expected)
+            @test forwarded === kw
+        end
+    end
+
+    @testset "incompatible prepared argument types" begin
+        @model typed_input(x::Vector{Float64}) = (x[1] ~ Normal(); return x)
+        @model typed_keyword(; x::Vector{Float64}=[0.0]) = (x[1] ~ Normal(); return x)
+        for (model, name) in
+            ((typed_input([0.0]), "typed_input"), (typed_keyword(), "typed_keyword")),
+            bind in (condition, fix)
+
+            err = try
+                bind(model; x=[1])()
+            catch err
+                err
+            end
+            @test err isa ArgumentError
+            @test occursin(name, sprint(showerror, err))
+            @test occursin("`x`", sprint(showerror, err))
+            @test occursin("Vector{Float64}", sprint(showerror, err))
+            @test occursin(string(Vector{Int}), sprint(showerror, err))
+            @test bind(model; x=[1.0])() == [1.0]
+        end
+        @model function body_methoderror(x)
+            x ~ Normal()
+            return sin("body error")
+        end
+        @test_throws MethodError condition(body_methoderror(0.0); x=1)()
+    end
+
+    @testset "prepared arguments dispatch within the selected model definition" begin
+        @model function typed_replacement(x::AbstractVector{T}=[0.0]) where {T}
+            x[1] ~ Normal()
+            return (T, x)
+        end
+        @model typed_replacement(x::AbstractVector{<:Integer}) = :integer_method
+        @test typed_replacement([1])() === :integer_method
+        @test condition(typed_replacement(); x=[1])() == (Int, [1])
+
+        @model function keyword_replacement(; x::T=0.0) where {T}
+            read_x() = x::T
+            x ~ Normal()
+            return (T, read_x())
+        end
+        @test condition(keyword_replacement(); x=1.0f0)() === (Float32, 1.0f0)
+
+        @model function splat_replacement(x::T, args...; kwargs...) where {T}
+            x ~ Normal()
+            return (T, x, args, NamedTuple(kwargs))
+        end
+        @test condition(splat_replacement(0.0, 2; z=3); x=1.0f0)() ===
+            (Float32, 1.0f0, (2,), (; z=3))
+
+        @model function (f::MyCoolStruct)(x::AbstractVector{T}) where {T}
+            x[1] ~ Normal(f.a)
+            return (T, x, f.a)
+        end
+        @test condition(MyCoolStruct(2.0)([0.0]); x=Float32[1])() ==
+            (Float32, Float32[1], 2.0)
     end
 
     @testset "issue #537: model with logging" begin
@@ -875,6 +1017,19 @@ end
         @test_logs (:warn, r"threadsafe evaluation") eval(e3)
     end
 
+    @testset "public observation call target" begin
+        count_observe(::Any) = 0
+        function count_observe(ex::Expr)
+            return (Meta.isexpr(ex, :call) && ex.args[1] === tilde_observe!!) +
+                   sum(count_observe, ex.args; init=0)
+        end
+        expr = @macroexpand @model function observations(x)
+            x ~ Normal()
+            return 0.0 ~ Normal()
+        end
+        @test count_observe(expr) == 2
+    end
+
     @testset "no try block in a model body" begin
         # Libtask cannot tape a `try` block, so one in a model body breaks every particle
         # sampler. See #1487
@@ -884,7 +1039,7 @@ end
         expr = @macroexpand @model function tilde_lhs_forms(y, s)
             a ~ Normal()
             b = [exp(y), exp(y)]
-            b[1] ~ Normal()
+            b[end] ~ Normal()
             s.x ~ Normal()
             return b .~ Normal()
         end
@@ -892,15 +1047,15 @@ end
     end
 
     @testset "guarded provenance read" begin
-        read = DynamicPPL.read_input_provenance
+        read(vn, value) = DynamicPPL.read_input_provenance(getoptic(vn), value)
         v = [1.0, 2.0, 3.0]
-        # A scalar index stays a scalar and a range becomes a view, as `@views` would give.
-        @test read(Base.maybeview, v, 2) === 2.0
-        @test read(Base.maybeview, v, 1:2) isa SubArray
+        @test read(@varname(x[2]), v) === 2.0
+        @test read(@varname(x[begin:end]), v) == v
+        @test read(@varname(x.a[end]), (; a=v)) === 3.0
         # An unreadable location is reported as absent rather than throwing.
-        @test read(Base.maybeview, v, 9) === nothing
-        @test read(Base.maybeview, Vector{Vector{Float64}}(undef, 2), 1) === nothing
-        @test read(getproperty, (; a=1.0), :zzz) === nothing
+        @test read(@varname(x[9]), v) === nothing
+        @test read(@varname(x[1]), Vector{Vector{Float64}}(undef, 2)) === nothing
+        @test read(@varname(x.zzz), (; a=1.0)) === nothing
         # A property that only an overloaded `getproperty` can reach is still read, which
         # an `isdefined` guard would have missed.
         struct OnlyOverloaded
@@ -909,7 +1064,7 @@ end
         Base.getproperty(o::OnlyOverloaded, s::Symbol) = getfield(o, :d)[s]
         o = OnlyOverloaded(Dict(:x => 1.5))
         @test !isdefined(o, :x)
-        @test read(getproperty, o, :x) === 1.5
+        @test read(@varname(o.x), o) === 1.5
     end
 
     @testset "Immutable data as model arguments" begin
@@ -937,11 +1092,6 @@ end
             # convert_model_argument should make sure to not deepcopy arrays if not needed
             x = [1.0]
             @test DynamicPPL.convert_model_argument(Float64, x) === x
-            # but if there's a missing in the array, it should
-            y = [1.0, missing]
-            y_converted = DynamicPPL.convert_model_argument(Float64, y)
-            @test y_converted !== y
-            @test isequal(y_converted, y)
         end
         @testset "type arguments" begin
             # These tests with types / TypeWrap as the second argument also test
@@ -967,6 +1117,21 @@ end
             )
         end
     end
+end
+
+@testset "shadowed argument LHS roots are rejected" begin
+    @test_throws r"shadows model argument `x`" macroexpand(
+        @__MODULE__, :(@model sh(x) = ((x -> (x ~ Normal()))(2.0); x))
+    )
+    @test_throws r"shadows model argument `x`" macroexpand(
+        @__MODULE__, :(@model sh_nested(x) = (function f(x)
+            return x ~ Normal()
+        end;
+        f(2.0);
+        x))
+    )
+    @model capture_argument(x) = ((() -> (x ~ Normal()))(); x)
+    @test capture_argument(1.0)(Xoshiro(1)) == 1.0
 end
 
 @info "Completed $(@__FILE__) in $(now() - __now__)."
