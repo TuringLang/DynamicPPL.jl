@@ -261,7 +261,7 @@ end
         threadsafe_model = setthreadsafe(model, true)
         expected = VarInfo(Xoshiro(1), model)
         vi = VarInfo(Xoshiro(1), threadsafe_model)
-        ctx = InitContext(Xoshiro(1), InitFromPrior(), UnlinkAll())
+        ctx = Context(Xoshiro(1), InitFromPrior(), UnlinkAll())
         outputs() = VarInfo(VectorValueAccumulator(), DynamicPPL.default_accumulators()...)
         for result in (
             vi,
@@ -403,7 +403,7 @@ end
         # But init!! should return the original VarInfo
         @test vi isa DynamicPPL.VarInfo
         # Same with evaluate!!
-        ctx = InitContext(Xoshiro(1), InitFromParams((; x=2.0)), UnlinkAll())
+        ctx = Context(Xoshiro(1), InitFromParams((; x=2.0)), UnlinkAll())
         result, vi = evaluate!!(model, ctx, vi)
         @test result == 2.0
         @test vi_ isa DynamicPPL.ThreadSafeVarInfo

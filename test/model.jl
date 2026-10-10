@@ -111,6 +111,22 @@ DynamicPPL.convert_model_argument(T, ::Type{CustomModelArgument}) = (:converted_
         end
     end
 
+    @testset "prepared evaluator arguments apply effective bindings" begin
+        @model function prepared_bindings(observation, replaced; held=0.0)
+            observation ~ Normal()
+            replaced ~ Normal()
+            held ~ Normal()
+            return (; observation, replaced, held)
+        end
+        model = fix(condition(prepared_bindings(1.0, 2.0); replaced=3.0); held=4.0)
+        context = DynamicPPL.Context(Xoshiro(1), InitFromPrior(), UnlinkAll())
+        args, kwargs = DynamicPPL.make_evaluate_args_and_kwargs(model, context, VarInfo())
+        result, vi = model.f(args...; kwargs...)
+        @test result == (; observation=1.0, replaced=3.0, held=4.0)
+        @test getloglikelihood(vi) ≈ logpdf(Normal(), 1.0) + logpdf(Normal(), 3.0)
+        @test getlogprior(vi) == 0.0
+    end
+
     @testset "immutable metadata for arguments with LHS variables" begin
         @model argument_lhs(x) = x ~ Normal()
         @test isbitstype(typeof(DynamicPPL.Model{false}(identity, (;), (;))))
@@ -129,9 +145,7 @@ DynamicPPL.convert_model_argument(T, ::Type{CustomModelArgument}) = (:converted_
         for m in (
             DynamicPPL.Model{false}(f, (; x=missing, y=1.0), (;)),
             DynamicPPL.Model{false}(f, (; x=missing); y=1.0),
-            DynamicPPL.Model{false}(
-                f, (; x=missing, y=1.0), (;), nothing, VarNamedTuple(), DefaultContext()
-            ),
+            DynamicPPL.Model{false}(f, (; x=missing, y=1.0), (;), nothing, VarNamedTuple()),
         )
             @test isempty(conditioned(m))
             @test isempty(DynamicPPL._args_on_lhs(m))
@@ -172,8 +186,7 @@ DynamicPPL.convert_model_argument(T, ::Type{CustomModelArgument}) = (:converted_
                 model.args,
                 model.defaults,
                 model.prefix,
-                model.values,
-                model.context;
+                model.values;
                 args_on_lhs=DynamicPPL._args_on_lhs(model),
             )
             @test direct.prefix === model.prefix
@@ -499,7 +512,7 @@ DynamicPPL.convert_model_argument(T, ::Type{CustomModelArgument}) = (:converted_
                     @inferred(
                         evaluate!!(
                             model,
-                            InitContext(
+                            Context(
                                 InitFromParams(get_values(varinfo), nothing), UnlinkAll()
                             ),
                             VarInfo(),
@@ -513,7 +526,7 @@ DynamicPPL.convert_model_argument(T, ::Type{CustomModelArgument}) = (:converted_
                     @inferred(
                         evaluate!!(
                             model,
-                            InitContext(
+                            Context(
                                 InitFromParams(get_values(varinfo_linked), nothing),
                                 LinkAll(),
                             ),

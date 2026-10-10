@@ -204,7 +204,7 @@ end
         vi = last(
             evaluate!!(
                 m,
-                InitContext(
+                Context(
                     InitFromParams(get_values(vi), nothing),
                     DynamicPPL.infer_transform_strategy_from_values(get_values(vi)),
                 ),
@@ -249,7 +249,7 @@ end
         vi = last(
             evaluate!!(
                 m,
-                InitContext(
+                Context(
                     InitFromParams(get_values(vi), nothing),
                     DynamicPPL.infer_transform_strategy_from_values(get_values(vi)),
                 ),
@@ -272,7 +272,7 @@ end
         # Test evaluating without any accumulators.
         vi = last(
             evaluate!!(
-                m, InitContext(InitFromParams(values, nothing), UnlinkAll()), VarInfo(())
+                m, Context(InitFromParams(values, nothing), UnlinkAll()), VarInfo(())
             ),
         )
         @test_throws "Missing accumulator :LogPrior." getlogprior(vi)
@@ -297,7 +297,7 @@ end
         # And evaluate the model once so that they are populated.
         _, vi_orig = evaluate!!(
             model,
-            InitContext(
+            Context(
                 InitFromParams(get_values(vi_orig), nothing),
                 DynamicPPL.infer_transform_strategy_from_values(get_values(vi_orig)),
             ),
@@ -348,7 +348,7 @@ end
         # Thus after re-evaluation, the accs should be exactly the same as before.
         _, vi = evaluate!!(
             model,
-            InitContext(
+            Context(
                 InitFromParams(get_values(vi_orig), nothing),
                 DynamicPPL.infer_transform_strategy_from_values(get_values(vi_orig)),
             ),
