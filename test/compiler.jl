@@ -89,6 +89,45 @@ module NoImportDPPLTest
 end
 
 @testset "compiler.jl" begin
+    @testset "latent writes require placeholder storage" begin
+        @model function indexed_placeholder(x)
+            x[1] ~ Normal()
+            x[2] ~ Normal()
+            return x
+        end
+        @model function nested_index_placeholder(x)
+            x[1][1] ~ Normal()
+            return x
+        end
+        @model function field_placeholder(x)
+            x.a ~ Normal()
+            return x
+        end
+        @model function initialized_placeholder(x)
+            x === missing && (x = zeros(2))
+            x[1] ~ Normal()
+            x[2] ~ Normal()
+            return x
+        end
+        message = r"ArgumentError: .*`x\[(1|1\]\[1)\].*(missing|nothing).*concrete.*storage"
+        @test_throws message indexed_placeholder(missing)()
+        @test_throws message indexed_placeholder(nothing)()
+        @test_throws r"ArgumentError: .*`x\.a`.*missing.*concrete.*storage" field_placeholder(
+            missing
+        )()
+        @test_throws r"ArgumentError: .*`x\.a`.*nothing.*concrete.*storage" field_placeholder(
+            nothing
+        )()
+        @test_throws r"ArgumentError: .*`x\[1\]\[1\]`.*missing.*concrete.*storage" nested_index_placeholder(
+            missing
+        )()
+        @test_throws r"ArgumentError: .*`x\[1\]\[1\]`.*nothing.*concrete.*storage" nested_index_placeholder(
+            nothing
+        )()
+        @test initialized_placeholder(missing)() isa Vector{Float64}
+        @test indexed_placeholder(zeros(2))() isa Vector{Float64}
+    end
+
     @testset "latent writes preserve unchanged const fields" begin
         @model function const_array_argument(c)
             c.a[1] ~ Normal()
@@ -101,7 +140,7 @@ end
             @test value.a == [10.0]
         end
         @test_throws ArgumentError DynamicPPL._set_lhs(
-            ConstArrayArgument([1.0]), getoptic(@varname(c.a)), [2.0]
+            ConstArrayArgument([1.0]), getoptic(@varname(c.a)), [2.0], @varname(c.a)
         )
     end
 

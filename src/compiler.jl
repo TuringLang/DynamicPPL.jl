@@ -420,7 +420,7 @@ function generate_tilde_literal(left, right)
 end
 
 function set_tilde_value!!(::AbstractVarInfo, object, value, vn::VarName)
-    return _set_lhs(object, AbstractPPL.getoptic(vn), value)
+    return _set_lhs(object, AbstractPPL.getoptic(vn), value, vn)
 end
 
 assign_or_set!!(lhs::Symbol, rhs, vn, set=set_tilde_value!!) = drop_escape(:($lhs = $rhs))
@@ -429,12 +429,17 @@ function assign_or_set!!(lhs::Expr, rhs, vn, set=set_tilde_value!!)
     return drop_escape(:($left_top_sym = $(set)(__varinfo__, $left_top_sym, $rhs, $vn)))
 end
 
-_set_lhs(object, optic, value) = _set_lhs_optic(object, optic, value)
+function _set_lhs(object, optic, value, vn)
+    (object === missing || object === nothing) && throw(_placeholder_lhs_error(vn, object))
+    return _set_lhs_optic(object, optic, value)
+end
 _set_lhs_optic(object, ::AbstractPPL.Iden, value) = value
 function _set_lhs_optic(object, optic::AbstractPPL.Property{S}, value) where {S}
     child = _set_lhs_optic(getproperty(object, S), optic.child, value)
     getproperty(object, S) === child && return object
-    if ismutabletype(typeof(object)) && hasfield(typeof(object), S) && isconst(typeof(object), S)
+    if ismutabletype(typeof(object)) &&
+        hasfield(typeof(object), S) &&
+        isconst(typeof(object), S)
         throw(
             ArgumentError(
                 "Cannot replace const property `$S` of argument type $(typeof(object)); bind the whole value instead.",
@@ -456,8 +461,16 @@ function _set_lhs_optic(object, optic::AbstractPPL.Index, value)
         setindex!(object, child, optic.ix...; optic.kw...)
     end
 end
+
+function _placeholder_lhs_error(vn, object)
+    return ArgumentError(
+        "Cannot assign latent LHS variable `$vn`: `$(AbstractPPL.getsym(vn))` is `$object` " *
+        "and has no storage; supply a concrete argument such as `f(zeros(n))` or create the " *
+        "storage in the model body before the tilde.",
+    )
+end
 # A keyword splat must stay `Base.Pairs`, as plain Julia presents it to the body.
-function _set_lhs(object::Base.Pairs, optic, value)
+function _set_lhs(object::Base.Pairs, optic, value, vn)
     return pairs(_set_lhs_optic(values(object), optic, value))
 end
 # A fixed argument already holds its value unless the body changed it. Skip the write when
