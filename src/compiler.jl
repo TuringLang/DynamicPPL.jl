@@ -423,16 +423,21 @@ assign_or_set!!(lhs::Symbol, rhs, vn, set=_set_lhs) = drop_escape(:($lhs = $rhs)
 function assign_or_set!!(lhs::Expr, rhs, vn, set=_set_lhs)
     left_top_sym = get_top_level_symbol(lhs)
     return drop_escape(
-        :($left_top_sym = $(set)($left_top_sym, $(AbstractPPL.getoptic)($vn), $rhs))
+        :($left_top_sym = $(set)($left_top_sym, $(AbstractPPL.getoptic)($vn), $rhs, $vn))
     )
 end
 
-_set_lhs(object, optic, value) = _set_lhs_optic(object, optic, value)
+function _set_lhs(object, optic, value, vn)
+    (object === missing || object === nothing) && throw(_placeholder_lhs_error(vn, object))
+    return _set_lhs_optic(object, optic, value)
+end
 _set_lhs_optic(object, ::AbstractPPL.Iden, value) = value
 function _set_lhs_optic(object, optic::AbstractPPL.Property{S}, value) where {S}
     child = _set_lhs_optic(getproperty(object, S), optic.child, value)
     getproperty(object, S) === child && return object
-    if ismutabletype(typeof(object)) && hasfield(typeof(object), S) && isconst(typeof(object), S)
+    if ismutabletype(typeof(object)) &&
+        hasfield(typeof(object), S) &&
+        isconst(typeof(object), S)
         throw(
             ArgumentError(
                 "Cannot replace const property `$S` of argument type $(typeof(object)); bind the whole value instead.",
@@ -454,17 +459,25 @@ function _set_lhs_optic(object, optic::AbstractPPL.Index, value)
         setindex!(object, child, optic.ix...; optic.kw...)
     end
 end
+
+function _placeholder_lhs_error(vn, object)
+    return ArgumentError(
+        "Cannot assign latent LHS variable `$vn`: `$(AbstractPPL.getsym(vn))` is `$object` " *
+        "and has no storage; supply a concrete argument such as `f(zeros(n))` or create the " *
+        "storage in the model body before the tilde.",
+    )
+end
 # A keyword splat must stay `Base.Pairs`, as plain Julia presents it to the body.
-function _set_lhs(object::Base.Pairs, optic, value)
+function _set_lhs(object::Base.Pairs, optic, value, vn)
     return pairs(_set_lhs_optic(values(object), optic, value))
 end
 # A fixed argument already holds its value unless the body changed it. Skip the write when
 # it holds that very value, so storage that cannot take the write, such as a range, works;
 # equality is not enough, as the body may point the address at latent storage. A mutable
 # value is written back without comparing, since reading a slice to compare it allocates.
-function _set_fixed_lhs(object, optic, value)
-    ismutable(value) && return _set_lhs(object, optic, value)
-    return optic(object) === value ? object : _set_lhs(object, optic, value)
+function _set_fixed_lhs(object, optic, value, vn)
+    ismutable(value) && return _set_lhs(object, optic, value, vn)
+    return optic(object) === value ? object : _set_lhs(object, optic, value, vn)
 end
 
 """
