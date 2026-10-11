@@ -2542,8 +2542,8 @@ julia> conditioned_model_pair = condition(model, @varname(x) => 100.0);
 julia> m, x = conditioned_model_pair(); (m != 1.0 && x == 100.0)
 true
 
-julia> # There's also an option using `|` by letting the right-hand side be a tuple
-       # with elements of type `Pair{<:VarName}`, i.e. `vn => value` with `vn isa VarName`.
+julia> # There's also an option using `|` with a single `Pair{<:VarName}` on the
+       # right-hand side, i.e. `vn => value` with `vn isa VarName`.
        conditioned_model_pairs = model | (@varname(x) => 100.0);
 
 julia> m, x = conditioned_model_pairs(); (m != 1.0 && x == 100.0)
@@ -4041,9 +4041,8 @@ julia> # By specifying the `VarName` to `unfix`.
 julia> (m, x) = model(); (m != 1.0 && x == 10.0)
 true
 
-julia> # When `NamedTuple` is used as the underlying, you can also provide
-       # the symbol directly (though the `@varname` approach is preferable if
-       # the LHS variable is known at compile-time).
+julia> # You can also provide the symbol directly (though the `@varname`
+       # approach is preferable if the LHS variable is known at compile-time).
        model = unfix(fixed_model, :m);
 
 julia> (m, x) = model(); (m != 1.0 && x == 10.0)
