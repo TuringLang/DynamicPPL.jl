@@ -4039,6 +4039,160 @@ end
         (cartesian ? "linear and Cartesian indices are distinct. " : "") *
         advice(owner),
     )
+    @testset "indexed submodel prefixes preserve index counts" begin
+        @model inner() = x ~ Normal()
+        @model linear_parent(dims, i) = (
+            p = Matrix{Any}(undef, dims...); p[i] ~ to_submodel(inner()); p[i]
+        )
+        @model cartesian_parent() = (
+            p = Matrix{Any}(undef, 1, 1); p[1, 1] ~ to_submodel(inner()); p[1, 1]
+        )
+        for (model, matched, mismatched, lhs, example, stored, used) in (
+            (
+                linear_parent((1, 1), 1),
+                @varname(p[1].x),
+                @varname(p[1, 1].x),
+                "p[1]",
+                "p[1, 1]",
+                2,
+                1,
+            ),
+            (
+                cartesian_parent(),
+                @varname(p[1, 1].x),
+                @varname(p[1].x),
+                "p[1, 1]",
+                "p[1]",
+                1,
+                2,
+            ),
+            (
+                linear_parent((2, 2), 2),
+                @varname(p[2].x),
+                @varname(p[2, 1].x),
+                "p[2]",
+                "p[2, 1]",
+                2,
+                1,
+            ),
+        )
+            @test length(keys(VarInfo(Xoshiro(1), model))) == 1
+            for bind in (condition, fix)
+                @test bind(model, matched => 3.0)(Xoshiro(1)) == 3.0
+                @test_throws mismatch("p", example, lhs, stored, used) VarInfo(
+                    Xoshiro(1), bind(model, mismatched => 3.0)
+                )
+                @test bind(model; p=fill((x=3.0,), 2, 2))(Xoshiro(1)) == 3.0
+                @test bind(model, mismatched => 3.0, @of(p = of(Array, 2, 2)))(
+                    Xoshiro(1)
+                ) == 3.0
+                nested = child_model(model)
+                @test bind(nested, AbstractPPL.prefix(matched, @varname(a)) => 3.0)(
+                    Xoshiro(1)
+                ) == 3.0
+                @test_throws mismatch("p", example, lhs, stored, used) VarInfo(
+                    Xoshiro(1),
+                    bind(nested, AbstractPPL.prefix(mismatched, @varname(a)) => 3.0),
+                )
+            end
+        end
+    end
+    @testset "namespace bindings retain their shape until unbound" begin
+        @model inner_shape() = x ~ Normal()
+        @model function parent_shape()
+            p = zeros(2, 2)
+            p[1] ~ to_submodel(inner_shape())
+            p[2, 2] ~ to_submodel(inner_shape())
+            return p
+        end
+        for (bind, remove, listed) in
+            ((condition, decondition, conditioned), (fix, unfix, fixed))
+            original = bind(
+                parent_shape(), @varname(p[1].x) => 1.0, @of(p = of(Array, 2, 2))
+            )
+            @test listed(original)[@varname(p[1, 1].x)] == 1.0
+            for removal in
+                ((@varname(p[1, 1].x),), (DynamicPPL.Recursive(), @varname(p[1, 1].x)))
+                removed = remove(original, removal...)
+                @test isempty(listed(removed))
+                @test length(keys(VarInfo(Xoshiro(1), removed))) == 2
+            end
+            for next_bind in (condition, fix),
+                templates in ((), (@of(p = of(Array, 2, 2)),))
+
+                added = next_bind(original, @varname(p[2, 2].x) => 2.0, templates...)
+                @test added(Xoshiro(1)) == [1.0 0.0; 0.0 2.0]
+                replaced = next_bind(original, @varname(p[1, 1].x) => 5.0, templates...)
+                # A fixed value still shadows a later observation at the same address.
+                @test replaced(Xoshiro(1))[1] ==
+                    (bind === fix && next_bind === condition ? 1.0 : 5.0)
+                @test listed(original)[@varname(p[1, 1].x)] == 1.0
+            end
+            both = bind(
+                parent_shape(),
+                @varname(p[1].x) => 1.0,
+                @varname(p[2, 2].x) => 2.0,
+                @of(p = of(Array, 2, 2))
+            )
+            @test both(Xoshiro(1)) == [1.0 0.0; 0.0 2.0]
+            partial = remove(both, @varname(p[1, 1].x))
+            @test size(listed(partial).data.p) == (2, 2)
+            @test bind(partial, @varname(p[1].x) => 5.0)(Xoshiro(1)) == [5.0 0.0; 0.0 2.0]
+            for next_bind in (condition, fix)
+                untemplated = bind(parent_shape(), @varname(p[1].x) => 1.0)
+                @test_throws r"Cannot expand a GrowableArray with 1 dimensions" next_bind(
+                    untemplated, @varname(p[2, 2].x) => 2.0
+                )
+                @test_throws ArgumentError next_bind(
+                    original, @varname(p[2, 2].x) => 2.0, @of(p = of(Array, 3, 3))
+                )
+                @test_throws r"p.*\(2, 2\).*\(3, 3\).*decondition.*unfix" next_bind(
+                    original, @varname(p[2, 2].x) => 2.0, @of(p = of(Array, 3, 3))
+                )
+                rebound = next_bind(
+                    remove(original, @varname(p)),
+                    @varname(p[2, 2].x) => 2.0,
+                    @of(p = of(Array, 3, 3))
+                )
+                @test size(
+                    (next_bind === condition ? conditioned : fixed)(rebound).data.p
+                ) == (3, 3)
+                @test rebound(Xoshiro(1))[2, 2] == 2.0
+            end
+        end
+    end
+    @testset "indexed submodel storage and fixed precedence" begin
+        @model inner() = x ~ Normal()
+        @model function mixed_parent()
+            p = zeros(2, 2)
+            p[1] ~ to_submodel(condition(inner(); x=2.0))
+            p[2, 2] ~ to_submodel(condition(inner(); x=2.0))
+            return p
+        end
+        @testset "public namespace template" begin
+            model = condition(
+                mixed_parent(), @varname(p[2, 2].x) => 3.0, @of(p = of(Array, 2, 2))
+            )
+            @test model(Xoshiro(1)) == [2.0 0.0; 0.0 3.0]
+        end
+        @testset "namespace template with indexed removal" begin
+            for (bind, remove) in ((condition, decondition), (fix, unfix))
+                model = bind(
+                    mixed_parent(), @varname(p[2, 2].x) => 3.0, @of(p = of(Array, 2, 2))
+                )
+                removed = remove(model, @varname(p[2, 2]))
+                @test removed(Xoshiro(1)) == [2.0 0.0; 0.0 2.0]
+                @test model(Xoshiro(1)) == [2.0 0.0; 0.0 3.0]
+            end
+        end
+        @testset "fixed namespace shadows observations" begin
+            @model linear_parent() = (
+                p = Matrix{Any}(undef, 1, 1); p[1] ~ to_submodel(inner()); p[1]
+            )
+            model = condition(linear_parent(), @varname(p[1, 1].x) => 3.0)
+            @test fix(model; p=fill((x=4.0,), 1, 1))(Xoshiro(1)) == 4.0
+        end
+    end
     distinct = mismatch("x", "x[2]", "x[2, 1]", 1, 2)
     with_logger(NullLogger()) do
         for (bind, remove, listed) in

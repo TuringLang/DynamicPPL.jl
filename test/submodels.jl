@@ -1,7 +1,7 @@
 module DPPLSubmodelTests
 
 using DynamicPPL
-using AbstractPPL: AbstractPPL
+using AbstractPPL: AbstractPPL, @of, of
 using Distributions
 using DimensionalData: DimArray, X, Y
 using ForwardDiff: ForwardDiff
@@ -44,6 +44,17 @@ end
     return x
 end
 @model nested_observations(y) = a ~ to_submodel(indexed_observations(y))
+
+@model namespace_leaf() = x ~ Normal()
+@model single_namespace_parent() = (
+    p = zeros(1, 1); p[1] ~ to_submodel(namespace_leaf()); p[1]
+)
+@model function mixed_namespace_parent()
+    p = zeros(2, 2)
+    p[1] ~ to_submodel(condition(namespace_leaf(); x=2.0))
+    p[2, 2] ~ to_submodel(condition(namespace_leaf(); x=2.0))
+    return p
+end
 
 @testset "submodels.jl" begin
     @testset "explicit bindings of submodel return values explain recovery" begin
@@ -197,11 +208,42 @@ end
         baseline = @allocated init!!(unbound, accs, strategy, UnlinkAll())
         for bindings in
             ((@varname(x[1].y) => 0.0,), Tuple(@varname(x[i].y) => 0.0 for i in 1:100))
-            model = condition(unbound, bindings...)
-            # Keep the conditioned indexed path concrete as well as allocation-bounded.
-            @test @inferred(init!!(model, accs, strategy, UnlinkAll())) isa Tuple
-            @test (@allocated init!!(model, accs, strategy, UnlinkAll())) <= baseline + 128
+            for templates in ((), (@of(x = of(Array, 100)),))
+                model = condition(unbound, bindings..., templates...)
+                # Keep the conditioned indexed path concrete as well as allocation-bounded.
+                @test @inferred(init!!(model, accs, strategy, UnlinkAll())) isa Tuple
+                @test (@allocated init!!(model, accs, strategy, UnlinkAll())) <=
+                    baseline + 128
+            end
         end
+    end
+
+    @testset "indexed namespace template evaluation" begin
+        rng = Xoshiro(1)
+        # Compare with equivalent concrete storage: its allocation cost differs
+        # between supported Julia versions, independently of binding templates.
+        single_bindings = DynamicPPL.templated_setindex!!(
+            VarNamedTuple(), 3.0, @varname(p[1].x), zeros(1, 1)
+        )
+        single = condition(single_namespace_parent(), single_bindings)
+        templated = condition(
+            single_namespace_parent(), @varname(p[1].x) => 3.0, @of(p = of(Array, 1, 1))
+        )
+        @test single(rng) == templated(rng) == 3.0
+        baseline = @allocated single(rng)
+        @test (@allocated templated(rng)) <= baseline
+        @test @inferred(templated(rng)) == 3.0
+        mixed_bindings = DynamicPPL.templated_setindex!!(
+            VarNamedTuple(), 3.0, @varname(p[2, 2].x), zeros(2, 2)
+        )
+        reference = condition(mixed_namespace_parent(), mixed_bindings)
+        reference(rng)
+        mixed = condition(
+            mixed_namespace_parent(), @varname(p[2, 2].x) => 3.0, @of(p = of(Array, 2, 2))
+        )
+        @test @inferred(mixed(rng)) == [2.0 0.0; 0.0 3.0]
+        baseline = @allocated reference(rng)
+        @test (@allocated mixed(rng)) <= baseline
     end
 
     @testset "indexed child bindings stay local" begin
@@ -292,8 +334,14 @@ end
                 likelihoods = pointwise_loglikelihoods(model, InitFromPrior())
                 @test likelihoods[vn] == logpdf(Normal(), 2.0)
             end
+            # Mixed-index prefixes need storage for their shared array symbol.
             changed = condition(model, vn => 3.0)
-            @test changed() == [2.0 0.0 0.0; 0.0 0.0 3.0]
+            @test_throws r"linear and Cartesian indices are distinct" changed()
+            bindings = DynamicPPL.templated_setindex!!(
+                VarNamedTuple(), (; x=3.0), @varname(a[2, 3]), zeros(2, 3)
+            )
+            bindings = parent === dynamic_parent ? bindings : VarNamedTuple(; b=bindings)
+            @test condition(model, bindings)() == [2.0 0.0 0.0; 0.0 0.0 3.0]
 
             model = parent(explicit_child(child))
             vn = if parent === dynamic_parent
@@ -302,7 +350,12 @@ end
                 @varname(b.a[1].inner.x)
             end
             changed = condition(model, vn => 3.0)
-            @test changed() == [3.0 0.0 0.0; 0.0 0.0 2.0]
+            @test_throws r"linear and Cartesian indices are distinct" changed()
+            bindings = DynamicPPL.templated_setindex!!(
+                VarNamedTuple(), (; inner=(; x=3.0)), @varname(a[1]), zeros(2, 3)
+            )
+            bindings = parent === dynamic_parent ? bindings : VarNamedTuple(; b=bindings)
+            @test condition(model, bindings)() == [3.0 0.0 0.0; 0.0 0.0 2.0]
         end
     end
 

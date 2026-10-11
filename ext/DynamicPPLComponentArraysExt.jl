@@ -82,10 +82,13 @@ function DynamicPPL.VarNamedTuples._haskey_optic(
 end
 
 function DynamicPPL._model_role_at(
-    pa::PartialArray{<:Any,<:Any,<:ComponentVector}, optic::AbstractPPL.Property, vn
+    pa::PartialArray{<:Any,<:Any,<:ComponentVector},
+    optic::AbstractPPL.Property,
+    vn,
+    leaf=DynamicPPL._model_role,
 )
     AbstractPPL.canview(optic, _index_vector(pa.data)) || return nothing
-    return DynamicPPL._model_role_at(pa, _property_to_index(pa.data, optic), vn)
+    return DynamicPPL._model_role_at(pa, _property_to_index(pa.data, optic), vn, leaf)
 end
 
 function DynamicPPL._model_argument_binding(

@@ -357,45 +357,58 @@ function _model_role(values::Union{AbstractArray,Tuple,NamedTuple}, vn::VarName)
     return role
 end
 
-_model_role_at(values, ::AbstractPPL.Iden, vn) = _model_role(values, vn)
-function _model_role_at(values::VarNamedTuple, optic::AbstractPPL.Property{S}, vn) where {S}
+# Namespace reads validate the same path as ordinary tildes, but do not assign
+# a role to the namespace itself: its children may have different roles.
+_model_role_at(values, ::AbstractPPL.Iden, vn, leaf=_model_role) = leaf(values, vn)
+function _model_role_at(
+    values::VarNamedTuple, optic::AbstractPPL.Property{S}, vn, leaf=_model_role
+) where {S}
     return if haskey(values.data, S)
-        _model_role_at(values.data[S], optic.child, vn)
+        _model_role_at(values.data[S], optic.child, vn, leaf)
     else
         nothing
     end
 end
-@inline function _model_role_at(value::ModelValue, optic::AbstractPPL.AbstractOptic, vn)
-    VarNamedTuples._haskey_optic(value, optic) && return _model_role(value)
+@inline function _model_role_at(
+    value::ModelValue, optic::AbstractPPL.AbstractOptic, vn, leaf=_model_role
+)
+    VarNamedTuples._haskey_optic(value, optic) && return leaf(value, vn)
     value isa ModelValue{Fix} &&
         _fixed_shape_error(vn, "coverage with a static size and shape.")
     return nothing
 end
-@inline function _model_role_at(value::ModelValue, ::AbstractPPL.Iden, vn)
-    return _model_role(value)
+@inline function _model_role_at(value::ModelValue, ::AbstractPPL.Iden, vn, leaf=_model_role)
+    return leaf(value, vn)
 end
-function _model_role_at(values::VarNamedTuples.PartialArray, optic::AbstractPPL.Index, vn)
+function _model_role_at(
+    values::VarNamedTuples.PartialArray, optic::AbstractPPL.Index, vn, leaf=_model_role
+)
     optic = AbstractPPL.concretize_top_level(optic, values.data)
     if !VarNamedTuples._matches_ndims(values, optic.ix)
         any(values.mask) && _growable_ndims_error(values, optic, vn)
         return nothing
     end
+    # Namespace leaves assign no role, so only their index count needs validation.
+    leaf === _namespace_leaf && optic.child isa AbstractPPL.Iden && return nothing
     if !checkbounds(Bool, values.data, optic.ix...; optic.kw...)
         # An out-of-bounds LHS slice may still overlap supplied indices.
         for indices in Iterators.product(Base.to_indices(values.data, optic.ix)...)
             checkbounds(Bool, values.data, indices...; optic.kw...) || continue
             getindex(values.mask, indices...; optic.kw...) || continue
             value = getindex(values.data, indices...; optic.kw...)
-            _model_role_at(value, optic.child, vn) === nothing || _partial_binding_error(vn)
+            _model_role_at(value, optic.child, vn, leaf) === nothing ||
+                _partial_binding_error(vn)
         end
         return nothing
     end
     if VarNamedTuples._is_multiindex(values.data, optic.ix...; optic.kw...)
         selected = _model_argument_binding(values, AbstractPPL.Index(optic.ix, optic.kw))
-        return _model_role_at(selected, optic.child, vn)
+        return _model_role_at(selected, optic.child, vn, leaf)
     end
     haskey(values, optic.ix...; optic.kw...) || return nothing
-    return _model_role_at(getindex(values.data, optic.ix...; optic.kw...), optic.child, vn)
+    return _model_role_at(
+        getindex(values.data, optic.ix...; optic.kw...), optic.child, vn, leaf
+    )
 end
 @noinline function _growable_ndims_error(values, optic, vn)
     owner = _storage_address(vn, optic)
@@ -731,14 +744,20 @@ end
 function (::VarNamedTuples.SharedGetProperty{S})(tree::ModelValueTree) where {S}
     return VarNamedTuples.SharedGetProperty{S}()(tree.template)
 end
-function _model_role_at(tree::ModelValueTree, optic::AbstractPPL.Property, vn)
-    return _model_role_at(tree.values, optic, vn)
+function _model_role_at(
+    tree::ModelValueTree, optic::AbstractPPL.Property, vn, leaf=_model_role
+)
+    return _model_role_at(tree.values, optic, vn, leaf)
 end
 # Bindings stored by field cannot be read by index, nor bindings stored by index by field.
-function _model_role_at(::Union{VarNamedTuple,ModelValueTree}, ::AbstractPPL.Index, vn)
+function _model_role_at(
+    ::Union{VarNamedTuple,ModelValueTree}, ::AbstractPPL.Index, vn, leaf=_model_role
+)
     return _binding_kind_error(vn, "an index", "fields")
 end
-function _model_role_at(::VarNamedTuples.PartialArray, ::AbstractPPL.Property, vn)
+function _model_role_at(
+    ::VarNamedTuples.PartialArray, ::AbstractPPL.Property, vn, leaf=_model_role
+)
     return _binding_kind_error(vn, "a field", "indices")
 end
 @noinline function _binding_kind_error(vn, read, stored)
@@ -761,8 +780,11 @@ function _model_role_at(
     values::Union{VarNamedTuple,ModelValueTree{<:NamedTuple}},
     optic::AbstractPPL.Index{Tuple{Symbol},NamedTuple{(),Tuple{}}},
     vn,
+    leaf=_model_role,
 )
-    return _model_role_at(values, AbstractPPL.Property{only(optic.ix)}(optic.child), vn)
+    return _model_role_at(
+        values, AbstractPPL.Property{only(optic.ix)}(optic.child), vn, leaf
+    )
 end
 
 # Partial edits rebuild only explicitly supported storage families. Package extensions
@@ -2691,6 +2713,11 @@ function _prepare_local_binding_type(::Type{R}, previous, update, vn, addresses)
     } && any(address -> last(address) && first(address) == vn, addresses)
         previous = _submodel_namespace(previous)
     end
+    if previous isa VarNamedTuples.PartialArray &&
+        any(address -> last(address) && subsumes(vn, first(address)), addresses)
+        # An array enclosing submodels owns the namespace shape, not child types.
+        return _prepare_local_binding_children(R, previous, update, vn, addresses)
+    end
     owner = _binding_owner(R, previous)
     owner isa NoTemplate &&
         return _prepare_local_binding_children(R, previous, update, vn, addresses)
@@ -2889,8 +2916,98 @@ end
 _binding_inputs(value) = (value,)
 _binding_inputs((name, value)::Pair{Symbol}) = (VarName{name}() => value,)
 
+# Only storage enclosing a submodel prefix belongs to this model. Templates for
+# variables owned by the child still need its arguments and LHS metadata.
+function _is_namespace_storage(model, name)
+    address = _local_removal_name(model, name; operation="bind")
+    address === nothing && return false
+    return any(_lhs_addresses(_binding_metadata(model))) do (lhs, submodel)
+        submodel && subsumes(address, lhs)
+    end
+end
+function _namespace_binding_storage(model, values::VarNamedTuple, prefix=nothing)
+    storage = VarNamedTuple()
+    for (name, value) in pairs(values.data)
+        address = maybe_prefix(VarName{name}(), prefix)
+        if value isa VarNamedTuples.PartialArray && _is_namespace_storage(model, address)
+            storage = setindex!!(storage, value, address)
+        elseif value isa VarNamedTuple
+            storage = _merge_model_values(
+                storage, _namespace_binding_storage(model, value, address)
+            )
+        end
+    end
+    return storage
+end
+function _namespace_binding_storage(model)
+    # Namespace shape is shared across roles, while the child values remain in
+    # their own layers. The effective overlay also preserves fixed precedence.
+    return _namespace_binding_storage(model, _model_values(model.values))
+end
+function _namespace_binding_storage(model, templates::Tuple)
+    storage = _namespace_binding_storage(model)
+    for t in templates
+        _is_namespace_storage(model, t.name) || continue
+        previous = _model_argument_binding(storage, AbstractPPL.varname_to_optic(t.name))
+        if previous !== nothing
+            axes(previous) == axes(t.storage) ||
+                _namespace_shape_error(t.name, previous, t.storage)
+        else
+            storage = setindex!!(storage, t.storage, t.name)
+        end
+    end
+    return storage
+end
+@noinline function _namespace_shape_error(name, previous, storage)
+    throw(
+        ArgumentError(
+            "Binding `$name` has shape $(size(previous)), but the supplied template has shape $(size(storage)). " *
+            "Unbind it first with `decondition`/`unfix` to change its shape.",
+        ),
+    )
+end
+function _check_namespace_index_counts(value, optic::AbstractPPL.AbstractOptic)
+    if value isa VarNamedTuples.PartialArray &&
+        optic isa AbstractPPL.Index &&
+        !VarNamedTuples._matches_ndims(value, optic.ix)
+        # Preserve the ordinary growable-storage error, including across roles.
+        VarNamedTuples.grow_to_indices!!(value, optic.ix...; optic.kw...)
+    end
+    child = _model_argument_binding(value, AbstractPPL.ohead(optic))
+    child === nothing || _check_namespace_index_counts(child, optic.child)
+    return nothing
+end
+_check_namespace_index_counts(value, ::AbstractPPL.Iden) = nothing
+function _prepare_namespace_input(::Type{R}, model, input, storage) where {R}
+    isempty(storage) && return input
+    layer_model = _binding_layer_model(R, model)
+    entries = if input isa Pair{<:VarName}
+        (input,)
+    else
+        pairs(_make_condfix_values(layer_model, input))
+    end
+    prepared = VarNamedTuple()
+    for (vn, value) in entries
+        vn = _schema_binding_address(model, vn)
+        template = get(storage.data, AbstractPPL.getsym(vn), NoTemplate())
+        if template isa NoTemplate
+            vn, template = _check_binding_address(
+                layer_model, _model_values(layer_model.values), vn
+            )
+        else
+            _check_binding_template_bounds(template, AbstractPPL.getoptic(vn), vn)
+            _check_namespace_index_counts(template, AbstractPPL.getoptic(vn))
+            template = _binding_address_storage(template, AbstractPPL.getoptic(vn))
+        end
+        prepared = templated_setindex!!(prepared, value, vn, template)
+    end
+    return prepared
+end
 function _bind_ordered_inputs(::Type{R}, model, values) where {R}
-    bound = foldl((m, v) -> _bind_model(R, m, v), values; init=model)
+    bound = foldl(values; init=model) do m, value
+        storage = _namespace_binding_storage(m)
+        return _bind_model(R, m, _prepare_namespace_input(R, m, value, storage))
+    end
     _check_shared_latent_storage(bound)
     return bound
 end
@@ -2911,14 +3028,21 @@ function _bind(::Type{R}, model::Model, inputs::Tuple) where {R}
     schema = _bound_binding_schema(model, schema, values)
     deferred = _filter_binding_schema(model, schema; owned_here=false)
     schema = _filter_binding_schema(model, schema; owned_here=true)
-    for value in values
-        model = _bind_schema_input(R, model, value, schema)
-    end
-    _check_shared_latent_storage(model)
-    isempty(deferred) && return model
     templates = _binding_template_entries(
         R, deferred, model.values isa LocalModelValues ? nothing : _model_prefix(model)
     )
+    storage = _namespace_binding_storage(model, templates)
+    for value in values
+        prepared = _prepare_namespace_input(R, model, value, storage)
+        model = _bind_schema_input(R, model, prepared, schema)
+    end
+    _check_shared_latent_storage(model)
+    # Namespace templates have become storage. Only child-owned templates remain
+    # deferred; a later namespace binding reuses that storage instead of merging templates.
+    templates = let model = model
+        filter(t -> !_is_namespace_storage(model, t.name), templates)
+    end
+    isempty(templates) && return model
     bindings = _with_binding_templates(
         model.values, _merge_binding_templates(_binding_templates(model.values), templates)
     )
@@ -4420,7 +4544,29 @@ end
 # that is recursive in the child namespace.
 function _submodel_inherited_values(model, prefix)
     prefix = _model_value_varname(model.values, prefix, _model_prefix(model))
-    return _inherited_namespace(model.values, prefix)
+    values = model.values
+    # Validate the effective binding, so a fixed namespace can cover observations.
+    if prefix !== nothing
+        _model_role_at(
+            _model_values(values),
+            AbstractPPL.varname_to_optic(prefix),
+            prefix,
+            _namespace_leaf,
+        )
+    end
+    return _inherited_namespace(values, prefix)
+end
+_namespace_leaf(value, vn) = nothing
+# Dense namespace arrays contain named children, never array-like blocks. Their
+# data and mask have the same axes, so one bounds check suffices for a scalar read.
+@inline function _model_argument_binding(
+    values::VarNamedTuples.PartialArray{<:VarNamedTuple,N,<:Array,<:Array},
+    optic::AbstractPPL.Index{<:Tuple{Vararg{Integer}},NamedTuple{(),Tuple{}}},
+) where {N}
+    checkbounds(Bool, values, optic.ix...) || return nothing
+    @inbounds values.mask[optic.ix...] || return nothing
+    selected = @inbounds values.data[optic.ix...]
+    return _model_argument_binding(selected, optic.child)
 end
 function _inherited_namespace(values, prefix)
     return _inherited_model_values(_submodel_values(_model_values(values), prefix))

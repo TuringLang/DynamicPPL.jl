@@ -94,6 +94,8 @@ Partial bindings into whole `missing`/`nothing` arguments: deferred tilde values
 
 Partial local bindings use a positional binding template: `@vnt`/`@template` storage → `condition(m, @varname(z[2]) => 1.0, @of(z=of(Array, 3)))`, importing `of, @of` from AbstractPPL. Templates use absolute names (`@of(p=@of(z=of(Array, 3)))` under prefix `p`); argument and unused entries are ignored, and existing storage owners take precedence. For indexed prefixes, supply storage before prefixing or through an argument. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
+Namespace binding templates now shape stored values: applying templates at evaluation → linear and Cartesian removals and rebindings share the stored shape across `condition`/`fix`; use `decondition`/`unfix` before changing it.
+
 Explicit observations now replace argument-supplied observations before the body: ignored `condition(f(1); x=2)` → the observations of `f(2)`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501), [#958](https://github.com/TuringLang/DynamicPPL.jl/issues/958).
 
 Conditioned argument LHS variables observe body-transformed values: observing the original bound value → observe it under a separate LHS variable. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
