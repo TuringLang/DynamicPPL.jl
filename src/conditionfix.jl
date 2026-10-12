@@ -2663,7 +2663,7 @@ true
 """
 function AbstractPPL.condition(model::Model, inputs...; values...)
     inputs = isempty(values) ? inputs : (inputs..., NamedTuple(values))
-    return _bind_inputs(Condition, model, inputs)
+    return _bind(Condition, model, inputs)
 end
 
 # Binding preparation consults owners in the layer being edited.
@@ -2895,7 +2895,7 @@ function _bind_ordered_inputs(::Type{R}, model, values) where {R}
     return bound
 end
 
-function _bind_inputs(::Type{R}, model::Model, inputs::Tuple) where {R}
+function _bind(::Type{R}, model::Model, inputs::Tuple) where {R}
     inputs = _binding_inputs(inputs)
     schemas = filter(x -> x isa Type{<:AbstractPPL.OfNamedTuple}, inputs)
     length(schemas) <= 1 ||
@@ -3603,7 +3603,7 @@ true
 ```
 """
 function AbstractPPL.decondition(model::Model, syms::Union{Symbol,VarName}...)
-    return _local_remove(Condition, model, syms)
+    return _unbind(Condition, model, syms)
 end
 
 function _check_removal_addresses(values, names)
@@ -3990,7 +3990,7 @@ julia> # The difference is the missing log-probability of `m`:
 """
 function fix(model::Model, inputs...; values...)
     inputs = isempty(values) ? inputs : (inputs..., NamedTuple(values))
-    return _bind_inputs(Fix, model, inputs)
+    return _bind(Fix, model, inputs)
 end
 function fix(model::Model; values...)
     return fix(model, NamedTuple(values))
@@ -4058,11 +4058,11 @@ true
 ```
 """
 function unfix(model::Model, syms::Union{Symbol,VarName}...)
-    return _local_remove(Fix, model, syms)
+    return _unbind(Fix, model, syms)
 end
 
 # An empty `names` removes every binding of role `R`.
-function _local_remove(::Type{R}, model, names) where {R}
+function _unbind(::Type{R}, model, names) where {R}
     # Child addresses bound here are stored here, so they are removed here.
     model = _materialize_argument_values(model)
     layer = _binding_layer(R, model.values)
