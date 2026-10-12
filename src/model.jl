@@ -289,7 +289,7 @@ end
 _remove_placeholders(model, ::Tuple{}) = model
 function _remove_placeholders(model, found::Tuple)
     names = first(found)
-    model = isempty(names) ? model : _unbind(Condition, model, names)
+    model = isempty(names) ? model : _decondition_unfix(model, names, Condition)
     return _remove_placeholders(model, Base.tail(found))
 end
 

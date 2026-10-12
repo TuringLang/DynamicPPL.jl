@@ -2171,7 +2171,7 @@ Return a `Model` which now treats variables on the right-hand side as observatio
 See [`condition`](@ref) for more information and examples.
 """
 Base.:|(model::Model, values::Union{NamedTuple,Pair,Tuple,VarNamedTuple}) =
-    _bind_ordered_inputs(Condition, model, _binding_inputs(values))
+    _conditionfix_inputs(model, _binding_inputs(values), Condition)
 
 function _check_binding_addresses(model, values)
     metadata = _binding_metadata(model)
@@ -2685,7 +2685,7 @@ true
 """
 function AbstractPPL.condition(model::Model, inputs...; values...)
     inputs = isempty(values) ? inputs : (inputs..., NamedTuple(values))
-    return _bind(Condition, model, inputs)
+    return _conditionfix(model, inputs, Condition)
 end
 
 # Binding preparation consults owners in the layer being edited.
@@ -3003,22 +3003,32 @@ function _prepare_namespace_input(::Type{R}, model, input, storage) where {R}
     end
     return prepared
 end
-function _bind_ordered_inputs(::Type{R}, model, values) where {R}
+function _conditionfix_inputs(model, values, ::Type{R}) where {R}
     bound = foldl(values; init=model) do m, value
-        storage = _namespace_binding_storage(m)
-        return _bind_model(R, m, _prepare_namespace_input(R, m, value, storage))
+        return _conditionfix_input(m, value, R)
     end
     _check_shared_latent_storage(bound)
     return bound
 end
 
-function _bind(::Type{R}, model::Model, inputs::Tuple) where {R}
+function _conditionfix_input(model, input, ::Type{R}) where {R}
+    storage = _namespace_binding_storage(model)
+    return _set_values(model, _prepare_namespace_input(R, model, input, storage), R)
+end
+
+function _set_value(model::Model, vn::VarName, value::ModelValue{R}) where {R}
+    storage = _namespace_binding_storage(model)
+    values = _prepare_namespace_input(R, model, vn => value.value, storage)
+    return _set_values(model, values, R)
+end
+
+function _conditionfix(model::Model, inputs::Tuple, ::Type{R}) where {R}
     inputs = _binding_inputs(inputs)
     schemas = filter(x -> x isa Type{<:AbstractPPL.OfNamedTuple}, inputs)
     length(schemas) <= 1 ||
         throw(ArgumentError("At most one binding template is allowed per call."))
     values = filter(x -> !(x isa Type{<:AbstractPPL.OfNamedTuple}), inputs)
-    isempty(schemas) && return _bind_ordered_inputs(R, model, values)
+    isempty(schemas) && return _conditionfix_inputs(model, values, R)
     model = _materialize_argument_values(model)
     schema = VarNamedTuples.materialize_template(only(schemas))
     model = _record_binding_template(model, schema)
@@ -3034,7 +3044,7 @@ function _bind(::Type{R}, model::Model, inputs::Tuple) where {R}
     storage = _namespace_binding_storage(model, templates)
     for value in values
         prepared = _prepare_namespace_input(R, model, value, storage)
-        model = _bind_schema_input(R, model, prepared, schema)
+        model = _conditionfix_schema_input(model, prepared, schema, R)
     end
     _check_shared_latent_storage(model)
     # Namespace templates have become storage. Only child-owned templates remain
@@ -3250,10 +3260,10 @@ function _check_schema_owner(
     return nothing
 end
 
-function _bind_schema_input(::Type{R}, model, input, schema) where {R}
+function _conditionfix_schema_input(model, input, schema, ::Type{R}) where {R}
     layer_model = _binding_layer_model(R, model)
     prepared = _prepare_schema_input(R, model, input, schema, layer_model)
-    return _bind_model(R, model, prepared; preparation_model=layer_model)
+    return _set_values(model, prepared, R; preparation_model=layer_model)
 end
 
 function _prepare_schema_input(
@@ -3337,7 +3347,7 @@ function _convert_binding_template(value, template, optic::AbstractPPL.AbstractO
     return _convert_binding_template(value, child, optic.child, vn)
 end
 
-function _bind_model(::Type{R}, model::Model, values; preparation_model=model) where {R}
+function _set_values(model::Model, values, ::Type{R}; preparation_model=model) where {R}
     model = _materialize_argument_values(model)
     preparation_model = _binding_layer_model(
         R, _materialize_argument_values(preparation_model)
@@ -3727,7 +3737,7 @@ true
 ```
 """
 function AbstractPPL.decondition(model::Model, syms::Union{Symbol,VarName}...)
-    return _unbind(Condition, model, syms)
+    return _decondition_unfix(model, syms, Condition)
 end
 
 function _check_removal_addresses(values, names)
@@ -4114,7 +4124,7 @@ julia> # The difference is the missing log-probability of `m`:
 """
 function fix(model::Model, inputs...; values...)
     inputs = isempty(values) ? inputs : (inputs..., NamedTuple(values))
-    return _bind(Fix, model, inputs)
+    return _conditionfix(model, inputs, Fix)
 end
 function fix(model::Model; values...)
     return fix(model, NamedTuple(values))
@@ -4182,11 +4192,30 @@ true
 ```
 """
 function unfix(model::Model, syms::Union{Symbol,VarName}...)
-    return _unbind(Fix, model, syms)
+    return _decondition_unfix(model, syms, Fix)
+end
+
+function _decondition_unfix(model, names, ::Type{R}, recursive...) where {R}
+    removed = if isempty(names)
+        _unset_value(model, R, recursive...)
+    elseif names isa Tuple{Union{Symbol,VarName}}
+        _unset_value(model, only(names), R, recursive...)
+    else
+        _unset_values(model, names, R, recursive...)
+    end
+    _check_shared_latent_storage(removed)
+    return _check_latent_arguments(removed)
+end
+
+function _unset_value(model::Model, vn::Union{Symbol,VarName}, ::Type{R}) where {R}
+    return _unset_values(model, (vn,), R)
+end
+function _unset_value(model::Model, ::Type{R}) where {R}
+    return _unset_values(model, (), R)
 end
 
 # An empty `names` removes every binding of role `R`.
-function _unbind(::Type{R}, model, names) where {R}
+function _unset_values(model, names, ::Type{R}) where {R}
     # Child addresses bound here are stored here, so they are removed here.
     model = _materialize_argument_values(model)
     layer = _binding_layer(R, model.values)
@@ -4219,9 +4248,7 @@ function _unbind(::Type{R}, model, names) where {R}
     values = _with_binding_templates(
         values, _surviving_binding_templates(model.values, values, R)
     )
-    removed = _reconstruct_model(model; values)
-    _check_shared_latent_storage(removed)
-    return _check_latent_arguments(removed)
+    return _reconstruct_model(model; values)
 end
 
 @generated function _argument_defaults(
@@ -4434,7 +4461,16 @@ function _check_shared_removals(parent, child)
     return nothing
 end
 
-function _recursive_remove(::Type{R}, model, names) where {R}
+function _unset_value(
+    model::Model, vn::Union{Symbol,VarName}, ::Type{R}, recursive::Recursive
+) where {R}
+    return _unset_values(model, (vn,), R, recursive)
+end
+function _unset_value(model::Model, ::Type{R}, recursive::Recursive) where {R}
+    return _unset_values(model, (), R, recursive)
+end
+
+function _unset_values(model, names, ::Type{R}, ::Recursive) where {R}
     model = _materialize_argument_values(model)
     values = _binding_layer(R, model.values)
     markers = _removals(R, model.values)
@@ -4473,15 +4509,13 @@ function _recursive_remove(::Type{R}, model, names) where {R}
     layers = _with_binding_templates(
         layers, _surviving_binding_templates(model.values, layers, R)
     )
-    removed = _reconstruct_model(model; values=layers)
-    _check_shared_latent_storage(removed)
-    return _check_latent_arguments(removed)
+    return _reconstruct_model(model; values=layers)
 end
 function AbstractPPL.decondition(model::Model, ::Recursive, names::Union{Symbol,VarName}...)
-    return _recursive_remove(Condition, model, names)
+    return _decondition_unfix(model, names, Condition, Recursive())
 end
 function unfix(model::Model, ::Recursive, names::Union{Symbol,VarName}...)
-    return _recursive_remove(Fix, model, names)
+    return _decondition_unfix(model, names, Fix, Recursive())
 end
 
 function _select_removal(r, prefix)
