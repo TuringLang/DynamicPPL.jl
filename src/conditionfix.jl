@@ -3354,6 +3354,7 @@ function _set_values(model::Model, values, ::Type{R}; preparation_model=model) w
     )
     values = _make_condfix_values(preparation_model, values)
     _check_bound_placeholders(R, values)
+    # Not copied: `deepcopy` would detach values bound in the body from ReverseDiff's tape.
     values = _tag_model_values(R, values)
     values = _check_argument_bindings(preparation_model, values)
     _check_binding_addresses(model, values)
