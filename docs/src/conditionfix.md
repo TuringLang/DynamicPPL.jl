@@ -326,7 +326,7 @@ a tilde. Checks that need a child's arguments or an executed LHS wait until it i
 | Executed placeholders       | An observed/fixed tilde rejects other placeholders in the value it reads, including nested argument data and body-created values, using the same traversal as explicit bindings. Unread parts may contain placeholders. `missing` takes diagnostic precedence over `nothing`. Latent draws are not reclassified as observations.                                                                                                                                                                                                                                                                                                                        | Only when the observed/fixed tilde executes.                                                                                                                                             |
 | Storage ownership           | Each root has one shape, shared by both layers and retained after removal. Arguments, used templates, whole bound values and concrete `VarNamedTuple` storage establish it. A whole value or template can replace it only after both layers are empty at the root. Partial bindings cannot resize known nested storage. Property groups have independent leaf roots; whole structured values have one root, which is never implicitly split or merged.                                                                                                                                                                                                  | At binding/removal; child storage when reached.                                                                                                                                          |
 | Binding templates           | At most one positional binding template supplies storage without binding values; keywords remain data, and the pipe alias rejects templates. Templates use absolute names; argument and unused entries are ignored. Existing shapes win while either layer has values; conflicts reject. Namespace storage survives removal. Child-owned template candidates follow pending bindings and prefixes. Outer entries win in children. Template entries for every child's names are checked when that child runs. Templates materialize with `zero(T)` at binding time. See [Binding contract](@ref) for sample-derived templates and indexed-prefix limits. | At binding; deferred entries and conflicts when the child is reached. `check_model` warns about entries no reached LHS can use.                                                          |
-| Bounds, types and shape     | Parts must fit enclosing storage without resizing it and convert exactly to its element/field type. Whole argument bindings must satisfy declared types; whole local bindings fit existing storage types or set them if absent. Whole templated values also match shape. Untemplated parts cannot form a multivariate value; mixed roles within one LHS variable reject. Fixed owners must retain shape and cover reached LHS variables; shape checks stop at the LHS address and do not detect in-place mutation of a whole fixed argument.                                                                                                            | Bounds/types/conversion at binding (inherited bindings when the child runs); shared signature constraints at evaluation. Multivariate roles and fixed shape/coverage at executed tildes. |
+| Bounds, types and shape     | Parts must fit enclosing storage without resizing it and convert exactly to its element/field type. Whole argument bindings must satisfy declared types; whole local bindings fit a binding template’s type when one exists; otherwise they constrain geometry only. Whole templated values also match shape. Untemplated parts cannot form a multivariate value; mixed roles within one LHS variable reject. Fixed owners must retain shape and cover reached LHS variables; shape checks stop at the LHS address and do not detect in-place mutation of a whole fixed argument.                                                                       | Bounds/types/conversion at binding (inherited bindings when the child runs); shared signature constraints at evaluation. Multivariate roles and fixed shape/coverage at executed tildes. |
 
 ### [Entry-point and phase matrix](@id binding-phase-matrix)
 
@@ -377,8 +377,10 @@ that no reached model uses; a local removal at a child address that names nothin
 
 A removal belongs to the model that makes it. It reaches enclosed models, including those
 built or bound in the body, but cannot remove an enclosing model's binding. Prefixing moves
-the removal with the model. A later binding in the same layer replaces it at that address.
-The removal holds no value or shape: the next binding or argument supplies storage.
+the removal with the model. A later binding replaces a local removal only at the addresses it
+covers. A recursive removal remains in force: it clears child bindings before later parent
+bindings apply. Removals hold no value; local binding shapes survive, while whole removal
+of both layers at an argument root restores the argument’s own storage.
 `conditioned` and `fixed` list stored values only and take no `Recursive()` argument.
 
 For example, a parent can make a child's observation latent even when it constructs the
@@ -426,13 +428,15 @@ The conditioned argument observes `3.0`, the value the body leaves in it, as
 
 The **Storage ownership** and **Bounds, types and shape** rules in the
 [rule table](@ref binding-rule-table) govern edits at every depth. For example, binding
-`x=ones(3)` then removing all values of `x` still preserves length three, so `x[end]`
+a local `x=ones(3)` then removing all values of `x` still preserves length three, so `x[end]`
 continues to mean `x[3]`. To change that length, clear both layers at `x`, then bind a
 whole replacement. An argument's observation counts too:
 
 ```julia
 condition(decondition(model_with_argument(zeros(2))); x=ones(3))
 ```
+
+After whole removal of both layers at an argument root, its shape reverts to the argument’s own shape. Removing elements individually retains the masked replacement storage.
 
 A `NamedTuple` bound at a submodel prefix groups leaves: after binding `a=(x=1.0,)`,
 a later binding of `a.y` adds another leaf. A whole structured value of a variable instead

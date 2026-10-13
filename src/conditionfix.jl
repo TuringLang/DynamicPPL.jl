@@ -126,6 +126,7 @@ function _overlay_model_node(previous::VarNamedTuple, fixed::VarNamedTuple, owne
     return _overlay_model_values(previous, fixed, owners, vn)
 end
 function _overlay_model_node(previous, fixed::VarNamedTuples.PartialArray, owners, vn)
+    isempty(fixed) && return previous
     previous isa NoModelBinding && return _copy_model_node(fixed)
     owns_shape = _inherits_shape(fixed.mask) || any(owner -> subsumes(owner, vn), owners)
     owns_shape &&
@@ -304,7 +305,12 @@ function _model_role(tree::ModelValueTree, vn::VarName)
         _model_role(tree.values, vn)
     end
 end
-_model_role(::VarNamedTuple, vn::VarName) = _partial_binding_error(vn)
+function _model_role(values::VarNamedTuple, vn::VarName)
+    bound = VarNamedTuples._mapreduce_recursive(
+        pair -> pair.second isa ModelValue, |, values, vn, false
+    )
+    return bound ? _partial_binding_error(vn) : nothing
+end
 function _partial_binding_error(vn)
     return throw(
         ArgumentError(
@@ -2498,10 +2504,10 @@ ForwardDiff/ReverseDiff need `@of(z = of(Array, typeof(m), n))` or a whole value
 Addresses and independently declared types are checked at binding time; submodel checks
 wait until reached, and unused bindings are ignored. Whole argument values must also fit
 the full signature (shared type constraints are checked during evaluation); whole bindings of local LHS
-variables must fit their storage type. Partial values convert to the replaced
+variables must fit their binding template type, if supplied; otherwise only geometry constrains a whole replacement. Partial values convert to the replaced
 element/field type: Julia conversion errors propagate (`1.5` into `Int` raises
 `InexactError`); successful but lossy conversions (`0.1` into `Float32`) raise `ArgumentError`.
-Both layers share one binding shape, retained after removal. Change it only at its root,
+Both layers share one binding shape, retained after removal except at argument roots, which revert to the argument’s own shape after whole removal of both layers. Change it only at its root,
 with a whole value or template after clearing both layers with `decondition` and `unfix`.
 Binding an argument does not recompute construction-time defaults or select another method.
 
@@ -2699,7 +2705,12 @@ _binding_layer(::Type{Condition}, values) = _observation_values(values)
 _binding_layer(::Type{Fix}, values) = _fixed_values(values)
 function _binding_layer_model(::Type{R}, model) where {R}
     layer = _binding_layer(R, model.values)
-    layer = _with_binding_shapes(layer, _binding_shape_store(model.values))
+    shapes = _binding_shape_store(model.values)
+    if !isempty(shapes.roots.data)
+        observations = R === Condition ? layer : VarNamedTuple()
+        fixed = R === Fix ? layer : VarNamedTuple()
+        layer = ModelBindingLayers(observations, fixed, layer, (), (), (), (), shapes)
+    end
     values = model.values isa LocalModelValues ? LocalModelValues(layer) : layer
     return _reconstruct_model(model; values)
 end
@@ -2860,18 +2871,27 @@ function _namespace_binding_storage(model)
     growable = _growable_namespaces(model, _model_values(model.values))
     return _merge_model_values(growable, _binding_shape_store(model.values).namespaces)
 end
-function _check_namespace_index_counts(value, optic::AbstractPPL.AbstractOptic)
+function _check_namespace_index_counts(value, optic::AbstractPPL.AbstractOptic, vn, model)
+    value isa Union{ModelValue,ModelValueTree} && return nothing
     if value isa VarNamedTuples.PartialArray &&
         optic isa AbstractPPL.Index &&
         !VarNamedTuples._matches_ndims(value, optic.ix)
-        # Preserve the ordinary growable-storage error, including across roles.
-        VarNamedTuples.grow_to_indices!!(value, optic.ix...; optic.kw...)
+        address = _local_removal_name(model, vn; operation="bind")
+        if _is_namespace_storage(model, _storage_address(vn, optic)) ||
+            address !== nothing && _binding_schema_owned(model, address)
+            VarNamedTuples.grow_to_indices!!(value, optic.ix...; optic.kw...)
+        end
+        throw(
+            ArgumentError(
+                "Pending binding at `$vn` mixes linear and Cartesian indices; use one index style for bindings into a child that has not run.",
+            ),
+        )
     end
     child = _model_argument_binding(value, AbstractPPL.ohead(optic))
-    child === nothing || _check_namespace_index_counts(child, optic.child)
+    child === nothing || _check_namespace_index_counts(child, optic.child, vn, model)
     return nothing
 end
-_check_namespace_index_counts(value, ::AbstractPPL.Iden) = nothing
+_check_namespace_index_counts(value, ::AbstractPPL.Iden, vn, model) = nothing
 function _prepare_namespace_input(::Type{R}, model, input, storage) where {R}
     isempty(storage) && return input
     layer_model = _binding_layer_model(R, model)
@@ -2890,7 +2910,7 @@ function _prepare_namespace_input(::Type{R}, model, input, storage) where {R}
             )
         else
             _check_binding_template_bounds(template, AbstractPPL.getoptic(vn), vn)
-            _check_namespace_index_counts(template, AbstractPPL.getoptic(vn))
+            _check_namespace_index_counts(template, AbstractPPL.getoptic(vn), vn, model)
             template = _binding_address_storage(template, AbstractPPL.getoptic(vn))
         end
         prepared = templated_setindex!!(prepared, value, vn, template)
@@ -2905,7 +2925,15 @@ function _conditionfix_inputs(model, values, ::Type{R}) where {R}
     return bound
 end
 
+_check_pending_index_styles(model, input) = nothing
+function _check_pending_index_styles(model, input::Pair{<:VarName})
+    vn = _schema_binding_address(model, first(input))
+    return _check_namespace_index_counts(
+        _model_values(model.values), AbstractPPL.varname_to_optic(vn), vn, model
+    )
+end
 function _conditionfix_input(model, input, ::Type{R}) where {R}
+    _check_pending_index_styles(model, input)
     storage = _namespace_binding_storage(model)
     return _set_values(model, _prepare_namespace_input(R, model, input, storage), R)
 end
@@ -2946,6 +2974,7 @@ function _conditionfix(model::Model, inputs::Tuple, ::Type{R}) where {R}
     end
     storage = _namespace_binding_storage(model)
     for value in values
+        _check_pending_index_styles(model, value)
         prepared = _prepare_namespace_input(R, model, value, storage)
         model = _conditionfix_schema_input(model, prepared, schema, R)
     end
@@ -3242,7 +3271,7 @@ function _set_values(model::Model, values, ::Type{R}; preparation_model=model) w
     values = _tag_model_values(R, values)
     values = _check_argument_bindings(preparation_model, values)
     _check_binding_addresses(model, values)
-    values = _prepare_retained_binding_types(model, values)
+    values = _prepare_retained_binding_types(preparation_model, values)
     model = _bind_value_shapes(model, values, R)
     new_addresses = Tuple(keys(values))
     observations = _observation_values(model.values)
@@ -3266,7 +3295,9 @@ function _set_values(model::Model, values, ::Type{R}; preparation_model=model) w
         )
     end
     values = model.values isa LocalModelValues ? LocalModelValues(values) : values
-    values = _replace_removals(model.values, values, R, new_addresses)
+    values = _with_removals(
+        values, _removals(Condition, model.values), _removals(Fix, model.values)
+    )
     values = _with_binding_templates(
         values, _surviving_binding_templates(model.values, values, R, new_addresses)
     )
@@ -3396,7 +3427,7 @@ end
     end
     return quote
         $(arguments...)
-        shape = _binding_shape_template(model, address)
+        shape = _binding_shape_template(model, address, values)
         shape isa NoTemplate ||
             return _binding_address_storage(shape, AbstractPPL.getoptic(address))
         return _binding_address_storage(
@@ -3468,6 +3499,8 @@ end
             throw(ArgumentError(message))
         end
     end
+    operation == "bind" &&
+        _check_namespace_index_counts(values, AbstractPPL.varname_to_optic(vn), vn, model)
     _check_partial_binding(values, AbstractPPL.varname_to_optic(vn); operation)
     template = _binding_address_template(model, values, vn; operation)
     template isa NoTemplate && _check_local_property_index(model, vn; operation)
@@ -3534,7 +3567,7 @@ Removing the same valid address twice is a no-op, both at the call and at evalua
 `check_model` warns about recursive removals unused by all reached models.
 
 The removal belongs to this model, moves with `prefix`, and cannot remove an enclosing
-model's bindings. Its next observation at that address replaces the removal. Removals hold
+model's bindings. A recursive removal still reaches children before later bindings apply. Removals hold
 no value or shape and are omitted from `conditioned`.
 
 Named recursive removals shared by an own LHS and an unprefixed submodel throw; prefix the
@@ -3632,20 +3665,43 @@ end
     end
     return :(_prune_model_bindings_recursive(values))
 end
-function _prune_model_bindings_recursive(values::VarNamedTuple)
-    return mapfoldl(
-        identity,
-        function (kept, pair)
-            vn, value = pair
-            return if value isa NoModelBinding
-                kept
-            else
-                templated_setindex!!(kept, value, vn, values.data[AbstractPPL.getsym(vn)])
+@generated function _prune_model_bindings_recursive(
+    values::VarNamedTuple{names}
+) where {names}
+    fields = map(names) do name
+        :(
+            let child = _prune_model_node(values.data.$name)
+                if child isa NoModelBinding
+                    (;)
+                else
+                    NamedTuple{($(QuoteNode(name)),)}((child,))
+                end
             end
-        end,
-        values;
-        init=VarNamedTuple(),
-    )
+        )
+    end
+    return :(VarNamedTuple(merge((;), $(fields...))))
+end
+_prune_model_node(value) = value
+_prune_model_node(::VarNamedTuples.PartialArray{Union{}}) = NoModelBinding()
+_prune_model_node(value::VarNamedTuples.PartialArray{<:ModelValue}) = value
+_prune_model_node(::VarNamedTuples.PartialArray{<:NoModelBinding}) = NoModelBinding()
+function _prune_model_node(value::VarNamedTuple)
+    value = _prune_model_bindings(value)
+    return isempty(value.data) ? NoModelBinding() : value
+end
+
+function _prune_model_node(tree::ModelValueTree)
+    return ModelValueTree(tree, _prune_model_bindings(tree.values))
+end
+function _prune_model_node(values::VarNamedTuples.PartialArray)
+    result = _fold_model_indices(empty(values), values) do result, value, optic, template
+        value = _prune_model_node(value)
+        value isa NoModelBinding && return result
+        VarNamedTuples._setindex_optic!!(
+            result, value, optic, template, VarNamedTuples.AllowAll()
+        )
+    end
+    return isempty(result) ? NoModelBinding() : result
 end
 
 function _remove_model_values(::Type{R}, values::VarNamedTuple, names) where {R}
@@ -3749,7 +3805,7 @@ function _remove_model_elements(
     for i in eachindex(mask, value)
         mask[i] && (T = typejoin(T, typeof(_model_value_like(previous, value[i]))))
     end
-    T === Union{} && return NoModelBinding()
+    T === Union{} && (T = ModelValue{R,eltype(value)})
     data = _fill_model_elements!(similar(value, T), previous, mask)
     _inherits_binding(previous) && (mask = ModelBindingArray(mask, value))
     return VarNamedTuples.PartialArray(data, mask)
@@ -3761,6 +3817,20 @@ function _fill_model_elements!(data, previous, mask)
     return data
 end
 
+function _remove_model_binding(
+    ::Type{R}, values::VarNamedTuple, optic::AbstractPPL.Iden
+) where {R}
+    return VarNamedTuple(map(value -> _remove_model_binding(R, value, optic), values.data))
+end
+function _remove_model_binding(
+    ::Type{R}, value::VarNamedTuples.PartialArray{<:ModelValue{S}}, ::AbstractPPL.Iden
+) where {R,S}
+    return if (R === S || R === Condition && S === ArgumentCondition)
+        NoModelBinding()
+    else
+        value
+    end
+end
 function _remove_model_binding(::Type{R}, value, optic::AbstractPPL.AbstractOptic) where {R}
     if optic isa AbstractPPL.Iden
         return VarNamedTuples._map_values_recursive!!(
@@ -3798,6 +3868,7 @@ function _remove_model_binding(
     else
         return original
     end
+    multiindex && isempty(selected) && return original
     values === original || (selected = _resize_model_binding(selected, axes(selected)))
     child = _remove_model_binding(R, selected, optic.child)
     child === selected && return original
@@ -3805,7 +3876,11 @@ function _remove_model_binding(
     # Removed elements are unmasked in place, so many removals share one copy.
     if child isa NoModelBinding &&
         !(getindex(values.data, optic.ix...; optic.kw...) isa VarNamedTuples.ArrayLikeBlock)
-        setindex!(values.mask, false, optic.ix...; optic.kw...)
+        if multiindex
+            view(values.mask, optic.ix...; optic.kw...) .= false
+        else
+            setindex!(values.mask, false, optic.ix...; optic.kw...)
+        end
         return values
     end
     values = VarNamedTuples._setindex_optic!!(
@@ -4119,7 +4194,7 @@ function _unset_values(model, names, ::Type{R}) where {R}
         values, _surviving_binding_templates(model.values, values, R)
     )
     values = _with_binding_shapes(values, _binding_shape_store(model.values))
-    return _reconstruct_model(model; values)
+    return _release_argument_shapes(_reconstruct_model(model; values))
 end
 
 @generated function _argument_defaults(
@@ -4211,35 +4286,10 @@ function _with_removals(values, observations::Tuple, fixed::Tuple)
     )
 end
 function _prefix_removal(r::ModelRemoval, prefix)
-    return ModelRemoval(
-        maybe_prefix(r.name, prefix),
-        map(vn -> maybe_prefix(vn, prefix), r.exceptions),
-        r.matched,
-        r.token,
-    )
+    return ModelRemoval(maybe_prefix(r.name, prefix), r.matched, r.token)
 end
 function _removal_covers(r, vn)
-    return (r.name === nothing || subsumes(r.name, vn)) &&
-           !any(ex -> subsumes(ex, vn), r.exceptions)
-end
-function _replace_removal(r, addresses)
-    any(vn -> r.name !== nothing && subsumes(vn, r.name), addresses) && return ()
-    exceptions = (
-        r.exceptions...,
-        filter(vn -> r.name === nothing || subsumes(r.name, vn), addresses)...,
-    )
-    return (ModelRemoval(r.name, exceptions, r.matched, r.token),)
-end
-function _replace_removals(previous, values, ::Type{R}, addresses) where {R}
-    edited = mapreduce(
-        r -> _replace_removal(r, addresses),
-        (a, b) -> (a..., b...),
-        _removals(R, previous);
-        init=(),
-    )
-    observations = R === Condition ? edited : _removals(Condition, previous)
-    fixed = R === Fix ? edited : _removals(Fix, previous)
-    return _with_removals(values, observations, fixed)
+    return r.name === nothing || subsumes(r.name, vn)
 end
 
 function _has_removable(::Type{R}, values, vn) where {R}
@@ -4261,16 +4311,7 @@ function _remove_marked(::Type{R}, values, r::ModelRemoval) where {R}
         _check_removal_addresses(values, (r.name,))
         _remove_model_values(R, values, (r.name,))
     end
-    # Later bindings carve exceptions out of a broad removal. Keep their original
-    # storage when restoring a partial subtree.
-    for ex in r.exceptions
-        binding = _model_argument_binding(values, AbstractPPL.varname_to_optic(ex))
-        binding === nothing && continue
-        restored = templated_setindex!!(
-            VarNamedTuple(), binding, ex, values.data[AbstractPPL.getsym(ex)]
-        )
-        removed = _merge_model_values(removed, restored)
-    end
+
     return removed
 end
 
@@ -4356,7 +4397,7 @@ function _unset_values(model, names, ::Type{R}, ::Recursive) where {R}
     for vn in requested
         vn = vn === nothing ? nothing : _check_removal_name(model, values, vn)
         matched = vn === nothing ? !isempty(values) : _has_removable(R, values, vn)
-        marker = ModelRemoval(vn, (), matched)
+        marker = ModelRemoval(vn, matched)
         matched && (values = _remove_marked(R, values, marker))
         # A covering marker already removes `vn`; another would only change the model type.
         if vn === nothing
@@ -4387,7 +4428,7 @@ function _unset_values(model, names, ::Type{R}, ::Recursive) where {R}
         layers, _surviving_binding_templates(model.values, layers, R)
     )
     layers = _with_binding_shapes(layers, _binding_shape_store(model.values))
-    return _reconstruct_model(model; values=layers)
+    return _release_argument_shapes(_reconstruct_model(model; values=layers))
 end
 function AbstractPPL.decondition(model::Model, ::Recursive, names::Union{Symbol,VarName}...)
     return _decondition_unfix(model, names, Condition, Recursive())
@@ -4398,7 +4439,6 @@ end
 
 function _select_removal(r, prefix)
     prefix === nothing && return (r,)
-    any(ex -> subsumes(ex, prefix), r.exceptions) && return ()
     name = if r.name === nothing || subsumes(r.name, prefix)
         nothing
     elseif subsumes(prefix, r.name)
@@ -4406,11 +4446,7 @@ function _select_removal(r, prefix)
     else
         return ()
     end
-    exceptions = map(
-        ex -> AbstractPPL.unprefix(ex, prefix),
-        filter(ex -> subsumes(prefix, ex), r.exceptions),
-    )
-    return (ModelRemoval(name, exceptions, r.matched, r.token),)
+    return (ModelRemoval(name, r.matched, r.token),)
 end
 function _submodel_removals(::Type{R}, model, prefix) where {R}
     isempty(_removals(R, model.values)) && return ()
@@ -4624,13 +4660,26 @@ end
 
 # The roots are leaves in an existing VarNamedTuple tree. PartialArray nodes group
 # namespace children; their mask records roots, never observation/fixed coverage.
-struct BindingShape{S,G}
+struct BindingShape{S,G,T}
     storage::S
     geometry::G
+end
+function BindingShape(storage::S, geometry::G, ::Val{T}=Val(false)) where {S,G,T}
+    return BindingShape{S,G,T}(storage, geometry)
+end
+_shape_type_constraint(::BindingShape{S,G,T}) where {S,G,T} = T
+mutable struct NamespaceBindingShapes{R,N}
+    const roots::R
+    const namespaces::N
 end
 struct ModelBindingShapes{R,N}
     roots::R
     namespaces::N
+    function ModelBindingShapes(roots::R, namespaces::N) where {R,N}
+        # Namespace records cross model-body calls without copying their shape trees.
+        isempty(namespaces.data) || return NamespaceBindingShapes(roots, namespaces)
+        return new{R,N}(roots, namespaces)
+    end
 end
 ModelBindingShapes() = ModelBindingShapes(VarNamedTuple(), VarNamedTuple())
 _shape_root(x) = BindingShape(x, _binding_geometry(x))
@@ -4653,13 +4702,15 @@ end
 _shape_storage(x) = _model_data(x)
 _shape_storage(x::VarNamedTuples.PartialArray) = _shape_root(x).storage
 _snapshot_shape(x) = _shape_root(x)
-function _snapshot_shape(x::ModelValue{ArgumentCondition})
-    x.value isa Union{Missing,Nothing} && return nothing
-    return BindingShape(x.value, _argument_binding_geometry(x.value))
-end
-@generated function _snapshot_shape(x::VarNamedTuple{names}) where {names}
-    fields = map(name -> :(_snapshot_shape(x.data.$name)), names)
-    return :(VarNamedTuple(NamedTuple{$names}(($(fields...),))))
+_snapshot_shape(::ModelValue{ArgumentCondition}) = nothing
+
+@generated function _snapshot_shape(x::VarNamedTuple{names,types}) where {names,types}
+    kept = Tuple(
+        name for
+        (name, T) in zip(names, fieldtypes(types)) if !(T <: ModelValue{ArgumentCondition})
+    )
+    fields = map(name -> :(_snapshot_shape(x.data.$name)), kept)
+    return :(VarNamedTuple(NamedTuple{$kept}(($(fields...),))))
 end
 function _snapshot_shape(x::VarNamedTuples.PartialArray)
     if eltype(x) <: VarNamedTuple
@@ -4706,12 +4757,10 @@ function _prepared_namespaces(x::VarNamedTuples.PartialArray, previous=nothing)
     # Namespace storage is prepared once, then shared unchanged by both layers.
     return fill!(similar(x.data, NoTemplate), NoTemplate())
 end
-function _snapshot_shape_store(values::VarNamedTuple)
-    roots = _snapshot_shape(values)
-    return ModelBindingShapes(roots, _prepared_namespaces(roots))
-end
 
-function _check_shape_value_type(model, template, value, vn)
+function _check_shape_value_type(model, shape::BindingShape, value, vn)
+    _shape_type_constraint(shape) || return nothing
+    template = shape.storage
     local_name = _local_removal_name(model, vn; operation="bind")
     local_name === nothing && return nothing
     AbstractPPL.getsym(local_name) in _args_on_lhs(model) && return nothing
@@ -4772,7 +4821,12 @@ Base.@constprop :aggressive function _prepare_retained_binding_type(model, updat
         _binding_shape_store(model.values).roots, AbstractPPL.varname_to_optic(vn)
     )
     if shape isa BindingShape
-        return _prepare_argument_fields(shape.storage, update, vn)
+        previous = _model_argument_binding(
+            _model_values(model.values), AbstractPPL.varname_to_optic(vn)
+        )
+        return _prepare_argument_fields(
+            _shape_conversion_storage(shape, previous), update, vn
+        )
     end
     return _prepare_retained_binding_children(model, update, vn)
 end
@@ -4842,7 +4896,8 @@ function _check_inherited_binding_shapes(model, values)
 end
 _check_inherited_shape_nodes(model, shape, value, vn) = nothing
 function _check_inherited_shape_nodes(model, shape::BindingShape, value, vn)
-    value isa ModelValue && _check_shape_value_type(model, shape.storage, value.value, vn)
+    value isa ModelValue && !_shape_occupied(model, vn) && return nothing
+    value isa ModelValue && _check_shape_value_type(model, shape, value.value, vn)
     return _check_inherited_shape(
         shape.geometry, _shape_argument_value(model, value, vn), vn
     )
@@ -4914,10 +4969,7 @@ end
 
 function _select_existing_removal(model, removal, prefix)
     _removal_still_exists(model, removal.name) || return ()
-    exceptions = filter(vn -> _removal_still_exists(model, vn), removal.exceptions)
-    return _select_removal(
-        ModelRemoval(removal.name, exceptions, removal.matched, removal.token), prefix
-    )
+    return _select_removal(removal, prefix)
 end
 
 function _check_inherited_shape(geometry, value::ModelValueTree, vn)
@@ -5012,18 +5064,34 @@ function _local_binding_shape_store(model)
     )
 end
 function _argument_binding_template(model, vn, previous, argument)
-    if previous === nothing
-        shape = _model_argument_binding(
-            _binding_shape_store(model.values).roots, AbstractPPL.varname_to_optic(vn)
-        )
-        shape isa BindingShape && return shape.storage
-    end
     return prepare_model_argument(previous, argument)
 end
-function _seed_binding_shapes(model)
-    shapes = _snapshot_shape_store(_model_values(model.values))
-    return _reconstruct_model(model; values=_with_binding_shapes(model.values, shapes))
+@generated function _release_argument_shapes(model::Model)
+    names = (
+        fieldnames(fieldtype(model, :args))..., fieldnames(fieldtype(model, :defaults))...
+    )
+    checks = map(names) do stored_name
+        name = unsplat_symbol(stored_name)
+        quote
+            if $(QuoteNode(name)) in _args_on_lhs(model)
+                vn = _model_value_varname(
+                    model.values, $(VarName{name}()), _model_prefix(model)
+                )
+                optic = AbstractPPL.varname_to_optic(vn)
+                if _model_argument_binding(_observation_values(model.values), optic) ===
+                   nothing &&
+                    _model_argument_binding(_fixed_values(model.values), optic) === nothing
+                    model = _unbind(model, vn)
+                end
+            end
+        end
+    end
+    return quote
+        $(checks...)
+        model
+    end
 end
+
 function _shape_occupied(model, vn)
     return any(
         role -> _has_removable(role, _binding_layer(role, model.values), vn),
@@ -5054,11 +5122,26 @@ function _merge_binding_shapes(a::BindingShape, b::BindingShape, vn, model, whol
         _whole_shape(whole, vn) && !occupied || _binding_shape_error(vn)
         return b
     end
-    _whole_shape(whole, vn) && !occupied && return b
-    _whole_shape(whole, vn) && _check_shape_value_type(model, a.storage, b.storage, vn)
+    _whole_shape(whole, vn) &&
+        !occupied &&
+        return BindingShape(
+            b.storage,
+            b.geometry,
+            Val(
+                _shape_type_constraint(b) ||
+                (_shape_type_constraint(a) && typeof(a.storage) === typeof(b.storage)),
+            ),
+        )
+    _check_shape_value_type(model, b, a.storage, vn)
+    _whole_shape(whole, vn) && _check_shape_value_type(model, a, b.storage, vn)
     return BindingShape(
-        _refine_binding_storage(a.storage, b.storage, a.geometry),
+        if _whole_shape(whole, vn)
+            _refine_binding_storage(b.storage, a.storage, b.geometry)
+        else
+            _refine_binding_storage(a.storage, b.storage, a.geometry)
+        end,
         _refine_binding_geometry(a.geometry, b.geometry),
+        Val(_shape_type_constraint(a) || _shape_type_constraint(b)),
     )
 end
 function _merge_binding_shapes(
@@ -5072,7 +5155,7 @@ function _merge_binding_shapes(
         child.storage === previous && return storage
         _replace_shape_part(storage, optic, child.storage)
     end
-    return BindingShape(storage, _binding_geometry(storage))
+    return BindingShape(storage, _binding_geometry(storage), Val(_shape_type_constraint(a)))
 end
 function _merge_binding_shapes(
     a::Union{VarNamedTuple,VarNamedTuples.PartialArray}, b::BindingShape, vn, model, whole
@@ -5140,7 +5223,7 @@ function _bind(model::Model, vn::VarName, storage; namespace=false, whole=true)
             fill!(similar(storage, Bool), false),
         )
     else
-        _shape_root(storage)
+        BindingShape(storage, _binding_geometry(storage), Val(true))
     end
     batch = templated_setindex!!(
         VarNamedTuple(), value, vn, _binding_shape_template(model, vn)
@@ -5148,14 +5231,13 @@ function _bind(model::Model, vn::VarName, storage; namespace=false, whole=true)
     return _bind_shape_batch(model, batch, whole ? (vn,) : ())
 end
 function _bind_value_shapes(model, values, role)
+    model = _prepare_base_argument_shapes(model, values)
     values = _shape_namespaces(model, values)
     return _bind_shape_batch(model, _snapshot_shape(values), values)
 end
 function _with_inherited_binding_shapes(model, values)
-    model = _reconstruct_model(
-        model; values=_with_binding_shapes(values, _binding_shape_store(model.values))
-    )
-    return _bind_value_shapes(model, _model_values(values), nothing).values
+    model = _bind_value_shapes(model, _model_values(values), nothing)
+    return _with_binding_shapes(values, _binding_shape_store(model.values))
 end
 _shape_argument_value(model, value, vn) = value
 function _shape_argument_value(model, value::ModelValue, vn)
@@ -5214,24 +5296,114 @@ end
 function _delete_binding_root(x::VarNamedTuples.PartialArray, optic::AbstractPPL.Index)
     optic.child isa AbstractPPL.Iden &&
         return BangBang.delete!!(x, optic.ix...; optic.kw...)
-    x.data[optic.ix...] = _delete_binding_root(x.data[optic.ix...], optic.child)
-    return x
+    child = _delete_binding_root(x.data[optic.ix...], optic.child)
+    data = BangBang.setindex!!(x.data, child, optic.ix...)
+    return VarNamedTuples.PartialArray(data, x.mask)
 end
-function _binding_shape_template(model, vn)
+function _binding_shape_template(model, vn, values=nothing)
+    base = _base_argument_shape(model, vn)
+    base isa NoTemplate || return base
     store = _binding_shape_store(model.values)
-    return _shape_template(
+    shape = _shape_template(
         get(store.roots.data, AbstractPPL.getsym(vn), NoTemplate()),
         AbstractPPL.getoptic(vn),
+        values === nothing ? nothing : get(values.data, AbstractPPL.getsym(vn), nothing),
     )
+    return shape
 end
-_shape_template(root::BindingShape, optic) = root.storage
-_shape_template(::Nothing, optic) = NoTemplate()
-_shape_template(value, optic) = value
-function _shape_template(value::VarNamedTuple, optic::AbstractPPL.Property{S}) where {S}
-    child = _shape_template(get(value.data, S, NoTemplate()), optic.child)
+@generated function _base_argument_shape(model::Model, vn)
+    names = (
+        fieldnames(fieldtype(model, :args))..., fieldnames(fieldtype(model, :defaults))...
+    )
+    checks = map(names) do stored_name
+        name = unsplat_symbol(stored_name)
+        quote
+            root = _model_value_varname(model.values, $(VarName{name}()), _model_prefix(model))
+            if $(QuoteNode(name)) in _args_on_lhs(model) && subsumes(root, vn)
+                _model_argument_binding(
+                    _binding_shape_store(model.values).roots,
+                    AbstractPPL.varname_to_optic(root),
+                ) === nothing || return NoTemplate()
+                value = merge(model.args, model.defaults)[$(QuoteNode(stored_name))]
+                return VarNamedTuples.make_leaf(
+                    _binding_storage(value),
+                    AbstractPPL.getoptic(root),
+                    _binding_template(model, VarNamedTuple(), root),
+                )
+            end
+        end
+    end
+    return quote
+        $(checks...)
+        NoTemplate()
+    end
+end
+@generated function _prepare_base_argument_shapes(model::Model, values)
+    names = (
+        fieldnames(fieldtype(model, :args))..., fieldnames(fieldtype(model, :defaults))...
+    )
+    checks = map(names) do stored_name
+        name = unsplat_symbol(stored_name)
+        quote
+            vn = _model_value_varname(model.values, $(VarName{name}()), _model_prefix(model))
+            optic = AbstractPPL.varname_to_optic(vn)
+            shape = _model_argument_binding(_binding_shape_store(model.values).roots, optic)
+            value = _shape_argument_value(model, _model_argument_binding(values, optic), vn)
+            if shape === nothing &&
+                value !== nothing &&
+                $(QuoteNode(name)) in _args_on_lhs(model)
+                argument = merge(model.args, model.defaults)[$(QuoteNode(stored_name))]
+                argument =
+                    _shape_argument_value(
+                        model, ModelValue{ArgumentCondition}(argument), vn
+                    ).value
+                geometry = _argument_binding_geometry(argument)
+                value isa ModelValue &&
+                    _shape_occupied(model, vn) &&
+                    _check_inherited_shape(geometry, value, vn)
+                if value isa Union{VarNamedTuple,VarNamedTuples.PartialArray} &&
+                    !(argument isa Union{Nothing,Missing})
+                    batch = templated_setindex!!(
+                        VarNamedTuple(),
+                        BindingShape(argument, geometry),
+                        vn,
+                        _binding_shape_template(model, vn),
+                    )
+                    model = _bind_shape_batch(model, batch)
+                end
+            end
+        end
+    end
+    return quote
+        $(checks...)
+        model
+    end
+end
+
+_shape_conversion_storage(root, previous) = root.storage
+_shape_conversion_storage(root, previous::ModelValue) = previous.value
+_shape_conversion_storage(root, previous::ModelValueTree) = previous.template
+function _shape_conversion_storage(root, previous::VarNamedTuples.PartialArray)
+    return _shape_storage(previous)
+end
+function _shape_template(root::BindingShape, optic, previous=nothing)
+    return _shape_conversion_storage(root, previous)
+end
+_shape_template(::Nothing, optic, previous=nothing) = NoTemplate()
+_shape_template(value, optic, previous=nothing) = value
+function _shape_template(
+    value::VarNamedTuple, optic::AbstractPPL.Property{S}, previous=nothing
+) where {S}
+    child = _shape_template(
+        get(value.data, S, NoTemplate()),
+        optic.child,
+        _model_argument_binding(previous, AbstractPPL.ohead(optic)),
+    )
     return child isa NoTemplate ? child : VarNamedTuple(NamedTuple{(S,)}((child,)))
 end
-function _shape_template(value::VarNamedTuples.PartialArray, optic::AbstractPPL.Index)
+function _shape_template(
+    value::VarNamedTuples.PartialArray, optic::AbstractPPL.Index, previous=nothing
+)
     value.data isa VarNamedTuples.GrowableArray &&
         !all(i -> i isa Integer, optic.ix) &&
         return NoTemplate()
@@ -5245,7 +5417,11 @@ function _shape_template(value::VarNamedTuples.PartialArray, optic::AbstractPPL.
     if all(i -> i isa Integer, optic.ix) &&
         checkbounds(Bool, value, optic.ix...) &&
         value.mask[optic.ix...]
-        data[optic.ix...] = _shape_template(value.data[optic.ix...], optic.child)
+        data[optic.ix...] = _shape_template(
+            value.data[optic.ix...],
+            optic.child,
+            _model_argument_binding(previous, AbstractPPL.ohead(optic)),
+        )
     end
     return if value.data isa VarNamedTuples.GrowableArray
         VarNamedTuples.PartialArray(data, value.mask)

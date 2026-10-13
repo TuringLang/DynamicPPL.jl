@@ -25,17 +25,16 @@ end
 
 struct NoModelBinding end
 
-# A removal has no value or storage. Exceptions are later bindings in this layer.
-struct ModelRemoval{N,E<:Tuple}
+# A recursive removal has no value or storage.
+struct ModelRemoval{N}
     name::N
-    exceptions::E
     matched::Bool # Used only by check_model to warn about unused removals.
     # Identity only: Ref{Nothing} carries no mutable evaluation data. Copies and
     # namespace selections deliberately share it; unlike gensym it is collectible.
     token::Base.RefValue{Nothing}
 end
-function ModelRemoval(name, exceptions, matched)
-    return ModelRemoval(name, exceptions, matched, Ref(nothing))
+function ModelRemoval(name, matched)
+    return ModelRemoval(name, matched, Ref(nothing))
 end
 
 struct ModelBindingTemplate{R,N,T}
@@ -305,7 +304,6 @@ Base.@constprop :aggressive function Model{Threaded}(
     values = _argument_defaults(merge(args, defaults), Val(_args_on_lhs(args_on_lhs)))
     model = Model{Threaded}(f, args, defaults, context, values; args_on_lhs)
     found = _placeholder_names(merge(args, defaults), Val(_args_on_lhs(args_on_lhs)))
-    model = _seed_binding_shapes(model)
     return all(isempty, found) ? model : _remove_placeholders(model, found)
 end
 

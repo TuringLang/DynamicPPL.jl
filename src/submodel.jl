@@ -282,6 +282,7 @@ Evaluate `submodel` under `parent_model`.
         ),
         maybe_prefix(local_prefix, _model_prefix(parent_model)),
     )
+    child_model = _prepare_base_argument_shapes(child_model, inherited_values)
     _check_inherited_binding_shapes(child_model, inherited_values)
     parent_values = _prepare_retained_binding_types(child_model, inherited_values)
     # Shared unprefixed names may belong to the parent or another child.

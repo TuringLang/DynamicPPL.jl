@@ -1031,9 +1031,8 @@ end
     @test unfix(parent(fix(indexed(zeros(3)); x=ones(3))), rec, @varname(a.x))() == zeros(3)
     partial = decondition(parent(child), rec, @varname(a.x[2]))
     @test returned(partial, VarNamedTuple((@varname(a.x[2]) => 5.0,))) == [1.0, 5.0, 1.0]
-    @test_throws r"x.*child.*right size" condition(
-        decondition(parent(child), rec), @varname(a.x) => [4.0, 5.0]
-    )()
+    @test condition(decondition(parent(child), rec), @varname(a.x) => [4.0, 5.0])() ==
+        [4.0, 5.0]
     @test condition(decondition(parent(child), rec), @varname(a.x) => [4.0, 5.0, 6.0])() ==
         [4.0, 5.0, 6.0]
     @test returned(
@@ -1048,7 +1047,7 @@ end
     end
     both = decondition(shared(1.0), rec, @varname(x))
     @test_throws r"x.*Prefix.*Recursive" both(Xoshiro(1))
-    @test condition(both; x=3.0)(Xoshiro(1)) == (3.0, 3.0)
+    @test_throws r"x.*Prefix.*Recursive" condition(both; x=3.0)(Xoshiro(1))
     @test isempty(conditioned(decondition(decondition(parent(child), rec), rec)))
     once = decondition(parent(child), rec, @varname(a.x))
     twice = decondition(once, rec, @varname(a.x))

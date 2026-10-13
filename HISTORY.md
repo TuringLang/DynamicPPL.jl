@@ -2,7 +2,7 @@
 
 Thread-safe tilde assignments now throw an `ArgumentError` if any container is replaced, including same-type immutable values: `(a = zero(T),)` → `Vector{T}(undef, n)`. Allocate mutable storage with `::Type{T}=Float64`; use `Vector{Union{Missing,Real}}` for imputation under AD. See [#1521](https://github.com/TuringLang/DynamicPPL.jl/pull/1521).
 
-Binding shapes are shared by observations and fixed values and survive removal. To resize a root, clear both layers with `decondition` and `unfix`, then bind a whole value or template; partial bindings cannot resize known nested storage.
+Binding shapes are shared by observations and fixed values and survive removal, except that whole removal of both layers at an argument root restores the argument’s own shape; element-wise removal retains masked replacement storage. To resize a root, clear both layers with `decondition` and `unfix`, then bind a whole value or template; partial bindings cannot resize known nested storage.
 
 `check_model` now warns about binding template entries with no LHS variable in the model or its reached submodels.
 
@@ -10,7 +10,7 @@ Binding shapes are shared by observations and fixed values and survive removal. 
 
 Compact displays of `conditioned` and `fixed` listings now show only bound entries, hiding unassigned slots in masked storage.
 
-Recursive removal is now explicit: decondition a child before wrapping it → `decondition(parent, DynamicPPL.Recursive(), @varname(a.x))`; likewise `unfix` removes child fixes. No-name recursive forms clear their layer at every depth. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+Recursive removal is now explicit: decondition a child before wrapping it → `decondition(parent, DynamicPPL.Recursive(), @varname(a.x))`; likewise `unfix` removes child fixes. No-name recursive forms clear their layer at every depth; later bindings apply after recursive removals without cancelling them. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
 `VarNamedTuple` membership resolves `begin` and `end` against the stored array. See [#1490](https://github.com/TuringLang/DynamicPPL.jl/pull/1490).
 
@@ -102,7 +102,7 @@ Explicit observations now replace argument-supplied observations before the body
 
 Conditioned argument LHS variables observe body-transformed values: observing the original bound value → observe it under a separate LHS variable. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-Whole bindings must satisfy declared argument or local storage types and shared signature constraints: incompatible replacement → reconstruct the model or provide compatible storage. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+Whole bindings must satisfy declared argument types, explicit local binding template types, and shared signature constraints; untemplated locals may change value type while retaining their binding geometry. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
 Partial bindings require exact element/field conversion: `0.1` into `Float32` storage → `Float32(0.1)`; runtime AD bindings need storage compatible with AD values. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 

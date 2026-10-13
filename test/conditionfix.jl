@@ -418,7 +418,9 @@ end
         )
             owner = bind(model, whole => Float32[1])
             @test_throws ArgumentError bind(owner, address => 0.1)
-            @test_throws ArgumentError bind(owner, whole => [1.0])
+            @test (bind === condition ? conditioned : fixed)(
+                bind(owner, whole => [1.0])
+            )[whole] isa Vector{Float64}
             valid = bind(owner, address => 0.5)
             listed = bind === condition ? conditioned(valid) : fixed(valid)
             @test listed[address] === 0.5f0
@@ -426,7 +428,9 @@ end
         end
         m = bind(property_owner(), @varname(p.a) => Float32[1])
         @test_throws ArgumentError bind(m, @varname(p.a[1]) => 0.1)
-        @test_throws ArgumentError bind(m, @varname(p.a) => [1.0])
+        @test (bind === condition ? conditioned : fixed)(
+            bind(m, @varname(p.a) => [1.0])
+        )[@varname(p.a)] isa Vector{Float64}
         for value in (0.5, 1)
             valid = bind(m, @varname(p.a[1]) => value)
             listed = bind === condition ? conditioned(valid) : fixed(valid)
@@ -2791,11 +2795,13 @@ end
     @model typed_binding(x::Float64) = x ~ Normal()
     @model local_type_child() = z ~ Normal()
     @model local_type_parent() = (x ~ Normal(); a ~ to_submodel(local_type_child()))
-    @test_throws ArgumentError condition(condition(local_type_parent(); x=1.0); x=2)
+    @test conditioned(condition(condition(local_type_parent(); x=1.0); x=2))[@varname(
+        x
+    )] === 2
     for bind in (condition, fix)
         @test_throws ArgumentError bind(typed_binding(1.0); x=2)
         @test bind(scalar_model(1.0); x=2)(Xoshiro(1)) === 2
-        @test_throws ArgumentError bind(bind(scalar_latent(); x=1.0); x=2)
+        @test bind(bind(scalar_latent(); x=1.0); x=2)(Xoshiro(1)) === 2
         @test_throws ArgumentError bind(field_return((a=0.0f0,)), @varname(p.a) => 0.1)
         @test bind(field_return((a=0.0,)), @varname(p.a) => 1)(Xoshiro(1)) === 1.0
     end
@@ -3550,8 +3556,8 @@ end
     @test fix(m, @varname(x[3]) => 7.0)(Xoshiro(1)) == [0.0, 0.0, 7.0]
     @test unfix(m)(Xoshiro(1)) == ones(3)
     m = fix(condition(layer_local(); z=ones(Float32, 3)); z=zeros(Float32, 3))
-    @test_throws "template type" condition(m; z=ones(3))
-    @test_throws "template type" fix(m; z=ones(3))
+    @test eltype(conditioned(unfix(condition(m; z=ones(3))))[@varname(z)]) === Float64
+    @test eltype(fixed(fix(m; z=ones(3)))[@varname(z)]) === Float64
     @test unfix(condition(m; z=fill(2.0f0, 3)))(Xoshiro(1)) == fill(2.0f0, 3)
 
     @test_throws ArgumentError fix(layer_flexible([1.0, 2.0]); x=(a=1.0,))
@@ -3563,16 +3569,24 @@ end
 
     for (bind, remove) in ((condition, decondition), (fix, unfix))
         whole = bind(layer_local(); z=ones(3))
-        for partial in (
-            remove(whole, @varname(z[1])),
-            bind(whole, @varname(z[1]) => 2.0),
-            bind(layer_local(), @of(z = of(Array, 3)), @varname(z[1]) => 2.0),
+        for (partial, templated) in (
+            (remove(whole, @varname(z[1])), false),
+            (bind(whole, @varname(z[1]) => 2.0), false),
+            (bind(layer_local(), @of(z = of(Array, 3)), @varname(z[1]) => 2.0), true),
         )
-            @test_throws "template type" bind(partial; z=ones(Float32, 3))
+            if templated
+                @test_throws "template type" bind(partial; z=ones(Float32, 3))
+            else
+                @test eltype(
+                    (bind === condition ? conditioned : fixed)(
+                        bind(partial; z=ones(Float32, 3))
+                    )[@varname(z)],
+                ) === Float32
+            end
             @test bind(partial; z=fill(3.0, 3))(Xoshiro(1)) == fill(3.0, 3)
         end
         record = remove(bind(layer_record(); z=(a=1.0, b=2.0)), @varname(z.a))
-        @test_throws "template type" bind(record; z=(a=1.0f0, b=2.0f0))
+        @test bind(record; z=(a=1.0f0, b=2.0f0))(Xoshiro(1)) === (a=1.0f0, b=2.0f0)
         @test bind(record; z=(a=3.0, b=4.0))(Xoshiro(1)) == (a=3.0, b=4.0)
     end
 end
@@ -5930,10 +5944,6 @@ function bc_apply_reference!(r, op)
             bc_contains(p, q) && delete!(d, q)
         end
         merge!(d, Dict(bc_leaves(p, op.value)))
-        # Any binding in this layer replaces the removal at its address.
-        for q in targets
-            delete!(masks, q)
-        end
         for q in collect(keys(owners))
             bc_contains(p, q) && delete!(owners, q)
         end
@@ -6566,15 +6576,24 @@ end
             @test value.x == 2.0
             @test value.a.x == expected_child[2]
         end
-        # Any binding replaces the marker, including in a shared namespace.
+        # Bindings apply after recursive removals, including in a shared namespace.
         for (bind, remove) in ((condition, decondition), (fix, unfix))
             child = bind(bc_scalar_arg(3.0); x=4.0)
             m = remove(bc_shared_namespace(2.0, child), DynamicPPL.Recursive())
             m = bind(m; x=7.0)
             value = m(StableRNG(1))
             @test value.x == value.a.x == 7.0
-            # Removing only the new binding uncovers the child's binding again.
-            @test remove(m, @varname(x))(StableRNG(1)).a.x == 4.0
+            # Removing the new binding leaves the recursive removal in force.
+            value, vi = init!!(
+                StableRNG(1),
+                remove(m, @varname(x)),
+                VarInfo(BCTrace()),
+                BCQuarter(),
+                UnlinkAll(),
+            )
+            expected = bind === condition ? (:latent, 0.25) : (:observed, 3.0)
+            @test value.a.x == expected[2]
+            @test last(DynamicPPL.getacc(vi, Val(:BCTrace)).events) == ("x", expected...)
         end
         # A removal on the child cannot erase a binding held by its parent.
         child = decondition(bc_scalar_arg(2.0), DynamicPPL.Recursive(), @varname(x))
@@ -7054,7 +7073,11 @@ end
     m = shared_shape_nested_argument(Union{Missing,Vector{Float64}}[missing])
     m = condition(m, @varname(x[1]) => ones(2))
     @test_throws ArgumentError fix(m, @varname(x[1]) => ones(3))
-    m = decondition(m)
+    cleared = decondition(m)
+    @test conditioned(condition(cleared, @varname(x[1]) => ones(3)))[@varname(x[1])] ==
+        ones(3)
+    @test_throws ArgumentError condition(cleared, @varname(x[1][end]) => 4.0)
+    m = decondition(m, @varname(x[1]))
     @test_throws ArgumentError condition(m, @varname(x[1]) => ones(3))
     @test conditioned(condition(m, @varname(x[1][end]) => 4.0))[@varname(x[1][2])] == 4.0
 end
@@ -7114,8 +7137,122 @@ x)
         m = bind(decondition(resized_argument(zeros(2))); x=ones(3))
         m = unfix(decondition(m))
         values = bind === condition ? conditioned : fixed
-        @test values(bind(m, @varname(x[end]) => 4.0))[@varname(x[3])] == 4.0
+        @test values(bind(m, @varname(x[end]) => 4.0))[@varname(x[2])] == 4.0
     end
+end
+
+@model function binding_argument(x)
+    for i in eachindex(x)
+        x[i] ~ Normal()
+    end
+    return x
+end
+@model binding_local() = (x ~ MvNormal(zeros(2), 1); x)
+@model function binding_outer()
+    a ~ to_submodel(binding_argument(zeros(3)))
+    return a
+end
+@testset "binding shapes after removal" begin
+    @testset "placeholder storage" begin
+        m = condition(binding_argument(nothing); x=ones(2))
+        @test_throws ArgumentError condition(decondition(m), @varname(x[1]) => 3.0)
+        @test_throws ArgumentError condition(
+            binding_argument(nothing), @varname(x[1]) => 3.0
+        )
+    end
+    @testset "argument reversion" begin
+        m = condition(decondition(binding_argument(zeros(2))); x=ones(3))
+        @test length(decondition(m)(Xoshiro(1))) == 2
+        @test length(decondition(m, @varname(x))(Xoshiro(1))) == 2
+        masked = decondition(
+            decondition(decondition(m, @varname(x[1])), @varname(x[2])), @varname(x[3])
+        )
+        @test length(masked(Xoshiro(1))) == 3
+        @test length(decondition(masked)(Xoshiro(1))) == 2
+        @test length(
+            decondition(m, @varname(x[1]), @varname(x[2]), @varname(x[3]))(Xoshiro(1))
+        ) == 3
+    end
+    @testset "recursive ordering" begin
+        m = condition(
+            decondition(binding_outer(), DynamicPPL.Recursive(), @varname(a.x)),
+            @varname(a.x) => [1.0, 2.0],
+        )
+        @test m(Xoshiro(1)) == [1.0, 2.0]
+        @test !isempty(rand(Xoshiro(1), decondition(m)))
+        @test_throws ArgumentError condition(binding_outer(), @varname(a.x) => [1.0, 2.0])(
+            Xoshiro(1)
+        )
+        local_m = condition(decondition(binding_argument(zeros(3))), @varname(x[1]) => 1.0)
+        @test Set(keys(rand(Xoshiro(1), local_m))) == Set([@varname(x[2]), @varname(x[3])])
+    end
+    @testset "local whole type" begin
+        m = condition(binding_local(); x=ones(2))
+        for x in (ones(Float32, 2), ones(BigFloat, 2), ForwardDiff.Dual.(ones(2), ones(2)))
+            @test condition(m; x)(Xoshiro(1)) === x
+        end
+        templated = condition(binding_local(), @of(x = of(Array, 2)); x=ones(2))
+        @test_throws ArgumentError condition(templated; x=ones(Float32, 2))
+    end
+    @testset "absent partial removal" begin
+        @test isempty(conditioned(decondition(binding_argument(nothing), @varname(x[1]))))
+        @test isempty(fixed(unfix(binding_local(), @varname(x[1]))))
+    end
+    @testset "pending index styles" begin
+        for bind in (condition, fix)
+            for build in (
+                () -> bind(
+                    binding_outer(), @varname(a.x[2]) => 1.0, @varname(a.x[1, 2]) => 2.0
+                ),
+                () -> bind(
+                    bind(binding_outer(), @varname(a.x[2]) => 1.0),
+                    @varname(a.x[1, 2]) => 2.0,
+                ),
+                () -> bind(
+                    (bind === condition ? fix : condition)(
+                        binding_outer(), @varname(a.x[2]) => 1.0
+                    ),
+                    @varname(a.x[1, 2]) => 2.0,
+                ),
+            )
+                err = try
+                    build()
+                    nothing
+                catch e
+                    e
+                end
+                @test err isa ArgumentError
+                @test occursin("a.x", sprint(showerror, err)) &&
+                    occursin("one index style", sprint(showerror, err))
+            end
+        end
+    end
+end
+
+@model retyped_local() = (x = zeros(2); x[1] ~ Normal(); x[2] ~ Normal(); x)
+@testset "partial edits after retyping" begin
+    for bind in (condition, fix)
+        m = bind(bind(retyped_local(); x=ones(2)); x=ones(Float32, 2))
+        @test_throws ArgumentError bind(m, @varname(x[1]) => 0.1)
+        @test (bind === condition ? conditioned : fixed)(
+            bind(m, @varname(x[1]) => 0.5)
+        )[@varname(x[1])] === 0.5f0
+    end
+end
+
+@model layer_type_local() = (x = zeros(2); x[1] ~ Normal(); x[2] ~ Normal(); x)
+@testset "partial conversion follows edited layer" begin
+    m = condition(fix(layer_type_local(); x=ones(2)); x=ones(Float32, 2))
+    @test fixed(fix(m, @varname(x[1]) => 0.1))[@varname(x[1])] === 0.1
+    @test_throws ArgumentError condition(m, @varname(x[1]) => 0.1)
+end
+
+@model layer_type_record() = q ~ product_distribution((a=Normal(), b=Normal()))
+@testset "partial structured conversion follows edited layer" begin
+    m = decondition(condition(layer_type_record(); q=(a=1.0f0, b=2.0f0)), @varname(q.b))
+    m = fix(m; q=(a=1.0, b=2.0))
+    @test_throws ArgumentError condition(m, @varname(q.a) => 0.1)
+    @test fixed(fix(m, @varname(q.a) => 0.1))[@varname(q.a)] === 0.1
 end
 
 end
