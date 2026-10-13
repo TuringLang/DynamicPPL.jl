@@ -335,52 +335,55 @@ Evaluate `submodel` under `parent_model`.
 end
 
 # Specialize child evaluation on the selected submodel namespace bindings.
-@inline function _evaluate_submodel!!(
-    parent_model::Model,
-    context::AbstractContext,
-    submodel::Submodel{M,AutoPrefix},
-    left_vn::VarName,
-    template,
-    vi::AbstractVarInfo,
-    values::LocalModelValues,
-) where {M,AutoPrefix}
-    parent_prefix = _model_prefix(parent_model)
-    model = if AutoPrefix
-        vn, template = _prefix_varname_and_template(left_vn, template, parent_model)
-        _prefix_model(submodel.model, vn, template, values)
-    elseif parent_prefix === nothing
-        _reconstruct_model(submodel.model; values)
-    else
-        model = _prefix_model(
-            submodel.model,
-            parent_prefix,
-            _apply_prefix_template(_model_prefix_template(parent_model), NoTemplate()),
-            values,
-        )
-        if _model_prefix_template(parent_model) === nothing
-            model
+# Separate methods keep mixed automatic/manual nesting below inference recursion limits.
+for AutoPrefix in (true, false)
+    @eval @inline function _evaluate_submodel!!(
+        parent_model::Model,
+        context::AbstractContext,
+        submodel::Submodel{M,$AutoPrefix},
+        left_vn::VarName,
+        template,
+        vi::AbstractVarInfo,
+        values::LocalModelValues,
+    ) where {M}
+        parent_prefix = _model_prefix(parent_model)
+        model = if $AutoPrefix
+            vn, template = _prefix_varname_and_template(left_vn, template, parent_model)
+            _prefix_model(submodel.model, vn, template, values)
+        elseif parent_prefix === nothing
+            _reconstruct_model(submodel.model; values)
         else
-            inner = if _model_prefix_template(submodel.model) === nothing
-                _model_prefix(submodel.model)
+            model = _prefix_model(
+                submodel.model,
+                parent_prefix,
+                _apply_prefix_template(_model_prefix_template(parent_model), NoTemplate()),
+                values,
+            )
+            if _model_prefix_template(parent_model) === nothing
+                model
             else
-                _model_prefix_template(submodel.model)
+                inner = if _model_prefix_template(submodel.model) === nothing
+                    _model_prefix(submodel.model)
+                else
+                    _model_prefix_template(submodel.model)
+                end
+                prefix_template = _compose_prefix_templates(
+                    _model_prefix_template(parent_model), inner
+                )
+                prefix_context = PrefixContext(
+                    _model_prefix(model),
+                    first(extract_prefixes(model.context)),
+                    prefix_template,
+                )
+                _reconstruct_model(model; context=prefix_context)
             end
-            prefix_template = _compose_prefix_templates(
-                _model_prefix_template(parent_model), inner
-            )
-            prefix_context = PrefixContext(
-                _model_prefix(model),
-                first(extract_prefixes(model.context)),
-                prefix_template,
-            )
-            _reconstruct_model(model; context=prefix_context)
         end
+        # Calling model.f directly avoids the inference recursion limit as nested prefixes
+        # change the Model type; routing through _evaluate!! widens it to Any (Turing.jl#2844).
+        model = setleafcontext(model, context)
+        args, kwargs = make_evaluate_args_and_kwargs(model, vi)
+        return model.f(args...; kwargs...)
     end
-    # Calling model.f directly avoids the inference recursion limit as nested prefixes
-    # change the Model type; routing through _evaluate!! widens it to Any (Turing.jl#2844).
-    model = setleafcontext(model, context)
-    args, kwargs = make_evaluate_args_and_kwargs(model, vi)
-    return model.f(args...; kwargs...)
 end
 
 function tilde_observe!!(

@@ -4550,6 +4550,7 @@ function _binding_geometry(value::NamedTuple, parents::Tuple)
     )
 end
 function _binding_geometry(value::AbstractArray, parents::Tuple)
+    value isa SubsamplingShape && return _binding_geometry(value.data, parents)
     if eltype(value) <: Number
         return ArrayBindingGeometry(axes(value), nothing)
     end
@@ -4743,12 +4744,7 @@ function _resolve_binding_optic(storage, optic::AbstractPPL.Index)
     else
         optic.ix
     end
-    child = try
-        VarNamedTuples.index_template(storage, optic)
-    catch err
-        err isa UndefRefError || rethrow()
-        NoTemplate()
-    end
+    child = VarNamedTuples.maybe_index_template(storage, optic)
     return AbstractPPL.Index(indices, optic.kw, _resolve_binding_optic(child, optic.child))
 end
 
@@ -4981,7 +4977,7 @@ function _with_binding_metadata(
     shapes=_binding_shape_store(values),
 )
     if !(values isa ModelBindingLayers) &&
-        isempty(shapes.roots.data) &&
+        shapes.roots isa VarNamedTuple{(),Tuple{}} &&
         isempty(observation_removals) &&
         isempty(fixed_removals) &&
         isempty(templates)
