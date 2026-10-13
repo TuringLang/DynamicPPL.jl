@@ -267,8 +267,13 @@ Evaluate `submodel` under `parent_model`.
     end
     child_layers = ModelBindingLayers(observations, fixed, child_owners)
     child_values = _model_values(child_layers)
-    child_model = _reconstruct_model(submodel.model; values=LocalModelValues(child_values))
-    parent_values = _check_argument_bindings(
+    child_model = _reconstruct_model(
+        submodel.model;
+        values=LocalModelValues(
+            _with_binding_shapes(child_values, _local_binding_shape_store(submodel.model))
+        ),
+    )
+    inherited_values = _check_argument_bindings(
         child_model,
         _prepare_inherited_templates(
             child_model,
@@ -277,6 +282,8 @@ Evaluate `submodel` under `parent_model`.
         ),
         maybe_prefix(local_prefix, _model_prefix(parent_model)),
     )
+    _check_inherited_binding_shapes(child_model, inherited_values)
+    parent_values = _prepare_retained_binding_types(child_model, inherited_values)
     # Shared unprefixed names may belong to the parent or another child.
     if AutoPrefix || _model_prefix(submodel.model) !== nothing
         _check_binding_addresses(child_model, parent_values)
@@ -297,6 +304,7 @@ Evaluate `submodel` under `parent_model`.
         ),
         owners,
     )
+    values = _with_inherited_binding_shapes(child_model, values)
     child_templates = _submodel_binding_templates(submodel.model, nothing)
     templates = if isempty(child_templates)
         ()

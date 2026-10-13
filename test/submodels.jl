@@ -1025,13 +1025,17 @@ end
         return x
     end
     @model parent(m) = a ~ to_submodel(m)
-    child = condition(indexed(zeros(2)); x=ones(3))
-    @test length(decondition(parent(child), rec, @varname(a.x))(Xoshiro(1))) == 2
-    @test unfix(parent(fix(indexed(zeros(2)); x=ones(3))), rec, @varname(a.x))() == zeros(2)
+    @test_throws r"x.*decondition.*unfix" condition(indexed(zeros(2)); x=ones(3))
+    child = condition(indexed(zeros(3)); x=ones(3))
+    @test length(decondition(parent(child), rec, @varname(a.x))(Xoshiro(1))) == 3
+    @test unfix(parent(fix(indexed(zeros(3)); x=ones(3))), rec, @varname(a.x))() == zeros(3)
     partial = decondition(parent(child), rec, @varname(a.x[2]))
     @test returned(partial, VarNamedTuple((@varname(a.x[2]) => 5.0,))) == [1.0, 5.0, 1.0]
-    @test condition(decondition(parent(child), rec), @varname(a.x) => [4.0, 5.0])() ==
-        [4.0, 5.0]
+    @test_throws r"x.*child.*right size" condition(
+        decondition(parent(child), rec), @varname(a.x) => [4.0, 5.0]
+    )()
+    @test condition(decondition(parent(child), rec), @varname(a.x) => [4.0, 5.0, 6.0])() ==
+        [4.0, 5.0, 6.0]
     @test returned(
         condition(decondition(parent(indexed(zeros(2))), rec), @varname(a.x[1]) => 4.0),
         VarNamedTuple((@varname(a.x[2]) => 5.0,)),
@@ -1202,7 +1206,10 @@ end
     end
     for (n, replacement) in ((3, [1.0, 2.0]), (2, [1.0, 2.0, 3.0]))
         for (bind, remove) in ((condition, decondition), (fix, unfix))
-            whole = bind(shaped_parent(n), @varname(a.y) => replacement)
+            @test_throws r"y.*child.*right size" returned(
+                bind(shaped_parent(n), @varname(a.y) => replacement), (mu=0.3,)
+            )
+            whole = bind(shaped_parent(length(replacement)), @varname(a.y) => replacement)
             edited = bind(whole, @varname(a.y[1]) => 4.0)
             expected = [4.0; replacement[2:end]]
             @test returned(edited, (mu=0.3,)) == expected

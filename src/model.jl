@@ -50,11 +50,12 @@ end
 struct ModelBindingLayers{
     O<:VarNamedTuple,
     F<:VarNamedTuple,
-    V<:VarNamedTuple,
+    V<:Union{Nothing,VarNamedTuple},
     A<:Tuple,
     OR<:Tuple,
     FR<:Tuple,
     BT<:Tuple,
+    BS,
 }
     observations::O
     fixed::F
@@ -64,6 +65,29 @@ struct ModelBindingLayers{
     observation_removals::OR
     fixed_removals::FR
     templates::BT
+    shapes::BS
+    function ModelBindingLayers(
+        observations::O,
+        fixed::F,
+        values,
+        owners::A,
+        observation_removals::OR,
+        fixed_removals::FR,
+        templates::BT,
+        shapes::BS,
+    ) where {O,F,A,OR,FR,BT,BS}
+        merged = isempty(fixed.data) ? nothing : values
+        return new{O,F,typeof(merged),A,OR,FR,BT,BS}(
+            observations,
+            fixed,
+            merged,
+            owners,
+            observation_removals,
+            fixed_removals,
+            templates,
+            shapes,
+        )
+    end
 end
 
 # Child bindings selected from the parent's submodel namespace use the child's storage shape.
@@ -281,6 +305,7 @@ Base.@constprop :aggressive function Model{Threaded}(
     values = _argument_defaults(merge(args, defaults), Val(_args_on_lhs(args_on_lhs)))
     model = Model{Threaded}(f, args, defaults, context, values; args_on_lhs)
     found = _placeholder_names(merge(args, defaults), Val(_args_on_lhs(args_on_lhs)))
+    model = _seed_binding_shapes(model)
     return all(isempty, found) ? model : _remove_placeholders(model, found)
 end
 
@@ -411,7 +436,8 @@ function _prefix_values(values::ModelBindingLayers, vn::VarName, template)
         map(owner -> maybe_prefix(owner, vn), values.owners),
         map(r -> _prefix_removal(r, vn), values.observation_removals),
         map(r -> _prefix_removal(r, vn), values.fixed_removals),
-        map(t -> _prefix_binding_template(t, vn), values.templates),
+        map(t -> _prefix_binding_template(t, vn), values.templates);
+        shapes=_prefix_binding_shapes(_binding_shape_store(values), vn, template),
     )
 end
 function _prefix_values(values::VarNamedTuple, vn::VarName, template)

@@ -2,6 +2,8 @@
 
 Thread-safe tilde assignments now throw an `ArgumentError` if any container is replaced, including same-type immutable values: `(a = zero(T),)` → `Vector{T}(undef, n)`. Allocate mutable storage with `::Type{T}=Float64`; use `Vector{Union{Missing,Real}}` for imputation under AD. See [#1521](https://github.com/TuringLang/DynamicPPL.jl/pull/1521).
 
+Binding shapes are shared by observations and fixed values and survive removal. To resize a root, clear both layers with `decondition` and `unfix`, then bind a whole value or template; partial bindings cannot resize known nested storage.
+
 `check_model` now warns about binding template entries with no LHS variable in the model or its reached submodels.
 
 `AbstractPPL.of(vnt::VarNamedTuple)` builds a snapshot binding template from plain numeric arrays, exactly representable scalars and nested namespaces; partial entries describe their full backing arrays. Custom arrays, growable entries and scalars whose types would widen are rejected. Rebuild after layout changes.

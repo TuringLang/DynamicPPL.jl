@@ -358,9 +358,9 @@ end
         vn = recursive ? @varname(a.x[1]) : @varname(x[1])
         for wrap in (identity, x -> view(x, :))
             m = if recursive
-                observed_view_parent(wrap(zeros(2)))
+                observed_view_parent(wrap(zeros(3)))
             else
-                array_model(wrap(zeros(2)))
+                array_model(wrap(zeros(3)))
             end
             m = if recursive
                 condition(m, @varname(a.x) => [1.0, 2.0, 3.0])
@@ -432,27 +432,28 @@ end
             listed = bind === condition ? conditioned(valid) : fixed(valid)
             @test listed[@varname(p.a[1])] === Float32(value)
         end
-        resized = bind(m, @varname(p.a) => Float32[1, 2])
+        @test_throws ArgumentError bind(m, @varname(p.a) => Float32[1, 2])
+        resized = bind(unfix(decondition(m)), @varname(p.a) => Float32[1, 2])
         listed = bind === condition ? conditioned(resized) : fixed(resized)
         @test listed[@varname(p.a)] == Float32[1, 2]
     end
 end
 
 @model smaller_fixed(p) = (p.a ~ Normal(); p.b ~ Normal(); p)
-@model smaller_fixed_parent() = a ~ to_submodel(smaller_fixed((a=1.0, b=2.0, c=3.0)))
+@model smaller_fixed_parent() = a ~ to_submodel(smaller_fixed((a=1.0, b=2.0)))
 @testset "fixed field owner keeps its fields" begin
     for recursive in (false, true)
         m = if recursive
             fix(smaller_fixed_parent(), @varname(a.p) => (a=4.0, b=5.0))
         else
-            fix(smaller_fixed((a=1.0, b=2.0, c=3.0)); p=(a=4.0, b=5.0))
+            fix(smaller_fixed((a=1.0, b=2.0)); p=(a=4.0, b=5.0))
         end
         address = recursive ? @varname(a.p.b) : @varname(p.b)
         partial = unfix(m, address)
         @test partial(Xoshiro(1)) == (a=4.0, b=2.0)
         rebound = fix(m, address => 6.0)
         @test rebound(Xoshiro(1)) == (a=4.0, b=6.0)
-        @test unfix(partial)(Xoshiro(1)) == (a=1.0, b=2.0, c=3.0)
+        @test unfix(partial)(Xoshiro(1)) == (a=1.0, b=2.0)
         @test logjoint(partial, (;)) ≈ logpdf(Normal(), 2.0)
     end
 end
@@ -758,21 +759,9 @@ end
                 (fix, fix(model(nothing); x=value)),
             )
                 for bind in (condition, fix)
-                    # The other layer still has only the placeholder argument for storage.
-                    expected = if origin !== identity && bind !== origin
-                        r"ArgumentError: .*partial.*`x`.*nothing.*concrete argument.*whole binding"
-                    else
-                        message
-                    end
-                    @test_throws expected bind(m, address => 3.0)
+                    @test_throws message bind(m, address => 3.0)
                 end
                 for remove in (decondition, unfix)
-                    # The other layer has no storage, so the removal cannot be decided.
-                    if origin !== identity && (remove === unfix) === (origin === condition)
-                        @test conditioned(remove(m, address)) == conditioned(m)
-                        @test fixed(remove(m, address)) == fixed(m)
-                        continue
-                    end
                     @test_throws "Cannot remove" remove(m, address)
                 end
                 @test_throws message m(Xoshiro(1))
@@ -1186,7 +1175,7 @@ end
         )()
         @model field_lhs(p) = p.a ~ Normal()
         @test_throws r"ArgumentError: .*p.a.*size and shape" fix(
-            field_lhs((; a=1.0)); p=(; b=2.0)
+            decondition(field_lhs((; a=1.0))); p=(; b=2.0)
         )()
         @model scalar_shape(x) = (x = [x]; x ~ MvNormal(zeros(1), 1.0))
         @test_throws r"ArgumentError: .*x.*size and shape" fix(scalar_shape(1.0); x=2.0)()
@@ -1895,7 +1884,15 @@ end
             address(vn) = AbstractPPL.append_optic(root, AbstractPPL.getoptic(vn))
             for vn in (@varname(x[1]), @varname(x[2]))
                 target = address(vn)
-                @test listed(bind(m, target => ones(2)))[target] == ones(2)
+                if assigned || vn == @varname(x[2])
+                    @test_throws ArgumentError bind(m, target => ones(2))
+                else
+                    initialized = bind(m, target => ones(2))
+                    @test listed(initialized)[target] == ones(2)
+                    @test_throws ArgumentError bind(
+                        remove(initialized, target), target => ones(3)
+                    )
+                end
                 removed = remove(m, target)
                 for result in (removed, remove(removed, target))
                     if assigned || vn == @varname(x[2])
@@ -2007,7 +2004,7 @@ end
             @test condition(model; x=[3.0])() == [3.0, 2.0]
         end
         @test_throws r"ArgumentError: .*`x\[2\]`.*size and shape" fix(
-            grow_scalar([1.0]); x=[3.0, 4.0]
+            decondition(grow_scalar([1.0])); x=[3.0, 4.0]
         )()
         @test_throws r"Cannot condition and fix different parts" fix(
             grow_range([1.0, 2.0]), @varname(x[1]) => 3.0
@@ -2122,7 +2119,7 @@ end
                   logpdf(Normal(), T(4))
         end
         data = reshape([[Float32(i)] for i in 1:4], 2, 2)
-        replaced = condition(nested_array_model([[0.0f0]]); x=data)
+        replaced = condition(decondition(nested_array_model([[0.0f0]])); x=data)
         replaced = fix(replaced, @varname(x[1][1]) => 10.0f0)
         replaced = condition(replaced, @varname(x[2][1]) => 20.0f0)
         @test replaced() == reshape([[10.0f0], [20.0f0], [3.0f0], [4.0f0]], 2, 2)
@@ -2243,14 +2240,18 @@ end
             data in ([1.0f0], BigFloat[1, 2, 3], DimArray([1.0, 2.0, 3.0], X))
 
             original = array_model(zeros(2))
-            changed = op(original; x=data)
+            @test_throws ArgumentError op(original; x=data)
+            changed = op(decondition(original); x=data)
             @test changed(Xoshiro(1)) === data
             @test isempty(keys(VarInfo(changed)))
             @test logjoint(changed, VarNamedTuple()) ≈
                 (op === condition ? sum(logpdf.(Normal(), data)) : 0.0)
             @test original() == zeros(2)
         end
-        loglik = x -> loglikelihood(condition(array_model(zeros(2)); x), VarNamedTuple())
+        loglik =
+            x -> loglikelihood(
+                condition(decondition(array_model(zeros(2))); x), VarNamedTuple()
+            )
         @test ForwardDiff.gradient(loglik, [1.0, 2.0, 3.0]) ≈ [-1.0, -2.0, -3.0]
 
         @model function read_before_tilde(; x=1.0)
@@ -2276,7 +2277,7 @@ end
                 ((; a=big"0", b=big"0"), (; a=big"1", b=big"2")),
             )
 
-            base = first_op(fields(original); x=replacement)
+            base = first_op(decondition(fields(original)); x=replacement)
             changed = last_op(base, @varname(x.a) => oftype(replacement.a, 3))
             result = changed()
             @test typeof(result) === typeof(replacement)
@@ -2306,13 +2307,13 @@ end
                 if last_op === condition
                     (first_op === fix ? 1 : 7)
                 else
-                    (first_op === condition ? 1 : original.a)
+                    (first_op === condition ? 1 : 7)
                 end
             )
             @test result.b == 2
         end
         parent = condition(
-            nested_fields(fields((; a=0.0))), @varname(child.x) => (; a=1.0, b=2.0)
+            nested_fields(fields((; a=0.0, b=0.0))), @varname(child.x) => (; a=1.0, b=2.0)
         )
         parent = fix(parent, @varname(child.x.a) => 3.0)
         result, _ = @inferred evaluate!!(
@@ -2327,12 +2328,13 @@ end
 
         @model array_fields(x) = (x[1].a ~ Normal(); return x)
         parent = condition(
-            nested_fields(array_fields(Any[(; a=0.0)])),
+            nested_fields(array_fields(Any[(; a=0.0, b=0.0)])),
             @varname(child.x[1]) => (; a=1.0, b=2.0),
         )
         @test fix(parent, @varname(child.x[1].a) => 3.0)() == [(; a=3.0, b=2.0)]
         partial = condition(
-            decondition(array_fields(Any[(; a=0.0)])), @varname(x[1]) => (; a=1.0, b=2.0)
+            decondition(array_fields(Any[(; a=0.0, b=0.0)])),
+            @varname(x[1]) => (; a=1.0, b=2.0),
         )
         @test fix(partial, @varname(x[1].a) => 3.0)() == [(; a=3.0, b=2.0)]
 
@@ -2400,7 +2402,7 @@ end
 
     @testset "partial bindings retain the rest of a whole argument binding" begin
         for data in (Float32[1, 2, 3], BigFloat[1, 2, 3], DimArray([1.0, 2.0, 3.0], X))
-            original = condition(array_model(zeros(2)); x=data)
+            original = condition(decondition(array_model(zeros(2))); x=data)
             same = condition(original, @varname(x[1]) => data[1])
             @test same() == original() == data
             @test typeof(same()) === typeof(data)
@@ -2559,7 +2561,7 @@ end
 
     @testset "partial removal retains replacement shape" begin
         for n in (2, 3), k in (1, n)
-            m = array_model(zeros(5 - n))
+            m = array_model(zeros(n))
             observed = decondition(condition(m; x=ones(n)), @varname(x[k]))
             expected = ones(n)
             expected[k] = 2.0
@@ -2567,7 +2569,7 @@ end
             @test logjoint(observed, (; x=fill(2.0, n))) ≈ sum(logpdf.(Normal(), expected))
             @test LogDensityProblems.dimension(LogDensityFunction(observed)) == 1
             restored = unfix(fix(m; x=ones(n)), @varname(x[k]))
-            expected[k] = k <= 5 - n ? 0.0 : 2.0
+            expected[k] = 0.0
             @test returned(restored, (; x=fill(2.0, n))) == expected
             @test logjoint(restored, (; x=fill(2.0, n))) ≈ logpdf(Normal(), expected[k])
         end
@@ -2720,10 +2722,10 @@ end
     end
     @test fix(condition(fix(scalar_model(1.0); x=5.0); x=2.0); x=4.0)(Xoshiro(1)) == 4.0
     @test unfix(condition(fix(scalar_model(1.0); x=5.0); x=2.0))(Xoshiro(1)) == 2.0
-    resized = fix(array_model(zeros(2)); x=ones(3))
-    # The observation still owns length two beneath the resized fixed binding.
-    @test_throws "outside the storage" condition(resized, @varname(x[3]) => 4.0)
-    @test unfix(resized)(Xoshiro(1)) == zeros(2)
+    @test_throws ArgumentError fix(array_model(zeros(2)); x=ones(3))
+    shared = fix(array_model(zeros(2)); x=ones(2))
+    @test_throws "outside the storage" condition(shared, @varname(x[3]) => 4.0)
+    @test unfix(shared)(Xoshiro(1)) == zeros(2)
     observed = condition(scalar_model(1.0); x=2.0)
     @test child_model(unfix(fix(observed; x=5.0)))(Xoshiro(1)) == 2.0
     prefixed = DynamicPPL.prefix(fix(observed; x=5.0), @varname(a))
@@ -2815,7 +2817,7 @@ end
     end
 end
 
-@testset "bindings own shape at their address" begin
+@testset "nested bindings fit their root shape" begin
     @model shape_nested(x) = (for i in eachindex(x), j in eachindex(x[i])
         x[i][j] ~ Normal()
     end;
@@ -2824,19 +2826,19 @@ end
         p.a[i] ~ Normal()
     end;
     p)
-    m = condition(shape_nested([[0.0, 0.0]]), @varname(x[1]) => [1.0, 2.0, 3.0])
+    m = condition(shape_nested([[0.0, 0.0, 0.0]]), @varname(x[1]) => [1.0, 2.0, 3.0])
     @test returned(decondition(m, @varname(x[1][3])), (; x=[[7.0, 8.0, 9.0]])) ==
         [[1.0, 2.0, 9.0]]
     @test condition(m, @varname(x[1][3]) => 4.0)(Xoshiro(1)) == [[1.0, 2.0, 4.0]]
-    @test unfix(fix(m, @varname(x[1]) => zeros(4)), @varname(x[1]))(Xoshiro(1)) ==
+    @test_throws ArgumentError fix(m, @varname(x[1]) => zeros(4))
+    @test unfix(fix(m, @varname(x[1]) => zeros(3)), @varname(x[1]))(Xoshiro(1)) ==
         [[1.0, 2.0, 3.0]]
-    @test unfix(fix(shape_nested([[0.0, 0.0]]), @varname(x[1]) => ones(3)), @varname(x[1]))(
-        Xoshiro(1)
-    ) == [[0.0, 0.0]]
-    p = condition(shape_field((a=zeros(2),)), @varname(p.a) => ones(3))
+    @test_throws ArgumentError fix(shape_nested([[0.0, 0.0]]), @varname(x[1]) => ones(3))
+    p = condition(shape_field((a=zeros(3),)), @varname(p.a) => ones(3))
     @test returned(decondition(p, @varname(p.a[3])), (; p=(a=fill(2.0, 3),))) ==
         (a=[1.0, 1.0, 2.0],)
-    @test unfix(fix(p, @varname(p.a) => zeros(4)), @varname(p.a))(Xoshiro(1)) ==
+    @test_throws ArgumentError fix(p, @varname(p.a) => zeros(4))
+    @test unfix(fix(p, @varname(p.a) => zeros(3)), @varname(p.a))(Xoshiro(1)) ==
         (a=ones(3),)
     for bind in (condition, fix)
         @test_throws DimensionMismatch bind(
@@ -3014,8 +3016,8 @@ end
             Xoshiro(1)
         )[2] == 1.0
     end
-    # A fixed layer must not determine an observation's storage, or vice versa.
-    m = fix(condition(schema_local(); z=ones(3)); z=ones(4))
+    @test_throws ArgumentError fix(condition(schema_local(); z=ones(3)); z=ones(4))
+    m = fix(condition(schema_local(); z=ones(3)); z=ones(3))
     @test (x -> x(Xoshiro(1)) == [1.0, 2.0, 1.0])(
         unfix(condition(m, @varname(z[2]) => 2.0, @of(z = of(Array, 3))))
     )
@@ -3283,7 +3285,8 @@ end
     for op in (condition, fix)
         schema = @of(z = @of(a = of(Array, 3), b = of(Array, 2)))
         owned = op(schema_fields(); z=(a=zeros(2), b=zeros(2)))
-        resized = op(owned, @varname(z.a) => ones(3))
+        @test_throws ArgumentError op(owned, @varname(z.a) => ones(3))
+        resized = op(unfix(decondition(owned)); z=(a=ones(3), b=zeros(2)))
         @test op(resized, @varname(z.a[2]) => 2.0, schema)(Xoshiro(1)).a == [1.0, 2.0, 1.0]
         m = op(schema_fields(), @varname(z.a[2]) => 2.0, schema)
         @test op(m, @varname(z.a[3]) => 3.0, schema)(Xoshiro(1)).a[2:3] == [2.0, 3.0]
@@ -3425,7 +3428,7 @@ end
 @testset "layer overlay preserves whole-binding extents" begin
     for shape in (identity, x -> reshape(x, :, 1)), recursive in (false, true)
         scope = recursive ? (DynamicPPL.Recursive(),) : ()
-        base = array_model(shape(zeros(2)))
+        base = array_model(shape(zeros(3)))
         base = recursive ? child_model(base) : base
         whole = recursive ? @varname(a.x) : @varname(x)
         first = recursive ? @varname(a.x[1]) : @varname(x[1])
@@ -3434,8 +3437,7 @@ end
         m = fix(m, first => 9.0, second => 9.0)
         @test m(StableRNG(1)) == shape([9.0, 9.0, 3.0])
         @test logjoint(m, (;)) ≈ logpdf(Normal(), 3.0)
-        for (observed, fixed) in
-            (([1.0, 2.0, 3.0], [4.0, 5.0]), ([1.0, 2.0], [4.0, 5.0, 6.0]))
+        for (observed, fixed) in (([1.0, 2.0, 3.0], [4.0, 5.0, 6.0]),)
             for order in (false, true)
                 m = if order
                     condition(fix(base, whole => shape(fixed)), whole => shape(observed))
@@ -3462,7 +3464,7 @@ end
     end
     # A whole fixed owner also supplies the unprefixed child's shape.
     m = fix(shared([0.0, 0.0]); x=[4.0, 5.0])
-    m = condition(m, @varname(x) => [1.0, 2.0, 3.0])
+    m = condition(m, @varname(x) => [1.0, 2.0])
     m = fix(m, @varname(x[1]) => 9.0)
     @test m(StableRNG(1)) == ([9.0, 5.0], [9.0, 5.0])
     m = fix(m, @varname(x[2]) => 8.0)
@@ -3488,8 +3490,8 @@ end
     end
 end
 
-@testset "first partial fix owns its layer" begin
-    observed = condition(array_model(zeros(3)); x=ones(1))
+@testset "partial fixes retain shared storage" begin
+    observed = condition(decondition(array_model(zeros(3))), @varname(x[1]) => 1.0)
     m = fix(observed, @varname(x[3]) => 9.0)
     @test fixed(m)[@varname(x[3])] == 9.0
     @test keys(conditioned(m)) == [@varname(x[1])]
@@ -3497,26 +3499,23 @@ end
     @test returned(m, (; x=[5.0, 6.0, 7.0])) == [1.0, 6.0, 9.0]
     @test returned(child_model(m), (; a=(x=[5.0, 6.0, 7.0],))) == [1.0, 6.0, 9.0]
     @test fix(m, @varname(x[2]) => 8.0)(Xoshiro(1)) == [1.0, 8.0, 9.0]
-    @test unfix(m)(Xoshiro(1)) == [1.0]
-    @test unfix(m, @varname(x[3]))(Xoshiro(1)) == [1.0]
+    @test returned(unfix(m), (; x=[5.0, 6.0, 7.0])) == [1.0, 6.0, 7.0]
+    @test returned(unfix(m, @varname(x[3])), (; x=[5.0, 6.0, 7.0])) == [1.0, 6.0, 7.0]
     @test_throws ArgumentError fix(observed, @varname(x[4]) => 9.0)
-    observed = condition(array_model(zeros(3, 1)); x=ones(1, 3))
-    m = fix(observed, @varname(x[3, 1]) => 9.0)
-    expected = fill(2.0, 3, 3)
-    expected[1, :] .= 1.0
-    expected[3, 1] = 9.0
-    @test returned(m, (; x=fill(2.0, 3, 3))) == expected
-    @test unfix(m)(Xoshiro(1)) == ones(1, 3)
+    @test_throws ArgumentError condition(array_model(zeros(3, 1)); x=ones(1, 3))
     @model owned_shrink(x) = (x = x[1:1]; x[1] ~ Normal(); x)
     m = fix(fix(owned_shrink([1.0, 2.0]); x=[3.0, 4.0]), @varname(x[1]) => 8.0)
     @test_throws "static size and shape" m(Xoshiro(1))
     @test_throws "static size and shape" child_model(m)(Xoshiro(1))
-    m = fix(condition(two_fields((a=0.0, b=0.0)); x=(a=1.0,)), @varname(x.b) => 9.0)
+    m = fix(
+        condition(decondition(two_fields((a=0.0, b=0.0))), @varname(x.a) => 1.0),
+        @varname(x.b) => 9.0,
+    )
     @test m(Xoshiro(1)) == (a=1.0, b=9.0)
     @test child_model(m)(Xoshiro(1)) == (a=1.0, b=9.0)
 end
 
-@testset "binding edits use their layer's owner" begin
+@testset "binding edits share geometry and retain layer types" begin
     @model function layer_flexible(x)
         if x isa NamedTuple
             x.a ~ Normal()
@@ -3533,34 +3532,33 @@ end
     z)
     @model layer_record() = (z = (a=1.0, b=2.0); z.a ~ Normal(); z.b ~ Normal(); z)
 
-    m = fix(condition(array_model(zeros(2)); x=ones(3)); x=zeros(2))
+    m = fix(condition(array_model(zeros(3)); x=ones(3)); x=zeros(3))
     for edit in
         (m -> condition(m, @varname(x[3]) => 7.0), m -> m | (@varname(x[3]) => 7.0,))
         changed = edit(m)
-        @test changed(Xoshiro(1)) == zeros(2)
+        @test changed(Xoshiro(1)) == zeros(3)
         @test unfix(changed)(Xoshiro(1)) == [1.0, 1.0, 7.0]
         @test child_model(unfix(changed))(Xoshiro(1)) == [1.0, 1.0, 7.0]
     end
-    m = fix(condition(array_model(zeros(2)); x=ones(2)); x=zeros(3))
-    @test_throws ArgumentError condition(m, @varname(x[3]) => 7.0)
+    @test_throws ArgumentError fix(condition(array_model(zeros(2)); x=ones(2)); x=zeros(3))
     m = fix(condition(array_model(zeros(2)); x=Float32[1, 2]); x=zeros(2))
     @test_throws ArgumentError condition(m, @varname(x[1]) => 0.1)
     @test unfix(condition(m, @varname(x[1]) => 0.5))(Xoshiro(1)) == Float32[0.5, 2]
     @test eltype(unfix(condition(m, @varname(x[1]) => 0.5))(Xoshiro(1))) === Float32
 
-    m = condition(fix(array_model(zeros(2)); x=zeros(3)); x=ones(2))
+    m = condition(fix(array_model(zeros(3)); x=zeros(3)); x=ones(3))
     @test fix(m, @varname(x[3]) => 7.0)(Xoshiro(1)) == [0.0, 0.0, 7.0]
-    @test unfix(m)(Xoshiro(1)) == ones(2)
-    m = fix(condition(layer_local(); z=ones(Float32, 3)); z=zeros(3))
+    @test unfix(m)(Xoshiro(1)) == ones(3)
+    m = fix(condition(layer_local(); z=ones(Float32, 3)); z=zeros(Float32, 3))
     @test_throws "template type" condition(m; z=ones(3))
-    @test_throws "template type" fix(m; z=ones(Float32, 3))
+    @test_throws "template type" fix(m; z=ones(3))
     @test unfix(condition(m; z=fill(2.0f0, 3)))(Xoshiro(1)) == fill(2.0f0, 3)
 
-    m = decondition(fix(layer_flexible([1.0, 2.0]); x=(a=1.0,)), @varname(x[1]))
+    @test_throws ArgumentError fix(layer_flexible([1.0, 2.0]); x=(a=1.0,))
+    m = fix(decondition(layer_flexible([1.0, 2.0])); x=(a=1.0,))
     @test m(Xoshiro(1)) == (a=1.0,)
-    @test returned(unfix(m), (; x=[8.0, 9.0])) == [8.0, 2.0]
     @test_throws "Cannot remove `x[1]`: integer indexing into a NamedTuple" unfix(
-        fix(layer_flexible([1.0, 2.0]); x=(a=1.0,)), @varname(x[1])
+        m, @varname(x[1])
     )
 
     for (bind, remove) in ((condition, decondition), (fix, unfix))
@@ -3645,8 +3643,8 @@ end
                 @test select(remove(removed, scope..., dynamic)) == select(removed)
             end
         end
-        # The edited layer's current owner supplies bounds, including below a field.
-        owned = bind(m; x=ones(5), p=(b=[1.0, 2.0, 3.0],))
+        # Whole replacements after clearing both layers supply new bounds.
+        owned = bind(unfix(decondition(m)); x=ones(5), p=(b=[1.0, 2.0, 3.0],))
         for vn in (@varname(x[5]), @varname(p.b[3]))
             @test bind(owned, vn => 2.0) isa Model
             @test !haskey(select(remove(owned, scope..., vn)), vn)
@@ -3692,7 +3690,7 @@ end
         @test bind(namespace, @varname(a.typo) => 2.0) isa Model
         @test select(remove(namespace, scope..., @varname(a.typo))) == select(namespace)
     end
-    # An empty fixed layer has no owner; overlaying it must still fit the stored observation.
+    # Empty layers still use the shared shape.
     for (original, whole, valid, invalid, last) in (
         (local_array(), @varname(x), @varname(x[3]), @varname(x[8]), @varname(x[end])),
         (
@@ -3723,12 +3721,10 @@ end
                 "Cannot bind `$invalid`: index is outside the storage at `$whole`"
             ) bind(observed, invalid => 1.0)
         end
-        # `end` resolves against storage in the edited layer only.
+        # Both layers resolve `end` through the shared shape.
         @test conditioned(condition(observed, last => 2.0)) ==
             conditioned(condition(observed, valid => 2.0))
-        @test_throws "Cannot bind `$last`: no storage at `$whole`" fix(
-            observed, last => 2.0
-        )
+        @test fixed(fix(observed, last => 2.0)) == fixed(fix(observed, valid => 2.0))
         bound = fix(observed, valid => 2.0)
         @test fixed(bound)[valid] == 2.0
         @test conditioned(unfix(bound, valid)) == conditioned(observed)
@@ -3736,7 +3732,7 @@ end
             @test_throws "index is outside the storage" decondition(
                 observed, scope..., invalid
             )
-            @test isempty(fixed(unfix(observed, scope..., invalid)))
+            @test_throws "index is outside the storage" unfix(observed, scope..., invalid)
         end
     end
     # Growable prefix storage owns no shape, but the whole bindings stored in it do.
@@ -4001,7 +3997,7 @@ end
     @test_throws "Cannot read LHS variable `x[1]`" mismatched(Xoshiro(1))
     fields = condition(kind_fields((a=1.0, b=2.0)); x=(a=3.0, b=4.0))
     @test decondition(fields, @varname(x.a))(Xoshiro(1)) == 4.0
-    replaced = condition(kind_fields((a=1.0, b=2.0)); x=[3.0, 4.0])
+    replaced = condition(decondition(kind_fields((a=1.0, b=2.0))); x=[3.0, 4.0])
     mismatched = decondition(replaced, @varname(x[1]))
     @test_throws "Cannot read LHS variable `x.a`" mismatched(Xoshiro(1))
 end
@@ -4190,7 +4186,7 @@ end
                 p = Matrix{Any}(undef, 1, 1); p[1] ~ to_submodel(inner()); p[1]
             )
             model = condition(linear_parent(), @varname(p[1, 1].x) => 3.0)
-            @test fix(model; p=fill((x=4.0,), 1, 1))(Xoshiro(1)) == 4.0
+            @test_throws r"binding root `p`.*rebuild" fix(model; p=fill((x=4.0,), 1, 1))
         end
     end
     distinct = mismatch("x", "x[2]", "x[2, 1]", 1, 2)
@@ -4641,7 +4637,7 @@ end
     end
     @model parent(child) = q ~ to_submodel(child)
     range = 1.0:2.0
-    bad = (a=range, b=[0.0])
+    bad = (a=range, b=[0.0, 0.0])
     good = (a=[1.0, 2.0], b=range)
     message = r"Argument `x.a`.*cannot hold latent draws"
     @test_throws message decondition(fields(bad), @varname(x.a))
@@ -4656,7 +4652,7 @@ end
     )(
         Xoshiro(1)
     )
-    for original in (bad, (a=[1.0, 2.0], b=[0.0]))
+    for original in (bad, (a=[1.0, 2.0], b=[0.0, 0.0]))
         @test_throws message decondition(condition(fields(original); x=bad), @varname(x.a))
         @test_throws message unfix(decondition(fix(fields(original); x=bad)), @varname(x.a))
     end
@@ -5084,7 +5080,7 @@ end
         copy_views((a=view(data, 1:2), b=view(data, 2:3)))
     )
 end
-@testset "new binding extents preserve surviving latent storage" begin
+@testset "bindings preserve surviving latent storage" begin
     @model function stale_shape(x)
         before = x[1]
         for i in eachindex(x)
@@ -5092,7 +5088,7 @@ end
         end
         return before
     end
-    for T in (Float32, Float64, BigFloat), original in (T[5], T[5, 6, 7])
+    for T in (Float32, Float64, BigFloat), original in (T[5, 6, 7],)
         model = decondition(condition(stale_shape(original); x=T[1, 2, 3]), @varname(x[1]))
         @test returned(model, (x=T[9, 0, 0],)) == T(5)
         nested = decondition(
@@ -5102,7 +5098,9 @@ end
         @test returned(nested, (a=(x=T[9, 0, 0],),)) == T(5)
     end
     derivative = ForwardDiff.derivative(5.0) do x
-        model = decondition(condition(stale_shape([x]); x=[1.0, 2.0, 3.0]), @varname(x[1]))
+        model = decondition(
+            condition(stale_shape([x, 6.0, 7.0]); x=[1.0, 2.0, 3.0]), @varname(x[1])
+        )
         returned(model, (x=[9.0, 0.0, 0.0],))
     end
     @test derivative == 1.0
@@ -5641,7 +5639,7 @@ end
 
 @testset "replacement arrays overlay supported observations" begin
     @model prefixed_child() = a ~ to_submodel(tuple_field_element((t=(1.0, 2.0),)))
-    for original in ((1.0, 2.0), [1.0, 2.0]), replacement in ([3.0, 4.0], [3.0, 4.0, 5.0])
+    for original in ((1.0, 2.0), [1.0, 2.0]), replacement in ([3.0, 4.0],)
         expected = copy(replacement)
         expected[1] = 1.0
         for model in (
@@ -5660,23 +5658,10 @@ end
             @test loglikelihood(model, (;)) == logpdf(Normal(), 1.0)
         end
     end
-    for (original, message) in (
-        (
-            Dict(1 => 1.0, 2 => 2.0),
-            "Cannot partially bind dictionary owner `x` at `x[2]` through container type Dict{Int64, Float64}; bind or decondition the whole value `x` instead. Or use a NamedTuple/array argument.",
-        ),
-        (
-            (a=1.0, b=2.0),
-            "Integer indexing into a NamedTuple at `x[2]` is unsupported; use `x.b` instead.",
-        ),
-        (
-            ObservationRecord(1.0, 2.0),
-            "Cannot partially bind struct owner `x` at `x[2]` through container type Main.DynamicPPLConditionFixTests.ObservationRecord{Float64, Float64}; bind or decondition the whole value `x` instead.",
-        ),
-    )
-        model = fix(two_elements(original); x=[3.0, 4.0])
-        @test model(Xoshiro(1)) == [3.0, 4.0]
-        @test_throws ArgumentError(message) unfix(model, @varname(x[1]))(Xoshiro(1))
+    for original in (Dict(1 => 1.0, 2 => 2.0), (a=1.0, b=2.0), ObservationRecord(1.0, 2.0))
+        @test_throws r"Binding shape at `x`.*decondition.*unfix" fix(
+            two_elements(original); x=[3.0, 4.0]
+        )
     end
     @test_throws ArgumentError(
         "Cannot partially bind dictionary owner `x` at `x[1]` through container type Dict{Int64, Float64}; bind or decondition the whole value `x` instead. Or use a NamedTuple/array argument.",
@@ -5775,8 +5760,9 @@ mutable struct BCLayer
     nofixed::Set{Tuple}
     owners::Dict{Tuple,Any}
     fixowners::Dict{Tuple,Any}
+    shapes::Dict{Tuple,Any}
 end
-BCLayer() = BCLayer(Dict(), Dict(), Set(), Set(), Dict(), Dict())
+BCLayer() = BCLayer(Dict(), Dict(), Set(), Set(), Dict(), Dict(), Dict())
 mutable struct BCReference
     case::BCCase
     layers::Vector{BCLayer}
@@ -5789,6 +5775,7 @@ function bc_reference(c)
     if c.argument
         merge!(ls[end].obs, Dict(bc_leaves(p, v)))
         ls[end].owners[p] = bc_basevalue(c)
+        ls[end].shapes[p] = bc_basevalue(c)
     end
     if c.childfixed
         v = if c.kind == :scalar
@@ -5802,6 +5789,7 @@ function bc_reference(c)
         end
         merge!(ls[end].fixed, Dict(bc_leaves(p, v)))
         ls[end].fixowners[p] = v
+        ls[end].shapes[p] = v
     end
     return BCReference(c, ls, false)
 end
@@ -5832,6 +5820,40 @@ function bc_lookup(r, p)
     end
     return (:latent, 0.25)
 end
+function bc_same_shape(a, b)
+    if a isa NamedTuple || b isa NamedTuple
+        return a isa NamedTuple &&
+               b isa NamedTuple &&
+               keys(a) == keys(b) &&
+               all(bc_same_shape(x, y) for (x, y) in zip(a, b))
+    elseif a isa Union{Tuple,AbstractArray} || b isa Union{Tuple,AbstractArray}
+        return a isa Union{Tuple,AbstractArray} &&
+               b isa Union{Tuple,AbstractArray} &&
+               axes(a) == axes(b) &&
+               all(bc_same_shape(x, y) for (x, y) in zip(a, b))
+    end
+    return true
+end
+function bc_bind_shape!(l, c, p, value)
+    for (root, template) in l.shapes
+        if bc_contains(root, p)
+            previous = bc_at(template, p[(length(root) + 1):end])
+            if !bc_same_shape(previous, value)
+                occupied =
+                    any(q -> bc_contains(root, q), keys(l.obs)) ||
+                    any(q -> bc_contains(root, q), keys(l.fixed))
+                (p != root || occupied) && return :call
+                l.shapes[root] = value
+            end
+            return :ok
+        elseif bc_contains(p, root)
+            return :call
+        end
+    end
+    # An indexed binding without concrete storage still uses a growable array.
+    any(k -> k isa Int, p) || (l.shapes[p] = value)
+    return :ok
+end
 function bc_apply_reference!(r, op)
     op.verb == :prefix && (r.prefixed = true; return :ok)
     p = op.path
@@ -5861,7 +5883,7 @@ function bc_apply_reference!(r, op)
         bp = bc_basepath(c)
         for layer in r.layers
             layer === l || (adding || op.recursive) || continue
-            candidates = fixed ? merge(layer.owners, layer.fixowners) : layer.owners
+            candidates = merge(layer.owners, layer.fixowners, layer.shapes)
             for (owner, value) in candidates
                 bc_contains(owner, p) && length(p) > length(owner) || continue
                 !fixed &&
@@ -5888,9 +5910,9 @@ function bc_apply_reference!(r, op)
             !(c.depth > 0 && !fixed && any(q -> bc_contains(q, p), keys(l.fixowners)))
             return c.depth == 0 ? :call : :evaluation
         end
-        # Supported partial paths must fit the edited layer's latest shape owner.
+        # Partial addresses use the retained shape shared by both layers.
         if bc_contains(bp, p) && length(p) > length(bp)
-            template = bc_shape(c, owners)
+            template = bc_shape(c, l.shapes)
             template = bc_at(template, p[(length(bp) + 1):(end - 1)])
             k = last(p)
             if template isa NamedTuple
@@ -5903,6 +5925,7 @@ function bc_apply_reference!(r, op)
         end
     end
     if adding
+        bc_bind_shape!(l, c, p, op.value) == :call && return :call
         for q in collect(keys(d))
             bc_contains(p, q) && delete!(d, q)
         end
@@ -5929,7 +5952,29 @@ end
 function bc_expected(r)
     c = r.case
     bp = bc_basepath(c)
-    # Argument storage follows the highest surviving shape owner; locals keep body storage.
+    for (i, parent) in enumerate(r.layers), child in r.layers[(i + 1):end]
+        for (root, template) in child.shapes, bindings in (parent.obs, parent.fixed)
+            for (p, value) in bindings
+                bc_contains(root, p) || continue
+                previous = try
+                    bc_at(template, p[(length(root) + 1):end])
+                catch
+                    return (:evaluation, nothing)
+                end
+                bc_same_shape(previous, value) || return (:evaluation, nothing)
+            end
+        end
+        for (root, template) in child.shapes, (p, value) in parent.shapes
+            bc_contains(root, p) || continue
+            occupied =
+                any(q -> bc_contains(p, q), keys(parent.obs)) ||
+                any(q -> bc_contains(p, q), keys(parent.fixed))
+            occupied || continue
+            previous = bc_at(template, p[(length(root) + 1):end])
+            bc_same_shape(previous, value) || return (:evaluation, nothing)
+        end
+    end
+    # Argument values follow surviving whole bindings; locals keep body storage.
     template = bc_basevalue(c)
     if c.argument
         for l in reverse(r.layers)
@@ -6861,6 +6906,216 @@ end
     removal_allocations(small)
     removal_allocations(large)
     @test removal_allocations(large) <= removal_allocations(small) + 1024
+end
+
+@testset "persistent shared binding shapes" begin
+    @model function shared_shape_argument(x)
+        for i in eachindex(x)
+            x[i] ~ Normal()
+        end
+        return x
+    end
+    @model function shared_shape_local()
+        x = zeros(2)
+        for i in eachindex(x)
+            x[i] ~ Normal()
+        end
+        return x
+    end
+    @model shared_shape_fields() = (q.a ~ Normal(); q.b ~ Normal())
+    @model shared_shape_child(x=zeros(2)) = (x[1] ~ Normal(); x[2] ~ Normal(); x)
+    @model shared_shape_parent(m) = a ~ to_submodel(m)
+    @model shared_shape_leaf() = z ~ Normal()
+    @model shared_shape_pair() = (x ~ Normal(); y ~ Normal(); (x, y))
+    @model function shared_shape_namespace()
+        p = zeros(2, 2)
+        p[1] ~ to_submodel(shared_shape_leaf())
+        p[2, 2] ~ to_submodel(shared_shape_leaf())
+        return p
+    end
+    @testset "argument shapes and types" begin
+        for bind in (condition, fix)
+            @test_throws ArgumentError bind(shared_shape_argument(zeros(2)); x=ones(3))
+            @test bind(decondition(shared_shape_argument(zeros(2))); x=ones(3))(
+                Xoshiro(1)
+            ) == ones(3)
+            @test bind(shared_shape_argument(1.0:2.0); x=[2.0, 3.0])(Xoshiro(1)) ==
+                [2.0, 3.0]
+            @test eltype(bind(shared_shape_argument(zeros(2)); x=[1, 2])(Xoshiro(1))) ===
+                Int
+            @test_throws r"Binding shape at `x`.*child model" bind(
+                shared_shape_parent(shared_shape_child()), @varname(a.x) => ones(3)
+            )(
+                Xoshiro(1)
+            )
+        end
+        @test ForwardDiff.gradient(
+            x -> loglikelihood(condition(shared_shape_argument(zeros(2)); x), (;)),
+            [1.0, 2.0],
+        ) == [-1.0, -2.0]
+    end
+    @testset "persistence" begin
+        for (bind, remove, other) in
+            ((condition, decondition, fix), (fix, unfix, condition))
+            m = bind(shared_shape_local(); x=ones(2))
+            @test_throws ArgumentError other(m; x=ones(3))
+            empty = remove(m)
+            @test isempty(conditioned(empty)) && isempty(fixed(empty))
+            v = bind(empty, @varname(x[end]) => 3.0)
+            @test (bind === condition ? conditioned(v) : fixed(v))[@varname(x[2])] == 3.0
+            @test_throws ArgumentError bind(empty, @varname(x[3]) => 3.0)
+            @test (bind(empty; x=ones(3)))(Xoshiro(1)) == ones(2) # body reads only the first two elements
+            @test_throws ArgumentError DynamicPPL._unbind(m, @varname(x))
+            @test isempty(
+                DynamicPPL._binding_shape_store(
+                    DynamicPPL._unbind(empty, @varname(x)).values
+                ).roots,
+            )
+        end
+    end
+    @testset "roots" begin
+        m = condition(shared_shape_fields(), @varname(q.a) => 1.0)
+        m = condition(m, @varname(q.b) => 2.0)
+        @test conditioned(m)[@varname(q.b)] == 2.0
+        @test_throws ArgumentError condition(m; q=(a=1.0, b=2.0))
+        m = condition(shared_shape_fields(); q=(a=1.0, b=2.0))
+        @test_throws ArgumentError fix(m, @varname(q.c) => 3.0)
+        @test fixed(fix(m, @varname(q.a) => 3.0))[@varname(q.a)] == 3.0
+        for bind in (condition, fix)
+            m = bind(prefix(shared_shape_pair(), @varname(a)); a=(x=1.0,))
+            @test bind(m, @varname(a.y) => 2.0)(Xoshiro(1)) == (1.0, 2.0)
+        end
+    end
+    @testset "namespace persistence" begin
+        m = condition(
+            shared_shape_namespace(), @varname(p[1].z) => 3.0, @of(p = of(Array, 2, 2))
+        )
+        m = decondition(m)
+        n = fix(m, @varname(p[end].z) => 4.0)
+        @test fixed(n)[@varname(p[2, 2].z)] == 4.0
+        @test_throws ArgumentError fix(n, @varname(p[1].z) => 4.0, @of(p = of(Array, 3, 2)))
+        @test isempty(fixed(unfix(n, @varname(p[4].z))))
+        n = condition(m, @varname(p[1].z) => 3.0, @of(p = of(Array, 3, 2)))
+        @test size(DynamicPPL._binding_shape_store(n.values).namespaces[@varname(p)]) ==
+            (3, 2)
+        m = condition(
+            shared_shape_namespace(), @varname(p[1].z) => ones(2), @of(p = of(Array, 2, 2))
+        )
+        m = condition(decondition(m), @varname(p[2].z) => 1.0, @of(p = of(Array, 3, 2)))
+        @test conditioned(condition(m, @varname(p[1].z[end]) => 4.0))[@varname(
+            p[1].z[2]
+        )] == 4.0
+    end
+    @testset "nested geometry" begin
+        m = condition(shared_shape_local(); x=[ones(2)])
+        @test_throws ArgumentError fix(m; x=[ones(3)])
+        @test_throws ArgumentError condition(m, @varname(x[1]) => ones(3))
+        m = condition(shared_shape_local(); x=Vector{Vector{Float64}}(undef, 1))
+        m = fix(m, @varname(x[1]) => ones(2))
+        @test_throws ArgumentError condition(m, @varname(x[1]) => ones(3))
+        m = unfix(decondition(m))
+        @test_throws ArgumentError condition(m, @varname(x[1]) => ones(3))
+        @test conditioned(condition(m, @varname(x[1][end]) => 4.0))[@varname(x[1][2])] ==
+            4.0
+    end
+end
+
+@testset "inherited local shapes survive child evaluation" begin
+    @model retained_child() = (x ~ MvNormal(zeros(2), 1); __model__)
+    @model retained_parent() = a ~ to_submodel(retained_child())
+    @model retained_nested_child(x) = (x.v[1] ~ MvNormal(zeros(2), 1); __model__)
+    @model retained_nested_parent() =
+        a ~ to_submodel(retained_nested_child((v=Vector{Vector{Float64}}(undef, 1),)))
+    for (bind, remove, selected) in
+        ((condition, decondition, conditioned), (fix, unfix, fixed))
+        child = bind(retained_parent(), @varname(a.x) => ones(2))(Xoshiro(1))
+        @test_throws r"x.*decondition.*unfix" bind(child; x=ones(3))
+        @test selected(bind(remove(child), @varname(x[end]) => 3.0))[@varname(x[2])] == 3.0
+        child = bind(retained_nested_parent(), @varname(a.x.v[1]) => ones(2))(Xoshiro(1))
+        @test_throws ArgumentError bind(child, @varname(x.v[1]) => ones(3))
+    end
+end
+
+@model shared_shape_nested_argument(x) = x[1] ~ Normal()
+@model shared_shape_nested_local() = x ~ Normal()
+@testset "recursive geometry" begin
+    for value in (([1.0, 2.0],), (a=[1.0, 2.0],), [[1.0, 2.0]])
+        replacement = if value isa NamedTuple
+            (a=[1.0, 2.0, 3.0],)
+        elseif value isa Tuple
+            ([1.0, 2.0, 3.0],)
+        else
+            [[1.0, 2.0, 3.0]]
+        end
+        @test_throws ArgumentError fix(
+            condition(shared_shape_nested_local(); x=value); x=replacement
+        )
+    end
+    m = shared_shape_nested_argument(Union{Missing,Vector{Float64}}[missing])
+    m = condition(m, @varname(x[1]) => ones(2))
+    @test_throws ArgumentError fix(m, @varname(x[1]) => ones(3))
+    m = decondition(m)
+    @test_throws ArgumentError condition(m, @varname(x[1]) => ones(3))
+    @test conditioned(condition(m, @varname(x[1][end]) => 4.0))[@varname(x[1][2])] == 4.0
+end
+
+@model shared_shape_removal_child(x=1.0) = x ~ Normal()
+@model function shared_shape_removal_parent(dims)
+    p = zeros(dims)
+    for i in eachindex(p)
+        p[i] ~ to_submodel(shared_shape_removal_child())
+    end
+    return p
+end
+@testset "removal identity" begin
+    for (oldtemplate, dims, removed, expected) in (
+        (@of(p = of(Array, 2, 2)), (3, 2), @varname(p[3].x), [@varname(p[1, 2].x)]),
+        (
+            @of(p = of(Array, 2, 2)),
+            (3, 2),
+            @varname(p[3:4]),
+            [@varname(p[1, 2].x), @varname(p[2, 2].x)],
+        ),
+        (@of(p = of(Array, 2, 2)), (1, 2), @varname(p[2, 2].x), VarName[]),
+        (@of(p = of(Array, 4)), (2, 2), @varname(p[3].x), VarName[]),
+    )
+        m = condition(
+            shared_shape_removal_parent(dims), oldtemplate, @varname(p[1].x) => 2.0
+        )
+        m = decondition(m, DynamicPPL.Recursive(), removed)
+        m = decondition(m)
+        m = condition(m, @of(p = of(Array, dims...)), @varname(p[1].x) => 2.0)
+        @test keys(VarInfo(Xoshiro(1), m)) == expected
+    end
+end
+
+@model root_type_leaf() = x ~ Normal()
+@model root_type_parent(child) = a ~ to_submodel(child)
+@model root_type_array() = (x = zeros(2); x[1] ~ Normal(); x[2] ~ Normal(); x)
+@model root_type_namespace() = (p = zeros(2, 2); p[1] ~ to_submodel(root_type_leaf()); p)
+@testset "retained roots and child types" begin
+    m = condition(root_type_namespace(), @of(p = of(Array, 2, 2)), @varname(p[1].x) => 2.0)
+    for parent in (m, decondition(m))
+        @test_throws r"root.*rebuild" condition(parent; p=fill((x=2.0,), 2, 2))
+    end
+    child = unfix(fix(root_type_array(); x=ones(Float32, 2)))
+    @test_throws ArgumentError condition(root_type_parent(child), @varname(a.x[1]) => 0.1)(
+        Xoshiro(1)
+    )
+    @test condition(root_type_parent(child), @varname(a.x[1]) => 0.5)(Xoshiro(1))[1] == 0.5
+end
+
+@model resized_argument(x) = (for i in eachindex(x)
+    x[i] ~ Normal()
+end;
+x)
+@testset "argument storage after shape replacement" begin
+    for bind in (condition, fix)
+        m = bind(decondition(resized_argument(zeros(2))); x=ones(3))
+        m = unfix(decondition(m))
+        values = bind === condition ? conditioned : fixed
+        @test values(bind(m, @varname(x[end]) => 4.0))[@varname(x[3])] == 4.0
+    end
 end
 
 end
