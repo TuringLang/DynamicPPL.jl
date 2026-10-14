@@ -2,7 +2,11 @@
 
 Thread-safe tilde assignments now throw an `ArgumentError` if any container is replaced, including same-type immutable values: `(a = zero(T),)` → `Vector{T}(undef, n)`. Allocate mutable storage with `::Type{T}=Float64`; use `Vector{Union{Missing,Real}}` for imputation under AD. See [#1521](https://github.com/TuringLang/DynamicPPL.jl/pull/1521).
 
-Binding shapes are shared by observations and fixed values and survive removal, except that whole removal of both layers at an argument root restores the argument’s own shape; element-wise removal retains masked replacement storage. To resize a root, clear both layers with `decondition` and `unfix`, then bind a whole value or template; partial bindings cannot resize known nested storage.
+Binding shapes are shared by observations and fixed values and survive removal; clear both layers at the root before resizing it with a whole value or template. Whole removal at an argument root restores the argument’s own shape, while element-wise removal retains masked storage and keeps the root occupied even when every position is masked.
+
+A binding template’s shape persists after both layers are cleared; supply a new template to replace it.
+
+A whole `NamedTuple` binding splits into leaf roots only at a submodel prefix; elsewhere it defines one root. A `VarNamedTuple` binds its leaves as written. Existing roots cannot be implicitly split or merged.
 
 `check_model` now warns about binding template entries with no LHS variable in the model or its reached submodels.
 

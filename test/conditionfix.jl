@@ -7255,4 +7255,116 @@ end
     @test fixed(fix(m, @varname(q.a) => 0.1))[@varname(q.a)] === 0.1
 end
 
+@model masked_arg(x) = (for i in eachindex(x)
+    x[i] ~ Normal()
+end;
+x)
+@model function masked_local()
+    z = zeros(3)
+    for i in 1:3
+        z[i] ~ Normal()
+    end
+    return z
+end
+@testset "masked storage keeps the root occupied" begin
+    r = condition(decondition(masked_arg(zeros(2))); x=ones(3))
+    @test length(decondition(r)(Xoshiro(1))) == 2
+    m = r
+    for i in 1:3
+        m = decondition(m, VarName{:x}(DynamicPPL.AbstractPPL.Index((i,), (;))))
+    end
+    @test length(m(Xoshiro(1))) == 3
+    err = try
+        fix(m; x=ones(4))
+        nothing
+    catch e
+        e
+    end
+    @test err isa ArgumentError
+    err isa ArgumentError && (@test occursin("`x`", err.msg) &&
+        occursin("decondition", err.msg) &&
+        occursin("unfix", err.msg))
+    # Fix layer sibling: masked fixed storage blocks a whole condition.
+    f = fix(decondition(masked_arg(zeros(2))); x=ones(3))
+    for i in 1:3
+        f = unfix(f, VarName{:x}(DynamicPPL.AbstractPPL.Index((i,), (;))))
+    end
+    @test length(f(Xoshiro(1))) == 3
+    @test_throws ArgumentError condition(f; x=ones(4))
+    # Template over masked local storage is a check only.
+    l = condition(masked_local(), @of(z = of(Array, 3)), @varname(z[1]) => 1.0)
+    l = decondition(l, @varname(z[1]))
+    @test_throws ArgumentError condition(l, @of(z = of(Array, 4)), @varname(z[1]) => 1.0)
+    @test_throws ArgumentError condition(l; z=ones(4))
+    @test condition(l, @varname(z[3]) => 2.0) isa DynamicPPL.Model
+end
+
+@model function tl_model(n)
+    z ~ MvNormal(zeros(n), I)
+    return z
+end
+@testset "template shape lifetime" begin
+    t = condition(tl_model(2), @of(z = of(Array, 2)), @varname(z) => ones(2))
+    for c in (decondition(t, @varname(z)), decondition(t))
+        err = try
+            condition(c; z=ones(3))
+            nothing
+        catch e
+            e
+        end
+        @test err isa ArgumentError
+        err isa ArgumentError &&
+            @test occursin("`z`", err.msg) && occursin("template", err.msg)
+        @test_throws ArgumentError fix(c; z=ones(3))
+        @test condition(c; z=[2.0, 3.0])(Xoshiro(1)) == [2.0, 3.0]
+        r = condition(c, @of(z = of(Array, 3)), @varname(z) => ones(3))
+        @test conditioned(r)[@varname(z)] == ones(3)
+        @test_throws ArgumentError condition(decondition(r); z=ones(2))
+    end
+    f = unfix(fix(tl_model(2), @of(z = of(Array, 2)), @varname(z) => ones(2)))
+    @test_throws ArgumentError condition(f; z=ones(3))
+    # Without a template, a whole value replaces the shape once both layers are empty.
+    w = decondition(condition(tl_model(2); z=ones(2)))
+    @test conditioned(condition(w; z=ones(3)))[@varname(z)] == ones(3)
+end
+
+@model function roots_fields()
+    q = (a=0.0, b=0.0)
+    q.a ~ Normal()
+    q.b ~ Normal()
+    return q
+end
+@model function roots_dynamic(i)
+    q = (a=zeros(2), b=zeros(2))
+    q.a[i] ~ Normal()
+    q.b[i] ~ Normal()
+    return q
+end
+@model roots_leaf() = (x ~ Normal(); y ~ Normal())
+@model roots_outer() = (a ~ to_submodel(roots_leaf()))
+@testset "binding roots" begin
+    m = roots_fields()
+    whole = condition(m; q=(a=1.0, b=2.0))
+    @test isempty(rand(Xoshiro(1), whole))
+    @test conditioned(condition(whole, @varname(q.a) => 3.0))[@varname(q)] == (a=3.0, b=2.0)
+    @test_throws ArgumentError condition(whole, @varname(q.c) => 3.0)
+    part = condition(m; q=(a=1.0,))
+    @test_throws ArgumentError condition(part, @varname(q.b) => 2.0)
+    # A VarNamedTuple binds its leaves as written.
+    leaves = condition(m, rand(Xoshiro(1), m))
+    @test Set(keys(conditioned(leaves))) == Set([@varname(q.a), @varname(q.b)])
+    @test_throws ArgumentError condition(decondition(leaves); q=(a=1.0, b=2.0))
+    @test_throws ArgumentError condition(decondition(whole), @varname(q.c) => 3.0)
+    # A fixed value covers what it holds.
+    @test Set(keys(rand(Xoshiro(1), fix(m; q=(a=1.0,))))) == Set([@varname(q.b)])
+    d = condition(roots_dynamic(1); q=(a=ones(2),))
+    @test_throws ArgumentError condition(d, @varname(q.b) => ones(2))
+    @test Set(keys(rand(Xoshiro(1), fix(roots_dynamic(1); q=(a=ones(2),))))) ==
+        Set([@varname(q.b[1])])
+    # At a submodel prefix, a NamedTuple splits into leaf roots.
+    o = condition(roots_outer(); a=(; x=1.0))
+    o = condition(o, @varname(a.y) => 2.0)
+    @test isempty(rand(Xoshiro(1), o))
+end
+
 end

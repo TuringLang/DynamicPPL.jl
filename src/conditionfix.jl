@@ -387,6 +387,15 @@ end
         _fixed_shape_error(vn, "coverage with a static size and shape.")
     return nothing
 end
+@inline function _model_role_at(
+    value::ModelValue{Fix,<:NamedTuple},
+    optic::AbstractPPL.Property{S},
+    vn,
+    leaf=_model_role,
+) where {S}
+    haskey(value.value, S) || return nothing
+    return _model_role_at(ModelValue{Fix}(value.value[S]), optic.child, vn, leaf)
+end
 @inline function _model_role_at(value::ModelValue, ::AbstractPPL.Iden, vn, leaf=_model_role)
     return leaf(value, vn)
 end
@@ -5092,11 +5101,14 @@ end
     end
 end
 
+# Masked storage occupies its root even when every position is masked.
 function _shape_occupied(model, vn)
-    return any(
-        role -> _has_removable(role, _binding_layer(role, model.values), vn),
-        (Condition, Fix),
-    )
+    optic = AbstractPPL.varname_to_optic(vn)
+    return any((Condition, Fix)) do role
+        layer = _binding_layer(role, model.values)
+        _model_argument_binding(layer, optic) isa
+        Union{VarNamedTuples.PartialArray,ModelValueTree} || _has_removable(role, layer, vn)
+    end
 end
 @noinline function _binding_shape_error(vn, detail="")
     throw(
@@ -5116,22 +5128,23 @@ _whole_shape(whole::Tuple, vn) = vn in whole
 function _whole_shape(values::VarNamedTuple, vn)
     return _model_argument_binding(values, AbstractPPL.varname_to_optic(vn)) isa ModelValue
 end
+@noinline function _template_shape_error(vn)
+    throw(
+        ArgumentError(
+            "Binding shape at `$vn` was set by a binding template and cannot change; supply a new template with the value.",
+        ),
+    )
+end
 function _merge_binding_shapes(a::BindingShape, b::BindingShape, vn, model, whole)
-    occupied = _shape_occupied(model, vn)
+    replaceable = _whole_shape(whole, vn) && !_shape_occupied(model, vn)
+    # A template's shape persists until a new template replaces it.
+    templated = _shape_type_constraint(a) && !_shape_type_constraint(b)
     if !_same_binding_geometry(a.geometry, b.geometry)
-        _whole_shape(whole, vn) && !occupied || _binding_shape_error(vn)
+        replaceable || _binding_shape_error(vn)
+        templated && _template_shape_error(vn)
         return b
     end
-    _whole_shape(whole, vn) &&
-        !occupied &&
-        return BindingShape(
-            b.storage,
-            b.geometry,
-            Val(
-                _shape_type_constraint(b) ||
-                (_shape_type_constraint(a) && typeof(a.storage) === typeof(b.storage)),
-            ),
-        )
+    replaceable && !templated && return b
     _check_shape_value_type(model, b, a.storage, vn)
     _whole_shape(whole, vn) && _check_shape_value_type(model, a, b.storage, vn)
     return BindingShape(
