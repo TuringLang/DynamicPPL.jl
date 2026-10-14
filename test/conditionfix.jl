@@ -772,13 +772,13 @@ end
             @test_throws message decondition(model(value))(Xoshiro(1))
         end
         message = "ArgumentError: Integer indexing into a NamedTuple at `x[1]` is unsupported; use `x.a` instead."
-        for m in (
-            local_integer_lhs(),
-            condition(local_integer_lhs(), @varname(x[1]) => 3.0),
-            fix(local_integer_lhs(), @varname(x[1]) => 3.0),
+        @test_throws message local_integer_lhs()(Xoshiro(1))
+        @test_throws r"Cannot bind `x\[1\]` without storage" condition(
+            local_integer_lhs(), @varname(x[1]) => 3.0
         )
-            @test_throws message m(Xoshiro(1))
-        end
+        @test_throws r"Cannot bind `x\[1\]` without storage" fix(
+            local_integer_lhs(), @varname(x[1]) => 3.0
+        )
         @test_throws "ArgumentError: Integer indexing into a NamedTuple at `x[1]` is unsupported; use a field name instead." first_element((;))(
             Xoshiro(1)
         )
@@ -1137,8 +1137,11 @@ end
         end
         for (bind, remove, query) in
             ((condition, decondition, conditioned), (fix, unfix, fixed))
-            m = bind(range_lhs_variables(), @varname(x[1]) => 2.0)
-            @test isempty(query(remove(m, @varname(x[1:3]))))
+            @test_throws r"Cannot bind `x\[1\]` without storage" bind(
+                range_lhs_variables(), @varname(x[1]) => 2.0
+            )
+            m = bind(range_lhs_variables(), @varname(x) => zeros(4))
+            @test keys(query(remove(m, @varname(x[1:3])))) == [@varname(x[4])]
             m = bind(m, @varname(x[4]) => 4.0)
             @test keys(query(remove(m, @varname(x[1:3])))) == [@varname(x[4])]
         end
@@ -1152,8 +1155,8 @@ end
             @test_throws r"ArgumentError: .*`x`.*bound and unbound" VarInfo(
                 remove(bind(mv_latent(); x=[1.0, 2.0]), @varname(x[1]))
             )
-            @test_throws r"ArgumentError: .*`x`.*bound and unbound" VarInfo(
-                bind(mv_latent(), @varname(x[2]) => 2.0)
+            @test_throws r"Cannot bind `x\[2\]` without storage" bind(
+                mv_latent(), @varname(x[2]) => 2.0
             )
         end
         @test_throws "LHS variable `x` has both bound and unbound subvariables, such as observed and `missing` elements; write element-wise tildes (`x[i] ~ ...`), or bind or decondition all of `x`." VarInfo(
@@ -1540,10 +1543,11 @@ end
         @model nested_matrix() = (x[2, 1] ~ MvNormal(zeros(5), 1))
         for (bind, remove, select) in
             ((condition, decondition, conditioned), (fix, unfix, fixed))
-            bound = bind(nested_matrix(), @varname(x[2, 1]) => ones(5))
+            bound = bind(nested_matrix(), @varname(x) => reshape([zeros(5), ones(5)], 2, 1))
             removed = remove(bound, @varname(x[1:2, 1][2][5]))
-            @test keys(select(removed)) == [@varname(x[2, 1][i]) for i in 1:4]
-            @test values(select(removed)) == ones(4)
+            @test keys(select(removed)) ==
+                [@varname(x[1, 1]); [@varname(x[2, 1][i]) for i in 1:4]]
+            @test values(select(removed)) == Any[zeros(5), ones(4)...]
             @test select(remove(removed, @varname(x[1:2, 1][2][5]))) == select(removed)
             @test select(bound)[@varname(x[2, 1])] == ones(5)
         end
@@ -1818,9 +1822,12 @@ end
             @test_throws ArgumentError bind(ranged_vector(), @varname(x[1:2]) => (5.0, 6.0))(
                 Xoshiro(1)
             )
-            @test bind(disjoint_vector(), @varname(x[1]) => 5.0)(Xoshiro(1)) ==
-                disjoint_vector()(Xoshiro(1))
-            @test bind(ranged_vector(), @varname(x[1:3]) => ones(3))(Xoshiro(1)) == ones(3)
+            @test_throws r"Cannot bind `x\[1\]` without storage" bind(
+                disjoint_vector(), @varname(x[1]) => 5.0
+            )
+            @test_throws r"Cannot bind `x\[1:3\]` without storage" bind(
+                ranged_vector(), @varname(x[1:3]) => ones(3)
+            )
         end
     end
 
@@ -1974,7 +1981,8 @@ end
             @test changed()[2, 2] == 2.0
             @test original()[1] == 1.0
             replaced = last_op(
-                first_op(indexed(), @varname(x[1]) => 3.0); x=[1.0 0.0; 0.0 2.0]
+                first_op(indexed(), @varname(x[1]) => 3.0, @of(x = of(Array, 2, 2)));
+                x=[1.0 0.0; 0.0 2.0],
             )
             @test replaced(Xoshiro(1)) == (
                 if first_op === fix && last_op === condition
@@ -2684,14 +2692,11 @@ end
             @test op(mvnorm(), templated)() == [1.0, 2.0, 3.0]
             @test op(mvnorm(), @varname(x[:]) => [1.0, 2.0, 3.0], @of(x = of(Array, 3)))() ==
                 [1.0, 2.0, 3.0]
-            @test_throws ArgumentError(
-                "LHS variable `x` is bound by parts, which cannot form a multivariate value " *
-                "in storage without a template. To bind all of `x`, bind its whole value in " *
-                "one binding, or supply storage with a model argument or a binding template; to " *
-                "leave some elements unbound, write element-wise tildes (`x[i] ~ ...`).",
-            ) op(mvnorm(), untemplated)()
+            @test op(mvnorm(), untemplated, @of(x = of(Array, 3)))() == [1.0, 2.0, 3.0]
             holes = (@varname(x[1]) => 1.0, @varname(x[3]) => 3.0)
-            @test_throws "both bound and unbound" op(mvnorm(), holes...)()
+            @test_throws "both bound and unbound" op(
+                mvnorm(), holes..., @of(x = of(Array, 3))
+            )()
         end
     end
     @testset "merging growable and templated conditions (#1481)" begin
@@ -2711,7 +2716,7 @@ end
         for op in (condition, fix)
             model = partial_array_model()
             nested = op(partial_array_parent(model), (@varname(child.x[1, 1]) => 1.5))
-            model = op(model, (@varname(x[1, 1]) => 1.5))
+            model = op(model, (@varname(x[1, 1]) => 1.5), @of(x = of(Array, 2, 2)))
             for (partial_model, values) in
                 ((model, next_values), (nested, VarNamedTuple(; child=next_values)))
                 @test returned(op(partial_model, values), VarNamedTuple()) ==
@@ -2742,6 +2747,7 @@ end
 end
 
 @testset "binding input forms" begin
+    @test (@inferred condition(scalar_latent(); x=2.0))(Xoshiro(1)) == 2.0
     @test_throws MethodError two_elements(zeros(2)) | Dict(@varname(x) => [2.0, 3.0])
     @test (two_elements(zeros(2)) | (; x=[2.0, 3.0]))(Xoshiro(1)) == [2.0, 3.0]
     for bind in (condition, fix)
@@ -3788,17 +3794,31 @@ end
         x[1] ~ MvNormal(zeros(3), I)
         return x
     end
-    observed = condition(nested_vectors(), @varname(x[1]) => ones(3))
+    observed = condition(
+        condition(nested_vectors(), @varname(x) => Vector{Vector{Float64}}(undef, 3)),
+        @varname(x[1]) => ones(3),
+    )
     @test conditioned(condition(observed, @varname(x[1][end]) => 2.0))[@varname(x[1])] ==
         [1, 1, 2]
     @test conditioned(condition(observed, @varname(x[1:1][1][2]) => 2.0))[@varname(x[1])] ==
         [1, 2, 1]
     for (bind, remove, select) in
         ((condition, decondition, conditioned), (fix, unfix, fixed))
-        bound = bind(nested_vectors(), @varname(x[1]) => ones(3))
-        @test_throws "no storage at `x[2]`" bind(bound, @varname(x[2][end]) => 2.0)
-        @test_throws "no storage at `x[2]`" remove(bound, @varname(x[2][end]))
-        fresh = bind(nested_vectors(), @varname(x[1:2][2][1]) => 5.0)
+        bound = bind(
+            bind(nested_vectors(), @varname(x) => Vector{Vector{Float64}}(undef, 3)),
+            @varname(x[1]) => ones(3),
+        )
+        @test_throws r"Cannot resolve `x\[2\].*child storage is unassigned" bind(
+            bound, @varname(x[2][end]) => 2.0
+        )
+        @test_throws r"Cannot resolve `x\[2\].*child storage is unassigned" remove(
+            bound, @varname(x[2][end])
+        )
+        @test_throws "without storage" bind(nested_vectors(), @varname(x[1:2][2][1]) => 5.0)
+        fresh = bind(
+            bind(nested_vectors(), @varname(x) => [zeros(3), zeros(3), zeros(3)]),
+            @varname(x[1:2][2][1]) => 5.0,
+        )
         @test select(fresh)[@varname(x[2][1])] == 5.0
         for original in (nested_vectors(), bound)
             for (address, value, owner) in (
@@ -3829,7 +3849,8 @@ end
         for (bind, remove, select) in
             ((condition, decondition, conditioned), (fix, unfix, fixed))
             bound = bind(
-                nested_vectors(), @varname(x[1]) => ones(3), @varname(x[2]) => ones(5)
+                nested_vectors(),
+                @varname(x) => [ones(3), ones(5), Vector{Float64}(undef, 3)],
             )
             for (invalid, last, owner) in (
                 (@varname(x[2:3][1][6]), @varname(x[2:3][1][end]), @varname(x[2:3][1])),
@@ -3848,14 +3869,24 @@ end
                     "Cannot bind `$invalid`: index is outside the storage at `$owner`",
                     "Cannot remove `$invalid`: index is outside the storage at `$owner`",
                 )
-                @test select(bind(bound, last => 9.0)) ==
-                    select(bind(bound, @varname(x[2][5]) => 9.0))
-                @test select(remove(bound, last)) ==
-                    select(remove(bound, @varname(x[2][5])))
+                @test isequal(
+                    select(bind(bound, last => 9.0)),
+                    select(bind(bound, @varname(x[2][5]) => 9.0)),
+                )
+                @test isequal(
+                    select(remove(bound, last)), select(remove(bound, @varname(x[2][5])))
+                )
             end
-            @test_throws "no storage" bind(bound, @varname(x[2:3][2][end]) => 9.0)
-            @test_throws "no storage" remove(bound, @varname(x[2:3][2][end]))
-            @test select(remove(bound, @varname(x[2:3][2][1]))) == select(bound)
+            @test select(bind(bound, @varname(x[2:3][2][end]) => 9.0))[@varname(x[3][3])] ==
+                9.0
+            @test isequal(
+                select(remove(bound, @varname(x[2:3][2][end]))),
+                select(remove(bound, @varname(x[3][3]))),
+            )
+            @test isequal(
+                select(remove(bound, @varname(x[2:3][2][1]))),
+                select(remove(bound, @varname(x[3][1]))),
+            )
             @test select(bound)[@varname(x[2])] == ones(5)
             for address in (@varname(x[2:3][1][5]), @varname(x[2:3][1]))
                 removed = remove(bound, address)
@@ -3864,13 +3895,17 @@ end
                 else
                     DynamicPPL._fixed_values(removed.values)
                 end
-                @test storage.data.x.data isa DynamicPPL.VarNamedTuples.GrowableArray
-                @test size(storage.data.x) == (2,)
-                @test select(bind(removed, @varname(x[3]) => ones(2)))[@varname(x[3])] ==
-                    ones(2)
+                @test !(storage.data.x.data isa DynamicPPL.VarNamedTuples.GrowableArray)
+                @test size(storage.data.x) == (3,)
+                @test_throws "Binding shape at `x` cannot change" bind(
+                    removed, @varname(x[3]) => ones(2)
+                )
             end
             if bind === condition
-                layered = fix(bound, @varname(x[3]) => ones(2))
+                @test_throws "Binding shape at `x` cannot change" fix(
+                    bound, @varname(x[3]) => ones(2)
+                )
+                layered = fix(bound, @varname(x[3]) => ones(3))
                 @test fixed(remove(layered, @varname(x[2:3][1]))) == fixed(layered)
             end
         end
@@ -3879,14 +3914,19 @@ end
         for (bind, remove, select) in
             ((condition, decondition, conditioned), (fix, unfix, fixed))
             bound = bind(
-                nested_vectors(), @varname(x[1]) => ones(3), @varname(x[2]) => ones(5)
+                nested_vectors(),
+                @varname(x) => [ones(3), ones(5), Vector{Float64}(undef, 3)],
             )
             mask = [false, true, true]
             address = @varname(x[mask][1][5])
-            @test select(bind(bound, address => 9.0)) ==
-                select(bind(bound, @varname(x[[2, 3]][1][5]) => 9.0))
-            @test select(remove(bound, address)) ==
-                select(remove(bound, @varname(x[[2, 3]][1][5])))
+            @test isequal(
+                select(bind(bound, address => 9.0)),
+                select(bind(bound, @varname(x[[2, 3]][1][5]) => 9.0)),
+            )
+            @test isequal(
+                select(remove(bound, address)),
+                select(remove(bound, @varname(x[[2, 3]][1][5]))),
+            )
             for invalid in (@varname(x[mask][1][6]), @varname(x[[2, 3]][1][6]))
                 test_edit_errors(
                     bind,
@@ -3915,7 +3955,10 @@ end
     @testset "Boolean mask children respect selected length" begin
         for (bind, remove, select) in
             ((condition, decondition, conditioned), (fix, unfix, fixed))
-            bound = bind(nested_vectors(), @varname(x[1]) => ones(3))
+            bound = bind(
+                bind(nested_vectors(), @varname(x) => Vector{Vector{Float64}}(undef, 3)),
+                @varname(x[1]) => ones(3),
+            )
             for convert_mask in (Vector{Bool}, BitVector)
                 mask = convert_mask([false, true, true])
                 address = @varname(x[mask][2])
@@ -3943,7 +3986,7 @@ end
     @testset "empty selection children" begin
         for (bind, remove, select) in
             ((condition, decondition, conditioned), (fix, unfix, fixed))
-            bound = bind(local_array(), @varname(x[1]) => 1.0)
+            bound = bind(local_array(), @of(x = of(Array, 3)), @varname(x[1]) => 1.0)
             for inds in (Int[], 3:2, 0:-1, 3:2:2, 1:-1:2, Base.OneTo(0), falses(3))
                 invalid = @varname(x[inds][1])
                 owner = @varname(x[inds])
@@ -3971,9 +4014,10 @@ end
         end
         for (bind, remove, select) in
             ((condition, decondition, conditioned), (fix, unfix, fixed))
-            bound = bind(nested_matrix(), @varname(x[2, 1]) => ones(5))
-            @test select(bind(bound, @varname(x[2, 1:2][1][5]) => 9.0)) ==
-                select(bind(bound, @varname(x[2, 1][5]) => 9.0))
+            bound = bind(nested_matrix(), @varname(x) => [[zeros(5)], [ones(5)]])
+            @test_throws "Cannot bind `x[2, 1:2][1][5]`: index is outside the storage at `x`" bind(
+                bound, @varname(x[2, 1:2][1][5]) => 9.0
+            )
             for invalid in (
                 @varname(x[2, 1:2][1][6]),
                 @varname(x[1:2, 1][2][6]),
@@ -3992,14 +4036,16 @@ end
                     "Cannot remove `$invalid`: index is outside the storage",
                 )
             end
-            removed = remove(bound, @varname(x[2, 1:2][1][5]))
-            @test select(removed) == select(remove(bound, @varname(x[2, 1][5])))
-            @test select(bind(removed, @varname(x[2, 2]) => ones(2)))[@varname(x[2, 2])] ==
-                ones(2)
+            @test_throws "Cannot remove `x[2, 1:2][1][5]`: index is outside the storage at `x`" remove(
+                bound, @varname(x[2, 1:2][1][5])
+            )
+            @test_throws "Cannot bind `x[2, 2]`: index is outside the storage at `x`" bind(
+                bound, @varname(x[2, 2]) => ones(2)
+            )
             for k in (5, 6)
                 address = @varname(x[1:4][2][k])
                 @test_throws ArgumentError bind(bound, address => 9.0)
-                @test_throws "Cannot expand a GrowableArray with 2 dimensions" remove(
+                @test_throws "Cannot remove `$address`: index is outside the storage at `x`" remove(
                     bound, address
                 )
             end
@@ -4018,7 +4064,8 @@ end
 @testset "tildes read bindings stored by the same address kind" begin
     @model kind_elements() = (x = zeros(2); x[1] ~ Normal(); x)
     @model kind_fields(x) = (x.a ~ Normal(); x.b ~ Normal())
-    @test condition(kind_elements(), @varname(x[1]) => 1.0)(Xoshiro(1))[1] == 1.0
+    elements = condition(kind_elements(), @varname(x) => zeros(2))
+    @test condition(elements, @varname(x[1]) => 1.0)(Xoshiro(1))[1] == 1.0
     mismatched = condition(kind_elements(), @varname(x.a) => 1.0)
     @test_throws "Cannot read LHS variable `x[1]`" mismatched(Xoshiro(1))
     fields = condition(kind_fields((a=1.0, b=2.0)); x=(a=3.0, b=4.0))
@@ -4030,8 +4077,9 @@ end
 
 @testset "`CartesianIndex` addresses store integer coordinates" begin
     @model cartesian_local() = (x = zeros(2, 2); x[CartesianIndex(2, 1)] ~ Normal(); x)
-    model = @test_logs (:warn, r"growable") condition(
-        cartesian_local(), @varname(x[CartesianIndex(2, 1)]) => 3.0
+    model = condition(
+        condition(cartesian_local(), @varname(x) => zeros(2, 2)),
+        @varname(x[CartesianIndex(2, 1)]) => 3.0,
     )
     @test model(Xoshiro(1))[2, 1] == 3.0
     @test condition(cartesian_local(), conditioned(model))(Xoshiro(1))[2, 1] == 3.0
@@ -4215,29 +4263,27 @@ end
             @test_throws r"binding root `p`.*rebuild" fix(model; p=fill((x=4.0,), 1, 1))
         end
     end
-    distinct = mismatch("x", "x[2]", "x[2, 1]", 1, 2)
     with_logger(NullLogger()) do
         for (bind, remove, listed) in
             ((condition, decondition, conditioned), (fix, unfix, fixed))
-            linear = bind(growable_leaf(), @varname(x[2]) => 3.0)
-            @test_throws distinct linear(Xoshiro(1))
-            @test listed(remove(linear, @varname(x[2, 1]))) == listed(linear)
-            @test DynamicPPL._get_model_binding(linear, @varname(x[2, 1])) === nothing
-            @test bind(growable_leaf(), @varname(x[2, 1]) => 3.0)(Xoshiro(1))[2, 1] == 3.0
-            @test bind(growable_linear(), @varname(x[2]) => 3.0)(Xoshiro(1))[2] == 3.0
-            @test_throws mismatch("x", "x[2, 1]", "x[2]", 2, 1) bind(
+            @test_throws "Cannot bind `x[2]` without storage" bind(
+                growable_leaf(), @varname(x[2]) => 3.0
+            )
+            @test_throws "Cannot bind `x[2, 1]` without storage" bind(
+                growable_leaf(), @varname(x[2, 1]) => 3.0
+            )
+            @test_throws "Cannot bind `x[2]` without storage" bind(
+                growable_linear(), @varname(x[2]) => 3.0
+            )
+            @test_throws "Cannot bind `x[2, 1]` without storage" bind(
                 growable_linear(), @varname(x[2, 1]) => 3.0
-            )(
-                Xoshiro(1)
             )
             prefixed = bind(growable_parent(), @varname(p[1, 2].x[2]) => 3.0)
             @test_throws mismatch("p[1, 2].x", "p[1, 2].x[2]", "p[1, 2].x[2, 1]", 1, 2) prefixed(
                 Xoshiro(1)
             )
-            @test_throws mismatch("a.x", "a.x[2]", "a.x[2, 1]", 1, 2) bind(
+            @test_throws "Cannot bind `a.x[2]` without storage" bind(
                 prefix(growable_leaf(), @varname(a)), @varname(a.x[2]) => 3.0
-            )(
-                Xoshiro(1)
             )
             model = prefix(growable_leaf(), @varname(p))
             bound = bind(model, @of(p = @of(x = of(Array, 2, 2))), @varname(p.x[2]) => 3.0)
@@ -4245,22 +4291,16 @@ end
             @test_throws ArgumentError(
                 "Binding template entry `x` uses a local name; use the absolute name `p.x`."
             ) bind(model, @of(x = of(Array, 2, 2)), @varname(p.x[2]) => 3.0)
-            @test_throws mismatch("y", "y[2]", "y[2, 1]", 1, 2) bind(
+            @test_throws "Cannot bind `y[2]` without storage" bind(
                 growable_y(), @varname(y[2]) => 3.0
-            )(
-                Xoshiro(1)
             )
             @test bind(growable_y(), @of(y = of(Array, 2, 2)), @varname(y[2]) => 3.0)(
                 Xoshiro(1)
             )[
                 2, 1
             ] == 3.0
-            for model in (
-                bind(growable_auto(), @varname(a.x[2]) => 3.0),
-                growable_auto(bind(growable_leaf(), @varname(x[2]) => 3.0)),
-            )
-                @test_throws mismatch("a.x", "a.x[2]", "a.x[2, 1]", 1, 2) model(Xoshiro(1))
-            end
+            model = bind(growable_auto(), @varname(a.x[2]) => 3.0)
+            @test_throws mismatch("a.x", "a.x[2]", "a.x[2, 1]", 1, 2) model(Xoshiro(1))
             @test bind(
                 growable_auto(), @of(a = (x=of(Array, 2, 2),)), @varname(a.x[2]) => 3.0
             )(
@@ -4286,10 +4326,9 @@ end
             ] == 3.0
             prefixed = bind(growable_parent(), @varname(p[1, 2].x[2, 1]) => 3.0)
             @test prefixed(Xoshiro(1))[1, 2][2, 1] == 3.0
-            explicit = bind(
+            @test_throws "Cannot bind `a.x[2, 1]` without storage" bind(
                 prefix(growable_leaf(), @varname(a)), @varname(a.x[2, 1]) => 3.0
             )
-            @test explicit(Xoshiro(1))[2, 1] == 3.0
             sibling = bind(growable_parent(), @varname(p[1, 1].x[2]) => 3.0)
             @test sibling(Xoshiro(1))[1, 2] == growable_leaf()(Xoshiro(1))
             @test bind(growable_argument(zeros(2, 2)), @varname(x[2]) => 3.0)(Xoshiro(1))[
@@ -4300,19 +4339,29 @@ end
             )[
                 2, 1
             ] == 3.0
-            sliced = bind(growable_slice(), @varname(x[1:2]) => [5.0, 6.0])
-            @test_throws "linear and Cartesian indices are distinct" sliced(Xoshiro(1))
-            @test listed(remove(sliced, @varname(x[1:2, 1]))) == listed(sliced)
-            @test DynamicPPL._get_model_binding(sliced, @varname(x[1:2, 1])) === nothing
+            sliced = bind(
+                growable_slice(), @of(x = of(Array, 2, 1)), @varname(x[1:2]) => [5.0, 6.0]
+            )
+            @test sliced(Xoshiro(1)) == [5.0; 6.0;;]
+            @test isempty(listed(remove(sliced, @varname(x[1:2, 1]))))
+            @test DynamicPPL._get_model_binding(sliced, @varname(x[1:2, 1])) ==
+                DynamicPPL._get_model_binding(sliced, @varname(x[1:2]))
             storage = DynamicPPL._get_model_binding(sliced, @varname(x))
             role = bind === condition ? DynamicPPL.Condition : DynamicPPL.Fix
             @test DynamicPPL._remove_model_binding(
                 role, storage, AbstractPPL.getoptic(@varname(x[1:2, 1]))
-            ) === storage
+            ) == DynamicPPL._remove_model_binding(
+                role, storage, AbstractPPL.getoptic(@varname(x[1:2]))
+            )
             @test isempty(listed(remove(sliced, @varname(x[1:2]))))
-            @test bind(growable_slice(), @varname(x[1:2, 1]) => [5.0, 6.0])(Xoshiro(1)) ==
-                [5.0; 6.0;;]
-            @test_throws "tilde `x[2, 2]` uses 2 indices" bind(
+            @test bind(
+                growable_slice(),
+                @of(x = of(Array, 2, 1)),
+                @varname(x[1:2, 1]) => [5.0, 6.0],
+            )(
+                Xoshiro(1)
+            ) == [5.0; 6.0;;]
+            @test_throws "Cannot bind `x[1]` without storage" bind(
                 growable_mixed(), @varname(x[1]) => 3.0
             )(
                 Xoshiro(1)
@@ -4320,27 +4369,40 @@ end
             @test bind(growable_mixed(), @of(x = of(Array, 2, 2)), @varname(x[1]) => 3.0)(
                 Xoshiro(1)
             )[1] == 3.0
-            @test bind(growable_leaf(), @varname(x[1:0]) => Float64[])(Xoshiro(1)) ==
-                growable_leaf()(Xoshiro(1))
-            @test_throws mismatch("x", "x[2]", "x[1, 1]", 1, 2) bind(
+            @test bind(
+                growable_leaf(), @of(x = of(Array, 2, 2)), @varname(x[1:0]) => Float64[]
+            )(
+                Xoshiro(1)
+            ) == growable_leaf()(Xoshiro(1))
+            @test_throws "Cannot bind `x[2]` without storage" bind(
                 growable_first(), @varname(x[2]) => 3.0
             )(
                 Xoshiro(1)
             )
-            @test_throws mismatch("x", "x[1]", "x[:, 1]", 1, 2) bind(
+            @test_throws "Cannot bind `x[1:2]` without storage" bind(
                 growable_colon(), @varname(x[1:2]) => [5.0, 6.0]
             )(
                 Xoshiro(1)
             )
-            @test bind(growable_colon(), @varname(x[1:2, 1]) => [5.0, 6.0])(Xoshiro(1)) ==
-                [5.0; 6.0;;]
-            @test_throws mismatch("x", "x[1, 2]", "x[1, 2, 1]", 2, 3; cartesian=false) bind(
+            @test bind(
+                growable_colon(),
+                @of(x = of(Array, 2, 1)),
+                @varname(x[1:2, 1]) => [5.0, 6.0],
+            )(
+                Xoshiro(1)
+            ) == [5.0; 6.0;;]
+            @test_throws "Cannot bind `x[1, 2]` without storage" bind(
                 growable_cube(), @varname(x[1, 2]) => 3.0
             )(
                 Xoshiro(1)
             )
-            @test bind(growable_cube(), @varname(x[1, 2, 1]) => 3.0)(Xoshiro(1))[1, 2, 1] ==
-                3.0
+            @test bind(
+                growable_cube(), @of(x = of(Array, 2, 2, 2)), @varname(x[1, 2, 1]) => 3.0
+            )(
+                Xoshiro(1)
+            )[
+                1, 2, 1
+            ] == 3.0
         end
     end
 end
@@ -5876,7 +5938,8 @@ function bc_bind_shape!(l, c, p, value)
             return :call
         end
     end
-    # An indexed binding without concrete storage still uses a growable array.
+    # Only addresses below an unrun submodel may remain pending without storage.
+    any(k -> k isa Int, p) && c.depth == 0 && return :call
     any(k -> k isa Int, p) || (l.shapes[p] = value)
     return :ok
 end
@@ -6540,7 +6603,6 @@ end
     samples = vcat(
         bc_corpus(), bc_shape_corpus(), bc_contract_corpus(), bc_invalid_removal_corpus()
     )
-    # Local indexed bindings intentionally exercise the documented growable-array fallback.
     with_logger(NullLogger()) do
         for (c, ops) in samples
             predicted, observed = bc_predict(c, ops), bc_actual(c, ops)
@@ -6766,9 +6828,13 @@ end
         for bind in (condition, fix)
             @test isempty(keys(VarInfo(Xoshiro(42), bind(model, values))))
             for (address, value) in pairs(values)
-                @test (bind === condition ? conditioned : fixed)(
-                    bind(model, address => value)
-                )[address] == value
+                if AbstractPPL.getoptic(address) isa AbstractPPL.Index
+                    @test_throws "without storage" bind(model, address => value)
+                else
+                    @test (bind === condition ? conditioned : fixed)(
+                        bind(model, address => value)
+                    )[address] == value
+                end
             end
         end
     end
@@ -6798,7 +6864,11 @@ end
     @model indexed_observation(idx) = (x = zeros(1, 1); x[idx] ~ MvNormal(zeros(1), I); x)
     for idx in (trues(1, 1), [CartesianIndex(1, 1)])
         for bind in (condition, fix)
-            result = bind(indexed_observation(idx), @varname(x[1, 1]) => 5.0)(Xoshiro(1))
+            result = bind(
+                indexed_observation(idx), @of(x = of(Array, 1, 1)), @varname(x[1, 1]) => 5.0
+            )(
+                Xoshiro(1)
+            )
             @test result == [5.0;;]
         end
     end
@@ -6817,12 +6887,14 @@ end
                 (model, @varname(x[1, 1]), @varname(x[1])),
                 (child_model(model), @varname(a.x[1, 1]), @varname(a.x[1])),
             )
-                @test bind(nested, matched => 5.0)(Xoshiro(1)) == [5.0;;]
-                @test_throws r"growable bindings with 1 index .*but tilde .* uses 2 indices" bind(
-                    nested, mismatched => 5.0
-                )(
-                    Xoshiro(1)
-                )
+                @test bind(nested, matched => 5.0, @of(x = of(Array, 1, 1)))(Xoshiro(1)) ==
+                    [5.0;;]
+                message = if nested === model
+                    "without storage"
+                else
+                    r"growable bindings with 1 index .*but tilde .* uses 2 indices"
+                end
+                @test_throws message bind(nested, mismatched => 5.0)(Xoshiro(1))
             end
         end
     end
@@ -6840,33 +6912,36 @@ end
     @test condition(scalar_array(), values)(Xoshiro(123)) == fill(draw)
     @test logjoint(scalar_array(), (; x=fill(0.5))) ≈ logpdf(Normal(), 0.5)
     for (bind, remove) in ((condition, decondition), (fix, unfix))
-        bound = bind(scalar_array(), @varname(x[]) => 5.0)
+        bound = bind(scalar_array(), @varname(x[]) => 5.0, @of(x = of(Array, 1)))
         @test bound(Xoshiro(123)) == fill(5.0)
-        @test bind(scalar_array(), @varname(x[CartesianIndex()]) => 5.0)(Xoshiro(123)) ==
-            fill(5.0)
+        @test bind(
+            scalar_array(), @of(x = of(fill(0.0))), @varname(x[CartesianIndex()]) => 5.0
+        )(
+            Xoshiro(123)
+        ) == fill(5.0)
         @test remove(bound, @varname(x[]))(Xoshiro(123)) == fill(draw)
-        @test bind(vector_array(), @varname(x[1]) => 5.0)(Xoshiro(123)) == [5.0]
+        @test bind(vector_array(), @varname(x[1]) => 5.0, @of(x = of(Array, 1)))(
+            Xoshiro(123)
+        ) == [5.0]
         for (model, address, message) in (
-            (
-                scalar_array(),
-                @varname(x[1]),
-                r"growable bindings with 1 index .*but tilde `x\[\]` uses 0 indices",
-            ),
-            (
-                vector_array(),
-                @varname(x[]),
-                r"growable bindings with 0 indices .*but tilde `x\[1\]` uses 1 index",
-            ),
+            (scalar_array(), @varname(x[1]), "Cannot bind `x[1]` without storage"),
+            (vector_array(), @varname(x[]), "Cannot bind `x[]` without storage"),
         )
             @test_throws message bind(model, address => 5.0)(Xoshiro(123))
         end
-        for model in (parent_array(), prefix(scalar_array(), @varname(a)))
-            @test bind(model, @varname(a.x[]) => 5.0)(Xoshiro(123)) == fill(5.0)
-            @test_throws r"growable bindings with 1 index .*but tilde `a.x\[\]` uses 0 indices" bind(
-                model, @varname(a.x[1]) => 5.0
-            )(
+        model = parent_array()
+        @test bind(model, @varname(a.x[]) => 5.0)(Xoshiro(123)) == fill(5.0)
+        @test_throws r"growable bindings with 1 index .*but tilde `a.x\[\]` uses 0 indices" bind(
+            model, @varname(a.x[1]) => 5.0
+        )(
+            Xoshiro(123)
+        )
+        model = prefix(scalar_array(), @varname(a))
+        for address in (@varname(a.x[]), @varname(a.x[1]))
+            @test_throws "without storage" bind(model, address => 5.0)
+            @test bind(model, @of(a = @of(x = of(fill(0.0)))), address => 5.0)(
                 Xoshiro(123)
-            )
+            ) == fill(5.0)
         end
     end
     @model nested_array() = (x = (; a=fill(0.0)); x.a[] ~ Normal(); x.a)
@@ -7060,11 +7135,16 @@ end
     for (bind, remove, selected) in
         ((condition, decondition, conditioned), (fix, unfix, fixed))
         child = bind(retained_parent(), @varname(a.x) => ones(2))(Xoshiro(1))
-        @test_throws r"x.*decondition.*unfix" bind(child; x=ones(3))
-        @test selected(bind(remove(child), @varname(x[end]) => 3.0))[@varname(x[2])] == 3.0
+        @test_throws "outside this model's prefix" bind(child; x=ones(3))
+        @test_throws r"x.*decondition.*unfix" bind(child, @varname(a.x) => ones(3))
+        @test selected(bind(remove(child), @varname(a.x[end]) => 3.0))[@varname(a.x[2])] ==
+            3.0
         child = bind(retained_nested_parent(), @varname(a.x.v[1]) => ones(2))(Xoshiro(1))
-        @test_throws ArgumentError bind(child, @varname(x.v[1]) => ones(3))
+        @test_throws ArgumentError bind(child, @varname(a.x.v[1]) => ones(3))
     end
+    child = retained_parent()(Xoshiro(1))
+    @test conditioned(child | (@varname(a.x) => ones(2))) ==
+        conditioned(condition(child, @varname(a.x) => ones(2)))
 end
 
 @model shared_shape_nested_argument(x) = x[1] ~ Normal()
@@ -7294,7 +7374,8 @@ end
     end
     @test err isa ArgumentError
     err isa ArgumentError && (@test occursin("`x`", err.msg) &&
-        occursin("decondition", err.msg) && occursin("unfix", err.msg))
+        occursin("decondition", err.msg) &&
+        occursin("unfix", err.msg))
     f = fix(decondition(masked_arg(zeros(2))); x=ones(3))
     for i in 1:3
         f = unfix(f, VarName{:x}(DynamicPPL.AbstractPPL.Index((i,), (;))))
@@ -7467,6 +7548,34 @@ end
         )
         @test_throws r"Cannot bind `x\[1:2\]\[3\]`.*outside" bind(
             m, @varname(x[1:2][3]) => 2.0
+        )
+    end
+end
+
+@testset "bulk bindings scale with storage" begin
+    @model function bulk_storage(n)
+        x = zeros(n)
+        for i in eachindex(x)
+            x[i] ~ Normal()
+        end
+        return x
+    end
+    for bind in (condition, fix), wrap in (identity, VarNamedTuple)
+        allocations = map((100, 1000)) do n
+            model = bulk_storage(n)
+            input = wrap((; x=DynamicPPL.VarNamedTuples.PartialArray(ones(n), trues(n))))
+            bind(model, input)
+            @allocated bind(model, input)
+        end
+        @test allocations[2] <= 15 * allocations[1]
+    end
+end
+
+@testset "parts require storage" begin
+    @model no_storage_parts() = (x[1] ~ Normal(); x[2] ~ Normal())
+    for bind in (condition, fix)
+        @test_throws r"x\[1\].*without storage.*@of.*whole value.*VarNamedTuple" bind(
+            no_storage_parts(), @varname(x[1]) => 1.0
         )
     end
 end

@@ -199,6 +199,13 @@ struct PartialArray{
         if size(data) != size(mask)
             throw(ArgumentError("Data and mask arrays must have the same size"))
         end
+        # Empty PartialArray storage needs an inhabited element type for recursive
+        # return-type queries on Julia 1.10.
+        if ElType === Union{}
+            any(mask) &&
+                throw(ArgumentError("Bottom-typed storage cannot contain assigned values"))
+            return PartialArray(similar(data, Any), mask)
+        end
         return new{ElType,N,typeof(data),typeof(mask)}(data, mask)
     end
 end
@@ -324,6 +331,7 @@ Concretise the element type of a `PartialArray`.
 
 Returns a new `PartialArray` with the same data and mask as `pa`, but with its element type
 concretised to the most specific type that can hold all currently defined elements.
+Empty storage retains its element type.
 
 Note that this function is fundamentally type unstable if the current element type of `pa`
 is not already concrete.
@@ -338,7 +346,7 @@ function _concretise_eltype!!(pa::PartialArray)
     new_et = _concretised_eltype(pa)
     # TODO(mhauru) Should we check as below, or rather isconcretetype(new_et)?
     # In other words, does it help to be more concrete, even if we aren't fully concrete?
-    if new_et === eltype(pa)
+    if new_et === Union{} || new_et === eltype(pa)
         # The types of the elements do not allow for concretisation.
         return pa
     end

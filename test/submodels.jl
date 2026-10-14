@@ -110,24 +110,29 @@ end
         end
         child = inspect_child()
         parent = condition(inspect_parent(child), @varname(a.x[1]) => 2.0)
-        for model in (parent, inspect_outer(parent))
+        for (model, namespace) in
+            ((parent, @varname(a)), (inspect_outer(parent), @varname(b[2].a)))
             local_model = model(Xoshiro(1))
             @test conditioned(local_model) ==
-                conditioned(condition(child, @varname(x[1]) => 2.0))
+                conditioned(prefix(condition(child, @varname(x[1]) => 2.0), namespace))
             @test isempty(fixed(local_model))
+            vn = AbstractPPL.prefix(@varname(x[2]), namespace)
             for (bind, remove, accessor) in
                 ((condition, decondition, conditioned), (fix, unfix, fixed))
-                edited = bind(local_model, @varname(x[2]) => 3.0)
-                @test accessor(edited)[@varname(x[2])] == 3.0
-                @test accessor(edited(Xoshiro(1)))[@varname(x[2])] == 3.0
-                removed = remove(edited, @varname(x[2]))
-                @test !haskey(accessor(removed(Xoshiro(1))), @varname(x[2]))
+                @test_throws "outside this model's prefix" bind(
+                    local_model, @varname(x[2]) => 3.0
+                )
+                edited = bind(local_model, vn => 3.0)
+                @test accessor(edited)[vn] == 3.0
+                @test accessor(edited(Xoshiro(1)))[vn] == 3.0
+                removed = remove(edited, vn)
+                @test !haskey(accessor(removed(Xoshiro(1))), vn)
                 @test isempty(accessor(remove(edited)))
                 values = rand(Xoshiro(1), removed)
-                vn = model === parent ? @varname(a.x[2]) : @varname(b[2].a.x[2])
                 @test haskey(values, vn) == (remove === decondition)
+                @test_throws "outside this model's prefix" bind(local_model; metadata=1)
                 @test_throws r"ArgumentError: Argument `metadata`" bind(
-                    local_model; metadata=1
+                    local_model, AbstractPPL.prefix(@varname(metadata), namespace) => 1
                 )
             end
         end
@@ -232,6 +237,9 @@ end
         @test single(rng) == templated(rng) == 3.0
         baseline = @allocated single(rng)
         @test (@allocated templated(rng)) <= baseline
+        if VERSION >= v"1.12"
+            @test (@allocated templated(rng)) <= 48
+        end
         @test @inferred(templated(rng)) == 3.0
         mixed_bindings = DynamicPPL.templated_setindex!!(
             VarNamedTuple(), 3.0, @varname(p[2, 2].x), zeros(2, 2)
@@ -887,8 +895,10 @@ end
     end
     @model removal_wrapper(child) = b ~ to_submodel(child)
     for (bind, remove) in ((condition, decondition), (fix, unfix))
-        for (model, name) in
-            ((removal_parent(), @varname(m)), (removal_fields(), @varname(m.x[1])))
+        for (model, name, templates) in (
+            (removal_parent(), @varname(m), ()),
+            (removal_fields(), @varname(m.x[1]), (@of(m = @of(x = of(Array, 1))),)),
+        )
             @test name in keys(rand(Xoshiro(1), remove(model, rec, name)))
             prefixed_name = DynamicPPL.maybe_prefix(name, @varname(p))
             @test prefixed_name in keys(
@@ -899,7 +909,10 @@ end
             )
             @test DynamicPPL.maybe_prefix(name, @varname(b)) in
                 keys(rand(Xoshiro(1), deferred))
-            matched = remove(bind(model, name => 2.0), rec, name)
+            if !isempty(templates)
+                @test_throws "without storage" bind(model, name => 2.0)
+            end
+            matched = remove(bind(model, name => 2.0, templates...), rec, name)
             @test name in keys(rand(Xoshiro(1), matched))
         end
     end

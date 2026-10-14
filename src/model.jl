@@ -451,21 +451,16 @@ _concretize_prefix(optic::AbstractPPL.Iden, template; kwargs...) = optic
 function _concretize_prefix(
     optic::AbstractPPL.Property{S}, template; depth=typemax(Int), prefix=Val(false)
 ) where {S}
-    (prefix isa Val{false} && (depth == 0 || !AbstractPPL.is_dynamic(optic))) &&
-        return optic
-    child_template = if AbstractPPL.is_dynamic(optic.child)
-        VarNamedTuples.SharedGetProperty{S}()(template)
-    else
-        NoTemplate()
-    end
+    (prefix isa Val{false} && depth == 0) && return optic
+    optic.child isa AbstractPPL.Iden && return optic
+    child_template = VarNamedTuples.SharedGetProperty{S}()(template)
     child = _concretize_prefix(optic.child, child_template; depth=depth - 1, prefix)
     return AbstractPPL.Property{S}(child)
 end
 function _concretize_prefix(
     optic::AbstractPPL.Index, template; depth=typemax(Int), prefix=Val(false)
 )
-    (prefix isa Val{false} && (depth == 0 || !AbstractPPL.is_dynamic(optic))) &&
-        return optic
+    (prefix isa Val{false} && depth == 0) && return optic
     if any(i -> i isa AbstractPPL.DynamicIndex, optic.ix)
         template isa NoTemplate && throw(
             ArgumentError(
@@ -485,12 +480,9 @@ function _concretize_prefix(
         )
         optic = AbstractPPL.Index(indices, optic.kw, optic.child)
     end
-    prefix isa Val{false} && depth == 1 && return optic
-    child_template = if AbstractPPL.is_dynamic(optic.child)
-        VarNamedTuples.index_template(template, optic)
-    else
-        NoTemplate()
-    end
+    (optic.child isa AbstractPPL.Iden || prefix isa Val{false} && depth == 1) &&
+        return optic
+    child_template = VarNamedTuples.maybe_index_template(template, optic)
     child = _concretize_prefix(optic.child, child_template; depth=depth - 1, prefix)
     return AbstractPPL.Index(optic.ix, optic.kw, child)
 end
@@ -560,21 +552,11 @@ function prefix(model::Model, x::VarName; template=NoTemplate())
         (template = VarNamedTuples.materialize_template(template))
     x = _concretize_prefix(x, template; prefix=Val(true))
     template = VarNamedTuples.materialize_template(template)
-    model = _materialize_argument_values(model)
-    values =
-        if model.values isa VarNamedTuple &&
-            _model_prefix(model) === nothing &&
-            !isempty(model.values) &&
-            mapreduce(
-                pair -> pair.second isa ModelValue{ArgumentCondition},
-                &,
-                model.values;
-                init=true,
-            )
-            UnprefixedArgumentValues(model.values)
-        else
-            _prefix_values(model.values, x, template)
-        end
+    values = if model.values isa LocalModelValues
+        model.values
+    else
+        LocalModelValues(_model_values_for_prefix(model))
+    end
     return _prefix_model(model, x, template, values)
 end
 function _prefix_model(model::Model, x::VarName, template, values)

@@ -2190,8 +2190,15 @@ Return a `Model` which now treats variables on the right-hand side as observatio
 
 See [`condition`](@ref) for more information and examples.
 """
-Base.:|(model::Model, values::Union{NamedTuple,Pair,Tuple,VarNamedTuple}) =
-    _conditionfix_inputs(model, _binding_inputs(values), Condition)
+function Base.:|(model::Model, values::Union{NamedTuple,Pair,Tuple,VarNamedTuple})
+    inputs = _binding_inputs(values)
+    any(x -> x isa Type{<:AbstractPPL.OfNamedTuple}, inputs) && throw(
+        ArgumentError(
+            "Binding templates require `condition` or `fix`; use `condition(model, values, template)` instead of `|`.",
+        ),
+    )
+    return _conditionfix(model, inputs, Condition)
+end
 
 function _check_binding_addresses(model, values)
     metadata = _binding_metadata(model)
@@ -2837,7 +2844,7 @@ function _prepare_inherited_templates(model, values, templates)
         prepared = if isempty(schema)
             selected
         else
-            _prepare_schema_input(role, model, selected, schema)
+            _prepare_schema_input(role, model, selected, schema; inherited=true)
         end
         result = _merge_model_values(result, _tag_model_values(role, prepared))
     end
@@ -2967,6 +2974,7 @@ function _check_binding_overlap!(seen, model, input)
     end
     leaves, parents, cache = seen
     for original in names
+        _check_binding_address(model, _model_values(model.values), original)
         vn = _schema_binding_address(model, original)
         root, optic = VarName{AbstractPPL.getsym(vn)}(), AbstractPPL.getoptic(vn)
         roots = _binding_shape_store(model.values).roots
@@ -2978,10 +2986,12 @@ function _check_binding_overlap!(seen, model, input)
         end
         selections = _binding_selections(storage, optic, root, cache)
         for name in selections
-            name in parents && _binding_overlap_error(original)
+            name in parents &&
+                _binding_overlap_error(_binding_display_name(model, original))
             prefix, optic = VarName{AbstractPPL.getsym(name)}(), AbstractPPL.getoptic(name)
             while true
-                prefix in leaves && _binding_overlap_error(original)
+                prefix in leaves &&
+                    _binding_overlap_error(_binding_display_name(model, original))
                 optic isa AbstractPPL.Iden && break
                 push!(parents, prefix)
                 prefix = AbstractPPL.append_optic(prefix, AbstractPPL.ohead(optic))
@@ -3042,6 +3052,12 @@ function _set_value(model::Model, vn::VarName, value::ModelValue{R}) where {R}
 end
 
 function _conditionfix(model::Model, inputs::Tuple, ::Type{R}) where {R}
+    inputs = _binding_inputs(inputs)
+    if model.values isa LocalModelValues && _model_prefix(model) !== nothing
+        inputs = let model = model
+            map(x -> _local_binding_input(model, x), inputs)
+        end
+    end
     inputs = _binding_inputs(inputs)
     schemas = filter(x -> x isa Type{<:AbstractPPL.OfNamedTuple}, inputs)
     length(schemas) <= 1 ||
@@ -3162,12 +3178,12 @@ function _local_binding_schema(model, schema, values)
     prefix === nothing && return schema
     local_schema = _schema_namespace(schema, AbstractPPL.varname_to_optic(prefix))
     for name in keys(schema)
-        root = maybe_prefix(VarName{name}(), prefix)
+        root = _model_value_varname(model.values, VarName{name}(), prefix)
         if (name !== AbstractPPL.getsym(prefix) || !(local_schema isa NamedTuple)) &&
             any(v -> _input_binds_root(v, root, model), values)
             throw(
                 ArgumentError(
-                    "Binding template entry `$name` uses a local name; use the absolute name `$root`.",
+                    "Binding template entry `$name` uses a local name; use the absolute name `$(_binding_display_name(model, root))`.",
                 ),
             )
         end
@@ -3280,7 +3296,12 @@ function _conditionfix_schema_input(model, input, schema, ::Type{R}) where {R}
 end
 
 function _prepare_schema_input(
-    ::Type{R}, model, input, schema, layer_model=_binding_layer_model(R, model)
+    ::Type{R},
+    model,
+    input,
+    schema,
+    layer_model=_binding_layer_model(R, model);
+    inherited=false,
 ) where {R}
     layer = _model_values(layer_model.values)
     templates = VarNamedTuple()
@@ -3303,14 +3324,18 @@ function _prepare_schema_input(
         )
     end
     is_pair = input isa Pair{<:VarName}
-    plain = is_pair ? VarNamedTuple() : _make_condfix_values(layer_model, input)
+    plain = if is_pair
+        VarNamedTuple()
+    else
+        (inherited ? input : _make_condfix_values(layer_model, input))
+    end
     entries = is_pair ? (input,) : pairs(plain)
     prepared = VarNamedTuple()
     for (vn, value) in entries
         vn = _schema_binding_address(model, vn)
         uses_schema = _schema_has_address(model, schema, vn)
         if !uses_schema
-            is_pair && return _make_condfix_values(layer_model, input)
+            is_pair && return (inherited ? input : _make_condfix_values(layer_model, input))
             prepared = templated_setindex!!(
                 prepared, value, vn, _binding_template(model, plain, vn)
             )
@@ -3422,12 +3447,12 @@ function _make_condfix_values(model, values)
 end
 _make_condfix_values(model, values::NamedTuple) = VarNamedTuple(values)
 function _make_condfix_values(model, values::VarNamedTuple)
-    for vn in keys(values)
-        _binding_template(model, _model_values(model.values), vn) isa NoTemplate &&
-            _check_local_property_index(model, vn)
-        _check_partial_binding(
-            _model_values(model.values), AbstractPPL.varname_to_optic(vn)
-        )
+    for (name, value) in pairs(values.data)
+        value isa VarNamedTuples.PartialArray || continue
+        index = findfirst(value.mask)
+        index === nothing && continue
+        indices = index isa CartesianIndex ? Tuple(index) : (index,)
+        _check_local_property_index(model, VarName{name}(AbstractPPL.Index(indices, (;))))
     end
     return values
 end
@@ -3535,8 +3560,119 @@ end
     end
 end
 
+function _pending_binding(model, vn)
+    local_name = _local_removal_name(model, vn; operation="bind")
+    local_name === nothing && return true
+    metadata = _binding_metadata(model)
+    name = AbstractPPL.getsym(local_name)
+    addresses = filter(x -> AbstractPPL.getsym(first(x)) === name, _lhs_addresses(metadata))
+    return isempty(addresses) ? _has_unprefixed_submodel(metadata) : any(last, addresses)
+end
+
+@noinline function _binding_storage_error(vn)
+    throw(
+        ArgumentError(
+            "Cannot bind `$vn` without storage; supply an `@of` template, a whole value, a `VarNamedTuple` with storage, or storage on the child before prefixing.",
+        ),
+    )
+end
+function _require_binding_storage(
+    template, ::AbstractPPL.Iden, vn; skip=0, supplied=NoTemplate()
+)
+    return nothing
+end
+function _require_binding_storage(
+    template, optic::AbstractPPL.Property{S}, vn; skip=0, supplied=NoTemplate()
+) where {S}
+    return _require_binding_storage(
+        VarNamedTuples.SharedGetProperty{S}()(template),
+        optic.child,
+        vn;
+        skip=skip - 1,
+        supplied=VarNamedTuples.SharedGetProperty{S}()(supplied),
+    )
+end
+function _require_binding_storage(
+    template, optic::AbstractPPL.Index, vn; skip=0, supplied=NoTemplate()
+)
+    if skip > 0
+        return _require_binding_storage(
+            VarNamedTuples.maybe_index_template(template, optic),
+            optic.child,
+            vn;
+            skip=skip - 1,
+            supplied=VarNamedTuples.maybe_index_template(supplied, optic),
+        )
+    end
+    storage = VarNamedTuples.template_array(template)
+    if !(storage isa AbstractArray) || storage isa VarNamedTuples.GrowableArray
+        template = supplied
+        storage = VarNamedTuples.template_array(template)
+    end
+    storage isa AbstractArray && !(storage isa VarNamedTuples.GrowableArray) ||
+        _binding_storage_error(vn)
+    optic = AbstractPPL.concretize_top_level(optic, storage)
+    _check_binding_template_bounds(template, optic, vn)
+    return _require_binding_storage(
+        VarNamedTuples.maybe_index_template(template, optic),
+        optic.child,
+        vn;
+        skip=skip - 1,
+        supplied=VarNamedTuples.maybe_index_template(supplied, optic),
+    )
+end
+
+struct PendingBindingTemplate{T}
+    storage::T
+end
+function (get::VarNamedTuples.SharedGetProperty)(template::PendingBindingTemplate)
+    return PendingBindingTemplate(get(template.storage))
+end
+function VarNamedTuples.template_array(template::PendingBindingTemplate)
+    return VarNamedTuples.template_array(template.storage)
+end
+function VarNamedTuples.index_template(template::PendingBindingTemplate, optic)
+    return PendingBindingTemplate(
+        VarNamedTuples.maybe_index_template(template.storage, optic)
+    )
+end
+function VarNamedTuples.make_leaf(
+    value, optic::AbstractPPL.Index, template::PendingBindingTemplate
+)
+    storage = VarNamedTuples.template_array(template)
+    optic = AbstractPPL.concretize_top_level(optic, storage)
+    if !(storage isa AbstractArray)
+        dims = VarNamedTuples.get_maximum_size_from_indices(optic.ix...)
+        storage = VarNamedTuples.GrowableArray(
+            fill(PendingBindingTemplate(NoTemplate()), dims)
+        )
+        return VarNamedTuples.make_leaf(value, optic, storage)
+    end
+    return if VarNamedTuples._is_multiindex(storage, optic.ix...; optic.kw...)
+        VarNamedTuples.make_leaf_multiindex(value, optic, template)
+    else
+        VarNamedTuples.make_leaf_singleindex(value, optic, template)
+    end
+end
+
+function _check_binding_storage(model::Model, template, vn; supplied=NoTemplate())
+    local_name = _local_removal_name(model, vn; operation="bind")
+    local_name !== nothing &&
+        AbstractPPL.getsym(local_name) in _args_on_lhs(model) &&
+        return nothing
+    _pending_binding(model, vn) && return nothing
+    display_vn = _binding_display_name(model, vn)
+    prefix = model.values isa LocalModelValues ? nothing : _model_prefix(model)
+    skip = prefix === nothing ? 0 : optic_skip_length(AbstractPPL.getoptic(prefix)) + 1
+    return _require_binding_storage(
+        template, AbstractPPL.getoptic(vn), display_vn; skip, supplied
+    )
+end
 function _make_condfix_values(model, pair::Pair{<:VarName})
+    !_pending_binding(model, first(pair)) && _check_local_property_index(model, first(pair))
     vn, template = _check_binding_address(model, _model_values(model.values), first(pair))
+    _check_binding_storage(model, template, vn)
+    template = _pending_binding(model, vn) ? PendingBindingTemplate(template) : template
     return templated_setindex!!(VarNamedTuple(), last(pair), vn, template)
 end
 
@@ -3567,7 +3703,9 @@ function _check_local_property_index(model, vn; operation="bind")
 end
 
 @inline function _check_binding_address(model, values, vn; operation="bind")
-    vn = _resolve_binding_address(model, _schema_binding_address(model, vn))
+    input_vn = _schema_binding_address(model, vn)
+    display_vn = _binding_display_name(model, input_vn)
+    vn = _resolve_binding_address(model, input_vn)
     local_name = _local_removal_name(model, vn; operation)
     metadata = _binding_metadata(model)
     names = _lhs_names(metadata)
@@ -3617,7 +3755,7 @@ end
     _check_binding_template_bounds(
         template,
         AbstractPPL.getoptic(vn),
-        vn;
+        display_vn;
         operation,
         check_fields,
         child_name=local_name !== nothing && !_binding_schema_owned(model, local_name),
@@ -3781,7 +3919,6 @@ end
     return :(VarNamedTuple(merge((;), $(fields...))))
 end
 _prune_model_node(value) = value
-_prune_model_node(::VarNamedTuples.PartialArray{Union{}}) = NoModelBinding()
 _prune_model_node(value::VarNamedTuples.PartialArray{<:ModelValue}) = value
 _prune_model_node(::VarNamedTuples.PartialArray{<:NoModelBinding}) = NoModelBinding()
 function _prune_model_node(value::VarNamedTuple)
@@ -4063,9 +4200,7 @@ julia> # Now `a.x` will be sampled.
  a.x
 ```
 """
-conditioned(model::Model) = _select_model_values(
-    Condition, _model_values(_materialize_argument_values(model).values)
-)
+conditioned(model::Model) = _select_model_values(Condition, _public_model_values(model))
 
 """
     fix(model::Model; values...)
@@ -4241,6 +4376,15 @@ function unfix(model::Model, syms::Union{Symbol,VarName}...)
 end
 
 function _decondition_unfix(model, names, ::Type{R}, recursive...) where {R}
+    if model.values isa LocalModelValues && _model_prefix(model) !== nothing
+        names = map(
+            n -> _public_binding_name(
+                model, n isa Symbol ? VarName{n}() : n; operation="remove"
+            ),
+            names,
+        )
+        any(isnothing, names) && (names = ())
+    end
     removed = if isempty(names)
         _unset_value(model, R, recursive...)
     elseif names isa Tuple{Union{Symbol,VarName}}
@@ -4369,8 +4513,7 @@ julia> # Now `a.x` will be sampled.
  a.x
 ```
 """
-fixed(model::Model) =
-    _select_model_values(Fix, _model_values(_materialize_argument_values(model).values))
+fixed(model::Model) = _select_model_values(Fix, _public_model_values(model))
 
 # Recursive removals are stored separately from values and therefore own no shape.
 _removals(::Type, values) = ()
@@ -5598,5 +5741,64 @@ function _binding_selections(
     child = _model_argument_binding(storage, AbstractPPL.ohead(optic))
     return _binding_selections(
         child, optic.child, AbstractPPL.append_optic(vn, AbstractPPL.ohead(optic)), cache
+    )
+end
+
+function _public_binding_name(model, vn; operation="bind")
+    prefix = _model_prefix(model)
+    template = _apply_prefix_template(_model_prefix_template(model), NoTemplate())
+    depth = optic_skip_length(AbstractPPL.getoptic(prefix))
+    prefix = _expand_cartesian(_concretize_prefix(prefix, template; depth))
+    vn = _expand_cartesian(_concretize_prefix(vn, template; depth))
+    subsumes(prefix, vn) && return prefix == vn ? nothing : AbstractPPL.unprefix(vn, prefix)
+    subsumes(vn, prefix) && return nothing
+    throw(
+        ArgumentError(
+            "Cannot $operation `$vn`: it is outside this model's prefix `$prefix`."
+        ),
+    )
+end
+function _local_binding_input(model, input::Pair{<:VarName})
+    name = _public_binding_name(model, first(input))
+    name !== nothing && return name => last(input)
+    prefix = _model_prefix(model)
+    value = ModelValue{Condition}(last(input))
+    optic = AbstractPPL._unprefix_optic(
+        AbstractPPL.getoptic(prefix), AbstractPPL.getoptic(first(input))
+    )
+    selected = _model_argument_binding(value, optic)
+    return _plain_model_values(
+        _select_model_values(Condition, _submodel_namespace(selected))
+    )
+end
+function _local_binding_input(model, input::Union{NamedTuple,VarNamedTuple})
+    values = input isa NamedTuple ? VarNamedTuple(input) : input
+    foreach(vn -> _public_binding_name(model, vn), keys(values))
+    tagged = _tag_model_values(Condition, values)
+    return _select_model_values(Condition, _submodel_values(tagged, _model_prefix(model)))
+end
+_local_binding_input(model, input::Tuple) = map(x -> _local_binding_input(model, x), input)
+_local_binding_input(model, input) = input
+function _public_model_values(model)
+    values = _model_values(model.values)
+    if model.values isa LocalModelValues && _model_prefix(model) !== nothing
+        template = _apply_prefix_template(_model_prefix_template(model), NoTemplate())
+        return _prefix_values(
+            values, _model_prefix(model), PendingBindingTemplate(template)
+        )
+    end
+    return _model_values(_materialize_argument_values(model).values)
+end
+function _model_values_for_prefix(model)
+    model.values isa UnprefixedArgumentValues && return model.values.values
+    _model_prefix(model) === nothing && return model.values
+    return ModelBindingLayers(
+        _submodel_layer(Condition, model),
+        _submodel_layer(Fix, model),
+        _submodel_fixed_owners(model, nothing),
+        _submodel_removals(Condition, model, nothing),
+        _submodel_removals(Fix, model, nothing),
+        _submodel_binding_templates(model, nothing);
+        shapes=_local_binding_shape_store(model),
     )
 end

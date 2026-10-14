@@ -2,6 +2,8 @@
 
 Thread-safe tilde assignments now throw an `ArgumentError` if any container is replaced, including same-type immutable values: `(a = zero(T),)` → `Vector{T}(undef, n)`. Allocate mutable storage with `::Type{T}=Float64`; use `Vector{Union{Missing,Real}}` for imputation under AD. See [#1521](https://github.com/TuringLang/DynamicPPL.jl/pull/1521).
 
+  - Binding parts of plain local LHS variables now require explicit storage; child bindings remain pending until evaluation.
+
 Addresses in one `condition` or `fix` call must be disjoint after resolving them through storage, and a selection cannot repeat a position; use separate calls to overwrite bindings.
 
 Binding shapes are shared by observations and fixed values and survive removal; clear both layers at the root before resizing it with a whole value or template. Whole removal at an argument root restores the argument’s own shape, while element-wise removal retains masked storage and keeps the root occupied even when every position is masked.

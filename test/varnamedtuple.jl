@@ -304,6 +304,24 @@ end
         @test pa[2].data.y isa PartialArray
     end
 
+    @testset "mapping empty partial storage" begin
+        for dims in ((0,), (2,), (2, 2)), wrap in (identity, GrowableArray)
+            pa = PartialArray(wrap(Array{Union{}}(undef, dims)), wrap(fill(false, dims)))
+            vnt = VarNamedTuple(; x=pa)
+            for mapfn in (map_pairs!!, map_values!!)
+                mapped = mapfn(_ -> error("empty storage has no values"), copy(vnt))
+                @test isempty(mapped)
+                @test axes(mapped.data.x) == axes(pa)
+                @test mapped.data.x.mask == pa.mask
+            end
+            if prod(dims) > 0
+                @test_throws ArgumentError PartialArray(
+                    wrap(Array{Union{}}(undef, dims)), wrap(fill(true, dims))
+                )
+            end
+        end
+    end
+
     @testset "PartialArray element type narrowing" begin
         data = Vector{Any}(undef, 3)
         data[1:2] = [1, "two"]
@@ -321,6 +339,7 @@ end
                 init=Union{},
             )
             pa = PartialArray(values, mask)
+            expected === Union{} && (expected = eltype(pa))
             result = DynamicPPL.VarNamedTuples._concretise_eltype!!(pa)
             @test eltype(result) === expected
             @test result.mask === mask
