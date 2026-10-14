@@ -632,8 +632,7 @@ end
                 @test whole(Xoshiro(1)) == (3.0, bind === condition ? 3.0 : 2.0)
                 @test bind(whole, @varname(x[1]) => 4.0)(Xoshiro(1)) ==
                     (5.0, bind === condition ? 5.0 : 4.0)
-                @test bind(model, :x => [2.0], @varname(x[1]) => 4.0)(Xoshiro(1)) ==
-                    (5.0, bind === condition ? 5.0 : 4.0)
+                @test_throws r"x.*overlaps" bind(model, :x => [2.0], @varname(x[1]) => 4.0)
             end
             fields = decondition(placeholder_fields(absent))
             @test_throws message bind(fields, @varname(p.a) => 2.0)
@@ -1089,11 +1088,17 @@ end
         @test condition(wrapped_elements(), @varname(a.y[1]) => 1)() isa Vector{Float64}
         for bind in (condition, fix)
             bindings = (@varname(y) => Float32[1, 2], @varname(y[1]) => 3)
-            @test bind(y_model([1.0, 2.0]), bindings...)() isa Vector{Float32}
-            @test bind(y_model([1.0, 2.0]), bindings)() isa Vector{Float32}
+            @test_throws r"y.*overlaps" bind(y_model([1.0, 2.0]), bindings...)
+            @test_throws r"y.*overlaps" bind(y_model([1.0, 2.0]), bindings)
+            @test bind(bind(y_model([1.0, 2.0]), first(bindings)), last(bindings))(
+                Xoshiro(1)
+            ) isa Vector{Float32}
             inexact = (@varname(y) => [1.0, 2.0], @varname(y[1]) => big(2)^100 + 1)
-            @test_throws r"ArgumentError: .*represent" bind(y_model([1.0, 2.0]), inexact...)
-            @test_throws r"ArgumentError: .*represent" bind(y_model([1.0, 2.0]), inexact)
+            @test_throws r"y.*overlaps" bind(y_model([1.0, 2.0]), inexact...)
+            @test_throws r"y.*overlaps" bind(y_model([1.0, 2.0]), inexact)
+            @test_throws r"ArgumentError: .*represent" bind(
+                bind(y_model([1.0, 2.0]), first(inexact)), last(inexact)
+            )
         end
         for bind in (condition, fix)
             @test_throws InexactError bind(y_model([1, 2]), @varname(y[1]) => 1.5)
@@ -2736,18 +2741,20 @@ end
     @test unfix(prefixed, @varname(a.x))(Xoshiro(1)) == 2.0
 end
 
-@testset "binding input forms are ordered" begin
+@testset "binding input forms" begin
     @test_throws MethodError two_elements(zeros(2)) | Dict(@varname(x) => [2.0, 3.0])
     @test (two_elements(zeros(2)) | (; x=[2.0, 3.0]))(Xoshiro(1)) == [2.0, 3.0]
     for bind in (condition, fix)
         for invalid in (Dict(@varname(x) => [2.0, 3.0]), 1)
             @test_throws ArgumentError bind(two_elements([0.0, 0.0]), invalid)
         end
-        m = bind(
+        @test_throws r"x.*overlaps" bind(
             two_elements([0.0, 0.0]),
             ((; x=[1.0, 2.0]), @varname(x[1]) => 3.0, VarNamedTuple(; x=[4.0, 5.0])),
         )
-        @test m(Xoshiro(1)) == [4.0, 5.0]
+        m = bind(two_elements([0.0, 0.0]); x=[1.0, 2.0])
+        m = bind(m, @varname(x[1]) => 3.0)
+        @test bind(m, VarNamedTuple(; x=[4.0, 5.0]))(Xoshiro(1)) == [4.0, 5.0]
         @test bind(two_elements([0.0, 0.0]), :x => [2.0, 3.0])(Xoshiro(1)) == [2.0, 3.0]
     end
 end
@@ -2929,9 +2936,11 @@ end
         observed = conditioned(condition(local_z(); z=ones(3)))
         for input in (:z => ones(3), (z=ones(3),), sampled, observed)
             original = input === sampled ? sampled[@varname(z)] : ones(3)
-            @test op(local_z(), input, @varname(z[end]) => 2.0)(Xoshiro(1)) ==
+            @test_throws r"z.*overlaps" op(local_z(), input, @varname(z[end]) => 2.0)
+            @test_throws r"z.*overlaps" op(local_z(), input, @varname(z[:]) => fill(2.0, 3))
+            @test op(op(local_z(), input), @varname(z[end]) => 2.0)(Xoshiro(1)) ==
                 [original[1], original[2], 2.0]
-            @test op(local_z(), input, @varname(z[:]) => fill(2.0, 3))(Xoshiro(1)) ==
+            @test op(op(local_z(), input), @varname(z[:]) => fill(2.0, 3))(Xoshiro(1)) ==
                 fill(2.0, 3)
         end
         owned = op(local_z(); z=ones(3))
@@ -2939,23 +2948,25 @@ end
         @test_throws ArgumentError op(owned, @varname(z[4]) => 2.0)
         @test owned(Xoshiro(1)) == ones(3)
         offset = OffsetArray(ones(3), -1:1)
-        result = op(local_offset_storage(), :z => offset, @varname(z[end]) => 2.0)(
+        result = op(op(local_offset_storage(), :z => offset), @varname(z[end]) => 2.0)(
             Xoshiro(1)
         )
         @test axes(result) == axes(offset)
         @test result == OffsetArray([1.0, 1.0, 2.0], -1:1)
         nested = (a=[ones(2), ones(3)], b=ones(2))
-        result = op(local_nested_storage(), :z => nested, @varname(z.a[end][end]) => 2.0)(
+        result = op(
+            op(local_nested_storage(), :z => nested), @varname(z.a[end][end]) => 2.0
+        )(
             Xoshiro(1)
         )
         @test result == (a=[ones(2), [1.0, 1.0, 2.0]], b=ones(2))
         @test op(
-            local_storage_parent(), @varname(a.z) => ones(3), @varname(a.z[end]) => 2.0
+            op(local_storage_parent(), @varname(a.z) => ones(3)), @varname(a.z[end]) => 2.0
         )(
             Xoshiro(1)
         ) == [1.0, 1.0, 2.0]
         prefixed = DynamicPPL.prefix(local_z(), @varname(a.b))
-        @test op(prefixed, @varname(a.b.z) => ones(3), @varname(a.b.z[end]) => 2.0)(
+        @test op(op(prefixed, @varname(a.b.z) => ones(3)), @varname(a.b.z[end]) => 2.0)(
             Xoshiro(1)
         ) == [1.0, 1.0, 2.0]
     end
@@ -3000,7 +3011,8 @@ end
         for invalid in (@of(z = of(Array, 4)), @of(z = of(Array, Float32, 3)))
             @test_throws ArgumentError op(owned, pair, invalid)
         end
-        @test op(schema_local(), (z=ones(3),), pair, schema)(Xoshiro(1)) == [1.0, 1.0, 1.0]
+        @test_throws r"z.*overlaps" op(schema_local(), (z=ones(3),), pair, schema)
+        @test op(op(schema_local(), (z=ones(3),)), pair, schema)(Xoshiro(1)) == ones(3)
         @test op(schema_local(), @varname(z[end]) => 2.0, schema)(Xoshiro(1))[3] == 2.0
         @test isempty(conditioned(fix(schema_local(), pair, schema)))
         @test_throws ArgumentError schema_local() | (pair, schema)
@@ -3758,7 +3770,7 @@ end
         @varname(q) => [(x=ones(2),), (x=ones(3),)],
     )
         @test conditioned(condition(condition(q2, whole), q2end => 2.0))[q2x] == [1, 1, 2]
-        @test conditioned(condition(q2, whole, q2end => 2.0))[q2x] == [1, 1, 2]
+        @test_throws r"q.*overlaps" condition(q2, whole, q2end => 2.0)
     end
     observed = condition(
         prefix(local_array(), @varname(p.q[2])), @varname(p.q[2].x) => ones(3)
@@ -7282,16 +7294,13 @@ end
     end
     @test err isa ArgumentError
     err isa ArgumentError && (@test occursin("`x`", err.msg) &&
-        occursin("decondition", err.msg) &&
-        occursin("unfix", err.msg))
-    # Fix layer sibling: masked fixed storage blocks a whole condition.
+        occursin("decondition", err.msg) && occursin("unfix", err.msg))
     f = fix(decondition(masked_arg(zeros(2))); x=ones(3))
     for i in 1:3
         f = unfix(f, VarName{:x}(DynamicPPL.AbstractPPL.Index((i,), (;))))
     end
     @test length(f(Xoshiro(1))) == 3
     @test_throws ArgumentError condition(f; x=ones(4))
-    # Template over masked local storage is a check only.
     l = condition(masked_local(), @of(z = of(Array, 3)), @varname(z[1]) => 1.0)
     l = decondition(l, @varname(z[1]))
     @test_throws ArgumentError condition(l, @of(z = of(Array, 4)), @varname(z[1]) => 1.0)
@@ -7323,7 +7332,6 @@ end
     end
     f = unfix(fix(tl_model(2), @of(z = of(Array, 2)), @varname(z) => ones(2)))
     @test_throws ArgumentError condition(f; z=ones(3))
-    # Without a template, a whole value replaces the shape once both layers are empty.
     w = decondition(condition(tl_model(2); z=ones(2)))
     @test conditioned(condition(w; z=ones(3)))[@varname(z)] == ones(3)
 end
@@ -7350,21 +7358,117 @@ end
     @test_throws ArgumentError condition(whole, @varname(q.c) => 3.0)
     part = condition(m; q=(a=1.0,))
     @test_throws ArgumentError condition(part, @varname(q.b) => 2.0)
-    # A VarNamedTuple binds its leaves as written.
     leaves = condition(m, rand(Xoshiro(1), m))
     @test Set(keys(conditioned(leaves))) == Set([@varname(q.a), @varname(q.b)])
     @test_throws ArgumentError condition(decondition(leaves); q=(a=1.0, b=2.0))
     @test_throws ArgumentError condition(decondition(whole), @varname(q.c) => 3.0)
-    # A fixed value covers what it holds.
     @test Set(keys(rand(Xoshiro(1), fix(m; q=(a=1.0,))))) == Set([@varname(q.b)])
     d = condition(roots_dynamic(1); q=(a=ones(2),))
     @test_throws ArgumentError condition(d, @varname(q.b) => ones(2))
     @test Set(keys(rand(Xoshiro(1), fix(roots_dynamic(1); q=(a=ones(2),))))) ==
         Set([@varname(q.b[1])])
-    # At a submodel prefix, a NamedTuple splits into leaf roots.
     o = condition(roots_outer(); a=(; x=1.0))
     o = condition(o, @varname(a.y) => 2.0)
     @test isempty(rand(Xoshiro(1), o))
+end
+
+@model overlap_array(x) = (x[1] ~ Normal(); x)
+@model overlap_local() = (x = zeros(2, 2); x[1] ~ Normal(); x)
+@testset "overlapping bindings" begin
+    for bind in (condition, fix)
+        m = overlap_array(zeros(2, 2))
+        for inputs in (
+            (@varname(x[1]) => 3.0, @varname(x[1]) => 4.0),
+            (@varname(x[2]) => 3.0, @varname(x[2, 1]) => 4.0),
+            (@varname(x[[1, 1]]) => [3.0, 4.0],),
+            (@varname(x[[1, 1]]) => [3.0, 3.0],),
+            (@varname(x[1:2]) => [3.0, 4.0], @varname(x[2:3]) => [4.0, 5.0]),
+            ((; x=ones(2, 2)), @varname(x[1]) => 3.0),
+            (VarNamedTuple((; x=ones(2, 2))), (; x=ones(2, 2))),
+        )
+            @test_throws r"[Oo]verlap|more than once" bind(m, inputs...)
+        end
+        @test_throws r"[Oo]verlap|more than once" bind(
+            overlap_local(),
+            @of(x = of(Array, 2, 2)),
+            @varname(x[2]) => 3.0,
+            @varname(x[2, 1]) => 4.0,
+        )
+        @test bind(bind(m, @varname(x[2]) => 3.0), @varname(x[2, 1]) => 4.0)(Xoshiro(1))[2] ==
+            4.0
+        @test bind(m, @varname(x[1:2]) => [3.0, 4.0], @varname(x[3:4]) => [5.0, 6.0])(
+            Xoshiro(1)
+        ) == [3.0 5.0; 4.0 6.0]
+        @test bind(m, @varname(x[[1, 1]][1]) => 3.0)(Xoshiro(1))[1] == 3.0
+    end
+    @test_throws r"[Oo]verlap|more than once" overlap_array(zeros(2)) |
+        (@varname(x[1]) => 3.0, @varname(x[1]) => 4.0)
+end
+
+@model overlap_child(x=zeros(2, 2)) = (x[1] ~ Normal(); x)
+@model overlap_parent() = a ~ to_submodel(overlap_child())
+@testset "additional overlap selectors" begin
+    for bind in (condition, fix)
+        @test_throws r"overlap|more than once" bind(
+            overlap_child(),
+            @varname(x[[CartesianIndex(1, 1), CartesianIndex(1, 1)]]) => [1.0, 1.0],
+        )
+        @test_throws r"overlap|more than once" bind(
+            overlap_child(),
+            @varname(x[1:2]) => [1.0, 2.0],
+            @varname(x[[true, false, false, false]]) => [1.0],
+        )
+        @test_throws r"overlap|more than once" bind(
+            overlap_parent(), @varname(a.x[[1, 1]]) => [1.0, 1.0]
+        )
+        @test_throws r"overlap|more than once" bind(
+            overlap_child(), (x=ones(2, 2),); x=ones(2, 2)
+        )
+    end
+end
+
+@model overlap_group_child() = (x ~ Normal(); y ~ Normal(); (x, y))
+@model overlap_group_parent() = a ~ to_submodel(overlap_group_child())
+@model overlap_record(q) = (q.a ~ Normal(); q)
+@testset "overlap storage and grouping" begin
+    for bind in (condition, fix)
+        @test bind(overlap_group_parent(), @varname(a) => (x=1.0,), @varname(a.y) => 2.0)(
+            Xoshiro(1)
+        ) == (1.0, 2.0)
+        @test_throws r"overlap|more than once" bind(
+            overlap_group_parent(), @varname(a) => (x=1.0,), @varname(a.x) => 2.0
+        )
+        @test_throws r"overlap|more than once" bind(
+            overlap_record((a=0.0, b=0.0)),
+            @varname(q) => (a=1.0, b=2.0),
+            @varname(q.a) => 3.0,
+        )
+    end
+end
+@model overlap_components(x) = (x.a[1] ~ Normal(); x)
+@testset "component property and index aliases" begin
+    for bind in (condition, fix)
+        m = overlap_components(ComponentVector(; a=[0.0, 0.0], b=0.0))
+        @test_throws r"overlap|more than once" bind(
+            m, @varname(x.a[1]) => 1.0, @varname(x[1]) => 2.0
+        )
+        @test_throws r"overlap|more than once" bind(
+            m, @varname(x.a) => [1.0, 2.0], @varname(x[2]) => 3.0
+        )
+        @test_throws r"overlap|more than once" bind(m, @varname(x.a[[1, 1]]) => [1.0, 1.0])
+    end
+end
+
+@testset "overlap validation preserves bounds errors" begin
+    for bind in (condition, fix)
+        m = overlap_array(zeros(2, 2))
+        @test_throws r"Cannot bind `x\[5\]`.*outside" bind(
+            m, @varname(x[1]) => 1.0, @varname(x[5]) => 2.0
+        )
+        @test_throws r"Cannot bind `x\[1:2\]\[3\]`.*outside" bind(
+            m, @varname(x[1:2][3]) => 2.0
+        )
+    end
 end
 
 end

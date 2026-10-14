@@ -298,7 +298,8 @@ observation, and argument-supplied observation follow in that order. Without a b
 variable is latent. A parent's argument-supplied observations never reach a child.
 
 Observations form the lower layer, with fixed bindings above them. Within a layer, later
-bindings replace earlier ones where they overlap.
+calls replace earlier bindings where they overlap. Addresses within one call must be disjoint
+after resolution through storage, and a selection cannot repeat a position.
 
 ### [Rule table](@id binding-rule-table)
 

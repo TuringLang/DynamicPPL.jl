@@ -2247,7 +2247,7 @@ end
                     previous = _model_argument_binding(
                         _model_values(model.values), AbstractPPL.varname_to_optic(vn)
                     )
-                    argument = _argument_binding_template(model, vn, previous, argument)
+                    argument = prepare_model_argument(previous, argument)
                     if argument isa Union{Nothing,Missing}
                         _has_complete_model_data(binding) || throw(
                             ArgumentError(
@@ -2493,8 +2493,9 @@ Bindings are stored on this model and reach LHS variables at or below their addr
 including child addresses such as `a.x`. Outermost explicit bindings win. A binding
 at a name shared with an unprefixed child binds both models. `|` follows the same rule.
 
-Fixed bindings shadow observations. Within each layer, later bindings replace earlier
-ones where they overlap. Subvariables of one LHS variable must have the same role.
+Fixed bindings shadow observations. Later calls replace earlier bindings in the same layer.
+Within one call, addresses must be disjoint after resolution and cannot select a position twice.
+Subvariables of one LHS variable must have the same role.
 A local LHS variable reads its binding at its tilde. For an argument LHS variable,
 every binding replaces the argument before the body runs; observations read its current
 value in the body, while fixed LHS variables reset to their bound value at the tilde.
@@ -2926,8 +2927,95 @@ function _prepare_namespace_input(::Type{R}, model, input, storage) where {R}
     end
     return prepared
 end
+_scalar_binding_optic(::AbstractPPL.Iden) = true
+_scalar_binding_optic(o::AbstractPPL.Property) = _scalar_binding_optic(o.child)
+function _scalar_binding_optic(o::AbstractPPL.Index)
+    return all(i -> i isa Integer, o.ix) && _scalar_binding_optic(o.child)
+end
+_binding_overlap_state(::Tuple{<:Union{NamedTuple,VarNamedTuple}}) = nothing
+_binding_overlap_state(inputs) = (Set{VarName}(), Set{VarName}(), Dict{VarName,Any}())
+function _binding_overlap_state(inputs::Tuple{<:Pair{<:VarName}})
+    return if _scalar_binding_optic(AbstractPPL.getoptic(first(only(inputs))))
+        nothing
+    else
+        _binding_overlap_state(nothing)
+    end
+end
+@noinline function _binding_overlap_error(vn)
+    throw(
+        ArgumentError(
+            "Binding address `$vn` overlaps another address or selects a position more than once; use disjoint addresses, or separate calls to overwrite values.",
+        ),
+    )
+end
+_check_binding_overlap!(::Nothing, model, input) = nothing
+function _check_binding_overlap!(seen, model, input)
+    names = if input isa Pair{<:VarName}
+        vn, value = input
+        if value isa NamedTuple &&
+            (_is_namespace_storage(model, vn) || vn == _model_prefix(model))
+            grouped = _shape_namespaces(
+                model, _tag_model_values(Condition, VarNamedTuple(value)), vn
+            )
+            (AbstractPPL.prefix(name, vn) for name in keys(grouped))
+        else
+            (vn,)
+        end
+    else
+        values = _make_condfix_values(model, input)
+        keys(_shape_namespaces(model, _tag_model_values(Condition, values)))
+    end
+    leaves, parents, cache = seen
+    for original in names
+        vn = _schema_binding_address(model, original)
+        root, optic = VarName{AbstractPPL.getsym(vn)}(), AbstractPPL.getoptic(vn)
+        roots = _binding_shape_store(model.values).roots
+        storage = get(roots.data, AbstractPPL.getsym(vn), NoTemplate())
+        base = _base_argument_storage(model, vn)
+        if base !== nothing
+            storage, root = base
+            optic = AbstractPPL._unprefix_optic(optic, AbstractPPL.getoptic(root))
+        end
+        selections = _binding_selections(storage, optic, root, cache)
+        for name in selections
+            name in parents && _binding_overlap_error(original)
+            prefix, optic = VarName{AbstractPPL.getsym(name)}(), AbstractPPL.getoptic(name)
+            while true
+                prefix in leaves && _binding_overlap_error(original)
+                optic isa AbstractPPL.Iden && break
+                push!(parents, prefix)
+                prefix = AbstractPPL.append_optic(prefix, AbstractPPL.ohead(optic))
+                optic = optic.child
+            end
+            push!(leaves, name)
+        end
+    end
+    return nothing
+end
+
+_pending_selection(index::Union{Integer,CartesianIndex}) = index
+_pending_selection(index::AbstractArray{Bool}) = findall(index)
+_pending_selection(index::AbstractArray{<:Union{Integer,CartesianIndex}}) = index
+_pending_selection(index) = nothing
+function _binding_selections(::NoTemplate, optic::AbstractPPL.Index, vn, cache)
+    selectors = map(_pending_selection, optic.ix)
+    any(isnothing, selectors) && return (AbstractPPL.append_optic(vn, optic),)
+    iterators = map(i -> i isa Union{Integer,CartesianIndex} ? fill(i) : i, selectors)
+    selected = map(Iterators.product(iterators...)) do position
+        CartesianIndex(
+            Tuple(Iterators.flatten(map(i -> i isa Integer ? (i,) : Tuple(i), position))),
+        )
+    end
+    all(i -> i isa Union{Integer,CartesianIndex}, selectors) && (selected = selected[])
+    return _binding_selection_names(
+        NoTemplate(), selected, optic.child, vn, cache, AbstractPPL.append_optic(vn, optic)
+    )
+end
+
 function _conditionfix_inputs(model, values, ::Type{R}) where {R}
+    seen = _binding_overlap_state(values)
     bound = foldl(values; init=model) do m, value
+        _check_binding_overlap!(seen, m, value)
         return _conditionfix_input(m, value, R)
     end
     _check_shared_latent_storage(bound)
@@ -2982,7 +3070,9 @@ function _conditionfix(model::Model, inputs::Tuple, ::Type{R}) where {R}
         model = _bind(model, t.name, t.storage; namespace=true)
     end
     storage = _namespace_binding_storage(model)
+    seen = _binding_overlap_state(values)
     for value in values
+        _check_binding_overlap!(seen, model, value)
         _check_pending_index_styles(model, value)
         prepared = _prepare_namespace_input(R, model, value, storage)
         model = _conditionfix_schema_input(model, prepared, schema, R)
@@ -3411,7 +3501,7 @@ end
                 previous = _model_argument_binding(
                     values, AbstractPPL.varname_to_optic(root)
                 )
-                template = _argument_binding_template(model, root, previous, argument)
+                template = prepare_model_argument(previous, argument)
                 _check_partial_binding(
                     ModelValue{Condition}(template),
                     AbstractPPL._unprefix_optic(
@@ -4993,8 +5083,24 @@ function _resolved_removal_names(model, vn)
         ),
     )
 end
-_binding_selections(storage, ::AbstractPPL.Iden, vn) = (vn,)
-function _binding_selections(storage, optic::AbstractPPL.Property{S}, vn) where {S}
+_binding_selections(storage, optic, vn) = _binding_selections(storage, optic, vn, nothing)
+_binding_selections(storage, ::AbstractPPL.Iden, vn, cache) = (vn,)
+function _binding_selections(storage, optic::AbstractPPL.Property{S}, vn, cache) where {S}
+    storage = storage isa BindingShape ? storage.storage : storage
+    if cache !== nothing && _partial_binding_selector(storage, optic)
+        indices = get!(cache, vn) do
+            data = copyto!(similar(storage, Int), LinearIndices(storage))
+            VarNamedTuples.PartialArray(data, fill!(similar(storage, Bool), true))
+        end
+        _check_binding_template_bounds(storage, optic, AbstractPPL.append_optic(vn, optic))
+        selected = VarNamedTuples._getindex_optic(indices, optic, vn)
+        positions = selected isa Integer ? (selected,) : selected
+        return (
+            AbstractPPL.append_optic(
+                vn, AbstractPPL.Index(Tuple(CartesianIndices(axes(storage))[index]), (;))
+            ) for index in positions
+        )
+    end
     child = if storage isa VarNamedTuple
         get(storage.data, S, NoTemplate())
     elseif hasproperty(storage, S)
@@ -5003,27 +5109,46 @@ function _binding_selections(storage, optic::AbstractPPL.Property{S}, vn) where 
         NoTemplate()
     end
     return _binding_selections(
-        child, optic.child, AbstractPPL.append_optic(vn, AbstractPPL.Property{S}())
+        child, optic.child, AbstractPPL.append_optic(vn, AbstractPPL.Property{S}()), cache
     )
 end
-function _binding_selections(storage, optic::AbstractPPL.Index, vn)
+function _binding_selections(storage, optic::AbstractPPL.Index, vn, cache)
+    storage = storage isa BindingShape ? storage.storage : storage
+    storage === nothing && return _binding_selections(NoTemplate(), optic, vn, cache)
     storage isa AbstractArray || return (AbstractPPL.append_optic(vn, optic),)
     storage isa VarNamedTuples.GrowableArray &&
         return (AbstractPPL.append_optic(vn, optic),)
+    address = AbstractPPL.append_optic(vn, optic)
+    selected = _binding_select(CartesianIndices(axes(storage)), optic, address)
+    return _binding_selection_names(storage, selected, optic.child, vn, cache, address)
+end
+function _binding_select(storage, optic, vn)
     optic = AbstractPPL.concretize_top_level(optic, storage)
-    selected = getindex(CartesianIndices(axes(storage)), optic.ix...; optic.kw...)
-    child = optic.child
+    checkbounds(Bool, storage, optic.ix...; optic.kw...) ||
+        _outside_storage_error(optic, vn, "bind")
+    return getindex(storage, optic.ix...; optic.kw...)
+end
+function _binding_selection_names(storage, selected, child, vn, cache, address)
     while selected isa AbstractArray && child isa AbstractPPL.Index
-        child = AbstractPPL.concretize_top_level(child, selected)
-        selected = getindex(selected, child.ix...; child.kw...)
+        selected = _binding_select(selected, child, address)
         child = child.child
     end
     positions = selected isa CartesianIndex ? (selected,) : selected
-    return mapreduce(vcat, positions; init=VarName[]) do index
-        name = AbstractPPL.append_optic(vn, AbstractPPL.Index(Tuple(index), (;)))
-        value = isassigned(storage, index) ? storage[index] : NoTemplate()
-        collect(_binding_selections(value, child, name))
+    names = VarName[]
+    for index in positions
+        step = AbstractPPL.Index(Tuple(index), (;))
+        name = AbstractPPL.append_optic(vn, step)
+        value =
+            if storage isa AbstractArray &&
+                isassigned(storage, index) &&
+                !(storage isa VarNamedTuples.PartialArray && !storage.mask[index])
+                storage[index]
+            else
+                NoTemplate()
+            end
+        append!(names, _binding_selections(value, child, name, cache))
     end
+    return names
 end
 
 _binding_shape_store(values) = ModelBindingShapes()
@@ -5071,9 +5196,6 @@ function _local_binding_shape_store(model)
     return ModelBindingShapes(
         _submodel_values(shapes.roots, prefix), _submodel_values(shapes.namespaces, prefix)
     )
-end
-function _argument_binding_template(model, vn, previous, argument)
-    return prepare_model_argument(previous, argument)
 end
 @generated function _release_argument_shapes(model::Model)
     names = (
@@ -5324,7 +5446,7 @@ function _binding_shape_template(model, vn, values=nothing)
     )
     return shape
 end
-@generated function _base_argument_shape(model::Model, vn)
+@generated function _base_argument_storage(model::Model, vn)
     names = (
         fieldnames(fieldtype(model, :args))..., fieldnames(fieldtype(model, :defaults))...
     )
@@ -5336,20 +5458,24 @@ end
                 _model_argument_binding(
                     _binding_shape_store(model.values).roots,
                     AbstractPPL.varname_to_optic(root),
-                ) === nothing || return NoTemplate()
+                ) === nothing || return nothing
                 value = merge(model.args, model.defaults)[$(QuoteNode(stored_name))]
-                return VarNamedTuples.make_leaf(
-                    _binding_storage(value),
-                    AbstractPPL.getoptic(root),
-                    _binding_template(model, VarNamedTuple(), root),
-                )
+                return _binding_storage(value), root
             end
         end
     end
     return quote
         $(checks...)
-        NoTemplate()
+        nothing
     end
+end
+function _base_argument_shape(model, vn)
+    base = _base_argument_storage(model, vn)
+    base === nothing && return NoTemplate()
+    value, root = base
+    return VarNamedTuples.make_leaf(
+        value, AbstractPPL.getoptic(root), _binding_template(model, VarNamedTuple(), root)
+    )
 end
 @generated function _prepare_base_argument_shapes(model::Model, values)
     names = (
@@ -5457,11 +5583,20 @@ function _resolve_binding_optic(
     return AbstractPPL.Index(optic.ix, optic.kw, _resolve_binding_optic(child, optic.child))
 end
 function _binding_selections(
-    storage::VarNamedTuples.PartialArray, optic::AbstractPPL.Index, vn
+    storage::VarNamedTuples.PartialArray, optic::AbstractPPL.Index, vn, cache
 )
-    all(i -> i isa Integer, optic.ix) || return (AbstractPPL.append_optic(vn, optic),)
+    storage.data isa VarNamedTuples.GrowableArray || return invoke(
+        _binding_selections,
+        Tuple{Any,AbstractPPL.Index,Any,Any},
+        storage,
+        optic,
+        vn,
+        cache,
+    )
+    all(i -> i isa Integer, optic.ix) ||
+        return _binding_selections(NoTemplate(), optic, vn, cache)
     child = _model_argument_binding(storage, AbstractPPL.ohead(optic))
     return _binding_selections(
-        child, optic.child, AbstractPPL.append_optic(vn, AbstractPPL.ohead(optic))
+        child, optic.child, AbstractPPL.append_optic(vn, AbstractPPL.ohead(optic)), cache
     )
 end
