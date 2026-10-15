@@ -120,7 +120,8 @@ record a [`VectorValueAccumulator`](@ref) and pass `get_vector_values(recorded)`
 
 This separation specifies data flow, not purity: evaluation can advance the RNG, and
 ordinary Julia mutations in a model body still take effect.
-For density evaluation, latent LHS variables get their values from supplied parameters rather than sampling.
+For density evaluation, latent LHS variables get their values from supplied parameters rather than sampling;
+see [Randomness in density evaluation](@ref ldf-rng).
 
 ## Accumulators
 
