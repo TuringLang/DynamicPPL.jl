@@ -389,6 +389,11 @@ end
         a ~ to_submodel(condition(copy_child(make_array(m)), @varname(y[1]) => 2m))
         return z ~ Normal(a)
     end
+    @model function runtime_slice()
+        m ~ Normal()
+        a ~ to_submodel(condition(copy_child([m, m]), @varname(y[1:2]) => [2m, 3m]))
+        return z ~ Normal(a)
+    end
     @model function nested_copy_child(x)
         y ~ Normal(x.b[1])
         x.a[1] ~ Normal()
@@ -427,6 +432,14 @@ end
                   logpdf(Normal(x[1] + x[2]), 0)
             @test gradient ≈ [-2x[1] - x[2], -x[1] - 2x[2]]
         end
+        sliced = LogDensityFunction(runtime_slice(); adtype)
+        density, gradient = logdensity_and_gradient(sliced, [0.3, 0.5])
+        @test density ≈
+            logpdf(Normal(), 0.3) +
+              logpdf(Normal(), 0.6) +
+              logpdf(Normal(), 0.9) +
+              logpdf(Normal(1.5), 0.5)
+        @test gradient ≈ [-9.2, 1.0]
         for make_array in (m -> [m, m], m -> Real[m, m])
             ldf = LogDensityFunction(runtime_copy(make_array); adtype)
             density, gradient = logdensity_and_gradient(ldf, [0.3, 0.5])

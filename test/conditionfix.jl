@@ -1624,7 +1624,13 @@ end
                 @testset "$bind $name" begin
                     complete = bind(unbound, whole)
                     root = first(keys(whole)) === :x ? @varname(x) : @varname(a)
-                    @test select(complete)[root] === first(whole)
+                    if name == "submodel namespace"
+                        @test select(complete)[root] isa VarNamedTuple
+                        @test select(complete)[removed] === first(whole).x
+                        @test select(complete)[retained] === first(whole).y
+                    else
+                        @test select(complete)[root] === first(whole)
+                    end
                     expected = DynamicPPL.templated_setindex!!(
                         VarNamedTuple(), 2.0, retained, template
                     )
@@ -2864,9 +2870,9 @@ end
             shape_nested([SVector(0.0, 0.0)]), @varname(x[1]) => ones(3)
         )
         for vn in (@varname(x[1:2]), @varname(x[:]), @varname(x[[true, true]]))
-            @test_throws DimensionMismatch bind(
-                shape_nested([[0.0], [0.0]]), vn => [[1.0], [2.0], [3.0]]
-            )
+            @test_throws ArgumentError(
+                "Cannot bind `$vn`: value size (3,) does not match selection size (2,); supply a value matching the selected extent.",
+            ) bind(shape_nested([[0.0], [0.0]]), vn => [[1.0], [2.0], [3.0]])
         end
     end
 end
@@ -2902,8 +2908,12 @@ end
         end
         function preparation_allocations(model)
             pair = @varname(y[1]) => 0.3
-            DynamicPPL._make_condfix_values(model, pair)
-            return @allocated DynamicPPL._make_condfix_values(model, pair)
+            DynamicPPL._prepare_binding_batch(
+                model, (pair,), DynamicPPL.Condition, NamedTuple()
+            )
+            return @allocated DynamicPPL._prepare_binding_batch(
+                model, (pair,), DynamicPPL.Condition, NamedTuple()
+            )
         end
         small = condition(
             storage_locality([0.0]), @of(z = of(Array, 1000)), @varname(z[1]) => 0.0
@@ -7577,6 +7587,135 @@ end
         @test_throws r"x\[1\].*without storage.*@of.*whole value.*VarNamedTuple" bind(
             no_storage_parts(), @varname(x[1]) => 1.0
         )
+    end
+end
+
+@testset "binding batches resolve storage before merging" begin
+    @model child() = (x ~ Normal(); y ~ Normal(); (x, y))
+    @model parent() = (a ~ to_submodel(child()); a)
+    @model local_parts() = (z = zeros(2); z[1] ~ Normal(); z)
+    @model local_fields() = (p = (a=zeros(2),); p.a[1] ~ Normal(); p.a[2] ~ Normal(); p)
+    @model scalar_child() = (x ~ Normal(); x)
+    @model prefix_parent(child) = (a ~ to_submodel(child); a)
+    @model function children(n)
+        p = zeros(n, 1)
+        for i in 1:n
+            p[i] ~ to_submodel(scalar_child())
+        end
+        return p
+    end
+    for (bind, remove, listed) in
+        ((condition, decondition, conditioned), (fix, unfix, fixed))
+        @testset "$bind" begin
+            leaf = @varname(a.x) => 1.0
+            for namespace in ((; a=(; y=2.0)), @varname(a) => (; y=2.0))
+                for inputs in ((leaf, namespace), (namespace, leaf))
+                    together = bind(parent(), inputs...)
+                    separate = bind(bind(parent(), first(inputs)), last(inputs))
+                    @test together(Xoshiro(1)) == separate(Xoshiro(1)) == (1.0, 2.0)
+                    @test keys(listed(together)) == keys(listed(separate))
+                    @test Set(keys(listed(together))) == Set((@varname(a.x), @varname(a.y)))
+                end
+            end
+            owner = bind(parent(); a=(; x=1.0, y=2.0))
+            bind === fix && @test Set(DynamicPPL._fixed_owners(owner.values)) ==
+                Set((@varname(a.x), @varname(a.y)))
+            @test_throws r"a.x.*overlaps.*disjoint" bind(parent(), leaf, (; a=(; x=2.0)))
+
+            deep = prefix(scalar_child(), @varname(p[1].q.r); template=zeros(2))
+            @test bind(deep, @varname(p[1].q.r.x) => 3.0)(Xoshiro(1)) == 3.0
+            shallow = prefix(scalar_child(), @varname(p[2].q); template=zeros(3))
+            bound = bind(shallow, @varname(p[2].q.x) => 3.0)
+            @test bound(Xoshiro(1)) == 3.0
+            @test isempty(listed(remove(bound, @varname(p[2].q.x))))
+            for spelling in (@varname(p[1]), @varname(p[1, 1]))
+                model = prefix(scalar_child(), spelling; template=zeros(2, 2))
+                for address in (@varname(p[1].x), @varname(p[1, 1].x))
+                    bound = bind(model, address => 3.0)
+                    @test bound(Xoshiro(1)) == 3.0
+                    @test isempty(listed(remove(bound, @varname(p[1].x))))
+                    @test isempty(listed(remove(bound, @varname(p[1, 1].x))))
+                end
+            end
+            @test_throws r"outside this model's prefix" bind(
+                prefix(scalar_child(), @varname(p[1])), @varname(p[1, 1].x) => 3.0
+            )
+            prefixed_child = prefix(scalar_child(), @varname(p[1]); template=zeros(2, 2))
+            @test bind(prefix_parent(prefixed_child), @varname(a.p[1].x) => 3.0)(
+                Xoshiro(1)
+            ) == 3.0
+
+            growable = with_logger(NullLogger()) do
+                DynamicPPL.setindex!!(VarNamedTuple(), 1.0, @varname(z[1]))
+            end
+            for input in (growable, growable.data)
+                @test_throws r"z\[1\].*without storage.*VarNamedTuple" bind(
+                    local_parts(), input
+                )
+            end
+            concrete = DynamicPPL.templated_setindex!!(
+                VarNamedTuple(), 1.0, @varname(z[1]), zeros(2)
+            )
+            @test bind(local_parts(), concrete)(Xoshiro(1))[1] == 1.0
+            for (model, first_address, second_address, template) in (
+                (local_parts(), @varname(z[1]), @varname(z[2]), zeros(Float32, 2)),
+                (
+                    local_fields(),
+                    @varname(p.a[1]),
+                    @varname(p.a[2]),
+                    (; a=zeros(Float32, 2)),
+                ),
+            )
+                narrow = DynamicPPL.templated_setindex!!(
+                    VarNamedTuple(), 1.0f0, first_address, template
+                )
+                @test listed(bind(model, narrow, second_address => 0.5))[second_address] ===
+                    0.5f0
+                @test_throws ArgumentError(
+                    "Cannot exactly represent partial binding at `$second_address` in storage element type Float32",
+                ) bind(model, narrow, second_address => 0.1)
+            end
+            @test listed(bind(local_parts(), VarNamedTuple((; z=[1.0, 2.0]))))[@varname(
+                z
+            )] == [1.0, 2.0]
+
+            aliases = (@varname(p[2, 1].x) => 3.0, @varname(p[2].x) => 4.0)
+            for inputs in (aliases, reverse(aliases))
+                @test_throws r"p\[2.*overlaps.*disjoint" bind(
+                    children(4), @of(p = of(Array, 4, 1)), inputs...
+                )
+                templated = bind(
+                    children(4), @of(p = of(Array, 4, 1)), @varname(p[1].x) => 1.0
+                )
+                @test_throws r"p\[2.*overlaps.*disjoint" bind(templated, inputs...)
+            end
+            @test_throws r"x\[1:2\].*selection size.*matching.*extent" bind(
+                array_model(zeros(3)), @varname(x[1:2]) => [1.0, 2.0, 3.0]
+            )
+            @test listed(bind(array_model(zeros(3)), @varname(x[1:2]) => [1.0, 2.0]))[@varname(
+                x[2]
+            )] == 2.0
+        end
+    end
+    runtime_slice(t) = sum(
+        condition(array_model(zeros(typeof(t), 3)), @varname(x[1:2]) => [t, t])(Xoshiro(1)),
+    )
+    @test ForwardDiff.derivative(runtime_slice, 2.0) == 2.0
+end
+
+@testset "end through a slice requires assigned child storage" begin
+    for (bind, remove, listed) in
+        ((condition, decondition, conditioned), (fix, unfix, fixed))
+        storage = Vector{Vector{Float64}}(undef, 3)
+        storage[1], storage[2] = ones(3), ones(5)
+        bound = bind(nested_array_model(storage); x=storage)
+        @test_throws r"child storage is unassigned" bind(
+            bound, @varname(x[2:3][2][end]) => 2.0
+        )
+        @test_throws r"child storage is unassigned" remove(bound, @varname(x[2:3][2][end]))
+        assigned = bind(bound, @varname(x[1:2][2][end]) => 2.0)
+        @test listed(assigned)[@varname(x[2][5])] == 2.0
+        @test !haskey(listed(remove(assigned, @varname(x[1:2][2][end]))), @varname(x[2][5]))
     end
 end
 

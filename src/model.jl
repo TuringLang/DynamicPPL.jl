@@ -449,16 +449,32 @@ function _concretize_prefix(vn::VarName{S}, template; kwargs...) where {S}
 end
 _concretize_prefix(optic::AbstractPPL.Iden, template; kwargs...) = optic
 function _concretize_prefix(
-    optic::AbstractPPL.Property{S}, template; depth=typemax(Int), prefix=Val(false)
+    optic::AbstractPPL.Property{S},
+    template;
+    depth=typemax(Int),
+    prefix=Val(false),
+    canonical=false,
 ) where {S}
     (prefix isa Val{false} && depth == 0) && return optic
     optic.child isa AbstractPPL.Iden && return optic
-    child_template = VarNamedTuples.SharedGetProperty{S}()(template)
-    child = _concretize_prefix(optic.child, child_template; depth=depth - 1, prefix)
+    child_template =
+        if hasproperty(template, S) ||
+            template isa Union{VarNamedTuple,NoTemplate,VarNamedTuples.SkipTemplate}
+            VarNamedTuples.SharedGetProperty{S}()(template)
+        else
+            NoTemplate()
+        end
+    child = _concretize_prefix(
+        optic.child, child_template; depth=depth - 1, prefix, canonical
+    )
     return AbstractPPL.Property{S}(child)
 end
 function _concretize_prefix(
-    optic::AbstractPPL.Index, template; depth=typemax(Int), prefix=Val(false)
+    optic::AbstractPPL.Index,
+    template;
+    depth=typemax(Int),
+    prefix=Val(false),
+    canonical=false,
 )
     (prefix isa Val{false} && depth == 0) && return optic
     if any(i -> i isa AbstractPPL.DynamicIndex, optic.ix)
@@ -480,10 +496,22 @@ function _concretize_prefix(
         )
         optic = AbstractPPL.Index(indices, optic.kw, optic.child)
     end
+    array = VarNamedTuples.template_array(template)
+    if canonical &&
+        array isa AbstractArray &&
+        !(array isa VarNamedTuples.GrowableArray) &&
+        isempty(optic.kw) &&
+        all(i -> i isa Integer, optic.ix) &&
+        checkbounds(Bool, array, optic.ix...)
+        indices = Tuple(CartesianIndices(axes(array))[optic.ix...])
+        optic = AbstractPPL.Index(indices, optic.kw, optic.child)
+    end
     (optic.child isa AbstractPPL.Iden || prefix isa Val{false} && depth == 1) &&
         return optic
     child_template = VarNamedTuples.maybe_index_template(template, optic)
-    child = _concretize_prefix(optic.child, child_template; depth=depth - 1, prefix)
+    child = _concretize_prefix(
+        optic.child, child_template; depth=depth - 1, prefix, canonical
+    )
     return AbstractPPL.Index(optic.ix, optic.kw, child)
 end
 
@@ -550,7 +578,7 @@ VarNamedTuple
 function prefix(model::Model, x::VarName; template=NoTemplate())
     AbstractPPL.is_dynamic(AbstractPPL.getoptic(x)) &&
         (template = VarNamedTuples.materialize_template(template))
-    x = _resolve_binding(x, template; prefix=Val(true)).name
+    x = _concretize_prefix(x, template; prefix=Val(true))
     template = VarNamedTuples.materialize_template(template)
     values = if model.values isa LocalModelValues
         model.values

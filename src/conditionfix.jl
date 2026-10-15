@@ -2844,7 +2844,7 @@ function _prepare_inherited_templates(model, values, templates)
         prepared = if isempty(schema)
             selected
         else
-            _prepare_schema_input(role, model, selected, schema; inherited=true)
+            _prepare_schema_input(role, model, selected, schema)
         end
         result = _merge_model_values(result, _tag_model_values(role, prepared))
     end
@@ -2909,23 +2909,137 @@ function _check_namespace_index_counts(value, optic::AbstractPPL.AbstractOptic, 
     return nothing
 end
 _check_namespace_index_counts(value, ::AbstractPPL.Iden, vn, model) = nothing
-function _prepare_namespace_input(::Type{R}, model, input, storage) where {R}
-    isempty(storage) && return input
-    layer_model = _binding_layer_model(R, model)
-    entries = if input isa Pair{<:VarName}
-        (input,)
-    else
-        pairs(_make_condfix_values(layer_model, input))
-    end
-    prepared = VarNamedTuple()
-    for (vn, value) in entries
-        resolved = _resolve_binding(
-            layer_model, _model_values(layer_model.values), vn; namespaces=storage
+function _binding_entries(model, pair::Pair{<:VarName}, supplied=NoTemplate())
+    vn, value = pair
+    if value isa VarNamedTuples.PartialArray &&
+        AbstractPPL.getoptic(vn) isa AbstractPPL.Iden
+        return _binding_entries(
+            model, VarNamedTuple(NamedTuple{(AbstractPPL.getsym(vn),)}((value,)))
         )
-        prepared = templated_setindex!!(prepared, value, resolved.name, resolved.template)
     end
-    return prepared
+    if value isa NamedTuple &&
+        (_is_namespace_storage(model, vn) || vn == _model_prefix(model))
+        return _binding_entries(model, value, vn, supplied)
+    end
+    return ((vn, value, supplied),)
 end
+@generated function _binding_entries(
+    model, input::NamedTuple{names}, prefix=nothing, supplied=NoTemplate()
+) where {names}
+    return foldl(names; init=:(())) do entries, name
+        :(_merge_binding_entries(
+            $entries,
+            _binding_entries(
+                model, maybe_prefix($(VarName{name}()), prefix) => input.$name, supplied
+            ),
+        ))
+    end
+end
+_merge_binding_entries(a::Tuple, b::Tuple) = (a..., b...)
+_merge_binding_entries(a, b) = vcat(collect(a), collect(b))
+function _binding_entries(model, input::VarNamedTuple)
+    return _binding_entries(model, input, nothing, NoTemplate())
+end
+function _binding_entries(
+    model, input::Union{VarNamedTuple,VarNamedTuples.PartialArray}, prefix, supplied
+)
+    input isa VarNamedTuples.PartialArray &&
+        isempty(input) &&
+        return ((prefix, copy(input), supplied),)
+    return _fold_model_indices(Tuple[], input) do entries, value, optic, _
+        vn = if prefix === nothing
+            AbstractPPL.optic_to_varname(optic)
+        else
+            AbstractPPL.append_optic(prefix, optic)
+        end
+        storage = prefix === nothing ? value : supplied
+        if prefix === nothing &&
+            value isa VarNamedTuples.PartialArray &&
+            !(value.data isa VarNamedTuples.GrowableArray) &&
+            !_is_namespace_storage(model, vn)
+            storage = _shape_storage(value)
+        end
+        children = if value isa Union{VarNamedTuple,VarNamedTuples.PartialArray}
+            _binding_entries(model, value, vn, storage)
+        else
+            _binding_entries(model, vn => value, storage)
+        end
+        append!(entries, children)
+    end
+end
+function _binding_entries(model, input)
+    throw(
+        ArgumentError(
+            "Bindings require a VarNamedTuple, NamedTuple, or VarName pairs (or an ordered tuple of these); use keywords for whole values or @varname(x) => value for an address. AbstractDict inputs are not supported.",
+        ),
+    )
+end
+
+function _prepare_binding_batch(model, inputs, ::Type{R}, schema) where {R}
+    values = _model_values(model.values)
+    storage = _namespace_binding_storage(model)
+    entries = map(input -> _binding_entries(model, input), inputs)
+    raw_seen = _binding_overlap_state(inputs)
+    # Whole/part overlap must fail before missing storage can hide the conflict.
+    for batch in entries, (vn, value, _) in batch
+        _check_namespace_index_counts(values, AbstractPPL.varname_to_optic(vn), vn, model)
+        value isa VarNamedTuples.PartialArray && isempty(value) && continue
+        _check_binding_overlap!(raw_seen, model, vn, NoTemplate())
+    end
+    supplied_values = foldl(entries; init=VarNamedTuple()) do sources, batch
+        foldl(batch; init=sources) do sources, (vn, _, supplied)
+            name = AbstractPPL.getsym(vn)
+            if supplied isa NoTemplate || haskey(sources.data, name)
+                sources
+            else
+                VarNamedTuple(merge(sources.data, NamedTuple{(name,)}((supplied,))))
+            end
+        end
+    end
+    layer_model = _binding_layer_model(R, model)
+    layer = _model_values(layer_model.values)
+    seen = _binding_overlap_state(inputs)
+    resolved = map(entries) do batch
+        map(batch) do (vn, value, supplied)
+            supplied = get(supplied_values.data, AbstractPPL.getsym(vn), supplied)
+            address = _resolve_binding(layer_model, layer, vn; namespaces=storage, supplied)
+            template = address.template
+            name = address.name
+            _check_binding_storage(layer_model, template, name; supplied)
+            if !(value isa VarNamedTuples.PartialArray && isempty(value))
+                _check_binding_overlap!(seen, layer_model, name, template)
+            end
+            (name, value, template, supplied)
+        end
+    end
+    return foldl(resolved; init=VarNamedTuple()) do prepared, batch
+        _prepare_binding_entries(layer_model, schema, prepared, batch)
+    end
+end
+_prepare_binding_entries(model, schema, prepared, ::Tuple{}) = prepared
+function _prepare_binding_entries(model, schema, prepared, entries::Tuple)
+    prepared = _prepare_binding_entry(model, schema, prepared, first(entries))
+    return _prepare_binding_entries(model, schema, prepared, Base.tail(entries))
+end
+function _prepare_binding_entries(model, schema, prepared, entries)
+    return foldl(entries; init=prepared) do prepared, entry
+        _prepare_binding_entry(model, schema, prepared, entry)
+    end
+end
+function _prepare_binding_entry(model, schema, prepared, (name, value, template, supplied))
+    optic = AbstractPPL.getoptic(name)
+    _check_binding_extents(value, template, optic, name)
+    pending = _pending_binding(model, name)
+    if _schema_has_address(model, schema, name)
+        value = _convert_binding_template(value, template, optic, name)
+    elseif !(supplied isa NoTemplate) && template === supplied
+        value = _convert_binding_template(value, template, optic, name; whole=false)
+    end
+    _check_namespace_index_counts(prepared, AbstractPPL.varname_to_optic(name), name, model)
+    template = pending ? PendingBindingTemplate(template) : template
+    return templated_setindex!!(prepared, value, name, template)
+end
+
 _scalar_binding_optic(::AbstractPPL.Iden) = true
 _scalar_binding_optic(o::AbstractPPL.Property) = _scalar_binding_optic(o.child)
 function _scalar_binding_optic(o::AbstractPPL.Index)
@@ -2947,50 +3061,23 @@ end
         ),
     )
 end
-_check_binding_overlap!(::Nothing, model, input) = nothing
-function _check_binding_overlap!(seen, model, input)
-    names = if input isa Pair{<:VarName}
-        vn, value = input
-        if value isa NamedTuple &&
-            (_is_namespace_storage(model, vn) || vn == _model_prefix(model))
-            grouped = _shape_namespaces(
-                model, _tag_model_values(Condition, VarNamedTuple(value)), vn
-            )
-            (AbstractPPL.prefix(name, vn) for name in keys(grouped))
-        else
-            (vn,)
-        end
-    else
-        values = _make_condfix_values(model, input)
-        keys(_shape_namespaces(model, _tag_model_values(Condition, values)))
-    end
+_check_binding_overlap!(::Nothing, model, name, template) = nothing
+function _check_binding_overlap!(seen, model, vn, template)
     leaves, parents, cache = seen
-    for original in names
-        _resolve_binding(model, _model_values(model.values), original)
-        vn = _schema_binding_address(model, original)
-        root, optic = VarName{AbstractPPL.getsym(vn)}(), AbstractPPL.getoptic(vn)
-        roots = _binding_shape_store(model.values).roots
-        storage = get(roots.data, AbstractPPL.getsym(vn), NoTemplate())
-        base = _base_argument_storage(model, vn)
-        if base !== nothing
-            storage, root = base
-            optic = AbstractPPL._unprefix_optic(optic, AbstractPPL.getoptic(root))
+    selections = _binding_selections(
+        template, AbstractPPL.getoptic(vn), VarName{AbstractPPL.getsym(vn)}(), cache
+    )
+    for name in selections
+        name in parents && _binding_overlap_error(_binding_display_name(model, vn))
+        prefix, optic = VarName{AbstractPPL.getsym(name)}(), AbstractPPL.getoptic(name)
+        while true
+            prefix in leaves && _binding_overlap_error(_binding_display_name(model, vn))
+            optic isa AbstractPPL.Iden && break
+            push!(parents, prefix)
+            prefix = AbstractPPL.append_optic(prefix, AbstractPPL.ohead(optic))
+            optic = optic.child
         end
-        selections = _binding_selections(storage, optic, root, cache)
-        for name in selections
-            name in parents &&
-                _binding_overlap_error(_binding_display_name(model, original))
-            prefix, optic = VarName{AbstractPPL.getsym(name)}(), AbstractPPL.getoptic(name)
-            while true
-                prefix in leaves &&
-                    _binding_overlap_error(_binding_display_name(model, original))
-                optic isa AbstractPPL.Iden && break
-                push!(parents, prefix)
-                prefix = AbstractPPL.append_optic(prefix, AbstractPPL.ohead(optic))
-                optic = optic.child
-            end
-            push!(leaves, name)
-        end
+        push!(leaves, name)
     end
     return nothing
 end
@@ -3014,33 +3101,12 @@ function _binding_selections(::NoTemplate, optic::AbstractPPL.Index, vn, cache)
     )
 end
 
-function _conditionfix_inputs(model, values, ::Type{R}) where {R}
-    seen = _binding_overlap_state(values)
-    bound = foldl(values; init=model) do m, value
-        _check_binding_overlap!(seen, m, value)
-        return _conditionfix_input(m, value, R)
-    end
+function _conditionfix_inputs(model, values, ::Type{R}, schema=NamedTuple()) where {R}
+    model = _materialize_argument_values(model)
+    prepared = _prepare_binding_batch(model, values, R, schema)
+    bound = _set_values(model, prepared, R)
     _check_shared_latent_storage(bound)
     return bound
-end
-
-_check_pending_index_styles(model, input) = nothing
-function _check_pending_index_styles(model, input::Pair{<:VarName})
-    vn = _schema_binding_address(model, first(input))
-    return _check_namespace_index_counts(
-        _model_values(model.values), AbstractPPL.varname_to_optic(vn), vn, model
-    )
-end
-function _conditionfix_input(model, input, ::Type{R}) where {R}
-    _check_pending_index_styles(model, input)
-    storage = _namespace_binding_storage(model)
-    return _set_values(model, _prepare_namespace_input(R, model, input, storage), R)
-end
-
-function _set_value(model::Model, vn::VarName, value::ModelValue{R}) where {R}
-    storage = _namespace_binding_storage(model)
-    values = _prepare_namespace_input(R, model, vn => value.value, storage)
-    return _set_values(model, values, R)
 end
 
 function _conditionfix(model::Model, inputs::Tuple, ::Type{R}) where {R}
@@ -3077,15 +3143,7 @@ function _conditionfix(model::Model, inputs::Tuple, ::Type{R}) where {R}
         _is_namespace_storage(model, t.name) || continue
         model = _bind(model, t.name, t.storage; namespace=true)
     end
-    storage = _namespace_binding_storage(model)
-    seen = _binding_overlap_state(values)
-    for value in values
-        _check_binding_overlap!(seen, model, value)
-        _check_pending_index_styles(model, value)
-        prepared = _prepare_namespace_input(R, model, value, storage)
-        model = _conditionfix_schema_input(model, prepared, schema, R)
-    end
-    _check_shared_latent_storage(model)
+    model = _conditionfix_inputs(model, values, R, schema)
     # Namespace templates have become storage. Only child-owned templates remain
     # deferred; a later namespace binding reuses that storage instead of merging templates.
     templates = let model = model
@@ -3204,7 +3262,10 @@ function _schema_binding_address(model, vn)
         AbstractPPL.getsym(prefix) === AbstractPPL.getsym(vn)
         template = _apply_prefix_template(_model_prefix_template(model), NoTemplate())
         return _concretize_prefix(
-            vn, template; depth=optic_skip_length(AbstractPPL.getoptic(prefix))
+            vn,
+            template;
+            depth=optic_skip_length(AbstractPPL.getoptic(prefix)),
+            canonical=true,
         )
     end
     return vn
@@ -3281,21 +3342,8 @@ function _check_deferred_schema(storage::NamedTuple, root, input, model)
     return nothing
 end
 
-function _conditionfix_schema_input(model, input, schema, ::Type{R}) where {R}
-    layer_model = _binding_layer_model(R, model)
-    prepared = _prepare_schema_input(R, model, input, schema, layer_model)
-    return _set_values(model, prepared, R; preparation_model=layer_model)
-end
-
-function _prepare_schema_input(
-    ::Type{R},
-    model,
-    input,
-    schema,
-    layer_model=_binding_layer_model(R, model);
-    inherited=false,
-) where {R}
-    layer = _model_values(layer_model.values)
+function _prepare_schema_input(::Type{R}, model, input, schema) where {R}
+    layer = _model_values(_binding_layer_model(R, model).values)
     templates = VarNamedTuple()
     for (name, storage) in pairs(schema)
         root = _model_value_varname(model.values, VarName{name}(), _model_prefix(model))
@@ -3315,21 +3363,14 @@ function _prepare_schema_input(
             templates, storage, root, _binding_template(model, VarNamedTuple(), root)
         )
     end
-    is_pair = input isa Pair{<:VarName}
-    plain = if is_pair
-        VarNamedTuple()
-    else
-        (inherited ? input : _make_condfix_values(layer_model, input))
-    end
-    entries = is_pair ? (input,) : pairs(plain)
+    entries = pairs(input)
     prepared = VarNamedTuple()
     for (vn, value) in entries
         vn = _schema_binding_address(model, vn)
         uses_schema = _schema_has_address(model, schema, vn)
         if !uses_schema
-            is_pair && return (inherited ? input : _make_condfix_values(layer_model, input))
             prepared = templated_setindex!!(
-                prepared, value, vn, _binding_template(model, plain, vn)
+                prepared, value, vn, _binding_template(model, input, vn)
             )
             continue
         end
@@ -3342,8 +3383,39 @@ function _prepare_schema_input(
     return prepared
 end
 
-function _convert_binding_template(value, template, ::AbstractPPL.Iden, vn)
-    template isa Union{NoTemplate,VarNamedTuples.SkipTemplate} && return value
+_check_binding_extents(value, template, ::AbstractPPL.Iden, vn) = nothing
+function _check_binding_extents(value, template, optic::AbstractPPL.AbstractOptic, vn)
+    head = AbstractPPL.ohead(optic)
+    head = if head isa AbstractPPL.Index
+        AbstractPPL.concretize_top_level(head, VarNamedTuples.template_array(template))
+    else
+        head
+    end
+    child = _binding_child_template(template, head)
+    if optic.child isa AbstractPPL.Iden &&
+        head isa AbstractPPL.Index &&
+        value isa AbstractArray &&
+        VarNamedTuples._is_multiindex(
+            VarNamedTuples.template_array(template), head.ix...; head.kw...
+        )
+        array = VarNamedTuples.template_array(template)
+        indices = array isa AbstractArray ? Base.to_indices(array, head.ix) : head.ix
+        shape = map(length, VarNamedTuples._selected_index_shape(indices...))
+        # Slice assignment ignores singleton dimensions and permits a flattened trailing extent.
+        actual, selected = filter(!=(1), size(value)), filter(!=(1), shape)
+        common = max(0, min(length(actual), length(selected)) - 1)
+        length(value) == prod(shape) && all(i -> actual[i] == selected[i], 1:common) ||
+            throw(
+                ArgumentError(
+                    "Cannot bind `$vn`: value size $(size(value)) does not match selection size $shape; supply a value matching the selected extent.",
+                ),
+            )
+    end
+    return _check_binding_extents(value, child, optic.child, vn)
+end
+
+function _convert_binding_template(value, template, ::AbstractPPL.Iden, vn; whole=true)
+    (!whole || template isa Union{NoTemplate,VarNamedTuples.SkipTemplate}) && return value
     value isa typeof(template) || throw(
         ArgumentError(
             "Bound value at `$vn` must be an instance of template type $(typeof(template)); supplied $(typeof(value)).",
@@ -3360,7 +3432,9 @@ end
 function _binding_child_template(template, ::AbstractPPL.Property{S}) where {S}
     return VarNamedTuples.SharedGetProperty{S}()(template)
 end
-function _convert_binding_template(value, template, optic::AbstractPPL.AbstractOptic, vn)
+function _convert_binding_template(
+    value, template, optic::AbstractPPL.AbstractOptic, vn; whole=true
+)
     template isa NoTemplate && return value
     head = AbstractPPL.ohead(optic)
     head =
@@ -3368,20 +3442,18 @@ function _convert_binding_template(value, template, optic::AbstractPPL.AbstractO
     # VarNamedTuple nodes describe namespaces, not fields of the bound value.
     # Descend to the local root before applying whole-value template checks.
     if optic.child isa AbstractPPL.Iden && !(template isa VarNamedTuple)
+        template isa VarNamedTuples.PartialArray && (template = template.data)
+        template isa VarNamedTuples.GrowableArray && return value
         return _convert_partial_argument_binding(
             ModelValue{Condition}(value), template, head, vn
         ).value
     end
     child = _binding_child_template(template, head)
-    return _convert_binding_template(value, child, optic.child, vn)
+    return _convert_binding_template(value, child, optic.child, vn; whole)
 end
 
-function _set_values(model::Model, values, ::Type{R}; preparation_model=model) where {R}
-    model = _materialize_argument_values(model)
-    preparation_model = _binding_layer_model(
-        R, _materialize_argument_values(preparation_model)
-    )
-    values = _make_condfix_values(preparation_model, values)
+function _set_values(model::Model, values, ::Type{R}) where {R}
+    preparation_model = _binding_layer_model(R, model)
     _check_bound_placeholders(R, values)
     # Not copied: `deepcopy` would detach values bound in the body from ReverseDiff's tape.
     values = _tag_model_values(R, values)
@@ -3422,31 +3494,6 @@ function _set_values(model::Model, values, ::Type{R}; preparation_model=model) w
 end
 function AbstractPPL.condition(model::Model; values...)
     return condition(model, NamedTuple(values))
-end
-
-"""
-    _make_condfix_values(model, values)
-
-Convert normalised binding values to a `VarNamedTuple`.
-Input ordering, keyword arguments and templates are handled by the binding entry points.
-"""
-function _make_condfix_values(model, values)
-    throw(
-        ArgumentError(
-            "Bindings require a VarNamedTuple, NamedTuple, or VarName pairs (or an ordered tuple of these); use keywords for whole values or @varname(x) => value for an address. AbstractDict inputs are not supported.",
-        ),
-    )
-end
-_make_condfix_values(model, values::NamedTuple) = VarNamedTuple(values)
-function _make_condfix_values(model, values::VarNamedTuple)
-    for (name, value) in pairs(values.data)
-        value isa VarNamedTuples.PartialArray || continue
-        index = findfirst(value.mask)
-        index === nothing && continue
-        indices = index isa CartesianIndex ? Tuple(index) : (index,)
-        _check_local_property_index(model, VarName{name}(AbstractPPL.Index(indices, (;))))
-    end
-    return values
 end
 
 function _check_bound_placeholders(::Type{R}, values::VarNamedTuple) where {R}
@@ -3556,6 +3603,7 @@ function _pending_binding(model, vn)
     local_name = _local_removal_name(model, vn; operation="bind")
     local_name === nothing && return true
     metadata = _binding_metadata(model)
+    _lhs_names(metadata) === nothing && return false
     name = AbstractPPL.getsym(local_name)
     addresses = filter(x -> AbstractPPL.getsym(first(x)) === name, _lhs_addresses(metadata))
     return isempty(addresses) ? _has_unprefixed_submodel(metadata) : any(last, addresses)
@@ -3660,17 +3708,6 @@ function _check_binding_storage(model::Model, template, vn; supplied=NoTemplate(
         template, AbstractPPL.getoptic(vn), display_vn; skip, supplied
     )
 end
-function _make_condfix_values(model, pair::Pair{<:VarName})
-    !_pending_binding(model, first(pair)) && _check_local_property_index(model, first(pair))
-    resolved = _resolve_binding(model, _model_values(model.values), first(pair))
-    _check_binding_storage(model, resolved.template, resolved.name)
-    template = if _pending_binding(model, resolved.name)
-        PendingBindingTemplate(resolved.template)
-    else
-        resolved.template
-    end
-    return templated_setindex!!(VarNamedTuple(), last(pair), resolved.name, template)
-end
 
 # Property LHS addresses describe named binding storage even when local Julia storage
 # does not exist yet. Use that template only for spelling checks, never as a shape owner.
@@ -3703,7 +3740,9 @@ struct ResolvedBinding{N,T}
     template::T
 end
 
-@inline function _resolve_binding(model, values, vn; operation="bind", namespaces=nothing)
+@inline function _resolve_binding(
+    model, values, vn; operation="bind", namespaces=nothing, supplied=NoTemplate()
+)
     input_vn = _schema_binding_address(model, vn)
     display_vn = _binding_display_name(model, input_vn)
     vn = _resolve_binding_address(model, input_vn)
@@ -3716,7 +3755,6 @@ end
                 vn, _binding_address_storage(template, AbstractPPL.getoptic(vn))
             )
         end
-        return _resolve_binding(model, values, vn; operation)
     end
     local_name = _local_removal_name(model, vn; operation)
     metadata = _binding_metadata(model)
@@ -3753,6 +3791,7 @@ end
     _check_partial_binding(values, AbstractPPL.varname_to_optic(vn); operation)
     template = _binding_address_template(model, values, vn; operation)
     template isa NoTemplate && _check_local_property_index(model, vn; operation)
+    template isa NoTemplate && (template = supplied)
     _check_partial_binding(
         ModelValue{Condition}(template),
         AbstractPPL.getoptic(vn),
@@ -4602,7 +4641,7 @@ end
 @inline function _check_removal_name(model, layer, vn)
     resolved = _resolve_binding(model, layer, vn; operation="remove")
     AbstractPPL.is_dynamic(AbstractPPL.getoptic(resolved.name)) || return resolved.name
-    return _resolve_binding(resolved.name, resolved.template).name
+    return _concretize_prefix(resolved.name, resolved.template)
 end
 
 function _check_shared_removals(parent, child)
@@ -5525,7 +5564,7 @@ function _bind(model::Model, vn::VarName, storage; namespace=false, whole=true)
 end
 function _bind_value_shapes(model, values, role)
     model = _prepare_base_argument_shapes(model, values)
-    values = _shape_namespaces(model, values)
+    values = _shape_argument_values(model, values)
     return _bind_shape_batch(model, _snapshot_shape(values), values)
 end
 function _with_inherited_binding_shapes(model, values)
@@ -5543,22 +5582,13 @@ function _shape_argument_value(model, value::ModelValue, vn)
     end
     return value
 end
-function _shape_namespaces(model, values::VarNamedTuple, prefix=nothing)
+function _shape_argument_values(model, values::VarNamedTuple, prefix=nothing)
     return VarNamedTuple(
         (fields -> NamedTuple{keys(values.data)}(fields))(
             map(keys(values.data), Base.values(values.data)) do name, value
                 vn = maybe_prefix(VarName{name}(), prefix)
-                if value isa ModelValue &&
-                    value.value isa NamedTuple &&
-                    (
-                        _is_namespace_storage(model, vn) || (
-                            !(model.values isa LocalModelValues) &&
-                            vn == _model_prefix(model)
-                        )
-                    )
-                    _shape_namespaces(model, _submodel_namespace(value), vn)
-                elseif value isa VarNamedTuple
-                    _shape_namespaces(model, value, vn)
+                if value isa VarNamedTuple
+                    _shape_argument_values(model, value, vn)
                 else
                     _shape_argument_value(model, value, vn)
                 end
@@ -5733,9 +5763,6 @@ function _resolve_binding_address(model, vn)
         _resolve_binding_optic(storage, AbstractPPL.getoptic(vn))
     )
 end
-function _resolve_binding(vn::VarName{S}, template; kwargs...) where {S}
-    return ResolvedBinding(_concretize_prefix(vn, template; kwargs...), template)
-end
 
 function _resolve_binding_optic(
     storage::VarNamedTuples.PartialArray, optic::AbstractPPL.Index
@@ -5766,8 +5793,8 @@ function _public_binding_name(model, vn; operation="bind")
     prefix = _model_prefix(model)
     template = _apply_prefix_template(_model_prefix_template(model), NoTemplate())
     depth = optic_skip_length(AbstractPPL.getoptic(prefix))
-    prefix = _expand_cartesian(_resolve_binding(prefix, template; depth).name)
-    vn = _expand_cartesian(_resolve_binding(vn, template; depth).name)
+    prefix = _expand_cartesian(_concretize_prefix(prefix, template; depth, canonical=true))
+    vn = _expand_cartesian(_concretize_prefix(vn, template; depth, canonical=true))
     return _binding_local_name(vn, prefix, operation)
 end
 function _local_binding_input(model, input::Pair{<:VarName})
