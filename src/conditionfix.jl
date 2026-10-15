@@ -2919,18 +2919,10 @@ function _prepare_namespace_input(::Type{R}, model, input, storage) where {R}
     end
     prepared = VarNamedTuple()
     for (vn, value) in entries
-        vn = _resolve_binding_address(model, _schema_binding_address(model, vn))
-        template = get(storage.data, AbstractPPL.getsym(vn), NoTemplate())
-        if template isa NoTemplate
-            vn, template = _check_binding_address(
-                layer_model, _model_values(layer_model.values), vn
-            )
-        else
-            _check_binding_template_bounds(template, AbstractPPL.getoptic(vn), vn)
-            _check_namespace_index_counts(template, AbstractPPL.getoptic(vn), vn, model)
-            template = _binding_address_storage(template, AbstractPPL.getoptic(vn))
-        end
-        prepared = templated_setindex!!(prepared, value, vn, template)
+        resolved = _resolve_binding(
+            layer_model, _model_values(layer_model.values), vn; namespaces=storage
+        )
+        prepared = templated_setindex!!(prepared, value, resolved.name, resolved.template)
     end
     return prepared
 end
@@ -2974,7 +2966,7 @@ function _check_binding_overlap!(seen, model, input)
     end
     leaves, parents, cache = seen
     for original in names
-        _check_binding_address(model, _model_values(model.values), original)
+        _resolve_binding(model, _model_values(model.values), original)
         vn = _schema_binding_address(model, original)
         root, optic = VarName{AbstractPPL.getsym(vn)}(), AbstractPPL.getoptic(vn)
         roots = _binding_shape_store(model.values).roots
@@ -3670,10 +3662,14 @@ function _check_binding_storage(model::Model, template, vn; supplied=NoTemplate(
 end
 function _make_condfix_values(model, pair::Pair{<:VarName})
     !_pending_binding(model, first(pair)) && _check_local_property_index(model, first(pair))
-    vn, template = _check_binding_address(model, _model_values(model.values), first(pair))
-    _check_binding_storage(model, template, vn)
-    template = _pending_binding(model, vn) ? PendingBindingTemplate(template) : template
-    return templated_setindex!!(VarNamedTuple(), last(pair), vn, template)
+    resolved = _resolve_binding(model, _model_values(model.values), first(pair))
+    _check_binding_storage(model, resolved.template, resolved.name)
+    template = if _pending_binding(model, resolved.name)
+        PendingBindingTemplate(resolved.template)
+    else
+        resolved.template
+    end
+    return templated_setindex!!(VarNamedTuple(), last(pair), resolved.name, template)
 end
 
 # Property LHS addresses describe named binding storage even when local Julia storage
@@ -3702,10 +3698,26 @@ function _check_local_property_index(model, vn; operation="bind")
     )
 end
 
-@inline function _check_binding_address(model, values, vn; operation="bind")
+struct ResolvedBinding{N,T}
+    name::N
+    template::T
+end
+
+@inline function _resolve_binding(model, values, vn; operation="bind", namespaces=nothing)
     input_vn = _schema_binding_address(model, vn)
     display_vn = _binding_display_name(model, input_vn)
     vn = _resolve_binding_address(model, input_vn)
+    if namespaces !== nothing
+        template = get(namespaces.data, AbstractPPL.getsym(vn), NoTemplate())
+        if !(template isa NoTemplate)
+            _check_binding_template_bounds(template, AbstractPPL.getoptic(vn), vn)
+            _check_namespace_index_counts(template, AbstractPPL.getoptic(vn), vn, model)
+            return ResolvedBinding(
+                vn, _binding_address_storage(template, AbstractPPL.getoptic(vn))
+            )
+        end
+        return _resolve_binding(model, values, vn; operation)
+    end
     local_name = _local_removal_name(model, vn; operation)
     metadata = _binding_metadata(model)
     names = _lhs_names(metadata)
@@ -3760,7 +3772,7 @@ end
         check_fields,
         child_name=local_name !== nothing && !_binding_schema_owned(model, local_name),
     )
-    return vn, template
+    return ResolvedBinding(vn, template)
 end
 function _binding_template(
     model, templates::VarNamedTuple, vn::VarName; prefix=_model_prefix(model)
@@ -4559,6 +4571,9 @@ end
 
 function _local_removal_name(model, vn; operation="remove")
     prefix = model.values isa LocalModelValues ? nothing : _model_prefix(model)
+    return _binding_local_name(vn, prefix, operation)
+end
+function _binding_local_name(vn, prefix, operation)
     if vn === nothing || prefix === nothing
         return vn
     elseif subsumes(prefix, vn)
@@ -4585,9 +4600,9 @@ function _check_removal_names(model, layer, names::AbstractVector)
 end
 
 @inline function _check_removal_name(model, layer, vn)
-    vn, template = _check_binding_address(model, layer, vn; operation="remove")
-    AbstractPPL.is_dynamic(AbstractPPL.getoptic(vn)) || return vn
-    return _concretize_prefix(vn, template)
+    resolved = _resolve_binding(model, layer, vn; operation="remove")
+    AbstractPPL.is_dynamic(AbstractPPL.getoptic(resolved.name)) || return resolved.name
+    return _resolve_binding(resolved.name, resolved.template).name
 end
 
 function _check_shared_removals(parent, child)
@@ -5718,6 +5733,9 @@ function _resolve_binding_address(model, vn)
         _resolve_binding_optic(storage, AbstractPPL.getoptic(vn))
     )
 end
+function _resolve_binding(vn::VarName{S}, template; kwargs...) where {S}
+    return ResolvedBinding(_concretize_prefix(vn, template; kwargs...), template)
+end
 
 function _resolve_binding_optic(
     storage::VarNamedTuples.PartialArray, optic::AbstractPPL.Index
@@ -5748,15 +5766,9 @@ function _public_binding_name(model, vn; operation="bind")
     prefix = _model_prefix(model)
     template = _apply_prefix_template(_model_prefix_template(model), NoTemplate())
     depth = optic_skip_length(AbstractPPL.getoptic(prefix))
-    prefix = _expand_cartesian(_concretize_prefix(prefix, template; depth))
-    vn = _expand_cartesian(_concretize_prefix(vn, template; depth))
-    subsumes(prefix, vn) && return prefix == vn ? nothing : AbstractPPL.unprefix(vn, prefix)
-    subsumes(vn, prefix) && return nothing
-    throw(
-        ArgumentError(
-            "Cannot $operation `$vn`: it is outside this model's prefix `$prefix`."
-        ),
-    )
+    prefix = _expand_cartesian(_resolve_binding(prefix, template; depth).name)
+    vn = _expand_cartesian(_resolve_binding(vn, template; depth).name)
+    return _binding_local_name(vn, prefix, operation)
 end
 function _local_binding_input(model, input::Pair{<:VarName})
     name = _public_binding_name(model, first(input))

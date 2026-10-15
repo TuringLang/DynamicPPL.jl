@@ -550,7 +550,7 @@ VarNamedTuple
 function prefix(model::Model, x::VarName; template=NoTemplate())
     AbstractPPL.is_dynamic(AbstractPPL.getoptic(x)) &&
         (template = VarNamedTuples.materialize_template(template))
-    x = _concretize_prefix(x, template; prefix=Val(true))
+    x = _resolve_binding(x, template; prefix=Val(true)).name
     template = VarNamedTuples.materialize_template(template)
     values = if model.values isa LocalModelValues
         model.values
