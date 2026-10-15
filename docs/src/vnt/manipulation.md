@@ -16,7 +16,7 @@ For example, this VNT contains a `PartialArray` which is *really* the same thing
 ```@example 1
 using DynamicPPL
 
-vnt = @vnt begin
+vnt = DynamicPPL.@vnt begin
     @template x = zeros(2)
     x[1] := 1.0
     x[2] := 2.0
@@ -90,7 +90,7 @@ Specifically, a skeleton of a VNT is one that contains enough template informati
 This is best illustrated by example:
 
 ```@example 1
-vnt = @vnt begin
+vnt = DynamicPPL.@vnt begin
     # We set x to be length-3 to avoid it ever being
     # densified, which would render this example moot.
     @template x = zeros(3)
@@ -162,10 +162,10 @@ For example, consider model conditioning:
     return x .~ Normal()
 end
 
-cond_model = f() | Dict(@varname(x[1]) => 1.0, @varname(x[2]) => 2.0)
+cond_model = f() | (@varname(x[1]) => 1.0, @varname(x[2]) => 2.0)
 ```
 
-Right now, conditioning with a `Dict` will lead to the conditioning values being stored with `GrowableArray`s, which is not ideal.
+Right now, conditioning with pairs without a template will lead to the conditioning values being stored with `GrowableArray`s, which is not ideal.
 However, if the *model* carried with itself a skeleton VNT, then at the point where we condition the model, we could use that to reconstruct a VNT of conditioned values.
 This is not yet implemented, but is one of the use cases that we have in mind.
 

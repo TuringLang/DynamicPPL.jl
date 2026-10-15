@@ -36,6 +36,26 @@ function DynamicPPL.combine(acc::CombineCallbackAccumulator, ::CombineCallbackAc
 end
 
 @testset "threadsafe.jl" begin
+    @testset "argument bindings" begin
+        @model function argument_binding(x)
+            x ~ Normal()
+            y ~ Normal(x, 1)
+            return (; x, y)
+        end
+        original = argument_binding(1.0)
+        for model in (condition(original; x=2.0), decondition(original, @varname(x)))
+            strategy = InitFromParams((; x=0.25, y=0.5), nothing)
+            result, vi = init!!(Xoshiro(1), model, VarInfo(), strategy, UnlinkAll())
+            threaded_result, threaded_vi = init!!(
+                Xoshiro(1), setthreadsafe(model, true), VarInfo(), strategy, UnlinkAll()
+            )
+            @test threaded_result == result
+            @test getlogprior(threaded_vi) ≈ getlogprior(vi)
+            @test getloglikelihood(threaded_vi) ≈ getloglikelihood(vi)
+            @test getlogjoint(threaded_vi) ≈ getlogjoint(vi)
+        end
+    end
+
     @testset "parameter types permit floating-point accumulation" begin
         for T in (
             Int, Bool, Rational{Int}, Float32, BigFloat, ForwardDiff.Dual{Nothing,Float64,1}
@@ -43,11 +63,11 @@ end
             vi = @inferred DynamicPPL.ThreadSafeVarInfo(VarInfo(LogPriorAccumulator()), T)
             @test getlogprior(vi) isa promote_type(DynamicPPL.LogProbType, float(T))
         end
-        for T in (Any, Union{})
+        for T in (Any, Union{}), init in (0.0f0, big"0.0")
             vi = @inferred DynamicPPL.ThreadSafeVarInfo(
-                VarInfo(LogPriorAccumulator(big"0.0")), T
+                VarInfo(LogPriorAccumulator(init)), T
             )
-            @test getlogprior(vi) isa BigFloat
+            @test getlogprior(vi) isa typeof(init)
         end
 
         discrete = setthreadsafe(discrete_parameter(), true)

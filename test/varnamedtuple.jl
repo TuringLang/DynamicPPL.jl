@@ -1,13 +1,17 @@
 module VarNamedTupleTests
 
+using AbstractPPL: of, @of
 using Dates: now
 @info "Testing $(@__FILE__)..."
 __now__ = now()
 
+using Distributions: Normal
+using Random: Xoshiro
+using ForwardDiff: Dual
 using Combinatorics: Combinatorics
 using OrderedCollections: OrderedDict
 using Test: @inferred, @test, @test_throws, @testset, @test_broken, @test_logs
-using DynamicPPL: DynamicPPL, @varname, VarNamedTuple, subset, @vnt
+using DynamicPPL: DynamicPPL, @model, @varname, VarNamedTuple, subset, @vnt
 using DynamicPPL.VarNamedTuples:
     PartialArray,
     ArrayLikeBlock,
@@ -29,6 +33,44 @@ using DimensionalData: DimensionalData as DD
 using InvertedIndices: InvertedIndices as II
 using OffsetArrays: OffsetArrays as OA
 using ComponentArrays: ComponentArrays as CA
+
+@testset "binding templates from VarNamedTuple storage" begin
+    for x in (1, 1.0, 1.0f0, big"1.0")
+        @test typeof(zero(of(VarNamedTuple(; x))).x) === typeof(x)
+    end
+    @test (@inferred of(VarNamedTuple(; x=1.0))) === @of(x = of(Float64))
+    for T in (Float32, Float64, BigFloat, Int32, Bool), dims in ((), (3,), (2, 3))
+        x = fill(one(T), dims)
+        template = of(VarNamedTuple(; x))
+        @test typeof(zero(template).x) === typeof(x)
+        @test size(zero(template).x) == dims
+    end
+    partial = templated_setindex!!(
+        VarNamedTuple(), big"0.5", @varname(y[1]), Vector{BigFloat}(undef, 3)
+    )
+    @test !isassigned(partial.data.y.data, 2)
+    @test of(partial) === @of(y = of(Array, BigFloat, 3))
+    @test of(VarNamedTuple(; p=partial)) === @of(p = @of(y = of(Array, BigFloat, 3)))
+    @test of(VarNamedTuple(; p=(y=zeros(2),))) === @of(p = @of(y = of(Array, 2)))
+    for x in (true, Int32(1), big"1", 1//2, Dual(1.0, 1.0), "value", (1, 2))
+        @test_throws ArgumentError of(VarNamedTuple(; x))
+    end
+    for x in (
+        OA.OffsetArray(ones(3), -1:1),
+        CA.ComponentArray(; a=1.0, b=ones(2)),
+        DD.DimArray(ones(2), (DD.X([10, 20]),)),
+        view(ones(2), :),
+        ["a", "b"],
+    )
+        @test_throws ArgumentError of(VarNamedTuple(; x))
+        @test_throws ArgumentError of(VarNamedTuple(; p=VarNamedTuple(; x)))
+    end
+    for mask in ([true, false], [true, true])
+        growable = PartialArray(GrowableArray(ones(2)), GrowableArray(mask))
+        @test_throws ArgumentError of(VarNamedTuple(; y=growable))
+        @test_throws ArgumentError of(VarNamedTuple(; p=VarNamedTuple(; y=growable)))
+    end
+end
 
 struct GetSetTestCase
     # The VarName being set.
@@ -180,6 +222,115 @@ function Base.similar(
 end
 
 @testset "VarNamedTuple" begin
+    @testset "copying partially assigned arrays" begin
+        for value in ([1.0], 1.0),
+            wrap in (identity, x -> view(reshape(x, 2, 1), 1:2, 1), GrowableArray)
+
+            data = Vector{typeof(value)}(undef, 2)
+            data[2] = value
+            pa = PartialArray(wrap(data), wrap([false, true]))
+            copied = @inferred(copy(pa))
+            @test copied == pa
+            @test isequal(copied, pa)
+            @test copied.data !== pa.data
+            @test copied.mask !== pa.mask
+            @test copied[2] === value
+            @test merge(empty(pa), pa) == pa
+            @test !isempty(sprint(show, MIME"text/plain"(), pa))
+            vnt = VarNamedTuple(; x=pa)
+            @test keys(vnt) == [@varname(x[2])]
+            @test values(vnt) == [value]
+            @test collect(pairs(vnt)) == [@varname(x[2]) => value]
+            @test hash(pa) == hash(PartialArray(pa.data, copy(pa.mask)))
+            @test map_values!!(identity, copy(vnt)) == vnt
+            @test map_pairs!!(last, copy(vnt)) == vnt
+            @test subset(vnt, [@varname(x[2])]) == vnt
+            @test vnt[@varname(x[1:2][2])] === value
+            grown = if pa.data isa GrowableArray
+                grow_to_indices!!(pa, 3)
+            else
+                DynamicPPL.VarNamedTuples._grow_vector_to_axes(pa, (Base.OneTo(3),))
+            end
+            @test grown.mask == [false, true, false]
+            @test grown[2] === value
+        end
+    end
+
+    @testset "widening partially assigned arrays" begin
+        data = Vector{Vector{Float64}}(undef, 3)
+        data[2] = [1.0]
+        pa = PartialArray(view(data, :), [false, true, false])
+        widened = setindex!!(pa, PartialArray(["two"], [true]), 3:3)
+        @test widened.mask == [false, true, true]
+        @test widened[2] == [1.0]
+        @test widened[3] == "two"
+
+        for value in ("two", ["two"])
+            pa = PartialArray(view(data, :), [false, true, false])
+            widened = setindex!!(pa, value, value isa AbstractArray ? (3:3) : 3)
+            @test widened.mask == [false, true, true]
+            @test widened[2] == [1.0]
+            @test widened[3] == "two"
+        end
+        pa = PartialArray(view(data, :), [false, true, false])
+        merged = merge(PartialArray(["", "", "two"], [false, false, true]), pa)
+        @test merged.mask == [false, true, true]
+        @test merged[2] == [1.0]
+        @test merged[3] == "two"
+    end
+
+    @testset "inserting into partially assigned views" begin
+        for T in (Any, Vector{Float64}, Float64), assigned in (false, true)
+            value = T === Float64 ? 1.0 : [1.0]
+            data = Vector{T}(undef, 3)
+            assigned && fill!(data, value)
+            data[2] = value
+            vnt = VarNamedTuple(; x=PartialArray(view(data, :), [false, true, false]))
+            vnt = setindex!!(vnt, value, @varname(x[3]))
+            @test vnt[@varname(x[2])] == value
+            @test vnt[@varname(x[3])] == value
+            @test !haskey(vnt, @varname(x[1]))
+        end
+    end
+
+    @testset "densifying partially assigned arrays" begin
+        nested = VarNamedTuple(; y=PartialArray([1.0], [true]))
+        data = Vector{typeof(nested)}(undef, 2)
+        data[2] = nested
+        pa = PartialArray(data, [false, true])
+        dense = densify!!(pa)
+        @test dense.mask == pa.mask
+        @test dense[2] == VarNamedTuple(; y=[1.0])
+        @test pa[2].data.y isa PartialArray
+    end
+
+    @testset "PartialArray element type narrowing" begin
+        data = Vector{Any}(undef, 3)
+        data[1:2] = [1, "two"]
+        for (values, mask) in (
+            (Any[1, 2, 3], trues(3)),
+            (Real[1, 2.0, 3], trues(3)),
+            (Union{Nothing,Int}[1, nothing, 3], trues(3)),
+            (data, [true, true, false]),
+            (data, [true, false, false]),
+            (data, falses(3)),
+        )
+            expected = foldl(
+                typejoin,
+                (typeof(values[i]) for i in eachindex(mask) if mask[i]);
+                init=Union{},
+            )
+            pa = PartialArray(values, mask)
+            result = DynamicPPL.VarNamedTuples._concretise_eltype!!(pa)
+            @test eltype(result) === expected
+            @test result.mask === mask
+            @test result.data[mask] == values[mask]
+            if expected === eltype(pa)
+                @test result === pa
+            end
+        end
+    end
+
     @testset "dynamic indices into array leaves" begin
         for x in ([1.0, 2.0], view([1.0, 2.0], :), OA.OffsetArray([1.0, 2.0], 3:4))
             vnt = VarNamedTuple(; x)
@@ -188,6 +339,7 @@ end
             @test haskey(vnt, @varname(x[begin:end]))
             @test !haskey(vnt, @varname(x[begin - 1]))
             @test !haskey(vnt, @varname(x[end + 1]))
+            @test vnt[@varname(x[begin:end])] == [1.0, 2.0]
         end
         @test haskey(VarNamedTuple(; x=[1.0 2.0; 3.0 4.0]), @varname(x[end, end]))
     end
@@ -295,6 +447,9 @@ end
         end
 
         @testset "Array indices" begin
+            for value in (0.42, 0.42f0, big"0.42")
+                test_get_set(GetSetTestCase(@varname(c[]), value, fill(0.0), []))
+            end
             test_get_set(GetSetTestCase(@varname(c[2]), 0.42, zeros(3), []))
             # Should still be type stable even though the eltype of the template is different, since
             # the eltype is taken from the value.
@@ -775,6 +930,16 @@ end
         vnt = VarNamedTuple()
         vnt = @inferred(templated_setindex!!(vnt, 1, @varname(a[1][1]), [[randn()]]))
         @test @inferred(getindex(vnt, @varname(a[1][1]))) == 1
+        vnt = @inferred(templated_setindex!!(vnt, 2, @varname(a[1][1]), [[0]]))
+        @test vnt[@varname(a[1][1])] == 2
+        @test_throws UndefRefError templated_setindex!!(
+            vnt, 3, @varname(a[1][1]), Vector{Vector{Int}}(undef, 1)
+        )
+        template = [(; data=zeros(2))]
+        vn = @varname(nested[1].data[:])
+        vnt = @inferred(templated_setindex!!(vnt, SizedThing((2,)), vn, template))
+        vnt = @inferred(templated_setindex!!(vnt, SizedThing((2,)), vn, template))
+        @test vnt[vn] == SizedThing((2,))
         vnt = @inferred(templated_setindex!!(vnt, 1, @varname(ab[1:2][1]), randn(2)))
         @test @inferred(getindex(vnt, @varname(ab[1]))) == 1
         @test @inferred(getindex(vnt, @varname(ab[1:2][1]))) == 1
@@ -796,7 +961,7 @@ end
         @testset "grow_to_indices!! on PartialArray->GrowableArray" begin
             pa = PartialArray(GrowableArray(ones(2)), GrowableArray([false, true]))
             @test_throws BoundsError pa[1]
-            @test pa[2] == 1.0
+            @test pa[2] == pa[Int32(2)] == 1.0
             pa = grow_to_indices!!(pa, 1:3)
             @test size(pa.data) == (3,)
             @test_throws BoundsError pa[1]
@@ -812,6 +977,31 @@ end
             @test_throws ArgumentError grow_to_indices!!(pa, 1, 2)
             pa = PartialArray(GrowableArray(randn(2, 2)), GrowableArray(fill(false, 2, 2)))
             @test_throws ArgumentError grow_to_indices!!(pa, 1)
+        end
+
+        @testset "lookups need one index per dimension" begin
+            vnt = setindex!!(VarNamedTuple(), 1.0, @varname(x[2]))
+            @test !haskey(vnt, @varname(x[2, 1]))
+            @test_throws BoundsError vnt[@varname(x[2, 1])]
+            @test !haskey(vnt, @varname(x[1:2, 1][2]))
+            @test_throws BoundsError vnt[@varname(x[1:2, 1][2])]
+            @test vnt[@varname(x[1:2][2])] == 1.0
+            vnt = setindex!!(VarNamedTuple(), 1.0, @varname(x[2, 1]))
+            @test !haskey(vnt, @varname(x[2]))
+            @test_throws BoundsError vnt[@varname(x[2])]
+            @test !haskey(vnt, @varname(x[1:2][2]))
+            @test_throws BoundsError vnt[@varname(x[1:2][2])]
+            @test vnt[@varname(x[1:2, 1][2])] == 1.0
+            @test vnt[@varname(x[CartesianIndex(2, 1)])] == 1.0
+            for inds in ([CartesianIndex(2, 1)], CartesianIndices((2:2, 1:1)))
+                @test @inferred(haskey(vnt, @varname(x[inds])))
+                @test vnt[@varname(x[inds])] == fill(1.0, size(inds))
+            end
+            templated = templated_setindex!!(
+                VarNamedTuple(), 1.0, @varname(x[2, 1]), zeros(2, 1)
+            )
+            @test haskey(templated, @varname(x[2]))
+            @test templated[@varname(x[1:2][2])] == 1.0
         end
 
         @testset "Data is correctly copied when expanding" begin
@@ -858,6 +1048,69 @@ end
             @test_throws BoundsError vnt[@varname(x[2])]
             @test_throws BoundsError vnt[@varname(x[6])]
             @test_throws BoundsError vnt[@varname(x[7])]
+        end
+
+        @testset "Boolean mask extents" begin
+            for mask in ([false, true, true], BitVector([false, true, true]))
+                for initial in
+                    (VarNamedTuple(), setindex!!(VarNamedTuple(), 1.0, @varname(x[1])))
+                    masked = setindex!!(deepcopy(initial), [2.0, 3.0], @varname(x[mask]))
+                    indexed = setindex!!(
+                        deepcopy(initial), [2.0, 3.0], @varname(x[findall(mask)])
+                    )
+                    @test masked == indexed
+                    @test masked[@varname(x[3])] == 3.0
+                end
+            end
+        end
+
+        @testset "Empty integer index extents" begin
+            for inds in (
+                Int[],
+                Int32[],
+                BigInt[],
+                Int32(3):Int32(2),
+                3:2,
+                0:-1,
+                3:2:2,
+                1:-1:2,
+                Base.OneTo(0),
+            )
+                @test @inferred(
+                    DynamicPPL.VarNamedTuples.get_maximum_size_from_indices(inds, 2)
+                ) == (0, 2)
+                for initial in
+                    (VarNamedTuple(), setindex!!(VarNamedTuple(), 1.0, @varname(x[1])))
+                    empty_slice = setindex!!(
+                        deepcopy(initial), Float64[], @varname(x[inds])
+                    )
+                    @test size(empty_slice.data.x) == (isempty(initial) ? 0 : 1,)
+                    @test empty_slice[@varname(x[inds])] == Float64[]
+                end
+                matrix = setindex!!(VarNamedTuple(), zeros(0, 2), @varname(x[inds, 1:2]))
+                @test size(matrix.data.x) == (0, 2)
+            end
+            for inds in ([3, 1], Int32[3, 1], BigInt[3, 1], 1:3, 3:-1:1, Base.OneTo(3))
+                @test @inferred(
+                    DynamicPPL.VarNamedTuples.get_maximum_size_from_indices(inds)
+                ) == (3,)
+            end
+        end
+
+        @testset "Slice growth uses the selected shape" begin
+            for address in (
+                @varname(x[2, 1:2][1]),
+                @varname(x[2:3, 1][1]),
+                @varname(x[[false, true, true], 1][1]),
+            )
+                for initial in
+                    (VarNamedTuple(), setindex!!(VarNamedTuple(), 1.0, @varname(x[2, 1])))
+                    sliced = @inferred(setindex!!(deepcopy(initial), 2.0, address))
+                    indexed = setindex!!(deepcopy(initial), 2.0, @varname(x[2, 1]))
+                    @test sliced[@varname(x[2, 1])] == indexed[@varname(x[2, 1])] == 2.0
+                    @test count(sliced.data.x.mask) == 1
+                end
+            end
         end
 
         @testset "GrowableArrays only need to grow when setting slices" begin
@@ -2459,6 +2712,50 @@ end
         v13s = VarNamedTuple(; x=CA.ComponentArray(; a=nothing, b=nothing))
         test_skeleton(v13, v13s)
     end
+end
+
+@testset "of templates" begin
+    @test templated_setindex!!(VarNamedTuple(), 2.0, @varname(z[end]), of(Array, 3))[@varname(
+        z[3]
+    )] === 2.0
+    v = @vnt begin
+        @template z = @of(a = of(Array, 3))
+        z.a[end] := 2.0
+    end
+    @test v[@varname(z.a[3])] === 2.0
+    T = of(Array, 3)
+    v = @vnt begin
+        @template T
+        T[end] := 3.0
+    end
+    @test v[@varname(T[3])] === 3.0
+    @model of_prefix() = x ~ Normal()
+    @test only(
+        keys(
+            rand(
+                Xoshiro(1),
+                DynamicPPL.prefix(of_prefix(), @varname(a[end]); template=of(Array, 3)),
+            ),
+        ),
+    ) == @varname(a[3].x)
+    @test only(
+        keys(
+            rand(
+                Xoshiro(1),
+                DynamicPPL.prefix(
+                    of_prefix(), @varname(a.z[end]); template=@of(z = of(Array, 3))
+                ),
+            ),
+        ),
+    ) == @varname(a.z[3].x)
+    @test_throws ErrorException templated_setindex!!(
+        VarNamedTuple(), 2.0, @varname(z[1]), of(Array, :n)
+    )
+end
+
+@testset "internal macro is not exported" begin
+    @test !(Symbol("@vnt") in names(DynamicPPL))
+    @test isdefined(DynamicPPL, Symbol("@vnt"))
 end
 
 @info "Completed $(@__FILE__) in $(now() - __now__)."

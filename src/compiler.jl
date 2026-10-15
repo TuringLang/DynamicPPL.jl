@@ -1,4 +1,4 @@
-const INTERNALNAMES = (:__model__, :__varinfo__)
+const INTERNALNAMES = (:__model__, :__context__, :__varinfo__)
 
 drop_escape(x) = x
 function drop_escape(expr::Expr)
@@ -29,107 +29,6 @@ function make_varname_expression(expr)
     # escape. Until that's the case, we remove them all.
     return drop_escape(AbstractPPL.varname(expr, false))
 end
-
-"""
-    isassumption(expr[, vn])
-
-Return an expression that can be evaluated to check if `expr` is an assumption in the
-model.
-
-Let `expr` be `:(x[1])`. It is an assumption in the following cases:
-    1. `x` is not among the input data to the model,
-    2. `x` is among the input data to the model but with a value `missing`, or
-    3. `x` is among the input data to the model with a value other than missing,
-       but `x[1] === missing`.
-
-When `expr` is not an expression or symbol (i.e., a literal), this expands to `false`.
-
-If `vn` is specified, it will be assumed to refer to a expression which evaluates to a
-`VarName`, and this will be used in the subsequent checks. If `vn` is not specified,
-`(@varname \$expr)` will be used in its place.
-"""
-function isassumption(expr::Union{Expr,Symbol}, vn=make_varname_expression(expr))
-    return quote
-        if $(DynamicPPL.contextual_isassumption)(
-            __model__.context, $(DynamicPPL.prefix)(__model__.context, $vn)
-        )
-            # Considered an assumption by `__model__.context` which means either:
-            # 1. We hit the default implementation, e.g. using `DefaultContext`,
-            #    which in turn means that we haven't considered if it's one of
-            #    the model arguments, hence we need to check this.
-            # 2. We are working with a `CondFixContext` _and_ it's NOT in the model arguments,
-            #    i.e. we're trying to condition one of the latent variables.
-            #    In this case, the below will return `true` since the first branch
-            #    will be hit.
-            # 3. We are working with a `CondFixContext` _and_ it's in the model arguments,
-            #    i.e. we're trying to override the value. This is currently NOT supported.
-            #    TODO: Support by adding context to model, and use `model.args`
-            #    as the default conditioning. Then we no longer need to check `inargnames`
-            #    since it will all be handled by `contextual_isassumption`.
-            if !($(DynamicPPL.inargnames)($vn, __model__)) ||
-                $(DynamicPPL.inmissings)($vn, __model__)
-                true
-            else
-                $(maybe_view(expr)) === missing
-            end
-        else
-            false
-        end
-    end
-end
-
-# failsafe: a literal is never an assumption
-isassumption(expr, vn) = :(false)
-isassumption(expr) = :(false)
-
-"""
-    contextual_isassumption(context, vn)
-
-Return `true` if `vn` is considered an assumption by `context`.
-"""
-function contextual_isassumption(context::AbstractContext, vn)
-    if hasconditioned_nested(context, vn)
-        val = getconditioned_nested(context, vn)
-        # TODO: Do we even need the `>: Missing`, i.e. does it even help the compiler?
-        if eltype(val) >: Missing && val === missing
-            return true
-        else
-            return false
-        end
-    else
-        return true
-    end
-end
-
-isfixed(expr, vn) = false
-function isfixed(::Union{Symbol,Expr}, vn)
-    return :($(DynamicPPL.contextual_isfixed)(
-        __model__.context, $(DynamicPPL.prefix)(__model__.context, $vn)
-    ))
-end
-
-"""
-    contextual_isfixed(context, vn)
-
-Return `true` if `vn` is considered fixed by `context`.
-"""
-function contextual_isfixed(context::AbstractContext, vn)
-    if hasfixed_nested(context, vn)
-        val = getfixed_nested(context, vn)
-        # TODO: Do we even need the `>: Missing`, i.e. does it even help the compiler?
-        if eltype(val) >: Missing && val === missing
-            return false
-        else
-            return true
-        end
-    else
-        return false
-    end
-end
-
-# If we're working with, say, a `Symbol`, then we're not going to `view`.
-maybe_view(x) = x
-maybe_view(x::Expr) = :(@views($x))
 
 """
     isliteral(expr)
@@ -254,13 +153,51 @@ macro model(expr, warn=false)
     return esc(model(__module__, __source__, expr, warn))
 end
 
+# Binding-time namespace checks must not evaluate indices from the model body.
+_static_lhs_address(name::Symbol) = VarName{name}()
+_static_lhs_address(other) = nothing
+function _static_lhs_address(expr::Expr)
+    if Meta.isexpr(expr, :.) && expr.args[2] isa QuoteNode
+        parent = _static_lhs_address(expr.args[1])
+        parent === nothing && return nothing
+        return VarName{AbstractPPL.getsym(parent)}(
+            AbstractPPL.Property{expr.args[2].value}() ∘ AbstractPPL.getoptic(parent)
+        )
+    elseif Meta.isexpr(expr, :ref) && all(i -> i isa Integer, expr.args[2:end])
+        parent = _static_lhs_address(expr.args[1])
+        parent === nothing && return nothing
+        return VarName{AbstractPPL.getsym(parent)}(
+            AbstractPPL.Index(Tuple(expr.args[2:end]), NamedTuple()) ∘
+            AbstractPPL.getoptic(parent),
+        )
+    end
+    return nothing
+end
+
 function model(mod, linenumbernode, expr, warn)
     modeldef = build_model_definition(expr)
 
     # Generate main body
-    modeldef[:body] = generate_mainbody(mod, modeldef[:body], warn, true)
+    lhs_names = Symbol[]
+    has_unprefixed_submodel = Ref(false)
+    lhs_addresses = Tuple{VarName,Bool}[]
+    arguments = map(
+        arg -> first(MacroTools.splitarg(arg)), vcat(modeldef[:args], modeldef[:kwargs])
+    )
+    modeldef[:body] = generate_mainbody(
+        mod,
+        modeldef[:body],
+        warn,
+        true;
+        lhs_names,
+        arguments,
+        has_unprefixed_submodel,
+        lhs_addresses,
+    )
 
-    return build_output(modeldef, linenumbernode)
+    return build_output(
+        modeldef, linenumbernode, lhs_names, has_unprefixed_submodel[], Tuple(lhs_addresses)
+    )
 end
 
 """
@@ -303,14 +240,35 @@ Generate the body of the main evaluation function from expression `expr` and arg
 If `warn` is true, a warning is displayed if internal variables are used in the model
 definition.
 """
-generate_mainbody(mod, expr, warn, warn_threads) =
-    generate_mainbody!(mod, Symbol[], expr, warn, warn_threads)
+generate_mainbody(
+    mod,
+    expr,
+    warn,
+    warn_threads;
+    lhs_names=Symbol[],
+    arguments=Symbol[],
+    has_unprefixed_submodel=Ref(false),
+    lhs_addresses=Tuple{VarName,Bool}[],
+) = generate_mainbody!(
+    mod,
+    (;
+        internal=Symbol[],
+        lhs_names,
+        arguments,
+        has_unprefixed_submodel,
+        lhs_addresses,
+        shadowed=Symbol[],
+    ),
+    expr,
+    warn,
+    warn_threads,
+)
 
 generate_mainbody!(mod, found, x, warn, warn_threads) = x
 function generate_mainbody!(mod, found, sym::Symbol, warn, warn_threads)
-    if warn && sym in INTERNALNAMES && sym ∉ found
+    if warn && sym in INTERNALNAMES && sym ∉ found.internal
         @warn "you are using the internal variable `$sym`"
-        push!(found, sym)
+        push!(found.internal, sym)
     end
 
     return sym
@@ -328,6 +286,17 @@ function generate_mainbody!(mod, found, expr::Expr, warn, warn_threads)
     # escape the entire body afterwards.
     Meta.isexpr(expr, :escape) &&
         return generate_mainbody!(mod, found, expr.args[1], warn, warn_threads)
+
+    if expr.head === :-> || MacroTools.isdef(expr)
+        definition = MacroTools.splitdef(expr)
+        names = [
+            first(MacroTools.splitarg(arg)) for
+            arg in vcat(get(definition, :args, []), get(definition, :kwargs, []))
+        ]
+        found = merge(
+            found, (; shadowed=union(found.shadowed, intersect(names, found.arguments)))
+        )
+    end
 
     # If it's a macro, we expand it
     if Meta.isexpr(expr, :macrocall)
@@ -363,10 +332,33 @@ function generate_mainbody!(mod, found, expr::Expr, warn, warn_threads)
     args_tilde = getargs_tilde(expr)
     if args_tilde !== nothing
         L, R = args_tilde
+        L = generate_mainbody!(mod, found, L, warn, warn_threads)
+        if !isliteral(L)
+            root = get_top_level_symbol(L)
+            is_submodel =
+                Meta.isexpr(R, :call) && R.args[1] in (
+                    :to_submodel,
+                    :(DynamicPPL.to_submodel),
+                    GlobalRef(DynamicPPL, :to_submodel),
+                )
+            # Only a literal unprefixed child can introduce unknown top symbols.
+            found.has_unprefixed_submodel[] |=
+                is_submodel && length(R.args) == 3 && R.args[3] === false
+            # Dynamic indices may overlap any address under their root.
+            address = something(_static_lhs_address(L), VarName{root}())
+            push!(found.lhs_addresses, (address, is_submodel))
+            root in found.shadowed && throw(
+                ArgumentError(
+                    "LHS root `$root` shadows model argument `$root`; rename the inner function parameter.",
+                ),
+            )
+            push!(found.lhs_names, root)
+        end
         return Base.remove_linenums!(
             generate_tilde(
-                generate_mainbody!(mod, found, L, warn, warn_threads),
-                generate_mainbody!(mod, found, R, warn, warn_threads),
+                L,
+                generate_mainbody!(mod, found, R, warn, warn_threads);
+                is_argument=!isliteral(L) && get_top_level_symbol(L) in found.arguments,
             ),
         )
     end
@@ -403,7 +395,7 @@ function generate_assign(left, right)
         if $(DynamicPPL.is_extracting_colon_eq_values)(__varinfo__)
             $vn = $(make_varname_expression(left))
             __varinfo__ = $(DynamicPPL.store_coloneq_value!!)(
-                __model__.context, $vn, $right_val, $template, __varinfo__
+                __model__, $vn, $right_val, $template, __varinfo__
             )
         end
         $left = $right_val
@@ -415,7 +407,8 @@ function generate_tilde_literal(left, right)
     @gensym value
     return quote
         $value, __varinfo__ = $(DynamicPPL.tilde_observe!!)(
-            __model__.context,
+            $(DynamicPPL._model_prefix)(__model__),
+            $(DynamicPPL._model_prefix_template)(__model__),
             $(DynamicPPL.check_tilde_rhs)($right),
             $left,
             nothing,
@@ -426,27 +419,74 @@ function generate_tilde_literal(left, right)
     end
 end
 
-assign_or_set!!(lhs::Symbol, rhs, vn) = drop_escape(:($lhs = $rhs))
-function assign_or_set!!(lhs::Expr, rhs, vn)
+assign_or_set!!(lhs::Symbol, rhs, vn, set=_set_lhs) = drop_escape(:($lhs = $rhs))
+function assign_or_set!!(lhs::Expr, rhs, vn, set=_set_lhs)
     left_top_sym = get_top_level_symbol(lhs)
     return drop_escape(
-        :(
-            $left_top_sym = $(Accessors.set)(
-                $left_top_sym,
-                $(AbstractPPL.with_mutation)($(AbstractPPL.getoptic)($vn)),
-                $rhs,
-            )
-        ),
+        :($left_top_sym = $(set)($left_top_sym, $(AbstractPPL.getoptic)($vn), $rhs, $vn))
     )
 end
 
-"""
-    generate_tilde(left, right)
+function _set_lhs(object, optic, value, vn)
+    (object === missing || object === nothing) && throw(_placeholder_lhs_error(vn, object))
+    return _set_lhs_optic(object, optic, value)
+end
+_set_lhs_optic(object, ::AbstractPPL.Iden, value) = value
+function _set_lhs_optic(object, optic::AbstractPPL.Property{S}, value) where {S}
+    child = _set_lhs_optic(getproperty(object, S), optic.child, value)
+    getproperty(object, S) === child && return object
+    if ismutabletype(typeof(object)) &&
+        hasfield(typeof(object), S) &&
+        isconst(typeof(object), S)
+        throw(
+            ArgumentError(
+                "Cannot replace const property `$S` of argument type $(typeof(object)); bind the whole value instead.",
+            ),
+        )
+    end
+    return BangBang.setproperty!!(object, S, child)
+end
+function _set_lhs_optic(object, optic::AbstractPPL.Index, value)
+    optic = AbstractPPL.concretize_top_level(optic, object)
+    child = if optic.child isa AbstractPPL.Iden
+        value
+    else
+        _set_lhs_optic(getindex(object, optic.ix...; optic.kw...), optic.child, value)
+    end
+    return if isempty(optic.kw)
+        _setindex!!(object, child, optic.ix...)
+    else
+        setindex!(object, child, optic.ix...; optic.kw...)
+    end
+end
 
-Generate an `observe` expression for data variables and `assume` expression for parameter
-variables.
+function _placeholder_lhs_error(vn, object)
+    return ArgumentError(
+        "Cannot assign latent LHS variable `$vn`: `$(AbstractPPL.getsym(vn))` is `$object` " *
+        "and has no storage; supply a concrete argument such as `f(zeros(n))` or create the " *
+        "storage in the model body before the tilde.",
+    )
+end
+# A keyword splat must stay `Base.Pairs`, as plain Julia presents it to the body.
+function _set_lhs(object::Base.Pairs, optic, value, vn)
+    return pairs(_set_lhs_optic(values(object), optic, value))
+end
+# A fixed argument already holds its value unless the body changed it. Skip the write when
+# it holds that very value, so storage that cannot take the write, such as a range, works;
+# equality is not enough, as the body may point the address at latent storage. A mutable
+# value is written back without comparing, since reading a slice to compare it allocates.
+function _set_fixed_lhs(object, optic, value, vn)
+    ismutable(value) && return _set_lhs(object, optic, value, vn)
+    return optic(object) === value ? object : _set_lhs(object, optic, value, vn)
+end
+
 """
-function generate_tilde(left, right)
+    generate_tilde(left, right; is_argument=false)
+
+Generate latent, observed, or fixed evaluation for a tilde expression.
+Argument LHS variables that are observed use their prepared local value, including body computations.
+"""
+function generate_tilde(left, right; is_argument=false)
     isliteral(left) && return generate_tilde_literal(left, right)
     template = if left isa Symbol  # i.e. identity optic
         :($(NoTemplate)())
@@ -454,55 +494,79 @@ function generate_tilde(left, right)
         get_top_level_symbol(left)
     end
 
-    # Otherwise it is determined by the model or its value,
-    # if the LHS represents an observation
-    @gensym vn isassumption value dist supplied_val
+    @gensym vn role value dist supplied_val
+    lookup_role = if is_argument
+        :($(DynamicPPL._get_argument_role)(
+            __model__, $vn, $(VarName{get_top_level_symbol(left)}())
+        ))
+    else
+        :($(DynamicPPL._get_model_role)(__model__, $vn, $template))
+    end
+
+    fixed_data = if is_argument
+        :($(DynamicPPL._get_model_data)(
+            __model__,
+            $vn,
+            $(VarName{get_top_level_symbol(left)}()),
+            $(get_top_level_symbol(left)),
+        ))
+    else
+        :($(DynamicPPL._get_model_data)(__model__, $vn))
+    end
 
     return quote
         $dist = $right
         $vn = $(make_varname_expression(left))
-        $isassumption = $(DynamicPPL.isassumption(left, vn))
-        # TODO(penelopeysm): VERY HACKY WORKAROUND FOR SUBMODELS. See src/submodel.jl
-        # tilde_observe!! for more details.
-        if $(DynamicPPL.isfixed(left, vn)) && !($dist isa $(DynamicPPL.Submodel))
-            # $left may not be a simple varname, it might be x.a or x[1], in which case we
-            # need to use Accessors.set to safely set it.
-            $(assign_or_set!!(
-                left,
-                :($(DynamicPPL.getfixed_nested)(
-                    __model__.context, $(DynamicPPL.prefix)(__model__.context, $vn)
-                )),
-                vn,
-            ))
-        elseif $isassumption
-            $(generate_input_provenance_check(left, vn))
-            $(generate_tilde_assume(left, dist, vn))
+        $(DynamicPPL._check_namedtuple_index)(
+            $(DynamicPPL.ModelValue){$(DynamicPPL.Condition)}($template),
+            $(AbstractPPL.getoptic)($vn),
+            $(AbstractPPL.Property{get_top_level_symbol(left)}()),
+        )
+        $role = if $dist isa $(DynamicPPL.Submodel)
+            nothing
         else
-            # If `vn` is not in `argnames`, then it's definitely been conditioned on (if
-            # it's not in `argnames` and wasn't conditioned on, then `isassumption` would
-            # be true).
-            # Note that it's important to always make sure that the variable `$supplied_val`
-            # is defined (by putting $supplied_val outside the if/else block), otherwise
-            # Libtask can trip up with variables that are only defined in one branch. See
-            # eg. https://github.com/TuringLang/DynamicPPL.jl/pull/1110 for a discussion of
-            # this.
-            $supplied_val = if $(DynamicPPL.inargnames)($vn, __model__)
-                $(maybe_view(left))
-            else
-                $(DynamicPPL.getconditioned_nested)(
-                    __model__.context, $(DynamicPPL.prefix)(__model__.context, $vn)
-                )
+            $lookup_role
+        end
+        if $role isa $(DynamicPPL.Fix)
+            $value = $(DynamicPPL._check_tilde_value)(
+                $fixed_data,
+                $(DynamicPPL.maybe_prefix)($vn, $(DynamicPPL._model_prefix)(__model__)),
+                $role,
+            )
+            $(assign_or_set!!(left, value, vn, is_argument ? _set_fixed_lhs : _set_lhs))
+        elseif $role === nothing
+            if !($dist isa $(DynamicPPL.Submodel))
+                $(generate_input_provenance_check(left, vn))
             end
+            $value, __varinfo__ = $(DynamicPPL.tilde_assume!!)(
+                __model__,
+                __context__,
+                $(DynamicPPL.check_tilde_rhs)($dist),
+                $vn,
+                $template,
+                __varinfo__,
+            )
+            $(assign_or_set!!(left, value, vn))
+            $value
+        else
+            $supplied_val = $(
+                if is_argument
+                    :($(Base).@views($left))
+                else
+                    :($(DynamicPPL._get_model_data)(__model__, $vn))
+                end
+            )
 
             $value, __varinfo__ = $(DynamicPPL.tilde_observe!!)(
-                __model__.context,
+                $(DynamicPPL._model_prefix)(__model__),
+                $(DynamicPPL._model_prefix_template)(__model__),
                 $(DynamicPPL.check_tilde_rhs)($dist),
                 $supplied_val,
                 $vn,
                 $template,
                 __varinfo__,
             )
-            $(assign_or_set!!(left, value, vn))
+            $(is_argument ? nothing : assign_or_set!!(left, value, vn))
             $value
         end
     end
@@ -525,18 +589,6 @@ check_input_provenance!!(vi::AbstractVarInfo, value, vn::VarName) = vi
     end
 end
 
-# A bare symbol is already covered by the `isdefined` guard on the check itself.
-generate_input_provenance_read(left::Symbol) = left
-function generate_input_provenance_read(left::Expr)
-    if Meta.isexpr(left, :ref)
-        return :($(DynamicPPL.read_input_provenance)($(Base.maybeview), $(left.args...)))
-    elseif Meta.isexpr(left, :.)
-        return :($(DynamicPPL.read_input_provenance)($(getproperty), $(left.args...)))
-    else
-        error("unreachable")
-    end
-end
-
 generate_input_provenance_check(::Any, ::Any) = nothing
 function generate_input_provenance_check(left::Union{Expr,Symbol}, vn)
     @gensym value
@@ -545,46 +597,15 @@ function generate_input_provenance_check(left::Union{Expr,Symbol}, vn)
     return quote
         if $(DynamicPPL.hasacc)(__varinfo__, $(Val(INPUT_PROVENANCE_ACCNAME))) &&
             $(Expr(:isdefined, top_symbol))
-            $value = $(generate_input_provenance_read(left))
+            $value = $(DynamicPPL.read_input_provenance)(
+                $(AbstractPPL.getoptic)($vn), $top_symbol
+            )
             __varinfo__ = $(DynamicPPL.check_input_provenance!!)(
-                __varinfo__, $value, $(DynamicPPL.prefix)(__model__.context, $vn)
+                __varinfo__,
+                $value,
+                $(DynamicPPL.maybe_prefix)($vn, $(DynamicPPL._model_prefix)(__model__)),
             )
         end
-    end
-end
-
-function generate_tilde_assume(left, right, vn)
-    # HACK: Because the Setfield.jl macro does not support assignment
-    # with multiple arguments on the LHS, we need to capture the return-values
-    # and then update the LHS variables one by one.
-    @gensym value
-    expr = if left isa Expr # as opposed to Symbol
-        left_top_sym = get_top_level_symbol(left)
-        :(
-            $left_top_sym = $(Accessors.set)(
-                $left_top_sym,
-                $(AbstractPPL.with_mutation)($(AbstractPPL.getoptic)($vn)),
-                $value,
-            )
-        )
-    else
-        :($left = $value)
-    end
-    template = if left isa Symbol  # i.e. identity optic
-        :($(NoTemplate)())
-    else
-        left_top_sym
-    end
-    return quote
-        $value, __varinfo__ = $(DynamicPPL.tilde_assume!!)(
-            __model__.context,
-            $(DynamicPPL.check_tilde_rhs)($right),
-            $vn,
-            $template,
-            __varinfo__,
-        )
-        $expr
-        $value
     end
 end
 
@@ -668,11 +689,6 @@ function add_return_to_last_statment(body::Expr)
     return Expr(body.head, new_args...)
 end
 
-hasmissing(::Type) = false
-hasmissing(::Type{>:Missing}) = true
-hasmissing(::Type{<:AbstractArray{TA}}) where {TA} = hasmissing(TA)
-hasmissing(::Type{Union{}}) = false # issue #368
-
 """
     TypeWrap{T}
 
@@ -723,7 +739,9 @@ end
 
 Builds the output expression.
 """
-function build_output(modeldef, linenumbernode)
+function build_output(
+    modeldef, linenumbernode, lhs_names, has_unprefixed_submodel=false, lhs_addresses=()
+)
     args = transform_args(modeldef[:args])
     kwargs = transform_args(modeldef[:kwargs])
 
@@ -750,6 +768,7 @@ function build_output(modeldef, linenumbernode)
     # See the docstrings of `replace_returns` for more info.
     evaluatordef[:body] = MacroTools.@q begin
         $(linenumbernode)
+        __context__ = first($(DynamicPPL.extract_prefixes)(__model__.context))
         $(replace_returns(add_return_to_last_statment(modeldef[:body])))
     end
 
@@ -768,7 +787,111 @@ function build_output(modeldef, linenumbernode)
     args_split = map(MacroTools.splitarg, args)
     kwargs_split = map(MacroTools.splitarg, kwargs)
     args_nt = namedtuple_from_splitargs(args_split)
-    kwargs_inclusion = map(splitarg_to_expr, kwargs_split)
+    kwargs_nt = namedtuple_from_splitargs(kwargs_split)
+    normalize_kwargs = [
+        :($name = $(NamedTuple)($name)) for
+        (name, _, is_splat, _) in kwargs_split if is_splat
+    ]
+    args_on_lhs = unique([
+        name for (name, _, _, _) in vcat(args_split, kwargs_split) if name in lhs_names
+    ])
+    type_names = Tuple(
+        is_splat ? Symbol("#splat#", n) : n for
+        (n, _, is_splat, _) in vcat(args_split, kwargs_split)
+    )
+    types = Any[is_splat ? :(Tuple{Vararg{$t}}) : t for (_, t, is_splat, _) in args_split]
+    append!(types, [is_splat ? :Any : t for (_, t, is_splat, _) in kwargs_split])
+    if !isempty(modeldef[:whereparams])
+        types = [Expr(:where, t, modeldef[:whereparams]...) for t in types]
+    end
+    argument_types = :(NamedTuple{$(QuoteNode(type_names)),Tuple{$(types...)}})
+    @gensym replaced prepared
+    prepare_args = map(args_on_lhs) do name
+        return quote
+            $prepared = $(prepare_model_argument)(__model__, $(VarName{name}()), $name)
+            $replaced |= $prepared !== $name
+            $name = $prepared
+        end
+    end
+    debugdef = nothing
+    bodydef = if isempty(args_on_lhs)
+        nothing
+    else
+        definition = copy(evaluatordef)
+        definition[:name] = gensym(:model_body)
+        # Pass prepared keywords positionally so applicability checks their types too.
+        definition[:kwargs] = []
+        definition[:args] = vcat(
+            definition[:args][1:2],
+            [MacroTools.combinearg(n, t, false, nothing) for (n, t, _, _) in kwargs_split],
+            args,
+        )
+        callargs = Any[
+            :__model__,
+            :__varinfo__,
+            [
+                is_splat ? :($(Base.pairs)($(NamedTuple)($n))) : n for
+                (n, _, is_splat, _) in kwargs_split
+            ]...,
+            map(splitarg_to_expr, args_split)...,
+        ]
+        if Meta.isexpr(evaluatordef[:name], :(::))
+            definition[:args] = vcat([evaluatordef[:name]], definition[:args])
+            pushfirst!(callargs, :(__model__.f))
+        end
+        descriptions = [
+            :(
+                if $(
+                    if is_splat
+                        :($(Base.all)($(Base.Fix2)($(Core.isa), $t), $(Base.values)($n)))
+                    else
+                        :($n isa $t)
+                    end
+                )
+                    nothing
+                else
+                    $(Base.string)($("`$n` declared as $t, supplied "), $(Core.typeof)($n))
+                end
+            ) for
+            (n, t, is_splat, _) in vcat(args_split, kwargs_split) if n in args_on_lhs
+        ]
+        # Dispatch again after replacement so the body's type parameters match its inputs.
+        # Check applicability first: when it is statically true, Mooncake can discard the
+        # value-identity branch instead of recording it for every submodel evaluation.
+        evaluatordef[:body] = MacroTools.@q begin
+            $replaced = false
+            $(prepare_args...)
+            if !$(Base.applicable)($(definition[:name]), $(callargs...)) && $replaced
+                $(Core.throw)(
+                    $(ArgumentError)(
+                        $(Base.string)(
+                            "Bound value does not match the declared argument type in model `",
+                            $(Base.nameof)(__model__),
+                            "`: ",
+                            $(Base.join)(
+                                $(Base.filter)($(!isnothing), ($(descriptions...),)),
+                                "; ",
+                            ),
+                        ),
+                    ),
+                )
+            end
+            return $(definition[:name])($(callargs...))
+        end
+        # The debug entry point is a method of the model function itself: a method of a
+        # DynamicPPL function cannot be defined when `@model` is used in local scope.
+        debug_definition = copy(evaluatordef)
+        debug_definition[:args] = vcat(
+            [:(::$(Core.Typeof)($(_model_evaluator)))], evaluatordef[:args]
+        )
+        debug_definition[:body] = Expr(
+            :block,
+            evaluatordef[:body].args[1:(end - 1)]...,
+            :(return ($(definition[:name]), ($(callargs...),), $(NamedTuple)())),
+        )
+        debugdef = MacroTools.combinedef(debug_definition)
+        MacroTools.combinedef(definition)
+    end
 
     # Update the function body of the user-specified model.
     # We use `MacroTools.@q begin ... end` instead of regular `quote ... end` to ensure
@@ -776,14 +899,102 @@ function build_output(modeldef, linenumbernode)
     # to the call site
     modeldef[:body] = MacroTools.@q begin
         $(linenumbernode)
-        return $(DynamicPPL.Model){false}($name, $args_nt; $(kwargs_inclusion...))
+        $(normalize_kwargs...)
+        return $(DynamicPPL.Model){false}(
+            $name,
+            $args_nt,
+            $kwargs_nt,
+            $(DynamicPPL.DefaultContext)();
+            args_on_lhs=$(ModelBindingMetadata){
+                $(QuoteNode(Tuple(args_on_lhs))),
+                $(QuoteNode(Tuple(unique(lhs_names)))),
+                $has_unprefixed_submodel,
+                $argument_types,
+                $(QuoteNode(Tuple(unique(lhs_addresses)))),
+            }(),
+        )
     end
 
     return MacroTools.@q begin
+        $bodydef
         $(MacroTools.combinedef(evaluatordef))
+        $debugdef
         $(Base).@__doc__ $(MacroTools.combinedef(modeldef))
     end
 end
+
+function _model_evaluator(f, args, kwargs)
+    isempty(_args_on_lhs(first(args))) && return (f, args, kwargs)
+    types = Base.typesof(_model_evaluator, args...)
+    if hasmethod(f, types)
+        signature = Base.unwrap_unionall(which(f, types).sig)
+        # A generic model constructor can also accept the debug marker.
+        if signature.parameters[2] === typeof(_model_evaluator)
+            return f(_model_evaluator, args...; kwargs...)
+        end
+    end
+    return f, args, kwargs
+end
+
+function prepare_model_argument(model::Model, vn::VarName, value)
+    binding = _get_model_binding(model, vn)
+    return _model_argument_value(binding, value, maybe_prefix(vn, _model_prefix(model)))
+end
+function prepare_model_argument(binding, value)
+    return _model_argument_value(binding, value)
+end
+
+# Whole-variable hasvalue checks reject partial containers needed for argument preparation.
+_model_argument_binding(values, ::AbstractPPL.AbstractOptic) = nothing
+_model_argument_binding(values, ::AbstractPPL.Iden) = values
+function _model_argument_binding(
+    values::VarNamedTuple, optic::AbstractPPL.Property{S}
+) where {S}
+    return if haskey(values.data, S)
+        _model_argument_binding(values.data[S], optic.child)
+    else
+        nothing
+    end
+end
+function _model_slice_storage(values::VarNamedTuples.PartialArray, optic::AbstractPPL.Index)
+    if values.data isa VarNamedTuples.GrowableArray &&
+        all(i -> i isa Union{Integer,AbstractVector{<:Integer}}, optic.ix) &&
+        any(i -> i isa AbstractVector, optic.ix) &&
+        !checkbounds(Bool, values.data, optic.ix...; optic.kw...)
+        values = VarNamedTuples.grow_to_indices!!(values, optic.ix...; optic.kw...)
+    end
+    return values
+end
+function _model_argument_binding(
+    values::VarNamedTuples.PartialArray, optic::AbstractPPL.Index
+)
+    optic = AbstractPPL.concretize_top_level(optic, values.data)
+    values = _model_slice_storage(values, optic)
+    checkbounds(Bool, values, optic.ix...; optic.kw...) || return nothing
+    selected = if VarNamedTuples._is_multiindex(values.data, optic.ix...; optic.kw...)
+        subset = VarNamedTuples._subset_partialarray(values, optic.ix...; optic.kw...)
+        if all(subset.mask) &&
+            !isempty(subset.data) &&
+            VarNamedTuples._can_get_arraylikeblock(subset.data)
+            first(subset.data).block
+        else
+            subset
+        end
+    elseif haskey(values, optic.ix...; optic.kw...)
+        getindex(values, optic.ix...; optic.kw...)
+    else
+        return nothing
+    end
+    return _model_argument_binding(selected, optic.child)
+end
+function _model_argument_binding(values::ModelValue, optic::AbstractPPL.AbstractOptic)
+    return if VarNamedTuples._haskey_optic(values, optic)
+        VarNamedTuples._getindex_optic(values, optic, @varname(_))
+    else
+        nothing
+    end
+end
+_model_argument_binding(values::ModelValue, ::AbstractPPL.Iden) = values
 
 function warn_empty(body)
     if all(l -> isa(l, LineNumberNode), body.args)
@@ -794,41 +1005,12 @@ end
 
 """
     convert_model_argument(param_eltype, model_argument)
+    convert_model_argument(varinfo, context, model_argument)
 
-Convert `model_argument` to the correct type, given the element type of the parameters being
-used to evaluate the model. This function potentially also deep-copies `model_argument` if it
-contains `missing` values.
+Promote type arguments to the parameter element type; leave value arguments unchanged.
+The three-argument form queries the parameter element type only for type arguments.
 """
-function convert_model_argument(param_eltype, model_argument)
-    T = typeof(model_argument)
-    # If the argument contains missing data, then we potentially need to deepcopy it. This
-    # is because the argument may be e.g. a vector of missings, and evaluating a
-    # tilde-statement like x[1] ~ Normal() would set x[1] = some_not_missing_value, thus
-    # mutating x. If you then run the model again with the same argument, x[1] would no
-    # longer be missing.
-    return if hasmissing(T)
-        # It is possible that we could skip the deepcopy, if the argument has to be promoted
-        # anyway. For example, if we are running with ForwardDiff and the argument is a
-        # Vector{Union{Missing, Float64}}, then we will convert it to a
-        # Vector{Union{Missing, ForwardDiff.Dual{...}}} anyway, which will avoid mutating
-        # the original argument. We can check for this by first converting and then only
-        # deepcopying if the converted value aliases the original.
-        # Note that indiscriminately deepcopying can not only lead to reduced performance,
-        # but sometimes also incorrect behaviour with ReverseDiff.jl, because ReverseDiff
-        # expects to be able to track array mutations. See e.g.
-        # https://github.com/TuringLang/DynamicPPL.jl/pull/1015#issuecomment-3166011534
-        converted_argument = convert(
-            promote_model_type_argument(param_eltype, T), model_argument
-        )
-        if converted_argument === model_argument
-            deepcopy(model_argument)
-        else
-            converted_argument
-        end
-    else
-        model_argument
-    end
-end
+convert_model_argument(param_eltype, model_argument) = model_argument
 # These methods handle arguments that are types rather than values.
 function convert_model_argument(param_eltype, t::Type{<:Union{Real,AbstractArray}})
     return promote_model_type_argument(param_eltype, t)
@@ -836,14 +1018,14 @@ end
 function convert_model_argument(param_eltype, ::TypeWrap{T}) where {T}
     return TypeWrap{promote_model_type_argument(param_eltype, T)}()
 end
-# If the parameter element type is `Any`, then we don't need to do any conversion (but we
-# might need to deepcopy).
-function convert_model_argument(::Type{Any}, model_argument::T) where {T}
-    return hasmissing(T) ? deepcopy(model_argument) : model_argument
-end
-# Extra methods to avoid method ambiguity.
+# An unknown parameter element type must not erase concrete type arguments.
 convert_model_argument(::Type{Any}, t::Type{<:Union{Real,AbstractArray}}) = t
 convert_model_argument(::Type{Any}, t::TypeWrap{T}) where {T} = t
+
+convert_model_argument(varinfo, context, argument) = convert_model_argument(Any, argument)
+function convert_model_argument(varinfo, context, argument::Union{Type,TypeWrap})
+    return convert_model_argument(get_param_eltype(varinfo, context), argument)
+end
 
 """
     promote_model_type_argument(param_eltype, ::Type{T}) where {T}

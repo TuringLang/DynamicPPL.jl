@@ -35,6 +35,10 @@ a dedicated struct instead.
 """
 struct NoTemplate end
 
+materialize_template(template) = template
+# Fixed `of` element types require runtime AD bindings to use running values or whole bindings.
+materialize_template(::Type{T}) where {T<:AbstractPPL.OfType} = zero(T)
+
 """
     SkipTemplate{N}(value)
 
@@ -54,10 +58,21 @@ SkipTemplate{0}(::NoTemplate) = NoTemplate()
 function decrease_skip(st::SkipTemplate{N}) where {N}
     return SkipTemplate{N - 1}(st.value)
 end
-# Increase the skip level: used when applying a PrefixContext (the template
+# Increase the skip level: used when applying a model prefix (the template
 # must be wrapped by the appropriate number of SkipTemplates).
 SkipTemplate{N}(v::SkipTemplate{M}) where {N,M} = SkipTemplate{N + M}(v.value)
 SkipTemplate{0}(v::SkipTemplate{M}) where {M} = SkipTemplate{M}(v.value)
+
+# Preserve the enclosing container until the submodel boundary, then use its local template.
+struct NestedTemplate{P<:AbstractPPL.AbstractOptic,T,C}
+    path::P
+    outer::T
+    inner::C
+end
+nested_template(path, outer, inner) = NestedTemplate(path, outer, inner)
+nested_template(::AbstractPPL.Iden, outer, inner) = SkipTemplate{1}(inner)
+template_array(template) = template
+template_array(template::NestedTemplate) = template_array(template.outer)
 
 """
     abstract type SetPermissions end
@@ -140,6 +155,65 @@ include("varnamedtuple/map.jl")
 include("varnamedtuple/show.jl")
 include("varnamedtuple/macro.jl")
 include("varnamedtuple/skeleton.jl")
+
+"""
+    AbstractPPL.of(vnt::VarNamedTuple)
+
+Describe the storage in `vnt` as an AbstractPPL `OfNamedTuple` binding template.
+Import `of` from AbstractPPL. Numeric `Array`s retain their element type and size;
+partly filled entries describe their full backing array, without reading unbound slots.
+Nested namespaces become nested templates. Scalars are supported only when `of`
+describes their type exactly. Custom arrays, growable entries (even fully filled),
+and scalar types that `of` would widen throw `ArgumentError`.
+
+This is a snapshot of the sample's layout: rebuild the template after layout changes.
+Values and masks are discarded. When passed to [`condition`](@ref) or [`fix`](@ref),
+argument entries and entries not bound by the call are ignored. Names are absolute,
+as in `rand(model)` output. An indexed prefix, such as
+`prefix(model, @varname(p[1, 2]))`, cannot be represented by this template grammar, so `of(vnt)`
+throws for such samples; supply storage before applying the prefix, or through an argument.
+
+```jldoctest
+julia> using AbstractPPL: of
+
+julia> template = of(VarNamedTuple(; y=zeros(Float32, 2)));
+
+julia> zero(template)
+(y = Float32[0.0, 0.0],)
+```
+"""
+AbstractPPL.of(vnt::VarNamedTuple) = _storage_template(vnt)
+
+_storage_template(vnt::VarNamedTuple) = _storage_template(vnt.data)
+_storage_template(nt::NamedTuple) = AbstractPPL.of(map(_storage_template, nt))
+_storage_template(pa::PartialArray) = _storage_template(pa.data)
+_storage_template(a::Array{<:Number}) = AbstractPPL.of(a)
+function _storage_template(a::GrowableArray)
+    throw(
+        ArgumentError(
+            "Cannot infer a binding template from growable storage: it has no established shape.",
+        ),
+    )
+end
+function _storage_template(a::AbstractArray)
+    throw(
+        ArgumentError(
+            "Cannot preserve $(typeof(a)) in a binding template; only plain numeric Arrays are supported.",
+        ),
+    )
+end
+function _storage_template(x::Real)
+    template = AbstractPPL.of(x)
+    typeof(zero(template)) === typeof(x) || throw(
+        ArgumentError(
+            "Cannot preserve scalar type $(typeof(x)) in a binding template: `of` would widen it to $(typeof(zero(template))).",
+        ),
+    )
+    return template
+end
+function _storage_template(x)
+    throw(ArgumentError("Cannot describe $(typeof(x)) exactly in a binding template."))
+end
 
 """
     NamedTuple(vnt::VarNamedTuple)

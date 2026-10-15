@@ -124,7 +124,7 @@ haskey(d, @varname(x)), haskey(d, @varname(x[1:2]))
 ### What's the problem with this?
 
 One issue that a lack of constructiveness causes is when reading information back from a Chains object.
-MCMCChains.jl, for example, breaks up all variables into its constituent scalar components.
+MCMCChains.jl, for example, breaks up LHS variables into their scalar subvariables.
 Thus, even if you have a multivariate distribution
 
 ```@example 1
@@ -138,7 +138,7 @@ nothing # hide
 ```
 
 sampling from this model would give a chain with keys `x[1]` and `x[2]`.
-When calling functions such as `returned` or `predict` on the chain, we have to somehow 'reconstruct' the value of `x` from its components, so that when executing the model we can use the actual value of `x`.
+When calling functions such as `returned` or `predict` on the chain, we have to somehow 'reconstruct' the value of `x` from its LHS subvariables, so that when executing the model we can use the actual value of `x`.
 
 !!! info
     
@@ -154,11 +154,11 @@ When calling functions such as `returned` or `predict` on the chain, we have to 
     ```
 
 Another problem was when conditioning on values.
-In such cases, you had to condition on `x` in full, rather than its components:
+The binding API now accepts ordered pairs rather than dictionaries, allowing whole and partial bindings:
 
 ```julia
-model = f4() | Dict(@varname(x) => [1.0, -1.0])  # This would work.
-model = f4() | Dict(@varname(x[1]) => 1.0, @varname(x[2]) => -1.0)  # This would not.
+model = f4() | (@varname(x) => [1.0, -1.0])  # Whole binding.
+model = f4() | (@varname(x[1]) => 1.0, @varname(x[2]) => -1.0)  # Partial bindings.
 ```
 
 Finally, we are unable to properly use different indexing schemes.

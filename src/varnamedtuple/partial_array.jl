@@ -77,7 +77,7 @@ Base.collect(ga::GrowableArray) = collect(ga.data)
 Base.similar(ga::GrowableArray, ::Type{T}) where {T} = GrowableArray(similar(ga.data, T))
 Base.similar(ga::GrowableArray, sz::Tuple) = GrowableArray(similar(ga.data, sz))
 # single-element indexing
-Base.getindex(ga::GrowableArray, ix::Vararg{Int}) = getindex(ga.data, ix...)
+Base.getindex(ga::GrowableArray, ix::Vararg{Integer}) = getindex(ga.data, ix...)
 function Base.copyto!(dest::GrowableArray, src::GrowableArray, args...)
     return copyto!(dest.data, src.data, args...)
 end
@@ -108,8 +108,9 @@ end
 
 # Helper functions to determine the largest index from various index types.
 largest_index(ix::Integer) = ix
-largest_index(r::AbstractUnitRange) = last(r)
-largest_index(r::AbstractVector{<:Integer}) = maximum(r)
+largest_index(r::AbstractUnitRange) = isempty(r) ? zero(eltype(r)) : last(r)
+largest_index(r::AbstractVector{<:Integer}) = isempty(r) ? zero(eltype(r)) : maximum(r)
+largest_index(r::AbstractVector{Bool}) = length(r)
 function largest_index(x)
     throw(
         ArgumentError(
@@ -125,16 +126,20 @@ function get_maximum_size_from_indices(ix...; kw...)
     return tuple(map(largest_index, ix)...)
 end
 
+_selected_indices(ix::AbstractVector{Bool}) = Base.OneTo(count(ix))
+_selected_indices(ix) = ix
+_selected_index_shape(ix...) = Base.index_shape(map(_selected_indices, ix)...)
+
 # This determines the required size for setting into the indices ix. Note that ix is not
 # splatted! and this function takes no keywords! For example, if ix is (3:5,1), this
 # function will return (3,); but get_maximum_size_from_indices will return (5, 1).
 @generated function get_required_size_from_indices(ix::Tuple)
     x = Expr(:tuple)
     for (i, ti) in enumerate(ix.parameters)
-        if ti <: AbstractVector{<:Integer}
+        if ti <: AbstractVector{Bool}
+            push!(x.args, :(count(ix[$i])))
+        elseif ti <: AbstractVector{<:Integer}
             push!(x.args, :(length(ix[$i])))
-        elseif i isa Colon
-            error("nope")
         end
     end
     return x
@@ -204,10 +209,40 @@ Base.eltype(::PartialArray{ElType}) where {ElType} = ElType
 Base.size(pa::PartialArray) = size(pa.data)
 Base.isassigned(pa::PartialArray, ix...; kw...) = isassigned(pa.data, ix...; kw...)
 
+function _copy_partial_array_data(
+    data::AbstractArray, mask::AbstractArray{Bool}, ::Type{T}=eltype(data)
+) where {T}
+    if isbitstype(eltype(data)) && T === eltype(data)
+        return copy(data)
+    end
+    result = similar(data, T)
+    @inbounds for i in eachindex(mask)
+        mask[i] && (result[i] = data[i])
+    end
+    return result
+end
+
+function _setindex_partial_array!!(data, mask, value, inds...; kw...)
+    if !isbitstype(eltype(data))
+        value_type = if value isa AbstractArray && _is_multiindex(data, inds...; kw...)
+            eltype(value)
+        else
+            typeof(value)
+        end
+        new_eltype = promote_type(eltype(data), value_type)
+        if !(new_eltype <: eltype(data)) || !BangBang.implements(setindex!, typeof(data))
+            data = _copy_partial_array_data(data, mask, new_eltype)
+        end
+        setindex!(data, value, inds...; kw...)
+        return data
+    end
+    return DynamicPPL._setindex!!(data, value, inds...; kw...)
+end
+
 function Base.copy(pa::PartialArray)
     # Make a shallow copy of pa, except for any VarNamedTuple elements, which we recursively
     # copy.
-    pa_copy = PartialArray(copy(pa.data), copy(pa.mask))
+    pa_copy = PartialArray(_copy_partial_array_data(pa.data, pa.mask), copy(pa.mask))
     et = eltype(pa)
     if (
         VarNamedTuple <: et ||
@@ -300,13 +335,7 @@ function _concretise_eltype!!(pa::PartialArray)
     if isconcretetype(eltype(pa))
         return pa
     end
-    # We could use promote_type here, instead of typejoin. However, that would e.g.
-    # cause Ints to be converted to Float64s, since
-    # promote_type(Int, Float64) == Float64, which can cause problems. See
-    # https://github.com/TuringLang/DynamicPPL.jl/pull/1098#discussion_r2472636188.
-    # Base.promote_typejoin would be like typejoin, but creates Unions out of Nothing
-    # and Missing, rather than falling back on Any. However, it's not exported.
-    new_et = typejoin((typeof(pa.data[i]) for i in eachindex(pa.mask) if pa.mask[i])...)
+    new_et = _concretised_eltype(pa)
     # TODO(mhauru) Should we check as below, or rather isconcretetype(new_et)?
     # In other words, does it help to be more concrete, even if we aren't fully concrete?
     if new_et === eltype(pa)
@@ -320,6 +349,26 @@ function _concretise_eltype!!(pa::PartialArray)
         end
     end
     return PartialArray(new_data, pa.mask)
+end
+
+# Only types and mask metadata affect this query, never the numerical payloads.
+function _concretised_eltype(pa::PartialArray)
+    # We could use promote_type here, instead of typejoin. However, that would e.g.
+    # cause Ints to be converted to Float64s, since
+    # promote_type(Int, Float64) == Float64, which can cause problems. See
+    # https://github.com/TuringLang/DynamicPPL.jl/pull/1098#discussion_r2472636188.
+    # Base.promote_typejoin would be like typejoin, but creates Unions out of Nothing
+    # and Missing, rather than falling back on Any. However, it's not exported.
+    new_et = Union{}
+    for i in eachindex(pa.mask)
+        pa.mask[i] || continue
+        element_type = typeof(pa.data[i])
+        element_type <: new_et && continue
+        new_et = typejoin(new_et, element_type)
+        # The join cannot change once it reaches the storage element type.
+        new_et === eltype(pa) && return new_et
+    end
+    return new_et
 end
 
 """
@@ -343,6 +392,23 @@ function _can_get_arraylikeblock(pa_data::AbstractArray)
     return true
 end
 
+# Linear or trailing-singleton indices into growable storage would alias other addresses.
+function _index_ndims(inds...)
+    n = length(Base.index_ndims(inds...))
+    for ind in inds
+        ind isa AbstractArray{Bool} || continue
+        n += ndims(ind) - 1
+    end
+    return n
+end
+function _matches_ndims(pa::PartialArray, inds)
+    pa.data isa GrowableArray || return true
+    return _index_ndims(inds...) == ndims(pa)
+end
+function Base.checkbounds(::Type{Bool}, pa::PartialArray, inds...; kw...)
+    return _matches_ndims(pa, inds) && checkbounds(Bool, pa.mask, inds...; kw...)
+end
+
 """
     Base.getindex(pa::PartialArray, inds::Vararg{Any}; kw...)
 
@@ -352,7 +418,7 @@ requested indices correspond to an ArrayLikeBlock.
 """
 function Base.getindex(pa::PartialArray, inds::Vararg{Any}; kw...)
     # Check the mask first. We defer bounds checking to the sub-arrays.
-    if !(all(getindex(pa.mask, inds...; kw...)))
+    if !(_matches_ndims(pa, inds) && all(getindex(pa.mask, inds...; kw...)))
         throw(BoundsError(pa, (inds..., kw)))
     end
     val = getindex(pa.data, inds...; kw...)
@@ -406,8 +472,7 @@ function Base.getindex(pa::PartialArray, inds::Vararg{Any}; kw...)
 end
 
 function Base.haskey(pa::PartialArray, inds::Vararg{Any}; kw...)
-    hasall =
-        checkbounds(Bool, pa.mask, inds...; kw...) && all(view(pa.mask, inds...; kw...))
+    hasall = checkbounds(Bool, pa, inds...; kw...) && all(view(pa.mask, inds...; kw...))
 
     # If not for ArrayLikeBlocks, we could just return hasall directly. However, we need to
     # check that if any ArrayLikeBlocks are included, they are fully included.
@@ -480,7 +545,7 @@ end
 @generated function _ndims_static(::T) where {T<:Tuple}
     i = 0
     for x in T.parameters
-        if x <: AbstractVector{<:Int} || x <: Colon
+        if x <: AbstractVector{<:Integer} || x <: Colon
             i += 1
         end
     end
@@ -495,7 +560,7 @@ end
 end
 @generated function _is_multiindex_static(::T) where {T<:Tuple}
     for x in T.parameters
-        if x <: AbstractVector{<:Int} || x <: Colon
+        if x <: AbstractVector{<:Integer} || x <: Colon
             return :(return true)
         end
     end
@@ -568,11 +633,15 @@ function grow_to_indices!!(
 end
 grow_to_indices!!(pa::PartialArray, inds::Vararg{Any}; kw...) = pa
 
+# Storage wrappers may need to distribute metadata over a slice's elements.
+_prepare_indexed_value(value, data, inds...; kw...) = value
+
 function BangBang.setindex!!(pa::PartialArray, value, inds::Vararg{Any}; kw...)
     # If pa.data and pa.mask are GrowableArrays, we may need to resize them before doing
     # anything else. For other AbstractArrays, grow_to_indices is a no-op.
     new_pa = grow_to_indices!!(pa, inds...; kw...)
     new_data, new_mask = new_pa.data, new_pa.mask
+    value = _prepare_indexed_value(value, new_data, inds...; kw...)
 
     # Then delete any overlapping ArrayLikeBlocks
     new_data, new_mask = _remove_partial_blocks!!(new_data, new_mask, inds...; kw...)
@@ -580,7 +649,9 @@ function BangBang.setindex!!(pa::PartialArray, value, inds::Vararg{Any}; kw...)
     if _needs_arraylikeblock(new_data, value, inds...; kw...)
         idx_sz = size(@view new_data[inds..., kw...])
         alb = ArrayLikeBlock(value, inds, NamedTuple(kw), idx_sz)
-        new_data = setindex!!(new_data, fill(alb, idx_sz...), inds...; kw...)
+        new_data = _setindex_partial_array!!(
+            new_data, new_mask, fill(alb, idx_sz...), inds...; kw...
+        )
         fill!(view(new_mask, inds...; kw...), true)
     else
         if value isa PartialArray
@@ -607,9 +678,13 @@ function BangBang.setindex!!(pa::PartialArray, value, inds::Vararg{Any}; kw...)
                 new_data = if new_eltype <: eltype(new_data)
                     new_data
                 else
-                    broadened = similar(new_data, new_eltype)
-                    copy!(broadened, new_data)
-                    broadened
+                    if isbitstype(eltype(new_data))
+                        broadened = similar(new_data, new_eltype)
+                        copy!(broadened, new_data)
+                        broadened
+                    else
+                        _copy_partial_array_data(new_data, new_mask, new_eltype)
+                    end
                 end
                 new_data_view = view(new_data, inds...; kw...)
                 new_mask_view = view(new_mask, inds...; kw...)
@@ -624,11 +699,13 @@ function BangBang.setindex!!(pa::PartialArray, value, inds::Vararg{Any}; kw...)
             else
                 # Overwriting one element of a PA with another PA. The PA is the value
                 # itself! -- i.e. nested PAs! This can happen with things like x[1][1]
-                new_data = setindex!!(new_data, value, inds...; kw...)
+                new_data = _setindex_partial_array!!(
+                    new_data, new_mask, value, inds...; kw...
+                )
                 setindex!(new_mask, true, inds...; kw...)
             end
         else
-            new_data = setindex!!(new_data, value, inds...; kw...)
+            new_data = _setindex_partial_array!!(new_data, new_mask, value, inds...; kw...)
             fill!(view(new_mask, inds...; kw...), true)
         end
     end
@@ -641,6 +718,7 @@ function _subset_partialarray(pa::PartialArray, inds::Vararg{Any}; kw...)
         any(ind -> ind isa AbstractPPL.DynamicIndex || ind isa Colon, inds)
         _warn_growable_array_extraction()
     end
+    _matches_ndims(pa, inds) || throw(BoundsError(pa, inds))
     new_data = view(pa.data, inds...; kw...)
     new_mask = view(pa.mask, inds...; kw...)
     return PartialArray(new_data, new_mask)
@@ -707,10 +785,10 @@ function _merge(pa1::PartialArray, pa2::PartialArray, recurse::Val)
     for i in eachindex(pa1.mask)
         if pa1.mask[i]
             new_elem, new_mask_val = _merge_element(pa1, pa2, i, recurse)
-            new_mask[i] = new_mask_val
             if new_mask_val
-                new_data = setindex!!(new_data, new_elem, i)
+                new_data = _setindex_partial_array!!(new_data, new_mask, new_elem, i)
             end
+            new_mask[i] = new_mask_val
         end
     end
     return _concretise_eltype!!(PartialArray(new_data, new_mask))

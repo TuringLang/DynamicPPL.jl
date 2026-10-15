@@ -35,12 +35,9 @@ end
 function ThreadSafeVarInfo(vi::AbstractVarInfo)
     accs = map(acc -> promote_for_threadsafe_eval(acc, Any), getaccs(vi))
     vi = setaccs!!(vi, accs)
-    return _threadsafe_varinfo(vi, typeof(map(split, getaccs(vi))))
-end
-function _threadsafe_varinfo(vi::AbstractVarInfo, ::Type{L}) where {L<:AccumulatorTuple}
+    L = typeof(map(split, getaccs(vi)))
     accs_by_task = IdDict{TaskId,TaskAccumulators{L}}()
-    task_accs_cache = _task_accs_cache(L)
-    return ThreadSafeVarInfo(vi, accs_by_task, task_accs_cache, ReentrantLock())
+    return ThreadSafeVarInfo(vi, accs_by_task, _task_accs_cache(L), ReentrantLock())
 end
 ThreadSafeVarInfo(vi::ThreadSafeVarInfo) = vi
 
@@ -97,6 +94,7 @@ function ThreadSafeVarInfo(varinfo::AbstractVarInfo, ::Type{T}) where {T}
         DynamicPPL.promote_for_threadsafe_eval(
             acc,
             if T === Any || T === Union{}
+                # No hint: keep accumulator types; the fallback widens Float32 to Float64.
                 Any
             else
                 float_type_with_fallback(T)
@@ -104,12 +102,7 @@ function ThreadSafeVarInfo(varinfo::AbstractVarInfo, ::Type{T}) where {T}
         )
     end
     varinfo = DynamicPPL.setaccs!!(varinfo, accs)
-    varinfo = resetaccs!!(varinfo)
-    return if T === Any || T === Union{}
-        _threadsafe_varinfo(varinfo, AccumulatorTuple)
-    else
-        ThreadSafeVarInfo(varinfo)
-    end
+    return ThreadSafeVarInfo(resetaccs!!(varinfo))
 end
 
 _combined_varinfo(vi::ThreadSafeVarInfo) = setaccs!!(vi.varinfo, getaccs(vi))
