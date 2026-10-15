@@ -33,7 +33,7 @@ begin
         # Conceptual branch: the compiler knows whether x is an argument.
         conditioned_x = is_argument(x) ? x : get_conditioned_value(__model__, vn)
         raw_x, __varinfo__ = tilde_observe!!(
-            __prefix__, __prefix_template__, dist, conditioned_x, vn, template, __varinfo__
+            __prefix__, dist, conditioned_x, vn, template, __varinfo__
         )
 
     else
@@ -46,8 +46,9 @@ begin
 end
 ```
 
-Here, `__prefix__` and `__prefix_template__` are the model's prefix and its storage
-template, passed directly to the exported `tilde_observe!!` entry point.
+Here, `__prefix__` is the model's single prefix value (`__model__.prefix`): `nothing`,
+a `VarName`, or a `PrefixTemplate` containing storage metadata. It is passed directly
+to the exported `tilde_observe!!` entry point.
 
 We won't go into detail about every part of this code; by far the most interesting part is the call to `tilde_assume!!`.
 Every latent tilde-statement `vn ~ dist` is transformed into one such call.

@@ -435,6 +435,9 @@ and complete local LHS variables retain integer indices. A **submodel namespace*
 child LHS variables through addresses such as `a.x`, or through unchanged names with
 `auto_prefix=false` unless manually prefixed.
 
+Bindings on prefixed models use absolute addresses: for `prefix(m, @varname(p))`,
+use `@varname(p.y) => 0.0`; binding `y=0.0` throws `ArgumentError`.
+
 For example, if `a` is an argument, `a ~ to_submodel(child())`,
 `a[1] ~ to_submodel(child())` and `a.x ~ to_submodel(child())` are rejected by the
 **Submodel LHS and prefixes** rule. Use a new local name and condition the child's LHS

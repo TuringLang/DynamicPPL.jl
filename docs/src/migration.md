@@ -12,6 +12,16 @@ or `VectorValueAccumulator` when those outputs are needed, for example
 `VarInfo(VectorValueAccumulator(), DynamicPPL.default_accumulators()...)`; `VarInfo(model)` remains
 a convenience constructor that records vectorised values and log densities.
 
+`PrefixContext` and `extract_prefixes` are removed. Use `prefix(model, vn; template)`
+to set a prefix and `DynamicPPL.getprefix(model)` to read the combined prefix
+(`nothing` when absent). The `prefix` field stores internal metadata for LHS variable
+addresses and nested submodel namespace storage templates. Replace `prefix(ctx, vn)` with
+`AbstractPPL.prefix(vn, DynamicPPL.getprefix(model))` for a prefixed model.
+
+Bindings outside a model's prefix now throw. Replace
+`condition(prefix(m, @varname(p)); y=v)` with
+`condition(prefix(m, @varname(p)), @varname(p.y) => v)`.
+
 To reuse previous values, extract them explicitly before evaluating:
 
 ```julia
@@ -346,7 +356,8 @@ before replaying them.
 
 Replace context overloads of `tilde_observe!!` with `accumulate_observe!!` implementations.
 For direct observation calls, replace `tilde_observe!!(ctx, dist, value, vn, template, vi)`
-with the current signature `tilde_observe!!(prefix, prefix_template, dist, value, vn, template, vi)`.
+with `tilde_observe!!(prefix, dist, value, vn, template, vi)`, where `prefix` is the model's
+prefix value (`nothing`, a `VarName`, or a `PrefixTemplate`).
 For submodel latent calls, replace `tilde_assume!!(ctx, submodel, vn, template, vi)` with
 `tilde_assume!!(parent, ctx, submodel, vn, template, vi)`.
 Replace `store_coloneq_value!!(ctx, vn, value, template, vi)` with

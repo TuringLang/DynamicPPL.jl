@@ -1020,8 +1020,12 @@ end
     @testset "public observation call target" begin
         count_observe(::Any) = 0
         function count_observe(ex::Expr)
-            return (Meta.isexpr(ex, :call) && ex.args[1] === tilde_observe!!) +
-                   sum(count_observe, ex.args; init=0)
+            is_observe = Meta.isexpr(ex, :call) && ex.args[1] === tilde_observe!!
+            if is_observe
+                @test length(ex.args) == 7 # Function and six arguments.
+                @test ex.args[2] == :(__model__.prefix)
+            end
+            return is_observe + sum(count_observe, ex.args; init=0)
         end
         expr = @macroexpand @model function observations(x)
             x ~ Normal()
