@@ -263,7 +263,7 @@ struct Model{
         args_on_lhs::Union{Tuple{Vararg{Symbol}},Vector{Symbol},ModelBindingMetadata}=(),
     ) where {F,A,Ta,D,Td,C,V,Threaded}
         mapreduce(
-            pair -> pair.second isa ModelValue, &, _model_values(values); init=true
+            pair -> _valid_model_binding(pair.second), &, _model_values(values); init=true
         ) || throw(ArgumentError("Model values must carry a condition or fix role"))
         argument_names = _args_on_lhs(args_on_lhs)
         metadata = args_on_lhs isa ModelBindingMetadata ? args_on_lhs : argument_names
@@ -440,6 +440,7 @@ function _prefix_values(values::ModelBindingLayers, vn::VarName, template)
 end
 function _prefix_values(values::VarNamedTuple, vn::VarName, template)
     isempty(values) && return values
+    template = PendingBindingTemplate(template, VarName{AbstractPPL.getsym(vn)}())
     return templated_setindex!!(VarNamedTuple(), values, vn, template)
 end
 

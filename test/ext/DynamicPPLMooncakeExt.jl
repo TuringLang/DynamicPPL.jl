@@ -291,6 +291,29 @@ end
     end
 end
 
+@testset "runtime recursive removal retains resolved addresses" begin
+    @model function removal_child(m)
+        x = fill(zero(m), 2)
+        x[1] ~ Normal()
+        x[2] ~ Normal()
+        return x
+    end
+    @model removal_wrapper(child) = a ~ to_submodel(child)
+    @model function removal_parent()
+        m ~ Normal()
+        child = condition(removal_child(m); x=[2m, 3m])
+        wrapped = condition(removal_wrapper(child), @varname(a.x[1]) => 4m)
+        stripped = decondition(wrapped, DynamicPPL.Recursive(), @varname(a.x[1]))
+        return b ~ to_submodel(stripped)
+    end
+    for adtype in (AutoForwardDiff(), AutoMooncake())
+        ldf = LogDensityFunction(removal_parent(); adtype)
+        value, gradient = logdensity_and_gradient(ldf, [0.3, 0.7])
+        @test value ≈ logpdf(Normal(), 0.3) + logpdf(Normal(), 0.7) + logpdf(Normal(), 0.9)
+        @test gradient ≈ [-3.0, -0.7]
+    end
+end
+
 @testset "runtime bindings preserve AD values" begin
     @model runtime_child(y) = (y[1] ~ Normal(); y[2] ~ Normal())
     @model function runtime_parent(bind, partial)

@@ -139,7 +139,7 @@ Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
     typeof(DynamicPPL._get_argument_role),Vararg
 }
 Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
-    typeof(DynamicPPL._get_model_role),Vararg
+    typeof(DynamicPPL._local_binding_role),Vararg
 }
 
 # These are purely optimisations (although quite significant ones sometimes, especially for

@@ -240,7 +240,7 @@ Generate the body of the main evaluation function from expression `expr` and arg
 If `warn` is true, a warning is displayed if internal variables are used in the model
 definition.
 """
-generate_mainbody(
+function generate_mainbody(
     mod,
     expr,
     warn,
@@ -249,20 +249,29 @@ generate_mainbody(
     arguments=Symbol[],
     has_unprefixed_submodel=Ref(false),
     lhs_addresses=Tuple{VarName,Bool}[],
-) = generate_mainbody!(
-    mod,
-    (;
-        internal=Symbol[],
-        lhs_names,
-        arguments,
-        has_unprefixed_submodel,
-        lhs_addresses,
-        shadowed=Symbol[],
-    ),
-    expr,
-    warn,
-    warn_threads,
 )
+    pending_roots = Dict{Symbol,Symbol}()
+    body = generate_mainbody!(
+        mod,
+        (;
+            internal=Symbol[],
+            lhs_names,
+            arguments,
+            has_unprefixed_submodel,
+            lhs_addresses,
+            shadowed=Symbol[],
+            pending_roots,
+        ),
+        expr,
+        warn,
+        warn_threads,
+    )
+    return if isempty(pending_roots)
+        body
+    else
+        Expr(:block, Expr(:local, values(pending_roots)...), body)
+    end
+end
 
 generate_mainbody!(mod, found, x, warn, warn_threads) = x
 function generate_mainbody!(mod, found, sym::Symbol, warn, warn_threads)
@@ -359,6 +368,13 @@ function generate_mainbody!(mod, found, expr::Expr, warn, warn_threads)
                 L,
                 generate_mainbody!(mod, found, R, warn, warn_threads);
                 is_argument=!isliteral(L) && get_top_level_symbol(L) in found.arguments,
+                pending_root=if isliteral(L)
+                    nothing
+                else
+                    get!(found.pending_roots, get_top_level_symbol(L)) do
+                        gensym(:binding)
+                    end
+                end,
             ),
         )
     end
@@ -492,7 +508,7 @@ end
 Generate latent, observed, or fixed evaluation for a tilde expression.
 Argument LHS variables that are observed use their prepared local value, including body computations.
 """
-function generate_tilde(left, right; is_argument=false)
+function generate_tilde(left, right; is_argument=false, pending_root=gensym(:binding))
     isliteral(left) && return generate_tilde_literal(left, right)
     template = if left isa Symbol  # i.e. identity optic
         :($(NoTemplate)())
@@ -500,13 +516,22 @@ function generate_tilde(left, right; is_argument=false)
         get_top_level_symbol(left)
     end
 
+    pending_template =
+        left isa Symbol ? :(@isdefined($left) ? $left : $(NoTemplate)()) : template
     @gensym vn role value dist supplied_val
     lookup_role = if is_argument
         :($(DynamicPPL._get_argument_role)(
             __model__, $vn, $(VarName{get_top_level_symbol(left)}())
         ))
     else
-        :($(DynamicPPL._get_model_role)(__model__, $vn, $template))
+        quote
+            if !@isdefined($pending_root)
+                $pending_root = $(DynamicPPL._prepare_local_binding)(
+                    __model__, $vn, $pending_template
+                )
+            end
+            $(DynamicPPL._local_binding_role)($pending_root, $vn, $template, __model__)
+        end
     end
 
     fixed_data = if is_argument
@@ -517,7 +542,7 @@ function generate_tilde(left, right; is_argument=false)
             $(get_top_level_symbol(left)),
         ))
     else
-        :($(DynamicPPL._get_model_data)(__model__, $vn))
+        :($(DynamicPPL._local_binding_data)($pending_root, $vn))
     end
 
     return quote
@@ -561,7 +586,7 @@ function generate_tilde(left, right; is_argument=false)
                 if is_argument
                     :($(Base).@views($left))
                 else
-                    :($(DynamicPPL._get_model_data)(__model__, $vn))
+                    :($(DynamicPPL._local_binding_data)($pending_root, $vn))
                 end
             )
 
@@ -884,7 +909,7 @@ function build_output(
                     ),
                 )
             end
-            return $(definition[:name])($(callargs...))
+            return $(Base).@inline $(definition[:name])($(callargs...))
         end
         # The debug entry point is a method of the model function itself: a method of a
         # DynamicPPL function cannot be defined when `@model` is used in local scope.

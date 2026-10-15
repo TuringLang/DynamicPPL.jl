@@ -267,56 +267,59 @@ Evaluate `submodel` under `parent_model`.
     end
     child_layers = ModelBindingLayers(observations, fixed, child_owners)
     child_values = _model_values(child_layers)
+    child_templates = _submodel_binding_templates(submodel.model, nothing)
     child_model = _reconstruct_model(
         submodel.model;
         values=LocalModelValues(
-            _with_binding_shapes(child_values, _local_binding_shape_store(submodel.model))
+            _with_binding_metadata(
+                child_values;
+                shapes=_local_binding_shape_store(submodel.model),
+                templates=child_templates,
+            ),
         ),
     )
-    inherited_values = _check_argument_bindings(
+    parent_values = _check_argument_bindings(
         child_model,
-        _prepare_inherited_templates(
-            child_model,
-            _submodel_inherited_values(parent_model, local_prefix),
-            inherited_templates,
-        ),
+        _submodel_inherited_values(parent_model, local_prefix),
         maybe_prefix(local_prefix, _model_prefix(parent_model)),
     )
-    child_model = _prepare_base_argument_shapes(child_model, inherited_values)
-    _check_inherited_binding_shapes(child_model, inherited_values)
-    parent_values = _prepare_retained_binding_types(child_model, inherited_values)
+    parent_shapes = _submodel_values(
+        _binding_shape_store(parent_model.values).roots,
+        _model_value_varname(
+            parent_model.values, local_prefix, _model_prefix(parent_model)
+        ),
+    )
+    parent_shapes = _local_shape_roots(child_model, parent_shapes)
     # Shared unprefixed names may belong to the parent or another child.
     if AutoPrefix || _model_prefix(submodel.model) !== nothing
         _check_binding_addresses(child_model, parent_values)
     end
     owners = (child_owners..., _submodel_fixed_owners(parent_model, local_prefix)...)
-    values = LocalModelValues(
-        _with_removals(
-            _merge_model_values(
-                child_values,
-                parent_values,
-                maybe_prefix(local_prefix, _model_prefix(parent_model)),
-            ),
-            (
-                _submodel_removals(Condition, submodel.model, nothing)...,
-                observation_removals...,
-            ),
-            (_submodel_removals(Fix, submodel.model, nothing)..., fixed_removals...),
+    values = _with_binding_metadata(
+        _merge_model_values(
+            child_values,
+            parent_values,
+            maybe_prefix(local_prefix, _model_prefix(parent_model)),
+        );
+        observation_removals=(
+            _submodel_removals(Condition, submodel.model, nothing)...,
+            observation_removals...,
         ),
-        owners,
+        fixed_removals=(
+            _submodel_removals(Fix, submodel.model, nothing)..., fixed_removals...
+        ),
     )
-    values = _with_inherited_binding_shapes(child_model, values)
-    child_templates = _submodel_binding_templates(submodel.model, nothing)
     templates = if isempty(child_templates)
         ()
     else
         filter(child_templates) do t
+            t isa ModelBindingTemplate{Nothing} && return true
             role = t isa ModelBindingTemplate{Condition} ? Condition : Fix
             layer = _binding_layer(role, parent_values)
             removals = role === Condition ? observation_removals : fixed_removals
             return !any(r -> _removal_covers(r, t.name), removals) &&
                    _has_removable(role, _binding_layer(role, child_layers), t.name) &&
-                   !any(vn -> subsumes(vn, t.name), keys(layer)) &&
+                   !any(vn -> subsumes(vn, t.name), _binding_names(layer)) &&
                    !any(
                        p -> p isa ModelBindingTemplate{role} && p.name == t.name,
                        inherited_templates,
@@ -324,19 +327,31 @@ Evaluate `submodel` under `parent_model`.
         end
     end
     templates = (templates..., inherited_templates...)
-    values = _with_binding_templates(values, templates)
+    shapes = ModelBindingShapes(
+        _merge_binding_shapes(
+            _local_binding_shape_store(submodel.model).roots,
+            parent_shapes,
+            nothing,
+            child_model,
+            parent_values,
+        ),
+    )
+    values = LocalModelValues(values, owners)
     isempty(observation_removals) && isempty(fixed_removals) ||
         _check_shared_latent_storage(
             _reconstruct_model(submodel.model; values),
             maybe_prefix(local_prefix, _model_prefix(parent_model)),
         )
-    return _evaluate_submodel!!(
-        parent_model, context, submodel, left_vn, template, vi, values
-    )
+    # Split optional values before evaluation to stay within inference union limits.
+    args = (parent_model, context, submodel, left_vn, template, vi)
+    if values isa LocalModelValues{VarNamedTuple{(),Tuple{}}}
+        return _evaluate_submodel!!(args..., values, templates, shapes)
+    else
+        return _evaluate_submodel!!(args..., values, templates, shapes)
+    end
 end
 
-# Specialize child evaluation on the selected submodel namespace bindings.
-# Separate methods keep mixed automatic/manual nesting below inference recursion limits.
+# Separate prefix modes keep mixed nesting below inference recursion limits.
 for AutoPrefix in (true, false)
     @eval @inline function _evaluate_submodel!!(
         parent_model::Model,
@@ -346,7 +361,10 @@ for AutoPrefix in (true, false)
         template,
         vi::AbstractVarInfo,
         values::LocalModelValues,
+        templates,
+        shapes::ModelBindingShapes,
     ) where {M}
+        values = _with_binding_metadata(values; templates, shapes)
         parent_prefix = _model_prefix(parent_model)
         model = if $AutoPrefix
             vn, template = _prefix_varname_and_template(left_vn, template, parent_model)
@@ -383,7 +401,7 @@ for AutoPrefix in (true, false)
         # change the Model type; routing through _evaluate!! widens it to Any (Turing.jl#2844).
         model = setleafcontext(model, context)
         args, kwargs = make_evaluate_args_and_kwargs(model, vi)
-        return model.f(args...; kwargs...)
+        return @inline model.f(args...; kwargs...)
     end
 end
 

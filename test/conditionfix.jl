@@ -186,7 +186,7 @@ end
         retained = remove(retained, @varname(y[1]))
         @test_throws InexactError bind(retained, @varname(y[1]) => 0.5)(Xoshiro(1))
         listing = bind === condition ? conditioned(child) : fixed(child)
-        @test collect(keys(listing)) == [@varname(y[1])]
+        @test collect(keys(listing)) == [@varname(y)]
         other_remove = bind === condition ? unfix : decondition
         @test_throws InexactError bind(other_remove(child), @varname(y[2]) => 0.5)(
             Xoshiro(1)
@@ -2908,11 +2908,9 @@ end
         end
         function preparation_allocations(model)
             pair = @varname(y[1]) => 0.3
-            DynamicPPL._prepare_binding_batch(
-                model, (pair,), DynamicPPL.Condition, NamedTuple()
-            )
+            DynamicPPL._prepare_binding_batch(model, (pair,), DynamicPPL.Condition, ())
             return @allocated DynamicPPL._prepare_binding_batch(
-                model, (pair,), DynamicPPL.Condition, NamedTuple()
+                model, (pair,), DynamicPPL.Condition, ()
             )
         end
         small = condition(
@@ -4109,15 +4107,8 @@ end
     @model growable_first() = (x = zeros(2, 2); x[1, 1] ~ Normal(); x)
     @model growable_colon() = (x = zeros(2, 1); x[:, 1] ~ MvNormal(zeros(2), I); x)
     @model growable_cube() = (x = zeros(2, 2, 2); x[1, 2, 1] ~ Normal(); x)
-    advice(owner) =
-        "Bind addresses with the tilde's index count, or supply storage for `$owner` " *
-        "with an argument or a binding template (`@of`). In the template, use " *
-        "absolute names, including any explicit model prefix."
     mismatch(owner, example, lhs, stored, used; cartesian=true) = ArgumentError(
-        "`$owner` has growable bindings with $stored $(stored == 1 ? "index" : "indices") (e.g. `$example`), " *
-        "but tilde `$lhs` uses $used $(used == 1 ? "index" : "indices")$(cartesian ? "; " : ". ")" *
-        (cartesian ? "linear and Cartesian indices are distinct. " : "") *
-        advice(owner),
+        "Pending binding at `$lhs` mixes linear and Cartesian indices; use one index style or supply storage before binding.",
     )
     @testset "indexed submodel prefixes preserve index counts" begin
         @model inner() = x ~ Normal()
@@ -4220,7 +4211,7 @@ end
             @test bind(partial, @varname(p[1].x) => 5.0)(Xoshiro(1)) == [5.0 0.0; 0.0 2.0]
             for next_bind in (condition, fix)
                 untemplated = bind(parent_shape(), @varname(p[1].x) => 1.0)
-                @test_throws r"Cannot expand a GrowableArray with 1 dimensions" next_bind(
+                @test_throws r"Pending binding.*one index style" next_bind(
                     untemplated, @varname(p[2, 2].x) => 2.0
                 )
                 @test_throws ArgumentError next_bind(
@@ -4289,9 +4280,7 @@ end
                 growable_linear(), @varname(x[2, 1]) => 3.0
             )
             prefixed = bind(growable_parent(), @varname(p[1, 2].x[2]) => 3.0)
-            @test_throws mismatch("p[1, 2].x", "p[1, 2].x[2]", "p[1, 2].x[2, 1]", 1, 2) prefixed(
-                Xoshiro(1)
-            )
+            @test prefixed(Xoshiro(1))[1, 2][2, 1] == 3.0
             @test_throws "Cannot bind `a.x[2]` without storage" bind(
                 prefix(growable_leaf(), @varname(a)), @varname(a.x[2]) => 3.0
             )
@@ -4310,7 +4299,7 @@ end
                 2, 1
             ] == 3.0
             model = bind(growable_auto(), @varname(a.x[2]) => 3.0)
-            @test_throws mismatch("a.x", "a.x[2]", "a.x[2, 1]", 1, 2) model(Xoshiro(1))
+            @test model(Xoshiro(1))[2, 1] == 3.0
             @test bind(
                 growable_auto(), @of(a = (x=of(Array, 2, 2),)), @varname(a.x[2]) => 3.0
             )(
@@ -6899,12 +6888,13 @@ end
             )
                 @test bind(nested, matched => 5.0, @of(x = of(Array, 1, 1)))(Xoshiro(1)) ==
                     [5.0;;]
-                message = if nested === model
-                    "without storage"
+                if nested === model
+                    @test_throws "without storage" bind(nested, mismatched => 5.0)(
+                        Xoshiro(1)
+                    )
                 else
-                    r"growable bindings with 1 index .*but tilde .* uses 2 indices"
+                    @test bind(nested, mismatched => 5.0)(Xoshiro(1)) == [5.0;;]
                 end
-                @test_throws message bind(nested, mismatched => 5.0)(Xoshiro(1))
             end
         end
     end
@@ -6941,11 +6931,7 @@ end
         end
         model = parent_array()
         @test bind(model, @varname(a.x[]) => 5.0)(Xoshiro(123)) == fill(5.0)
-        @test_throws r"growable bindings with 1 index .*but tilde `a.x\[\]` uses 0 indices" bind(
-            model, @varname(a.x[1]) => 5.0
-        )(
-            Xoshiro(123)
-        )
+        @test bind(model, @varname(a.x[1]) => 5.0)(Xoshiro(123)) == fill(5.0)
         model = prefix(scalar_array(), @varname(a))
         for address in (@varname(a.x[]), @varname(a.x[1]))
             @test_throws "without storage" bind(model, address => 5.0)
@@ -7112,8 +7098,7 @@ end
         @test_throws ArgumentError fix(n, @varname(p[1].z) => 4.0, @of(p = of(Array, 3, 2)))
         @test isempty(fixed(unfix(n, @varname(p[4].z))))
         n = condition(m, @varname(p[1].z) => 3.0, @of(p = of(Array, 3, 2)))
-        @test size(DynamicPPL._binding_shape_store(n.values).namespaces[@varname(p)]) ==
-            (3, 2)
+        @test size(DynamicPPL._binding_shape_store(n.values).roots.data.p) == (3, 2)
         m = condition(
             shared_shape_namespace(), @varname(p[1].z) => ones(2), @of(p = of(Array, 2, 2))
         )
@@ -7224,9 +7209,7 @@ end
         @test_throws r"root.*rebuild" condition(parent; p=fill((x=2.0,), 2, 2))
     end
     child = unfix(fix(root_type_array(); x=ones(Float32, 2)))
-    @test_throws ArgumentError condition(root_type_parent(child), @varname(a.x[1]) => 0.1)(
-        Xoshiro(1)
-    )
+    @test condition(root_type_parent(child), @varname(a.x[1]) => 0.1)(Xoshiro(1))[1] === 0.1
     @test condition(root_type_parent(child), @varname(a.x[1]) => 0.5)(Xoshiro(1))[1] == 0.5
 end
 
@@ -7716,6 +7699,155 @@ end
         assigned = bind(bound, @varname(x[1:2][2][end]) => 2.0)
         @test listed(assigned)[@varname(x[2][5])] == 2.0
         @test !haskey(listed(remove(assigned, @varname(x[1:2][2][end]))), @varname(x[2][5]))
+    end
+end
+
+@model function pending_matrix(reach=true)
+    x = zeros(2, 2)
+    reach && (x[2, 1] ~ Normal())
+    return x
+end
+@model pending_outer(child=pending_matrix()) = (a ~ to_submodel(child); a)
+@model pending_argument(x) = (for i in eachindex(x)
+    x[i] ~ Normal()
+end;
+x)
+@model pending_local() = (x = zeros(2); x[1] ~ Normal(); x)
+@testset "pending leaf protocol" begin
+    for (bind, remove, listed) in
+        ((condition, decondition, conditioned), (fix, unfix, fixed))
+        bad = bind(pending_outer(), @varname(a.x[3, 3]) => 3.0)
+        listing = listed(bad)
+        @test collect(keys(listing)) == [@varname(a.x)]
+        @test listing[@varname(a.x)] isa DynamicPPL.PendingBindings
+        @test listing[@varname(a.x[3, 3])] === 3.0
+        @test haskey(listing, @varname(a.x[3, 3]))
+        @test !haskey(listing, @varname(a.x[2, 2]))
+        @test_throws r"pending.*a.x.*storage" of(listing)
+        @test_throws r"a.x\[3,3\]|a.x\[3, 3\]" bad()
+        for rebind in (condition, fix)
+            @test_throws ArgumentError rebind(pending_outer(), listing)()
+        end
+        @test bind(pending_outer(pending_matrix(false)), listing)() == zeros(2, 2)
+        unreached = remove(bind(pending_matrix(false); x=zeros(1, 1)))
+        @test bind(pending_outer(unreached), listing)() == zeros(2, 2)
+        @test bind(pending_outer(), @varname(a.x[2]) => 3.0)()[2, 1] == 3.0
+        @test_throws r"index style" bind(
+            bind(pending_outer(), @varname(a.x[2]) => 3.0), @varname(a.x[1, 2]) => 2.0
+        )
+        @test bind(bad, @varname(a.x) => ones(2, 2))()[2, 1] == 1.0
+        @test bind(bind(bad, @varname(a.x) => ones(2, 2)), @varname(a.x[2]) => 4.0)()[
+            2, 1
+        ] == 4.0
+        @test isempty(listed(remove(bad, @varname(a.x[3, 3]))))
+        @test_throws ArgumentError bind(
+            pending_outer(pending_argument(zeros(2, 2))), @varname(a.x[3, 3]) => 3.0
+        )()
+        held = condition(pending_matrix(); x=zeros(2, 2))
+        @test_throws ArgumentError bind(pending_outer(held), @varname(a.x[3, 3]) => 3.0)()
+        for template_first in (false, true)
+            pair1, pair2 = @varname(a.x[1]) => 2.0, @varname(a.x[2]) => 3.0
+            schema = @of(a = @of(x = of(Array, 2, 2)))
+            m = if template_first
+                bind(pending_outer(), pair1, schema)
+            else
+                bind(pending_outer(), pair1)
+            end
+            m = template_first ? bind(m, pair2) : bind(m, pair2, schema)
+            @test m()[2, 1] == 3.0
+            @test_throws r"integer indices" bind(m, @varname(a.x[end]) => 4.0)
+            @test bind(pending_outer(pending_argument(zeros(3))), pair1, schema)()[1] == 2.0
+        end
+        m = bind(pending_outer(), @varname(a.x[2]) => 3.0)
+        before = listed(m)
+        @test all(fetch(t)[2, 1] == 3.0 for t in [Threads.@spawn(m()) for _ in 1:4])
+        @test listed(m) == before
+        @test m()[2, 1] == m()[2, 1] == 3.0
+        prefixed_arg = bind(
+            prefix(pending_argument(zeros(2)), @varname(p)), @varname(p.x[1]) => 2.0
+        )
+        @test isempty(DynamicPPL._binding_shape_store(prefixed_arg.values).roots)
+        @test_throws r"integer indices" bind(
+            pending_outer(), @varname(a.x[end]) => 3.0, @of(a = @of(x = of(Array, 2, 2)))
+        )
+        rebound = remove(bind(pending_local(); x=Float32[1, 2]))
+        @test listed(bind(rebound, @varname(x[1]) => 0.1))[@varname(x[1])] === 0.1
+        offset = OffsetArray(Float32[1, 2], -1:0)
+        rebuilt = bind(remove(bind(pending_local(); x=offset)), @varname(x[-1]) => 0.1)
+        @test axes(listed(rebuilt).data.x.data) == axes(offset)
+        @test listed(rebuilt)[@varname(x[-1])] === 0.1
+        component = ComponentVector(; a=Float32[1, 2], b=Float32(3))
+        rebuilt = bind(remove(bind(pending_local(); x=component)), @varname(x.a[1]) => 0.1)
+        @test axes(listed(rebuilt).data.x.data) == axes(component)
+        @test listed(rebuilt)[@varname(x.a[1])] === 0.1
+    end
+    cross = fix(pending_outer(), @varname(a.x[3, 3]) => 3.0)
+    @test_throws ArgumentError condition(cross, @varname(a.x) => ones(2, 2))()
+end
+
+@testset "pending selections and child geometry" begin
+    @model function offset_local()
+        x = OffsetArray(zeros(2), -1:0)
+        x[-1] ~ Normal()
+        return x
+    end
+    for (bind, remove, listed) in
+        ((condition, decondition, conditioned), (fix, unfix, fixed))
+        m = bind(pending_outer(), @varname(a.x[1:2]) => [2.0, 3.0])
+        listing = listed(m)
+        @test listing[@varname(a.x[1:2])] == [2.0, 3.0]
+        @test haskey(listing, @varname(a.x[1:2]))
+        @test !haskey(listing, @varname(a.x[1:3]))
+        @test isempty(listed(remove(m, @varname(a.x[1:2]))))
+        @test m()[2, 1] == 3.0
+        @test bind(pending_outer(offset_local()), @varname(a.x[-1]) => 3.0)()[-1] == 3.0
+        bad_offset = bind(pending_outer(offset_local()), @varname(a.x[1]) => 3.0)
+        @test_throws ArgumentError bad_offset()
+        child = remove(bind(pending_local(), @of(x = of(Array, 2)), @varname(x[1]) => 1.0))
+        @test_throws ArgumentError bind(pending_outer(child), @varname(a.x) => ones(3))()
+        child = bind(pending_local(), @of(x = of(Array, 2)), @varname(x[1]) => 2.0)
+        @test prefix(child, @varname(p[1]))()[1] == 2.0
+        child = remove(bind(pending_local(); x=zeros(1)))
+        @test_throws ArgumentError bind(pending_outer(child), @varname(a.x[2]) => 4.0)()
+    end
+    @model record_argument(x) = x.value[1] ~ Normal()
+    @test_throws ArgumentError condition(
+        record_argument(AliasField(zeros(2))); x=AliasField(zeros(3))
+    )
+    @model cyclic_argument(x) = x[2] ~ Normal()
+    cycle = Any[nothing, 1.0]
+    cycle[1] = cycle
+    @test condition(cyclic_argument(cycle); x=deepcopy(cycle)) isa DynamicPPL.Model
+end
+
+@testset "argument fields retain removed geometry" begin
+    @model function record_storage(x)
+        x.y[1] ~ MvNormal(zeros(length(x.y[1])), I)
+        return x.y[1]
+    end
+    for (bind, remove) in ((condition, decondition), (fix, unfix))
+        m = decondition(record_storage((; y=Union{Missing,Vector{Float64}}[missing])))
+        m = bind(m, @varname(x.y[1]) => ones(2))
+        @test_throws ArgumentError bind(
+            remove(m, @varname(x.y[1])), @varname(x.y[1]) => ones(3)
+        )
+        @test bind(remove(m), @varname(x.y[1]) => ones(3))(Xoshiro(1)) == ones(3)
+    end
+end
+
+@testset "pending listings preserve child-held bindings" begin
+    @model function held_child(x)
+        x[1] ~ Normal()
+        x[2] ~ Normal()
+        return __model__
+    end
+    @model held_parent(child) = a ~ to_submodel(child)
+    for (bind, listed) in ((condition, conditioned), (fix, fixed))
+        child = bind(held_child(zeros(2)), @varname(x[1]) => 2.0)
+        before = deepcopy(listed(child))
+        reached = bind(held_parent(child), @varname(a.x[2]) => 3.0)(Xoshiro(1))
+        @test listed(reached)[@varname(a.x[2])] == 3.0
+        @test listed(child) == before
     end
 end
 

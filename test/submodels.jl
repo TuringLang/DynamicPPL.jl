@@ -113,8 +113,16 @@ end
         for (model, namespace) in
             ((parent, @varname(a)), (inspect_outer(parent), @varname(b[2].a)))
             local_model = model(Xoshiro(1))
-            @test conditioned(local_model) ==
-                conditioned(prefix(condition(child, @varname(x[1]) => 2.0), namespace))
+            expected = conditioned(
+                prefix(condition(child, @varname(x[1]) => 2.0), namespace)
+            )
+            function bindings(values)
+                return Dict(
+                    vn => value for
+                    (vn, value, _) in DynamicPPL._binding_entries(model, values)
+                )
+            end
+            @test bindings(conditioned(local_model)) == bindings(expected)
             @test isempty(fixed(local_model))
             vn = AbstractPPL.prefix(@varname(x[2]), namespace)
             for (bind, remove, accessor) in
@@ -344,7 +352,7 @@ end
             end
             # Mixed-index prefixes need storage for their shared array symbol.
             changed = condition(model, vn => 3.0)
-            @test_throws r"linear and Cartesian indices are distinct" changed()
+            @test_throws r"Pending binding.*one index style" changed()
             bindings = DynamicPPL.templated_setindex!!(
                 VarNamedTuple(), (; x=3.0), @varname(a[2, 3]), zeros(2, 3)
             )
@@ -358,7 +366,7 @@ end
                 @varname(b.a[1].inner.x)
             end
             changed = condition(model, vn => 3.0)
-            @test_throws r"linear and Cartesian indices are distinct" changed()
+            @test_throws r"Pending binding.*one index style" changed()
             bindings = DynamicPPL.templated_setindex!!(
                 VarNamedTuple(), (; inner=(; x=3.0)), @varname(a[1]), zeros(2, 3)
             )
@@ -1443,14 +1451,17 @@ end
     model = prefix(prefix_leaf(), @varname(p[CartesianIndex(1, 2)]))
     for name in (@varname(p[CartesianIndex(1, 2)].x), @varname(p[1, 2].x))
         bound = conditioned(condition(model, name => 3.0))
-        @test keys(bound) == [@varname(p[1, 2].x)]
+        @test keys(bound) == [@varname(p)]
+        @test bound[@varname(p[1, 2].x)] == 3.0
         @test conditioned(condition(model, bound)) == bound
         @test isempty(fixed(unfix(fix(model, @varname(p[1, 2].x) => 3.0), name)))
     end
     @test_throws r"outside this model's prefix" condition(model, @varname(p[3].x) => 3.0)
     # `Int32` indices address the same storage as `Int` indices.
     model = prefix(prefix_leaf(), @varname(p[Int32(2)]))
-    @test keys(conditioned(condition(model, @varname(p[2].x) => 3.0))) == [@varname(p[2].x)]
+    bound = conditioned(condition(model, @varname(p[2].x) => 3.0))
+    @test keys(bound) == [@varname(p)]
+    @test bound[@varname(p[2].x)] == 3.0
     model = condition(prefix(prefix_leaf(), @varname(p[2])), @varname(p[2].x) => 3.0)
     @test isempty(conditioned(decondition(model, @varname(p[Int32(2)].x))))
     model = condition(indexed_return(Int32(2)), @varname(a[2].x) => 3.0)
