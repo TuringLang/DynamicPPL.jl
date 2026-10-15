@@ -7564,6 +7564,41 @@ end
     end
 end
 
+@testset "bulk rebinding retains linear allocation" begin
+    @model function rebinding_storage(n)
+        x = zeros(n)
+        for i in eachindex(x)
+            x[i] ~ Normal()
+        end
+        return x
+    end
+    for wrap in (identity, VarNamedTuple)
+        allocations = map((100, 1000)) do n
+            input = wrap((; x=DynamicPPL.VarNamedTuples.PartialArray(ones(n), trues(n))))
+            model = condition(rebinding_storage(n), input)
+            condition(model, input)
+            @allocated condition(model, input)
+        end
+        @test allocations[2] <= 15 * allocations[1]
+    end
+    @model bulk_child() = x ~ Normal()
+    @model function bulk_parent(n)
+        p = zeros(n, 1)
+        for i in 1:n
+            p[i] ~ to_submodel(bulk_child())
+        end
+        return p
+    end
+    input = with_logger(NullLogger()) do
+        foldl(1:400; init=VarNamedTuple()) do values, i
+            DynamicPPL.setindex!!(values, 3.0, @varname(p[i].x))
+        end
+    end
+    model = bulk_parent(400)
+    condition(model, input)
+    @test (@allocated condition(model, input)) <= 120_000
+end
+
 @testset "parts require storage" begin
     @model no_storage_parts() = (x[1] ~ Normal(); x[2] ~ Normal())
     for bind in (condition, fix)

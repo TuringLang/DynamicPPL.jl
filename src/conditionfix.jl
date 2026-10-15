@@ -2671,10 +2671,15 @@ end
 _binding_layer(::Type{Condition}, values) = _observation_values(values)
 _binding_layer(::Type{Fix}, values) = _fixed_values(values)
 function _binding_layer_model(::Type{R}, model) where {R}
-    layer = _with_binding_metadata(
-        _binding_layer(R, model.values);
+    layer = _binding_layer(R, model.values)
+    layer = ModelBindingLayers(
+        R === Condition ? layer : VarNamedTuple(),
+        R === Fix ? layer : VarNamedTuple(),
+        (),
+        (),
+        (),
+        _binding_templates(model.values);
         shapes=_binding_shape_store(model.values),
-        templates=_binding_templates(model.values),
     )
     values = model.values isa LocalModelValues ? LocalModelValues(layer) : layer
     return _reconstruct_model(model; values)
@@ -2814,7 +2819,78 @@ function _binding_entries(model, input)
     )
 end
 
+_numeric_binding_fields(::Type, leaf=Number) = false
+function _numeric_binding_fields(
+    ::Type{<:VarNamedTuple{names,T}}, ::Type{L}=Number
+) where {names,T,L}
+    return all(t -> t <: L && _shape_payload_type(t) <: Number, fieldtypes(T))
+end
+_prepare_bulk_binding(model, layer, value, vn) = nothing
+function _prepare_bulk_binding(
+    model, layer, value::VarNamedTuples.PartialArray{T}, vn
+) where {T}
+    isempty(value) && return nothing
+    index = first(i for i in CartesianIndices(value.mask) if value.mask[i])
+    optic = AbstractPPL.Index(Tuple(index), (;))
+    address = AbstractPPL.append_optic(vn, optic)
+    if _is_namespace_storage(model, vn)
+        value.data isa VarNamedTuples.GrowableArray || return nothing
+        _numeric_binding_fields(T) || return nothing
+        previous = _model_argument_binding(
+            _model_values(model.values), AbstractPPL.varname_to_optic(vn)
+        )
+        previous === nothing ||
+            (
+                previous isa PendingBindings &&
+                previous.storage isa NoTemplate &&
+                previous.base === nothing &&
+                all(
+                    e -> _numeric_binding_fields(typeof(last(e)), ModelValue),
+                    previous.entries,
+                )
+            ) ||
+            return nothing
+        shape = get(
+            _binding_shape_store(model.values).roots.data, AbstractPPL.getsym(vn), nothing
+        )
+        shape === nothing ||
+            (shape isa PendingBindings && shape.base === nothing) ||
+            return nothing
+        _resolve_binding(model, layer, address)
+        # Whole numeric child roots need no conversion before the child runs.
+        entries = Dict(
+            AbstractPPL.Index(Tuple(i), (;)) => value.data[i] for
+            i in CartesianIndices(value.mask) if value.mask[i]
+        )
+        return PendingBindings(vn, length(entries) == 1 ? (only(entries),) : entries)
+    end
+    T <: Number && isconcretetype(T) || return nothing
+    value.data isa VarNamedTuples.GrowableArray && return nothing
+    _partial_binding_array(value.data) || return nothing
+    resolved = _resolve_binding(model, layer, address; supplied=value.data)
+    _check_binding_storage(model, resolved.template, resolved.name; supplied=value.data)
+    storage = resolved.template
+    storage isa AbstractArray || return nothing
+    axes(storage) == axes(value) && eltype(storage) === T || return nothing
+    # Matching numeric storage makes the scalar checks common to the entire batch.
+    return value
+end
+function _prepare_bulk_bindings(model, inputs, ::Type{R}, schema) where {R}
+    length(inputs) == 1 && only(inputs) isa Union{NamedTuple,VarNamedTuple} ||
+        return nothing
+    isempty(schema) && isempty(_binding_templates(model.values)) || return nothing
+    _model_prefix(model) === nothing || return nothing
+    input = only(inputs) isa NamedTuple ? VarNamedTuple(only(inputs)) : only(inputs)
+    layer = _binding_layer(R, model.values)
+    prepared = map(keys(input.data)) do name
+        _prepare_bulk_binding(model, layer, input.data[name], VarName{name}())
+    end
+    any(isnothing, prepared) && return nothing
+    return VarNamedTuple(NamedTuple{keys(input.data)}(prepared))
+end
 function _prepare_binding_batch(model, inputs, ::Type{R}, schema) where {R}
+    bulk = _prepare_bulk_bindings(model, inputs, R, schema)
+    bulk === nothing || return bulk
     values = _model_values(model.values)
     entries = map(input -> _binding_entries(model, input), inputs)
     raw_seen = _binding_overlap_state(inputs)
@@ -3232,7 +3308,11 @@ function _set_values(model::Model, values, ::Type{R}) where {R}
     values = _check_argument_bindings(preparation_model, values, nothing, model)
     _check_binding_addresses(model, values)
     model = _bind_shape_batch(model, _local_shape_snapshot(model, values), values)
-    new_addresses = Tuple(_binding_names(values))
+    new_addresses = if R === Fix || !isempty(_binding_templates(model.values))
+        Tuple(_binding_names(values))
+    else
+        ()
+    end
     observations = _observation_values(model.values)
     fixed_values = _fixed_values(model.values)
     values = if R === Fix
