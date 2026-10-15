@@ -22,10 +22,33 @@ Bindings outside a model's prefix now throw. Replace
 `condition(prefix(m, @varname(p)); y=v)` with
 `condition(prefix(m, @varname(p)), @varname(p.y) => v)`.
 
+Replace `DefaultContext()` or `InitContext(...)` with
+`Context(rng, init_strategy, transform_strategy)`, specifying parameter inputs and output
+transforms explicitly. `Model.context` and `contextualize` are removed:
+`evaluate!!(contextualize(m, ctx), vi)` becomes `evaluate!!(m, ctx, vi)`.
+The two-argument `evaluate!!(m, vi)` is removed. Replace
+`DynamicPPL.evaluate_nowarn!!(m, vi)` with `evaluate!!(m, ctx, vi)` too.
+For handwritten evaluators, replace `f(model, vi, args...)` with
+`f(model, ctx::Context, vi, args...)`. Replace `Model{false}(f, args, defaults, ctx)`
+with `Model{false}(f, args, defaults)` and pass `ctx` to evaluation.
+Replace `get_param_eltype(vi, context)` with `get_param_eltype(strategy)` and move custom
+context overloads to initialisation strategies.
+
+`AbstractContext` and `AbstractParentContext` are no longer exported, and context
+subtyping is replaced by initialisation strategies for custom value selection and
+accumulators for custom output handling. `childcontext`, `setchildcontext`, `leafcontext`,
+and `setleafcontext` are removed; pass a single `Context` directly to evaluation instead
+of traversing or rebuilding a context hierarchy.
+
+For downstream evaluators, replace `make_evaluate_args_and_kwargs(m, vi)` with
+`DynamicPPL.make_evaluate_args_and_kwargs(m, ctx, vi)`, now `public`. Its prepared
+positional arguments begin with `(m, ctx, vi)`. It does not execute the model, reset
+accumulators, or wrap them for thread safety; use `evaluate!!` for those steps.
+
 To reuse previous values, extract them explicitly before evaluating:
 
 ```julia
-context = InitContext(rng, InitFromParams(get_vector_values(previous), nothing), LinkAll())
+context = Context(rng, InitFromParams(get_vector_values(previous), nothing), LinkAll())
 retval, outputs = evaluate!!(model, context, VarInfo())
 ```
 

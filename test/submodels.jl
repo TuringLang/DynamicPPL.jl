@@ -745,9 +745,7 @@ end
             vi = VarInfo(model)
             @test @inferred(
                 evaluate!!(
-                    model,
-                    InitContext(InitFromParams(get_values(vi), nothing), UnlinkAll()),
-                    vi,
+                    model, Context(InitFromParams(get_values(vi), nothing), UnlinkAll()), vi
                 )
             ) isa Tuple
         end

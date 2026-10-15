@@ -174,7 +174,9 @@ end
         )
         strategy = DynamicPPL.infer_transform_strategy_from_values(get_vector_values(vi))
         @test DynamicPPL.target_transform(strategy, @varname(x)) === ft
-        retval, vi = DynamicPPL.evaluate_nowarn!!(single(), vi)
+        retval, vi = evaluate!!(
+            single(), Context(InitFromParams(get_vector_values(vi), nothing), strategy), vi
+        )
         @test retval == 3.0
         @test get_transform(get_vector_values(vi)[@varname(x)]) === ft
     end
