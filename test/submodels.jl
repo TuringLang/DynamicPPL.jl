@@ -56,6 +56,22 @@ end
     return p
 end
 
+@model function nested_geometry_child()
+    x = [zeros(2)]
+    x[1][1] ~ Normal()
+    return x[1][1]
+end
+@model retained_geometry_child() = (x = zeros(2); x[1] ~ Normal(); __model__)
+@noinline function replaced_geometry_model(bind)
+    value = zeros(2)
+    reference = WeakRef(value)
+    child = bind(retained_geometry_child(); x=value)
+    parent = bind(argument_geometry_parent(child), @varname(a.x) => ones(2))
+    return parent(Xoshiro(1)), reference
+end
+@model argument_geometry_parent(child) = a ~ to_submodel(child)
+@model held_geometry_parent(child) = a ~ to_submodel(child[])
+
 @testset "submodels.jl" begin
     @testset "explicit bindings of submodel return values explain recovery" begin
         @model child() = z ~ Normal()
@@ -227,6 +243,28 @@ end
                 @test @inferred(init!!(model, accs, strategy, UnlinkAll())) isa Tuple
                 @test (@allocated init!!(model, accs, strategy, UnlinkAll())) <=
                     baseline + 128
+            end
+        end
+    end
+
+    @testset "inherited geometry does not allocate during evaluation" begin
+        rng = Xoshiro(1)
+        for bind in (condition, fix)
+            reached, reference = replaced_geometry_model(bind)
+            GC.@preserve reached begin
+                GC.gc()
+                @test reference.value === nothing
+            end
+        end
+        for parent in (argument_geometry_parent, child -> held_geometry_parent(Ref(child)))
+            for n in (1, 1000)
+                storage = [ones(2) for _ in 1:n]
+                reference = parent(condition(nested_geometry_child(); x=storage))
+                child = condition(nested_geometry_child(); x=[zeros(2) for _ in 1:n])
+                inherited = condition(parent(child), @varname(a.x) => storage)
+                @test reference(rng) == inherited(rng) == 1.0
+                baseline = @allocated reference(rng)
+                @test (@allocated inherited(rng)) <= baseline
             end
         end
     end

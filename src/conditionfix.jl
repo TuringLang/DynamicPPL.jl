@@ -3833,11 +3833,9 @@ function _prepare_local_binding(model, vn, template)
     root = _model_value_varname(model.values, local_root, _model_prefix(model))
     name = _binding_display_name(model, root)
     shape = _model_argument_binding(
-        _binding_shape_store(model.values).roots, AbstractPPL.varname_to_optic(root)
+        _prepared_shapes(model.values).roots, AbstractPPL.varname_to_optic(root)
     )
-    if shape isa PendingBindings && shape.base isa BindingShape
-        _refine_shape_part(shape.base.geometry, AbstractPPL.Iden(), shape, name)
-    end
+    _check_pending_shape(shape, name)
     for t in _binding_templates(model.values)
         t.name == root || continue
         node = _prepare_pending_node(node, t.storage, name)
@@ -5063,6 +5061,9 @@ function _binding_geometry(
             UnknownBindingGeometry()
         end
     end
+    if !isempty(children) && all(g -> g === first(children), children)
+        children = Fill(first(children), axes(children))
+    end
     return ArrayBindingGeometry(axes(value), children)
 end
 _same_binding_geometry(::ScalarBindingGeometry, ::ScalarBindingGeometry) = true
@@ -5080,6 +5081,9 @@ function _same_binding_geometry(a::ArrayBindingGeometry, b::ArrayBindingGeometry
         return all(x -> _same_binding_geometry(ScalarBindingGeometry(), x), b.children)
     b.children === nothing &&
         return all(x -> _same_binding_geometry(x, ScalarBindingGeometry()), a.children)
+    a.children isa Fill &&
+        b.children isa Fill &&
+        return _same_binding_geometry(first(a.children), first(b.children))
     return all(_same_binding_geometry(x, y) for (x, y) in zip(a.children, b.children))
 end
 function _same_binding_geometry(a::FieldBindingGeometry, b::FieldBindingGeometry)
@@ -5233,21 +5237,30 @@ function _shape_template(g::PendingBindings, optic::AbstractPPL.Index, previous=
         ),
     )
 end
-function _merge_binding_shapes(a::PendingBindings, b::PendingBindings, vn, model, whole)
-    merge =
-        (x, y, optic) -> if y isa BindingShape
-            y
-        else
-            _merge_binding_shapes(x, y, AbstractPPL.append_optic(vn, optic), model, whole)
-        end
+struct ShapeOp{Build,M,W}
+    model::M
+    whole::W
+end
+function ShapeOp{Build}(model, whole) where {Build}
+    return ShapeOp{Build,typeof(model),typeof(whole)}(model, whole)
+end
+@inline function (op::ShapeOp{Build})(
+    a::PendingBindings, b::PendingBindings, vn
+) where {Build}
+    merge = (x, y, optic) -> if y isa BindingShape
+        y
+    else
+        op(x, y, AbstractPPL.append_optic(vn, optic))
+    end
+    Build || return _check_shape_children(op, a, b, vn)
     entries = copy(a).entries
     return PendingBindings(
         a.name, _merge_pending_entries!(entries, b, merge), NoTemplate(), a.base
     )
 end
-function _merge_binding_shapes(a::PendingBindings, b::BindingShape, vn, model, whole)
-    a.base === nothing || return _merge_binding_shapes(a.base, b, vn, model, whole)
-    all(e -> last(e) isa BindingShape, a.entries) && return b
+@inline function (op::ShapeOp{Build})(a::PendingBindings, b::BindingShape, vn) where {Build}
+    a.base === nothing || return op(a.base, b, vn)
+    all(e -> last(e) isa BindingShape, a.entries) && return Build ? b : ()
     return _binding_root_error(vn)
 end
 function _snapshot_shape(x::VarNamedTuples.PartialArray)
@@ -5450,16 +5463,93 @@ function _binding_selection_names(storage, selected, child, vn, cache, address)
     return names
 end
 
-_binding_shape_store(values) = ModelBindingShapes()
-_binding_shape_store(values::ModelBindingLayers) = values.shapes
-_binding_shape_store(values::LocalModelValues) = _binding_shape_store(values.values)
+# True replaces a released root; false keeps its parts pending.
+struct ShapeRules{R<:Tuple{Vararg{Pair{<:VarName,Bool}}}}
+    roots::R
+end
+_shape_occupied(r::ShapeRules, vn) = !any(p -> first(p) == vn, r.roots)
+_whole_shape(r::ShapeRules, vn) = any(p -> first(p) == vn && last(p), r.roots)
+struct InheritedShapes{A,B,N,R}
+    child::A
+    parent::B
+    name::N
+    rules::R
+end
+_check_pending_shape(shape, name) = nothing
+function _check_pending_shape(shape::PendingBindings, name)
+    shape.base isa BindingShape || return nothing
+    return _refine_shape_part(shape.base.geometry, AbstractPPL.Iden(), shape, name, false)
+end
+function _check_pending_shape(shape::InheritedShapes, name)
+    if shape.child isa BindingShape && shape.parent isa PendingBindings
+        _refine_shape_part(
+            shape.child.geometry, AbstractPPL.Iden(), shape.parent, name, false
+        )
+    end
+    _check_pending_shape(shape.child, name)
+    return _check_pending_shape(shape.parent, name)
+end
+_materialize_shapes(x) = x
+function _materialize_shapes(x::InheritedShapes)
+    return _merge_binding_shapes(x.child, x.parent, x.name, x.rules, x.rules)
+end
+_prepared_shapes(values) = ModelBindingShapes()
+_prepared_shapes(values::ModelBindingLayers) = values.shapes
+_prepared_shapes(values::LocalModelValues) = _prepared_shapes(values.values)
+function _binding_shape_store(values)
+    return ModelBindingShapes(_materialize_shapes(_prepared_shapes(values).roots))
+end
+function _inherited_binding_shapes(a, b, vn, rules)
+    a === b && return a
+    a === nothing && return b
+    b === nothing && return a
+    a isa VarNamedTuple{(),Tuple{}} && return b
+    b isa VarNamedTuple{(),Tuple{}} && return a
+    if a isa PendingBindings && b isa BindingShape
+        a.base === nothing && return b
+        return _inherited_binding_shapes(a.base, b, vn, rules)
+    end
+    if a isa BindingShape && b isa BindingShape && _whole_shape(rules, vn)
+        return b
+    end
+    return InheritedShapes(a, b, vn, rules)
+end
+_shape_child_name(vn, optic) = AbstractPPL.append_optic(vn, optic)
+_shape_child_name(::Nothing, optic) = AbstractPPL.optic_to_varname(optic)
+function _map_inherited_shapes(f, x::InheritedShapes, vn=x.name)
+    return _inherited_binding_shapes(f(x.child), f(x.parent), vn, x.rules)
+end
+_model_argument_binding(x::InheritedShapes, ::AbstractPPL.Iden) = x
+function _model_argument_binding(x::InheritedShapes, optic::AbstractPPL.AbstractOptic)
+    vn = _shape_child_name(x.name, optic)
+    return _map_inherited_shapes(v -> _model_argument_binding(v, optic), x, vn)
+end
+function _fold_model_indices(f, result, x::InheritedShapes)
+    step =
+        (result, _, optic, template) ->
+            f(result, _model_argument_binding(x, optic), optic, template)
+    result = _fold_model_indices(step, result, x.child)
+    return _fold_model_indices(result, x.parent) do result, child, optic, template
+        _model_argument_binding(x.child, optic) === nothing || return result
+        f(result, child, optic, template)
+    end
+end
+_submodel_namespace(x::InheritedShapes) = _map_inherited_shapes(_submodel_namespace, x)
+_submodel_values(x::InheritedShapes, ::Nothing) = x
+function _submodel_values(x::InheritedShapes, prefix::VarName)
+    binding = _model_argument_binding(x, AbstractPPL.varname_to_optic(prefix))
+    return binding === nothing ? VarNamedTuple() : _submodel_namespace(binding)
+end
+function _local_shape_roots(model, x::InheritedShapes)
+    return _map_inherited_shapes(v -> _local_shape_roots(model, v), x)
+end
 _with_binding_shapes(values, shapes) = _with_binding_metadata(values; shapes)
 function _with_binding_metadata(
     values;
     observation_removals=_removals(Condition, values),
     fixed_removals=_removals(Fix, values),
     templates=_binding_templates(values),
-    shapes=_binding_shape_store(values),
+    shapes=_prepared_shapes(values),
 )
     if !(values isa ModelBindingLayers) &&
         shapes.roots isa VarNamedTuple{(),Tuple{}} &&
@@ -5487,7 +5577,7 @@ function _prefix_binding_shapes(shapes, vn, template)
 end
 function _local_binding_shape_store(model)
     prefix = model.values isa LocalModelValues ? nothing : _model_prefix(model)
-    shapes = _binding_shape_store(model.values)
+    shapes = _prepared_shapes(model.values)
     prefix === nothing && return shapes
     return ModelBindingShapes(_submodel_values(shapes.roots, prefix))
 end
@@ -5514,99 +5604,140 @@ end
     message = "Binding shape at `$vn` was set by a binding template and cannot change; supply a new template with the value."
     throw(ArgumentError(message))
 end
-function _merge_binding_shapes(a::BindingShape, b::BindingShape, vn, model, whole)
-    replaceable = _whole_shape(whole, vn) && !_shape_occupied(model, vn)
+@inline function (op::ShapeOp{Build})(a::BindingShape, b::BindingShape, vn) where {Build}
+    a === b && return Build ? a : ()
+    replaceable = _whole_shape(op.whole, vn) && !_shape_occupied(op.model, vn)
     templated =
-        !(whole isa Tuple) && any(
+        op.whole isa VarNamedTuple && any(
             t -> t isa ModelBindingTemplate{Nothing} && t.name == vn,
-            _binding_templates(model.values),
+            _binding_templates(op.model.values),
         )
     if !_same_binding_geometry(a.geometry, b.geometry)
         replaceable || _binding_shape_error(vn)
         templated && _template_shape_error(vn)
-        return b
+        return Build ? b : (vn => true,)
     end
-    replaceable && !templated && return b
-    return BindingShape(_refine_binding_geometry(a.geometry, b.geometry))
+    replaceable && !templated && return Build ? b : (vn => true,)
+    return Build ? BindingShape(_refine_binding_geometry(a.geometry, b.geometry)) : ()
 end
-function _merge_binding_shapes(
-    a::PendingBindings, b::VarNamedTuples.PartialArray, vn, model, whole
-)
-    return _merge_binding_shapes(a.base, b, vn, model, whole)
+@inline function (op::ShapeOp{Build})(
+    a::PendingBindings, b::VarNamedTuples.PartialArray, vn
+) where {Build}
+    return op(a.base, b, vn)
 end
-function _merge_binding_shapes(
-    a::BindingShape,
-    b::Union{VarNamedTuple,VarNamedTuples.PartialArray,PendingBindings},
-    vn,
-    model,
-    whole,
-)
-    b isa PendingBindings &&
-        !_shape_occupied(model, vn) &&
-        return PendingBindings(b.name, b.entries, NoTemplate(), a)
-    return BindingShape(_refine_shape_part(a.geometry, AbstractPPL.Iden(), b, vn))
+@inline function (op::ShapeOp{Build})(
+    a::BindingShape, b::Union{VarNamedTuple,VarNamedTuples.PartialArray,PendingBindings}, vn
+) where {Build}
+    if b isa PendingBindings && !_shape_occupied(op.model, vn)
+        return Build ? PendingBindings(b.name, b.entries, NoTemplate(), a) : (vn => false,)
+    end
+    geometry = _refine_shape_part(a.geometry, AbstractPPL.Iden(), b, vn, Build)
+    return Build ? BindingShape(geometry) : ()
 end
 function _refine_shape_part(
     geometry,
     ::AbstractPPL.Iden,
     value::Union{VarNamedTuple,VarNamedTuples.PartialArray,PendingBindings},
     vn,
+    build=true,
 )
     return _fold_model_indices(geometry, value) do g, child, optic, _
-        _refine_shape_part(g, optic, child, AbstractPPL.append_optic(vn, optic))
+        _refine_shape_part(g, optic, child, AbstractPPL.append_optic(vn, optic), build)
     end
 end
-function _refine_shape_part(geometry, ::AbstractPPL.Iden, value::BindingShape, vn)
+function _refine_shape_part(
+    geometry, ::AbstractPPL.Iden, value::BindingShape, vn, build=true
+)
     _same_binding_geometry(geometry, value.geometry) || _binding_shape_error(vn)
-    return _refine_binding_geometry(geometry, value.geometry)
+    return build ? _refine_binding_geometry(geometry, value.geometry) : geometry
 end
 function _refine_shape_part(
-    g::FieldBindingGeometry, optic::AbstractPPL.Property{S}, value, vn
+    g::FieldBindingGeometry, optic::AbstractPPL.Property{S}, value, vn, build=true
 ) where {S}
     i = findfirst(==(S), g.names)
     i === nothing && _binding_shape_error(vn)
-    child = _refine_shape_part(g.children[i], optic.child, value, vn)
-    return FieldBindingGeometry(g.names, Base.setindex(g.children, child, i))
+    child = _refine_shape_part(g.children[i], optic.child, value, vn, build)
+    return build ? FieldBindingGeometry(g.names, Base.setindex(g.children, child, i)) : g
 end
-function _refine_shape_part(g::ArrayBindingGeometry, optic::AbstractPPL.Index, value, vn)
+function _refine_shape_part(
+    g::ArrayBindingGeometry, optic::AbstractPPL.Index, value, vn, build=true
+)
     checkbounds(Bool, CartesianIndices(g.axes), optic.ix...) || _binding_shape_error(vn)
     g.children === nothing && return g
     index = LinearIndices(g.axes)[optic.ix...]
-    child = _refine_shape_part(g.children[index], optic.child, value, vn)
-    child === g.children[index] && return g
+    child = _refine_shape_part(g.children[index], optic.child, value, vn, build)
+    (!build || child === g.children[index]) && return g
     children = BangBang.setindex!!(copy(g.children), child, index)
     return ArrayBindingGeometry(g.axes, children)
 end
 
-function _merge_binding_shapes(
-    a::Union{VarNamedTuple,VarNamedTuples.PartialArray}, b::BindingShape, vn, model, whole
-)
+@inline function (op::ShapeOp{Build})(
+    a::Union{VarNamedTuple,VarNamedTuples.PartialArray}, b::BindingShape, vn
+) where {Build}
     return _binding_root_error(vn)
 end
-_merge_binding_shapes(a, ::Nothing, vn, model, whole) = a
-_merge_binding_shapes(::Nothing, b, vn, model, whole) = b
-_merge_binding_shapes(::Nothing, ::Nothing, vn, model, whole) = nothing
-function _merge_binding_shapes(a::VarNamedTuple, b::VarNamedTuple, vn, model, whole)
-    return _merge_model_values(
-        a, b, vn, (x, y, address) -> _merge_binding_shapes(x, y, address, model, whole)
+(op::ShapeOp{Build})(a, ::Nothing, vn) where {Build} = Build ? a : ()
+(op::ShapeOp{Build})(::Nothing, b, vn) where {Build} = Build ? b : ()
+(op::ShapeOp{Build})(::Nothing, ::Nothing, vn) where {Build} = Build ? nothing : ()
+@inline function (op::ShapeOp{Build})(a::VarNamedTuple, b::VarNamedTuple, vn) where {Build}
+    a === b && return Build ? a : ()
+    Build || return _check_shape_children(op, a, b, vn)
+    return _merge_model_values(a, b, vn, (x, y, address) -> op(x, y, address))
+end
+@inline function (op::ShapeOp{Build})(
+    a::VarNamedTuples.PartialArray, b::VarNamedTuples.PartialArray, vn
+) where {Build}
+    rules = ()
+    if axes(a) != axes(b)
+        _whole_shape(op.whole, vn) && !_shape_occupied(op.model, vn) ||
+            _binding_shape_error(vn, " with size $(size(a)) (supplied $(size(b)))")
+        Build && (a = _resize_model_binding(a, axes(b)))
+        rules = (vn => true,)
+    end
+    any(a.mask) || return Build ? b : rules
+    any(b.mask) || return Build ? a : rules
+    Build || return (rules..., _check_shape_children(op, a, b, vn)...)
+    return _merge_model_indices(
+        a, b, (x, y, optic) -> op(x, y, AbstractPPL.append_optic(vn, optic))
     )
 end
-function _merge_binding_shapes(
-    a::VarNamedTuples.PartialArray, b::VarNamedTuples.PartialArray, vn, model, whole
-)
-    if axes(a) != axes(b)
-        _whole_shape(whole, vn) && !_shape_occupied(model, vn) ||
-            _binding_shape_error(vn, " with size $(size(a)) (supplied $(size(b)))")
-        a = _resize_model_binding(a, axes(b))
+function _merge_binding_shapes(a, b, vn, model, whole)
+    return ShapeOp{true}(model, whole)(_materialize_shapes(a), _materialize_shapes(b), vn)
+end
+function _check_binding_shapes(a, b, model, whole)
+    return ShapeOp{false}(model, whole)(a, b, nothing)
+end
+@inline function _check_shape_children(op, a, b, vn)
+    return _fold_model_indices((), b) do rules, child, optic, _
+        a isa PendingBindings &&
+            b isa PendingBindings &&
+            child isa BindingShape &&
+            return rules
+        extra = op(_model_argument_binding(a, optic), child, _shape_child_name(vn, optic))
+        return (rules..., extra...)
     end
-    any(a.mask) || return b
-    any(b.mask) || return a
-    return _merge_model_indices(
-        a,
-        b,
-        (x, y, optic) ->
-            _merge_binding_shapes(x, y, AbstractPPL.append_optic(vn, optic), model, whole),
-    )
+end
+@inline function (op::ShapeOp{Build})(a::InheritedShapes, b, vn) where {Build}
+    @assert !Build
+    b isa BindingShape || return _check_shape_children(op, a, b, vn)
+    first = op(a.child, b, vn)
+    return (first..., op(a.parent, b, vn)...)
+end
+@inline function (op::ShapeOp{Build})(a, b::InheritedShapes, vn) where {Build}
+    @assert !Build
+    b.child isa BindingShape || return _check_shape_children(op, a, b, vn)
+    first = op(a, b.child, vn)
+    return (first..., op(a, b.parent, vn)...)
+end
+(op::ShapeOp{Build})(a::InheritedShapes, ::Nothing, vn) where {Build} = ()
+(op::ShapeOp{Build})(::Nothing, b::InheritedShapes, vn) where {Build} = ()
+@inline function (op::ShapeOp{Build})(
+    a::InheritedShapes, b::InheritedShapes, vn
+) where {Build}
+    @assert !Build
+    b.child isa BindingShape || return _check_shape_children(op, a, b, vn)
+    first = op(a, b.child, vn)
+    return (first..., op(a, b.parent, vn)...)
 end
 function _bind_shape_batch(model, batch, whole=())
     store = _binding_shape_store(model.values)

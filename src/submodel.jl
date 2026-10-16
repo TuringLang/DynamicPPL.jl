@@ -284,7 +284,7 @@ Evaluate `submodel` under `parent_model`.
         maybe_prefix(local_prefix, _model_prefix(parent_model)),
     )
     parent_shapes = _submodel_values(
-        _binding_shape_store(parent_model.values).roots,
+        _prepared_shapes(parent_model.values).roots,
         _model_value_varname(
             parent_model.values, local_prefix, _model_prefix(parent_model)
         ),
@@ -327,14 +327,12 @@ Evaluate `submodel` under `parent_model`.
         end
     end
     templates = (templates..., inherited_templates...)
+    child_shapes = _local_binding_shape_store(submodel.model).roots
+    rules = ShapeRules(
+        _check_binding_shapes(child_shapes, parent_shapes, child_model, parent_values)
+    )
     shapes = ModelBindingShapes(
-        _merge_binding_shapes(
-            _local_binding_shape_store(submodel.model).roots,
-            parent_shapes,
-            nothing,
-            child_model,
-            parent_values,
-        ),
+        _inherited_binding_shapes(child_shapes, parent_shapes, nothing, rules)
     )
     values = LocalModelValues(values, owners)
     isempty(observation_removals) && isempty(fixed_removals) ||

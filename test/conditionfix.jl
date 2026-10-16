@@ -7122,6 +7122,8 @@ end
 end
 
 @testset "inherited local shapes survive child evaluation" begin
+    @model replaced_child(seed) = (x = seed; x[1] ~ Normal(); __model__)
+    @model supplied_parent(child) = a ~ to_submodel(child)
     @model retained_child() = (x ~ MvNormal(zeros(2), 1); __model__)
     @model retained_parent() = a ~ to_submodel(retained_child())
     @model retained_nested_child(x) = (x.v[1] ~ MvNormal(zeros(2), 1); __model__)
@@ -7129,6 +7131,10 @@ end
         a ~ to_submodel(retained_nested_child((v=Vector{Vector{Float64}}(undef, 1),)))
     for (bind, remove, selected) in
         ((condition, decondition, conditioned), (fix, unfix, fixed))
+        cleared = decondition(condition(replaced_child(zeros(3)); x=zeros(2)))
+        reached = bind(supplied_parent(cleared), @varname(a.x) => ones(3))(Xoshiro(1))
+        reused = bind(supplied_parent(reached), @varname(a.a.x) => ones(3))
+        @test reused(Xoshiro(1)) isa Model
         child = bind(retained_parent(), @varname(a.x) => ones(2))(Xoshiro(1))
         @test_throws "outside this model's prefix" bind(child; x=ones(3))
         @test_throws r"x.*decondition.*unfix" bind(child, @varname(a.x) => ones(3))
