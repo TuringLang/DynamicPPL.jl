@@ -3609,9 +3609,13 @@ function _merge_model_node(
     base::Union{ModelValue,VarNamedTuples.PartialArray}, update::PendingBindings
 )
     update = _prepare_pending_node(
-        update, base isa ModelValue ? base.value : base, update.name
+        update, base isa ModelValue ? base.value : base.data, update.name
     )
-    return PendingBindings(update.name, update.entries, update.storage, base)
+    return if base isa ModelValue
+        PendingBindings(update.name, update.entries, update.storage, base)
+    else
+        _merge_model_indices(base, update)
+    end
 end
 function _merge_pending_entries!(
     entries, update, merge=(a, b, _) -> _merge_model_node(a, b)
@@ -5307,6 +5311,7 @@ end
 
 _check_argument_shape(storage, value, vn) = nothing
 function _check_argument_shape(storage, value::ModelValue, vn)
+    storage isa ModelValue && (storage = storage.value)
     storage isa Union{NoTemplate,Nothing,Missing} && return nothing
     _same_storage_geometry(storage, value.value) || _binding_shape_error(vn)
     return nothing

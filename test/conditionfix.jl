@@ -3522,6 +3522,22 @@ end
     end
 end
 
+@testset "pending parts use partly cleared child storage" begin
+    for (bind, remove, select) in
+        ((condition, decondition, conditioned), (fix, unfix, fixed))
+        child = remove(bind(local_z(); z=ones(Float32, 3)), @varname(z[2]))
+        for i in 1:2
+            direct = bind(child, @varname(z[i]) => 0.5)
+            parent = bind(child_model(child), @varname(a.z[i]) => 0.5)
+            @test parent(Xoshiro(1)) == direct(Xoshiro(1))
+            @test bind(child_model(child), select(parent))(Xoshiro(1)) == direct(Xoshiro(1))
+        end
+        @test_throws r"exactly represent" bind(child_model(child), @varname(a.z[2]) => 0.1)(
+            Xoshiro(1)
+        )
+    end
+end
+
 @testset "partial fixes retain shared storage" begin
     observed = condition(decondition(array_model(zeros(3))), @varname(x[1]) => 1.0)
     m = fix(observed, @varname(x[3]) => 9.0)
