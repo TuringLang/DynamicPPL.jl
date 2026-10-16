@@ -1038,16 +1038,10 @@ function _check_model_binding(
         check_bounds=false,
     )
 end
-function _prepare_argument_fields(
-    template, bindings::VarNamedTuples.PartialArray{T,N,D,<:ModelBindingArray{Bool,N}}, vn
+function _prepare_bindings(
+    bindings::VarNamedTuples.PartialArray{T,N,D,<:ModelBindingArray{Bool,N}}, template, vn
 ) where {T,N,D<:AbstractArray{T,N}}
-    return invoke(
-        _prepare_argument_fields,
-        Tuple{Any,Union{VarNamedTuple,VarNamedTuples.PartialArray},Any},
-        bindings.mask.template,
-        bindings,
-        vn,
-    )
+    return _prepare_binding_fields(bindings, bindings.mask.template, vn)
 end
 
 function _merge_model_indices(previous, updates, merge=(a, b, _) -> _merge_model_node(a, b))
@@ -2215,9 +2209,7 @@ end
                             _model_data(binding)
                         )
                     else
-                        binding = _prepare_argument_fields(
-                            argument, binding, maybe_prefix(vn, prefix)
-                        )
+                        binding = _prepare_bindings(binding, argument, maybe_prefix(vn, prefix))
                     end
                     values = templated_setindex!!(
                         values, binding, vn, values.data[AbstractPPL.getsym(vn)]
@@ -2248,33 +2240,41 @@ end
     end
 end
 
-_prepare_argument_fields(template, binding, vn) = binding
-function _prepare_argument_fields(
-    template, bindings::Union{VarNamedTuple,VarNamedTuples.PartialArray}, vn
+_prepare_bindings(binding, storage, vn) = binding
+function _prepare_bindings(
+    bindings::Union{VarNamedTuple,VarNamedTuples.PartialArray}, storage, vn
 )
-    return _fold_model_indices(copy(bindings), bindings) do result, binding, optic, storage
+    return _prepare_binding_fields(bindings, storage, vn)
+end
+function _prepare_binding_fields(bindings, storage, vn)
+    return _fold_model_indices(copy(bindings), bindings) do result, binding, optic, template
         _check_partial_binding(
-            ModelValue{Condition}(template), optic, AbstractPPL.varname_to_optic(vn)
+            ModelValue{Condition}(storage), optic, AbstractPPL.varname_to_optic(vn)
         )
-        _check_binding_template_bounds(
-            template, optic, AbstractPPL.append_optic(vn, optic); check_fields=true
-        )
-        if VarNamedTuples._haskey_optic(template, optic)
-            address = AbstractPPL.append_optic(vn, optic)
-            if binding isa ModelValue
-                # Conversion needs the owner's type, not a possibly unassigned value.
-                binding = _convert_partial_argument_binding(
-                    binding, template, optic, address
-                )
-            else
-                child = VarNamedTuples._getindex_optic(template, optic, vn)
-                binding = _prepare_argument_fields(child, binding, address)
-            end
-        end
+        binding = _prepare_binding_selection(bindings, binding, storage, optic, vn)
         return VarNamedTuples._setindex_optic!!(
-            result, binding, optic, storage, VarNamedTuples.AllowAll()
+            result, binding, optic, template, VarNamedTuples.AllowAll()
         )
     end
+end
+function _prepare_binding_selection(bindings, binding, storage, optic, vn)
+    pending = bindings isa PendingBindings
+    address = AbstractPPL.append_optic(vn, optic)
+    _check_binding_template_bounds(storage, optic, address; check_fields=!pending)
+    !pending && !VarNamedTuples._haskey_optic(storage, optic) && return binding
+    if binding isa ModelValue
+        pending &&
+            isassigned(storage, optic.ix...) &&
+            _check_argument_shape(@inbounds(storage[optic.ix...]), binding, address)
+        return _convert_partial_argument_binding(binding, storage, optic, address)
+    end
+    child = VarNamedTuples._getindex_optic(storage, optic, vn)
+    if pending
+        child isa Union{ModelValue,VarNamedTuples.PartialArray} &&
+            return _merge_model_node(child, binding)
+        return _prepare_pending_node(binding, child, address)
+    end
+    return _prepare_bindings(binding, child, address)
 end
 
 _binding_property_name(::AbstractPPL.Property{S}) where {S} = S
@@ -2741,7 +2741,7 @@ function _prepare_namespace_bindings(model, values, shapes, templates)
         node = _model_argument_binding(values, optic)
         node isa PendingBindings || continue
         t.storage isa ConflictingBindingTemplates &&
-            _prepare_pending_node(node, t.storage, t.name)
+            _prepare_bindings(node, t.storage, t.name)
         t.namespace === nothing && _binding_storage_error(t.name)
         previous = _model_argument_binding(_local_binding_shape_store(model).roots, optic)
         ShapeOp{false}(model, (t.name,))(previous, t.namespace, t.name)
@@ -3662,7 +3662,7 @@ end
 function _merge_model_node(
     base::Union{ModelValue,VarNamedTuples.PartialArray}, update::PendingBindings
 )
-    update = _prepare_pending_node(
+    update = _prepare_bindings(
         update, base isa ModelValue ? base.value : base.data, update.name
     )
     return if base isa ModelValue
@@ -3749,9 +3749,6 @@ function _valid_model_binding(p::PendingBindings)
 end
 _valid_model_binding(v::VarNamedTuple) = all(_valid_model_binding, values(v.data))
 _has_complete_model_data(::PendingBindings) = false
-function _prepare_argument_fields(storage, p::PendingBindings, vn)
-    return _prepare_pending_node(p, storage, vn)
-end
 function _check_namespace_index_counts(
     p::PendingBindings, optic::AbstractPPL.Index, vn, model
 )
@@ -3819,15 +3816,19 @@ function VarNamedTuples.make_leaf(
     return PendingBindings(t.name, length(entries) == 1 ? (only(entries),) : Dict(entries))
 end
 
+_prepare_pending_node(value, storage, vn) = value
+function _prepare_pending_node(values::Union{VarNamedTuple,PendingBindings}, storage, vn)
+    return _prepare_bindings(values, storage, vn)
+end
+
 _has_pending(value) = false
 _has_pending(p::PendingBindings) = p.storage isa NoTemplate
 _has_pending(v::VarNamedTuple) = any(_has_pending, values(v.data))
-_prepare_pending_node(value, storage, vn) = value
-function _prepare_pending_node(p::PendingBindings, ::ConflictingBindingTemplates, vn)
+function _prepare_bindings(p::PendingBindings, ::ConflictingBindingTemplates, vn)
     message = "Binding template storage for `$vn` conflicts with its existing owner; replace the template and binding on the child."
     throw(ArgumentError(message))
 end
-function _prepare_pending_node(p::PendingBindings, storage, vn)
+function _prepare_bindings(p::PendingBindings, storage, vn)
     p.storage isa NoTemplate || return p
     for (optic, _) in p.entries
         _check_partial_binding(
@@ -3836,27 +3837,11 @@ function _prepare_pending_node(p::PendingBindings, storage, vn)
     end
     storage isa AbstractArray || _binding_storage_error(vn)
     entries = _pending_entries_map(p.entries) do (optic, value)
-        name = AbstractPPL.append_optic(vn, optic)
-        _check_binding_template_bounds(storage, optic, name)
-        value = if value isa ModelValue
-            isassigned(storage, optic.ix...) &&
-                _check_argument_shape(@inbounds(storage[optic.ix...]), value, name)
-            _convert_partial_argument_binding(value, storage, optic, name)
-        else
-            child = storage[optic.ix...]
-            if child isa Union{ModelValue,VarNamedTuples.PartialArray}
-                _merge_model_node(child, value)
-            else
-                _prepare_pending_node(value, child, name)
-            end
-        end
+        value = _prepare_binding_selection(p, value, storage, optic, vn)
         AbstractPPL.Index(Tuple(CartesianIndices(axes(storage))[optic.ix...]), (;)) =>
             value
     end
     return PendingBindings(p.name, entries, storage, p.base)
-end
-function _prepare_pending_node(values::VarNamedTuple, storage, vn)
-    return _prepare_argument_fields(storage, values, vn)
 end
 function _argument_storage(p::PendingBindings, template)
     return ModelArgumentStorage(
@@ -3880,7 +3865,7 @@ function _apply_model_bindings(p::PendingBindings, storage::ModelArgumentStorage
 end
 function _model_argument_value(p::PendingBindings, template, vn=p.name)
     template = p.base isa ModelValue ? p.base.value : template
-    p = _prepare_pending_node(p, template, vn)
+    p = _prepare_bindings(p, template, vn)
     result = if p.base === nothing || p.base isa ModelValue
         _copy_model_argument(template, vn)
     else
@@ -3908,7 +3893,7 @@ function _prepare_local_binding(model, vn, template)
     _check_pending_shape(shape, name)
     for t in _binding_templates(model.values)
         t.name == root || continue
-        node = _prepare_pending_node(node, t.storage, name)
+        node = _prepare_bindings(node, t.storage, name)
         template isa NoTemplate && (template = t.storage)
         node isa PendingBindings && (node = PendingBindings(node.name, node.entries))
     end
