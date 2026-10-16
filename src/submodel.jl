@@ -278,18 +278,21 @@ Evaluate `submodel` under `parent_model`.
             ),
         ),
     )
-    parent_values = _check_argument_bindings(
+    inherited_values = _check_argument_bindings(
         child_model,
         _submodel_inherited_values(parent_model, local_prefix),
         maybe_prefix(local_prefix, _model_prefix(parent_model)),
     )
-    parent_shapes = _submodel_values(
+    inherited_shapes = _submodel_values(
         _prepared_shapes(parent_model.values).roots,
         _model_value_varname(
             parent_model.values, local_prefix, _model_prefix(parent_model)
         ),
     )
-    parent_shapes = _local_shape_roots(child_model, parent_shapes)
+    inherited_shapes = _local_shape_roots(child_model, inherited_shapes)
+    parent_values, parent_shapes = _prepare_namespace_bindings(
+        child_model, inherited_values, inherited_shapes, inherited_templates
+    )
     # Shared unprefixed names may belong to the parent or another child.
     if AutoPrefix || _model_prefix(submodel.model) !== nothing
         _check_binding_addresses(child_model, parent_values)

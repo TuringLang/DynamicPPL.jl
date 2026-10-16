@@ -2689,7 +2689,7 @@ _binding_templates(values) = ()
 _binding_templates(values::ModelBindingLayers) = values.templates
 _binding_templates(values::LocalModelValues) = _binding_templates(values.values)
 function _prefix_binding_template(t::ModelBindingTemplate{R}, prefix) where {R}
-    return ModelBindingTemplate{R}(maybe_prefix(t.name, prefix), t.storage)
+    return ModelBindingTemplate{R}(maybe_prefix(t.name, prefix), t.storage, t.namespace)
 end
 function _binding_template_entries(::Type{R}, schema::NamedTuple, prefix=nothing) where {R}
     return mapreduce((a, b) -> (a..., b...), pairs(schema); init=()) do (name, storage)
@@ -2719,7 +2719,41 @@ function _submodel_binding_templates(model, prefix)
     end
 end
 function _unprefix_binding_template(t::ModelBindingTemplate{R}, prefix) where {R}
-    return ModelBindingTemplate{R}(AbstractPPL.unprefix(t.name, prefix), t.storage)
+    return ModelBindingTemplate{R}(
+        AbstractPPL.unprefix(t.name, prefix), t.storage, t.namespace
+    )
+end
+function _prepare_deferred_template(t::ModelBindingTemplate{R}) where {R}
+    namespace = if t.storage isa AbstractArray
+        VarNamedTuples.PartialArray(
+            similar(t.storage, VarNamedTuple{(),Tuple{}}),
+            fill!(similar(t.storage, Bool), false),
+        )
+    else
+        nothing
+    end
+    return ModelBindingTemplate{R}(t.name, t.storage, namespace)
+end
+function _prepare_namespace_bindings(model, values, shapes, templates)
+    for t in templates
+        _is_namespace_storage(model, t.name) || continue
+        optic = AbstractPPL.varname_to_optic(t.name)
+        node = _model_argument_binding(values, optic)
+        node isa PendingBindings || continue
+        t.storage isa ConflictingBindingTemplates &&
+            _prepare_pending_node(node, t.storage, t.name)
+        t.namespace === nothing && _binding_storage_error(t.name)
+        previous = _model_argument_binding(_local_binding_shape_store(model).roots, optic)
+        ShapeOp{false}(model, (t.name,))(previous, t.namespace, t.name)
+        for (index, _) in node.entries
+            _check_binding_template_bounds(
+                t.storage, index, AbstractPPL.append_optic(t.name, index)
+            )
+        end
+        values = _namespace_binding(values, optic, t.namespace)
+        shapes = _namespace_binding(shapes, optic, t.namespace)
+    end
+    return values, shapes
 end
 struct ConflictingBindingTemplates end
 function _binding_schema_owned(model, address)
@@ -3063,7 +3097,7 @@ function _conditionfix(model::Model, inputs::Tuple, ::Type{R}) where {R}
         elseif _is_namespace_storage(model, t.name)
             model = _bind(model, t.name, t.storage; namespace=true)
         else
-            deferred = (deferred..., t)
+            deferred = (deferred..., _prepare_deferred_template(t))
         end
     end
     model = _conditionfix_inputs(model, values, R, owned)
@@ -3098,7 +3132,9 @@ function _merge_binding_template(a::ModelBindingTemplate{R}, b) where {R}
     else
         ConflictingBindingTemplates()
     end
-    return ModelBindingTemplate{R}(a.name, storage)
+    return ModelBindingTemplate{R}(
+        a.name, storage, storage === a.storage ? a.namespace : nothing
+    )
 end
 function _record_binding_template(model::Model, template)
     prefix = _model_prefix(model)
@@ -3436,6 +3472,11 @@ struct PendingBindings{N,E,S,B}
 end
 function _fold_model_indices(f, result, updates::PendingBindings)
     return foldl(updates.entries; init=result) do result, (optic, value)
+        if updates.base isa VarNamedTuples.PartialArray
+            optic = AbstractPPL.Index(
+                Tuple(CartesianIndices(axes(updates.base))[optic.ix...]), (;)
+            )
+        end
         f(result, value, optic, updates)
     end
 end
@@ -3488,11 +3529,17 @@ end
 function _pending_lookup(p, optic)
     optic = _expand_cartesian(optic)
     p.storage isa NoTemplate || (optic = AbstractPPL.concretize_top_level(optic, p.storage))
-    if p.storage isa AbstractArray
-        checkbounds(Bool, p.storage, optic.ix...) || return nothing
-        optic = AbstractPPL.Index(
-            Tuple(CartesianIndices(axes(p.storage))[optic.ix...]), (;)
-        )
+    storage = p.base isa VarNamedTuples.PartialArray ? p.base.data : p.storage
+    if storage isa AbstractArray
+        checkbounds(Bool, storage, optic.ix...) || return nothing
+        index =
+            if p.base isa VarNamedTuples.PartialArray &&
+                length(first(first(p.entries)).ix) == 1
+                (LinearIndices(axes(storage))[optic.ix...],)
+            else
+                Tuple(CartesianIndices(axes(storage))[optic.ix...])
+            end
+        optic = AbstractPPL.Index(index, (;))
     end
     return _pending_get(p.entries, optic)
 end
@@ -3584,7 +3631,8 @@ function _materialize_pending(p::PendingBindings)
     return result
 end
 function _select_model_node(::Type{R}, p::PendingBindings) where {R}
-    p.storage isa NoTemplate || return _select_model_node(R, _materialize_pending(p))
+    (p.storage isa NoTemplate && !(p.base isa VarNamedTuples.PartialArray)) ||
+        return _select_model_node(R, _materialize_pending(p))
     return _prune_model_node(
         _pending_map(e -> first(e) => _select_model_node(R, last(e)), p)
     )
@@ -3597,13 +3645,19 @@ function _prune_model_node(p::PendingBindings)
     return PendingBindings(p.name, entries, p.storage, p.base)
 end
 function _pending_index_style(p, optic, vn)
-    (isempty(p) || !(p.storage isa NoTemplate)) && return nothing
+    (isempty(p) || !(p.storage isa NoTemplate) || p.base isa VarNamedTuples.PartialArray) &&
+        return nothing
     length(first(first(p.entries)).ix) == length(optic.ix) || throw(
         ArgumentError(
             "Pending binding at `$vn` mixes linear and Cartesian indices; use one index style or supply storage before binding.",
         ),
     )
     return nothing
+end
+function _merge_model_node(
+    base::VarNamedTuples.PartialArray{<:VarNamedTuple}, update::PendingBindings
+)
+    return _merge_model_indices(base, update)
 end
 function _merge_model_node(
     base::Union{ModelValue,VarNamedTuples.PartialArray}, update::PendingBindings
@@ -3638,6 +3692,8 @@ function _merge_pending_entries!(entries::Tuple, update, merge)
     return _merge_pending_entries!(Dict(entries), update, merge)
 end
 function _merge_model_node(a::PendingBindings, b::PendingBindings)
+    a.base isa VarNamedTuples.PartialArray &&
+        return _merge_model_node(_materialize_pending(a), b, a.name)
     _pending_index_style(a, first(first(b.entries)), b.name)
     entries = copy(a).entries
     return PendingBindings(b.name, _merge_pending_entries!(entries, b), b.storage, a.base)
@@ -3645,6 +3701,9 @@ end
 function VarNamedTuples._setindex_optic!!(
     p::PendingBindings, value, optic::AbstractPPL.Index, template, permissions
 )
+    p.base isa VarNamedTuples.PartialArray && return VarNamedTuples._setindex_optic!!(
+        _materialize_pending(p), value, optic, template, permissions
+    )
     _pending_index_style(p, optic, p.name)
     update = VarNamedTuples.make_leaf(
         value, optic, PendingBindingTemplate(NoTemplate(), p.name)
@@ -3657,7 +3716,7 @@ end
 function _remove_model_binding(
     ::Type{R}, p::PendingBindings, optic::AbstractPPL.Index
 ) where {R}
-    p.storage isa NoTemplate ||
+    (p.storage isa NoTemplate && !(p.base isa VarNamedTuples.PartialArray)) ||
         return _remove_model_binding(R, _materialize_pending(p), optic)
     return _prune_model_node(
         _pending_map(p) do e
@@ -5232,6 +5291,8 @@ function _snapshot_shape(x::VarNamedTuple)
     return _prune_model_bindings(VarNamedTuple(map(_snapshot_shape, x.data)))
 end
 function _shape_template(g::PendingBindings, optic::AbstractPPL.Index, previous=nothing)
+    g.base isa VarNamedTuples.PartialArray &&
+        return BindingGeometryArray(g, optic, previous)
     g.base === nothing || return _shape_template(g.base, optic, previous)
     child = _model_argument_binding(g, AbstractPPL.ohead(optic))
     return VarNamedTuples.SkipTemplate{1}(
@@ -5250,6 +5311,10 @@ end
 @inline function (op::ShapeOp{Build})(
     a::PendingBindings, b::PendingBindings, vn
 ) where {Build}
+    if a.base isa VarNamedTuples.PartialArray
+        b.base === nothing && (b = _namespace_binding(b, AbstractPPL.Iden(), a.base))
+        Build && return op(_materialize_pending(a), b, vn)
+    end
     merge = (x, y, optic) -> if y isa BindingShape
         y
     else
@@ -5479,6 +5544,25 @@ struct InheritedShapes{A,B,N,R}
     name::N
     rules::R
 end
+function _namespace_binding(p::PendingBindings, ::AbstractPPL.Iden, storage)
+    p.base isa Union{BindingShape,ModelValue} && _binding_root_error(p.name)
+    return PendingBindings(p.name, p.entries, p.storage, storage)
+end
+function _namespace_binding(
+    x::VarNamedTuple, optic::AbstractPPL.Property{S}, storage
+) where {S}
+    haskey(x.data, S) || return x
+    child = _namespace_binding(x.data[S], optic.child, storage)
+    return VarNamedTuple(merge(x.data, NamedTuple{(S,)}((child,))))
+end
+function _namespace_binding(
+    x::Union{BindingShape,VarNamedTuples.PartialArray,Nothing}, ::AbstractPPL.Iden, storage
+)
+    return x
+end
+function _namespace_binding(x::InheritedShapes, optic, storage)
+    return _map_inherited_shapes(v -> _namespace_binding(v, optic, storage), x)
+end
 _shape_axes(g) = nothing
 _shape_axes(g::Union{AbstractArray,VarNamedTuples.PartialArray}) = axes(g)
 _shape_axes(g::ArrayBindingGeometry) = g.axes
@@ -5548,6 +5632,12 @@ function _inherited_binding_shapes(a, b, vn, rules)
     b === nothing && return a
     a isa VarNamedTuple{(),Tuple{}} && return b
     b isa VarNamedTuple{(),Tuple{}} && return a
+    if a isa PendingBindings &&
+        b isa PendingBindings &&
+        a.base isa VarNamedTuples.PartialArray &&
+        b.base === nothing
+        b = _namespace_binding(b, AbstractPPL.Iden(), a.base)
+    end
     if a isa PendingBindings && b isa BindingShape
         a.base === nothing && return b
         return _inherited_binding_shapes(a.base, b, vn, rules)
@@ -5641,7 +5731,9 @@ end
 end
 _whole_shape(whole::Tuple, vn) = vn in whole
 function _whole_shape(values::VarNamedTuple, vn)
-    return _model_argument_binding(values, AbstractPPL.varname_to_optic(vn)) isa ModelValue
+    value = _model_argument_binding(values, AbstractPPL.varname_to_optic(vn))
+    return value isa ModelValue ||
+           value isa PendingBindings && value.base isa VarNamedTuples.PartialArray
 end
 @noinline function _template_shape_error(vn)
     message = "Binding shape at `$vn` was set by a binding template and cannot change; supply a new template with the value."
@@ -5664,8 +5756,21 @@ end
     return Build ? BindingShape(_refine_binding_geometry(a.geometry, b.geometry)) : ()
 end
 @inline function (op::ShapeOp{Build})(
+    a::VarNamedTuples.PartialArray,
+    b::PendingBindings{<:Any,<:Any,<:Any,<:VarNamedTuples.PartialArray},
+    vn,
+) where {Build}
+    Build && return op(a, _materialize_pending(b), vn)
+    rules = op(a, b.base, vn)
+    return _check_shape_children(op, a, b, vn, rules)
+end
+@inline function (op::ShapeOp{Build})(
     a::PendingBindings, b::VarNamedTuples.PartialArray, vn
 ) where {Build}
+    if a.base isa VarNamedTuples.PartialArray
+        Build && return op(_materialize_pending(a), b, vn)
+        return _check_shape_children(op, a, b, vn, op(a.base, b, vn))
+    end
     return op(a.base, b, vn)
 end
 @inline function (op::ShapeOp{Build})(
@@ -5730,16 +5835,11 @@ end
 @inline function (op::ShapeOp{Build})(
     a::VarNamedTuples.PartialArray, b::VarNamedTuples.PartialArray, vn
 ) where {Build}
-    rules = ()
-    if axes(a) != axes(b)
-        _whole_shape(op.whole, vn) && !_shape_occupied(op.model, vn) ||
-            _binding_shape_error(vn, " with size $(size(a)) (supplied $(size(b)))")
-        Build && (a = _resize_model_binding(a, axes(b)))
-        rules = (vn => true,)
-    end
+    rules = _check_namespace_axes(op, a, b, vn)
+    Build && !isempty(rules) && (a = _resize_model_binding(a, axes(b)))
     any(a.mask) || return Build ? b : rules
     any(b.mask) || return Build ? a : rules
-    Build || return (rules..., _check_shape_children(op, a, b, vn)...)
+    Build || return _check_shape_children(op, a, b, vn, rules)
     return _merge_model_indices(
         a, b, (x, y, optic) -> op(x, y, AbstractPPL.append_optic(vn, optic))
     )
@@ -5750,8 +5850,18 @@ end
 function _check_binding_shapes(a, b, model, whole)
     return ShapeOp{false}(model, whole)(a, b, nothing)
 end
-@inline function _check_shape_children(op, a, b, vn)
-    return _fold_model_indices((), b) do rules, child, optic, _
+function _check_namespace_axes(op, a, b, vn)
+    previous, incoming = _shape_axes(a), _shape_axes(b)
+    (previous === nothing || incoming === nothing || previous == incoming) && return ()
+    _whole_shape(op.whole, vn) && !_shape_occupied(op.model, vn) || _binding_shape_error(
+        vn, " with size $(map(length, previous)) (supplied $(map(length, incoming)))"
+    )
+    return (vn => true,)
+end
+@inline function _check_shape_children(
+    op, a, b, vn, rules=_check_namespace_axes(op, a, b, vn)
+)
+    return _fold_model_indices(rules, b) do rules, child, optic, _
         a isa PendingBindings &&
             b isa PendingBindings &&
             child isa BindingShape &&

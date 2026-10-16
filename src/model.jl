@@ -37,12 +37,13 @@ function ModelRemoval(name, matched)
     return ModelRemoval(name, matched, Ref(nothing))
 end
 
-struct ModelBindingTemplate{R,N,T}
+struct ModelBindingTemplate{R,N,T,S}
     name::N
     storage::T
+    namespace::S
 end
-function ModelBindingTemplate{R}(name::N, storage::T) where {R,N,T}
-    return ModelBindingTemplate{R,N,T}(name, storage)
+function ModelBindingTemplate{R}(name::N, storage::T, namespace::S=nothing) where {R,N,T,S}
+    return ModelBindingTemplate{R,N,T,S}(name, storage, namespace)
 end
 
 # Fixed bindings preserve the observation layer they shadow.

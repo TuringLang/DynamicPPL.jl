@@ -306,6 +306,136 @@ end
     end
 end
 
+@testset "deferred namespace templates" begin
+    @model namespace_template_leaf(x=1.0) = x ~ Normal()
+    @model function namespace_template_child(; inspect=false)
+        p = zeros(3, 2)
+        for i in eachindex(p)
+            p[i] ~ to_submodel(namespace_template_leaf())
+        end
+        return inspect ? __model__ : p
+    end
+    @model namespace_template_argument(p) = (p[3].x ~ Normal(); p)
+    @model namespace_template_reuse(child) = result ~ to_submodel(child, false)
+    for (bind, remove, select) in
+        ((condition, decondition, conditioned), (fix, unfix, fixed))
+        occupied = bind(
+            namespace_template_child(), @of(p = of(Array, 2, 2)), @varname(p[1].x) => 2.0
+        )
+        for child in (namespace_template_child(), remove(occupied)),
+            (local_name, parent_name) in (
+                (@varname(p[3].x), @varname(a.p[3].x)),
+                (@varname(p[3, 1].x), @varname(a.p[3, 1].x)),
+            )
+
+            direct = bind(child, @of(p = of(Array, 3, 2)), local_name => 2.0)
+            inherited = bind(
+                child_model(child), @of(a = @of(p = of(Array, 3, 2))), parent_name => 2.0
+            )
+            @test direct(Xoshiro(1)) == [1.0 1.0; 1.0 1.0; 2.0 1.0]
+            @test inherited(Xoshiro(1)) == direct(Xoshiro(1))
+        end
+        @test_throws ArgumentError bind(
+            occupied, @of(p = of(Array, 3, 2)), @varname(p[3].x) => 2.0
+        )
+        @test_throws ArgumentError bind(
+            child_model(occupied),
+            @of(a = @of(p = of(Array, 3, 2))),
+            @varname(a.p[3].x) => 2.0,
+        )(
+            Xoshiro(1)
+        )
+        for template_first in (true, false)
+            schema = (@of(a = @of(p = of(Array, 3, 2))),)
+            parent = bind(
+                child_model(remove(occupied)),
+                @varname(a.p[1].x) => 1.0,
+                (template_first ? schema : ())...,
+            )
+            parent = bind(
+                parent, @varname(a.p[3].x) => 2.0, (template_first ? () : schema)...
+            )
+            @test parent(Xoshiro(1)) == [1.0 1.0; 1.0 1.0; 2.0 1.0]
+        end
+        same_size = bind(
+            namespace_template_child(), @of(p = of(Array, 3, 2)), @varname(p[1].x) => 2.0
+        )
+        direct = bind(same_size, @of(p = of(Array, 3, 2)), @varname(p[3].x) => 3.0)
+        @test direct(Xoshiro(1)) == [2.0 1.0; 1.0 1.0; 3.0 1.0]
+        @test bind(
+            child_model(same_size),
+            @of(a = @of(p = of(Array, 3, 2))),
+            @varname(a.p[3].x) => 3.0,
+        )(
+            Xoshiro(1)
+        ) == direct(Xoshiro(1))
+        argument = namespace_template_argument(fill((x=1.0,), 2, 2))
+        direct = bind(argument, @varname(p[3].x) => 2.0)
+        inherited = bind(
+            child_model(argument),
+            @of(a = @of(p = of(Array, 3, 2))),
+            @varname(a.p[3].x) => 2.0,
+        )
+        @test inherited(Xoshiro(1)) == direct(Xoshiro(1))
+        @testset "returned namespace child $initial" for initial in (
+            @varname(a.p[3].x), @varname(a.p[3, 1].x)
+        )
+            child = remove(
+                bind(
+                    namespace_template_child(; inspect=true),
+                    @of(p = of(Array, 2, 2)),
+                    @varname(p[1].x) => 2.0,
+                ),
+            )
+            reached = bind(
+                child_model(child), @of(a = @of(p = of(Array, 3, 2))), initial => 2.0
+            )(
+                Xoshiro(1)
+            )
+            @test select(reached)[@varname(a.p[3, 1].x)] == 2.0
+            @test select(bind(reached, @varname(a.p[3].x) => 3.0))[@varname(a.p[3, 1].x)] ==
+                3.0
+            @test select(bind(remove(reached), @varname(a.p[3].x) => 3.0))[@varname(
+                a.p[3, 1].x
+            )] == 3.0
+            @test_throws ArgumentError bind(
+                reached, @of(a = @of(p = of(Array, 4, 2))), @varname(a.p[1].x) => 3.0
+            )
+            @test_throws ArgumentError bind(
+                namespace_template_reuse(reached),
+                @of(a = @of(p = of(Array, 4, 2))),
+                @varname(a.p[1].x) => 3.0,
+            )(
+                Xoshiro(1)
+            )
+        end
+    end
+end
+
+@testset "deferred namespace leaf geometry" begin
+    @model namespace_geometry_leaf() = (x = zeros(2); x[1] ~ Normal(); 0.0)
+    @model function namespace_geometry_child()
+        p = zeros(2)
+        for i in eachindex(p)
+            p[i] ~ to_submodel(namespace_geometry_leaf())
+        end
+        return __model__
+    end
+    for (bind, remove) in ((condition, decondition), (fix, unfix))
+        reached = bind(
+            child_model(namespace_geometry_child()),
+            @of(a = @of(p = of(Array, 2))),
+            @varname(a.p[1].x) => ones(2),
+        )(
+            Xoshiro(1)
+        )
+        cleared = remove(reached, @varname(a.p[1].x))
+        @test_throws ArgumentError bind(cleared, @varname(a.p[1].x[3]) => 1.0)
+        rebound = bind(cleared, @varname(a.p[2].x) => ones(2))
+        @test_throws ArgumentError bind(rebound, @varname(a.p[1].x[3]) => 1.0)
+    end
+end
+
 @model function resized_template_child()
     y = zeros(4)
     for i in eachindex(y)
