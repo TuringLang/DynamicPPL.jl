@@ -306,6 +306,35 @@ end
     end
 end
 
+@testset "pending nested parts retain sibling coverage" begin
+    @model function nested_coverage_child()
+        x = [zeros(2)]
+        x[1][1] ~ Normal()
+        x[1][2] ~ Normal()
+        return x
+    end
+    @model nested_coverage_whole() = (x = [zeros(2)]; x[1] ~ MvNormal(zeros(2), I); x)
+    @model function nested_coverage_fields()
+        x = [(; a=zeros(2), b=0.0)]
+        x[1].a[1] ~ Normal()
+        x[1].a[2] ~ Normal()
+        x[1].b ~ Normal()
+        return x
+    end
+    for bind in (condition, fix)
+        for child in (nested_coverage_child(), nested_coverage_whole())
+            child = bind(child; x=[ones(2)])
+            direct = bind(child, @varname(x[1][1]) => 3.0)(Xoshiro(1))
+            @test direct == [[3.0, 1.0]]
+            @test bind(child_model(child), @varname(a.x[1][1]) => 3.0)(Xoshiro(1)) == direct
+        end
+        child = bind(nested_coverage_fields(); x=[(; a=ones(2), b=2.0)])
+        direct = bind(child, @varname(x[1].a[1]) => 3.0)(Xoshiro(1))
+        @test direct == [(; a=[3.0, 1.0], b=2.0)]
+        @test bind(child_model(child), @varname(a.x[1].a[1]) => 3.0)(Xoshiro(1)) == direct
+    end
+end
+
 @testset "deferred namespace templates" begin
     @model namespace_template_leaf(x=1.0) = x ~ Normal()
     @model function namespace_template_child(; inspect=false)

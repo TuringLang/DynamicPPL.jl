@@ -3666,7 +3666,14 @@ function _merge_model_node(
         update, base isa ModelValue ? base.value : base.data, update.name
     )
     return if base isa ModelValue
-        PendingBindings(update.name, update.entries, update.storage, base)
+        entries = if eltype(update.entries) <: Pair{<:Any,<:ModelValue}
+            update.entries
+        else
+            _pending_entries_map(update.entries) do (optic, value)
+                optic => _merge_model_node(_model_argument_binding(base, optic), value)
+            end
+        end
+        PendingBindings(update.name, entries, update.storage, base)
     else
         _merge_model_indices(base, update)
     end
