@@ -5161,13 +5161,13 @@ struct BindingGeometryArray{N,G,O,P} <: AbstractArray{Any,N}
     previous::P
 end
 function BindingGeometryArray(g, optic=nothing, previous=nothing)
-    ax = g isa ArrayBindingGeometry ? g.axes : axes(g)
+    ax = _shape_axes(g)
     return BindingGeometryArray{length(ax),typeof(g),typeof(optic),typeof(previous)}(
         g, optic, previous
     )
 end
 function Base.axes(a::BindingGeometryArray)
-    return a.geometry isa ArrayBindingGeometry ? a.geometry.axes : axes(a.geometry)
+    return _shape_axes(a.geometry)
 end
 Base.size(a::BindingGeometryArray) = map(length, axes(a))
 Base.similar(a::BindingGeometryArray, ::Type{T}) where {T} = similar(Array{T}, axes(a))
@@ -5181,9 +5181,8 @@ function Base.getindex(a::BindingGeometryArray{N}, indices::Vararg{Int,N}) where
             _geometry_template(g.children[LinearIndices(axes(a))[indices...]])
         end
     end
-    g.mask[indices...] || return NoTemplate()
     return _shape_template(
-        g.data[indices...],
+        _model_argument_binding(g, AbstractPPL.Index(indices, (;))),
         a.optic.child,
         _model_argument_binding(a.previous, AbstractPPL.Index(indices, (;))),
     )
@@ -5474,6 +5473,45 @@ struct InheritedShapes{A,B,N,R}
     parent::B
     name::N
     rules::R
+end
+_shape_axes(g) = nothing
+_shape_axes(g::Union{AbstractArray,VarNamedTuples.PartialArray}) = axes(g)
+_shape_axes(g::ArrayBindingGeometry) = g.axes
+_shape_axes(g::PendingBindings) = _shape_axes(g.base)
+function _shape_axes(g::InheritedShapes)
+    ax = _shape_axes(g.parent)
+    return ax === nothing ? _shape_axes(g.child) : ax
+end
+_is_shape_root(x) = x isa BindingShape
+_is_shape_root(x::InheritedShapes) = _is_shape_root(x.child) || _is_shape_root(x.parent)
+function _shape_template(x::InheritedShapes, optic, previous=nothing)
+    if !_is_shape_root(x)
+        if optic isa AbstractPPL.Property
+            return _property_shape_template(x, optic, previous)
+        elseif optic isa AbstractPPL.Index && _shape_axes(x) !== nothing
+            return BindingGeometryArray(x, optic, previous)
+        end
+    end
+    return _map_inherited_shapes(v -> _shape_template(v, optic, previous), x)
+end
+function _resolve_inherited_optic(x, optic)
+    return _resolve_binding_optic(x.parent, _resolve_binding_optic(x.child, optic))
+end
+_resolve_binding_optic(x::InheritedShapes, optic::AbstractPPL.Iden) = optic
+function _resolve_binding_optic(x::InheritedShapes, optic::AbstractPPL.Property)
+    return _resolve_inherited_optic(x, optic)
+end
+function _resolve_binding_optic(x::InheritedShapes, optic::AbstractPPL.Index)
+    return _resolve_inherited_optic(x, optic)
+end
+_binding_address_exists(x::InheritedShapes, optic::AbstractPPL.Iden) = true
+function _binding_address_exists(x::InheritedShapes, optic::AbstractPPL.Property)
+    return _binding_address_exists(x.child, optic) &&
+           _binding_address_exists(x.parent, optic)
+end
+function _binding_address_exists(x::InheritedShapes, optic::AbstractPPL.Index)
+    return _binding_address_exists(x.child, optic) &&
+           _binding_address_exists(x.parent, optic)
 end
 _check_pending_shape(shape, name) = nothing
 function _check_pending_shape(shape::PendingBindings, name)
@@ -5832,9 +5870,11 @@ function _binding_shape_template(model, vn, values=nothing)
             t.storage, AbstractPPL.getoptic(t.name), NoTemplate()
         )
     end
-    store = _binding_shape_store(model.values)
     return _shape_template(
-        get(store.roots.data, AbstractPPL.getsym(vn), NoTemplate()),
+        _model_argument_binding(
+            _prepared_shapes(model.values).roots,
+            AbstractPPL.Property{AbstractPPL.getsym(vn)}(),
+        ),
         AbstractPPL.getoptic(vn),
         values === nothing ? nothing : get(values.data, AbstractPPL.getsym(vn), nothing),
     )
@@ -5869,8 +5909,11 @@ _shape_template(value, optic, previous=nothing) = value
 function _shape_template(
     value::VarNamedTuple, optic::AbstractPPL.Property{S}, previous=nothing
 ) where {S}
+    return _property_shape_template(value, optic, previous)
+end
+function _property_shape_template(value, optic::AbstractPPL.Property{S}, previous) where {S}
     child = _shape_template(
-        get(value.data, S, NoTemplate()),
+        _model_argument_binding(value, AbstractPPL.ohead(optic)),
         optic.child,
         _model_argument_binding(previous, AbstractPPL.ohead(optic)),
     )

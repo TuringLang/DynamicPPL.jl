@@ -71,6 +71,15 @@ end
 end
 @model argument_geometry_parent(child) = a ~ to_submodel(child)
 @model held_geometry_parent(child) = a ~ to_submodel(child[])
+@model removal_geometry_middle(child) = (z ~ Normal(); b ~ to_submodel(child); __model__)
+function removal_geometry_model(bind, remove, n)
+    storage(v) = [fill(v, 2 + i % 2) for i in 1:n]
+    child = bind(nested_geometry_child(); x=storage(0.0))
+    middle = bind(removal_geometry_middle(child), @varname(b.x) => storage(1.0))
+    middle = bind(middle; z=1.0)
+    middle = remove(middle, DynamicPPL.Recursive(), @varname(b.x[1][1]))
+    return bind(argument_geometry_parent(middle), @varname(a.b.x) => storage(2.0))
+end
 
 @testset "submodels.jl" begin
     @testset "explicit bindings of submodel return values explain recovery" begin
@@ -266,6 +275,21 @@ end
                 baseline = @allocated reference(rng)
                 @test (@allocated inherited(rng)) <= baseline
             end
+        end
+    end
+
+    @testset "recursive removal selection does not rebuild geometry" begin
+        rng = Xoshiro(1)
+        for (bind, remove, role) in
+            ((condition, decondition, DynamicPPL.Condition), (fix, unfix, DynamicPPL.Fix))
+            small, large = map(n -> removal_geometry_model(bind, remove, n)(rng), (2, 1000))
+            for model in (small, large)
+                selected = DynamicPPL._submodel_removals(role, model, @varname(b))
+                @test only(selected).name == @varname(x[1][1])
+            end
+            baseline = @allocated DynamicPPL._submodel_removals(role, small, @varname(b))
+            @test (@allocated DynamicPPL._submodel_removals(role, large, @varname(b))) <=
+                baseline
         end
     end
 
