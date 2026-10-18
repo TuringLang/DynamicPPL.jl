@@ -2187,11 +2187,7 @@ end
                 if binding isa
                     Union{VarNamedTuple,VarNamedTuples.PartialArray,PendingBindings}
                     if $keyword
-                        throw(
-                            ArgumentError(
-                                "Entries of keyword-splat argument `$name` cannot be bound; replace the whole argument with `condition` or `fix` instead.",
-                            ),
-                        )
+                        _keyword_binding_error(name)
                     end
                     argument = get(merge(model.args, model.defaults), stored_name, nothing)
                     argument = if previous === nothing
@@ -4218,6 +4214,14 @@ struct ResolvedBinding{N,T}
     template::T
 end
 
+@noinline function _keyword_binding_error(name)
+    throw(
+        ArgumentError(
+            "Entries of keyword-splat argument `$name` cannot be bound; replace the whole argument with `condition` or `fix` instead.",
+        ),
+    )
+end
+
 @inline function _resolve_binding(
     model, values, vn; operation="bind", supplied=NoTemplate()
 )
@@ -4250,8 +4254,7 @@ end
                 end
                 continue
             end
-            message = "Entries of keyword-splat argument `$argument` cannot be bound; replace the whole argument with `condition` or `fix` instead."
-            throw(ArgumentError(message))
+            _keyword_binding_error(argument)
         end
     end
     operation == "bind" &&
@@ -4874,22 +4877,9 @@ function _decondition_unfix(model, names, ::Type{R}, recursive...) where {R}
         )
         any(isnothing, names) && (names = ())
     end
-    removed = if isempty(names)
-        _unset_value(model, R, recursive...)
-    elseif names isa Tuple{Union{Symbol,VarName}}
-        _unset_value(model, only(names), R, recursive...)
-    else
-        _unset_values(model, names, R, recursive...)
-    end
+    removed = _unset_values(model, names, R, recursive...)
     _check_shared_latent_storage(removed)
     return _check_latent_arguments(removed)
-end
-
-function _unset_value(model::Model, vn::Union{Symbol,VarName}, ::Type{R}) where {R}
-    return _unset_values(model, (vn,), R)
-end
-function _unset_value(model::Model, ::Type{R}) where {R}
-    return _unset_values(model, (), R)
 end
 
 # An empty `names` removes every binding of role `R`.
@@ -5106,15 +5096,6 @@ function _check_shared_removals(parent, child)
         end
     end
     return nothing
-end
-
-function _unset_value(
-    model::Model, vn::Union{Symbol,VarName}, ::Type{R}, recursive::Recursive
-) where {R}
-    return _unset_values(model, (vn,), R, recursive)
-end
-function _unset_value(model::Model, ::Type{R}, recursive::Recursive) where {R}
-    return _unset_values(model, (), R, recursive)
 end
 
 function _unset_values(model, names, ::Type{R}, ::Recursive) where {R}
