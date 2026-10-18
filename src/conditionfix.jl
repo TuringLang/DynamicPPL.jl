@@ -3344,6 +3344,15 @@ function _check_disjoint_bindings(previous, updates, vn=nothing; ancestor=false)
     previous isa Union{Nothing,NoModelBinding} && return nothing
     updates isa Union{Nothing,NoModelBinding} && return nothing
     updates isa ModelValueTree && (updates = updates.values)
+    if previous isa PendingBindings && updates isa ModelValue
+        return _check_disjoint_bindings(
+            _prepare_bindings(previous, updates.value, vn), updates, vn; ancestor
+        )
+    elseif previous isa ModelValue && updates isa PendingBindings
+        return _check_disjoint_bindings(
+            previous, _prepare_bindings(updates, previous.value, vn), vn; ancestor
+        )
+    end
     if updates isa ModelValue
         if previous isa ModelValue
             origin = ancestor ? "another model" : "the other role"

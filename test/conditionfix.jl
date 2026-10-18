@@ -9077,6 +9077,17 @@ end
     end
 end
 
+@testset "empty pending masks survive opposite-role bindings" begin
+    for (bind, other) in ((condition, fix), (fix, condition))
+        m = bind(empty_role_parent(), @varname(a.x[falses(3)]) => Float64[])
+        @test_throws r"index is outside the storage" other(m, @varname(a.x) => zeros(2))(
+            Xoshiro(1)
+        )
+        valid = bind(empty_role_parent(), @varname(a.x[falses(2)]) => Float64[])
+        @test other(valid, @varname(a.x) => zeros(2))(Xoshiro(1)) == zeros(2)
+    end
+end
+
 @model nested_selector_fields(x) = (x.a[1] ~ Normal(); x.a[2] ~ Normal(); x)
 @testset "nested selector removal, replacement and listings" begin
     for (bind, remove, wrongremove, listing) in
