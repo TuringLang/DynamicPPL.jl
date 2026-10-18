@@ -634,13 +634,15 @@ function _strict_independent_ldf(
 end
 
 function _conditioned_independent_observation(model::Model)
-    values = _binding_entries(model, conditioned(model))
-    length(values) == 1 || throw(
+    values = conditioned(model)
+    names = _binding_names(values)
+    length(names) == 1 || throw(
         ArgumentError(
-            "the model must have exactly one fully conditioned variable; found $(map(first, values))",
+            "the model must have exactly one fully conditioned variable; found $(names)"
         ),
     )
-    observation, data, _ = only(values)
+    observation = only(names)
+    data = values[observation]
     data isa AbstractArray{<:Real} || throw(
         ArgumentError(
             "the independent observation `$observation` must be fully conditioned on an array of real numbers; got $(typeof(data))",

@@ -48,8 +48,9 @@ model's return value, not its latent LHS variable values.
 
 Condition or fix a submodel through its namespace in the parent: for example,
 `@varname(a.x)` in `a ~ to_submodel(child())`. With `auto_prefix=false`, use the child's
-names unchanged. Parent explicit bindings override the child's explicit bindings and
-argument-supplied observations at the same address; parent argument-supplied observations never reach a child.
+names unchanged. A parent binding must be disjoint from the child's own bindings,
+including argument-supplied observations. Remove the child's binding with `Recursive()`
+before inserting at that address. Parent argument-supplied observations never reach a child.
 
 Binding the return value throws `ArgumentError` at the submodel tilde during evaluation.
 A submodel tilde whose LHS is rooted at a model argument throws `ArgumentError` when
@@ -268,6 +269,15 @@ Evaluate `submodel` under `parent_model`.
     child_layers = ModelBindingLayers(observations, fixed, child_owners)
     child_values = _model_values(child_layers)
     child_templates = _submodel_binding_templates(submodel.model, nothing)
+    child_removals = (;
+        observation_removals=(
+            _submodel_removals(Condition, submodel.model, nothing)...,
+            observation_removals...,
+        ),
+        fixed_removals=(
+            _submodel_removals(Fix, submodel.model, nothing)..., fixed_removals...
+        ),
+    )
     child_model = _reconstruct_model(
         submodel.model;
         values=LocalModelValues(
@@ -275,12 +285,14 @@ Evaluate `submodel` under `parent_model`.
                 child_values;
                 shapes=_local_binding_shape_store(submodel.model),
                 templates=child_templates,
+                child_removals...,
             ),
         ),
     )
-    inherited_values = _check_argument_bindings(
+    inherited_values = _prepare_child_bindings(
         child_model,
         _submodel_inherited_values(parent_model, local_prefix),
+        (child_templates..., inherited_templates...),
         maybe_prefix(local_prefix, _model_prefix(parent_model)),
     )
     inherited_shapes = _submodel_values(
@@ -297,6 +309,12 @@ Evaluate `submodel` under `parent_model`.
     if AutoPrefix || _model_prefix(submodel.model) !== nothing
         _check_binding_addresses(child_model, parent_values)
     end
+    _check_disjoint_bindings(
+        child_values,
+        parent_values,
+        maybe_prefix(local_prefix, _model_prefix(parent_model));
+        ancestor=true,
+    )
     owners = (child_owners..., _submodel_fixed_owners(parent_model, local_prefix)...)
     values = _with_binding_metadata(
         _merge_model_values(
@@ -304,13 +322,7 @@ Evaluate `submodel` under `parent_model`.
             parent_values,
             maybe_prefix(local_prefix, _model_prefix(parent_model)),
         );
-        observation_removals=(
-            _submodel_removals(Condition, submodel.model, nothing)...,
-            observation_removals...,
-        ),
-        fixed_removals=(
-            _submodel_removals(Fix, submodel.model, nothing)..., fixed_removals...
-        ),
+        child_removals...,
     )
     templates = if isempty(child_templates)
         ()

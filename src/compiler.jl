@@ -250,8 +250,7 @@ function generate_mainbody(
     has_unprefixed_submodel=Ref(false),
     lhs_addresses=Tuple{VarName,Bool}[],
 )
-    pending_roots = Dict{Symbol,Symbol}()
-    body = generate_mainbody!(
+    return generate_mainbody!(
         mod,
         (;
             internal=Symbol[],
@@ -260,17 +259,11 @@ function generate_mainbody(
             has_unprefixed_submodel,
             lhs_addresses,
             shadowed=Symbol[],
-            pending_roots,
         ),
         expr,
         warn,
         warn_threads,
     )
-    return if isempty(pending_roots)
-        body
-    else
-        Expr(:block, Expr(:local, values(pending_roots)...), body)
-    end
 end
 
 generate_mainbody!(mod, found, x, warn, warn_threads) = x
@@ -368,13 +361,6 @@ function generate_mainbody!(mod, found, expr::Expr, warn, warn_threads)
                 L,
                 generate_mainbody!(mod, found, R, warn, warn_threads);
                 is_argument=!isliteral(L) && get_top_level_symbol(L) in found.arguments,
-                pending_root=if isliteral(L)
-                    nothing
-                else
-                    get!(found.pending_roots, get_top_level_symbol(L)) do
-                        gensym(:binding)
-                    end
-                end,
             ),
         )
     end
@@ -450,6 +436,11 @@ function _set_lhs(object, optic, value, vn)
     return _set_lhs_optic(object, optic, value)
 end
 _set_lhs_optic(object, ::AbstractPPL.Iden, value) = value
+function _set_lhs_optic(
+    object::NamedTuple, ::AbstractPPL.Property{S,AbstractPPL.Iden}, value
+) where {S}
+    return merge(object, NamedTuple{(S,)}((value,)))
+end
 function _set_lhs_optic(object, optic::AbstractPPL.Property{S}, value) where {S}
     child = _set_lhs_optic(getproperty(object, S), optic.child, value)
     getproperty(object, S) === child && return object
@@ -508,7 +499,7 @@ end
 Generate latent, observed, or fixed evaluation for a tilde expression.
 Argument LHS variables that are observed use their prepared local value, including body computations.
 """
-function generate_tilde(left, right; is_argument=false, pending_root=gensym(:binding))
+function generate_tilde(left, right; is_argument=false)
     isliteral(left) && return generate_tilde_literal(left, right)
     template = if left isa Symbol  # i.e. identity optic
         :($(NoTemplate)())
@@ -516,22 +507,20 @@ function generate_tilde(left, right; is_argument=false, pending_root=gensym(:bin
         get_top_level_symbol(left)
     end
 
-    pending_template =
-        left isa Symbol ? :(@isdefined($left) ? $left : $(NoTemplate)()) : template
     @gensym vn role value dist supplied_val
     lookup_role = if is_argument
         :($(DynamicPPL._get_argument_role)(
             __model__, $vn, $(VarName{get_top_level_symbol(left)}())
         ))
     else
-        quote
-            if !@isdefined($pending_root)
-                $pending_root = $(DynamicPPL._prepare_local_binding)(
-                    __model__, $vn, $pending_template
-                )
-            end
-            $(DynamicPPL._local_binding_role)($pending_root, $vn, $template, __model__)
-        end
+        :($(DynamicPPL._local_binding_role)(
+            $(DynamicPPL._get_model_binding)(
+                __model__, $(VarName{get_top_level_symbol(left)}())
+            ),
+            $vn,
+            $template,
+            __model__,
+        ))
     end
 
     fixed_data = if is_argument
@@ -542,7 +531,7 @@ function generate_tilde(left, right; is_argument=false, pending_root=gensym(:bin
             $(get_top_level_symbol(left)),
         ))
     else
-        :($(DynamicPPL._local_binding_data)($pending_root, $vn))
+        :($(DynamicPPL._get_model_data)(__model__, $vn))
     end
 
     return quote
@@ -586,7 +575,7 @@ function generate_tilde(left, right; is_argument=false, pending_root=gensym(:bin
                 if is_argument
                     :($(Base).@views($left))
                 else
-                    :($(DynamicPPL._local_binding_data)($pending_root, $vn))
+                    :($(DynamicPPL._get_model_data)(__model__, $vn))
                 end
             )
 

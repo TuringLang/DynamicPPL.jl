@@ -32,7 +32,9 @@ end
     elseif op === unfix
         unfix(fix(decondition(runtime_record_child(wrap(m, 2m))); p=wrap(m, 2m)), @varname(p.a))
     else
-        op(runtime_record_child(wrap(m, 2m)), @varname(p.a) => 3m)
+        source = runtime_record_child(wrap(m, 2m))
+        op === fix && (source = decondition(source, @varname(p.a)))
+        op(source, @varname(p.a) => 3m)
     end
     a ~ to_submodel(child)
     return z ~ Normal(a)
@@ -277,7 +279,7 @@ end
         original = partial_observations([1.0, 2.0, 3.0])
         for model in (
             condition(original, @varname(y[1]) => 0.0),
-            fix(original, @varname(y[1]) => 0.0),
+            fix(decondition(original, @varname(y[1])), @varname(y[1]) => 0.0),
             decondition(original, @varname(y[1])),
         )
             mc = LogDensityFunction(model; adtype=AutoMooncake())
@@ -302,7 +304,10 @@ end
     @model function removal_parent()
         m ~ Normal()
         child = condition(removal_child(m); x=[2m, 3m])
-        wrapped = condition(removal_wrapper(child), @varname(a.x[1]) => 4m)
+        wrapped = condition(
+            decondition(removal_wrapper(child), DynamicPPL.Recursive(), @varname(a.x[1])),
+            @varname(a.x[1]) => 4m,
+        )
         stripped = decondition(wrapped, DynamicPPL.Recursive(), @varname(a.x[1]))
         return b ~ to_submodel(stripped)
     end
@@ -319,7 +324,12 @@ end
     @model function runtime_parent(bind, partial)
         m ~ Normal()
         child = runtime_child(fill(zero(m), 2))
-        bound = partial ? bind(child, @varname(y[1]) => 2m) : bind(child; y=[2m, zero(m)])
+        source = if bind === condition
+            child
+        else
+            (partial ? decondition(child, @varname(y[1])) : decondition(child))
+        end
+        bound = partial ? bind(source, @varname(y[1]) => 2m) : bind(source; y=[2m, zero(m)])
         a ~ to_submodel(bound)
         return m
     end
@@ -584,8 +594,13 @@ end
         models = (
             bind(child, @varname(y) => v),
             bind(bound_parent(child), @varname(s.y) => v),
-            bind(field, @varname(x.b) => v),
-            bind(bound_parent(field), @varname(s.x.b) => v),
+            bind(
+                bind === fix ? decondition(field, @varname(x.b)) : field, @varname(x.b) => v
+            ),
+            bind(
+                decondition(bound_parent(field), DynamicPPL.Recursive(), @varname(s.x.b)),
+                @varname(s.x.b) => v,
+            ),
         )
         expected =
             logpdf(Normal(), 2.0) + (bind === condition ? 2 : 1) * logpdf(Normal(), 0.0)
@@ -618,4 +633,27 @@ end
     end
 end
 
-end # module
+@testset "direct and ancestor runtime scalar bindings" begin
+    @model runtime_scalar(y) = y ~ Normal()
+    @model runtime_namespace(c) = b ~ to_submodel(c)
+    @model function runtime_owner(bind, ancestor)
+        m ~ Normal()
+        child = decondition(runtime_scalar(zero(m)))
+        bound = if ancestor
+            bind(runtime_namespace(child), @varname(b.y) => 2m)
+        else
+            bind(child; y=2m)
+        end
+        a ~ to_submodel(bound)
+        return m
+    end
+    for bind in (condition, fix), ancestor in (false, true)
+        ldf = LogDensityFunction(runtime_owner(bind, ancestor); adtype=AutoMooncake())
+        density, gradient = LogDensityProblems.logdensity_and_gradient(ldf, [0.3])
+        @test density ≈
+            logpdf(Normal(), 0.3) + (bind === condition ? logpdf(Normal(), 0.6) : 0.0)
+        @test gradient ≈ [bind === condition ? -1.5 : -0.3]
+    end
+end
+
+end

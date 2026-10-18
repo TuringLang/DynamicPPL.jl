@@ -816,12 +816,12 @@ end
         for (prepared, expected) in (
             (model, 1.0),
             (condition(model; kw=(; y=2.0)), 2.0),
-            (fix(model; kw=(; y=2.0)), 2.0),
+            (fix(decondition(model); kw=(; y=2.0)), 2.0),
             (condition(model; kw=pairs((; y=2.0))), 2.0),
-            (fix(model; kw=pairs((; y=2.0))), 2.0),
+            (fix(decondition(model); kw=pairs((; y=2.0))), 2.0),
             (condition(model; kw=Dict(:y => 2.0)), 2.0),
-            (fix(model; kw=Dict(:y => 2.0)), 2.0),
-            (unfix(fix(model; kw=(; y=2.0))), 1.0),
+            (fix(decondition(model); kw=Dict(:y => 2.0)), 2.0),
+            (unfix(fix(decondition(model); kw=(; y=2.0))), rand(Xoshiro(1), Normal())),
         )
             kw, y, names, vals, forwarded = prepared(Xoshiro(1))
             @test typeof(kw) === typeof(forward_keywords(; y=expected))
@@ -839,8 +839,9 @@ end
             ((typed_input([0.0]), "typed_input"), (typed_keyword(), "typed_keyword")),
             bind in (condition, fix)
 
+            source = bind === fix ? decondition(model) : model
             err = try
-                bind(model; x=[1])()
+                bind(source; x=[1])()
             catch err
                 err
             end
@@ -849,7 +850,7 @@ end
             @test occursin("`x`", sprint(showerror, err))
             @test occursin("Vector{Float64}", sprint(showerror, err))
             @test occursin(string(Vector{Int}), sprint(showerror, err))
-            @test bind(model; x=[1.0])() == [1.0]
+            @test bind(source; x=[1.0])() == [1.0]
         end
         @model function body_methoderror(x)
             x ~ Normal()

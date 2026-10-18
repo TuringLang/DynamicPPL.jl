@@ -134,6 +134,9 @@ end
     @model function runtime_parent(bind, partial, make_array)
         m ~ Normal()
         child = runtime_child(make_array(m))
+        if bind === fix
+            child = decondition(child, partial ? @varname(y[1]) : @varname(y))
+        end
         bound = partial ? bind(child, @varname(y[1]) => 2m) : bind(child; y=[2m, zero(m)])
         a ~ to_submodel(bound)
         return m
@@ -302,15 +305,20 @@ end
 end
 @model function wrapped_parent(nfixed, recursive)
     μ ~ Normal()
-    m = condition(wrapped_child([zero(μ), zero(μ)], μ); y=[1 + μ, 1 + 2μ, 1 + 3μ])
+    m = condition(
+        decondition(wrapped_child([zero(μ), zero(μ)], μ)); y=[1 + μ, 1 + 2μ, 1 + 3μ]
+    )
     if recursive
         m = wrapped_namespace(m)
         for i in 1:nfixed
-            m = fix(m, (@varname(a.y[i])) => (i + 1) * μ)
+            m = fix(
+                decondition(m, DynamicPPL.Recursive(), @varname(a.y[i])),
+                (@varname(a.y[i])) => (i + 1) * μ,
+            )
         end
     else
         for i in 1:nfixed
-            m = fix(m, (@varname(y[i])) => (i + 1) * μ)
+            m = fix(decondition(m, @varname(y[i])), (@varname(y[i])) => (i + 1) * μ)
         end
     end
     s ~ to_submodel(m)
@@ -342,7 +350,9 @@ end
     ReverseDiff.gradient([0.3, 0.4]) do x
         for (bind, remove, listing) in
             ((condition, decondition, conditioned), (fix, unfix, fixed))
-            whole = bind(tracked_child(x); x=x)
+            whole = bind(
+                bind === fix ? decondition(tracked_child(x)) : tracked_child(x); x=x
+            )
             @test listing(whole)[@varname(x)] === x
             @test !haskey(listing(remove(whole, @varname(x))), @varname(x))
             @test_throws r"x\[1\].*TrackedArray.*whole" bind(
@@ -353,7 +363,14 @@ end
                 tracked_child(x), @varname(x[1])
             )
             scalars = map(identity, x)
-            valid = bind(tracked_child(scalars), @varname(x[1]) => x[1])
+            valid = bind(
+                if bind === fix
+                    decondition(tracked_child(scalars), @varname(x[1]))
+                else
+                    tracked_child(scalars)
+                end,
+                @varname(x[1]) => x[1],
+            )
             @test listing(valid)[@varname(x[1])] == x[1]
             @test !haskey(listing(remove(valid, @varname(x[1]))), @varname(x[1]))
         end
@@ -493,8 +510,13 @@ end
         models = (
             bind(child, @varname(y) => v),
             bind(bound_parent(child), @varname(s.y) => v),
-            bind(field, @varname(x.b) => v),
-            bind(bound_parent(field), @varname(s.x.b) => v),
+            bind(
+                bind === fix ? decondition(field, @varname(x.b)) : field, @varname(x.b) => v
+            ),
+            bind(
+                decondition(bound_parent(field), DynamicPPL.Recursive(), @varname(s.x.b)),
+                @varname(s.x.b) => v,
+            ),
         )
         expected =
             logpdf(Normal(), 2.0) + (bind === condition ? 2 : 1) * logpdf(Normal(), 0.0)
@@ -615,4 +637,27 @@ end
         model, (x=(b=[[0.7]],),)
     )
     @test ReverseDiff.value(z) == [0.3]
+end
+
+@testset "direct and ancestor runtime scalar bindings" begin
+    @model runtime_scalar(y) = y ~ Normal()
+    @model runtime_namespace(c) = b ~ to_submodel(c)
+    @model function runtime_owner(bind, ancestor)
+        m ~ Normal()
+        child = decondition(runtime_scalar(zero(m)))
+        bound = if ancestor
+            bind(runtime_namespace(child), @varname(b.y) => 2m)
+        else
+            bind(child; y=2m)
+        end
+        a ~ to_submodel(bound)
+        return m
+    end
+    for bind in (condition, fix), ancestor in (false, true)
+        ldf = LogDensityFunction(runtime_owner(bind, ancestor); adtype=AutoReverseDiff())
+        density, gradient = LogDensityProblems.logdensity_and_gradient(ldf, [0.3])
+        @test density ≈
+            logpdf(Normal(), 0.3) + (bind === condition ? logpdf(Normal(), 0.6) : 0.0)
+        @test gradient ≈ [bind === condition ? -1.5 : -0.3]
+    end
 end

@@ -2,7 +2,10 @@
 
 Thread-safe tilde assignments now throw an `ArgumentError` if any container is replaced, including same-type immutable values: `(a = zero(T),)` → `Vector{T}(undef, n)`. Allocate mutable storage with `::Type{T}=Float64`; use `Vector{Union{Missing,Real}}` for imputation under AD. See [#1521](https://github.com/TuringLang/DynamicPPL.jl/pull/1521).
 
-  - Binding parts of plain local LHS variables now require explicit storage; child bindings remain pending until evaluation.
+  - Each occupied position now has one binding across roles and models. Clear another role with `decondition` or `unfix`, or a child binding with the matching `Recursive()` removal, before inserting. Same-model, same-role replacement remains supported.
+
+  - Partial bindings of child-local variables require storage before the child's body, even in an untaken local branch; supply a template or storage on the child.
+  - A namespace template cannot change shape while recursive removals remain below its root; rebuild the model to use the new shape.
 
 Addresses in one `condition` or `fix` call must be disjoint after resolving them through storage, and a selection cannot repeat a position; use separate calls to overwrite bindings.
 
@@ -70,7 +73,7 @@ Improved placeholder-checking performance for heterogeneous arrays and tuples.
 
 Partial bindings and removals through array arguments now require `Array` or Array-backed `OffsetArray`, `ComponentArray` or `DimArray`: `decondition(f(view(v, :)), @varname(x[1]))` → `decondition(f(collect(v)), @varname(x[1]))`, or bind/remove the whole value. Reshape and transpose/adjoint wrappers, immutable or tracked arrays, ranges, `MVector`, `SizedArray` and `BitArray` no longer support partial edits.
 
-Partial edits rebuilding tuples, structs, `Base.Pairs`, dictionaries or other unsupported owners now throw at any depth: `fix(f((1.0, 2.0)), @varname(x[1]) => 9.0)` → `fix(f((1.0, 2.0)); x=(9.0, 2.0))`. Bind/remove the enclosing value whole, or use NamedTuple/array storage; argument observations and complete local LHS bindings remain supported. A whole replacement in the other layer does not enable partial edits: `fix(condition(f(Record(1, 2)); x=(a=3, b=4)), @varname(x.a) => 5)` → `fix(condition(f(Record(1, 2)); x=(a=3, b=4)); x=(a=5, b=4))`.
+Partial edits rebuilding tuples, structs, `Base.Pairs`, dictionaries or other unsupported owners now throw at any depth: `fix(f((1.0, 2.0)), @varname(x[1]) => 9.0)` → `fix(decondition(f((1.0, 2.0))); x=(9.0, 2.0))`. Bind/remove the enclosing value whole, or use NamedTuple/array storage; argument observations and complete local LHS bindings remain supported.
 
 Explicit and automatic submodel prefixes now allow only properties and non-`Bool` scalar integer indices: `prefix(m, @varname(p[1:2]))` → `prefix(m, @varname(p[2]))`. Colons, masks and keyword indices are also rejected; use `to_submodel(child, false)` to retain a sliced return LHS without creating a prefix.
 
@@ -126,9 +129,9 @@ Indexed NamedTuple addresses are rejected in bindings, removals and LHS variable
 
 Partly removing bindings of one multivariate LHS variable now errors: `decondition(m, @varname(x[1]))` for `x ~ MvNormal(...)` → declare separate LHS variables. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-`fix` shadows observations; `unfix` reveals surviving observations or latent values: restoring original arguments → retain or remove observations explicitly with `condition`/`decondition`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+`fix` requires unobserved positions; `unfix` leaves removed positions latent: temporary fixes → keep the original model to restore its observations. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-Enclosing explicit bindings override child bindings, including fixed ones: child-fixed precedence → outermost explicit binding precedence. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501), [#1012](https://github.com/TuringLang/DynamicPPL.jl/issues/1012).
+Ancestor bindings must be disjoint from child bindings: ancestor overwrite → recursively remove the child binding before inserting on the parent. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501), [#1012](https://github.com/TuringLang/DynamicPPL.jl/issues/1012).
 
 A submodel tilde rooted at a model argument now throws `ArgumentError` when it runs, including indexed and field addresses: `a ~ to_submodel(child())` with argument `a` → `result ~ to_submodel(child())` with local `result`. Bind the child's LHS variables with `condition`, or copy the return value afterwards with `a = result`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
@@ -136,11 +139,11 @@ Submodel return values cannot be bound: `condition(m; a=value)` → `condition(m
 
 Argument arrays without `missing` elements are used without copying, even when their element type includes `Missing`; arrays with `missing` elements are snapshotted at construction: mutating argument storage after construction → construct the model again. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-Partial bindings snapshot remaining storage: mutating original arguments after binding → rebuild the partial binding. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+Partial bindings copy containers on the edited path when storage becomes available: ancestor-held storage at binding, live child storage afresh at child entry. Deferred checks preserve an existing snapshot. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
 Binding edits use the latest replacement shape: construction-time argument indices → indices of the most recent enclosing bound value. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-`conditioned(model)` includes argument-supplied observations and hides fixed ones: manual argument merges → `conditioned(model)`; inspecting shadowed observations → `conditioned(unfix(model))`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+`conditioned(model)` lists explicit and argument-supplied observations stored on that model; `fixed(model)` lists its fixed values. Neither accessor evaluates children. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
 Keyword splats in `model.defaults` are nested: `(z=2, w=3)` → `(var"#splat#kw"=(z=2, w=3),)` for `@model f(; kw...)`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 

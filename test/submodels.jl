@@ -35,11 +35,12 @@ end
 @model t2844_deeper() = (c ~ to_submodel(t2844_outer()); return (; x=c.x))
 
 @model indexed_observation(y, mu) = y ~ Normal(mu, 1)
-@model function indexed_observations(y)
+@model function indexed_observations(y, unobserved=())
     mu ~ Normal()
     x = similar(y)
     for i in eachindex(y)
-        x[i] ~ to_submodel(indexed_observation(y[i], mu))
+        child = indexed_observation(y[i], mu)
+        x[i] ~ to_submodel(i in unobserved ? decondition(child) : child)
     end
     return x
 end
@@ -52,7 +53,7 @@ end
 @model function mixed_namespace_parent()
     p = zeros(2, 2)
     p[1] ~ to_submodel(condition(namespace_leaf(); x=2.0))
-    p[2, 2] ~ to_submodel(condition(namespace_leaf(); x=2.0))
+    p[2, 2] ~ to_submodel(decondition(condition(namespace_leaf(); x=2.0)))
     return p
 end
 
@@ -66,7 +67,11 @@ end
     value = zeros(2)
     reference = WeakRef(value)
     child = bind(retained_geometry_child(); x=value)
-    parent = bind(argument_geometry_parent(child), @varname(a.x) => ones(2))
+    remove = bind === condition ? decondition : unfix
+    parent = bind(
+        remove(argument_geometry_parent(child), DynamicPPL.Recursive(), @varname(a.x)),
+        @varname(a.x) => ones(2),
+    )
     return parent(Xoshiro(1)), reference
 end
 @model argument_geometry_parent(child) = a ~ to_submodel(child)
@@ -75,10 +80,13 @@ end
 function removal_geometry_model(bind, remove, n)
     storage(v) = [fill(v, 2 + i % 2) for i in 1:n]
     child = bind(nested_geometry_child(); x=storage(0.0))
-    middle = bind(removal_geometry_middle(child), @varname(b.x) => storage(1.0))
+    middle = bind(removal_geometry_middle(remove(child)), @varname(b.x) => storage(1.0))
     middle = bind(middle; z=1.0)
     middle = remove(middle, DynamicPPL.Recursive(), @varname(b.x[1][1]))
-    return bind(argument_geometry_parent(middle), @varname(a.b.x) => storage(2.0))
+    return bind(
+        argument_geometry_parent(remove(middle, @varname(b.x))),
+        @varname(a.b.x) => storage(2.0),
+    )
 end
 
 @testset "submodels.jl" begin
@@ -113,7 +121,10 @@ end
         @test logjoint(overlap([1.0, 2.0]), (; mu=0.0)) ≈ expected
         @test logjoint(renamed([1.0, 2.0]), (; mu=0.0)) ≈ expected
         for bind in (condition, fix)
-            model = bind(renamed([1.0, 2.0]), @varname(y) => 5.0)
+            model = bind(
+                decondition(renamed([1.0, 2.0]), DynamicPPL.Recursive(), @varname(y)),
+                @varname(y) => 5.0,
+            )
             expected = logpdf(Normal(), 1.0)
             bind === condition && (expected += logpdf(Normal(), 5.0))
             @test loglikelihood(model, (; mu=0.0)) ≈ expected
@@ -134,18 +145,36 @@ end
             return b[2]
         end
         child = inspect_child()
-        parent = condition(inspect_parent(child), @varname(a.x[1]) => 2.0)
+        parent = condition(
+            decondition(inspect_parent(child), DynamicPPL.Recursive(), @varname(a.x[1])),
+            @varname(a.x[1]) => 2.0,
+        )
         for (model, namespace) in
             ((parent, @varname(a)), (inspect_outer(parent), @varname(b[2].a)))
             local_model = model(Xoshiro(1))
             expected = conditioned(
                 prefix(condition(child, @varname(x[1]) => 2.0), namespace)
             )
-            function bindings(values)
-                return Dict(
-                    vn => value for
-                    (vn, value, _) in DynamicPPL._binding_entries(model, values)
-                )
+            function bindings(values, prefix=nothing)
+                return DynamicPPL._fold_model_indices(
+                    Dict{VarName,Any}(), values
+                ) do result, value, optic, _
+                    vn = if prefix === nothing
+                        AbstractPPL.optic_to_varname(optic)
+                    else
+                        AbstractPPL.append_optic(prefix, optic)
+                    end
+                    if value isa Union{
+                        VarNamedTuple,
+                        DynamicPPL.VarNamedTuples.PartialArray,
+                        DynamicPPL.PendingBindings,
+                    }
+                        merge!(result, bindings(value, vn))
+                    else
+                        result[vn] = value
+                    end
+                    result
+                end
             end
             @test bindings(conditioned(local_model)) == bindings(expected)
             @test isempty(fixed(local_model))
@@ -155,14 +184,16 @@ end
                 @test_throws "outside this model's prefix" bind(
                     local_model, @varname(x[2]) => 3.0
                 )
-                edited = bind(local_model, vn => 3.0)
+                edited = bind(
+                    bind === fix ? decondition(local_model, vn) : local_model, vn => 3.0
+                )
                 @test accessor(edited)[vn] == 3.0
                 @test accessor(edited(Xoshiro(1)))[vn] == 3.0
                 removed = remove(edited, vn)
                 @test !haskey(accessor(removed(Xoshiro(1))), vn)
                 @test isempty(accessor(remove(edited)))
                 values = rand(Xoshiro(1), removed)
-                @test haskey(values, vn) == (remove === decondition)
+                @test haskey(values, vn)
                 @test_throws "outside this model's prefix" bind(local_model; metadata=1)
                 @test_throws r"ArgumentError: Argument `metadata`" bind(
                     local_model, AbstractPPL.prefix(@varname(metadata), namespace) => 1
@@ -202,7 +233,7 @@ end
                 @test outer(local_return())(Xoshiro(1)) isa Real
             end
             for bind in (condition, fix)
-                bound = bind(model, address => value)
+                bound = bind(bind === fix ? decondition(model) : model, address => value)
                 @test_throws err bound(Xoshiro(1))
                 local_model = bind(local_return(), @varname(x.z) => 2.0)
                 @test local_model(Xoshiro(1)) == 2.0
@@ -244,10 +275,12 @@ end
         strategy = InitFromParams((; mu=0.1), nothing)
         init!!(unbound, accs, strategy, UnlinkAll())
         baseline = @allocated init!!(unbound, accs, strategy, UnlinkAll())
-        for bindings in
-            ((@varname(x[1].y) => 0.0,), Tuple(@varname(x[i].y) => 0.0 for i in 1:100))
+        for indices in ((1,), Tuple(1:100))
+            bindings = Tuple(@varname(x[i].y) => 0.0 for i in indices)
             for templates in ((), (@of(x = of(Array, 100)),))
-                model = condition(unbound, bindings..., templates...)
+                model = condition(
+                    indexed_observations(zeros(100), indices), bindings..., templates...
+                )
                 # Keep the conditioned indexed path concrete as well as allocation-bounded.
                 @test @inferred(init!!(model, accs, strategy, UnlinkAll())) isa Tuple
                 @test (@allocated init!!(model, accs, strategy, UnlinkAll())) <=
@@ -270,7 +303,7 @@ end
                 storage = [ones(2) for _ in 1:n]
                 reference = parent(condition(nested_geometry_child(); x=storage))
                 child = condition(nested_geometry_child(); x=[zeros(2) for _ in 1:n])
-                inherited = condition(parent(child), @varname(a.x) => storage)
+                inherited = condition(parent(decondition(child)), @varname(a.x) => storage)
                 @test reference(rng) == inherited(rng) == 1.0
                 baseline = @allocated reference(rng)
                 @test (@allocated inherited(rng)) <= baseline
@@ -314,11 +347,10 @@ end
         mixed_bindings = DynamicPPL.templated_setindex!!(
             VarNamedTuple(), 3.0, @varname(p[2, 2].x), zeros(2, 2)
         )
-        reference = condition(mixed_namespace_parent(), mixed_bindings)
+        cleared = mixed_namespace_parent()
+        reference = condition(cleared, mixed_bindings)
         reference(rng)
-        mixed = condition(
-            mixed_namespace_parent(), @varname(p[2, 2].x) => 3.0, @of(p = of(Array, 2, 2))
-        )
+        mixed = condition(cleared, @varname(p[2, 2].x) => 3.0, @of(p = of(Array, 2, 2)))
         @test @inferred(mixed(rng)) == [2.0 0.0; 0.0 3.0]
         baseline = @allocated reference(rng)
         @test (@allocated mixed(rng)) <= baseline
@@ -333,7 +365,12 @@ end
             @test (@allocated logjoint(model, params)) < 64n
         end
 
-        model = nested_observations(zeros(2))
+        model = decondition(
+            nested_observations(zeros(2)),
+            DynamicPPL.Recursive(),
+            @varname(a.x[1].y),
+            @varname(a.x[2].y)
+        )
         model = condition(model, @varname(a.x[1].y) => 2.0)
         model = fix(model, @varname(a.x[2].y) => 3.0)
         params = mu -> VarNamedTuple(; a=VarNamedTuple(; mu))
@@ -401,7 +438,7 @@ end
         @model explicit_child(child) =
             unused ~ to_submodel(prefix(child, @varname(inner)), false)
         for op in (condition, fix), parent in (dynamic_parent, nested_parent)
-            child = op(observed_child(); x=2.0)
+            child = op(op === fix ? decondition(observed_child()) : observed_child(); x=2.0)
             model = parent(child)
             @test model() == [2.0 0.0 0.0; 0.0 0.0 2.0]
             @test isempty(keys(VarInfo(model)))
@@ -413,13 +450,15 @@ end
                 @test likelihoods[vn] == logpdf(Normal(), 2.0)
             end
             # Mixed-index prefixes need storage for their shared array symbol.
-            changed = condition(model, vn => 3.0)
+            remove = op === condition ? decondition : unfix
+            cleared = remove(model, DynamicPPL.Recursive(), vn)
+            changed = condition(cleared, vn => 3.0)
             @test_throws r"Pending binding.*one index style" changed()
             bindings = DynamicPPL.templated_setindex!!(
                 VarNamedTuple(), (; x=3.0), @varname(a[2, 3]), zeros(2, 3)
             )
             bindings = parent === dynamic_parent ? bindings : VarNamedTuple(; b=bindings)
-            @test condition(model, bindings)() == [2.0 0.0 0.0; 0.0 0.0 3.0]
+            @test condition(cleared, bindings)() == [2.0 0.0 0.0; 0.0 0.0 3.0]
 
             model = parent(explicit_child(child))
             vn = if parent === dynamic_parent
@@ -427,13 +466,15 @@ end
             else
                 @varname(b.a[1].inner.x)
             end
-            changed = condition(model, vn => 3.0)
+            remove = op === condition ? decondition : unfix
+            cleared = remove(model, DynamicPPL.Recursive(), vn)
+            changed = condition(cleared, vn => 3.0)
             @test_throws r"Pending binding.*one index style" changed()
             bindings = DynamicPPL.templated_setindex!!(
                 VarNamedTuple(), (; inner=(; x=3.0)), @varname(a[1]), zeros(2, 3)
             )
             bindings = parent === dynamic_parent ? bindings : VarNamedTuple(; b=bindings)
-            @test condition(model, bindings)() == [3.0 0.0 0.0; 0.0 0.0 2.0]
+            @test condition(cleared, bindings)() == [3.0 0.0 0.0; 0.0 0.0 2.0]
         end
     end
 
@@ -630,7 +671,7 @@ end
 
             # Check that we can condition/fix on any of them from the outside
             for vn in expected_vns
-                op_g = op(g(), (vn => 1.0))
+                op_g = op(g(), vn => 1.0, @of(p = @of(a = @of(x = of(Array, 1)))))
                 vnt = rand(op_g)
                 @test Set(keys(vnt)) == symdiff(expected_vns, Set([vn]))
             end
@@ -694,7 +735,14 @@ end
             return a ~ to_submodel(f(inner_x))
         end
 
-        vnt = rand(Xoshiro(1), condition(g(0.0), @varname(a.x) => 1.0))
+        @test_throws ArgumentError condition(g(0.0), @varname(a.x) => 1.0)(Xoshiro(1))
+        vnt = rand(
+            Xoshiro(1),
+            condition(
+                decondition(g(0.0), DynamicPPL.Recursive(), @varname(a.x)),
+                @varname(a.x) => 1.0,
+            ),
+        )
         @test Set(keys(vnt)) == Set([@varname(a.y)])
 
         @model latent_g() = a ~ to_submodel(decondition(f(0.0)))
@@ -727,7 +775,11 @@ end
             original = first_bind(namespace_outer(); a=(; x=1.0))
             extended = bind(original, @varname(a.y) => 2.0)
             @test bind(extended, @varname(a.z) => 3.0)(Xoshiro(1)) == (1.0, 2.0, 3.0)
-            expanded = bind(original, @varname(a.x) => 1.0)
+            remove = first_bind === condition ? decondition : unfix
+            expanded = bind(
+                first_bind === bind ? original : remove(original, @varname(a.x)),
+                @varname(a.x) => 1.0,
+            )
             @test bind(bind(expanded, @varname(a.y) => 2.0), @varname(a.z) => 3.0)(
                 Xoshiro(1)
             ) == (1.0, 2.0, 3.0)
@@ -914,10 +966,11 @@ end
     @model leaf(x=2.0) = x ~ Normal()
     @model parent(m) = a ~ to_submodel(m)
     @model outer(m) = b ~ to_submodel(m)
-    fixed_child = parent(fix(leaf(); x=5.0))
-    @test unfix(fixed_child, rec, @varname(a.x))() == 2.0
+    fixed_child = parent(fix(decondition(leaf()); x=5.0))
+    @test returned(unfix(fixed_child, rec, @varname(a.x)), (a=(x=2.0,),)) == 2.0
+    @test keys(rand(Xoshiro(1), unfix(fixed_child, rec, @varname(a.x)))) == [@varname(a.x)]
     @test decondition(fixed_child, rec, @varname(a.x))() == 5.0
-    @test unfix(fixed_child, rec)() == 2.0
+    @test returned(unfix(fixed_child, rec), (a=(x=2.0,),)) == 2.0
     @test isempty(conditioned(decondition(parent(leaf()), rec)))
     @test keys(rand(Xoshiro(1), decondition(parent(leaf()), rec))) == [@varname(a.x)]
     removed = decondition(parent(leaf()), rec, @varname(a.x))
@@ -1040,19 +1093,17 @@ end
     for (bind, remove) in ((condition, decondition), (fix, unfix)),
         wrap in (identity, m -> prefix(m, @varname(p)), removal_sibling_parent)
 
-        reached = remove(
-            bind(removal_siblings((child=0.0, obs=1.0), true), @varname(a.obs) => 3.0),
-            @varname(a.obs)
-        )
+        reached = removal_siblings((child=0.0, obs=1.0), true)
+        bind === fix && (reached = decondition(reached, @varname(a.obs)))
+        reached = remove(bind(reached, @varname(a.obs) => 3.0), @varname(a.obs))
         @test_throws r"ArgumentError: Submodel tilde .*model argument `a`.*local LHS" wrap(
             reached
         )(
             Xoshiro(1)
         )
-        skipped = remove(
-            bind(removal_siblings((child=0.0, obs=1.0), false), @varname(a.obs) => 3.0),
-            @varname(a.obs)
-        )
+        skipped = removal_siblings((child=0.0, obs=1.0), false)
+        bind === fix && (skipped = decondition(skipped, @varname(a.obs)))
+        skipped = remove(bind(skipped, @varname(a.obs) => 3.0), @varname(a.obs))
         @test wrap(skipped)(Xoshiro(1)).obs isa Real
     end
 end
@@ -1111,7 +1162,10 @@ end
     @test_throws r"x.*decondition.*unfix" condition(indexed(zeros(2)); x=ones(3))
     child = condition(indexed(zeros(3)); x=ones(3))
     @test length(decondition(parent(child), rec, @varname(a.x))(Xoshiro(1))) == 3
-    @test unfix(parent(fix(indexed(zeros(3)); x=ones(3))), rec, @varname(a.x))() == zeros(3)
+    @test returned(
+        unfix(parent(fix(decondition(indexed(zeros(3))); x=ones(3))), rec, @varname(a.x)),
+        (a=(x=zeros(3),),),
+    ) == zeros(3)
     partial = decondition(parent(child), rec, @varname(a.x[2]))
     @test returned(partial, VarNamedTuple((@varname(a.x[2]) => 5.0,))) == [1.0, 5.0, 1.0]
     @test condition(decondition(parent(child), rec), @varname(a.x) => [4.0, 5.0])() ==
@@ -1160,7 +1214,7 @@ end
     @model function sharearr(x)
         x[1] ~ Normal()
         x[2] ~ Normal()
-        a ~ to_submodel(arr([2.0, 2.0]), false)
+        a ~ to_submodel(decondition(arr([2.0, 2.0])), false)
         return (x, a)
     end
     @model function arr(x)
@@ -1186,7 +1240,7 @@ end
         end
         return x
     end
-    old = fix(owner_grows(zeros(2)); x=ones(2))
+    old = fix(decondition(owner_grows(zeros(2))); x=ones(2))
     expected = fix(unfix(old), @varname(x[1]) => 2.0)(Xoshiro(1))
     for names in ((), (@varname(a.x),))
         model = fix(unfix(owner_parent(old), rec, names...), @varname(a.x[1]) => 2.0)
@@ -1211,16 +1265,18 @@ end
     @model prefix_removal_parent(m) = a ~ to_submodel(m)
     for (bind, remove) in ((condition, decondition), (fix, unfix))
         child = prefix(
-            bind(prefix_removal_leaf(); x=3.0), @varname(p[end]); template=zeros(2)
+            bind(
+                bind === fix ? decondition(prefix_removal_leaf()) : prefix_removal_leaf();
+                x=3.0,
+            ),
+            @varname(p[end]);
+            template=zeros(2),
         )
         removed = remove(child, rec, @varname(p[end].x))
         @test isempty(bind === condition ? conditioned(removed) : fixed(removed))
         @test remove(removed, rec, @varname(p[2].x))(Xoshiro(1)) == removed(Xoshiro(1))
-        if bind === condition
-            @test keys(rand(Xoshiro(1), removed)) == [@varname(p[2].x)]
-        else
-            @test removed(Xoshiro(1)) == 2.0
-        end
+        @test keys(rand(Xoshiro(1), removed)) == [@varname(p[2].x)]
+        @test returned(removed, VarNamedTuple((@varname(p[2].x) => 2.0,))) == 2.0
     end
     model = prefix(
         prefix_removal_parent(prefix_removal_leaf()), @varname(p[end]); template=zeros(2)
@@ -1251,7 +1307,11 @@ end
     @test keys(
         rand(
             Xoshiro(1),
-            unfix(decondition(fix(removal_branch(1.0, true); a=2.0), rec, @varname(a))),
+            unfix(
+                decondition(
+                    fix(decondition(removal_branch(1.0, true)); a=2.0), rec, @varname(a)
+                ),
+            ),
         ),
     ) == [@varname(a)]
     m = decondition(removal_outer(removal_branch(1.0, true)), rec, @varname(b.a))
@@ -1288,17 +1348,20 @@ end
     end
     for (n, replacement) in ((3, [1.0, 2.0]), (2, [1.0, 2.0, 3.0]))
         for (bind, remove) in ((condition, decondition), (fix, unfix))
-            @test_throws r"y.*child.*right size" returned(
+            @test_throws ArgumentError returned(
                 bind(shaped_parent(n), @varname(a.y) => replacement), (mu=0.3,)
             )
-            whole = bind(shaped_parent(length(replacement)), @varname(a.y) => replacement)
+            whole = bind(
+                decondition(shaped_parent(length(replacement)), rec, @varname(a.y)),
+                @varname(a.y) => replacement,
+            )
             edited = bind(whole, @varname(a.y[1]) => 4.0)
             expected = [4.0; replacement[2:end]]
             @test returned(edited, (mu=0.3,)) == expected
             partial = remove(whole, rec, @varname(a.y[1]))
             @test returned(
                 partial, VarNamedTuple((@varname(mu) => 0.3, @varname(a.y[1]) => 4.0))
-            ) == (bind === condition ? expected : [0.0; replacement[2:end]])
+            ) == expected
             for backend in (AutoForwardDiff(), AutoMooncake(; config=nothing))
                 ldf = LogDensityFunction(edited; adtype=backend)
                 value, gradient = LogDensityProblems.logdensity_and_gradient(ldf, [0.3])
@@ -1319,7 +1382,14 @@ end
     )
     @test loglikelihood(m, (;)) ≈ 2 * logpdf(Normal(), 7.0)
     m = fix(
-        unfix(depth_parent(2.0, fix(depth_leaf(3.0); x=9.0)), DynamicPPL.Recursive()); x=7.0
+        unfix(
+            decondition(
+                depth_parent(2.0, fix(decondition(depth_leaf(3.0)); x=9.0)),
+                DynamicPPL.Recursive(),
+            ),
+            DynamicPPL.Recursive(),
+        );
+        x=7.0,
     )
     @test loglikelihood(m, (;)) == 0.0
 end
@@ -1361,8 +1431,8 @@ end
 @testset "shared removal" begin
     for remove in (decondition, unfix),
         m in (
-            closed_shared(2.0, fix(closed_leaf(); x=4.0)),
-            closed_shared_runtime(2.0, fix(closed_leaf(); x=4.0), Normal()),
+            closed_shared(2.0, fix(decondition(closed_leaf()); x=4.0)),
+            closed_shared_runtime(2.0, fix(decondition(closed_leaf()); x=4.0), Normal()),
         )
 
         @test_throws r"x.*[Pp]refix.*Recursive" remove(
@@ -1379,8 +1449,11 @@ end
     @model runtime_return_outer(m) = b ~ to_submodel(m)
     for arg in ([1.0, 2.0], (x=1.0, y=2.0))
         vn = arg isa NamedTuple ? @varname(a.x) : @varname(a[1])
-        for edit in
-            (m -> decondition(m, vn), m -> condition(m, vn => 4.0), m -> fix(m, vn => 4.0))
+        for edit in (
+            m -> decondition(m, vn),
+            m -> condition(m, vn => 4.0),
+            m -> fix(decondition(m, vn), vn => 4.0),
+        )
             m = edit(runtime_return(arg, to_submodel(runtime_return_leaf())))
             @test_throws r"ArgumentError: Submodel tilde .*model argument `a`.*local LHS" m(
                 Xoshiro(1)
@@ -1419,8 +1492,22 @@ end
     end
     for child_bind in (condition, fix), parent_bind in (condition, fix)
         child = child_bind(leaf(); x=2.0)
-        middle = parent_bind(outer(child), @varname(b.x) => 3.0)
-        model = condition(outer(middle), @varname(b.b.x) => 1.0)
+        @test_throws ArgumentError parent_bind(outer(child), @varname(b.x) => 3.0)(
+            Xoshiro(1)
+        )
+        child_remove = child_bind === condition ? decondition : unfix
+        middle = parent_bind(
+            child_remove(outer(child), DynamicPPL.Recursive(), @varname(b.x)),
+            @varname(b.x) => 3.0,
+        )
+        @test_throws ArgumentError condition(outer(middle), @varname(b.b.x) => 1.0)(
+            Xoshiro(1)
+        )
+        parent_remove = parent_bind === condition ? decondition : unfix
+        model = condition(
+            parent_remove(outer(middle), DynamicPPL.Recursive(), @varname(b.b.x)),
+            @varname(b.b.x) => 1.0,
+        )
         @test model(Xoshiro(1)) == 1.0
         @test loglikelihood(model, (;)) ≈ logpdf(Normal(), 1.0)
     end
