@@ -7897,10 +7897,10 @@ end
             else
                 @test (bind(empty; x=ones(3)))(Xoshiro(1)) == ones(2)
             end
-            @test_throws ArgumentError DynamicPPL._unbind(m, @varname(x))
+            @test_throws ArgumentError DynamicPPL._unbind_shape(m, @varname(x))
             @test isempty(
                 DynamicPPL._binding_shape_store(
-                    DynamicPPL._unbind(empty, @varname(x)).values
+                    DynamicPPL._unbind_shape(empty, @varname(x)).values
                 ).roots,
             )
         end

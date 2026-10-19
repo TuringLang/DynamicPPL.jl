@@ -3065,7 +3065,7 @@ end
 function _conditionfix_inputs(model, values, ::Type{R}, schema=()) where {R}
     model = _materialize_argument_values(model)
     prepared = _prepare_binding_batch(model, values, R, schema)
-    bound = _set_values(model, prepared, R)
+    bound = _bind_values(model, prepared, R)
     _check_shared_latent_storage(bound)
     return bound
 end
@@ -3099,10 +3099,10 @@ function _conditionfix(model::Model, inputs::Tuple, ::Type{R}) where {R}
     for t in templates
         local_name = prefix === nothing ? t.name : AbstractPPL.unprefix(t.name, prefix)
         if _binding_schema_owned(model, local_name)
-            model = _bind(model, t.name, t.storage)
+            model = _bind_shape(model, t.name, t.storage)
             owned = (owned..., t)
         elseif _is_namespace_storage(model, t.name)
-            model = _bind(model, t.name, t.storage; namespace=true)
+            model = _bind_shape(model, t.name, t.storage; namespace=true)
         else
             deferred = (deferred..., _prepare_deferred_template(t))
         end
@@ -3378,7 +3378,7 @@ function _check_disjoint_bindings(previous, updates, vn=nothing; ancestor=false)
     end
 end
 
-function _set_values(model::Model, values, ::Type{R}) where {R}
+function _bind_values(model::Model, values, ::Type{R}) where {R}
     preparation_model = _binding_layer_model(R, model)
     _check_bound_placeholders(R, values)
     # Not copied: `deepcopy` would detach values bound in the body from ReverseDiff's tape.
@@ -4884,13 +4884,13 @@ function _decondition_unfix(model, names, ::Type{R}, recursive...) where {R}
         )
         any(isnothing, names) && (names = ())
     end
-    removed = _unset_values(model, names, R, recursive...)
+    removed = _unbind_values(model, names, R, recursive...)
     _check_shared_latent_storage(removed)
     return _check_latent_arguments(removed)
 end
 
 # An empty `names` removes every binding of role `R`.
-function _unset_values(model, names, ::Type{R}) where {R}
+function _unbind_values(model, names, ::Type{R}) where {R}
     # Child addresses bound here are stored here, so they are removed here.
     model = _materialize_argument_values(model)
     layer = _binding_layer(R, model.values)
@@ -5105,7 +5105,7 @@ function _check_shared_removals(parent, child)
     return nothing
 end
 
-function _unset_values(model, names, ::Type{R}, ::Recursive) where {R}
+function _unbind_values(model, names, ::Type{R}, ::Recursive) where {R}
     model = _materialize_argument_values(model)
     values = _binding_layer(R, model.values)
     markers = _removals(R, model.values)
@@ -6104,7 +6104,7 @@ function _bind_shape_batch(model, batch, whole=())
     shapes = ModelBindingShapes(roots)
     return _reconstruct_model(model; values=_with_binding_shapes(model.values, shapes))
 end
-function _bind(model::Model, vn::VarName, storage; namespace=false)
+function _bind_shape(model::Model, vn::VarName, storage; namespace=false)
     vn = _resolve_binding_address(model, vn)
     value = if namespace
         VarNamedTuples.PartialArray(
@@ -6151,7 +6151,7 @@ function _local_shape_snapshot(model::Model, values::VarNamedTuple)
     end
 end
 
-function _unbind(model::Model, vn::VarName)
+function _unbind_shape(model::Model, vn::VarName)
     vn = _resolve_binding_address(model, vn)
     store = _binding_shape_store(model.values)
     haskey(store.roots, vn) || return model
