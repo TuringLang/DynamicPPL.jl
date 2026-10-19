@@ -523,15 +523,20 @@ function generate_tilde(left, right; is_argument=false)
         ))
     end
 
-    fixed_data = if is_argument
-        :($(DynamicPPL._get_model_data)(
-            __model__,
-            $vn,
-            $(VarName{get_top_level_symbol(left)}()),
-            $(get_top_level_symbol(left)),
-        ))
-    else
-        :($(DynamicPPL._get_model_data)(__model__, $vn))
+    fixed_data = :($(DynamicPPL._get_model_data)(
+        __model__,
+        $vn,
+        $(VarName{get_top_level_symbol(left)}()),
+        $(get_top_level_symbol(left)),
+    ))
+    if !is_argument
+        fixed_data = quote
+            if $(Expr(:isdefined, get_top_level_symbol(left)))
+                $fixed_data
+            else
+                $(DynamicPPL._get_model_data)(__model__, $vn)
+            end
+        end
     end
 
     return quote

@@ -425,15 +425,15 @@ function _get_model_data(model, vn)
     binding === nothing && throw(KeyError(vn))
     return _model_data(binding)
 end
-function _get_model_data(model, vn, argument, local_value)
-    binding = _get_model_binding(model, argument)
+function _get_model_data(model, vn, root, local_value)
+    binding = _get_model_binding(model, root)
     _check_fixed_shape(
         binding,
         local_value,
         AbstractPPL.getoptic(vn),
         vn,
         _fixed_owners(model.values),
-        _model_value_varname(model.values, argument, _model_prefix(model)),
+        _model_value_varname(model.values, root, _model_prefix(model)),
     )
     return _get_model_data(model, vn)
 end
@@ -460,18 +460,18 @@ function _check_fixed_shape(
     value = binding.value
     if value isa Tuple
         local_value isa Tuple && length(value) == length(local_value) || _fixed_shape_error(
-            vn, "a static size and shape; the model body changed its argument's length."
+            vn, "a static size and shape; the model body supplied a different length."
         )
     elseif value isa Union{NamedTuple,Base.Pairs}
         local_value isa Union{NamedTuple,Base.Pairs} &&
             all(name -> haskey(local_value, name), keys(value)) || _fixed_shape_error(
-            vn, "a static size and shape; the model body changed its argument's fields."
+            vn, "a static size and shape; the model body supplied different fields."
         )
     elseif value isa AbstractArray || local_value isa AbstractArray
         value isa AbstractArray &&
             local_value isa AbstractArray &&
             axes(value) == axes(local_value) || _fixed_shape_error(
-            vn, "a static size and shape; the model body changed its argument's shape."
+            vn, "a static size and shape; the model body supplied a different shape."
         )
     end
     return _check_fixed_shape_child(binding, local_value, optic, vn, owners, address)
@@ -509,6 +509,13 @@ function _check_fixed_shape_child(
     selected = if VarNamedTuples._is_multiindex(local_value, optic.ix...; optic.kw...)
         Base.maybeview(local_value, optic.ix...; optic.kw...)
     else
+        if local_value isa AbstractArray &&
+            optic.child isa AbstractPPL.Iden &&
+            isempty(optic.kw) &&
+            checkbounds(Bool, local_value, optic.ix...) &&
+            !isassigned(local_value, optic.ix...)
+            return nothing
+        end
         getindex(local_value, optic.ix...; optic.kw...)
     end
     return _check_fixed_shape(

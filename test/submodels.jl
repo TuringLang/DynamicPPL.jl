@@ -77,9 +77,14 @@ end
 @model argument_geometry_parent(child) = a ~ to_submodel(child)
 @model held_geometry_parent(child) = a ~ to_submodel(child[])
 @model removal_geometry_middle(child) = (z ~ Normal(); b ~ to_submodel(child); __model__)
+@model function removal_geometry_child(n)
+    x = [zeros(2 + i % 2) for i in 1:n]
+    x[1][1] ~ Normal()
+    return x[1][1]
+end
 function removal_geometry_model(bind, remove, n)
     storage(v) = [fill(v, 2 + i % 2) for i in 1:n]
-    child = bind(nested_geometry_child(); x=storage(0.0))
+    child = bind(removal_geometry_child(n); x=storage(0.0))
     middle = bind(removal_geometry_middle(remove(child)), @varname(b.x) => storage(1.0))
     middle = bind(middle; z=1.0)
     middle = remove(middle, DynamicPPL.Recursive(), @varname(b.x[1][1]))

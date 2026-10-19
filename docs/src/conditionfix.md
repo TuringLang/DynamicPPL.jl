@@ -443,6 +443,12 @@ condition(observe_argument(0.0); x=1.0)(), condition(observe_local(); x=1.0)()
 The conditioned argument observes `3.0`, the value the body leaves in it, as
 `observe_argument(1.0)` does; the conditioned local LHS variable observes the bound `1.0`.
 
+Fixed arrays must match the storage at an executed tilde. This applies to arguments and
+locals already assigned by the body, for element-wise and whole-array tildes. An unassigned
+whole local can still take its fixed value. Fixing a field does not require complete fixed
+coverage of its enclosing `NamedTuple`. Shape checks stop at the LHS address; they do not
+inspect interiors beyond a whole-variable tilde.
+
 The **Storage ownership** and **Bounds, types and shape** rules in the
 [rule table](@ref binding-rule-table) govern edits at every depth. For example, binding
 a local `x=ones(3)` then removing all values of `x` still preserves length three, so `x[end]`

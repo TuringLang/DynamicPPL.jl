@@ -1469,13 +1469,68 @@ end
             fix(local_lhs_variables(); x=[2.0]),
             fix(nested_local_lhs_variables(), @varname(child.x) => [2.0]),
         )
-            @test_throws r"ArgumentError: .*x\[2\].*coverage.*size and shape" model(
-                Xoshiro(1)
-            )
+            @test_throws r"ArgumentError: .*x\[1\].*static size and shape" model(Xoshiro(1))
         end
         observed = condition(local_lhs_variables(); x=[2.0])
         @test observed(Xoshiro(1)) == [2.0, rand(Xoshiro(1), Normal())]
         @test keys(rand(Xoshiro(1), observed)) == [@varname(x[2])]
+    end
+
+    @testset "assigned fixed local shapes" begin
+        @model function assigned_local_shape(n, multivariate)
+            x = zeros(n)
+            if multivariate
+                x ~ MvNormal(zeros(n), I)
+            else
+                for i in eachindex(x)
+                    x[i] ~ Normal()
+                end
+            end
+            return x
+        end
+        @model assigned_local_parent(child) = a ~ to_submodel(child)
+        for multivariate in (false, true)
+            for n in (1, 3)
+                model = fix(assigned_local_shape(2, multivariate); x=ones(n))
+                @test_throws r"ArgumentError: .*x.*static size and shape" model(Xoshiro(1))
+                nested = fix(
+                    assigned_local_parent(assigned_local_shape(2, multivariate)),
+                    @varname(a.x) => ones(n),
+                )
+                @test_throws r"ArgumentError: .*x.*static size and shape" nested(Xoshiro(1))
+            end
+            model = fix(assigned_local_shape(2, multivariate); x=ones(2))
+            @test model(Xoshiro(1)) == ones(2)
+        end
+        @model unassigned_fixed_local() = x ~ MvNormal(zeros(2), I)
+        @test fix(unassigned_fixed_local(); x=ones(2))(Xoshiro(1)) == ones(2)
+        @model function assigned_local_fields()
+            p = (a=zeros(2), b=zeros(3))
+            p.a ~ MvNormal(zeros(2), I)
+            p.b ~ MvNormal(zeros(3), I)
+            return p
+        end
+        model = fix(assigned_local_fields(), @varname(p.a) => ones(2))
+        @test model(Xoshiro(1)).a == ones(2)
+        @test length(model(Xoshiro(1)).b) == 3
+        @model function typed_assigned_local(prototype::T) where {T}
+            x = zeros(T, 2)
+            x ~ MvNormal(zeros(2), I)
+            return x
+        end
+        for T in (Float32, BigFloat)
+            model = fix(typed_assigned_local(zero(T)); x=ones(T, 2))
+            @test eltype(@inferred model(Xoshiro(1))) === T
+        end
+        @model function assigned_local_slots(prototype::T) where {T}
+            x = Vector{Vector{T}}(undef, 1)
+            x[1] ~ MvNormal(zeros(2), I)
+            return x
+        end
+        @test fix(assigned_local_slots(0.0f0); x=[ones(Float32, 2)])(Xoshiro(1)) ==
+            [ones(Float32, 2)]
+        fixed_sum(t) = sum(fix(typed_assigned_local(t); x=fill(t, 2))(Xoshiro(1)))
+        @test ForwardDiff.derivative(fixed_sum, 1.0) == 2.0
     end
 
     @testset "fixed argument shape" begin
@@ -7833,7 +7888,15 @@ end
             v = bind(empty, @varname(x[end]) => 3.0)
             @test (bind === condition ? conditioned(v) : fixed(v))[@varname(x[2])] == 3.0
             @test_throws ArgumentError bind(empty, @varname(x[3]) => 3.0)
-            @test (bind(empty; x=ones(3)))(Xoshiro(1)) == ones(2) # body reads only the first two elements
+            if bind === fix
+                @test_throws r"ArgumentError: .*x\[1\].*static size and shape" bind(
+                    empty; x=ones(3)
+                )(
+                    Xoshiro(1)
+                )
+            else
+                @test (bind(empty; x=ones(3)))(Xoshiro(1)) == ones(2)
+            end
             @test_throws ArgumentError DynamicPPL._unbind(m, @varname(x))
             @test isempty(
                 DynamicPPL._binding_shape_store(
