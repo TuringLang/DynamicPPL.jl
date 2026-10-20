@@ -575,6 +575,21 @@ end
     end
 end
 
+@testset "fixed vector size with Mooncake" begin
+    @model function fixed_vector_model()
+        m ~ Normal()
+        y ~ MvNormal(zeros(1), ones(1, 1))
+        return 0.0 ~ Normal(m + y[1])
+    end
+    model = fix(fixed_vector_model(); y=zeros(1))
+    ldf = LogDensityFunction(
+        model, getlogjoint_internal, UnlinkAll(); adtype=AutoMooncake()
+    )
+    density, gradient = logdensity_and_gradient(ldf, [0.3])
+    @test density ≈ 2logpdf(Normal(), 0.3)
+    @test gradient ≈ [-0.6]
+end
+
 @testset "separate bindings may share latent argument storage" begin
     @model function bound_storage(x)
         x[1] ~ Normal()

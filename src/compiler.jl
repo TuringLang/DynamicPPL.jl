@@ -586,6 +586,13 @@ function generate_tilde(left, right; is_argument=false)
                 $(DynamicPPL.maybe_prefix)($vn, $(DynamicPPL._model_prefix)(__model__)),
                 $role,
             )
+            if !$(Expr(:isdefined, get_top_level_symbol(left)))
+                $value = $(DynamicPPL._check_fixed_tilde_size)(
+                    $value,
+                    $dist,
+                    $(DynamicPPL.maybe_prefix)($vn, $(DynamicPPL._model_prefix)(__model__)),
+                )
+            end
             $(assign_or_set!!(
                 left, value, vn, is_argument ? _set_fixed_lhs : set_tilde_value!!
             ))

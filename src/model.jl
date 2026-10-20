@@ -664,6 +664,19 @@ function _check_tilde_value(value, vn, ::Union{Condition,Fix})
     return value
 end
 
+function _check_fixed_tilde_size(value::AbstractArray, dist::Distribution, vn)
+    expected = size(dist)
+    isempty(expected) ||
+        size(value) == expected ||
+        throw(
+            ArgumentError(
+                "Fixed value at `$vn` has size $(size(value)), but the distribution has sample size $expected.",
+            ),
+        )
+    return value
+end
+_check_fixed_tilde_size(value, dist, vn) = value
+
 """
     tilde_observe!!(prefix, prefix_template, right::Distribution, left, vn, template, vi)
 

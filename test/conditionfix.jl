@@ -9520,6 +9520,25 @@ end
     )()
 end
 
+struct UndeclaredSizeDistribution <: ContinuousMatrixDistribution end
+struct UndeclaredVectorSizeDistribution <: ContinuousMultivariateDistribution end
+@model fixed_univariate() = x ~ Normal()
+@model fixed_undeclared() = x ~ UndeclaredSizeDistribution()
+@model fixed_undeclared_vector() = x ~ UndeclaredVectorSizeDistribution()
+@model fixed_size_model() = (x ~ MvNormal(zeros(2), I); x)
+@model fixed_body_size_model() = (x = zeros(3); x ~ MvNormal(zeros(2), I); x)
+@testset "fixed array tilde checks distribution size" begin
+    @test_throws r"Fixed value at `x` has size \(3,\).*\(2,\)" fix(
+        fixed_size_model(); x=ones(3)
+    )()
+    @test fix(fixed_size_model(); x=ones(2))() == ones(2)
+    @test fix(fixed_body_size_model(); x=ones(3))() == ones(3)
+    @test_throws r"size" fix(fixed_body_size_model(); x=ones(2))()
+    @test fix(fixed_univariate(); x=ones(3))() == ones(3)
+    @test_throws MethodError fix(fixed_undeclared(); x=ones(2, 3))()
+    @test_throws MethodError fix(fixed_undeclared_vector(); x=ones(3))()
+end
+
 @testset "deferred scalar rejects indexed writes" begin
     @model scalar_child() = b ~ product_distribution((x=Normal(), y=Normal()))
     @model scalar_parent() = a ~ to_submodel(scalar_child())
