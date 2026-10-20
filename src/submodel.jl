@@ -253,6 +253,33 @@ Evaluate `submodel` under `parent_model`.
     inherited_templates = _submodel_binding_templates(parent_model, local_prefix)
     observation_removals = _submodel_removals(Condition, parent_model, local_prefix)
     fixed_removals = _submodel_removals(Fix, parent_model, local_prefix)
+    # Which removals select this child depends on its runtime index, so their type is a
+    # small `Union`; this call splits it once instead of widening every derived value.
+    return _tilde_assume_submodel!!(
+        parent_model,
+        context,
+        submodel,
+        left_vn,
+        template,
+        vi,
+        local_prefix,
+        inherited_templates,
+        observation_removals,
+        fixed_removals,
+    )
+end
+@inline function _tilde_assume_submodel!!(
+    parent_model,
+    context,
+    submodel::Submodel{M,AutoPrefix},
+    left_vn,
+    template,
+    vi,
+    local_prefix,
+    inherited_templates,
+    observation_removals,
+    fixed_removals,
+) where {M,AutoPrefix}
     observations = _apply_parent_removals(
         Condition,
         _submodel_layer(Condition, submodel.model),

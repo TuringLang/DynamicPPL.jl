@@ -294,6 +294,20 @@ end
         end
     end
 
+    @testset "recursive removal at one indexed child stays concrete" begin
+        unbound = indexed_observations(zeros(2))
+        accs = VarInfo(LogPriorAccumulator(), LogLikelihoodAccumulator())
+        params = VarNamedTuple((@varname(mu) => 0.1, @varname(x[1].y) => 0.0))
+        strategy = InitFromParams(params, nothing)
+        init!!(unbound, accs, strategy, UnlinkAll())
+        baseline = @allocated init!!(unbound, accs, strategy, UnlinkAll())
+        cleared = decondition(unbound, DynamicPPL.Recursive(), @varname(x[1].y))
+        for model in (cleared, condition(cleared, @varname(x[1].y) => 0.0))
+            @test @inferred(init!!(model, accs, strategy, UnlinkAll())) isa Tuple
+            @test (@allocated init!!(model, accs, strategy, UnlinkAll())) <= baseline + 512
+        end
+    end
+
     @testset "inherited geometry does not allocate during evaluation" begin
         rng = Xoshiro(1)
         for bind in (condition, fix)

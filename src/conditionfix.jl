@@ -5221,10 +5221,10 @@ function _select_removal(r, prefix)
 end
 function _submodel_removals(::Type{R}, model, prefix) where {R}
     isempty(_removals(R, model.values)) && return ()
-    prefix = _model_value_varname(model.values, prefix, _model_prefix(model))
-    prefix === nothing || (prefix = _resolve_binding_address(model, prefix))
+    vn = _model_value_varname(model.values, prefix, _model_prefix(model))
+    resolved = vn === nothing ? nothing : _resolve_binding_address(model, vn)
     return mapreduce(
-        r -> _select_existing_removal(model, r, prefix),
+        r -> _select_existing_removal(model, r, resolved),
         (a, b) -> (a..., b...),
         _removals(R, model.values);
         init=(),
