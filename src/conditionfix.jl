@@ -3641,7 +3641,13 @@ function _pending_group(p, optic)
     return p.groups isa AbstractDict ? get(p.groups, optic, nothing) : p.groups
 end
 # Bypass the OrderedDict try/catch wrapper on Julia 1.10 for runtime AD.
-_pending_dict(kv) = Base.dict_with_eltype((K, V) -> OrderedDict{K,V}, kv, eltype(kv))
+function _pending_dict(kv)
+    @static if VERSION >= v"1.11"
+        OrderedDict(kv)
+    else
+        Base.dict_with_eltype((K, V) -> OrderedDict{K,V}, kv, eltype(kv))
+    end
+end
 _pending_entries_map(f, entries) = map(f, entries)
 _pending_entries_map(f, entries::AbstractDict) = _pending_dict(f(e) for e in entries)
 function _pending_map(f, p::PendingBindings)
