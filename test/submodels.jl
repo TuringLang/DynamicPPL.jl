@@ -76,12 +76,37 @@ end
 end
 @model argument_geometry_parent(child) = a ~ to_submodel(child)
 @model held_geometry_parent(child) = a ~ to_submodel(child[])
+@model placeholder_child(x) = (x[1] ~ Normal(); x[2] ~ Normal(); x)
+@model placeholder_parent(child) = a ~ to_submodel(child)
 @model removal_geometry_middle(child) = (z ~ Normal(); b ~ to_submodel(child); __model__)
 @model function removal_geometry_child(n)
     x = [zeros(2 + i % 2) for i in 1:n]
     x[1][1] ~ Normal()
     return x[1][1]
 end
+
+@testset "ancestor partial removal uses inherited placeholder storage" begin
+    values = [1.0, 2.0]
+    for (bind, remove) in ((condition, decondition), (fix, unfix))
+        bound = bind(
+            placeholder_parent(placeholder_child(nothing)), @varname(a.x) => values
+        )
+        result = remove(bound, @varname(a.x[1]))(Xoshiro(1))
+        @test result[2] == 2.0
+    end
+end
+
+@testset "partial cross-role bindings need placeholder storage" begin
+    for (model, root, part) in (
+        (placeholder_child(nothing), @varname(x), @varname(x[1])),
+        (placeholder_parent(placeholder_child(nothing)), @varname(a.x), @varname(a.x[1])),
+    )
+        @test_throws r"Cannot make a partial binding of argument `x` with whole `nothing` storage" fix(
+            decondition(condition(model, root => [1.0, 2.0]), part), part => 3.0
+        )()
+    end
+end
+
 function removal_geometry_model(bind, remove, n)
     storage(v) = [fill(v, 2 + i % 2) for i in 1:n]
     child = bind(removal_geometry_child(n); x=storage(0.0))

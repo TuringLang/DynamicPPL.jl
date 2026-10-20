@@ -7209,7 +7209,7 @@ function bc_shape_corpus()
             push!(samples, (c, copy(ops)))
         end
     end
-# Cross-role overlaps and incompatible extents must be rejected, including complete partial masks.
+    # Cross-role overlaps and incompatible extents must be rejected, including complete partial masks.
     for kind in (:array, :tuple, :nested_named, :nested_tuple), depth in (0, 1, 2)
         c = BCCase(kind, true, depth, false, false)
         p = (bc_namespace(c)..., (
@@ -8636,10 +8636,7 @@ end;
 x)
 @model pending_local() = (x = zeros(2); x[1] ~ Normal(); x)
 @testset "pending identity setter merges entries" begin
-    pending = DynamicPPL.PendingBindings(
-        @varname(x),
-        (AbstractPPL.Property{:a}() => 1,),
-    )
+    pending = DynamicPPL.PendingBindings(@varname(x), (AbstractPPL.Property{:a}() => 1,))
     result = DynamicPPL.VarNamedTuples._setindex_optic!!(
         pending,
         2,

@@ -1062,8 +1062,8 @@ function _check_model_binding(
     vn;
     check_bounds=true,
 ) where {T,N,D<:AbstractArray{T,N}}
-# Whole replacements must not read discarded entries; partial replacements may need
-# surviving tuple entries.
+    # Whole replacements must not read discarded entries; partial replacements may need
+    # surviving tuple entries.
     !check_bounds &&
         eltype(updates) <: ModelValue &&
         _has_complete_model_data(updates) &&
@@ -2221,6 +2221,8 @@ end
                     binding isa Union{ModelValue,VarNamedTuple,VarNamedTuples.PartialArray}
                     storage = if stored isa ModelValue
                         stored.value
+                    elseif prefix !== nothing
+                        _shape_storage(stored)
                     else
                         first(_base_argument_storage(storage_model, vn))
                     end
@@ -2243,14 +2245,20 @@ end
                         prepare_model_argument(previous, argument)
                     end
                     if argument isa Union{Nothing,Missing}
-                        _has_complete_model_data(binding) || throw(
-                            ArgumentError(
-                                "Cannot make a partial binding of argument `$vn` with whole `$argument` storage; supply a concrete argument (e.g. `$(nameof(model))(zeros(n))`) or a whole binding instead.",
-                            ),
-                        )
-                        binding = ModelValue{typeof(_model_role(binding, vn))}(
-                            _model_data(binding)
-                        )
+                        if prefix !== nothing &&
+                            binding isa VarNamedTuples.PartialArray &&
+                            _inherits_shape(binding.mask)
+                            argument = _shape_storage(binding)
+                        else
+                            _has_complete_model_data(binding) || throw(
+                                ArgumentError(
+                                    "Cannot make a partial binding of argument `$vn` with whole `$argument` storage; supply a concrete argument (e.g. `$(nameof(model))(zeros(n))`) or a whole binding instead.",
+                                ),
+                            )
+                            binding = ModelValue{typeof(_model_role(binding, vn))}(
+                                _model_data(binding)
+                            )
+                        end
                     else
                         binding = _prepare_bindings(binding, argument, maybe_prefix(vn, prefix))
                     end
