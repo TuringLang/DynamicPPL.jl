@@ -4239,6 +4239,15 @@ function _prepare_child_local(node, storage, vn, model, templates, prefix)
     end
     for t in templates
         t.name == vn || continue
+        if storage isa AbstractArray &&
+            t.storage isa AbstractArray &&
+            !_same_schema_storage(storage, t.storage)
+            throw(
+                ArgumentError(
+                    "Binding template at `$vn` conflicts with existing storage; clear the binding first.",
+                ),
+            )
+        end
         node = _prepare_bindings(node, t.storage, maybe_prefix(vn, prefix))
         storage isa NoTemplate && (storage = t.storage)
     end

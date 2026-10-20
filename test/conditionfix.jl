@@ -9508,6 +9508,18 @@ end
         [1.0, 1.0, 2.0]
 end
 
+@model template_child() = (y = zeros(2); y[1] ~ Normal(); y[2] ~ Normal(); y)
+@model template_parent(child) = a ~ to_submodel(child)
+@testset "ancestor template checks child storage" begin
+    child = condition(template_child(), @of(y = of(Array, 2)), @varname(y[1]) => 1.0)
+    @test_throws r"Binding template at `y` conflicts with existing storage" condition(
+        template_parent(child), @of(a = @of(y = of(Array, 3))), @varname(a.y[2]) => 2.0
+    )()
+    @test_throws r"Binding template at `y` conflicts with existing storage" condition(
+        template_parent(child), @of(a = @of(y = of(Array, Int, 2))), @varname(a.y[2]) => 2
+    )()
+end
+
 @testset "deferred scalar rejects indexed writes" begin
     @model scalar_child() = b ~ product_distribution((x=Normal(), y=Normal()))
     @model scalar_parent() = a ~ to_submodel(scalar_child())
