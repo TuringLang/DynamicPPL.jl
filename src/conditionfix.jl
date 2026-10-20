@@ -3919,6 +3919,23 @@ function VarNamedTuples._setindex_optic!!(
 )
     return _merge_model_node(p, PendingBindings(p.name, (optic => value,)))
 end
+function VarNamedTuples._setindex_optic!!(
+    p::PendingBindings,
+    value,
+    optic::AbstractPPL.Iden,
+    template,
+    permissions::VarNamedTuples.SetPermissions,
+)
+    return invoke(
+        VarNamedTuples._setindex_optic!!,
+        Tuple{PendingBindings,Any,AbstractPPL.AbstractOptic,Any,Any},
+        p,
+        value,
+        optic,
+        template,
+        permissions,
+    )
+end
 function _remove_model_binding(
     ::Type{R}, p::PendingBindings, optic::Union{AbstractPPL.Index,AbstractPPL.Property}
 ) where {R}

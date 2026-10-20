@@ -8635,6 +8635,22 @@ end
 end;
 x)
 @model pending_local() = (x = zeros(2); x[1] ~ Normal(); x)
+@testset "pending identity setter merges entries" begin
+    pending = DynamicPPL.PendingBindings(
+        @varname(x),
+        (AbstractPPL.Property{:a}() => 1,),
+    )
+    result = DynamicPPL.VarNamedTuples._setindex_optic!!(
+        pending,
+        2,
+        AbstractPPL.Iden(),
+        DynamicPPL.VarNamedTuples.NoTemplate(),
+        DynamicPPL.VarNamedTuples.AllowAll(),
+    )
+    @test result isa DynamicPPL.PendingBindings
+    @test result.entries[AbstractPPL.Iden()] == 2
+    @test !haskey(result.entries, AbstractPPL.Property{:a}())
+end
 @testset "pending leaf protocol" begin
     for (bind, remove, listed) in
         ((condition, decondition, conditioned), (fix, unfix, fixed))
