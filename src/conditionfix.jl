@@ -1568,7 +1568,7 @@ function _check_argument_key_storage(value::Array{T}, vn) where {T<:Number}
     return invoke(_check_argument_key_storage, Tuple{Any,Any}, value, vn)
 end
 function _check_argument_key_storage(value, vn)
-    vn === nothing && return nothing
+    (vn === nothing || isbits(value)) && return nothing
     _has_latent_argument(value) || return nothing
     retained, latent = Base.IdSet{Any}(), Base.IdSet{Any}()
     _check_argument_leaves(value, vn, Base.IdSet{Any}(), true, retained)
