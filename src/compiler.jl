@@ -431,10 +431,8 @@ function assign_or_set!!(lhs::Expr, rhs, vn)
     left_top_sym = get_top_level_symbol(lhs)
     return drop_escape(
         :(
-            $left_top_sym = $(Accessors.set)(
-                $left_top_sym,
-                $(AbstractPPL.with_mutation)($(AbstractPPL.getoptic)($vn)),
-                $rhs,
+            $left_top_sym = $(DynamicPPL.set_tilde_value!!)(
+                __varinfo__, $left_top_sym, $rhs, $vn
             )
         ),
     )
@@ -466,7 +464,7 @@ function generate_tilde(left, right)
         # tilde_observe!! for more details.
         if $(DynamicPPL.isfixed(left, vn)) && !($dist isa $(DynamicPPL.Submodel))
             # $left may not be a simple varname, it might be x.a or x[1], in which case we
-            # need to use Accessors.set to safely set it.
+            # need to use the tilde setter to safely set it.
             $(assign_or_set!!(
                 left,
                 :($(DynamicPPL.getfixed_nested)(
@@ -561,10 +559,8 @@ function generate_tilde_assume(left, right, vn)
     expr = if left isa Expr # as opposed to Symbol
         left_top_sym = get_top_level_symbol(left)
         :(
-            $left_top_sym = $(Accessors.set)(
-                $left_top_sym,
-                $(AbstractPPL.with_mutation)($(AbstractPPL.getoptic)($vn)),
-                $value,
+            $left_top_sym = $(DynamicPPL.set_tilde_value!!)(
+                __varinfo__, $left_top_sym, $value, $vn
             )
         )
     else

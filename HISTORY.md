@@ -1,5 +1,7 @@
 # 0.43.0 (unreleased)
 
+Thread-safe evaluation now throws an `ArgumentError` when a tilde assignment replaces a mutable container or changes an immutable container's type; allocate mutable storage with `::Type{T}=Float64` and `Vector{T}(undef, n)`.
+
 `VarNamedTuple` membership resolves `begin` and `end` against the stored array. See [#1490](https://github.com/TuringLang/DynamicPPL.jl/pull/1490).
 
 `ComponentVector` properties, including nested fields and slices, use consistent indices for membership, retrieval, and updates. See [#1491](https://github.com/TuringLang/DynamicPPL.jl/pull/1491).

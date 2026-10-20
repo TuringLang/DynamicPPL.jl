@@ -44,6 +44,70 @@ function _threadsafe_varinfo(vi::AbstractVarInfo, ::Type{L}) where {L<:Accumulat
 end
 ThreadSafeVarInfo(vi::ThreadSafeVarInfo) = vi
 
+function set_tilde_value!!(::AbstractVarInfo, object, value, vn::VarName)
+    return Accessors.set(object, AbstractPPL.with_mutation(AbstractPPL.getoptic(vn)), value)
+end
+
+@noinline function _tilde_container_error(old, new, vn)
+    replacement = if typeof(old) === typeof(new)
+        "$(typeof(old)) was replaced by a copy of the same type. "
+    else
+        "$(typeof(old)) -> $(typeof(new)). "
+    end
+    throw(
+        ArgumentError(
+            "Thread-safe evaluation cannot replace the container of tilde variable " *
+            "$(vn): " *
+            replacement *
+            "Mutable containers must retain their identity; immutable containers must " *
+            "retain their type. Allocate with the parameter element type (for example, " *
+            "`::Type{T}=Float64` with `Vector{T}(undef, n)` for scalar tildes, " *
+            "or `Matrix{T}` with `x[:, i] ~ MvNormal(...)` for vector-valued tildes).",
+        ),
+    )
+end
+
+@inline function _capture_tilde_path(old, optic)
+    tail = AbstractPPL.otail(optic)
+    tail isa AbstractPPL.Iden && return ((old, false),)
+    sliced = _tilde_reads_slice(optic, old)
+    # The final slice copy is written back into its checked parent; reading it here
+    # would only allocate another copy.
+    if AbstractPPL.otail(tail) isa AbstractPPL.Iden && sliced
+        return ((old, sliced),)
+    end
+    child = AbstractPPL.ohead(optic)(old)
+    return ((old, sliced), _capture_tilde_path(child, tail)...)
+end
+
+function _tilde_reads_slice(optic::AbstractPPL.Index, object::AbstractArray)
+    indices = AbstractPPL.concretize(AbstractPPL.ohead(optic), object)
+    return any(
+        i -> i isa Union{AbstractArray,Colon}, (indices.ix..., values(indices.kw)...)
+    )
+end
+_tilde_reads_slice(optic, object) = false
+
+@inline function _check_tilde_path(old_path, new, optic, vn, sliced=false)
+    old, child_sliced = first(old_path)
+    valid = ismutable(old) && !sliced ? old === new : typeof(old) === typeof(new)
+    valid || _tilde_container_error(old, new, vn)
+    tail = AbstractPPL.otail(optic)
+    tail isa AbstractPPL.Iden && return nothing
+    AbstractPPL.otail(tail) isa AbstractPPL.Iden && child_sliced && return nothing
+    return _check_tilde_path(
+        Base.tail(old_path), AbstractPPL.ohead(optic)(new), tail, vn, child_sliced
+    )
+end
+
+function set_tilde_value!!(::ThreadSafeVarInfo, object, value, vn::VarName)
+    optic = AbstractPPL.getoptic(vn)
+    old_path = _capture_tilde_path(object, optic)
+    new = Accessors.set(object, AbstractPPL.with_mutation(optic), value)
+    _check_tilde_path(old_path, new, optic, vn)
+    return new
+end
+
 function _get_task_accs_cache(vi::ThreadSafeVarInfo{V,L}) where {V,L}
     cache = @atomic :acquire vi.task_accs_cache
     # A serialized cache may have been sized for a process with fewer threads.
