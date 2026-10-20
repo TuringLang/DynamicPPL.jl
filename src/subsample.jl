@@ -711,6 +711,10 @@ function SubsamplingShape(data::A) where {T,N,A<:AbstractArray{T,N}}
     return SubsamplingShape{T,N,A,A}(data, data)
 end
 
+# Subsampling validates observation dimensions separately; batch geometry need not
+# match population storage in the body, and probes must not inspect full data.
+_skip_bound_shape_check(::AbstractSubsamplingData) = true
+
 Base.IndexStyle(::Type{<:SubsamplingShape{T,N,A,R}}) where {T,N,A,R} = IndexStyle(A)
 function _throw_full_data_access()
     throw(

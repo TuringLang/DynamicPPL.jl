@@ -443,7 +443,9 @@ end
         return nothing
     end
     for (bind, remove) in ((condition, decondition), (fix, unfix))
-        parent = condition(branch(true), @varname(a.x) => 2.0)
+        parent = condition(
+            decondition(branch(true), rec, @varname(a.x)), @varname(a.x) => 2.0
+        )
         @test_logs (:warn, r"Recursive removal.*a.typo.*unused") check_model(
             Xoshiro(1), remove(parent, rec, @varname(a.typo))
         )
@@ -462,6 +464,103 @@ end
         Xoshiro(1), outer(unused)
     )
     @test_logs check_model(Xoshiro(1), outer(decondition(branch(true), rec, @varname(a.x))))
+end
+
+@testset "unread partial bindings" begin
+    @model function unread_local(n, run=true, multivariate=false)
+        z ~ Normal()
+        y = zeros(n)
+        if run
+            if multivariate
+                y ~ MvNormal(zeros(n), I)
+            else
+                for i in eachindex(y)
+                    y[i] ~ Normal()
+                end
+            end
+        end
+        return y
+    end
+    @model unread_parent(child) = a ~ to_submodel(child)
+    @model function unread_fields()
+        q = (a=zeros(2),)
+        for i in eachindex(q.a)
+            q.a[i] ~ Normal()
+        end
+        return q
+    end
+    @model function shared_last()
+        y = zeros(3)
+        y[3] ~ Normal()
+        return y
+    end
+    @model function shared_reads()
+        a ~ to_submodel(unread_local(2), false)
+        return b ~ to_submodel(shared_last(), false)
+    end
+    @model function first_sibling()
+        z ~ Normal()
+        y = zeros(3)
+        for i in 1:2
+            y[i] ~ Normal()
+        end
+    end
+    @model function sibling_parent(child, other)
+        a ~ to_submodel(child, false)
+        return b ~ to_submodel(other, false)
+    end
+    for bind in (condition, fix)
+        for run in (false, true)
+            model = bind(
+                unread_local(2, run), @varname(y[3]) => 10.0, @of(y = of(Array, 3))
+            )
+            @test_logs (:warn, r"Partial binding `y\[3\]`.*not read") @test check_model(
+                Xoshiro(1), model
+            )
+        end
+        model = bind(
+            unread_local(2), @varname(y[2:3]) => [1.0, 10.0], @of(y = of(Array, 3))
+        )
+        @test_logs (:warn, r"Partial binding `y\[3\]`.*not read") @test check_model(
+            Xoshiro(1), model
+        )
+        @test_logs (:warn, r"Partial binding `p.y\[3\]`.*not read") @test check_model(
+            Xoshiro(1), prefix(model, @varname(p))
+        )
+        nested = bind(
+            unread_parent(unread_local(2)),
+            @varname(a.y[3]) => 10.0,
+            @of(a = @of(y = of(Array, 3)))
+        )
+        @test_logs (:warn, r"Partial binding `a.y\[3\]`.*not read") @test check_model(
+            Xoshiro(1), nested
+        )
+        fields = bind(
+            unread_fields(), @varname(q.a[3]) => 10.0, @of(q = @of(a = of(Array, 3)))
+        )
+        @test_logs (:warn, r"Partial binding `q.a\[3\]`.*not read") @test check_model(
+            Xoshiro(1), fields
+        )
+        for multivariate in (false, true)
+            used = bind(
+                unread_local(2, true, multivariate),
+                @varname(y[1:2]) => ones(2),
+                @of(y = of(Array, 2))
+            )
+            @test_logs @test check_model(Xoshiro(1), used)
+        end
+        child = bind(first_sibling(), @varname(y[3]) => 10.0, @of(y = of(Array, 3)))
+        for other in (
+            shared_last(),
+            bind(shared_last(), @varname(y[3]) => 12.0, @of(y = of(Array, 3))),
+        )
+            @test_logs (:warn, r"Partial binding `y\[3\]`.*not read") @test check_model(
+                Xoshiro(1), sibling_parent(child, other)
+            )
+        end
+        shared = bind(shared_reads(), @varname(y[3]) => 10.0, @of(y = of(Array, 3)))
+        @test_logs @test check_model(Xoshiro(1), shared)
+    end
 end
 
 end # module

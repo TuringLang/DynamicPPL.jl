@@ -20,6 +20,9 @@ struct BindingCheckContext{C<:AbstractContext} <: DynamicPPL.AbstractParentConte
     removals::Dict{Base.RefValue{Nothing},String}
     used_removals::Set{Base.RefValue{Nothing}}
     template_models::Vector{Tuple{Model,Union{VarName,Nothing}}}
+    binding_models::Vector{Tuple{Model,VarNamedTuple,Vector{VarName}}}
+    binding_reads::Tuple
+    binding_values::VarNamedTuple
 end
 function BindingCheckContext(context, models, namespaces, lock)
     return BindingCheckContext(
@@ -31,6 +34,9 @@ function BindingCheckContext(context, models, namespaces, lock)
         Dict{Base.RefValue{Nothing},String}(),
         Set{Base.RefValue{Nothing}}(),
         Tuple{Model,Union{VarName,Nothing}}[],
+        Tuple{Model,VarNamedTuple,Vector{VarName}}[],
+        (),
+        DynamicPPL._submodel_values(first(models), nothing),
     )
 end
 DynamicPPL.childcontext(ctx::BindingCheckContext) = ctx.context
@@ -44,6 +50,9 @@ function DynamicPPL.setchildcontext(ctx::BindingCheckContext, child::AbstractCon
         ctx.removals,
         ctx.used_removals,
         ctx.template_models,
+        ctx.binding_models,
+        ctx.binding_reads,
+        ctx.binding_values,
     )
 end
 
@@ -89,6 +98,9 @@ function DynamicPPL.tilde_assume!!(
             ctx.removals,
             ctx.used_removals,
             ctx.template_models,
+            ctx.binding_models,
+            ctx.binding_reads,
+            ctx.binding_values,
         )
     end
     return invoke(
@@ -149,6 +161,98 @@ function _warn_unused_binding_names(model, ctx::BindingCheckContext)
         if name ∉ names
             @warn "Binding `$name` has no LHS top symbol in this model or any reached unprefixed submodel. It may be unused; an unprefixed submodel in an untaken branch could still use it."
         end
+    end
+    return nothing
+end
+
+function _binding_read_context(ctx::BindingCheckContext, values, reads)
+    return BindingCheckContext(
+        ctx.context,
+        ctx.models,
+        ctx.namespaces,
+        ctx.lock,
+        ctx.track_names,
+        ctx.removals,
+        ctx.used_removals,
+        ctx.template_models,
+        ctx.binding_models,
+        reads,
+        values,
+    )
+end
+function DynamicPPL._binding_read_context(ctx::BindingCheckContext, values)
+    return _binding_read_context(ctx, values, ctx.binding_reads)
+end
+function DynamicPPL._record_binding_read(ctx::BindingCheckContext, model, vn, template)
+    if vn === nothing
+        reads = VarName[]
+        lock(ctx.lock) do
+            push!(ctx.binding_models, (model, ctx.binding_values, reads))
+        end
+        return _binding_read_context(ctx, ctx.binding_values, (ctx.binding_reads..., reads))
+    end
+    name = DynamicPPL._concretize_prefix(vn, template; canonical=true)
+    name = DynamicPPL.maybe_prefix(name, DynamicPPL._model_prefix(model))
+    lock(ctx.lock) do
+        for reads in ctx.binding_reads
+            push!(reads, name)
+        end
+    end
+    return ctx
+end
+_unread_binding_names!(names, value, prefix) = names
+function _unread_binding_names!(names, value::DynamicPPL.ModelValue, prefix)
+    push!(names, prefix)
+    return names
+end
+function _unread_binding_names!(names, tree::DynamicPPL.ModelValueTree, prefix)
+    return _unread_binding_names!(names, tree.values, prefix)
+end
+function _unread_binding_names!(
+    names,
+    values::Union{
+        VarNamedTuple,DynamicPPL.VarNamedTuples.PartialArray,DynamicPPL.PendingBindings
+    },
+    prefix,
+)
+    return DynamicPPL._fold_model_indices(names, values) do names, child, optic, _
+        name = if prefix === nothing
+            DynamicPPL.AbstractPPL.optic_to_varname(optic)
+        else
+            DynamicPPL.AbstractPPL.append_optic(prefix, optic)
+        end
+        _unread_binding_names!(names, child, name)
+    end
+end
+function _warn_unread_bindings(ctx::BindingCheckContext)
+    unread = Set{VarName}()
+    shared_names = Set(
+        DynamicPPL.AbstractPPL.getsym(vn) for model in ctx.models for
+        (vn, _) in DynamicPPL._lhs_addresses(DynamicPPL._binding_metadata(model))
+    )
+    for (model, values, reads) in ctx.binding_models
+        lhs_names = Set(
+            DynamicPPL.AbstractPPL.getsym(vn) for
+            (vn, _) in DynamicPPL._lhs_addresses(DynamicPPL._binding_metadata(model))
+        )
+        DynamicPPL._model_prefix(model) === nothing && union!(lhs_names, shared_names)
+        names = Tuple(
+            name for name in keys(values.data) if
+            name in lhs_names && !(values.data[name] isa DynamicPPL.ModelValue)
+        )
+        values = VarNamedTuple(NamedTuple{names}(values.data))
+        prefix = DynamicPPL._model_prefix(model)
+        local_reads = Tuple(
+            prefix === nothing ? vn : DynamicPPL.AbstractPPL.unprefix(vn, prefix) for
+            vn in reads if prefix === nothing || subsumes(prefix, vn)
+        )
+        for role in (DynamicPPL.Condition, DynamicPPL.Fix)
+            values = DynamicPPL._remove_model_values(role, values, local_reads)
+        end
+        _unread_binding_names!(unread, values, prefix)
+    end
+    for vn in sort!(collect(unread); by=string)
+        @warn "Partial binding `$vn` is not read by any executed tilde."
     end
     return nothing
 end
@@ -343,6 +447,7 @@ function check_model(
     _warn_unused_binding_names(model, binding_context)
     _warn_unused_removals(binding_context)
     _warn_unused_templates(binding_context)
+    _warn_unread_bindings(binding_context)
 
     params = get_raw_values(vi)
     # This adds one evaluation per `check_model` call, not per ordinary model evaluation.

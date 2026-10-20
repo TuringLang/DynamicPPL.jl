@@ -1472,8 +1472,12 @@ end
             @test_throws r"ArgumentError: .*x\[1\].*static size and shape" model(Xoshiro(1))
         end
         observed = condition(local_lhs_variables(); x=[2.0])
-        @test observed(Xoshiro(1)) == [2.0, rand(Xoshiro(1), Normal())]
-        @test keys(rand(Xoshiro(1), observed)) == [@varname(x[2])]
+        @test_throws r"Observed LHS variable `x\[1\].*static size and shape" observed(
+            Xoshiro(1)
+        )
+        @test_throws r"Observed LHS variable `x\[1\].*static size and shape" rand(
+            Xoshiro(1), observed
+        )
     end
 
     @testset "assigned fixed local shapes" begin
@@ -6787,6 +6791,11 @@ function bc_expected(original)
             end
         end
     end
+    if !c.argument
+        for layer in r.layers, (root, value) in layer.owners
+            root == bp && !bc_same_shape(template, value) && return (:evaluation, nothing)
+        end
+    end
     ps = Tuple[first.(bc_leaves(bp, template))...]
     c.depth > 0 && pushfirst!(ps, (:m,))
     c.depth > 1 && insert!(ps, 2, (:a, :q))
@@ -7888,15 +7897,11 @@ end
             v = bind(empty, @varname(x[end]) => 3.0)
             @test (bind === condition ? conditioned(v) : fixed(v))[@varname(x[2])] == 3.0
             @test_throws ArgumentError bind(empty, @varname(x[3]) => 3.0)
-            if bind === fix
-                @test_throws r"ArgumentError: .*x\[1\].*static size and shape" bind(
-                    empty; x=ones(3)
-                )(
-                    Xoshiro(1)
-                )
-            else
-                @test (bind(empty; x=ones(3)))(Xoshiro(1)) == ones(2)
-            end
+            @test_throws r"ArgumentError: .*x\[1\].*static size and shape" bind(
+                empty; x=ones(3)
+            )(
+                Xoshiro(1)
+            )
             @test_throws ArgumentError DynamicPPL._unbind_shape(m, @varname(x))
             @test isempty(
                 DynamicPPL._binding_shape_store(
@@ -9370,6 +9375,124 @@ end
             logpdf(Normal(), 0.3) + (bind === condition ? logpdf(Normal(), 0.6) : 0.0)
         @test gradient ≈ [bind === condition ? -1.5 : -0.3]
     end
+end
+
+@testset "assigned observed local shapes" begin
+    @model function observed_local_shape(n, multivariate, run=true)
+        x = zeros(n)
+        if run
+            if multivariate
+                x ~ MvNormal(zeros(n), I)
+            else
+                for i in eachindex(x)
+                    x[i] ~ Normal()
+                end
+            end
+        end
+        return x
+    end
+    @model observed_local_parent(child) = a ~ to_submodel(child)
+    for multivariate in (false, true)
+        for n in (0, 1, 3)
+            model = condition(observed_local_shape(2, multivariate); x=ones(n))
+            @test_throws r"ArgumentError: Observed LHS variable `x.*static size and shape" model(
+                Xoshiro(1)
+            )
+            nested = condition(
+                observed_local_parent(observed_local_shape(2, multivariate)),
+                @varname(a.x) => ones(n),
+            )
+            @test_throws r"ArgumentError: Observed LHS variable `.*x.*static size and shape" nested(
+                Xoshiro(1)
+            )
+        end
+        @test condition(observed_local_shape(2, multivariate); x=ones(2))(Xoshiro(1)) ==
+            ones(2)
+        @test condition(observed_local_shape(2, multivariate, false); x=ones(3))(
+            Xoshiro(1)
+        ) == zeros(2)
+    end
+    for multivariate in (false, true)
+        for (n, bound) in ((2, 3), (3, 2))
+            whole = condition(observed_local_shape(n, multivariate); x=ones(bound))
+            edited = condition(whole, @varname(x[1]) => 2.0)
+            @test_throws r"Observed.*static size and shape" edited(Xoshiro(1))
+            @test_throws r"Observed.*static size and shape" observed_local_parent(edited)(
+                Xoshiro(1)
+            )
+        end
+    end
+    whole = condition(observed_local_shape(2, false); x=ones(3))
+    @test length(decondition(whole, @varname(x[3]))(Xoshiro(1))) == 2
+    @test length(
+        condition(decondition(whole, @varname(x[3])), @varname(x[3]) => 2.0)(Xoshiro(1))
+    ) == 2
+    @test length(
+        condition(
+            observed_local_shape(2, false),
+            @varname(x[1:3]) => ones(3),
+            @of(x = of(Array, 3))
+        )(
+            Xoshiro(1)
+        ),
+    ) == 2
+    @model unassigned_observed_local() = x ~ MvNormal(zeros(2), I)
+    @test condition(unassigned_observed_local(); x=ones(2))(Xoshiro(1)) == ones(2)
+    @model function observed_local_fields()
+        p = (a=zeros(2), b=zeros(3))
+        for i in eachindex(p.a)
+            p.a[i] ~ Normal()
+        end
+        p.b ~ MvNormal(zeros(3), I)
+        return p
+    end
+    @test_throws r"Observed LHS variable `p.a\[1\].*static size and shape" condition(
+        observed_local_fields(); p=(a=empty(ones(2)),)
+    )(
+        Xoshiro(1)
+    )
+    for edited in (
+        condition(
+            condition(observed_local_fields(); p=(a=ones(3), b=ones(3))),
+            @varname(p.a[1]) => 2.0,
+        ),
+        condition(
+            condition(observed_local_fields(); p=(a=ones(3), b=ones(3))),
+            @varname(p.b) => fill(2.0, 3),
+        ),
+    )
+        @test_throws r"Observed.*static size and shape" edited(Xoshiro(1))
+    end
+    model = condition(observed_local_fields(), @varname(p.a) => ones(2))
+    @test model(Xoshiro(1)).a == ones(2)
+    @test length(model(Xoshiro(1)).b) == 3
+    @model function observed_local_slots(prototype::T) where {T}
+        x = Vector{Vector{T}}(undef, 1)
+        x[1] ~ MvNormal(zeros(2), I)
+        return x
+    end
+    @test condition(observed_local_slots(0.0f0); x=[ones(Float32, 2)])(Xoshiro(1)) ==
+        [ones(Float32, 2)]
+    @model function typed_observed_local(prototype::T) where {T}
+        x = zeros(T, 2)
+        x ~ MvNormal(zeros(2), I)
+        return x
+    end
+    for T in (Float32, BigFloat)
+        model = condition(typed_observed_local(zero(T)); x=ones(T, 2))
+        @test eltype(@inferred model(Xoshiro(1))) === T
+    end
+    observed_sum(t) = sum(condition(typed_observed_local(t); x=fill(t, 2))(Xoshiro(1)))
+    @test ForwardDiff.derivative(observed_sum, 1.0) == 2.0
+    @model function resized_observed_argument(x)
+        x = vcat(x, 2.0)
+        for i in eachindex(x)
+            x[i] ~ Normal()
+        end
+        return x
+    end
+    @test condition(resized_observed_argument(zeros(2)); x=ones(2))(Xoshiro(1)) ==
+        [1.0, 1.0, 2.0]
 end
 
 end

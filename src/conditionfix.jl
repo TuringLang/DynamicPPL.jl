@@ -226,11 +226,13 @@ end
 
 function Base.:(==)(a::ModelValueTree, b::ModelValueTree)
     return _inherits_shape(a) == _inherits_shape(b) &&
+           a.observed == b.observed &&
            a.template == b.template &&
            a.values == b.values
 end
 function Base.isequal(a::ModelValueTree, b::ModelValueTree)
     return _inherits_shape(a) == _inherits_shape(b) &&
+           a.observed == b.observed &&
            isequal(a.template, b.template) &&
            isequal(a.values, b.values)
 end
@@ -375,7 +377,7 @@ end
     end
     value isa ModelValue{Fix} &&
         !(value.value isa NamedTuple && optic isa AbstractPPL.Property) &&
-        _fixed_shape_error(vn, "coverage with a static size and shape.")
+        _bound_shape_error(vn, Fix, "coverage with a static size and shape.")
     return nothing
 end
 @inline function _model_role_at(value::ModelValue, ::AbstractPPL.Iden, vn, leaf=_model_role)
@@ -427,7 +429,7 @@ function _get_model_data(model, vn)
 end
 function _get_model_data(model, vn, root, local_value)
     binding = _get_model_binding(model, root)
-    _check_fixed_shape(
+    _check_bound_shape(
         binding,
         local_value,
         AbstractPPL.getoptic(vn),
@@ -439,8 +441,13 @@ function _get_model_data(model, vn, root, local_value)
 end
 
 # Storage for a partial binding is not itself a fixed shape owner.
-function _check_fixed_shape(binding, local_value, optic, vn, owners=(), address=vn)
-    if optic isa AbstractPPL.Iden || any(owner -> subsumes(owner, address), owners)
+function _check_bound_shape(
+    binding, local_value, optic, vn, owners=(), address=vn, role=Fix
+)
+    if (
+        role === Fix &&
+        (optic isa AbstractPPL.Iden || any(owner -> subsumes(owner, address), owners))
+    ) || (role === Condition && _whole_observation(binding))
         template = if binding isa VarNamedTuples.PartialArray
             binding.data
         elseif binding isa ModelValueTree
@@ -448,64 +455,87 @@ function _check_fixed_shape(binding, local_value, optic, vn, owners=(), address=
         else
             nothing
         end
-        template === nothing || _check_fixed_shape(
-            ModelValue{Fix}(template), local_value, AbstractPPL.Iden(), vn
+        template === nothing || _check_bound_shape(
+            ModelValue{role}(template),
+            local_value,
+            AbstractPPL.Iden(),
+            vn,
+            (),
+            vn,
+            role,
         )
     end
-    return _check_fixed_shape_child(binding, local_value, optic, vn, owners, address)
+    return _check_bound_shape_child(binding, local_value, optic, vn, owners, address, role)
 end
-function _check_fixed_shape(
-    binding::ModelValue{Fix}, local_value, optic, vn, owners=(), address=vn
-)
+function _check_bound_shape(
+    binding::ModelValue{R}, local_value, optic, vn, owners=(), address=vn, role=Fix
+) where {R}
+    R === role || return nothing
     value = binding.value
+    _skip_bound_shape_check(value) && return _check_bound_shape_child(
+        binding, local_value, optic, vn, owners, address, role
+    )
     if value isa Tuple
-        local_value isa Tuple && length(value) == length(local_value) || _fixed_shape_error(
-            vn, "a static size and shape; the model body supplied a different length."
+        local_value isa Tuple && length(value) == length(local_value) || _bound_shape_error(
+            vn,
+            role,
+            "a static size and shape; the model body supplied a different length.",
         )
     elseif value isa Union{NamedTuple,Base.Pairs}
         local_value isa Union{NamedTuple,Base.Pairs} &&
-            all(name -> haskey(local_value, name), keys(value)) || _fixed_shape_error(
-            vn, "a static size and shape; the model body supplied different fields."
+            all(name -> haskey(local_value, name), keys(value)) || _bound_shape_error(
+            vn,
+            role,
+            "a static size and shape; the model body supplied different fields.",
         )
     elseif value isa AbstractArray || local_value isa AbstractArray
         value isa AbstractArray &&
             local_value isa AbstractArray &&
-            axes(value) == axes(local_value) || _fixed_shape_error(
-            vn, "a static size and shape; the model body supplied a different shape."
+            axes(value) == axes(local_value) || _bound_shape_error(
+            vn,
+            role,
+            "a static size and shape; the model body supplied a different shape.",
         )
     end
-    return _check_fixed_shape_child(binding, local_value, optic, vn, owners, address)
+    return _check_bound_shape_child(binding, local_value, optic, vn, owners, address, role)
 end
+_skip_bound_shape_check(::Any) = false
+
 # Keep error construction out of the hot path so the shape checks can inline.
-@noinline function _fixed_shape_error(vn, message)
-    return throw(ArgumentError("Fixed LHS variable `$vn` requires $message"))
+@noinline function _bound_shape_error(vn, role, message)
+    label = role === Fix ? "Fixed" : "Observed"
+    return throw(ArgumentError("$label LHS variable `$vn` requires $message"))
 end
-function _check_fixed_shape_child(
-    binding, local_value, ::AbstractPPL.Iden, vn, owners, address
+function _check_bound_shape_child(
+    binding, local_value, ::AbstractPPL.Iden, vn, owners, address, role
 )
     return nothing
 end
-function _check_fixed_shape_child(
-    binding, local_value, optic::AbstractPPL.Property{S}, vn, owners, address
+function _check_bound_shape_child(
+    binding, local_value, optic::AbstractPPL.Property{S}, vn, owners, address, role
 ) where {S}
     child = _model_argument_binding(binding, AbstractPPL.Property{S}())
+    child === nothing && role === Condition && return nothing
     child !== nothing && hasproperty(local_value, S) ||
-        _fixed_shape_error(vn, "coverage with a static size and shape.")
-    return _check_fixed_shape(
+        _bound_shape_error(vn, role, "coverage with a static size and shape.")
+    return _check_bound_shape(
         child,
         getproperty(local_value, S),
         optic.child,
         vn,
         owners,
         AbstractPPL.append_optic(address, AbstractPPL.Property{S}()),
+        role,
     )
 end
-function _check_fixed_shape_child(
-    binding, local_value, optic::AbstractPPL.Index, vn, owners, address
+function _check_bound_shape_child(
+    binding, local_value, optic::AbstractPPL.Index, vn, owners, address, role
 )
     optic = AbstractPPL.concretize_top_level(optic, local_value)
     child = _model_argument_binding(binding, AbstractPPL.Index(optic.ix, optic.kw))
-    child === nothing && _fixed_shape_error(vn, "coverage with a static size and shape.")
+    child === nothing && role === Condition && return nothing
+    child === nothing &&
+        _bound_shape_error(vn, role, "coverage with a static size and shape.")
     selected = if VarNamedTuples._is_multiindex(local_value, optic.ix...; optic.kw...)
         Base.maybeview(local_value, optic.ix...; optic.kw...)
     else
@@ -518,13 +548,14 @@ function _check_fixed_shape_child(
         end
         getindex(local_value, optic.ix...; optic.kw...)
     end
-    return _check_fixed_shape(
+    return _check_bound_shape(
         child,
         selected,
         optic.child,
         vn,
         owners,
         AbstractPPL.append_optic(address, AbstractPPL.Index(optic.ix, optic.kw)),
+        role,
     )
 end
 
@@ -536,6 +567,13 @@ end
 struct ModelBindingArray{T,N,A<:AbstractArray{T,N},V<:AbstractArray} <: AbstractArray{T,N}
     data::A
     template::V
+    observed::Bool
+end
+ModelBindingArray(data, template) = ModelBindingArray(data, template, false)
+_whole_observation(value) = false
+_whole_observation(value::ModelValueTree) = value.observed
+function _whole_observation(value::VarNamedTuples.PartialArray)
+    return value.mask isa ModelBindingArray && value.mask.observed
 end
 _inherits_shape(::ModelBindingArray) = true
 Base.size(value::ModelBindingArray) = size(value.data)
@@ -549,7 +587,7 @@ function Base.setindex!(value::ModelBindingArray, child, indices...)
     return value
 end
 function Base.copy(value::ModelBindingArray)
-    return ModelBindingArray(copy(value.data), value.template)
+    return ModelBindingArray(copy(value.data), value.template, value.observed)
 end
 
 function _expand_model_binding(previous::ModelValue{R,<:AbstractArray}) where {R}
@@ -568,7 +606,7 @@ function _expand_model_binding(previous::ModelValue{R,<:AbstractArray}) where {R
         end
     end
     # The mask carries recursive ownership without hiding the data's array type.
-    _inherits_binding(previous) && (mask = ModelBindingArray(mask, value))
+    _inherits_binding(previous) && (mask = ModelBindingArray(mask, value, R === Condition))
     return VarNamedTuples.PartialArray(data, mask)
 end
 function _unsupported_partial_binding(value, address, owner; operation="bind")
@@ -598,6 +636,7 @@ function _expand_model_binding(previous::ModelValue{R,<:NamedTuple}) where {R}
         previous.value,
         _tag_model_values(R, VarNamedTuple(fields)),
         Val(_inherits_binding(previous)),
+        R === Condition,
     )
 end
 function VarNamedTuples._setindex_optic!!(
@@ -675,7 +714,8 @@ function VarNamedTuples.make_leaf(
         template,
     )
     return VarNamedTuples.PartialArray(
-        leaf.data, ModelBindingArray(leaf.mask, template.mask.template)
+        leaf.data,
+        ModelBindingArray(leaf.mask, template.mask.template, template.mask.observed),
     )
 end
 function VarNamedTuples.make_leaf(value, optic::AbstractPPL.Index, template::ModelValue)
@@ -993,7 +1033,7 @@ function _inherit_model_array_owner(previous, updates)
     data, mask = previous.data, previous.mask
     if _inherits_shape(updates.mask)
         mask = mask isa ModelBindingArray ? mask.data : mask
-        mask = ModelBindingArray(mask, updates.mask.template)
+        mask = ModelBindingArray(mask, updates.mask.template, updates.mask.observed)
     end
     return VarNamedTuples.PartialArray(data, mask)
 end
@@ -4152,6 +4192,8 @@ function _prepare_child_local(
 end
 function _local_binding_role(node, vn, template, model)
     node === nothing && return nothing
+    template isa NoTemplate ||
+        _check_bound_shape(node, template, AbstractPPL.getoptic(vn), vn, (), vn, Condition)
     if template isa NamedTuple && node isa VarNamedTuples.PartialArray
         _fold_model_indices(nothing, node) do _, _, optic, _
             _check_namedtuple_index(
@@ -4597,7 +4639,9 @@ end
 function _remove_model_binding(
     ::Type{R}, tree::ModelValueTree, optic::AbstractPPL.Property
 ) where {R}
-    return ModelValueTree(tree, _remove_model_binding(R, tree.values, optic))
+    values = _remove_model_binding(R, tree.values, optic)
+    observed = tree.observed && (R !== Condition || isequal(values, tree.values))
+    return ModelValueTree(tree.template, values, Val(_inherits_shape(tree)), observed)
 end
 function _remove_model_binding(
     ::Type{R}, values::VarNamedTuples.PartialArray, optic::AbstractPPL.Index, owned=false
@@ -4619,6 +4663,11 @@ function _remove_model_binding(
     child = _remove_model_binding(R, selected, optic.child)
     child === selected && return original
     template, values = values, owned ? values : copy(values)
+    if R === Condition && values.mask isa ModelBindingArray && values.mask.observed
+        values = VarNamedTuples.PartialArray(
+            values.data, ModelBindingArray(values.mask.data, values.mask.template)
+        )
+    end
     # Removed elements are unmasked in place, so many removals share one copy.
     if child isa NoModelBinding &&
         !(getindex(values.data, optic.ix...; optic.kw...) isa VarNamedTuples.ArrayLikeBlock)
@@ -6302,4 +6351,16 @@ function _model_values_for_prefix(model)
         _submodel_binding_templates(model, nothing);
         shapes=_local_binding_shape_store(model),
     )
+end
+
+_record_binding_read(context, model, vn, template) = context
+function _record_binding_read(context::AbstractParentContext, model, vn, template)
+    return setchildcontext(
+        context, _record_binding_read(childcontext(context), model, vn, template)
+    )
+end
+
+_binding_read_context(context, values) = context
+function _binding_read_context(context::AbstractParentContext, values)
+    return setchildcontext(context, _binding_read_context(childcontext(context), values))
 end

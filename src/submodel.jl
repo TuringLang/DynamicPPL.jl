@@ -356,6 +356,7 @@ Evaluate `submodel` under `parent_model`.
             maybe_prefix(local_prefix, _model_prefix(parent_model)),
         )
     # Split optional values before evaluation to stay within inference union limits.
+    context = _binding_read_context(context, child_values)
     args = (parent_model, context, submodel, left_vn, template, vi)
     if values isa LocalModelValues{VarNamedTuple{(),Tuple{}}}
         return _evaluate_submodel!!(args..., values, templates, shapes)

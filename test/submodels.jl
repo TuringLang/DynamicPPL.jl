@@ -57,8 +57,8 @@ end
     return p
 end
 
-@model function nested_geometry_child()
-    x = [zeros(2)]
+@model function nested_geometry_child(n)
+    x = [zeros(2) for _ in 1:n]
     x[1][1] ~ Normal()
     return x[1][1]
 end
@@ -306,8 +306,8 @@ end
         for parent in (argument_geometry_parent, child -> held_geometry_parent(Ref(child)))
             for n in (1, 1000)
                 storage = [ones(2) for _ in 1:n]
-                reference = parent(condition(nested_geometry_child(); x=storage))
-                child = condition(nested_geometry_child(); x=[zeros(2) for _ in 1:n])
+                reference = parent(condition(nested_geometry_child(n); x=storage))
+                child = condition(nested_geometry_child(n); x=[zeros(2) for _ in 1:n])
                 inherited = condition(parent(decondition(child)), @varname(a.x) => storage)
                 @test reference(rng) == inherited(rng) == 1.0
                 baseline = @allocated reference(rng)

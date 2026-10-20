@@ -106,18 +106,19 @@ end
 struct ModelValueTree{T,V<:VarNamedTuple,S}
     template::T
     values::V
+    observed::Bool
     function ModelValueTree(
-        template::T, values::V, ::Val{S}=Val(false)
+        template::T, values::V, ::Val{S}=Val(false), observed=false
     ) where {T,V<:VarNamedTuple,S}
         all(name -> hasproperty(template, name), keys(values.data)) ||
             throw(ArgumentError("Field bindings must belong to their template"))
-        return new{T,V,S}(template, values)
+        return new{T,V,S}(template, values, observed)
     end
 end
 
 # Copies and partial edits retain the whole owner's recursive scope.
 function ModelValueTree(tree::ModelValueTree{T,V,S}, values::VarNamedTuple) where {T,V,S}
-    return ModelValueTree(tree.template, values, Val(S))
+    return ModelValueTree(tree.template, values, Val(S), tree.observed)
 end
 
 # ----------------

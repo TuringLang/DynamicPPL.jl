@@ -518,7 +518,11 @@ function generate_tilde(left, right; is_argument=false)
                 __model__, $(VarName{get_top_level_symbol(left)}())
             ),
             $vn,
-            $template,
+            if $(Expr(:isdefined, get_top_level_symbol(left)))
+                $(get_top_level_symbol(left))
+            else
+                $(NoTemplate)()
+            end,
             __model__,
         ))
     end
@@ -547,6 +551,9 @@ function generate_tilde(left, right; is_argument=false)
             $(AbstractPPL.getoptic)($vn),
             $(AbstractPPL.Property{get_top_level_symbol(left)}()),
         )
+        if !($dist isa $(DynamicPPL.Submodel))
+            $(DynamicPPL._record_binding_read)(__context__, __model__, $vn, $template)
+        end
         $role = if $dist isa $(DynamicPPL.Submodel)
             nothing
         else
@@ -796,6 +803,9 @@ function build_output(
     evaluatordef[:body] = MacroTools.@q begin
         $(linenumbernode)
         __context__ = first($(DynamicPPL.extract_prefixes)(__model__.context))
+        __context__ = $(DynamicPPL._record_binding_read)(
+            __context__, __model__, nothing, $(NoTemplate)()
+        )
         $(replace_returns(add_return_to_last_statment(modeldef[:body])))
     end
 
