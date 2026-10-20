@@ -229,15 +229,16 @@ Explicit observations of arguments now act through the argument before the body:
 `condition(f(1); x=2)` observes as `f(2)` does. Replace attempts to observe the original
 bound `x` after transforming it in the body with a separate LHS variable for the raw data.
 
-Fixed bindings shadow observations. Replace reliance on `unfix` restoring construction-time
-arguments with explicit `condition` or `decondition` calls to retain or remove the desired
-observations. `unfix` uncovers only surviving observations; `decondition` removes them even
-beneath a fixed binding. Enclosing explicit bindings override child bindings, including fixed
-ones. To retain a child's fixed value, remove the enclosing observation with
-`decondition(parent, @varname(a.x))` or the enclosing fixed binding with `unfix`.
+A position now holds at most one binding across roles and models. Before fixing an observed
+`x`, remove its observation: `fix(decondition(m, @varname(x)); x=value)`. Before binding over
+a child's observation from its parent, remove it with
+`decondition(parent, DynamicPPL.Recursive(), @varname(a.x))`; use `unfix` for a child's fixed
+binding. Removal leaves positions latent and restores no earlier binding. Keep the original
+model to undo a temporary change. See [Binding rules](@ref).
 
 Replace partial edits of tuple or struct owners with whole replacements, at any depth:
-`fix(f((1.0, 2.0)), @varname(x[1]) => 9.0)` becomes `fix(f((1.0, 2.0)); x=(9.0, 2.0))`.
+`fix(f((1.0, 2.0)), @varname(x[1]) => 9.0)` becomes
+`fix(decondition(f((1.0, 2.0))); x=(9.0, 2.0))`.
 Partial removals likewise require removing the enclosing owner whole. Reading argument
 observations and binding complete local LHS addresses, including produced `VarNamedTuple`s,
 remain supported.
@@ -250,20 +251,19 @@ Replace `@vnt` or `@template` storage for partial local bindings with a position
 template, for example `condition(m, @varname(z[2]) => 1.0, @of(z = of(Array, 3)))`, importing
 `of, @of` from AbstractPPL. Produced `VarNamedTuple` values remain accepted.
 
-Whole bindings must satisfy declared argument types, local storage types, and shared
+Whole bindings must satisfy declared argument types, any local binding template, and shared
 signature constraints. Replace incompatible replacements with compatible storage, or
 reconstruct the model. Partial bindings require exact conversion to the element or field
 type: replace `0.1` bound into `Float32` storage with `Float32(0.1)`. For runtime AD
 bindings, replace fixed `Float64` storage with storage built from running values, such as
 `fill(zero(m), n)` or `@of(z = of(Array, typeof(m), n))`.
 
-Replace slice bindings that resize enclosing storage, such as
-`condition(m, @varname(x[1:2]) => ones(3))`, with `condition(m; x=ones(3))`.
-Replace resizing fixed arguments in the body with covering values of static size and shape.
-Shape validation stops at the LHS variable's address; it does not inspect nested values
-inside a whole structured LHS variable. Replace construction-time indices in later binding
-edits with indices of the latest enclosing bound value: after `condition(f(zeros(2)); x=ones(3))`,
-`decondition(m, @varname(x[3]))` preserves length three.
+Partial bindings cannot resize storage. To replace a root's shape with a whole value, first
+clear both roles at that root; use a new template if a template set its shape. Removing parts
+individually retains storage, even when every part is removed. See
+[Binding roles and removal](@ref). Replace resizing fixed arrays in the body with values of
+static size and shape.
+See [Size checks at executed tildes](@ref binding-size-checks) for whole observations of locals and unread bound positions.
 
 Known-invalid addresses now throw. Replace bindings of covariates with model reconstruction;
 correct unknown LHS names, nonexistent fields, and indices outside storage. Replace
@@ -273,10 +273,11 @@ addresses when the model can decide: covariates, names with no LHS variable, non
 fields, and indices outside storage. Previously such removals were silent. Removing a valid
 address with no stored binding, including removing it twice, is a no-op. To remove a child's
 argument-supplied observation from its parent, use `decondition(parent, DynamicPPL.Recursive(), @varname(a.x))`. Use `decondition(parent, DynamicPPL.Recursive())`
-for prior prediction throughout the model; `unfix(parent, DynamicPPL.Recursive())` uncovers
-observations at every depth. Replace partial removal from one multivariate LHS variable,
-such as `decondition(m, @varname(x[1]))` for `x ~ MvNormal(...)`, with a model declaring
-separate LHS variables when their roles must differ.
+for prior prediction of observed variables throughout the model;
+`unfix(parent, DynamicPPL.Recursive())` makes fixed variables latent at every depth. Replace
+partial removal from one multivariate LHS variable, such as `decondition(m, @varname(x[1]))`
+for `x ~ MvNormal(...)`, with a model declaring separate LHS variables when their roles must
+differ.
 
 Submodel return values cannot be bound. For local `a ~ to_submodel(child())`, replace
 `condition(m; a=value)` with `condition(m, @varname(a.x) => value)` to observe the child's
@@ -290,8 +291,7 @@ are snapshotted at construction. Replace mutation of argument storage after cons
 with constructing the model again. Partial bindings snapshot the
 remaining storage: replace mutation of original arguments after binding with rebuilding the
 partial binding. Replace manual merges of argument data into `conditioned(m)` with
-`conditioned(m)` itself; replace inspection of shadowed observations there with
-`conditioned(unfix(m))`.
+`conditioned(m)` itself. There are no shadowed observations to inspect.
 
 Keyword splats in `model.defaults` are nested under their generated name. For
 `@model f(; kw...)`, replace `model.defaults.z` with `model.defaults.var"#splat#kw".z`.
@@ -321,13 +321,8 @@ the corresponding `fixed(m)` operations. Replace role inspection through `inargn
 To rebuild a model with new arguments while keeping its bindings, previously
 `contextualize(new, old.context)`, transfer the bindings stored on `old`. For bindings
 confined to the model's own LHS variables, whose partial bindings fit the new model's
-storage:
-
-```julia
-new = decondition(new)                         # drop new's own observations
-new = condition(new, conditioned(unfix(old)))  # old's observations, also those under fixes
-new = fix(new, fixed(old))
-```
+storage, first call `new = decondition(new)`, then `new = condition(new, conditioned(old))` and
+`new = fix(new, fixed(old))`. The observation and fixed listings are disjoint.
 
 If an earlier binding changed storage shape, replay that binding before its partial
 removals. For example, replay `condition(new; x=ones(3))` before

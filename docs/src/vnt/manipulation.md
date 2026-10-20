@@ -152,9 +152,8 @@ In the call to `templated_setindex!!` for `x`, the template is `fill(nothing, 3)
 However, the element type of this template array is not important: when DynamicPPL instantiates the new PartialArray, it will use `typeof(val)` rather than `eltype(template)` to determine the element type it should use.
 This allows us to freely choose any element type we like in the skeleton.
 
-Skeleton VNTs are not currently used in DynamicPPL.
-However, it is likely that they will find some kind of use in the future as a minimalistic representation of the *structure* of a VNT, without any of the actual values.
-For example, consider model conditioning:
+A skeleton retains storage shape without values. Model conditioning instead accepts a
+binding template, which also specifies the storage element type:
 
 ```@example 1
 @model function f()

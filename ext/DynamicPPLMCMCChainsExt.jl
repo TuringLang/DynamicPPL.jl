@@ -328,8 +328,8 @@ end
         multithreaded=false,
     )
 
-Sample from the posterior predictive distribution by executing `model` with parameters fixed to each sample
-in `chain`, and return the resulting `Chains`.
+Sample from the posterior predictive distribution by initialising latent LHS variables
+from each sample in `chain`, and return the resulting `Chains`.
 
 The `model` passed to `predict` is often different from the one used to generate `chain`.
 Typically, the model from which `chain` originated treats certain variables as observed (i.e.,
@@ -338,12 +338,12 @@ Calling `predict` then uses the previously inferred parameter values to
 simulate what new, unobserved data might look like, given your posterior beliefs.
 
 For each parameter configuration in `chain`:
-1. All random variables present in `chain` are fixed to their sampled values.
-2. Any variables not included in `chain` are sampled from their prior distributions.
+1. Latent LHS variables take values from the sample where available.
+2. Remaining latent LHS variables are sampled from their priors.
+3. Existing observed and fixed bindings retain their roles.
 
-If `include_all` is `false`, the returned `Chains` will contain only those variables that were not fixed by
-the samples in `chain`. This is useful when you want to sample only new variables from the posterior
-predictive distribution.
+If `include_all` is `false`, the returned `Chains` excludes parameter names present in the
+input chain. This retains predictions for variables absent from the input samples.
 
 Set `multithreaded` to `true` to spread the samples of `chain` over threads. Each sample is
 then drawn with its own random number generator, seeded from `rng` before any thread starts,

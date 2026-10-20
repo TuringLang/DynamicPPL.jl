@@ -150,7 +150,7 @@ function _overlay_model_node(previous, fixed::VarNamedTuples.PartialArray, owner
                 CartesianIndices(fixed.mask),
             )
         )
-        # Extending one layer must not discard observations on another axis.
+        # Preserve every occupied position when combining binding storage.
         merged_axes = if owns_shape
             axes(fixed.data)
         else
@@ -201,7 +201,7 @@ function _overlay_model_node(previous, fixed::ModelValueTree, owners, vn)
         fixed.template
     end
     if previous isa ModelValue
-        # Read the shadowed value through the replacement's fields without rebuilding it.
+        # Read surviving entries through the replacement fields without rebuilding the previous value.
         previous = VarNamedTuple(
             _merge_model_fields(
                 previous, _empty_model_tree(fixed), Val(propertynames(template))
@@ -417,7 +417,7 @@ function _get_model_binding(model, vn)
 end
 function _get_argument_role(model, vn, argument)
     binding = _get_model_binding(model, argument)
-    # A whole observation follows body computations that change its shape or fields.
+    # Whole argument observations must follow body computations, including size changes.
     binding isa Union{ModelValue{Condition},ModelValue{ArgumentCondition}} &&
         return _model_role(binding, vn)
     return _local_binding_role(binding, vn, NoTemplate(), model)
@@ -440,7 +440,7 @@ function _get_model_data(model, vn, root, local_value)
     return _get_model_data(model, vn)
 end
 
-# Storage for a partial binding is not itself a fixed shape owner.
+# Fixed array bindings must match body storage along the address path.
 function _check_bound_shape(
     binding, local_value, optic, vn, owners=(), address=vn, role=Fix
 )
@@ -1037,7 +1037,7 @@ function _inherit_model_array_owner(previous, updates)
     end
     return VarNamedTuples.PartialArray(data, mask)
 end
-# A replacement owns its array storage; a shadowed tuple only supplies observations.
+# Preserve surviving tuple entries and their roles when the replacement supplies array storage.
 _read_shadowed_tuple(previous, replacement) = previous
 function _read_shadowed_tuple(previous::ModelValue{<:Any,<:Tuple}, replacement)
     data = map(CartesianIndices(replacement.mask)) do i
@@ -1062,8 +1062,8 @@ function _check_model_binding(
     vn;
     check_bounds=true,
 ) where {T,N,D<:AbstractArray{T,N}}
-    # Complete replacements read no shadowed children. Incomplete array replacements
-    # can also read tuple observations through their own storage, including in children.
+# Whole replacements must not read discarded entries; partial replacements may need
+# surviving tuple entries.
     !check_bounds &&
         eltype(updates) <: ModelValue &&
         _has_complete_model_data(updates) &&
@@ -2488,14 +2488,18 @@ A shared unprefixed name reaches both models under this rule. `|` follows it too
 
 Within one call, addresses must be disjoint after resolution and cannot select a position twice.
 Disjoint bindings may jointly cover an LHS variable, but every executed tilde takes one role.
-A local LHS variable reads its binding at its tilde. For an argument LHS variable,
-bindings prepare the argument before the body runs. Whole observations follow its current
-value; partial observations keep their selected positions. Fixed values reset at the tilde.
+A bound local LHS variable reads its binding at its tilde. A whole observation of a local
+must match the size and shape supplied by the body at each executed tilde; a mismatch throws.
+Argument bindings prepare the argument before the body runs. Whole argument observations
+follow its current value; partial observations keep their selected positions. Fixed values
+reset at the tilde. See [Size checks at executed tildes](@ref binding-size-checks) for the
+checks and their limits.
 Observe raw data under a separate name if the body transforms the argument first.
 
 Use NamedTuples/keywords for whole top-level values, `VarName` pairs for any address
 (`:x => v` abbreviates `@varname(x) => v`), or a [`VarNamedTuple`](@ref) produced by
-DynamicPPL. Positional inputs and tuples apply left to right. `condition` rejects every
+DynamicPPL. Positional inputs and nested tuples are flattened into one call; overlapping
+addresses throw. `condition` rejects every
 `AbstractDict` with `ArgumentError`; `model | dict` has no method. One positional binding
 template, e.g. `@of(z = of(Array, 3))`, supplies storage for partially bound local LHS variables
 without binding values (`using AbstractPPL: of, @of`).
@@ -2569,9 +2573,9 @@ true
 ```
 
 In the above we have specified the LHS variables to observe via keyword arguments. You can also
-provide a `NamedTuple`, a `VarNamedTuple`, or `VarName` pairs. Tuples of these inputs
-are applied left to right. Other inputs to `condition`, including every `AbstractDict`,
-throw `ArgumentError`; `|` has no `AbstractDict` method.
+provide a `NamedTuple`, a `VarNamedTuple`, or `VarName` pairs. Nested tuples of inputs
+are flattened; addresses within the call must be disjoint. Other inputs to `condition`,
+including every `AbstractDict`, throw `ArgumentError`; `|` has no `AbstractDict` method.
 
 For example, here we use a `VarName` pair:
 
@@ -2637,9 +2641,11 @@ Use `VarName` pairs with a binding template as above. A template supplies storag
 observing or fixing any values. It is an AbstractPPL `OfNamedTuple` type, equivalently
 written `of((m=of(Array, 2),))`, and may appear anywhere among the positional inputs,
 at most once per call. Keywords remain binding data; `|` does not take a template.
-An existing owner within the layer being edited takes precedence; conflicting storage
-throws `ArgumentError`. Template entries for arguments and names the call does not bind
-are ignored. Templates use absolute names, as in `rand(model)` output: for a model
+Existing storage in either role constrains the shared shape, including wholly masked
+storage. A used template checks that storage; a conflict throws `ArgumentError`. A template
+can replace a root shape only after both roles have been cleared at that root. A template
+shape persists until a new template replaces it. Entries for arguments and names the call
+does not bind are ignored. Templates use absolute names, as in `rand(model)` output: for a model
 prefixed with `p`, use `@of(p = @of(z = of(Array, 3)))`. Resolve symbolic sizes before binding.
 Use whole bindings for custom arrays and structs that `of` cannot describe.
 Values DynamicPPL produces, such as `rand(model)` and `conditioned(model)`, are
@@ -4400,8 +4406,11 @@ no value or shape and are omitted from `conditioned`.
 Named recursive removals shared by an own LHS and an unprefixed submodel throw; prefix the
 child or remove without `Recursive()`. See [Binding rules](@ref).
 
-Removal preserves the shared binding shape; it does not restore an observation
-overwritten by an earlier [`condition`](@ref).
+Removing parts retains storage, including shape and element type, even if every position
+is removed. Whole removal discards the role's value storage. Local geometry persists; once
+both roles are cleared at an argument root, its original argument storage applies again.
+Template constraints persist until replaced by a new template. Removal never restores an
+observation overwritten by an earlier [`condition`](@ref).
 
 # Examples
 ```jldoctest decondition
@@ -4719,9 +4728,9 @@ end
 
 Return this model's conditioned values as plain values, independent of binding history.
 
-The result lists only bindings stored on `model`. Observations held by
-submodels, including their argument-supplied observations and bindings made inside the
-model body, are not listed, because those submodels exist only during evaluation.
+The result lists only observations stored on `model`, including argument-supplied
+observations and explicit bindings at child addresses. It excludes bindings stored on
+submodels, whose construction and runtime bindings may depend on evaluation.
 
 The result is a `VarNamedTuple` containing ordinary or partial values. After partial
 removal or mixed roles, containers become plain partial values (`VarNamedTuple` or
@@ -4793,12 +4802,13 @@ positions latent; it restores no observation. Keep the original model to restore
 Bindings reach child addresses too. Inputs, unsupported partial bindings, conversion errors,
 aliasing, copy timing and argument preparation follow [`condition`](@ref).
 
-Fixed values cover their contents; omitted NamedTuple fields remain latent. Changing a
-fixed argument array's size or shape in the body throws `ArgumentError` naming the LHS variable.
-In-place mutation of a whole fixed argument also mutates the binding and is not detected;
-the body must not do it.
-Shape validation stops at the LHS variable's address; it does not inspect nested values
-inside a whole structured LHS variable.
+Fixed values cover their contents; omitted NamedTuple fields remain latent. At an
+executed fixed tilde, an array size or shape mismatch along the address path throws
+`ArgumentError` naming the LHS variable. This covers arguments and locals, with whole or
+partial fixed bindings. The check does not inspect inside a whole structured value or detect
+in-place mutation of a bound value. Partial bindings at positions no executed tilde reads
+are reported by [`check_model`](@ref), not rejected by evaluation. See
+[Size checks at executed tildes](@ref binding-size-checks).
 
 See also: [`unfix`](@ref), [`fixed`](@ref), [Binding rules](@ref).
 
@@ -5011,9 +5021,9 @@ end
 
 Return this model's fixed values as plain values, independent of binding history.
 
-The result lists only bindings stored on `model`. Fixed bindings held by
-submodels, including bindings made inside the model body, are not listed, because those
-submodels exist only during evaluation.
+The result lists only fixed bindings stored on `model`, including explicit bindings at
+child addresses. It excludes bindings stored on submodels, whose construction and runtime
+bindings may depend on evaluation.
 
 The result is a `VarNamedTuple` containing ordinary or partial values. After partial
 removal or mixed roles, containers become plain partial values (`VarNamedTuple` or

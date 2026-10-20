@@ -105,8 +105,8 @@ condition
 DynamicPPL.conditioned
 ```
 
-[`AbstractPPL.decondition`](@ref) removes observations of either origin, including those
-shadowed by fixed bindings. The LHS variable becomes latent unless still fixed.
+[`AbstractPPL.decondition`](@ref) removes explicit and argument-supplied observations.
+Removed positions become latent; disjoint fixed positions remain fixed.
 See [Binding rules](@ref) for accepted inputs and the two binding layers.
 
 ```@docs
@@ -135,8 +135,8 @@ DynamicPPL.fixed
 
 The difference between [`DynamicPPL.fix`](@ref) and [`DynamicPPL.condition`](@ref) is described in the docstring of [`DynamicPPL.fix`](@ref) above.
 
-[`DynamicPPL.unfix`](@ref) removes fixed bindings, uncovering observations below them
-or leaving the LHS variable latent. Observations removed by `decondition` stay removed:
+[`DynamicPPL.unfix`](@ref) removes fixed bindings, leaving their positions latent.
+It restores no earlier observation:
 
 ```@docs
 DynamicPPL.unfix

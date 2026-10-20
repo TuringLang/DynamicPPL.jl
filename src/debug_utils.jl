@@ -369,6 +369,9 @@ derived from model inputs. Use `rng` to control reproducibility if needed.
 - Bindings without an LHS top symbol in the model or reached unprefixed submodels warn,
   but do not fail: an untaken submodel branch could still use them.
 
+- Partially bound positions that no executed tilde reads are reported. These positions
+  are not evaluation errors; an untaken branch may still use them.
+
 # Keyword arguments
 
 - `error_on_failure::Bool`: Whether to throw an error (instead of just returning `false`) if

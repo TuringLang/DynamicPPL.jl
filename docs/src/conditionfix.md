@@ -128,8 +128,9 @@ cond_model_partial = condition(
 rand(rng, cond_model_partial)
 ```
 
-`fix` accepts the same syntax. The equivalent functional spelling is `of((y=of(Array, length(y_data)),))`. Arguments already supply storage, so partial argument bindings need no
-template. See [Binding rules](@ref) for the complete contract.
+`fix` accepts the same syntax; the functional template spelling is
+`of((y=of(Array, length(y_data)),))`. Non-placeholder arguments supply their own storage.
+See [Binding rules](@ref) for the complete contract.
 
 ## Migrating from 0.42
 
@@ -276,13 +277,87 @@ julia> struct Record
 
 ## Binding rules
 
-`condition` and `fix` store bindings on the called model at any address in its namespace,
-including child addresses: `condition(parent, @varname(a.x) => 1.0)` binds the child's `x`.
-`|` follows the same rule. Each occupied position has at most one binding across roles and
-models. A model may replace its own binding in the same role, including argument-supplied
-observations. Remove a binding in the other role or on a child before binding that position.
-Argument-supplied observations never bind a child's LHS variables.
-A binding at a name shared with an unprefixed child binds both:
+`condition` binds an observed value and `fix` binds a fixed one. A position holds at most
+one binding across both roles and all models. Binding it again on the same model with the
+same role replaces its value, including an argument-supplied observation. Binding it with
+the other role, or from a parent over a child's binding, throws; remove the existing binding
+first. `|` is the template-free alias for `condition`.
+
+```jldoctest binding_rules
+julia> using DynamicPPL, Distributions, LinearAlgebra, StableRNGs;
+       using AbstractPPL: of, @of;
+
+julia> @model vector_model() = x ~ MvNormal(zeros(2), I);
+
+julia> m = condition(vector_model(); x=[1.0, 2.0]);
+
+julia> conditioned(condition(m; x=[3.0, 4.0]))[@varname(x)]
+2-element Vector{Float64}:
+ 3.0
+ 4.0
+
+julia> fix(m, @varname(x[1]) => 0.0)
+ERROR: ArgumentError: Cannot bind `x[1]`: a position is already bound by the other role; remove that binding first, using `Recursive()` for a child binding.
+[...]
+```
+
+Binding part of a variable, such as an index or field, needs storage with a known shape:
+a non-placeholder argument, an earlier whole binding, a `VarNamedTuple` such as
+`rand(rng, model)`, or a binding template.
+A whole value can establish its own shape. A template supplies storage but binds nothing;
+unused entries are ignored. See [Binding contract](@ref) for template syntax and limits, and
+[Binding roles and removal](@ref) for how removal preserves storage.
+
+Bindings can reach child addresses: `condition(parent, @varname(a.x) => 1.0)` binds the
+child's `x`. Conflicts with a child's bindings, including its argument-supplied observations,
+are checked when the child runs; remove the child's binding first:
+
+```jldoctest binding_rules
+julia> @model inner(x) = x ~ MvNormal(zeros(2), I);
+
+julia> @model outer() = a ~ to_submodel(inner([1.0, 2.0]));
+
+julia> bound = condition(outer(), @varname(a.x) => [0.0, 0.0]);
+
+julia> rand(StableRNG(1), bound)
+ERROR: ArgumentError: Cannot bind `a.x`: a position is already bound by another model; remove that binding first, using `Recursive()` for a child binding.
+[...]
+
+julia> @model outer2() = a ~ to_submodel(decondition(inner([1.0, 2.0])));
+
+julia> fix(outer2(), @varname(a.x) => [0.0, 0.0])(StableRNG(1))
+2-element Vector{Float64}:
+ 0.0
+ 0.0
+```
+
+A reached child needs storage for its local parts before its body runs, even when the branch
+containing their tilde is not taken; allocation inside the body is insufficient.
+Storage checks wait until child entry, since the parent may construct the child inside its body.
+
+```jldoctest binding_rules
+julia> @model function local2()
+           x = Vector{Float64}(undef, 2)
+           x[1] ~ Normal()
+           x[2] ~ Normal()
+           return x
+       end;
+
+julia> @model outer3() = a ~ to_submodel(local2());
+
+julia> partial = condition(outer3(), @varname(a.x[1]) => 0.5);
+
+julia> partial(StableRNG(1))
+ERROR: ArgumentError: Cannot bind `a.x` without storage; supply an `@of` template, a whole value, a `VarNamedTuple` with storage, or storage on the child before prefixing.
+[...]
+
+julia> condition(outer3(), @varname(a.x[1]) => 0.5,
+                 @of(a = @of(x = of(Array, 2))))(StableRNG(1))[1]
+0.5
+```
+
+Argument-supplied observations never bind a child's LHS variables. An explicit binding at
+a name shared with an unprefixed child binds both:
 
 ```@example shared-binding
 using DynamicPPL, Distributions, Random
@@ -308,8 +383,8 @@ The **effective binding** determines an LHS variable's role and value after appl
 removals. A position without a binding is latent. Disjoint bindings may share a top-level
 variable, but all positions of one executed tilde must have the same role.
 
-Later calls replace the same model's bindings in the same role. Addresses within one call
-must be disjoint after resolution through storage, and a selection cannot repeat a position.
+Addresses within one call must be disjoint after resolution through storage, and a selection
+cannot repeat a position.
 Field and flat-index selectors can overlap once a child supplies its actual array layout;
 such overlaps are checked before the child's body runs.
 
@@ -319,8 +394,8 @@ The table defines the supported binding rules and when each is checked. The
 [entry-point matrix](@ref binding-phase-matrix) shows how those phases apply to each operation.
 Preparation assembles model arguments and resolves child-local partial bindings before the
 body. A local branch that does not execute still needs valid binding storage. Checks that
-need an unreached child wait until that child is entered; per-tilde role and fixed-coverage
-checks require an executed tilde.
+need an unreached child wait until that child is entered; role, coverage and body-size checks
+require an executed tilde.
 
 | Rule                        | Contract                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | Checked when                                                                                                                                                                             |
 |:--------------------------- |:-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |:---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -339,9 +414,9 @@ checks require an executed tilde.
 | Constructor placeholders    | Only a whole top-level `missing`/`nothing` LHS argument (positional, keyword or default), or `missing` entries one index into a supported top-level argument array, remove observations at construction. The array element type must admit `Missing`; unassigned slots and covariates are skipped. Zero-dimensional arrays are included. Roles are not recomputed after mutation. Arrays with missing entries are snapshotted; fully observed arrays are used in place.                                                                                                                                                                                                                                                          | User model construction, via ordinary removal. Internal reconstruction and the explicit-values constructor do not rerun this classification.                                             |
 | Explicit placeholders       | Explicit bindings reject `missing`/`nothing` reached through assigned array entries, tuple/NamedTuple entries or defined object fields. Numbers, numeric arrays, strings, symbols and types are opaque to this traversal. Use `decondition`/`unfix` instead. Incomplete partial bindings into a whole placeholder argument are rejected; a complete produced `VarNamedTuple` array entry binds whole and supplies storage.                                                                                                                                                                                                                                                                                                       | When the explicit binding is made; this does not replace executed-value checks.                                                                                                          |
 | Executed placeholders       | An observed/fixed tilde rejects other placeholders in the value it reads, including nested argument data and body-created values, using the same traversal as explicit bindings. Unread parts may contain placeholders. `missing` takes diagnostic precedence over `nothing`. Latent draws are not reclassified as observations.                                                                                                                                                                                                                                                                                                                                                                                                 | Only when the observed/fixed tilde executes.                                                                                                                                             |
-| Storage ownership           | Each root has one shape, shared by both layers and retained after removal. Arguments, used templates, whole bound values and concrete `VarNamedTuple` storage establish it. A whole value or template can replace it only after both layers are empty at the root. Partial bindings cannot resize known nested storage. A `NamedTuple` splits into leaf roots only at a submodel prefix; elsewhere it has one root. A `VarNamedTuple` binds its leaves as written. Roots are never implicitly split or merged.                                                                                                                                                                                                                   | At binding/removal; child storage when reached.                                                                                                                                          |
+| Storage ownership           | Each root has one shape, shared by both layers. Removal retains local geometry; whole removal of both layers restores an argument's own storage. Arguments, used templates, whole bound values and concrete `VarNamedTuple` storage establish it. A whole value or template can replace it only after both layers are empty at the root. Partial bindings cannot resize known nested storage. A `NamedTuple` splits into leaf roots only at a submodel prefix; elsewhere it has one root. A `VarNamedTuple` binds its leaves as written. Roots are never implicitly split or merged.                                                                                                                                                                                                                   | At binding/removal; child storage when reached.                                                                                                                                          |
 | Binding templates           | At most one positional binding template supplies storage without binding values; keywords remain data, and the pipe alias rejects templates. Templates use absolute names; argument and unused entries are ignored. Existing shapes win while either layer has stored values, including wholly masked storage; conflicts reject. A template’s shape persists until another template replaces it. Namespace storage survives removal. Child-owned template candidates follow pending bindings and prefixes. Template entries for every child's names are checked when that child runs. Templates materialize with `zero(T)` at binding time. See [Binding contract](@ref) for sample-derived templates and indexed-prefix limits. | At binding; deferred entries and conflicts when the child is reached. `check_model` warns about entries no reached LHS can use.                                                          |
-| Bounds, types and shape     | Parts must fit enclosing storage without resizing it and convert exactly to its element/field type. Whole argument bindings must satisfy declared types; whole local bindings fit a binding template’s type when one exists; otherwise they constrain geometry only. Whole templated values also match shape. Untemplated parts cannot form a multivariate value; mixed roles within one LHS variable reject. Fixed values cover their contents; omitted NamedTuple fields remain latent. Fixed arrays and whole observations of locals retain shape; shape checks stop at the LHS address and do not detect in-place mutation of a whole fixed argument.                                                                                                         | Bounds/types/conversion at binding (inherited bindings when the child runs); shared signature constraints at evaluation. Multivariate roles and bound shape/coverage at executed tildes. |
+| Bounds, types and shape      | Parts must fit enclosing storage without resizing it and convert exactly to its element/field type. Whole argument bindings must satisfy declared types; whole local bindings fit a binding template’s type when one exists; otherwise they constrain geometry only. Whole templated values also match shape. Partial bindings need storage; mixed roles within one LHS variable reject. Fixed values cover their contents; omitted NamedTuple fields remain latent. Fixed arrays and whole observations of locals follow the [size-check rules](@ref binding-size-checks); checks stop at the LHS address and do not detect in-place mutation of bound values.                                                                   | Bounds/types/conversion at binding (inherited bindings when the child runs); shared signature constraints at evaluation. Multivariate roles, coverage and body-size checks at executed tildes. |
 
 ### [Entry-point and phase matrix](@id binding-phase-matrix)
 
@@ -356,7 +431,7 @@ accept identical index syntax.
 | `decondition`                           | Removal address checks; recursive ambiguity at reached child.        | Resulting latent storage now; numeric leaves during checked copying.                     | Argument sharing now; overlap and keys during checked copying.                                     | Removal uses bounds/geometry; absent pending addresses are no-ops.               | No recursive scan; constructor removal uses this path.                                   | Keep surviving observation owners and templates.                            |
 | `unfix`                                 | Same removal address checks.                                         | Only resulting latent storage; numeric leaves later.                                     | Same call/copy distinction as `decondition`.                                                       | Same removal storage checks.                                                     | No new scan.                                                                             | Removed positions become latent; preserve surviving templates.              |
 | User model construction                 | Roles and argument LHS metadata checked.                             | Placeholder removal checks latent writeability; otherwise during later preparation.      | Placeholder removal checks sharing; overlap/keys later. Internal reconstruction reuses validation. | Missing-element addresses, including zero-dimensional arrays.                    | Constructor placeholders only; not rerun by explicit-values construction.                | Argument defaults own initial storage; no binding-template input.           |
-| Argument preparation and ordinary tilde | Field spelling and runtime role lookup at tilde.                     | Latent writeability and numeric leaves before body; private-copy write/rebind at tilde.  | Overlap and keys before body; no new sharing walk per tilde.                                       | Child-local parts resolve before the body; ordinary Julia body indexing remains. | Executed placeholders at observed/fixed tilde.                                           | Runtime roles, whole-value assembly and fixed shape/coverage.               |
+| Argument preparation and ordinary tilde | Field spelling and runtime role lookup at tilde.                     | Latent writeability and numeric leaves before body; private-copy write/rebind at tilde.  | Overlap and keys before body; no new sharing walk per tilde.                                       | Child-local parts resolve before the body; ordinary Julia body indexing remains. | Executed placeholders at observed/fixed tilde.                                           | Runtime roles, coverage, assembly and body-size checks.                    |
 | Submodel entry                          | Submodel LHS, prefixes, recursive ambiguity and inherited ownership. | Child preparation checks latent writeability/numeric leaves.                             | Sharing after inherited removals and insertions; overlap/keys in child preparation.                | Same child storage checks after prefix resolution.                               | Constructor placeholders if a child is constructed; executed placeholders at its tildes. | Prepare surviving templates; inherited and child bindings must be disjoint. |
 
 ### Binding roles and removal
@@ -368,8 +443,8 @@ accept identical index syntax.
 | `decondition` | Removes explicit or argument-supplied observations, leaving them latent. |
 | `unfix`       | Removes fixed bindings, leaving their positions latent.                  |
 
-Insertion into a position bound in the other role throws. Removal never restores an
-older binding; keep the original model if a temporary change must be undone.
+Removal never restores an older binding; keep the original model if a temporary change must
+be undone.
 
 Removal matches equal, enclosing, or contained addresses. Without `Recursive()`, it clears
 only bindings stored on the called model, including bindings at child addresses. With no
@@ -395,9 +470,32 @@ A removal belongs to the model that makes it. It reaches enclosed models, includ
 built or bound in the body, but cannot remove an enclosing model's binding. Prefixing moves
 the removal with the model. A later binding replaces a local removal only at the addresses it
 covers. A recursive removal remains in force: it clears child bindings before later parent
-bindings apply. Removals hold no value; local binding shapes survive, while whole removal
-of both layers at an argument root restores the argument’s own storage.
-`conditioned` and `fixed` list stored values only and take no `Recursive()` argument.
+bindings apply. `conditioned` and `fixed` list stored values only and take no `Recursive()`
+argument.
+
+Removing parts keeps the variable's storage, including its shape and element type, even
+after every part is gone:
+
+```jldoctest binding_removal
+julia> using DynamicPPL, Distributions, LinearAlgebra;
+
+julia> @model vector_model() = x ~ MvNormal(zeros(2), I);
+
+julia> m = vector_model();
+       m = condition(m; x=[1, 2]);
+       m = decondition(m, @varname(x[1]));
+       m = decondition(m, @varname(x[2]));
+
+julia> condition(m, @varname(x[1]) => 0.1)
+ERROR: InexactError: Int64(0.1)
+[...]
+```
+
+Removing the whole root discards that role's values and storage element type but keeps the
+local binding shape. Once both roles' storage is cleared, a whole value can set a new shape;
+an argument instead reverts to its own storage. A template-established shape and type
+constraint persist until a new template replaces them. A namespace template cannot change
+an array root's shape while a `Recursive()` removal remains below it; rebuild the model.
 
 For example, a parent can make a child's observation latent even when it constructs the
 child inside its body:
@@ -464,17 +562,34 @@ After whole removal of both layers at an argument root, its shape reverts to the
 A namespace template cannot change its root’s shape while a recursive removal remains
 below that root. The error names the root and asks you to rebuild the model; a template
 with the same shape remains allowed.
-
 A `NamedTuple` bound at a submodel prefix groups leaves: after binding `a=(x=1.0,)`,
 a later binding of `a.y` adds another leaf. A whole structured value of a variable instead
-has one root covering the parts it contains. Omitted fields of a fixed NamedTuple stay latent.
+has one root covering the parts it contains. A fixed value covers only what it holds:
+`fix(m; q=(a=1.0,))` fixes `q.a` and leaves `q.b` latent.
+
+#### [Size checks at executed tildes](@id binding-size-checks)
+
+| Binding at an executed tilde     | Size given by the body checked against the binding?                |
+| -------------------------------- | ------------------------------------------------------------------ |
+| Fixed, whole or partial          | Yes. A mismatch throws.                                            |
+| Whole observation of a local     | Yes. A mismatch throws rather than dropping bound values.          |
+| Whole observation of an argument | No. The observation follows the value the body gives the argument. |
+| Partial observation              | No. Each tilde reads only its own positions.                       |
+| Latent                           | Nothing to compare.                                                |
+
+Only executed tildes check, so an untaken branch checks nothing. The check compares along
+the address path to the bound variable, not inside a whole structured value. A bound position
+no executed tilde reads is not an evaluation error in either role; `check_model` reports it.
+For example, this applies to a partial binding of `y[3]` through `@of(y = of(Array, 3))`
+when the body makes `y` length 2. Mutating a bound value in place, such as `push!(x, 0.0)`,
+is undetected and must be avoided.
 
 A shape describes geometry, including known nested sizes. Whole argument replacements of
 another type remain allowed when their geometry and the declared signature fit. Partial
 conversion uses the edited layer's element or field type. A previously unassigned slot or a
 missing top-level argument array entry acquires its inner size from its first explicit value;
-removing the value retains that size. The body sets local storage's shape and may resize
-conditioned arguments; it must not mutate fixed values.
+removing the value retains that size unless whole removal restores an argument's own storage.
+The body sets local storage's shape, subject to the checks above.
 
 For NamedTuple fields, use `x.a` rather than `x[1]`, `x[:a]` or `x[:]`. Tuple observations
 and complete local LHS variables retain integer indices. A **submodel namespace** reaches
@@ -489,8 +604,7 @@ a later distribution tilde observes that argument's current value.
 
 Explicitly binding a **submodel return value**, assigned by local `a ~ to_submodel(...)`,
 also throws `ArgumentError` during evaluation. Bind `a.x` to observe the child's `x`.
-An unreached submodel performs no child-dependent checks. A reached child prepares its own
-partial bindings before the body, even when their local tilde branches are not taken.
+An unreached submodel performs no child-dependent checks.
 
 Bound values are not copied, so the body must not mutate them, even through a `view`. A partial
 binding copies containers along its edited path when storage first becomes available: at the
@@ -563,17 +677,19 @@ separate latent-writeability rule, not the partial-array whitelist.
 
 Use NamedTuples or keyword arguments for whole top-level values, and `VarName` pairs for any
 address. The pair `:x => v` abbreviates `@varname(x) => v`. `VarNamedTuple`s produced by
-DynamicPPL are also accepted. Positional inputs and tuples apply left to right.
+DynamicPPL are also accepted.
 `condition` and `fix` reject every `AbstractDict` and other unsupported input with
 `ArgumentError`; `model | dict` throws `MethodError`. Use a NamedTuple or ordered pairs.
 
 A **binding template** is an AbstractPPL `OfNamedTuple` type, such as `@of(z = of(Array, 3))`.
 Import `of, @of` from AbstractPPL. Its contract is in the
 [rule table](@ref binding-rule-table): it supplies binding storage, while the body still
-sets local storage's size. Whole observations and fixed bindings must match body storage at
-executed tildes. Partial bindings at positions no executed tilde reads are not evaluation
-errors; `check_model` warns about them in either role. For absolute names under
-`prefix(m, @varname(p))`, use `@of(p = @of(z = of(Array, 3)))`.
+sets local storage's size. Whole observations of locals must match that size; partial bindings
+at unread positions are reported by `check_model`. See
+[Size checks at executed tildes](@ref binding-size-checks). A used template for storage that
+already exists only checks it, unless both roles' storage is cleared at the root so the
+template can replace its shape. Under `prefix(m, @varname(p))`, use absolute names:
+`@of(p = @of(z = of(Array, 3)))`.
 Resolve symbolic sizes before binding; bind whole values for storage that `of` cannot describe.
 
 A sample can supply a binding template with `of(rand(rng, model))`. This describes storage,
@@ -610,8 +726,9 @@ julia> condition(m, @varname(y[1]) => 0.5, template)(StableRNG(2))[1]
 
 See **Model ownership** and **Bounds, types and shape** in the
 [rule table](@ref binding-rule-table) for binding-time and evaluation-time checks.
-[`check_model`](@ref) warns about bound names or template entries that no LHS variable in the
-model or its reached submodels can use; a child in an untaken branch might still use them.
+[`check_model`](@ref) reports partially bound positions no executed tilde reads. It also warns
+about bound names or template entries that no LHS variable in the model or its reached
+submodels can use; a child in an untaken branch might still use them.
 Binding never selects another model method.
 
 A child binding template is a candidate until the child runs. Arguments keep their own
@@ -621,20 +738,17 @@ Use integer indices for a pending binding, or bind the child directly before `to
 
 For exact partial conversion, `1` becomes `1.0` in `Float64`. Unconvertible values propagate
 Julia's conversion error, such as `InexactError` for `1.5` into `Int`; successful but lossy
-conversion, such as `0.1` into `Float32`, raises `ArgumentError`. Runtime AD values need
-compatible storage such as `fill(zero(m), n)`. Under ForwardDiff or ReverseDiff, build the
-binding template from running values (`@of(z = of(Array, typeof(m), n))`), or bind a whole value.
+conversion, such as `0.1` into `Float32`, raises `ArgumentError`. A `Float64` template cannot
+hold ForwardDiff `Dual` values. For runtime bindings under AD, build storage from the running
+value `θ`, using `fill(zero(θ), n)` or `@of(z = of(Array, typeof(θ), n))`, or bind a whole value.
 
-For **Index arity** and **Selection geometry** in the [rule table](@ref binding-rule-table),
-storage can come from an argument, binding template, earlier whole value, produced
-`VarNamedTuple`, or prefix template. A pending child binding resolves through the child's
-storage: `a.x[2]` reaches `x[2, 1]` when the child supplies a 2×2 matrix.
-To bind parts of a local symbol used with mixed index counts, as in
-`x = zeros(2, 2); x[1] ~ Normal(); x[2, 2] ~ Normal()`, supply a binding template
-(`@of(x = of(Array, 2, 2))`) or a model argument. Allocating the local array in the body
-supplies no binding storage. An all-false Boolean vector still needs its full source extent,
-although its selected shape has length zero; `Int[]` needs extent zero. A pending mask keeps
-its original extent check while any of its selector survives, including an all-false mask.
+Binding `p[1, 1].x` when the model runs `p[i] ~ to_submodel(...)` needs namespace storage,
+such as `@of(p = of(Array, 2, 2))`, to resolve the different index spellings. A pending child
+binding instead resolves through the child's own storage: `a.x[2]` reaches `x[2, 1]` when
+the child supplies a 2×2 matrix before its body. An all-false Boolean vector still needs its
+full source extent, although its selected shape has length zero; `Int[]` needs extent zero.
+A pending mask keeps its original extent check while any of its selector survives, including
+an all-false mask.
 Whole removal or covering same-role replacement cancels the discarded selector's check.
 
 Defaults are evaluated once at construction. Binding `x` in `f(x, n=length(x))` keeps `n`.

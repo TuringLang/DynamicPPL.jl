@@ -7209,7 +7209,7 @@ function bc_shape_corpus()
             push!(samples, (c, copy(ops)))
         end
     end
-    # Cross-layer owners of different extents, including a complete partial mask.
+# Cross-role overlaps and incompatible extents must be rejected, including complete partial masks.
     for kind in (:array, :tuple, :nested_named, :nested_tuple), depth in (0, 1, 2)
         c = BCCase(kind, true, depth, false, false)
         p = (bc_namespace(c)..., (

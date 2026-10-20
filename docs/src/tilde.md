@@ -16,7 +16,9 @@ The effective binding determines the LHS variable's role; see [Binding rules](@r
 Arguments on the LHS supply observations by default. Every argument binding replaces
 the argument before the body runs, so an observed argument LHS variable reads its current
 body value; a local LHS variable reads its binding at the tilde. Fixed argument LHS
-variables reset to the bound value at the tilde and require static shape.
+variables reset to the bound value at the tilde. Fixed bindings and whole observations of
+locals must match the size and shape supplied by the body at executed tildes; see
+[Size checks at executed tildes](@ref binding-size-checks).
 If you're interested in the gory details you can run `@macroexpand @model f() = x ~ Normal()` in the REPL.
 
 ```julia

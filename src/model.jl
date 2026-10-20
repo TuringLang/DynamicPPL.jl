@@ -46,7 +46,7 @@ function ModelBindingTemplate{R}(name::N, storage::T, namespace::S=nothing) wher
     return ModelBindingTemplate{R,N,T,S}(name, storage, namespace)
 end
 
-# Fixed bindings preserve the observation layer they shadow.
+# Observed and fixed bindings must occupy disjoint positions.
 struct ModelBindingLayers{
     O<:VarNamedTuple,
     F<:VarNamedTuple,

@@ -157,11 +157,17 @@ Another problem was when conditioning on values.
 The binding API now accepts ordered pairs rather than dictionaries, allowing whole and partial bindings:
 
 ```julia
-model = f4() | (@varname(x) => [1.0, -1.0])  # Whole binding.
-model = f4() | (@varname(x[1]) => 1.0, @varname(x[2]) => -1.0)  # Partial bindings.
+using AbstractPPL: of, @of
+
+model = f4() | (@varname(x) => [1.0, -1.0])
+model = condition(f4(), @varname(x[1]) => 1.0, @varname(x[2]) => -1.0,
+                  @of(x = of(Array, 2)))
 ```
 
-Finally, we are unable to properly use different indexing schemes.
+The partial bindings need storage supplied by the template; together they observe the whole
+multivariate LHS variable. See [Binding rules](@ref).
+
+Finally, a dictionary cannot resolve different indexing schemes through array storage.
 For example, `x[1]` and `x[1,1]` mean the same thing if `x` is a `Matrix`, but the dictionary will think that they are different `VarName`s.
 Fundamentally, the issue is that the indexing semantics inside a `Dict` are not the same as the indexing semantics inside the model itself.
 
