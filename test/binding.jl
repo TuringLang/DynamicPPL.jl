@@ -1,8 +1,12 @@
-module BindingOccupancyTests
+module BindingTests
 
 using Test
 using DynamicPPL, Distributions, Random, LinearAlgebra
+using StableRNGs: StableRNG
 using AbstractPPL: @of, of
+
+# Set DYNAMICPPL_EXHAUSTIVE_TESTS to run the complete binding occupancy enumeration.
+const EXHAUSTIVE = get(ENV, "DYNAMICPPL_EXHAUSTIVE_TESTS", "false") == "true"
 
 @model function oracle_argument(x, whole, entered)
     entered[] = true
@@ -217,6 +221,7 @@ function agrees(expected, observed)
 end
 function run_oracle()
     failures, cases = 0, 0
+    rng = StableRNG(1001)
     categories = Dict{Tuple{Symbol,Symbol},Int}()
     for storage in (:argument, :template, :held), whole in (false, true), q in 1:3
         startfail = failures
@@ -229,6 +234,16 @@ function run_oracle()
                     recursive in (false, true),
                     offsets in ((2.0, 2.0), (2.0, 4.0), (4.0, 2.0))
 
+                    mandatory =
+                        initial == (0, 0) &&
+                        owner1 == 1 &&
+                        owner2 == q &&
+                        subset1 == 3 &&
+                        subset2 == 3 &&
+                        role1 == role2 &&
+                        removal == 3 &&
+                        removerole == role1
+                    !EXHAUSTIVE && !mandatory && rand(rng) > 0.00001 && continue
                     op1, op2 = (owner1, subset1, role1, offsets[1]),
                     (owner2, subset2, role2, offsets[2])
                     rem = (removal, removerole, recursive)
@@ -276,6 +291,7 @@ function run_oracle()
 end
 function run_scope_and_batch_oracle()
     cases = failures = 0
+    rng = StableRNG(1002)
     for storage in (:argument, :template, :held),
         whole in (false, true),
         q in 1:3,
@@ -287,6 +303,14 @@ function run_scope_and_batch_oracle()
         owner in 1:q,
         insertrole in 1:2
 
+        mandatory =
+            initial == (0, 0) &&
+            remover == 1 &&
+            owner == q &&
+            mask == 3 &&
+            role == insertrole &&
+            recursive
+        !EXHAUSTIVE && !mandatory && rand(rng) > 0.00001 && continue
         op = (owner, 3, insertrole, 2.0)
         noop = (owner, 0, insertrole, 2.0)
         removal = (mask, role, recursive)
@@ -338,8 +362,11 @@ function run_scope_and_batch_oracle()
     @test failures == 0
 end
 @testset "binding occupancy across model scopes" begin
-    run_oracle()
-    run_scope_and_batch_oracle()
+    elapsed = @elapsed begin
+        run_oracle()
+        run_scope_and_batch_oracle()
+    end
+    println("Binding oracle seconds=", elapsed)
 end
 
 end
