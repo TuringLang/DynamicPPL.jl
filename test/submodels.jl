@@ -359,7 +359,8 @@ end
         @test single(rng) == templated(rng) == 3.0
         baseline = @allocated single(rng)
         @test (@allocated templated(rng)) <= baseline
-        if VERSION >= v"1.12"
+        # Only 1.12 meets 48 B: Julia 1.13's bounds-checked fill! retains the zeros matrix.
+        if v"1.12" <= VERSION < v"1.13" && Base.JLOptions().check_bounds != 1
             @test (@allocated templated(rng)) <= 48
         end
         @test @inferred(templated(rng)) == 3.0

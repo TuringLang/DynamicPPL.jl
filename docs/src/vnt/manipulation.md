@@ -162,12 +162,16 @@ For example, consider model conditioning:
     return x .~ Normal()
 end
 
-cond_model = f() | (@varname(x[1]) => 1.0, @varname(x[2]) => 2.0)
+using AbstractPPL: of, @of
+
+cond_model = condition(f(), @varname(x[1]) => 1.0, @varname(x[2]) => 2.0,
+                       @of(x = of(Array, 2)))
 ```
 
-Right now, conditioning with pairs without a template will lead to the conditioning values being stored with `GrowableArray`s, which is not ideal.
-However, if the *model* carried with itself a skeleton VNT, then at the point where we condition the model, we could use that to reconstruct a VNT of conditioned values.
-This is not yet implemented, but is one of the use cases that we have in mind.
+Partial local bindings need storage before evaluation. Here the template provides it;
+allocation inside `f` happens too late for the binding call. Without the template or another
+source of storage, the call throws. A template can also be derived from a sample with
+`of(rand(rng, f()))`; see [Binding contract](@ref).
 
 FlexiChains does currently make use of skeleton VNTs.
 If we reevaluate a model with a `VNChain`, we need some way of reconstructing VNTs to feed into the model.
