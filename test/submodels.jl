@@ -78,6 +78,9 @@ end
 @model held_geometry_parent(child) = a ~ to_submodel(child[])
 @model placeholder_child(x) = (x[1] ~ Normal(); x[2] ~ Normal(); x)
 @model placeholder_parent(child) = a ~ to_submodel(child)
+@model nested_inner() = (x ~ Normal(); y ~ Normal())
+@model nested_mid() = b ~ to_submodel(nested_inner())
+@model nested_outer(m) = a ~ to_submodel(m)
 @model removal_geometry_middle(child) = (z ~ Normal(); b ~ to_submodel(child); __model__)
 @model function removal_geometry_child(n)
     x = [zeros(2 + i % 2) for i in 1:n]
@@ -104,6 +107,222 @@ end
         @test_throws r"Cannot make a partial binding of argument `x` with whole `nothing` storage" fix(
             decondition(condition(model, root => [1.0, 2.0]), part), part => 3.0
         )()
+    end
+end
+
+@testset "nested submodel bindings split named-tuple roots" begin
+    first = condition(nested_outer(nested_mid()); a=(b=(x=1.0,),))
+    @test condition(first, @varname(a.b.y) => 2.0)() == 2.0
+    @test @varname(a.b.x) in keys(conditioned(first))
+    second = condition(nested_outer(nested_mid()), @varname(a.b.x) => 1.0)
+    second = condition(second; a=(b=(y=2.0,),))
+    @test second() == 2.0
+    @test @varname(a.b.y) in keys(conditioned(second))
+end
+@model body_namespace_parent() = a ~ to_submodel(nested_mid())
+@testset "nested leaf density inference" begin
+    if VERSION >= v"1.12"
+        for model in (body_namespace_parent(), nested_outer(nested_mid())),
+            bind in (condition, fix)
+
+            ldf = LogDensityFunction(bind(model, @varname(a.b.y) => 1.0))
+            expected =
+                logpdf(Normal(), 0.3) + (bind === condition ? logpdf(Normal(), 1.0) : 0.0)
+            @test (@inferred LogDensityProblems.logdensity(ldf, [0.3])) ≈ expected
+        end
+    end
+end
+@model deeper_namespace_child() = c ~ to_submodel(nested_mid())
+@model structured_namespace_child() = (
+    b ~ product_distribution((u=Normal(), v=Normal())); b
+)
+@model function sibling_namespaces(child)
+    a ~ to_submodel(structured_namespace_child())
+    c ~ to_submodel(child)
+    return a
+end
+
+@testset "nested roots use the executing child's namespace" begin
+    for bind in (condition, fix),
+        model in (nested_outer(nested_mid()), body_namespace_parent())
+
+        whole = bind(model; a=(b=(x=1.0,),))
+        @test bind(whole, @varname(a.b.y) => 2.0)() == 2.0
+        partial = bind(model, @varname(a.b.x) => 1.0)
+        @test bind(partial; a=(b=(y=2.0,),))() == 2.0
+        deep = bind(nested_outer(deeper_namespace_child()); a=(c=(b=(x=1.0,),),))
+        @test bind(deep, @varname(a.c.b.y) => 2.0)() == 2.0
+    end
+    for bind in (condition, fix)
+        model = bind(sibling_namespaces(nested_mid()); a=(b=(u=1.0, v=2.0),))
+        listing = bind === condition ? conditioned : fixed
+        @test collect(keys(listing(model))) == [@varname(a.b)]
+        @test bind(model, @varname(a.b) => (u=3.0, v=4.0))() == (u=3.0, v=4.0)
+    end
+    @test fix(sibling_namespaces(nested_mid()); a=(b=(u=1.0,),))() == (u=1.0,)
+end
+
+@model deferred_leaves() = (x ~ Normal(); y ~ Normal(); (x=x, y=y))
+@model deferred_mid() = b ~ to_submodel(deferred_leaves())
+@model deferred_parent() = a ~ to_submodel(deferred_mid())
+@model deferred_structure() = (b ~ product_distribution((x=Normal(), y=Normal())); b)
+@model deferred_structured_parent() = a ~ to_submodel(deferred_structure())
+@testset "deferred invariants" begin
+    for (bind, remove, list) in ((condition, decondition, conditioned), (fix, unfix, fixed))
+        m = bind(deferred_parent(); a=(b=(x=1.0,),))
+        @test @varname(a.b) in keys(list(m))
+        @test bind(m; a=(b=(y=2.0,),))() == (x=1.0, y=2.0)
+        @test bind(bind(deferred_parent(), @varname(a.b.x) => 1.0); a=(b=(y=2.0,),))() ==
+            (x=1.0, y=2.0)
+        @test bind(
+            remove(m, @varname(a.b.x)), @varname(a.b.x) => 3.0, @varname(a.b.y) => 2.0
+        )() == (x=3.0, y=2.0)
+        @test bind(remove(m, @varname(a.b)), @varname(a.b.y) => 2.0)(Xoshiro(1)).y == 2.0
+        s = bind(deferred_structured_parent(); a=(b=(x=1.0, y=2.0),))
+        @test bind(s, @varname(a.b) => (x=3.0, y=4.0))() == (x=3.0, y=4.0)
+        @test_throws ArgumentError bind(s, @varname(a.b) => (x=3.0,))()
+        bind === fix &&
+            @test bind(remove(s, @varname(a.b)), @varname(a.b) => (x=3.0,))() == (x=3.0,)
+        @test bind(s, @varname(a.b.x) => 3.0)() == (x=3.0, y=2.0)
+        @test_throws ArgumentError bind(
+            deferred_parent(), @varname(a.b) => (x=1.0,), @varname(a.b.x) => 2.0
+        )()
+    end
+    @test condition(
+        deferred_parent(), @varname(a.b) => (x=1.0,), @varname(a.b.y) => 2.0
+    )() == (x=1.0, y=2.0)
+    @test condition(
+        deferred_parent(), @varname(a.b.x) => 1.0, @varname(a.b) => (y=2.0,)
+    )() == (x=1.0, y=2.0)
+    m = condition(deferred_parent(); a=(b=(x=1.0,),))
+    @test fix(m, @varname(a.b.y) => 2.0)() == (x=1.0, y=2.0)
+    @test_throws ArgumentError fix(m, @varname(a.b.x) => 2.0)()
+    @test fix(
+        decondition(m, @varname(a.b.x)), @varname(a.b.x) => 3.0, @varname(a.b.y) => 2.0
+    )() == (x=3.0, y=2.0)
+end
+@testset "deferred listing round trips" begin
+    for (bind, listing) in ((condition, conditioned), (fix, fixed))
+        m = bind(bind(deferred_parent(); a=(b=(x=1.0,),)); a=(b=(y=2.0,),))
+        @test collect(keys(listing(m))) == [@varname(a.b)]
+        @test bind(deferred_parent(), listing(m))() == (x=1.0, y=2.0)
+        m = bind(
+            bind(deferred_structured_parent(); a=(b=(x=1.0, y=2.0),)); a=(b=(x=3.0, y=4.0),)
+        )
+        @test bind(deferred_structured_parent(), listing(m))() == (x=3.0, y=4.0)
+    end
+end
+@testset "deferred removal listing changes role" begin
+    m = decondition(condition(deferred_parent(); a=(b=(x=1.0, y=2.0),)), @varname(a.b.x))
+    rebound = fix(deferred_parent(), conditioned(m))
+    @test rebound(Xoshiro(1)).y == 2.0
+    @test rebound(Xoshiro(1)).x != 1.0
+end
+
+@model deferred_array_struct() = (
+    q = (x=zeros(2),); q.x[1] ~ Normal(); q.x[2] ~ Normal(); q
+)
+@model deferred_array_parent() = a ~ to_submodel(deferred_array_struct())
+@model deferred_array_leaves() = (x = zeros(2); x[1] ~ Normal(); x[2] ~ Normal(); x)
+@model deferred_array_middle() = b ~ to_submodel(deferred_array_leaves())
+@model deferred_arrays_parent() = a ~ to_submodel(deferred_array_middle())
+@testset "deferred array storage" begin
+    for (bind, remove) in ((condition, decondition), (fix, unfix))
+        m = bind(deferred_array_parent(); a=(q=(x=[1.0, 2.0],),))
+        @test bind(m, @varname(a.q.x[2]) => 3.0)() == (x=[1.0, 3.0],)
+        @test bind(m, @varname(a.q.x[:]) => [3.0, 4.0])() == (x=[3.0, 4.0],)
+        @test_throws ArgumentError bind(m, @varname(a.q.x) => ones(3))()
+        m = bind(deferred_arrays_parent(); a=(b=(x=[1.0, 2.0],),))
+        @test bind(m, @varname(a.b.x[2]) => 3.0)() == [1.0, 3.0]
+        @test bind(m, @varname(a.b.x[:]) => [3.0, 4.0])() == [3.0, 4.0]
+        @test_throws ArgumentError bind(m, @varname(a.b.x) => ones(3))()
+    end
+end
+
+@model listed_namespace_leaves() = (
+    x ~ Normal(); y ~ Normal(); z ~ Normal(); (x=x, y=y, z=z)
+)
+@model listed_namespace_middle() = b ~ to_submodel(listed_namespace_leaves())
+@model listed_namespace_parent() = a ~ to_submodel(listed_namespace_middle())
+@testset "listing batch" begin
+    for (bind, listing) in ((condition, conditioned), (fix, fixed))
+        m = bind(bind(listed_namespace_parent(); a=(b=(x=1.0,),)); a=(b=(y=2.0,),))
+        @test bind(listed_namespace_parent(), listing(m), @varname(a.b.z) => 3.0)() ==
+            (x=1.0, y=2.0, z=3.0)
+        @test_throws ArgumentError bind(
+            listed_namespace_parent(), listing(m), @varname(a.b.x) => 3.0
+        )()
+    end
+end
+
+@model owned_leaf() = (x ~ Normal(); y ~ Normal(); (x=x, y=y))
+@model owned_mid() = b ~ to_submodel(owned_leaf())
+@model owned_unprefixed() =
+    r ~ to_submodel(condition(owned_mid(), @varname(b.x) => 5.0), false)
+@model owned_outer() = a ~ to_submodel(owned_unprefixed())
+@model owned_deep_mid() = b ~ to_submodel(condition(owned_leaf(); x=5.0))
+@model owned_deep_unprefixed() = r ~ to_submodel(owned_deep_mid(), false)
+@model owned_deep_outer() = a ~ to_submodel(owned_deep_unprefixed())
+@testset "deferred bindings preserve child ownership" begin
+    for bind in (condition, fix)
+        @test_throws r"already bound" bind(owned_unprefixed(); b=(x=1.0,))()
+        @test_throws r"already bound" bind(owned_outer(); a=(b=(x=1.0,),))()
+        @test_throws r"already bound" bind(owned_deep_outer(); a=(b=(x=1.0,),))()
+        @test bind(owned_outer(); a=(b=(y=1.0,),))() == (x=5.0, y=1.0)
+    end
+end
+
+@model listing_leaf() = (x ~ Normal(); y ~ Normal(); (x=x, y=y))
+@model listing_mid() = b ~ to_submodel(listing_leaf())
+@model listing_outer() = a ~ to_submodel(listing_mid())
+@testset "merged deferred listings" begin
+    for (bind, remove, list) in ((condition, decondition, conditioned), (fix, unfix, fixed))
+        m = bind(bind(listing_outer(); a=(b=(x=1.0,),)); a=(b=(y=2.0,),))
+        L = list(m)
+        @test collect(keys(L)) == [@varname(a.b)]
+        @test L[@varname(a.b)] == (x=1.0, y=2.0)
+        @test haskey(L, @varname(a.b.x)) && L[@varname(a.b.x)] == 1.0
+        @test values(L) == [(x=1.0, y=2.0)]
+        @test collect(pairs(L)) == [@varname(a.b) => (x=1.0, y=2.0)]
+        @test Dict(pairs(L)) == Dict(@varname(a.b) => (x=1.0, y=2.0))
+        @test merge(VarNamedTuple((z=3.0,)), L)[@varname(a.b)] == (x=1.0, y=2.0)
+        @test !occursin("Deferred", repr(L)) && !occursin("pending", repr(L))
+        @test bind(listing_outer(), L)() == (x=1.0, y=2.0)
+        @test list(bind(m; a=(b=(x=3.0,),)))[@varname(a.b)] == (x=3.0, y=2.0)
+        removed = list(remove(m, @varname(a.b.x)))
+        @test removed[@varname(a.b)] == (y=2.0,)
+        @test !haskey(removed, @varname(a.b.x))
+    end
+end
+
+@model argument_leaf() = (x ~ Normal(); y ~ Normal(); (x=x, y=y))
+@model argument_mid() = b ~ to_submodel(argument_leaf())
+@model argument_outer(m) = a ~ to_submodel(m)
+@model argument_body() = a ~ to_submodel(argument_mid())
+@model argument_struct() = (b ~ product_distribution((x=Normal(), y=Normal())); b)
+@model argument_siblings(m) = (a ~ to_submodel(argument_struct()); c ~ to_submodel(m); a)
+@testset "argument child listings" begin
+    for (bind, list) in ((condition, conditioned), (fix, fixed))
+        @test collect(keys(list(bind(argument_outer(argument_mid()); a=(b=(x=1.0,),))))) ==
+            [@varname(a.b.x)]
+        @test collect(keys(list(bind(argument_body(); a=(b=(x=1.0,),))))) == [@varname(a.b)]
+        @test collect(
+            keys(list(bind(argument_siblings(argument_mid()); a=(b=(x=1.0,),))))
+        ) == [@varname(a.b)]
+    end
+end
+
+@model function indexed_argument_child(child)
+    a = Vector{Any}(undef, 2)
+    for i in 1:2
+        a[i] ~ to_submodel(child)
+    end
+    return a
+end
+@testset "indexed argument child listings" begin
+    for (bind, listing) in ((condition, conditioned), (fix, fixed))
+        model = bind(indexed_argument_child(argument_leaf()), @varname(a[1].x) => 1.0)
+        @test listing(model)[@varname(a[1].x)] == 1.0
     end
 end
 

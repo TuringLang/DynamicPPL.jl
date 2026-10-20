@@ -328,6 +328,7 @@ end
             parent_model.values, local_prefix, _model_prefix(parent_model)
         ),
     )
+    inherited_shapes = _resolve_deferred_binding(inherited_shapes, child_model, nothing)
     inherited_shapes = _local_shape_roots(child_model, inherited_shapes)
     parent_values, parent_shapes = _prepare_namespace_bindings(
         child_model, inherited_values, inherited_shapes, inherited_templates

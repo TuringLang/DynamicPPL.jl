@@ -698,6 +698,11 @@ are retained. It is a snapshot; rebuild it when the sample layout changes. Plain
 arrays, exactly representable scalars and nested namespaces are supported. Custom arrays,
 growable entries, pending bindings and scalars whose type `of` would widen are rejected.
 Listings can hold pending bindings and round-trip through `condition` or `fix`.
+Before a body-built child runs, an unresolved `NamedTuple` keeps its supplied address,
+such as `a.b`. Several writes at that address list their merged fields, with later writes
+replacing shared fields. Removed fields are absent. A child passed directly as a model
+argument provides its namespace information, so its bindings list at leaf addresses such
+as `a.b.x`.
 
 An indexed prefix, such as `prefix(model, @varname(p[1, 2]))`, cannot take a template: the
 template grammar cannot express indexed namespaces such as `p[1, 2].y`, so `of(rand(rng, model))`

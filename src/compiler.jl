@@ -181,6 +181,7 @@ function model(mod, linenumbernode, expr, warn)
     lhs_names = Symbol[]
     has_unprefixed_submodel = Ref(false)
     lhs_addresses = Tuple{VarName,Bool}[]
+    submodel_arguments = Tuple{VarName,Union{Symbol,Nothing}}[]
     arguments = map(
         arg -> first(MacroTools.splitarg(arg)), vcat(modeldef[:args], modeldef[:kwargs])
     )
@@ -193,10 +194,16 @@ function model(mod, linenumbernode, expr, warn)
         arguments,
         has_unprefixed_submodel,
         lhs_addresses,
+        submodel_arguments,
     )
 
     return build_output(
-        modeldef, linenumbernode, lhs_names, has_unprefixed_submodel[], Tuple(lhs_addresses)
+        modeldef,
+        linenumbernode,
+        lhs_names,
+        has_unprefixed_submodel[],
+        Tuple(lhs_addresses),
+        Tuple(submodel_arguments),
     )
 end
 
@@ -249,6 +256,7 @@ function generate_mainbody(
     arguments=Symbol[],
     has_unprefixed_submodel=Ref(false),
     lhs_addresses=Tuple{VarName,Bool}[],
+    submodel_arguments=Tuple{VarName,Union{Symbol,Nothing}}[],
 )
     return generate_mainbody!(
         mod,
@@ -258,6 +266,7 @@ function generate_mainbody(
             arguments,
             has_unprefixed_submodel,
             lhs_addresses,
+            submodel_arguments,
             shadowed=Symbol[],
         ),
         expr,
@@ -349,6 +358,18 @@ function generate_mainbody!(mod, found, expr::Expr, warn, warn_threads)
             # Dynamic indices may overlap any address under their root.
             address = something(_static_lhs_address(L), VarName{root}())
             push!(found.lhs_addresses, (address, is_submodel))
+            if is_submodel
+                source =
+                    if R.args[2] isa Symbol &&
+                        R.args[2] in found.arguments &&
+                        _static_lhs_address(L) !== nothing &&
+                        !(length(R.args) == 3 && R.args[3] === false)
+                        R.args[2]
+                    else
+                        nothing
+                    end
+                push!(found.submodel_arguments, (address, source))
+            end
             root in found.shadowed && throw(
                 ArgumentError(
                     "LHS root `$root` shadows model argument `$root`; rename the inner function parameter.",
@@ -774,7 +795,12 @@ end
 Builds the output expression.
 """
 function build_output(
-    modeldef, linenumbernode, lhs_names, has_unprefixed_submodel=false, lhs_addresses=()
+    modeldef,
+    linenumbernode,
+    lhs_names,
+    has_unprefixed_submodel=false,
+    lhs_addresses=(),
+    submodel_arguments=(),
 )
     args = transform_args(modeldef[:args])
     kwargs = transform_args(modeldef[:kwargs])
@@ -948,6 +974,8 @@ function build_output(
                 $has_unprefixed_submodel,
                 $argument_types,
                 $(QuoteNode(Tuple(unique(lhs_addresses)))),
+                (),
+                $(QuoteNode(Tuple(unique(submodel_arguments)))),
             }(),
         )
     end

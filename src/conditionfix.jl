@@ -2882,7 +2882,7 @@ function _binding_entries(model, input, prefix, supplied)
         else
             AbstractPPL.append_optic(prefix, optic)
         end
-        storage = prefix === nothing ? value : supplied
+        storage = prefix === nothing ? _deferred_input_storage(value) : supplied
         if prefix === nothing &&
             value isa VarNamedTuples.PartialArray &&
             !(value.data isa VarNamedTuples.GrowableArray) &&
@@ -2983,7 +2983,11 @@ function _prepare_binding_batch(model, inputs, ::Type{R}, schema) where {R}
     for batch in entries, (vn, value, _) in batch
         _check_namespace_index_counts(values, AbstractPPL.varname_to_optic(vn), vn, model)
         value isa VarNamedTuples.PartialArray && isempty(value) && continue
-        _check_binding_overlap!(raw_seen, model, vn, NoTemplate())
+        if _defer_binding_overlap(model, vn, value)
+            _check_deferred_overlap!(raw_seen, model, vn, value)
+        else
+            _check_binding_overlap!(raw_seen, model, vn, NoTemplate())
+        end
     end
     supplied_values = foldl(entries; init=VarNamedTuple()) do sources, batch
         foldl(batch; init=sources) do sources, (vn, _, supplied)
@@ -3005,7 +3009,8 @@ function _prepare_binding_batch(model, inputs, ::Type{R}, schema) where {R}
             template = address.template
             name = address.name
             _check_binding_storage(layer_model, template, name; supplied)
-            if !(value isa VarNamedTuples.PartialArray && isempty(value))
+            if !(value isa VarNamedTuples.PartialArray && isempty(value)) &&
+                !_defer_binding_overlap(model, name, value)
                 _check_binding_overlap!(seen, layer_model, name, template)
             end
             (name, value, template)
@@ -3019,8 +3024,15 @@ function _prepare_binding_batch(model, inputs, ::Type{R}, schema) where {R}
         else
             nothing
         end
+    deferred_roots = foldl(entries; init=()) do roots, batch
+        foldl(batch; init=roots) do roots, (name, value, _)
+            _defer_binding_overlap(model, name, value) ? (roots..., name) : roots
+        end
+    end
     return foldl(resolved; init=VarNamedTuple()) do prepared, batch
-        f = (p, entry) -> _prepare_binding_entry(layer_model, schema, p, entry, group)
+        f =
+            (p, entry) ->
+                _prepare_binding_entry(layer_model, schema, p, entry, group, deferred_roots)
         if batch isa Tuple
             Base.afoldl(f, prepared, batch...)
         else
@@ -3028,7 +3040,9 @@ function _prepare_binding_batch(model, inputs, ::Type{R}, schema) where {R}
         end
     end
 end
-function _prepare_binding_entry(model, schema, prepared, (name, value, template), group)
+function _prepare_binding_entry(
+    model, schema, prepared, (name, value, template), group, deferred_roots
+)
     optic = AbstractPPL.getoptic(name)
     _check_binding_extents(value, template, optic, name)
     pending = _pending_binding(model, name)
@@ -3039,6 +3053,20 @@ function _prepare_binding_entry(model, schema, prepared, (name, value, template)
         )
     value = _convert_binding_template(value, template, optic, name; whole)
     _check_namespace_index_counts(prepared, AbstractPPL.varname_to_optic(name), name, model)
+    if pending &&
+        _property_binding_path(optic) &&
+        (
+            !isempty(deferred_roots) ||
+            _has_deferred_binding(_binding_shape_store(model.values).roots)
+        )
+        if any(root -> subsumes(root, name) || subsumes(name, root), deferred_roots)
+            value = DeferredBinding((DeferredWrite(value, group),))
+        end
+        update = templated_setindex!!(VarNamedTuple(), value, name, NoTemplate())
+        return _merge_model_values(prepared, update)
+    elseif pending && value isa NamedTuple && !_is_namespace_storage(model, name)
+        value = DeferredBinding((DeferredWrite(value, group),))
+    end
     template = if pending
         PendingBindingTemplate(template, VarName{AbstractPPL.getsym(name)}(), group)
     else
@@ -3050,6 +3078,10 @@ function _prepare_binding_entry(model, schema, prepared, (name, value, template)
     end
     return templated_setindex!!(prepared, value, name, template)
 end
+
+_property_binding_path(::AbstractPPL.Iden) = true
+_property_binding_path(o::AbstractPPL.Property) = _property_binding_path(o.child)
+_property_binding_path(::AbstractPPL.Index) = false
 
 _scalar_binding_optic(::AbstractPPL.Iden) = true
 _scalar_binding_optic(o::AbstractPPL.Property) = _scalar_binding_optic(o.child)
@@ -3400,6 +3432,11 @@ end
 function _check_disjoint_bindings(previous, updates, vn=nothing; ancestor=false)
     previous isa Union{Nothing,NoModelBinding} && return nothing
     updates isa Union{Nothing,NoModelBinding} && return nothing
+    if previous isa DeferredBinding || updates isa DeferredBinding
+        return _check_disjoint_bindings(
+            _deferred_projection(previous), _deferred_projection(updates), vn; ancestor
+        )
+    end
     updates isa ModelValueTree && (updates = updates.values)
     if previous isa PendingBindings && updates isa ModelValue
         return _check_disjoint_bindings(
@@ -3531,6 +3568,7 @@ function _pending_binding(model, vn)
     metadata = _binding_metadata(model)
     _lhs_names(metadata) === nothing && return false
     name = AbstractPPL.getsym(local_name)
+    name in _args_on_lhs(model) && return false
     addresses = filter(x -> AbstractPPL.getsym(first(x)) === name, _lhs_addresses(metadata))
     return isempty(addresses) ? _has_unprefixed_submodel(metadata) : any(last, addresses)
 end
@@ -4172,7 +4210,8 @@ function _prepare_child_bindings(model, values, templates, prefix)
 end
 function _prepare_child_layer(::Type{R}, model, values, templates, prefix) where {R}
     layer_model = _binding_layer_model(R, model)
-    layer = _check_argument_bindings(layer_model, _binding_layer(R, values), prefix, model)
+    layer = _resolve_deferred_binding(_binding_layer(R, values), model, nothing)
+    layer = _check_argument_bindings(layer_model, layer, prefix, model)
     layer = _prepare_child_locals(layer_model, layer, model, templates, prefix)
     return _prune_model_bindings(layer)
 end
@@ -4208,6 +4247,7 @@ end
 function _prepare_child_local(
     node::VarNamedTuple{names}, storage, vn, model, templates, prefix
 ) where {names}
+    _binding_schema_owned(model, vn) || return node
     return VarNamedTuple(
         NamedTuple{names}(
             map(names) do name
@@ -4792,7 +4832,9 @@ julia> # Now `a.x` will be sampled.
  a.x
 ```
 """
-conditioned(model::Model) = _select_model_values(Condition, _public_model_values(model))
+conditioned(model::Model) = _select_model_values(
+    Condition, _listing_argument_children(model, _public_model_values(model))
+)
 
 """
     fix(model::Model; values...)
@@ -5083,7 +5125,9 @@ julia> # Now `a.x` will be sampled.
  a.x
 ```
 """
-fixed(model::Model) = _select_model_values(Fix, _public_model_values(model))
+fixed(model::Model) = _select_model_values(
+    Fix, _listing_argument_children(model, _public_model_values(model))
+)
 
 # Recursive removals are stored separately from values and therefore own no shape.
 _removals(::Type, values) = ()
@@ -5352,8 +5396,7 @@ struct ArrayBindingGeometry{A,C}
     axes::A
     children::C
 end
-struct FieldBindingGeometry{N,C}
-    names::N
+struct FieldBindingGeometry{C<:NamedTuple}
     children::C
 end
 
@@ -5381,7 +5424,7 @@ function _binding_geometry(value, parents::Tuple)
             UnknownBindingGeometry()
         end
     end
-    return FieldBindingGeometry(names, children)
+    return FieldBindingGeometry(NamedTuple{names}(children))
 end
 function _binding_geometry(
     value::Union{AbstractArray,Tuple,VarNamedTuples.PartialArray}, parents::Tuple
@@ -5426,8 +5469,7 @@ function _same_binding_geometry(a::ArrayBindingGeometry, b::ArrayBindingGeometry
     return all(_same_binding_geometry(x, y) for (x, y) in zip(a.children, b.children))
 end
 function _same_binding_geometry(a::FieldBindingGeometry, b::FieldBindingGeometry)
-    return a.names == b.names &&
-           length(a.children) == length(b.children) &&
+    return keys(a.children) == keys(b.children) &&
            all(_same_binding_geometry(x, y) for (x, y) in zip(a.children, b.children))
 end
 
@@ -5444,9 +5486,7 @@ function _refine_binding_geometry(a::ArrayBindingGeometry, b::ArrayBindingGeomet
     )
 end
 function _refine_binding_geometry(a::FieldBindingGeometry, b::FieldBindingGeometry)
-    return FieldBindingGeometry(
-        a.names, map(_refine_binding_geometry, a.children, b.children)
-    )
+    return FieldBindingGeometry(map(_refine_binding_geometry, a.children, b.children))
 end
 
 # The roots are leaves in an existing VarNamedTuple tree. PartialArray nodes group
@@ -5455,8 +5495,7 @@ struct BindingShape{G}
     geometry::G
 end
 function _submodel_namespace(shape::BindingShape{<:FieldBindingGeometry})
-    g = shape.geometry
-    return VarNamedTuple(NamedTuple{g.names}(map(BindingShape, g.children)))
+    return VarNamedTuple(map(BindingShape, shape.geometry.children))
 end
 struct ModelBindingShapes{R}
     roots::R
@@ -5542,7 +5581,7 @@ function _geometry_template(geometry::ArrayBindingGeometry)
     return BindingGeometryArray(geometry)
 end
 function _geometry_template(geometry::FieldBindingGeometry)
-    return NamedTuple{geometry.names}(map(_geometry_template, geometry.children))
+    return map(_geometry_template, geometry.children)
 end
 _partial_binding_array(::BindingGeometryArray) = true
 function VarNamedTuples.make_leaf(
@@ -6081,12 +6120,20 @@ function _refine_shape_part(
     return build ? _refine_binding_geometry(geometry, value.geometry) : geometry
 end
 function _refine_shape_part(
+    ::ScalarBindingGeometry,
+    ::Union{AbstractPPL.Property,AbstractPPL.Index},
+    value,
+    vn,
+    build=true,
+)
+    return _binding_shape_error(vn)
+end
+function _refine_shape_part(
     g::FieldBindingGeometry, optic::AbstractPPL.Property{S}, value, vn, build=true
 ) where {S}
-    i = findfirst(==(S), g.names)
-    i === nothing && _binding_shape_error(vn)
-    child = _refine_shape_part(g.children[i], optic.child, value, vn, build)
-    return build ? FieldBindingGeometry(g.names, Base.setindex(g.children, child, i)) : g
+    haskey(g.children, S) || _binding_shape_error(vn)
+    child = _refine_shape_part(g.children[S], optic.child, value, vn, build)
+    return build ? FieldBindingGeometry(Base.setindex(g.children, child, S)) : g
 end
 function _refine_shape_part(
     g::ArrayBindingGeometry, optic::AbstractPPL.Index, value, vn, build=true
@@ -6399,3 +6446,5 @@ _binding_read_context(context, values) = context
 function _binding_read_context(context::AbstractParentContext, values)
     return setchildcontext(context, _binding_read_context(childcontext(context), values))
 end
+
+include("deferred_bindings.jl")

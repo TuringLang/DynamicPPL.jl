@@ -656,4 +656,19 @@ end
     end
 end
 
+@testset "deferred runtime bindings" begin
+    @model deferred_leaves() = (x ~ Normal(); y ~ Normal())
+    @model deferred_middle() = b ~ to_submodel(deferred_leaves())
+    @model deferred_parent() = a ~ to_submodel(deferred_middle())
+    @model function deferred_runtime()
+        m ~ Normal()
+        z ~ to_submodel(condition(deferred_parent(); a=(b=(x=m, y=1.0),)))
+        return m
+    end
+    ldf = LogDensityFunction(deferred_runtime(); adtype=AutoMooncake())
+    density, gradient = LogDensityProblems.logdensity_and_gradient(ldf, [0.3])
+    @test density ≈ 2logpdf(Normal(), 0.3) + logpdf(Normal(), 1.0)
+    @test gradient ≈ [-0.6]
+end
+
 end

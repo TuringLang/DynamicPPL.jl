@@ -98,6 +98,13 @@ Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
     typeof(DynamicPPL._argument_may_need_adapter),Type
 }
 
+Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
+    typeof(DynamicPPL._check_deferred_groups),
+    DynamicPPL.DeferredBinding,
+    DynamicPPL.Model,
+    AbstractPPL.VarName,
+}
+
 # Storage validation returns no numerical result.
 Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
     typeof(DynamicPPL._check_argument_key_storage),Any,Any

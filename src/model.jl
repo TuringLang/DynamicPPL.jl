@@ -157,16 +157,21 @@ function unsplat_symbol(s::Symbol)
 end
 
 # The existing argument metadata slot also carries macro-known LHS addresses.
-struct ModelBindingMetadata{Arguments,LHS,Unprefixed,Types,Addresses,Templates} end
+struct ModelBindingMetadata{Arguments,LHS,Unprefixed,Types,Addresses,Templates,Children} end
 function ModelBindingMetadata{A,L,S,T,N}() where {A,L,S,T,N}
-    return ModelBindingMetadata{A,L,S,T,N,()}()
+    return ModelBindingMetadata{A,L,S,T,N,(),()}()
 end
+function ModelBindingMetadata{A,L,S,T,N,B}() where {A,L,S,T,N,B}
+    return ModelBindingMetadata{A,L,S,T,N,B,()}()
+end
+_submodel_arguments(::Tuple) = ()
+_submodel_arguments(::ModelBindingMetadata{A,L,S,T,N,B,C}) where {A,L,S,T,N,B,C} = C
 _binding_template_names(::Tuple) = ()
 _binding_template_names(::ModelBindingMetadata{A,L,S,T,N,B}) where {A,L,S,T,N,B} = B
 function _with_binding_template_names(
-    ::ModelBindingMetadata{A,L,S,T,N,B}, names
-) where {A,L,S,T,N,B}
-    return ModelBindingMetadata{A,L,S,T,N,_merge_binding_template_names(B, names)}()
+    ::ModelBindingMetadata{A,L,S,T,N,B,C}, names
+) where {A,L,S,T,N,B,C}
+    return ModelBindingMetadata{A,L,S,T,N,_merge_binding_template_names(B, names),C}()
 end
 _with_binding_template_names(metadata::Tuple, names) = metadata
 _merge_binding_template_names(names::Tuple, ::Tuple{}) = names

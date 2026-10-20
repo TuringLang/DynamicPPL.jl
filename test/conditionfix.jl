@@ -9508,4 +9508,14 @@ end
         [1.0, 1.0, 2.0]
 end
 
+@testset "deferred scalar rejects indexed writes" begin
+    @model scalar_child() = b ~ product_distribution((x=Normal(), y=Normal()))
+    @model scalar_parent() = a ~ to_submodel(scalar_child())
+    for bind in (condition, fix)
+        m = bind(scalar_parent(), @varname(a.b) => (x=1.0,))
+        @test_throws ArgumentError bind(m, @varname(a.b.x[1]) => 2.0)(Xoshiro(1))
+    end
+end
+
+
 end
