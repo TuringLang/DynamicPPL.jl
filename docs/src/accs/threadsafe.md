@@ -76,6 +76,16 @@ Parameter values are also accumulator outputs. `VectorValueAccumulator` and
 This does not make arbitrary mutations in the model body or shared mutable
 initialisation strategies thread-safe.
 
+Because task accumulators are combined in an unspecified order, the order of collected
+variables can differ between evaluations, including variables defined outside the
+threaded region. A `VarInfo` or `LogDensityFunction` built from such an evaluation
+inherits that order. Each function is consistent with its own mapping, but using
+`internal_values_as_vector` (`vi[:]`) from another `VarInfo` can silently give the wrong
+density. Obtain vectors with that function's mapping using
+[`VectorParamAccumulator`](@ref), or pass vectorised values with matching transforms to
+[`to_vector_params`](@ref), as described in
+[Obtaining new vectorised parameters](@ref ldf-vector-params).
+
 ## Containers under thread-safe evaluation
 
 Under thread-safe evaluation, a tilde assignment throws an `ArgumentError` if it
@@ -83,11 +93,10 @@ replaces a mutable container on its path or changes an immutable container's typ
 wherever the assignment occurs. Slice reads are checked by type because they return
 copies. Allocate with the parameter element type via `::Type{T}=Float64`: use
 `Vector{T}(undef, n)` for scalar tildes or `Matrix{T}` with `x[:, i] ~ MvNormal(...)`
-for vector-valued tildes. Assignments into data arguments that cannot be promoted also
-throw, including `Vector{Missing}` and integer data imputed by a continuous
-distribution; `Union{Missing,Float32}` data can still throw during initialisation from
-the prior. Use `Union{Missing,Float64}` data for continuous imputation. The check does
-not prevent lost writes from rebinding shared immutable values, including `NamedTuple`s
-and immutable wrappers around mutable storage such as `OffsetArray`s of `Vector{Any}`,
-or from concurrent writes through overlapping slices (`x[1:N][i] ~`). Serial evaluation
-with thread-safe mode disabled retains its usual widening behaviour.
+for vector-valued tildes. Under thread-safe evaluation with automatic differentiation,
+imputing missing entries in a data argument now throws this error because the model
+cannot reallocate the data argument to hold AD values. The check does not prevent lost
+writes from rebinding shared immutable values, including `NamedTuple`s and immutable
+wrappers around mutable storage such as `OffsetArray`s of `Vector{Any}`, or from
+concurrent writes through overlapping slices (`x[1:N][i] ~`). Serial evaluation with
+thread-safe mode disabled retains its usual widening behaviour.

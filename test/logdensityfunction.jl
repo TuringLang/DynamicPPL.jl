@@ -107,6 +107,27 @@ end
     end
 end
 
+@testset "LogDensityFunction: encoding respects root order" begin
+    @model function f()
+        x ~ Normal()
+        return y ~ Normal(x)
+    end
+    model = f()
+    x = TransformedValue([0.1], Unlink())
+    y = TransformedValue([0.5], Unlink())
+    # Thread-safe evaluation can collect these variables in either root order.
+    values_xy = VarNamedTuple(; x, y)
+    values_yx = VarNamedTuple(; y, x)
+    ldf_xy = LogDensityFunction(model, getlogjoint_internal, values_xy)
+    ldf_yx = LogDensityFunction(model, getlogjoint_internal, values_yx)
+    vector_xy = to_vector_params(values_xy, ldf_xy)
+    vector_yx = to_vector_params(values_xy, ldf_yx)
+
+    @test vector_xy != vector_yx
+    @test LogDensityProblems.logdensity(ldf_xy, vector_xy) ≈
+        LogDensityProblems.logdensity(ldf_yx, vector_yx)
+end
+
 @testset "LogDensityFunction: accessor functions" begin
     @model f() = x ~ Normal()
     ldf = LogDensityFunction(f(), getlogprior, UnlinkAll())

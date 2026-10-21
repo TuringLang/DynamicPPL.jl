@@ -87,7 +87,7 @@ This represents a loss of information since we no longer know the individual com
     
     It is much safer to use `InitFromVector`, which encapsulates all the information needed to rerun the model, but does not pretend to also contain other information that is not actually updated.
 
-## Obtaining new vectorised parameters
+## [Obtaining new vectorised parameters](@id ldf-vector-params)
 
 We can also do the reverse process here, which is to obtain new vectorised parameters that are consistent with this `LogDensityFunction`.
 
