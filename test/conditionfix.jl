@@ -199,7 +199,7 @@ end
         retained = remove(retained, @varname(y[1]))
         @test_throws InexactError bind(retained, @varname(y[1]) => 0.5)(Xoshiro(1))
         listing = bind === condition ? conditioned(child) : fixed(child)
-        @test collect(keys(listing)) == [@varname(y)]
+        @test collect(keys(listing)) == [@varname(y[1])]
         other_remove = bind === condition ? unfix : decondition
         @test_throws InexactError bind(other_remove(child), @varname(y[2]) => 0.5)(
             Xoshiro(1)
@@ -8690,8 +8690,9 @@ end
         ((condition, decondition, conditioned), (fix, unfix, fixed))
         bad = bind(pending_outer(), @varname(a.x[3, 3]) => 3.0)
         listing = listed(bad)
-        @test collect(keys(listing)) == [@varname(a.x)]
-        @test listing[@varname(a.x)] isa DynamicPPL.PendingBindings
+        @test collect(keys(listing)) == [@varname(a.x[3, 3])]
+        @test values(listing) == [3.0]
+        @test !occursin("PendingBindings", repr(listing))
         @test listing[@varname(a.x[3, 3])] === 3.0
         @test haskey(listing, @varname(a.x[3, 3]))
         @test !haskey(listing, @varname(a.x[2, 2]))
@@ -8783,6 +8784,33 @@ end
     end
     cross = fix(pending_outer(), @varname(a.x[3, 3]) => 3.0)
     @test_throws ArgumentError condition(cross, @varname(a.x) => ones(2, 2))()
+end
+
+@testset "pending listings report addresses" begin
+    @model listing_leaf() = (y ~ Normal(); z ~ Normal(); (; y, z))
+    @model function listing_loop(n)
+        m ~ Normal()
+        a = Vector{Any}(undef, n)
+        for i in 1:n
+            a[i] ~ to_submodel(listing_leaf())
+        end
+        return (; m, a)
+    end
+    for (bind, listed) in ((condition, conditioned), (fix, fixed))
+        m1 = bind(listing_loop(3), @varname(m) => 0.5, @varname(a[2].y) => 1.0)
+        listing = listed(m1)
+        @test collect(keys(listing)) == [@varname(m), @varname(a[2].y)]
+        @test values(listing) == [0.5, 1.0]
+        @test repr(listing) == "VarNamedTuple(m = 0.5, a = ([2].y => 1.0))"
+        @test !occursin("PendingBindings", repr(MIME"text/plain"(), listing))
+        @test listing[@varname(a[2].y)] === 1.0 && !haskey(listing, @varname(a))
+        m2 = bind(listing_loop(3), listing)
+        @test listed(m2) == listing && m1(Xoshiro(1)) == m2(Xoshiro(1))
+    end
+    both = fix(condition(listing_loop(3), @varname(a[2].y) => 1.0), @varname(a[2].z) => 2.0)
+    merged = merge(VarNamedTuple((; n=3)), conditioned(both), fixed(both))
+    @test collect(keys(merged)) == [@varname(n), @varname(a[2].y), @varname(a[2].z)]
+    @test merged[@varname(a[2].y)] == 1.0 && merged[@varname(a[2].z)] == 2.0
 end
 
 @testset "pending selections and child geometry" begin

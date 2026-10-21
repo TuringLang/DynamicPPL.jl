@@ -3749,6 +3749,32 @@ function VarNamedTuples._map_pairs_recursive!!(f, p::PendingBindings, vn)
         p,
     )
 end
+# Listings fold pending entries at their addresses; storage remains unchanged.
+function VarNamedTuples._mapreduce_recursive(f, op, p::PendingBindings, vn, init)
+    result = init
+    p.base === nothing ||
+        (result = VarNamedTuples._mapreduce_recursive(f, op, p.base, vn, result))
+    for (optic, value) in p.entries
+        result = VarNamedTuples._mapreduce_recursive(
+            f, op, value, AbstractPPL.append_optic(vn, optic), result
+        )
+    end
+    return result
+end
+function VarNamedTuples._merge(a::PendingBindings, b::PendingBindings, ::Val{true})
+    return _merge_model_node(a, b)
+end
+function Base.show(io::IO, p::PendingBindings)
+    print(io, "(")
+    p.base === nothing || (show(io, p.base); print(io, ", "))
+    for (i, (optic, value)) in enumerate(p.entries)
+        i == 1 || print(io, ", ")
+        AbstractPPL._pretty_print_optic(io, optic)
+        print(io, " => ")
+        show(io, value)
+    end
+    return print(io, ")")
+end
 function _pending_lookup(p, selection)
     optic = if p.base isa VarNamedTuples.PartialArray
         _resolve_binding_optic(p.base.data, selection)

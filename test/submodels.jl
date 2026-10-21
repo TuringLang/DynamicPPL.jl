@@ -1864,7 +1864,7 @@ end
     model = prefix(prefix_leaf(), @varname(p[CartesianIndex(1, 2)]))
     for name in (@varname(p[CartesianIndex(1, 2)].x), @varname(p[1, 2].x))
         bound = conditioned(condition(model, name => 3.0))
-        @test keys(bound) == [@varname(p)]
+        @test keys(bound) == [@varname(p[1, 2].x)]
         @test bound[@varname(p[1, 2].x)] == 3.0
         @test conditioned(condition(model, bound)) == bound
         @test isempty(fixed(unfix(fix(model, @varname(p[1, 2].x) => 3.0), name)))
@@ -1873,7 +1873,7 @@ end
     # `Int32` indices address the same storage as `Int` indices.
     model = prefix(prefix_leaf(), @varname(p[Int32(2)]))
     bound = conditioned(condition(model, @varname(p[2].x) => 3.0))
-    @test keys(bound) == [@varname(p)]
+    @test keys(bound) == [@varname(p[2].x)]
     @test bound[@varname(p[2].x)] == 3.0
     model = condition(prefix(prefix_leaf(), @varname(p[2])), @varname(p[2].x) => 3.0)
     @test isempty(conditioned(decondition(model, @varname(p[Int32(2)].x))))
