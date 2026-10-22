@@ -4253,27 +4253,27 @@ function _prepare_child_layer(::Type{R}, model, values, templates, prefix) where
     layer = _prepare_child_locals(layer_model, layer, model, templates, prefix)
     return _prune_model_bindings(layer)
 end
-function _check_inherited_template_storage(node, templates, vn)
-    node isa VarNamedTuples.PartialArray && node.mask isa ModelBindingArray || return nothing
-    for t in templates
-        t.name == vn || continue
-        storage = _shape_storage(node)
-        storage isa AbstractArray &&
-            t.storage isa AbstractArray &&
-            !_same_schema_storage(storage, t.storage) &&
-            throw(
-                ArgumentError(
-                    "Binding template at `$vn` conflicts with existing storage; clear the binding first.",
-                ),
-            )
-    end
+function _check_binding_template_storage(storage, template, vn)
+    storage isa AbstractArray &&
+        template isa AbstractArray &&
+        !_same_schema_storage(storage, template) &&
+        throw(
+            ArgumentError(
+                "Binding template at `$vn` conflicts with existing storage; clear the binding first.",
+            ),
+        )
     return nothing
 end
 function _prepare_child_locals(layer_model, layer, model, templates, prefix)
     return _fold_model_indices(copy(layer), layer) do result, node, optic, template
         vn = AbstractPPL.optic_to_varname(optic)
         AbstractPPL.getsym(vn) in _args_on_lhs(model) && return result
-        _check_inherited_template_storage(node, templates, vn)
+        if node isa VarNamedTuples.PartialArray && node.mask isa ModelBindingArray
+            for t in templates
+                t.name == vn || continue
+                _check_binding_template_storage(_shape_storage(node), t.storage, vn)
+            end
+        end
         storage = _binding_address_template(
             layer_model, _model_values(layer_model.values), vn
         )
@@ -4294,15 +4294,7 @@ function _prepare_child_local(node, storage, vn, model, templates, prefix)
     end
     for t in templates
         t.name == vn || continue
-        if storage isa AbstractArray &&
-            t.storage isa AbstractArray &&
-            !_same_schema_storage(storage, t.storage)
-            throw(
-                ArgumentError(
-                    "Binding template at `$vn` conflicts with existing storage; clear the binding first.",
-                ),
-            )
-        end
+        _check_binding_template_storage(storage, t.storage, vn)
         node = _prepare_bindings(node, t.storage, maybe_prefix(vn, prefix))
         storage isa NoTemplate && (storage = t.storage)
     end
