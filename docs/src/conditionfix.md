@@ -703,9 +703,14 @@ growable entries, pending bindings and scalars whose type `of` would widen are r
 Listings can hold pending bindings and round-trip through `condition` or `fix`.
 Before a body-built child runs, an unresolved `NamedTuple` keeps its supplied address,
 such as `a.b`. Several writes at that address list their merged fields, with later writes
-replacing shared fields. Removed fields are absent. A child passed directly as a model
-argument provides its namespace information, so its bindings list at leaf addresses such
-as `a.b.x`.
+replacing shared fields. After partial writes or removals, a complete value still lists at
+its supplied address. A value with holes or internal nodes lists at its leaves, such as
+`a.b.z[2]` and `a.b.x`. A child passed directly as a model argument provides its namespace
+information, so its bindings list at leaf addresses
+such as `a.b.x`, including prefixed and unprefixed children. Unprefixed children open a name
+as a namespace only when their metadata does not disagree about it. If the body reassigns
+an argument, another unprefixed child identifies the name as a variable, or an unprefixed
+sibling is built in the body, the listing retains the supplied unresolved address.
 
 An indexed prefix, such as `prefix(model, @varname(p[1, 2]))`, cannot take a template: the
 template grammar cannot express indexed namespaces such as `p[1, 2].y`, so `of(rand(rng, model))`
