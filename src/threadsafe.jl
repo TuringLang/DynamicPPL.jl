@@ -55,54 +55,55 @@ ThreadSafeVarInfo(vi::ThreadSafeVarInfo) = vi
             "Thread-safe evaluation cannot replace the container of tilde variable " *
             "$(vn): " *
             replacement *
-            "Mutable containers must retain their identity. Immutable containers must " *
-            "retain their type. Allocate with the parameter element type (for example, " *
+            "Thread-safe evaluation requires tilde variables to be written in place. " *
+            "Every container on the path must retain its identity (`===`). " *
+            "Allocate mutable storage with the parameter element type (for example, " *
             "`::Type{T}=Float64` with `Vector{T}(undef, n)` for scalar tildes, " *
-            "`Matrix{T}` with `x[:, i] ~ MvNormal(...)` for vector-valued tildes, " *
-            "or `(a = zero(T),)` for a `NamedTuple`).",
+            "or `Matrix{T}` with `x[:, i] ~ MvNormal(...)` for vector-valued tildes). " *
+            "Use a `Vector` or `Ref` instead of a `NamedTuple`, tuple or static array.",
         ),
     )
 end
 
-@inline function _capture_tilde_path(old, optic)
-    tail = AbstractPPL.otail(optic)
-    tail isa AbstractPPL.Iden && return ((old, false),)
-    sliced = _tilde_reads_slice(optic, old)
-    # The final slice copy is written back into its checked parent; reading it here
-    # would only allocate another copy.
-    if AbstractPPL.otail(tail) isa AbstractPPL.Iden && sliced
-        return ((old, sliced),)
+@inline _tilde_child(object, optic) = optic(object)
+@inline function _tilde_child(object::AbstractArray, optic::AbstractPPL.Index)
+    indices = AbstractPPL.concretize(optic, object)
+    return Base.maybeview(object, indices.ix...; indices.kw...)
+end
+
+@inline function _set_tilde_leaf(object, value, optic, vn)
+    return Accessors.set(object, AbstractPPL.with_mutation(optic), value)
+end
+
+# BangBang has no zero-index setter for RefValue.
+@inline function _set_tilde_leaf(
+    object::Base.RefValue, value, optic::AbstractPPL.Index{Tuple{}}, vn
+)
+    try
+        return setindex!(object, value)
+    catch err
+        err isa Union{MethodError,InexactError} || rethrow()
+        return _tilde_container_error(object, Ref(value), vn)
     end
-    child = AbstractPPL.ohead(optic)(old)
-    return ((old, sliced), _capture_tilde_path(child, tail)...)
 end
 
-function _tilde_reads_slice(optic::AbstractPPL.Index, object::AbstractArray)
-    indices = AbstractPPL.concretize(AbstractPPL.ohead(optic), object)
-    return any(
-        i -> i isa Union{AbstractArray,Colon}, (indices.ix..., values(indices.kw)...)
-    )
-end
-_tilde_reads_slice(optic, object) = false
-
-@inline function _check_tilde_path(old_path, new, optic, vn, sliced=false)
-    old, child_sliced = first(old_path)
-    valid = ismutable(old) && !sliced ? old === new : typeof(old) === typeof(new)
-    valid || _tilde_container_error(old, new, vn)
+@inline function _set_tilde_path(object, value, optic, vn)
     tail = AbstractPPL.otail(optic)
-    tail isa AbstractPPL.Iden && return nothing
-    AbstractPPL.otail(tail) isa AbstractPPL.Iden && child_sliced && return nothing
-    return _check_tilde_path(
-        Base.tail(old_path), AbstractPPL.ohead(optic)(new), tail, vn, child_sliced
-    )
+    if tail isa AbstractPPL.Iden
+        new = _set_tilde_leaf(object, value, optic, vn)
+        object === new || _tilde_container_error(object, new, vn)
+    else
+        head = AbstractPPL.ohead(optic)
+        child = _tilde_child(object, head)
+        _set_tilde_path(child, value, tail, vn)
+        new_child = _tilde_child(object, head)
+        child === new_child || _tilde_container_error(child, new_child, vn)
+    end
+    return object
 end
 
 function set_tilde_value!!(::ThreadSafeVarInfo, object, value, vn::VarName)
-    optic = AbstractPPL.getoptic(vn)
-    old_path = _capture_tilde_path(object, optic)
-    new = Accessors.set(object, AbstractPPL.with_mutation(optic), value)
-    _check_tilde_path(old_path, new, optic, vn)
-    return new
+    return _set_tilde_path(object, value, AbstractPPL.getoptic(vn), vn)
 end
 
 function _get_task_accs_cache(vi::ThreadSafeVarInfo{V,L}) where {V,L}

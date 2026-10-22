@@ -8,6 +8,7 @@ using Distributions
 using DynamicPPL
 using Test
 using ForwardDiff
+using OffsetArrays: OffsetArray
 using Random: Xoshiro
 using ADTypes: AutoForwardDiff
 using LogDensityProblems: logdensity, logdensity_and_gradient
@@ -567,18 +568,138 @@ end
         ) ≈ [sum(y)]
 
         local_model = setthreadsafe(local_values(), true)
-        local_ldf = LogDensityFunction(local_model)
-        @test logdensity(local_ldf, zeros(1)) ≈ 8 * logpdf(Normal(), 0.0)
-        # Accepted limitation: task-local immutable containers also reject type changes.
-        local_error = try
-            logdensity_and_gradient(
-                LogDensityFunction(local_model; adtype=AutoForwardDiff()), zeros(1)
-            )
-            nothing
-        catch err
-            nested_exception(err)
+        for adtype in (nothing, AutoForwardDiff())
+            local_error = try
+                LogDensityFunction(local_model; adtype=adtype)
+                nothing
+            catch err
+                nested_exception(err)
+            end
+            @test local_error isa ArgumentError
         end
-        @test local_error isa ArgumentError
+
+        @model function immutable_value()
+            x = (a=0.0,)
+            x.a ~ Normal()
+            return x.a
+        end
+        @model function nested_immutable_value()
+            x = Box((a=0.0,))
+            x.v.a ~ Normal()
+            return x.v.a
+        end
+        @model function intermediate_slice()
+            x = zeros(2)
+            x[1:2][1] ~ Normal()
+            return x[1]
+        end
+        @model function tuple_value()
+            x = (0.0,)
+            x[1] ~ Normal()
+            return x[1]
+        end
+        @model function offset_value()
+            x = OffsetArray(Any[zeros(1)], 0:0)
+            x[0] ~ MvNormal(zeros(1), ones(1))
+            return only(x[0])
+        end
+        for (model, params) in (
+            (immutable_value(), (; x=(a=0.25,))),
+            (nested_immutable_value(), (; x=Box((a=0.25,)))),
+            (tuple_value(), (; x=[0.25])),
+            (offset_value(), (; x=OffsetArray([[0.25]], 0:0))),
+        )
+            strategy = InitFromParams(params, nothing)
+            @test first(init!!(model, VarInfo(), strategy, UnlinkAll())) == 0.25
+            @test_throws ArgumentError init!!(
+                setthreadsafe(model, true), VarInfo(), strategy, UnlinkAll()
+            )
+        end
+        for op in (condition, fix)
+            @test_throws ArgumentError init!!(
+                op(setthreadsafe(immutable_value(), true), @varname(x.a) => 0.25),
+                VarInfo(),
+                InitFromPrior(),
+                UnlinkAll(),
+            )
+        end
+
+        @model function immutable_vectors(::Type{T}=Float64) where {T}
+            x = (a=zeros(T, 1),)
+            x.a[1] ~ Normal()
+            return x.a[1]
+        end
+        @model function reference_value(::Type{T}=Float64) where {T}
+            r = Ref(zero(T))
+            r[] ~ Normal()
+            return r[]
+        end
+        @model function mutable_field(::Type{T}=Float64) where {T}
+            s = Box(zero(T))
+            s.v ~ Normal()
+            return s.v
+        end
+        @model function dictionary_value(::Type{T}=Float64) where {T}
+            key = [1]
+            x = Dict(key => zeros(T, 1))
+            x[key][1] ~ Normal()
+            return x[key][1]
+        end
+        for model in
+            (immutable_vectors(), reference_value(), mutable_field(), dictionary_value())
+            result, vi = init!!(
+                Xoshiro(1),
+                setthreadsafe(model, true),
+                VarInfo(),
+                InitFromPrior(),
+                UnlinkAll(),
+            )
+            expected = rand(Xoshiro(1), Normal())
+            @test result == expected
+            @test getlogjoint(vi) ≈ logpdf(Normal(), expected)
+        end
+        for (model, params) in (
+            (immutable_vectors(), z -> (; x=(a=[z],))),
+            (reference_value(), z -> (; r=fill(z))),
+            (mutable_field(), z -> (; s=Box(z))),
+        )
+            model = setthreadsafe(model, true)
+            @test ForwardDiff.derivative(z -> logjoint(model, params(z)), 0.25) ≈ -0.25
+            @test ForwardDiff.derivative(0.25) do z
+                first(
+                    init!!(
+                        model, VarInfo(), InitFromParams(params(z), nothing), UnlinkAll()
+                    ),
+                )
+            end ≈ 1.0
+        end
+        @test first(
+            init!!(
+                setthreadsafe(intermediate_slice(), true),
+                VarInfo(),
+                InitFromParams((; x=[0.25, 0.25]), nothing),
+                UnlinkAll(),
+            ),
+        ) == 0.25
+        @test_throws ArgumentError init!!(
+            setthreadsafe(intermediate_slice(), true),
+            VarInfo(),
+            InitFromParams((; x=[ForwardDiff.Dual(0.25, 1.0), 0.25]), nothing),
+            UnlinkAll(),
+        )
+
+        @model function impute(y)
+            for i in eachindex(y)
+                y[i] ~ Normal()
+            end
+        end
+        imputed_density(z, threadsafe) = logjoint(
+            setthreadsafe(impute(Union{Missing,Real}[0.5, missing]), threadsafe),
+            (; y=[0.5, z]),
+        )
+        @test imputed_density(0.25, true) ≈ imputed_density(0.25, false)
+        @test imputed_density(0.25, true) ≈ logpdf(Normal(), 0.5) + logpdf(Normal(), 0.25)
+        @test ForwardDiff.derivative(z -> imputed_density(z, true), 0.25) ≈ -0.25
 
         @model function indexed_value()
             x = zeros(1)

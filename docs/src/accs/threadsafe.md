@@ -88,17 +88,24 @@ density. Obtain vectors with that function's mapping using
 
 ## Containers under thread-safe evaluation
 
-Under thread-safe evaluation, a tilde assignment throws an `ArgumentError` if it
-replaces a mutable container on its path or changes an immutable container's type,
-wherever the assignment occurs. Slice reads are checked by type because they return
-copies. Allocate with the parameter element type via `::Type{T}=Float64`: use
-`Vector{T}(undef, n)` for scalar tildes, `Matrix{T}` with `x[:, i] ~ MvNormal(...)`
-for vector-valued tildes, or `(a = zero(T),)` for a `NamedTuple`. Under thread-safe
-evaluation with automatic differentiation, imputing missing entries in a data argument
-now throws this error because the model cannot reallocate the data argument to hold AD
-values. Pass that data as `Vector{Union{Missing,Real}}` to keep imputing, which gives
-the same log density and gradient as serial evaluation. The check does not prevent lost
-writes from rebinding shared immutable values, including `NamedTuple`s and immutable
-wrappers around mutable storage such as `OffsetArray`s of `Vector{Any}`, or from
-concurrent writes through overlapping slices (`x[1:N][i] ~`). Serial evaluation with
-thread-safe mode disabled retains its usual widening behaviour.
+Under thread-safe evaluation, every container on a tilde assignment's path must
+retain its identity (`===`); otherwise the assignment throws an `ArgumentError`.
+The written leaf is exempt. Intermediate array slices use views, so
+`x[1:2][i] ~ Normal()` writes only element `i` and `x[:, j] .~ Normal()` writes
+in place. A final slice, as in `x[:, j] ~ MvNormal(...)`, is written into its parent.
+Concurrent writes to the same element still require synchronisation by the caller.
+
+Allocate mutable storage with the parameter element type via `::Type{T}=Float64`:
+use `Vector{T}(undef, n)` for scalar tildes or `Matrix{T}` with
+`x[:, i] ~ MvNormal(...)` for vector-valued tildes. Replace a `NamedTuple`, tuple,
+or static array containing scalar parameters with a `Vector` or `Ref`, or use
+plain scalar variables. This rule also applies to single-task and task-local
+immutable containers. A `NamedTuple` of vectors can stay unchanged while its
+vectors are updated in place. Immutable wrappers such as an `OffsetArray` must
+also retain their identity; replacing their backing storage is rejected.
+
+Imputing missing entries in a data argument under automatic differentiation
+requires storage that can hold AD values. Pass the data as
+`Vector{Union{Missing,Real}}` to retain the same log density and gradient as serial
+evaluation. Serial evaluation with thread-safe mode disabled retains its usual
+widening behaviour.
