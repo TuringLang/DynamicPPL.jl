@@ -543,12 +543,12 @@ The conditioned argument observes `3.0`, the value the body leaves in it, as
 
 Fixed arrays and whole observations of locals must match the storage at an executed tilde,
 for element-wise and whole-array tildes. Fixed arguments also require this check; observed
-arguments follow body resizing. When the body has not assigned a whole local array, its
-fixed value must instead match the distribution's sample size (`size(dist)`); a mismatch
-raises `ArgumentError`. This distribution-size check does not apply to a local with body
-storage. Fixing a field does not require complete fixed coverage of its enclosing
-`NamedTuple`. Shape checks stop at the LHS address; they do not inspect interiors beyond a
-whole-variable tilde.
+arguments follow body resizing. When the body holds no value, including a `missing` or
+`nothing` argument, a whole array's fixed value must instead match the distribution's
+sample size (`size(dist)`); a mismatch raises `ArgumentError`. The distribution must define
+that size. This distribution-size check does not apply to a local with body storage. Fixing
+a field does not require complete fixed coverage of its enclosing `NamedTuple`. Shape
+checks stop at the LHS address; they do not inspect interiors beyond a whole-variable tilde.
 
 The **Storage ownership** and **Bounds, types and shape** rules in the
 [rule table](@ref binding-rule-table) govern edits at every depth. For example, binding

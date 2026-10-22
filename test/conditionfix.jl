@@ -5585,7 +5585,11 @@ Distributions.loglikelihood(::NumericArrayDistribution, ::CountedNumericArray) =
             value = CountedNumericArray([1.0, 2.0], Ref(0))
             model = bind(numeric_array(), @varname(x) => value)
             @test value.reads[] == 0
-            @test logjoint(model, (;)) == 0.0
+            if bind === fix
+                @test_throws MethodError logjoint(model, (;))
+            else
+                @test logjoint(model, (;)) == 0.0
+            end
             @test value.reads[] == 0
         end
         for value in (
@@ -9647,7 +9651,14 @@ struct UndeclaredVectorSizeDistribution <: ContinuousMultivariateDistribution en
 @model fixed_undeclared_vector() = x ~ UndeclaredVectorSizeDistribution()
 @model fixed_size_model() = (x ~ MvNormal(zeros(2), I); x)
 @model fixed_body_size_model() = (x = zeros(3); x ~ MvNormal(zeros(2), I); x)
+@model fixed_argument_size_model(x) = (x ~ MvNormal(zeros(2), I); x)
 @testset "fixed array tilde checks distribution size" begin
+    for x in (missing, nothing)
+        @test_throws r"Fixed value at `x` has size" fix(
+            fixed_argument_size_model(x); x=ones(3)
+        )()
+        @test fix(fixed_argument_size_model(x); x=ones(2))() == ones(2)
+    end
     @test_throws r"Fixed value at `x` has size \(3,\).*\(2,\)" fix(
         fixed_size_model(); x=ones(3)
     )()

@@ -564,6 +564,16 @@ function generate_tilde(left, right; is_argument=false)
         end
     end
 
+    no_storage = :(!$(Expr(:isdefined, get_top_level_symbol(left))))
+    if is_argument && left isa Symbol
+        original = :($(Base.get)(
+            __model__.args,
+            $(QuoteNode(left)),
+            $(Base.get)(__model__.defaults, $(QuoteNode(left)), nothing),
+        ))
+        no_storage = :($no_storage || $original isa $(Union{Missing,Nothing}))
+    end
+
     return quote
         $dist = $right
         $vn = $(make_varname_expression(left))
@@ -586,7 +596,7 @@ function generate_tilde(left, right; is_argument=false)
                 $(DynamicPPL.maybe_prefix)($vn, $(DynamicPPL._model_prefix)(__model__)),
                 $role,
             )
-            if !$(Expr(:isdefined, get_top_level_symbol(left)))
+            if $no_storage
                 $value = $(DynamicPPL._check_fixed_tilde_size)(
                     $value,
                     $dist,

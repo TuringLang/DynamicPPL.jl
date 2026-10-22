@@ -2,7 +2,7 @@
 
 Thread-safe tilde assignments now throw an `ArgumentError` if any container is replaced, including same-type immutable values: `(a = zero(T),)` → `Vector{T}(undef, n)`. Allocate mutable storage with `::Type{T}=Float64`; use `Vector{Union{Missing,Real}}` for imputation under AD. See [#1521](https://github.com/TuringLang/DynamicPPL.jl/pull/1521).
 
-  - Fixed whole local arrays without body storage now report a size mismatch when their distribution sample size differs.
+  - Fixed whole arrays without body storage, including `missing` or `nothing` arguments, now report a size mismatch when their distribution sample size differs.
 
   - Fixed locals and whole observations of locals reject body storage with a different shape at executed tildes; `check_model` warns about unread partial bindings in either role.
 
