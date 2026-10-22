@@ -97,9 +97,6 @@ end
 Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
     typeof(DynamicPPL._argument_may_need_adapter),Type
 }
-Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
-    typeof(DynamicPPL._has_partial_binding_conversion),Type,Type
-}
 
 Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
     typeof(DynamicPPL._check_deferred_groups),

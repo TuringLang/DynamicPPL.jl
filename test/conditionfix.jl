@@ -9499,7 +9499,7 @@ y)
         );
         m
     )
-    @test_throws r"Cannot represent partial binding at `y\[1\]` in storage element type Float64 for value type .*Dual.*allocate storage with an element type that can hold .*Dual" LogDensityProblems.logdensity_and_gradient(
+    @test_throws MethodError LogDensityProblems.logdensity_and_gradient(
         LogDensityFunction(runtime_parent(); adtype=AutoForwardDiff()), [0.3, 0.1]
     )
 

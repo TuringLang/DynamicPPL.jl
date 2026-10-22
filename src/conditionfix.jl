@@ -2343,9 +2343,9 @@ function _convert_partial_argument_binding(
         Any
     end
     converted = if multi
-        map(v -> _convert_partial_binding_value(T, v, vn), value)
+        map(v -> convert(T, v), value)
     else
-        _convert_partial_binding_value(T, value, vn)
+        convert(T, value)
     end
     isequal(converted, value) || throw(
         ArgumentError(
@@ -2353,26 +2353,6 @@ function _convert_partial_argument_binding(
         ),
     )
     return _model_value_like(binding, converted)
-end
-
-function _has_partial_binding_conversion(::Type{T}, ::Type{V}) where {T,V}
-    return hasmethod(T, Tuple{V}) ||
-           which(convert, Tuple{Type{T},V}) !== which(convert, Tuple{Type{T},Number})
-end
-
-function _convert_partial_binding_value(::Type{T}, value::V, vn) where {T,V}
-    if T <: Union{AbstractFloat,Integer} &&
-        V <: Real &&
-        !(V <: T) &&
-        !(V <: Union{Integer,AbstractFloat,Rational,Irrational}) &&
-        !_has_partial_binding_conversion(T, V)
-        throw(
-            ArgumentError(
-                "Cannot represent partial binding at `$vn` in storage element type $T for value type $V; allocate storage with an element type that can hold $V.",
-            ),
-        )
-    end
-    return convert(T, value)
 end
 
 # The address of the storage that `optic`, a suffix of `vn`'s optic, indexes into.
@@ -2547,8 +2527,6 @@ Whole local bindings must fit a supplied template type; otherwise only geometry 
 a whole replacement. Partial values convert to the replaced
 element/field type: Julia conversion errors propagate (`1.5` into `Int` raises
 `InexactError`); successful but lossy conversions (`0.1` into `Float32`) raise `ArgumentError`.
-AD real values that cannot fit ordinary numeric storage raise `ArgumentError` with advice
-to allocate storage whose element type can hold the value.
 Both layers share one binding shape, retained after removal except at argument roots, which revert to the argument’s own shape after whole removal of both layers. Change it only at its root,
 with a whole value or template after clearing both layers with `decondition` and `unfix`.
 Binding an argument does not recompute construction-time defaults or select another method.
