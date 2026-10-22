@@ -226,12 +226,16 @@ function _submodel_namespace(x::DeferredBinding)
 end
 _submodel_namespace(x::DeferredShape) = _reduce_deferred_shapes(x, nothing, true)
 
+function _resolves_deferred_binding(model, vn)
+    return _is_namespace_storage(model, vn) ||
+           _binding_schema_owned(model, vn) ||
+           AbstractPPL.getsym(vn) in _args_on_lhs(model)
+end
+
 function _resolve_deferred_binding(x::DeferredBinding, model, vn)
+    _resolves_deferred_binding(model, vn) || return x
     if _is_namespace_storage(model, vn)
         return _resolve_deferred_binding(_submodel_namespace(x), model, vn)
-    elseif !_binding_schema_owned(model, vn) &&
-        !(AbstractPPL.getsym(vn) in _args_on_lhs(model))
-        return x
     end
     x = DeferredBinding(
         map(update -> _resolve_deferred_write(update, model, vn), x.updates)
@@ -258,11 +262,9 @@ _resolve_deferred_binding(x, model, vn) = x
     end
 end
 function _resolve_deferred_binding(x::DeferredShape, model, vn)
+    _resolves_deferred_binding(model, vn) || return x
     if _is_namespace_storage(model, vn)
         return _resolve_deferred_binding(_submodel_namespace(x), model, vn)
-    elseif !_binding_schema_owned(model, vn) &&
-        !(AbstractPPL.getsym(vn) in _args_on_lhs(model))
-        return x
     end
     return _reduce_deferred_shapes(x, vn, false)
 end
