@@ -4654,7 +4654,7 @@ end
     @model growable_colon() = (x = zeros(2, 1); x[:, 1] ~ MvNormal(zeros(2), I); x)
     @model growable_cube() = (x = zeros(2, 2, 2); x[1, 2, 1] ~ Normal(); x)
     mismatch(owner, example, lhs, stored, used; cartesian=true) = ArgumentError(
-        "Pending binding at `$lhs` mixes linear and Cartesian indices; use one index style or supply storage before binding.",
+        "Pending binding at `$lhs` uses inconsistent index counts; supply an index with the same number of dimensions or provide storage.",
     )
     @testset "indexed submodel prefixes preserve index counts" begin
         @model inner() = x ~ Normal()
@@ -4762,7 +4762,7 @@ end
             @test bind(partial, @varname(p[1].x) => 5.0)(Xoshiro(1)) == [5.0 0.0; 0.0 2.0]
             for next_bind in (condition, fix)
                 untemplated = bind(parent_shape(), @varname(p[1].x) => 1.0)
-                @test_throws r"Pending binding.*one index style" next_bind(
+                @test_throws r"Pending binding.*inconsistent index counts" next_bind(
                     untemplated, @varname(p[2, 2].x) => 2.0
                 )
                 @test_throws ArgumentError next_bind(
@@ -8185,7 +8185,7 @@ end
                 end
                 @test err isa ArgumentError
                 @test occursin("a.x", sprint(showerror, err)) &&
-                    occursin("one index style", sprint(showerror, err))
+                    occursin("inconsistent index counts", sprint(showerror, err))
             end
         end
     end
@@ -8276,7 +8276,9 @@ end
         @test err isa ArgumentError
         err isa ArgumentError &&
             @test occursin("`z`", err.msg) && occursin("template", err.msg)
-        @test_throws ArgumentError fix(c; z=ones(3))
+        @test_throws r"Bound value at `z`.*supply a new template with the value" fix(
+            c; z=ones(3)
+        )
         @test condition(c; z=[2.0, 3.0])(Xoshiro(1)) == [2.0, 3.0]
         r = condition(c, @of(z = of(Array, 3)), @varname(z) => ones(3))
         @test conditioned(r)[@varname(z)] == ones(3)
@@ -8302,6 +8304,11 @@ end
 end
 @model roots_leaf() = (x ~ Normal(); y ~ Normal())
 @model roots_outer() = (a ~ to_submodel(roots_leaf()))
+@model indexed_roots() = (
+    for i in 1:2
+        p[i] ~ to_submodel(roots_leaf())
+    end
+)
 @testset "binding roots" begin
     m = roots_fields()
     whole = condition(m; q=(a=1.0, b=2.0))
@@ -8312,7 +8319,9 @@ end
     @test_throws ArgumentError condition(part, @varname(q.b) => 2.0)
     leaves = condition(m, rand(Xoshiro(1), m))
     @test Set(keys(conditioned(leaves))) == Set([@varname(q.a), @varname(q.b)])
-    @test_throws ArgumentError condition(decondition(leaves); q=(a=1.0, b=2.0))
+    @test_throws r"Cannot create binding root `q` across existing root `q\.a`" condition(
+        decondition(leaves); q=(a=1.0, b=2.0)
+    )
     @test_throws ArgumentError condition(decondition(whole), @varname(q.c) => 3.0)
     @test Set(keys(rand(Xoshiro(1), fix(m; q=(a=1.0,))))) == Set([@varname(q.b)])
     d = condition(roots_dynamic(1); q=(a=ones(2),))
@@ -8322,6 +8331,10 @@ end
     o = condition(roots_outer(); a=(; x=1.0))
     o = condition(o, @varname(a.y) => 2.0)
     @test isempty(rand(Xoshiro(1), o))
+    indexed = condition(indexed_roots(), @varname(p[1].x) => 1.0)
+    @test_throws r"Cannot create binding root `p`: an existing binding root already occupies this address" condition(
+        indexed, @varname(p) => [(x=1.0,), (x=2.0,)]
+    )
 end
 
 @model overlap_array(x) = (x[1] ~ Normal(); x)
@@ -8675,7 +8688,7 @@ end
         )[
             2, 1
         ] == 3.0
-        @test_throws r"index style" bind(
+        @test_throws r"inconsistent index counts" bind(
             bind(pending_outer(), @varname(a.x[2]) => 3.0), @varname(a.x[1, 2]) => 2.0
         )
         @test bind(bad, @varname(a.x) => ones(2, 2))()[2, 1] == 1.0

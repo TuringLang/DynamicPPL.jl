@@ -3383,7 +3383,9 @@ function _convert_binding_template(value, template, ::AbstractPPL.Iden, vn; whol
         ),
     )
     _same_schema_storage(value, template) || throw(
-        ArgumentError("Bound value at `$vn` conflicts with its binding template storage."),
+        ArgumentError(
+            "Bound value at `$vn` conflicts with its binding template storage; supply a new template with the value.",
+        ),
     )
     return value
 end
@@ -3822,7 +3824,7 @@ function _pending_index_style(p, optic, vn)
         previous isa AbstractPPL.Index || continue
         length(previous.ix) == length(optic.ix) || throw(
             ArgumentError(
-                "Pending binding at `$vn` mixes linear and Cartesian indices; use one index style or supply storage before binding.",
+                "Pending binding at `$vn` uses inconsistent index counts; supply an index with the same number of dimensions or provide storage.",
             ),
         )
     end
@@ -6055,7 +6057,11 @@ end
     throw(ArgumentError(message))
 end
 @noinline function _binding_root_error(vn, root=vn)
-    message = "Cannot create binding root `$vn` across existing root `$root`; rebuild the model to change its roots."
+    message = if vn == root
+        "Cannot create binding root `$vn`: an existing binding root already occupies this address; rebuild the model to change its roots."
+    else
+        "Cannot create binding root `$vn` across existing root `$root`; rebuild the model to change its roots."
+    end
     throw(ArgumentError(message))
 end
 _whole_shape(whole::Tuple, vn) = vn in whole
@@ -6159,7 +6165,12 @@ end
 @inline function (op::ShapeOp{Build})(
     a::Union{VarNamedTuple,VarNamedTuples.PartialArray}, b::BindingShape, vn
 ) where {Build}
-    return _binding_root_error(vn)
+    root = if a isa VarNamedTuple
+        AbstractPPL.append_optic(vn, AbstractPPL.Property{first(keys(a.data))}())
+    else
+        vn
+    end
+    return _binding_root_error(vn, root)
 end
 (op::ShapeOp{Build})(a, ::Nothing, vn) where {Build} = Build ? a : ()
 (op::ShapeOp{Build})(::Nothing, b, vn) where {Build} = Build ? b : ()

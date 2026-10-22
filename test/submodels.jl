@@ -717,7 +717,7 @@ end
             remove = op === condition ? decondition : unfix
             cleared = remove(model, DynamicPPL.Recursive(), vn)
             changed = condition(cleared, vn => 3.0)
-            @test_throws r"Pending binding.*one index style" changed()
+            @test_throws r"Pending binding.*inconsistent index counts" changed()
             bindings = DynamicPPL.templated_setindex!!(
                 VarNamedTuple(), (; x=3.0), @varname(a[2, 3]), zeros(2, 3)
             )
@@ -733,7 +733,7 @@ end
             remove = op === condition ? decondition : unfix
             cleared = remove(model, DynamicPPL.Recursive(), vn)
             changed = condition(cleared, vn => 3.0)
-            @test_throws r"Pending binding.*one index style" changed()
+            @test_throws r"Pending binding.*inconsistent index counts" changed()
             bindings = DynamicPPL.templated_setindex!!(
                 VarNamedTuple(), (; inner=(; x=3.0)), @varname(a[1]), zeros(2, 3)
             )
