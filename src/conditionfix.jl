@@ -6332,6 +6332,7 @@ end
     return (first..., op(a, b.parent, vn)...)
 end
 function _bind_shape_batch(model, batch, whole=())
+    _check_deferred_shape_writes(batch, nothing)
     store = _binding_shape_store(model.values)
     roots = _merge_binding_shapes(store.roots, batch, nothing, model, whole)
     shapes = ModelBindingShapes(roots)

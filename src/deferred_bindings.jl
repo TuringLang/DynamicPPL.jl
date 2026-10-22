@@ -16,7 +16,9 @@ struct DeferredBinding{T<:Tuple{Vararg{Union{DeferredWrite,DeferredRemoval}}}}
     updates::T
 end
 
-struct DeferredShape{T<:Tuple}
+# Keep field releases relative: a field becomes an independent root only if
+# the executing child identifies its parent as a namespace.
+struct DeferredShape{T<:Tuple{Vararg{Tuple{Any,Tuple}}}}
     updates::T
 end
 
@@ -214,7 +216,8 @@ _has_binding_role(R, x::DeferredWrite) = _has_binding_role(R, x.value)
 
 _model_argument_binding(x::DeferredBinding, ::AbstractPPL.Iden) = x
 function _model_argument_binding(x::DeferredBinding, optic::AbstractPPL.AbstractOptic)
-    return _model_argument_binding(_deferred_projection(x), optic)
+    value = _model_argument_binding(_deferred_projection(x), optic)
+    return value isa NoModelBinding ? nothing : value
 end
 _model_argument_binding(x::DeferredShape, ::AbstractPPL.Iden) = x
 _model_argument_binding(x::DeferredShape, optic::AbstractPPL.AbstractOptic) = nothing
@@ -241,7 +244,7 @@ _defer_named_root(x) = x
 function _defer_named_root(x::ModelValue{R,<:NamedTuple}) where {R}
     return DeferredBinding((DeferredWrite(x, nothing),))
 end
-_defer_named_root(x::BindingShape{<:FieldBindingGeometry}) = DeferredShape(((x, false),))
+_defer_named_root(x::BindingShape{<:FieldBindingGeometry}) = DeferredShape(((x, ()),))
 
 function _deferred_namespace(x::Union{ModelValue,BindingShape})
     namespace = _submodel_namespace(x)
@@ -337,7 +340,7 @@ end
 _check_namedtuple_index(::DeferredBinding, ::AbstractPPL.Iden, prefix; kwargs...) = nothing
 
 function _snapshot_shape(x::DeferredBinding)
-    return DeferredShape(map(v -> (_snapshot_shape(v), false), x.updates))
+    return DeferredShape(map(v -> (_snapshot_shape(v), ()), x.updates))
 end
 _snapshot_shape(::DeferredRemoval) = nothing
 function _snapshot_shape(x::VarNamedTuples.PartialArray{<:DeferredBinding})
@@ -350,15 +353,77 @@ function _snapshot_shape(x::VarNamedTuples.PartialArray{<:DeferredBinding})
 end
 _snapshot_shape(x::DeferredWrite) = _snapshot_shape(x.value)
 
-_deferred_shape_updates(x) = ((x, false),)
+_deferred_shape_updates(x) = ((x, ()),)
 _deferred_shape_updates(x::DeferredShape) = x.updates
 
 function _deferred_shape_merge(op, a, b, vn)
-    released = !_shape_occupied(op.model, vn)
-    incoming = map(_deferred_shape_updates(b)) do (shape, prior)
-        (shape, released || prior)
+    previous = _deferred_shape_projection(a, vn)
+    incoming = _deferred_shape_projection(b, vn)
+    rules = ShapeOp{false}(op.model, op.whole)(previous, incoming, vn)
+    released = if !_shape_occupied(op.model, vn)
+        (AbstractPPL.Iden(),)
+    else
+        map(rules) do rule
+            AbstractPPL._unprefix_optic(
+                AbstractPPL.getoptic(first(rule)), AbstractPPL.getoptic(vn)
+            )
+        end
     end
-    return DeferredShape((_deferred_shape_updates(a)..., incoming...))
+    updates = map(_deferred_shape_updates(b)) do (shape, prior)
+        (shape, (released..., prior...))
+    end
+    return DeferredShape((_deferred_shape_updates(a)..., updates...))
+end
+
+_deferred_shape_projection(x, vn) = x
+function _deferred_shape_projection(x::BindingShape{<:FieldBindingGeometry}, vn)
+    return _deferred_shape_projection(_submodel_namespace(x), vn)
+end
+function _deferred_shape_projection(x::VarNamedTuple{names}, vn) where {names}
+    return VarNamedTuple(
+        NamedTuple{names}(
+            map(names) do name
+                _deferred_shape_projection(x.data[name], maybe_prefix(VarName{name}(), vn))
+            end,
+        ),
+    )
+end
+function _deferred_shape_projection(x::DeferredShape, vn)
+    return Base.afoldl(nothing, x.updates...) do result, (update, released)
+        shape = _deferred_shape_projection(update, vn)
+        rules = _deferred_shape_rules(released, result, vn, true)
+        ShapeOp{true}(rules, rules)(result, shape, vn)
+    end
+end
+
+_may_have_deferred_shape(::Type{T}) where {T} = !isconcretetype(T)
+_may_have_deferred_shape(::Type{<:DeferredShape}) = true
+_may_have_deferred_shape(::Type{<:PendingBindings}) = true
+function _may_have_deferred_shape(::Type{<:PendingBindings{N,E}}) where {N,E<:AbstractDict}
+    return _may_have_deferred_shape(valtype(E))
+end
+function _may_have_deferred_shape(::Type{<:VarNamedTuple{names,T}}) where {names,T}
+    return any(_may_have_deferred_shape, fieldtypes(T))
+end
+function _may_have_deferred_shape(::Type{<:VarNamedTuples.PartialArray{T}}) where {T}
+    return _may_have_deferred_shape(T)
+end
+@generated function _deferred_shape_check_needed(::Type{T}) where {T}
+    return _may_have_deferred_shape(T)
+end
+
+_check_deferred_shape_writes(x, vn) = nothing
+function _check_deferred_shape_writes(x::DeferredShape, vn)
+    _deferred_shape_projection(x, vn)
+    return nothing
+end
+function _check_deferred_shape_writes(
+    x::Union{VarNamedTuple,VarNamedTuples.PartialArray,PendingBindings}, vn
+)
+    _deferred_shape_check_needed(typeof(x)) || return nothing
+    return _fold_model_indices(nothing, x) do _, child, optic, _
+        _check_deferred_shape_writes(child, _shape_child_name(vn, optic))
+    end
 end
 
 function (op::ShapeOp{Build})(a::DeferredShape, b, vn) where {Build}
@@ -379,6 +444,19 @@ function (op::ShapeOp{Build})(a::DeferredShape, b::InheritedShapes, vn) where {B
     return Build ? _deferred_shape_merge(op, a, b, vn) : ()
 end
 
+function _deferred_shape_rules(released, previous, vn, namespace)
+    rules = mapreduce((a, b) -> (a..., b...), released; init=()) do optic
+        if optic isa AbstractPPL.Iden
+            _released_shape_rules(previous, vn)
+        elseif namespace
+            (_shape_child_name(vn, optic) => true,)
+        else
+            ()
+        end
+    end
+    return ShapeRules(rules)
+end
+
 _released_shape_rules(x, vn) = (vn => true,)
 _released_shape_rules(::Nothing, vn) = ()
 function _released_shape_rules(x::VarNamedTuple{names}, vn) where {names}
@@ -394,7 +472,7 @@ function _reduce_deferred_shapes(x, vn, namespace)
         else
             namespace ? _deferred_namespace(update) : update
         end
-        rules = ShapeRules(released ? _released_shape_rules(result, vn) : ())
+        rules = _deferred_shape_rules(released, result, vn, namespace)
         return ShapeOp{true}(rules, rules)(result, shape, vn)
     end
     return Base.afoldl(reduce, nothing, x.updates...)

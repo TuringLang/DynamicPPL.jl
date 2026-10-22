@@ -9692,9 +9692,14 @@ end
     end
 end
 
-@model storage_leaf(n) = (z = zeros(n); for i in eachindex(z)
-    z[i] ~ Normal()
-end; x ~ Normal(); (z=z, x=x))
+@model function storage_leaf(n)
+    z = zeros(n)
+    for i in eachindex(z)
+        z[i] ~ Normal()
+    end
+    x ~ Normal()
+    return (z=z, x=x)
+end
 @model storage_middle(n) = b ~ to_submodel(storage_leaf(n))
 @model storage_parent(n=2) = a ~ to_submodel(storage_middle(n))
 
@@ -9811,6 +9816,35 @@ end
         @test bind(storage_namedtuple_parent(), list(m))(Xoshiro(1)) == m(Xoshiro(1))
     end
 end
+
+@model storage_structured() = b ~ product_distribution((x=Normal(), y=Normal()))
+@model storage_whole() = a ~ to_submodel(storage_structured())
+@testset "deferred shape release and early conflict" begin
+    for (bind, remove) in ((condition, decondition), (fix, unfix))
+        m = bind(storage_parent(3); a=(b=(z=ones(2),),))
+        cleared = remove(m, @varname(a.b.z))
+        @test bind(cleared; a=(b=(z=ones(3),),))(Xoshiro(1)).z == ones(3)
+        @test bind(cleared, @varname(a.b.z) => ones(3))(Xoshiro(1)).z == ones(3)
+        @test_throws r"Binding shape at `a.b.z` cannot change" bind(m; a=(b=(z=ones(3),),))
+        @test_throws r"Binding shape at `a.b.z` cannot change" bind(
+            m, @varname(a.b.z) => ones(3)
+        )
+        leaf = bind(storage_parent(3), @varname(a.b.z) => ones(2))
+        @test_throws r"Binding shape at `a.b.z` cannot change" bind(
+            leaf; a=(b=(z=ones(3),),)
+        )
+        masked = remove(remove(m, @varname(a.b.z[1])), @varname(a.b.z[2]))
+        @test_throws r"Binding shape" bind(masked; a=(b=(z=ones(3),),))
+        @test_throws r"a.b.z.*overlaps" bind(
+            storage_parent(), @varname(a.b) => (z=ones(2),), @varname(a.b) => (z=ones(3),)
+        )
+        whole = bind(storage_whole(); a=(b=(x=1.0, y=2.0),))
+        @test_throws r"Binding shape at `a.b.x`" bind(whole; a=(b=(x=ones(2), y=2.0),))
+        @test bind(remove(whole, @varname(a.b)); a=(b=(x=ones(2), y=2.0),))(Xoshiro(1)) ==
+            (x=ones(2), y=2.0)
+    end
+end
+
 
 @testset "complete deferred listings after partial edits" begin
     @model complete_child() = b ~ product_distribution((x=Normal(), y=Normal()))
