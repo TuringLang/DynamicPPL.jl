@@ -9845,6 +9845,65 @@ end
     end
 end
 
+@model storage_argument(m) = a ~ to_submodel(m)
+@model storage_unprefixed(m) = r ~ to_submodel(m, false)
+@model storage_other_middle() = c ~ to_submodel(storage_leaf(2))
+@model function storage_two_unprefixed(m, k)
+    r ~ to_submodel(m, false)
+    s ~ to_submodel(k, false)
+    return (r, s)
+end
+@model storage_shadow(m) = (m = storage_structured(); a ~ to_submodel(m))
+
+@testset "argument child listing scope" begin
+    for (bind, list) in ((condition, conditioned), (fix, fixed))
+        m = bind(storage_argument(prefix(storage_middle(2), :q)); a=(q=(b=(x=1.0,),),))
+        @test collect(pairs(list(m))) == [@varname(a.q.b.x) => 1.0]
+        m = bind(storage_unprefixed(storage_middle(2)); b=(x=1.0,))
+        @test collect(pairs(list(m))) == [@varname(b.x) => 1.0]
+        parent = storage_two_unprefixed(storage_middle(2), storage_other_middle())
+        m = bind(parent; b=(x=1.0,), c=(x=2.0,))
+        @test Dict(pairs(list(m))) == Dict(@varname(b.x) => 1.0, @varname(c.x) => 2.0)
+        @test bind(parent, list(m))(Xoshiro(1)) == m(Xoshiro(1))
+        m = bind(storage_shadow(storage_middle(2)); a=(b=(x=1.0, y=2.0),))
+        @test collect(pairs(list(m))) == [@varname(a.b) => (x=1.0, y=2.0)]
+        @test bind(storage_shadow(storage_middle(2)), list(m))(Xoshiro(1)) == (x=1.0, y=2.0)
+    end
+end
+
+@model storage_xy() = (x ~ Normal(); y ~ Normal(); (x=x, y=y))
+@model storage_namespace() = b ~ to_submodel(storage_xy())
+@model function storage_branch(flag, m, k)
+    return flag ? (r ~ to_submodel(m, false)) : (s ~ to_submodel(k, false))
+end
+@testset "unprefixed argument children disagree about a namespace" begin
+    for (bind, list) in ((condition, conditioned), (fix, fixed)), flag in (true, false)
+        parent = storage_branch(flag, storage_namespace(), storage_structured())
+        m = bind(parent; b=(x=1.0, y=2.0))
+        @test collect(pairs(list(m))) == [@varname(b) => (x=1.0, y=2.0)]
+        @test bind(parent, list(m))(Xoshiro(1)) == m(Xoshiro(1))
+    end
+end
+
+@model function storage_namespace_fields()
+    b = (x=nothing,)
+    b.x ~ to_submodel(storage_xy())
+    return b.x
+end
+@model function storage_mixed_fields()
+    b = (x=(x=0.0, y=0.0), y=nothing)
+    b.x ~ product_distribution((x=Normal(), y=Normal()))
+    b.y ~ to_submodel(storage_xy())
+    return b.x
+end
+@testset "unprefixed argument children disagree below a namespace" begin
+    for (bind, list) in ((condition, conditioned), (fix, fixed)), flag in (true, false)
+        parent = storage_branch(flag, storage_namespace_fields(), storage_mixed_fields())
+        m = bind(parent; b=(x=(x=1.0, y=2.0),))
+        @test collect(pairs(list(m))) == [@varname(b.x) => (x=1.0, y=2.0)]
+        @test bind(parent, list(m))(Xoshiro(1)) == m(Xoshiro(1))
+    end
+end
 
 @testset "complete deferred listings after partial edits" begin
     @model complete_child() = b ~ product_distribution((x=Normal(), y=Normal()))
@@ -9884,5 +9943,20 @@ end
     end
 end
 
+@model function storage_body_branch(flag, m)
+    return if flag
+        (r ~ to_submodel(m, false))
+    else
+        (s ~ to_submodel(storage_structured(), false))
+    end
+end
+@testset "unprefixed body sibling keeps unresolved addresses" begin
+    for (bind, list) in ((condition, conditioned), (fix, fixed)), flag in (true, false)
+        parent = storage_body_branch(flag, storage_namespace())
+        m = bind(parent; b=(x=1.0, y=2.0))
+        @test collect(pairs(list(m))) == [@varname(b) => (x=1.0, y=2.0)]
+        @test bind(parent, list(m))(Xoshiro(1)) == (x=1.0, y=2.0)
+    end
+end
 
 end

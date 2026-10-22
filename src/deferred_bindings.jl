@@ -681,24 +681,154 @@ function _listing_known_namespaces(x::VarNamedTuple{names}, model, vn) where {na
     )
 end
 
-function _listing_argument_children(model, values; local_names=false)
+# Namespace projection replaces a subtree; pending binding writes would merge it.
+function _replace_listing_subtree(values, child, head)
+    return VarNamedTuples._setindex_optic!!(
+        copy(values), child, head, NoTemplate(), VarNamedTuples.AllowAll()
+    )
+end
+function _replace_listing_subtree(values::PendingBindings, child, head)
+    values.base isa VarNamedTuples.PartialArray &&
+        return _replace_listing_subtree(_materialize_pending(values), child, head)
+    @assert values.base === nothing
+    entries = empty(_pending_dict(values.entries))
+    groups = Dict{AbstractPPL.AbstractOptic,Union{Nothing,Base.RefValue{Nothing}}}()
+    for (optic, value) in values.entries
+        remainder = _pending_remainder(optic, value, head, true)
+        remainder === nothing && continue
+        entries = _pending_set!!(entries, last(remainder), first(remainder))
+        groups[first(remainder)] = _pending_group(values, optic)
+    end
+    entries = _pending_set!!(entries, child, head)
+    groups[head] = _pending_group(values, head)
+    return PendingBindings(values.name, entries, nothing, groups)
+end
+
+function _listing_at_prefix(values, model, ::AbstractPPL.Iden)
+    namespace = _listing_known_namespaces(_submodel_namespace(values), model, nothing)
+    return _listing_argument_children(model, namespace; local_names=true)
+end
+function _listing_at_prefix(values, model, optic::AbstractPPL.AbstractOptic)
+    optic isa AbstractPPL.Property && (values = _submodel_namespace(values))
+    head = AbstractPPL.ohead(optic)
+    child = _model_argument_binding(values, head)
+    child === nothing && return values
+    child = _listing_at_prefix(child, model, optic.child)
+    return _replace_listing_subtree(values, child, head)
+end
+
+@inline function _listing_argument_children(model, values; local_names=false)
     sites = _submodel_arguments(_binding_metadata(model))
     arguments = merge(model.args, model.defaults)
     for (lhs, name) in sites
         name isa Symbol || continue
-        count(site -> first(site) == lhs, sites) == 1 || continue
+        lhs === nothing || count(site -> first(site) == lhs, sites) == 1 || continue
         child = get(arguments, name, nothing)
         child isa Model || continue
         address = local_names ? lhs : maybe_prefix(lhs, _model_prefix(model))
-        optic = AbstractPPL.varname_to_optic(address)
+        optic =
+            address === nothing ? AbstractPPL.Iden() : AbstractPPL.varname_to_optic(address)
         node = _model_argument_binding(values, optic)
         node === nothing && continue
-        namespace = _submodel_namespace(node)
-        namespace = _listing_known_namespaces(namespace, child, nothing)
-        namespace = _listing_argument_children(child, namespace; local_names=true)
-        values = VarNamedTuples._setindex_optic!!(
-            copy(values), namespace, optic, NoTemplate(), VarNamedTuples.AllowAll()
-        )
+        prefix = _model_prefix(child)
+        prefix_optic =
+            prefix === nothing ? AbstractPPL.Iden() : AbstractPPL.varname_to_optic(prefix)
+        namespace = if lhs === nothing && count(site -> first(site) === nothing, sites) > 1
+            @inline _listing_unprefixed_child(
+                node, _binding_metadata(model), arguments, child, prefix_optic
+            )
+        else
+            _listing_at_prefix(node, child, prefix_optic)
+        end
+        values = _replace_listing_subtree(values, namespace, optic)
     end
     return values
+end
+
+_listing_namespace_agrees(child, vn) = true
+@inline function _listing_namespace_agrees(child::Model, vn)
+    local_name = _local_removal_name(child, vn; operation="bind")
+    local_name === nothing && return true
+    AbstractPPL.getsym(local_name) in _args_on_lhs(child) && return false
+    for (lhs, submodel) in _lhs_addresses(_binding_metadata(child))
+        submodel && continue
+        (subsumes(lhs, local_name) || subsumes(local_name, lhs)) || continue
+        _is_namespace_storage(child, vn) || return false
+    end
+    arguments = merge(child.args, child.defaults)
+    for (lhs, name) in _submodel_arguments(_binding_metadata(child))
+        name isa Symbol || continue
+        nested = get(arguments, name, nothing)
+        nested isa Model || continue
+        relative = if lhs === nothing
+            local_name
+        else
+            (lhs != local_name && subsumes(lhs, local_name)) || continue
+            AbstractPPL.unprefix(local_name, lhs)
+        end
+        _listing_namespace_agrees(nested, relative) || return false
+    end
+    return true
+end
+
+@inline function _listing_namespace_agrees(other, root, child::Model, prefix=nothing)
+    prefix = maybe_prefix(_model_prefix(child), prefix)
+    for (lhs, submodel) in _lhs_addresses(_binding_metadata(child))
+        submodel || continue
+        address = maybe_prefix(lhs, prefix)
+        subsumes(root, address) || continue
+        _listing_namespace_agrees(other, address) || return false
+    end
+    arguments = merge(child.args, child.defaults)
+    for (lhs, name) in _submodel_arguments(_binding_metadata(child))
+        name isa Symbol || continue
+        nested = get(arguments, name, nothing)
+        nested isa Model || continue
+        _listing_namespace_agrees(other, root, nested, maybe_prefix(lhs, prefix)) ||
+            return false
+    end
+    return true
+end
+
+# Literal names let namespace agreement fold away for unambiguous children.
+@generated function _listing_unprefixed_child(
+    values::VarNamedTuple{names},
+    ::ModelBindingMetadata{A,L,U,T,N,B,C},
+    arguments,
+    child,
+    optic,
+) where {names,A,L,U,T,N,B,C}
+    any(site -> first(site) === nothing && !(last(site) isa Symbol), C) && return :(values)
+    checks = map(names) do name
+        children = map(
+            filter(site -> first(site) === nothing && last(site) isa Symbol, C)
+        ) do (_, argument)
+            quote
+                _listing_namespace_agrees(
+                    get(arguments, $(QuoteNode(argument)), nothing),
+                    VarName{$(QuoteNode(name))}(),
+                ) && _listing_namespace_agrees(
+                    get(arguments, $(QuoteNode(argument)), nothing),
+                    VarName{$(QuoteNode(name))}(),
+                    child,
+                )
+            end
+        end
+        foldl((a, b) -> :($a && $b), children; init=true)
+    end
+    agreed = foldl((a, b) -> :($a && $b), checks; init=true)
+    children = map(names, checks) do name, check
+        quote
+            if $check
+                namespace = VarNamedTuple(NamedTuple{$((name,))}((values.data.$name,)))
+                _listing_at_prefix(namespace, child, optic).data.$name
+            else
+                values.data.$name
+            end
+        end
+    end
+    return quote
+        $agreed && return _listing_at_prefix(values, child, optic)
+        VarNamedTuple(NamedTuple{$names}(($(children...),)))
+    end
 end

@@ -324,6 +324,24 @@ end
     end
 end
 
+@testset "argument child prefix scope" begin
+    for (bind, listing) in ((condition, conditioned), (fix, fixed))
+        model = bind(
+            argument_outer(prefix(argument_mid(), @varname(q.r))); a=(q=(r=(b=(x=1.0,),),),)
+        )
+        @test collect(pairs(listing(model))) == [@varname(a.q.r.b.x) => 1.0]
+        parent = argument_outer(prefix(argument_struct(), :b))
+        model = bind(parent; a=(b=(b=(x=1.0, y=2.0),),))
+        @test collect(pairs(listing(model))) == [@varname(a.b.b) => (x=1.0, y=2.0)]
+        @test bind(parent, listing(model))() == (x=1.0, y=2.0)
+        parent = argument_outer(prefix(argument_mid(), @varname(q[2])))
+        model = bind(parent, @varname(a.q[2].b) => (x=1.0, y=2.0))
+        @test collect(pairs(listing(model))) ==
+            [@varname(a.q[2].b.x) => 1.0, @varname(a.q[2].b.y) => 2.0]
+        @test bind(parent, listing(model))() == (x=1.0, y=2.0)
+    end
+end
+
 @model function indexed_argument_child(child)
     a = Vector{Any}(undef, 2)
     for i in 1:2

@@ -181,7 +181,7 @@ function model(mod, linenumbernode, expr, warn)
     lhs_names = Symbol[]
     has_unprefixed_submodel = Ref(false)
     lhs_addresses = Tuple{VarName,Bool}[]
-    submodel_arguments = Tuple{VarName,Union{Symbol,Nothing}}[]
+    submodel_arguments = Tuple{Union{VarName,Nothing},Union{Symbol,Nothing}}[]
     arguments = map(
         arg -> first(MacroTools.splitarg(arg)), vcat(modeldef[:args], modeldef[:kwargs])
     )
@@ -256,12 +256,14 @@ function generate_mainbody(
     arguments=Symbol[],
     has_unprefixed_submodel=Ref(false),
     lhs_addresses=Tuple{VarName,Bool}[],
-    submodel_arguments=Tuple{VarName,Union{Symbol,Nothing}}[],
+    submodel_arguments=Tuple{Union{VarName,Nothing},Union{Symbol,Nothing}}[],
 )
-    return generate_mainbody!(
+    assigned = Symbol[]
+    body = generate_mainbody!(
         mod,
         (;
             internal=Symbol[],
+            assigned,
             lhs_names,
             arguments,
             has_unprefixed_submodel,
@@ -273,6 +275,23 @@ function generate_mainbody(
         warn,
         warn_threads,
     )
+    map!(submodel_arguments, submodel_arguments) do (lhs, source)
+        (lhs, source in assigned ? nothing : source)
+    end
+    return body
+end
+
+function _record_assigned_argument!(found, lhs)
+    if lhs isa Symbol
+        lhs in found.arguments && lhs ∉ found.shadowed && push!(found.assigned, lhs)
+    elseif lhs isa Expr
+        if lhs.head in (:tuple, :parameters)
+            foreach(arg -> _record_assigned_argument!(found, arg), lhs.args)
+        elseif lhs.head in (:(::), :(...))
+            _record_assigned_argument!(found, first(lhs.args))
+        end
+    end
+    return nothing
 end
 
 generate_mainbody!(mod, found, x, warn, warn_threads) = x
@@ -307,6 +326,10 @@ function generate_mainbody!(mod, found, expr::Expr, warn, warn_threads)
         found = merge(
             found, (; shadowed=union(found.shadowed, intersect(names, found.arguments)))
         )
+    end
+
+    if expr.head === :(=)
+        _record_assigned_argument!(found, first(expr.args))
     end
 
     # If it's a macro, we expand it
@@ -362,13 +385,14 @@ function generate_mainbody!(mod, found, expr::Expr, warn, warn_threads)
                 source =
                     if R.args[2] isa Symbol &&
                         R.args[2] in found.arguments &&
-                        _static_lhs_address(L) !== nothing &&
-                        !(length(R.args) == 3 && R.args[3] === false)
+                        R.args[2] ∉ found.shadowed &&
+                        _static_lhs_address(L) !== nothing
                         R.args[2]
                     else
                         nothing
                     end
-                push!(found.submodel_arguments, (address, source))
+                site = length(R.args) == 3 && R.args[3] === false ? nothing : address
+                push!(found.submodel_arguments, (site, source))
             end
             root in found.shadowed && throw(
                 ArgumentError(
@@ -390,6 +414,7 @@ function generate_mainbody!(mod, found, expr::Expr, warn, warn_threads)
     args_assign = getargs_coloneq(expr)
     if args_assign !== nothing
         L, R = args_assign
+        _record_assigned_argument!(found, L)
         return Base.remove_linenums!(
             generate_assign(
                 generate_mainbody!(mod, found, L, warn, warn_threads),
