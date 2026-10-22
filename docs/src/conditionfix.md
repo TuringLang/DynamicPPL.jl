@@ -746,8 +746,9 @@ Use integer indices for a pending binding, or bind the child directly before `to
 
 For exact partial conversion, `1` becomes `1.0` in `Float64`. Unconvertible values propagate
 Julia's conversion error, such as `InexactError` for `1.5` into `Int`; successful but lossy
-conversion, such as `0.1` into `Float32`, raises `ArgumentError`. A `Float64` template cannot
-hold ForwardDiff `Dual` values. For runtime bindings under AD, build storage from the running
+conversion, such as `0.1` into `Float32`, raises `ArgumentError`. An AD real value that
+cannot fit ordinary numeric storage also raises `ArgumentError`, with advice to change the
+storage element type. For example, a `Float64` template cannot hold ForwardDiff `Dual` values. For runtime bindings under AD, build storage from the running
 value `θ`, using `fill(zero(θ), n)` or `@of(z = of(Array, typeof(θ), n))`, or bind a whole value.
 
 Binding `p[1, 1].x` when the model runs `p[i] ~ to_submodel(...)` needs namespace storage,

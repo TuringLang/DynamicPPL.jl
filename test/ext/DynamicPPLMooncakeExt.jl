@@ -671,6 +671,27 @@ end
     end
 end
 
+struct ConvertibleBindingReal <: Real
+    value::Float64
+end
+Base.convert(::Type{Float64}, value::ConvertibleBindingReal) = value.value
+Base.isequal(value::Float64, other::ConvertibleBindingReal) = isequal(value, other.value)
+
+@testset "custom numeric runtime binding conversion" begin
+    @model numeric_child(y) = (y[1] ~ Normal(); y)
+    @model function numeric_parent()
+        m ~ Normal()
+        a ~ to_submodel(
+            condition(numeric_child(zeros(1)), @varname(y[1]) => ConvertibleBindingReal(m))
+        )
+        return m
+    end
+    ldf = LogDensityFunction(numeric_parent(); adtype=AutoMooncake())
+    density, gradient = LogDensityProblems.logdensity_and_gradient(ldf, [0.3])
+    @test density ≈ 2logpdf(Normal(), 0.3)
+    @test gradient ≈ [-0.6]
+end
+
 @testset "deferred runtime bindings" begin
     @model deferred_leaves() = (x ~ Normal(); y ~ Normal())
     @model deferred_middle() = b ~ to_submodel(deferred_leaves())

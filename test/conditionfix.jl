@@ -23,6 +23,12 @@ using Logging: NullLogger, with_logger
 __now__ = now()
 
 # Shared models for binding and removal cases with the same tilde structure.
+struct ConvertibleBindingReal <: Real
+    value::Float64
+end
+Base.convert(::Type{Float64}, value::ConvertibleBindingReal) = value.value
+Base.isequal(value::Float64, other::ConvertibleBindingReal) = isequal(value, other.value)
+
 @model function array_model(x)
     for i in eachindex(x)
         x[i] ~ Normal()
@@ -1349,6 +1355,20 @@ end
             source = bind === fix ? decondition(original, @varname(y[1])) : original
             @test_throws InexactError bind(source, @varname(y[1]) => 1.5)
             @test_throws MethodError bind(source, @varname(y[1]) => "invalid")
+        end
+        for bind in (condition, fix),
+            (storage, value) in (
+                (Int32[1, 2], 3),
+                ([1, 2], big(3)),
+                ([1, 2], 3//1),
+                ([1.0, 2.0], 3 + 0im),
+                ([1.0, 2.0], ConvertibleBindingReal(3.0)),
+                ([1, 2], ForwardDiff.Dual(3.0, 0.0)),
+            )
+
+            m = bind(decondition(y_model(storage), @varname(y[1])), @varname(y[1]) => value)
+            @test m() == [3, 2]
+            @test eltype(m()) === eltype(storage)
         end
         for T in (Float32, BigFloat)
             @test condition(y_model(T[1, 2]), @varname(y[1]) => 3)() isa Vector{T}
@@ -3759,6 +3779,10 @@ end
         @test_throws ArgumentError op(
             local_z(), @varname(z[2]) => 0.1, @of(z = of(Array, Float32, 3))
         )
+        for (T, value) in ((Int32, 3), (Int, big(3)), (Int, 3//1), (Float64, 3 + 0im))
+            m = op(local_z(), @of(z = of(Array, T, 3)), @varname(z[2]) => value)
+            @test (op === condition ? conditioned(m) : fixed(m))[@varname(z[2])] === T(3)
+        end
         m = op(local_z(), @varname(z[2]) => 1, @of(z = of(Array, 3)))
         @test (op === condition ? conditioned(m) : fixed(m))[@varname(z[2])] === 1.0
         for input in (
@@ -9401,6 +9425,29 @@ end
             logpdf(Normal(), 0.3) + (bind === condition ? logpdf(Normal(), 0.6) : 0.0)
         @test gradient ≈ [bind === condition ? -1.5 : -0.3]
     end
+end
+
+@model runtime_vector(y) = (for i in eachindex(y)
+    y[i] ~ Normal()
+end;
+y)
+@testset "runtime partial binding conversion errors" begin
+    @model runtime_parent() = (
+        m ~ Normal();
+        a ~ to_submodel(
+            condition(decondition(runtime_vector(zeros(2))), @varname(y[1]) => m)
+        );
+        m
+    )
+    @test_throws r"Cannot represent partial binding at `y\[1\]` in storage element type Float64 for value type .*Dual.*allocate storage with an element type that can hold .*Dual" LogDensityProblems.logdensity_and_gradient(
+        LogDensityFunction(runtime_parent(); adtype=AutoForwardDiff()), [0.3, 0.1]
+    )
+
+    @test_throws InexactError condition(
+        decondition(runtime_vector(zeros(Int, 2))), @varname(y[1]) => 1.5
+    )(
+        Xoshiro(1)
+    )
 end
 
 @testset "assigned observed local shapes" begin
