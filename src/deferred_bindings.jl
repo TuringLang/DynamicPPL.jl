@@ -252,9 +252,17 @@ _resolve_deferred_binding(x, model, vn) = x
     x::VarNamedTuple{names}, model, vn
 ) where {names}
     children = map(names) do name
-        :(_resolve_deferred_binding(
-            x.data.$name, model, maybe_prefix(VarName{$(QuoteNode(name))}(), vn)
-        ))
+        quote
+            let child = x.data.$name, address = maybe_prefix(VarName{$(QuoteNode(name))}(), vn)
+
+                # Decide scope before recursion can widen the address type in inference.
+                if _resolves_deferred_binding(model, address)
+                    _resolve_deferred_binding(child, model, address)
+                else
+                    child
+                end
+            end
+        end
     end
     return quote
         _has_deferred_binding(x) || return x

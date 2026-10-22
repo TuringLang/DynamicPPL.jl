@@ -132,6 +132,18 @@ end
         end
     end
 end
+function namespace_density_allocations(ldf, params)
+    return @allocated LogDensityProblems.logdensity(ldf, params)
+end
+@testset "deferred namespace density allocations" begin
+    model = condition(body_namespace_parent(); a=(b=(y=1.0,),))
+    for (bound, params) in
+        ((model, [0.3]), (condition(model, @varname(a.b.x) => 0.5), Float64[]))
+        ldf = LogDensityFunction(bound)
+        namespace_density_allocations(ldf, params)
+        @test namespace_density_allocations(ldf, params) <= 432
+    end
+end
 @model deeper_namespace_child() = c ~ to_submodel(nested_mid())
 @model structured_namespace_child() = (
     b ~ product_distribution((u=Normal(), v=Normal())); b
