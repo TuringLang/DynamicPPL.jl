@@ -302,7 +302,7 @@ end
         @test bind(listing_outer(), L)() == (x=1.0, y=2.0)
         @test list(bind(m; a=(b=(x=3.0,),)))[@varname(a.b)] == (x=3.0, y=2.0)
         removed = list(remove(m, @varname(a.b.x)))
-        @test removed[@varname(a.b)] == (y=2.0,)
+        @test collect(pairs(removed)) == [@varname(a.b) => (y=2.0,)]
         @test !haskey(removed, @varname(a.b.x))
     end
 end

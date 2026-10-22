@@ -9692,6 +9692,155 @@ end
     end
 end
 
+@model storage_leaf(n) = (z = zeros(n); for i in eachindex(z)
+    z[i] ~ Normal()
+end; x ~ Normal(); (z=z, x=x))
+@model storage_middle(n) = b ~ to_submodel(storage_leaf(n))
+@model storage_parent(n=2) = a ~ to_submodel(storage_middle(n))
+
+@testset "deferred listing after rewriting a part" begin
+    for (bind, remove, list) in ((condition, decondition, conditioned), (fix, unfix, fixed))
+        m = bind(storage_parent(); a=(b=(z=[1.0, 2.0], x=3.0),))
+        m = bind(remove(m, @varname(a.b.z[2])), @varname(a.b.z[2]) => 5.0)
+        @test collect(pairs(list(m))) == [@varname(a.b) => (z=[1.0, 5.0], x=3.0)]
+        @test bind(storage_parent(), list(m))(Xoshiro(1)) == m(Xoshiro(1))
+    end
+end
+
+@testset "deferred listing with a partial write in the other role" begin
+    for (bind, remove, other, list) in
+        ((condition, decondition, fix, fixed), (fix, unfix, condition, conditioned))
+        m = remove(bind(storage_parent(); a=(b=(z=[1.0, 2.0],),)), @varname(a.b.z[1]))
+        m = other(other(m, @varname(a.b.z[1]) => 7.0); a=(b=(x=3.0,),))
+        @test Dict(pairs(list(m))) ==
+            Dict(@varname(a.b.z[1]) => 7.0, @varname(a.b.x) => 3.0)
+        @test fix(condition(storage_parent(), conditioned(m)), fixed(m))(Xoshiro(1)) ==
+            m(Xoshiro(1))
+    end
+end
+
+@model function storage_indexed_parent()
+    a = Vector{Any}(undef, 1)
+    a[1] ~ to_submodel(storage_middle(2))
+    return a
+end
+@testset "indexed deferred storage across roles" begin
+    for (bind, remove, other, list, other_list) in (
+        (condition, decondition, fix, conditioned, fixed),
+        (fix, unfix, condition, fixed, conditioned),
+    )
+        m = bind(storage_indexed_parent(), @varname(a[1].b) => (z=[1.0, 2.0],))
+        same_role = bind(remove(m, @varname(a[1].b.z[2])), @varname(a[1].b.z[2]) => 5.0)
+        @test same_role(Xoshiro(1))[1].z == [1.0, 5.0]
+        @test_throws r"a position is already bound by the other role" other(
+            m, @varname(a[1].b.z[2]) => 5.0
+        )(
+            Xoshiro(1)
+        )
+        m = other(remove(m, @varname(a[1].b.z[2])), @varname(a[1].b.z[2]) => 5.0)
+        @test m(Xoshiro(1))[1].z == [1.0, 5.0]
+        @test collect(pairs(list(m))) == [@varname(a[1].b.z[1]) => 1.0]
+        @test collect(pairs(other_list(m))) == [@varname(a[1].b.z[2]) => 5.0]
+        @test fix(condition(storage_indexed_parent(), conditioned(m)), fixed(m))(
+            Xoshiro(1)
+        ) == m(Xoshiro(1))
+    end
+end
+
+@testset "deferred storage contract" begin
+    @testset "listing after partial removal" begin
+        for (bind, remove, list) in
+            ((condition, decondition, conditioned), (fix, unfix, fixed))
+            m = remove(
+                bind(storage_parent(); a=(b=(z=[1.0, 2.0], x=3.0),)), @varname(a.b.z[1])
+            )
+            expected = Dict(@varname(a.b.z[2]) => 2.0, @varname(a.b.x) => 3.0)
+            listing = list(m)
+            @test Dict(pairs(listing)) == expected
+            @test Set(keys(listing)) == Set(keys(expected))
+            @test collect(values(listing)) == [2.0, 3.0]
+            @test !occursin("ModelBindingArray", repr(listing))
+            @test bind(storage_parent(), listing)(Xoshiro(1)) == m(Xoshiro(1))
+        end
+    end
+    @testset "cross-role partial storage" begin
+        for (bind, remove, other, list, other_list) in (
+            (condition, decondition, fix, conditioned, fixed),
+            (fix, unfix, condition, fixed, conditioned),
+        )
+            m = bind(storage_parent(); a=(b=(z=[1.0, 2.0],),))
+            @test_throws r"a position is already bound by the other role" other(
+                m, @varname(a.b.z[2]) => 5.0
+            )
+            m = other(remove(m, @varname(a.b.z[2])), @varname(a.b.z[2]) => 5.0)
+            @test m(Xoshiro(1)).z == [1.0, 5.0]
+            @test collect(pairs(list(m))) == [@varname(a.b.z[1]) => 1.0]
+            @test collect(pairs(other_list(m))) == [@varname(a.b.z[2]) => 5.0]
+            @test DynamicPPL._model_data(
+                DynamicPPL._get_model_binding(m, @varname(a.b.z[2]))
+            ) == 5.0
+            @test fix(condition(storage_parent(), conditioned(m)), fixed(m))(Xoshiro(1)) ==
+                m(Xoshiro(1))
+            m = remove(m, @varname(a.b.z))
+            @test isempty(list(m))
+            @test collect(pairs(other_list(m))) == [@varname(a.b.z[2]) => 5.0]
+            @test DynamicPPL._model_data(
+                DynamicPPL._get_model_binding(m, @varname(a.b.z[2]))
+            ) == 5.0
+            @test fix(condition(storage_parent(), conditioned(m)), fixed(m))(Xoshiro(1)) ==
+                m(Xoshiro(1))
+        end
+    end
+end
+
+@model function storage_namedtuple_leaf()
+    z ~ product_distribution((c=Normal(), d=Normal()))
+    x ~ Normal()
+    return (z=z, x=x)
+end
+@model storage_namedtuple_middle() = b ~ to_submodel(storage_namedtuple_leaf())
+@model storage_namedtuple_parent() = a ~ to_submodel(storage_namedtuple_middle())
+
+@testset "whole structured values after deferred removal" begin
+    for (bind, remove, list) in ((condition, decondition, conditioned), (fix, unfix, fixed))
+        m = remove(
+            bind(storage_namedtuple_parent(); a=(b=(z=(c=1.0, d=2.0), x=3.0),)),
+            @varname(a.b.x),
+        )
+        @test collect(pairs(list(m))) == [@varname(a.b) => (z=(c=1.0, d=2.0),)]
+        @test bind(storage_namedtuple_parent(), list(m))(Xoshiro(1)) == m(Xoshiro(1))
+    end
+end
+
+@testset "complete deferred listings after partial edits" begin
+    @model complete_child() = b ~ product_distribution((x=Normal(), y=Normal()))
+    @model complete_parent() = a ~ to_submodel(complete_child())
+    for (bind, remove, list) in ((condition, decondition, conditioned), (fix, unfix, fixed))
+        initial = bind(complete_parent(), @varname(a.b) => (x=1.0, y=2.0))
+        for m in (initial, remove(initial, @varname(a.b.x)))
+            m = bind(m, @varname(a.b.x) => 5.0)
+            @test collect(pairs(list(m))) == [@varname(a.b) => (x=5.0, y=2.0)]
+            @test bind(complete_parent(), list(m))(Xoshiro(1)) == (x=5.0, y=2.0)
+        end
+    end
+end
+
+@testset "indexed listings preserve deferred roots" begin
+    for (bind, other, list, other_list) in
+        ((condition, fix, conditioned, fixed), (fix, condition, fixed, conditioned))
+        parent = storage_indexed_parent()
+        m = bind(parent, @varname(a[1].b) => (z=[1.0, 2.0],))
+        rebuilt = bind(parent, list(m))
+        @test bind(rebuilt, @varname(a[1].b.x) => 3.0)(Xoshiro(1)) ==
+            [(z=[1.0, 2.0], x=3.0)]
+        @test other(rebuilt, @varname(a[1].b.x) => 3.0)(Xoshiro(1)) ==
+            [(z=[1.0, 2.0], x=3.0)]
+        other_part = other(parent, @varname(a[1].b.x) => 3.0)
+        @test bind(other(parent, other_list(other_part)), list(m))(Xoshiro(1)) ==
+            [(z=[1.0, 2.0], x=3.0)]
+    end
+end
+
 @testset "deferred scalar rejects indexed writes" begin
     @model scalar_child() = b ~ product_distribution((x=Normal(), y=Normal()))
     @model scalar_parent() = a ~ to_submodel(scalar_child())

@@ -97,7 +97,9 @@ function _binding_address_storage(
 end
 
 _shape_template(::DeferredBinding, optic, previous=nothing) = NoTemplate()
-_shape_template(::DeferredShape, optic, previous=nothing) = NoTemplate()
+function _shape_template(x::DeferredShape, optic, previous=nothing)
+    return _shape_template(_submodel_namespace(x), optic, _deferred_projection(previous))
+end
 
 _prune_model_node(x::DeferredBinding) = _prune_deferred_updates(x.updates)
 function _prune_model_node(x::DeferredWrite)
@@ -152,7 +154,29 @@ end
 _model_data(x::DeferredBinding) = VarNamedTuples._map_values_recursive!!(_model_data, x)
 
 function _select_model_node(::Type{R}, x::DeferredBinding) where {R}
-    return _deferred_listing_value(_select_model_node(R, _deferred_projection(x)))
+    projected = Base.afoldl(_deferred_listing_update, NoModelBinding(), x.updates...)
+    return _deferred_listing(R, projected)
+end
+function _deferred_listing(::Type{R}, projected) where {R}
+    selected = _select_model_node(R, projected)
+    return if _complete_deferred_listing(selected)
+        _deferred_listing_value(selected)
+    else
+        selected
+    end
+end
+function _deferred_listing(::Type{R}, projected::VarNamedTuple) where {R}
+    return _map_model_nodes(
+        v -> _select_model_node(R, v), projected, _deferred_listing_data
+    )
+end
+function _deferred_listing_data(data::NamedTuple)
+    isempty(data) && return NoModelBinding()
+    return if all(_complete_deferred_listing, values(data))
+        map(_deferred_listing_value, data)
+    else
+        VarNamedTuple(data)
+    end
 end
 function _select_model_node(::Type{R}, x::DeferredWrite) where {R}
     return _prune_model_node(DeferredWrite(_select_model_node(R, x.value), x.group))
@@ -161,17 +185,36 @@ function _select_model_node(::Type{R}, x::DeferredRemoval) where {R}
     return _prune_model_node(DeferredRemoval(_select_model_node(R, x.value), x.optic))
 end
 
+_deferred_listing_update(result, update) = _deferred_value_update(result, update, nothing)
+function _deferred_listing_update(result, update::DeferredWrite)
+    return _merge_model_node(result, update.value)
+end
+function _deferred_listing_update(
+    result, update::DeferredWrite{<:ModelValue{<:Any,<:NamedTuple}}
+)
+    return _merge_model_node(result, _deferred_namespace(update.value))
+end
+
+_complete_deferred_listing(x) = _has_complete_model_data(x)
+function _complete_deferred_listing(x::VarNamedTuple)
+    return all(_complete_deferred_listing, values(x.data))
+end
+function _complete_deferred_listing(x::VarNamedTuples.PartialArray)
+    return !(x.data isa VarNamedTuples.GrowableArray) &&
+           all(x.mask) &&
+           all(_complete_deferred_listing, x.data)
+end
+
 _deferred_listing_value(x) = x
 _deferred_listing_value(x::VarNamedTuple) = map(_deferred_listing_value, x.data)
+_deferred_listing_value(x::VarNamedTuples.PartialArray) = _model_data(x)
 
 _has_binding_role(R, x::DeferredBinding) = any(v -> _has_binding_role(R, v), x.updates)
 _has_binding_role(R, x::DeferredWrite) = _has_binding_role(R, x.value)
 
 _model_argument_binding(x::DeferredBinding, ::AbstractPPL.Iden) = x
 function _model_argument_binding(x::DeferredBinding, optic::AbstractPPL.AbstractOptic)
-    children = map(v -> _model_argument_binding(v, optic), x.updates)
-    children = filter(!isnothing, children)
-    return isempty(children) ? nothing : DeferredBinding(children)
+    return _model_argument_binding(_deferred_projection(x), optic)
 end
 _model_argument_binding(x::DeferredShape, ::AbstractPPL.Iden) = x
 _model_argument_binding(x::DeferredShape, optic::AbstractPPL.AbstractOptic) = nothing
@@ -507,6 +550,16 @@ function _deferred_input_storage(x::VarNamedTuple)
 end
 
 function _deferred_projection(x::DeferredBinding)
+    # Layer concatenation preserves each role's order, not their relative chronology.
+    observations = _remove_model_binding(Fix, x, AbstractPPL.Iden())
+    fixed = _remove_model_binding(Condition, x, AbstractPPL.Iden())
+    return _merge_model_node(
+        _prune_model_node(_deferred_layer_projection(observations)),
+        _prune_model_node(_deferred_layer_projection(fixed)),
+    )
+end
+_deferred_layer_projection(x) = x
+function _deferred_layer_projection(x::DeferredBinding)
     return foldl(x.updates; init=NoModelBinding()) do result, update
         if update isa DeferredRemoval
             _deferred_value_update(result, update, nothing)

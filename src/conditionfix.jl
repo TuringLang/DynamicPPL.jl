@@ -3072,6 +3072,14 @@ function _prepare_binding_entry(
         return _merge_model_values(prepared, update)
     elseif pending && value isa NamedTuple && !_is_namespace_storage(model, name)
         value = DeferredBinding((DeferredWrite(value, group),))
+    elseif pending && value isa PendingBindings
+        value = VarNamedTuples._map_values_recursive!!(copy(value)) do child
+            if child isa NamedTuple
+                DeferredBinding((DeferredWrite(child, group),))
+            else
+                child
+            end
+        end
     end
     template = if pending
         PendingBindingTemplate(template, VarName{AbstractPPL.getsym(name)}(), group)
@@ -3746,13 +3754,14 @@ function VarNamedTuples._merge(a::PendingBindings, b::PendingBindings, ::Val{tru
 end
 function Base.show(io::IO, p::PendingBindings)
     print(io, "(")
-    p.base === nothing || (show(io, p.base); print(io, ", "))
-    for (i, (optic, value)) in enumerate(p.entries)
-        i == 1 || print(io, ", ")
-        AbstractPPL._pretty_print_optic(io, optic)
+    print_entry = function (first_entry, pair)
+        first_entry || print(io, ", ")
+        AbstractPPL._pretty_print_optic(io, AbstractPPL.getoptic(first(pair)))
         print(io, " => ")
-        show(io, value)
+        show(io, last(pair))
+        return false
     end
+    VarNamedTuples._mapreduce_recursive(identity, print_entry, p, @varname(_), true)
     return print(io, ")")
 end
 function _pending_lookup(p, selection)
@@ -3906,7 +3915,8 @@ end
 function _pending_remainder(optic, value, removal, replacement, R=Condition)
     if optic isa AbstractPPL.Iden
         child = _remove_model_binding(R, value, removal)
-        replacement && (child = _remove_model_binding(Fix, child, removal))
+        replacement &&
+            (child = _prune_model_node(_remove_model_binding(Fix, child, removal)))
         return child isa NoModelBinding ? nothing : optic => child
     elseif AbstractPPL.ohead(optic) == AbstractPPL.ohead(removal)
         child = _pending_remainder(optic.child, value, removal.child, replacement, R)
@@ -3939,7 +3949,11 @@ function _pending_remainder(
             return child
         end
         child = _remove_model_binding(R, child, relative)
-        return replacement ? _remove_model_binding(Fix, child, relative) : child
+        return if replacement
+            _prune_model_node(_remove_model_binding(Fix, child, relative))
+        else
+            child
+        end
     end
     if selected isa AbstractArray
         data = map(CartesianIndices(selected)) do i
@@ -4146,6 +4160,19 @@ function VarNamedTuples.make_leaf(
     _pending_positions(optic.ix) === nothing && _no_index_storage_error(
         optic, AbstractPPL.append_optic(t.name, optic), "bind"; child_name=true
     )
+    # Scalar entries share one index level so later writes merge their descendants.
+    # Property-only descendants share a namespace node without array storage.
+    child_template = if _property_binding_path(optic.child)
+        NoTemplate()
+    else
+        VarNamedTuples.index_template(t, optic)
+    end
+    if _pending_positions(optic.ix) isa CartesianIndex
+        child = VarNamedTuples.make_leaf(value, optic.child, child_template)
+        return PendingBindings(
+            t.name, (AbstractPPL.ohead(optic) => child,), nothing, t.group
+        )
+    end
     return PendingBindings(t.name, (optic => value,), nothing, t.group)
 end
 function _prepare_bindings(p::PendingBindings, ::ConflictingBindingTemplates, vn)
@@ -4899,7 +4926,7 @@ julia> # Now `a.x` will be sampled.
 ```
 """
 conditioned(model::Model) = _select_model_values(
-    Condition, _listing_argument_children(model, _public_model_values(model))
+    Condition, _listing_argument_children(model, _public_model_values(Condition, model))
 )
 
 """
@@ -5192,7 +5219,7 @@ julia> # Now `a.x` will be sampled.
 ```
 """
 fixed(model::Model) = _select_model_values(
-    Fix, _listing_argument_children(model, _public_model_values(model))
+    Fix, _listing_argument_children(model, _public_model_values(Fix, model))
 )
 
 # Recursive removals are stored separately from values and therefore own no shape.
@@ -6488,13 +6515,13 @@ function _local_binding_input(model, input::Union{NamedTuple,VarNamedTuple})
 end
 _local_binding_input(model, input::Tuple) = map(x -> _local_binding_input(model, x), input)
 _local_binding_input(model, input) = input
-function _public_model_values(model)
-    values = _model_values(model.values)
+function _public_model_values(::Type{R}, model) where {R}
+    values = _binding_layer(R, model.values)
     if model.values isa LocalModelValues && _model_prefix(model) !== nothing
         template = _apply_prefix_template(_model_prefix_template(model), NoTemplate())
         return _prefix_values(values, _model_prefix(model), template)
     end
-    return _model_values(_materialize_argument_values(model).values)
+    return _binding_layer(R, _materialize_argument_values(model).values)
 end
 function _model_values_for_prefix(model)
     model.values isa UnprefixedArgumentValues && return model.values.values
