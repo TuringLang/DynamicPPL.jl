@@ -426,6 +426,10 @@ function generate_tilde_literal(left, right)
     end
 end
 
+function set_tilde_value!!(::AbstractVarInfo, object, value, vn::VarName)
+    return Accessors.set(object, AbstractPPL.with_mutation(AbstractPPL.getoptic(vn)), value)
+end
+
 assign_or_set!!(lhs::Symbol, rhs, vn) = drop_escape(:($lhs = $rhs))
 function assign_or_set!!(lhs::Expr, rhs, vn)
     left_top_sym = get_top_level_symbol(lhs)

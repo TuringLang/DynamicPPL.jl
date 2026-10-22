@@ -44,10 +44,6 @@ function _threadsafe_varinfo(vi::AbstractVarInfo, ::Type{L}) where {L<:Accumulat
 end
 ThreadSafeVarInfo(vi::ThreadSafeVarInfo) = vi
 
-function set_tilde_value!!(::AbstractVarInfo, object, value, vn::VarName)
-    return Accessors.set(object, AbstractPPL.with_mutation(AbstractPPL.getoptic(vn)), value)
-end
-
 @noinline function _tilde_container_error(old, new, vn)
     replacement = if typeof(old) === typeof(new)
         "$(typeof(old)) was replaced by a copy of the same type. "
