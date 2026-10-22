@@ -8330,6 +8330,10 @@ end
 @model roots_outer() = (a ~ to_submodel(roots_leaf()))
 @model template_conflict_child() = (y = zeros(2); y[1] ~ Normal(); y[2] ~ Normal(); y)
 @model template_conflict_parent(child) = a ~ to_submodel(child)
+@model nested_template_child() = (
+    q = (a=zeros(2), b=0.0); q.a[1] ~ Normal(); q.a[2] ~ Normal(); q
+)
+@model nested_template_parent(child) = a ~ to_submodel(child)
 @model indexed_roots() = (
     for i in 1:2
         p[i] ~ to_submodel(roots_leaf())
@@ -8373,6 +8377,19 @@ end
         )()
         @test bind(whole, @of(a = @of(y = of(Array, 2))), @varname(a.y[2]) => 2.0)() ==
             [1.0, 2.0]
+    end
+end
+
+@testset "ancestor partial bindings use child named-tuple template storage" begin
+    for bind in (condition, fix)
+        child = bind(
+            nested_template_child(),
+            @of(q = @of(a = of(Array, 2), b = Float64)),
+            @varname(q.a[1]) => 1.0,
+        )
+        @test bind(child, @varname(q.a[2]) => 2.0)() == (a=[1.0, 2.0], b=0.0)
+        @test bind(nested_template_parent(child), @varname(a.q.a[2]) => 2.0)() ==
+            (a=[1.0, 2.0], b=0.0)
     end
 end
 

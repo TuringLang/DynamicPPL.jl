@@ -4308,7 +4308,7 @@ end
 function _prepare_child_local(node, storage, vn, model, templates, prefix)
     _binding_schema_owned(model, vn) || return node
     if node isa PendingBindings &&
-        storage isa NoTemplate &&
+        (storage isa NoTemplate || storage isa VarNamedTuple) &&
         all(e -> first(e) isa AbstractPPL.Property, node.entries)
         return _prepare_child_local(
             _submodel_namespace(node), storage, vn, model, templates, prefix
