@@ -8328,6 +8328,8 @@ end
 end
 @model roots_leaf() = (x ~ Normal(); y ~ Normal())
 @model roots_outer() = (a ~ to_submodel(roots_leaf()))
+@model template_conflict_child() = (y = zeros(2); y[1] ~ Normal(); y[2] ~ Normal(); y)
+@model template_conflict_parent(child) = a ~ to_submodel(child)
 @model indexed_roots() = (
     for i in 1:2
         p[i] ~ to_submodel(roots_leaf())
@@ -8359,6 +8361,19 @@ end
     @test_throws r"Cannot create binding root `p`: an existing binding root already occupies this address" condition(
         indexed, @varname(p) => [(x=1.0,), (x=2.0,)]
     )
+end
+
+@testset "ancestor templates check held storage" begin
+    for bind in (condition, fix)
+        whole = bind(
+            template_conflict_parent(template_conflict_child()), @varname(a.y) => ones(2)
+        )
+        @test_throws r"Binding template at `y` conflicts with existing storage" bind(
+            whole, @of(a = @of(y = of(Array, 3))), @varname(a.y[2]) => 2.0
+        )()
+        @test bind(whole, @of(a = @of(y = of(Array, 2))), @varname(a.y[2]) => 2.0)() ==
+            [1.0, 2.0]
+    end
 end
 
 @model overlap_array(x) = (x[1] ~ Normal(); x)
@@ -9625,6 +9640,28 @@ struct UndeclaredVectorSizeDistribution <: ContinuousMultivariateDistribution en
     @test fix(fixed_univariate(); x=ones(3))() == ones(3)
     @test_throws MethodError fix(fixed_undeclared(); x=ones(2, 3))()
     @test_throws MethodError fix(fixed_undeclared_vector(); x=ones(3))()
+end
+
+@model template_leaf() = (y = zeros(2); y[1] ~ Normal(); y[2] ~ Normal(); y)
+@model template_outer() = a ~ to_submodel(template_leaf())
+@testset "ancestor template replacement" begin
+    for (bind, remove) in ((condition, decondition), (fix, unfix))
+        bound = bind(template_outer(), @varname(a.y) => ones(2))
+        @test_throws r"conflicts with existing storage" bind(
+            bound, @of(a = @of(y = of(Array, 3))), @varname(a.y[2]) => 2.0
+        )()
+        for cleared in (remove(bound, @varname(a.y)), remove(bound))
+            @test bind(cleared, @of(a = @of(y = of(Array, 3))), @varname(a.y[2]) => 2.0)(
+                Xoshiro(1)
+            ) == bind(
+                remove(bind(template_leaf(), @varname(y) => ones(2)), @varname(y)),
+                @of(y = of(Array, 3)),
+                @varname(y[2]) => 2.0,
+            )(
+                Xoshiro(1)
+            )
+        end
+    end
 end
 
 @testset "deferred scalar rejects indexed writes" begin
