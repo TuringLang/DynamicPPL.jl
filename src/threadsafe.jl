@@ -59,10 +59,11 @@ end
             "Thread-safe evaluation cannot replace the container of tilde variable " *
             "$(vn): " *
             replacement *
-            "Mutable containers must retain their identity; immutable containers must " *
+            "Mutable containers must retain their identity. Immutable containers must " *
             "retain their type. Allocate with the parameter element type (for example, " *
             "`::Type{T}=Float64` with `Vector{T}(undef, n)` for scalar tildes, " *
-            "or `Matrix{T}` with `x[:, i] ~ MvNormal(...)` for vector-valued tildes).",
+            "`Matrix{T}` with `x[:, i] ~ MvNormal(...)` for vector-valued tildes, " *
+            "or `(a = zero(T),)` for a `NamedTuple`).",
         ),
     )
 end

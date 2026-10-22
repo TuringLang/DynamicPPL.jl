@@ -1,6 +1,6 @@
 # 0.43.0 (unreleased)
 
-Thread-safe evaluation now throws an `ArgumentError` when a tilde assignment replaces a mutable container or changes an immutable container's type; allocate mutable storage with `::Type{T}=Float64` and `Vector{T}(undef, n)`.
+Thread-safe evaluation now throws an `ArgumentError` when a tilde assignment replaces a mutable container or changes an immutable container's type. Allocate mutable storage with `::Type{T}=Float64` and `Vector{T}(undef, n)`. Imputing missing entries in a data argument now throws this error under automatic differentiation, because the data argument cannot be reallocated to hold AD values. Pass that data as `Vector{Union{Missing,Real}}` to keep imputing. See [#1521](https://github.com/TuringLang/DynamicPPL.jl/pull/1521).
 
 `VarNamedTuple` membership resolves `begin` and `end` against the stored array. See [#1490](https://github.com/TuringLang/DynamicPPL.jl/pull/1490).
 

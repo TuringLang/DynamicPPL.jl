@@ -92,10 +92,12 @@ Under thread-safe evaluation, a tilde assignment throws an `ArgumentError` if it
 replaces a mutable container on its path or changes an immutable container's type,
 wherever the assignment occurs. Slice reads are checked by type because they return
 copies. Allocate with the parameter element type via `::Type{T}=Float64`: use
-`Vector{T}(undef, n)` for scalar tildes or `Matrix{T}` with `x[:, i] ~ MvNormal(...)`
-for vector-valued tildes. Under thread-safe evaluation with automatic differentiation,
-imputing missing entries in a data argument now throws this error because the model
-cannot reallocate the data argument to hold AD values. The check does not prevent lost
+`Vector{T}(undef, n)` for scalar tildes, `Matrix{T}` with `x[:, i] ~ MvNormal(...)`
+for vector-valued tildes, or `(a = zero(T),)` for a `NamedTuple`. Under thread-safe
+evaluation with automatic differentiation, imputing missing entries in a data argument
+now throws this error because the model cannot reallocate the data argument to hold AD
+values. Pass that data as `Vector{Union{Missing,Real}}` to keep imputing, which gives
+the same log density and gradient as serial evaluation. The check does not prevent lost
 writes from rebinding shared immutable values, including `NamedTuple`s and immutable
 wrappers around mutable storage such as `OffsetArray`s of `Vector{Any}`, or from
 concurrent writes through overlapping slices (`x[1:N][i] ~`). Serial evaluation with
