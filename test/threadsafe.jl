@@ -629,11 +629,6 @@ end
             x.a[1] ~ Normal()
             return x.a[1]
         end
-        @model function reference_value(::Type{T}=Float64) where {T}
-            r = Ref(zero(T))
-            r[] ~ Normal()
-            return r[]
-        end
         @model function mutable_field(::Type{T}=Float64) where {T}
             s = Box(zero(T))
             s.v ~ Normal()
@@ -645,8 +640,7 @@ end
             x[key][1] ~ Normal()
             return x[key][1]
         end
-        for model in
-            (immutable_vectors(), reference_value(), mutable_field(), dictionary_value())
+        for model in (immutable_vectors(), mutable_field(), dictionary_value())
             result, vi = init!!(
                 Xoshiro(1),
                 setthreadsafe(model, true),
@@ -659,9 +653,7 @@ end
             @test getlogjoint(vi) ≈ logpdf(Normal(), expected)
         end
         for (model, params) in (
-            (immutable_vectors(), z -> (; x=(a=[z],))),
-            (reference_value(), z -> (; r=fill(z))),
-            (mutable_field(), z -> (; s=Box(z))),
+            (immutable_vectors(), z -> (; x=(a=[z],))), (mutable_field(), z -> (; s=Box(z)))
         )
             model = setthreadsafe(model, true)
             @test ForwardDiff.derivative(z -> logjoint(model, params(z)), 0.25) ≈ -0.25

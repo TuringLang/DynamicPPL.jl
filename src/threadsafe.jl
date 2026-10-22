@@ -60,7 +60,7 @@ ThreadSafeVarInfo(vi::ThreadSafeVarInfo) = vi
             "Allocate mutable storage with the parameter element type (for example, " *
             "`::Type{T}=Float64` with `Vector{T}(undef, n)` for scalar tildes, " *
             "or `Matrix{T}` with `x[:, i] ~ MvNormal(...)` for vector-valued tildes). " *
-            "Use a `Vector` or `Ref` instead of a `NamedTuple`, tuple or static array.",
+            "Use a `Vector` instead of a `NamedTuple`, tuple or static array.",
         ),
     )
 end
@@ -73,18 +73,6 @@ end
 
 @inline function _set_tilde_leaf(object, value, optic, vn)
     return Accessors.set(object, AbstractPPL.with_mutation(optic), value)
-end
-
-# BangBang has no zero-index setter for RefValue.
-@inline function _set_tilde_leaf(
-    object::Base.RefValue, value, optic::AbstractPPL.Index{Tuple{}}, vn
-)
-    try
-        return setindex!(object, value)
-    catch err
-        err isa Union{MethodError,InexactError} || rethrow()
-        return _tilde_container_error(object, Ref(value), vn)
-    end
 end
 
 @inline function _set_tilde_path(object, value, optic, vn)

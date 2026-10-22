@@ -98,7 +98,7 @@ Concurrent writes to the same element still require synchronisation by the calle
 Allocate mutable storage with the parameter element type via `::Type{T}=Float64`:
 use `Vector{T}(undef, n)` for scalar tildes or `Matrix{T}` with
 `x[:, i] ~ MvNormal(...)` for vector-valued tildes. Replace a `NamedTuple`, tuple,
-or static array containing scalar parameters with a `Vector` or `Ref`, or use
+or static array containing scalar parameters with a `Vector`, or use
 plain scalar variables. This rule also applies to single-task and task-local
 immutable containers. A `NamedTuple` of vectors can stay unchanged while its
 vectors are updated in place. Immutable wrappers such as an `OffsetArray` must
