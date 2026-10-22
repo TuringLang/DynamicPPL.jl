@@ -6511,5 +6511,3 @@ _binding_read_context(context, values) = context
 function _binding_read_context(context::AbstractParentContext, values)
     return setchildcontext(context, _binding_read_context(childcontext(context), values))
 end
-
-include("deferred_bindings.jl")

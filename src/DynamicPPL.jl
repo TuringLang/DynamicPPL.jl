@@ -267,6 +267,7 @@ include("contexts/init.jl")
 include("contexts/prefix.jl")
 include("model.jl")
 include("conditionfix.jl")
+include("deferred_bindings.jl")
 @compat public Recursive
 include("distribution_wrappers.jl")
 include("distributions.jl")
