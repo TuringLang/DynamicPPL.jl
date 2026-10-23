@@ -2067,7 +2067,9 @@ end
 function _select_model_values(::Type{R}, values::VarNamedTuple) where {R}
     return _map_model_nodes(v -> _select_model_node(R, v), values)
 end
-@generated function _map_model_nodes(f, values::VarNamedTuple{names}) where {names}
+@generated function _map_model_nodes(
+    f::F, values::VarNamedTuple{names}, wrap::W=(data -> VarNamedTuple(data))
+) where {names,F,W}
     fields = map(names) do name
         :(
             let child = f(values.data.$name)
@@ -2079,7 +2081,7 @@ end
             end
         )
     end
-    return :(VarNamedTuple(merge((;), $(fields...))))
+    return :(wrap(merge((;), $(fields...))))
 end
 function _select_model_node(::Type{R}, value::ModelValue) where {R}
     return _matches_model_role(R, value) ? value.value : NoModelBinding()
@@ -3832,8 +3834,16 @@ function _materialize_pending(p::PendingBindings)
     end
 end
 function _select_model_node(::Type{R}, p::PendingBindings) where {R}
-    all(e -> first(e) isa AbstractPPL.Property, p.entries) &&
-        return _select_model_node(R, _submodel_namespace(p))
+    if all(e -> first(e) isa AbstractPPL.Property, p.entries)
+        selected = _fold_model_indices(VarNamedTuple(), p) do result, value, optic, _
+            child = _select_model_node(R, value)
+            child isa NoModelBinding && return _delete_binding_root(result, optic)
+            return VarNamedTuples._setindex_optic!!(
+                result, child, optic, NoTemplate(), VarNamedTuples.AllowAll()
+            )
+        end
+        return isempty(selected) ? NoModelBinding() : selected
+    end
     return _prune_model_node(
         _pending_map(e -> first(e) => _select_model_node(R, last(e)), p)
     )
