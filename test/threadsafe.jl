@@ -8,8 +8,10 @@ using Distributions
 using DynamicPPL
 using Test
 using ForwardDiff
+using OffsetArrays: OffsetArray
 using Random: Xoshiro
-using LogDensityProblems: logdensity
+using ADTypes: AutoForwardDiff
+using LogDensityProblems: logdensity, logdensity_and_gradient
 
 @model function gdemo_d()
     s ~ InverseGamma(2, 3)
@@ -146,8 +148,8 @@ end
     end
 
     @testset "parameter containers preserve numeric types" begin
-        @model function indexed_parameter()
-            x = zeros(1)
+        @model function indexed_parameter(::Type{T}=Float64) where {T}
+            x = zeros(T, 1)
             return x[1] ~ Normal()
         end
         model = setthreadsafe(indexed_parameter(), true)
@@ -418,6 +420,301 @@ end
         end
         model = setthreadsafe(f(), true)
         @test !check_model(model)
+    end
+
+    @testset "threadsafe assignments reject container replacement" begin
+        @model function shared()
+            x = zeros(8)
+            Threads.@threads for i in eachindex(x)
+                x[i] ~ Normal()
+            end
+            return 0.5 ~ Normal(sum(x), 1)
+        end
+        @model function serial()
+            x = zeros(8)
+            for i in eachindex(x)
+                x[i] ~ Normal()
+            end
+            return 0.5 ~ Normal(sum(x), 1)
+        end
+        @model function same_type_copy()
+            x = Vector{Real}[zeros(2) for _ in 1:8]
+            Threads.@threads for i in eachindex(x)
+                x[i] ~ MvNormal(zeros(2), ones(2))
+            end
+            return 0.5 ~ Normal(sum(sum, x), 1)
+        end
+        @model function dictionary()
+            key = [1]
+            x = Dict(key => Vector{Real}[zeros(1)])
+            return x[key][1] ~ MvNormal(ones(1), ones(1))
+        end
+        @test_throws ArgumentError init!!(
+            Xoshiro(1),
+            setthreadsafe(dictionary(), true),
+            VarInfo(LogPriorAccumulator()),
+            InitFromPrior(),
+            UnlinkAll(),
+        )
+        @model function nested()
+            x = Any[zeros(8)]
+            Threads.@threads for j in eachindex(x[1])
+                x[1][j] ~ Normal()
+            end
+            return 0.5 ~ Normal(sum(x[1]), 1)
+        end
+        mutable struct Box
+            v
+        end
+        @model function boxed()
+            x = Box(zeros(1))
+            Threads.@threads for j in eachindex(x.v)
+                x.v[j] ~ Normal()
+            end
+            return 0.5 ~ Normal(sum(x.v), 1)
+        end
+        @model function typed(::Type{T}=Float64) where {T}
+            x = Vector{T}(undef, 8)
+            Threads.@threads for i in eachindex(x)
+                x[i] ~ Normal()
+            end
+            return 0.5 ~ Normal(sum(x), 1)
+        end
+        @model function local_values()
+            Threads.@threads for i in 1:8
+                s = (a=0.0,)
+                s.a ~ Normal()
+            end
+        end
+
+        function nested_exception(err)
+            while err isa CompositeException || err isa TaskFailedException
+                err = err isa CompositeException ? first(err.exceptions) : err.task.result
+            end
+            return err
+        end
+        function check_type_change(model)
+            model = setthreadsafe(model, true)
+            err = try
+                vi = VarInfo(Xoshiro(1), model)
+                ldf = LogDensityFunction(
+                    model, getlogjoint_internal, vi; adtype=AutoForwardDiff()
+                )
+                logdensity_and_gradient(ldf, vi[:])
+                nothing
+            catch err
+                nested_exception(err)
+            end
+            @test err isa ArgumentError
+            message = sprint(showerror, err)
+            @test occursin(r"tilde variable x(\.v)?\[", message)
+            @test occursin("Vector{T}(undef, n)", message)
+        end
+        for model in (shared(), same_type_copy(), nested(), boxed())
+            check_type_change(model)
+        end
+
+        serial_model = serial()
+        serial_ldf = LogDensityFunction(serial_model; adtype=AutoForwardDiff())
+        @test last(logdensity_and_gradient(serial_ldf, zeros(8))) ≈ fill(0.5, 8)
+        @test_throws ArgumentError logdensity_and_gradient(
+            LogDensityFunction(setthreadsafe(serial_model, true); adtype=AutoForwardDiff()),
+            zeros(8),
+        )
+
+        typed_model = setthreadsafe(typed(), true)
+        typed_ldf = LogDensityFunction(typed_model; adtype=AutoForwardDiff())
+        @test last(logdensity_and_gradient(typed_ldf, zeros(8))) ≈ fill(0.5, 8)
+
+        @model function sliced(indices, ::Type{T}=Float64) where {T}
+            x = Matrix{T}(undef, 2, 4)
+            Threads.@threads for j in axes(x, 2)
+                x[indices, j] .~ Normal()
+            end
+            return 0.5 ~ Normal(sum(x), 1)
+        end
+        @model function columns(::Type{T}=Float64) where {T}
+            x = Matrix{T}(undef, 2, 4)
+            Threads.@threads for j in axes(x, 2)
+                x[:, j] ~ MvNormal(zeros(2), ones(2))
+            end
+            return 0.5 ~ Normal(sum(x), 1)
+        end
+        for model in (sliced(:), sliced(1:2), sliced([1, 2]), columns())
+            model = setthreadsafe(model, true)
+            @test logdensity(LogDensityFunction(model), zeros(8)) ≈
+                8 * logpdf(Normal(), 0.0) + logpdf(Normal(), 0.5)
+            @test last(
+                logdensity_and_gradient(
+                    LogDensityFunction(model; adtype=AutoForwardDiff()), zeros(8)
+                ),
+            ) ≈ fill(0.5, 8)
+        end
+
+        @model function sliced_observation(y)
+            mu ~ Normal()
+            Threads.@threads for j in axes(y, 2)
+                y[:, j] .~ Normal(mu, 1)
+            end
+        end
+        y = reshape(collect(1.0:4.0), 2, 2)
+        observed_model = setthreadsafe(sliced_observation(y), true)
+        @test logdensity(LogDensityFunction(observed_model), [0.0]) ≈
+            logpdf(Normal(), 0.0) + sum(logpdf.(Normal(), y))
+        @test last(
+            logdensity_and_gradient(
+                LogDensityFunction(observed_model; adtype=AutoForwardDiff()), [0.0]
+            ),
+        ) ≈ [sum(y)]
+
+        local_model = setthreadsafe(local_values(), true)
+        for adtype in (nothing, AutoForwardDiff())
+            local_error = try
+                LogDensityFunction(local_model; adtype=adtype)
+                nothing
+            catch err
+                nested_exception(err)
+            end
+            @test local_error isa ArgumentError
+        end
+
+        @model function immutable_value()
+            x = (a=0.0,)
+            x.a ~ Normal()
+            return x.a
+        end
+        @model function nested_immutable_value()
+            x = Box((a=0.0,))
+            x.v.a ~ Normal()
+            return x.v.a
+        end
+        @model function intermediate_slice()
+            x = zeros(2)
+            x[1:2][1] ~ Normal()
+            return x[1]
+        end
+        @model function tuple_value()
+            x = (0.0,)
+            x[1] ~ Normal()
+            return x[1]
+        end
+        @model function offset_value()
+            x = OffsetArray(Any[zeros(1)], 0:0)
+            x[0] ~ MvNormal(zeros(1), ones(1))
+            return only(x[0])
+        end
+        for (model, params) in (
+            (immutable_value(), (; x=(a=0.25,))),
+            (nested_immutable_value(), (; x=Box((a=0.25,)))),
+            (tuple_value(), (; x=[0.25])),
+            (offset_value(), (; x=OffsetArray([[0.25]], 0:0))),
+        )
+            strategy = InitFromParams(params, nothing)
+            @test first(init!!(model, VarInfo(), strategy, UnlinkAll())) == 0.25
+            @test_throws ArgumentError init!!(
+                setthreadsafe(model, true), VarInfo(), strategy, UnlinkAll()
+            )
+        end
+        for op in (condition, fix)
+            @test_throws ArgumentError init!!(
+                op(setthreadsafe(immutable_value(), true), @varname(x.a) => 0.25),
+                VarInfo(),
+                InitFromPrior(),
+                UnlinkAll(),
+            )
+        end
+
+        @model function immutable_vectors(::Type{T}=Float64) where {T}
+            x = (a=zeros(T, 1),)
+            x.a[1] ~ Normal()
+            return x.a[1]
+        end
+        @model function mutable_field(::Type{T}=Float64) where {T}
+            s = Box(zero(T))
+            s.v ~ Normal()
+            return s.v
+        end
+        @model function dictionary_value(::Type{T}=Float64) where {T}
+            key = [1]
+            x = Dict(key => zeros(T, 1))
+            x[key][1] ~ Normal()
+            return x[key][1]
+        end
+        for model in (immutable_vectors(), mutable_field(), dictionary_value())
+            result, vi = init!!(
+                Xoshiro(1),
+                setthreadsafe(model, true),
+                VarInfo(),
+                InitFromPrior(),
+                UnlinkAll(),
+            )
+            expected = rand(Xoshiro(1), Normal())
+            @test result == expected
+            @test getlogjoint(vi) ≈ logpdf(Normal(), expected)
+        end
+        for (model, params) in (
+            (immutable_vectors(), z -> (; x=(a=[z],))), (mutable_field(), z -> (; s=Box(z)))
+        )
+            model = setthreadsafe(model, true)
+            @test ForwardDiff.derivative(z -> logjoint(model, params(z)), 0.25) ≈ -0.25
+            @test ForwardDiff.derivative(0.25) do z
+                first(
+                    init!!(
+                        model, VarInfo(), InitFromParams(params(z), nothing), UnlinkAll()
+                    ),
+                )
+            end ≈ 1.0
+        end
+        @test first(
+            init!!(
+                setthreadsafe(intermediate_slice(), true),
+                VarInfo(),
+                InitFromParams((; x=[0.25, 0.25]), nothing),
+                UnlinkAll(),
+            ),
+        ) == 0.25
+        @test_throws ArgumentError init!!(
+            setthreadsafe(intermediate_slice(), true),
+            VarInfo(),
+            InitFromParams((; x=[ForwardDiff.Dual(0.25, 1.0), 0.25]), nothing),
+            UnlinkAll(),
+        )
+
+        @model function impute(y)
+            for i in eachindex(y)
+                y[i] ~ Normal()
+            end
+        end
+        imputed_density(z, threadsafe) = logjoint(
+            setthreadsafe(impute(Union{Missing,Real}[0.5, missing]), threadsafe),
+            (; y=[0.5, z]),
+        )
+        @test imputed_density(0.25, true) ≈ imputed_density(0.25, false)
+        @test imputed_density(0.25, true) ≈ logpdf(Normal(), 0.5) + logpdf(Normal(), 0.25)
+        @test ForwardDiff.derivative(z -> imputed_density(z, true), 0.25) ≈ -0.25
+
+        @model function indexed_value()
+            x = zeros(1)
+            return x[1] ~ Normal()
+        end
+        @model function property_value()
+            x = (a=0.0,)
+            return x.a ~ Normal()
+        end
+        value = ForwardDiff.Dual(0.1, 1.0)
+        for (model, vn) in
+            ((indexed_value(), @varname(x[1])), (property_value(), @varname(x.a)))
+            model = setthreadsafe(model, true)
+            for op in (condition, fix)
+                @test_throws ArgumentError init!!(
+                    Xoshiro(1),
+                    op(model, vn => value),
+                    VarInfo(),
+                    InitFromPrior(),
+                    UnlinkAll(),
+                )
+            end
+        end
     end
 
     @testset "assumes are threadsafe" begin

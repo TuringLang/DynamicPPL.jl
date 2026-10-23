@@ -44,6 +44,56 @@ function _threadsafe_varinfo(vi::AbstractVarInfo, ::Type{L}) where {L<:Accumulat
 end
 ThreadSafeVarInfo(vi::ThreadSafeVarInfo) = vi
 
+@noinline function _tilde_container_error(old, new, vn)
+    replacement = if typeof(old) === typeof(new)
+        "$(typeof(old)) was replaced by a copy of the same type. "
+    else
+        "$(typeof(old)) -> $(typeof(new)). "
+    end
+    throw(
+        ArgumentError(
+            "Thread-safe evaluation cannot replace the container of tilde variable " *
+            "$(vn): " *
+            replacement *
+            "Thread-safe evaluation requires tilde variables to be written in place. " *
+            "Every container on the path must retain its identity (`===`). " *
+            "Allocate mutable storage with the parameter element type (for example, " *
+            "`::Type{T}=Float64` with `Vector{T}(undef, n)` for scalar tildes, " *
+            "or `Matrix{T}` with `x[:, i] ~ MvNormal(...)` for vector-valued tildes). " *
+            "Use a `Vector` instead of a `NamedTuple`, tuple or static array.",
+        ),
+    )
+end
+
+@inline _tilde_child(object, optic) = optic(object)
+@inline function _tilde_child(object::AbstractArray, optic::AbstractPPL.Index)
+    indices = AbstractPPL.concretize(optic, object)
+    return Base.maybeview(object, indices.ix...; indices.kw...)
+end
+
+@inline function _set_tilde_leaf(object, value, optic, vn)
+    return Accessors.set(object, AbstractPPL.with_mutation(optic), value)
+end
+
+@inline function _set_tilde_path(object, value, optic, vn)
+    tail = AbstractPPL.otail(optic)
+    if tail isa AbstractPPL.Iden
+        new = _set_tilde_leaf(object, value, optic, vn)
+        object === new || _tilde_container_error(object, new, vn)
+    else
+        head = AbstractPPL.ohead(optic)
+        child = _tilde_child(object, head)
+        _set_tilde_path(child, value, tail, vn)
+        new_child = _tilde_child(object, head)
+        child === new_child || _tilde_container_error(child, new_child, vn)
+    end
+    return object
+end
+
+function set_tilde_value!!(::ThreadSafeVarInfo, object, value, vn::VarName)
+    return _set_tilde_path(object, value, AbstractPPL.getoptic(vn), vn)
+end
+
 function _get_task_accs_cache(vi::ThreadSafeVarInfo{V,L}) where {V,L}
     cache = @atomic :acquire vi.task_accs_cache
     # A serialized cache may have been sized for a process with fewer threads.

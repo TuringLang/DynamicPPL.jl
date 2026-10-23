@@ -75,3 +75,37 @@ Parameter values are also accumulator outputs. `VectorValueAccumulator` and
 `RawValueAccumulator` use task-local storage and combine their results after evaluation.
 This does not make arbitrary mutations in the model body or shared mutable
 initialisation strategies thread-safe.
+
+Because task accumulators are combined in an unspecified order, the order of collected
+variables can differ between evaluations, including variables defined outside the
+threaded region. A `VarInfo` or `LogDensityFunction` built from such an evaluation
+inherits that order. Each function is consistent with its own mapping, but using
+`internal_values_as_vector` (`vi[:]`) from another `VarInfo` can silently give the wrong
+density. Obtain vectors with that function's mapping using
+[`VectorParamAccumulator`](@ref), or pass vectorised values with matching transforms to
+[`to_vector_params`](@ref), as described in
+[Obtaining new vectorised parameters](@ref ldf-vector-params).
+
+## Containers under thread-safe evaluation
+
+Under thread-safe evaluation, every container on a tilde assignment's path must
+retain its identity (`===`); otherwise the assignment throws an `ArgumentError`.
+The written leaf is exempt. Intermediate array slices use views, so
+`x[1:2][i] ~ Normal()` writes only element `i` and `x[:, j] .~ Normal()` writes
+in place. A final slice, as in `x[:, j] ~ MvNormal(...)`, is written into its parent.
+Concurrent writes to the same element still require synchronisation by the caller.
+
+Allocate mutable storage with the parameter element type via `::Type{T}=Float64`:
+use `Vector{T}(undef, n)` for scalar tildes or `Matrix{T}` with
+`x[:, i] ~ MvNormal(...)` for vector-valued tildes. Replace a `NamedTuple`, tuple,
+or static array containing scalar parameters with a `Vector`, or use
+plain scalar variables. This rule also applies to single-task and task-local
+immutable containers. A `NamedTuple` of vectors can stay unchanged while its
+vectors are updated in place. Immutable wrappers such as an `OffsetArray` must
+also retain their identity; replacing their backing storage is rejected.
+
+Imputing missing entries in a data argument under automatic differentiation
+requires storage that can hold AD values. Pass the data as
+`Vector{Union{Missing,Real}}` to retain the same log density and gradient as serial
+evaluation. Serial evaluation with thread-safe mode disabled retains its usual
+widening behaviour.
