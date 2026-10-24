@@ -26,9 +26,9 @@ effectively updating the child context.
 
 # Examples
 ```jldoctest; setup=:(using Random)
-julia> using DynamicPPL: InitContext, CondFixContext, Condition
+julia> using DynamicPPL: InitContext, PrefixContext
 
-julia> ctx = CondFixContext{Condition}(VarNamedTuple(; a = 1));
+julia> ctx = PrefixContext(@varname(a));
 
 julia> DynamicPPL.childcontext(ctx)
 DefaultContext()
@@ -123,98 +123,4 @@ function tilde_assume!!(
     context::AbstractContext, ::Distribution, ::VarName, ::Any, ::AbstractVarInfo
 )
     return error("tilde_assume!! not implemented for context of type $(typeof(context))")
-end
-
-"""
-    DynamicPPL.tilde_observe!!(
-        context::AbstractContext,
-        right::Distribution,
-        left,
-        vn::Union{VarName, Nothing},
-        template::Any,
-        vi::AbstractVarInfo
-    )::Tuple{Any,AbstractVarInfo}
-
-This function handles observed variables, which may be:
-
-- literals on the left-hand side, e.g., `3.0 ~ Normal()`
-- a model input, e.g. `x ~ Normal()` in a model `@model f(x) ... end`
-- a conditioned or fixed variable, e.g. `x ~ Normal()` in a model `model | (; x = 3.0)`.
-
-The relevant log-probability associated with the observation is computed and accumulated in
-the VarInfo object `vi` (except for fixed variables, which do not contribute to the
-log-probability).
-
-`left` is the actual value that the left-hand side evaluates to. `vn` is the VarName on the
-left-hand side, or `nothing` if the left-hand side is a literal value. `template` is the
-value of the top-level symbol in `vn`; if `vn` is `nothing`, then `template` will be
-`NoTemplate()`.
-
-This function should return a tuple `(left, vi)`, where `left` is the same as the input, and
-`vi` is the updated VarInfo.
-"""
-function tilde_observe!!(
-    context::AbstractParentContext,
-    right::Distribution,
-    left,
-    vn::Union{VarName,Nothing},
-    template::Any,
-    vi::AbstractVarInfo,
-)
-    return tilde_observe!!(childcontext(context), right, left, vn, template, vi)
-end
-function tilde_observe!!(
-    context::AbstractContext,
-    ::Distribution,
-    ::Any,
-    ::Union{VarName,Nothing},
-    ::Any,
-    ::AbstractVarInfo,
-)
-    return error("tilde_observe!! not implemented for context of type $(typeof(context))")
-end
-
-"""
-    DynamicPPL.store_coloneq_value!!(
-        context::AbstractContext,
-        left::VarName,
-        right::Any,
-        template::Any,
-        vi::AbstractVarInfo
-    )::AbstractVarInfo
-
-Handle storing the value assigned by a statement `left := right`.
-
-`left` is the VarName on the left-hand side of the `:=` statement. `right` is the value on
-the right-hand side, and `template` is the value of the top-level symbol in `left`.
-
-This function should return only the updated VarInfo (not a tuple).
-
-!!! note
-    This function is not part of DynamicPPL's public API as the only case where this
-    function has any effect is when using `RawValueAccumulator`, which is itself fully
-    contained within DynamicPPL. There should be no need for users to directly call or
-    overload this function.
-"""
-function store_coloneq_value!!(
-    context::AbstractParentContext,
-    left::VarName,
-    right::Any,
-    template::Any,
-    vi::AbstractVarInfo,
-)
-    return store_coloneq_value!!(childcontext(context), left, right, template, vi)
-end
-function store_coloneq_value!!(
-    ::AbstractContext, vn::VarName, right::Any, template::Any, vi::AbstractVarInfo
-)
-    # This is the method that will be hit for leaf contexts. Importantly, if there are any
-    # PrefixContexts in the context stack, both `vn` and `template` will have been appropriately
-    # prefixed (PrefixContext overloads store_coloneq_value!!). That allows us to not fuss over
-    # prefixes here.
-    return DynamicPPL.map_accumulator!!(
-        acc -> store_colon_eq!!(acc, vn, right, template),
-        vi,
-        Val(DynamicPPL.RAW_VALUE_ACCNAME),
-    )
 end

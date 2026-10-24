@@ -10,7 +10,7 @@ We'll first show the full usage of `WithTransforms` here.
 It should be noted that there are more convenient ways to enable this at a high level, which will be discussed later.
 
 ```@example 1
-using DynamicPPL: WithTransforms, FixedTransform, Unlink, @vnt, LinkAll
+using DynamicPPL: WithTransforms, FixedTransform, Unlink, LinkAll, VarNamedTuple
 
 # Make your own custom transform. Note that by convention, the stored function
 # always converts *from* the transformed value *to* the raw value.
@@ -18,10 +18,7 @@ function my_transform end
 
 # Store them in a VarNamedTuple. You can mix and match different transform
 # types here, as long as they are subtypes of `AbstractTransform`.
-vnt = @vnt begin
-    a := FixedTransform(my_transform)
-    b := Unlink()
-end
+vnt = VarNamedTuple(; a=FixedTransform(my_transform), b=Unlink())
 
 # Use the WithTransforms strategy to specify that these transforms should be
 # used. All other variables will use the fallback strategy, here `LinkAll()`
