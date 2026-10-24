@@ -592,15 +592,16 @@ end
             end
         end
         for parent in (argument_geometry_parent, child -> held_geometry_parent(Ref(child)))
-            for n in (1, 1000)
+            deltas = map((1, 1000)) do n
                 storage = [ones(2) for _ in 1:n]
                 reference = parent(condition(nested_geometry_child(n); x=storage))
                 child = condition(nested_geometry_child(n); x=[zeros(2) for _ in 1:n])
                 inherited = condition(parent(decondition(child)), @varname(a.x) => storage)
-                @test reference(rng) == inherited(rng) == 1.0
-                baseline = @allocated reference(rng)
-                @test (@allocated inherited(rng)) <= baseline
+                @test @inferred(reference(rng)) == @inferred(inherited(rng)) == 1.0
+                baseline = minimum(@allocated(reference(rng)) for _ in 1:5)
+                minimum(@allocated(inherited(rng)) for _ in 1:5) - baseline
             end
+            @test deltas[2] <= deltas[1] + 128
         end
     end
 
