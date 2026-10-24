@@ -370,6 +370,7 @@ function build_combinations(rng)
     push!(models, ("Submodel", parent(randn(rng))))
     indexed = indexed_submodels(randn(rng, 3_000))
     push!(models, ("Indexed submodels 3k", indexed))
+    indexed = decondition(indexed, DynamicPPL.Recursive(), @varname(x[1].obs))
     # A parent binding at a child's prefixed address.
     push!(
         models,
