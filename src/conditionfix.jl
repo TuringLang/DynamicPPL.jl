@@ -524,7 +524,11 @@ function _check_bound_shape_child(
         optic.child,
         vn,
         owners,
-        AbstractPPL.append_optic(address, AbstractPPL.Property{S}()),
+        if isempty(owners)
+            address
+        else
+            AbstractPPL.append_optic(address, AbstractPPL.Property{S}())
+        end,
         role,
     )
 end
@@ -554,7 +558,11 @@ function _check_bound_shape_child(
         optic.child,
         vn,
         owners,
-        AbstractPPL.append_optic(address, AbstractPPL.Index(optic.ix, optic.kw)),
+        if isempty(owners)
+            address
+        else
+            AbstractPPL.append_optic(address, AbstractPPL.Index(optic.ix, optic.kw))
+        end,
         role,
     )
 end
