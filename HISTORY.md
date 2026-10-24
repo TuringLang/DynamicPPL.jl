@@ -5,9 +5,7 @@ Thread-safe tilde assignments now throw an `ArgumentError` if any container is r
   - Fixed whole arrays without body storage, including `missing` or `nothing` arguments, now report a size mismatch when their distribution sample size differs.
 
   - Fixed locals and whole observations of locals reject body storage with a different shape at executed tildes; `check_model` warns about unread partial bindings in either role.
-
   - Each occupied position now has one binding across roles and models. Clear another role with `decondition` or `unfix`, or a child binding with the matching `Recursive()` removal, before inserting. Same-model, same-role replacement remains supported.
-
   - Partial bindings of child-local variables require storage before the child's body, even in an untaken local branch; supply a template or storage on the child.
   - A namespace template cannot change shape while recursive removals remain below its root; rebuild the model to use the new shape.
 

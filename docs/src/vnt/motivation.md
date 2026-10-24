@@ -160,8 +160,9 @@ The binding API now accepts ordered pairs rather than dictionaries, allowing who
 using AbstractPPL: of, @of
 
 model = f4() | (@varname(x) => [1.0, -1.0])
-model = condition(f4(), @varname(x[1]) => 1.0, @varname(x[2]) => -1.0,
-                  @of(x = of(Array, 2)))
+model = condition(
+    f4(), @varname(x[1]) => 1.0, @varname(x[2]) => -1.0, @of(x = of(Array, 2))
+)
 ```
 
 The partial bindings need storage supplied by the template; together they observe the whole

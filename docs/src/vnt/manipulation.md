@@ -163,8 +163,9 @@ end
 
 using AbstractPPL: of, @of
 
-cond_model = condition(f(), @varname(x[1]) => 1.0, @varname(x[2]) => 2.0,
-                       @of(x = of(Array, 2)))
+cond_model = condition(
+    f(), @varname(x[1]) => 1.0, @varname(x[2]) => 2.0, @of(x = of(Array, 2))
+)
 ```
 
 Partial local bindings need storage before evaluation. Here the template provides it;
