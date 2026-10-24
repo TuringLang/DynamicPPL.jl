@@ -65,13 +65,13 @@ end
     @model function child(y, read)
         μ = read(y)
         x ~ Normal(μ, 1)
-        y = [missing]
+        y = Union{Missing,Real}[missing]
         return y[1] ~ Normal()
     end
     @model function record_child(y)
         μ = y.a[1]
         x ~ Normal(μ, 1)
-        y = (a=[missing], b=y.b)
+        y = (a=Union{Missing,Real}[missing], b=y.b)
         return y.a[1] ~ Normal()
     end
     @model function parent(make_child, vn)
