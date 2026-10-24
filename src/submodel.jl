@@ -214,7 +214,7 @@ end
 """
     DynamicPPL.tilde_assume!!(
         parent_model::Model,
-        context::AbstractContext,
+        context::Context,
         submodel::DynamicPPL.Submodel,
         left_vn::VarName,
         template,
@@ -225,7 +225,7 @@ Evaluate `submodel` under `parent_model`.
 """
 @inline function tilde_assume!!(
     parent_model::Model,
-    context::AbstractContext,
+    context::Context,
     submodel::Submodel{M,AutoPrefix},
     left_vn::VarName,
     template,
@@ -393,7 +393,7 @@ end
 for AutoPrefix in (true, false)
     @eval @inline function _evaluate_submodel!!(
         parent_model::Model,
-        context::AbstractContext,
+        context::Context,
         submodel::Submodel{M,$AutoPrefix},
         left_vn::VarName,
         template,
@@ -412,8 +412,7 @@ for AutoPrefix in (true, false)
         end
         # Calling model.f directly avoids the inference recursion limit as nested prefixes
         # change the Model type; routing through _evaluate!! widens it to Any (Turing.jl#2844).
-        model = setleafcontext(model, context)
-        args, kwargs = make_evaluate_args_and_kwargs(model, vi)
+        args, kwargs = make_evaluate_args_and_kwargs(model, context, vi)
         return @inline model.f(args...; kwargs...)
     end
 end

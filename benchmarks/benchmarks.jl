@@ -116,6 +116,18 @@ end
     return (; x=x)
 end
 
+@model _indexed_observation(obs, mu) = obs ~ Normal(mu, 1)
+
+"Indexed submodels with argument-supplied observations and one shared latent mean."
+@model function indexed_submodels(obs)
+    mu ~ Normal()
+    x = similar(obs)
+    for i in eachindex(obs)
+        x[i] ~ to_submodel(_indexed_observation(obs[i], mu))
+    end
+    return (; mu=mu)
+end
+
 "Variables whose support varies under linking, or otherwise nontrivial bijectors."
 @model function dynamic()
     eta ~ truncated(Normal(); lower=0.0, upper=0.1)
@@ -356,6 +368,13 @@ function build_combinations(rng)
     end
     push!(models, ("Dynamic", dynamic()))
     push!(models, ("Submodel", parent(randn(rng))))
+    indexed = indexed_submodels(randn(rng, 3_000))
+    push!(models, ("Indexed submodels 3k", indexed))
+    # A parent binding at a child's prefixed address.
+    push!(
+        models,
+        ("Indexed submodels conditioned", condition(indexed, @varname(x[1].obs) => 0.0)),
+    )
     d = [1, 1, 1, 2, 2, 2]
     w = [1, 2, 3, 2, 1, 1]
     z = [1, 1, 2, 2, 1, 2]
