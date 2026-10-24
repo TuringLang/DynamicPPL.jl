@@ -24,6 +24,7 @@ using DynamicPPL:
     LinkAll,
     UnlinkAll
 using DynamicPPL.TestUtils.AD: run_ad, NoTest
+using DynamicPPL.AbstractPPL: @of, of
 using Enzyme: Enzyme
 using FillArrays: Fill
 using ForwardDiff: ForwardDiff
@@ -367,10 +368,11 @@ function build_combinations(rng)
     push!(models, ("Submodel", parent(randn(rng))))
     indexed = indexed_submodels(randn(rng, 3_000))
     push!(models, ("Indexed submodels 3k", indexed))
+    indexed = decondition(indexed, @varname(x[1].obs))
     # A parent binding at a child's prefixed address.
     push!(
         models,
-        ("Indexed submodels conditioned", condition(indexed, @varname(x[1].obs) => 0.0)),
+        ("Indexed submodels conditioned", condition(indexed, @varname(x[1].obs) => 0.0, @of(x = of(Array, length(indexed.args.obs))))),
     )
     d = [1, 1, 1, 2, 2, 2]
     w = [1, 2, 3, 2, 1, 1]
