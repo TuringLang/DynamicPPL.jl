@@ -2076,7 +2076,7 @@ function _select_model_values(::Type{R}, values::VarNamedTuple) where {R}
     return _map_model_nodes(v -> _select_model_node(R, v), values)
 end
 @generated function _map_model_nodes(
-    f::F, values::VarNamedTuple{names}, wrap::W=(data -> VarNamedTuple(data))
+    f::F, values::VarNamedTuple{names}, wrap::W=VarNamedTuple
 ) where {names,F,W}
     fields = map(names) do name
         :(
@@ -3081,13 +3081,10 @@ function _prepare_binding_entry(
     elseif pending && value isa NamedTuple && !_is_namespace_storage(model, name)
         value = DeferredBinding((DeferredWrite(value, group),))
     elseif pending && value isa PendingBindings
-        value = VarNamedTuples._map_values_recursive!!(copy(value)) do child
-            if child isa NamedTuple
-                DeferredBinding((DeferredWrite(child, group),))
-            else
-                child
-            end
-        end
+        value = VarNamedTuples._map_values_recursive!!(
+            v -> v isa NamedTuple ? DeferredBinding((DeferredWrite(v, group),)) : v,
+            copy(value),
+        )
     end
     template = if pending
         PendingBindingTemplate(template, VarName{AbstractPPL.getsym(name)}(), group)

@@ -174,11 +174,8 @@ function _deferred_listing(::Type{R}, projected::VarNamedTuple) where {R}
 end
 function _deferred_listing_data(data::NamedTuple)
     isempty(data) && return NoModelBinding()
-    return if all(_complete_deferred_listing, values(data))
-        map(_deferred_listing_value, data)
-    else
-        VarNamedTuple(data)
-    end
+    complete = all(_complete_deferred_listing, values(data))
+    return complete ? map(_deferred_listing_value, data) : VarNamedTuple(data)
 end
 function _select_model_node(::Type{R}, x::DeferredWrite) where {R}
     return _prune_model_node(DeferredWrite(_select_model_node(R, x.value), x.group))
