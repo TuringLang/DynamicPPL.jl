@@ -6,6 +6,12 @@ using ReverseDiff
 @inline DynamicPPL.maybe_view_ad(vect::ReverseDiff.TrackedArray, range) =
     getindex(vect, range)
 
+function DynamicPPL._setindex!!(
+    array::ReverseDiff.TrackedArray, value, indices...; kwargs...
+)
+    return DynamicPPL._setindex!!(map(identity, array), value, indices...; kwargs...)
+end
+
 DynamicPPL._argument_ad_storage(::Type{<:ReverseDiff.TrackedArray}) = true
 DynamicPPL._copy_model_argument(value::ReverseDiff.TrackedArray) = map(identity, value)
 # Every tracked value reaches the shared tape, which is not argument storage.

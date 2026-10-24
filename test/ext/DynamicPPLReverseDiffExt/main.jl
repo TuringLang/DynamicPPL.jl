@@ -161,6 +161,15 @@ end
     end
 end
 
+@testset "broadcasted tracked arguments remain writable" begin
+    @model function broadcast_argument(y)
+        y = y .+ 1
+        return y[1] ~ Normal()
+    end
+    f = x -> logjoint(decondition(broadcast_argument(x)), (; y=x))
+    @test ReverseDiff.gradient(f, [1.0]) ≈ [-1.0]
+end
+
 @testset "runtime bindings retain writable latent argument entries" begin
     @model function child(y)
         y = y .+ 1
