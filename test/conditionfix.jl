@@ -159,6 +159,14 @@ end
     return return_values ? x : nothing
 end
 
+@model function grown_argument(x, appended)
+    x = vcat(x, appended)
+    for i in eachindex(x)
+        x[i] ~ Normal()
+    end
+    return x
+end
+
 @testset "sample binding templates" begin
     @model function template_vector(x=zeros(2))
         y = zeros(3)
@@ -2495,11 +2503,31 @@ end
     @testset "fixed arguments require coverage of executed LHS variables" begin
         @model grow_scalar(x) = (x = vcat(x, 2.0); x[2] ~ Normal(); return x)
         @model grow_range(x) = (x = vcat(x, 2.0); x[1:2] ~ MvNormal(zeros(2), I); return x)
-        for model in (grow_scalar([1.0]), grow_range([1.0]))
-            @test_throws r"ArgumentError: .*`x\[(2|1:2)\]`.*size and shape" fix(
-                decondition(model); x=[3.0]
-            )()
-            @test condition(model; x=[3.0])() == [3.0, 2.0]
+        grown_coverage_cases = [
+            (
+                name="scalar",
+                input=grow_scalar([1.0]),
+                bind=fix,
+                observe=condition,
+                fixed=[3.0],
+                observed=[3.0],
+                expected=[3.0, 2.0],
+                error=r"ArgumentError: .*`x\[(2|1:2)\]`.*size and shape",
+            ),
+            (
+                name="range",
+                input=grow_range([1.0]),
+                bind=fix,
+                observe=condition,
+                fixed=[3.0],
+                observed=[3.0],
+                expected=[3.0, 2.0],
+                error=r"ArgumentError: .*`x\[(2|1:2)\]`.*size and shape",
+            ),
+        ]
+        @testset "$(case.name)" for case in grown_coverage_cases
+            @test_throws case.error case.bind(decondition(case.input); x=case.fixed)()
+            @test case.observe(case.input; x=case.observed)() == case.expected
         end
         @test_throws r"ArgumentError: .*`x\[2\]`.*size and shape" fix(
             decondition(grow_scalar([1.0])); x=[3.0, 4.0]
@@ -2515,11 +2543,47 @@ end
         @model repeated_input(x) = (x += 1; x ~ Normal(); x += 1; x ~ Normal(); return x)
         @model expanded_array(x) = (x = vcat(x, oftype(first(x), 2)); x[2] ~ Normal(); x)
         @model expanded_record(x) = (x = (; x..., b=oftype(x.a, 2)); x.b ~ Normal(); x)
-        for T in (Float32, Float64, BigFloat),
-            changed in (expanded_array(T[1]), expanded_record((; a=T(1))))
-
-            @test loglikelihood(changed, VarNamedTuple()) ≈ logpdf(Normal(), T(2))
-            @test child_model(changed)() == changed()
+        expanded_observation_cases = [
+            (
+                name="Float32 array",
+                input=expanded_array(Float32[1]),
+                evaluate=loglikelihood,
+                expected=logpdf(Normal(), Float32(2)),
+            ),
+            (
+                name="Float32 record",
+                input=expanded_record((; a=Float32(1))),
+                evaluate=loglikelihood,
+                expected=logpdf(Normal(), Float32(2)),
+            ),
+            (
+                name="Float64 array",
+                input=expanded_array(Float64[1]),
+                evaluate=loglikelihood,
+                expected=logpdf(Normal(), Float64(2)),
+            ),
+            (
+                name="Float64 record",
+                input=expanded_record((; a=Float64(1))),
+                evaluate=loglikelihood,
+                expected=logpdf(Normal(), Float64(2)),
+            ),
+            (
+                name="BigFloat array",
+                input=expanded_array(BigFloat[1]),
+                evaluate=loglikelihood,
+                expected=logpdf(Normal(), BigFloat(2)),
+            ),
+            (
+                name="BigFloat record",
+                input=expanded_record((; a=BigFloat(1))),
+                evaluate=loglikelihood,
+                expected=logpdf(Normal(), BigFloat(2)),
+            ),
+        ]
+        @testset "$(case.name)" for case in expanded_observation_cases
+            @test case.evaluate(case.input, VarNamedTuple()) ≈ case.expected
+            @test child_model(case.input)() == case.input()
         end
         for T in (Float32, Float64, BigFloat),
             constructor in (scalar_input, x -> keyword_input(; x))
@@ -6508,18 +6572,26 @@ end
 end
 
 @testset "recursive unfix releases fixed shape ownership" begin
-    @model function grows(x)
-        x = vcat(x, 0.0)
-        for i in eachindex(x)
-            x[i] ~ Normal()
-        end
-        return x
-    end
-    old = fix(decondition(grows(zeros(2))); x=ones(2))
-    for remove in
-        (m -> unfix(m, @varname(x)), m -> unfix(m, DynamicPPL.Recursive(), @varname(x)))
-        model = fix(remove(old), @varname(x[1]) => 2.0)
-        @test returned(model, (x=zeros(3),))[1:2] == [2.0, 0.0]
+    old = fix(decondition(grown_argument(zeros(2), 0.0)); x=ones(2))
+    shape_release_cases = [
+        (
+            name="direct",
+            input=old,
+            remove=unfix,
+            arguments=(@varname(x),),
+            expected=[2.0, 0.0],
+        ),
+        (
+            name="recursive",
+            input=old,
+            remove=unfix,
+            arguments=(DynamicPPL.Recursive(), @varname(x)),
+            expected=[2.0, 0.0],
+        ),
+    ]
+    @testset "$(case.name)" for case in shape_release_cases
+        model = fix(case.remove(case.input, case.arguments...), @varname(x[1]) => 2.0)
+        @test returned(model, (x=zeros(3),))[1:2] == case.expected
     end
 end
 
@@ -10121,15 +10193,7 @@ end
     end
     observed_sum(t) = sum(condition(typed_observed_local(t); x=fill(t, 2))(Xoshiro(1)))
     @test ForwardDiff.derivative(observed_sum, 1.0) == 2.0
-    @model function resized_observed_argument(x)
-        x = vcat(x, 2.0)
-        for i in eachindex(x)
-            x[i] ~ Normal()
-        end
-        return x
-    end
-    @test condition(resized_observed_argument(zeros(2)); x=ones(2))(Xoshiro(1)) ==
-        [1.0, 1.0, 2.0]
+    @test condition(grown_argument(zeros(2), 2.0); x=ones(2))(Xoshiro(1)) == [1.0, 1.0, 2.0]
 end
 
 @testset "ancestor template checks child storage" begin
