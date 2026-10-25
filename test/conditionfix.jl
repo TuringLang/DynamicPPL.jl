@@ -76,6 +76,14 @@ function test_edit_errors(
     @test_throws removal_error remove(model, address)
 end
 
+@model normal_local() = x ~ Normal()
+@model normal_default(x=1.0) = x ~ Normal()
+@model normal_observation_y(y) = y ~ Normal()
+@model normal_local_z() = z ~ Normal()
+@model normal_return(x) = (x ~ Normal(); x)
+@model normal_pair() = (x ~ Normal(); y ~ Normal(); (x, y))
+@model storage_structured() = b ~ product_distribution((x=Normal(), y=Normal()))
+
 @testset "sample binding templates" begin
     @model function template_vector(x=zeros(2))
         y = zeros(3)
@@ -365,11 +373,10 @@ end
 end
 
 @testset "deferred namespace templates" begin
-    @model namespace_template_leaf(x=1.0) = x ~ Normal()
     @model function namespace_template_child(; inspect=false)
         p = zeros(3, 2)
         for i in eachindex(p)
-            leaf = namespace_template_leaf()
+            leaf = normal_default()
             i in (1, 3) && (leaf = decondition(leaf))
             p[i] ~ to_submodel(leaf)
         end
@@ -1864,8 +1871,7 @@ end
     end
 
     @testset "removal of valid addresses is idempotent" begin
-        @model inner_arg(x=1.0) = x ~ Normal()
-        @model outer_arg() = a ~ to_submodel(inner_arg())
+        @model outer_arg() = a ~ to_submodel(normal_default())
         for (bind, remove) in ((condition, unfix), (fix, decondition)),
             scope in ((), (DynamicPPL.Recursive(),))
 
@@ -2588,14 +2594,25 @@ end
     end
 
     @testset "argument-supplied observations can be replaced and removed" begin
-        for initial in (1.0f0, 1.0, big"1.0")
-            original = scalar_model(initial)
-            @test original() === initial
+        scalar_cases = [
+            (name="Float32", input=1.0f0, bind=condition, replacement=2.0, expected=2.0),
+            (name="Float64", input=1.0, bind=condition, replacement=2.0, expected=2.0),
+            (
+                name="BigFloat",
+                input=big"1.0",
+                bind=condition,
+                replacement=2.0,
+                expected=2.0,
+            ),
+        ]
+        @testset "$(case.name)" for case in scalar_cases
+            original = scalar_model(case.input)
+            @test original() === case.input
             @test isempty(keys(VarInfo(original)))
-            @test conditioned(original)[@varname(x)] === initial
-            @test loglikelihood(original, VarNamedTuple()) == logpdf(Normal(), initial)
-            observed = condition(scalar_model(initial); x=2.0)
-            @test observed() == 2.0
+            @test conditioned(original)[@varname(x)] === case.input
+            @test loglikelihood(original, VarNamedTuple()) == logpdf(Normal(), case.input)
+            observed = case.bind(scalar_model(case.input); x=case.replacement)
+            @test observed() == case.expected
             @test logjoint(observed, VarNamedTuple()) == logpdf(Normal(), 2.0)
             @test keys(VarInfo(Xoshiro(1), decondition(observed))) == [@varname(x)]
         end
@@ -2622,10 +2639,9 @@ end
         logdensity = p -> LogDensityProblems.logdensity(ldf, p)
         @test ForwardDiff.gradient(logdensity, [1.0, 2.0]) ≈ [-1.0, -2.0]
 
-        @model inner(y) = y ~ Normal()
         @model function outer(x)
-            a ~ to_submodel(inner(x))
-            b ~ to_submodel(inner(x))
+            a ~ to_submodel(normal_observation_y(x))
+            b ~ to_submodel(normal_observation_y(x))
             return (; a, b)
         end
         transformed = condition(
@@ -3041,9 +3057,8 @@ end
     end
 
     @testset "unfix leaves index-prefixed arguments latent" begin
-        @model prefixed_argument(x=1.0) = x ~ Normal()
         m = DynamicPPL.prefix(
-            fix(decondition(prefixed_argument()); x=3.0), @varname(p[2]); template=zeros(2)
+            fix(decondition(normal_default()); x=3.0), @varname(p[2]); template=zeros(2)
         )
         restored = unfix(m)
         @test isempty(conditioned(restored))
@@ -3264,8 +3279,7 @@ end
 
 @testset "bindings fit declared and template types" begin
     @model typed_binding(x::Float64) = x ~ Normal()
-    @model local_type_child() = z ~ Normal()
-    @model local_type_parent() = (x ~ Normal(); a ~ to_submodel(local_type_child()))
+    @model local_type_parent() = (x ~ Normal(); a ~ to_submodel(normal_local_z()))
     @test conditioned(condition(condition(local_type_parent(); x=1.0); x=2))[@varname(
         x
     )] === 2
@@ -4681,12 +4695,11 @@ end
         "Pending binding at `$lhs` uses inconsistent index counts; supply an index with the same number of dimensions or provide storage.",
     )
     @testset "indexed submodel prefixes preserve index counts" begin
-        @model inner() = x ~ Normal()
         @model linear_parent(dims, i) = (
-            p = Matrix{Any}(undef, dims...); p[i] ~ to_submodel(inner()); p[i]
+            p = Matrix{Any}(undef, dims...); p[i] ~ to_submodel(normal_local()); p[i]
         )
         @model cartesian_parent() = (
-            p = Matrix{Any}(undef, 1, 1); p[1, 1] ~ to_submodel(inner()); p[1, 1]
+            p = Matrix{Any}(undef, 1, 1); p[1, 1] ~ to_submodel(normal_local()); p[1, 1]
         )
         for (model, matched, mismatched, lhs, example, stored, used) in (
             (
@@ -4739,11 +4752,10 @@ end
         end
     end
     @testset "namespace bindings retain their shape until unbound" begin
-        @model inner_shape() = x ~ Normal()
         @model function parent_shape()
             p = zeros(2, 2)
-            p[1] ~ to_submodel(inner_shape())
-            p[2, 2] ~ to_submodel(inner_shape())
+            p[1] ~ to_submodel(normal_local())
+            p[2, 2] ~ to_submodel(normal_local())
             return p
         end
         for (bind, remove, listed) in
@@ -4808,11 +4820,10 @@ end
         end
     end
     @testset "indexed submodel storage and removal" begin
-        @model inner() = x ~ Normal()
         @model function mixed_parent()
             p = zeros(2, 2)
-            p[1] ~ to_submodel(condition(inner(); x=2.0))
-            p[2, 2] ~ to_submodel(condition(inner(); x=2.0))
+            p[1] ~ to_submodel(condition(normal_local(); x=2.0))
+            p[2, 2] ~ to_submodel(condition(normal_local(); x=2.0))
             return p
         end
         @testset "public namespace template" begin
@@ -4840,7 +4851,7 @@ end
         end
         @testset "whole namespace cannot replace a leaf root" begin
             @model linear_parent() = (
-                p = Matrix{Any}(undef, 1, 1); p[1] ~ to_submodel(inner()); p[1]
+                p = Matrix{Any}(undef, 1, 1); p[1] ~ to_submodel(normal_local()); p[1]
             )
             model = condition(linear_parent(), @varname(p[1, 1].x) => 3.0)
             @test_throws "already bound by the other role" fix(
@@ -6079,14 +6090,35 @@ end
         @test logjoint(decondition(first_field_element((a=[0.0], n=n))), (x=(a=[0.5],),)) ≈
             logpdf(Normal(), 0.5)
     end
-    @model scalar(x) = (x ~ Normal(); x)
-    for n in (
-        Complex(big"0.0", big"1.0"),
-        big"1"//big"2",
-        ForwardDiff.Dual{Nothing}(0.0, 1.0),
-        ForwardDiff.Dual{Nothing}(big"0.0", big"1.0"),
-    )
-        @test returned(decondition(scalar(n)), (; x=n)) === n
+    numeric_cases = [
+        (
+            name="complex BigFloat",
+            input=Complex(big"0.0", big"1.0"),
+            remove=decondition,
+            expected=identity,
+        ),
+        (
+            name="BigInt rational",
+            input=big"1"//big"2",
+            remove=decondition,
+            expected=identity,
+        ),
+        (
+            name="Float64 Dual",
+            input=ForwardDiff.Dual{Nothing}(0.0, 1.0),
+            remove=decondition,
+            expected=identity,
+        ),
+        (
+            name="BigFloat Dual",
+            input=ForwardDiff.Dual{Nothing}(big"0.0", big"1.0"),
+            remove=decondition,
+            expected=identity,
+        ),
+    ]
+    @testset "$(case.name)" for case in numeric_cases
+        @test returned(case.remove(normal_return(case.input)), (; x=case.input)) ===
+            case.expected(case.input)
     end
     data = BigFloat[0.0]
     model = decondition(first_element(data))
@@ -6097,7 +6129,6 @@ end
 
 @testset "Dual opacity follows its parts" begin
     @model dual_buffer(x) = (x.value.buffer[1] ~ Normal(); x)
-    @model dual_scalar(x) = (x ~ Normal(); x)
     struct DualBufferReal <: Real
         buffer::Vector{Float64}
     end
@@ -6109,7 +6140,7 @@ end
         decondition(dual_buffer(x)), (x=(value=(buffer=[0.7],),),)
     )
     y = ForwardDiff.Dual{Nothing}(0.3, 1.0)
-    @test returned(decondition(dual_scalar(y)), (; x=y)) === y
+    @test returned(decondition(normal_return(y)), (; x=y)) === y
 end
 
 @testset "top-level shared storage arguments" begin
@@ -7858,12 +7889,10 @@ end
     @model shared_shape_fields() = (q.a ~ Normal(); q.b ~ Normal())
     @model shared_shape_child(x=zeros(2)) = (x[1] ~ Normal(); x[2] ~ Normal(); x)
     @model shared_shape_parent(m) = a ~ to_submodel(m)
-    @model shared_shape_leaf() = z ~ Normal()
-    @model shared_shape_pair() = (x ~ Normal(); y ~ Normal(); (x, y))
     @model function shared_shape_namespace()
         p = zeros(2, 2)
-        p[1] ~ to_submodel(shared_shape_leaf())
-        p[2, 2] ~ to_submodel(shared_shape_leaf())
+        p[1] ~ to_submodel(normal_local_z())
+        p[2, 2] ~ to_submodel(normal_local_z())
         return p
     end
     @testset "argument shapes and types" begin
@@ -7947,9 +7976,13 @@ end
         @test fixed(fix(decondition(m, @varname(q.a)), @varname(q.a) => 3.0))[@varname(
             q.a
         )] == 3.0
-        for bind in (condition, fix)
-            m = bind(prefix(shared_shape_pair(), @varname(a)); a=(x=1.0,))
-            @test bind(m, @varname(a.y) => 2.0)(Xoshiro(1)) == (1.0, 2.0)
+        pair_cases = [
+            (name="condition", input=normal_pair, bind=condition, expected=(1.0, 2.0)),
+            (name="fix", input=normal_pair, bind=fix, expected=(1.0, 2.0)),
+        ]
+        @testset "$(case.name)" for case in pair_cases
+            m = case.bind(prefix(case.input(), @varname(a)); a=(x=1.0,))
+            @test case.bind(m, @varname(a.y) => 2.0)(Xoshiro(1)) == case.expected
         end
     end
     @testset "namespace persistence" begin
@@ -8021,18 +8054,34 @@ end
 end
 
 @model shared_shape_nested_argument(x) = x[1] ~ Normal()
-@model shared_shape_nested_local() = x ~ Normal()
 @testset "recursive geometry" begin
-    for value in (([1.0, 2.0],), (a=[1.0, 2.0],), [[1.0, 2.0]])
-        replacement = if value isa NamedTuple
-            (a=[1.0, 2.0, 3.0],)
-        elseif value isa Tuple
-            ([1.0, 2.0, 3.0],)
-        else
-            [[1.0, 2.0, 3.0]]
-        end
-        @test_throws ArgumentError fix(
-            condition(shared_shape_nested_local(); x=value); x=replacement
+    geometry_cases = [
+        (
+            name="tuple",
+            input=([1.0, 2.0],),
+            replacement=([1.0, 2.0, 3.0],),
+            bind=fix,
+            expected=ArgumentError,
+        ),
+        (
+            name="named tuple",
+            input=(a=[1.0, 2.0],),
+            replacement=(a=[1.0, 2.0, 3.0],),
+            bind=fix,
+            expected=ArgumentError,
+        ),
+        (
+            name="nested array",
+            input=[[1.0, 2.0]],
+            replacement=[[1.0, 2.0, 3.0]],
+            bind=fix,
+            expected=ArgumentError,
+        ),
+    ]
+    @testset "$(case.name)" for case in geometry_cases
+        replacement = case.replacement
+        @test_throws case.expected case.bind(
+            condition(normal_local(); x=case.input); x=replacement
         )
     end
     m = shared_shape_nested_argument(Union{Missing,Vector{Float64}}[missing])
@@ -8047,11 +8096,10 @@ end
     @test conditioned(condition(m, @varname(x[1][end]) => 4.0))[@varname(x[1][2])] == 4.0
 end
 
-@model shared_shape_removal_child(x=1.0) = x ~ Normal()
 @model function shared_shape_removal_parent(dims)
     p = zeros(dims)
     for i in eachindex(p)
-        p[i] ~ to_submodel(shared_shape_removal_child())
+        p[i] ~ to_submodel(normal_default())
     end
     return p
 end
@@ -8103,10 +8151,9 @@ end
     end
 end
 
-@model root_type_leaf() = x ~ Normal()
 @model root_type_parent(child) = a ~ to_submodel(child)
 @model root_type_array() = (x = zeros(2); x[1] ~ Normal(); x[2] ~ Normal(); x)
-@model root_type_namespace() = (p = zeros(2, 2); p[1] ~ to_submodel(root_type_leaf()); p)
+@model root_type_namespace() = (p = zeros(2, 2); p[1] ~ to_submodel(normal_local()); p)
 @testset "retained roots and child types" begin
     m = condition(root_type_namespace(), @of(p = of(Array, 2, 2)), @varname(p[1].x) => 2.0)
     for parent in (m, decondition(m))
@@ -8522,18 +8569,33 @@ end
     end
 end
 
-@model overlap_group_child() = (x ~ Normal(); y ~ Normal(); (x, y))
-@model overlap_group_parent() = a ~ to_submodel(overlap_group_child())
+@model overlap_group_parent() = a ~ to_submodel(normal_pair())
 @model overlap_record(q) = (q.a ~ Normal(); q)
 @testset "overlap storage and grouping" begin
-    for bind in (condition, fix)
-        @test bind(overlap_group_parent(), @varname(a) => (x=1.0,), @varname(a.y) => 2.0)(
+    overlap_cases = [
+        (
+            name="condition",
+            input=overlap_group_parent,
+            bind=condition,
+            expected=(1.0, 2.0),
+            error=r"overlap|more than once",
+        ),
+        (
+            name="fix",
+            input=overlap_group_parent,
+            bind=fix,
+            expected=(1.0, 2.0),
+            error=r"overlap|more than once",
+        ),
+    ]
+    @testset "$(case.name)" for case in overlap_cases
+        @test case.bind(case.input(), @varname(a) => (x=1.0,), @varname(a.y) => 2.0)(
             Xoshiro(1)
-        ) == (1.0, 2.0)
-        @test_throws r"overlap|more than once" bind(
-            overlap_group_parent(), @varname(a) => (x=1.0,), @varname(a.x) => 2.0
+        ) == case.expected
+        @test_throws case.error case.bind(
+            case.input(), @varname(a) => (x=1.0,), @varname(a.x) => 2.0
         )
-        @test_throws r"overlap|more than once" bind(
+        @test_throws case.error case.bind(
             overlap_record((a=0.0, b=0.0)),
             @varname(q) => (a=1.0, b=2.0),
             @varname(q.a) => 3.0,
@@ -8630,8 +8692,7 @@ end
 end
 
 @testset "binding batches resolve storage before merging" begin
-    @model child() = (x ~ Normal(); y ~ Normal(); (x, y))
-    @model parent() = (a ~ to_submodel(child()); a)
+    @model parent() = (a ~ to_submodel(normal_pair()); a)
     @model local_parts() = (z = zeros(2); z[1] ~ Normal(); z)
     @model local_fields() = (p = (a=zeros(2),); p.a[1] ~ Normal(); p.a[2] ~ Normal(); p)
     @model scalar_child() = (x ~ Normal(); x)
@@ -9547,11 +9608,10 @@ end
 end
 
 @testset "direct and ancestor runtime scalar bindings" begin
-    @model runtime_scalar(y) = y ~ Normal()
     @model runtime_namespace(c) = b ~ to_submodel(c)
     @model function runtime_owner(bind, ancestor)
         m ~ Normal()
-        child = decondition(runtime_scalar(zero(m)))
+        child = decondition(normal_observation_y(zero(m)))
         bound = if ancestor
             bind(runtime_namespace(child), @varname(b.y) => 2m)
         else
@@ -9718,7 +9778,6 @@ end
 
 struct UndeclaredSizeDistribution <: ContinuousMatrixDistribution end
 struct UndeclaredVectorSizeDistribution <: ContinuousMultivariateDistribution end
-@model fixed_univariate() = x ~ Normal()
 @model fixed_undeclared() = x ~ UndeclaredSizeDistribution()
 @model fixed_undeclared_vector() = x ~ UndeclaredVectorSizeDistribution()
 @model fixed_size_model() = (x ~ MvNormal(zeros(2), I); x)
@@ -9737,7 +9796,7 @@ struct UndeclaredVectorSizeDistribution <: ContinuousMultivariateDistribution en
     @test fix(fixed_size_model(); x=ones(2))() == ones(2)
     @test fix(fixed_body_size_model(); x=ones(3))() == ones(3)
     @test_throws r"size" fix(fixed_body_size_model(); x=ones(2))()
-    @test fix(fixed_univariate(); x=ones(3))() == ones(3)
+    @test fix(normal_local(); x=ones(3))() == ones(3)
     @test_throws MethodError fix(fixed_undeclared(); x=ones(2, 3))()
     @test_throws MethodError fix(fixed_undeclared_vector(); x=ones(3))()
 end
@@ -9889,7 +9948,6 @@ end
     end
 end
 
-@model storage_structured() = b ~ product_distribution((x=Normal(), y=Normal()))
 @model storage_whole() = a ~ to_submodel(storage_structured())
 @testset "deferred shape release and early conflict" begin
     for (bind, remove) in ((condition, decondition), (fix, unfix))
@@ -9978,8 +10036,7 @@ end
 end
 
 @testset "complete deferred listings after partial edits" begin
-    @model complete_child() = b ~ product_distribution((x=Normal(), y=Normal()))
-    @model complete_parent() = a ~ to_submodel(complete_child())
+    @model complete_parent() = a ~ to_submodel(storage_structured())
     for (bind, remove, list) in ((condition, decondition, conditioned), (fix, unfix, fixed))
         initial = bind(complete_parent(), @varname(a.b) => (x=1.0, y=2.0))
         for m in (initial, remove(initial, @varname(a.b.x)))
@@ -10007,11 +10064,14 @@ end
 end
 
 @testset "deferred scalar rejects indexed writes" begin
-    @model scalar_child() = b ~ product_distribution((x=Normal(), y=Normal()))
-    @model scalar_parent() = a ~ to_submodel(scalar_child())
-    for bind in (condition, fix)
-        m = bind(scalar_parent(), @varname(a.b) => (x=1.0,))
-        @test_throws ArgumentError bind(m, @varname(a.b.x[1]) => 2.0)(Xoshiro(1))
+    @model scalar_parent() = a ~ to_submodel(storage_structured())
+    scalar_index_cases = [
+        (name="condition", input=scalar_parent, bind=condition, expected=ArgumentError),
+        (name="fix", input=scalar_parent, bind=fix, expected=ArgumentError),
+    ]
+    @testset "$(case.name)" for case in scalar_index_cases
+        m = case.bind(case.input(), @varname(a.b) => (x=1.0,))
+        @test_throws case.expected case.bind(m, @varname(a.b.x[1]) => 2.0)(Xoshiro(1))
     end
 end
 
