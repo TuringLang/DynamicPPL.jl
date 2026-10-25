@@ -30,11 +30,7 @@ Added `evaluate!!(model, context, vi)` to evaluate with an explicit leaf context
 
 Observation calls use merged prefix metadata: `tilde_observe!!(prefix, prefix_template, dist, value, vn, template, vi)` → `tilde_observe!!(prefix, dist, value, vn, template, vi)`. See [#1502](https://github.com/TuringLang/DynamicPPL.jl/pull/1502).
 
-`PrefixContext` is removed: context-based prefixing → `prefix(model, vn; template)`. See [#1502](https://github.com/TuringLang/DynamicPPL.jl/pull/1502), [#1221](https://github.com/TuringLang/DynamicPPL.jl/issues/1221).
-
-`extract_prefixes` is removed: `extract_prefixes(model.context)` → `DynamicPPL.getprefix(model)`, returning the combined prefix or `nothing`. See [#1502](https://github.com/TuringLang/DynamicPPL.jl/pull/1502).
-
-Context-based address prefixing is removed: `prefix(ctx, vn)` → `AbstractPPL.prefix(vn, DynamicPPL.getprefix(model))` for prefixed models. See [#1502](https://github.com/TuringLang/DynamicPPL.jl/pull/1502).
+`PrefixContext` and `extract_prefixes` are removed: use `prefix(model, vn; template)` to set a prefix, `DynamicPPL.getprefix(model)` to read it, and `AbstractPPL.prefix(vn, DynamicPPL.getprefix(model))` instead of `prefix(ctx, vn)`. See [#1502](https://github.com/TuringLang/DynamicPPL.jl/pull/1502), [#1221](https://github.com/TuringLang/DynamicPPL.jl/issues/1221).
 
 `logprior`, `loglikelihood`, `logjoint`, and `returned` reject dictionaries: `f(model, Dict(@varname(x) => v))` → `f(model, (; x=v))` or `f(model, VarNamedTuple((@varname(x) => v,)))`.
 
