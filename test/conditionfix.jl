@@ -139,6 +139,11 @@ end
 @model nested_elements(x) = (x[1][1] ~ Normal(); x[1][2] ~ Normal(); x)
 @model nested_covariate(x) = (x[1][1] ~ Normal(); 0.0 ~ Normal(x[1][1]))
 
+@model argument_child(child) = a ~ to_submodel(child)
+@model argument_child_m(m) = a ~ to_submodel(m)
+@model retained_key_parent(child) = s ~ to_submodel(child)
+@model chained_mask_parent() = a ~ to_submodel(decondition(two_elements(zeros(2))))
+
 @testset "sample binding templates" begin
     @model function template_vector(x=zeros(2))
         y = zeros(3)
@@ -1587,13 +1592,12 @@ end
             end
             return x
         end
-        @model assigned_local_parent(child) = a ~ to_submodel(child)
         for multivariate in (false, true)
             for n in (1, 3)
                 model = fix(assigned_local_shape(2, multivariate); x=ones(n))
                 @test_throws r"ArgumentError: .*x.*static size and shape" model(Xoshiro(1))
                 nested = fix(
-                    assigned_local_parent(assigned_local_shape(2, multivariate)),
+                    argument_child(assigned_local_shape(2, multivariate)),
                     @varname(a.x) => ones(n),
                 )
                 @test_throws r"ArgumentError: .*x.*static size and shape" nested(Xoshiro(1))
@@ -6251,7 +6255,6 @@ end
         x[1] ~ Normal()
         return 0.0 ~ Normal(y[1])
     end
-    @model retained_key_parent(child) = s ~ to_submodel(child)
     @model function partial_key_arguments(z, y)
         z.d1[:value][1] ~ Normal()
         z.d2[:value][1] ~ Normal()
@@ -7923,19 +7926,20 @@ end
         x.b ~ MvNormal(zeros(1), ones(1, 1))
         return 0.0 ~ Normal(x.b[1])
     end
-    @model bound_parent(child) = s ~ to_submodel(child)
     v = [0.0]
     for bind in (condition, fix)
         child = decondition(bound_storage(v))
         field = decondition(bound_field((a=v, b=copy(v))), @varname(x.a))
         models = (
             bind(child, @varname(y) => v),
-            bind(bound_parent(child), @varname(s.y) => v),
+            bind(retained_key_parent(child), @varname(s.y) => v),
             bind(
                 bind === fix ? decondition(field, @varname(x.b)) : field, @varname(x.b) => v
             ),
             bind(
-                decondition(bound_parent(field), DynamicPPL.Recursive(), @varname(s.x.b)),
+                decondition(
+                    retained_key_parent(field), DynamicPPL.Recursive(), @varname(s.x.b)
+                ),
                 @varname(s.x.b) => v,
             ),
         )
@@ -7975,7 +7979,6 @@ end
 
 @testset "persistent shared binding shapes" begin
     @model shared_shape_fields() = (q.a ~ Normal(); q.b ~ Normal())
-    @model shared_shape_parent(m) = a ~ to_submodel(m)
     @model function shared_shape_namespace()
         p = zeros(2, 2)
         p[1] ~ to_submodel(normal_local_z())
@@ -8015,7 +8018,7 @@ end
             @test eltype(
                 bind(bind === fix ? decondition(source) : source; x=[1, 2])(Xoshiro(1))
             ) === Int
-            parent = shared_shape_parent(two_default_elements())
+            parent = argument_child_m(two_default_elements())
             @test_throws ArgumentError bind(parent, @varname(a.x) => ones(3))(Xoshiro(1))
             cleared = decondition(
                 parent, DynamicPPL.Recursive(), @varname(a.x[1]), @varname(a.x[2])
@@ -8107,7 +8110,6 @@ end
 
 @testset "inherited local shapes survive child evaluation" begin
     @model replaced_child(seed) = (x = seed; x[1] ~ Normal(); __model__)
-    @model supplied_parent(child) = a ~ to_submodel(child)
     @model retained_child() = (x ~ MvNormal(zeros(2), 1); __model__)
     @model retained_parent() = a ~ to_submodel(retained_child())
     @model retained_nested_child(x) = (x.v[1] ~ MvNormal(zeros(2), 1); __model__)
@@ -8116,14 +8118,12 @@ end
     for (bind, remove, selected) in
         ((condition, decondition, conditioned), (fix, unfix, fixed))
         cleared = decondition(condition(replaced_child(zeros(3)); x=zeros(2)))
-        reached = bind(supplied_parent(cleared), @varname(a.x) => ones(3))(Xoshiro(1))
-        @test_throws ArgumentError bind(
-            supplied_parent(reached), @varname(a.a.x) => ones(3)
-        )(
+        reached = bind(argument_child(cleared), @varname(a.x) => ones(3))(Xoshiro(1))
+        @test_throws ArgumentError bind(argument_child(reached), @varname(a.a.x) => ones(3))(
             Xoshiro(1)
         )
         reused = bind(
-            remove(supplied_parent(reached), DynamicPPL.Recursive(), @varname(a.a.x)),
+            remove(argument_child(reached), DynamicPPL.Recursive(), @varname(a.a.x)),
             @varname(a.a.x) => ones(3),
         )
         @test reused(Xoshiro(1)) isa Model
@@ -8208,7 +8208,6 @@ end
     end
 end
 
-@model namespace_shape_wrapper(child) = a ~ to_submodel(child)
 @testset "namespace templates with recursive removals" begin
     for remove in (decondition, unfix), bind in (condition, fix)
         m = condition(
@@ -8224,9 +8223,7 @@ end
             m, @of(p = of(Array, 3, 2)), @varname(p[1].x) => 2.0
         )
         nested = bind(
-            namespace_shape_wrapper(m),
-            @of(a = @of(p = of(Array, 3, 2))),
-            @varname(a.p[1].x) => 2.0,
+            argument_child(m), @of(a = @of(p = of(Array, 3, 2))), @varname(a.p[1].x) => 2.0
         )
         @test_throws r"namespace root `p`.*rebuild" nested(Xoshiro(1))
         pending = remove(
@@ -8238,16 +8235,38 @@ end
     end
 end
 
-@model root_type_parent(child) = a ~ to_submodel(child)
 @model root_type_namespace() = (p = zeros(2, 2); p[1] ~ to_submodel(normal_local()); p)
 @testset "retained roots and child types" begin
     m = condition(root_type_namespace(), @of(p = of(Array, 2, 2)), @varname(p[1].x) => 2.0)
-    for parent in (m, decondition(m))
-        @test_throws r"root.*rebuild" condition(parent; p=fill((x=2.0,), 2, 2))
+    retained_root_cases = [
+        (name="bound root", input=m, bind=condition, expected=r"root.*rebuild"),
+        (
+            name="removed root",
+            input=decondition(m),
+            bind=condition,
+            expected=r"root.*rebuild",
+        ),
+    ]
+    @testset "$(case.name)" for case in retained_root_cases
+        @test_throws case.expected case.bind(case.input; p=fill((x=2.0,), 2, 2))
     end
     child = unfix(fix(local_x_pair(); x=ones(Float32, 2)))
-    @test condition(root_type_parent(child), @varname(a.x[1]) => 0.1)(Xoshiro(1))[1] === 0.1
-    @test condition(root_type_parent(child), @varname(a.x[1]) => 0.5)(Xoshiro(1))[1] == 0.5
+    child_type_cases = [
+        (name="Float64 identity", input=0.1, bind=condition, check=(===), expected=0.1),
+        (
+            name="exactly representable value",
+            input=0.5,
+            bind=condition,
+            check=(==),
+            expected=0.5,
+        ),
+    ]
+    @testset "$(case.name)" for case in child_type_cases
+        @test case.check(
+            case.bind(argument_child(child), @varname(a.x[1]) => case.input)(Xoshiro(1))[1],
+            case.expected,
+        )
+    end
 end
 
 @testset "argument storage after shape replacement" begin
@@ -8550,11 +8569,9 @@ end
 end
 @model roots_leaf() = (x ~ Normal(); y ~ Normal())
 @model roots_outer() = (a ~ to_submodel(roots_leaf()))
-@model template_conflict_parent(child) = a ~ to_submodel(child)
 @model nested_template_child() = (
     q = (a=zeros(2), b=0.0); q.a[1] ~ Normal(); q.a[2] ~ Normal(); q
 )
-@model nested_template_parent(child) = a ~ to_submodel(child)
 @model indexed_roots() = (
     for i in 1:2
         p[i] ~ to_submodel(roots_leaf())
@@ -8606,7 +8623,7 @@ end
         ),
     ]
     @testset "$(case.name)" for case in held_template_cases
-        whole = case.bind(template_conflict_parent(case.input()), @varname(a.y) => ones(2))
+        whole = case.bind(argument_child(case.input()), @varname(a.y) => ones(2))
         @test_throws case.error case.bind(
             whole, @of(a = @of(y = of(Array, 3))), @varname(a.y[2]) => 2.0
         )()
@@ -8623,7 +8640,7 @@ end
             @varname(q.a[1]) => 1.0,
         )
         @test bind(child, @varname(q.a[2]) => 2.0)() == (a=[1.0, 2.0], b=0.0)
-        @test bind(nested_template_parent(child), @varname(a.q.a[2]) => 2.0)() ==
+        @test bind(argument_child(child), @varname(a.q.a[2]) => 2.0)() ==
             (a=[1.0, 2.0], b=0.0)
     end
 end
@@ -9212,7 +9229,6 @@ end
         x[2] ~ Normal()
         return __model__
     end
-    @model held_parent(child) = a ~ to_submodel(child)
     for (bind, listed) in ((condition, conditioned), (fix, fixed))
         source = held_child(zeros(2))
         child = bind(
@@ -9220,7 +9236,9 @@ end
             @varname(x[1]) => 2.0,
         )
         before = deepcopy(listed(child))
-        parent = decondition(held_parent(child), DynamicPPL.Recursive(), @varname(a.x[2]))
+        parent = decondition(
+            argument_child(child), DynamicPPL.Recursive(), @varname(a.x[2])
+        )
         reached = bind(parent, @varname(a.x[2]) => 3.0)(Xoshiro(1))
         @test listed(reached)[@varname(a.x[2])] == 3.0
         @test listed(child) == before
@@ -9510,15 +9528,28 @@ end
         @test_throws ArgumentError bind(empty, VarNamedTuple(; a=first_value))
     end
 end
-@model chained_mask_parent() = a ~ to_submodel(decondition(two_elements(zeros(2))))
 @testset "chained mask extent survives selected-position removal" begin
-    for (bind, remove) in ((condition, decondition), (fix, unfix))
-        original = bind(
-            chained_mask_parent(), @varname(a.x[[true, false, false]][1]) => 3.0
-        )
-        @test_throws ArgumentError original(Xoshiro(1))
-        removed = remove(original, @varname(a.x[1]))
-        @test_throws ArgumentError removed(Xoshiro(1))
+    chained_mask_cases = [
+        (
+            name="condition",
+            input=chained_mask_parent,
+            bind=condition,
+            remove=decondition,
+            expected=ArgumentError,
+        ),
+        (
+            name="fix",
+            input=chained_mask_parent,
+            bind=fix,
+            remove=unfix,
+            expected=ArgumentError,
+        ),
+    ]
+    @testset "$(case.name)" for case in chained_mask_cases
+        original = case.bind(case.input(), @varname(a.x[[true, false, false]][1]) => 3.0)
+        @test_throws case.expected original(Xoshiro(1))
+        removed = case.remove(original, @varname(a.x[1]))
+        @test_throws case.expected removed(Xoshiro(1))
     end
 end
 
@@ -9533,28 +9564,67 @@ end
     end
 end
 
-@model empty_role_parent() = a ~ to_submodel(decondition(two_elements(zeros(2))))
 @testset "retained empty masks preserve their role" begin
-    for (bind, remove) in ((condition, decondition), (fix, unfix)),
-        mask in (falses(3), [true, false, false])
-
-        original = bind(empty_role_parent(), @varname(a.x[mask]) => fill(3.0, count(mask)))
-        @test_throws ArgumentError original(Xoshiro(1))
-        empty = remove(original, @varname(a.x[1]))
-        @test_throws ArgumentError empty(Xoshiro(1))
-        extended = bind(empty, @varname(a.x[2]) => 4.0)
-        @test_throws ArgumentError extended(Xoshiro(1))
+    retained_mask_cases = [
+        (
+            name="condition empty",
+            input=falses(3),
+            bind=condition,
+            remove=decondition,
+            expected=ArgumentError,
+        ),
+        (
+            name="condition selected",
+            input=[true, false, false],
+            bind=condition,
+            remove=decondition,
+            expected=ArgumentError,
+        ),
+        (name="fix empty", input=falses(3), bind=fix, remove=unfix, expected=ArgumentError),
+        (
+            name="fix selected",
+            input=[true, false, false],
+            bind=fix,
+            remove=unfix,
+            expected=ArgumentError,
+        ),
+    ]
+    @testset "$(case.name)" for case in retained_mask_cases
+        original = case.bind(
+            chained_mask_parent(), @varname(a.x[case.input]) => fill(3.0, count(case.input))
+        )
+        @test_throws case.expected original(Xoshiro(1))
+        empty = case.remove(original, @varname(a.x[1]))
+        @test_throws case.expected empty(Xoshiro(1))
+        extended = case.bind(empty, @varname(a.x[2]) => 4.0)
+        @test_throws case.expected extended(Xoshiro(1))
     end
 end
 
 @testset "empty pending masks survive opposite-role bindings" begin
-    for (bind, other) in ((condition, fix), (fix, condition))
-        m = bind(empty_role_parent(), @varname(a.x[falses(3)]) => Float64[])
-        @test_throws r"index is outside the storage" other(m, @varname(a.x) => zeros(2))(
-            Xoshiro(1)
-        )
-        valid = bind(empty_role_parent(), @varname(a.x[falses(2)]) => Float64[])
-        @test other(valid, @varname(a.x) => zeros(2))(Xoshiro(1)) == zeros(2)
+    opposite_role_cases = [
+        (
+            name="condition then fix",
+            input=chained_mask_parent,
+            bind=condition,
+            other=fix,
+            expected=zeros(2),
+            error=r"index is outside the storage",
+        ),
+        (
+            name="fix then condition",
+            input=chained_mask_parent,
+            bind=fix,
+            other=condition,
+            expected=zeros(2),
+            error=r"index is outside the storage",
+        ),
+    ]
+    @testset "$(case.name)" for case in opposite_role_cases
+        m = case.bind(case.input(), @varname(a.x[falses(3)]) => Float64[])
+        @test_throws case.error case.other(m, @varname(a.x) => zeros(2))(Xoshiro(1))
+        valid = case.bind(case.input(), @varname(a.x[falses(2)]) => Float64[])
+        @test case.other(valid, @varname(a.x) => zeros(2))(Xoshiro(1)) == case.expected
     end
 end
 
@@ -9807,7 +9877,6 @@ end
         end
         return x
     end
-    @model observed_local_parent(child) = a ~ to_submodel(child)
     for multivariate in (false, true)
         for n in (0, 1, 3)
             model = condition(observed_local_shape(2, multivariate); x=ones(n))
@@ -9815,7 +9884,7 @@ end
                 Xoshiro(1)
             )
             nested = condition(
-                observed_local_parent(observed_local_shape(2, multivariate)),
+                argument_child(observed_local_shape(2, multivariate)),
                 @varname(a.x) => ones(n),
             )
             @test_throws r"ArgumentError: Observed LHS variable `.*x.*static size and shape" nested(
@@ -9833,7 +9902,7 @@ end
             whole = condition(observed_local_shape(n, multivariate); x=ones(bound))
             edited = condition(whole, @varname(x[1]) => 2.0)
             @test_throws r"Observed.*static size and shape" edited(Xoshiro(1))
-            @test_throws r"Observed.*static size and shape" observed_local_parent(edited)(
+            @test_throws r"Observed.*static size and shape" argument_child(edited)(
                 Xoshiro(1)
             )
         end
@@ -9905,7 +9974,6 @@ end
         [1.0, 1.0, 2.0]
 end
 
-@model template_parent(child) = a ~ to_submodel(child)
 @testset "ancestor template checks child storage" begin
     child = condition(local_y_pair(), @of(y = of(Array, 2)), @varname(y[1]) => 1.0)
     conflicting_template_cases = [
@@ -9926,7 +9994,7 @@ end
     ]
     @testset "$(case.name)" for case in conflicting_template_cases
         @test_throws case.expected case.bind(
-            template_parent(child), case.template, @varname(a.y[2]) => case.input
+            argument_child(child), case.template, @varname(a.y[2]) => case.input
         )()
     end
 end
@@ -10146,7 +10214,6 @@ end
     end
 end
 
-@model storage_argument(m) = a ~ to_submodel(m)
 @model storage_unprefixed(m) = r ~ to_submodel(m, false)
 @model storage_other_middle() = c ~ to_submodel(storage_leaf(2))
 @model function storage_two_unprefixed(m, k)
@@ -10158,7 +10225,7 @@ end
 
 @testset "argument child listing scope" begin
     for (bind, list) in ((condition, conditioned), (fix, fixed))
-        m = bind(storage_argument(prefix(storage_middle(2), :q)); a=(q=(b=(x=1.0,),),))
+        m = bind(argument_child_m(prefix(storage_middle(2), :q)); a=(q=(b=(x=1.0,),),))
         @test collect(pairs(list(m))) == [@varname(a.q.b.x) => 1.0]
         m = bind(storage_unprefixed(storage_middle(2)); b=(x=1.0,))
         @test collect(pairs(list(m))) == [@varname(b.x) => 1.0]
