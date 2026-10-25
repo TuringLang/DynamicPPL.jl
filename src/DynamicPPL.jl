@@ -232,7 +232,8 @@ Abstract supertype for data structures that capture random variables when execut
 probabilistic model and accumulate log densities such as the log likelihood or the
 log joint probability of the model.
 
-Implement `getaccs` and `setaccs!!` to provide an output container.
+Subtypes must implement [`getaccs`](@ref) and [`setaccs!!`](@ref).
+
 See also: [`VarInfo`](@ref).
 """
 abstract type AbstractVarInfo <: AbstractModelTrace end

@@ -733,7 +733,8 @@ end
         [transform_strategy::AbstractTransformStrategy=UnlinkAll(),]
     )
 
-Construct a `Context` and evaluate `model`, resetting and collecting the requested outputs.
+Evaluate `model` with a `Context` built from `rng`, `init_strategy` and `transform_strategy`,
+after resetting the accumulators in `varinfo`.
 
 The initialisation strategy supplies latent values. The transform strategy defaults to
 `UnlinkAll()`, independently of the contents of `varinfo`. To reuse previous outputs,
