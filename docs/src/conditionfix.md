@@ -787,6 +787,10 @@ keys(rand(StableRNG(1), gdemo(Union{Missing,Float64}[1.0, missing])))
 
 ## Migrating from 0.42
 
+Bindings outside a model's prefix now throw. Replace
+`condition(prefix(m, @varname(p)); y=v)` with
+`condition(prefix(m, @varname(p)), @varname(p.y) => v)`.
+
 The [Binding rules](@ref) define the current contract. The examples below show the
 changes from 0.42 using models whose variables can be bound separately:
 

@@ -28,7 +28,7 @@ begin
         # Conceptual branch: the compiler knows whether x is an argument.
         conditioned_x = is_argument(x) ? x : get_conditioned_value(__model__, vn)
         raw_x, __varinfo__ = tilde_observe!!(
-            __prefix__, dist, conditioned_x, vn, template, __varinfo__
+            __model__.prefix, dist, conditioned_x, vn, template, __varinfo__
         )
 
     else
@@ -47,9 +47,8 @@ before the body runs, so an observed argument is read from the body. A bound loc
 is read from its binding at the tilde, and a fixed argument is reset to its bound value
 there. See [Size checks at executed tildes](@ref binding-size-checks) for shape checks.
 
-Here, `__prefix__` is the model's single prefix value (`__model__.prefix`): `nothing`,
-a `VarName`, or a `PrefixTemplate` containing storage metadata. It is passed directly
-to the exported `tilde_observe!!` entry point.
+The compiler passes `__model__.prefix` directly to `tilde_observe!!`. It is `nothing`,
+a `VarName`, or a `PrefixTemplate` containing storage metadata.
 
 We won't go into detail about every part of this code; by far the most interesting part is the call to `tilde_assume!!`.
 Every latent tilde-statement `vn ~ dist` is transformed into one such call.
