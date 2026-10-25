@@ -12,7 +12,8 @@ function _inherited_model_values(values::VarNamedTuple)
     )
 end
 
-# Base.any carries missing and stops at true, giving Missing precedence.
+# Encoded for `any`: `true` (a `missing` placeholder) beats `missing` (a
+# `nothing` placeholder), which beats `false`.
 const _NoPlaceholder = false
 const _NothingPlaceholder = missing
 const _MissingPlaceholder = true
@@ -150,7 +151,7 @@ function _overlay_model_node(previous, fixed::VarNamedTuples.PartialArray, owner
                 CartesianIndices(fixed.mask),
             )
         )
-        # Preserve every occupied position when combining binding storage.
+        # Unless `fixed` owns the shape, span both extents so no occupied position is lost.
         merged_axes = if owns_shape
             axes(fixed.data)
         else
@@ -201,7 +202,8 @@ function _overlay_model_node(previous, fixed::ModelValueTree, owners, vn)
         fixed.template
     end
     if previous isa ModelValue
-        # Read surviving entries through the replacement fields without rebuilding the previous value.
+        # Read surviving entries through the replacement fields without rebuilding the
+        # previous value.
         previous = VarNamedTuple(
             _merge_model_fields(
                 previous, _empty_model_tree(fixed), Val(propertynames(template))
@@ -417,7 +419,7 @@ function _get_model_binding(model, vn)
 end
 function _get_argument_role(model, vn, argument)
     binding = _get_model_binding(model, argument)
-    # Whole argument observations must follow body computations, including size changes.
+    # Skip the local-storage check for whole argument observations: the body may resize them.
     binding isa Union{ModelValue{Condition},ModelValue{ArgumentCondition}} &&
         return _model_role(binding, vn)
     return _local_binding_role(binding, vn, NoTemplate(), model)
@@ -1021,8 +1023,6 @@ function _merge_model_node(previous, updates::VarNamedTuples.PartialArray)
         _merge_model_indices(previous, updates)
     end
 end
-# A whole binding keeps its extent after partial edits, both within a layer
-# and across a child boundary. Partial masks alone never establish an owner.
 function _resize_model_binding(previous::VarNamedTuples.PartialArray, axes)
     data = similar(previous.data, eltype(previous), axes)
     previous.data isa VarNamedTuples.GrowableArray &&
@@ -1045,7 +1045,8 @@ function _inherit_model_array_owner(previous, updates)
     end
     return VarNamedTuples.PartialArray(data, mask)
 end
-# Preserve surviving tuple entries and their roles when the replacement supplies array storage.
+# Preserve surviving tuple entries and their roles when the replacement supplies array
+# storage.
 _read_shadowed_tuple(previous, replacement) = previous
 function _read_shadowed_tuple(previous::ModelValue{<:Any,<:Tuple}, replacement)
     data = map(CartesianIndices(replacement.mask)) do i
@@ -1264,8 +1265,8 @@ function _has_complete_model_data(values::VarNamedTuples.PartialArray)
            all(_has_complete_model_data, values.data)
 end
 
-# Julia owns allocation, aliases, cycles, views, const fields and undefined slots.
-# The wrapper only prevents copying numerical leaves (notably AD tape connections).
+# `deepcopy` handles allocation, aliases, cycles, views, const fields and undefined
+# slots; this wrapper preserves numeric leaves, including AD tape connections.
 struct ModelArgumentCopy{T}
     value::T
     adapt::Bool
@@ -1356,8 +1357,9 @@ function _copy_model_argument(value, vn)
     return _copy_model_argument(value)
 end
 
-# SparseArrays use mutable buffers; argument copies adapt supported AD storage.
+# Argument copies adapt supported AD storage.
 _writable_storage(::Type{T}) where {T} = ismutabletype(T) || _argument_ad_storage(T)
+# SparseArrays use mutable buffers.
 function _writable_storage(
     ::Type{<:Union{SparseArrays.SparseVector,SparseArrays.SparseMatrixCSC}}
 )
@@ -1414,7 +1416,7 @@ function _check_latent_storage(value, vn)
         ),
     )
 end
-# Applies the check above when a removal is made rather than when the model runs.
+# Check during removal so invalid latent storage fails before the next evaluation.
 function _check_latent_arguments(model)
     arguments = merge(model.args, model.defaults)
     lhs = _args_on_lhs(_binding_metadata(model))
@@ -1431,12 +1433,11 @@ function _check_latent_arguments(model)
     return model
 end
 
-# A partial binding can contain nested shape owners. Copy their templates with the
-# argument in one graph so overlapping templates use the same identity table.
 # One bits type keeps dense arrays of leaf plans cheap for Julia to deepcopy.
 struct ModelArgumentLeaf
     bound::Bool
 end
+# Copy templates and arguments in one graph so overlapping templates share an identity table.
 struct ModelArgumentStorage{T,C}
     value::T
     children::C
@@ -1495,7 +1496,8 @@ function _argument_memory_ids(value::Union{Array,ArgumentMemory})
     return isempty(value) ? () : Base.dataids(value)
 end
 
-# Owning arrays expose elements; wrappers expose fields, never a second logical edge.
+# Visit owning arrays' elements but wrappers' fields; visiting wrapper elements too
+# would count their parent's storage twice.
 function _foreach_argument_field(f::F, value) where {F}
     if value isa Array && hasfield(typeof(value), :ref)
         isempty(value) && return nothing
@@ -2126,7 +2128,8 @@ function _select_model_node(::Type{R}, tree::ModelValueTree) where {R}
     return _plain_model_values(ModelValueTree(tree, selected))
 end
 
-# Keep whole supplied values intact, but expose incomplete bindings as ordinary partial values.
+# Keep whole supplied values intact, but expose incomplete bindings as ordinary partial
+# values.
 _plain_model_values(value) = value
 function _plain_model_values(values::VarNamedTuple)
     return VarNamedTuple(map(_plain_model_values, values.data))
@@ -2167,7 +2170,8 @@ end
 """
     model | (x = 1.0, ...)
 
-Return a `Model` which now treats variables on the right-hand side as observations.
+Condition `model` on `values`; equivalent to `condition(model, values)` except that `|`
+takes no binding template.
 
 See [`condition`](@ref) for more information and examples.
 """
@@ -2503,59 +2507,36 @@ sampling and contribute to the likelihood.
 See also: [`decondition`](@ref), [`conditioned`](@ref)
 
 Bindings belong to this model and reach LHS variables at or below their addresses, including
-child addresses such as `a.x`. Each position has at most one binding across roles and models.
-Same-model observations, including argument data, may replace each other; other roles or
-child bindings must first be removed, using `Recursive()` for child bindings.
-A shared unprefixed name reaches both models under this rule. `|` follows it too.
+child addresses such as `a.x`. Each position has at most one binding: a new observation may
+replace one stored on this model, including argument data, but a fixed value or a child's
+binding must be removed first (with `Recursive()` for a child's binding). Addresses within
+one call must be disjoint.
 
-Within one call, addresses must be disjoint after resolution and cannot select a position twice.
-Disjoint bindings may jointly cover an LHS variable, but every executed tilde takes one role.
-A bound local LHS variable reads its binding at its tilde. A whole observation of a local
-must match the size and shape supplied by the body at each executed tilde; a mismatch throws.
-Argument bindings prepare the argument before the body runs. Whole argument observations
-follow its current value; partial observations keep their selected positions. Fixed values
-reset at the tilde. See [Size checks at executed tildes](@ref binding-size-checks) for the
-checks and their limits.
-Observe raw data under a separate name if the body transforms the argument first.
+Pass whole top-level values as keywords or `NamedTuple`s, any address as a `VarName` pair
+(`:x => v` abbreviates `@varname(x) => v`), or a [`VarNamedTuple`](@ref). Positional inputs
+and nested tuples are flattened into one call. `AbstractDict` inputs throw `ArgumentError`.
+One positional binding template, such as `@of(z = of(Array, 3))`, supplies storage for
+partially bound local LHS variables without binding values (`using AbstractPPL: of, @of`). For a runtime binding of AD values,
+build the template from the running value `θ`, as in `@of(z = of(Array, typeof(θ), n))`
+for length `n`, or bind a whole value.
 
-Use NamedTuples/keywords for whole top-level values, `VarName` pairs for any address
-(`:x => v` abbreviates `@varname(x) => v`), or a [`VarNamedTuple`](@ref) produced by
-DynamicPPL. Positional inputs and nested tuples are flattened into one call; overlapping
-addresses throw. `condition` rejects every
-`AbstractDict` with `ArgumentError`; `model | dict` has no method. One positional binding
-template, e.g. `@of(z = of(Array, 3))`, supplies storage for partially bound local LHS variables
-without binding values (`using AbstractPPL: of, @of`).
-An `of` type fixed before evaluation fixes its element type: runtime bindings under
-ForwardDiff/ReverseDiff need `@of(z = of(Array, typeof(m), n))` or a whole value.
+A bound local LHS variable reads its binding when its tilde runs, and a whole observation
+must match the size and shape that the body supplies there. A bound argument is prepared
+before the body runs; binding it does not recompute defaults or select another method.
+Partial values are converted to the element or field type of their storage: conversion
+errors propagate (`1.5` into `Int` throws `InexactError`), and lossy conversions (`0.1` into
+`Float32`) throw `ArgumentError`. Values containing `missing` or `nothing` throw when bound;
+use [`decondition`](@ref) to make an observation latent.
 
-Addresses and independently declared types are checked as soon as storage allows.
-A child-local partial binding needs storage before the child's body; a skipped local branch
-does not defer this check. An unreached child performs no child-dependent checks.
-Child templates remain candidates until entry and are ignored for arguments. Whole argument
-values must fit the full signature (shared type constraints are checked during evaluation).
-Whole local bindings must fit a supplied template type; otherwise only geometry constrains
-a whole replacement. Partial values convert to the replaced
-element/field type: Julia conversion errors propagate (`1.5` into `Int` raises
-`InexactError`); successful but lossy conversions (`0.1` into `Float32`) raise `ArgumentError`.
-Both layers share one binding shape, retained after removal except at argument roots, which revert to the argument’s own shape after whole removal of both layers. Change it only at its root,
-with a whole value or template after clearing both layers with `decondition` and `unfix`.
-Binding an argument does not recompute construction-time defaults or select another method.
+Incomplete partial bindings into whole `missing` or `nothing` arguments throw when bound;
+supply concrete argument storage or a whole binding.
 
-Bound values are not copied; the body must not mutate them, including through aliases.
-Partial array bindings and removals require `Array` or Array-backed `OffsetArray`,
-`ComponentArray` or `DimArray` owners along the edited path. For other arrays, bind or
-decondition the whole value, or use `collect` if losing axes or metadata is acceptable.
-A partial binding copies the containers on its path when storage first becomes available:
-at binding for ancestor-held storage, or afresh at each child entry for live child storage.
-Deferred checks preserve existing snapshots. Values off the edited path remain shared.
-Bound values containing `missing` or `nothing` throw when the binding is made; use
-[`decondition`](@ref) to make observations latent; see [Missing data](@ref).
-Partial bindings or removals that rebuild tuple or struct owners
-throw at any depth; bind or remove the enclosing owner whole. See [Binding rules](@ref).
-Incomplete partial bindings into whole `missing`/`nothing` arguments throw
-`ArgumentError` when bound; supply a concrete argument such as `f(zeros(n))` or a whole binding.
-See [Binding rules](@ref) for the argument contract, binding contract and submodel rules,
-and [Performance](@ref binding-performance) for the cost of rebuilding partially bound array arguments.
+Bound values are not copied, so the model body must not mutate them. Partial bindings and
+removals need an `Array`, or an `OffsetArray`, `ComponentArray` or `DimArray` backed by one,
+along the edited path. They cannot rebuild tuple or struct owners; bind or remove the
+enclosing value whole instead. See [Binding rules](@ref) for shapes, templates, submodels
+and when each check runs, [Size checks at executed tildes](@ref binding-size-checks), and
+[Performance](@ref binding-performance).
 
 # Examples
 ## Simple univariate model
@@ -2594,12 +2575,8 @@ julia> m, x = conditioned_model(); (m != 1.0 && x == 100.0)
 true
 ```
 
-In the above we have specified the LHS variables to observe via keyword arguments. You can also
-provide a `NamedTuple`, a `VarNamedTuple`, or `VarName` pairs. Nested tuples of inputs
-are flattened; addresses within the call must be disjoint. Other inputs to `condition`,
-including every `AbstractDict`, throw `ArgumentError`; `|` has no `AbstractDict` method.
-
-For example, here we use a `VarName` pair:
+The examples above use keywords. A `NamedTuple`, a `VarNamedTuple` or `VarName` pairs
+work the same way; here is a `VarName` pair:
 
 ```jldoctest condition
 julia> conditioned_model_pair = condition(model, @varname(x) => 100.0);
@@ -2659,26 +2636,20 @@ julia> try
 true
 ```
 
-Use `VarName` pairs with a binding template as above. A template supplies storage without
-observing or fixing any values. It is an AbstractPPL `OfNamedTuple` type, equivalently
-written `of((m=of(Array, 2),))`, and may appear anywhere among the positional inputs,
-at most once per call. Keywords remain binding data; `|` does not take a template.
-Existing storage in either role constrains the shared shape, including wholly masked
-storage. A used template checks that storage; a conflict throws `ArgumentError`. A template
-can replace a root shape only after both roles have been cleared at that root. A template
-shape persists until a new template replaces it. Entries for arguments and names the call
-does not bind are ignored. Templates use absolute names, as in `rand(model)` output: for a model
-prefixed with `p`, use `@of(p = @of(z = of(Array, 3)))`. Resolve symbolic sizes before binding.
-Use whole bindings for custom arrays and structs that `of` cannot describe.
-Values DynamicPPL produces, such as `rand(model)` and `conditioned(model)`, are
-[`VarNamedTuple`](@ref)s and can be passed back for round trips.
+A binding template supplies storage without observing or fixing values. It is an
+AbstractPPL `OfNamedTuple`, written `@of(m = of(Array, 2))` or `of((m=of(Array, 2),))`. Pass
+at most one per call, anywhere among the positional inputs; `|` takes none. Template names
+are absolute, as in `rand(model)` output: for a model prefixed with `p`, write
+`@of(p = @of(z = of(Array, 3)))`. Entries for arguments, or for names the call does not
+bind, are ignored. A template that conflicts with existing storage throws `ArgumentError`,
+and it can replace a shape only after observations and fixed values at that root are
+cleared. Use whole bindings for custom arrays and structs that `of` cannot describe. Values
+that DynamicPPL returns, such as `rand(model)` and `conditioned(model)`, are
+[`VarNamedTuple`](@ref)s and can be passed back to `condition`.
 
 ## Nested models
 
 `condition` also supports the use of nested models through the use of [`to_submodel`](@ref).
-
-A submodel tilde whose LHS is rooted at a model argument throws `ArgumentError` when
-it runs. Use a local LHS variable and bind the child through its namespace, as below.
 
 ```jldoctest condition
 julia> @model demo_inner() = m ~ Normal()
@@ -3381,7 +3352,8 @@ function _check_binding_extents(value, template, optic::AbstractPPL.AbstractOpti
         array = VarNamedTuples.template_array(template)
         indices = array isa AbstractArray ? Base.to_indices(array, head.ix) : head.ix
         shape = map(length, VarNamedTuples._selected_index_shape(indices...))
-        # Slice assignment ignores singleton dimensions and permits a flattened trailing extent.
+        # Slice assignment ignores singleton dimensions and permits a flattened trailing
+        # extent.
         actual, selected = filter(!=(1), size(value)), filter(!=(1), shape)
         common = max(0, min(length(actual), length(selected)) - 1)
         length(value) == prod(shape) && all(i -> actual[i] == selected[i], 1:common) ||
@@ -3633,7 +3605,8 @@ PendingBindings(name, entries, base=nothing) = PendingBindings(name, entries, ba
 function _pending_group(p, optic)
     return p.groups isa AbstractDict ? get(p.groups, optic, nothing) : p.groups
 end
-# Bypass the OrderedDict try/catch wrapper on Julia 1.10 for runtime AD.
+# Bypass the `OrderedDict` constructor's try/catch on Julia 1.10 for runtime AD;
+# remove this branch when Julia 1.10 support ends.
 function _pending_dict(kv)
     @static if VERSION >= v"1.11"
         OrderedDict(kv)
@@ -4522,41 +4495,36 @@ end
     decondition(model::Model)
     decondition(model::Model, [DynamicPPL.Recursive()], names...)
 
-Remove this model's conditioned bindings at `names...`, or all conditioned bindings
-if no names are supplied.
+Remove this model's observations at `names...`, or all of them if no names are given.
+Removed positions become latent; fixed positions stay fixed. Removal includes
+argument-supplied observations: a deconditioned argument keeps its value until its tilde
+runs, then takes the sampled value for the rest of the body.
 
-`decondition(m, :x)` removes explicit and argument-supplied observations.
-Removed positions become latent; fixed positions remain fixed.
-A latent argument retains its old value before its tilde; its sampled value replaces
-that value at the tilde and is used by subsequent body statements.
-
-A name matches when it equals, contains, or is contained in a stored binding's address.
-NamedTuple indices are rejected: use `x.a` instead of `x[1]` or `x[:a]`.
-Tuple observations and complete local LHS variables keep integer indices.
-Only the matching conditioned parts are removed. Removing an already latent or only fixed
-LHS variable is a no-op. A name with no LHS variable throws `ArgumentError` when the model
-can decide, using the same address checks as bindings: argument fields, storage bounds,
-and the model prefix. `check_model` warns about recursive removals that no reached model uses; a local
-removal at a child address that names nothing is a silent no-op.
+A name matches a stored observation whose address equals, contains or lies inside it, and
+only the matching parts are removed. Name `NamedTuple` fields as `x.a`, not `x[1]` or
+`x[:a]`. Removing part of a tuple throws `ArgumentError` at removal. Partly removing a single
+LHS variable, such as `x ~ MvNormal(...)`, produces mixed roles and throws at evaluation.
+A name that cannot denote an LHS variable throws `ArgumentError` when the model can decide
+this from argument fields, storage bounds and its prefix. Removing a valid address that
+holds no observation is a no-op. [`check_model`](@ref) warns about recursive removals that
+no reached model uses.
 
 By default, only bindings stored on this model are removed, including its bindings at child
-addresses. With `DynamicPPL.Recursive()`, removal also reaches enclosed models, including
-argument-supplied observations and runtime bindings. With no names it clears observations
-at every depth. Fixed bindings remain. Removal never restores an earlier binding.
-Removing the same valid address twice is a no-op, both at the call and at evaluation.
+addresses. With `DynamicPPL.Recursive()`, removal also reaches submodels, including their
+argument-supplied observations and runtime bindings; with no names, it clears observations
+at every depth. A removal belongs to the model it is applied to, moves with
+[`prefix`](@ref), and cannot remove an enclosing model's bindings. A named recursive removal
+that matches both this model's LHS and an unprefixed submodel's throws; prefix the submodel
+or remove without `Recursive()`.
 
-The removal belongs to this model, moves with `prefix`, and cannot remove an enclosing
-model's bindings. A recursive removal still reaches children before later bindings apply. Removals hold
-no value or shape and are omitted from `conditioned`.
-
-Named recursive removals shared by an own LHS and an unprefixed submodel throw; prefix the
-child or remove without `Recursive()`. See [Binding rules](@ref).
-
-Removing parts retains storage, including shape and element type, even if every position
-is removed. Whole removal discards the role's value storage. Local geometry persists; once
-both roles are cleared at an argument root, its original argument storage applies again.
-Template constraints persist until replaced by a new template. Removal never restores an
-observation overwritten by an earlier [`condition`](@ref).
+Partial removal keeps the storage, including its shape and element type. Whole removal
+discards the stored values but keeps a local variable's shape; once observations and fixed
+values are both cleared at an argument root, the argument's own storage applies again.
+Removal never restores an observation that an earlier [`condition`](@ref) call replaced.
+Removing an observation backed by immutable array storage, such as a range, throws
+`ArgumentError` during removal because the resulting latent argument needs writable storage.
+This also prevents a later `fix` call; pass mutable storage, for example `f(collect(data))`.
+See [Binding rules](@ref).
 
 # Examples
 ```jldoctest decondition
@@ -4748,7 +4716,8 @@ function _is_element_index(
 )
     return true
 end
-# Matches expanding, unmasking and pruning: the element type is the join of the kept elements.
+# Matches expanding, unmasking and pruning: the element type is the join of the kept
+# elements.
 function _remove_model_elements(
     previous::ModelValue{R,<:AbstractArray}, sym, names
 ) where {R}
@@ -4760,7 +4729,8 @@ function _remove_model_elements(
     for vn in names
         AbstractPPL.getsym(vn) === sym && (mask[AbstractPPL.getoptic(vn).ix...] = false)
     end
-    # Always `typejoin`: on Julia 1.11-1.13 a `t <: T || (T = t)` guard leaves `T == Union{}`.
+    # Always `typejoin`: Julia 1.11–1.13 miscompile the guarded update from `Union{}`.
+    # Remove this workaround when supported Julia versions infer the join correctly.
     T = Union{}
     for i in eachindex(mask, value)
         mask[i] && (T = typejoin(T, typeof(_model_value_like(previous, value[i]))))
@@ -4872,7 +4842,7 @@ end
 """
     conditioned(model::Model)
 
-Return this model's conditioned values as plain values, independent of binding history.
+Return the observations stored on `model` as a [`VarNamedTuple`](@ref).
 
 The result lists only observations stored on `model`, including argument-supplied
 observations and explicit bindings at child addresses. It excludes bindings stored on
@@ -5037,22 +5007,15 @@ end
     unfix(model::Model)
     unfix(model::Model, [DynamicPPL.Recursive()], names...)
 
-Remove this model's fixed bindings at `names...`, or all fixed bindings if no names
-are supplied. NamedTuple indices are rejected: use `x.a` instead of `x[1]` or `x[:a]`.
-Tuple observations and complete local LHS variables keep integer indices.
-Matching and the unsupported partial and shared-address cases follow [`decondition`](@ref).
-Removing a valid address with no stored fixed binding is a no-op.
-Pass `DynamicPPL.Recursive()` to remove fixed bindings from enclosed models too, including
-runtime bindings. With no names it clears fixed bindings at every depth.
-Named removals, prefixing, and later replacement follow [`decondition`](@ref).
-Removals hold no value or shape and are omitted from `fixed`.
+Remove this model's fixed values at `names...`, or all of them if no names are given.
+Removed positions become latent. Name matching, `DynamicPPL.Recursive()`, prefixing and
+storage retention follow [`decondition`](@ref); with `Recursive()` and no names, `unfix`
+clears fixed values at every depth. Removing a valid address that holds no fixed value is a
+no-op.
 
-Removed positions become latent. For `@model f(x) = x ~ Normal()`,
-`fix(f(1.0); x=5.0)` throws because `x` is observed. Use
-`fix(decondition(f(1.0), :x); x=5.0)`; removing that fix leaves `x` latent.
-Shared binding shape persists, except that whole removal of both roles at an argument root
-restores the argument's shape. An observed array with immutable storage cannot become latent or fixed
-through removal; rebuild it with mutable storage, for example `f(collect(data))`.
+`unfix` never restores an observation. For `@model f(x) = x ~ Normal()`,
+`fix(f(1.0); x=5.0)` throws because `x` is observed; use
+`fix(decondition(f(1.0), @varname(x)); x=5.0)`, after which `unfix` leaves `x` latent.
 
 See also: [`fix`](@ref), [Binding rules](@ref).
 
@@ -5115,7 +5078,6 @@ end
 
 # An empty `names` removes every binding of role `R`.
 function _unbind_values(model, names, ::Type{R}) where {R}
-    # Child addresses bound here are stored here, so they are removed here.
     model = _materialize_argument_values(model)
     layer = _binding_layer(R, model.values)
     names = _check_removal_names(model, layer, names)
@@ -5167,7 +5129,7 @@ end
 """
     fixed(model::Model)
 
-Return this model's fixed values as plain values, independent of binding history.
+Return the fixed values stored on `model` as a [`VarNamedTuple`](@ref).
 
 The result lists only fixed bindings stored on `model`, including explicit bindings at
 child addresses. It excludes bindings stored on submodels, whose construction and runtime
@@ -5587,8 +5549,8 @@ function _refine_binding_geometry(a::FieldBindingGeometry, b::FieldBindingGeomet
     return FieldBindingGeometry(map(_refine_binding_geometry, a.children, b.children))
 end
 
-# The roots are leaves in an existing VarNamedTuple tree. PartialArray nodes group
-# namespace children; their mask records roots, never observation/fixed coverage.
+# Shape roots are leaves of a `VarNamedTuple` tree. `PartialArray` masks group
+# namespace children and mark roots, not observation or fixed coverage.
 struct BindingShape{G}
     geometry::G
 end
@@ -6132,7 +6094,7 @@ function _local_binding_shape_store(model)
     prefix === nothing && return shapes
     return ModelBindingShapes(_submodel_values(shapes.roots, prefix))
 end
-# Masked storage occupies its root even when every position is masked.
+# A binding occupies its root even when its mask sets no position.
 function _shape_occupied(model, vn)
     optic = AbstractPPL.varname_to_optic(vn)
     return _model_argument_binding(_observation_values(model.values), optic) !== nothing ||
