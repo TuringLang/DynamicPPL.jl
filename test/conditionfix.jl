@@ -144,6 +144,13 @@ end
 @model retained_key_parent(child) = s ~ to_submodel(child)
 @model chained_mask_parent() = a ~ to_submodel(decondition(two_elements(zeros(2))))
 
+@model function indexed_pair_namespace(make_child)
+    p = zeros(2, 2)
+    p[1] ~ to_submodel(make_child())
+    p[2, 2] ~ to_submodel(make_child())
+    return p
+end
+
 @testset "sample binding templates" begin
     @model function template_vector(x=zeros(2))
         y = zeros(3)
@@ -4812,23 +4819,32 @@ end
         end
     end
     @testset "namespace bindings retain their shape until unbound" begin
-        @model function parent_shape()
-            p = zeros(2, 2)
-            p[1] ~ to_submodel(normal_local())
-            p[2, 2] ~ to_submodel(normal_local())
-            return p
-        end
         for (bind, remove, listed) in
             ((condition, decondition, conditioned), (fix, unfix, fixed))
             original = bind(
-                parent_shape(), @varname(p[1].x) => 1.0, @of(p = of(Array, 2, 2))
+                indexed_pair_namespace(normal_local),
+                @varname(p[1].x) => 1.0,
+                @of(p = of(Array, 2, 2))
             )
             @test listed(original)[@varname(p[1, 1].x)] == 1.0
-            for removal in
-                ((@varname(p[1, 1].x),), (DynamicPPL.Recursive(), @varname(p[1, 1].x)))
-                removed = remove(original, removal...)
+            namespace_removal_cases = [
+                (
+                    name="$bind: direct removal",
+                    input=(@varname(p[1, 1].x),),
+                    remove=remove,
+                    expected=2,
+                ),
+                (
+                    name="$bind: recursive removal",
+                    input=(DynamicPPL.Recursive(), @varname(p[1, 1].x)),
+                    remove=remove,
+                    expected=2,
+                ),
+            ]
+            @testset "$(case.name)" for case in namespace_removal_cases
+                removed = case.remove(original, case.input...)
                 @test isempty(listed(removed))
-                @test length(keys(VarInfo(Xoshiro(1), removed))) == 2
+                @test length(keys(VarInfo(Xoshiro(1), removed))) == case.expected
             end
             for next_bind in (condition, fix),
                 templates in ((), (@of(p = of(Array, 2, 2)),))
@@ -4847,7 +4863,7 @@ end
                 @test listed(original)[@varname(p[1, 1].x)] == 1.0
             end
             both = bind(
-                parent_shape(),
+                indexed_pair_namespace(normal_local),
                 @varname(p[1].x) => 1.0,
                 @varname(p[2, 2].x) => 2.0,
                 @of(p = of(Array, 2, 2))
@@ -4856,25 +4872,45 @@ end
             partial = remove(both, @varname(p[1, 1].x))
             @test size(listed(partial).data.p) == (2, 2)
             @test bind(partial, @varname(p[1].x) => 5.0)(Xoshiro(1)) == [5.0 0.0; 0.0 2.0]
-            for next_bind in (condition, fix)
-                untemplated = bind(parent_shape(), @varname(p[1].x) => 1.0)
-                @test_throws r"Pending binding.*inconsistent index counts" next_bind(
+            namespace_rebind_cases = [
+                (
+                    name="$bind then condition",
+                    input=indexed_pair_namespace(normal_local),
+                    bind=condition,
+                    expected=(3, 3),
+                    error=ArgumentError,
+                    pending_error=r"Pending binding.*inconsistent index counts",
+                    shape_error=r"p.*\(2, 2\).*\(3, 3\).*decondition.*unfix",
+                ),
+                (
+                    name="$bind then fix",
+                    input=indexed_pair_namespace(normal_local),
+                    bind=fix,
+                    expected=(3, 3),
+                    error=ArgumentError,
+                    pending_error=r"Pending binding.*inconsistent index counts",
+                    shape_error=r"p.*\(2, 2\).*\(3, 3\).*decondition.*unfix",
+                ),
+            ]
+            @testset "$(case.name)" for case in namespace_rebind_cases
+                untemplated = bind(case.input, @varname(p[1].x) => 1.0)
+                @test_throws case.pending_error case.bind(
                     untemplated, @varname(p[2, 2].x) => 2.0
                 )
-                @test_throws ArgumentError next_bind(
+                @test_throws case.error case.bind(
                     original, @varname(p[2, 2].x) => 2.0, @of(p = of(Array, 3, 3))
                 )
-                @test_throws r"p.*\(2, 2\).*\(3, 3\).*decondition.*unfix" next_bind(
+                @test_throws case.shape_error case.bind(
                     original, @varname(p[2, 2].x) => 2.0, @of(p = of(Array, 3, 3))
                 )
-                rebound = next_bind(
+                rebound = case.bind(
                     remove(original, @varname(p)),
                     @varname(p[2, 2].x) => 2.0,
                     @of(p = of(Array, 3, 3))
                 )
                 @test size(
-                    (next_bind === condition ? conditioned : fixed)(rebound).data.p
-                ) == (3, 3)
+                    (case.bind === condition ? conditioned : fixed)(rebound).data.p
+                ) == case.expected
                 @test rebound(Xoshiro(1))[2, 2] == 2.0
             end
         end
@@ -7979,12 +8015,6 @@ end
 
 @testset "persistent shared binding shapes" begin
     @model shared_shape_fields() = (q.a ~ Normal(); q.b ~ Normal())
-    @model function shared_shape_namespace()
-        p = zeros(2, 2)
-        p[1] ~ to_submodel(normal_local_z())
-        p[2, 2] ~ to_submodel(normal_local_z())
-        return p
-    end
     @testset "argument shapes and types" begin
         range_cases = [
             (
@@ -8077,7 +8107,9 @@ end
     end
     @testset "namespace persistence" begin
         m = condition(
-            shared_shape_namespace(), @varname(p[1].z) => 3.0, @of(p = of(Array, 2, 2))
+            indexed_pair_namespace(normal_local_z),
+            @varname(p[1].z) => 3.0,
+            @of(p = of(Array, 2, 2))
         )
         m = decondition(m)
         n = fix(m, @varname(p[end].z) => 4.0)
@@ -8087,7 +8119,9 @@ end
         n = condition(m, @varname(p[1].z) => 3.0, @of(p = of(Array, 3, 2)))
         @test size(DynamicPPL._binding_shape_store(n.values).roots.data.p) == (3, 2)
         m = condition(
-            shared_shape_namespace(), @varname(p[1].z) => ones(2), @of(p = of(Array, 2, 2))
+            indexed_pair_namespace(normal_local_z),
+            @varname(p[1].z) => ones(2),
+            @of(p = of(Array, 2, 2))
         )
         m = condition(decondition(m), @varname(p[2].z) => 1.0, @of(p = of(Array, 3, 2)))
         @test conditioned(condition(m, @varname(p[1].z[end]) => 4.0))[@varname(
@@ -8191,19 +8225,52 @@ end
     return p
 end
 @testset "removal identity" begin
-    for (oldtemplate, dims, removed) in (
-        (@of(p = of(Array, 2, 2)), (3, 2), @varname(p[3].x)),
-        (@of(p = of(Array, 2, 2)), (3, 2), @varname(p[3:4])),
-        (@of(p = of(Array, 2, 2)), (1, 2), @varname(p[2, 2].x)),
-        (@of(p = of(Array, 4)), (2, 2), @varname(p[3].x)),
-    )
-        m = condition(
-            shared_shape_removal_parent(dims), oldtemplate, @varname(p[1].x) => 2.0
+    removal_identity_cases = [
+        (
+            name="grown scalar",
+            input=(3, 2),
+            template=@of(p = of(Array, 2, 2)),
+            address=@varname(p[3].x),
+            bind=condition,
+            remove=decondition,
+            expected=r"namespace root `p`.*rebuild",
+        ),
+        (
+            name="grown range",
+            input=(3, 2),
+            template=@of(p = of(Array, 2, 2)),
+            address=@varname(p[3:4]),
+            bind=condition,
+            remove=decondition,
+            expected=r"namespace root `p`.*rebuild",
+        ),
+        (
+            name="shrunk Cartesian",
+            input=(1, 2),
+            template=@of(p = of(Array, 2, 2)),
+            address=@varname(p[2, 2].x),
+            bind=condition,
+            remove=decondition,
+            expected=r"namespace root `p`.*rebuild",
+        ),
+        (
+            name="changed rank",
+            input=(2, 2),
+            template=@of(p = of(Array, 4)),
+            address=@varname(p[3].x),
+            bind=condition,
+            remove=decondition,
+            expected=r"namespace root `p`.*rebuild",
+        ),
+    ]
+    @testset "$(case.name)" for case in removal_identity_cases
+        m = case.bind(
+            shared_shape_removal_parent(case.input), case.template, @varname(p[1].x) => 2.0
         )
-        m = decondition(m, DynamicPPL.Recursive(), removed)
-        m = decondition(m)
-        @test_throws r"namespace root `p`.*rebuild" condition(
-            m, @of(p = of(Array, dims...)), @varname(p[1].x) => 2.0
+        m = case.remove(m, DynamicPPL.Recursive(), case.address)
+        m = case.remove(m)
+        @test_throws case.expected case.bind(
+            m, @of(p = of(Array, case.input...)), @varname(p[1].x) => 2.0
         )
     end
 end
