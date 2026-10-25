@@ -6893,12 +6893,6 @@ end
     end
     return (; x)
 end
-@model function bc_tuple_arg(x)
-    for i in eachindex(x)
-        x[i] ~ Normal()
-    end
-    return (; x)
-end
 @model function bc_tuple_local()
     x = (0.0, 0.0)
     for i in eachindex(x)
@@ -6976,7 +6970,7 @@ function bc_model(c)
         :nested_tuple => (bc_nested_tuple_arg, bc_nested_tuple_arg),
         :scalar => (bc_scalar_arg, bc_scalar_local),
         :array => (bc_array_arg, bc_array_local),
-        :tuple => (bc_tuple_arg, bc_tuple_local),
+        :tuple => (bc_array_arg, bc_tuple_local),
         :named => (bc_named_arg, bc_named_local),
         :multivariate => (bc_mv_arg, bc_mv_local),
     )
@@ -7854,12 +7848,6 @@ end
 end
 
 @testset "persistent shared binding shapes" begin
-    @model function shared_shape_argument(x)
-        for i in eachindex(x)
-            x[i] ~ Normal()
-        end
-        return x
-    end
     @model function shared_shape_local()
         x = zeros(2)
         for i in eachindex(x)
@@ -7879,23 +7867,35 @@ end
         return p
     end
     @testset "argument shapes and types" begin
-        for bind in (condition, fix)
-            @test_throws ArgumentError bind(shared_shape_argument(zeros(2)); x=ones(3))
-            @test bind(decondition(shared_shape_argument(zeros(2))); x=ones(3))(
-                Xoshiro(1)
-            ) == ones(3)
-            if bind === condition
-                @test bind(shared_shape_argument(1.0:2.0); x=[2.0, 3.0])(Xoshiro(1)) ==
-                    [2.0, 3.0]
-            else
-                @test_throws ArgumentError decondition(shared_shape_argument(1.0:2.0))
-                @test bind(
-                    decondition(shared_shape_argument(collect(1.0:2.0))); x=[2.0, 3.0]
-                )(
-                    Xoshiro(1)
-                ) == [2.0, 3.0]
+        range_cases = [
+            (
+                name="condition",
+                bind=condition,
+                input=1.0:2.0,
+                prepare=identity,
+                replacement=[2.0, 3.0],
+                expected=[2.0, 3.0],
+            ),
+            (
+                name="fix",
+                bind=fix,
+                input=collect(1.0:2.0),
+                prepare=decondition,
+                replacement=[2.0, 3.0],
+                expected=[2.0, 3.0],
+            ),
+        ]
+        @testset "$(case.name)" for case in range_cases
+            bind = case.bind
+            @test_throws ArgumentError bind(array_model(zeros(2)); x=ones(3))
+            @test bind(decondition(array_model(zeros(2))); x=ones(3))(Xoshiro(1)) == ones(3)
+            if bind === fix
+                @test_throws ArgumentError decondition(array_model(1.0:2.0))
             end
-            source = shared_shape_argument(zeros(2))
+            @test bind(case.prepare(array_model(case.input)); x=case.replacement)(
+                Xoshiro(1)
+            ) == case.expected
+            source = array_model(zeros(2))
             @test eltype(
                 bind(bind === fix ? decondition(source) : source; x=[1, 2])(Xoshiro(1))
             ) === Int
@@ -7911,8 +7911,7 @@ end
             )
         end
         @test ForwardDiff.gradient(
-            x -> loglikelihood(condition(shared_shape_argument(zeros(2)); x), (;)),
-            [1.0, 2.0],
+            x -> loglikelihood(condition(array_model(zeros(2)); x), (;)), [1.0, 2.0]
         ) == [-1.0, -2.0]
     end
     @testset "persistence" begin
@@ -8118,50 +8117,100 @@ end
     @test condition(root_type_parent(child), @varname(a.x[1]) => 0.5)(Xoshiro(1))[1] == 0.5
 end
 
-@model resized_argument(x) = (for i in eachindex(x)
-    x[i] ~ Normal()
-end;
-x)
 @testset "argument storage after shape replacement" begin
-    for bind in (condition, fix)
-        m = bind(decondition(resized_argument(zeros(2))); x=ones(3))
+    replacement_cases = [
+        (
+            name="condition",
+            bind=condition,
+            listed=conditioned,
+            input=zeros(2),
+            replacement=ones(3),
+            expected=4.0,
+        ),
+        (
+            name="fix",
+            bind=fix,
+            listed=fixed,
+            input=zeros(2),
+            replacement=ones(3),
+            expected=4.0,
+        ),
+    ]
+    @testset "$(case.name)" for case in replacement_cases
+        bind = case.bind
+        m = bind(decondition(array_model(case.input)); x=case.replacement)
         m = unfix(decondition(m))
-        values = bind === condition ? conditioned : fixed
-        @test values(bind(m, @varname(x[end]) => 4.0))[@varname(x[2])] == 4.0
+        values = case.listed
+        @test values(bind(m, @varname(x[end]) => 4.0))[@varname(x[2])] == case.expected
     end
 end
 
-@model function binding_argument(x)
-    for i in eachindex(x)
-        x[i] ~ Normal()
-    end
-    return x
-end
 @model binding_local() = (x ~ MvNormal(zeros(2), 1); x)
 @model function binding_outer()
-    a ~ to_submodel(binding_argument(zeros(3)))
+    a ~ to_submodel(array_model(zeros(3)))
     return a
 end
 @testset "binding shapes after removal" begin
     @testset "placeholder storage" begin
-        m = condition(binding_argument(nothing); x=ones(2))
-        @test_throws ArgumentError condition(decondition(m), @varname(x[1]) => 3.0)
-        @test_throws ArgumentError condition(
-            binding_argument(nothing), @varname(x[1]) => 3.0
-        )
+        m = condition(array_model(nothing); x=ones(2))
+        placeholder_cases = [
+            (
+                name="removed whole binding",
+                input=decondition(m),
+                bind=condition,
+                expected=ArgumentError,
+            ),
+            (
+                name="original placeholder",
+                input=array_model(nothing),
+                bind=condition,
+                expected=ArgumentError,
+            ),
+        ]
+        @testset "$(case.name)" for case in placeholder_cases
+            @test_throws case.expected case.bind(case.input, @varname(x[1]) => 3.0)
+        end
     end
     @testset "argument reversion" begin
-        m = condition(decondition(binding_argument(zeros(2))); x=ones(3))
-        @test length(decondition(m)(Xoshiro(1))) == 2
-        @test length(decondition(m, @varname(x))(Xoshiro(1))) == 2
+        m = condition(decondition(array_model(zeros(2))); x=ones(3))
         masked = decondition(
             decondition(decondition(m, @varname(x[1])), @varname(x[2])), @varname(x[3])
         )
-        @test length(masked(Xoshiro(1))) == 3
-        @test length(decondition(masked)(Xoshiro(1))) == 2
-        @test length(
-            decondition(m, @varname(x[1]), @varname(x[2]), @varname(x[3]))(Xoshiro(1))
-        ) == 3
+        removal_cases = [
+            (name="all bindings", input=m, remove=decondition, names=(), expected=2),
+            (
+                name="whole root",
+                input=m,
+                remove=decondition,
+                names=(@varname(x),),
+                expected=2,
+            ),
+            (
+                name="sequential partial masks",
+                input=masked,
+                remove=identity,
+                names=(),
+                expected=3,
+            ),
+            (
+                name="all bindings after partial masks",
+                input=masked,
+                remove=decondition,
+                names=(),
+                expected=2,
+            ),
+            (
+                name="simultaneous partial masks",
+                input=m,
+                remove=decondition,
+                names=(@varname(x[1]), @varname(x[2]), @varname(x[3])),
+                expected=3,
+            ),
+        ]
+        @testset "$(case.name)" for case in removal_cases
+            @test length(case.remove(case.input, case.names...)(Xoshiro(1))) ==
+                case.expected
+        end
     end
     @testset "recursive ordering" begin
         m = condition(
@@ -8173,7 +8222,7 @@ end
         @test_throws ArgumentError condition(binding_outer(), @varname(a.x) => [1.0, 2.0])(
             Xoshiro(1)
         )
-        local_m = condition(decondition(binding_argument(zeros(3))), @varname(x[1]) => 1.0)
+        local_m = condition(decondition(array_model(zeros(3))), @varname(x[1]) => 1.0)
         @test Set(keys(rand(Xoshiro(1), local_m))) == Set([@varname(x[2]), @varname(x[3])])
     end
     @testset "local whole type" begin
@@ -8185,7 +8234,7 @@ end
         @test_throws ArgumentError condition(templated; x=ones(Float32, 2))
     end
     @testset "absent partial removal" begin
-        @test isempty(conditioned(decondition(binding_argument(nothing), @varname(x[1]))))
+        @test isempty(conditioned(decondition(array_model(nothing), @varname(x[1]))))
         @test isempty(fixed(unfix(binding_local(), @varname(x[1]))))
     end
     @testset "pending index styles" begin
@@ -8246,10 +8295,6 @@ end
     @test fixed(fix(m, @varname(q.b) => 0.1))[@varname(q.b)] === 0.1
 end
 
-@model masked_arg(x) = (for i in eachindex(x)
-    x[i] ~ Normal()
-end;
-x)
 @model function masked_local()
     z = zeros(3)
     for i in 1:3
@@ -8258,29 +8303,53 @@ x)
     return z
 end
 @testset "masked storage keeps the root occupied" begin
-    r = condition(decondition(masked_arg(zeros(2))); x=ones(3))
-    @test length(decondition(r)(Xoshiro(1))) == 2
-    m = r
-    for i in 1:3
-        m = decondition(m, VarName{:x}(DynamicPPL.AbstractPPL.Index((i,), (;))))
+    mask_cases = [
+        (
+            name="condition",
+            bind=condition,
+            remove=decondition,
+            other=fix,
+            input=zeros(2),
+            replacement=ones(3),
+            expected=3,
+            error=ArgumentError,
+        ),
+        (
+            name="fix",
+            bind=fix,
+            remove=unfix,
+            other=condition,
+            input=zeros(2),
+            replacement=ones(3),
+            expected=3,
+            error=ArgumentError,
+        ),
+    ]
+    @testset "$(case.name)" for case in mask_cases
+        r = case.bind(decondition(array_model(case.input)); x=case.replacement)
+        if case.bind === condition
+            @test length(decondition(r)(Xoshiro(1))) == 2
+        end
+        m = r
+        for i in 1:3
+            m = case.remove(m, VarName{:x}(DynamicPPL.AbstractPPL.Index((i,), (;))))
+        end
+        @test length(m(Xoshiro(1))) == case.expected
+        if case.bind === condition
+            err = try
+                case.other(m; x=ones(4))
+                nothing
+            catch e
+                e
+            end
+            @test err isa case.error
+            err isa case.error && (@test occursin("`x`", err.msg) &&
+                occursin("decondition", err.msg) &&
+                occursin("unfix", err.msg))
+        else
+            @test_throws case.error case.other(m; x=ones(4))
+        end
     end
-    @test length(m(Xoshiro(1))) == 3
-    err = try
-        fix(m; x=ones(4))
-        nothing
-    catch e
-        e
-    end
-    @test err isa ArgumentError
-    err isa ArgumentError && (@test occursin("`x`", err.msg) &&
-        occursin("decondition", err.msg) &&
-        occursin("unfix", err.msg))
-    f = fix(decondition(masked_arg(zeros(2))); x=ones(3))
-    for i in 1:3
-        f = unfix(f, VarName{:x}(DynamicPPL.AbstractPPL.Index((i,), (;))))
-    end
-    @test length(f(Xoshiro(1))) == 3
-    @test_throws ArgumentError condition(f; x=ones(4))
     l = condition(masked_local(), @of(z = of(Array, 3)), @varname(z[1]) => 1.0)
     l = decondition(l, @varname(z[1]))
     @test_throws ArgumentError condition(l, @of(z = of(Array, 4)), @varname(z[1]) => 1.0)
@@ -8703,10 +8772,6 @@ end
     return x
 end
 @model pending_outer(child=pending_matrix()) = (a ~ to_submodel(child); a)
-@model pending_argument(x) = (for i in eachindex(x)
-    x[i] ~ Normal()
-end;
-x)
 @model pending_local() = (x = zeros(2); x[1] ~ Normal(); x)
 @testset "pending identity setter merges entries" begin
     pending = DynamicPPL.PendingBindings(@varname(x), (AbstractPPL.Property{:a}() => 1,))
@@ -8757,11 +8822,24 @@ end
             2, 1
         ] == 4.0
         @test isempty(listed(remove(bad, @varname(a.x[3, 3]))))
-        @test_throws ArgumentError bind(
-            pending_outer(pending_argument(zeros(2, 2))), @varname(a.x[3, 3]) => 3.0
-        )()
         held = condition(pending_matrix(); x=zeros(2, 2))
-        @test_throws ArgumentError bind(pending_outer(held), @varname(a.x[3, 3]) => 3.0)()
+        child_cases = [
+            (
+                name="$bind: argument child",
+                input=pending_outer(array_model(zeros(2, 2))),
+                bind=bind,
+                expected=ArgumentError,
+            ),
+            (
+                name="$bind: bound local child",
+                input=pending_outer(held),
+                bind=bind,
+                expected=ArgumentError,
+            ),
+        ]
+        @testset "$(case.name)" for case in child_cases
+            @test_throws case.expected case.bind(case.input, @varname(a.x[3, 3]) => 3.0)()
+        end
         for template_first in (false, true)
             pair1, pair2 = @varname(a.x[1]) => 2.0, @varname(a.x[2]) => 3.0
             schema = @of(a = @of(x = of(Array, 2, 2)))
@@ -8775,7 +8853,7 @@ end
             @test_throws r"integer indices" bind(m, @varname(a.x[end]) => 4.0)
             @test bind(
                 decondition(
-                    pending_outer(pending_argument(zeros(3))),
+                    pending_outer(array_model(zeros(3))),
                     DynamicPPL.Recursive(),
                     @varname(a.x[1])
                 ),
@@ -8795,9 +8873,9 @@ end
         prefixed_arg = bind(
             prefix(
                 if bind === fix
-                    decondition(pending_argument(zeros(2)), @varname(x[1]))
+                    decondition(array_model(zeros(2)), @varname(x[1]))
                 else
-                    pending_argument(zeros(2))
+                    array_model(zeros(2))
                 end,
                 @varname(p)
             ),
@@ -9491,16 +9569,10 @@ end
     end
 end
 
-@model runtime_vector(y) = (for i in eachindex(y)
-    y[i] ~ Normal()
-end;
-y)
 @testset "runtime partial binding conversion errors" begin
     @model runtime_parent() = (
         m ~ Normal();
-        a ~ to_submodel(
-            condition(decondition(runtime_vector(zeros(2))), @varname(y[1]) => m)
-        );
+        a ~ to_submodel(condition(decondition(y_model(zeros(2))), @varname(y[1]) => m));
         m
     )
     @test_throws MethodError LogDensityProblems.logdensity_and_gradient(
@@ -9508,7 +9580,7 @@ y)
     )
 
     @test_throws InexactError condition(
-        decondition(runtime_vector(zeros(Int, 2))), @varname(y[1]) => 1.5
+        decondition(y_model(zeros(Int, 2))), @varname(y[1]) => 1.5
     )(
         Xoshiro(1)
     )
