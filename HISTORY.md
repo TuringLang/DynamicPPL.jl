@@ -53,7 +53,8 @@ Fixed stack overflows when removing bindings from models with cyclic covariates.
 Improved evaluation performance for indexed submodels. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
 Improved placeholder-checking performance for heterogeneous arrays and tuples. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
-Density evaluation accepts an explicit RNG: `DynamicPPL.logdensity_internal(args...)` → `DynamicPPL.logdensity_internal(args..., rng)`; append `rng` to `AbstractPPL.prepare`’s `context` tuple. See [#1504](https://github.com/TuringLang/DynamicPPL.jl/pull/1504).
+
+`DynamicPPL.logdensity_internal` and the `AbstractPPL.prepare` context tuple accept a trailing `rng`. See [#1504](https://github.com/TuringLang/DynamicPPL.jl/pull/1504).
 
 ## Breaking changes
 
