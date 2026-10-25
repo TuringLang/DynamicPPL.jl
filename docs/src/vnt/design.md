@@ -337,7 +337,8 @@ What this means is that in the core use case of VarNamedTuple (i.e., for storing
 Loading data from chains without storage information can produce `GrowableArray`s;
 rerunning the model can recover the storage shape.
 
-Conditioned and fixed values follow the [Binding rules](@ref). Partial bindings
-require storage when made, or before a reached child's body runs. Supply a positional template
-with `of` or `@of` when neither arguments nor existing bindings provide it. Binding does not
-create growable storage.
+Conditioned and fixed values follow the [Binding rules](@ref). A partial binding such as
+`x[1] => 1.0` needs storage for `x` when it is made, or before an addressed submodel's body
+runs. If neither an argument nor an existing binding provides it, pass a template built
+with `of` or `@of` to `condition` or `fix` as a positional argument. Bindings never fall
+back to `GrowableArray`.

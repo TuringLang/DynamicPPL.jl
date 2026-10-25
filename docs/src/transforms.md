@@ -55,7 +55,7 @@ Currently, DynamicPPL provides the transform strategies [`LinkAll`](@ref), [`Unl
 Their meanings should be fairly self-explanatory; here is a brief demonstration:
 
 ```@example 1
-params = rand(f())
+params = VarNamedTuple(; x=1.5, y=2.0)
 _, vi_unlinked = init!!(f(), VarInfo(), InitFromParams(params), UnlinkAll())
 vi_unlinked.accs
 ```

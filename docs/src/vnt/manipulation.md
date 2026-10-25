@@ -168,9 +168,9 @@ cond_model = condition(
 )
 ```
 
-Partial local bindings need storage before evaluation. Here the template provides it;
-allocation inside `f` happens too late for the binding call. Without the template or another
-source of storage, the call throws. A template can also be derived from a sample with
+A partial binding of a local variable needs its storage when `condition` is called. The
+`zeros(2)` inside `f` runs only during evaluation, so the template supplies the shape;
+without it, `condition` throws. A template can also be derived from a sample with
 `of(rand(rng, f()))`; see [Binding contract](@ref).
 
 FlexiChains does currently make use of skeleton VNTs.

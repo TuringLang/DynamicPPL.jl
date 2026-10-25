@@ -202,8 +202,7 @@ retval1 == retval2
 Apart from `InitFromPrior()`, the main initialisation strategy that you are likely to use is [`InitFromParams()`](@ref), where you can manually specify the values of the parameters that you are interested in.
 
 ```@example 1
-# See the VarNamedTuple docs for examples.
-params = rand(model)
+params = VarNamedTuple(; x=1.0, y=0.5)
 
 init_strategy = InitFromParams(params)
 retval, accs = DynamicPPL.init!!(model, accs, init_strategy, transform_strategy)
@@ -266,7 +265,7 @@ The transform strategy allows you to specify which variables are to be transform
 For example:
 
 ```@example 1
-params = rand(model)
+params = VarNamedTuple(; x=1.0, y=0.5)
 init_strategy = InitFromParams(params)
 
 # This transform strategy specifies that all variables should be linked.

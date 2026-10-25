@@ -12,13 +12,6 @@ This page goes into more detail about exactly *how* initialisation strategies, t
 ## The `@model` macro
 
 Each tilde-statement, say, `x ~ Normal()`, is transformed by the `@model` macro into something like the following pseudocode (the functions like `is_fixed` do not have those exact names in DynamicPPL but are conceptually equivalent).
-The effective binding determines the LHS variable's role; see [Binding rules](@ref).
-Arguments on the LHS supply observations by default. Every argument binding replaces
-the argument before the body runs, so an observed argument LHS variable reads its current
-body value; a local LHS variable reads its binding at the tilde. Fixed argument LHS
-variables reset to the bound value at the tilde. Fixed bindings and whole observations of
-locals must match the size and shape supplied by the body at executed tildes; see
-[Size checks at executed tildes](@ref binding-size-checks).
 If you're interested in the gory details you can run `@macroexpand @model f() = x ~ Normal()` in the REPL.
 
 ```julia
@@ -48,6 +41,12 @@ begin
 end
 ```
 
+The effective binding determines each LHS variable's role; see [Binding rules](@ref).
+An argument on the LHS is observed by default. Argument bindings replace the argument
+before the body runs, so an observed argument is read from the body. A bound local variable
+is read from its binding at the tilde, and a fixed argument is reset to its bound value
+there. See [Size checks at executed tildes](@ref binding-size-checks) for shape checks.
+
 Here, `__prefix__` and `__prefix_template__` are the model's prefix and its storage
 template, passed directly to the exported `tilde_observe!!` entry point.
 
@@ -60,8 +59,9 @@ As described on the [Model evaluation page](./evaluation.md), there are three st
  2. Transformation: figure out the untransformed (raw) value and the transformed value (where necessary); compute the relevant log-Jacobian.
  3. Accumulation: pass all the relevant information to the accumulators, which individually decide what to do with it.
 
-The method for `tilde_assume!!` (with `InitContext`) more or less implements this logic directly with three lines of code.
-The implementation in `src/contexts/init.jl` follows this structure:
+The compiled call `tilde_assume!!(__model__, __context__, ...)` applies the prefix to `vn`
+and forwards to the context method. Its implementation in `src/contexts/init.jl` follows
+these three stages:
 
 ```julia
 function DynamicPPL.tilde_assume!!(ctx::InitContext, dist, vn, template, vi)

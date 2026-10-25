@@ -111,10 +111,10 @@ If the intent is to add a likelihood term for a derived value, prefer
 `@addlogprob!` or a clearer model structure. Do not copy old `.~` examples; the
 dot-tilde pipeline was removed.
 
-Model arguments provide argument-supplied observations; `decondition` removes them and
-`condition` replaces them. Roles come only from bindings: the constructor turns
-placeholder arguments into removals (see [Missing data](@ref)). Test the data shapes you
-support, including arrays of arrays and mutable structs.
+A model argument on the LHS of `~` is observed; `decondition` removes its observation and
+`condition` replaces it. Passing `missing` or `nothing` for such an argument removes its
+observation at construction (see [Missing data](@ref)). Test the data shapes you support,
+including arrays with `missing` entries, arrays of arrays, and mutable structs.
 
 ### Test contexts with nested models
 

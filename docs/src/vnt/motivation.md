@@ -154,7 +154,7 @@ When calling functions such as `returned` or `predict` on the chain, we have to 
     ```
 
 Another problem was when conditioning on values.
-The binding API now accepts ordered pairs rather than dictionaries, allowing whole and partial bindings:
+The binding API accepts ordered pairs, which allow whole and partial bindings:
 
 ```julia
 using AbstractPPL: of, @of

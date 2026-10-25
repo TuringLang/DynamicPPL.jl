@@ -6,9 +6,9 @@ useful when implementing stochastic objectives in inference packages such as Adv
 and AdvancedHMC.
 
 Write the observation with `independent_distribution` and supply its complete dataset by
-conditioning or as a model argument. Subsampling replaces the observation with array
-wrappers, which must satisfy the model's argument signature. A concrete annotation such as
-`y::Vector{Float64}` rejects these wrappers. Leave subsampled observation arguments untyped
+conditioning or as a model argument. When the observation is a model argument, subsampling
+replaces it with array wrappers, which must satisfy the argument's type annotation. A concrete annotation such as
+`x::Vector{Float64}` rejects these wrappers. Leave subsampled observation arguments untyped
 or use an abstract array type such as `AbstractVector{Float64}`:
 
 ```@example subsampling
