@@ -132,6 +132,13 @@ end
     return x
 end
 
+@model field_observation_p(p) = p.a ~ Normal()
+@model field_elements(x) = (x.a[1] ~ Normal(); x.a[2] ~ Normal(); x)
+@model array_field(x) = (x[1].a ~ Normal(); return x)
+@model record_value(x) = x.value[1] ~ Normal()
+@model nested_elements(x) = (x[1][1] ~ Normal(); x[1][2] ~ Normal(); x)
+@model nested_covariate(x) = (x[1][1] ~ Normal(); 0.0 ~ Normal(x[1][1]))
+
 @testset "sample binding templates" begin
     @model function template_vector(x=zeros(2))
         y = zeros(3)
@@ -1150,10 +1157,9 @@ end
 
         @model container_field(p) = p.b ~ Normal()
         @model container_index(p) = p[2] ~ Normal()
-        @model nothing_field(p) = p.a ~ Normal()
         @model nothing_index(p) = p[1] ~ Normal()
         for (unused, observed, value) in (
-            (container_field, nothing_field, (a=nothing, b=1.0)),
+            (container_field, field_observation_p, (a=nothing, b=1.0)),
             (container_index, nothing_index, [nothing, 1.0]),
         )
             @test conditioned(unused(value))[@varname(p)] === value
@@ -1532,8 +1538,7 @@ end
         @test_throws r"ArgumentError: .*x\[2\].*size and shape" fix(
             decondition(second_observation(Any[1.0])); x=Any[2.0]
         )()
-        @model field_lhs(p) = p.a ~ Normal()
-        omitted = fix(decondition(field_lhs((; a=1.0))); p=(; b=2.0))
+        omitted = fix(decondition(field_observation_p((; a=1.0))); p=(; b=2.0))
         params = VarNamedTuple((@varname(p.a) => 3.0,))
         @test first(
             init!!(Xoshiro(1), omitted, VarInfo(), InitFromParams(params, nothing))
@@ -2145,9 +2150,8 @@ end
                 @test collect(restored(Xoshiro(1))) == rand(Xoshiro(1), Normal(), 2)
             end
         end
-        @model restored_fields(x) = (x.a[1] ~ Normal(); x.a[2] ~ Normal(); x)
         restored = unfix(
-            fix(decondition(restored_fields((a=[1.0, 2.0],))), @varname(x.a[1]) => 5.0)
+            fix(decondition(field_elements((a=[1.0, 2.0],))), @varname(x.a[1]) => 5.0)
         )
         @test restored(Xoshiro(1)).a == rand(Xoshiro(1), Normal(), 2)
     end
@@ -2795,10 +2799,9 @@ end
         )
         @test result == (; a=3.0, b=2.0)
 
-        @model array_fields(x) = (x[1].a ~ Normal(); return x)
         parent = condition(
             decondition(
-                nested_fields(array_fields(Any[(; a=0.0, b=0.0)])),
+                nested_fields(array_field(Any[(; a=0.0, b=0.0)])),
                 DynamicPPL.Recursive(),
                 @varname(child.x[1])
             ),
@@ -2808,7 +2811,7 @@ end
             decondition(parent, @varname(child.x[1].a)), @varname(child.x[1].a) => 3.0
         )() == [(; a=3.0, b=2.0)]
         partial = condition(
-            decondition(array_fields(Any[(; a=0.0, b=0.0)])),
+            decondition(array_field(Any[(; a=0.0, b=0.0)])),
             @varname(x[1]) => (; a=1.0, b=2.0),
         )
         @test fix(decondition(partial, @varname(x[1].a)), @varname(x[1].a) => 3.0)() ==
@@ -3115,12 +3118,7 @@ end
     end
 
     @testset "unfix restores nested arguments beside fixed bindings" begin
-        @model function nested_argument(x)
-            x.a[1] ~ Normal()
-            x.a[2] ~ Normal()
-            return x
-        end
-        m = fix(decondition(nested_argument((; a=[1.0, 2.0]))), @varname(x.a) => [5.0, 6.0])
+        m = fix(decondition(field_elements((; a=[1.0, 2.0]))), @varname(x.a) => [5.0, 6.0])
         restored = unfix(m, @varname(x.a[1]))
         @test returned(restored, (; x=(; a=[1.0, 2.0]))) == (; a=[1.0, 6.0])
         @test isempty(conditioned(restored))
@@ -3380,15 +3378,11 @@ end
 end
 
 @testset "nested bindings fit their root shape" begin
-    @model shape_nested(x) = (for i in eachindex(x), j in eachindex(x[i])
-        x[i][j] ~ Normal()
-    end;
-    x)
     @model shape_field(p) = (for i in eachindex(p.a)
         p.a[i] ~ Normal()
     end;
     p)
-    m = condition(shape_nested([[0.0, 0.0, 0.0]]), @varname(x[1]) => [1.0, 2.0, 3.0])
+    m = condition(nested_array_model([[0.0, 0.0, 0.0]]), @varname(x[1]) => [1.0, 2.0, 3.0])
     @test returned(decondition(m, @varname(x[1][3])), (; x=[[7.0, 8.0, 9.0]])) ==
         [[1.0, 2.0, 9.0]]
     @test condition(m, @varname(x[1][3]) => 4.0)(Xoshiro(1)) == [[1.0, 2.0, 4.0]]
@@ -3402,7 +3396,8 @@ end
         (; x=[[7.0, 8.0, 9.0]]),
     ) == [[7.0, 8.0, 9.0]]
     @test_throws ArgumentError fix(
-        decondition(shape_nested([[0.0, 0.0]]), @varname(x[1])), @varname(x[1]) => ones(3)
+        decondition(nested_array_model([[0.0, 0.0]]), @varname(x[1])),
+        @varname(x[1]) => ones(3),
     )
     p = condition(shape_field((a=zeros(3),)), @varname(p.a) => ones(3))
     @test returned(decondition(p, @varname(p.a[3])), (; p=(a=fill(2.0, 3),))) ==
@@ -3415,16 +3410,48 @@ end
     for bind in (condition, fix)
         @test_throws DimensionMismatch bind(
             if bind === fix
-                fix(shape_nested(nothing); x=[SVector(0.0, 0.0)])
+                fix(nested_array_model(nothing); x=[SVector(0.0, 0.0)])
             else
-                shape_nested([SVector(0.0, 0.0)])
+                nested_array_model([SVector(0.0, 0.0)])
             end,
             @varname(x[1]) => ones(3),
         )
-        for vn in (@varname(x[1:2]), @varname(x[:]), @varname(x[[true, true]]))
-            @test_throws ArgumentError(
-                "Cannot bind `$vn`: value size (3,) does not match selection size (2,); supply a value matching the selected extent.",
-            ) bind(shape_nested([[0.0], [0.0]]), vn => [[1.0], [2.0], [3.0]])
+        nested_selection_cases = [
+            (
+                name="$bind: range",
+                input=[[0.0], [0.0]],
+                address=@varname(x[1:2]),
+                replacement=[[1.0], [2.0], [3.0]],
+                bind=bind,
+                expected=ArgumentError(
+                    "Cannot bind `$(@varname(x[1:2]))`: value size (3,) does not match selection size (2,); supply a value matching the selected extent.",
+                ),
+            ),
+            (
+                name="$bind: colon",
+                input=[[0.0], [0.0]],
+                address=@varname(x[:]),
+                replacement=[[1.0], [2.0], [3.0]],
+                bind=bind,
+                expected=ArgumentError(
+                    "Cannot bind `$(@varname(x[:]))`: value size (3,) does not match selection size (2,); supply a value matching the selected extent.",
+                ),
+            ),
+            (
+                name="$bind: mask",
+                input=[[0.0], [0.0]],
+                address=@varname(x[[true, true]]),
+                replacement=[[1.0], [2.0], [3.0]],
+                bind=bind,
+                expected=ArgumentError(
+                    "Cannot bind `$(@varname(x[[true, true]]))`: value size (3,) does not match selection size (2,); supply a value matching the selected extent.",
+                ),
+            ),
+        ]
+        @testset "$(case.name)" for case in nested_selection_cases
+            @test_throws case.expected case.bind(
+                nested_array_model(case.input), case.address => case.replacement
+            )
         end
     end
 end
@@ -5108,7 +5135,6 @@ end
         y ~ MvNormal(zeros(1), I)
         return 0.0 ~ Normal(y[1], 1)
     end
-    @model cyclic(x) = x.value[1] ~ Normal()
     @model parent(v) = s ~ to_submodel(shared_fields((a=v, b=v)))
     shared = r"shared by `x` and `x`.*`\(a=v, b=copy\(v\)\)`"
     v = [0.0]
@@ -5142,7 +5168,7 @@ end
         logpdf(Normal(), 2.0) + logpdf(Normal(), 0.0)
     cycle = CyclicStorage([0.0], nothing)
     cycle.next = cycle
-    @test_throws r"shared by `x` and `x`" decondition(cyclic(cycle))
+    @test_throws r"shared by `x` and `x`" decondition(record_value(cycle))
     @model cyclic_array(x) = x[1][1] ~ Normal()
     array_cycle = Any[[0.0], nothing]
     array_cycle[2] = array_cycle
@@ -5186,11 +5212,9 @@ end
 end
 
 @testset "partial edits admit named array storage families" begin
-    @model nested_storage(x) = (x.a[1] ~ Normal(); x.a[2] ~ Normal(); x)
     @model nested_local_storage() = (
         x = (a=zeros(2),); x.a[1] ~ Normal(); x.a[2] ~ Normal(); x
     )
-    @model indexed_storage(x) = (x[1][1] ~ Normal(); x[1][2] ~ Normal(); x)
     components = ComponentVector(; a=1.0, b=2.0)
     supported = (
         [1.0, 2.0], OffsetArray([1.0, 2.0], 0:1), components, DimArray([1.0, 2.0], X)
@@ -5240,23 +5264,23 @@ end
         @test_throws message bind(child_model(array_model(data)), @varname(a.x[i]) => 1)(
             Xoshiro(1)
         )
-        @test_throws message bind(nested_storage((a=data,)), @varname(x.a[i]) => 1)
+        @test_throws message bind(field_elements((a=data,)), @varname(x.a[i]) => 1)
         @test_throws message remove(
             bind(
                 if bind === condition
-                    nested_storage((a=data,))
+                    field_elements((a=data,))
                 else
-                    decondition(nested_storage((a=collect(data),)))
+                    decondition(field_elements((a=collect(data),)))
                 end;
                 x=(a=data,),
             ),
             @varname(x.a[i])
         )
-        @test_throws message bind(indexed_storage([data]), @varname(x[1][i]) => 1)
-        @test_throws message decondition(indexed_storage([data]), @varname(x[1][i]))
+        @test_throws message bind(nested_elements([data]), @varname(x[1][i]) => 1)
+        @test_throws message decondition(nested_elements([data]), @varname(x[1][i]))
         # Untouched leaves need no reconstruction, even when they are unsupported arrays.
         source = if bind === condition
-            nested_storage((a=data,))
+            field_elements((a=data,))
         else
             fix(nested_local_storage(); x=(a=data,))
         end
@@ -5288,18 +5312,29 @@ end
         @test !haskey(
             conditioned(decondition(array_model(good), @varname(x[j]))), @varname(x[j])
         )
-        @test listing(
-            bind(
-                decondition(nested_storage((a=good,)), @varname(x.a[j])),
-                @varname(x.a[j]) => 3.0,
+        nested_storage_cases = [
+            (
+                name="$bind: field storage $(typeof(good))",
+                input=field_elements((a=good,)),
+                address=@varname(x.a[j]),
+                bind=bind,
+                remove=decondition,
+                expected=3.0,
             ),
-        )[@varname(x.a[j])] == 3.0
-        @test listing(
-            bind(
-                decondition(indexed_storage([good]), @varname(x[1][j])),
-                @varname(x[1][j]) => 3.0,
+            (
+                name="$bind: indexed storage $(typeof(good))",
+                input=nested_elements([good]),
+                address=@varname(x[1][j]),
+                bind=bind,
+                remove=decondition,
+                expected=3.0,
             ),
-        )[@varname(x[1][j])] == 3.0
+        ]
+        @testset "$(case.name)" for case in nested_storage_cases
+            @test listing(
+                case.bind(case.remove(case.input, case.address), case.address => 3.0)
+            )[case.address] == case.expected
+        end
     end
 end
 
@@ -5816,12 +5851,13 @@ end
     end
 end
 @testset "partial wrapped storage" begin
-    @model nested_partial(x) = (x[1][1] ~ Normal(); 0.0 ~ Normal(x[1][1]))
     for wrap in (identity, v -> OffsetArray(v, 1:2))
         v = [0.0]
-        @test_throws ArgumentError decondition(nested_partial(wrap([v, v])), @varname(x[1]))
+        @test_throws ArgumentError decondition(
+            nested_covariate(wrap([v, v])), @varname(x[1])
+        )
         @test logjoint(
-            decondition(nested_partial(wrap([v, copy(v)])), @varname(x[1])),
+            decondition(nested_covariate(wrap([v, copy(v)])), @varname(x[1])),
             (x=[[2.0], [0.0]],),
         ) ≈ 2logpdf(Normal(), 2.0)
     end
@@ -5835,12 +5871,11 @@ end
         @test logjoint(decondition(keyed_argument(v, ctor(copy(v) => 1))), (x=[2.0],)) ≈
             logpdf(Normal(), 2.0) + logpdf(Normal(), 0.0)
     end
-    @model nested_argument(x) = (x[1][1] ~ Normal(); 0.0 ~ Normal(x[1][1]))
     for wrap in (v -> view(v, :), v -> OffsetArray(v, 1:length(v)))
-        @test logjoint(decondition(nested_argument(wrap([[0.0]]))), (x=[[2.0]],)) ≈
+        @test logjoint(decondition(nested_covariate(wrap([[0.0]]))), (x=[[2.0]],)) ≈
             2logpdf(Normal(), 2.0)
         v = [0.0]
-        @test_throws ArgumentError decondition(nested_argument(wrap([v, v])))
+        @test_throws ArgumentError decondition(nested_covariate(wrap([v, v])))
     end
     @model empty_arguments(x) = x.z[1] ~ Normal()
     a = Float64[]
@@ -7632,7 +7667,6 @@ end
 
 @testset "tuple and struct owners require whole edits" begin
     @model field(x) = (x.a ~ Normal(); x)
-    @model array_struct(x) = (x[1].a ~ Normal(); x)
     @model named_struct(x) = (x.a.a ~ Normal(); x)
     cases = (
         (first_element, (1.0, 2.0), @varname(x[1]), @varname(x), (3.0, 2.0)),
@@ -7653,7 +7687,7 @@ end
             ([3.0, 2.0],),
         ),
         (
-            array_struct,
+            array_field,
             [ObservationRecord(1.0, 2.0)],
             @varname(x[1].a),
             @varname(x[1]),
@@ -8718,17 +8752,32 @@ end
         )
     end
 end
-@model overlap_components(x) = (x.a[1] ~ Normal(); x)
 @testset "component property and index aliases" begin
     for bind in (condition, fix)
-        m = overlap_components(ComponentVector(; a=[0.0, 0.0], b=0.0))
-        @test_throws r"overlap|more than once" bind(
-            m, @varname(x.a[1]) => 1.0, @varname(x[1]) => 2.0
-        )
-        @test_throws r"overlap|more than once" bind(
-            m, @varname(x.a) => [1.0, 2.0], @varname(x[2]) => 3.0
-        )
-        @test_throws r"overlap|more than once" bind(m, @varname(x.a[[1, 1]]) => [1.0, 1.0])
+        m = first_field_element(ComponentVector(; a=[0.0, 0.0], b=0.0))
+        component_alias_cases = [
+            (
+                name="$bind: scalar field and index",
+                input=(@varname(x.a[1]) => 1.0, @varname(x[1]) => 2.0),
+                bind=bind,
+                expected=r"overlap|more than once",
+            ),
+            (
+                name="$bind: whole field and index",
+                input=(@varname(x.a) => [1.0, 2.0], @varname(x[2]) => 3.0),
+                bind=bind,
+                expected=r"overlap|more than once",
+            ),
+            (
+                name="$bind: repeated field indices",
+                input=(@varname(x.a[[1, 1]]) => [1.0, 1.0],),
+                bind=bind,
+                expected=r"overlap|more than once",
+            ),
+        ]
+        @testset "$(case.name)" for case in component_alias_cases
+            @test_throws case.expected case.bind(m, case.input...)
+        end
     end
 end
 
@@ -9134,9 +9183,8 @@ end
         child = remove(bind(local_x_first(); x=zeros(1)))
         @test_throws ArgumentError bind(pending_outer(child), @varname(a.x[2]) => 4.0)()
     end
-    @model record_argument(x) = x.value[1] ~ Normal()
     @test_throws ArgumentError condition(
-        record_argument(AliasField(zeros(2))); x=AliasField(zeros(3))
+        record_value(AliasField(zeros(2))); x=AliasField(zeros(3))
     )
     cycle = Any[nothing, 1.0]
     cycle[1] = cycle
@@ -9179,7 +9227,6 @@ end
     end
 end
 
-@model nested_selector_arrays(x) = (x[1][1] ~ Normal(); x[1][2] ~ Normal(); x)
 @model function nested_remove_fields(x)
     for i in eachindex(x)
         x[i].a ~ Normal()
@@ -9319,11 +9366,6 @@ end
 @model function contract_alias(x)
     x.a[1] ~ Normal()
     0.0 ~ Normal(x.b[1])
-    return x
-end
-@model function contract_nested(x)
-    x[1][1] ~ Normal()
-    x[1][2] ~ Normal()
     return x
 end
 @testset "unique positions and preparation" begin
@@ -9482,7 +9524,7 @@ end
 
 @testset "nested selected-mask removal" begin
     for (bind, remove) in ((condition, decondition), (fix, unfix))
-        p = child_model(decondition(nested_selector_arrays([zeros(2)])))
+        p = child_model(decondition(nested_elements([zeros(2)])))
         original = bind(p, @varname(a.x[1][[true, false]][1]) => 3.0)
         @test returned(original, (a=(x=[[7.0, 8.0]],),)) == [[3.0, 8.0]]
         removed = remove(original, @varname(a.x[1][1]))
@@ -9516,13 +9558,12 @@ end
     end
 end
 
-@model nested_selector_fields(x) = (x.a[1] ~ Normal(); x.a[2] ~ Normal(); x)
 @testset "nested selector removal, replacement and listings" begin
     for (bind, remove, wrongremove, listing) in
         ((condition, decondition, unfix, conditioned), (fix, unfix, decondition, fixed)),
         (leaf, address, target, values, bound, latent) in (
             (
-                nested_selector_arrays([zeros(2)]),
+                nested_elements([zeros(2)]),
                 @varname(a.x[1][[true, false]][1]),
                 @varname(a.x[1][1]),
                 (a=(x=[[7.0, 8.0]],),),
@@ -9530,7 +9571,7 @@ end
                 [[7.0, 8.0]],
             ),
             (
-                nested_selector_arrays([zeros(2)]),
+                nested_elements([zeros(2)]),
                 @varname(a.x[1][1:2][1]),
                 @varname(a.x[1][1]),
                 (a=(x=[[7.0, 8.0]],),),
@@ -9538,7 +9579,7 @@ end
                 [[7.0, 8.0]],
             ),
             (
-                nested_selector_fields((a=zeros(2),)),
+                field_elements((a=zeros(2),)),
                 @varname(a.x.a[[true, false]][1]),
                 @varname(a.x.a[1]),
                 (a=(x=(a=[7.0, 8.0],),),),
