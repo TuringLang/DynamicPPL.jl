@@ -151,6 +151,14 @@ end
     return p
 end
 
+@model function dependent_elements(x, scale_args, return_values)
+    m ~ Normal()
+    for i in eachindex(x)
+        x[i] ~ Normal(m, scale_args...)
+    end
+    return return_values ? x : nothing
+end
+
 @testset "sample binding templates" begin
     @model function template_vector(x=zeros(2))
         y = zeros(3)
@@ -1761,15 +1769,8 @@ end
     end
 
     @testset "missing elements of argument arrays supply no observation" begin
-        @model function elements(x)
-            m ~ Normal()
-            for i in eachindex(x)
-                x[i] ~ Normal(m, 1)
-            end
-            return x
-        end
         data = Union{Missing,Float64}[missing, 2.0, missing]
-        model = elements(data)
+        model = dependent_elements(data, (1,), true)
         names = [@varname(m), @varname(x[1]), @varname(x[3])]
         @test keys(rand(Xoshiro(1), model)) == names
         @test keys(conditioned(model)) == [@varname(x[2])]
@@ -1788,18 +1789,48 @@ end
         @test keys(rand(Xoshiro(1), fix(model, @varname(x[1]) => 0.5))) ==
             [@varname(m), @varname(x[3])]
 
-        for (x, latent) in (
-            (Union{Missing,Float64}[1.0 missing; missing 4.0], [(2, 1), (1, 2)]),
-            (OffsetArray(Union{Missing,Float64}[missing, 2.0], 0:1), [(0,)]),
-            (fill(missing, 2), [(1,), (2,)]),
-            (Union{Missing,Int}[3, missing], [(2,)]),
-            (Union{Missing,Float64}[1.0, 2.0], []),
-        )
-            expected = [VarName{:x}(AbstractPPL.Index(i, (;))) for i in latent]
-            @test keys(rand(Xoshiro(1), elements(x))) == [@varname(m); expected]
+        missing_element_cases = [
+            (
+                name="matrix",
+                input=Union{Missing,Float64}[1.0 missing; missing 4.0],
+                sample=rand,
+                expected=[(2, 1), (1, 2)],
+            ),
+            (
+                name="offset vector",
+                input=OffsetArray(Union{Missing,Float64}[missing, 2.0], 0:1),
+                sample=rand,
+                expected=[(0,)],
+            ),
+            (
+                name="all missing",
+                input=fill(missing, 2),
+                sample=rand,
+                expected=[(1,), (2,)],
+            ),
+            (
+                name="integer vector",
+                input=Union{Missing,Int}[3, missing],
+                sample=rand,
+                expected=[(2,)],
+            ),
+            (
+                name="fully observed",
+                input=Union{Missing,Float64}[1.0, 2.0],
+                sample=rand,
+                expected=[],
+            ),
+        ]
+        @testset "$(case.name)" for case in missing_element_cases
+            expected = [VarName{:x}(AbstractPPL.Index(i, (;))) for i in case.expected]
+            @test keys(
+                case.sample(Xoshiro(1), dependent_elements(case.input, (1,), true))
+            ) == [@varname(m); expected]
         end
-        @test returned(elements(Union{Missing,Int}[3, missing]), (m=0.0, x=[0.0, 0.25])) ==
-            [3, 0.25]
+        @test returned(
+            dependent_elements(Union{Missing,Int}[3, missing], (1,), true),
+            (m=0.0, x=[0.0, 0.25]),
+        ) == [3, 0.25]
 
         @model child(y, mu) = (
             for i in eachindex(y)
@@ -1811,15 +1842,26 @@ end
             [@varname(mu), @varname(obs.y[1])]
 
         # Arrays that cannot be rebuilt reject `missing` elements at construction.
-        for x in (
-            view(Union{Missing,Float64}[missing, 2.0], :),
-            SVector{2,Union{Missing,Float64}}(missing, 2.0),
-        )
-            @test_throws r"ArgumentError: Argument `x` has `missing` elements.*collect\(x\)" elements(
-                x
-            )
-            @test keys(rand(Xoshiro(1), elements(collect(x)))) ==
-                [@varname(m), @varname(x[1])]
+        missing_storage_cases = [
+            (
+                name="view",
+                input=view(Union{Missing,Float64}[missing, 2.0], :),
+                construct=dependent_elements,
+                error=r"ArgumentError: Argument `x` has `missing` elements.*collect\(x\)",
+                expected=[@varname(m), @varname(x[1])],
+            ),
+            (
+                name="static vector",
+                input=SVector{2,Union{Missing,Float64}}(missing, 2.0),
+                construct=dependent_elements,
+                error=r"ArgumentError: Argument `x` has `missing` elements.*collect\(x\)",
+                expected=[@varname(m), @varname(x[1])],
+            ),
+        ]
+        @testset "$(case.name)" for case in missing_storage_cases
+            @test_throws case.error case.construct(case.input, (1,), true)
+            @test keys(rand(Xoshiro(1), case.construct(collect(case.input), (1,), true))) ==
+                case.expected
         end
         @model covariate(X, y) = (
             for i in eachindex(y)
@@ -2617,16 +2659,10 @@ end
     end
 
     @testset "partial removal expands whole bindings" begin
-        @model function partial_observations(x)
-            m ~ Normal()
-            for i in eachindex(x)
-                x[i] ~ Normal(m)
-            end
-        end
         @model record_observations(t=(; a=1.0, b=2.0)) = (t.a ~ Normal(); t.b ~ Normal(); t)
         for (bind, remove, select) in
             ((condition, decondition, conditioned), (fix, unfix, fixed))
-            base = partial_observations([1.0, 2.0])
+            base = dependent_elements([1.0, 2.0], (), false)
             original = bind(bind === fix ? decondition(base) : base; x=[1.0, 2.0])
             latent = remove(original, @varname(x[2]))
             @test Set(keys(VarInfo(Xoshiro(1), latent))) ==
@@ -3381,10 +3417,36 @@ end
         a ~ to_submodel(bound)
         return m
     end
-    for bind in (condition, fix), partial in (false, true)
-        ldf = LogDensityFunction(runtime_parent(bind, partial); adtype=AutoForwardDiff())
-        _, gradient = LogDensityProblems.logdensity_and_gradient(ldf, [0.3])
-        @test gradient ≈ [bind === condition ? -1.5 : -0.3]
+    runtime_binding_cases = [
+        (
+            name="condition: partial=false",
+            input=runtime_parent(condition, false),
+            evaluate=LogDensityProblems.logdensity_and_gradient,
+            expected=[-1.5],
+        ),
+        (
+            name="condition: partial=true",
+            input=runtime_parent(condition, true),
+            evaluate=LogDensityProblems.logdensity_and_gradient,
+            expected=[-1.5],
+        ),
+        (
+            name="fix: partial=false",
+            input=runtime_parent(fix, false),
+            evaluate=LogDensityProblems.logdensity_and_gradient,
+            expected=[-0.3],
+        ),
+        (
+            name="fix: partial=true",
+            input=runtime_parent(fix, true),
+            evaluate=LogDensityProblems.logdensity_and_gradient,
+            expected=[-0.3],
+        ),
+    ]
+    @testset "$(case.name)" for case in runtime_binding_cases
+        ldf = LogDensityFunction(case.input; adtype=AutoForwardDiff())
+        _, gradient = case.evaluate(ldf, [0.3])
+        @test gradient ≈ case.expected
     end
 end
 
@@ -9904,12 +9966,41 @@ end
         a ~ to_submodel(bound)
         return m
     end
-    for bind in (condition, fix), ancestor in (false, true)
-        ldf = LogDensityFunction(runtime_owner(bind, ancestor); adtype=AutoForwardDiff())
-        density, gradient = LogDensityProblems.logdensity_and_gradient(ldf, [0.3])
-        @test density ≈
-            logpdf(Normal(), 0.3) + (bind === condition ? logpdf(Normal(), 0.6) : 0.0)
-        @test gradient ≈ [bind === condition ? -1.5 : -0.3]
+    runtime_owner_cases = [
+        (
+            name="condition: ancestor=false",
+            input=runtime_owner(condition, false),
+            evaluate=LogDensityProblems.logdensity_and_gradient,
+            expected=[-1.5],
+            density=logpdf(Normal(), 0.3) + logpdf(Normal(), 0.6),
+        ),
+        (
+            name="condition: ancestor=true",
+            input=runtime_owner(condition, true),
+            evaluate=LogDensityProblems.logdensity_and_gradient,
+            expected=[-1.5],
+            density=logpdf(Normal(), 0.3) + logpdf(Normal(), 0.6),
+        ),
+        (
+            name="fix: ancestor=false",
+            input=runtime_owner(fix, false),
+            evaluate=LogDensityProblems.logdensity_and_gradient,
+            expected=[-0.3],
+            density=logpdf(Normal(), 0.3) + 0.0,
+        ),
+        (
+            name="fix: ancestor=true",
+            input=runtime_owner(fix, true),
+            evaluate=LogDensityProblems.logdensity_and_gradient,
+            expected=[-0.3],
+            density=logpdf(Normal(), 0.3) + 0.0,
+        ),
+    ]
+    @testset "$(case.name)" for case in runtime_owner_cases
+        ldf = LogDensityFunction(case.input; adtype=AutoForwardDiff())
+        density, gradient = case.evaluate(ldf, [0.3])
+        @test density ≈ case.density
+        @test gradient ≈ case.expected
     end
 end
 
