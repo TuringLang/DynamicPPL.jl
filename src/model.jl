@@ -613,11 +613,10 @@ computations, or a literal expression. `vn` is the variable name before prefixin
 or `nothing` for a literal. `template` describes the top-level variable's storage;
 literals use `NoTemplate()`.
 
-Apply `prefix`, the model's single prefix value (`nothing`, a `VarName`, or a
-`PrefixTemplate` containing storage metadata), then delegate to [`accumulate_observe!!`](@ref).
-The compiler passes this metadata directly so observations do not box the model.
-Compiler-generated observations call this function independently of the evaluation context.
-Fixed LHS variables bypass it and contribute no density.
+Apply `prefix` (`nothing`, a `VarName`, or a `PrefixTemplate` containing storage metadata),
+check `left` for `missing` and `nothing`, then delegate to [`accumulate_observe!!`](@ref).
+The compiler passes the prefix instead of the model so the generated call does not capture
+the model. Every observation reaches this function; fixed LHS variables do not.
 """
 function tilde_observe!!(prefix, right::Distribution, left, vn, template, vi)
     vn, template = if vn === nothing
