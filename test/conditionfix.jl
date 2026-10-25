@@ -84,6 +84,16 @@ end
 @model normal_pair() = (x ~ Normal(); y ~ Normal(); (x, y))
 @model storage_structured() = b ~ product_distribution((x=Normal(), y=Normal()))
 
+@model function two_default_elements(x=zeros(2))
+    x[1] ~ Normal()
+    x[2] ~ Normal()
+    return x
+end
+@model dictionary_first(x) = (x[:a] ~ Normal(); x)
+@model second_observation(x) = x[2] ~ Normal()
+@model whole_storage(x) = (x ~ MvNormal(zeros(2), I); x)
+@model field_covariate(x, y) = (x[1] ~ Normal(); 0.0 ~ Normal(y.a[1]))
+
 @testset "sample binding templates" begin
     @model function template_vector(x=zeros(2))
         y = zeros(3)
@@ -216,13 +226,8 @@ end
 end
 
 @testset "child argument templates" begin
-    @model function child_argument(x=zeros(2))
-        x[1] ~ Normal()
-        x[2] ~ Normal()
-        return x
-    end
-    @model auto_parent() = a ~ to_submodel(child_argument())
-    @model shared_parent() = a ~ to_submodel(child_argument(), false)
+    @model auto_parent() = a ~ to_submodel(two_default_elements())
+    @model shared_parent() = a ~ to_submodel(two_default_elements(), false)
     for bind in (condition, fix)
         @test_throws ArgumentError bind(
             auto_parent(), @varname(a.x[end]) => 1.0, @of(a = @of(x = of(Array, 1)))
@@ -230,8 +235,11 @@ end
         @test_throws ArgumentError bind(
             shared_parent(), @varname(x[end]) => 1.0, @of(x = of(Array, 1))
         )
-        direct =
-            bind === fix ? decondition(child_argument(), @varname(x[2])) : child_argument()
+        direct = if bind === fix
+            decondition(two_default_elements(), @varname(x[2]))
+        else
+            two_default_elements()
+        end
         @test bind(direct, @varname(x[end]) => 1.0, @of(x = of(Array, Int, 100)))(
             Xoshiro(1)
         ) == [0.0, 1.0]
@@ -1278,15 +1286,40 @@ end
             end
         end
 
-        @model scalar_dictionary(x) = (x[:a] ~ Normal(); x)
-        for T in (Float32, Float64, BigFloat)
-            data = Dict(:a => T(1))
-            model = decondition(scalar_dictionary(data))
-            result = returned(model, (; x=Dict(:a => T(2))))
-            @test result == Dict(:a => T(2))
+        dictionary_cases = [
+            (
+                name="Float32",
+                input=Dict(:a => Float32(1)),
+                remove=decondition,
+                latent=Dict(:a => Float32(2)),
+                expected=Dict(:a => Float32(2)),
+                original=Float32(1),
+            ),
+            (
+                name="Float64",
+                input=Dict(:a => Float64(1)),
+                remove=decondition,
+                latent=Dict(:a => Float64(2)),
+                expected=Dict(:a => Float64(2)),
+                original=Float64(1),
+            ),
+            (
+                name="BigFloat",
+                input=Dict(:a => BigFloat(1)),
+                remove=decondition,
+                latent=Dict(:a => BigFloat(2)),
+                expected=Dict(:a => BigFloat(2)),
+                original=BigFloat(1),
+            ),
+        ]
+        @testset "$(case.name)" for case in dictionary_cases
+            data = case.input
+            model = case.remove(dictionary_first(data))
+            result = returned(model, (; x=case.latent))
+            @test result == case.expected
             @test result isa typeof(data)
             @test result !== data
-            @test data[:a] == T(1)
+            @test data[:a] == case.original
         end
 
         @model function nested_dictionary(x, key)
@@ -1465,9 +1498,8 @@ end
     end
 
     @testset "fixed coverage errors" begin
-        @model uncovered(x) = x[2] ~ Normal()
         @test_throws r"ArgumentError: .*x\[2\].*size and shape" fix(
-            decondition(uncovered(Any[1.0])); x=Any[2.0]
+            decondition(second_observation(Any[1.0])); x=Any[2.0]
         )()
         @model field_lhs(p) = p.a ~ Normal()
         omitted = fix(decondition(field_lhs((; a=1.0))); p=(; b=2.0))
@@ -5279,7 +5311,6 @@ Base.size(x::LazyArgumentStorage) = (x.n,)
 Base.getindex(::LazyArgumentStorage{T}, i::Int) where {T} = T(1:i)
 
 @testset "arguments in unwritable storage" begin
-    @model whole_storage(x) = (x ~ MvNormal(zeros(2), I); x)
     @model keyword_storage(; x=1.0:2.0) = (x ~ MvNormal(zeros(2), I); x)
     function message(vn, storage)
         return "Argument `$vn` is a `$(typeof(storage))`, which cannot hold latent draws; " *
@@ -5316,26 +5347,63 @@ Base.getindex(::LazyArgumentStorage{T}, i::Int) where {T} = T(1:i)
     end
     range = 1.0:2.0
     @test_throws message("x", range) decondition(keyword_storage())
-    for (vn, storage, data) in (
-        ("x.a", range, (a=range,)),
-        ("x[1]", range, (range,)),
-        ("x[2]", range, [[1.0], range]),
-        ("x[1]", SVector(1.0, 2.0), [SVector(1.0, 2.0)]),
-    )
-        @test_throws message(vn, storage) decondition(whole_storage(data))
+    unwritable_cases = [
+        (
+            name="named range",
+            input=(a=range,),
+            remove=decondition,
+            expected=message("x.a", range),
+        ),
+        (
+            name="tuple range",
+            input=(range,),
+            remove=decondition,
+            expected=message("x[1]", range),
+        ),
+        (
+            name="nested range",
+            input=[[1.0], range],
+            remove=decondition,
+            expected=message("x[2]", range),
+        ),
+        (
+            name="nested static vector",
+            input=[SVector(1.0, 2.0)],
+            remove=decondition,
+            expected=message("x[1]", SVector(1.0, 2.0)),
+        ),
+    ]
+    @testset "$(case.name)" for case in unwritable_cases
+        @test_throws case.expected case.remove(whole_storage(case.input))
     end
-    for data in (
-        [1.0, 2.0],
-        MVector(1.0, 2.0),
-        ComponentVector(; a=1.0, b=2.0),
-        OffsetArray([1.0, 2.0], 0:1),
-        view([1.0, 2.0, 3.0], 1:2),
-        BitVector([true, false]),
-        (a=[1.0, 2.0],),
-        [[1.0], [2.0]],
-        sparsevec([1.0, 2.0]),
-    )
-        @test length(decondition(whole_storage(data))(Xoshiro(1))) == 2
+    writable_cases = [
+        (name="vector", input=[1.0, 2.0], remove=decondition, expected=2),
+        (
+            name="mutable static vector",
+            input=MVector(1.0, 2.0),
+            remove=decondition,
+            expected=2,
+        ),
+        (
+            name="component vector",
+            input=ComponentVector(; a=1.0, b=2.0),
+            remove=decondition,
+            expected=2,
+        ),
+        (
+            name="offset vector",
+            input=OffsetArray([1.0, 2.0], 0:1),
+            remove=decondition,
+            expected=2,
+        ),
+        (name="view", input=view([1.0, 2.0, 3.0], 1:2), remove=decondition, expected=2),
+        (name="bit vector", input=BitVector([true, false]), remove=decondition, expected=2),
+        (name="named tuple", input=(a=[1.0, 2.0],), remove=decondition, expected=2),
+        (name="nested vectors", input=[[1.0], [2.0]], remove=decondition, expected=2),
+        (name="sparse vector", input=sparsevec([1.0, 2.0]), remove=decondition, expected=2),
+    ]
+    @testset "$(case.name)" for case in writable_cases
+        @test length(case.remove(whole_storage(case.input))(Xoshiro(1))) == case.expected
     end
     @test decondition(array_model(sparsevec([1.0, 2.0])))(Xoshiro(1)) isa SparseVector
     lazy = LazyArgumentStorage{UnitRange{Int}}(2)
@@ -5701,7 +5769,6 @@ end
     end
     Base.getproperty(x::HiddenFieldDiagnostic, name::Symbol) =
         name === :a ? getfield(x, :shown) : getfield(x, name)
-    @model hidden_field_diagnostic(x, y) = (x[1] ~ Normal(); 0.0 ~ Normal(y.a[1]))
     @model covariates_first_diagnostic(a, b, x) = (
         x[1] ~ Normal(); 0.0 ~ Normal(a[1] + b[1])
     )
@@ -5710,7 +5777,7 @@ end
     )
     v = [0.0]
     @test_throws r"shared by `x` and `y`" decondition(
-        hidden_field_diagnostic(v, HiddenFieldDiagnostic(v, copy(v)))
+        field_covariate(v, HiddenFieldDiagnostic(v, copy(v)))
     )
     @test_throws r"shared by `x` and `a`" decondition(covariates_first_diagnostic(v, v, v))
     @test decondition(covariates_first_diagnostic(v, v, copy(v))) isa Model
@@ -6197,12 +6264,11 @@ function Base.getproperty(x::RedirectedDiagnosticTuple, name::Symbol)
     return name === :a ? getfield(x, :shown).value : getfield(x, name)
 end
 @testset "redirected named tuple diagnostic" begin
-    @model redirected_argument(x, y) = (x[1] ~ Normal(); 0.0 ~ Normal(y.a[1]))
     v = [0.0]
     y = (a=v, shown=RedirectedDiagnosticValue(copy(v)))
     @test y.a !== v
-    @test_throws "shared by `x` and `y`" decondition(redirected_argument(v, y))
-    @test decondition(redirected_argument(copy(v), y)) isa Model
+    @test_throws "shared by `x` and `y`" decondition(field_covariate(v, y))
+    @test decondition(field_covariate(copy(v), y)) isa Model
 end
 
 @info "Completed $(@__FILE__) in $(now() - __now__)."
@@ -7653,9 +7719,8 @@ end
             ) ≈ (bind === condition ? logpdf(Normal(), 1.0) : 0.0)
         end
     end
-    @model pairs_argument(x) = (x[:a] ~ Normal(); x)
     data = pairs((a=1.0, b=2.0))
-    model = pairs_argument(data)
+    model = dictionary_first(data)
     @test loglikelihood(model, (;)) ≈ logpdf(Normal(), 1.0)
     for (bind, remove) in ((condition, decondition), (fix, unfix))
         @test_throws r"ArgumentError: .*Base.Pairs.*whole value" bind(
@@ -7887,7 +7952,6 @@ end
         return x
     end
     @model shared_shape_fields() = (q.a ~ Normal(); q.b ~ Normal())
-    @model shared_shape_child(x=zeros(2)) = (x[1] ~ Normal(); x[2] ~ Normal(); x)
     @model shared_shape_parent(m) = a ~ to_submodel(m)
     @model function shared_shape_namespace()
         p = zeros(2, 2)
@@ -7928,7 +7992,7 @@ end
             @test eltype(
                 bind(bind === fix ? decondition(source) : source; x=[1, 2])(Xoshiro(1))
             ) === Int
-            parent = shared_shape_parent(shared_shape_child())
+            parent = shared_shape_parent(two_default_elements())
             @test_throws ArgumentError bind(parent, @varname(a.x) => ones(3))(Xoshiro(1))
             cleared = decondition(
                 parent, DynamicPPL.Recursive(), @varname(a.x[1]), @varname(a.x[2])
@@ -8513,22 +8577,57 @@ end
     end
 end
 
-@model overlap_array(x) = (x[1] ~ Normal(); x)
 @model overlap_local() = (x = zeros(2, 2); x[1] ~ Normal(); x)
 @testset "overlapping bindings" begin
     for bind in (condition, fix)
-        m = overlap_array(zeros(2, 2))
+        m = first_element(zeros(2, 2))
         bind === fix && (m = decondition(m))
-        for inputs in (
-            (@varname(x[1]) => 3.0, @varname(x[1]) => 4.0),
-            (@varname(x[2]) => 3.0, @varname(x[2, 1]) => 4.0),
-            (@varname(x[[1, 1]]) => [3.0, 4.0],),
-            (@varname(x[[1, 1]]) => [3.0, 3.0],),
-            (@varname(x[1:2]) => [3.0, 4.0], @varname(x[2:3]) => [4.0, 5.0]),
-            ((; x=ones(2, 2)), @varname(x[1]) => 3.0),
-            (VarNamedTuple((; x=ones(2, 2))), (; x=ones(2, 2))),
-        )
-            @test_throws r"[Oo]verlap|more than once" bind(m, inputs...)
+        overlap_input_cases = [
+            (
+                name="$bind: duplicate scalar",
+                input=(@varname(x[1]) => 3.0, @varname(x[1]) => 4.0),
+                bind=bind,
+                expected=r"[Oo]verlap|more than once",
+            ),
+            (
+                name="$bind: linear and Cartesian",
+                input=(@varname(x[2]) => 3.0, @varname(x[2, 1]) => 4.0),
+                bind=bind,
+                expected=r"[Oo]verlap|more than once",
+            ),
+            (
+                name="$bind: repeated unequal indices",
+                input=(@varname(x[[1, 1]]) => [3.0, 4.0],),
+                bind=bind,
+                expected=r"[Oo]verlap|more than once",
+            ),
+            (
+                name="$bind: repeated equal indices",
+                input=(@varname(x[[1, 1]]) => [3.0, 3.0],),
+                bind=bind,
+                expected=r"[Oo]verlap|more than once",
+            ),
+            (
+                name="$bind: overlapping ranges",
+                input=(@varname(x[1:2]) => [3.0, 4.0], @varname(x[2:3]) => [4.0, 5.0]),
+                bind=bind,
+                expected=r"[Oo]verlap|more than once",
+            ),
+            (
+                name="$bind: whole and partial",
+                input=((; x=ones(2, 2)), @varname(x[1]) => 3.0),
+                bind=bind,
+                expected=r"[Oo]verlap|more than once",
+            ),
+            (
+                name="$bind: two whole roots",
+                input=(VarNamedTuple((; x=ones(2, 2))), (; x=ones(2, 2))),
+                bind=bind,
+                expected=r"[Oo]verlap|more than once",
+            ),
+        ]
+        @testset "$(case.name)" for case in overlap_input_cases
+            @test_throws case.expected case.bind(m, case.input...)
         end
         @test_throws r"[Oo]verlap|more than once" bind(
             overlap_local(),
@@ -8543,7 +8642,7 @@ end
         ) == [3.0 5.0; 4.0 6.0]
         @test bind(m, @varname(x[[1, 1]][1]) => 3.0)(Xoshiro(1))[1] == 3.0
     end
-    @test_throws r"[Oo]verlap|more than once" overlap_array(zeros(2)) |
+    @test_throws r"[Oo]verlap|more than once" first_element(zeros(2)) |
         (@varname(x[1]) => 3.0, @varname(x[1]) => 4.0)
 end
 
@@ -8618,7 +8717,7 @@ end
 
 @testset "overlap validation preserves bounds errors" begin
     for bind in (condition, fix)
-        m = overlap_array(zeros(2, 2))
+        m = first_element(zeros(2, 2))
         @test_throws r"Cannot bind `x\[5\]`.*outside" bind(
             m, @varname(x[1]) => 1.0, @varname(x[5]) => 2.0
         )
@@ -9023,10 +9122,9 @@ end
     @test_throws ArgumentError condition(
         record_argument(AliasField(zeros(2))); x=AliasField(zeros(3))
     )
-    @model cyclic_argument(x) = x[2] ~ Normal()
     cycle = Any[nothing, 1.0]
     cycle[1] = cycle
-    @test condition(cyclic_argument(cycle); x=deepcopy(cycle)) isa DynamicPPL.Model
+    @test condition(second_observation(cycle); x=deepcopy(cycle)) isa DynamicPPL.Model
 end
 
 @testset "argument fields retain removed geometry" begin
@@ -9782,13 +9880,30 @@ struct UndeclaredVectorSizeDistribution <: ContinuousMultivariateDistribution en
 @model fixed_undeclared_vector() = x ~ UndeclaredVectorSizeDistribution()
 @model fixed_size_model() = (x ~ MvNormal(zeros(2), I); x)
 @model fixed_body_size_model() = (x = zeros(3); x ~ MvNormal(zeros(2), I); x)
-@model fixed_argument_size_model(x) = (x ~ MvNormal(zeros(2), I); x)
 @testset "fixed array tilde checks distribution size" begin
-    for x in (missing, nothing)
-        @test_throws r"Fixed value at `x` has size" fix(
-            fixed_argument_size_model(x); x=ones(3)
-        )()
-        @test fix(fixed_argument_size_model(x); x=ones(2))() == ones(2)
+    placeholder_size_cases = [
+        (
+            name="missing",
+            input=missing,
+            bind=fix,
+            valid=ones(2),
+            invalid=ones(3),
+            expected=ones(2),
+            error=r"Fixed value at `x` has size",
+        ),
+        (
+            name="nothing",
+            input=nothing,
+            bind=fix,
+            valid=ones(2),
+            invalid=ones(3),
+            expected=ones(2),
+            error=r"Fixed value at `x` has size",
+        ),
+    ]
+    @testset "$(case.name)" for case in placeholder_size_cases
+        @test_throws case.error case.bind(whole_storage(case.input); x=case.invalid)()
+        @test case.bind(whole_storage(case.input); x=case.valid)() == case.expected
     end
     @test_throws r"Fixed value at `x` has size \(3,\).*\(2,\)" fix(
         fixed_size_model(); x=ones(3)
