@@ -742,7 +742,7 @@ end
     end
 end
 
-@testset "logdensity_internal defaults to the task-local RNG" begin
+@testset "LogDensityFunction: logdensity_internal defaults to the task-local RNG" begin
     @model tiny() = x ~ Normal()
     ldf = LogDensityFunction(tiny())
     args = (
