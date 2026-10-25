@@ -48,7 +48,7 @@ tilde-statement.
 
 ```@example 1
 x = 1.0
-context = DynamicPPL.Context(InitFromParams((; x=x)), UnlinkAll())
+context = Context(InitFromParams((; x=x)), UnlinkAll())
 _, tsvi = DynamicPPL._evaluate!!(model, context, tsvi)
 length(tsvi.accs_by_task)
 ```

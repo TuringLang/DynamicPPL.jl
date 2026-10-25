@@ -168,7 +168,7 @@ Handwritten evaluator signatures change: `f(model, vi, args...)` → `f(model, c
 
 `make_evaluate_args_and_kwargs(m, vi)` → public `DynamicPPL.make_evaluate_args_and_kwargs(m, ctx, vi)`; prepared arguments now begin with `(m, ctx, vi)`. See [#1503](https://github.com/TuringLang/DynamicPPL.jl/pull/1503).
 
-Custom `AbstractContext`/`AbstractParentContext` subtyping is unsupported, and both exports disappear: `tilde_assume!!` context overloads → initialisation strategies; output hooks → accumulators. See [#1503](https://github.com/TuringLang/DynamicPPL.jl/pull/1503).
+`AbstractParentContext` is removed, and `AbstractContext` is no longer exported or subtyped by `Context`: `tilde_assume!!` context overloads → initialisation strategies; output hooks → accumulators. See [#1503](https://github.com/TuringLang/DynamicPPL.jl/pull/1503).
 
 `get_param_eltype(vi, context)` → `get_param_eltype(strategy)`; move custom context overloads to initialisation strategies. See [#1503](https://github.com/TuringLang/DynamicPPL.jl/pull/1503).
 

@@ -68,7 +68,8 @@ get_sample_input_vector
 subsample
 ```
 
-Internally, this is accomplished using [`init!!`](@ref) with [`VarInfo`](@ref).
+Internally, `LogDensityFunction` evaluates the model with [`init!!`](@ref). To build its
+parameter vector from recorded vectorised values, use:
 
 ```@docs
 to_vector_params
@@ -463,7 +464,7 @@ unflatten!!
 internal_values_as_vector
 ```
 
-### Evaluation contexts
+### Evaluation context
 
 Internally, model evaluation is performed with [`AbstractPPL.evaluate!!`](@ref).
 
@@ -474,8 +475,10 @@ AbstractPPL.evaluate!!
 Call `evaluate!!(model, context, varinfo)` to evaluate with an explicit context and collect
 outputs in `varinfo`. Accumulators are reset before evaluation.
 
-The context is an evaluation input; it is not stored in the model.
-Prefixes are stored separately from values. Conditioned and fixed values share one store, with each value carrying its role. Only latent LHS variables reach the context; observations and tracked values go directly to accumulators.
+The context is an evaluation input and is not stored in the model. A `Model` stores its
+prefix and its bindings separately; conditioned and fixed bindings share one store, each
+tagged with its role. Only latent LHS variables reach the context; observations and tracked
+values go directly to the accumulators.
 
 `Context` is the sole evaluation context. It supplies an RNG, an initialisation strategy,
 and a transform strategy. The output `varinfo` never supplies latent inputs.
@@ -485,7 +488,7 @@ DynamicPPL.Context
 ```
 
 Customise latent value selection with an [initialisation strategy](init.md) supplied to `Context`.
-`tilde_assume!!` dispatches on that context to initialise, transform, and accumulate a latent value.
+`tilde_assume!!` uses that context to initialise, transform, and accumulate a latent value.
 Every observation calls `tilde_observe!!(prefix, right, left, vn, template, vi)`, which applies the prefix metadata and calls `accumulate_observe!!` without dispatching on a context.
 
 ```@docs

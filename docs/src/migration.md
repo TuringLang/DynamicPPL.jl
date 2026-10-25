@@ -22,17 +22,17 @@ Replace `DefaultContext()` or `InitContext(...)` with
 `Context(rng, init_strategy, transform_strategy)`, specifying parameter inputs and output
 transforms explicitly. `Model.context` and `contextualize` are removed:
 `evaluate!!(contextualize(m, ctx), vi)` becomes `evaluate!!(m, ctx, vi)`.
-The two-argument `evaluate!!(m, vi)` is removed. Replace
-`DynamicPPL.evaluate_nowarn!!(m, vi)` with `evaluate!!(m, ctx, vi)` too.
+The two-argument `evaluate!!(m, vi)` and `DynamicPPL.evaluate_nowarn!!(m, vi)` are removed;
+use `evaluate!!(m, ctx, vi)`.
 For handwritten evaluators, replace `f(model, vi, args...)` with
 `f(model, ctx::Context, vi, args...)`. Replace `Model{false}(f, args, defaults, ctx)`
 with `Model{false}(f, args, defaults)` and pass `ctx` to evaluation.
 Replace `get_param_eltype(vi, context)` with `get_param_eltype(strategy)` and move custom
 context overloads to initialisation strategies.
 
-`AbstractContext` and `AbstractParentContext` are no longer exported, and context
-subtyping is replaced by initialisation strategies for custom value selection and
-accumulators for custom output handling. `childcontext`, `setchildcontext`, `leafcontext`,
+`AbstractParentContext` is removed. DynamicPPL no longer defines or exports `AbstractContext`,
+and `Context` subtypes neither. Use initialisation strategies for custom value selection
+and accumulators for custom output handling. `childcontext`, `setchildcontext`, `leafcontext`,
 and `setleafcontext` are removed; pass a single `Context` directly to evaluation instead
 of traversing or rebuilding a context hierarchy.
 

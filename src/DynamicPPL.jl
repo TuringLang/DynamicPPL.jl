@@ -232,7 +232,7 @@ Abstract supertype for data structures that capture random variables when execut
 probabilistic model and accumulate log densities such as the log likelihood or the
 log joint probability of the model.
 
-Subtypes must implement [`getaccs`](@ref) and [`setaccs!!`](@ref).
+Subtypes must implement `getaccs` and [`setaccs!!`](@ref).
 
 See also: [`VarInfo`](@ref).
 """
