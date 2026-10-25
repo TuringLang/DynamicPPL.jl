@@ -280,7 +280,7 @@ Base.getindex(x::CountingRealVector, i::Int) = (x.reads[] += 1; x.data[i])
             end
         end
 
-        @testset "initialization rejects missing but preserves nothing" begin
+        @testset "initialisation rejects missing but preserves nothing" begin
             for wrap in (identity, x -> TransformedValue(x, NoTransform()))
                 strategy = InitFromParams((; x=wrap(nothing)), nothing)
                 value = DynamicPPL.init(Xoshiro(1), @varname(x), Normal(), strategy)

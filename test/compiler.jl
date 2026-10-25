@@ -9,7 +9,7 @@ using DynamicPPL
 using AbstractPPL: getoptic
 using ForwardDiff: ForwardDiff
 using LinearAlgebra: I
-# Loads the renderer used by the docstring test.
+# The docstring test needs REPL's Markdown rendering.
 using REPL: REPL
 using Random: Random, Xoshiro
 using StableRNGs: StableRNG

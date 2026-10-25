@@ -179,7 +179,7 @@ end
 @model deferred_parent() = a ~ to_submodel(deferred_mid())
 @model deferred_structure() = (b ~ product_distribution((x=Normal(), y=Normal())); b)
 @model deferred_structured_parent() = a ~ to_submodel(deferred_structure())
-@testset "deferred invariants" begin
+@testset "child namespace bindings merge and replace fields" begin
     for (bind, remove, list) in ((condition, decondition, conditioned), (fix, unfix, fixed))
         m = bind(deferred_parent(); a=(b=(x=1.0,),))
         @test @varname(a.b) in keys(list(m))
@@ -256,7 +256,7 @@ end
 )
 @model listed_namespace_middle() = b ~ to_submodel(listed_namespace_leaves())
 @model listed_namespace_parent() = a ~ to_submodel(listed_namespace_middle())
-@testset "listing batch" begin
+@testset "a listing can be rebound alongside new entries" begin
     for (bind, listing) in ((condition, conditioned), (fix, fixed))
         m = bind(bind(listed_namespace_parent(); a=(b=(x=1.0,),)); a=(b=(y=2.0,),))
         @test bind(listed_namespace_parent(), listing(m), @varname(a.b.z) => 3.0)() ==
@@ -287,7 +287,7 @@ end
 @model listing_leaf() = (x ~ Normal(); y ~ Normal(); (x=x, y=y))
 @model listing_mid() = b ~ to_submodel(listing_leaf())
 @model listing_outer() = a ~ to_submodel(listing_mid())
-@testset "merged deferred listings" begin
+@testset "listings merge successive child namespace bindings" begin
     for (bind, remove, list) in ((condition, decondition, conditioned), (fix, unfix, fixed))
         m = bind(bind(listing_outer(); a=(b=(x=1.0,),)); a=(b=(y=2.0,),))
         L = list(m)
@@ -518,7 +518,7 @@ end
                 @test local_model(Xoshiro(1)) == 2.0
             end
         end
-        # A runtime RHS is classified at the tilde, and ordinary assignment stays Julia.
+        # A runtime RHS is classified when the tilde executes; ordinary assignment keeps Julia semantics.
         @test runtime_return(2.0, Normal())(Xoshiro(1)) == 2.0
         @model function assigned_return(x)
             a ~ to_submodel(fix(child(); z=2.0))
@@ -560,7 +560,6 @@ end
                 model = condition(
                     indexed_observations(zeros(100), indices), bindings..., templates...
                 )
-                # Keep the conditioned indexed path concrete as well as allocation-bounded.
                 @test @inferred(init!!(model, accs, strategy, UnlinkAll())) isa Tuple
                 @test (@allocated init!!(model, accs, strategy, UnlinkAll())) <=
                     baseline + 128
@@ -1723,7 +1722,7 @@ end
 @model closed_leaf(x=3.0) = x ~ Normal()
 @model closed_shared(x, child) = (x ~ Normal(); a ~ to_submodel(child, false); a)
 @model closed_shared_runtime(x, child, dist) = (x ~ dist; a ~ to_submodel(child, false); a)
-@testset "shared removal" begin
+@testset "named recursive removal in a shared namespace requires a prefix" begin
     for remove in (decondition, unfix),
         m in (
             closed_shared(2.0, fix(decondition(closed_leaf()); x=4.0)),

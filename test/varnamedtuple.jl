@@ -998,7 +998,7 @@ end
             @test_throws ArgumentError grow_to_indices!!(pa, 1)
         end
 
-        @testset "lookups need one index per dimension" begin
+        @testset "Lookups need one index per dimension" begin
             vnt = setindex!!(VarNamedTuple(), 1.0, @varname(x[2]))
             @test !haskey(vnt, @varname(x[2, 1]))
             @test_throws BoundsError vnt[@varname(x[2, 1])]
@@ -2733,7 +2733,7 @@ end
     end
 end
 
-@testset "of templates" begin
+@testset "`of` templates resolve `end`" begin
     @test templated_setindex!!(VarNamedTuple(), 2.0, @varname(z[end]), of(Array, 3))[@varname(
         z[3]
     )] === 2.0

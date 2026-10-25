@@ -22,13 +22,13 @@ using Logging: NullLogger, with_logger
 @info "Testing $(@__FILE__)..."
 __now__ = now()
 
-# Shared models for binding and removal cases with the same tilde structure.
 struct ConvertibleBindingReal <: Real
     value::Float64
 end
 Base.convert(::Type{Float64}, value::ConvertibleBindingReal) = value.value
 Base.isequal(value::Float64, other::ConvertibleBindingReal) = isequal(value, other.value)
 
+# Shared models for binding and removal cases with the same tilde structure.
 @model function array_model(x)
     for i in eachindex(x)
         x[i] ~ Normal()
@@ -1705,7 +1705,7 @@ end
         @test loglikelihood(model, (; s=0.0, x=[0.5, 0.25])) == 0
         @test keys(rand(Xoshiro(1), decondition(model, @varname(x)))) == names
         @test condition(model; x=[1.0, 2.0])(Xoshiro(1)) == [1.0, 2.0]
-        # Each draw replaces the body's storage, so derivatives reach later statements.
+        # Each `x[i] ~` overwrites the body's `fill!(x, 7)`, so derivatives reach later statements.
         logp(v) = logjoint(model, (; s=v[1], x=v[2:3]))
         v = [0.1, 0.2, 0.3]
         @test ForwardDiff.gradient(logp, v) ≈ [-v[1] + sum(v[2:3] .- v[1]); v[1] .- v[2:3]]
@@ -2445,7 +2445,7 @@ end
         end
     end
 
-    @testset "argument storage can be initialized in the model body" begin
+    @testset "argument storage can be initialised in the model body" begin
         @model function initialize_argument(x)
             fill!(x, [1.0])
             x[1] ~ MvNormal([0.0], [1.0;;])
@@ -3985,7 +3985,7 @@ end
     end
 end
 
-@testset "template exact conversion" begin
+@testset "template element types require exact conversion" begin
     for op in (condition, fix)
         @test_throws InexactError op(
             local_z(), @varname(z[2]) => 1.5, @of(z = of(Array, Int, 3))
@@ -5342,7 +5342,7 @@ end
     model = decondition(parent(v), DynamicPPL.Recursive(), @varname(s.x))
     @test_throws r"shared by `s.x` and `s.x`" logjoint(model, (s=(x=(a=[2.0],),),))
 
-    # Distinct storage, and storage shared only by bound values and covariates.
+    # Distinct storage and sharing confined to bound values or covariates are accepted.
     @model function own_field(x)
         x.a[1] ~ Normal()
         return 0.0 ~ Normal(x.a[1], 1)
@@ -5777,7 +5777,7 @@ end
 struct NumericArrayDistribution <: ContinuousMultivariateDistribution end
 Distributions.loglikelihood(::NumericArrayDistribution, ::CountedNumericArray) = 0.0
 
-@testset "placeholder consumer characterization" begin
+@testset "placeholder detection in nested, cyclic and opaque values" begin
     @testset "missing takes precedence through nested and cyclic values" begin
         cycle = CyclicObservation(true, nothing)
         cycle.next = (cycle, nothing, missing)
@@ -5855,7 +5855,7 @@ Distributions.loglikelihood(::NumericArrayDistribution, ::CountedNumericArray) =
         end
     end
 
-    @testset "numeric opacity and consumer inference" begin
+    @testset "bindings do not read custom numeric arrays" begin
         @model numeric_array(x=nothing) = x ~ NumericArrayDistribution()
         value = CountedNumericArray([1.0, 2.0], Ref(0))
         @test logjoint(numeric_array(value), (;)) == 0.0
@@ -6394,7 +6394,7 @@ end
     @test data == BigFloat[0.0]
 end
 
-@testset "Dual opacity follows its parts" begin
+@testset "Dual numbers that reach mutable storage are rejected" begin
     @model dual_buffer(x) = (x.value.buffer[1] ~ Normal(); x)
     struct DualBufferReal <: Real
         buffer::Vector{Float64}
@@ -6799,12 +6799,14 @@ end
     end
 end
 
-# --- Binding contract: independent oracle, generator, and implementation adapter ---
+#
+# Binding contract: oracle, case generator and implementation adapter
+#
 
-# Independent oracle based on the binding rules in docs/src/conditionfix.md,
-# refined through differential checks. It uses no DynamicPPL APIs.
+# Oracle for docs/src/conditionfix.md. It must not call DynamicPPL, so its
+# predictions stay independent of the implementation.
 struct BCCase
-    kind::Symbol                 # scalar, array, tuple, named, multivariate
+    kind::Symbol                 # Cases supported by `bc_basevalue`.
     argument::Bool
     depth::Int
     childfixed::Bool
@@ -7297,7 +7299,7 @@ function bc_model(c)
     c.depth > 0 && (m = bc_outer(m))
     return m
 end
-# Addresses are built once via @varname; the reference uses only tuples.
+# Addresses are built once with `@varname`; the oracle uses only tuples.
 const BC_ADDRESSES = let d = Dict{Tuple,Any}()
     for (p, v) in [
         ((:x,), @varname(x)),
@@ -7492,8 +7494,8 @@ function bc_corpus()
             BCCase(:scalar, true, 1, false, true),
         ],
     )
-    # Keep longer histories and local no-name removals; directed cases cover short edits.
-    # Generate skipped histories too, so trimming preserves the StableRNG stream.
+    # Keep long histories and whole-model nonrecursive removals; directed cases cover
+    # other short histories. Generate before filtering to preserve the StableRNG stream.
     return [
         (c, ops) for c in cs for i in 1:6 for
         ops in (bc_sequence(rng, c, i),) if i > 2 || any(
@@ -7535,7 +7537,7 @@ function bc_shape_corpus()
             push!(samples, (c, copy(ops)))
         end
     end
-    # Cross-role overlaps and incompatible extents must be rejected, including complete partial masks.
+    # Reject cross-role overlaps and incompatible extents even when masks cover every entry.
     for kind in (:array, :tuple, :nested_named, :nested_tuple), depth in (0, 1, 2)
         c = BCCase(kind, true, depth, false, false)
         p = (bc_namespace(c)..., (
@@ -7778,8 +7780,6 @@ end
         @test last(DynamicPPL.getacc(vi, Val(:BCTrace)).events) == ("a.x", :observed, 3.0)
     end
 end
-
-# --- End binding contract ---
 
 @model closed_leaf(x=3.0) = x ~ Normal()
 @model function closed_branch(a, run)
@@ -9065,7 +9065,7 @@ end
     @test (@allocated condition(model, input)) <= 120_000
 end
 
-@testset "parts require storage" begin
+@testset "partial bindings of locals without storage are rejected" begin
     @model no_storage_parts() = (x[1] ~ Normal(); x[2] ~ Normal())
     for bind in (condition, fix)
         @test_throws r"x\[1\].*without storage.*@of.*whole value.*VarNamedTuple" bind(
@@ -9229,7 +9229,7 @@ end
     @test result.entries[AbstractPPL.Iden()] == 2
     @test !haskey(result.entries, AbstractPPL.Property{:a}())
 end
-@testset "pending leaf protocol" begin
+@testset "listings of unresolved child bindings act as VarNamedTuples" begin
     for (bind, remove, listed) in
         ((condition, decondition, conditioned), (fix, unfix, fixed))
         bad = bind(pending_outer(), @varname(a.x[3, 3]) => 3.0)
@@ -9552,7 +9552,7 @@ end
     end
     return x
 end
-@testset "binding occupancy and entry preparation" begin
+@testset "child binding conflicts and storage checks before the body" begin
     @test_throws ArgumentError fix(two_elements(zeros(2)); x=ones(2))
     @test condition(two_elements(zeros(2)); x=ones(2))(Xoshiro(1)) == ones(2)
     @test_throws ArgumentError condition(
@@ -9768,22 +9768,28 @@ end
 @testset "retained empty masks preserve their role" begin
     retained_mask_cases = [
         (
-            name="condition empty",
+            name="condition: empty",
             input=falses(3),
             bind=condition,
             remove=decondition,
             expected=ArgumentError,
         ),
         (
-            name="condition selected",
+            name="condition: selected",
             input=[true, false, false],
             bind=condition,
             remove=decondition,
             expected=ArgumentError,
         ),
-        (name="fix empty", input=falses(3), bind=fix, remove=unfix, expected=ArgumentError),
         (
-            name="fix selected",
+            name="fix: empty",
+            input=falses(3),
+            bind=fix,
+            remove=unfix,
+            expected=ArgumentError,
+        ),
+        (
+            name="fix: selected",
             input=[true, false, false],
             bind=fix,
             remove=unfix,

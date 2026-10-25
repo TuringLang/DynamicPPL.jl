@@ -5,7 +5,7 @@ using DynamicPPL, Distributions, Random, LinearAlgebra
 using StableRNGs: StableRNG
 using AbstractPPL: @of, of
 
-# Set DYNAMICPPL_EXHAUSTIVE_TESTS to run the complete binding occupancy enumeration.
+# Set DYNAMICPPL_EXHAUSTIVE_TESTS=true to run the complete binding occupancy enumeration.
 const EXHAUSTIVE = get(ENV, "DYNAMICPPL_EXHAUSTIVE_TESTS", "false") == "true"
 
 @model function oracle_argument(x, whole, entered)
