@@ -247,7 +247,6 @@ For low-level density calls, replace `DynamicPPL.logdensity_internal(args...)` w
 with `context=(model, getlogdensity, ranges, strategy, accs, rng)`.
 See [Randomness in density evaluation](@ref ldf-rng) for the evaluation contract.
 
-
 ## Observation hooks
 
 For direct observation calls, replace
