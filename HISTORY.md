@@ -26,7 +26,7 @@ Re-evaluation and `LogDensityFunction` construction no longer copy fixed transfo
 
 Added `evaluate!!(model, context, vi)` to evaluate with an explicit `Context` and collect outputs in `vi`, such as `evaluate!!(model, Context(rng, InitFromPrior(), UnlinkAll()), VarInfo())`. See [#1500](https://github.com/TuringLang/DynamicPPL.jl/pull/1500), [#1503](https://github.com/TuringLang/DynamicPPL.jl/pull/1503).
 
-Density evaluation accepts an explicit RNG: `DynamicPPL.logdensity_internal(args...)` → `DynamicPPL.logdensity_internal(args..., rng)`; append `rng` to `AbstractPPL.prepare`’s `context` tuple. See [#1504](https://github.com/TuringLang/DynamicPPL.jl/pull/1504).
+`DynamicPPL.logdensity_internal` and the `AbstractPPL.prepare` context tuple accept a trailing `rng`. See [#1504](https://github.com/TuringLang/DynamicPPL.jl/pull/1504).
 
 ## Breaking changes
 
