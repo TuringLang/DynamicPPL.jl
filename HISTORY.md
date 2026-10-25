@@ -1,29 +1,12 @@
 # 0.43.0 (unreleased)
 
+For binding changes, see the [binding rules](https://turinglang.org/DynamicPPL.jl/dev/conditionfix/#Binding-rules).
+
 Thread-safe tilde assignments now throw an `ArgumentError` if any container is replaced, including same-type immutable values: `(a = zero(T),)` → `Vector{T}(undef, n)`. Allocate mutable storage with `::Type{T}=Float64`; use `Vector{Union{Missing,Real}}` for imputation under AD. See [#1521](https://github.com/TuringLang/DynamicPPL.jl/pull/1521).
 
-  - Fixed whole arrays without body storage, including `missing` or `nothing` arguments, now report a size mismatch when their distribution sample size differs.
+`AbstractPPL.of(vnt::VarNamedTuple)` builds a binding template from sampled or listed values. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-  - Fixed locals and whole observations of locals reject body storage with a different shape at executed tildes; `check_model` warns about unread partial bindings in either role.
-  - Each occupied position now has one binding across roles and models. Clear another role with `decondition` or `unfix`, or a child binding with the matching `Recursive()` removal, before inserting. Same-model, same-role replacement remains supported.
-  - Partial bindings of child-local variables require storage before the child's body, even in an untaken local branch; supply a template or storage on the child.
-  - A namespace template cannot change shape while recursive removals remain below its root; rebuild the model to use the new shape.
-
-Addresses in one `condition` or `fix` call must be disjoint after resolving them through storage, and a selection cannot repeat a position; use separate calls to overwrite bindings.
-
-Binding shapes are shared by observations and fixed values and survive removal; clear both layers at the root before resizing it with a whole value or template. Whole removal at an argument root restores the argument’s own shape, while element-wise removal retains masked storage and keeps the root occupied even when every position is masked.
-
-A binding template’s shape persists after both layers are cleared; supply a new template to replace it.
-
-A whole `NamedTuple` binding splits into leaf roots only at a submodel prefix; elsewhere it defines one root. A `VarNamedTuple` binds its leaves as written. Existing roots cannot be implicitly split or merged.
-
-`check_model` now warns about binding template entries with no LHS variable in the model or its reached submodels.
-
-`AbstractPPL.of(vnt::VarNamedTuple)` builds a snapshot binding template from plain numeric arrays, exactly representable scalars and nested namespaces; partial entries describe their full backing arrays. Custom arrays, growable entries and scalars whose types would widen are rejected. Rebuild after layout changes.
-
-Compact displays of `conditioned` and `fixed` listings now show only bound entries, hiding unassigned slots in masked storage.
-
-Recursive removal is now explicit: decondition a child before wrapping it → `decondition(parent, DynamicPPL.Recursive(), @varname(a.x))`; likewise `unfix` removes child fixes. No-name recursive forms clear their layer at every depth; later bindings apply after recursive removals without cancelling them. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+Compact displays of `conditioned` and `fixed` show only bound entries. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
 `VarNamedTuple` membership resolves `begin` and `end` against the stored array. See [#1490](https://github.com/TuringLang/DynamicPPL.jl/pull/1490).
 
@@ -41,137 +24,137 @@ Added `evaluate!!(model, context, vi)` to evaluate with an explicit leaf context
 
 `TransformedValue`, `FixedTransform`, `WithTransforms`, `LinkSome`, and `UnlinkSome` now hash consistently with `isequal`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-`subsample` accepts argument-supplied observations: `condition(f(); y=data)` → `f(data)` for models with argument `y`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+`subsample` accepts argument-supplied observations, such as `f(data)` for a model with argument `y`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-Indexed prefixes accept a prefix template: `prefix(m, @varname(a[2]))` → `prefix(m, @varname(a[end]); template=zeros(2))`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+`prefix` accepts a `template` keyword, allowing `begin`/`end` in indexed prefixes: `prefix(m, @varname(a[end]); template=zeros(2))`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-`DynamicPPL.DebugUtils` accepts explicit contexts: `model_typed(m)` → `model_typed(m; context=ctx)`; likewise `model_warntype` and `gen_evaluator_call_with_types`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+`model_typed`, `model_warntype` and `gen_evaluator_call_with_types` accept a `context` keyword. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-`check_model` accepts explicit argument bindings and warns about binding names absent from the model and reached unprefixed submodels. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+`check_model` accepts models with explicit argument bindings and warns about unused bound names, template entries, recursive removals and partially bound positions. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-Binding and removal addresses now accept scalar `CartesianIndex` at any depth, including below prefixes.
+Binding and removal addresses now accept scalar `CartesianIndex` at any depth, including below prefixes. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-Growable storage now accepts scalar indices of any `Integer` type, including `Int32`, without a `MethodError`.
+Growable storage now accepts scalar indices of any `Integer` type, including `Int32`, without a `MethodError`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-Fixed zero-dimensional array sampling, binding and removal at `x[]`.
+Fixed zero-dimensional array sampling, binding and removal at `x[]`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-Fixed growth and child bounds for Boolean masks and slices that drop dimensions in growable storage.
+Fixed growth and child bounds for Boolean masks and slices that drop dimensions in growable storage. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-Empty integer selections now require zero storage extent instead of throwing a reduction error.
+Empty integer selections now require zero storage extent instead of throwing a reduction error. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-Bindings and removals now accept in-bounds unassigned array slots and traverse slices without reading unrelated unassigned entries.
+Bindings and removals now accept in-bounds unassigned array slots and traverse slices without reading unrelated unassigned entries. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-Copying or widening partial reference arrays now skips unassigned masked slots.
+Copying or widening partial reference arrays now skips unassigned masked slots. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-Bindings and removals now resolve `begin`/`end` below whole values in growable storage, including through slices, and reject child indices outside a slice.
+Bindings and removals now resolve `begin`/`end` below whole values in growable storage, including through slices, and reject child indices outside a slice. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-Fixed stack overflows when removing bindings from models with cyclic covariates.
+Fixed stack overflows when removing bindings from models with cyclic covariates. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-Improved evaluation performance for indexed submodels.
+Improved evaluation performance for indexed submodels. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-Improved placeholder-checking performance for heterogeneous arrays and tuples.
+Improved placeholder-checking performance for heterogeneous arrays and tuples. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
 ## Breaking changes
 
-Partial bindings and removals through array arguments now require `Array` or Array-backed `OffsetArray`, `ComponentArray` or `DimArray`: `decondition(f(view(v, :)), @varname(x[1]))` → `decondition(f(collect(v)), @varname(x[1]))`, or bind/remove the whole value. Reshape and transpose/adjoint wrappers, immutable or tracked arrays, ranges, `MVector`, `SizedArray` and `BitArray` no longer support partial edits.
+For binding changes, see the [binding rules](https://turinglang.org/DynamicPPL.jl/dev/conditionfix/#Binding-rules).
 
-Partial edits rebuilding tuples, structs, `Base.Pairs`, dictionaries or other unsupported owners now throw at any depth: `fix(f((1.0, 2.0)), @varname(x[1]) => 9.0)` → `fix(decondition(f((1.0, 2.0))); x=(9.0, 2.0))`. Bind/remove the enclosing value whole, or use NamedTuple/array storage; argument observations and complete local LHS bindings remain supported.
+Replace overlapping or repeated selections in one binding call with successive calls. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-Explicit and automatic submodel prefixes now allow only properties and non-`Bool` scalar integer indices: `prefix(m, @varname(p[1:2]))` → `prefix(m, @varname(p[2]))`. Colons, masks and keyword indices are also rejected; use `to_submodel(child, false)` to retain a sliced return LHS without creating a prefix.
+Replace allocation inside the child body with a binding template or storage bound on the child before partial binding. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-Named recursive removals overlapping a parent LHS and an unprefixed child LHS now throw when that child is reached: `decondition(m, DynamicPPL.Recursive(), @varname(x))` → `decondition(m, @varname(x))` to clear only the parent, or prefix the child. Clearing a whole layer recursively without names remains supported.
+Before replacing a binding shape, remove both roles at the root; reconstruct the model if a recursive removal prevents the change. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-Untemplated partial bindings no longer alias addresses with different index counts: binding `x[2]` does not bind `x[2, 1]`, and a tilde with a mismatched index count throws. Match the tilde address or supply argument/template storage; symbols with mixed index counts require storage. Membership and removal treat these addresses as distinct.
+Replace implicit splitting or merging of binding roots with bindings at the existing roots, or reconstruct the model. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-Parts alone cannot bind a multivariate LHS without storage: `condition(m, @varname(x[1]) => 1.0, @varname(x[2]) => 2.0)` for `x ~ MvNormal(...)` → `condition(m; x=[1.0, 2.0])`, or supply argument/template storage. To leave some elements latent, use element-wise tildes.
+For child bindings, replace `decondition(parent, @varname(a.x))` with `decondition(parent, DynamicPPL.Recursive(), @varname(a.x))`, and likewise for `unfix`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-Immutable argument arrays, including nested or partially bound ranges, `SVector`/`SArray` and FillArrays, can no longer become latent: `decondition(f(v))` → `decondition(f(collect(v)))`. Whole bindings remain supported. `MVector`, `SizedArray` and SparseArrays remain accepted; other immutable wrappers without `parent` may be rejected, while read-only wrappers over mutable parents and immutable arrays inside structs or dictionaries can still fail at evaluation.
+For partial edits of unsupported arrays, replace `decondition(f(view(v, :)), @varname(x[1]))` with `decondition(f(collect(v)), @varname(x[1]))`, or bind/remove the whole value. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-Shared latent argument storage now throws on binding/removal, constructor placeholder removal, or reaching a recursively edited child: `f((a=v, b=v))` → `f((a=v, b=copy(v)))` (use `v .+ 0` for ReverseDiff tracked arrays). This covers memory shared within/across arguments or with an observed or fixed part of an argument, even if only read. Separate explicit binding values and explicitly replaced branches do not count; aliases created in the body remain unchecked.
+Replace partial tuple, struct or `Base.Pairs` edits with whole operations: `fix(f((1.0, 2.0)), @varname(x[1]) => 9.0)` → `fix(decondition(f((1.0, 2.0))); x=(9.0, 2.0))`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-Dictionary keys in arguments with latent parts now must be isbits values, `Symbol`s or `String`s when copied: unsupported keys → supported keys or a separate covariate argument.
+Replace sliced prefixes such as `prefix(m, @varname(p[1:2]))` with scalar prefixes such as `prefix(m, @varname(p[2]))`; use `to_submodel(child, false)` for a sliced return LHS. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-Custom numbers reaching mutable storage in latent argument branches now throw when copied: storage-bearing numeric wrappers → keep storage outside the number. Isbits numbers, `BigFloat`, `BigInt`, AD values supported by package extensions and Base numbers with recursively supported fields remain accepted; bound and covariate branches are unaffected.
+For an ambiguous named recursive removal, replace `decondition(m, DynamicPPL.Recursive(), @varname(x))` with `decondition(m, @varname(x))` to clear only the parent, or prefix the child. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-An argument containing an AD value and a separate array sharing its buffer now throws when copied for sampling. Give the separate array independent storage; for example, `b[1] = ReverseDiff.value(z)` → `b[1] = copy(ReverseDiff.value(z))`.
+Replace mismatched index spellings in partial bindings with the tilde address, or supply argument/template storage to resolve them. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-`marginalize` and `DynamicPPLMarginalLogDensitiesExt` are removed: remain on DynamicPPL 0.42.x with compatible Turing (for example, 0.49.0) and MarginalLogDensities 0.4.3–0.4.x, or supply a log-density adapter to MLD’s generic API; there is no drop-in model-level replacement. See the [0.42 marginalisation documentation](https://turinglang.org/DynamicPPL.jl/v0.42/api/#Marginalisation).
+For `x ~ MvNormal(...)` without storage, replace `condition(m, @varname(x[1]) => 1.0, @varname(x[2]) => 2.0)` with `condition(m; x=[1.0, 2.0])`, or supply argument/template storage. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-`missing` still makes a whole top-level argument or individual elements of a supported top-level argument array latent; whole `nothing` arguments also supply no observation. These roles are set at construction, including defaults. Placeholders elsewhere now throw where a tilde reads them: `f([[1.0, missing]])` → `decondition(f([[1.0, 0.0]]), @varname(x[1][2]))`. For `missing` elements in views or static arrays, pass `collect(v)`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501), [#1464](https://github.com/TuringLang/DynamicPPL.jl/issues/1464).
+For immutable argument arrays, `decondition(f(v))` → `decondition(f(collect(v)))`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-Partial bindings into whole `missing`/`nothing` arguments: deferred tilde values → binding-time `ArgumentError`; supply concrete argument storage or a whole binding. Complete produced `VarNamedTuple` entries still bind whole. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+For shared latent argument storage, `f((a=v, b=v))` → `f((a=v, b=copy(v)))` (use `v .+ 0` for ReverseDiff tracked arrays). See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-`condition` and `fix` values containing `missing`/`nothing` now throw at binding time: `condition(m; x=missing)` → `decondition(m, @varname(x))`; `fix(m; x=nothing)` → `unfix(m, @varname(x))`. For placeholders inside bindings, supply concrete values and remove the corresponding parts, e.g. `condition(m; x=[1.0, missing])` → `decondition(condition(m; x=[1.0, 0.0]), @varname(x[2]))`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+For unsupported dictionary keys in latent argument storage, use isbits, `Symbol` or `String` keys, or pass the dictionary as a separate covariate. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-`InitFromParams` rejects `missing` instead of invoking its fallback: `InitFromParams((; x=missing))` → `InitFromParams((;))`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+For latent arguments, replace custom numbers holding mutable storage with numbers whose storage is held separately. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-`condition` and `fix` reject dictionaries: `condition(m, Dict(@varname(x) => v))` → `condition(m, @varname(x) => v)`. `|` no longer accepts `AbstractDict`: `m | Dict(@varname(x) => v)` → `m | (@varname(x) => v)` or `m | (x=v,)`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+Replace shared AD backing storage such as `b[1] = ReverseDiff.value(z)` with `b[1] = copy(ReverseDiff.value(z))`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-Partial local bindings use a positional binding template: `@vnt`/`@template` storage → `condition(m, @varname(z[2]) => 1.0, @of(z=of(Array, 3)))`, importing `of, @of` from AbstractPPL. Templates use absolute names (`@of(p=@of(z=of(Array, 3)))` under prefix `p`); argument and unused entries are ignored, and existing storage owners take precedence. For indexed prefixes, supply storage before prefixing or through an argument. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+`marginalize` and `DynamicPPLMarginalLogDensitiesExt` are removed: remain on DynamicPPL 0.42.x with compatible Turing (for example, 0.49.0) and MarginalLogDensities 0.4.3–0.4.x, or supply a log-density adapter to MLD's generic API; there is no drop-in model-level replacement. See the [0.42 marginalisation documentation](https://turinglang.org/DynamicPPL.jl/v0.42/api/#Marginalisation).
 
-Namespace binding templates now shape stored values: applying templates at evaluation → linear and Cartesian removals and rebindings share the stored shape across `condition`/`fix`; use `decondition`/`unfix` before changing it.
+For nested placeholders, replace `f([[1.0, missing]])` with `decondition(f([[1.0, 0.0]]), @varname(x[1][2]))`. For `missing` elements in unsupported arrays, pass `collect(v)`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501), [#1464](https://github.com/TuringLang/DynamicPPL.jl/issues/1464).
 
-Explicit observations now replace argument-supplied observations before the body: ignored `condition(f(1); x=2)` → the observations of `f(2)`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501), [#958](https://github.com/TuringLang/DynamicPPL.jl/issues/958).
+Before partially binding a whole `missing` or `nothing` argument, replace the placeholder with concrete argument storage or a whole binding. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-Conditioned argument LHS variables observe body-transformed values: observing the original bound value → observe it under a separate LHS variable. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+`condition(m; x=missing)` → `decondition(m, @varname(x))`; `fix(m; x=nothing)` → `unfix(m, @varname(x))`. For partial placeholders, `condition(m; x=[1.0, missing])` → `decondition(condition(m; x=[1.0, 0.0]), @varname(x[2]))`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-Whole bindings must satisfy declared argument types, explicit local binding template types, and shared signature constraints; untemplated locals may change value type while retaining their binding geometry. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+`InitFromParams((; x=missing))` → `InitFromParams((;))`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-Partial bindings require exact element/field conversion: `0.1` into `Float32` storage → `Float32(0.1)`; runtime AD bindings need storage compatible with AD values. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+`condition(m, Dict(@varname(x) => v))` → `condition(m, @varname(x) => v)`. `m | Dict(@varname(x) => v)` → `m | (@varname(x) => v)` or `m | (x=v,)`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-Slice bindings cannot resize enclosing storage: `condition(m, @varname(x[1:2]) => ones(3))` → `condition(m; x=ones(3))`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+For partial local bindings, replace `@vnt`/`@template` storage with `condition(m, @varname(z[2]) => 1.0, @of(z=of(Array, 3)))`, importing `of, @of` from AbstractPPL. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-Fixed bindings require coverage and unchanged shape at each LHS variable: resizing fixed arguments → supply covering, statically shaped values. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+To preserve argument `x=1` before the body runs, replace `condition(f(1); x=2)` with a model using a separate local LHS variable for the explicit observation. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501). See also [#958](https://github.com/TuringLang/DynamicPPL.jl/issues/958).
 
-Known-invalid binding addresses now throw, including covariates, unknown LHS names, nonexistent fields, and out-of-bounds indices: binding non-LHS arguments → reconstruct the model. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+To observe raw data, replace a conditioned argument LHS with a separate local LHS variable. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-`decondition` and `unfix` now reject the addresses bindings reject when the model can decide: covariates, names with no LHS variable, nonexistent fields, and indices outside storage. Previously these removals were silent; correct the address. Removing a valid address with no binding, including removing it twice, is a no-op. Child-address typos in recursive removals are reported by `check_model`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+Replace whole bindings incompatible with declared argument or template types with compatible values, or reconstruct the model. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-Indexed NamedTuple addresses are rejected in bindings, removals and LHS variables: `x[1]` or `x[:a]` → `x.a`; ranges, colons and vectors of indices are also rejected. Ordinary Julia indexing in the body is unaffected. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+For partial bindings into `Float32` storage, `0.1` → `Float32(0.1)`; for runtime AD bindings, replace fixed-type storage with storage built from the running AD value. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-Partly removing bindings of one multivariate LHS variable now errors: `decondition(m, @varname(x[1]))` for `x ~ MvNormal(...)` → declare separate LHS variables. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+To resize storage, `condition(m, @varname(x[1:2]) => ones(3))` → `condition(m; x=ones(3))`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-`fix` requires unobserved positions; `unfix` leaves removed positions latent: temporary fixes → keep the original model to restore its observations. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+Replace body resizing of fixed or wholly observed local storage with storage matching the binding; without body storage, use a whole fixed array matching `size(dist)`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-Ancestor bindings must be disjoint from child bindings: ancestor overwrite → recursively remove the child binding before inserting on the parent. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501), [#1012](https://github.com/TuringLang/DynamicPPL.jl/issues/1012).
+Replace bindings at invalid addresses with valid LHS addresses; reconstruct the model to change covariates. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-A submodel tilde rooted at a model argument now throws `ArgumentError` when it runs, including indexed and field addresses: `a ~ to_submodel(child())` with argument `a` → `result ~ to_submodel(child())` with local `result`. Bind the child's LHS variables with `condition`, or copy the return value afterwards with `a = result`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+Replace removals of known-invalid addresses with valid LHS addresses; reconstruct the model to change covariates. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-Submodel return values cannot be bound: `condition(m; a=value)` → `condition(m, @varname(a.x) => value)` for child LHS variable `x` of a local `a`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501), [#1246](https://github.com/TuringLang/DynamicPPL.jl/issues/1246).
+For NamedTuple addresses in bindings, removals and tildes, replace `x[1]` or `x[:a]` with `x.a`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-Argument arrays without `missing` elements are used without copying, even when their element type includes `Missing`; arrays with `missing` elements are snapshotted at construction: mutating argument storage after construction → construct the model again. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+For partial removal, `decondition(m, @varname(x[1]))` for `x ~ MvNormal(...)` → declare separate LHS variables. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-Partial bindings copy containers on the edited path when storage becomes available: ancestor-held storage at binding, live child storage afresh at child entry. Deferred checks preserve an existing snapshot. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+Replace `fix(condition(m; x=data); x=value)` with `fix(decondition(condition(m; x=data), @varname(x)); x=value)`; remove child bindings with `Recursive()` before binding on the parent. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501), [#1012](https://github.com/TuringLang/DynamicPPL.jl/issues/1012).
 
-Binding edits use the latest replacement shape: construction-time argument indices → indices of the most recent enclosing bound value. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+For argument `a`, replace `a ~ to_submodel(child())` with local `result ~ to_submodel(child())`; assign `a = result` afterwards if needed. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-`conditioned(model)` lists explicit and argument-supplied observations stored on that model; `fixed(model)` lists its fixed values. Neither accessor evaluates children. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+For submodel return bindings, `condition(m; a=value)` → `condition(m, @varname(a.x) => value)` for child LHS variable `x` of a local `a`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501), [#1246](https://github.com/TuringLang/DynamicPPL.jl/issues/1246).
 
-Keyword splats in `model.defaults` are nested: `(z=2, w=3)` → `(var"#splat#kw"=(z=2, w=3),)` for `@model f(; kw...)`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+After mutating argument storage, reconstruct the model instead of reusing construction-time placeholder classification. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-Individual keyword-splat entries cannot be bound: `condition(m, @varname(kw.y) => 2)` → `condition(m; kw=(; y=2))`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+After mutating argument storage, rebuild partial bindings instead of relying on an isolated snapshot. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-Inner-function parameters used as LHS variables cannot shadow model arguments: `(x -> x ~ Normal())` → `(z -> z ~ Normal())`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+After an enclosing binding replacement, replace indices derived from the construction-time shape with indices for the replacement. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-`Model` field/type-parameter construction changes, removing `missings`: `Model{Threaded,missings}(...)` → construct with `@model` and select latent arguments using `decondition`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+Replace manual merging of argument observations into `conditioned(model)` with `conditioned(model)` alone. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-Direct constructors require declared argument-supplied observations: `Model{false}(f, args, defaults)` → `Model{false}(f, args, defaults; args_on_lhs=(:y,))`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+For keyword splats in `model.defaults`, `(z=2, w=3)` → `(var"#splat#kw"=(z=2, w=3),)` for `@model f(; kw...)`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-Handwritten evaluators must prepare argument bindings: direct argument use → reuse an `@model` evaluator or implement its argument-preparation and binding-aware tilde protocol. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+For keyword-splat bindings, `condition(m, @varname(kw.y) => 2)` → `condition(m; kw=(; y=2))`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+
+When `x` is a model argument, `(x -> x ~ Normal())` → `(z -> z ~ Normal())`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+
+`Model{Threaded,missings}(...)` → construct with `@model` and select latent arguments with `decondition`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+
+For direct constructors, `Model{false}(f, args, defaults)` → `Model{false}(f, args, defaults; args_on_lhs=(:y,))`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+
+For handwritten evaluators, direct argument use → reuse an `@model` evaluator or implement its argument-preparation and binding-aware tilde protocol. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
 Debug introspection may return a body callable distinct from `model.f`: assuming `gen_evaluator_call_with_types(m)[1] === m.f` → use the returned callable and argument types. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
 `@vnt` is no longer exported: `@vnt` → `DynamicPPL.@vnt` or explicitly import it. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
-`CondFixContext` is removed: context-stored observations/fixed bindings → `condition(model, values)`/`fix(model, values)`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
-
-Context binding accessors are removed: `conditioned(context)`/`fixed(context)` → `conditioned(model)`/`fixed(model)`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
-
-`hasconditioned`/`getconditioned`, `hasfixed`/`getfixed`, and their `_nested` variants are removed → `haskey(conditioned(m), vn)`/`conditioned(m)[vn]`, or the corresponding `fixed(m)` operations. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
-
-`decondition_context`/`unfix_context` are removed → `decondition(model, names...)`/`unfix(model, names...)`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
-
-`inargnames`, `inmissings`, `getmissings`, `isassumption`, `isfixed`, `contextual_isassumption`, `contextual_isfixed`, and `hasmissing` are removed: role inspection through contexts/placeholders → model bindings via `conditioned`/`fixed`. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
+Replace `CondFixContext` and context binding accessors with model binding operations; see the [binding migration](https://turinglang.org/DynamicPPL.jl/dev/conditionfix/#Migrating-from-0.42) for each replacement. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
 Context observation hooks are removed: `tilde_observe!!(::AbstractContext, ...)` overloads → `accumulate_observe!!` implementations. See [#1501](https://github.com/TuringLang/DynamicPPL.jl/pull/1501).
 
