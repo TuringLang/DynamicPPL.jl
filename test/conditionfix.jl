@@ -94,6 +94,44 @@ end
 @model whole_storage(x) = (x ~ MvNormal(zeros(2), I); x)
 @model field_covariate(x, y) = (x[1] ~ Normal(); 0.0 ~ Normal(y.a[1]))
 
+@model function local_y_pair()
+    y = zeros(2)
+    y[1] ~ Normal()
+    y[2] ~ Normal()
+    return y
+end
+@model leaf_owner() = (x = zeros(1); x[1] ~ Normal(); x)
+@model function local_vector_slot(prototype::T) where {T}
+    x = Vector{Vector{T}}(undef, 1)
+    x[1] ~ MvNormal(zeros(2), I)
+    return x
+end
+@model function local_tuple_pair()
+    x = (0.0, 0.0)
+    x = ((x[1] ~ Normal()), (x[2] ~ Normal()))
+    return x
+end
+@model function local_mixed_indices()
+    x = zeros(2, 2)
+    x[1] ~ Normal()
+    x[2, 2] ~ Normal()
+    return x
+end
+@model function local_x_pair()
+    x = zeros(2)
+    x[1] ~ Normal()
+    x[2] ~ Normal()
+    return x
+end
+@model local_x_first() = (x = zeros(2); x[1] ~ Normal(); x)
+@model function local_x_elements()
+    x = zeros(2)
+    for i in eachindex(x)
+        x[i] ~ Normal()
+    end
+    return x
+end
+
 @testset "sample binding templates" begin
     @model function template_vector(x=zeros(2))
         y = zeros(3)
@@ -165,13 +203,7 @@ end
 end
 
 @testset "deferred templates live with bindings" begin
-    @model function template_table_leaf()
-        y = zeros(2)
-        y[1] ~ Normal()
-        y[2] ~ Normal()
-        return y
-    end
-    @model template_table_parent() = a ~ to_submodel(template_table_leaf(), false)
+    @model template_table_parent() = a ~ to_submodel(local_y_pair(), false)
     @model template_table_nested(child) = b ~ to_submodel(child, false)
 
     for bind in (condition, fix)
@@ -613,7 +645,6 @@ end
     end
 end
 
-@model leaf_owner() = (x = zeros(1); x[1] ~ Normal(); x)
 @model parent_owner() = a ~ to_submodel(leaf_owner())
 @model function indexed_owner()
     a = Vector{Any}(undef, 1)
@@ -1565,8 +1596,7 @@ end
             model = fix(assigned_local_shape(2, multivariate); x=ones(2))
             @test model(Xoshiro(1)) == ones(2)
         end
-        @model unassigned_fixed_local() = x ~ MvNormal(zeros(2), I)
-        @test fix(unassigned_fixed_local(); x=ones(2))(Xoshiro(1)) == ones(2)
+        @test fix(mv_latent(); x=ones(2))(Xoshiro(1)) == ones(2)
         @model function assigned_local_fields()
             p = (a=zeros(2), b=zeros(3))
             p.a ~ MvNormal(zeros(2), I)
@@ -1585,12 +1615,7 @@ end
             model = fix(typed_assigned_local(zero(T)); x=ones(T, 2))
             @test eltype(@inferred model(Xoshiro(1))) === T
         end
-        @model function assigned_local_slots(prototype::T) where {T}
-            x = Vector{Vector{T}}(undef, 1)
-            x[1] ~ MvNormal(zeros(2), I)
-            return x
-        end
-        @test fix(assigned_local_slots(0.0f0); x=[ones(Float32, 2)])(Xoshiro(1)) ==
+        @test fix(local_vector_slot(0.0f0); x=[ones(Float32, 2)])(Xoshiro(1)) ==
             [ones(Float32, 2)]
         fixed_sum(t) = sum(fix(typed_assigned_local(t); x=fill(t, 2))(Xoshiro(1)))
         @test ForwardDiff.derivative(fixed_sum, 1.0) == 2.0
@@ -1969,11 +1994,6 @@ end
         @model function named_lhs_variables()
             x = (; a=0.0, b=0.0)
             x = (; a=(x.a ~ Normal()), b=(x.b ~ Normal()))
-            return x
-        end
-        @model function tuple_lhs_variables()
-            x = (0.0, 0.0)
-            x = ((x[1] ~ Normal()), (x[2] ~ Normal()))
             return x
         end
         @model function nested_lhs_variables()
@@ -2375,12 +2395,6 @@ end
     end
 
     @testset "partial overrides preserve siblings" begin
-        @model function indexed()
-            x = zeros(2, 2)
-            x[1] ~ Normal()
-            x[2, 2] ~ Normal()
-            return x
-        end
         @model function properties()
             x = (; a=0.0, b=0.0)
             x.a ~ Normal()
@@ -2388,7 +2402,7 @@ end
             return x
         end
         for first_op in (condition, fix), last_op in (condition, fix)
-            original = first_op(indexed(); x=[1.0 0.0; 0.0 2.0])
+            original = first_op(local_mixed_indices(); x=[1.0 0.0; 0.0 2.0])
             remove = first_op === condition ? decondition : unfix
             changed = last_op(
                 first_op === last_op ? original : remove(original, @varname(x[1])),
@@ -2397,7 +2411,9 @@ end
             @test changed()[1] == 3.0
             @test changed()[2, 2] == 2.0
             @test original()[1] == 1.0
-            partial = first_op(indexed(), @varname(x[1]) => 3.0, @of(x = of(Array, 2, 2)))
+            partial = first_op(
+                local_mixed_indices(), @varname(x[1]) => 3.0, @of(x = of(Array, 2, 2))
+            )
             replaced = last_op(
                 first_op === last_op ? partial : remove(partial, @varname(x[1]));
                 x=[1.0 0.0; 0.0 2.0],
@@ -3669,14 +3685,8 @@ end
 end
 
 @testset "child binding indices use layer storage" begin
-    @model function indexed_child()
-        y = zeros(2)
-        y[1] ~ Normal()
-        y[2] ~ Normal()
-        return y
-    end
-    @model indexed_parent() = z ~ to_submodel(indexed_child())
-    @model unprefixed_indexed_parent() = z ~ to_submodel(indexed_child(), false)
+    @model indexed_parent() = z ~ to_submodel(local_y_pair())
+    @model unprefixed_indexed_parent() = z ~ to_submodel(local_y_pair(), false)
     @model function indexed_argument_child(y=zeros(3))
         y[1] ~ Normal()
         y[2] ~ Normal()
@@ -3721,13 +3731,7 @@ end
 end
 
 @testset "whole binding templates under prefixes" begin
-    @model function whole_schema_local()
-        x = zeros(2)
-        x[1] ~ Normal()
-        x[2] ~ Normal()
-        return x
-    end
-    plain = whole_schema_local()
+    plain = local_x_pair()
     prefixed = prefix(plain, @varname(p))
     nested = prefix(prefixed, @varname(q))
     for op in (condition, fix),
@@ -4156,11 +4160,6 @@ end
         end
         return x
     end
-    @model layer_local() = (z = zeros(3);
-    for i in eachindex(z)
-        z[i] ~ Normal()
-    end;
-    z)
     @model layer_record() = (z = (a=1.0, b=2.0); z.a ~ Normal(); z.b ~ Normal(); z)
 
     observed = condition(array_model(zeros(3)); x=ones(3))
@@ -4187,7 +4186,7 @@ end
     @test_throws ArgumentError condition(m; x=ones(3))
     @test fix(m, @varname(x[3]) => 7.0)(Xoshiro(1)) == [0.0, 0.0, 7.0]
     @test unfix(condition(unfix(m); x=ones(3)))(Xoshiro(1)) == ones(3)
-    observed = condition(layer_local(); z=ones(Float32, 3))
+    observed = condition(local_z(); z=ones(Float32, 3))
     @test_throws ArgumentError fix(observed; z=zeros(Float32, 3))
     m = fix(decondition(observed); z=zeros(Float32, 3))
     @test eltype(conditioned(condition(unfix(m); z=ones(3)))[@varname(z)]) === Float64
@@ -4202,11 +4201,11 @@ end
     )
 
     for (bind, remove) in ((condition, decondition), (fix, unfix))
-        whole = bind(layer_local(); z=ones(3))
+        whole = bind(local_z(); z=ones(3))
         for (partial, templated) in (
             (remove(whole, @varname(z[1])), false),
             (bind(whole, @varname(z[1]) => 2.0), false),
-            (bind(layer_local(), @of(z = of(Array, 3)), @varname(z[1]) => 2.0), true),
+            (bind(local_z(), @of(z = of(Array, 3)), @varname(z[1]) => 2.0), true),
         )
             if templated
                 @test_throws "template type" bind(partial; z=ones(Float32, 3))
@@ -4686,11 +4685,10 @@ end
 end
 
 @testset "tildes read bindings stored by the same address kind" begin
-    @model kind_elements() = (x = zeros(2); x[1] ~ Normal(); x)
     @model kind_fields(x) = (x.a ~ Normal(); x.b ~ Normal())
-    elements = condition(kind_elements(), @varname(x) => zeros(2))
+    elements = condition(local_x_first(), @varname(x) => zeros(2))
     @test condition(elements, @varname(x[1]) => 1.0)(Xoshiro(1))[1] == 1.0
-    mismatched = condition(kind_elements(), @varname(x.a) => 1.0)
+    mismatched = condition(local_x_first(), @varname(x.a) => 1.0)
     @test_throws "Cannot read LHS variable `x[1]`" mismatched(Xoshiro(1))
     fields = condition(kind_fields((a=1.0, b=2.0)); x=(a=3.0, b=4.0))
     @test decondition(fields, @varname(x.a))(Xoshiro(1)) == 4.0
@@ -4719,7 +4717,6 @@ end
     )
     @model growable_slice() = (x = zeros(2, 1); x[1:2, 1] ~ MvNormal(zeros(2), I); x)
     @model growable_argument(x) = (x[2, 1] ~ Normal(); x)
-    @model growable_mixed() = (x = zeros(2, 2); x[1] ~ Normal(); x[2, 2] ~ Normal(); x)
     @model growable_first() = (x = zeros(2, 2); x[1, 1] ~ Normal(); x)
     @model growable_colon() = (x = zeros(2, 1); x[:, 1] ~ MvNormal(zeros(2), I); x)
     @model growable_cube() = (x = zeros(2, 2, 2); x[1, 2, 1] ~ Normal(); x)
@@ -5008,11 +5005,13 @@ end
                 Xoshiro(1)
             ) == [5.0; 6.0;;]
             @test_throws "Cannot bind `x[1]` without storage" bind(
-                growable_mixed(), @varname(x[1]) => 3.0
+                local_mixed_indices(), @varname(x[1]) => 3.0
             )(
                 Xoshiro(1)
             )
-            @test bind(growable_mixed(), @of(x = of(Array, 2, 2)), @varname(x[1]) => 3.0)(
+            @test bind(
+                local_mixed_indices(), @of(x = of(Array, 2, 2)), @varname(x[1]) => 3.0
+            )(
                 Xoshiro(1)
             )[1] == 3.0
             @test bind(
@@ -7738,10 +7737,8 @@ end
     @model local_fields() = (
         x = ObservationRecord(0.0, 0.0); x.a ~ Normal(); x.b ~ Normal(); x
     )
-    @model local_tuple() = (x = (0.0, 0.0); x = ((x[1] ~ Normal()), (x[2] ~ Normal())); x)
-    @model local_array() = (x = zeros(2); x[1] ~ Normal(); x[2] ~ Normal(); x)
     for (model, producer) in
-        ((local_fields(), local_fields()), (local_tuple(), local_array()))
+        ((local_fields(), local_fields()), (local_tuple_pair(), local_x_pair()))
         values = rand(Xoshiro(42), producer)
         for bind in (condition, fix)
             @test isempty(keys(VarInfo(Xoshiro(42), bind(model, values))))
@@ -7826,7 +7823,6 @@ end
 
 @testset "zero-dimensional addresses" begin
     @model scalar_array() = (x = fill(0.0); x[] ~ Normal(); x)
-    @model vector_array() = (x = zeros(1); x[1] ~ Normal(); x)
     @model argument_array(x) = x[] ~ Normal()
     @model parent_array() = a ~ to_submodel(scalar_array())
     draw = rand(Xoshiro(123), Normal())
@@ -7844,12 +7840,12 @@ end
             Xoshiro(123)
         ) == fill(5.0)
         @test remove(bound, @varname(x[]))(Xoshiro(123)) == fill(draw)
-        @test bind(vector_array(), @varname(x[1]) => 5.0, @of(x = of(Array, 1)))(
+        @test bind(leaf_owner(), @varname(x[1]) => 5.0, @of(x = of(Array, 1)))(
             Xoshiro(123)
         ) == [5.0]
         for (model, address, message) in (
             (scalar_array(), @varname(x[1]), "Cannot bind `x[1]` without storage"),
-            (vector_array(), @varname(x[]), "Cannot bind `x[]` without storage"),
+            (leaf_owner(), @varname(x[]), "Cannot bind `x[]` without storage"),
         )
             @test_throws message bind(model, address => 5.0)(Xoshiro(123))
         end
@@ -7944,13 +7940,6 @@ end
 end
 
 @testset "persistent shared binding shapes" begin
-    @model function shared_shape_local()
-        x = zeros(2)
-        for i in eachindex(x)
-            x[i] ~ Normal()
-        end
-        return x
-    end
     @model shared_shape_fields() = (q.a ~ Normal(); q.b ~ Normal())
     @model shared_shape_parent(m) = a ~ to_submodel(m)
     @model function shared_shape_namespace()
@@ -8010,7 +7999,7 @@ end
     @testset "persistence" begin
         for (bind, remove, other) in
             ((condition, decondition, fix), (fix, unfix, condition))
-            m = bind(shared_shape_local(); x=ones(2))
+            m = bind(local_x_elements(); x=ones(2))
             @test_throws ArgumentError other(m; x=ones(3))
             empty = remove(m)
             @test isempty(conditioned(empty)) && isempty(fixed(empty))
@@ -8069,10 +8058,10 @@ end
         )] == 4.0
     end
     @testset "nested geometry" begin
-        m = condition(shared_shape_local(); x=[ones(2)])
+        m = condition(local_x_elements(); x=[ones(2)])
         @test_throws ArgumentError fix(m; x=[ones(3)])
         @test_throws ArgumentError condition(m, @varname(x[1]) => ones(3))
-        m = condition(shared_shape_local(); x=Vector{Vector{Float64}}(undef, 1))
+        m = condition(local_x_elements(); x=Vector{Vector{Float64}}(undef, 1))
         m = fix(m, @varname(x[1]) => ones(2))
         @test_throws ArgumentError condition(m, @varname(x[1]) => ones(3))
         m = unfix(decondition(m))
@@ -8216,14 +8205,13 @@ end
 end
 
 @model root_type_parent(child) = a ~ to_submodel(child)
-@model root_type_array() = (x = zeros(2); x[1] ~ Normal(); x[2] ~ Normal(); x)
 @model root_type_namespace() = (p = zeros(2, 2); p[1] ~ to_submodel(normal_local()); p)
 @testset "retained roots and child types" begin
     m = condition(root_type_namespace(), @of(p = of(Array, 2, 2)), @varname(p[1].x) => 2.0)
     for parent in (m, decondition(m))
         @test_throws r"root.*rebuild" condition(parent; p=fill((x=2.0,), 2, 2))
     end
-    child = unfix(fix(root_type_array(); x=ones(Float32, 2)))
+    child = unfix(fix(local_x_pair(); x=ones(Float32, 2)))
     @test condition(root_type_parent(child), @varname(a.x[1]) => 0.1)(Xoshiro(1))[1] === 0.1
     @test condition(root_type_parent(child), @varname(a.x[1]) => 0.5)(Xoshiro(1))[1] == 0.5
 end
@@ -8379,20 +8367,36 @@ end
     end
 end
 
-@model retyped_local() = (x = zeros(2); x[1] ~ Normal(); x[2] ~ Normal(); x)
 @testset "partial edits after retyping" begin
-    for bind in (condition, fix)
-        m = bind(bind(retyped_local(); x=ones(2)); x=ones(Float32, 2))
-        @test_throws ArgumentError bind(m, @varname(x[1]) => 0.1)
-        @test (bind === condition ? conditioned : fixed)(
-            bind(m, @varname(x[1]) => 0.5)
-        )[@varname(x[1])] === 0.5f0
+    retyped_cases = [
+        (
+            name="condition",
+            input=local_x_pair,
+            bind=condition,
+            replacement=ones(Float32, 2),
+            expected=0.5f0,
+            error=ArgumentError,
+        ),
+        (
+            name="fix",
+            input=local_x_pair,
+            bind=fix,
+            replacement=ones(Float32, 2),
+            expected=0.5f0,
+            error=ArgumentError,
+        ),
+    ]
+    @testset "$(case.name)" for case in retyped_cases
+        m = case.bind(case.bind(case.input(); x=ones(2)); x=case.replacement)
+        @test_throws case.error case.bind(m, @varname(x[1]) => 0.1)
+        @test (case.bind === condition ? conditioned : fixed)(
+            case.bind(m, @varname(x[1]) => 0.5)
+        )[@varname(x[1])] === case.expected
     end
 end
 
-@model layer_type_local() = (x = zeros(2); x[1] ~ Normal(); x[2] ~ Normal(); x)
 @testset "partial conversion follows edited layer" begin
-    m = decondition(condition(layer_type_local(); x=ones(Float32, 2)), @varname(x[2]))
+    m = decondition(condition(local_x_pair(); x=ones(Float32, 2)), @varname(x[2]))
     m = fix(m, @varname(x[2]) => 1.0)
     @test fixed(fix(m, @varname(x[2]) => 0.1))[@varname(x[2])] === 0.1
     @test_throws ArgumentError condition(m, @varname(x[1]) => 0.1)
@@ -8512,7 +8516,6 @@ end
 end
 @model roots_leaf() = (x ~ Normal(); y ~ Normal())
 @model roots_outer() = (a ~ to_submodel(roots_leaf()))
-@model template_conflict_child() = (y = zeros(2); y[1] ~ Normal(); y[2] ~ Normal(); y)
 @model template_conflict_parent(child) = a ~ to_submodel(child)
 @model nested_template_child() = (
     q = (a=zeros(2), b=0.0); q.a[1] ~ Normal(); q.a[2] ~ Normal(); q
@@ -8552,15 +8555,29 @@ end
 end
 
 @testset "ancestor templates check held storage" begin
-    for bind in (condition, fix)
-        whole = bind(
-            template_conflict_parent(template_conflict_child()), @varname(a.y) => ones(2)
-        )
-        @test_throws r"Binding template at `y` conflicts with existing storage" bind(
+    held_template_cases = [
+        (
+            name="condition",
+            input=local_y_pair,
+            bind=condition,
+            expected=[1.0, 2.0],
+            error=r"Binding template at `y` conflicts with existing storage",
+        ),
+        (
+            name="fix",
+            input=local_y_pair,
+            bind=fix,
+            expected=[1.0, 2.0],
+            error=r"Binding template at `y` conflicts with existing storage",
+        ),
+    ]
+    @testset "$(case.name)" for case in held_template_cases
+        whole = case.bind(template_conflict_parent(case.input()), @varname(a.y) => ones(2))
+        @test_throws case.error case.bind(
             whole, @of(a = @of(y = of(Array, 3))), @varname(a.y[2]) => 2.0
         )()
-        @test bind(whole, @of(a = @of(y = of(Array, 2))), @varname(a.y[2]) => 2.0)() ==
-            [1.0, 2.0]
+        @test case.bind(whole, @of(a = @of(y = of(Array, 2))), @varname(a.y[2]) => 2.0)() ==
+            case.expected
     end
 end
 
@@ -8932,7 +8949,6 @@ end
     return x
 end
 @model pending_outer(child=pending_matrix()) = (a ~ to_submodel(child); a)
-@model pending_local() = (x = zeros(2); x[1] ~ Normal(); x)
 @testset "pending identity setter merges entries" begin
     pending = DynamicPPL.PendingBindings(@varname(x), (AbstractPPL.Property{:a}() => 1,))
     result = DynamicPPL.VarNamedTuples._setindex_optic!!(
@@ -9045,14 +9061,14 @@ end
         @test_throws r"integer indices" bind(
             pending_outer(), @varname(a.x[end]) => 3.0, @of(a = @of(x = of(Array, 2, 2)))
         )
-        rebound = remove(bind(pending_local(); x=Float32[1, 2]))
+        rebound = remove(bind(local_x_first(); x=Float32[1, 2]))
         @test listed(bind(rebound, @varname(x[1]) => 0.1))[@varname(x[1])] === 0.1
         offset = OffsetArray(Float32[1, 2], -1:0)
-        rebuilt = bind(remove(bind(pending_local(); x=offset)), @varname(x[-1]) => 0.1)
+        rebuilt = bind(remove(bind(local_x_first(); x=offset)), @varname(x[-1]) => 0.1)
         @test axes(listed(rebuilt).data.x.data) == axes(offset)
         @test listed(rebuilt)[@varname(x[-1])] === 0.1
         component = ComponentVector(; a=Float32[1, 2], b=Float32(3))
-        rebuilt = bind(remove(bind(pending_local(); x=component)), @varname(x.a[1]) => 0.1)
+        rebuilt = bind(remove(bind(local_x_first(); x=component)), @varname(x.a[1]) => 0.1)
         @test axes(listed(rebuilt).data.x.data) == axes(component)
         @test listed(rebuilt)[@varname(x.a[1])] === 0.1
     end
@@ -9111,11 +9127,11 @@ end
             3.0
         bad_offset = bind(pending_outer(offset_child), @varname(a.x[1]) => 3.0)
         @test_throws ArgumentError bad_offset()
-        child = remove(bind(pending_local(), @of(x = of(Array, 2)), @varname(x[1]) => 1.0))
+        child = remove(bind(local_x_first(), @of(x = of(Array, 2)), @varname(x[1]) => 1.0))
         @test_throws ArgumentError bind(pending_outer(child), @varname(a.x) => ones(3))()
-        child = bind(pending_local(), @of(x = of(Array, 2)), @varname(x[1]) => 2.0)
+        child = bind(local_x_first(), @of(x = of(Array, 2)), @varname(x[1]) => 2.0)
         @test prefix(child, @varname(p[1]))()[1] == 2.0
-        child = remove(bind(pending_local(); x=zeros(1)))
+        child = remove(bind(local_x_first(); x=zeros(1)))
         @test_throws ArgumentError bind(pending_outer(child), @varname(a.x[2]) => 4.0)()
     end
     @model record_argument(x) = x.value[1] ~ Normal()
@@ -9385,13 +9401,6 @@ end
     end
 end
 
-@model function selector_local()
-    x = zeros(2)
-    for i in eachindex(x)
-        x[i] ~ Normal()
-    end
-    return x
-end
 @testset "pending selectors" begin
     for (bind, remove) in ((condition, decondition), (fix, unfix))
         c = decondition(array_model(zeros(2)))
@@ -9578,9 +9587,8 @@ end
 end
 
 @testset "unreached children retain pending checks" begin
-    @model skipped_storage_child() = (x = zeros(2); x[1] ~ Normal(); x)
     @model skipped_storage_parent(run) = (
-        run && (a ~ to_submodel(skipped_storage_child())); nothing
+        run && (a ~ to_submodel(local_x_first())); nothing
     )
     for bind in (condition, fix)
         pending = bind(skipped_storage_parent(false), @varname(a.x[3]) => 2.0)
@@ -9803,8 +9811,7 @@ end
             Xoshiro(1)
         ),
     ) == 2
-    @model unassigned_observed_local() = x ~ MvNormal(zeros(2), I)
-    @test condition(unassigned_observed_local(); x=ones(2))(Xoshiro(1)) == ones(2)
+    @test condition(mv_latent(); x=ones(2))(Xoshiro(1)) == ones(2)
     @model function observed_local_fields()
         p = (a=zeros(2), b=zeros(3))
         for i in eachindex(p.a)
@@ -9833,12 +9840,7 @@ end
     model = condition(observed_local_fields(), @varname(p.a) => ones(2))
     @test model(Xoshiro(1)).a == ones(2)
     @test length(model(Xoshiro(1)).b) == 3
-    @model function observed_local_slots(prototype::T) where {T}
-        x = Vector{Vector{T}}(undef, 1)
-        x[1] ~ MvNormal(zeros(2), I)
-        return x
-    end
-    @test condition(observed_local_slots(0.0f0); x=[ones(Float32, 2)])(Xoshiro(1)) ==
+    @test condition(local_vector_slot(0.0f0); x=[ones(Float32, 2)])(Xoshiro(1)) ==
         [ones(Float32, 2)]
     @model function typed_observed_local(prototype::T) where {T}
         x = zeros(T, 2)
@@ -9862,16 +9864,30 @@ end
         [1.0, 1.0, 2.0]
 end
 
-@model template_child() = (y = zeros(2); y[1] ~ Normal(); y[2] ~ Normal(); y)
 @model template_parent(child) = a ~ to_submodel(child)
 @testset "ancestor template checks child storage" begin
-    child = condition(template_child(), @of(y = of(Array, 2)), @varname(y[1]) => 1.0)
-    @test_throws r"Binding template at `y` conflicts with existing storage" condition(
-        template_parent(child), @of(a = @of(y = of(Array, 3))), @varname(a.y[2]) => 2.0
-    )()
-    @test_throws r"Binding template at `y` conflicts with existing storage" condition(
-        template_parent(child), @of(a = @of(y = of(Array, Int, 2))), @varname(a.y[2]) => 2
-    )()
+    child = condition(local_y_pair(), @of(y = of(Array, 2)), @varname(y[1]) => 1.0)
+    conflicting_template_cases = [
+        (
+            name="shape",
+            input=2.0,
+            template=@of(a = @of(y = of(Array, 3))),
+            bind=condition,
+            expected=r"Binding template at `y` conflicts with existing storage",
+        ),
+        (
+            name="element type",
+            input=2,
+            template=@of(a = @of(y = of(Array, Int, 2))),
+            bind=condition,
+            expected=r"Binding template at `y` conflicts with existing storage",
+        ),
+    ]
+    @testset "$(case.name)" for case in conflicting_template_cases
+        @test_throws case.expected case.bind(
+            template_parent(child), case.template, @varname(a.y[2]) => case.input
+        )()
+    end
 end
 
 struct UndeclaredSizeDistribution <: ContinuousMatrixDistribution end
@@ -9916,8 +9932,7 @@ struct UndeclaredVectorSizeDistribution <: ContinuousMultivariateDistribution en
     @test_throws MethodError fix(fixed_undeclared_vector(); x=ones(3))()
 end
 
-@model template_leaf() = (y = zeros(2); y[1] ~ Normal(); y[2] ~ Normal(); y)
-@model template_outer() = a ~ to_submodel(template_leaf())
+@model template_outer() = a ~ to_submodel(local_y_pair())
 @testset "ancestor template replacement" begin
     for (bind, remove) in ((condition, decondition), (fix, unfix))
         bound = bind(template_outer(), @varname(a.y) => ones(2))
@@ -9928,7 +9943,7 @@ end
             @test bind(cleared, @of(a = @of(y = of(Array, 3))), @varname(a.y[2]) => 2.0)(
                 Xoshiro(1)
             ) == bind(
-                remove(bind(template_leaf(), @varname(y) => ones(2)), @varname(y)),
+                remove(bind(local_y_pair(), @varname(y) => ones(2)), @varname(y)),
                 @of(y = of(Array, 3)),
                 @varname(y[2]) => 2.0,
             )(
