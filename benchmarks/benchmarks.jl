@@ -372,7 +372,14 @@ function build_combinations(rng)
     # A parent binding at a child's prefixed address.
     push!(
         models,
-        ("Indexed submodels conditioned", condition(indexed, @varname(x[1].obs) => 0.0, @of(x = of(Array, length(indexed.args.obs))))),
+        (
+            "Indexed submodels conditioned",
+            condition(
+                indexed,
+                @varname(x[1].obs) => 0.0,
+                @of(x = of(Array, length(indexed.args.obs)))
+            ),
+        ),
     )
     d = [1, 1, 1, 2, 2, 2]
     w = [1, 2, 3, 2, 1, 1]

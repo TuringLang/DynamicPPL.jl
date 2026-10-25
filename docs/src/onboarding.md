@@ -50,15 +50,9 @@ context = Context(rng, InitFromParams(get_vector_values(previous), nothing), Unl
 retval, outputs = evaluate!!(model, context, VarInfo(accumulators...))
 ```
 
-to:
-
-```julia
-init!!(
-    model, VarInfo(accumulators...), InitFromParams(get_vector_values(varinfo)), UnlinkAll()
-)
-```
-
-The exact strategy and accumulator set depend on the caller.
+Here `previous` contains a `VectorValueAccumulator`. The context specifies the requested
+output transforms explicitly; they are not inherited from previous outputs.
+See [Evaluation inputs and outputs](@ref evaluation-inputs-outputs).
 
 ### Use names and shapes carefully
 
