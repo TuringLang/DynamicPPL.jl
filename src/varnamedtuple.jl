@@ -23,8 +23,8 @@ export VarNamedTuple,
 Represent the absence of a storage template for a top-level variable.
 
 Low-level `VarNamedTuple` construction can create growable arrays for indexed addresses
-without a template. Binding calls have stricter requirements: parts of plain variables
-need storage at binding, and pending child parts need storage before the child body.
+without a template. A partial binding needs storage when made, or before an addressed
+submodel's body runs. Supply it through an argument, an existing binding or a binding template.
 See [Binding contract](@ref).
 
 A dedicated marker avoids ambiguous dispatch in `BangBang.setindex!!` with `nothing`
@@ -33,7 +33,8 @@ or `missing`: https://github.com/JuliaFolds2/BangBang.jl/issues/43.
 struct NoTemplate end
 
 materialize_template(template) = template
-# Fixed `of` element types require runtime AD bindings to use running values or whole bindings.
+# `zero(T)` fixes the storage element type; runtime AD bindings need a template
+# built from running values, or a whole binding.
 materialize_template(::Type{T}) where {T<:AbstractPPL.OfType} = zero(T)
 
 """
@@ -157,7 +158,7 @@ include("varnamedtuple/skeleton.jl")
     AbstractPPL.of(vnt::VarNamedTuple)
 
 Describe the storage in `vnt` as an AbstractPPL `OfNamedTuple` binding template.
-Import `of` from AbstractPPL. Numeric `Array`s retain their element type and size;
+Numeric `Array`s retain their element type and size;
 partly filled entries describe their full backing array, without reading unbound slots.
 Nested namespaces become nested templates. Scalars are supported only when `of`
 describes their type exactly. Custom arrays, growable entries (even fully filled),
@@ -169,6 +170,8 @@ argument entries and entries not bound by the call are ignored. Names are absolu
 as in `rand(model)` output. An indexed prefix, such as
 `prefix(model, @varname(p[1, 2]))`, cannot be represented by this template grammar, so `of(vnt)`
 throws for such samples; supply storage before applying the prefix, or through an argument.
+
+# Examples
 
 ```jldoctest
 julia> using AbstractPPL: of

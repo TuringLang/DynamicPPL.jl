@@ -48,9 +48,8 @@ function _retain_buffer!(memo, buffer)
     return nothing
 end
 
-# Deepcopy must preserve types. Afterwards, adapt immutable TrackedArray facades
-# to writable scalar storage, rebuilding only parents whose child type changes.
-# This walks Julia's already-copied graph; it never allocates user structs itself.
+# Adapt immutable `TrackedArray` facades after `deepcopy`, which preserves types.
+# Rebuild parents via `setproperties`, `Ref` or `Dict` only when a child changes type.
 function DynamicPPL._adapt_copied_argument(value)
     memo = IdDict()
     DynamicPPL._retain_bound_argument_storage!(memo, value)

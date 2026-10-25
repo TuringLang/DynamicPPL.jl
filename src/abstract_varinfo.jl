@@ -570,6 +570,8 @@ Subset a `varinfo` to only contain the variables `vns`.
 The ordering of variables in the return value will be the same as in `varinfo`.
 
 # Examples
+
+```jldoctest varinfo-subset
 julia> using DynamicPPL, Distributions
 
 julia> @model function demo()

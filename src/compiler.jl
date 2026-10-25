@@ -526,10 +526,8 @@ end
 function _set_lhs(object::Base.Pairs, optic, value, vn)
     return pairs(_set_lhs_optic(values(object), optic, value))
 end
-# A fixed argument already holds its value unless the body changed it. Skip the write when
-# it holds that very value, so storage that cannot take the write, such as a range, works;
-# equality is not enough, as the body may point the address at latent storage. A mutable
-# value is written back without comparing, since reading a slice to compare it allocates.
+# Skip identical (`===`) immutable values so read-only storage works; equality could
+# hide latent aliases. Always write mutable values to avoid allocating comparison slices.
 function _set_fixed_lhs(vi, object, value, vn)
     ismutable(value) && return set_tilde_value!!(vi, object, value, vn)
     return if AbstractPPL.getoptic(vn)(object) === value
@@ -542,8 +540,9 @@ end
 """
     generate_tilde(left, right; is_argument=false)
 
-Generate latent, observed, or fixed evaluation for a tilde expression.
-Argument LHS variables that are observed use their prepared local value, including body computations.
+Generate code for `left ~ right` that selects the latent, observed or fixed path at run time.
+Set `is_argument=true` for a model argument; an observed argument then uses its current
+local value, including changes made by the body.
 """
 function generate_tilde(left, right; is_argument=false)
     isliteral(left) && return generate_tilde_literal(left, right)
@@ -1035,7 +1034,8 @@ function _model_evaluator(f, args, kwargs)
     types = Base.typesof(_model_evaluator, args...)
     if hasmethod(f, types)
         signature = Base.unwrap_unionall(which(f, types).sig)
-        # A generic model constructor can also accept the debug marker.
+        # Require a method that names the debug marker; a generic `f(args...)` also
+        # matches but is not the debug entry point.
         if signature.parameters[2] === typeof(_model_evaluator)
             return f(_model_evaluator, args...; kwargs...)
         end
@@ -1051,7 +1051,7 @@ function prepare_model_argument(binding, value)
     return _model_argument_value(binding, value)
 end
 
-# Whole-variable hasvalue checks reject partial containers needed for argument preparation.
+# Do not use `hasvalue`: it rejects partial containers needed for argument preparation.
 _model_argument_binding(values, ::AbstractPPL.AbstractOptic) = nothing
 _model_argument_binding(values, ::AbstractPPL.Iden) = values
 function _model_argument_binding(

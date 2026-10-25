@@ -126,9 +126,11 @@ See the docstring of [`DynamicPPL.get_param_eltype`](@ref) for more information 
 is needed.
 
 The argument `fallback` specifies how new values are to be obtained if they cannot be found
-in `params`. Omit absent parameters rather than supplying `missing`. `fallback` can either be an initialisation
+in `params`. `fallback` can either be an initialisation
 strategy itself, in which case it will be used to obtain new values, or it can be `nothing`,
 in which case an error will be thrown. The default for `fallback` is `InitFromPrior()`.
+
+A `missing` value in `params` throws `ArgumentError` when read; omit the parameter instead.
 """
 struct InitFromParams{P,S<:Union{AbstractInitStrategy,Nothing}} <: AbstractInitStrategy
     params::P

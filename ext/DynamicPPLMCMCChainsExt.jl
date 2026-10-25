@@ -342,8 +342,8 @@ For each parameter configuration in `chain`:
 2. Remaining latent LHS variables are sampled from their priors.
 3. Existing observed and fixed bindings retain their roles.
 
-If `include_all` is `false`, the returned `Chains` excludes parameter names present in the
-input chain. This retains predictions for variables absent from the input samples.
+If `include_all` is `false` (the default), the returned `Chains` contains only variables
+absent from `chain`.
 
 Set `multithreaded` to `true` to spread the samples of `chain` over threads. Each sample is
 then drawn with its own random number generator, seeded from `rng` before any thread starts,
@@ -358,7 +358,7 @@ many variables the time goes into building the `Chains` object rather than into 
     (e.g. `x ~ MvNormal(...)` or `x ~ filldist(Normal(), n)`) is a *single*
     LHS variable, not a collection of i.i.d. LHS variables. `predict` cannot fix a subset of
     its LHS subvariables while resampling the rest; if `chain` supplies only
-    some subvariables, the whole LHS variable is silently resampled from the prior — the
+    some subvariables, the whole LHS variable is silently resampled from the prior. The
     predictions will look plausible but ignore what the chain says about that variable.
     To treat array entries individually, declare separate LHS variables in a loop, e.g.
     `for i in eachindex(x); x[i] ~ Normal(); end`.

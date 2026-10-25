@@ -194,7 +194,8 @@ function _submodel_values(values::VarNamedTuple, prefix::VarName)
     return _submodel_namespace(binding)
 end
 
-# Shape ownership survives selecting a child's namespace, including whole namespace bindings.
+# Shape ownership survives selecting a child's namespace, including whole namespace
+# bindings.
 function _submodel_fixed_owners(model::Model, prefix)
     prefix = _model_value_varname(model.values, prefix, _model_prefix(model))
     owners = _fixed_owners(model.values)
@@ -221,7 +222,8 @@ end
         vi::AbstractVarInfo
     )
 
-Evaluate `submodel` under `parent_model`.
+Evaluate `submodel` for `left_vn ~ submodel` in `parent_model`; return its value and the
+updated `vi`. Throw `ArgumentError` if `left_vn` is rooted at a parent model argument.
 """
 @inline function tilde_assume!!(
     parent_model::Model,
@@ -383,9 +385,9 @@ end
             _reconstruct_model(submodel.model; values),
             maybe_prefix(local_prefix, _model_prefix(parent_model)),
         )
-    # Split optional values before evaluation to stay within inference union limits.
     context = _binding_read_context(context, child_values)
     args = (parent_model, context, submodel, left_vn, template, vi)
+    # Identical branches split the `values` union so inference stays within its limit.
     if values isa LocalModelValues{VarNamedTuple{(),Tuple{}}}
         return _evaluate_submodel!!(args..., values, templates, shapes)
     else
@@ -440,7 +442,8 @@ for AutoPrefix in (true, false)
             end
         end
         # Calling model.f directly avoids the inference recursion limit as nested prefixes
-        # change the Model type; routing through _evaluate!! widens it to Any (Turing.jl#2844).
+        # change the Model type; routing through _evaluate!! widens it to Any
+        # (Turing.jl#2844).
         model = setleafcontext(model, context)
         args, kwargs = make_evaluate_args_and_kwargs(model, vi)
         return @inline model.f(args...; kwargs...)

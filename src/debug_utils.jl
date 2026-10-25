@@ -363,14 +363,9 @@ derived from model inputs. Use `rng` to control reproducibility if needed.
 
 - Empty models emit a warning, but do not fail (since they are not incorrect *per se*)
 
-- Binding template entries without an LHS variable in the model or reached submodels warn,
-  but do not fail: an untaken submodel branch could still use them.
-
-- Bindings without an LHS top symbol in the model or reached unprefixed submodels warn,
-  but do not fail: an untaken submodel branch could still use them.
-
-- Partially bound positions that no executed tilde reads are reported. These positions
-  are not evaluation errors; an untaken branch may still use them.
+- Bindings, binding template entries and recursive removals that no reached model uses,
+  and partially bound positions that no executed tilde reads. These emit warnings but do
+  not fail the check: a branch not taken in this evaluation could still use them.
 
 # Keyword arguments
 
@@ -574,13 +569,15 @@ Generate the evaluator call and the types of the arguments.
 - `varinfo::AbstractVarInfo`: The varinfo to use when evaluating the model. Default: `VarInfo(model)`.
 
 # Keyword Arguments
-- `context::AbstractContext`: The evaluation context. Defaults to the values supplied in `varinfo`,
-  unlinked, or `InitFromPrior()` when `varinfo` has no values.
+- `context::AbstractContext`: The evaluation context. Defaults to
+  `InitContext(InitFromParams(get_values(varinfo), nothing), UnlinkAll())`, or
+  `InitContext(InitFromPrior(), UnlinkAll())` when vector values are absent or empty.
 
 # Returns
 A 2-tuple with the following elements:
 - `f`: The model body function, or `Core.kwcall` if it takes keyword arguments.
-    Models with argument LHS variables use prepared arguments for their body function.
+    For a model with argument LHS variables, `f` is the inner body function, which receives
+    the prepared arguments.
 - `argtypes::Type{<:Tuple}`: The types of the arguments for the evaluator.
 """
 function gen_evaluator_call_with_types(
@@ -619,8 +616,9 @@ This simply calls `@code_warntype` on the model's evaluator, filling in internal
 - `varinfo::AbstractVarInfo`: The varinfo to use when evaluating the model. Default: `VarInfo(model)`.
 
 # Keyword Arguments
-- `context::AbstractContext`: The evaluation context. Defaults to the values supplied in `varinfo`,
-  unlinked, or `InitFromPrior()` when `varinfo` has no values.
+- `context::AbstractContext`: The evaluation context. Defaults to
+  `InitContext(InitFromParams(get_values(varinfo), nothing), UnlinkAll())`, or
+  `InitContext(InitFromPrior(), UnlinkAll())` when vector values are absent or empty.
 """
 function model_warntype(
     model::Model, varinfo::AbstractVarInfo=VarInfo(model), optimize::Bool=false; kwargs...
@@ -641,8 +639,9 @@ This simply calls `@code_typed` on the model's evaluator, filling in internal ar
 - `varinfo::AbstractVarInfo`: The varinfo to use when evaluating the model. Default: `VarInfo(model)`.
 
 # Keyword Arguments
-- `context::AbstractContext`: The evaluation context. Defaults to the values supplied in `varinfo`,
-  unlinked, or `InitFromPrior()` when `varinfo` has no values.
+- `context::AbstractContext`: The evaluation context. Defaults to
+  `InitContext(InitFromParams(get_values(varinfo), nothing), UnlinkAll())`, or
+  `InitContext(InitFromPrior(), UnlinkAll())` when vector values are absent or empty.
 """
 function model_typed(
     model::Model, varinfo::AbstractVarInfo=VarInfo(model), optimize::Bool=true; kwargs...

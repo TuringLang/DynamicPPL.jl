@@ -2,8 +2,7 @@
     DynamicPPL.@vnt begin ... end
 
 Construct a `VarNamedTuple` from a block of assignments. Each assignment should be of the form
-`var := value`, where `var` is a variable name. This is best illustrated by
-example:
+`var := value`, where `var` is a variable name.
 
 !!! note "Internal use"
     `@vnt` and its `@template` are intended for internal use within DynamicPPL. Public code
@@ -142,7 +141,8 @@ function _vnt(input)
                 if sym in keys(symbols_to_templates)
                     error("duplicate template definition for symbol$separator$sym")
                 end
-                # Evaluate and materialize either spelling's template exactly once.
+                # Materialize the template once for either `@template x` or
+                # `@template x = e`.
                 new_sym = gensym()
                 push!(
                     output.args, :($new_sym = materialize_template($(esc(template_expr))))

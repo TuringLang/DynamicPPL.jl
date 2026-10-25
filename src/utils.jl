@@ -1,7 +1,7 @@
-# BangBang's dimension reduction needs a nonempty index tuple for scalar array writes.
 function _setindex!!(array, value, indices...; kwargs...)
     return BangBang.setindex!!(array, value, indices...; kwargs...)
 end
+# BangBang's dimension reduction needs a nonempty index tuple for scalar array writes.
 function _setindex!!(array::AbstractArray, value; kwargs...)
     return if isempty(kwargs)
         BangBang.setindex!!(array, value, CartesianIndex())
