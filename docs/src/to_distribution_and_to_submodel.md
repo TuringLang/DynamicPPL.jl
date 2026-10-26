@@ -3,7 +3,8 @@
 Both functions embed one probabilistic program in another. [`to_distribution`](@ref)
 converts a supported model representation into a distribution over its latent variables.
 [`to_submodel`](@ref) instead evaluates a DynamicPPL model and yields its return value while
-recording its latent variables separately.
+recording its latent variables separately. To bind a child's variables through the parent's
+namespace, see [Binding rules](@ref); a parent cannot bind over a child's existing binding.
 
 Currently, `to_distribution` supports only Stan through BridgeStan; `to_submodel` accepts only
 DynamicPPL models.

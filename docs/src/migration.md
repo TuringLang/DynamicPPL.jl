@@ -1,11 +1,14 @@
-# Migrating old `VarInfo` code
+# Migrating to DynamicPPL 0.43
 
 `OnlyAccsVarInfo` is removed. Use `VarInfo`, which has the same accumulator constructor
 forms: `VarInfo(accs...)`, `VarInfo(accs::Tuple)`, and `VarInfo(accs::AccumulatorTuple)`.
 The old `VarInfo{Tfm,T,Accs}` is now `VarInfo{Accs}`; update dispatch that uses the old
 type parameters. Transform strategies are evaluation inputs, not part of the output type.
-`VarInfo()` records log densities, not parameter values. Add a `RawValueAccumulator`
-or `VectorValueAccumulator` when those outputs are needed, for example
+`VarInfo()` records log densities, not parameter values; `keys`, `haskey`, `length`, `values`
+and `isempty` throw `ArgumentError` without a `VectorValueAccumulator`.
+Recording values is opt-in because most evaluations, such as
+sampling and gradients, need only log densities. Add a `VectorValueAccumulator` for these
+queries and vectorised values, or a `RawValueAccumulator` for model-space values, for example
 `VarInfo(VectorValueAccumulator(), DynamicPPL.default_accumulators()...)`; `VarInfo(model)` remains
 a convenience constructor that records vectorised values and log densities.
 
@@ -23,11 +26,15 @@ It now defaults to `UnlinkAll()` regardless of the recorded values. Replace
 `init!!(rng, model, vi, init)` with `init!!(rng, model, vi, init, strategy)` when the
 outputs should use a different representation.
 For custom strategies, implement `get_param_eltype(strategy)` when evaluation needs
-to promote argument buffers or thread-local accumulators for AD.
+to promote argument storage or thread-local accumulators for AD.
 
-All output accumulators reset before evaluation. Previously recorded sites that are
+All output accumulators reset before evaluation. Previously recorded LHS variables that are
 not executed again are absent from the new outputs. Replace `vi.values` with
-`get_vector_values(vi)`; there is no separate parameter store.
+`get_vector_values(vi)`. `get_values(vi)` now returns the `VarNamedTuple` of vectorised
+`TransformedValue`s from the optional `VectorValueAccumulator` and throws `ArgumentError`
+without it. Replace unconditional `get_values(VarInfo())` calls with
+evaluation into `VarInfo(VectorValueAccumulator())` followed by `get_vector_values(vi)`;
+use `RawValueAccumulator` and `get_raw_values(vi)` for model-space values.
 
 Please get in touch if you have some old code you're unsure how to migrate, and we will be happy to add it to this list.
 
@@ -203,3 +210,15 @@ params = BangBang.setindex!!(params, TransformedValue(2.0, NoTransform()), @varn
 _, vi = init!!(Xoshiro(468), model, vi, InitFromParams(params, nothing), UnlinkAll())
 vi
 ```
+
+For binding changes, see [Migrating from 0.42](@ref).
+
+Replace context overloads of `tilde_observe!!` with `accumulate_observe!!` implementations.
+For direct observation calls, replace `tilde_observe!!(ctx, dist, value, vn, template, vi)`
+with the current signature `tilde_observe!!(prefix, prefix_template, dist, value, vn, template, vi)`.
+For submodel latent calls, replace `tilde_assume!!(ctx, submodel, vn, template, vi)` with
+`tilde_assume!!(parent, ctx, submodel, vn, template, vi)`.
+Replace `store_coloneq_value!!(ctx, vn, value, template, vi)` with
+`store_coloneq_value!!(model, vn, value, template, vi)`; context-based storage hooks are removed.
+Replace `DynamicPPL.TestUtils.test_context`, `test_leaf_context`, and `test_parent_context`
+with explicit evaluation and interface tests.

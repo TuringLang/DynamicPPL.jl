@@ -61,7 +61,7 @@ makedocs(;
             "accs/values.md",
         ],
         "LogDensityFunction" => ["ldf/overview.md", "ldf/models.md", "ldf/subsampling.md"],
-        "Migrating old VarInfo code" => "migration.md",
+        "Migrating to 0.43" => "migration.md",
         "API" => "api.md",
     ],
     checkdocs=:exports,

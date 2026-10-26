@@ -337,7 +337,8 @@ end
 """
     predict([rng::AbstractRNG,] model::Model, chain::AbstractMCMC.SamplingOutput; include_all=false)
 
-Sample predictions using each draw's parameters, drawing absent variables from their priors.
+Sample predictions using each draw to initialise latent LHS variables, drawing absent
+latent values from their priors. Existing observed and fixed bindings retain their roles.
 
 Return a `SamplingOutput` with the input's iteration indices and freshly evaluated log
 probabilities. Set `include_all=true` to retain parameters supplied by each input draw.

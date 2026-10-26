@@ -334,10 +334,11 @@ end
 ```
 
 What this means is that in the core use case of VarNamedTuple (i.e., for storing random variables in DynamicPPL models), templates will always be provided.
-There are, for the most part, only two places where templates are unavailable, and we have to fall back on the `GrowableArray` approach:
+Loading data from chains without storage information can produce `GrowableArray`s;
+rerunning the model can recover the storage shape.
 
-  - Loading data from chains.
-  - Providing conditioned or fixed values.
-
-The first of these can be fixed by rerunning the model once to pick up the templates.
-The second cannot be truly fixed, but the [`DynamicPPL.@vnt`](@ref) macro allows users to manually provide templates themselves in cases where they are really needed.
+Conditioned and fixed values follow the [Binding rules](@ref). A partial binding such as
+`x[1] => 1.0` needs storage for `x` when it is made, or before an addressed submodel's body
+runs. If neither an argument nor an existing binding provides it, pass a template built
+with `of` or `@of` to `condition` or `fix` as a positional argument. Bindings never fall
+back to `GrowableArray`.

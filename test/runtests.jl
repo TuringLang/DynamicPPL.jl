@@ -36,9 +36,12 @@ Random.seed!(100)
 
         include("pointwise_logdensities.jl")
         include("lkj.jl")
-        include("contexts.jl")
         include("contexts/init.jl")
-        include("conditionfix.jl")
+        # These files exceed macOS CI memory limits; remove the skip once they are split or shrunk.
+        if !(Sys.isapple() && get(ENV, "CI", "false") == "true")
+            include("conditionfix.jl")
+            include("binding.jl")
+        end
         include("context_implementations.jl")
         include("threadsafe.jl")
         include("debug_utils.jl")

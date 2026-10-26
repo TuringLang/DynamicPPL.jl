@@ -63,7 +63,7 @@ end
 """
     demo_one_variable_multiple_constraints()
 
-A model with a single multivariate `x` whose components have multiple different constraints.
+A model whose array `x` is filled by four LHS variables with different constraints.
 
 # Model
 ```julia
