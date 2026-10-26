@@ -49,43 +49,41 @@ retval, accs = DynamicPPL.init!!(
 
 which returns a tuple of the model's return value (the NamedTuple `(x=x, y=y)` in the example above) and the accumulators after evaluation.
 
-The equivalent explicit-context call is:
+The same evaluation with an explicit context:
 
 ```@example 1
 using Random: Xoshiro
 
-context = InitContext(Xoshiro(1), InitFromPrior(), UnlinkAll())
+context = Context(Xoshiro(1), InitFromPrior(), UnlinkAll())
 retval, accs = evaluate!!(model, context, VarInfo());
 ```
 
 ## [Evaluation inputs and outputs](@id evaluation-inputs-outputs)
 
-Evaluation separates the inputs that determine a model run from the outputs it records,
-as proposed in [#1469](https://github.com/TuringLang/DynamicPPL.jl/issues/1469).
+Evaluation separates the inputs that determine a model run from the outputs it records.
 
-| Object        | Responsibility                                                        |
-|:------------- |:--------------------------------------------------------------------- |
-| `Model`       | Model function, arguments, and conditioned or fixed data              |
-| `InitContext` | RNG, initialisation strategy, and requested transform strategy        |
-| `VarInfo`     | Output accumulators, with no separate parameter or transform storage  |
-| `retval`      | The model body's ordinary Julia return value, distinct from its trace |
+| Object    | Responsibility                                                        |
+|:--------- |:--------------------------------------------------------------------- |
+| `Model`   | Model function, arguments, and conditioned or fixed data              |
+| `Context` | RNG, initialisation strategy, and requested transform strategy        |
+| `VarInfo` | Output accumulators, with no separate parameter or transform storage  |
+| `retval`  | The model body's ordinary Julia return value, distinct from its trace |
 
 For a latent statement such as `x ~ Normal()`, the context's initialisation strategy
 supplies `x`. Its transform strategy determines the transformed value and Jacobian.
 Accumulators receive those results to compute densities or record values; evaluation
 does not read previously recorded parameters from `VarInfo`.
 
-For an observed LHS variable such as `y ~ Normal(x, 1)`, the effective binding supplies
-`y` and the likelihood accumulator scores it. An argument binding acts before the body
-runs, and the tilde reads the argument's current body value; a local LHS variable reads
-its binding at the tilde. See the argument contract in [Binding rules](@ref).
-Literal observations such as `0 ~ Normal(x, 1)` use the same observation path. Fixed values are not scored, and tracked assignments
-such as `z := x + y` are recorded when requested. None of these operations uses the
-context to select a latent value.
+For an observed LHS variable such as `y ~ Normal(x, 1)`, the model's binding or argument
+supplies `y` and the likelihood accumulator scores it. See [Argument contract and shared
+constraints](@ref) for when argument bindings take effect. Literal observations such as
+`0 ~ Normal(x, 1)` take the same path. Fixed values are not scored, and tracked assignments
+such as `z := x + y` are recorded when requested. None of these uses the context to select
+a latent value.
 
-The supplied leaf context replaces the model’s leaf context and is inherited by nested submodels.
+The context belongs to the evaluation, not to `Model`, and is passed to nested submodels.
 Inside a model body, `__context__` refers to this context; use `rand(__context__.rng, ...)`
-for explicit random draws controlled by the evaluation's RNG. `init!!` constructs a `InitContext`
+for explicit random draws controlled by the evaluation's RNG. `init!!` constructs a `Context`
 and calls `evaluate!!`; custom value selection belongs in an initialisation strategy,
 not a custom context type.
 
@@ -100,11 +98,11 @@ explicitly. For example, sample the model above, then evaluate it at the same pa
 
 ```@example 1
 rng = Xoshiro(1)
-context = InitContext(rng, InitFromPrior(), LinkAll())
+context = Context(rng, InitFromPrior(), LinkAll())
 retval, recorded = evaluate!!(model, context, VarInfo(RawValueAccumulator(false)))
 
 params = get_raw_values(recorded)
-context = InitContext(rng, InitFromParams(params, nothing), UnlinkAll())
+context = Context(rng, InitFromParams(params, nothing), UnlinkAll())
 repeated, scores = evaluate!!(model, context, VarInfo())
 
 @assert repeated == retval

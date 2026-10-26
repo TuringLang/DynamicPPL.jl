@@ -64,7 +64,7 @@ and forwards to the context method. Its implementation in `src/contexts/init.jl`
 these three stages:
 
 ```julia
-function DynamicPPL.tilde_assume!!(ctx::InitContext, dist, vn, template, vi)
+function DynamicPPL.tilde_assume!!(ctx::Context, dist, vn, template, vi)
     # 1. Initialisation
     init_tval = DynamicPPL.init(ctx.rng, vn, dist, ctx.strategy)
 

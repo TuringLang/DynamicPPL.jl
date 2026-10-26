@@ -128,7 +128,8 @@ function combine end
     promote_for_threadsafe_eval(acc::AbstractAccumulator, ::Type{T}) where {T}
 
 Convert `acc` to a new accumulator that works with threadsafe evaluation. The type parameter
-`T` is the element type of the parameters that will be used for model evaluation.
+`T` is the type used for floating-point parameter arithmetic, such as `Float64` or a
+ForwardDiff `Dual`, or `Any` if unknown. For `Any`, keep the accumulator's numeric type.
 
 See the docstring of `ThreadSafeVarInfo(vi, ::Type{T})` for more details.
 """

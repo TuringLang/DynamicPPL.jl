@@ -18,10 +18,33 @@ to set a prefix and `DynamicPPL.getprefix(model)` to read the combined prefix
 Replace `prefix(ctx, vn)` with
 `AbstractPPL.prefix(vn, DynamicPPL.getprefix(model))` for a prefixed model.
 
+Replace `DefaultContext()` or `InitContext(...)` with
+`Context(rng, init_strategy, transform_strategy)`, specifying parameter inputs and output
+transforms explicitly. `Model.context` and `contextualize` are removed:
+`evaluate!!(contextualize(m, ctx), vi)` becomes `evaluate!!(m, ctx, vi)`.
+The two-argument `evaluate!!(m, vi)` and `DynamicPPL.evaluate_nowarn!!(m, vi)` are removed;
+use `evaluate!!(m, ctx, vi)`.
+For handwritten evaluators, replace `f(model, vi, args...)` with
+`f(model, ctx::Context, vi, args...)`. Replace `Model{false}(f, args, defaults, ctx)`
+with `Model{false}(f, args, defaults)` and pass `ctx` to evaluation.
+Replace `get_param_eltype(vi, context)` with `get_param_eltype(strategy)` and move custom
+context overloads to initialisation strategies.
+
+`AbstractParentContext` is removed. DynamicPPL no longer defines or exports `AbstractContext`,
+and `Context` subtypes neither. Use initialisation strategies for custom value selection
+and accumulators for custom output handling. `childcontext`, `setchildcontext`, `leafcontext`,
+and `setleafcontext` are removed; pass a single `Context` directly to evaluation instead
+of traversing or rebuilding a context hierarchy.
+
+For downstream evaluators, replace `make_evaluate_args_and_kwargs(m, vi)` with
+`DynamicPPL.make_evaluate_args_and_kwargs(m, ctx, vi)`, now `public`. Its prepared
+positional arguments begin with `(m, ctx, vi)`. It does not execute the model, reset
+accumulators, or wrap them for thread safety; use `evaluate!!` for those steps.
+
 To reuse previous values, extract them explicitly before evaluating:
 
 ```julia
-context = InitContext(rng, InitFromParams(get_vector_values(previous), nothing), LinkAll())
+context = Context(rng, InitFromParams(get_vector_values(previous), nothing), LinkAll())
 retval, outputs = evaluate!!(model, context, VarInfo())
 ```
 
