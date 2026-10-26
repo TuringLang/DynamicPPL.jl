@@ -584,6 +584,9 @@ A **submodel namespace** reaches
 child LHS variables through addresses such as `a.x`, or through unchanged names with
 `to_submodel(child, false)` unless manually prefixed.
 
+Bindings on prefixed models use absolute addresses: for `prefix(m, @varname(p))`,
+use `@varname(p.y) => 0.0`; binding `y=0.0` throws `ArgumentError`.
+
 For example, if `a` is an argument, `a ~ to_submodel(child())`,
 `a[1] ~ to_submodel(child())` and `a.x ~ to_submodel(child())` are rejected by the
 **Submodel LHS and prefixes** rule. Use a new local name and condition the child's LHS
@@ -783,6 +786,10 @@ keys(rand(StableRNG(1), gdemo(Union{Missing,Float64}[1.0, missing])))
 ```
 
 ## Migrating from 0.42
+
+Bindings outside a model's prefix now throw. Replace
+`condition(prefix(m, @varname(p)); y=v)` with
+`condition(prefix(m, @varname(p)), @varname(p.y) => v)`.
 
 The [Binding rules](@ref) define the current contract. The examples below show the
 changes from 0.42 using models whose variables can be bound separately:
