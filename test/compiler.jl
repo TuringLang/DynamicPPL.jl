@@ -464,33 +464,32 @@ end
     end
 
     @testset "to_submodel" begin
-        # No prefix, 1 level.
         @model function demo1(x)
             return x ~ Normal()
         end
         @model function demo2(x, y)
-            _ignore ~ to_submodel(demo1(x), false)
+            child ~ to_submodel(demo1(x))
             return y ~ Uniform()
         end
         # No observation.
         m = demo2(missing, missing)
         vi = VarInfo(m)
         ks = keys(vi)
-        @test @varname(x) ∈ ks
+        @test @varname(child.x) ∈ ks
         @test @varname(y) ∈ ks
 
         # Observation in top-level.
         m = demo2(missing, 1.0)
         vi = VarInfo(m)
         ks = keys(vi)
-        @test @varname(x) ∈ ks
+        @test @varname(child.x) ∈ ks
         @test @varname(y) ∉ ks
 
         # Observation in nested model.
         m = demo2(1000.0, missing)
         vi = VarInfo(m)
         ks = keys(vi)
-        @test @varname(x) ∉ ks
+        @test @varname(child.x) ∉ ks
         @test @varname(y) ∈ ks
 
         # Observe all.
@@ -501,7 +500,7 @@ end
 
         # Check values makes sense.
         @model function demo3(x, y)
-            _ignore ~ to_submodel(demo1(x), false)
+            child ~ to_submodel(demo1(x))
             return y ~ Normal(x)
         end
         m = demo3(1000.0, missing)
@@ -545,7 +544,7 @@ end
             num_steps = length(y[1])
             num_obs = length(y)
             @inbounds for i in 1:num_obs
-                x ~ to_submodel(DynamicPPL.prefix(AR1(num_steps, α, μ, σ), "ar1_$i"), false)
+                x ~ to_submodel(DynamicPPL.prefix(AR1(num_steps, α, μ, σ), "ar1_$i"))
                 y[i] ~ MvNormal(x, 0.01 * I)
             end
         end
@@ -554,8 +553,9 @@ end
         m = demo(ys)
         vi = VarInfo(m)
 
-        for vn in
-            [@varname(α), @varname(μ), @varname(σ), @varname(ar1_1.η), @varname(ar1_2.η)]
+        for vn in [
+            @varname(α), @varname(μ), @varname(σ), @varname(x.ar1_1.η), @varname(x.ar1_2.η)
+        ]
             @test vn ∈ keys(vi)
         end
     end
@@ -767,17 +767,20 @@ end
             y := 100 + x
             return (; x, y)
         end
-        @model function demo_tracked_submodel_no_prefix()
-            return vals ~ to_submodel(demo_tracked(), false)
+        @model function demo_tracked_submodel()
+            return vals ~ to_submodel(demo_tracked())
         end
-        for model in [demo_tracked(), demo_tracked_submodel_no_prefix()]
+        for (model, xvn, yvn) in (
+            (demo_tracked(), @varname(x), @varname(y)),
+            (demo_tracked_submodel(), @varname(vals.x), @varname(vals.y)),
+        )
             # Make sure it's runnable and `y` is present in the return-value.
             @test model() isa NamedTuple{(:x, :y)}
 
             # `VarInfo` should only contain `x`.
             varinfo = rand(model)
-            @test haskey(varinfo, @varname(x))
-            @test !haskey(varinfo, @varname(y))
+            @test haskey(varinfo, xvn)
+            @test !haskey(varinfo, yvn)
 
             # A `RawValueAccumulator` should preserve the combined values and their
             # provenance if `include_colon_eq` is set to `true`.
@@ -786,19 +789,19 @@ end
             values = get_raw_values(vi)
             parameter_values = get_parameter_values(vi)
             colon_eq_values = get_colon_eq_values(vi)
-            @test haskey(values, @varname(x))
-            @test haskey(values, @varname(y))
-            @test haskey(parameter_values, @varname(x))
-            @test !haskey(parameter_values, @varname(y))
-            @test haskey(colon_eq_values, @varname(y))
+            @test haskey(values, xvn)
+            @test haskey(values, yvn)
+            @test haskey(parameter_values, xvn)
+            @test !haskey(parameter_values, yvn)
+            @test haskey(colon_eq_values, yvn)
 
             # And if include_colon_eq is set to `false`, then `values` should only contain
             # `x`.
             vi = VarInfo((RawValueAccumulator(false),))
             _, vi = init!!(model, vi, InitFromPrior(), UnlinkAll())
             values = get_raw_values(vi)
-            @test haskey(values, @varname(x))
-            @test !haskey(values, @varname(y))
+            @test haskey(values, xvn)
+            @test !haskey(values, yvn)
             @test isempty(get_colon_eq_values(vi))
         end
 

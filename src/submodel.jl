@@ -1,10 +1,9 @@
 """
-    Submodel{M,AutoPrefix}
+    Submodel{M}
 
-A wrapper around a model, plus a flag indicating whether it should be automatically
-prefixed with the left-hand variable in a `~` statement.
+Wrap a model whose variables are prefixed by its tilde address.
 """
-struct Submodel{M,AutoPrefix}
+struct Submodel{M}
     model::M
 end
 
@@ -38,10 +37,10 @@ function _stan_value_and_pullback end
 Wrap `model` for use on the right-hand side of `~`.
 
 In `value ~ to_submodel(model)`, `model` is evaluated, its return value is assigned to
-`value`, and its latent variables are recorded separately in the surrounding trace. By
-default, their names are prefixed with the left-hand side: a latent variable `x` becomes
-`value.x`. This differs from [`to_distribution`](@ref), which assigns the represented latent
-variables themselves to the left-hand side.
+`value`, and its latent variables are recorded separately in the surrounding trace. Their
+names are prefixed with the left-hand side: a latent variable `x` becomes `value.x`. This
+differs from [`to_distribution`](@ref), which assigns the represented latent variables
+themselves to the left-hand side.
 
 Conceptually, `to_submodel(model)` is a `returned_value(model)` wrapper: its value is the
 model's return value, not its latent variables.
@@ -53,15 +52,8 @@ model's return value, not its latent variables.
     Operations normally associated with `left ~ right`, such as [`condition`](@ref), do not
     necessarily work with `to_submodel`.
 
-!!! warning
-    Keep `auto_prefix=true` unless the wrapped model has been explicitly prefixed. Disabling
-    automatic prefixing can make latent-variable names collide.
-
-# Arguments
-
-- `model::Model`: the model to wrap.
-- `auto_prefix::Bool=true`: whether to prefix the model's latent variables with the
-  left-hand side of `~`.
+The optional second argument accepts `true` for compatibility. Passing `false` throws
+`ArgumentError`; choose the child name on the left-hand side of `~` instead.
 
 # Examples
 
@@ -105,48 +97,18 @@ julia> getlogjoint(accs) ≈ logpdf(Normal(), x) + logpdf(Uniform(0, 1 + abs(x))
 true
 ```
 
-## Without automatic prefixing
-
-If `auto_prefix=false`, the submodel's latent-variable names are unchanged.
-```jldoctest submodel-to_submodel-prefix; setup=:(using Distributions)
-julia> @model function demo1(x)
-           x ~ Normal()
-           return 1 + abs(x)
-       end;
-
-julia> @model function demo2_no_prefix(x, z)
-            a ~ to_submodel(demo1(x), false)
-            return z ~ Uniform(-a, 1)
-       end;
-
-julia> model = demo2_no_prefix(missing, 0.4);
-
-julia> haskey(rand(model), @varname(x))  # here we just use `x` instead of `a.x`
-true
-```
-However, not using prefixing is generally not recommended as it can lead to variable name
-clashes unless one is careful. For example, if the same submodel is used multiple times in a
-model, not using prefixing will lead to variable name clashes.
-
-One can manually specify a prefix using [`prefix(::Model, prefix_varname)`](@ref):
-
-```jldoctest submodel-to_submodel-prefix
-julia> @model function demo2(x, y, z)
-            a ~ to_submodel(prefix(demo1(x), @varname(sub1)), false)
-            b ~ to_submodel(prefix(demo1(y), @varname(sub2)), false)
-            return z ~ Uniform(-a, b)
-       end;
-
-julia> model = demo2(missing, missing, 0.4);
-
-julia> haskey(rand(model), @varname(sub1.x))
-true
-
-julia> haskey(rand(model), @varname(sub2.x))
-true
-```
+An explicit prefix composes with the tilde address: `a ~ to_submodel(prefix(child,
+@varname(b)))` records a child variable `x` as `a.b.x`.
 """
-to_submodel(m::Model, auto_prefix::Bool=true) = Submodel{typeof(m),auto_prefix}(m)
+to_submodel(m::Model) = Submodel(m)
+function to_submodel(m::Model, auto_prefix::Bool)
+    auto_prefix || throw(
+        ArgumentError(
+            "Unprefixed submodels are unsupported; use `name ~ to_submodel(model)` and update child variable addresses to `name.x`.",
+        ),
+    )
+    return to_submodel(m)
+end
 
 # ---------------------------
 # Submodels in tilde-pipeline
@@ -173,41 +135,22 @@ function tilde_assume!!(
     return _evaluate!!(right, vi, context, vn)
 end
 
-# When automatic prefixing is used, the submodel itself doesn't carry the
-# prefix, as the prefix is obtained from the LHS of `~` (whereas the submodel
-# is on the RHS). The prefix can only be obtained in `tilde_assume!!`, and then
-# passed into this function.
-#
-# `parent_context` here refers to the context of the model that contains the
-# submodel.
+# The tilde supplies the child address; parent contexts wrap the resulting namespace.
 function _evaluate!!(
-    submodel::Submodel{M,AutoPrefix},
+    submodel::Submodel{M},
     vi::AbstractVarInfo,
     parent_context::AbstractContext,
     left_vn::VarName,
-) where {M<:Model,AutoPrefix}
-    # First, we construct the context to be used when evaluating the submodel. There
-    # are several considerations here:
-    # (1) We need to apply an appropriate PrefixContext when evaluating the submodel, but
-    # _only_ if automatic prefixing is supposed to be applied.
-    submodel_context_prefixed = if AutoPrefix
-        PrefixContext(left_vn, submodel.model.context)
-    else
-        submodel.model.context
-    end
+) where {M<:Model}
+    submodel_context_prefixed = PrefixContext(left_vn, submodel.model.context)
 
-    # (2) We need to respect the leaf-context of the parent model. This, unfortunately,
-    # means disregarding the leaf-context of the submodel.
+    # The parent controls evaluation; the child retains its enclosing contexts.
     submodel_context = setleafcontext(
         submodel_context_prefixed, leafcontext(parent_context)
     )
 
-    # (3) We need to use the parent model's context to wrap the whole thing, so that
-    # e.g. if the user conditions the parent model, the conditioned variables will be
-    # correctly picked up when evaluating the submodel.
     eval_context = setleafcontext(parent_context, submodel_context)
 
-    # (4) Finally, we need to store that context inside the submodel.
     model = contextualize(submodel.model, eval_context)
 
     # Evaluate the wrapped model. These two lines are a verbatim copy of the body of

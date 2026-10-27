@@ -45,6 +45,14 @@ function modify_value_representation(nt::NamedTuple)
     return modified_nt
 end
 
+function local_demo_varname(model, vn)
+    return if model.f === DynamicPPL.TestUtils.demo_assume_submodel_observe_index_literal
+        AbstractPPL.unprefix(vn, @varname(priors))
+    else
+        vn
+    end
+end
+
 innermost_distribution_type(d::Distribution) = typeof(d)
 function innermost_distribution_type(d::Distributions.ReshapedDistribution)
     return innermost_distribution_type(d.dist)
@@ -113,7 +121,7 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
             vnt = rand(model)
             chain_sym_map = Dict{Symbol,Symbol}()
             for vn_parent in keys(vnt)
-                sym = DynamicPPL.getsym(vn_parent)
+                sym = DynamicPPL.getsym(local_demo_varname(model, vn_parent))
                 vn_children = AbstractPPL.varname_leaves(vn_parent, vnt[vn_parent])
                 for vn_child in vn_children
                     chain_sym_map[Symbol(vn_child)] = sym
@@ -320,6 +328,7 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
             # We know that any variable starting with `s` should have `InverseGamma`
             # and any variable starting with `m` should have `Normal`.
             for (vn, prior) in pairs(priors)
+                vn = local_demo_varname(model, vn)
                 if DynamicPPL.getsym(vn) == :s
                     @test innermost_distribution_type(prior) <: InverseGamma
                 elseif DynamicPPL.getsym(vn) == :m
@@ -474,16 +483,19 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
                 return nothing
             end
             @model function outer_manual_prefix()
-                a ~ to_submodel(DynamicPPL.prefix(inner(), :a), false)
-                b ~ to_submodel(DynamicPPL.prefix(inner(), :b), false)
+                a ~ to_submodel(DynamicPPL.prefix(inner(), :p))
+                b ~ to_submodel(DynamicPPL.prefix(inner(), :p))
                 return nothing
             end
 
-            for model in (outer_auto_prefix(), outer_manual_prefix())
+            for (model, expected) in (
+                (outer_auto_prefix(), Set([@varname(a.x), @varname(b.x)])),
+                (outer_manual_prefix(), Set([@varname(a.p.x), @varname(b.p.x)])),
+            )
                 vi = VarInfo((RawValueAccumulator(false),))
                 _, vi = init!!(model, vi, InitFromPrior(), UnlinkAll())
                 vns = Set(keys(get_raw_values(vi)))
-                @test vns == Set([@varname(a.x), @varname(b.x)])
+                @test vns == expected
             end
         end
     end
