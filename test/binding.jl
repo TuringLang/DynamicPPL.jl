@@ -441,3 +441,349 @@ end
     end
 end
 end
+
+module ArgumentBindingTests
+using DynamicPPL, AbstractPPL, Test, StaticArrays, ForwardDiff, ReverseDiff
+using DynamicPPL:
+    Condition,
+    Fix,
+    ResolvedBindings,
+    _bind_resolved,
+    _prepare_resolved_arguments,
+    _copy_model_argument
+struct BufferNumber <: Number
+    data::Vector{Float64}
+end
+mutable struct CopyProbe
+    value::Vector{Float64}
+end
+Base.deepcopy_internal(value::CopyProbe, memo::IdDict) = CopyProbe([only(value.value) + 1])
+@testset "isolated argument values" begin
+    x = [1.0, 2.0]
+    args = (x=x,)
+    table = ResolvedBindings(; arguments=VarNamedTuple(args))
+    prepared = _prepare_resolved_arguments(table, args)
+    @test prepared == args
+    @test prepared.x !== x
+    prepared.x[1] = 9
+    @test x == [1, 2]
+    @test _prepare_resolved_arguments(table, args).x == x
+    bound = _bind_resolved(table, Fix, @varname(x[1]) => 3.0)
+    prepared = _prepare_resolved_arguments(bound, args)
+    @test prepared.x == [3, 2]
+    @test prepared.x !== x
+    replacement = [4.0, 5.0]
+    bound = _bind_resolved(table, Fix, (x=replacement,))
+    @test _prepare_resolved_arguments(bound, args).x === replacement
+    @test _prepare_resolved_arguments(table, (x=x, z=[8.0])).z == [8.0]
+    @test_throws ArgumentError _prepare_resolved_arguments(table, (x=x, z=x))
+    @test _prepare_resolved_arguments(bound, (x=x, z=x)).z === x
+    @test_throws ArgumentError _copy_model_argument(SVector(1.0, 2.0), @varname(x))
+    @test_throws ArgumentError _copy_model_argument(BufferNumber([1.0]), @varname(x))
+    @test_throws ArgumentError _copy_model_argument(Dict([1.0] => 2.0), @varname(x))
+    @test _copy_model_argument(Dict(:x => [1.0]), @varname(x)) == Dict(:x => [1.0])
+    @test _copy_model_argument(CopyProbe([1.0]), @varname(x)).value == [2.0]
+    cyclic = Any[]
+    push!(cyclic, cyclic)
+    copied = _copy_model_argument(cyclic, @varname(x))
+    @test copied !== cyclic
+    @test copied[1] === copied
+    b = big"1.5"
+    @test _copy_model_argument(b, @varname(x)) === b
+end
+
+@testset "argument copy AD" begin
+    for ad in (ForwardDiff.gradient, ReverseDiff.gradient)
+        original = [2.0, 3.0]
+        gradient = ad(original) do x
+            copied = _copy_model_argument((x=x,), @varname(x))
+            @test copied.x !== x
+            scalar = x[1]
+            @test _copy_model_argument((scalar=scalar,), @varname(x)).scalar === scalar
+            if ad === ReverseDiff.gradient
+                @test_throws ArgumentError _copy_model_argument(
+                    (tracked=x, raw=ReverseDiff.value(x)), @varname(x)
+                )
+            end
+            sum(abs2, copied.x)
+        end
+        @test gradient == [4.0, 6.0]
+        @test original == [2.0, 3.0]
+    end
+end
+
+using SparseArrays, OffsetArrays, ComponentArrays, DimensionalData
+using DynamicPPL: _model_argument_value, ModelValue, ArgumentCondition
+using DynamicPPL.VarNamedTuples: PartialArray
+
+mutable struct CyclicStorage
+    value::Vector{Float64}
+    next::Any
+end
+struct WrappedStorage{T}
+    value::T
+end
+mutable struct MutableScalar <: Number
+    value::Float64
+end
+mutable struct InnerState
+    value::Vector{Float64}
+    InnerState() = new([0.0])
+end
+
+@testset "native copying and supported latent storage" begin
+    for source in (
+        Float32[1, 2],
+        BigFloat[1, 2],
+        [1.0, 2.0],
+        reshape([1.0, 2.0], 1, 2),
+        OffsetArray([1.0, 2.0], 0:1),
+        ComponentArray(; a=1.0, b=[2.0]),
+        DimArray([1.0, 2.0], (X,)),
+        sparse([1.0, 2.0]),
+        sparse(reshape([1.0, 2.0], 1, 2)),
+        view([1.0, 2.0], :),
+    )
+        copied = _copy_model_argument(source, @varname(x))
+        @test copied == source
+        @test copied !== source
+        @test typeof(copied) === typeof(source)
+        index = firstindex(copied)
+        original = source[index]
+        copied[index] = 9
+        @test source[index] == original
+    end
+    for source in (
+        SVector(1.0, 2.0),
+        1.0:2.0,
+        view(SVector(1.0, 2.0), :),
+        (a=SVector(1.0, 2.0),),
+        [SVector(1.0, 2.0)],
+    )
+        @test_throws ArgumentError _copy_model_argument(source, @varname(x))
+    end
+    scalar = MutableScalar(2.0)
+    @test _copy_model_argument((scalar=scalar,), @varname(x)).scalar === scalar
+    for scalar in (big"1.25", big"12", Complex(big"1.25", big"2.25"))
+        @test _copy_model_argument(scalar, @varname(x)) === scalar
+    end
+    @test_throws ArgumentError _copy_model_argument((a=BufferNumber([1.0]),), @varname(x))
+    state = InnerState()
+    copied = _copy_model_argument(state, @varname(x))
+    copied.value[1] = 3
+    @test state.value == [0.0]
+    data = Vector{Vector{Float64}}(undef, 2)
+    data[2] = [1.0]
+    copied = _copy_model_argument(data, @varname(x))
+    @test !isassigned(copied, 1)
+    @test copied[2] !== data[2]
+    @test copied[2] == data[2]
+end
+
+@testset "dictionary key policy" begin
+    for key in (:a, "a", 1, (1, 2), 1.0)
+        source = Dict(key => [1.0])
+        copied = _copy_model_argument(source, @varname(x))
+        @test copied == source
+        @test copied[key] !== source[key]
+    end
+    for key in ([1.0], Ref(1), big"12", SubString("abc", 1, 2))
+        @test_throws ArgumentError _copy_model_argument(Dict(key => [1.0]), @varname(x))
+    end
+    covariate = Dict([1.0] => [2.0])
+    args = (x=[0.0], data=covariate)
+    table = ResolvedBindings(; arguments=VarNamedTuple((x=args.x,)))
+    @test _prepare_resolved_arguments(table, args).data === covariate
+end
+
+@testset "latent aliases and independent branches" begin
+    v = [1.0, 2.0]
+    for other in (v, reshape(v, 1, 2), view(v, :))
+        args = (x=v, y=other)
+        table = ResolvedBindings(; arguments=VarNamedTuple((x=v,)))
+        @test_throws ArgumentError _prepare_resolved_arguments(table, args)
+    end
+    GC.@preserve v begin
+        alias = unsafe_wrap(Array, pointer(v), length(v))
+        table = ResolvedBindings(; arguments=VarNamedTuple((x=v,)))
+        @test_throws ArgumentError _prepare_resolved_arguments(table, (x=v, y=alias))
+    end
+    table = ResolvedBindings(; arguments=VarNamedTuple((x=(a=v, b=v),)))
+    @test_throws ArgumentError _prepare_resolved_arguments(table, (x=(a=v, b=v),))
+    for R in (Condition, Fix)
+        independent = _bind_resolved(table, R, @varname(x.b) => copy(v))
+        prepared = _prepare_resolved_arguments(independent, (x=(a=v, b=v),))
+        @test prepared.x.a !== v
+        @test prepared.x.a == v
+        @test prepared.x.b !== v
+        replacement = (a=SVector(1.0, 2.0), b=v)
+        bound = _bind_resolved(
+            ResolvedBindings(; arguments=VarNamedTuple((x=replacement,))),
+            R,
+            @varname(x.a) => replacement.a,
+        )
+        prepared = _prepare_resolved_arguments(bound, (x=replacement,))
+        @test prepared.x.a === replacement.a
+        @test prepared.x.b !== v
+    end
+    copied = @inferred _copy_model_argument((a=v, b=v))
+    @test copied.a === copied.b
+    @test copied.a !== v
+    cycle = CyclicStorage(v, nothing)
+    cycle.next = cycle
+    copied = _copy_model_argument(cycle)
+    @test copied.next === copied
+    @test copied !== cycle
+    table = ResolvedBindings(; arguments=VarNamedTuple((x=cycle,)))
+    @test_throws ArgumentError _prepare_resolved_arguments(table, (x=cycle,))
+end
+
+@testset "partial preparation and repeated isolation" begin
+    for R in (Condition, Fix),
+        T in (Float32, Float64, BigFloat, ForwardDiff.Dual{Nothing,Float64,1})
+
+        source = (x=(a=T[1, 2], b=T[3, 4]),)
+        table = ResolvedBindings(; arguments=VarNamedTuple(source))
+        table = _bind_resolved(table, R, @varname(x.a[1]) => T(5))
+        first = @inferred _prepare_resolved_arguments(table, source)
+        @test first.x.a == T[5, 2]
+        @test first.x.b == source.x.b
+        first.x.a[2] = 9
+        first.x.b[1] = 9
+        second = _prepare_resolved_arguments(table, source)
+        @test second.x.a == T[5, 2]
+        @test second.x.b == T[3, 4]
+        @test source.x.a == T[1, 2]
+        @test source.x.b == T[3, 4]
+    end
+    args = (x=1.0, y=2)
+    table = ResolvedBindings(; arguments=VarNamedTuple((x=args.x,)))
+    @test (@inferred _prepare_resolved_arguments(table, args)) === args
+    table = _bind_resolved(table, Fix; x=3.0)
+    @test (@inferred _prepare_resolved_arguments(table, args)) === (x=3.0, y=2)
+end
+
+@testset "nested tracer copying and overlays" begin
+    for gradient in (ForwardDiff.gradient, ReverseDiff.gradient), T in (Float32, Float64)
+        x = T[2, 3]
+        objective = function (z)
+            for wrap in (identity, x -> (a=x,), Ref, x -> Dict(:a => x), WrappedStorage)
+                wrapped = wrap(z)
+                copied = _copy_model_argument(wrapped, @varname(x))
+                value = if wrap === identity
+                    copied
+                elseif copied isa NamedTuple
+                    copied.a
+                elseif copied isa Ref
+                    copied[]
+                elseif copied isa Dict
+                    copied[:a]
+                else
+                    copied.value
+                end
+                @test value !== z
+                @test value == z
+            end
+            values = [ModelValue{Condition}(3z[1]), ModelValue{Condition}(z[2])]
+            bindings = PartialArray(values, [true, false])
+            copied = _model_argument_value(bindings, z, @varname(x))
+            @test copied !== z
+            return sum(abs2, copied)
+        end
+        @test gradient(objective, x) ≈ T[36, 6]
+        @test x == T[2, 3]
+    end
+end
+
+@testset "retained covariates and empty storage aliases" begin
+    v = [1.0]
+    table = ResolvedBindings(; arguments=VarNamedTuple((x=v,)))
+    for ctor in (Dict, IdDict)
+        @test_throws r"shared by `x` and `data`" _prepare_resolved_arguments(
+            table, (x=v, data=ctor(v => 1))
+        )
+        @test _prepare_resolved_arguments(table, (x=v, data=ctor(copy(v) => 1))).x == v
+    end
+    empty = Float64[]
+    for other in (Float64[], copy(empty))
+        args = (x=(a=empty, b=other),)
+        @test _prepare_resolved_arguments(
+            ResolvedBindings(; arguments=VarNamedTuple(args)), args
+        ) == args
+    end
+    args = (x=(a=empty, b=empty),)
+    @test_throws ArgumentError _prepare_resolved_arguments(
+        ResolvedBindings(; arguments=VarNamedTuple(args)), args
+    )
+    args = (x=(a=v, b=v),)
+    table = ResolvedBindings(; arguments=VarNamedTuple(args))
+    observed = DynamicPPL.setindex!!(
+        VarNamedTuple(), ModelValue{ArgumentCondition}(v), @varname(x.b)
+    )
+    table = ResolvedBindings(
+        observed,
+        table.storage,
+        table.observed_templates,
+        table.fixed_templates,
+        table.arguments,
+        table.roots,
+    )
+    @test_throws ArgumentError _prepare_resolved_arguments(table, args)
+end
+
+@testset "surviving argument values after removal" begin
+    for T in (Float32, Float64, BigFloat), R in (Condition, Fix)
+        args = (x=T[5, 6, 7],)
+        table = _bind_resolved(
+            ResolvedBindings(; arguments=VarNamedTuple(args)), R; x=T[1, 2, 3]
+        )
+        table = DynamicPPL._unbind_resolved(table, R, @varname(x[1]))
+        @test _prepare_resolved_arguments(table, args).x == T[5, 2, 3]
+        @test args.x == T[5, 6, 7]
+    end
+end
+
+@testset "tracked view copies and retained buffers" begin
+    for wrap in (x -> view(x, :), x -> view(reshape(x, 1, 2), 1, :))
+        objective = x -> sum(abs2, _copy_model_argument((a=wrap(x),), @varname(x)).a)
+        tape = ReverseDiff.compile(ReverseDiff.GradientTape(objective, [2.0, 3.0]))
+        for x in ([2.0, 3.0], [-0.4, 0.2], [2.0, 3.0])
+            result = zeros(2)
+            ReverseDiff.gradient!(result, tape, x)
+            @test result ≈ 2x
+            @test ReverseDiff.gradient(objective, x) ≈ ForwardDiff.gradient(objective, x)
+        end
+    end
+    ReverseDiff.gradient([2.0, 3.0]) do x
+        for buffer in (ReverseDiff.value(x), ReverseDiff.deriv(x)),
+            wrap in (identity, x -> view(x, :), x -> reshape(x, 1, 2))
+
+            @test_throws r"retained storage.*latent path" _copy_model_argument(
+                (tracked=x, raw=wrap(buffer)), @varname(x)
+            )
+            copied = _copy_model_argument((tracked=x, raw=copy(buffer)), @varname(x))
+            @test copied.raw !== buffer
+            @test copied.tracked !== x
+        end
+        scalar = x[1]
+        copied = _copy_model_argument([scalar, scalar], @varname(x))
+        @test copied[1] === scalar
+        @test copied[2] === scalar
+        sum(x)
+    end
+end
+
+@testset "partly latent argument storage allocations" begin
+    source = (d=(X=zeros(1000, 1000), y=zeros(2)),)
+    table = ResolvedBindings(; arguments=VarNamedTuple(source))
+    table = _bind_resolved(table, Condition, @varname(d.X) => source.d.X)
+    _prepare_resolved_arguments(table, source)
+    @test (@allocated _prepare_resolved_arguments(table, source)) < sizeof(source.d.X) ÷ 2
+    result = _prepare_resolved_arguments(table, source)
+    @test result.d.X === source.d.X
+    @test result.d.y !== source.d.y
+    result.d.y .= 1
+    @test source.d.y == zeros(2)
+end
+
+end

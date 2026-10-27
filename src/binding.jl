@@ -1744,3 +1744,815 @@ function _check_binding_extents(value, template, optic::AbstractPPL.AbstractOpti
     end
     return _check_binding_extents(value, child, optic.child, vn)
 end
+
+using SparseArrays
+
+struct ModelArgumentCopy{T}
+    value::T
+    adapt::Bool
+end
+ModelArgumentCopy(value) = ModelArgumentCopy(value, false)
+# Extensions can adapt non-writable AD containers after Julia copies the graph.
+function _adapt_copied_argument end
+function Base.deepcopy_internal(value::ModelArgumentCopy, memo::IdDict)
+    _retain_argument_leaves!(memo, value.value, Base.IdSet{Any}())
+    _retain_bound_argument_storage!(memo, value.value)
+    return ModelArgumentCopy(
+        Base.deepcopy_internal(value.value, memo), get(memo, ModelArgumentCopy, false)
+    )
+end
+function _argument_opaque_value(value)
+    return isbits(value) ||
+           value isa Union{BigFloat,BigInt} ||
+           value isa Number &&
+           parentmodule(typeof(value)) === Base &&
+           all(i -> _argument_opaque_value(getfield(value, i)), 1:fieldcount(typeof(value)))
+end
+function _retain_argument_value!(memo, value, seen)
+    memo[value] = value
+    return nothing
+end
+function _retain_argument_leaves!(memo, value, seen)
+    isbits(value) && return nothing
+    value isa Union{Type,Symbol,AbstractString,Module} && return nothing
+    value in seen && return nothing
+    push!(seen, value)
+    if _argument_opaque_value(value) || value isa Number && ismutable(value)
+        _retain_argument_value!(memo, value, seen)
+    else
+        _foreach_argument_child(value, Val(:latent), nothing) do child
+            _retain_argument_leaves!(memo, child, seen)
+        end
+    end
+    return nothing
+end
+# Resolve the optional adapter from type metadata so ordinary preparation remains
+# inferred even when ReverseDiff's type-changing facade adapter is loaded.
+_argument_ad_storage(::Type) = false
+function _argument_storage_expr(query, T, seen)
+    T <: Union{Number,Type,Symbol,AbstractString} && return false
+    T in seen && return false
+    push!(seen, T)
+    children = if T isa Union
+        Base.uniontypes(T)
+    elseif !isconcretetype(T)
+        return true
+    elseif T <: Array
+        (eltype(T),)
+    elseif T <: AbstractArray
+        # Elements need not be stored in fields, as in `Memory` or a lazy array.
+        (eltype(T), fieldtypes(T)...)
+    else
+        fieldtypes(T)
+    end
+    result = :($query($T))
+    for child in children
+        result = :($result || $(_argument_storage_expr(query, child, seen)))
+    end
+    return result
+end
+@generated function _argument_may_need_adapter(::Type{T}) where {T}
+    return _argument_storage_expr(_argument_ad_storage, T, Set{Any}())
+end
+function _copy_model_argument(value)
+    copied = deepcopy(ModelArgumentCopy(value))
+    return if _argument_may_need_adapter(typeof(value)) && copied.adapt
+        _adapt_copied_argument(copied.value)
+    else
+        copied.value
+    end
+end
+_copy_model_argument(value::Type) = value
+function _copy_model_argument(value::Number)
+    (isbits(value) || _argument_opaque_value(value)) && return value
+    return invoke(_copy_model_argument, Tuple{Any}, value)
+end
+function _copy_model_argument(value::Array{<:Number})
+    isbitstype(eltype(value)) && return copy(value)
+    return invoke(_copy_model_argument, Tuple{Any}, value)
+end
+function _copy_model_argument(value, vn)
+    _check_latent_storage(value, vn)
+    _check_argument_key_storage(value, vn)
+    return _copy_model_argument(value)
+end
+
+_writable_storage(::Type{T}) where {T} = ismutabletype(T) || _argument_ad_storage(T)
+function _writable_storage(
+    ::Type{<:Union{SparseArrays.SparseVector,SparseArrays.SparseMatrixCSC}}
+)
+    return true
+end
+_unwritable_storage_type(::Type) = false
+_unwritable_storage_type(::Type{T}) where {T<:AbstractArray} = !_writable_storage(T)
+# Skips the walk below, on every evaluation, for argument types that hold no such storage.
+@generated function _argument_may_be_unwritable(::Type{T}) where {T}
+    return _argument_storage_expr(_unwritable_storage_type, T, Set{Any}())
+end
+_array_storage(value) = value
+function _array_storage(value::AbstractArray)
+    storage = parent(value)
+    return storage === value ? value : _array_storage(storage)
+end
+# Returns the address and value of the first unwritable storage below `vn`. A read-only
+# wrapper over a mutable parent is not detected, and neither are struct fields or `Dict`s.
+_unwritable_storage(value, vn, seen) = nothing
+function _unwritable_storage(value::Union{Tuple,NamedTuple}, vn, seen)
+    for (key, child) in pairs(value)
+        optic =
+            key isa Symbol ? AbstractPPL.Property{key}() : AbstractPPL.Index((key,), (;))
+        found = _unwritable_storage(child, AbstractPPL.append_optic(vn, optic), seen)
+        found === nothing || return found
+    end
+    return nothing
+end
+function _unwritable_storage(value::AbstractArray, vn, seen)
+    _writable_storage(typeof(_array_storage(value))) || return vn => value
+    eltype(value) <: Number && return nothing
+    # A self-referential argument would otherwise be walked without end.
+    value in seen && return nothing
+    push!(seen, value)
+    for i in CartesianIndices(value)
+        isassigned(value, i) || continue
+        optic = AbstractPPL.Index(Tuple(i), (;))
+        found = _unwritable_storage(value[i], AbstractPPL.append_optic(vn, optic), seen)
+        found === nothing || return found
+    end
+    return nothing
+end
+function _check_latent_storage(value, vn)
+    _argument_may_be_unwritable(typeof(value)) || return nothing
+    found = _unwritable_storage(value, vn, Base.IdSet{Any}())
+    found === nothing && return nothing
+    address, storage = found
+    # Latent copies may widen element types, but do not convert immutable array storage.
+    throw(
+        ArgumentError(
+            "Argument `$address` is a `$(typeof(storage))`, which cannot hold latent " *
+            "draws; pass a mutable copy of the array at `$address`, e.g. made with `collect`.",
+        ),
+    )
+end
+# One bits type keeps dense arrays of leaf plans cheap for Julia to deepcopy.
+struct ModelArgumentLeaf
+    bound::Bool
+end
+# Copy templates and arguments in one graph so overlapping templates share an identity table.
+struct ModelArgumentStorage{T,C}
+    value::T
+    children::C
+end
+@inline function _unwritable_storage(storage::ModelArgumentStorage, vn, seen)
+    # Binding listings materialize values without making their gaps latent.
+    vn === nothing && return nothing
+    value = storage.value
+    value isa Union{Tuple,NamedTuple,AbstractArray} || return nothing
+    # Partial binding validation already rejects immutable numeric array storage.
+    value isa AbstractArray && eltype(value) <: Number && return nothing
+    indices = value isa AbstractArray ? CartesianIndices(value) : keys(value)
+    return _first_unwritable_storage(indices) do key
+        value isa AbstractArray && !isassigned(value, key) && return nothing
+        plan = get(storage.children, key, ModelArgumentLeaf(false))
+        plan isa ModelArgumentLeaf && plan.bound && return nothing
+        optic = if key isa Symbol
+            AbstractPPL.Property{key}()
+        else
+            AbstractPPL.Index(key isa CartesianIndex ? Tuple(key) : (key,), (;))
+        end
+        child = plan isa ModelArgumentStorage ? plan : value[key]
+        return _unwritable_storage(child, AbstractPPL.append_optic(vn, optic), seen)
+    end
+end
+@inline function _first_unwritable_storage(f, indices::Tuple)
+    isempty(indices) && return nothing
+    found = f(first(indices))
+    return found === nothing ? _first_unwritable_storage(f, Base.tail(indices)) : found
+end
+function _first_unwritable_storage(f, indices)
+    for key in indices
+        found = f(key)
+        found === nothing || return found
+    end
+    return nothing
+end
+# Fully bound branches need no private storage. Mark latent reachability first:
+# a bound branch may alias a latent one, which still needs an independent copy.
+_retain_bound_argument_storage!(memo, value) = nothing
+function _retain_bound_argument_storage!(memo, storage::ModelArgumentStorage)
+    latent, bound = Base.IdSet{Any}(), Base.IdSet{Any}()
+    _argument_storage_policy!(latent, bound, storage)
+    for value in bound
+        value in latent || (memo[value] = value)
+    end
+    return nothing
+end
+const ArgumentMemory = @static if isdefined(Core, :GenericMemory)
+    Core.GenericMemory
+else
+    Union{}
+end
+_argument_memory_ids(value) = ()
+function _argument_memory_ids(value::Union{Array,ArgumentMemory})
+    return isempty(value) ? () : Base.dataids(value)
+end
+
+# Visit owning arrays' elements but wrappers' fields; visiting wrapper elements too
+# would count their parent's storage twice.
+function _foreach_argument_field(f::F, value) where {F}
+    if value isa Array && hasfield(typeof(value), :ref)
+        isempty(value) && return nothing
+        return f(value.ref.mem)
+    elseif value isa Union{Array,ArgumentMemory,Core.SimpleVector}
+        value isa Core.SimpleVector || isbitstype(eltype(value)) && return nothing
+        for i in eachindex(value)
+            isassigned(value, i) || continue
+            result = f(value[i])
+            result === nothing || return result
+        end
+    else
+        for i in 1:fieldcount(typeof(value))
+            isbitstype(fieldtype(typeof(value), i)) && continue
+            isdefined(value, i) || continue
+            result = f(getfield(value, i))
+            result === nothing || return result
+        end
+    end
+    return nothing
+end
+_foreach_argument_child(f::F, value) where {F} = _foreach_argument_field(f, value)
+function _foreach_argument_child(f::F, value, mode::Val, bound) where {F}
+    return if mode isa Val{:retained}
+        _foreach_argument_field(f, value)
+    else
+        _foreach_argument_child(f, value)
+    end
+end
+function _foreach_argument_child(f::F, value::AbstractDict, mode::Val, bound) where {F}
+    mode isa Union{Val{:all},Val{:retained}} && return _foreach_argument_field(f, value)
+    for (key, child) in value
+        bound === nothing || push!(bound, key)
+        result = f(child)
+        result === nothing || return result
+    end
+    return nothing
+end
+function _argument_graph!(seen, value, repeated=nothing, mode=Val(:all), bound=nothing)
+    if mode isa Val{:retained}
+        isbits(value) && return nothing
+        value isa Union{Type,Symbol,AbstractString,Module} && return nothing
+    else
+        mode isa Val{:latent} && _argument_opaque_value(value) && return nothing
+        _argument_may_alias(typeof(value)) || return nothing
+    end
+    if ismutable(value)
+        if value in seen
+            repeated === nothing || push!(repeated, value)
+            return nothing
+        end
+        push!(seen, value)
+    end
+    ids =
+        value isa Array && hasfield(typeof(value), :ref) ? () : _argument_memory_ids(value)
+    for id in ids
+        if id in seen
+            repeated === nothing || push!(repeated, id)
+            return nothing
+        end
+        push!(seen, id)
+    end
+    _foreach_argument_child(value, mode, bound) do child
+        _argument_graph!(seen, child, repeated, mode, bound)
+    end
+    return nothing
+end
+
+_has_latent_argument(leaf::ModelArgumentLeaf) = !leaf.bound
+_has_latent_argument(value) = true
+function _has_latent_argument(storage::ModelArgumentStorage)
+    value = storage.value
+    n = value isa Union{Tuple,AbstractArray} ? length(value) : fieldcount(typeof(value))
+    return length(storage.children) < n || any(_has_latent_argument, storage.children)
+end
+function _check_argument_key_storage(value::Array{T}, vn) where {T<:Number}
+    isbitstype(T) && return nothing
+    return invoke(_check_argument_key_storage, Tuple{Any,Any}, value, vn)
+end
+function _check_argument_key_storage(value, vn)
+    (vn === nothing || isbits(value)) && return nothing
+    _has_latent_argument(value) || return nothing
+    retained, latent = Base.IdSet{Any}(), Base.IdSet{Any}()
+    _check_argument_leaves(value, vn, Base.IdSet{Any}(), true, retained)
+    isempty(retained) && return nothing
+    if value isa ModelArgumentStorage
+        _argument_branches!(latent, nothing, value, nothing, nothing, Val(:latent))
+    else
+        _argument_graph!(latent, value, nothing, Val(:latent))
+    end
+    any(x -> x in retained, latent) && throw(
+        ArgumentError(
+            "Cannot copy model argument `$vn`: retained storage is also reached by a latent path. Pass independent storage for the latent path.",
+        ),
+    )
+    return nothing
+end
+function _check_argument_leaves(value, vn, seen, latent, retained)
+    isbits(value) && return nothing
+    value isa Union{Type,Symbol,AbstractString,Module} && return nothing
+    _argument_opaque_value(value) &&
+        return _argument_graph!(retained, value, nothing, Val(:retained))
+    value in seen && return nothing
+    push!(seen, value)
+    if latent && value isa Number
+        storage = _foreach_argument_field(_mutable_argument_storage, value)
+        storage === nothing || throw(
+            ArgumentError(
+                "Cannot copy model argument `$vn`: number `$(typeof(value))` reaches mutable storage. Keep the storage outside the number.",
+            ),
+        )
+    end
+    value isa Number &&
+        ismutable(value) &&
+        _argument_graph!(retained, value, nothing, Val(:retained))
+    if value isa AbstractDict
+        for (key, child) in value
+            isbits(key) ||
+                key isa Union{Symbol,String} ||
+                throw(
+                    ArgumentError(
+                        "Cannot copy model argument `$vn`: dictionary key `$(typeof(key))` is not an isbits value, Symbol or String. Use an isbits, Symbol or String key, or pass the dictionary as a separate covariate argument.",
+                    ),
+                )
+            _check_argument_leaves(child, vn, seen, latent, retained)
+        end
+    else
+        _foreach_argument_field(value) do child
+            _check_argument_leaves(child, vn, seen, latent, retained)
+        end
+    end
+    return nothing
+end
+function _mutable_argument_storage(value)
+    isbits(value) && return nothing
+    value isa Union{Type,Symbol,AbstractString,Module} && return nothing
+    ismutable(value) && return true
+    return _foreach_argument_field(_mutable_argument_storage, value)
+end
+function _check_argument_leaves(storage::ModelArgumentStorage, vn, seen, latent, retained)
+    _check_argument_leaves(storage.value, vn, Base.IdSet{Any}(), false, retained)
+    value, children = storage.value, storage.children
+    indices = children isa NamedTuple ? fieldnames(typeof(value)) : eachindex(value)
+    for i in indices
+        (i isa Symbol ? isdefined(value, i) : value isa Tuple || isassigned(value, i)) ||
+            continue
+        child = i isa Symbol ? getfield(value, i) : value[i]
+        plan = get(children, i, ModelArgumentLeaf(false))
+        plan isa ModelArgumentLeaf && plan.bound && continue
+        _check_argument_leaves(
+            plan isa ModelArgumentStorage ? plan : child, vn, seen, latent, retained
+        )
+    end
+    return nothing
+end
+
+# A partial owner contributes its fields and backing storage, with elements handled
+# by the binding plan exactly once.
+function _argument_owner_graph!(
+    seen, value, repeated=nothing, mode=Val(:shared), bound=nothing
+)
+    mode isa Val{:latent} && _argument_opaque_value(value) && return nothing
+    if value isa Union{Array,ArgumentMemory}
+        if value in seen
+            repeated === nothing || push!(repeated, value)
+            return nothing
+        end
+        push!(seen, value)
+        if value isa Array && hasfield(typeof(value), :ref)
+            isempty(value) && return nothing
+            return _argument_owner_graph!(seen, value.ref.mem, repeated, mode, bound)
+        end
+        for id in _argument_memory_ids(value)
+            id in seen && repeated !== nothing && push!(repeated, id)
+            push!(seen, id)
+        end
+    elseif value isa AbstractArray
+        _foreach_argument_child(value) do child
+            if child === parent(value)
+                _argument_owner_graph!(seen, child, repeated, mode, bound)
+            else
+                _argument_graph!(seen, child, repeated, mode, bound)
+            end
+        end
+    elseif ismutable(value)
+        value in seen && repeated !== nothing && push!(repeated, value)
+        push!(seen, value)
+    end
+    return nothing
+end
+
+function _argument_branches!(
+    latent, bound, storage::ModelArgumentStorage, binding, repeated, mode=Val(:shared)
+)
+    value, children = storage.value, storage.children
+    value isa Union{Missing,Nothing} && return nothing
+    mode isa Val{:latent} && _argument_opaque_value(value) && return nothing
+    _argument_owner_graph!(latent, value, repeated, mode, bound)
+    indices = children isa NamedTuple ? fieldnames(typeof(value)) : eachindex(value)
+    for i in indices
+        (i isa Symbol ? isdefined(value, i) : value isa Tuple || isassigned(value, i)) ||
+            continue
+        child = i isa Symbol ? getfield(value, i) : value[i]
+        plan = if i isa Symbol
+            get(children, i, ModelArgumentLeaf(false))
+        elseif checkbounds(Bool, children, i)
+            children[i]
+        else
+            ModelArgumentLeaf(false)
+        end
+        optic = if i isa Symbol
+            AbstractPPL.Property{i}()
+        else
+            AbstractPPL.Index(i isa CartesianIndex ? Tuple(i) : (i,), (;))
+        end
+        childbinding = _model_argument_binding(binding, optic)
+        if plan isa ModelArgumentStorage
+            _argument_branches!(latent, bound, plan, childbinding, repeated, mode)
+        elseif plan.bound
+            bound === nothing ||
+                childbinding isa ModelValue{ArgumentCondition} && push!(bound, child)
+        else
+            _argument_graph!(latent, child, repeated, mode, bound)
+        end
+    end
+    return nothing
+end
+
+function _argument_alias_type(T, seen)
+    T <: Union{Type,Symbol,Module,String,BigFloat,BigInt} && return false
+    isbitstype(T) && return false
+    T in seen && return false
+    push!(seen, T)
+    T isa Union && return any(t -> _argument_alias_type(t, seen), Base.uniontypes(T))
+    isconcretetype(T) || return true
+    ismutabletype(T) && !(T <: Number) && return true
+    return any(t -> _argument_alias_type(t, seen), fieldtypes(T))
+end
+@generated function _argument_may_alias(::Type{T}) where {T}
+    return _argument_alias_type(T, Set{Any}())
+end
+function _check_shared_latent_storage(table::ResolvedBindings, arguments::NamedTuple)
+    _argument_may_alias(typeof(arguments)) || return nothing
+    lhs = keys(table.arguments.data)
+    latent, repeated = Base.IdSet{Any}(), Any[]
+    roots, bound = Tuple{Any,Any,Any,Union{Bool,Nothing}}[], Any[]
+    for (name, value) in pairs(arguments)
+        _argument_may_alias(typeof(value)) || continue
+        vn = VarName{name}()
+        binding = if name in lhs
+            _model_argument_binding(table.values, AbstractPPL.varname_to_optic(vn))
+        else
+            nothing
+        end
+        role = nothing
+        if !(name in lhs) || binding isa ModelValue{ArgumentCondition}
+            push!(bound, value)
+            role = false
+        elseif binding === nothing
+            _argument_graph!(latent, value, repeated, Val(:shared), bound)
+            role = true
+        elseif binding isa Union{ModelValueTree,VarNamedTuple,VarNamedTuples.PartialArray}
+            storage = _argument_storage(binding, value)
+            storage isa ModelArgumentStorage || continue
+            value = storage.value
+            _argument_branches!(latent, bound, storage, binding, repeated)
+        else
+            continue
+        end
+        push!(roots, (vn, value, binding, role))
+    end
+    isempty(latent) && return nothing
+    shared = isempty(repeated) ? nothing : first(repeated)
+    if shared === nothing
+        visited = Base.IdSet{Any}()
+        memory = Set{UInt}(node for node in latent if node isa UInt)
+        for value in bound
+            shared = _reached_latent(latent, value, visited, memory)
+            shared === nothing || break
+        end
+    end
+    shared === nothing && return nothing
+    selected = _shared_argument_names(roots, shared)
+    throw(
+        ArgumentError(
+            "Storage reachable from a latent argument is shared by $(join(map(name -> "`$name`", selected), " and ")). A latent draw may replace storage and leave another reference stale, even if that reference is only read; pass independent storage, for example `(a=v, b=copy(v))`.",
+        ),
+    )
+end
+function _reached_latent(latent, value, seen, memory)
+    _argument_may_alias(typeof(value)) || return nothing
+    for id in _argument_memory_ids(value)
+        id in memory && return id
+    end
+    (!(value isa Union{Array,ArgumentMemory}) || isempty(value)) &&
+        ismutable(value) &&
+        value in latent &&
+        return value
+    value isa Union{Array,ArgumentMemory} && isbitstype(eltype(value)) && return nothing
+    if ismutable(value)
+        value in seen && return nothing
+        push!(seen, value)
+    end
+    return _foreach_argument_child(value) do child
+        _reached_latent(latent, child, seen, memory)
+    end
+end
+function _shared_argument_names(roots, shared)
+    involved, latent_names = Any[], Any[]
+    for (name, value, binding, role) in roots
+        graph, repeated, bound = Base.IdSet{Any}(), Any[], Any[]
+        if role === false
+            push!(bound, value)
+        elseif role === true
+            _argument_graph!(graph, value, repeated, Val(:shared), bound)
+        else
+            _argument_branches!(
+                graph, bound, _argument_storage(binding, value), binding, repeated
+            )
+        end
+        internal = any(node -> node === shared, repeated)
+        if shared in graph
+            push!(latent_names, name)
+            internal && return (name, name)
+        end
+        bound_graph = Base.IdSet{Any}()
+        for value in bound
+            _argument_graph!(bound_graph, value)
+        end
+        name in latent_names && shared in bound_graph && return (name, name)
+        (shared in graph || shared in bound_graph) && push!(involved, name)
+    end
+    name = first(latent_names)
+    other = findfirst(other -> other != name, involved)
+    return (name, other === nothing ? name : involved[other])
+end
+function _argument_storage_policy!(latent, bound, storage)
+    value, children = storage.value, storage.children
+    push!(latent, value)
+    value isa Array && union!(latent, _argument_memory_ids(value))
+    # Array headers and their backing memory must follow the same copy policy.
+    # Julia 1.10 stores the memory directly; later versions expose a MemoryRef.
+    if value isa Array && hasfield(typeof(value), :ref)
+        push!(latent, value.ref)
+        push!(latent, value.ref.mem)
+    end
+    # Partial views still need private backing storage, even when their parent is
+    # also a fully bound branch elsewhere in the argument graph.
+    if value isa AbstractArray && parent(value) !== value
+        _argument_graph!(latent, parent(value))
+    end
+    if children isa NamedTuple
+        for name in fieldnames(typeof(value))
+            isdefined(value, name) || continue
+            child = getfield(value, name)
+            plan = get(children, name, ModelArgumentLeaf(false))
+            _argument_child_policy!(latent, bound, child, plan)
+        end
+    else
+        for i in eachindex(value)
+            (value isa Tuple || isassigned(value, i)) || continue
+            plan = if (children isa Tuple || checkbounds(Bool, children, i))
+                children[i]
+            else
+                ModelArgumentLeaf(false)
+            end
+            _argument_child_policy!(latent, bound, value[i], plan)
+        end
+    end
+    return nothing
+end
+function _argument_child_policy!(latent, bound, value, leaf::ModelArgumentLeaf)
+    leaf.bound && bound === nothing && return nothing
+    return _argument_graph!(leaf.bound ? bound : latent, value)
+end
+function _argument_child_policy!(latent, bound, value, storage::ModelArgumentStorage)
+    # A nested owner can replace the original child, including its size and type.
+    value === storage.value || bound === nothing || _argument_graph!(bound, value)
+    return _argument_storage_policy!(latent, bound, storage)
+end
+_argument_storage(value, template) = ModelArgumentLeaf(true)
+function _argument_storage(tree::ModelValueTree, template)
+    return _argument_storage(tree.values, tree.template)
+end
+# Keep property names static so heterogeneous sibling types do not get merged.
+@generated function _argument_storage(values::VarNamedTuple{names}, template) where {names}
+    children = map(names) do name
+        :(_argument_property_storage(values.data.$name, template, Val($(QuoteNode(name)))))
+    end
+    return quote
+        template isa NoTemplate && return nothing
+        ModelArgumentStorage(template, NamedTuple{$names}(($(children...),)))
+    end
+end
+function _argument_property_storage(value, template, ::Val{name}) where {name}
+    hasproperty(template, name) || throw(
+        ArgumentError(
+            "Cannot override nonexistent property `$name` of $(typeof(template))."
+        ),
+    )
+    return _argument_child_storage(value, template, AbstractPPL.Property{name}())
+end
+_argument_child_storage(::ModelValue, template, optic) = ModelArgumentLeaf(true)
+_argument_child_storage(::NoModelBinding, template, optic) = ModelArgumentLeaf(false)
+function _argument_child_storage(value, template, optic)
+    child = if optic isa AbstractPPL.Property
+        getproperty(template, _binding_property_name(optic))
+    elseif template isa Tuple
+        getindex(template, optic.ix...; optic.kw...)
+    else
+        VarNamedTuples.maybe_index_template(template, optic)
+    end
+    return _argument_storage(value, child)
+end
+function _argument_storage(values::VarNamedTuples.PartialArray, template)
+    _has_complete_model_data(values) && return ModelArgumentLeaf(true)
+    original = template
+    _inherits_shape(values.mask) && (template = values.mask.template)
+    original = original isa AbstractArray ? original : template
+    if template isa AbstractArray &&
+        (template !== original || axes(template) != axes(values.data))
+        T = promote_type(eltype(template), eltype(original))
+        resized = similar(template, T, axes(values.data))
+        # A new extent still keeps stale argument values at surviving latent indices.
+        for i in eachindex(original)
+            if checkbounds(Bool, resized, i) &&
+                !haskey(values, i) &&
+                isassigned(original, i)
+                resized[i] = original[i]
+            end
+        end
+        template = resized
+    end
+    # Capture the final template by value, rather than boxing the reassigned argument.
+    children = let template = template
+        map(CartesianIndices(values.mask)) do i
+            values.mask[i] || return ModelArgumentLeaf(false)
+            value = values.data[i]
+            if value isa VarNamedTuples.ArrayLikeBlock
+                _argument_child_storage(
+                    value.block, template, AbstractPPL.Index(value.ix, value.kw)
+                )
+            else
+                _argument_child_storage(value, template, AbstractPPL.Index(Tuple(i), (;)))
+            end
+        end
+    end
+    return ModelArgumentStorage(template, children)
+end
+
+_model_argument_value(value, template) = value
+_model_argument_value(::Nothing, template) = _copy_model_argument(template)
+_model_argument_value(value, template, vn) = _model_argument_value(value, template)
+_model_argument_value(::Nothing, template, vn) = _copy_model_argument(template, vn)
+_model_argument_value(value::ModelValue, template) = value.value
+_model_argument_value(values::AbstractArray, template) = _model_data(values)
+function _model_argument_value(
+    values::Union{ModelValueTree,VarNamedTuple,VarNamedTuples.PartialArray},
+    template,
+    vn=nothing,
+)
+    storage = _argument_storage(values, template)
+    return _apply_model_bindings(values, _copy_model_argument(storage, vn))
+end
+
+_apply_model_bindings(value, storage) = value
+_apply_model_bindings(value::ModelValue, storage) = value.value
+_apply_model_bindings(values::VarNamedTuple, ::Nothing) = _model_data(values)
+function _apply_model_bindings(values::VarNamedTuples.PartialArray, ::ModelArgumentLeaf)
+    return _model_data(values)
+end
+function _apply_model_bindings(tree::ModelValueTree, storage)
+    return _apply_model_bindings(tree.values, storage)
+end
+@generated function _apply_model_bindings(
+    values::VarNamedTuple{names}, storage
+) where {names}
+    updates = map(names) do name
+        :(
+            result = _set_argument_property(
+                result,
+                Val($(QuoteNode(name))),
+                _apply_model_bindings(values.data.$name, storage.children.$name),
+            )
+        )
+    end
+    return quote
+        result = storage.value
+        $(updates...)
+        result
+    end
+end
+function _set_argument_property(result, ::Val{name}, value) where {name}
+    if ismutabletype(typeof(result))
+        if hasfield(typeof(result), name) && isconst(typeof(result), name)
+            getproperty(result, name) === value && return result
+            throw(
+                ArgumentError(
+                    "Cannot replace const property `$name` of argument type $(typeof(result)); bind the whole value instead.",
+                ),
+            )
+        end
+        setproperty!(result, name, value)
+        return result
+    end
+    # An immutable path whose mutable child was updated needs no reconstruction.
+    if (ismutable(value) || value isa AbstractArray) &&
+        isdefined(result, name) &&
+        getproperty(result, name) === value
+        return result
+    end
+    return _rebuild_argument_property(result, Val(name), value)
+end
+# Check dispatch, not inference: custom setters own their reconstruction protocol.
+function _argument_reconstructible(value::T, patch::P) where {T,P<:NamedTuple}
+    setter = ConstructionBase.setproperties
+    hasmethod(setter, Tuple{T,P}) || return false
+    # NamedTuples always support replacing existing properties.
+    T <: NamedTuple && all(name -> hasfield(T, name), fieldnames(P)) && return true
+    which(setter, Tuple{T,P}) !== which(setter, Tuple{Any,NamedTuple}) && return true
+    isempty(fieldnames(P)) && return true
+
+    # ConstructionBase's fallback calls constructorof(T) on properties in field order.
+    # Check actual types because declared fields may be abstract.
+    names = fieldnames(T)
+    propertynames(value) === names || return false
+    all(name -> name in names, fieldnames(P)) || return false
+    types = map(names) do name
+        Core.Typeof(getproperty(hasfield(P, name) ? patch : value, name))
+    end
+    return hasmethod(ConstructionBase.constructorof(T), Tuple{types...})
+end
+function _rebuild_argument_property(result, ::Val{name}, value) where {name}
+    patch = NamedTuple{(name,)}((value,))
+    _argument_reconstructible(result, patch) || throw(
+        ArgumentError(
+            "Cannot rebuild argument of type $(typeof(result)) when binding property `$name`; provide a ConstructionBase.setproperties method or bind the whole value.",
+        ),
+    )
+    return ConstructionBase.setproperties(result, patch)
+end
+function _apply_model_bindings(values::VarNamedTuples.PartialArray, storage)
+    result = storage.value
+    mask =
+        if eltype(values) <: VarNamedTuples.ArrayLikeBlock ||
+            VarNamedTuples.ArrayLikeBlock <: eltype(values)
+            copy(values.mask)
+        else
+            values.mask
+        end
+    for i in CartesianIndices(mask)
+        mask[i] || continue
+        binding = values.data[i]
+        if binding isa VarNamedTuples.ArrayLikeBlock
+            mask[binding.ix..., binding.kw...] .= false
+            value = _apply_model_bindings(binding.block, storage.children[i])
+            result = _set_argument_index(result, value, binding.ix...; binding.kw...)
+        else
+            value = _apply_model_bindings(binding, storage.children[i])
+            result = _set_argument_index(result, value, Tuple(i)...)
+        end
+    end
+    return result
+end
+function _set_argument_index(result, value, indices...; kwargs...)
+    if result isa AbstractArray &&
+        BangBang.implements(setindex!, result) &&
+        value isa eltype(result)
+        setindex!(result, value, indices...; kwargs...)
+        return result
+    end
+    return _setindex!!(result, value, indices...; kwargs...)
+end
+function _rebuild_argument_property(result::NamedTuple, ::Val{name}, value) where {name}
+    return ConstructionBase.setproperties(result, NamedTuple{(name,)}((value,)))
+end
+
+@generated function _prepare_resolved_arguments(
+    table::ResolvedBindings, arguments::NamedTuple{names}
+) where {names}
+    fields = map(names) do name
+        vn = VarName{name}()
+        optic = AbstractPPL.varname_to_optic(vn)
+        quote
+            if haskey(table.arguments.data, $(QuoteNode(name)))
+                _model_argument_value(
+                    _model_argument_binding(table.values, $optic), arguments.$name, $vn
+                )
+            else
+                arguments.$name
+            end
+        end
+    end
+    return quote
+        _check_shared_latent_storage(table, arguments)
+        NamedTuple{$names}(($(fields...),))
+    end
+end
