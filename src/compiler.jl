@@ -164,7 +164,7 @@ function check_tilde_rhs(@nospecialize(x))
 end
 check_tilde_rhs(x::Distribution) = x
 check_tilde_rhs(x::AbstractArray{<:Distribution}) = x
-check_tilde_rhs(x::Submodel{M,AutoPrefix}) where {M,AutoPrefix} = x
+check_tilde_rhs(x::Submodel) = x
 
 """
     check_dot_tilde_rhs(x)

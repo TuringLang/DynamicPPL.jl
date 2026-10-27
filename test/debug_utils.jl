@@ -78,9 +78,9 @@ end
         @testset "submodel" begin
             @model ModelInner() = x ~ Normal()
             @model function ModelOuterBroken()
-                # Without automatic prefixing => `x` s used twice.
-                z ~ to_submodel(ModelInner(), false)
-                return x ~ Normal()
+                # Reusing one child address duplicates its latent variable.
+                z ~ to_submodel(ModelInner())
+                return z ~ to_submodel(ModelInner())
             end
             test_model_can_run_but_fails_check(ModelOuterBroken())
 
@@ -95,8 +95,8 @@ end
 
             # With manual prefixing, https://github.com/TuringLang/DynamicPPL.jl/issues/785
             @model function ModelOuterWorking2()
-                x1 ~ to_submodel(DynamicPPL.prefix(ModelInner(), :a), false)
-                x2 ~ to_submodel(DynamicPPL.prefix(ModelInner(), :b), false)
+                x1 ~ to_submodel(DynamicPPL.prefix(ModelInner(), :a))
+                x2 ~ to_submodel(DynamicPPL.prefix(ModelInner(), :b))
                 return (x1, x2)
             end
             model = ModelOuterWorking2()

@@ -53,7 +53,13 @@ end
             # One of the models with literal observations, so we'll set this to 0 for subsequent comparisons.
             loglikelihood_true = 0.0
         else
-            @test [:x] == unique(DynamicPPL.getsym.(keys(lls)))
+            observed_root =
+                if model.f === DynamicPPL.TestUtils.demo_dot_assume_observe_submodel
+                    :likelihood
+                else
+                    :x
+                end
+            @test [observed_root] == unique(DynamicPPL.getsym.(keys(lls)))
             loglikelihood_sum = sum(sum, values(lls))
             @test loglikelihood_sum ≈ loglikelihood_true
         end

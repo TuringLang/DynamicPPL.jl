@@ -27,6 +27,17 @@ end
 @model t2844_deeper() = (c ~ to_submodel(t2844_outer()); return (; x=c.x))
 
 @testset "submodels.jl" begin
+    @testset "unprefixed children are rejected" begin
+        @model child() = x ~ Normal()
+        @model function parent(flag)
+            return a ~ to_submodel(child(), flag)
+        end
+        @test_throws ArgumentError to_submodel(child(), false)
+        @test_throws ArgumentError parent(false)()
+        @test typeof(to_submodel(child(), true)) === typeof(to_submodel(child()))
+        @test Set(keys(rand(parent(true)))) == Set([@varname(a.x)])
+    end
+
     @testset "$op with AbstractPPL API" for op in [condition, fix]
         x_val = 1.0
         x_logp = op == condition ? logpdf(Normal(), x_val) : 0.0
@@ -65,57 +76,24 @@ end
             end
         end
 
-        @testset "No prefix" begin
+        @testset "Explicit true" begin
             @model function inner()
                 x ~ Normal()
                 y ~ Normal()
                 return (x, y)
             end
             @model function outer()
-                return a ~ to_submodel(inner(), false)
+                return a ~ to_submodel(inner(), true)
             end
             @model function outer2()
-                return a ~ to_submodel(inner_op, false)
+                return a ~ to_submodel(inner_op, true)
             end
             with_inner_op = outer2()
             inner_op = op(inner(), (@varname(x) => x_val))
-            with_outer_op = op(outer(), (@varname(x) => x_val))
+            with_outer_op = op(outer(), (@varname(a.x) => x_val))
 
             # No conditioning/fixing
-            @test Set(keys(VarInfo(outer()))) == Set([@varname(x), @varname(y)])
-
-            # With conditioning/fixing
-            models = [("inner", with_inner_op), ("outer", with_outer_op)]
-            @testset "$name" for (name, model) in models
-                # Test that the value was correctly set
-                @test model()[1] == x_val
-                # Test that the logp was correctly set
-                accs = get_logp_and_rawval_accs(model)
-                raw_vals = get_raw_values(accs)
-                @test getlogjoint(accs) == x_logp + logpdf(Normal(), raw_vals[@varname(y)])
-                # Check the keys
-                @test Set(keys(raw_vals)) == Set([@varname(y)])
-            end
-        end
-
-        @testset "Manual prefix" begin
-            @model function inner()
-                x ~ Normal()
-                y ~ Normal()
-                return (x, y)
-            end
-            @model function outer()
-                return a ~ to_submodel(prefix(inner(), :b), false)
-            end
-            inner_op = op(inner(), (@varname(x) => x_val))
-            @model function outer2()
-                return a ~ to_submodel(prefix(inner_op, :b), false)
-            end
-            with_inner_op = outer2()
-            with_outer_op = op(outer(), (@varname(b.x) => x_val))
-
-            # No conditioning/fixing
-            @test Set(keys(VarInfo(outer()))) == Set([@varname(b.x), @varname(b.y)])
+            @test Set(keys(VarInfo(outer()))) == Set([@varname(a.x), @varname(a.y)])
 
             # With conditioning/fixing
             models = [("inner", with_inner_op), ("outer", with_outer_op)]
@@ -126,9 +104,43 @@ end
                 accs = get_logp_and_rawval_accs(model)
                 raw_vals = get_raw_values(accs)
                 @test getlogjoint(accs) ==
-                    x_logp + logpdf(Normal(), raw_vals[@varname(b.y)])
+                    x_logp + logpdf(Normal(), raw_vals[@varname(a.y)])
                 # Check the keys
-                @test Set(keys(raw_vals)) == Set([@varname(b.y)])
+                @test Set(keys(raw_vals)) == Set([@varname(a.y)])
+            end
+        end
+
+        @testset "Manual prefix" begin
+            @model function inner()
+                x ~ Normal()
+                y ~ Normal()
+                return (x, y)
+            end
+            @model function outer()
+                return a ~ to_submodel(prefix(inner(), :b))
+            end
+            inner_op = op(inner(), (@varname(x) => x_val))
+            @model function outer2()
+                return a ~ to_submodel(prefix(inner_op, :b))
+            end
+            with_inner_op = outer2()
+            with_outer_op = op(outer(), (@varname(a.b.x) => x_val))
+
+            # No conditioning/fixing
+            @test Set(keys(VarInfo(outer()))) == Set([@varname(a.b.x), @varname(a.b.y)])
+
+            # With conditioning/fixing
+            models = [("inner", with_inner_op), ("outer", with_outer_op)]
+            @testset "$name" for (name, model) in models
+                # Test that the value was correctly set
+                @test model()[1] == x_val
+                # Test that the logp was correctly set
+                accs = get_logp_and_rawval_accs(model)
+                raw_vals = get_raw_values(accs)
+                @test getlogjoint(accs) ==
+                    x_logp + logpdf(Normal(), raw_vals[@varname(a.b.y)])
+                # Check the keys
+                @test Set(keys(raw_vals)) == Set([@varname(a.b.y)])
             end
         end
 
@@ -162,7 +174,7 @@ end
                 return y ~ Normal()
             end
             @model function g()
-                return _unused ~ to_submodel(prefix(f(), :b), false)
+                return b ~ to_submodel(f())
             end
             @model function h()
                 return a ~ to_submodel(g())
@@ -188,7 +200,7 @@ end
             # Conditioning/fixing at the very bottom
             op_f = op(f(), (@varname(x) => x_val))
             @model function g2()
-                return _unused ~ to_submodel(prefix(op_f, :b), false)
+                return b ~ to_submodel(op_f)
             end
             @model function h3()
                 return a ~ to_submodel(g2())
