@@ -42,6 +42,31 @@ Bijectors.with_logabsdet_jacobian(f::ScalarTransform, x) = (f(x), 0.0)
         @test tv1 != tv4
     end
 
+    @testset "isequal implies equal hashes" begin
+        vns() = Set([@varname(x)])
+        transforms() = VarNamedTuple(; x=FixedTransform(identity))
+        for (a, b) in (
+            (
+                TransformedValue([1.0], NoTransform()),
+                TransformedValue([1.0], NoTransform()),
+            ),
+            (FixedTransform([1.0]), FixedTransform([1.0])),
+            (
+                WithTransforms(transforms(), UnlinkAll()),
+                WithTransforms(transforms(), UnlinkAll()),
+            ),
+            (LinkSome(vns(), UnlinkAll()), LinkSome(vns(), UnlinkAll())),
+            (UnlinkSome(vns(), LinkAll()), UnlinkSome(vns(), LinkAll())),
+        )
+            @test isequal(a, b)
+            @test hash(a) == hash(b)
+            @test get(Dict(a => 1), b, 0) == 1
+            @test b in Set([a])
+        end
+        @model f() = x ~ Normal()
+        @test hash(VarInfo(Xoshiro(1), f())) == hash(VarInfo(Xoshiro(1), f()))
+    end
+
     @testset "get_raw_value" begin
         struct DummyDist <: Distributions.ContinuousMultivariateDistribution end
 
