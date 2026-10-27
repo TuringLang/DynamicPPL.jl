@@ -20,20 +20,21 @@ export VarNamedTuple,
 """
     NoTemplate
 
-A singleton struct representing the fact that there is no template for a top-level variable.
-When `NoTemplate` is used, several things happen:
+Represent the absence of a storage template for a top-level variable.
 
- - If you attempt to call `make_leaf` with an Index optic, this will error.
- - When recursing into substructures, `NoTemplate` will be propagated.
+Low-level `VarNamedTuple` construction can create growable arrays for indexed addresses
+without a template. A concrete template establishes the full extent and resolves dynamic
+indices.
 
-Collectively this means that you can only set values for variables that only have Property
-optics, unless a template is provided.
-
-It might seem more idiomatic to use `nothing` or `missing` for this. However, this causes a
-bug with BangBang.setindex!!: https://github.com/JuliaFolds2/BangBang.jl/issues/43 so we use
-a dedicated struct instead.
+A dedicated marker avoids ambiguous dispatch in `BangBang.setindex!!` with `nothing`
+or `missing`: https://github.com/JuliaFolds2/BangBang.jl/issues/43.
 """
 struct NoTemplate end
+
+materialize_template(template) = template
+# `zero(T)` fixes the storage element type; runtime AD bindings need a template
+# built from running values, or a whole binding.
+materialize_template(::Type{T}) where {T<:AbstractPPL.OfType} = zero(T)
 
 """
     SkipTemplate{N}(value)
@@ -58,6 +59,17 @@ end
 # must be wrapped by the appropriate number of SkipTemplates).
 SkipTemplate{N}(v::SkipTemplate{M}) where {N,M} = SkipTemplate{N + M}(v.value)
 SkipTemplate{0}(v::SkipTemplate{M}) where {M} = SkipTemplate{M}(v.value)
+
+# Preserve the enclosing container until the submodel boundary, then use its local template.
+struct NestedTemplate{P<:AbstractPPL.AbstractOptic,T,C}
+    path::P
+    outer::T
+    inner::C
+end
+nested_template(path, outer, inner) = NestedTemplate(path, outer, inner)
+nested_template(::AbstractPPL.Iden, outer, inner) = SkipTemplate{1}(inner)
+template_array(template) = template
+template_array(template::NestedTemplate) = template_array(template.outer)
 
 """
     abstract type SetPermissions end
@@ -140,6 +152,64 @@ include("varnamedtuple/map.jl")
 include("varnamedtuple/show.jl")
 include("varnamedtuple/macro.jl")
 include("varnamedtuple/skeleton.jl")
+
+"""
+    AbstractPPL.of(vnt::VarNamedTuple)
+
+Describe the storage in `vnt` as an AbstractPPL `OfNamedTuple` binding template.
+Numeric `Array`s retain their element type and size;
+partly filled entries describe their full backing array, without reading unbound slots.
+Nested namespaces become nested templates. Scalars are supported only when `of`
+describes their type exactly. Custom arrays, growable entries (even fully filled),
+and scalar types that `of` would widen throw `ArgumentError`.
+
+This is a snapshot of the sample's layout: rebuild the template after layout changes.
+Values and masks are discarded. Indexed namespaces cannot be represented by this
+template grammar and throw `ArgumentError`.
+
+# Examples
+
+```jldoctest
+julia> using AbstractPPL: of
+
+julia> template = of(VarNamedTuple(; y=zeros(Float32, 2)));
+
+julia> zero(template)
+(y = Float32[0.0, 0.0],)
+```
+"""
+AbstractPPL.of(vnt::VarNamedTuple) = _storage_template(vnt)
+
+_storage_template(vnt::VarNamedTuple) = _storage_template(vnt.data)
+_storage_template(nt::NamedTuple) = AbstractPPL.of(map(_storage_template, nt))
+_storage_template(pa::PartialArray) = _storage_template(pa.data)
+_storage_template(a::Array{<:Number}) = AbstractPPL.of(a)
+function _storage_template(a::GrowableArray)
+    throw(
+        ArgumentError(
+            "Cannot infer a binding template from growable storage: it has no established shape.",
+        ),
+    )
+end
+function _storage_template(a::AbstractArray)
+    throw(
+        ArgumentError(
+            "Cannot preserve $(typeof(a)) in a binding template; only plain numeric Arrays are supported.",
+        ),
+    )
+end
+function _storage_template(x::Real)
+    template = AbstractPPL.of(x)
+    typeof(zero(template)) === typeof(x) || throw(
+        ArgumentError(
+            "Cannot preserve scalar type $(typeof(x)) in a binding template: `of` would widen it to $(typeof(zero(template))).",
+        ),
+    )
+    return template
+end
+function _storage_template(x)
+    throw(ArgumentError("Cannot describe $(typeof(x)) exactly in a binding template."))
+end
 
 """
     NamedTuple(vnt::VarNamedTuple)

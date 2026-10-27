@@ -138,7 +138,7 @@ function _setindex_optic!!(
 )
     perms isa MustNotOverwrite && throw(MustNotOverwriteError(perms))
     coptic = AbstractPPL.concretize_top_level(optic, arr)
-    return BangBang.setindex!!(arr, value, coptic.ix...; coptic.kw...)
+    return DynamicPPL._setindex!!(arr, value, coptic.ix...; coptic.kw...)
 end
 function _setindex_optic!!(
     nt::NamedTuple{names},
@@ -171,6 +171,50 @@ end
 # `x.a ~ dist` would error if `x` did not have a property `a`.
 (::SharedGetProperty{S})(x) where {S} = getproperty(x, S)
 
+function (::SharedGetProperty{S})(
+    template::NestedTemplate{<:AbstractPPL.Property{S}}
+) where {S}
+    return nested_template(
+        template.path.child, SharedGetProperty{S}()(template.outer), template.inner
+    )
+end
+
+index_template(template::SkipTemplate, optic) = decrease_skip(template)
+index_template(template, optic) = NoTemplate()
+function index_template(template::AbstractArray, optic)
+    return if _is_multiindex(template, optic.ix...; optic.kw...)
+        view(template, optic.ix...; optic.kw...)
+    else
+        getindex(template, optic.ix...; optic.kw...)
+    end
+end
+maybe_index_template(template, optic) = index_template(template, optic)
+function maybe_index_template(template::AbstractArray, optic)
+    return if _is_multiindex(template, optic.ix...; optic.kw...) ||
+        isassigned(template, optic.ix...; optic.kw...)
+        index_template(template, optic)
+    else
+        NoTemplate()
+    end
+end
+template_array(template::PartialArray) = template.data
+function index_template(template::PartialArray, optic)
+    # Read through the PartialArray so a slice namespace yields its block, rather
+    # than an array of ArrayLikeBlocks, before descending into the child's fields.
+    return if (eltype(template) <: ArrayLikeBlock || ArrayLikeBlock <: eltype(template)) &&
+        haskey(template, optic.ix...; optic.kw...)
+        getindex(template, optic.ix...; optic.kw...)
+    else
+        index_template(template.data, optic)
+    end
+end
+function index_template(template::NestedTemplate{<:AbstractPPL.Index}, optic)
+    template.path.child isa AbstractPPL.Iden && return SkipTemplate{1}(template.inner)
+    return nested_template(
+        template.path.child, maybe_index_template(template.outer, optic), template.inner
+    )
+end
+
 function _setindex_optic!!(
     pa::PartialArray, value, optic::AbstractPPL.Index, template, permissions::SetPermissions
 )
@@ -180,7 +224,7 @@ function _setindex_optic!!(
     # doesn't yet have enough indices for that slice. Expand it if so.
     pa = grow_to_indices!!(pa, coptic.ix...; coptic.kw...)
 
-    is_multiindex = _is_multiindex(template, coptic.ix...; coptic.kw...)
+    is_multiindex = _is_multiindex(pa.data, coptic.ix...; coptic.kw...)
 
     if permissions isa MustNotOverwrite && optic.child isa AbstractPPL.Iden
         if any(view(pa.mask, coptic.ix...; coptic.kw...))
@@ -192,19 +236,7 @@ function _setindex_optic!!(
         # Skip recursion
         value
     else
-        child_template = if template === NoTemplate()
-            NoTemplate()
-        elseif template isa SkipTemplate
-            decrease_skip(template)
-        elseif is_multiindex
-            Base.getindex(template, coptic.ix...; coptic.kw...)
-        elseif isassigned(template, coptic.ix...; coptic.kw...)
-            # Single-index, but we should check that there is actual data there before
-            # calling getindex, as otherwise it will error
-            Base.getindex(template, coptic.ix...; coptic.kw...)
-        else
-            NoTemplate()
-        end
+        child_template = index_template(template, coptic)
 
         # TODO(penelopeysm): This check to haskey() will check *all* the indices, it only
         # returns true if they are all filled. This is probably not really correct, and is
@@ -252,12 +284,9 @@ function _setindex_optic!!(
         end
     end
 
-    # If sub_value is a GrowableArray, we need to make sure it is grown to the right size to
-    # fit into the indices specified by `coptic`. This is the same logic as in
-    # `make_leaf_multiindex`. Again, if there is no GrowableArray underpinning sub_value
-    # then grow_to_indices!! is a no-op so won't hurt.
+    # A child slice grows in its own coordinates, with scalar dimensions dropped.
     grown_sub_value = if is_multiindex && sub_value isa PartialArray
-        grow_to_indices!!(sub_value, coptic.ix...; coptic.kw...)
+        grow_to_indices!!(sub_value, get_required_size_from_indices(coptic.ix)...; coptic.kw...)
     else
         sub_value
     end
@@ -337,20 +366,18 @@ end
 # This function handles Index optics. Since Index optics can represent either single-element
 # indexing or multi-element indexing (e.g., slices, arrays of indices), and their
 # implementation can be somewhat different, we dispatch to separate functions for each case.
-function make_leaf(value, optic::AbstractPPL.Index, template::PartialArray)
-    # If the template is a PA, use its data as the template.
-    return make_leaf(value, optic, template.data)
-end
 function make_leaf(
     value,
     optic::AbstractPPL.Index,
-    template::Union{AbstractArray,NoTemplate,SkipTemplate,Missing},
+    template::Union{
+        AbstractArray,PartialArray,NoTemplate,SkipTemplate,Missing,NestedTemplate
+    },
 )
     # First we need to resolve any dynamic indices, since _is_multiindex doesn't work with
     # them. This also helpfully catches errors if there is a dynamic index and a suitable
     # template is not provided (e.g., if someone tries to set `x[end]` without a template).
-    coptic = AbstractPPL.concretize_top_level(optic, template)
-    return if _is_multiindex(template, coptic.ix...; coptic.kw...)
+    coptic = AbstractPPL.concretize_top_level(optic, template_array(template))
+    return if _is_multiindex(template_array(template), coptic.ix...; coptic.kw...)
         make_leaf_multiindex(value, coptic, template)
     else
         make_leaf_singleindex(value, coptic, template)
@@ -368,17 +395,7 @@ function make_sub_value(value, coptic::AbstractPPL.Index, template)
     return if coptic.child isa AbstractPPL.Iden
         value
     else
-        child_template = if template isa NoTemplate
-            NoTemplate()
-        elseif template isa SkipTemplate
-            decrease_skip(template)
-        elseif template isa AbstractArray
-            # Note template can't be a PartialArray as that would have been unwrapped in
-            # another make_leaf method.
-            getindex(template, coptic.ix...; coptic.kw...)
-        else
-            NoTemplate()
-        end
+        child_template = index_template(template, coptic)
         make_leaf(value, coptic.child, child_template)
     end
 end
@@ -388,6 +405,7 @@ end
 # by the caller.
 function make_leaf_singleindex(value, coptic::AbstractPPL.Index, template)
     sub_value = make_sub_value(value, coptic, template)
+    template = template_array(template)
     # `sub_value` will become a single element inside the PartialArray that we create. To
     # ensure type stability, we want to make sure that the PartialArray is created with the
     # correct eltype to begin with, otherwise setindex!! may become type unstable.
@@ -418,17 +436,11 @@ end
 # This is more complex.
 function make_leaf_multiindex(value, coptic::AbstractPPL.Index, template)
     sub_value = make_sub_value(value, coptic, template)
+    template = template_array(template)
+    sub_value = _prepare_indexed_value(sub_value, template, coptic.ix...; coptic.kw...)
 
-    # Firstly, we need to make sure that sub_value has *exactly* the right size to fit into
-    # the indices specified by `coptic`. This might not always be the case. Consider
-    # _[2:3][1] without a template -- the inner `make_leaf` call will create a GrowableArray
-    # of size 1 (because that's the minimum size it infers from the inner indices), but we
-    # actually need a slice of length 2. (If there's a template, we don't have this problem,
-    # because the inner make_leaf will use the template to set the correct size of 2.) Note
-    # that `grow_to_indices!!` is a no-op for any PartialArray that doesn't contain a
-    # GrowableArray.
     grown_sub_value = if sub_value isa PartialArray
-        grow_to_indices!!(sub_value, coptic.ix...; coptic.kw...)
+        grow_to_indices!!(sub_value, get_required_size_from_indices(coptic.ix)...; coptic.kw...)
     else
         sub_value
     end
