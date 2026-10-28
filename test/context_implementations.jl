@@ -63,7 +63,9 @@ end
         @test seen == [@varname(x), @varname(z), nothing, @varname(ys[1]), @varname(ys[2])]
         @test getloglikelihood(vi) ≈ sum(logpdf.(Normal(), 0.0:4.0))
         empty!(seen)
-        _, vi = DynamicPPL.evaluate_nowarn!!(outer(model), VarInfo())
+        _, vi = DynamicPPL.evaluate_nowarn!!(
+            outer(condition(model, conditioned(model))), VarInfo()
+        )
         @test length(seen) == 5
         @test getloglikelihood(vi) ≈ sum(logpdf.(Normal(), 0.0:4.0))
     end
@@ -128,7 +130,8 @@ end
 
     @testset "contexts belong to evaluations" begin
         for prefixed in (false, true)
-            inner = prefixed ? prefix(child(), @varname(p)) : child()
+            observed = condition(child(missing); y=2.0)
+            inner = prefixed ? prefix(observed, @varname(p)) : observed
             model = outer(parent(inner))
             xname = prefixed ? @varname(b.a.p.x) : @varname(b.a.x)
             zname = prefixed ? @varname(b.a.p.z) : @varname(b.a.z)

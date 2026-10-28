@@ -39,7 +39,7 @@ end
     mu ~ Normal()
     x = similar(y)
     for i in eachindex(y)
-        child = indexed_observation(y[i], mu)
+        child = condition(indexed_observation(missing, mu); y=y[i])
         x[i] ~ to_submodel(i in unobserved ? decondition(child) : child)
     end
     return x
@@ -480,12 +480,12 @@ end
         @model function overlap(y)
             mu ~ Normal()
             y[1] ~ Normal(mu)
-            return a ~ to_submodel(scalar_likelihood(y[2], mu))
+            return a ~ to_submodel(condition(scalar_likelihood(missing, mu); y=y[2]))
         end
         @model function renamed(z)
             mu ~ Normal()
             z[1] ~ Normal(mu)
-            return a ~ to_submodel(scalar_likelihood(z[2], mu))
+            return a ~ to_submodel(condition(scalar_likelihood(missing, mu); y=z[2]))
         end
         expected = sum(logpdf.(Normal(), [0.0, 1.0, 2.0]))
         @test logjoint(overlap([1.0, 2.0]), (; mu=0.0)) ≈ expected
@@ -514,7 +514,7 @@ end
             b[2] ~ to_submodel(m)
             return b[2]
         end
-        child = inspect_child()
+        child = condition(inspect_child(); x=[0.0, 1.0])
         parent = condition(
             decondition(inspect_parent(child), DynamicPPL.Recursive(), @varname(a.x[1])),
             @varname(a.x[1]) => 2.0,
@@ -594,7 +594,11 @@ end
             (splatted_return(0.0), @varname(x), (2.0,)),
             (keyword_splatted_return(; a=0.0), @varname(x), (a=2.0,)),
         )
-            for wrapped in (model, prefix(model, @varname(p)), outer(model))
+            for wrapped in (
+                model,
+                prefix(model, @varname(p)),
+                outer(condition(model, conditioned(model))),
+            )
                 @test_throws err wrapped(Xoshiro(1))
                 @test_throws err decondition(wrapped)(Xoshiro(1))
                 @test outer(local_return())(Xoshiro(1)) isa Real
@@ -1137,7 +1141,7 @@ end
             return y ~ Normal()
         end
         @model function g(inner_x)
-            return a ~ to_submodel(f(inner_x))
+            return a ~ to_submodel(condition(f(missing); x=inner_x))
         end
 
         late_bound = condition(g(0.0), @varname(a.x) => 1.0)
@@ -1157,7 +1161,7 @@ end
 
         @model observed_child(x=2.0) = x ~ Normal()
         @model function parent_with_return_value(a)
-            a[1] ~ to_submodel(observed_child())
+            a[1] ~ to_submodel(condition(observed_child(missing); x=2.0))
             return a
         end
         for model in (
@@ -1364,9 +1368,11 @@ end
     @test keys(rand(Xoshiro(1), unfix(fixed_child, rec, @varname(a.x)))) == [@varname(a.x)]
     @test decondition(fixed_child, rec, @varname(a.x))() == 5.0
     @test returned(unfix(fixed_child, rec), (a=(x=2.0,),)) == 2.0
-    @test isempty(conditioned(decondition(parent(leaf()), rec)))
-    @test keys(rand(Xoshiro(1), decondition(parent(leaf()), rec))) == [@varname(a.x)]
-    removed = decondition(parent(leaf()), rec, @varname(a.x))
+    @test isempty(conditioned(decondition(parent(condition(leaf(missing); x=2.0)), rec)))
+    @test keys(
+        rand(Xoshiro(1), decondition(parent(condition(leaf(missing); x=2.0)), rec))
+    ) == [@varname(a.x)]
+    removed = decondition(parent(condition(leaf(missing); x=2.0)), rec, @varname(a.x))
     @test keys(rand(Xoshiro(1), decondition(removed, rec, @varname(a.x)))) ==
         [@varname(a.x)]
     @test condition(removed, @varname(a.x) => 3.0)() == 3.0
@@ -1374,7 +1380,8 @@ end
     @test keys(rand(Xoshiro(1), prefix(removed, @varname(p)))) == [@varname(p.a.x)]
     @test keys(rand(Xoshiro(1), outer(removed))) == [@varname(b.a.x)]
     @test unfix(leaf(), rec, @varname(x))(Xoshiro(1)) == 2.0
-    @test unfix(parent(leaf()), rec, @varname(a.x))(Xoshiro(1)) == 2.0
+    @test unfix(parent(condition(leaf(missing); x=2.0)), rec, @varname(a.x))(Xoshiro(1)) ==
+        2.0
     @test keys(
         rand(Xoshiro(1), decondition(parent(decondition(leaf())), rec, @varname(a.x)))
     ) == [@varname(a.x)]
@@ -1478,7 +1485,7 @@ end
 @testset "argument submodel tildes reject sibling edits only when reached" begin
     @model removal_sibling_leaf(x=2.0) = x ~ Normal()
     @model function removal_siblings(a, run)
-        run && (a.child ~ to_submodel(removal_sibling_leaf()))
+        run && (a.child ~ to_submodel(condition(removal_sibling_leaf(missing); x=2.0)))
         a.obs ~ Normal()
         return a
     end
@@ -1486,7 +1493,9 @@ end
     for (bind, remove) in ((condition, decondition), (fix, unfix)),
         wrap in (identity, m -> prefix(m, @varname(p)), removal_sibling_parent)
 
-        reached = removal_siblings((child=0.0, obs=1.0), true)
+        reached = condition(
+            removal_siblings((child=0.0, obs=1.0), true); a=(child=0.0, obs=1.0)
+        )
         bind === fix && (reached = decondition(reached, @varname(a.obs)))
         reached = remove(bind(reached, @varname(a.obs) => 3.0), @varname(a.obs))
         @test_throws r"ArgumentError: Submodel tilde .*model argument `a`.*local LHS" wrap(
@@ -1494,7 +1503,9 @@ end
         )(
             Xoshiro(1)
         )
-        skipped = removal_siblings((child=0.0, obs=1.0), false)
+        skipped = condition(
+            removal_siblings((child=0.0, obs=1.0), false); a=(child=0.0, obs=1.0)
+        )
         bind === fix && (skipped = decondition(skipped, @varname(a.obs)))
         skipped = remove(bind(skipped, @varname(a.obs) => 3.0), @varname(a.obs))
         @test wrap(skipped)(Xoshiro(1)).obs isa Real
@@ -1539,7 +1550,11 @@ end
     rec = DynamicPPL.Recursive()
     @model leaf(x) = x ~ Normal()
     @model parent(m) = a ~ to_submodel(m)
-    m = decondition(condition(parent(leaf(2.0)), @varname(a.x) => 3.0), rec, @varname(a.x))
+    m = decondition(
+        condition(parent(condition(leaf(missing); x=2.0)), @varname(a.x) => 3.0),
+        rec,
+        @varname(a.x)
+    )
     @test logjoint(m, (; a=(; x=0.5))) ≈ logpdf(Normal(), 0.5)
 end
 
@@ -1567,7 +1582,7 @@ end
         [4.0, 5.0, 6.0]
     @test returned(
         condition(
-            decondition(parent(indexed(zeros(2))), rec),
+            decondition(parent(condition(indexed(zeros(2)); x=zeros(2))), rec),
             @varname(a.x[1]) => 4.0,
             @of(a = @of(x = of(Array, 2)))
         ),
@@ -1576,7 +1591,7 @@ end
     @model scalar(x) = x ~ Normal()
     @model function shared(x)
         x ~ Normal()
-        a ~ to_submodel(scalar(2.0))
+        a ~ to_submodel(condition(scalar(missing); x=2.0))
         return (x, a)
     end
     both = decondition(shared(1.0), rec, @varname(x))
@@ -1587,11 +1602,15 @@ end
     twice = decondition(once, rec, @varname(a.x))
     @test typeof(twice) == typeof(once)
     @test_logs DynamicPPL.DebugUtils.check_model(Xoshiro(1), twice)
-    @model branch(run) = (run && (a ~ to_submodel(scalar(1.0))); nothing)
+    @model branch(run) = (
+        run && (a ~ to_submodel(condition(scalar(missing); x=1.0))); nothing
+    )
     @test decondition(branch(false), rec, @varname(a.x))() === nothing
     @model function repeated()
         for i in 1:2
-            unused ~ to_submodel(i == 1 ? scalar(1.0) : decondition(scalar(1.0)))
+            unused ~ to_submodel(
+                i == 1 ? condition(scalar(missing); x=1.0) : decondition(scalar(1.0))
+            )
         end
     end
     @test decondition(repeated(), rec, @varname(unused.x))(Xoshiro(1)) === nothing
@@ -1621,7 +1640,7 @@ end
     end
     m = condition(sharearr([0.0, 0.0]); x=[4.0, 4.0], a=(x=[4.0, 4.0],))
     @test condition(m, @varname(x[1]) => 3.0)() == ([3.0, 4.0], [4.0, 4.0])
-    @model ownprefix() = a ~ to_submodel(leaf(1.0))
+    @model ownprefix() = a ~ to_submodel(condition(leaf(missing); x=1.0))
     @test_throws ArgumentError decondition(
         prefix(ownprefix(), @varname(p)), rec, @varname(q.x)
     )
@@ -1681,7 +1700,9 @@ end
         @test returned(removed, VarNamedTuple((@varname(p[2].x) => 2.0,))) == 2.0
     end
     model = prefix(
-        prefix_removal_parent(prefix_removal_leaf()), @varname(p[end]); template=zeros(2)
+        prefix_removal_parent(condition(prefix_removal_leaf(missing); x=2.0)),
+        @varname(p[end]);
+        template=zeros(2),
     )
     removed = decondition(model, rec, @varname(p[end].a.x))
     @test keys(rand(Xoshiro(1), removed)) == [@varname(p[2].a.x)]
@@ -1716,7 +1737,9 @@ end
             ),
         ),
     ) == [@varname(a)]
-    m = decondition(removal_outer(removal_branch(1.0, true)), rec, @varname(b.a))
+    m = decondition(
+        removal_outer(condition(removal_branch(missing, true); a=1.0)), rec, @varname(b.a)
+    )
     @test keys(rand(Xoshiro(1), m)) == [@varname(b.a)]
     @test keys(
         rand(Xoshiro(1), decondition(removal_branch(missing, true), rec, @varname(a.x)))
@@ -1745,7 +1768,7 @@ end
     end
     @model function shaped_parent(n)
         mu ~ Normal()
-        a ~ to_submodel(shaped_child(zeros(n), mu))
+        a ~ to_submodel(condition(shaped_child(zeros(n), mu); y=zeros(n)))
         return a
     end
     for (n, replacement) in ((3, [1.0, 2.0]), (2, [1.0, 2.0, 3.0]))
@@ -1780,7 +1803,9 @@ end
 @model depth_parent(x, child) = (x ~ Normal(); a ~ to_submodel(child); a)
 @testset "bindings replace recursive removals at their address" begin
     m = condition(
-        decondition(depth_parent(2.0, depth_leaf(3.0)), DynamicPPL.Recursive());
+        decondition(
+            depth_parent(2.0, condition(depth_leaf(missing); x=3.0)), DynamicPPL.Recursive()
+        );
         x=7.0,
         a=(x=7.0,),
     )
@@ -1843,7 +1868,14 @@ end
             m -> condition(m, vn => 4.0),
             m -> fix(decondition(m, vn), vn => 4.0),
         )
-            m = edit(runtime_return(arg, to_submodel(runtime_return_leaf())))
+            m = edit(
+                condition(
+                    runtime_return(
+                        arg, to_submodel(condition(runtime_return_leaf(missing); x=3.0))
+                    );
+                    a=arg,
+                ),
+            )
             @test_throws r"ArgumentError: Submodel tilde .*model argument `a`.*local LHS" m(
                 Xoshiro(1)
             )
@@ -1852,7 +1884,9 @@ end
             )(
                 Xoshiro(1)
             )
-            @test runtime_return_outer(runtime_return_leaf())(Xoshiro(1)) == 3.0
+            @test runtime_return_outer(condition(runtime_return_leaf(missing); x=3.0))(
+                Xoshiro(1)
+            ) == 3.0
         end
     end
 end
@@ -2005,6 +2039,95 @@ end
         indexed_return(Int32(2)), @varname(a[2].x) => 3.0, @of(a = of(Array, 2, 2))
     )
     @test model(Xoshiro(1))[2] == 3.0
+end
+
+@testset "submodels reject argument observations" begin
+    @model inner(y, x) = y ~ Normal(x)
+    @model direct(y) = a ~ to_submodel(inner(y, 0.3))
+    @model held(child) = a ~ to_submodel(child)
+    @model middle(child) = b ~ to_submodel(child)
+    @model function indexed(child)
+        a = Vector{Any}(undef, 1)
+        a[1] ~ to_submodel(child)
+        return a
+    end
+    @model function chosen(flag)
+        child = flag ? inner(1.0, 0.3) : inner(missing, 0.3)
+        return a ~ to_submodel(child)
+    end
+    @model multiple(y, z, x) = (y ~ Normal(x); z ~ Normal(x))
+    @model keyword(; y=1.0, x=0.3) = y ~ Normal(x)
+
+    message = "Submodel `a` observes `a.y` through its argument `y`; submodels cannot take observations as arguments. Pass `missing` for `y` and condition the submodel on the value instead, e.g. `a ~ to_submodel(condition(inner(missing, x), (y=y,)))`. Use `condition` rather than `fix`: `condition` keeps the likelihood term for `y`, while `fix` sets `y` without one."
+    @test_throws ArgumentError(message) direct(1.0)(Xoshiro(1))
+    for model in (
+        held(inner(1.0, 0.3)),
+        held(prefix(inner(1.0, 0.3), @varname(p))),
+        held(middle(inner(1.0, 0.3))),
+        indexed(inner(1.0, 0.3)),
+        chosen(true),
+        held(keyword()),
+    )
+        @test_throws r"submodels cannot take observations as arguments" model(Xoshiro(1))
+    end
+    @test_throws r"observes `a.y`, `a.z`.*multiple\(missing, missing, x\).*y=y, z=z" held(
+        multiple(1.0, 2.0, 0.3)
+    )(
+        Xoshiro(1)
+    )
+    for placeholder in (missing, nothing)
+        model = held(inner(placeholder, 0.3))
+        @test logjoint(model, Dict(@varname(a.y) => 1.0)) ≈ logpdf(Normal(0.3), 1.0)
+    end
+    @test logjoint(chosen(false), Dict(@varname(a.y) => 1.0)) ≈ logpdf(Normal(0.3), 1.0)
+    @test logjoint(inner(1.0, 0.3), (;)) ≈ logpdf(Normal(0.3), 1.0)
+    @test loglikelihood(inner(1.0, 0.3), (;)) ≈ logpdf(Normal(0.3), 1.0)
+    @test logjoint(held(condition(inner(missing, 0.3); y=1.0)), (;)) ≈
+        logpdf(Normal(0.3), 1.0)
+    @test logjoint(held(decondition(inner(1.0, 0.3))), Dict(@varname(a.y) => 1.0)) ≈
+        logpdf(Normal(0.3), 1.0)
+    @model gated(run, child) = (run && (a ~ to_submodel(child)); nothing)
+    @test gated(false, inner(1.0, 0.3))(Xoshiro(1)) === nothing
+    @test_throws ArgumentError gated(true, inner(1.0, 0.3))(Xoshiro(1))
+    @model partial(y) = (y[1] ~ Normal(); y[2] ~ Normal())
+    @test_throws r"submodels cannot take observations as arguments" held(
+        decondition(partial([1.0, 2.0]), @varname(y[1]))
+    )(
+        Xoshiro(1)
+    )
+    for names in ((), (@varname(a.y),))
+        @test_throws r"submodels cannot take observations as arguments" decondition(
+            held(inner(1.0, 0.3)), DynamicPPL.Recursive(), names...
+        )(
+            Xoshiro(1)
+        )
+    end
+    @test_throws r"keyword\(; y=missing, x=x\)" held(keyword())(Xoshiro(1))
+
+    @model splatted(y...) = y[1] ~ Normal()
+    @model keyword_splatted(; y...) = y[:x] ~ Normal()
+    @test_throws r"splatted\(map\(_ -> missing, y\)\.\.\.\)" held(splatted(1.0))()
+    @test_throws r"keyword_splatted\(; map\(_ -> missing, NamedTuple\(y\)\)\.\.\.\)" held(
+        keyword_splatted(; x=1.0)
+    )()
+    y = (1.0,)
+    @test loglikelihood(held(condition(splatted(map(_ -> missing, y)...); y)), (;)) ≈
+        logpdf(Normal(), 1.0)
+    y = (; x=1.0)
+    @test loglikelihood(
+        held(condition(keyword_splatted(; map(_ -> missing, NamedTuple(y))...); y)), (;)
+    ) ≈ logpdf(Normal(), 1.0)
+end
+
+@testset "explicit submodel observations preserve demo densities" begin
+    model = DynamicPPL.TestUtils.demo_dot_assume_observe_submodel()
+    params = (; s=[1.0, 2.0], m=[0.3, 0.4])
+    @test logprior(model, params) ≈ DynamicPPL.TestUtils.logprior_true(model, params...)
+    @test loglikelihood(model, params) ≈
+        DynamicPPL.TestUtils.loglikelihood_true(model, params...)
+    @test logjoint(model, params) ≈ DynamicPPL.TestUtils.logjoint_true(model, params...)
+    @test returned(model, params) == (; params..., x=[1.5, 2.0])
+    @test Set(keys(rand(Xoshiro(1), model))) == Set(DynamicPPL.TestUtils.varnames(model))
 end
 
 end

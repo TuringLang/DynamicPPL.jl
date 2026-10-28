@@ -22,10 +22,10 @@ using Random: Xoshiro
     @model function template_parent(run=true)
         z ~ Normal()
         if run
-            a ~ to_submodel(template_child())
+            a ~ to_submodel(condition(template_child(); x=zeros(2)))
         end
     end
-    @model template_shared() = a ~ to_submodel(template_child())
+    @model template_shared() = a ~ to_submodel(condition(template_child(); x=zeros(2)))
     @model template_outer(child) = b ~ to_submodel(child)
     @model function template_fields()
         z = (a=zeros(2),)
@@ -74,7 +74,7 @@ using Random: Xoshiro
             Xoshiro(1), prefix(typo, @varname(p))
         )
         @test_logs (:warn, r"Binding template entry `b.typo`") @test check_model(
-            Xoshiro(1), template_outer(typo)
+            Xoshiro(1), template_outer(condition(typo; x=zeros(2)))
         )
         pm = prefix(template_child(), @varname(p))
         @test_logs @test check_model(Xoshiro(1), bind(pm, @of(p = @of(y = of(Array, 3)))))
@@ -191,7 +191,7 @@ end
             μ ~ Normal()
             y ~ Normal(μ)
         end
-        @model checked_parent() = a ~ to_submodel(checked_child(1.0))
+        @model checked_parent() = a ~ to_submodel(condition(checked_child(missing); y=1.0))
         @test VarInfo(checked_parent()) isa VarInfo
     end
 
@@ -440,7 +440,7 @@ end
     @model function branch(run)
         z ~ Normal()
         if run
-            a ~ to_submodel(leaf(1.0))
+            a ~ to_submodel(condition(leaf(missing); x=1.0))
         end
         return nothing
     end

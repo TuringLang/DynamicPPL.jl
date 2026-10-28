@@ -18,6 +18,8 @@ Added `evaluate!!(model, context, vi)` to evaluate with an explicit leaf context
 
 ## Breaking changes
 
+Submodels no longer accept observations through arguments: `a ~ to_submodel(inner(y, x))` → `a ~ to_submodel(condition(inner(missing, x), (y=y,)))`. Top-level argument observations are unchanged.
+
 `marginalize` and the `DynamicPPLMarginalLogDensitiesExt` extension are removed in DynamicPPL 0.43. Users requiring the existing Turing/MLD integration can remain on DynamicPPL 0.42.x with a compatible Turing release—for example, Turing 0.49.0—and MarginalLogDensities 0.4.3–0.4.x. See the [0.42 marginalisation documentation](https://turinglang.org/DynamicPPL.jl/v0.42/api/#Marginalisation).
 
 On newer DynamicPPL versions, MLD’s generic API requires a manually constructed log-density adapter; no drop-in model-level replacement is currently available. Migration of the integration into MLD is proposed in [MLD #47](https://github.com/ElOceanografo/MarginalLogDensities.jl/pull/47).

@@ -45,6 +45,12 @@ themselves to the left-hand side.
 Conceptually, `to_submodel(model)` is a `returned_value(model)` wrapper: its value is the
 model's return value, not its latent variables.
 
+Submodels cannot observe through arguments. Replace
+`a ~ to_submodel(inner(y, x))` with
+`a ~ to_submodel(condition(inner(missing, x), (y=y,)))` when `y` is observed.
+Use `condition` to retain its likelihood term; `fix` omits that term.
+The model called directly by the user can still observe through its arguments.
+
 `Submodel` is not a `Distribution`; it provides this tilde behavior but no standalone
 `logpdf` method.
 
@@ -372,6 +378,45 @@ end
     end
     return nothing
 end
+@noinline function _submodel_argument_observation_error(child, prefix)
+    names = filter(keys(child.values.values.data)) do name
+        _has_binding_role(ArgumentCondition, child.values.values.data[name])
+    end
+    addresses = join(("`$(maybe_prefix(VarName{name}(), prefix))`" for name in names), ", ")
+    arguments = join(("`$name`" for name in names), ", ")
+    positional = map(keys(child.args)) do stored
+        name = unsplat_symbol(stored)
+        if is_splat_symbol(stored)
+            name in names ? "map(_ -> missing, $name)..." : "$name..."
+        else
+            name in names ? "missing" : string(name)
+        end
+    end
+    keywords = map(keys(child.defaults)) do stored
+        name = unsplat_symbol(stored)
+        if is_splat_symbol(stored)
+            name in names ? "map(_ -> missing, NamedTuple($name))..." : "$name..."
+        else
+            value = name in names ? "missing" : string(name)
+            "$name=$value"
+        end
+    end
+    call = string(
+        nameof(child),
+        "(",
+        join(positional, ", "),
+        isempty(keywords) ? "" : "; " * join(keywords, ", "),
+        ")",
+    )
+    bindings = join(("$name=$name" for name in names), ", ") * ","
+    plural = length(names) == 1 ? "argument" : "arguments"
+    throw(
+        ArgumentError(
+            "Submodel `$prefix` observes $addresses through its $plural $arguments; submodels cannot take observations as arguments. Pass `missing` for $arguments and condition the submodel on the value instead, e.g. `$prefix ~ to_submodel(condition($call, ($bindings)))`. Use `condition` rather than `fix`: `condition` keeps the likelihood term for $arguments, while `fix` sets $arguments without one.",
+        ),
+    )
+end
+
 @inline function _enter_submodel!!(
     parent_model,
     context,
@@ -385,6 +430,8 @@ end
     inherited,
 )
     prefix = maybe_prefix(local_prefix, _model_prefix(parent_model))
+    _has_binding_role(ArgumentCondition, child.values.values) &&
+        _submodel_argument_observation_error(child, prefix)
     table = _apply_parent_removals(
         Condition, child.values, observation_removals, context, prefix
     )

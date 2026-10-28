@@ -100,6 +100,9 @@ Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
 
 # Storage validation returns no numerical result.
 Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
+    typeof(DynamicPPL._classify_placeholder),Any
+}
+Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
     typeof(DynamicPPL._check_argument_key_storage),Any,Any
 }
 Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{

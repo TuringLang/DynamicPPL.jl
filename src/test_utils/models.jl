@@ -491,7 +491,7 @@ end
     m = TV(undef, length(x))
     m ~ product_distribution(Normal.(0, sqrt.(s)))
 
-    likelihood ~ to_submodel(_likelihood_multivariate_observe(s, m, x))
+    likelihood ~ to_submodel(condition(_likelihood_multivariate_observe(s, m, missing); x))
 
     return (; s=s, m=m, x=x)
 end
