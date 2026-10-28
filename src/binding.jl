@@ -1,3 +1,6 @@
+struct Condition end
+struct Fix end
+
 maybe_prefix(vn, ::Nothing) = vn
 maybe_prefix(vn, prefix::VarName) = AbstractPPL.prefix(vn, prefix)
 
@@ -822,7 +825,7 @@ function _select_model_node(::Type{R}, value::ModelValue) where {R}
 end
 function _select_model_node(::Type{R}, values::VarNamedTuple) where {R}
     selected = _select_model_values(R, values)
-    return isempty(selected) ? NoModelBinding() : selected
+    return isempty(selected.data) ? NoModelBinding() : selected
 end
 function _select_model_node(
     ::Type{R}, values::VarNamedTuples.PartialArray{<:ModelValue}
@@ -843,7 +846,11 @@ function _select_model_node(
             found = true
         end
     end
-    return found ? VarNamedTuples.PartialArray(data, mask) : NoModelBinding()
+    return if found || isempty(values) && !(values.mask isa ModelBindingArray)
+        VarNamedTuples.PartialArray(data, mask)
+    else
+        NoModelBinding()
+    end
 end
 _select_model_node(::Type{R}, value) where {R} = NoModelBinding()
 function _select_model_node(::Type{R}, tree::ModelValueTree) where {R}
@@ -859,10 +866,17 @@ function _plain_model_values(values::VarNamedTuple)
     return VarNamedTuple(map(_plain_model_values, values.data))
 end
 function _plain_model_values(tree::ModelValueTree)
-    VarNamedTuples._haskey_optic(tree, AbstractPPL.Iden()) && return _model_data(tree)
+    if VarNamedTuples._haskey_optic(tree, AbstractPPL.Iden())
+        names = propertynames(tree.template)
+        return NamedTuple{names}(
+            map(name -> _plain_model_values(tree.values.data[name]), names)
+        )
+    end
     return _plain_model_values(tree.values)
 end
 function _plain_model_values(values::VarNamedTuples.PartialArray)
+    VarNamedTuples._haskey_optic(values, AbstractPPL.Iden()) &&
+        return VarNamedTuples.unwrap_internal_array(values)
     return _map_model_nodes(_plain_model_values, values)
 end
 function _map_model_nodes(f, values::VarNamedTuples.PartialArray)
@@ -944,6 +958,12 @@ function _remove_model_binding(
     return VarNamedTuple(merge(values.data, NamedTuple{(S,)}((child,))))
 end
 function _remove_model_binding(
+    ::Type{R}, tree::ModelValueTree, optic::AbstractPPL.Iden
+) where {R}
+    values = _prune_model_bindings(_remove_model_binding(R, tree.values, optic))
+    return isempty(values.data) ? NoModelBinding() : ModelValueTree(tree, values)
+end
+function _remove_model_binding(
     ::Type{R}, tree::ModelValueTree, optic::AbstractPPL.Property
 ) where {R}
     values = _remove_model_binding(R, tree.values, optic)
@@ -1014,7 +1034,7 @@ struct ResolvedBindings{
     O<:VarNamedTuple,
     F<:VarNamedTuple,
     A<:VarNamedTuple,
-    K<:AbstractVector{<:VarName},
+    K<:Union{Tuple{Vararg{VarName}},AbstractVector{<:VarName}},
 }
     values::V
     storage::S
@@ -1022,7 +1042,7 @@ struct ResolvedBindings{
     fixed_templates::F
     arguments::A
     roots::K
-    function ResolvedBindings(
+    @inline function ResolvedBindings(
         values::V, storage::S, observed::O, fixed::F, arguments::A, roots::K
     ) where {
         V<:VarNamedTuple,
@@ -1030,7 +1050,7 @@ struct ResolvedBindings{
         O<:VarNamedTuple,
         F<:VarNamedTuple,
         A<:VarNamedTuple,
-        K<:AbstractVector{<:VarName},
+        K<:Union{Tuple{Vararg{VarName}},AbstractVector{<:VarName}},
     }
         _check_resolved_nodes(values)
         return new{V,S,O,F,A,K}(values, storage, observed, fixed, arguments, roots)
@@ -1046,6 +1066,14 @@ function ResolvedBindings(; arguments=VarNamedTuple(), roots=())
         vcat(VarName[roots...], collect(keys(arguments))),
     )
 end
+function _missing_binding_storage(address=nothing; operation="bind")
+    target = address === nothing ? "" : " `$address`"
+    throw(
+        ArgumentError(
+            "Cannot $operation$target without storage: indexed edits require concrete storage at binding time; supply an @of template, a whole value, or a VarNamedTuple with storage",
+        ),
+    )
+end
 _check_resolved_nodes(::ModelValue) = nothing
 _check_resolved_nodes(::NoModelBinding) = nothing
 _check_resolved_nodes(tree::ModelValueTree) = _check_resolved_nodes(tree.values)
@@ -1054,8 +1082,7 @@ function _check_resolved_nodes(values::VarNamedTuple)
     return nothing
 end
 function _check_resolved_nodes(values::VarNamedTuples.PartialArray)
-    values.data isa VarNamedTuples.GrowableArray &&
-        throw(ArgumentError("Binding indices require concrete storage"))
+    values.data isa VarNamedTuples.GrowableArray && _missing_binding_storage()
     for i in eachindex(values.mask)
         values.mask[i] && _check_resolved_nodes(values.data[i])
     end
@@ -1072,6 +1099,7 @@ function _binding_inputs(values::Tuple)
     return mapreduce(_binding_inputs, (a, b) -> (a..., b...), values; init=())
 end
 _binding_inputs(value) = (value,)
+_binding_inputs(::NamedTuple{()}) = ()
 _binding_inputs((name, value)::Pair{Symbol}) = (VarName{name}() => value,)
 
 _binding_storage(value::ModelValue) = value.value
@@ -1104,53 +1132,67 @@ function _binding_fields(value)
     return parentmodule(T) in (Base, Core) || fieldcount(T) == 0 ? nothing : fieldnames(T)
 end
 function _same_concrete_shape(a, b, parents)
-    a isa VarNamedTuple && (a = a.data)
-    b isa VarNamedTuple && (b = b.data)
-    a isa Base.Pairs && (a = values(a))
-    b isa Base.Pairs && (b = values(b))
-    array = a isa Union{AbstractArray,Tuple}
-    array == (b isa Union{AbstractArray,Tuple}) || return false
-    if array
-        axes(a) == axes(b) || return false
-        eltype(a) <: Number && eltype(b) <: Number && return true
-        names = eachindex(a)
+    left = if a isa Union{VarNamedTuple,VarNamedTuples.PartialArray}
+        a.data
+    elseif a isa Base.Pairs
+        values(a)
     else
-        names = _binding_fields(a)
-        names == _binding_fields(b) || return false
+        a
+    end
+    right = if b isa Union{VarNamedTuple,VarNamedTuples.PartialArray}
+        b.data
+    elseif b isa Base.Pairs
+        values(b)
+    else
+        b
+    end
+    array = left isa Union{AbstractArray,Tuple}
+    array == (right isa Union{AbstractArray,Tuple}) || return false
+    if array
+        axes(left) == axes(right) || return false
+        eltype(left) <: Number && eltype(right) <: Number && return true
+        names = eachindex(left)
+    else
+        names = _binding_fields(left)
+        names == _binding_fields(right) || return false
         names === nothing && return true
     end
-    i = findfirst(p -> first(p) === a, parents)
-    j = findfirst(p -> last(p) === b, parents)
+    i = findfirst(p -> first(p) === left, parents)
+    j = findfirst(p -> last(p) === right, parents)
     (i !== nothing || j !== nothing) && return i == j
     return all(names) do name
         if array
-            (!(a isa Tuple) && !isassigned(a, name)) ||
-                (!(b isa Tuple) && !isassigned(b, name)) ||
-                _same_storage_shape(a[name], b[name], (parents..., (a, b)))
+            (!(left isa Tuple) && !isassigned(left, name)) ||
+                (!(right isa Tuple) && !isassigned(right, name)) ||
+                _same_storage_shape(left[name], right[name], (parents..., (left, right)))
         else
-            !isdefined(a, name) ||
-                !isdefined(b, name) ||
+            !isdefined(left, name) ||
+                !isdefined(right, name) ||
                 _same_storage_shape(
-                    getfield(a, name), getfield(b, name), (parents..., (a, b))
+                    getfield(left, name), getfield(right, name), (parents..., (left, right))
                 )
         end
     end
 end
 
-function _check_cross_roles(previous, updates, vn=nothing)
+function _check_cross_roles(previous, updates, vn=nothing; disjoint=false)
     previous isa Union{Nothing,NoModelBinding} && return nothing
     updates isa Union{Nothing,NoModelBinding} && return nothing
     updates isa ModelValueTree && (updates = updates.values)
     if updates isa ModelValue
         if previous isa ModelValue
-            typeof(_model_role(previous)) === typeof(_model_role(updates)) || throw(
-                ArgumentError(
-                    "Cannot bind `$vn`: a position belongs to the other role; remove it first",
-                ),
-            )
+            same_role = typeof(_model_role(previous)) === typeof(_model_role(updates))
+            if disjoint || !same_role
+                origin = same_role ? "another model" : "the other role"
+                throw(
+                    ArgumentError(
+                        "Cannot bind `$vn`: a position is already bound by $origin; remove that binding first, using `Recursive()` for a child binding.",
+                    ),
+                )
+            end
             return nothing
         end
-        return _check_cross_roles(updates, previous, vn)
+        return _check_cross_roles(updates, previous, vn; disjoint)
     end
     return _fold_model_indices(nothing, updates) do _, update, optic, _
         address = if vn === nothing
@@ -1158,7 +1200,9 @@ function _check_cross_roles(previous, updates, vn=nothing)
         else
             AbstractPPL.append_optic(vn, optic)
         end
-        _check_cross_roles(_model_argument_binding(previous, optic), update, address)
+        _check_cross_roles(
+            _model_argument_binding(previous, optic), update, address; disjoint
+        )
     end
 end
 
@@ -1217,7 +1261,9 @@ function _check_resolved_overlap!((seen, ancestors), selections)
     for vn in selections
         parents = _binding_ancestors(vn)
         (vn in seen || vn in ancestors || any(parent -> parent in seen, parents)) && throw(
-            ArgumentError("Binding address `$vn` overlaps another position in this call"),
+            ArgumentError(
+                "Binding address `$vn` overlaps another position in this call; inputs must be disjoint",
+            ),
         )
         push!(seen, vn)
         union!(ancestors, parents)
@@ -1261,7 +1307,7 @@ end
 function _resolved_entries(input)
     throw(
         ArgumentError(
-            "Bindings require a NamedTuple, VarNamedTuple, or Symbol/VarName pairs; dictionaries are unsupported",
+            "Bindings require a NamedTuple, VarNamedTuple, or Symbol/VarName pairs; AbstractDict inputs are not supported",
         ),
     )
 end
@@ -1280,10 +1326,28 @@ function _expand_namespace_entries!(entries, vn, value, supplied, roots)
     return entries
 end
 
+function _check_existing_binding_template(binding::ModelValue, template, vn)
+    _convert_resolved_value(binding.value, template, AbstractPPL.Iden(), vn, true)
+    return nothing
+end
+_check_existing_binding_template(::Union{Nothing,NoModelBinding}, template, vn) = nothing
+function _check_existing_binding_template(bindings, template, vn)
+    bindings isa ModelValueTree && (bindings = bindings.values)
+    _fold_model_indices(nothing, bindings) do _, binding, optic, _
+        storage = _storage_at(template, optic)
+        storage === nothing && return nothing
+        _check_existing_binding_template(
+            binding, storage, AbstractPPL.append_optic(vn, optic)
+        )
+    end
+    return nothing
+end
+
 function _resolved_root_storage(stored, schema, supplied, vn)
     name = AbstractPPL.getsym(vn)
     previous = get(stored.data, name, NoTemplate())
     supplied = supplied isa VarNamedTuples.PartialArray ? supplied.data : supplied
+    supplied isa VarNamedTuples.GrowableArray && (supplied = previous)
     candidate = get(schema, name, supplied)
     return candidate isa NoTemplate ? previous : _fill_binding_storage(candidate, previous)
 end
@@ -1302,7 +1366,7 @@ function _fill_binding_storage(candidate::AbstractArray, previous::AbstractArray
         end
         isassigned(candidate, i) && child === candidate[i] && continue
         result === candidate && (result = copy(candidate))
-        result = _setindex!!(result, child, Tuple(i)...)
+        result = _set_binding_storage(result, child, Tuple(i)...)
     end
     return result
 end
@@ -1355,26 +1419,41 @@ function _check_mixed_binding(previous, value, optic, vn, roots)
     )
 end
 
-_path_storage(storage, ::AbstractPPL.Iden, vn, roots) = storage
-function _path_storage(storage, optic::AbstractPPL.Property{S}, vn, roots) where {S}
+function _path_storage(storage, ::AbstractPPL.Iden, vn, roots; operation="bind", address=vn)
+    return storage
+end
+function _path_storage(
+    storage,
+    optic::AbstractPPL.Property{S},
+    vn,
+    roots;
+    operation="bind",
+    address=AbstractPPL.append_optic(vn, optic),
+) where {S}
     storage = _binding_storage(storage)
     if _partial_binding_selector(storage, optic)
-        _partial_binding_array(storage) || _unsupported_partial_binding(storage, vn, vn)
+        _partial_binding_array(storage) ||
+            _unsupported_partial_binding(storage, address, vn; operation)
         return storage
     end
     if storage isa NoTemplate
         storage = VarNamedTuple()
     elseif !(storage isa Union{NamedTuple,VarNamedTuple})
-        _known_binding_root(vn, roots) && _unsupported_partial_binding(storage, vn, vn)
-        storage isa Number || _unsupported_partial_binding(storage, vn, vn)
+        _known_binding_root(vn, roots) &&
+            _unsupported_partial_binding(storage, address, vn; operation)
+        storage isa Number || _unsupported_partial_binding(storage, address, vn; operation)
         storage = VarNamedTuple()
     end
     child = _binding_child_template(storage, AbstractPPL.Property{S}())
     child isa NoTemplate &&
         storage isa NamedTuple &&
-        throw(ArgumentError("No field `$S` in storage for `$vn`"))
+        throw(
+            ArgumentError(
+                "Cannot $operation `$address`: nonexistent field `$S` in storage at `$vn`"
+            ),
+        )
     next = AbstractPPL.append_optic(vn, AbstractPPL.Property{S}())
-    prepared = _path_storage(child, optic.child, next, roots)
+    prepared = _path_storage(child, optic.child, next, roots; operation, address)
     prepared === child && return storage
     return if storage isa VarNamedTuple
         VarNamedTuple(merge(storage.data, NamedTuple{(S,)}((prepared,))))
@@ -1382,18 +1461,24 @@ function _path_storage(storage, optic::AbstractPPL.Property{S}, vn, roots) where
         merge(storage, NamedTuple{(S,)}((prepared,)))
     end
 end
-function _path_storage(storage, optic::AbstractPPL.Index, vn, roots)
+function _path_storage(
+    storage,
+    optic::AbstractPPL.Index,
+    vn,
+    roots;
+    operation="bind",
+    address=AbstractPPL.append_optic(vn, optic),
+)
     storage = _binding_storage(storage)
-    storage isa AbstractArray && !(storage isa VarNamedTuples.GrowableArray) || throw(
-        ArgumentError(
-            "Cannot bind `$vn`: indexed edits require concrete storage at binding time"
-        ),
-    )
-    _partial_binding_array(storage) || _unsupported_partial_binding(storage, vn, vn)
+    storage isa Tuple && _unsupported_partial_binding(storage, address, vn; operation)
+    storage isa AbstractArray && !(storage isa VarNamedTuples.GrowableArray) ||
+        _missing_binding_storage(address; operation)
+    _partial_binding_array(storage) ||
+        _unsupported_partial_binding(storage, address, vn; operation)
     optic = AbstractPPL.concretize_top_level(optic, storage)
     checkbounds(Bool, storage, optic.ix...; optic.kw...) || throw(
         ArgumentError(
-            "Cannot bind `$vn`: indices $(optic.ix) are outside storage axes $(axes(storage))",
+            "Cannot $operation `$address`: index is outside the storage at `$vn`"
         ),
     )
     optic.child isa AbstractPPL.Iden && return storage
@@ -1403,31 +1488,79 @@ function _path_storage(storage, optic::AbstractPPL.Index, vn, roots)
         _binding_child_template(storage, optic)
     end
     next = AbstractPPL.append_optic(vn, AbstractPPL.ohead(optic))
-    prepared = _path_storage(child, optic.child, next, roots)
+    prepared = _path_storage(child, optic.child, next, roots; operation, address)
     prepared === child && return storage
-    return _setindex!!(copy(storage), prepared, optic.ix...; optic.kw...)
+    return _set_binding_storage(copy(storage), prepared, optic.ix...; optic.kw...)
 end
 
-function _retain_binding_storage(storage, value, ::AbstractPPL.Iden, vn)
-    storage isa VarNamedTuple &&
-        throw(ArgumentError("Cannot create binding root `$vn` across existing field roots"))
-    _same_storage_shape(storage, value) || throw(
-        ArgumentError("Binding shape at `$vn` cannot change; clear the whole root first"),
-    )
+function _set_binding_storage(storage, value, indices...; kwargs...)
+    return _setindex!!(storage, value, indices...; kwargs...)
+end
+function _set_binding_storage(
+    storage::AbstractArray{<:Union{Number,VarNamedTuple{()}}},
+    value::VarNamedTuple,
+    indices...;
+    kwargs...,
+)
+    # Numeric namespace templates provide axes; their entries are not variable storage.
+    return _setindex!!(similar(storage, typeof(value)), value, indices...; kwargs...)
+end
+
+function _check_whole_binding_storage(storage, vn)
+    if storage isa VarNamedTuple && !isempty(storage.data)
+        child = AbstractPPL.prefix(first(keys(storage)), vn)
+        throw(
+            ArgumentError(
+                "Cannot create binding root `$vn` across existing root `$child`; rebuild the model to change its roots",
+            ),
+        )
+    elseif storage isa AbstractArray{<:VarNamedTuple}
+        throw(
+            ArgumentError(
+                "Cannot create binding root `$vn`: an existing binding root already occupies this address; rebuild the model to change its roots",
+            ),
+        )
+    end
+    return nothing
+end
+
+function _retain_binding_storage(
+    storage, value, ::AbstractPPL.Iden, vn, binding, independent; copied=nothing
+)
+    _check_whole_binding_storage(storage, vn)
+    (independent && !_has_binding_storage(binding)) ||
+        _same_storage_shape(storage, value) ||
+        throw(
+            ArgumentError(
+                "Binding shape at `$vn` cannot change; use decondition and unfix on the whole root first",
+            ),
+        )
     return value
 end
 function _retain_binding_storage(
-    storage, value, optic::AbstractPPL.Property{S}, vn
+    storage, value, optic::AbstractPPL.Property{S}, vn, binding, independent; copied=nothing
 ) where {S}
     if _partial_binding_selector(storage, optic)
         indices = VarNamedTuples._getindex_optic(_binding_index_storage(storage), optic, vn)
         return _retain_binding_storage(
-            storage, value, AbstractPPL.Index((indices,), (;)), vn
+            storage,
+            value,
+            AbstractPPL.Index((indices,), (;)),
+            vn,
+            binding,
+            independent;
+            copied,
         )
     end
     child = _binding_child_template(storage, AbstractPPL.Property{S}())
     child = _retain_binding_storage(
-        child, value, optic.child, AbstractPPL.append_optic(vn, AbstractPPL.Property{S}())
+        child,
+        value,
+        optic.child,
+        AbstractPPL.append_optic(vn, AbstractPPL.Property{S}()),
+        _model_argument_binding(binding, AbstractPPL.Property{S}()),
+        storage isa VarNamedTuple;
+        copied,
     )
     return if storage isa VarNamedTuple
         VarNamedTuple(merge(storage.data, NamedTuple{(S,)}((child,))))
@@ -1435,8 +1568,14 @@ function _retain_binding_storage(
         merge(storage, NamedTuple{(S,)}((child,)))
     end
 end
-function _retain_binding_storage(storage, value, optic::AbstractPPL.Index, vn)
+function _retain_binding_storage(
+    storage, value, optic::AbstractPPL.Index, vn, binding, independent; copied=nothing
+)
     optic = AbstractPPL.concretize_top_level(optic, storage)
+    if copied === nothing || !haskey(copied, storage)
+        storage = copy(storage)
+        copied === nothing || (copied[storage] = nothing)
+    end
     if optic.child isa AbstractPPL.Iden &&
         VarNamedTuples._is_multiindex(storage, optic.ix...; optic.kw...)
         selected = getindex(CartesianIndices(axes(storage)), optic.ix...; optic.kw...)
@@ -1449,9 +1588,219 @@ function _retain_binding_storage(storage, value, optic::AbstractPPL.Index, vn)
     end
     child = _binding_child_template(storage, optic)
     child = _retain_binding_storage(
-        child, value, optic.child, AbstractPPL.append_optic(vn, AbstractPPL.ohead(optic))
+        child,
+        value,
+        optic.child,
+        AbstractPPL.append_optic(vn, AbstractPPL.ohead(optic)),
+        _model_argument_binding(binding, AbstractPPL.ohead(optic)),
+        false;
+        copied,
     )
-    return _setindex!!(storage, child, optic.ix...; optic.kw...)
+    return _set_binding_storage(storage, child, optic.ix...; optic.kw...)
+end
+
+function _bind_structured_resolved(table, ::Type{R}, input::VarNamedTuple) where {R}
+    supplied = _resolved_input_storage(input)
+    known = table.roots
+    for name in keys(input.data)
+        _known_binding_root(VarName{name}(), known) && continue
+        known = union(known, keys(VarNamedTuple(NamedTuple{(name,)}((input.data[name],)))))
+    end
+    updates = if isempty(table.values.data)
+        _check_bound_placeholders(R, input)
+        _tag_model_values(R, input)
+    else
+        map_pairs!!(copy(input)) do pair
+            vn, value = pair
+            _check_bound_placeholder(R, vn, value)
+            name, optic = AbstractPPL.getsym(vn), AbstractPPL.getoptic(vn)
+            previous = get(table.values.data, name, nothing)
+            _check_mixed_binding(previous, value, optic, VarName{name}(), known)
+            converted = if optic isa AbstractPPL.Iden
+                value
+            else
+                _convert_binding_edit(value, previous, optic, vn, R)
+            end
+            ModelValue{R}(converted)
+        end
+    end
+    _check_cross_roles(table.values, updates)
+    stored = NamedTuple{keys(supplied.data)}(
+        map(keys(supplied.data)) do name
+            storage = supplied.data[name]
+            previous = get(table.storage.data, name, NoTemplate())
+            if _has_binding_storage(get(table.values.data, name, nothing))
+                _same_storage_shape(previous, storage) || throw(
+                    ArgumentError(
+                        "Binding shape at `$(VarName{name}())` cannot change; use decondition and unfix on the whole root first",
+                    ),
+                )
+            end
+            _fill_binding_storage(storage, previous)
+        end,
+    )
+    return ResolvedBindings(
+        isempty(table.values.data) ? updates : _merge_model_values(table.values, updates),
+        VarNamedTuple(merge(table.storage.data, stored)),
+        table.observed_templates,
+        table.fixed_templates,
+        table.arguments,
+        known,
+    )
+end
+_resolved_input_storage(value) = value
+function _resolved_input_storage(value::VarNamedTuple)
+    return VarNamedTuple(map(_resolved_input_storage, value.data))
+end
+function _resolved_input_storage(value::VarNamedTuples.PartialArray)
+    value.data isa VarNamedTuples.GrowableArray && _missing_binding_storage()
+    return value.data
+end
+
+function _check_bound_placeholders(::Type{R}, values::VarNamedTuple) where {R}
+    _classify_placeholder(values) === _NoPlaceholder && return nothing
+    for (vn, value) in pairs(values)
+        _check_bound_placeholder(R, vn, value)
+    end
+    return nothing
+end
+function _check_bound_placeholder(::Type{R}, vn, value) where {R}
+    _classify_placeholder(value) === _NoPlaceholder && return nothing
+    remove = R === Fix ? "unfix" : "decondition"
+    throw(
+        ArgumentError(
+            "Cannot bind `$vn` to a value containing `missing` or `nothing`; bindings cannot hold placeholders. To make it latent, leave it unbound or use `$remove(model, @varname($vn))`.",
+        ),
+    )
+end
+
+_whole_binding_input(input) = false
+_whole_binding_value(value) = !(value isa Union{VarNamedTuple,VarNamedTuples.PartialArray})
+function _whole_binding_input(input::Pair{<:VarName{<:Any,<:AbstractPPL.Iden}})
+    return _whole_binding_value(last(input))
+end
+_whole_binding_input(input::NamedTuple) = all(_whole_binding_value, values(input))
+_whole_binding_pairs(::Tuple{}) = ()
+function _whole_binding_pairs(inputs::Tuple)
+    entries = _whole_binding_pairs(first(inputs))
+    return (entries..., _whole_binding_pairs(Base.tail(inputs))...)
+end
+_whole_binding_pairs(input::Pair) = (input,)
+@generated function _whole_binding_pairs(input::NamedTuple{names}) where {names}
+    pairs = [:($(VarName{name}()) => input.$name) for name in names]
+    return Expr(:tuple, pairs...)
+end
+function _bind_whole_resolved(table, ::Type{R}, entries) where {R}
+    names = map(pair -> AbstractPPL.getsym(first(pair)), entries)
+    allunique(names) ||
+        throw(ArgumentError("Binding addresses `$names` overlap in this call"))
+    updates, storage = _whole_binding_updates(table, R, entries)
+    _check_cross_roles(table.values, updates)
+    return ResolvedBindings(
+        _merge_model_values(table.values, updates),
+        VarNamedTuple(merge(table.storage.data, storage.data)),
+        table.observed_templates,
+        table.fixed_templates,
+        table.arguments,
+        table.roots,
+    )
+end
+function _whole_binding_updates(table, ::Type{R}, ::Tuple{}) where {R}
+    return (VarNamedTuple(), VarNamedTuple())
+end
+function _whole_binding_updates(table, ::Type{R}, entries::Tuple) where {R}
+    vn, value = first(entries)
+    name = AbstractPPL.getsym(vn)
+    _check_bound_placeholder(R, vn, value)
+    previous = get(table.values.data, name, nothing)
+    _check_mixed_binding(previous, value, AbstractPPL.Iden(), vn, table.roots)
+    storage = get(table.storage.data, name, NoTemplate())
+    _check_cross_roles(previous, ModelValue{R}(value), vn)
+    _check_whole_binding_storage(storage, vn)
+    constraint = get(
+        (R === Fix ? table.fixed_templates : table.observed_templates).data,
+        name,
+        NoTemplate(),
+    )
+    constraint isa NoTemplate ||
+        _convert_resolved_value(value, constraint, AbstractPPL.Iden(), vn, true)
+    other = get(
+        (R === Fix ? table.observed_templates : table.fixed_templates).data,
+        name,
+        NoTemplate(),
+    )
+    _same_storage_shape(other, value) || throw(
+        ArgumentError(
+            "Bound value at `$vn` has incompatible template shape; supply a new template with the value",
+        ),
+    )
+    if _has_binding_storage(previous)
+        _same_storage_shape(storage, value) || throw(
+            ArgumentError(
+                "Binding shape at `$vn` cannot change; use decondition and unfix on the whole root first",
+            ),
+        )
+    end
+    updates, stored = _whole_binding_updates(table, R, Base.tail(entries))
+    return (
+        VarNamedTuple(merge(NamedTuple{(name,)}((ModelValue{R}(value),)), updates.data)),
+        VarNamedTuple(merge(NamedTuple{(name,)}((value,)), stored.data)),
+    )
+end
+
+_field_binding_path(::AbstractPPL.Iden) = true
+_field_binding_path(optic::AbstractPPL.Property) = _field_binding_path(optic.child)
+_field_binding_path(optic) = false
+_nested_binding(value, ::AbstractPPL.Iden) = value
+function _nested_binding(value, optic::AbstractPPL.Property{S}) where {S}
+    return VarNamedTuple(NamedTuple{(S,)}((_nested_binding(value, optic.child),)))
+end
+function _bind_field_resolved(table, ::Type{R}, pair) where {R}
+    vn, value = pair
+    _check_bound_placeholder(R, vn, value)
+    optic = AbstractPPL.varname_to_optic(vn)
+    values = _nested_binding(ModelValue{R}(value), optic)
+    storage = _nested_binding(value, optic)
+    return ResolvedBindings(
+        values,
+        storage,
+        table.observed_templates,
+        table.fixed_templates,
+        table.arguments,
+        table.roots,
+    )
+end
+
+@inline function _bind_template_resolved(
+    table, ::Type{R}, vn, value, template, prefix
+) where {R}
+    _check_bound_placeholder(R, vn, value)
+    name = AbstractPPL.getsym(vn)
+    root = VarName{name}()
+    address = maybe_prefix(vn, prefix)
+    optic = _collapse_binding_selection(
+        template, AbstractPPL.getoptic(vn), address; location=maybe_prefix(root, prefix)
+    )
+    _path_storage(template, optic, root, table.roots; address)
+    _check_resolved_overlap!(
+        (Set{VarName}(), Set{VarName}()),
+        _resolved_selections(template, optic, maybe_prefix(root, prefix)),
+    )
+    _check_binding_extents(value, template, optic, address)
+    value = _convert_resolved_value(value, template, optic, address, true)
+    stored = _retain_binding_storage(template, value, optic, root, nothing, true)
+    values = templated_setindex!!(
+        VarNamedTuple(), ModelValue{R}(value), VarName{name}(optic), template
+    )
+    templates = VarNamedTuple(NamedTuple{(name,)}((template,)))
+    return ResolvedBindings(
+        values,
+        VarNamedTuple(NamedTuple{(name,)}((stored,))),
+        R === Fix ? table.observed_templates : templates,
+        R === Fix ? templates : table.fixed_templates,
+        table.arguments,
+        table.roots,
+    )
 end
 
 """
@@ -1462,9 +1811,35 @@ Place a positional `@of` template last, after all positional value inputs;
 otherwise throw `ArgumentError`. Keyword bindings may accompany a final template.
 """
 function _bind_resolved(
-    table::ResolvedBindings, ::Type{R}, inputs...; roots=(), kwargs...
+    table::ResolvedBindings, ::Type{R}, inputs...; roots=(), error_prefix=nothing, kwargs...
 ) where {R<:Union{Condition,Fix,ArgumentCondition}}
     inputs = _binding_inputs(inputs)
+    if isempty(roots) && isempty(kwargs) && all(_whole_binding_input, inputs)
+        return _bind_whole_resolved(table, R, _whole_binding_pairs(inputs))
+    end
+    if isempty(roots) &&
+        isempty(kwargs) &&
+        length(inputs) == 1 &&
+        first(inputs) isa Pair{<:VarName} &&
+        _whole_binding_value(last(first(inputs))) &&
+        _field_binding_path(AbstractPPL.getoptic(first(first(inputs)))) &&
+        isempty(table.values.data) &&
+        isempty(table.storage.data) &&
+        isempty(table.observed_templates.data) &&
+        isempty(table.fixed_templates.data)
+        return _bind_field_resolved(table, R, first(inputs))
+    end
+    if isempty(roots) &&
+        isempty(kwargs) &&
+        length(inputs) == 1 &&
+        first(inputs) isa Union{NamedTuple,VarNamedTuple} &&
+        !_has_growable_binding(first(inputs)) &&
+        isempty(table.observed_templates.data) &&
+        isempty(table.fixed_templates.data)
+        input = first(inputs)
+        input = input isa NamedTuple ? VarNamedTuple(input) : input
+        return _bind_structured_resolved(table, R, input)
+    end
     position = findfirst(x -> x isa Type{<:AbstractPPL.OfNamedTuple}, inputs)
     position === nothing ||
         position == length(inputs) ||
@@ -1477,16 +1852,47 @@ function _bind_resolved(
     inputs = position === nothing ? inputs : Base.front(inputs)
     inputs = isempty(kwargs) ? inputs : (inputs..., (; kwargs...))
     schema = Base.structdiff(schema, NamedTuple{keys(table.arguments.data)})
+    if length(inputs) == 1 &&
+        first(inputs) isa Pair{<:VarName} &&
+        isempty(table.values.data) &&
+        isempty(table.storage.data) &&
+        isempty(table.observed_templates.data) &&
+        isempty(table.fixed_templates.data)
+        vn, value = first(inputs)
+        root = VarName{AbstractPPL.getsym(vn)}()
+        template = get(schema, AbstractPPL.getsym(vn), NoTemplate())
+        optic = AbstractPPL.getoptic(vn)
+        if template isa Array &&
+            optic isa AbstractPPL.Index &&
+            optic.child isa AbstractPPL.Iden &&
+            _known_binding_root(root, table.roots)
+            return _bind_template_resolved(table, R, vn, value, template, error_prefix)
+        end
+    end
+    schema_names = VarName[
+        vn for input in inputs for (vn, _, _) in _resolved_entries(input)
+    ]
+    schema =
+        _used_binding_schema(
+            VarNamedTuple(schema), schema_names, union(table.roots, roots)
+        ).data
+    for name in keys(schema)
+        _check_existing_binding_template(
+            get(table.values.data, name, nothing), schema[name], VarName{name}()
+        )
+    end
     templates = R === Fix ? table.fixed_templates : table.observed_templates
-    current_schema = merge(templates.data, schema)
+    current_schema = _fill_binding_storage(VarNamedTuple(schema), templates).data
     templates = VarNamedTuple(current_schema)
     batches = map(_resolved_entries, inputs)
-    stored, values = deepcopy(table.storage), table.values
+    stored, values = table.storage, table.values
     updates = VarNamedTuple()
     prepared = Dict{Symbol,Any}()
     occupied = Dict{Symbol,Bool}()
+    copied = IdDict{Any,Nothing}()
+    supplied_roots = Set{Symbol}()
     seen = (Set{VarName}(), Set{VarName}())
-    known = union(table.roots, roots)
+    known = union(VarName[table.roots...], roots)
     for input in inputs
         input isa VarNamedTuple || continue
         append!(known, keys(input))
@@ -1502,9 +1908,8 @@ function _bind_resolved(
         for (name, value) in pairs(fields)
             value isa VarNamedTuples.PartialArray && isempty(value) || continue
             storage = _resolved_root_storage(stored, current_schema, value, VarName{name}())
-            storage isa VarNamedTuples.GrowableArray &&
-                throw(ArgumentError("Binding indices require concrete storage"))
-            stored = setindex!!(stored, deepcopy(storage), VarName{name}())
+            storage isa VarNamedTuples.GrowableArray && _missing_binding_storage()
+            stored = setindex!!(stored, storage, VarName{name}())
         end
     end
     unique!(known)
@@ -1513,32 +1918,87 @@ function _bind_resolved(
         _expand_namespace_entries!(entries, vn, value, supplied, known)
     end
     for (vn, value, supplied) in entries
-        _classify_placeholder(value) === _NoPlaceholder ||
-            throw(ArgumentError("Explicit binding `$vn` contains missing or nothing"))
+        _check_bound_placeholder(R, vn, value)
         name, optic = AbstractPPL.getsym(vn), AbstractPPL.getoptic(vn)
         root = VarName{name}()
+        supplied isa NoTemplate || push!(supplied_roots, name)
         previous = get(values.data, name, nothing)
-        _check_mixed_binding(previous, value, optic, root, known)
-        _check_mixed_binding(get(updates.data, name, nothing), value, optic, root, known)
         storage = get!(prepared, name) do
-            deepcopy(_resolved_root_storage(stored, current_schema, supplied, vn))
+            _resolved_root_storage(stored, current_schema, supplied, vn)
         end
         active = get!(occupied, name) do
-            _contains_model_binding(previous)
+            _has_binding_storage(previous)
         end
         if active && haskey(stored.data, name)
             _same_storage_shape(stored.data[name], storage) || throw(
                 ArgumentError(
-                    "Binding storage at `$root` cannot change shape while bindings remain",
+                    "Binding storage at `$root` cannot change shape from $(stored.data[name] isa AbstractArray ? size(stored.data[name]) : typeof(stored.data[name])) to $(storage isa AbstractArray ? size(storage) : typeof(storage)); use decondition and unfix on the whole root first",
                 ),
             )
         end
-        storage = _path_storage(storage, optic, root, known)
-        _check_resolved_overlap!(seen, _resolved_selections(storage, optic, root))
-        _check_binding_extents(value, storage, optic, vn)
-        value = _convert_resolved_value(
-            value, storage, optic, vn, haskey(current_schema, name)
+        if !(optic isa AbstractPPL.Iden) && storage isa Union{Nothing,Missing}
+            throw(
+                ArgumentError(
+                    "Cannot make a partial binding of argument `$root` with whole `$storage` storage; supply a concrete argument or a whole binding instead.",
+                ),
+            )
+        end
+        optic = _collapse_binding_selection(
+            storage,
+            optic,
+            maybe_prefix(vn, error_prefix);
+            location=maybe_prefix(root, error_prefix),
         )
+        vn = VarName{name}(optic)
+        if !(storage isa NoTemplate)
+            _check_namedtuple_index(
+                ModelValue{Condition}(storage),
+                optic,
+                AbstractPPL.Property{name}();
+                check_container=_known_binding_root(root, known),
+            )
+        end
+        _check_mixed_binding(previous, value, optic, root, known)
+        _check_mixed_binding(get(updates.data, name, nothing), value, optic, root, known)
+        storage = _path_storage(
+            storage, optic, root, known; address=maybe_prefix(vn, error_prefix)
+        )
+        _check_resolved_overlap!(
+            seen, _resolved_selections(storage, optic, maybe_prefix(root, error_prefix))
+        )
+        _check_binding_extents(value, storage, optic, vn)
+        length(entries) == 1 && _check_cross_roles(
+            _model_argument_binding(previous, optic),
+            ModelValue{R}(value),
+            maybe_prefix(vn, error_prefix),
+        )
+        constraint = _storage_at(templates, AbstractPPL.varname_to_optic(vn))
+        other = _storage_at(
+            R === Fix ? table.observed_templates : table.fixed_templates,
+            AbstractPPL.varname_to_optic(vn),
+        )
+        _same_storage_shape(other, value) || throw(
+            ArgumentError(
+                "Bound value at `$vn` has incompatible template shape; supply a new template with the value",
+            ),
+        )
+        value = if constraint !== nothing
+            _convert_resolved_value(value, storage, optic, vn, true)
+        elseif optic isa AbstractPPL.Iden
+            value
+        elseif !_has_binding_role(R, previous) && haskey(table.arguments.data, name)
+            _check_namedtuple_index(
+                ModelValue{Condition}(table.arguments.data[name]),
+                optic,
+                AbstractPPL.Property{name}();
+                check_container=true,
+            )
+            _convert_resolved_value(value, table.arguments.data[name], optic, vn, false)
+        elseif name in supplied_roots && !_has_binding_role(R, previous)
+            _convert_resolved_value(value, storage, optic, vn, false)
+        else
+            _convert_binding_edit(value, previous, optic, vn, R)
+        end
         retained = get(stored.data, name, NoTemplate())
         if !active &&
             !(retained isa VarNamedTuple) &&
@@ -1557,13 +2017,18 @@ function _bind_resolved(
                 storage
             end
         else
+            if retained isa VarNamedTuple && storage isa VarNamedTuple
+                retained = _fill_binding_storage(storage, retained)
+            end
             retained = _path_storage(
                 retained isa NoTemplate ? storage : retained, optic, root, known
             )
         end
-        retained = _retain_binding_storage(retained, value, optic, root)
+        retained = _retain_binding_storage(
+            retained, value, optic, root, previous, true; copied
+        )
         updates = templated_setindex!!(updates, ModelValue{R}(value), vn, storage)
-        prepared[name] = storage
+        prepared[name] = retained
         stored = setindex!!(stored, retained, root)
     end
     _check_cross_roles(values, updates)
@@ -1578,6 +2043,61 @@ function _bind_resolved(
     )
 end
 
+_has_growable_binding(value) = false
+_has_growable_binding(value::NamedTuple) = any(_has_growable_binding, values(value))
+_has_growable_binding(value::VarNamedTuple) = _has_growable_binding(value.data)
+function _has_growable_binding(value::VarNamedTuples.PartialArray)
+    value.data isa VarNamedTuples.GrowableArray && return true
+    return _fold_model_indices(false, value) do found, child, _, _
+        found || _has_growable_binding(child)
+    end
+end
+
+function _convert_binding_edit(value, previous, optic, vn, R)
+    previous === nothing && return value
+    if previous isa ModelValue && _matches_model_role(R, previous)
+        return if optic isa AbstractPPL.Iden
+            value
+        else
+            _convert_resolved_value(value, previous.value, optic, vn, false)
+        end
+    end
+    optic isa AbstractPPL.Iden && return value
+    if _model_argument_binding(previous, optic) === nothing &&
+        _has_binding_role(R, previous)
+        template = if previous isa ModelValueTree
+            previous.template
+        elseif previous isa VarNamedTuples.PartialArray &&
+            previous.mask isa ModelBindingArray
+            previous.mask.template
+        else
+            NoTemplate()
+        end
+        template isa NoTemplate ||
+            return _convert_resolved_value(value, template, optic, vn, false)
+    end
+    head = AbstractPPL.ohead(optic)
+    child = _model_argument_binding(previous, head)
+    if (
+            previous isa VarNamedTuples.PartialArray ||
+            previous isa ModelValueTree{<:NamedTuple}
+        ) &&
+        child isa ModelValue &&
+        _matches_model_role(R, child) &&
+        optic.child isa AbstractPPL.Iden
+        converted = convert(typeof(child.value), value)
+        isequal(converted, value) || throw(
+            ArgumentError(
+                "Cannot exactly represent partial binding at `$vn` in storage element type $(typeof(child.value))",
+            ),
+        )
+        return converted
+    elseif previous isa ModelValueTree && _has_binding_role(R, child)
+        return _convert_resolved_value(value, previous.template, optic, vn, false)
+    end
+    return _convert_binding_edit(value, child, optic.child, vn, R)
+end
+
 function _convert_resolved_value(value, storage, ::AbstractPPL.Iden, vn, templated)
     if templated && !(storage isa NoTemplate)
         value isa typeof(storage) || throw(
@@ -1585,8 +2105,11 @@ function _convert_resolved_value(value, storage, ::AbstractPPL.Iden, vn, templat
                 "Bound value at `$vn` must have template type $(typeof(storage))"
             ),
         )
-        _same_storage_shape(value, storage) ||
-            throw(ArgumentError("Bound value at `$vn` has incompatible template shape"))
+        _same_storage_shape(value, storage) || throw(
+            ArgumentError(
+                "Bound value at `$vn` has incompatible template shape; supply a new template with the value",
+            ),
+        )
     end
     return value
 end
@@ -1608,8 +2131,10 @@ end
 function _check_field_removal(value, ::AbstractPPL.Iden, vn, roots)
     return nothing
 end
-function _check_field_removal(value, optic, vn, roots)
-    if value isa ModelValue{<:Any,<:NamedTuple} && !any(root -> subsumes(root, vn), roots)
+@inline function _check_field_removal(value, optic, vn, roots)
+    if value isa ModelValue &&
+        value.value isa NamedTuple &&
+        !any(root -> subsumes(root, vn), roots)
         throw(
             ArgumentError("Removing a field below `$vn` requires root-structured storage")
         )
@@ -1625,6 +2150,10 @@ function _check_field_removal(value, optic, vn, roots)
     return _check_field_removal(child, optic.child, next, roots)
 end
 
+_has_binding_storage(::Union{Nothing,NoModelBinding}) = false
+_has_binding_storage(::Union{ModelValue,ModelValueTree,VarNamedTuples.PartialArray}) = true
+_has_binding_storage(values::VarNamedTuple) = _contains_model_binding(values)
+
 function _contains_model_binding(value::Union{VarNamedTuple,VarNamedTuples.PartialArray})
     return _fold_model_indices(false, value) do found, child, _, _
         found || _contains_model_binding(child)
@@ -1634,16 +2163,43 @@ _contains_model_binding(value::ModelValueTree) = _contains_model_binding(value.v
 _contains_model_binding(::ModelValue) = true
 _contains_model_binding(::Union{Nothing,NoModelBinding}) = false
 
+@inline function _restore_argument_storage(table, values, storage, ::Val{name}) where {name}
+    if haskey(table.arguments.data, name) &&
+        !_contains_model_binding(get(values.data, name, nothing))
+        return setindex!!(storage, table.arguments.data[name], VarName{name}())
+    end
+    return storage
+end
+
+@generated function _restore_argument_storage(
+    table, values, storage::VarNamedTuple{names}
+) where {names}
+    arguments = fieldtype(table, :arguments).parameters[1]
+    fields = map(names) do name
+        name in arguments || return :(storage.data.$name)
+        return :(
+            if _contains_model_binding(get(values.data, $(QuoteNode(name)), nothing))
+                storage.data.$name
+            else
+                table.arguments.data.$name
+            end
+        )
+    end
+    return :(VarNamedTuple(NamedTuple{$names}(($(fields...),))))
+end
+
 function _unbind_resolved(
-    table::ResolvedBindings, ::Type{R}, names...
+    table::ResolvedBindings, ::Type{R}, names...; error_prefix=nothing
 ) where {R<:Union{Condition,Fix}}
     names = map(name -> name isa Symbol ? VarName{name}() : name, names)
     all(name -> name isa VarName, names) ||
         throw(ArgumentError("Removal addresses must be Symbols or VarNames"))
     if isempty(names)
+        values = _remove_model_values(R, table.values)
+        storage = _restore_argument_storage(table, values, table.storage)
         return ResolvedBindings(
-            _remove_model_values(R, table.values),
-            table.storage,
+            values,
+            storage,
             table.observed_templates,
             table.fixed_templates,
             table.arguments,
@@ -1654,19 +2210,42 @@ function _unbind_resolved(
     for vn in names
         name, optic = AbstractPPL.getsym(vn), AbstractPPL.getoptic(vn)
         root_storage = get(storage.data, name, NoTemplate())
-        _path_storage(root_storage, optic, VarName{name}(), table.roots)
+        optic = _collapse_binding_selection(
+            root_storage,
+            optic,
+            maybe_prefix(vn, error_prefix);
+            operation="remove",
+            location=maybe_prefix(VarName{name}(), error_prefix),
+        )
+        vn = VarName{name}(optic)
+        root_storage isa NoTemplate || _check_namedtuple_index(
+            ModelValue{Condition}(root_storage),
+            optic,
+            AbstractPPL.Property{name}();
+            operation="remove",
+            check_container=_known_binding_root(VarName{name}(), table.roots),
+        )
+        _path_storage(
+            root_storage,
+            optic,
+            VarName{name}(),
+            table.roots;
+            operation="remove",
+            address=maybe_prefix(vn, error_prefix),
+        )
         _check_field_removal(values, AbstractPPL.varname_to_optic(vn), nothing, table.roots)
         values = _prune_model_bindings(
             _remove_model_binding(R, values, AbstractPPL.varname_to_optic(vn))
         )
+        if optic isa AbstractPPL.Iden
+            storage = _restore_argument_storage(table, values, storage, Val(name))
+        end
         if optic isa AbstractPPL.Iden &&
+            root_storage isa VarNamedTuple &&
             !_contains_model_binding(get(values.data, name, nothing)) &&
             !haskey(table.observed_templates.data, name) &&
             !haskey(table.fixed_templates.data, name)
             storage = VarNamedTuple(Base.structdiff(storage.data, NamedTuple{(name,)}))
-            if haskey(table.arguments.data, name)
-                storage = setindex!!(storage, table.arguments[vn], vn)
-            end
         end
     end
     return ResolvedBindings(
@@ -1677,6 +2256,10 @@ function _unbind_resolved(
         table.arguments,
         table.roots,
     )
+end
+
+function _convert_binding_elements(::Type{T}, values) where {T}
+    return map(value -> convert(T, value), values)
 end
 
 function _convert_partial_argument_binding(
@@ -1701,7 +2284,7 @@ function _convert_partial_argument_binding(
         Any
     end
     converted = if multi
-        map(v -> convert(T, v), value)
+        _convert_binding_elements(T, value)
     else
         convert(T, value)
     end
@@ -2199,7 +2782,9 @@ end
 @generated function _argument_may_alias(::Type{T}) where {T}
     return _argument_alias_type(T, Set{Any}())
 end
-function _check_shared_latent_storage(table::ResolvedBindings, arguments::NamedTuple)
+function _check_shared_latent_storage(
+    table::ResolvedBindings, arguments::NamedTuple, prefix=nothing
+)
     _argument_may_alias(typeof(arguments)) || return nothing
     lhs = keys(table.arguments.data)
     latent, repeated = Base.IdSet{Any}(), Any[]
@@ -2240,7 +2825,9 @@ function _check_shared_latent_storage(table::ResolvedBindings, arguments::NamedT
         end
     end
     shared === nothing && return nothing
-    selected = _shared_argument_names(roots, shared)
+    selected = map(
+        name -> maybe_prefix(name, prefix), _shared_argument_names(roots, shared)
+    )
     throw(
         ArgumentError(
             "Storage reachable from a latent argument is shared by $(join(map(name -> "`$name`", selected), " and ")). A latent draw may replace storage and leave another reference stale, even if that reference is only read; pass independent storage, for example `(a=v, b=copy(v))`.",
@@ -2535,24 +3122,130 @@ function _rebuild_argument_property(result::NamedTuple, ::Val{name}, value) wher
     return ConstructionBase.setproperties(result, NamedTuple{(name,)}((value,)))
 end
 
-@generated function _prepare_resolved_arguments(
-    table::ResolvedBindings, arguments::NamedTuple{names}
-) where {names}
-    fields = map(names) do name
-        vn = VarName{name}()
-        optic = AbstractPPL.varname_to_optic(vn)
-        quote
-            if haskey(table.arguments.data, $(QuoteNode(name)))
-                _model_argument_value(
-                    _model_argument_binding(table.values, $optic), arguments.$name, $vn
-                )
-            else
-                arguments.$name
-            end
+function _collapse_binding_selection(
+    storage,
+    optic::AbstractPPL.Iden,
+    vn;
+    operation="bind",
+    location=VarName{AbstractPPL.getsym(vn)}(),
+)
+    return optic
+end
+function _collapse_binding_selection(
+    storage,
+    optic::AbstractPPL.Property{S},
+    vn;
+    operation="bind",
+    location=VarName{AbstractPPL.getsym(vn)}(),
+) where {S}
+    child = if storage isa Union{VarNamedTuple,NoTemplate} || hasproperty(storage, S)
+        _binding_child_template(storage, AbstractPPL.Property{S}())
+    else
+        NoTemplate()
+    end
+    return AbstractPPL.Property{S}(
+        _collapse_binding_selection(
+            child,
+            optic.child,
+            vn;
+            operation,
+            location=AbstractPPL.append_optic(location, AbstractPPL.Property{S}()),
+        ),
+    )
+end
+function _collapse_binding_selection(
+    storage,
+    optic::AbstractPPL.Index,
+    vn;
+    operation="bind",
+    location=VarName{AbstractPPL.getsym(vn)}(),
+)
+    storage = _binding_storage(storage)
+    storage isa AbstractArray || return optic
+    head = AbstractPPL.concretize_top_level(optic, storage)
+    checkbounds(Bool, storage, head.ix...; head.kw...) || throw(
+        ArgumentError(
+            "Cannot $operation `$vn`: index is outside the storage at `$location`"
+        ),
+    )
+    selected_location = AbstractPPL.append_optic(location, AbstractPPL.ohead(head))
+    child = head.child
+    if child isa AbstractPPL.Index &&
+        VarNamedTuples._is_multiindex(storage, head.ix...; head.kw...)
+        selected = getindex(CartesianIndices(axes(storage)), head.ix...; head.kw...)
+        while selected isa AbstractArray && child isa AbstractPPL.Index
+            next = AbstractPPL.concretize_top_level(child, selected)
+            checkbounds(Bool, selected, next.ix...; next.kw...) || throw(
+                ArgumentError(
+                    "Cannot $operation `$vn`: index is outside the storage at `$selected_location`",
+                ),
+            )
+            selected = getindex(selected, next.ix...; next.kw...)
+            selected_location = AbstractPPL.append_optic(
+                selected_location, AbstractPPL.ohead(next)
+            )
+            child = next.child
+        end
+        head = if selected isa CartesianIndex
+            AbstractPPL.Index(Tuple(selected), (;), child)
+        else
+            AbstractPPL.Index((selected,), (;), child)
         end
     end
-    return quote
-        _check_shared_latent_storage(table, arguments)
-        NamedTuple{$names}(($(fields...),))
+    child isa AbstractPPL.Iden && return head
+    _check_assigned_binding_storage(storage, head, vn)
+    selected_storage = _binding_child_template(storage, AbstractPPL.ohead(head))
+    return AbstractPPL.Index(
+        head.ix,
+        head.kw,
+        _collapse_binding_selection(
+            selected_storage, child, vn; operation, location=selected_location
+        ),
+    )
+end
+
+function _used_binding_schema(schema, names, roots, prefix=nothing)
+    isempty(names) && return VarNamedTuple()
+    prefix !== nothing &&
+        (_known_binding_root(prefix, roots) || any(==(prefix), names)) &&
+        return schema
+    schema isa Union{NamedTuple,VarNamedTuple} || return schema
+    fields = schema isa VarNamedTuple ? schema.data : schema
+    selected = VarNamedTuple()
+    for name in keys(fields)
+        vn = if prefix === nothing
+            VarName{name}()
+        else
+            AbstractPPL.append_optic(prefix, AbstractPPL.Property{name}())
+        end
+        descendants = filter(n -> subsumes(vn, n), names)
+        isempty(descendants) && continue
+        value = _used_binding_schema(fields[name], descendants, roots, vn)
+        selected = setindex!!(selected, value, VarName{name}())
     end
+    return selected
+end
+function _fill_binding_storage(candidate::VarNamedTuple, previous::VarNamedTuple)
+    result = previous
+    for name in keys(candidate.data)
+        child = _fill_binding_storage(
+            candidate.data[name], get(previous.data, name, NoTemplate())
+        )
+        result = setindex!!(result, child, VarName{name}())
+    end
+    return result
+end
+function _same_concrete_shape(a::VarNamedTuple, b::VarNamedTuple, parents)
+    return all(keys(a.data)) do name
+        !haskey(b.data, name) || _same_storage_shape(a.data[name], b.data[name], parents)
+    end
+end
+
+function _same_concrete_shape(a::NamedTuple, b::VarNamedTuple, parents)
+    return all(keys(b.data)) do name
+        haskey(a, name) && _same_storage_shape(a[name], b.data[name], parents)
+    end
+end
+function _same_concrete_shape(a::VarNamedTuple, b::NamedTuple, parents)
+    return _same_concrete_shape(b, a, parents)
 end

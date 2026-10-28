@@ -48,10 +48,6 @@ model's return value, not its latent variables.
 `Submodel` is not a `Distribution`; it provides this tilde behavior but no standalone
 `logpdf` method.
 
-!!! warning
-    Operations normally associated with `left ~ right`, such as [`condition`](@ref), do not
-    necessarily work with `to_submodel`.
-
 The optional second argument accepts `true` for compatibility. Passing `false` throws
 `ArgumentError`; choose the child name on the left-hand side of `~` instead.
 
@@ -110,111 +106,331 @@ function to_submodel(m::Model, auto_prefix::Bool)
     return to_submodel(m)
 end
 
-# ---------------------------
-# Submodels in tilde-pipeline
-# ---------------------------
-
-"""
-    DynamicPPL.tilde_assume!!(
-        context::AbstractContext,
-        right::DynamicPPL.Submodel,
-        vn::VarName,
-        ::Any,
-        vi::AbstractVarInfo
+_submodel_namespace(values::VarNamedTuple) = values
+_submodel_namespace(value::ModelValueTree{<:NamedTuple}) = value.values
+function _submodel_namespace(
+    value::ModelValue{R,<:NamedTuple}
+) where {R<:Union{Condition,Fix}}
+    return _tag_model_values(R, VarNamedTuple(value.value))
+end
+function _submodel_namespace(
+    value::ModelValue{R,<:VarNamedTuple}
+) where {R<:Union{Condition,Fix}}
+    return _tag_model_values(R, value.value)
+end
+function _submodel_namespace(::Union{ModelValue,ModelValueTree})
+    throw(
+        ArgumentError(
+            "Cannot explicitly bind a submodel return value. Remove the explicit binding, " *
+            "or bind the child's variables by prefixed name (e.g. `@varname(a.z)`).",
+        ),
     )
-
-Evaluate the submodel with the given context.
-"""
-function tilde_assume!!(
-    context::AbstractContext,
-    right::DynamicPPL.Submodel,
-    vn::VarName,
-    ::Any,
-    vi::AbstractVarInfo,
-)
-    return _evaluate!!(right, vi, context, vn)
 end
 
-# The tilde supplies the child address; parent contexts wrap the resulting namespace.
-function _evaluate!!(
+_submodel_namespace(::NoModelBinding) = VarNamedTuple()
+_submodel_values(model::Model, prefix) = _submodel_values(model.values.values, prefix)
+_submodel_values(values::VarNamedTuple, ::Nothing) = values
+function _submodel_values(values::VarNamedTuple, prefix::VarName)
+    binding = _model_argument_binding(values, AbstractPPL.varname_to_optic(prefix))
+    binding === nothing && return VarNamedTuple()
+    return _submodel_namespace(binding)
+end
+
+function _child_storage(values::VarNamedTuple, prefix)
+    value = _storage_at(values, AbstractPPL.varname_to_optic(prefix))
+    value isa Union{Nothing,Number,NoTemplate} && return VarNamedTuple()
+    value isa VarNamedTuple && return value
+    value isa NamedTuple && return VarNamedTuple(value)
+    throw(ArgumentError("Child namespace `$prefix` requires named storage"))
+end
+function _check_child_storage(storage, values, inherited, vn=nothing)
+    if values isa VarNamedTuples.PartialArray && storage isa AbstractArray
+        axes(values) == axes(storage) || throw(
+            ArgumentError(
+                "Binding shape at `$vn` conflicts with existing storage in the child model",
+            ),
+        )
+    end
+    _fold_model_indices(nothing, values) do _, binding, optic, _
+        address = if vn === nothing
+            AbstractPPL.optic_to_varname(optic)
+        else
+            AbstractPPL.append_optic(vn, optic)
+        end
+        incoming = _model_argument_binding(inherited, optic)
+        incoming === nothing && return nothing
+        owner = _storage_at(storage, optic)
+        owner === nothing && return nothing
+        if binding isa ModelValue
+            _same_storage_shape(owner, binding.value) || throw(
+                ArgumentError(
+                    "Binding shape at `$address` conflicts with existing storage in the child model",
+                ),
+            )
+        elseif binding isa Union{VarNamedTuple,VarNamedTuples.PartialArray,ModelValueTree}
+            _check_child_storage(
+                owner,
+                binding isa ModelValueTree ? binding.values : binding,
+                incoming,
+                address,
+            )
+        end
+        nothing
+    end
+end
+function _prepare_child_bindings(table, values::VarNamedTuple, prefix)
+    return VarNamedTuple(
+        NamedTuple{keys(values.data)}(
+            map(keys(values.data)) do name
+                value = values.data[name]
+                previous = get(table.values.data, name, nothing)
+                _contains_model_binding(previous) || return value
+                vn = VarName{name}()
+                if !(value isa ModelValue)
+                    value = VarNamedTuples._map_pairs_recursive!!(copy(value), vn) do pair
+                        address, binding = pair
+                        _model_value_like(
+                            binding,
+                            _convert_binding_edit(
+                                binding.value,
+                                previous,
+                                AbstractPPL.getoptic(address),
+                                maybe_prefix(address, prefix),
+                                typeof(_model_role(binding)),
+                            ),
+                        )
+                    end
+                end
+                template = get(
+                    table.observed_templates.data,
+                    name,
+                    get(table.fixed_templates.data, name, NoTemplate()),
+                )
+                template isa NoTemplate && return value
+                if value isa ModelValue
+                    _convert_resolved_value(
+                        value.value,
+                        template,
+                        AbstractPPL.Iden(),
+                        maybe_prefix(vn, prefix),
+                        true,
+                    )
+                    value
+                else
+                    _prepare_namespace_bindings(value, template, maybe_prefix(vn, prefix))
+                end
+            end,
+        ),
+    )
+end
+
+_prepare_namespace_bindings(value::VarNamedTuple, template::Number, vn) = value
+_prepare_namespace_bindings(value::ModelValue, template, vn) = value
+function _prepare_namespace_bindings(values, template, vn)
+    return _fold_model_indices(copy(values), values) do result, binding, optic, _
+        address = AbstractPPL.append_optic(vn, optic)
+        storage = _storage_at(template, optic)
+        storage === nothing && return result
+        binding = if binding isa ModelValue
+            _prepare_binding_selection(binding, template, optic, vn)
+        else
+            _prepare_namespace_bindings(binding, storage, address)
+        end
+        VarNamedTuples._setindex_optic!!(
+            result, binding, optic, template, VarNamedTuples.AllowAll()
+        )
+    end
+end
+
+@inline function tilde_assume!!(
+    parent_model::Model,
+    context::AbstractContext,
     submodel::Submodel{M},
-    vi::AbstractVarInfo,
-    parent_context::AbstractContext,
     left_vn::VarName,
-) where {M<:Model}
-    submodel_context_prefixed = PrefixContext(left_vn, submodel.model.context)
-
-    # The parent controls evaluation; the child retains its enclosing contexts.
-    submodel_context = setleafcontext(
-        submodel_context_prefixed, leafcontext(parent_context)
-    )
-
-    eval_context = setleafcontext(parent_context, submodel_context)
-
-    model = contextualize(submodel.model, eval_context)
-
-    # Evaluate the wrapped model. These two lines are a verbatim copy of the body of
-    # `_evaluate!!(model::Model, ::AbstractVarInfo)` (in `model.jl`), and the duplication is
-    # deliberate: DO NOT replace them with `return _evaluate!!(model, vi)`. Each level of
-    # submodel nesting grows the contextualised `Model`'s context type, and routing the
-    # recursion through the shared `_evaluate!!(::Model, ...)` method trips Julia's recursion
-    # limiter, which widens the `Model` argument to abstract and collapses the return type to
-    # `Any`. Calling `model.f` directly avoids that. See
-    # https://github.com/TuringLang/DynamicPPL.jl/pull/1427 and
-    # https://github.com/TuringLang/Turing.jl/issues/2844 for the full explanation.
-    args, kwargs = make_evaluate_args_and_kwargs(model, vi)
-    return model.f(args...; kwargs...)
-end
-
-function tilde_observe!!(
-    context::AbstractContext,
-    right::DynamicPPL.Submodel,
-    left::Any,
-    vn::VarName,
-    template::Any,
+    template,
     vi::AbstractVarInfo,
-)
-    # TODO(penelopeysm) This is VERY BAD. See
-    # https://github.com/TuringLang/DynamicPPL.jl/issues/1246.
-    #
-    # We need a much more principled way of dealing with this. The problem is that, if we
-    # have
-    #
-    # @model inner() = a ~ Normal()
-    # @model function f()
-    #    x ~ to_submodel(inner())
-    # end
-    # model = f() | (@varname(x.a) => 2.0)
-    #
-    # and a user conditions the top-level model on `x.a` (for example), then when we check
-    # whether `x` is conditioned, we will find that it indeed is (since the conditioned
-    # values will have `values.data.x` pointing to a VNT). That sends us down the path of
-    # tilde_observe!!, so we HAVE to deal with this by calling evaluate.
-    #
-    # What we actually want to forbid is conditioning on the RETURN VALUE. That is, we don't
-    # want someone to think that they can do
-    #
-    # model = f() | (@varname(x) => 3.0)
-    #
-    # or indeed
-    #
-    # @model function f2(x)
-    #     x ~ to_submodel(inner())
-    # end
-    # model2 = f2(3.0)
-    # 
-    # These are the cases that we want to ban. BUT WE HAVE NO WAY OF FIGURING OUT WHICH ONE
-    # THE USER MEANT ---- BECAUSE WE LUMP THE RETURN VALUE AND LATENTS INTO ONE THING.
-    # This is REALLY, really frustrating.
-    #
-    # What we do here is to just evaluate the submodel so that we handle the first case
-    # above correctly. The other cases USED to error; however, now they will work (and the
-    # submodel will be evaluated, but the value of `x` will be ignored). That is probably
-    # not what the user wants, but hey, it'll make tests pass.
-    return _evaluate!!(right, vi, context, vn)
+) where {M<:Model}
+    name = AbstractPPL.getsym(left_vn)
+    name in
+    (_argument_names(parent_model.args)..., _argument_names(parent_model.defaults)...) &&
+        throw(
+            ArgumentError(
+                "Submodel tilde `$left_vn` is rooted at model argument `$name`; use a local LHS variable and condition the child's variables by their prefixed names.",
+            ),
+        )
+    left_vn = _concretize_prefix(left_vn, template; prefix=Val(true))
+    local_prefix = maybe_prefix(_model_prefix(submodel.model), left_vn)
+    observations = _submodel_removals(Condition, parent_model, local_prefix)
+    fixed = _submodel_removals(Fix, parent_model, local_prefix)
+    return _tilde_assume_submodel!!(
+        parent_model,
+        context,
+        submodel,
+        left_vn,
+        template,
+        vi,
+        local_prefix,
+        observations,
+        fixed,
+    )
 end
-function tilde_observe!!(
-    ::AbstractContext, ::DynamicPPL.Submodel, left, ::Nothing, template, ::AbstractVarInfo
+@inline function _tilde_assume_submodel!!(
+    parent_model,
+    context,
+    submodel,
+    left_vn,
+    template,
+    vi,
+    local_prefix,
+    observation_removals,
+    fixed_removals,
 )
+    child = submodel.model
+    inherited = _inherited_model_values(_submodel_values(parent_model, local_prefix))
+    isempty(inherited.data) ||
+        template isa NoTemplate ||
+        _check_bound_shape(
+            _get_model_binding(parent_model, VarName{AbstractPPL.getsym(left_vn)}()),
+            template,
+            AbstractPPL.getoptic(left_vn),
+            maybe_prefix(left_vn, _model_prefix(parent_model)),
+            Condition;
+            submodel=true,
+        )
+    return _enter_submodel!!(
+        parent_model,
+        context,
+        child,
+        left_vn,
+        template,
+        vi,
+        local_prefix,
+        observation_removals,
+        fixed_removals,
+        inherited,
+    )
+end
+_same_binding_template(a, b) = typeof(a) === typeof(b) && _same_storage_shape(a, b)
+function _same_binding_template(
+    a::Union{NamedTuple,VarNamedTuple}, b::Union{NamedTuple,VarNamedTuple}
+)
+    a = a isa VarNamedTuple ? a.data : a
+    b = b isa VarNamedTuple ? b.data : b
+    return all(keys(a)) do name
+        !haskey(b, name) || _same_binding_template(a[name], b[name])
+    end
+end
+@noinline function _check_child_templates(table, observations, fixed, prefix)
+    for root in table.roots
+        optic = AbstractPPL.varname_to_optic(root)
+        for previous in (table.observed_templates, table.fixed_templates),
+            supplied in (observations, fixed)
+
+            a, b = _storage_at(previous, optic), _storage_at(supplied, optic)
+            (a === nothing || b === nothing) && continue
+            _same_binding_template(a, b) || throw(
+                ArgumentError(
+                    "Binding template at `$(maybe_prefix(root, prefix))` conflicts with existing storage in the child model",
+                ),
+            )
+        end
+    end
+    return nothing
+end
+@noinline function _check_retained_child_storage(storage, table, inherited, prefix)
+    for root in table.roots
+        optic = AbstractPPL.varname_to_optic(root)
+        binding = _model_argument_binding(inherited, optic)
+        binding isa Union{Nothing,ModelValue} && continue
+        previous = _storage_at(table.storage, optic)
+        supplied = _storage_at(storage, optic)
+        (previous === nothing || supplied === nothing) && continue
+        inherited_shape = if binding isa VarNamedTuples.PartialArray
+            _inherits_shape(binding.mask)
+        else
+            _inherits_shape(binding)
+        end
+        if !inherited_shape
+            _fold_model_indices(
+                nothing, binding isa ModelValueTree ? binding.values : binding
+            ) do _, _, child_optic, _
+                _check_namedtuple_index(
+                    ModelValue{Condition}(previous),
+                    child_optic,
+                    AbstractPPL.varname_to_optic(maybe_prefix(root, prefix));
+                    check_container=true,
+                )
+            end
+        end
+        inherited_shape ||
+            _same_storage_shape(previous, supplied) ||
+            throw(
+                ArgumentError(
+                    "Inherited storage at `$(maybe_prefix(root, prefix))` disagrees with the child's retained shape",
+                ),
+            )
+    end
+    return nothing
+end
+@inline function _enter_submodel!!(
+    parent_model,
+    context,
+    child,
+    left_vn,
+    template,
+    vi,
+    local_prefix,
+    observation_removals,
+    fixed_removals,
+    inherited,
+)
+    prefix = maybe_prefix(local_prefix, _model_prefix(parent_model))
+    table = _apply_parent_removals(
+        Condition, child.values, observation_removals, context, prefix
+    )
+    table = _apply_parent_removals(Fix, table, fixed_removals, context, prefix)
+    _check_binding_addresses(child, inherited, prefix)
+    inherited = _resolve_known_namespaces(inherited, child, nothing)
+    storage = _child_storage(parent_model.values.storage, local_prefix)
+    observed_templates = _child_storage(
+        parent_model.values.observed_templates, local_prefix
+    )
+    fixed_templates = _child_storage(parent_model.values.fixed_templates, local_prefix)
+    _check_child_templates(table, observed_templates, fixed_templates, prefix)
+    _check_retained_child_storage(storage, table, inherited, prefix)
+    _check_child_storage(storage, table.values, inherited, prefix)
+    inherited = _prepare_child_bindings(table, inherited, prefix)
+    inherited = _check_argument_bindings(child, inherited, true, prefix)
+    _check_cross_roles(table.values, inherited, prefix; disjoint=true)
+    values = _merge_model_values(table.values, inherited)
+    stored = merge(table.storage, storage)
+    _check_removal_storage(child, stored)
+    table = ResolvedBindings(
+        values,
+        stored,
+        merge(table.observed_templates, observed_templates),
+        merge(table.fixed_templates, fixed_templates),
+        table.arguments,
+        table.roots,
+    )
+    model = _reconstruct_model(
+        child;
+        values=table,
+        observation_removals=(child.observation_removals..., observation_removals...),
+        fixed_removals=(child.fixed_removals..., fixed_removals...),
+    )
+    isempty(observation_removals) && isempty(fixed_removals) ||
+        _check_shared_latent_storage(table, merge(model.args, model.defaults), prefix)
+    context = _binding_read_context(context, child.values.values)
+    return _evaluate_submodel!!(parent_model, context, model, left_vn, template, vi)
+end
+@inline function _evaluate_submodel!!(parent_model, context, model, left_vn, template, vi)
+    vn, template = _prefix_varname_and_template(left_vn, template, parent_model)
+    model = _prefix_model(model, vn, template, model.values)
+    model = setleafcontext(model, context)
+    args, kwargs = make_evaluate_args_and_kwargs(model, vi)
+    return @inline model.f(args...; kwargs...)
+end
+function tilde_observe!!(prefix, prefix_template, ::Submodel, left, ::Nothing, template, vi)
     throw(ArgumentError("`x ~ to_submodel(...)` is not supported when `x` is a literal"))
 end

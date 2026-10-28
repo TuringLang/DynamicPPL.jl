@@ -8,6 +8,7 @@ __now__ = now()
 using DynamicPPL
 using Serialization: serialize, deserialize
 using Distributions
+using StableRNGs: StableRNG
 using Distributed: addprocs, nworkers, rmprocs, @everywhere, pmap
 using Test
 
@@ -28,7 +29,8 @@ gdemo_def = gdemo_d()
 
         # Sample from deserialized model.
         gdemo_default_copy = deserialize(file)
-        samples = [gdemo_default_copy() for _ in 1:1_000]
+        rng = StableRNG(468)
+        samples = [gdemo_default_copy(rng) for _ in 1:1_000]
         samples_s = first.(samples)
         samples_m = last.(samples)
 

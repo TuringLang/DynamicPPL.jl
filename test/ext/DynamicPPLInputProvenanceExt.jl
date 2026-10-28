@@ -4,6 +4,7 @@ using DynamicPPL
 using ForwardDiff: ForwardDiff
 using Distributions: MvNormal, Normal
 using LinearAlgebra: I
+using Random: Xoshiro
 using SparseArrays: AbstractSparseMatrixCSC, nnz, sparse, sparsevec, spzeros
 using Test: @test, @test_logs, @testset
 
@@ -15,6 +16,15 @@ using Test: @test, @test_logs, @testset
     end
     @test_logs (:warn, r"v.*derived from a model input.*classified as latent") check_model(
         derived_observation(1.0)
+    )
+
+    @model function derived_from_observed_input(y)
+        y ~ Normal()
+        v = exp(y)
+        return v ~ Normal()
+    end
+    @test_logs (:warn, r"Variable v.*derived from a model input") check_model(
+        derived_from_observed_input(1.0)
     )
 
     @model function unsupported_after_finding(y)
@@ -54,6 +64,19 @@ using Test: @test, @test_logs, @testset
     end
     @test_logs (:warn, r"Variable x\[1\].*derived from a model input") check_model(
         derived_index(1.0)
+    )
+
+    @model function derived_dynamic_indices(y)
+        x = exp.([y, y])
+        x[begin] ~ Normal()
+        x[end] ~ Normal()
+        z = exp(y)
+        return z ~ Normal()
+    end
+    @test_logs (:warn, r"Variable x.*derived from a model input") (
+        :warn, r"Variable x.*derived from a model input"
+    ) (:warn, r"Variable z.*derived from a model input") check_model(
+        derived_dynamic_indices(1.0)
     )
 
     @model function derived_property(y)

@@ -9,6 +9,16 @@ struct ShapeRecord{T}
     value::T
 end
 
+@testset "scalar array index dimensions preserve Julia bounds" begin
+    array = zeros(2, 3)
+    for indices in ((1,), (2, 3), (CartesianIndex(2, 3),))
+        @test DynamicPPL.VarNamedTuples._ndims(array, indices...) == 0
+    end
+    @test_throws BoundsError DynamicPPL.VarNamedTuples._ndims(array, 7)
+    @test_throws BoundsError DynamicPPL.VarNamedTuples._ndims(array, 3, 1)
+    @test_throws ArgumentError DynamicPPL.VarNamedTuples._ndims(array, true)
+end
+
 @testset "whole binding storage identity" begin
     for role in (Condition, Fix)
         value = ones(8)
@@ -18,6 +28,29 @@ end
         removed = _unbind_resolved(removed, role, @varname(x[5:8]))
         @test _select_model_values(role, removed.values) == VarNamedTuple()
         @test _select_model_values(role, table.values)[@varname(x)] === value
+    end
+end
+
+@testset "batched indexed storage copies" begin
+    for role in (Condition, Fix)
+        x = ones(100_000)
+        table = _bind_resolved(ResolvedBindings(), role; x)
+        edit() = _bind_resolved(table, role, @varname(x[1]) => 2.0, @varname(x[2]) => 3.0)
+        edit()
+        @test (@allocated edit()) <= 4sizeof(x)
+        @test edit().storage.data.x[1:3] == [2.0, 3.0, 1.0]
+        @test x == ones(length(x))
+
+        shared = [1.0, 2.0]
+        table = _bind_resolved(
+            ResolvedBindings(; roots=(@varname(x),)), role; x=(a=shared, b=shared)
+        )
+        edited = _bind_resolved(
+            table, role, @varname(x.a[1]) => 3.0, @varname(x.b[2]) => 4.0
+        )
+        @test edited.storage.data.x.a == [3.0, 2.0]
+        @test edited.storage.data.x.b == [1.0, 4.0]
+        @test shared == [1.0, 2.0]
     end
 end
 
@@ -444,13 +477,18 @@ end
 
 module ArgumentBindingTests
 using DynamicPPL, AbstractPPL, Test, StaticArrays, ForwardDiff, ReverseDiff
-using DynamicPPL:
-    Condition,
-    Fix,
-    ResolvedBindings,
-    _bind_resolved,
-    _prepare_resolved_arguments,
-    _copy_model_argument
+using DynamicPPL: Condition, Fix, ResolvedBindings, _bind_resolved, _copy_model_argument
+using Distributions
+@model function argument_preparation(x; data=nothing, y=nothing, z=nothing)
+    return (; x, data, y, z)
+    return x ~ Normal()
+end
+function prepared_arguments(table, args)
+    model = argument_preparation(args.x; Base.tail(args)...)
+    model = DynamicPPL._finish_binding(model, table, nothing)
+    return NamedTuple{keys(args)}(model())
+end
+
 struct BufferNumber <: Number
     data::Vector{Float64}
 end
@@ -462,22 +500,22 @@ Base.deepcopy_internal(value::CopyProbe, memo::IdDict) = CopyProbe([only(value.v
     x = [1.0, 2.0]
     args = (x=x,)
     table = ResolvedBindings(; arguments=VarNamedTuple(args))
-    prepared = _prepare_resolved_arguments(table, args)
+    prepared = prepared_arguments(table, args)
     @test prepared == args
     @test prepared.x !== x
     prepared.x[1] = 9
     @test x == [1, 2]
-    @test _prepare_resolved_arguments(table, args).x == x
+    @test prepared_arguments(table, args).x == x
     bound = _bind_resolved(table, Fix, @varname(x[1]) => 3.0)
-    prepared = _prepare_resolved_arguments(bound, args)
+    prepared = prepared_arguments(bound, args)
     @test prepared.x == [3, 2]
     @test prepared.x !== x
     replacement = [4.0, 5.0]
     bound = _bind_resolved(table, Fix, (x=replacement,))
-    @test _prepare_resolved_arguments(bound, args).x === replacement
-    @test _prepare_resolved_arguments(table, (x=x, z=[8.0])).z == [8.0]
-    @test_throws ArgumentError _prepare_resolved_arguments(table, (x=x, z=x))
-    @test _prepare_resolved_arguments(bound, (x=x, z=x)).z === x
+    @test prepared_arguments(bound, args).x === replacement
+    @test prepared_arguments(table, (x=x, z=[8.0])).z == [8.0]
+    @test_throws ArgumentError prepared_arguments(table, (x=x, z=x))
+    @test prepared_arguments(bound, (x=x, z=x)).z === x
     @test_throws ArgumentError _copy_model_argument(SVector(1.0, 2.0), @varname(x))
     @test_throws ArgumentError _copy_model_argument(BufferNumber([1.0]), @varname(x))
     @test_throws ArgumentError _copy_model_argument(Dict([1.0] => 2.0), @varname(x))
@@ -593,7 +631,7 @@ end
     covariate = Dict([1.0] => [2.0])
     args = (x=[0.0], data=covariate)
     table = ResolvedBindings(; arguments=VarNamedTuple((x=args.x,)))
-    @test _prepare_resolved_arguments(table, args).data === covariate
+    @test prepared_arguments(table, args).data === covariate
 end
 
 @testset "latent aliases and independent branches" begin
@@ -601,18 +639,18 @@ end
     for other in (v, reshape(v, 1, 2), view(v, :))
         args = (x=v, y=other)
         table = ResolvedBindings(; arguments=VarNamedTuple((x=v,)))
-        @test_throws ArgumentError _prepare_resolved_arguments(table, args)
+        @test_throws ArgumentError prepared_arguments(table, args)
     end
     GC.@preserve v begin
         alias = unsafe_wrap(Array, pointer(v), length(v))
         table = ResolvedBindings(; arguments=VarNamedTuple((x=v,)))
-        @test_throws ArgumentError _prepare_resolved_arguments(table, (x=v, y=alias))
+        @test_throws ArgumentError prepared_arguments(table, (x=v, y=alias))
     end
     table = ResolvedBindings(; arguments=VarNamedTuple((x=(a=v, b=v),)))
-    @test_throws ArgumentError _prepare_resolved_arguments(table, (x=(a=v, b=v),))
+    @test_throws ArgumentError prepared_arguments(table, (x=(a=v, b=v),))
     for R in (Condition, Fix)
         independent = _bind_resolved(table, R, @varname(x.b) => copy(v))
-        prepared = _prepare_resolved_arguments(independent, (x=(a=v, b=v),))
+        prepared = prepared_arguments(independent, (x=(a=v, b=v),))
         @test prepared.x.a !== v
         @test prepared.x.a == v
         @test prepared.x.b !== v
@@ -622,7 +660,7 @@ end
             R,
             @varname(x.a) => replacement.a,
         )
-        prepared = _prepare_resolved_arguments(bound, (x=replacement,))
+        prepared = prepared_arguments(bound, (x=replacement,))
         @test prepared.x.a === replacement.a
         @test prepared.x.b !== v
     end
@@ -635,7 +673,7 @@ end
     @test copied.next === copied
     @test copied !== cycle
     table = ResolvedBindings(; arguments=VarNamedTuple((x=cycle,)))
-    @test_throws ArgumentError _prepare_resolved_arguments(table, (x=cycle,))
+    @test_throws ArgumentError prepared_arguments(table, (x=cycle,))
 end
 
 @testset "partial preparation and repeated isolation" begin
@@ -645,12 +683,12 @@ end
         source = (x=(a=T[1, 2], b=T[3, 4]),)
         table = ResolvedBindings(; arguments=VarNamedTuple(source))
         table = _bind_resolved(table, R, @varname(x.a[1]) => T(5))
-        first = @inferred _prepare_resolved_arguments(table, source)
+        first = @inferred prepared_arguments(table, source)
         @test first.x.a == T[5, 2]
         @test first.x.b == source.x.b
         first.x.a[2] = 9
         first.x.b[1] = 9
-        second = _prepare_resolved_arguments(table, source)
+        second = prepared_arguments(table, source)
         @test second.x.a == T[5, 2]
         @test second.x.b == T[3, 4]
         @test source.x.a == T[1, 2]
@@ -658,9 +696,9 @@ end
     end
     args = (x=1.0, y=2)
     table = ResolvedBindings(; arguments=VarNamedTuple((x=args.x,)))
-    @test (@inferred _prepare_resolved_arguments(table, args)) === args
+    @test (@inferred prepared_arguments(table, args)) === args
     table = _bind_resolved(table, Fix; x=3.0)
-    @test (@inferred _prepare_resolved_arguments(table, args)) === (x=3.0, y=2)
+    @test (@inferred prepared_arguments(table, args)) === (x=3.0, y=2)
 end
 
 @testset "nested tracer copying and overlays" begin
@@ -699,20 +737,19 @@ end
     v = [1.0]
     table = ResolvedBindings(; arguments=VarNamedTuple((x=v,)))
     for ctor in (Dict, IdDict)
-        @test_throws r"shared by `x` and `data`" _prepare_resolved_arguments(
+        @test_throws r"shared by `x` and `data`" prepared_arguments(
             table, (x=v, data=ctor(v => 1))
         )
-        @test _prepare_resolved_arguments(table, (x=v, data=ctor(copy(v) => 1))).x == v
+        @test prepared_arguments(table, (x=v, data=ctor(copy(v) => 1))).x == v
     end
     empty = Float64[]
     for other in (Float64[], copy(empty))
         args = (x=(a=empty, b=other),)
-        @test _prepare_resolved_arguments(
-            ResolvedBindings(; arguments=VarNamedTuple(args)), args
-        ) == args
+        @test prepared_arguments(ResolvedBindings(; arguments=VarNamedTuple(args)), args) ==
+            args
     end
     args = (x=(a=empty, b=empty),)
-    @test_throws ArgumentError _prepare_resolved_arguments(
+    @test_throws ArgumentError prepared_arguments(
         ResolvedBindings(; arguments=VarNamedTuple(args)), args
     )
     args = (x=(a=v, b=v),)
@@ -728,7 +765,7 @@ end
         table.arguments,
         table.roots,
     )
-    @test_throws ArgumentError _prepare_resolved_arguments(table, args)
+    @test_throws ArgumentError prepared_arguments(table, args)
 end
 
 @testset "surviving argument values after removal" begin
@@ -738,7 +775,7 @@ end
             ResolvedBindings(; arguments=VarNamedTuple(args)), R; x=T[1, 2, 3]
         )
         table = DynamicPPL._unbind_resolved(table, R, @varname(x[1]))
-        @test _prepare_resolved_arguments(table, args).x == T[5, 2, 3]
+        @test prepared_arguments(table, args).x == T[5, 2, 3]
         @test args.x == T[5, 6, 7]
     end
 end
@@ -774,16 +811,396 @@ end
 end
 
 @testset "partly latent argument storage allocations" begin
-    source = (d=(X=zeros(1000, 1000), y=zeros(2)),)
+    source = (x=(X=zeros(1000, 1000), y=zeros(2)),)
     table = ResolvedBindings(; arguments=VarNamedTuple(source))
-    table = _bind_resolved(table, Condition, @varname(d.X) => source.d.X)
-    _prepare_resolved_arguments(table, source)
-    @test (@allocated _prepare_resolved_arguments(table, source)) < sizeof(source.d.X) ÷ 2
-    result = _prepare_resolved_arguments(table, source)
-    @test result.d.X === source.d.X
-    @test result.d.y !== source.d.y
-    result.d.y .= 1
-    @test source.d.y == zeros(2)
+    table = _bind_resolved(table, Condition, @varname(x.X) => source.x.X)
+    model = DynamicPPL._finish_binding(argument_preparation(source.x), table, nothing)
+    model()
+    @test (@allocated model()) < sizeof(source.x.X) ÷ 2
+    result = model()
+    @test result.x.X === source.x.X
+    @test result.x.y !== source.x.y
+    result.x.y .= 1
+    @test source.x.y == zeros(2)
+end
+
+end
+
+module BindingTests
+
+using Test
+using DynamicPPL, Distributions, Random, LinearAlgebra
+using StableRNGs: StableRNG
+using AbstractPPL: @of, of
+
+# Set DYNAMICPPL_EXHAUSTIVE_TESTS=true to run the complete binding occupancy enumeration.
+const EXHAUSTIVE = get(ENV, "DYNAMICPPL_EXHAUSTIVE_TESTS", "false") == "true"
+
+@model function oracle_argument(x, whole, entered)
+    entered[] = true
+    if whole
+        x ~ MvNormal(zeros(2), I)
+    else
+        x[1] ~ Normal()
+        x[2] ~ Normal()
+    end
+    return x
+end
+@model function oracle_local(whole, entered)
+    x = zeros(2)
+    entered[] = true
+    if whole
+        x ~ MvNormal(zeros(2), I)
+    else
+        x[1] ~ Normal()
+        x[2] ~ Normal()
+    end
+    return x
+end
+@model oracle_parent(c) = a ~ to_submodel(c)
+struct OracleInit <: DynamicPPL.AbstractInitStrategy end
+function DynamicPPL.init(rng, vn, d::Distribution, ::OracleInit)
+    value = d isa MultivariateDistribution ? fill(0.25, length(d)) : 0.25
+    return DynamicPPL.TransformedValue(value, DynamicPPL.NoTransform())
+end
+const ROOTS = (@varname(x), @varname(a.x), @varname(a.a.x))
+const PARTS = (
+    (@varname(x[1]), @varname(x[2])),
+    (@varname(a.x[1]), @varname(a.x[2])),
+    (@varname(a.a.x[1]), @varname(a.a.x[2])),
+)
+selected(mask, i) = !iszero(mask & (1 << (i - 1)))
+const SCHEMAS = (
+    @of(x = of(Array, 2)),
+    @of(a = @of(x = of(Array, 2))),
+    @of(a = @of(a = @of(x = of(Array, 2)))),
+)
+function bindmask(m, depth, mask, role, value)
+    inputs = Tuple(PARTS[depth][i] => value + i for i in 1:2 if selected(mask, i))
+    isempty(inputs) && return m
+    schema = depth == 1 ? () : (SCHEMAS[depth],)
+    return (role == 1 ? condition : fix)(m, inputs..., schema...)
+end
+function removemask(m, depth, mask, role, recursive)
+    names = Tuple(PARTS[depth][i] for i in 1:2 if selected(mask, i))
+    isempty(names) && return m
+    f = role == 1 ? decondition : unfix
+    return recursive ? f(m, DynamicPPL.Recursive(), names...) : f(m, names...)
+end
+function base_model(storage, whole, initial, entered)
+    m = if storage == :argument
+        oracle_argument([1.0, 2.0], whole, entered)
+    elseif storage == :template
+        used = condition(oracle_local(whole, entered), @of(x = of(Array, 2)); x=zeros(2))
+        decondition(used, @varname(x))
+    else
+        condition(oracle_local(whole, entered); x=zeros(2))
+    end
+    for i in 1:2
+        if storage != :argument || initial[i] != 1
+            m = decondition(m, PARTS[1][i])
+        end
+    end
+    return m
+end
+function predict(q, initial, firstop, secondop, removal, whole; removal_scope=q)
+    roles = zeros(Int, q, 2)
+    values = zeros(q, 2)
+    for i in 1:2
+        initial[i] == 0 && continue
+        owner, role = (initial[i] + 1) ÷ 2, 1 + (initial[i] - 1) % 2
+        roles[owner, i] = role
+        values[owner, i] = Float64(i)
+    end
+    mask, role, recursive = removal
+    for scope in 1:q
+        if scope == removal_scope
+            for owner in (recursive ? (1:scope) : (scope:scope)), i in 1:2
+                selected(mask, i) && roles[owner, i] == role && (roles[owner, i] = 0)
+            end
+        end
+        for (owner, subset, newrole, value) in (firstop, secondop)
+            owner == scope || continue
+            for i in 1:2
+                selected(subset, i) || continue
+                old = roles[scope, i]
+                old != 0 && old != newrole && return (:call, string(PARTS[scope][i]))
+                roles[scope, i] = newrole
+                values[scope, i] = value + i
+            end
+        end
+    end
+    resultroles = zeros(Int, 2)
+    resultvalues = fill(0.25, 2)
+    for i in 1:2
+        owners = [s for s in 1:q if roles[s, i] != 0]
+        length(owners) > 1 && return (:entry, string(ROOTS[q]))
+        if !isempty(owners)
+            owner = only(owners)
+            resultroles[i] = roles[owner, i]
+            resultvalues[i] = values[owner, i]
+        end
+    end
+    whole && resultroles[1] != resultroles[2] && return (:tilde, string(ROOTS[q]))
+    density(x) = -(log(2pi) + x * x) / 2
+    prior = sum((density(resultvalues[i]) for i in 1:2 if resultroles[i] == 0); init=0.0)
+    likelihood = sum(
+        (density(resultvalues[i]) for i in 1:2 if resultroles[i] == 1); init=0.0
+    )
+    listing = Tuple((roles[q, i], roles[q, i] == 0 ? 0.0 : values[q, i]) for i in 1:2)
+    latent = if whole
+        (all(iszero, resultroles) ? [string(ROOTS[q])] : String[])
+    else
+        [string(PARTS[q][i]) for i in 1:2 if resultroles[i] == 0]
+    end
+    return (:ok, (resultvalues, prior, likelihood, prior + likelihood, listing, latent))
+end
+oracle_inputs(x) = deepcopy(x)
+oracle_inputs(::Base.RefValue{Bool}) = nothing
+oracle_inputs(x::NamedTuple) = map(oracle_inputs, x)
+function oracle_inputs(m::Model)
+    return (oracle_inputs(m.args), deepcopy(conditioned(m)), deepcopy(fixed(m)))
+end
+function actual(storage, whole, q, initial, firstop, secondop, removal; removal_scope=q)
+    entered = Ref(false)
+    m = base_model(storage, whole, initial, entered)
+    snapshots = []
+    snapshot(m) = (deepcopy(conditioned(m)), deepcopy(fixed(m)), oracle_inputs(m.args))
+    intact() = all(isequal(snapshot(model), before) for (model, before) in snapshots)
+    push!(snapshots, (m, snapshot(m)))
+    try
+        for scope in 1:q
+            scope > 1 && (m = oracle_parent(m))
+            for i in 1:2
+                initial[i] == 0 && continue
+                owner, role = (initial[i] + 1) ÷ 2, 1 + (initial[i] - 1) % 2
+                storage == :argument && owner == 1 && role == 1 && continue
+                if owner == scope
+                    push!(snapshots, (m, snapshot(m)))
+                    m = bindmask(m, scope, 1 << (i - 1), role, 0.0)
+                end
+            end
+            if scope == removal_scope
+                push!(snapshots, (m, snapshot(m)))
+                m = removemask(m, scope, removal...)
+            end
+            for (owner, subset, role, value) in (firstop, secondop)
+                owner == scope || continue
+                push!(snapshots, (m, snapshot(m)))
+                m = bindmask(m, scope, subset, role, value)
+            end
+        end
+    catch err
+        err isa InterruptException && rethrow()
+        intact() || return (:mutated, nothing)
+        return (:call, (nameof(typeof(err)), sprint(showerror, err)))
+    end
+    push!(snapshots, (m, snapshot(m)))
+    try
+        before = snapshot(m)
+        listing = Tuple(
+            map(1:2) do i
+                vn = PARTS[q][i]
+                o, f = haskey(before[1], vn), haskey(before[2], vn)
+                o && f && return (-1, 0.0)
+                return if o
+                    (1, before[1][vn])
+                elseif f
+                    (2, before[2][vn])
+                else
+                    (0, 0.0)
+                end
+            end,
+        )
+        value, vi = init!!(
+            Xoshiro(1),
+            m,
+            VarInfo(
+                RawValueAccumulator(false),
+                LogPriorAccumulator(),
+                LogLikelihoodAccumulator(),
+            ),
+            OracleInit(),
+            UnlinkAll(),
+        )
+        intact() || return (:mutated, nothing)
+        latent = sort!(string.(collect(keys(get_raw_values(vi)))))
+        return (
+            :ok,
+            (
+                value,
+                getlogprior(vi),
+                getloglikelihood(vi),
+                getlogjoint(vi),
+                listing,
+                latent,
+            ),
+        )
+    catch err
+        err isa InterruptException && rethrow()
+        intact() || return (:mutated, nothing)
+        return (entered[] ? :tilde : :entry, (nameof(typeof(err)), sprint(showerror, err)))
+    end
+end
+function agrees(expected, observed)
+    expected[1] == observed[1] || return false
+    if expected[1] != :ok
+        return observed[2][1] === :ArgumentError && occursin(expected[2], observed[2][2])
+    end
+    e, o = expected[2], observed[2]
+    return e[1] == o[1] &&
+           all(isapprox(e[i], o[i]; atol=1e-12) for i in 2:4) &&
+           e[5] == o[5] &&
+           sort(e[6]) == o[6]
+end
+function run_oracle()
+    failures, cases = 0, 0
+    rng = StableRNG(1001)
+    categories = Dict{Tuple{Symbol,Symbol},Int}()
+    for storage in (:argument, :template, :held), whole in (false, true), q in 1:3
+        startfail = failures
+        for initial in Iterators.product(0:(2q), 0:(2q))
+            for owner1 in 1:q, owner2 in 1:q, subset1 in 0:3, subset2 in 0:3
+                for role1 in 1:2,
+                    role2 in 1:2,
+                    removal in 0:3,
+                    removerole in 1:2,
+                    recursive in (false, true),
+                    offsets in ((2.0, 2.0), (2.0, 4.0), (4.0, 2.0))
+
+                    mandatory =
+                        initial == (0, 0) &&
+                        owner1 == 1 &&
+                        owner2 == q &&
+                        subset1 == 3 &&
+                        subset2 == 3 &&
+                        role1 == role2 &&
+                        removal == 3 &&
+                        removerole == role1
+                    !EXHAUSTIVE && !mandatory && rand(rng) > 0.00001 && continue
+                    op1, op2 = (owner1, subset1, role1, offsets[1]),
+                    (owner2, subset2, role2, offsets[2])
+                    rem = (removal, removerole, recursive)
+                    expected = predict(q, initial, op1, op2, rem, whole)
+                    observed = actual(storage, whole, q, initial, op1, op2, rem)
+                    cases += 1
+                    valid = agrees(expected, observed)
+                    if !valid
+                        failures += 1
+                        key = (expected[1], observed[1])
+                        categories[key] = get(categories, key, 0) + 1
+                        if failures <= 15
+                            println(
+                                "MISMATCH ",
+                                (storage, whole, q, initial, op1, op2, rem),
+                                " expected=",
+                                expected,
+                                " observed=",
+                                observed,
+                            )
+                        end
+                    end
+                end
+            end
+        end
+        println(
+            "GROUP ",
+            (storage, whole, q),
+            " cases=",
+            cases,
+            " failures=",
+            failures - startfail,
+        )
+        flush(stdout)
+    end
+    println(
+        "TOTAL cases=",
+        cases,
+        " failures=",
+        failures,
+        " categories=",
+        sort!(collect(categories); by=first),
+    )
+    @test failures == 0
+end
+function run_scope_and_batch_oracle()
+    cases = failures = 0
+    rng = StableRNG(1002)
+    for storage in (:argument, :template, :held),
+        whole in (false, true),
+        q in 1:3,
+        initial in Iterators.product(0:(2q), 0:(2q)),
+        remover in 1:q,
+        mask in 0:3,
+        role in 1:2,
+        recursive in (false, true),
+        owner in 1:q,
+        insertrole in 1:2
+
+        mandatory =
+            initial == (0, 0) &&
+            remover == 1 &&
+            owner == q &&
+            mask == 3 &&
+            role == insertrole &&
+            recursive
+        !EXHAUSTIVE && !mandatory && rand(rng) > 0.00001 && continue
+        op = (owner, 3, insertrole, 2.0)
+        noop = (owner, 0, insertrole, 2.0)
+        removal = (mask, role, recursive)
+        expected = predict(q, initial, op, noop, removal, whole; removal_scope=remover)
+        observed = actual(
+            storage, whole, q, initial, op, noop, removal; removal_scope=remover
+        )
+        cases += 1
+        if !agrees(expected, observed)
+            failures += 1
+            failures <= 15 && println(
+                "SCOPE MISMATCH ",
+                (storage, whole, q, initial, remover, removal, op),
+                " expected=",
+                expected,
+                " observed=",
+                observed,
+            )
+        end
+    end
+    for storage in (:argument, :template, :held),
+        whole in (false, true),
+        q in 1:3,
+        role in 1:2,
+        position in 1:2,
+        second in (3.0, 4.0)
+
+        m = base_model(storage, whole, (0, 0), Ref(false))
+        for scope in 2:q
+            m = oracle_parent(m)
+        end
+        before = oracle_inputs(m)
+        vn = PARTS[q][position]
+        result = try
+            (role == 1 ? condition : fix)(m, vn => 3.0, vn => second, SCHEMAS[q])
+            false
+        catch err
+            err isa InterruptException && rethrow()
+            err isa ArgumentError && occursin(string(vn), sprint(showerror, err))
+        end
+        cases += 1
+        if !result || !isequal(before, oracle_inputs(m))
+            failures += 1
+            failures <= 15 &&
+                println("BATCH MISMATCH ", (storage, whole, q, role, position, second))
+        end
+    end
+    println("SCOPE_AND_BATCH cases=", cases, " failures=", failures)
+    @test failures == 0
+end
+@testset "binding occupancy across model scopes" begin
+    elapsed = @elapsed begin
+        run_oracle()
+        run_scope_and_batch_oracle()
+    end
+    println("Binding oracle seconds=", elapsed)
 end
 
 end
