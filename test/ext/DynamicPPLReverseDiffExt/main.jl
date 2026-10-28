@@ -65,7 +65,11 @@ end
     @model function child(y, read)
         μ = read(y)
         x ~ Normal(μ, 1)
-        y = Union{Missing,Real}[missing]
+        y = if y isa AbstractVector && length(y) > 1
+            Any[missing; y[2:end]]
+        else
+            Union{Missing,Real}[missing]
+        end
         return y[1] ~ Normal()
     end
     @model function record_child(y)
@@ -76,7 +80,8 @@ end
     end
     @model function parent(make_child, vn)
         z ~ Normal()
-        return a ~ to_submodel(decondition(make_child(z), vn))
+        source = make_child(z)
+        return a ~ to_submodel(decondition(condition(source, conditioned(source)), vn))
     end
 
     cases = (
@@ -133,7 +138,7 @@ end
     @model runtime_child(y) = (y[1] ~ Normal(); y[2] ~ Normal())
     @model function runtime_parent(bind, partial, make_array)
         m ~ Normal()
-        child = runtime_child(make_array(m))
+        child = condition(runtime_child(make_array(m)); y=make_array(m))
         if bind === fix
             child = decondition(child, partial ? @varname(y[1]) : @varname(y))
         end
@@ -453,7 +458,8 @@ end
 end
 @model function partly_missing_parent(make_data)
     m ~ Normal()
-    a ~ to_submodel(partly_missing(make_data(m)))
+    child = partly_missing(make_data(m))
+    a ~ to_submodel(condition(child, conditioned(child)))
     return 0.5 ~ Normal(a[3])
 end
 @testset "placeholder argument gradients" begin
@@ -527,7 +533,11 @@ end
                 bind === fix ? decondition(field, @varname(x.b)) : field, @varname(x.b) => v
             ),
             bind(
-                decondition(bound_parent(field), DynamicPPL.Recursive(), @varname(s.x.b)),
+                decondition(
+                    bound_parent(condition(field, conditioned(field))),
+                    DynamicPPL.Recursive(),
+                    @varname(s.x.b)
+                ),
                 @varname(s.x.b) => v,
             ),
         )

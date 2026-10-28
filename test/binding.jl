@@ -964,6 +964,7 @@ end
 function actual(storage, whole, q, initial, firstop, secondop, removal; removal_scope=q)
     entered = Ref(false)
     m = base_model(storage, whole, initial, entered)
+    q > 1 && (m = condition(m, conditioned(m)))
     snapshots = []
     snapshot(m) = (deepcopy(conditioned(m)), deepcopy(fixed(m)), oracle_inputs(m.args))
     intact() = all(isequal(snapshot(model), before) for (model, before) in snapshots)

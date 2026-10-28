@@ -81,7 +81,7 @@ end
     0.0 ~ Normal(x)
     return x
 end
-@model nested_input(y) = a ~ to_submodel(observed_input(y))
+@model nested_input(y) = a ~ to_submodel(condition(observed_input(missing); y))
 
 @testset "Context parameter types come from inputs" begin
     for T in (Float32, Float64, BigFloat)

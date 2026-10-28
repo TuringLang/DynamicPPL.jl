@@ -16,6 +16,12 @@ replace `unused ~ to_submodel(prefix(child, @varname(a)), false)` with
 An explicit prefix composes with that name: `a ~ to_submodel(prefix(child, @varname(b)))`
 records `a.b.x`.
 
+Submodels take observations through `condition`, not arguments. If `y` is observed,
+replace `a ~ to_submodel(inner(y, x))` with
+`a ~ to_submodel(condition(inner(missing, x), (y=y,)))`.
+Using `fix` instead would omit the likelihood term for `y`.
+Argument observations remain supported on the model called directly by the user.
+
 ## Stan example
 
 Load BridgeStan and pass Stan source to `to_distribution`. The first call for a given program

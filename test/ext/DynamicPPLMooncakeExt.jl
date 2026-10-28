@@ -28,11 +28,17 @@ end
 @model function runtime_record_parent(op, wrap)
     m ~ Normal()
     child = if op === decondition
-        decondition(runtime_record_child(wrap(m, 2m)), @varname(p.a))
+        decondition(condition(runtime_record_child(wrap(m, 2m)); p=wrap(m, 2m)), @varname(p.a))
     elseif op === unfix
-        unfix(fix(decondition(runtime_record_child(wrap(m, 2m))); p=wrap(m, 2m)), @varname(p.a))
+        unfix(
+            fix(
+                decondition(condition(runtime_record_child(wrap(m, 2m)); p=wrap(m, 2m)));
+                p=wrap(m, 2m),
+            ),
+            @varname(p.a)
+        )
     else
-        source = runtime_record_child(wrap(m, 2m))
+        source = condition(runtime_record_child(wrap(m, 2m)); p=wrap(m, 2m))
         op === fix && (source = decondition(source, @varname(p.a)))
         op(source, @varname(p.a) => 3m)
     end
@@ -231,11 +237,10 @@ end
         end
         @model function abstract_parent(::Val{T}; slice=false) where {T}
             m ~ Normal()
+            values = T === Tuple ? (zero(m), m, 0, 0.0f0) : T[zero(m), m, 0, 0.0f0]
             a ~ to_submodel(
                 condition(
-                    abstract_child(
-                        T === Tuple ? (zero(m), m, 0, 0.0f0) : T[zero(m), m, 0, 0.0f0]
-                    ),
+                    condition(abstract_child(values); y=values),
                     (slice ? @varname(y[1:2]) => [2m, 3m] : @varname(y[1]) => 2m),
                 ),
             )
@@ -327,7 +332,7 @@ end
     @model runtime_child(y) = (y[1] ~ Normal(); y[2] ~ Normal())
     @model function runtime_parent(bind, partial)
         m ~ Normal()
-        child = runtime_child(fill(zero(m), 2))
+        child = condition(runtime_child(fill(zero(m), 2)); y=fill(zero(m), 2))
         source = if bind === condition
             child
         else
@@ -423,7 +428,11 @@ end
     end
     @model function runtime_copy(make_array)
         m ~ Normal()
-        a ~ to_submodel(condition(copy_child(make_array(m)), @varname(y[1]) => 2m))
+        a ~ to_submodel(
+            condition(
+                condition(copy_child(make_array(m)); y=make_array(m)), @varname(y[1]) => 2m
+            ),
+        )
         return z ~ Normal(a)
     end
     @model function runtime_slice()
@@ -508,7 +517,8 @@ end
 end
 @model function partly_missing_parent(make_data)
     m ~ Normal()
-    a ~ to_submodel(partly_missing(make_data(m)))
+    child = partly_missing(make_data(m))
+    a ~ to_submodel(condition(child, conditioned(child)))
     return 0.5 ~ Normal(a[3])
 end
 @testset "placeholder argument gradients" begin
@@ -617,7 +627,11 @@ end
                 bind === fix ? decondition(field, @varname(x.b)) : field, @varname(x.b) => v
             ),
             bind(
-                decondition(bound_parent(field), DynamicPPL.Recursive(), @varname(s.x.b)),
+                decondition(
+                    bound_parent(condition(field, conditioned(field))),
+                    DynamicPPL.Recursive(),
+                    @varname(s.x.b)
+                ),
                 @varname(s.x.b) => v,
             ),
         )
@@ -731,6 +745,18 @@ end
         @test value ≈ sum(logpdf.(Normal(), [u, u, 2u]))
         @test gradient ≈ [-6u]
     end
+end
+
+@testset "placeholder validation preserves binding gradients" begin
+    @model observation(y) = (y[1] ~ Normal(); y[2] ~ Normal())
+    @model function explicit_data()
+        m ~ Normal()
+        return a ~ to_submodel(condition(observation(missing); y=Any[m, 2m]))
+    end
+    ldf = LogDensityFunction(explicit_data(); adtype=AutoMooncake())
+    value, gradient = logdensity_and_gradient(ldf, [0.3])
+    @test value ≈ 2logpdf(Normal(), 0.3) + logpdf(Normal(), 0.6)
+    @test gradient ≈ [-1.8]
 end
 
 end
