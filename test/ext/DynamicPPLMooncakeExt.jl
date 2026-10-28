@@ -310,14 +310,14 @@ end
         m ~ Normal()
         child = condition(removal_child(m); x=[2m, 3m])
         wrapped = condition(
-            decondition(removal_wrapper(child), DynamicPPL.Recursive(), @varname(a.x[1])),
+            decondition(removal_wrapper(child), @varname(a.x[1])),
             VarNamedTuple((
                 a=DynamicPPL.templated_setindex!!(
                     VarNamedTuple(), 4m, @varname(x[1]), fill(zero(m), 2)
                 ),
             )),
         )
-        stripped = decondition(wrapped, DynamicPPL.Recursive(), @varname(a.x[1]))
+        stripped = decondition(wrapped, @varname(a.x[1]))
         return b ~ to_submodel(stripped)
     end
     for adtype in (AutoForwardDiff(), AutoMooncake())
@@ -628,9 +628,7 @@ end
             ),
             bind(
                 decondition(
-                    bound_parent(condition(field, conditioned(field))),
-                    DynamicPPL.Recursive(),
-                    @varname(s.x.b)
+                    bound_parent(condition(field, conditioned(field))), @varname(s.x.b)
                 ),
                 @varname(s.x.b) => v,
             ),

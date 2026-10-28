@@ -460,11 +460,14 @@ end
         table.arguments,
         table.roots,
     )
+    # Julia 1.10 allocates keyword tuples when child removal-marker types differ.
     model = _reconstruct_model(
-        child;
-        values=table,
-        observation_removals=(child.observation_removals..., observation_removals...),
-        fixed_removals=(child.fixed_removals..., fixed_removals...),
+        child,
+        child.context,
+        table,
+        Val(requires_threadsafe(child)),
+        (child.observation_removals..., observation_removals...),
+        (child.fixed_removals..., fixed_removals...),
     )
     isempty(observation_removals) && isempty(fixed_removals) ||
         _check_shared_latent_storage(table, merge(model.args, model.defaults), prefix)

@@ -802,7 +802,8 @@ function _subsampling_problem(
     )
     scale = dataset_size//dataset_size
     probe_model = condition(
-        decondition(model, observation), observation => SubsamplingShape(data)
+        _decondition_unfix(model, (observation,), Condition),
+        observation => SubsamplingShape(data),
     )
     layout = _probe_independent_model(
         _subsampling_probe_rng(),
@@ -971,7 +972,7 @@ function _batch_ldf(problem::SubsamplingState, batch::AbstractVector{<:Integer})
     batch_data = _select_batch(problem.full_data, batch)
     batch = collect(Int, batch)
     batch_model = condition(
-        decondition(problem.ldf.model, problem.observation),
+        _decondition_unfix(problem.ldf.model, (problem.observation,), Condition),
         problem.observation => SubsampledData(batch_data),
     )
     ranges = get_all_ranges_and_transforms(problem.ldf)

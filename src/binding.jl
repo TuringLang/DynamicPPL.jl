@@ -1186,7 +1186,7 @@ function _check_cross_roles(previous, updates, vn=nothing; disjoint=false)
                 origin = same_role ? "another model" : "the other role"
                 throw(
                     ArgumentError(
-                        "Cannot bind `$vn`: a position is already bound by $origin; remove that binding first, using `Recursive()` for a child binding.",
+                        "Cannot bind `$vn`: a position is already bound by $origin; remove it with `decondition`/`unfix` first.",
                     ),
                 )
             end

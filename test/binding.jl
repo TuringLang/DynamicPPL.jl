@@ -885,7 +885,7 @@ function removemask(m, depth, mask, role, recursive)
     names = Tuple(PARTS[depth][i] for i in 1:2 if selected(mask, i))
     isempty(names) && return m
     f = role == 1 ? decondition : unfix
-    return recursive ? f(m, DynamicPPL.Recursive(), names...) : f(m, names...)
+    return f(m, names...)
 end
 function base_model(storage, whole, initial, entered)
     m = if storage == :argument
@@ -915,7 +915,7 @@ function predict(q, initial, firstop, secondop, removal, whole; removal_scope=q)
     mask, role, recursive = removal
     for scope in 1:q
         if scope == removal_scope
-            for owner in (recursive ? (1:scope) : (scope:scope)), i in 1:2
+            for owner in 1:scope, i in 1:2
                 selected(mask, i) && roles[owner, i] == role && (roles[owner, i] = 0)
             end
         end

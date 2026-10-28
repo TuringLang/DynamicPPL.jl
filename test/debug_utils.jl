@@ -435,7 +435,6 @@ end
 @info "Completed $(@__FILE__) in $(now() - __now__)."
 
 @testset "unused recursive removals" begin
-    rec = DynamicPPL.Recursive()
     @model leaf(x) = x ~ Normal()
     @model function branch(run)
         z ~ Normal()
@@ -445,19 +444,17 @@ end
         return nothing
     end
     for (bind, remove) in ((condition, decondition), (fix, unfix))
-        parent = condition(
-            decondition(branch(true), rec, @varname(a.x)), @varname(a.x) => 2.0
-        )
+        parent = condition(decondition(branch(true), @varname(a.x)), @varname(a.x) => 2.0)
         @test_logs (:warn, r"Recursive removal.*a.typo.*unused") check_model(
-            Xoshiro(1), remove(parent, rec, @varname(a.typo))
+            Xoshiro(1), remove(parent, @varname(a.typo))
         )
         @test_logs check_model(
-            Xoshiro(1), remove(bind(branch(true), @varname(a.x) => 2.0), rec, @varname(a.x))
+            Xoshiro(1), remove(bind(branch(true), @varname(a.x) => 2.0), @varname(a.x))
         )
     end
-    unused = decondition(branch(false), rec, @varname(a.x))
+    unused = decondition(branch(false), @varname(a.x))
     @test_logs (:warn, r"Recursive removal.*a.x.*unused") check_model(Xoshiro(1), unused)
-    @test_logs check_model(Xoshiro(1), decondition(branch(true), rec, @varname(a.x)))
+    @test_logs check_model(Xoshiro(1), decondition(branch(true), @varname(a.x)))
     @test_logs (:warn, r"Recursive removal.*p.a.x.*unused") check_model(
         Xoshiro(1), prefix(unused, @varname(p))
     )
@@ -465,7 +462,7 @@ end
     @test_logs (:warn, r"Recursive removal.*a.x.*unused") check_model(
         Xoshiro(1), outer(unused)
     )
-    @test_logs check_model(Xoshiro(1), outer(decondition(branch(true), rec, @varname(a.x))))
+    @test_logs check_model(Xoshiro(1), outer(decondition(branch(true), @varname(a.x))))
 end
 
 @testset "unread partial bindings" begin
