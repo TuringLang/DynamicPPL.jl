@@ -106,12 +106,24 @@ Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
     typeof(DynamicPPL._check_latent_storage),Any,Any
 }
 Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
+    typeof(DynamicPPL._check_assigned_binding_storage),
+    AbstractArray,
+    AbstractPPL.Index,
+    DynamicPPL.VarName,
+}
+Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
     typeof(DynamicPPL.VarNamedTuples._haskey_optic),
     DynamicPPL.ModelValue{<:Any,<:AbstractArray},
     AbstractPPL.Index,
 }
 Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
     typeof(DynamicPPL._check_shared_latent_storage),DynamicPPL.ResolvedBindings,NamedTuple
+}
+Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
+    typeof(DynamicPPL._check_shared_latent_storage),
+    DynamicPPL.ResolvedBindings,
+    NamedTuple,
+    Any,
 }
 
 # Reconstruction support depends only on types and methods.
