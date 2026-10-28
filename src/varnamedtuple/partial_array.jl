@@ -535,6 +535,12 @@ function _remove_partial_blocks!!(
     return pa_data, pa_mask
 end
 
+@inline function _ndims(f::Array, ix::Vararg{Union{Integer,CartesianIndex}}; kw...)
+    isempty(kw) || return ndims(view(f, ix...; kw...))
+    indices = Base.to_indices(f, ix)
+    @boundscheck checkbounds(f, indices...)
+    return 0
+end
 @inline function _ndims(f::AbstractArray, ix...; kw...)
     return ndims(view(f, ix...; kw...))
 end
