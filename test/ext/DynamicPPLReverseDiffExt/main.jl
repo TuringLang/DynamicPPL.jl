@@ -326,7 +326,7 @@ end
         m = wrapped_namespace(m)
         for i in 1:nfixed
             m = fix(
-                decondition(m, DynamicPPL.Recursive(), @varname(a.y[i])),
+                decondition(m, @varname(a.y[i])),
                 VarNamedTuple((
                     a=DynamicPPL.templated_setindex!!(
                         VarNamedTuple(), (i + 1) * μ, @varname(y[i]), fill(zero(μ), 3)
@@ -534,9 +534,7 @@ end
             ),
             bind(
                 decondition(
-                    bound_parent(condition(field, conditioned(field))),
-                    DynamicPPL.Recursive(),
-                    @varname(s.x.b)
+                    bound_parent(condition(field, conditioned(field))), @varname(s.x.b)
                 ),
                 @varname(s.x.b) => v,
             ),

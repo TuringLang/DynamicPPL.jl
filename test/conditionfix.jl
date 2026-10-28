@@ -229,7 +229,7 @@ end
         )(
             StableRNG(1)
         )[end] == 0.5
-        child = decondition(template_child(), DynamicPPL.Recursive(), @varname(a.x))
+        child = decondition(template_child(), @varname(a.x))
         owned_child = bind(child, @varname(a.x) => ones(2))
         @test bind(
             owned_child,
@@ -264,8 +264,16 @@ end
         @test prefixed(Xoshiro(1))[1] == 1.0
 
         cleared = remove(model, @varname(a.y[1]))
-        rebound = bind(cleared, @varname(a.y[2]) => 2.0, @of(a = @of(y = of(Array, 3))))
-        @test rebound(Xoshiro(1))[2] == 2.0
+        @test_throws r"namespace root `a.y`.*removals" bind(
+            cleared, @varname(a.y[2]) => 2.0, @of(a = @of(y = of(Array, 3)))
+        )
+        rebound = bind(
+            remove(model), @varname(a.y[2]) => 2.0, @of(a = @of(y = of(Array, 3)))
+        )
+        @test_throws r"storage axes must match" rebound(Xoshiro(1))
+        @test bind(remove(model), @varname(a.y[2]) => 2.0, @of(a = @of(y = of(Array, 2))))(
+            Xoshiro(1)
+        )[2] == 2.0
 
         owned = bind(model, @varname(a.y) => [3.0, 4.0])
         @test owned(Xoshiro(1)) == [3.0, 4.0]
@@ -277,7 +285,7 @@ end
         nested = template_table_nested(child)
         late_bound = bind(nested, @varname(b.a.y) => [0.5, 1.5])
         @test_throws ArgumentError late_bound(Xoshiro(1))
-        released = remove(nested, DynamicPPL.Recursive(), @varname(b.a.y))
+        released = remove(nested, @varname(b.a.y))
         @test bind(released, @varname(b.a.y) => [0.5, 1.5])(Xoshiro(1)) == [0.5, 1.5]
         @test bind(
             released,
@@ -287,7 +295,7 @@ end
         )(
             Xoshiro(1)
         ) == [0.5, 1.5]
-        cleared = remove(nested, DynamicPPL.Recursive(), @varname(b.a.y))
+        cleared = remove(nested, @varname(b.a.y))
         @test bind(
             cleared,
             @varname(b.a.y[1]) => 0.5,
@@ -301,7 +309,7 @@ end
             @varname(b.a.y[2]) => 0.5,
             @of(b = @of(a = @of(y = of(Array, 2))))
         )
-        @test_throws InexactError inherited(Xoshiro(1))
+        @test inherited(Xoshiro(1))[2] == 0.5
         retained = bind(child, @varname(a.y[2]) => 2.0)
         retained = remove(retained, @varname(a.y[1]))
         @test_throws InexactError bind(retained, @varname(a.y[1]) => 0.5)
@@ -345,7 +353,7 @@ end
             @test_throws ArgumentError bind(m, first => 0.5)
             stored = bind(m, first => 0.5, @of(a = @of(x = of(Array, 2))))
             @test_throws ArgumentError stored(Xoshiro(1))
-            m = decondition(m, DynamicPPL.Recursive(), first)
+            m = decondition(m, first)
             @test bind(m, first => 0.5, @of(a = @of(x = of(Array, 2))))(Xoshiro(1)) ==
                 [0.5, 0.0]
             @test_throws InexactError bind(m, first => 0.5, schema)
@@ -391,7 +399,7 @@ end
                 @of(p = @of(a = @of(x = of(Array, Int, 1), y = of(Array, 2))))
             ),
         )
-            m = decondition(m, DynamicPPL.Recursive(), x)
+            m = decondition(m, x)
             @test_throws ArgumentError bind(m, x => 0.5, y1 => 1.0, y2 => 2.0, schema)
             supplied = of(rand(Xoshiro(2), m))
             m = bind(m, x => 0.5, y1 => 1.0, y2 => 2.0, supplied)
@@ -401,7 +409,7 @@ end
             parent(), @varname(a.y[1]) => 0.5, @of(a = @of(y = of(Array, Int, 2)))
         )
         argument = bind(
-            decondition(parent(), DynamicPPL.Recursive(), @varname(a.x)),
+            decondition(parent(), @varname(a.x)),
             @varname(a.x[1]) => 0.5,
             @of(a = @of(x = of(Array, 2)))
         )
@@ -415,8 +423,7 @@ end
         )
         for recursive in (false, true)
             remove = bind === condition ? decondition : unfix
-            cleared =
-                recursive ? remove(original, DynamicPPL.Recursive()) : remove(original)
+            cleared = remove(original)
             @test_throws ArgumentError bind(cleared, @varname(a.y) => [0.5, 1.5])
             rebound = bind(
                 cleared, @varname(a.y) => [0.5, 1.5], @of(a = @of(y = of(Array, 2)))
@@ -464,7 +471,7 @@ end
                 ),
             )
             @test_throws ArgumentError stored(Xoshiro(1))
-            parent = remove(child_model(child), DynamicPPL.Recursive(), @varname(a.x[1][1]))
+            parent = remove(child_model(child), @varname(a.x[1][1]))
             @test bind(
                 parent,
                 DynamicPPL.VarNamedTuples.templated_setindex!!(
@@ -494,7 +501,7 @@ end
             ),
         )
         @test_throws ArgumentError stored(Xoshiro(1))
-        parent = remove(child_model(child), DynamicPPL.Recursive(), @varname(a.x[1].a[1]))
+        parent = remove(child_model(child), @varname(a.x[1].a[1]))
         @test bind(
             parent,
             DynamicPPL.VarNamedTuples.templated_setindex!!(
@@ -578,9 +585,7 @@ end
         direct = bind(source, @varname(p[3].x) => 2.0)
         inherited = bind(
             decondition(
-                child_model(condition(argument; p=fill((x=1.0,), 2, 2))),
-                DynamicPPL.Recursive(),
-                @varname(a.p[3].x)
+                child_model(condition(argument; p=fill((x=1.0,), 2, 2))), @varname(a.p[3].x)
             ),
             @varname(a.p[3].x) => 2.0,
             @of(a = @of(p = of(Array, 3, 2)))
@@ -588,9 +593,7 @@ end
         @test_throws ArgumentError namespace_result(inherited)
         compatible = bind(
             decondition(
-                child_model(condition(argument; p=fill((x=1.0,), 2, 2))),
-                DynamicPPL.Recursive(),
-                @varname(a.p[3].x)
+                child_model(condition(argument; p=fill((x=1.0,), 2, 2))), @varname(a.p[3].x)
             ),
             @varname(a.p[3].x) => 2.0,
             @of(a = @of(p = of(Array, 2, 2)))
@@ -714,10 +717,7 @@ end
                 array_model(wrap(zeros(3)))
             end
             m = if recursive
-                condition(
-                    decondition(m, DynamicPPL.Recursive(), @varname(a.x)),
-                    @varname(a.x) => [1.0, 2.0, 3.0],
-                )
+                condition(decondition(m, @varname(a.x)), @varname(a.x) => [1.0, 2.0, 3.0])
             else
                 condition(m; x=[1.0, 2.0, 3.0])
             end
@@ -810,7 +810,7 @@ end
     for recursive in (false, true)
         m = if recursive
             fix(
-                decondition(smaller_fixed_parent(), DynamicPPL.Recursive(), @varname(a.p)),
+                decondition(smaller_fixed_parent(), @varname(a.p)),
                 VarNamedTuple((a=VarNamedTuple((p=(a=4.0, b=5.0),)),)),
             )
         else
@@ -1526,7 +1526,7 @@ end
         @model wrapped_elements() =
             a ~ to_submodel(condition(y_model([1.0, 2.0]); y=[1.0, 2.0]))
         @test condition(
-            decondition(wrapped_elements(), DynamicPPL.Recursive(), @varname(a.y[1])),
+            decondition(wrapped_elements(), @varname(a.y[1])),
             @varname(a.y[1]) => 1,
             @of(a = @of(y = of(Array, 2))),
         )() isa Vector{Float64}
@@ -2086,15 +2086,12 @@ end
 
     @testset "removal of valid addresses is idempotent" begin
         @model outer_arg() = a ~ to_submodel(condition(normal_default(missing); x=1.0))
-        for (bind, remove) in ((condition, unfix), (fix, decondition)),
-            scope in ((), (DynamicPPL.Recursive(),))
-
-            @test remove(bind(scalar_latent(); x=1.0), scope..., @varname(x))(Xoshiro(1)) ==
-                1.0
-            @test keys(rand(Xoshiro(1), remove(scalar_latent(), scope..., @varname(x)))) ==
+        for (bind, remove) in ((condition, unfix), (fix, decondition))
+            @test remove(bind(scalar_latent(); x=1.0), @varname(x))(Xoshiro(1)) == 1.0
+            @test keys(rand(Xoshiro(1), remove(scalar_latent(), @varname(x)))) ==
                 [@varname(x)]
             @test_throws r"ArgumentError: .*`unknown`" remove(
-                scalar_latent(), scope..., @varname(unknown)
+                scalar_latent(), @varname(unknown)
             )
             @test isempty(keys(conditioned(remove(scalar_latent()))))
             @test isempty(keys(fixed(remove(scalar_latent()))))
@@ -2112,11 +2109,14 @@ end
             @test isempty(select(remove(partial, @varname(x[1:2]))))
             @test select(remove(partial, @varname(x[2]))) == select(partial)
         end
-        @test decondition(outer_arg(), @varname(a.x))(Xoshiro(1)) == 1.0
+        @test decondition(outer_arg(), @varname(a.x))(Xoshiro(1)) ==
+            rand(Xoshiro(1), Normal())
         for (bind, remove) in ((condition, decondition), (fix, unfix))
             parent = bind(outer_arg(), @varname(a.x) => 2.0)
-            @test remove(parent, @varname(a.x))(Xoshiro(1)) == 1.0
-            @test remove(remove(parent, @varname(a.x)), @varname(a.x))(Xoshiro(1)) == 1.0
+            expected = remove === decondition ? rand(Xoshiro(1), Normal()) : 1.0
+            @test remove(parent, @varname(a.x))(Xoshiro(1)) == expected
+            @test remove(remove(parent, @varname(a.x)), @varname(a.x))(Xoshiro(1)) ==
+                expected
         end
 
         @model nested_matrix() = (x[2, 1] ~ MvNormal(zeros(5), 1))
@@ -2706,9 +2706,7 @@ end
             @test condition(original; x=T(3))() == T(4)
             nested = condition(
                 decondition(
-                    child_model(condition(original, conditioned(original))),
-                    DynamicPPL.Recursive(),
-                    @varname(a.x)
+                    child_model(condition(original, conditioned(original))), @varname(a.x)
                 ),
                 @varname(a.x) => T(3),
             )
@@ -2783,9 +2781,7 @@ end
             expected_parent = reshape([[T(30)], [T(20)], [T(3)], [T(4)]], 2, 2)
             @test third_op(
                 remove(
-                    child_model(condition(second, conditioned(second))),
-                    DynamicPPL.Recursive(),
-                    @varname(a.x[1][1])
+                    child_model(condition(second, conditioned(second))), @varname(a.x[1][1])
                 ),
                 VarNamedTuple((
                     a=DynamicPPL.templated_setindex!!(
@@ -2929,8 +2925,7 @@ end
             return (; a, b)
         end
         transformed = condition(
-            decondition(outer(0.0), DynamicPPL.Recursive(), @varname(b.y)),
-            @varname(b.y) => 1.0,
+            decondition(outer(0.0), @varname(b.y)), @varname(b.y) => 1.0
         )
         @test isempty(keys(VarInfo(transformed)))
         @test transformed().a == 0.0
@@ -2995,9 +2990,7 @@ end
             @test loglikelihood(changed, VarNamedTuple()) ≈
                 (last_op === condition ? logpdf(Normal(), 3) : 0)
             nested = last_op(
-                remove_first(
-                    nested_fields(base), DynamicPPL.Recursive(), @varname(child.x.a)
-                ),
+                remove_first(nested_fields(base), @varname(child.x.a)),
                 @varname(child.x.a) => oftype(replacement.a, 4),
             )
             @test typeof(nested()) === typeof(replacement)
@@ -3036,7 +3029,6 @@ end
                 nested_fields(
                     condition(array_field(Any[(; a=0.0, b=0.0)]); x=Any[(; a=0.0, b=0.0)])
                 ),
-                DynamicPPL.Recursive(),
                 @varname(child.x[1])
             ),
             VarNamedTuple((
@@ -3067,22 +3059,20 @@ end
 
         replaced_tuple = fix(decondition(two_elements((1.0, 2.0))); x=[3.0, 4.0])
         @test fix(replaced_tuple, @varname(x[1]) => 5.0)(Xoshiro(1)) == [5.0, 4.0]
-        for scope in ((), (DynamicPPL.Recursive(),))
-            @test first(
-                init!!(
-                    unfix(replaced_tuple, scope..., @varname(x[1])),
-                    VarInfo(),
-                    InitFromParams((; x=[7.0, 8.0]), nothing),
-                ),
-            ) == [7.0, 4.0]
-            @test first(
-                init!!(
-                    unfix(replaced, scope..., @varname(x.a)),
-                    VarInfo(),
-                    InitFromParams((; x=(a=7.0,)), nothing),
-                ),
-            ) == (a=7.0, b=4.0)
-        end
+        @test first(
+            init!!(
+                unfix(replaced_tuple, @varname(x[1])),
+                VarInfo(),
+                InitFromParams((; x=[7.0, 8.0]), nothing),
+            ),
+        ) == [7.0, 4.0]
+        @test first(
+            init!!(
+                unfix(replaced, @varname(x.a)),
+                VarInfo(),
+                InitFromParams((; x=(a=7.0,)), nothing),
+            ),
+        ) == (a=7.0, b=4.0)
         @test first(
             init!!(
                 unfix(replaced_tuple, @varname(x)),
@@ -3126,9 +3116,7 @@ end
         @model namespace_child(x, y) = (x ~ Normal(); y ~ Normal(); return (x, y))
         @model namespace_parent() =
             child ~ to_submodel(condition(namespace_child(missing, missing); x=0.0, y=0.0))
-        parent = condition(
-            decondition(namespace_parent(), DynamicPPL.Recursive()); child=(; x=1.0, y=2.0)
-        )
+        parent = condition(decondition(namespace_parent()); child=(; x=1.0, y=2.0))
         parent = decondition(
             fix(decondition(parent, @varname(child.x)), @varname(child.x) => 3.0),
             @varname(child.y)
@@ -3182,7 +3170,6 @@ end
             nested = op(
                 decondition(
                     nested_observation(condition(typed_observation([0.0]); x=[0.0])),
-                    DynamicPPL.Recursive(),
                     @varname(a.x)
                 ),
                 @varname(a.x) => T[2],
@@ -3401,7 +3388,7 @@ end
                 transformed = outer_op(outer(inner_model), @varname(a.x) => 2.0)
                 @test_throws ArgumentError transformed()
                 remove = inner_op === condition ? decondition : unfix
-                released = remove(outer(inner_model), DynamicPPL.Recursive(), @varname(a.x))
+                released = remove(outer(inner_model), @varname(a.x))
                 transformed = outer_op(released, @varname(a.x) => 2.0)
                 @test transformed() == 2.0
                 @test logjoint(transformed, VarNamedTuple()) ==
@@ -4010,9 +3997,7 @@ end
             @of(z = @of(y = of(Array, 2)))
         )
         argument = bind(
-            decondition(
-                indexed_argument_parent(), DynamicPPL.Recursive(), @varname(z.y[1])
-            ),
+            decondition(indexed_argument_parent(), @varname(z.y[1])),
             @varname(z.y[1]) => 1.0,
             @of(z = @of(y = of(Array, 3))),
         )
@@ -4330,13 +4315,12 @@ end
 
 @testset "role changes preserve whole-binding extents" begin
     for shape in (identity, x -> reshape(x, :, 1)), recursive in (false, true)
-        scope = recursive ? (DynamicPPL.Recursive(),) : ()
         base = array_model(shape(zeros(3)))
         base = recursive ? child_model(condition(base, conditioned(base))) : base
         whole = recursive ? @varname(a.x) : @varname(x)
         first = recursive ? @varname(a.x[1]) : @varname(x[1])
         second = recursive ? @varname(a.x[2]) : @varname(x[2])
-        base = decondition(base, scope..., whole)
+        base = decondition(base, whole)
         m = condition(base, whole => shape([1.0, 2.0, 3.0]))
         @test_throws ArgumentError fix(m, first => 9.0, second => 9.0)
         m = fix(decondition(m, first, second), first => 9.0, second => 9.0)
@@ -4360,13 +4344,13 @@ end
             else
                 fix(decondition(observed_model), whole => shape(fixed))
             end
-            m = unfix(m, scope..., second)
+            m = unfix(m, second)
             expected = copy(fixed)
             expected[2] = observed[2]
             parameters = recursive ? (; a=(; x=shape(observed))) : (; x=shape(observed))
             @test returned(m, parameters) == shape(expected)
             @test logjoint(m, parameters) ≈ logpdf(Normal(), observed[2])
-            released = unfix(m, scope..., whole)
+            released = unfix(m, whole)
             @test returned(released, parameters) == shape(observed)
             @test logjoint(released, parameters) ≈ sum(logpdf.(Normal(), observed))
         end
@@ -4411,7 +4395,7 @@ end
         child = remove(bind(local_z(); z=ones(Float32, 3)), @varname(z[2]))
         for i in 1:2
             direct = bind(child, @varname(z[i]) => 0.5)
-            source = remove(child_model(child), DynamicPPL.Recursive(), @varname(a.z[i]))
+            source = remove(child_model(child), @varname(a.z[i]))
             parent = bind(source, @varname(a.z[i]) => 0.5, @of(a = @of(z = of(Array, 3))))
             @test parent(Xoshiro(1)) == direct(Xoshiro(1))
             @test bind(source, select(parent))(Xoshiro(1)) == direct(Xoshiro(1))
@@ -4549,29 +4533,27 @@ end
         (@varname(absent), false),
     )
     for (bind, remove, select) in
-        ((condition, decondition, conditioned), (fix, unfix, fixed)),
-        scope in ((), (DynamicPPL.Recursive(),))
-
+        ((condition, decondition, conditioned), (fix, unfix, fixed))
         unbound = decondition(m)
         @test_throws "Cannot bind parts below `t.present` with value of type Float64. For other bindings, use `decondition(model, @varname(t.present))` first" bind(
             m, @varname(t.present[1]) => 2.0
         )
         @test_throws "Cannot remove `x.a`: cannot partially edit array owner `x` at `x.a` through container type Vector{Float64}; remove the whole value `x` instead." remove(
-            m, scope..., @varname(x.a)
+            m, @varname(x.a)
         )
         @test_throws "Cannot remove `t[1]`: integer indexing into a NamedTuple is unsupported; use `t.present` instead." remove(
-            m, scope..., @varname(t[1])
+            m, @varname(t[1])
         )
         for (vn, valid) in addresses
             if valid
                 @test haskey(select(bind(unbound, vn => 2.0)), vn)
-                removed = remove(unbound, scope..., vn)
+                removed = remove(unbound, vn)
                 @test select(removed) == select(unbound)
-                @test select(remove(removed, scope..., vn)) == select(unbound)
+                @test select(remove(removed, vn)) == select(unbound)
             else
                 @test_throws ArgumentError bind(unbound, vn => 2.0)
-                @test_throws "Cannot remove `$vn`" remove(unbound, scope..., vn)
-                @test_throws "Cannot remove `$vn`" remove(m, scope..., vn)
+                @test_throws "Cannot remove `$vn`" remove(unbound, vn)
+                @test_throws "Cannot remove `$vn`" remove(m, vn)
             end
         end
         # Dynamic addresses use argument storage even when the edited layer is empty.
@@ -4584,58 +4566,52 @@ end
             @test select(bind(empty_layer, dynamic => 2.0)) ==
                 select(bind(empty_layer, concrete => 2.0))
             for model in (original, empty_layer, bind(empty_layer, concrete => 2.0))
-                removed = remove(model, scope..., dynamic)
-                @test select(removed) == select(remove(model, scope..., concrete))
-                @test select(remove(removed, scope..., dynamic)) == select(removed)
+                removed = remove(model, dynamic)
+                @test select(removed) == select(remove(model, concrete))
+                @test select(remove(removed, dynamic)) == select(removed)
             end
         end
         # Whole replacements after clearing both layers supply new bounds.
         owned = bind(unfix(decondition(m)); x=ones(5), p=(b=[1.0, 2.0, 3.0],))
         for vn in (@varname(x[5]), @varname(p.b[3]))
             @test bind(owned, vn => 2.0) isa Model
-            @test !haskey(select(remove(owned, scope..., vn)), vn)
+            @test !haskey(select(remove(owned, vn)), vn)
         end
         for vn in (@varname(x[6]), @varname(p.b[4]))
             @test_throws ArgumentError bind(owned, vn => 2.0)
-            @test_throws "Cannot remove `$vn`" remove(owned, scope..., vn)
+            @test_throws "Cannot remove `$vn`" remove(owned, vn)
         end
         prefixed_owner = prefix(owned, @varname(q[2]))
-        @test !haskey(
-            select(remove(prefixed_owner, scope..., @varname(q[2].x))), @varname(q[2].x)
-        )
-        @test_throws "Cannot remove" remove(prefixed_owner, scope..., @varname(q[2].x[6]))
+        @test !haskey(select(remove(prefixed_owner, @varname(q[2].x))), @varname(q[2].x))
+        @test_throws "Cannot remove" remove(prefixed_owner, @varname(q[2].x[6]))
         prefixed = prefix(unbound, @varname(q[2]))
         @test_throws ArgumentError(
             "Cannot bind `q[1].x`: it is outside this model's prefix `q[2]`."
         ) bind(prefixed, @varname(q[1].x) => ones(3))
-        @test select(remove(prefixed, scope..., @varname(q[2].x[3]))) == select(prefixed)
-        @test_throws "Cannot remove" remove(prefixed, scope..., @varname(q[1].x))
-        @test_throws "Cannot remove" remove(prefixed, scope..., @varname(x))
-        @test_throws "Cannot remove" remove(prefixed, scope..., @varname(q[2].x[8]))
+        @test select(remove(prefixed, @varname(q[2].x[3]))) == select(prefixed)
+        @test_throws "Cannot remove" remove(prefixed, @varname(q[1].x))
+        @test_throws "Cannot remove" remove(prefixed, @varname(x))
+        @test_throws "Cannot remove" remove(prefixed, @varname(q[2].x[8]))
         # Child storage is checked when the addressed child is entered.
         for (parent, vn) in ((removal_child(m), @varname(a.typo)),)
             @test haskey(select(bind(parent, vn => 2.0)), vn)
-            @test isempty(select(remove(parent, scope..., vn)))
+            @test isempty(select(remove(parent, vn)))
         end
         local_prefixed = prefix(bind(local_array(); x=ones(3)), @varname(q[2]))
         @test_throws ArgumentError bind(local_prefixed, @varname(q[2].x[8]) => 2.0)
-        @test_throws "Cannot remove" remove(local_prefixed, scope..., @varname(q[2].x[8]))
+        @test_throws "Cannot remove" remove(local_prefixed, @varname(q[2].x[8]))
         indexed = bind(
             indexed_child(local_array()), @varname(p[1].x) => ones(3), @of(p = of(Array, 1))
         )
         @test_throws ArgumentError bind(indexed, @varname(p[1].x[8]) => 2.0)
-        @test_throws "Cannot remove" remove(indexed, scope..., @varname(p[1].x[8]))
-        @test !haskey(
-            select(remove(indexed, scope..., @varname(p[1].x[3]))), @varname(p[1].x[3])
-        )
+        @test_throws "Cannot remove" remove(indexed, @varname(p[1].x[8]))
+        @test !haskey(select(remove(indexed, @varname(p[1].x[3]))), @varname(p[1].x[3]))
         local_bound = bind(local_fields(); t=(present=1.0,))
         @test_throws ArgumentError bind(local_bound, @varname(t.absent) => 2.0)
-        @test_throws "Cannot remove `t.absent`" remove(
-            local_bound, scope..., @varname(t.absent)
-        )
+        @test_throws "Cannot remove `t.absent`" remove(local_bound, @varname(t.absent))
         namespace = bind(removal_child(m); a=(x=ones(3),))
         @test bind(namespace, @varname(a.typo) => 2.0) isa Model
-        @test select(remove(namespace, scope..., @varname(a.typo))) == select(namespace)
+        @test select(remove(namespace, @varname(a.typo))) == select(namespace)
     end
     # Empty layers still use the shared shape.
     for (original, whole, valid, invalid, last) in (
@@ -4676,12 +4652,8 @@ end
         bound = fix(source, valid => 2.0)
         @test fixed(bound)[valid] == 2.0
         @test conditioned(unfix(bound, valid)) == conditioned(source)
-        for scope in ((), (DynamicPPL.Recursive(),))
-            @test_throws "index is outside the storage" decondition(
-                observed, scope..., invalid
-            )
-            @test_throws "index is outside the storage" unfix(observed, scope..., invalid)
-        end
+        @test_throws "index is outside the storage" decondition(observed, invalid)
+        @test_throws "index is outside the storage" unfix(observed, invalid)
     end
     # Growable prefix storage owns no shape, but the whole bindings stored in it do.
     q2 = prefix(local_array(), @varname(q[2]))
@@ -5094,29 +5066,17 @@ end
             )
             @test listed(original)[@varname(p[1, 1].x)] == 1.0
             namespace_removal_cases = [
+                (name="$bind: linear removal", input=(@varname(p[1].x),), remove=remove),
                 (
-                    name="$bind: direct removal",
+                    name="$bind: Cartesian removal",
                     input=(@varname(p[1, 1].x),),
                     remove=remove,
-                    expected=2,
-                ),
-                (
-                    name="$bind: recursive removal",
-                    input=(DynamicPPL.Recursive(), @varname(p[1, 1].x)),
-                    remove=remove,
-                    expected=ArgumentError,
                 ),
             ]
             @testset "$(case.name)" for case in namespace_removal_cases
                 removed = case.remove(original, case.input...)
                 @test isempty(listed(removed))
-                if case.expected === ArgumentError
-                    @test_throws r"recursive removal.*index count" VarInfo(
-                        Xoshiro(1), removed
-                    )
-                else
-                    @test length(keys(VarInfo(Xoshiro(1), removed))) == case.expected
-                end
+                @test_throws r"recursive removal.*index count" VarInfo(Xoshiro(1), removed)
             end
             for next_bind in (condition, fix),
                 templates in ((), (@of(p = of(Array, 2, 2)),))
@@ -5128,9 +5088,12 @@ end
                         original, @varname(p[1, 1].x) => 5.0, templates...
                     )
                 end
-                source =
-                    bind === next_bind ? original : remove(original, @varname(p[1, 1].x))
-                replaced = next_bind(source, @varname(p[1, 1].x) => 5.0, templates...)
+                source = bind === next_bind ? original : remove(original, @varname(p))
+                replacement_templates =
+                    bind === next_bind ? templates : (@of(p = of(Array, 2, 2)),)
+                replaced = next_bind(
+                    source, @varname(p[1, 1].x) => 5.0, replacement_templates...
+                )
                 @test replaced(Xoshiro(1))[1] == 5.0
                 @test listed(original)[@varname(p[1, 1].x)] == 1.0
             end
@@ -5141,9 +5104,10 @@ end
                 @of(p = of(Array, 2, 2))
             )
             @test both(Xoshiro(1)) == [1.0 0.0; 0.0 2.0]
-            partial = remove(both, @varname(p[1, 1].x))
+            partial = remove(both, @varname(p[1].x))
             @test size(listed(partial).data.p) == (2, 2)
-            @test bind(partial, @varname(p[1].x) => 5.0)(Xoshiro(1)) == [5.0 0.0; 0.0 2.0]
+            rebound = bind(partial, @varname(p[1].x) => 5.0)
+            @test_throws r"recursive removal.*index count" rebound(Xoshiro(1))
             namespace_rebind_cases = [
                 (
                     name="$bind then condition",
@@ -5198,7 +5162,7 @@ end
         end
         @testset "public namespace template" begin
             model = condition(
-                decondition(mixed_parent(), DynamicPPL.Recursive(), @varname(p[2, 2].x)),
+                decondition(mixed_parent(), @varname(p[2, 2].x)),
                 @varname(p[2, 2].x) => 3.0,
                 @of(p = of(Array, 2, 2))
             )
@@ -5207,9 +5171,7 @@ end
         @testset "namespace template with indexed removal" begin
             for (bind, remove) in ((condition, decondition), (fix, unfix))
                 model = bind(
-                    decondition(
-                        mixed_parent(), DynamicPPL.Recursive(), @varname(p[2, 2].x)
-                    ),
+                    decondition(mixed_parent(), @varname(p[2, 2].x)),
                     @varname(p[2, 2].x) => 3.0,
                     @of(p = of(Array, 2, 2))
                 )
@@ -5490,7 +5452,7 @@ end
     array_cycle = Any[[0.0], nothing]
     array_cycle[2] = array_cycle
     @test_throws r"shared by `x` and `x`" decondition(cyclic_array(array_cycle))
-    model = decondition(parent(v), DynamicPPL.Recursive(), @varname(s.x))
+    model = decondition(parent(v), @varname(s.x))
     @test_throws r"shared by `s.x` and `s.x`" logjoint(model, (s=(x=(a=[2.0],),),))
 
     # Distinct storage and sharing confined to bound values or covariates are accepted.
@@ -5568,14 +5530,10 @@ end
         @test_throws message bind(array_model(data), vn => 1)
         @test_throws message remove(whole, vn)
         removal_message = r"ArgumentError: Cannot remove.*x.*container type.*whole.*collect"
-        for scope in ((), (DynamicPPL.Recursive(),))
-            @test_throws removal_message remove(array_model(data), scope..., vn)
-        end
+        @test_throws removal_message remove(array_model(data), vn)
         for model in (array_model(data), whole)
             @test_throws removal_message remove(
-                child_model(condition(model, conditioned(model))),
-                DynamicPPL.Recursive(),
-                @varname(a.x[i])
+                child_model(condition(model, conditioned(model))), @varname(a.x[i])
             )(
                 Xoshiro(1)
             )
@@ -5614,12 +5572,8 @@ end
         j = lastindex(good)
         for model in (
             unfix(array_model(good), @varname(x[j])),
-            unfix(array_model(good), DynamicPPL.Recursive(), @varname(x[j])),
-            unfix(
-                child_model(condition(array_model(good); x=good)),
-                DynamicPPL.Recursive(),
-                @varname(a.x[j])
-            ),
+            unfix(array_model(good), @varname(x[j])),
+            unfix(child_model(condition(array_model(good); x=good)), @varname(a.x[j])),
         )
             @test model(Xoshiro(1)) == good
         end
@@ -5631,7 +5585,7 @@ end
         @test valid(Xoshiro(1)) == expected
         @test valid(Xoshiro(1)) isa typeof(good)
         @test child_model(valid)(Xoshiro(1)) == expected
-        removed = remove(child_model(valid), DynamicPPL.Recursive(), @varname(a.x[j]))
+        removed = remove(child_model(valid), @varname(a.x[j]))
         @test returned(removed, Dict(@varname(a.x[j]) => 4.0))[j] == 4.0
         @test !haskey(listing(remove(valid, @varname(x[j]))), @varname(x[j]))
         @test !haskey(
@@ -5689,16 +5643,14 @@ Base.getindex(::LazyArgumentStorage{T}, i::Int) where {T} = T(1:i)
         @test_throws "already bound by the other role" fix(array_model(data); x=[3.0, 4.0])
         @test fix(decondition(nested_array_model([collect(data)])); x=[data])(Xoshiro(1)) ==
             [data]
-        for names in ((), (@varname(x),), (DynamicPPL.Recursive(),))
+        for names in ((), (@varname(x),))
             @test_throws message("x", data) decondition(array_model(data), names...)
         end
         @test_throws message("x", data) decondition(
             condition(array_model(data); x=[3.0, 4.0])
         )
         @test_throws message("a.x", data) decondition(
-            child_model(condition(array_model(data); x=data)),
-            DynamicPPL.Recursive(),
-            @varname(a.x)
+            child_model(condition(array_model(data); x=data)), @varname(a.x)
         )(
             Xoshiro(1)
         )
@@ -5811,7 +5763,7 @@ end
         prefix(fields(bad), @varname(p)), @varname(p.x.a)
     )
     @test_throws r"Argument `q.x.a`.*cannot hold latent draws" decondition(
-        parent(condition(fields(bad); x=bad)), DynamicPPL.Recursive(), @varname(q.x.a)
+        parent(condition(fields(bad); x=bad)), @varname(q.x.a)
     )(
         Xoshiro(1)
     )
@@ -5828,9 +5780,7 @@ end
             fix(decondition(fields((a=[1.0, 2.0], b=[0.0, 0.0]))); x=good), @varname(x.a)
         ),
         decondition(prefix(fields(good), @varname(p)), @varname(p.x.a)),
-        decondition(
-            parent(condition(fields(good); x=good)), DynamicPPL.Recursive(), @varname(q.x.a)
-        ),
+        decondition(parent(condition(fields(good); x=good)), @varname(q.x.a)),
     )
         result = model(Xoshiro(1))
         @test result.a isa Vector{Float64}
@@ -6223,7 +6173,7 @@ end
     for bind in (condition, fix)
         source = replaced_parent(condition(replaced_child((a=v, b=v)); x=(a=v, b=v)))
         for replacement in (@varname(s.x.b) => [1.0], @varname(s.x) => (a=[0.0], b=[1.0]))
-            cleared = decondition(source, DynamicPPL.Recursive(), @varname(s.x))
+            cleared = decondition(source, @varname(s.x))
             model = bind(
                 cleared,
                 if first(replacement) == @varname(s.x)
@@ -6233,7 +6183,7 @@ end
                 end,
             )
             if first(replacement) !== @varname(s.x)
-                model = decondition(model, DynamicPPL.Recursive(), @varname(s.x.a))
+                model = decondition(model, @varname(s.x.a))
             elseif bind === condition
                 model = decondition(model, @varname(s.x.a))
             end
@@ -6243,7 +6193,7 @@ end
             end
             @test logjoint(model, (s=(x=(a=[2.0],),),)) ≈ expected
         end
-        model = decondition(source, DynamicPPL.Recursive(), @varname(s.x.a))
+        model = decondition(source, @varname(s.x.a))
         @test logjoint(model, (s=(x=(a=[2.0],),),)) ≈
             logpdf(Normal(), 2.0) + logpdf(Normal(), 0.0)
     end
@@ -6288,9 +6238,7 @@ end
         nested = decondition(
             condition(
                 decondition(
-                    child_model(condition(stale_shape(original); x=original)),
-                    DynamicPPL.Recursive(),
-                    @varname(a.x)
+                    child_model(condition(stale_shape(original); x=original)), @varname(a.x)
                 ),
                 @varname(a.x) => T[1, 2, 3],
             ),
@@ -6310,9 +6258,7 @@ end
     model = decondition(
         condition(
             decondition(
-                child_model(condition(array_model(zeros(3)); x=zeros(3))),
-                DynamicPPL.Recursive(),
-                @varname(a.x)
+                child_model(condition(array_model(zeros(3)); x=zeros(3))), @varname(a.x)
             ),
             @varname(a.x) => Float32[1, 2, 3],
         ),
@@ -6326,8 +6272,7 @@ end
     end
     body = decondition(
         condition(
-            decondition(promote_body(3), DynamicPPL.Recursive(), @varname(a.x)),
-            @varname(a.x) => [1.0, 2.0, 3.0],
+            decondition(promote_body(3), @varname(a.x)), @varname(a.x) => [1.0, 2.0, 3.0]
         ),
         @varname(a.x[1])
     )
@@ -6604,10 +6549,7 @@ end
         source = retained_key_arguments(d1, d2, v, v)
         @test_throws "shared by `x` and `d1`" decondition(source)
         @test_throws "shared by `p.x` and `p.d1`" decondition(prefix(source, @varname(p)))
-        nested = decondition(
-            retained_key_parent(condition(source, conditioned(source))),
-            DynamicPPL.Recursive(),
-        )
+        nested = decondition(retained_key_parent(condition(source, conditioned(source))))
         @test_throws "shared by `s.x` and `s.d1`" logjoint(nested, (s=(x=[2.0],),))
         @test decondition(retained_key_arguments(d1, d2, copy(v), v)) isa Model
         for x in (v, copy(v))
@@ -6657,15 +6599,11 @@ end
         return (y, a)
     end
     for bind in (condition, fix)
-        @test bind(
-            decondition(parent(), DynamicPPL.Recursive(), @varname(a.y)),
-            @varname(a.y) => 3.0,
-        )(
+        @test bind(decondition(parent(), @varname(a.y)), @varname(a.y) => 3.0)(
             Xoshiro(1)
         ) == 3.0
         @test_throws ArgumentError bind(child(); unknown=3.0)
         @test bind(decondition(child()); y=3.0)(Xoshiro(1)) == 3.0
-        @test_throws ArgumentError bind(child(), DynamicPPL.Recursive(); y=3.0)
         if bind === fix
             @test_throws ArgumentError bind(shared(1.0); y=3.0)
         else
@@ -6679,16 +6617,9 @@ end
         @test bind(prefix(decondition(child()), @varname(a)), @varname(a.y) => 3.0)() == 3.0
     end
     @test_throws "already bound by the other role" fix(condition(shared(1.0); y=4.0); y=3.0)
-    @test (
-        decondition(parent(), DynamicPPL.Recursive(), @varname(a.y)) |
-        (@varname(a.y) => 3.0)
-    )(
-        Xoshiro(1)
-    ) == 3.0
+    @test (decondition(parent(), @varname(a.y)) | (@varname(a.y) => 3.0))(Xoshiro(1)) == 3.0
     @test conditioned(parent()) == VarNamedTuple()
-    @test_throws MethodError conditioned(parent(), DynamicPPL.Recursive())
     @test fixed(parent()) == VarNamedTuple()
-    @test_throws MethodError fixed(parent(), DynamicPPL.Recursive())
 end
 
 @testset "own LHS bindings beside submodel namespaces" begin
@@ -6757,12 +6688,7 @@ end
     old = fix(decondition(grown_argument(zeros(2), 0.0)); x=ones(2))
     shape_release_cases = [
         (name="direct", input=old, remove=unfix, arguments=(@varname(x),)),
-        (
-            name="recursive",
-            input=old,
-            remove=unfix,
-            arguments=(DynamicPPL.Recursive(), @varname(x)),
-        ),
+        (name="recursive", input=old, remove=unfix, arguments=(@varname(x),)),
     ]
     @testset "$(case.name)" for case in shape_release_cases
         model = fix(case.remove(case.input, case.arguments...), @varname(x[1]) => 2.0)
@@ -6796,10 +6722,8 @@ end
                 )(
                     Xoshiro(1)
                 ) == (a=3.0, b=2.0)
-                for scope in ((), (DynamicPPL.Recursive(),))
-                    @test_throws ArgumentError(removal) remove(model, scope..., vn)
-                    @test remove(model, scope..., @varname(x.a))(Xoshiro(1)).b == 2.0
-                end
+                @test_throws ArgumentError(removal) remove(model, vn)
+                @test remove(model, @varname(x.a))(Xoshiro(1)).b == 2.0
             end
             child_vn = AbstractPPL.append_optic(
                 @varname(child), AbstractPPL.varname_to_optic(vn)
@@ -6819,24 +6743,19 @@ end
             end
             @test bind(
                 decondition(
-                    named_child(condition(two_fields(data); x=data)),
-                    DynamicPPL.Recursive(),
-                    @varname(child.x.a)
+                    named_child(condition(two_fields(data); x=data)), @varname(child.x.a)
                 ),
                 @varname(child.x.a) => 3.0,
             )(
                 Xoshiro(1)
             ) == (a=3.0, b=2.0)
             @test_throws ArgumentError remove(
-                named_child(bind(decondition(two_fields(data)); x=data)),
-                DynamicPPL.Recursive(),
-                child_vn,
+                named_child(bind(decondition(two_fields(data)); x=data)), child_vn
             )(
                 Xoshiro(1)
             )
             @test remove(
                 named_child(bind(decondition(two_fields(data)); x=data)),
-                DynamicPPL.Recursive(),
                 @varname(child.x.a)
             )(
                 Xoshiro(1)
@@ -6855,9 +6774,7 @@ end
         for (bind, remove) in ((condition, decondition), (fix, unfix))
             for model in (two_fields(data), bind(local_fields(); x=data))
                 @test_throws ArgumentError(message) bind(model, vn => 3.0)
-                for scope in ((), (DynamicPPL.Recursive(),))
-                    @test_throws ArgumentError(removal) remove(model, scope..., vn)
-                end
+                @test_throws ArgumentError(removal) remove(model, vn)
             end
             shape = vn == @varname(x[1, end]) ? zeros(1, 2) : zeros(2)
             selected = getindex(
@@ -6927,21 +6844,15 @@ end
         @test bind(bind === fix ? decondition(model, @varname(x.t)) : model, @varname(x.t) => (3.0, 4.0))(Xoshiro(1)).t[1] ==
             3.0
         bound = bind(bind === fix ? decondition(model) : model; x=data)
-        for scope in ((), (DynamicPPL.Recursive(),))
-            @test_throws ArgumentError(
-                "Cannot remove `x.t[1]`: cannot partially edit tuple owner `x.t` at `x.t[1]` through container type Tuple{Float64, Float64}; remove the whole value `x.t` instead.",
-            ) remove(bound, scope..., @varname(x.t[1]))
-            @test isempty(
-                (bind === condition ? conditioned : fixed)(
-                    remove(bound, scope..., @varname(x.t))
-                ),
-            )
-        end
+        @test_throws ArgumentError(
+            "Cannot remove `x.t[1]`: cannot partially edit tuple owner `x.t` at `x.t[1]` through container type Tuple{Float64, Float64}; remove the whole value `x.t` instead.",
+        ) remove(bound, @varname(x.t[1]))
+        @test isempty(
+            (bind === condition ? conditioned : fixed)(remove(bound, @varname(x.t)))
+        )
         stored = bind(
             decondition(
-                named_child(condition(tuple_field_element(data); x=data)),
-                DynamicPPL.Recursive(),
-                @varname(child.x)
+                named_child(condition(tuple_field_element(data); x=data)), @varname(child.x)
             ),
             VarNamedTuple((child=VarNamedTuple((x=data,)),)),
         )
@@ -6958,13 +6869,12 @@ end
     for original in ((1.0, 2.0), [1.0, 2.0]), replacement in ([3.0, 4.0],)
         expected = copy(replacement)
         expected[1] = 1.0
-        for model in (
+        for (index, model) in enumerate((
             unfix(fix(decondition(two_elements(original)); x=replacement), @varname(x[1])),
             unfix(
                 fix(
                     decondition(
                         named_child(condition(two_elements(original); x=original)),
-                        DynamicPPL.Recursive(),
                         @varname(child.x)
                     ),
                     @varname(child.x) => replacement,
@@ -6973,17 +6883,20 @@ end
             ),
             unfix(
                 named_child(fix(decondition(two_elements(original)); x=replacement)),
-                DynamicPPL.Recursive(),
                 @varname(child.x[1])
             ),
-        )
+        ))
             values = VarNamedTuple(
                 (haskey(model.args, :x) ? @varname(x[1]) : @varname(child.x[1])) => 1.0 for
                 _ in 1:1
             )
-            @test returned(model, values) == expected
-            @test loglikelihood(model, values) == 0.0
-            @test logprior(model, values) == logpdf(Normal(), 1.0)
+            if original isa Tuple && index == 2
+                @test_throws r"Cannot remove.*tuple owner" returned(model, values)
+            else
+                @test returned(model, values) == expected
+                @test loglikelihood(model, values) == 0.0
+                @test logprior(model, values) == logpdf(Normal(), 1.0)
+            end
         end
     end
     for original in (Dict(1 => 1.0, 2 => 2.0), (a=1.0, b=2.0), ObservationRecord(1.0, 2.0))
@@ -7021,7 +6934,7 @@ struct BCCase
 end
 struct BCOp
     verb::Symbol
-    recursive::Bool              # decondition/unfix only
+    recursive::Bool              # Corpus selection bit; all removals recurse.
     path::Union{Nothing,Tuple}
     value::Any
 end
@@ -7096,7 +7009,7 @@ mutable struct BCLayer
     owners::Dict{Tuple,Any}
     fixowners::Dict{Tuple,Any}
     shapes::Dict{Tuple,Any}
-    removals::Vector{Tuple{Bool,Union{Nothing,Tuple},Bool}}
+    removals::Vector{Tuple{Bool,Union{Nothing,Tuple}}}
 end
 BCLayer() = BCLayer(Dict(), Dict(), Set(), Set(), Dict(), Dict(), Dict(), [])
 mutable struct BCReference
@@ -7273,9 +7186,18 @@ function bc_apply_reference!(r, op)
         end
         owners[p] = op.value
     else
-        resolved = p === nothing || any(root -> bc_contains(root, p), keys(l.shapes))
         bc_remove!(l, fixed, p, c, c.argument && c.depth == 0)
-        op.recursive && push!(l.removals, (fixed, p, resolved))
+        if p === nothing
+            filter!(marker -> first(marker) != fixed, l.removals)
+            push!(l.removals, (fixed, p))
+        elseif !any(
+            marker ->
+                first(marker) == fixed &&
+                    (last(marker) === nothing || bc_contains(last(marker), p)),
+            l.removals,
+        )
+            push!(l.removals, (fixed, p))
+        end
     end
     return :ok
 end
@@ -7284,8 +7206,8 @@ function bc_project(r)
     c, bp = r.case, bc_basepath(r.case)
     for (i, parent) in enumerate(r.layers), j in (i + 1):length(r.layers)
         child = r.layers[j]
-        for (fixed, p, resolved) in parent.removals
-            resolved || bc_path_valid(child.shapes, p) || return nothing
+        for (fixed, p) in parent.removals
+            p === nothing || bc_path_valid(child.shapes, p) || return nothing
             bc_remove!(child, fixed, p, c, c.argument && j == length(r.layers))
         end
     end
@@ -7562,9 +7484,7 @@ function bc_apply_actual(m, op, c, storage)
     @nospecialize m
     op.verb == :prefix && return prefix(m, @varname(p))
     f = getfield(DynamicPPL, op.verb)
-    args =
-        op.verb in (:decondition, :unfix) && op.recursive ? (DynamicPPL.Recursive(),) : ()
-    op.path === nothing && return f(m, args...)
+    op.path === nothing && return f(m)
     v = BC_ADDRESSES[op.path]
     return if op.verb in (:condition, :fix)
         root = bc_basepath(c)
@@ -7591,10 +7511,10 @@ function bc_apply_actual(m, op, c, storage)
             )
             f(m, input)
         else
-            f(m, args..., v => deepcopy(op.value))
+            f(m, v => deepcopy(op.value))
         end
     else
-        f(m, args..., v)
+        f(m, v)
     end
 end
 struct BCTrace <: DynamicPPL.AbstractAccumulator
@@ -7739,8 +7659,8 @@ function bc_corpus()
             BCCase(:scalar, true, 1, false, true),
         ],
     )
-    # Keep long histories and whole-model nonrecursive removals; directed cases cover
-    # other short histories. Generate before filtering to preserve the StableRNG stream.
+    # Keep long histories and a sample of bare removals; directed cases cover short histories.
+    # Generate before filtering to preserve the StableRNG stream.
     return [
         (c, ops) for c in cs for i in 1:6 for
         ops in (bc_sequence(rng, c, i),) if i > 2 || any(
@@ -7938,14 +7858,12 @@ end
             end
         end
     end
-    # Recursive scope belongs only to removals; bindings already accept child addresses.
     for bind in (condition, fix)
         m = bc_outer(condition(bc_scalar_arg(missing); x=2.0))
         late_bound = bind(m, @varname(a.x) => 3.0)
         @test_throws ArgumentError late_bound(StableRNG(1))
-        cleared = decondition(m, DynamicPPL.Recursive(), @varname(a.x))
+        cleared = decondition(m, @varname(a.x))
         @test bind(cleared, @varname(a.x) => 3.0)(StableRNG(1)).a.x == 3.0
-        @test_throws ArgumentError bind(m, DynamicPPL.Recursive(), @varname(a.x) => 3.0)
     end
     # Partial edits are valid until an argument-rooted submodel tilde is reached.
     for (bind, remove) in ((condition, decondition), (fix, unfix))
@@ -8001,10 +7919,7 @@ end
         # Bindings apply after recursive removals in each addressed model.
         for (bind, remove) in ((condition, decondition), (fix, unfix))
             child = bind(decondition(bc_scalar_arg(3.0)); x=4.0)
-            m = remove(
-                decondition(bc_shared_namespace(2.0, child), DynamicPPL.Recursive()),
-                DynamicPPL.Recursive(),
-            )
+            m = remove(decondition(bc_shared_namespace(2.0, child)))
             m = bind(m; x=7.0, a=(x=7.0,))
             value = m(StableRNG(1))
             @test value.x == value.a.x == 7.0
@@ -8021,7 +7936,7 @@ end
             @test last(DynamicPPL.getacc(vi, Val(:BCTrace)).events) == ("a.x", expected...)
         end
         # A removal on the child cannot erase a binding held by its parent.
-        child = decondition(bc_scalar_arg(2.0), DynamicPPL.Recursive(), @varname(x))
+        child = decondition(bc_scalar_arg(2.0), @varname(x))
         m = condition(bc_outer(child), @varname(a.x) => 3.0)
         value, vi = init!!(StableRNG(1), m, VarInfo(BCTrace()), BCQuarter(), UnlinkAll())
         @test value.a.x == 3.0
@@ -8158,16 +8073,12 @@ end
                     (bind === condition ? logpdf(Normal(), 3.0) : 0.0)
             end
             bound = bind(bind === fix ? decondition(model) : model; x=data)
-            for scope in ((), (DynamicPPL.Recursive(),))
-                @test_throws r"ArgumentError: .*x.*(Tuple|Record).*whole value" remove(
-                    bound, scope..., address
-                )
-                @test isempty(
-                    (bind === condition ? conditioned : fixed)(
-                        remove(bound, scope..., @varname(x))
-                    ),
-                )
-            end
+            @test_throws r"ArgumentError: .*x.*(Tuple|Record).*whole value" remove(
+                bound, address
+            )
+            @test isempty(
+                (bind === condition ? conditioned : fixed)(remove(bound, @varname(x)))
+            )
             child_address = AbstractPPL.append_optic(
                 @varname(a), AbstractPPL.varname_to_optic(address)
             )
@@ -8178,9 +8089,7 @@ end
             @test loglikelihood(
                 bind(
                     decondition(
-                        child_model(condition(model, conditioned(model))),
-                        DynamicPPL.Recursive(),
-                        @varname(a.x)
+                        child_model(condition(model, conditioned(model))), @varname(a.x)
                     ),
                     @varname(a.x) => data,
                 ),
@@ -8372,7 +8281,6 @@ end
             bind(
                 decondition(
                     retained_key_parent(condition(field, conditioned(field))),
-                    DynamicPPL.Recursive(),
                     @varname(s.x.b)
                 ),
                 @varname(s.x.b) => v,
@@ -8450,9 +8358,7 @@ end
             parent = argument_child_m(condition(two_default_elements(); x=zeros(2)))
             late_bound = bind(parent, @varname(a.x) => ones(3))
             @test_throws ArgumentError late_bound(Xoshiro(1))
-            cleared = decondition(
-                parent, DynamicPPL.Recursive(), @varname(a.x[1]), @varname(a.x[2])
-            )
+            cleared = decondition(parent, @varname(a.x[1]), @varname(a.x[2]))
             late_bound = bind(cleared, @varname(a.x) => ones(3))
             @test_throws r"Binding shape at `a.x`.*child model" late_bound(Xoshiro(1))
         end
@@ -8552,8 +8458,7 @@ end
         late_bound = bind(argument_child(reached), @varname(a.a.x) => ones(3))
         @test_throws ArgumentError late_bound(Xoshiro(1))
         reused = bind(
-            remove(argument_child(reached), DynamicPPL.Recursive(), @varname(a.a.x)),
-            @varname(a.a.x) => ones(3),
+            remove(argument_child(reached), @varname(a.a.x)), @varname(a.a.x) => ones(3)
         )
         @test reused(Xoshiro(1)) isa Model
         child = bind(retained_parent(), @varname(a.x) => ones(2))(Xoshiro(1))
@@ -8634,7 +8539,6 @@ end
             address=@varname(p[3].x),
             bind=condition,
             remove=decondition,
-            expected=r"namespace root `p`.*rebuild",
         ),
         (
             name="grown range",
@@ -8643,7 +8547,6 @@ end
             address=@varname(p[3:4]),
             bind=condition,
             remove=decondition,
-            expected=r"namespace root `p`.*rebuild",
         ),
         (
             name="shrunk Cartesian",
@@ -8652,7 +8555,6 @@ end
             address=@varname(p[2, 2].x),
             bind=condition,
             remove=decondition,
-            expected=r"namespace root `p`.*rebuild",
         ),
         (
             name="changed rank",
@@ -8661,18 +8563,16 @@ end
             address=@varname(p[3].x),
             bind=condition,
             remove=decondition,
-            expected=r"namespace root `p`.*rebuild",
         ),
     ]
     @testset "$(case.name)" for case in removal_identity_cases
         m = case.bind(
             shared_shape_removal_parent(case.input), @varname(p[1].x) => 2.0, case.template
         )
-        m = case.remove(m, DynamicPPL.Recursive(), case.address)
+        m = case.remove(m, case.address)
         m = case.remove(m)
-        @test_throws case.expected case.bind(
-            m, @varname(p[1].x) => 2.0, @of(p = of(Array, case.input...))
-        )
+        rebound = case.bind(m, @varname(p[1].x) => 2.0, @of(p = of(Array, case.input...)))
+        @test rebound(Xoshiro(1))[1] == 2.0
     end
 end
 
@@ -8683,7 +8583,7 @@ end
             @varname(p[1].x) => 2.0,
             @of(p = of(Array, 2, 2))
         )
-        m = remove(decondition(m), DynamicPPL.Recursive(), @varname(p[3].x))
+        m = remove(decondition(m, @varname(p[1].x)), @varname(p[3].x))
         same = bind(m, @varname(p[1].x) => 2.0, @of(p = of(Array, 2, 2)))
         listing = bind === condition ? conditioned(same) : fixed(same)
         @test listing[@varname(p[1, 1].x)] == 2.0
@@ -8694,9 +8594,7 @@ end
             argument_child(m), @varname(a.p[1].x) => 2.0, @of(a = @of(p = of(Array, 3, 2)))
         )
         @test_throws r"namespace root `p`.*rebuild" nested(Xoshiro(1))
-        pending = remove(
-            shared_shape_removal_parent((2, 2)), DynamicPPL.Recursive(), @varname(p[3].x)
-        )
+        pending = remove(shared_shape_removal_parent((2, 2)), @varname(p[3].x))
         first_shape = bind(pending, @varname(p[1].x) => 2.0, @of(p = of(Array, 2, 2)))
         listing = bind === condition ? conditioned(first_shape) : fixed(first_shape)
         @test listing[@varname(p[1, 1].x)] == 2.0
@@ -8840,8 +8738,7 @@ end
     end
     @testset "recursive ordering" begin
         m = condition(
-            decondition(binding_outer(), DynamicPPL.Recursive(), @varname(a.x)),
-            @varname(a.x) => [1.0, 2.0],
+            decondition(binding_outer(), @varname(a.x)), @varname(a.x) => [1.0, 2.0]
         )
         @test m(Xoshiro(1)) == [1.0, 2.0]
         @test !isempty(rand(Xoshiro(1), decondition(m)))
@@ -9519,7 +9416,7 @@ end
             2, 1
         ] == 3.0
         @test bind(
-            remove(pending_outer(), DynamicPPL.Recursive(), @varname(a.x)),
+            remove(pending_outer(), @varname(a.x)),
             @varname(a.x) => ones(2, 2),
             @of(a = @of(x = of(Array, 2, 2)))
         )()[
@@ -9527,7 +9424,7 @@ end
         ] == 1.0
         @test bind(
             bind(
-                remove(pending_outer(), DynamicPPL.Recursive(), @varname(a.x)),
+                remove(pending_outer(), @varname(a.x)),
                 @varname(a.x) => ones(2, 2),
                 @of(a = @of(x = of(Array, 2, 2)))
             ),
@@ -9571,7 +9468,6 @@ end
             @test bind(
                 decondition(
                     pending_outer(condition(array_model(zeros(3)); x=zeros(3))),
-                    DynamicPPL.Recursive(),
                     @varname(a.x[1])
                 ),
                 pair1,
@@ -9738,9 +9634,7 @@ end
             @varname(x[1]) => 2.0,
         )
         before = deepcopy(listed(child))
-        parent = decondition(
-            argument_child(child), DynamicPPL.Recursive(), @varname(a.x[2])
-        )
+        parent = decondition(argument_child(child), @varname(a.x[2]))
         reached = bind(parent, @varname(a.x[2]) => 3.0, @of(a = @of(x = of(Array, 2))))(
             Xoshiro(1)
         )
@@ -9853,9 +9747,7 @@ end
     )
     @test_throws ArgumentError conflicting(Xoshiro(1))
     m = decondition(
-        child_model(condition(two_elements(zeros(2)); x=zeros(2))),
-        DynamicPPL.Recursive(),
-        @varname(a.x[1])
+        child_model(condition(two_elements(zeros(2)); x=zeros(2))), @varname(a.x[1])
     )
     @test condition(m, @varname(a.x[1]) => 3.0, @of(a = @of(x = of(Array, 2))))(
         Xoshiro(1)
@@ -9904,7 +9796,7 @@ end
         )(
             Xoshiro(1)
         )
-        p = decondition(p, DynamicPPL.Recursive(), @varname(a.x))
+        p = decondition(p, @varname(a.x))
         m = if order
             condition(
                 fix(p, @varname(a.x[1]) => 3.0, @of(a = @of(x = of(Array, 2)))),
@@ -9956,11 +9848,7 @@ end
         @test bind(child_model(c), listing(replaced))(Xoshiro(1)) == [3.0, 1.0]
         @test listing(replaced) == stored
         v = [1.0, 2.0]
-        p = decondition(
-            child_model(condition(two_elements(v); x=v)),
-            DynamicPPL.Recursive(),
-            @varname(a.x[1])
-        )
+        p = decondition(child_model(condition(two_elements(v); x=v)), @varname(a.x[1]))
         m = bind(p, @varname(a.x[1]) => 3.0, @of(a = @of(x = of(Array, 2))))
         @test m(Xoshiro(1)) == [3.0, 2.0]
         v[2] = 8.0
@@ -9969,11 +9857,7 @@ end
         v = [0.0]
         child = contract_alias((a=v, b=v))
         @test_throws ArgumentError decondition(child)
-        p = decondition(
-            child_model(condition(child, conditioned(child))),
-            DynamicPPL.Recursive(),
-            @varname(a.x)
-        )
+        p = decondition(child_model(condition(child, conditioned(child))), @varname(a.x))
         m = bind(p, @varname(a.x.b) => [1.0])
         @test logjoint(m, (a=(x=(a=[2.0],),),)) ≈
             logpdf(Normal(), 2.0) + logpdf(Normal(1.0), 0.0)
@@ -11083,13 +10967,13 @@ end
     for (bind, remove) in ((condition, decondition), (fix, unfix))
         m = removal_children(bind(removal_leaf(); x=1.0))
         for name in (@varname(z[3]), @varname(z[3].x))
-            removed = remove(m, DynamicPPL.Recursive(), name)
+            removed = remove(m, name)
             @test_throws ArgumentError removed(Xoshiro(1))
         end
         scoped = prefix(m, @varname(a))
-        removed = remove(scoped, DynamicPPL.Recursive(), @varname(a.z[3].x))
+        removed = remove(scoped, @varname(a.z[3].x))
         @test_throws r"a.z\[3\].x.*index count" removed(Xoshiro(1))
-        removed = remove(m, DynamicPPL.Recursive(), @varname(z[1, 2].x))
+        removed = remove(m, @varname(z[1, 2].x))
         @test collect(keys(rand(Xoshiro(1), removed))) == [@varname(z[1, 2].x)]
     end
 end
@@ -11119,7 +11003,7 @@ end
         @test_throws r"a.y.*the other role" other(Xoshiro(1))
         parent = diagnostic_parent(bind(diagnostic_array(); x=ones(2, 2)))
         remove = bind === condition ? decondition : unfix
-        removed = remove(parent, DynamicPPL.Recursive(), @varname(a.x[5]))
+        removed = remove(parent, @varname(a.x[5]))
         @test_throws r"a.x\[5\]" removed(Xoshiro(1))
     end
 end

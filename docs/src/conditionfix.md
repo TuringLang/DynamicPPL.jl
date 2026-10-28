@@ -175,6 +175,11 @@ cond_model_partial = model | vnt
 rand(cond_model_partial)
 ```
 
+`decondition(model, names...)` and `unfix(model, names...)` remove the selected bindings
+from the model and all reached submodels. Omitting names removes every binding of
+that role, including bindings created in a child model's body. Argument observations
+on the model called directly by the user remain removable with `decondition`.
+
 ## Missing data
 
 !!! warning

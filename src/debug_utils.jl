@@ -110,8 +110,9 @@ function _register_removals!(ctx::BindingCheckContext, model)
         for role in (DynamicPPL.Condition, DynamicPPL.Fix)
             for marker in DynamicPPL._removals(role, model)
                 name = marker.name
+                name === nothing && continue
                 name = DynamicPPL.maybe_prefix(name, DynamicPPL._model_prefix(model))
-                name = name === nothing ? "all addresses" : string(name)
+                name = string(name)
                 layer = role === DynamicPPL.Condition ? "observations" : "fixed bindings"
                 get!(
                     ctx.removals,

@@ -345,13 +345,6 @@ function _inherited_model_values(values::VarNamedTuple)
     )
 end
 
-"""
-    Recursive()
-
-Extend [`decondition`](@ref) and [`unfix`](@ref) to child bindings. Pass immediately
-following the model, for example `decondition(m, DynamicPPL.Recursive(), :a)`.
-"""
-struct Recursive end
 struct ModelRemoval{N}
     name::N
     matched::Bool
@@ -799,29 +792,25 @@ function _listing_argument_children(model, values)
 end
 
 """
-    decondition(model::Model, [Recursive(),] names...)
+    decondition(model::Model, names...)
 
-Remove observations at the supplied Symbol or VarName addresses, or all observations
-when no names are supplied. `Recursive()` also removes bindings from reached children.
+Remove observations at the supplied Symbol or VarName addresses from this model and
+its submodels, or all observations when no names are supplied. This also removes the
+called model's own argument observations. Submodels take observations through `condition`.
 """
 AbstractPPL.decondition(model::Model, names::Union{Symbol,VarName}...) =
-    _decondition_unfix(model, names, Condition)
-function AbstractPPL.decondition(model::Model, ::Recursive, names::Union{Symbol,VarName}...)
-    return _decondition_unfix(model, names, Condition, Recursive())
-end
+    _decondition_unfix(model, names, Condition, Val(true))
 """
-    unfix(model::Model, [Recursive(),] names...)
+    unfix(model::Model, names...)
 
-Remove fixed values at the supplied Symbol or VarName addresses, or all fixed values
-when no names are supplied. `Recursive()` also removes bindings from reached children.
+Remove fixed values at the supplied Symbol or VarName addresses from this model and
+its submodels, or all fixed values when no names are supplied.
 """
-unfix(model::Model, names::Union{Symbol,VarName}...) = _decondition_unfix(model, names, Fix)
-function unfix(model::Model, ::Recursive, names::Union{Symbol,VarName}...)
-    return _decondition_unfix(model, names, Fix, Recursive())
-end
+unfix(model::Model, names::Union{Symbol,VarName}...) =
+    _decondition_unfix(model, names, Fix, Val(true))
 _removals(::Type{Condition}, model::Model) = model.observation_removals
 _removals(::Type{Fix}, model::Model) = model.fixed_removals
-function _decondition_unfix(model, names, R, recursive=nothing)
+function _decondition_unfix(model, names, R, ::Val{recursive}=Val(false)) where {recursive}
     names = map(names) do name
         vn = name isa Symbol ? VarName{name}() : name
         if _model_prefix(model) === nothing
@@ -835,10 +824,15 @@ function _decondition_unfix(model, names, R, recursive=nothing)
         name, optic = AbstractPPL.getsym(vn), AbstractPPL.getoptic(vn)
         if name in _keyword_binding_names(model) &&
             optic isa AbstractPPL.Index{Tuple{Symbol}}
-            VarName{name}(AbstractPPL.Property{only(optic.ix)}(optic.child))
-        else
-            vn
+            optic = AbstractPPL.Property{only(optic.ix)}(optic.child)
         end
+        if AbstractPPL.is_dynamic(optic)
+            storage = get(model.values.storage.data, name, NoTemplate())
+            optic = _collapse_binding_selection(
+                storage, optic, vn; operation="remove", location=VarName{name}()
+            )
+        end
+        return VarName{name}(optic)
     end
     any(isnothing, names) && (names = ())
     for vn in names
@@ -857,7 +851,7 @@ function _decondition_unfix(model, names, R, recursive=nothing)
         foldl((t, vn) -> _remove_resolved_at(t, R, vn), names; init=model.values)
     end
     markers = _removals(R, model)
-    if recursive isa Recursive
+    if recursive
         for vn in (isempty(names) ? (nothing,) : names)
             marker = ModelRemoval(vn, _has_removable(R, model.values.values, vn))
             if vn === nothing
