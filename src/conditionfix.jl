@@ -669,14 +669,16 @@ _normalize_keyword_input(input::NamedTuple, ::Tuple{}) = input
 _normalize_keyword_input(input::VarNamedTuple, ::Tuple{}) = input
 
 function _conditionfix(model, ::Type{R}, inputs; kwargs...) where {R}
-    inputs = _binding_inputs(inputs)
-    position = findfirst(x -> x isa Type{<:AbstractPPL.OfNamedTuple}, inputs)
-    if position !== nothing
-        position == length(inputs) || throw(
+    flattened = _binding_inputs(inputs)
+    template_count = count(x -> x isa Type{<:AbstractPPL.OfNamedTuple}, flattened)
+    template_count <= 1 || throw(ArgumentError("Only one binding template may be supplied"))
+    if template_count == 1
+        last(inputs) isa Type{<:AbstractPPL.OfNamedTuple} || throw(
             ArgumentError("The binding template must be the last positional argument")
         )
     end
-    offered_template = position === nothing ? nothing : zero(last(inputs))
+    offered_template = template_count == 0 ? nothing : zero(last(inputs))
+    inputs = flattened
     keyword_values = (; kwargs...)
     if _model_prefix(model) !== nothing
         inputs = map(input -> _local_binding_input(model, input), inputs)
@@ -722,7 +724,9 @@ Condition `model` on `values`, as in [`condition`](@ref). Accept a NamedTuple,
 VarNamedTuple, pair or tuple of binding inputs. Use `condition` directly when
 supplying a storage template.
 """
-function Base.:|(model::Model, values::Union{NamedTuple,VarNamedTuple,Pair,Tuple})
+function Base.:|(
+    model::Model, values::Union{NamedTuple,VarNamedTuple,Pair,Tuple,AbstractDict}
+)
     any(value -> value isa Type{<:AbstractPPL.OfNamedTuple}, _binding_inputs(values)) &&
         throw(ArgumentError("Binding templates require an explicit condition or fix call"))
     return condition(model, values)

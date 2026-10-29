@@ -348,7 +348,7 @@ derived from model inputs. Use `rng` to control reproducibility if needed.
 
 - Empty models emit a warning, but do not fail (since they are not incorrect *per se*)
 
-- Bindings, binding template entries and recursive removals that no reached model uses,
+- Bindings, binding template entries and named removals that no reached model uses,
   and partially bound positions that no executed tilde reads. These emit warnings but do
   not fail the check: a branch not taken in this evaluation could still use them.
 

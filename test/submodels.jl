@@ -18,6 +18,20 @@ mutable struct P
     b::Float64
 end
 
+@testset "submodel binding shape error roles" begin
+    @model shape_child() = x ~ Normal()
+    @model function shape_parent()
+        z = zeros(1)
+        z[1] ~ to_submodel(shape_child())
+        return z
+    end
+    for (bind, label) in ((condition, "Observed"), (fix, "Fixed"))
+        @test_throws ArgumentError(
+            "$label LHS variable `z[1]` requires a static size and shape; storage axes must match the model's local array.",
+        ) bind(shape_parent(), @varname(z[1].x) => 1.0, @of(z = of(Array, 2)))(Xoshiro(1))
+    end
+end
+
 function get_logp_and_rawval_accs(model::Model)
     accs = VarInfo()
     accs = setacc!!(accs, RawValueAccumulator(false))

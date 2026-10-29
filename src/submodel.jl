@@ -299,7 +299,7 @@ end
             template,
             AbstractPPL.getoptic(left_vn),
             maybe_prefix(left_vn, _model_prefix(parent_model)),
-            Condition;
+            _has_binding_role(Fix, inherited) ? Fix : Condition;
             submodel=true,
         )
     return _enter_submodel!!(

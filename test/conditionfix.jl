@@ -3343,7 +3343,9 @@ end
 
 @testset "binding input forms" begin
     @test (@inferred condition(normal_local(); x=2.0))(Xoshiro(1)) == 2.0
-    @test_throws MethodError two_elements(zeros(2)) | Dict(@varname(x) => [2.0, 3.0])
+    @test_throws ArgumentError(
+        "Bindings require a NamedTuple, VarNamedTuple, or Symbol/VarName pairs; AbstractDict inputs are not supported",
+    ) two_elements(zeros(2)) | Dict(@varname(x) => [2.0, 3.0])
     @test (two_elements(zeros(2)) | (; x=[2.0, 3.0]))(Xoshiro(1)) == [2.0, 3.0]
     for bind in (condition, fix)
         for invalid in (Dict(@varname(x) => [2.0, 3.0]), 1)
@@ -3660,7 +3662,16 @@ end
         end
         @test op(schema_local(), pair, of((z=of(Array, 3),)))(Xoshiro(1))[2] == 1.0
         @test op(schema_local(), schema)(Xoshiro(1)) == schema_local()(Xoshiro(1))
-        @test_throws ArgumentError op(schema_local(), pair, schema, schema)
+        @test_throws ArgumentError("Only one binding template may be supplied") op(
+            schema_local(), pair, schema, schema
+        )
+        for inputs in (
+            (@varname(z[1]) => 2.0, (pair, schema)), ((pair, schema), @varname(z[1]) => 2.0)
+        )
+            @test_throws ArgumentError(
+                "The binding template must be the last positional argument"
+            ) op(schema_local(), inputs...)
+        end
         @test op(schema_local(), pair, @of(z = of(Array, 3), w = of(Array, 3)))(
             Xoshiro(1)
         )[2] == 1.0
