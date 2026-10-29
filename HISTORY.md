@@ -6,6 +6,8 @@ Fixed `VarNamedTuple` world-age errors when loading without a valid precompiled 
 
 Fixed model argument evaluation world-age errors when loading without a valid precompiled cache.
 
+Models now compare and hash by binding state, with arguments and defaults compared by content using `isequal`.
+
 Thread-safe tilde assignments now throw an `ArgumentError` if any container is replaced, including same-type immutable values: `(a = zero(T),)` → `Vector{T}(undef, n)`. Allocate mutable storage with `::Type{T}=Float64`; use `Vector{Union{Missing,Real}}` for imputation under AD. See [#1521](https://github.com/TuringLang/DynamicPPL.jl/pull/1521).
 
 `VarNamedTuple` membership resolves `begin` and `end` against the stored array. See [#1490](https://github.com/TuringLang/DynamicPPL.jl/pull/1490).
