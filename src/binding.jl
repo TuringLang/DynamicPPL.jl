@@ -2427,17 +2427,11 @@ using SparseArrays
 
 struct ModelArgumentCopy{T}
     value::T
-    adapt::Bool
 end
-ModelArgumentCopy(value) = ModelArgumentCopy(value, false)
-# Extensions can adapt non-writable AD containers after Julia copies the graph.
-function _adapt_copied_argument end
 function Base.deepcopy_internal(value::ModelArgumentCopy, memo::IdDict)
     _retain_argument_leaves!(memo, value.value, Base.IdSet{Any}())
     _retain_bound_argument_storage!(memo, value.value)
-    return ModelArgumentCopy(
-        Base.deepcopy_internal(value.value, memo), get(memo, ModelArgumentCopy, false)
-    )
+    return ModelArgumentCopy(Base.deepcopy_internal(value.value, memo))
 end
 function _argument_opaque_value(value)
     return isbits(value) ||
@@ -2464,8 +2458,6 @@ function _retain_argument_leaves!(memo, value, seen)
     end
     return nothing
 end
-# Resolve the optional adapter from type metadata so ordinary preparation remains
-# inferred even when ReverseDiff's type-changing facade adapter is loaded.
 _argument_ad_storage(::Type) = false
 function _argument_storage_expr(query, T, seen)
     T <: Union{Number,Type,Symbol,AbstractString} && return false
@@ -2489,16 +2481,8 @@ function _argument_storage_expr(query, T, seen)
     end
     return result
 end
-@generated function _argument_may_need_adapter(::Type{T}) where {T}
-    return _argument_storage_expr(_argument_ad_storage, T, Set{Any}())
-end
 function _copy_model_argument(value)
-    copied = deepcopy(ModelArgumentCopy(value))
-    return if _argument_may_need_adapter(typeof(value)) && copied.adapt
-        _adapt_copied_argument(copied.value)
-    else
-        copied.value
-    end
+    return deepcopy(ModelArgumentCopy(value)).value
 end
 _copy_model_argument(value::Type) = value
 function _copy_model_argument(value::Number)

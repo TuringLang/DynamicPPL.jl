@@ -94,10 +94,6 @@ function Mooncake.rrule!!(
     return output, overlay_pullback!!
 end
 
-Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
-    typeof(DynamicPPL._argument_may_need_adapter),Type
-}
-
 # Storage validation returns no numerical result.
 Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
     typeof(DynamicPPL._classify_placeholder),Any
