@@ -384,7 +384,11 @@ function _check_binding_addresses(model, values, error_prefix=_model_prefix(mode
 end
 
 @generated function _check_argument_bindings(
-    model::Model, values, inherited=false, error_prefix=_model_prefix(model)
+    model::Model,
+    values,
+    inherited=false,
+    error_prefix=_model_prefix(model),
+    templates=merge(model.values.observed_templates, model.values.fixed_templates),
 )
     names = (
         fieldnames(fieldtype(model, :args))..., fieldnames(fieldtype(model, :defaults))...
@@ -410,6 +414,24 @@ end
                         $(QuoteNode(stored_name)),
                         nothing,
                     )
+                    if argument === missing
+                        template = get(templates.data, $(QuoteNode(name)), NoTemplate())
+                        if binding isa VarNamedTuples.PartialArray &&
+                            template isa AbstractArray
+                            mask = if binding.mask isa ModelBindingArray
+                                binding.mask.data
+                            else
+                                binding.mask
+                            end
+                            binding = VarNamedTuples.PartialArray(
+                                binding.data, ModelBindingArray(mask, template)
+                            )
+                            argument = template
+                        elseif binding isa VarNamedTuple && template isa NamedTuple
+                            binding = ModelValueTree(template, binding, Val(true))
+                            argument = template
+                        end
+                    end
                     if argument isa Union{Nothing,Missing} &&
                         _has_binding_role(Condition, binding) &&
                         _has_binding_role(Fix, binding)
@@ -697,7 +719,13 @@ end
 # Specialise validation and reconstruction on the resolved table's concrete type.
 function _finish_binding(model, table, offered_template)
     _check_removal_storage(model, table.storage)
-    values = _check_argument_bindings(model, table.values)
+    values = _check_argument_bindings(
+        model,
+        table.values,
+        false,
+        _model_prefix(model),
+        merge(table.observed_templates, table.fixed_templates),
+    )
     _check_binding_addresses(model, values)
     table = ResolvedBindings(
         values,

@@ -1989,7 +1989,7 @@ end
     @model multiple(y, z, x) = (y ~ Normal(x); z ~ Normal(x))
     @model keyword(; y=1.0, x=0.3) = y ~ Normal(x)
 
-    message = "Submodel `a` observes `a.y` through its argument `y`; submodels cannot take observations as arguments. Pass `missing` for `y` and condition the submodel on the value instead, e.g. `a ~ to_submodel(condition(inner(missing, x), (y=y,)))`. Use `condition` rather than `fix`: `condition` keeps the likelihood term for `y`, while `fix` sets `y` without one."
+    message = "Submodel `a` observes `a.y` through arguments; submodels cannot take observations as arguments. Pass `missing` for `y` and bind observed values with `condition` to retain their likelihood. For example (schematically): `condition(inner(missing, ...), (y=y,))`."
     @test_throws ArgumentError(message) direct(1.0)(Xoshiro(1))
     for model in (
         argument_geometry_parent(inner(1.0, 0.3)),
@@ -2001,7 +2001,7 @@ end
     )
         @test_throws r"submodels cannot take observations as arguments" model(Xoshiro(1))
     end
-    @test_throws r"observes `a.y`, `a.z`.*multiple\(missing, missing, x\).*y=y, z=z" argument_geometry_parent(
+    @test_throws r"observes `a.y`, `a.z`.*multiple\(missing, missing, \.\.\.\).*y=y, z=z" argument_geometry_parent(
         multiple(1.0, 2.0, 0.3)
     )(
         Xoshiro(1)
@@ -2022,6 +2022,16 @@ end
     @test gated(false, inner(1.0, 0.3))(Xoshiro(1)) === nothing
     @test_throws ArgumentError gated(true, inner(1.0, 0.3))(Xoshiro(1))
     @model partial(y) = (y[1] ~ Normal(); y[2] ~ Normal())
+    @test_throws r"condition\(partial\(missing\), @varname\(y\[i\]\) => value, @of\(y = of\(Array, 2\)\)\)" argument_geometry_parent(
+        partial([1.0, missing])
+    )(
+        Xoshiro(1)
+    )
+    @test_throws r"condition\(partial\(missing\), \(y=y,\)\)" argument_geometry_parent(
+        partial([1.0, 2.0])
+    )(
+        Xoshiro(1)
+    )
     @test_throws r"submodels cannot take observations as arguments" argument_geometry_parent(
         decondition(partial([1.0, 2.0]), @varname(y[1]))
     )(
@@ -2034,16 +2044,14 @@ end
             Xoshiro(1)
         )
     end
-    @test_throws r"keyword\(; y=missing, x=x\)" argument_geometry_parent(keyword())(
+    @test_throws r"keyword\(; y=missing, \.\.\.\)" argument_geometry_parent(keyword())(
         Xoshiro(1)
     )
 
     @model splatted(y...) = y[1] ~ Normal()
     @model keyword_splatted(; y...) = y[:x] ~ Normal()
-    @test_throws r"splatted\(map\(_ -> missing, y\)\.\.\.\)" argument_geometry_parent(
-        splatted(1.0)
-    )()
-    @test_throws r"keyword_splatted\(; map\(_ -> missing, NamedTuple\(y\)\)\.\.\.\)" argument_geometry_parent(
+    @test_throws r"splatted\(\.\.\.\)" argument_geometry_parent(splatted(1.0))()
+    @test_throws r"keyword_splatted\(; \.\.\.\)" argument_geometry_parent(
         keyword_splatted(; x=1.0)
     )()
     y = (1.0,)

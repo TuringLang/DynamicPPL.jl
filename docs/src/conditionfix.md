@@ -75,9 +75,9 @@ end
 
 A template describes storage, not observations. Unbound positions remain latent,
 and unused template entries do not appear in `conditioned` or `fixed`. Templates
-for the called model's own arguments do not replace their storage. Array extents,
-selection shapes and aliases are checked at binding time; this includes `begin`,
-`end`, masks and linear versus Cartesian indexing.
+replace a `missing` model argument, but concrete arguments keep their own storage.
+Array extents, selection shapes and aliases are checked at binding time; this
+includes `begin`, `end`, masks and linear versus Cartesian indexing.
 
 Typed templates also constrain conversion. Values must be exactly representable
 in the specified type; an inexact conversion throws. Use the runtime value's type
@@ -164,6 +164,33 @@ random variable.
 
 Submodels cannot receive observations as model arguments. Pass covariates as
 arguments and use `condition` for observations. `fix` would omit their likelihood.
+For partly missing arrays, bind only the observed entries and supply a template
+as the last positional argument. It replaces the `missing` argument with storage
+of the specified shape, so the model can iterate over it; unbound entries remain
+latent. The same storage rule applies to `fix`, which omits the fixed entries'
+densities.
+
+```@example bindings
+@model function inner_vec(y)
+    for i in eachindex(y)
+        y[i] ~ Normal()
+    end
+    return y
+end
+@model function outer_vec(y)
+    dims = size(y)
+    child = condition(
+        inner_vec(missing),
+        (@varname(y[i]) => y[i] for i in eachindex(y) if !ismissing(y[i]))...,
+        @of(y = of(Array, dims...)),
+    )
+    return a ~ to_submodel(child)
+end
+partial_child = outer_vec([1.0, missing])
+@assert partial_child(Xoshiro(1)) == [1.0, rand(Xoshiro(1), Normal())]
+@assert loglikelihood(partial_child, (; a=(; y=[1.0, 0.4]))) == logpdf(Normal(), 1.0)
+```
+
 Parent bindings cannot overwrite a child's own bindings, even in the same role;
 remove those bindings first. Child ownership and storage compatibility are
 checked when the child is reached, without executing it at bind time.
@@ -308,8 +335,11 @@ evaluators must follow the preparation and lookup rules described above.
     Update parameter, binding, chain and Gibbs block addresses to include the child
     name. `a ~ to_submodel(prefix(child, @varname(b)))` uses `a.b.x`, not `b.x`.
   - Replace `to_submodel(inner(y, x))` with
-    `to_submodel(condition(inner(missing, x), (y=y,)))` when `y` is observed.
-    Top-level argument observations remain supported.
+    `to_submodel(condition(inner(missing, x), (y=y,)))` when `y` is fully observed.
+    For partly missing arrays, bind only observed indices and provide storage:
+    `condition(inner_vec(missing), @varname(y[1]) => 1.0, @of(y = of(Array, 2)))`.
+    The runnable `outer_vec([1.0, missing])` example in [Submodels](@ref) retains
+    `y[2]` as latent. Top-level argument observations remain supported.
   - Existing bare and named `decondition`/`unfix` calls now reach submodels too.
     Remove the old explicit recursion marker from calls; there is no local-only
     public removal mode. To edit a child in isolation, edit that child before

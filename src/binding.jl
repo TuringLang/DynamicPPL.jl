@@ -1946,7 +1946,10 @@ function _bind_resolved(
     schema = position === nothing ? (;) : zero(last(inputs))
     inputs = position === nothing ? inputs : Base.front(inputs)
     inputs = isempty(kwargs) ? inputs : (inputs..., (; kwargs...))
-    schema = Base.structdiff(schema, NamedTuple{keys(table.arguments.data)})
+    concrete_arguments = filter(
+        name -> table.arguments.data[name] !== missing, keys(table.arguments.data)
+    )
+    schema = Base.structdiff(schema, NamedTuple{concrete_arguments})
     if length(inputs) == 1 &&
         first(inputs) isa Pair{<:VarName} &&
         isempty(table.values.data) &&

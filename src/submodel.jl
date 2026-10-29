@@ -384,21 +384,10 @@ end
     addresses = join(("`$(maybe_prefix(VarName{name}(), prefix))`" for name in names), ", ")
     arguments = join(("`$name`" for name in names), ", ")
     positional = map(keys(child.args)) do stored
-        name = unsplat_symbol(stored)
-        if is_splat_symbol(stored)
-            name in names ? "map(_ -> missing, $name)..." : "$name..."
-        else
-            name in names ? "missing" : string(name)
-        end
+        !is_splat_symbol(stored) && stored in names ? "missing" : "..."
     end
     keywords = map(keys(child.defaults)) do stored
-        name = unsplat_symbol(stored)
-        if is_splat_symbol(stored)
-            name in names ? "map(_ -> missing, NamedTuple($name))..." : "$name..."
-        else
-            value = name in names ? "missing" : string(name)
-            "$name=$value"
-        end
+        !is_splat_symbol(stored) && stored in names ? "$stored=missing" : "..."
     end
     call = string(
         nameof(child),
@@ -408,10 +397,25 @@ end
         ")",
     )
     bindings = join(("$name=$name" for name in names), ", ") * ","
-    plural = length(names) == 1 ? "argument" : "arguments"
+    partial = findfirst(names) do name
+        value = child.values.arguments.data[name]
+        value isa AbstractArray && _classify_placeholder(value) === _MissingPlaceholder
+    end
+    advice = if partial === nothing
+        "condition($call, ($bindings))"
+    else
+        name = names[partial]
+        dims = join(size(child.values.arguments.data[name]), ", ")
+        "condition($call, @varname($name[i]) => value, @of($name = of(Array, $dims)))"
+    end
+    detail = if partial === nothing
+        ""
+    else
+        " Bind only observed indices; put the storage template last."
+    end
     throw(
         ArgumentError(
-            "Submodel `$prefix` observes $addresses through its $plural $arguments; submodels cannot take observations as arguments. Pass `missing` for $arguments and condition the submodel on the value instead, e.g. `$prefix ~ to_submodel(condition($call, ($bindings)))`. Use `condition` rather than `fix`: `condition` keeps the likelihood term for $arguments, while `fix` sets $arguments without one.",
+            "Submodel `$prefix` observes $addresses through arguments; submodels cannot take observations as arguments. Pass `missing` for $arguments and bind observed values with `condition` to retain their likelihood. For example (schematically): `$advice`.$detail",
         ),
     )
 end
@@ -446,7 +450,9 @@ end
     _check_retained_child_storage(storage, table, inherited, prefix)
     _check_child_storage(storage, table.values, inherited, prefix)
     inherited = _prepare_child_bindings(table, inherited, prefix)
-    inherited = _check_argument_bindings(child, inherited, true, prefix)
+    inherited = _check_argument_bindings(
+        child, inherited, true, prefix, merge(observed_templates, fixed_templates)
+    )
     _check_cross_roles(table.values, inherited, prefix; disjoint=true)
     values = _merge_model_values(table.values, inherited)
     stored = merge(table.storage, storage)
