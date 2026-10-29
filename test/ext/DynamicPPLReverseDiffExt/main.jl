@@ -110,6 +110,21 @@ end
     @test gradient ≈ [-0.2, -0.4, -0.9]
 end
 
+@testset "retained buffers reached by latent arguments" begin
+    @model function retained_buffer(x)
+        x.b[1][1] ~ Normal()
+        return x
+    end
+    z = ReverseDiff.track([0.3])
+    b = Any[[0.0]]
+    model = decondition(retained_buffer((a=z, b=b)))
+    b[1] = ReverseDiff.value(z)
+    @test_throws r"argument `x`.*retained storage.*latent path" returned(
+        model, (x=(b=[[0.7]],),)
+    )
+    @test ReverseDiff.value(z) == [0.3]
+end
+
 mutable struct ConstTrackedOwner
     const a::Any
 end
