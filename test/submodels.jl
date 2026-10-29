@@ -76,7 +76,6 @@ end
 @model argument_geometry_parent(child) = a ~ to_submodel(child)
 @model held_geometry_parent(child) = a ~ to_submodel(child[])
 @model placeholder_child(x) = (x[1] ~ Normal(); x[2] ~ Normal(); x)
-@model placeholder_parent(child) = a ~ to_submodel(child)
 @model nested_inner() = (x ~ Normal(); y ~ Normal())
 @model nested_mid() = b ~ to_submodel(nested_inner())
 @model nested_outer(m) = a ~ to_submodel(m)
@@ -87,11 +86,37 @@ end
     return x[1][1]
 end
 
+@model deferred_leaves() = (x ~ Normal(); y ~ Normal(); (x=x, y=y))
+@model deferred_structure() = (b ~ product_distribution((x=Normal(), y=Normal())); b)
+@model deferred_array_leaves() = (x = zeros(2); x[1] ~ Normal(); x[2] ~ Normal(); x)
+@model scalar_z() = z ~ Normal()
+@model outer_model(m) = b ~ to_submodel(m)
+@model template_parent(child) = outer ~ to_submodel(child)
+@model observed_child(x=2.0) = x ~ Normal()
+@model function normal_pair()
+    x ~ Normal()
+    y ~ Normal()
+    return (x, y)
+end
+@model removal_wrapper(child) = b ~ to_submodel(child)
+@model function removal_runtime(child)
+    rhs = to_submodel(child)
+    return a ~ rhs
+end
+@model depth_leaf(x) = x ~ Normal()
+@model function indexed(x)
+    for i in eachindex(x)
+        x[i] ~ Normal()
+    end
+    return x
+end
+@model closed_leaf(x=3.0) = x ~ Normal()
+
 @testset "ancestor partial removal uses inherited placeholder storage" begin
     values = [1.0, 2.0]
     for (bind, remove) in ((condition, decondition), (fix, unfix))
         bound = bind(
-            placeholder_parent(placeholder_child(nothing)), @varname(a.x) => values
+            argument_geometry_parent(placeholder_child(nothing)), @varname(a.x) => values
         )
         result = remove(bound, @varname(a.x[1]))(Xoshiro(1))
         @test result[2] == 2.0
@@ -101,7 +126,11 @@ end
 @testset "partial cross-role bindings need placeholder storage" begin
     for (model, root, part) in (
         (placeholder_child(nothing), @varname(x), @varname(x[1])),
-        (placeholder_parent(placeholder_child(nothing)), @varname(a.x), @varname(a.x[1])),
+        (
+            argument_geometry_parent(placeholder_child(nothing)),
+            @varname(a.x),
+            @varname(a.x[1])
+        ),
     )
         partial = decondition(condition(model, root => [1.0, 2.0]), part)
         if root == @varname(x)
@@ -194,10 +223,8 @@ end
     @test fix(sibling_namespaces(nested_mid()); a=(b=(u=1.0,),))() == (u=1.0,)
 end
 
-@model deferred_leaves() = (x ~ Normal(); y ~ Normal(); (x=x, y=y))
 @model deferred_mid() = b ~ to_submodel(deferred_leaves())
 @model deferred_parent() = a ~ to_submodel(deferred_mid())
-@model deferred_structure() = (b ~ product_distribution((x=Normal(), y=Normal())); b)
 @model deferred_structured_parent() = a ~ to_submodel(deferred_structure())
 @testset "child namespace bindings merge and replace fields" begin
     for (bind, remove, list) in ((condition, decondition, conditioned), (fix, unfix, fixed))
@@ -288,7 +315,6 @@ end
     q = (x=zeros(2),); q.x[1] ~ Normal(); q.x[2] ~ Normal(); q
 )
 @model deferred_array_parent() = a ~ to_submodel(deferred_array_struct())
-@model deferred_array_leaves() = (x = zeros(2); x[1] ~ Normal(); x[2] ~ Normal(); x)
 @model deferred_array_middle() = b ~ to_submodel(deferred_array_leaves())
 @model deferred_arrays_parent() = a ~ to_submodel(deferred_array_middle())
 @testset "deferred array storage" begin
@@ -331,11 +357,10 @@ end
     end
 end
 
-@model owned_leaf() = (x ~ Normal(); y ~ Normal(); (x=x, y=y))
-@model owned_mid() = b ~ to_submodel(owned_leaf())
+@model owned_mid() = b ~ to_submodel(deferred_leaves())
 @model owned_unprefixed() = r ~ to_submodel(condition(owned_mid(), @varname(b.x) => 5.0))
 @model owned_outer() = a ~ to_submodel(owned_unprefixed())
-@model owned_deep_mid() = b ~ to_submodel(condition(owned_leaf(); x=5.0))
+@model owned_deep_mid() = b ~ to_submodel(condition(deferred_leaves(); x=5.0))
 @model owned_deep_unprefixed() = r ~ to_submodel(owned_deep_mid())
 @model owned_deep_outer() = a ~ to_submodel(owned_deep_unprefixed())
 @testset "deferred bindings preserve child ownership" begin
@@ -350,8 +375,7 @@ end
     end
 end
 
-@model listing_leaf() = (x ~ Normal(); y ~ Normal(); (x=x, y=y))
-@model listing_mid() = b ~ to_submodel(listing_leaf())
+@model listing_mid() = b ~ to_submodel(deferred_leaves())
 @model listing_outer() = a ~ to_submodel(listing_mid())
 @testset "listings merge successive child namespace bindings" begin
     for (bind, remove, list) in ((condition, decondition, conditioned), (fix, unfix, fixed))
@@ -380,15 +404,12 @@ end
     end
 end
 
-@model argument_leaf() = (x ~ Normal(); y ~ Normal(); (x=x, y=y))
-@model argument_mid() = b ~ to_submodel(argument_leaf())
-@model argument_outer(m) = a ~ to_submodel(m)
+@model argument_mid() = b ~ to_submodel(deferred_leaves())
 @model argument_body() = a ~ to_submodel(argument_mid())
-@model argument_struct() = (b ~ product_distribution((x=Normal(), y=Normal())); b)
-@model argument_siblings(m) = (a ~ to_submodel(argument_struct()); c ~ to_submodel(m); a)
+@model argument_siblings(m) = (a ~ to_submodel(deferred_structure()); c ~ to_submodel(m); a)
 @testset "argument child listings" begin
     for (bind, list) in ((condition, conditioned), (fix, fixed))
-        @test collect(keys(list(bind(argument_outer(argument_mid()); a=(b=(x=1.0,),))))) ==
+        @test collect(keys(list(bind(nested_outer(argument_mid()); a=(b=(x=1.0,),))))) ==
             [@varname(a.b.x)]
         @test collect(keys(list(bind(argument_body(); a=(b=(x=1.0,),))))) == [@varname(a.b)]
         @test collect(
@@ -400,14 +421,14 @@ end
 @testset "argument child prefix scope" begin
     for (bind, listing) in ((condition, conditioned), (fix, fixed))
         model = bind(
-            argument_outer(prefix(argument_mid(), @varname(q.r))); a=(q=(r=(b=(x=1.0,),),),)
+            nested_outer(prefix(argument_mid(), @varname(q.r))); a=(q=(r=(b=(x=1.0,),),),)
         )
         @test collect(pairs(listing(model))) == [@varname(a.q.r.b.x) => 1.0]
-        parent = argument_outer(prefix(argument_struct(), :b))
+        parent = nested_outer(prefix(deferred_structure(), :b))
         model = bind(parent; a=(b=(b=(x=1.0, y=2.0),),))
         @test collect(pairs(listing(model))) == [@varname(a.b.b) => (x=1.0, y=2.0)]
         @test bind(parent, listing(model))() == (x=1.0, y=2.0)
-        parent = argument_outer(prefix(argument_mid(), @varname(q[2])))
+        parent = nested_outer(prefix(argument_mid(), @varname(q[2])))
         model = bind(
             parent, @varname(a.q[2].b) => (x=1.0, y=2.0), @of(a = @of(q = of(Array, 2)))
         )
@@ -427,7 +448,7 @@ end
 @testset "indexed argument child listings" begin
     for (bind, listing) in ((condition, conditioned), (fix, fixed))
         model = bind(
-            indexed_argument_child(argument_leaf()),
+            indexed_argument_child(deferred_leaves()),
             @varname(a[1].x) => 1.0,
             @of(a = of(Array, 2))
         )
@@ -449,19 +470,18 @@ end
 
 @testset "submodels.jl" begin
     @testset "unprefixed children are rejected" begin
-        @model child() = x ~ Normal()
         @model function parent(flag)
-            return a ~ to_submodel(child(), flag)
+            return a ~ to_submodel(namespace_leaf(), flag)
         end
-        @test_throws ArgumentError to_submodel(child(), false)
+        @test_throws ArgumentError to_submodel(namespace_leaf(), false)
         @test_throws ArgumentError parent(false)()
-        @test typeof(to_submodel(child(), true)) === typeof(to_submodel(child()))
+        @test typeof(to_submodel(namespace_leaf(), true)) ===
+            typeof(to_submodel(namespace_leaf()))
         @test Set(keys(rand(parent(true)))) == Set([@varname(a.x)])
     end
 
     @testset "explicit bindings of submodel return values explain recovery" begin
-        @model child() = z ~ Normal()
-        @model parent(y) = (a ~ to_submodel(child()); y ~ Normal(a))
+        @model parent(y) = (a ~ to_submodel(scalar_z()); y ~ Normal(a))
         for bind in (condition, fix)
             bound = bind(parent(0.0); a=1.0)
             @test_throws r"Cannot explicitly bind a submodel return value\. Remove the explicit binding.*@varname\(a.z\)" bound(
@@ -506,7 +526,6 @@ end
             end
             return __model__
         end
-        @model inspect_parent(m) = a ~ to_submodel(m)
         @model function inspect_outer(m)
             b = Vector{Any}(undef, 2)
             b[2] ~ to_submodel(m)
@@ -514,7 +533,7 @@ end
         end
         child = condition(inspect_child(); x=[0.0, 1.0])
         parent = condition(
-            decondition(inspect_parent(child), @varname(a.x[1])),
+            decondition(nested_outer(child), @varname(a.x[1])),
             @varname(a.x[1]) => 2.0,
             @of(a = @of(x = of(Array, 2))),
         )
@@ -568,17 +587,15 @@ end
     end
 
     @testset "submodel tildes reject model arguments" begin
-        @model child() = z ~ Normal()
-        @model argument_return(x=0.0) = x ~ to_submodel(child())
-        @model indexed_return(x) = x[1] ~ to_submodel(child())
-        @model property_return(x) = x.a ~ to_submodel(child())
-        @model keyword_return(; x=0.0) = x ~ to_submodel(child())
+        @model argument_return(x=0.0) = x ~ to_submodel(scalar_z())
+        @model indexed_return(x) = x[1] ~ to_submodel(scalar_z())
+        @model property_return(x) = x.a ~ to_submodel(scalar_z())
+        @model keyword_return(; x=0.0) = x ~ to_submodel(scalar_z())
         @model runtime_return(x, rhs) = x ~ rhs
-        @model unprefixed_return(x) = x ~ to_submodel(child(), true)
-        @model splatted_return(x...) = x[1] ~ to_submodel(child())
-        @model keyword_splatted_return(; x...) = x.a ~ to_submodel(child())
-        @model local_return() = x ~ to_submodel(child())
-        @model outer(m) = b ~ to_submodel(m)
+        @model unprefixed_return(x) = x ~ to_submodel(scalar_z(), true)
+        @model splatted_return(x...) = x[1] ~ to_submodel(scalar_z())
+        @model keyword_splatted_return(; x...) = x.a ~ to_submodel(scalar_z())
+        @model local_return() = x ~ to_submodel(scalar_z())
         err = r"ArgumentError: Submodel tilde .*model argument `x`.*local LHS.*condition"
         for (model, address, value) in (
             (argument_return(), @varname(x), 2.0),
@@ -587,7 +604,7 @@ end
             (indexed_return([0.0]), @varname(x[1]), 2.0),
             (property_return((a=0.0,)), @varname(x.a), 2.0),
             (keyword_return(), @varname(x), 2.0),
-            (runtime_return(0.0, to_submodel(child())), @varname(x), 2.0),
+            (runtime_return(0.0, to_submodel(scalar_z())), @varname(x), 2.0),
             (unprefixed_return(0.0), @varname(x), 2.0),
             (splatted_return(0.0), @varname(x), (2.0,)),
             (keyword_splatted_return(; a=0.0), @varname(x), (a=2.0,)),
@@ -595,11 +612,11 @@ end
             for wrapped in (
                 model,
                 prefix(model, @varname(p)),
-                outer(condition(model, conditioned(model))),
+                outer_model(condition(model, conditioned(model))),
             )
                 @test_throws err wrapped(Xoshiro(1))
                 @test_throws err decondition(wrapped)(Xoshiro(1))
-                @test outer(local_return())(Xoshiro(1)) isa Real
+                @test outer_model(local_return())(Xoshiro(1)) isa Real
             end
             for bind in (condition, fix)
                 bound = bind(bind === fix ? decondition(model) : model, address => value)
@@ -611,7 +628,7 @@ end
         # A runtime RHS is classified when the tilde executes; ordinary assignment keeps Julia semantics.
         @test runtime_return(2.0, Normal())(Xoshiro(1)) == 2.0
         @model function assigned_return(x)
-            a ~ to_submodel(fix(child(); z=2.0))
+            a ~ to_submodel(fix(scalar_z(); z=2.0))
             x = a
             return x ~ Normal()
         end
@@ -619,11 +636,9 @@ end
     end
 
     @testset "submodel return bindings with manual prefixes" begin
-        @model child() = x ~ Normal()
         @model manual(a, m) = a ~ to_submodel(m)
         @model nested(m) = outer ~ to_submodel(m)
-        @model local_manual(m) = a ~ to_submodel(m)
-        for child_model in (child(), prefix(child(), @varname(b)))
+        for child_model in (namespace_leaf(), prefix(namespace_leaf(), @varname(b)))
             for m in (
                 condition(decondition(manual(0.0, child_model)); a=3.0),
                 fix(decondition(manual(0.0, child_model)); a=3.0),
@@ -632,7 +647,7 @@ end
                     @test_throws r"ArgumentError: Submodel tilde .*model argument `a`.*local LHS" model(
                         Xoshiro(1)
                     )
-                    @test nested(local_manual(child_model))(Xoshiro(1)) isa Real
+                    @test nested(nested_outer(child_model))(Xoshiro(1)) isa Real
                 end
             end
         end
@@ -778,13 +793,11 @@ end
     end
 
     @testset "binding construction uses prefix templates" begin
-        @model template_leaf() = x ~ Normal()
         @model template_covariate(z) = x ~ Normal(z[1])
-        @model template_parent(child) = outer ~ to_submodel(child)
         for (name, template) in
             ((@varname(p[2]), zeros(2)), (@varname(p[0]), OffsetArray(zeros(2), 0:1))),
             bind in (condition, fix),
-            leaf in (template_leaf(), template_covariate(zeros(2)))
+            leaf in (namespace_leaf(), template_covariate(zeros(2)))
 
             original = prefix(leaf, name; template)
             vn = AbstractPPL.prefix(@varname(x), name)
@@ -797,13 +810,11 @@ end
     end
 
     @testset "property and integer prefixes resolve explicit bindings" begin
-        @model slice_leaf() = x ~ Normal()
         @model slice_parent(child) = unused ~ to_submodel(child)
-        @model slice_nested(child) = outer ~ to_submodel(child)
         for name in (@varname(a), @varname(a[1])),
             (bind, accessor) in ((condition, conditioned), (fix, fixed))
 
-            child = prefix(bind(slice_leaf(); x=3.0), name; template=zeros(2))
+            child = prefix(bind(namespace_leaf(); x=3.0), name; template=zeros(2))
             bindings = accessor(child)
             @test keys(bindings) == [AbstractPPL.prefix(@varname(x), name)]
             @test bindings[AbstractPPL.prefix(@varname(x), name)] == 3.0
@@ -811,7 +822,7 @@ end
             @test child(Xoshiro(1)) == 3.0
             @test slice_parent(child)(Xoshiro(1)) == 3.0
             parent = bind(
-                slice_parent(prefix(slice_leaf(), name; template=zeros(2))),
+                slice_parent(prefix(namespace_leaf(), name; template=zeros(2))),
                 VarNamedTuple((
                     unused=DynamicPPL.templated_setindex!!(
                         VarNamedTuple(), (; x=4.0), name, zeros(2)
@@ -819,12 +830,11 @@ end
                 )),
             )
             @test parent(Xoshiro(1)) == 4.0
-            @test slice_nested(parent)(Xoshiro(1)) == 4.0
+            @test template_parent(parent)(Xoshiro(1)) == 4.0
         end
     end
 
     @testset "dynamic prefixes with stored observations" begin
-        @model observed_child(x=2.0) = x ~ Normal()
         @model function dynamic_parent(child)
             a = zeros(2, 3)
             a[begin] ~ to_submodel(child)
@@ -879,11 +889,10 @@ end
     end
 
     @testset "parent array templates" begin
-        @model leaf_template() = x ~ Normal()
         @model function matrix_template(storage)
             a = copy(storage)
-            a[1] ~ to_submodel(leaf_template())
-            a[2, 2] ~ to_submodel(leaf_template())
+            a[1] ~ to_submodel(namespace_leaf())
+            a[2, 2] ~ to_submodel(namespace_leaf())
             return a
         end
         @model function nested_template(a)
@@ -953,15 +962,10 @@ end
         x_logp = op == condition ? logpdf(Normal(), x_val) : 0.0
 
         @testset "Auto prefix" begin
-            @model function inner()
-                x ~ Normal()
-                y ~ Normal()
-                return (x, y)
-            end
             @model function outer()
-                return a ~ to_submodel(inner())
+                return a ~ to_submodel(normal_pair())
             end
-            inner_op = op(inner(), (@varname(x) => x_val))
+            inner_op = op(normal_pair(), (@varname(x) => x_val))
             @model function outer2()
                 return a ~ to_submodel(inner_op)
             end
@@ -987,19 +991,14 @@ end
         end
 
         @testset "Explicit true" begin
-            @model function inner()
-                x ~ Normal()
-                y ~ Normal()
-                return (x, y)
-            end
             @model function outer()
-                return a ~ to_submodel(inner(), true)
+                return a ~ to_submodel(normal_pair(), true)
             end
             @model function outer2()
                 return a ~ to_submodel(inner_op, true)
             end
             with_inner_op = outer2()
-            inner_op = op(inner(), (@varname(x) => x_val))
+            inner_op = op(normal_pair(), (@varname(x) => x_val))
             with_outer_op = op(outer(), (@varname(a.x) => x_val))
 
             # No conditioning/fixing
@@ -1021,15 +1020,10 @@ end
         end
 
         @testset "Manual prefix" begin
-            @model function inner()
-                x ~ Normal()
-                y ~ Normal()
-                return (x, y)
-            end
             @model function outer()
-                return a ~ to_submodel(prefix(inner(), :b))
+                return a ~ to_submodel(prefix(normal_pair(), :b))
             end
-            inner_op = op(inner(), (@varname(x) => x_val))
+            inner_op = op(normal_pair(), (@varname(x) => x_val))
             @model function outer2()
                 return a ~ to_submodel(prefix(inner_op, :b))
             end
@@ -1151,7 +1145,6 @@ end
         vnt = rand(Xoshiro(1), latent_g())
         @test Set(keys(vnt)) == Set([@varname(a.x), @varname(a.y)])
 
-        @model observed_child(x=2.0) = x ~ Normal()
         @model function parent_with_return_value(a)
             a[1] ~ to_submodel(condition(observed_child(missing); x=2.0))
             return a
@@ -1245,9 +1238,8 @@ end
 
     @testset "deconditioning a submodel from outside" begin
         @testset "$op" for (op, deop) in [(condition, decondition), (fix, unfix)]
-            @model inner() = x ~ Normal()
             @model function outer()
-                return a ~ to_submodel(inner())
+                return a ~ to_submodel(namespace_leaf())
             end
 
             model = outer()
@@ -1351,31 +1343,41 @@ end
     @test returned(
         latent, VarNamedTuple((@varname(mu) => 1.0, @varname(y.counts) => 2.0))
     ) == (1.0, 2.0)
-    @model leaf(x=2.0) = x ~ Normal()
-    @model parent(m) = a ~ to_submodel(m)
-    @model outer(m) = b ~ to_submodel(m)
-    fixed_child = parent(fix(decondition(leaf()); x=5.0))
+    fixed_child = nested_outer(fix(decondition(observed_child()); x=5.0))
     @test returned(unfix(fixed_child, @varname(a.x)), (a=(x=2.0,),)) == 2.0
     @test keys(rand(Xoshiro(1), unfix(fixed_child, @varname(a.x)))) == [@varname(a.x)]
     @test decondition(fixed_child, @varname(a.x))() == 5.0
     @test returned(unfix(fixed_child), (a=(x=2.0,),)) == 2.0
-    @test isempty(conditioned(decondition(parent(condition(leaf(missing); x=2.0)))))
-    @test keys(rand(Xoshiro(1), decondition(parent(condition(leaf(missing); x=2.0))))) ==
-        [@varname(a.x)]
-    removed = decondition(parent(condition(leaf(missing); x=2.0)), @varname(a.x))
+    @test isempty(
+        conditioned(decondition(nested_outer(condition(observed_child(missing); x=2.0))))
+    )
+    @test keys(
+        rand(
+            Xoshiro(1), decondition(nested_outer(condition(observed_child(missing); x=2.0)))
+        ),
+    ) == [@varname(a.x)]
+    removed = decondition(
+        nested_outer(condition(observed_child(missing); x=2.0)), @varname(a.x)
+    )
     @test keys(rand(Xoshiro(1), decondition(removed, @varname(a.x)))) == [@varname(a.x)]
     @test condition(removed, @varname(a.x) => 3.0)() == 3.0
-    @test condition(outer(removed), @varname(b.a.x) => 4.0)() == 4.0
+    @test condition(outer_model(removed), @varname(b.a.x) => 4.0)() == 4.0
     @test keys(rand(Xoshiro(1), prefix(removed, @varname(p)))) == [@varname(p.a.x)]
-    @test keys(rand(Xoshiro(1), outer(removed))) == [@varname(b.a.x)]
-    @test unfix(leaf(), @varname(x))(Xoshiro(1)) == 2.0
-    @test unfix(parent(condition(leaf(missing); x=2.0)), @varname(a.x))(Xoshiro(1)) == 2.0
-    @test keys(rand(Xoshiro(1), decondition(parent(decondition(leaf())), @varname(a.x)))) ==
-        [@varname(a.x)]
+    @test keys(rand(Xoshiro(1), outer_model(removed))) == [@varname(b.a.x)]
+    @test unfix(observed_child(), @varname(x))(Xoshiro(1)) == 2.0
+    @test unfix(nested_outer(condition(observed_child(missing); x=2.0)), @varname(a.x))(
+        Xoshiro(1)
+    ) == 2.0
+    @test keys(
+        rand(
+            Xoshiro(1),
+            decondition(nested_outer(decondition(observed_child())), @varname(a.x)),
+        ),
+    ) == [@varname(a.x)]
     @test fixed(unfix(fixed_child)) == VarNamedTuple()
     @model function runtime()
         mu ~ Normal()
-        a ~ to_submodel(condition(leaf(); x=2mu))
+        a ~ to_submodel(condition(observed_child(); x=2mu))
         return a
     end
     @test keys(rand(Xoshiro(2), decondition(runtime(), @varname(a.x)))) ==
@@ -1390,19 +1392,17 @@ end
 end
 
 @testset "unmatched recursive removals of local LHS variables" begin
-    @model removal_scalar() = x ~ Normal()
     @model function removal_parent()
         m ~ Normal()
-        a ~ to_submodel(removal_scalar())
+        a ~ to_submodel(namespace_leaf())
         return m
     end
     @model function removal_fields()
         m = (x=zeros(1),)
         m.x[1] ~ Normal()
-        a ~ to_submodel(removal_scalar())
+        a ~ to_submodel(namespace_leaf())
         return m
     end
-    @model removal_wrapper(child) = b ~ to_submodel(child)
     for (bind, remove) in ((condition, decondition), (fix, unfix))
         for (model, name, templates) in (
             (removal_parent(), @varname(m), ()),
@@ -1432,10 +1432,6 @@ end
         return nothing
     end
     @model removal_whole_local() = t ~ product_distribution((a=Normal(),))
-    @model function removal_runtime(child)
-        rhs = to_submodel(child)
-        return a ~ rhs
-    end
     for (bind, remove) in ((condition, decondition), (fix, unfix))
         child = decondition(removal_whole((a=2.0,)))
         for (model, name, whole_name) in (
@@ -1466,15 +1462,13 @@ end
 end
 
 @testset "argument submodel tildes reject sibling edits only when reached" begin
-    @model removal_sibling_leaf(x=2.0) = x ~ Normal()
     @model function removal_siblings(a, run)
-        run && (a.child ~ to_submodel(condition(removal_sibling_leaf(missing); x=2.0)))
+        run && (a.child ~ to_submodel(condition(observed_child(missing); x=2.0)))
         a.obs ~ Normal()
         return a
     end
-    @model removal_sibling_parent(child) = b ~ to_submodel(child)
     for (bind, remove) in ((condition, decondition), (fix, unfix)),
-        wrap in (identity, m -> prefix(m, @varname(p)), removal_sibling_parent)
+        wrap in (identity, m -> prefix(m, @varname(p)), removal_wrapper)
 
         reached = condition(
             removal_siblings((child=0.0, obs=1.0), true); a=(child=0.0, obs=1.0)
@@ -1505,15 +1499,11 @@ end
         end
         return a
     end
-    @model function removal_rhs(child)
-        rhs = to_submodel(child)
-        return a ~ rhs
-    end
     my_sub(child) = to_submodel(child)
     @model removal_call(child) = a ~ my_sub(child)
     for (bind, remove) in ((condition, decondition), (fix, unfix))
         child = bind(removal_child(); t=2.0)
-        for parent in (m -> removal_mixed(m, false), removal_rhs, removal_call)
+        for parent in (m -> removal_mixed(m, false), removal_runtime, removal_call)
             model = parent(child)
             @test model(Xoshiro(1)) == 2.0
             removed = remove(model, @varname(a.t))
@@ -1527,65 +1517,62 @@ end
 end
 
 @testset "matched recursive removal at evaluation" begin
-    @model leaf(x) = x ~ Normal()
-    @model parent(m) = a ~ to_submodel(m)
     m = decondition(
-        condition(parent(condition(leaf(missing); x=2.0)), @varname(a.x) => 3.0),
+        condition(
+            nested_outer(condition(depth_leaf(missing); x=2.0)), @varname(a.x) => 3.0
+        ),
         @varname(a.x)
     )
     @test logjoint(m, (; a=(; x=0.5))) ≈ logpdf(Normal(), 0.5)
 end
 
 @testset "recursive removal storage and scope" begin
-    @model function indexed(x)
-        for i in eachindex(x)
-            x[i] ~ Normal()
-        end
-        return x
-    end
-    @model parent(m) = a ~ to_submodel(m)
     @test_throws r"x.*decondition.*unfix" condition(indexed(zeros(2)); x=ones(3))
     child = condition(indexed(zeros(3)); x=ones(3))
-    @test length(decondition(parent(child), @varname(a.x))(Xoshiro(1))) == 3
+    @test length(decondition(nested_outer(child), @varname(a.x))(Xoshiro(1))) == 3
     @test returned(
-        unfix(parent(fix(decondition(indexed(zeros(3))); x=ones(3))), @varname(a.x)),
+        unfix(nested_outer(fix(decondition(indexed(zeros(3))); x=ones(3))), @varname(a.x)),
         (a=(x=zeros(3),),),
     ) == zeros(3)
-    partial = decondition(parent(child), @varname(a.x[2]))
+    partial = decondition(nested_outer(child), @varname(a.x[2]))
     @test returned(partial, VarNamedTuple((@varname(a.x[2]) => 5.0,))) == [1.0, 5.0, 1.0]
-    @test condition(decondition(parent(child)), @varname(a.x) => [4.0, 5.0])() == [4.0, 5.0]
-    @test condition(decondition(parent(child)), @varname(a.x) => [4.0, 5.0, 6.0])() ==
+    @test condition(decondition(nested_outer(child)), @varname(a.x) => [4.0, 5.0])() ==
+        [4.0, 5.0]
+    @test condition(decondition(nested_outer(child)), @varname(a.x) => [4.0, 5.0, 6.0])() ==
         [4.0, 5.0, 6.0]
     @test returned(
         condition(
-            decondition(parent(condition(indexed(zeros(2)); x=zeros(2)))),
+            decondition(nested_outer(condition(indexed(zeros(2)); x=zeros(2)))),
             @varname(a.x[1]) => 4.0,
             @of(a = @of(x = of(Array, 2)))
         ),
         VarNamedTuple((@varname(a.x[2]) => 5.0,)),
     ) == [4.0, 5.0]
-    @model scalar(x) = x ~ Normal()
     @model function shared(x)
         x ~ Normal()
-        a ~ to_submodel(condition(scalar(missing); x=2.0))
+        a ~ to_submodel(condition(depth_leaf(missing); x=2.0))
         return (x, a)
     end
     both = decondition(shared(1.0), @varname(x))
     @test both(Xoshiro(1)) == (rand(Xoshiro(1), Normal()), 2.0)
     @test condition(both; x=3.0)(Xoshiro(1)) == (3.0, 2.0)
-    @test isempty(conditioned(decondition(decondition(parent(child)))))
-    once = decondition(parent(child), @varname(a.x))
+    @test isempty(conditioned(decondition(decondition(nested_outer(child)))))
+    once = decondition(nested_outer(child), @varname(a.x))
     twice = decondition(once, @varname(a.x))
     @test typeof(twice) == typeof(once)
     @test_logs DynamicPPL.DebugUtils.check_model(Xoshiro(1), twice)
     @model branch(run) = (
-        run && (a ~ to_submodel(condition(scalar(missing); x=1.0))); nothing
+        run && (a ~ to_submodel(condition(depth_leaf(missing); x=1.0))); nothing
     )
     @test decondition(branch(false), @varname(a.x))() === nothing
     @model function repeated()
         for i in 1:2
             unused ~ to_submodel(
-                i == 1 ? condition(scalar(missing); x=1.0) : decondition(scalar(1.0))
+                if i == 1
+                    condition(depth_leaf(missing); x=1.0)
+                else
+                    decondition(depth_leaf(1.0))
+                end,
             )
         end
     end
@@ -1593,14 +1580,13 @@ end
 end
 
 @testset "recursive removal namespace boundaries" begin
-    @model leaf(x) = x ~ Normal()
-    @model parent(a) = a ~ to_submodel(leaf(missing))
+    @model parent(a) = a ~ to_submodel(depth_leaf(missing))
     @test_throws r"ArgumentError: Submodel tilde .*model argument `a`.*local LHS" decondition(
         parent(missing), @varname(a.x)
     )(
         Xoshiro(1)
     )
-    @model local_parent() = a ~ to_submodel(decondition(leaf(missing)))
+    @model local_parent() = a ~ to_submodel(decondition(depth_leaf(missing)))
     @test local_parent()(Xoshiro(1)) isa Real
     @model function sharearr(x)
         x[1] ~ Normal()
@@ -1615,12 +1601,11 @@ end
     end
     m = condition(sharearr([0.0, 0.0]); x=[4.0, 4.0], a=(x=[4.0, 4.0],))
     @test condition(m, @varname(x[1]) => 3.0)() == ([3.0, 4.0], [4.0, 4.0])
-    @model ownprefix() = a ~ to_submodel(condition(leaf(missing); x=1.0))
+    @model ownprefix() = a ~ to_submodel(condition(depth_leaf(missing); x=1.0))
     @test_throws ArgumentError decondition(prefix(ownprefix(), @varname(p)), @varname(q.x))
 end
 
 @testset "recursive unfix releases whole shape owners" begin
-    @model owner_parent(m) = a ~ to_submodel(m)
     @model function owner_grows(x)
         x = vcat(x, 0.0)
         for i in eachindex(x)
@@ -1633,7 +1618,7 @@ end
     @test_throws r"storage axes" rebound(Xoshiro(1))
     for names in ((), (@varname(a.x),))
         model = fix(
-            unfix(owner_parent(old), names...),
+            unfix(nested_outer(old), names...),
             @varname(a.x[1]) => 2.0,
             @of(a = @of(x = of(Array, 2)))
         )
@@ -1642,23 +1627,11 @@ end
 end
 
 @testset "recursive removal resolves indexed prefixes" begin
-    @model prefix_removal_leaf(x=2.0) = x ~ Normal()
-    @model function prefix_removal_array(x)
-        for i in eachindex(x)
-            x[i] ~ Normal()
-        end
-        return x
-    end
-    @test keys(
-        rand(Xoshiro(1), decondition(prefix_removal_array([1.0, 2.0]), @varname(x[end])))
-    ) == [@varname(x[2])]
-    @model prefix_removal_parent(m) = a ~ to_submodel(m)
+    @test keys(rand(Xoshiro(1), decondition(indexed([1.0, 2.0]), @varname(x[end])))) ==
+        [@varname(x[2])]
     for (bind, remove) in ((condition, decondition), (fix, unfix))
         child = prefix(
-            bind(
-                bind === fix ? decondition(prefix_removal_leaf()) : prefix_removal_leaf();
-                x=3.0,
-            ),
+            bind(bind === fix ? decondition(observed_child()) : observed_child(); x=3.0),
             @varname(p[end]);
             template=zeros(2),
         )
@@ -1669,7 +1642,7 @@ end
         @test returned(removed, VarNamedTuple((@varname(p[2].x) => 2.0,))) == 2.0
     end
     model = prefix(
-        prefix_removal_parent(condition(prefix_removal_leaf(missing); x=2.0)),
+        nested_outer(condition(observed_child(missing); x=2.0)),
         @varname(p[end]);
         template=zeros(2),
     )
@@ -1678,21 +1651,19 @@ end
 end
 
 @testset "recursive removal classifies the executed RHS" begin
-    @model removal_leaf(x) = x ~ Normal()
     @model function removal_branch(a, observed)
         if observed
             a ~ Normal()
         else
-            a ~ to_submodel(removal_leaf(missing))
+            a ~ to_submodel(depth_leaf(missing))
         end
         return a
     end
     @model function removal_dynamic(a)
-        child = to_submodel(removal_leaf(missing))
+        child = to_submodel(depth_leaf(missing))
         a ~ child
         return a
     end
-    @model removal_outer(m) = b ~ to_submodel(m)
     m = decondition(removal_branch(1.0, true), @varname(a))
     @test keys(rand(Xoshiro(1), m)) == [@varname(a)]
     @test keys(
@@ -1704,7 +1675,7 @@ end
         ),
     ) == [@varname(a)]
     m = decondition(
-        removal_outer(condition(removal_branch(missing, true); a=1.0)), @varname(b.a)
+        outer_model(condition(removal_branch(missing, true); a=1.0)), @varname(b.a)
     )
     @test keys(rand(Xoshiro(1), m)) == [@varname(b.a)]
     @test keys(
@@ -1717,7 +1688,7 @@ end
             Xoshiro(1)
         )
         @test_throws r"ArgumentError: Submodel tilde .*model argument `a`.*local LHS" decondition(
-            removal_outer(child), @varname(b.a.x)
+            outer_model(child), @varname(b.a.x)
         )(
             Xoshiro(1)
         )
@@ -1764,7 +1735,6 @@ end
     end
 end
 
-@model depth_leaf(x) = x ~ Normal()
 @model depth_parent(x, child) = (x ~ Normal(); a ~ to_submodel(child); a)
 @testset "bindings replace recursive removals at their address" begin
     m = condition(
@@ -1798,11 +1768,9 @@ end
     end
 end
 
-@model address_leaf() = x ~ Normal()
-@model address_parent(m) = a ~ to_submodel(m)
 @testset "unused nested removal addresses" begin
     for remove in (decondition, unfix), name in (@varname(a.a.x), @varname(a.a.absent))
-        m = remove(address_parent(address_parent(address_leaf())), name)
+        m = remove(nested_outer(nested_outer(namespace_leaf())), name)
         @test keys(rand(Xoshiro(1), m)) == [@varname(a.a.x)]
         @test_logs (:warn, r"Recursive removal.*unused") DynamicPPL.DebugUtils.check_model(
             Xoshiro(1), m
@@ -1810,12 +1778,9 @@ end
     end
 end
 
-@model closed_leaf(x=3.0) = x ~ Normal()
-
 @testset "partial runtime return arguments are rejected" begin
     @model runtime_return_leaf(x=3.0) = x ~ Normal()
     @model runtime_return(a, rhs) = a ~ rhs
-    @model runtime_return_outer(m) = b ~ to_submodel(m)
     for arg in ([1.0, 2.0], (x=1.0, y=2.0))
         vn = arg isa NamedTuple ? @varname(a.x) : @varname(a[1])
         for edit in (
@@ -1834,31 +1799,28 @@ end
             @test_throws r"ArgumentError: Submodel tilde .*model argument `a`.*local LHS" m(
                 Xoshiro(1)
             )
-            @test_throws r"ArgumentError: Submodel tilde .*model argument `a`.*local LHS" runtime_return_outer(
+            @test_throws r"ArgumentError: Submodel tilde .*model argument `a`.*local LHS" outer_model(
                 m
             )(
                 Xoshiro(1)
             )
-            @test runtime_return_outer(condition(runtime_return_leaf(missing); x=3.0))(
-                Xoshiro(1)
-            ) == 3.0
+            @test outer_model(condition(runtime_return_leaf(missing); x=3.0))(Xoshiro(1)) ==
+                3.0
         end
     end
 end
 
 @testset "produced bindings round-trip through submodels" begin
-    @model leaf() = x ~ Normal()
     @model function prefixed_parent()
         z ~ Normal()
-        a ~ to_submodel(leaf())
+        a ~ to_submodel(namespace_leaf())
         return (z, a)
     end
     @model function unprefixed_parent()
         z ~ Normal()
-        a ~ to_submodel(leaf(), true)
+        a ~ to_submodel(namespace_leaf(), true)
         return (z, a)
     end
-    @model outer(child) = b ~ to_submodel(child)
     for (model, child_address) in
         ((prefixed_parent(), @varname(a.x)), (unprefixed_parent(), @varname(a.x)))
         draw = rand(Xoshiro(42), model)
@@ -1869,19 +1831,19 @@ end
         end
     end
     for child_bind in (condition, fix), parent_bind in (condition, fix)
-        child = child_bind(leaf(); x=2.0)
-        @test_throws ArgumentError parent_bind(outer(child), @varname(b.x) => 3.0)(
+        child = child_bind(namespace_leaf(); x=2.0)
+        @test_throws ArgumentError parent_bind(removal_wrapper(child), @varname(b.x) => 3.0)(
             Xoshiro(1)
         )
         child_remove = child_bind === condition ? decondition : unfix
         middle = parent_bind(
-            child_remove(outer(child), @varname(b.x)), @varname(b.x) => 3.0
+            child_remove(removal_wrapper(child), @varname(b.x)), @varname(b.x) => 3.0
         )
-        late_bound = condition(outer(middle), @varname(b.b.x) => 1.0)
+        late_bound = condition(removal_wrapper(middle), @varname(b.b.x) => 1.0)
         @test_throws ArgumentError late_bound(Xoshiro(1))
         parent_remove = parent_bind === condition ? decondition : unfix
         model = condition(
-            parent_remove(outer(middle), @varname(b.b.x)), @varname(b.b.x) => 1.0
+            parent_remove(removal_wrapper(middle), @varname(b.b.x)), @varname(b.b.x) => 1.0
         )
         @test model(Xoshiro(1)) == 1.0
         @test loglikelihood(model, (;)) ≈ logpdf(Normal(), 1.0)
@@ -1997,8 +1959,6 @@ end
 @testset "submodels reject argument observations" begin
     @model inner(y, x) = y ~ Normal(x)
     @model direct(y) = a ~ to_submodel(inner(y, 0.3))
-    @model held(child) = a ~ to_submodel(child)
-    @model middle(child) = b ~ to_submodel(child)
     @model function indexed(child)
         a = Vector{Any}(undef, 1)
         a[1] ~ to_submodel(child)
@@ -2014,61 +1974,70 @@ end
     message = "Submodel `a` observes `a.y` through its argument `y`; submodels cannot take observations as arguments. Pass `missing` for `y` and condition the submodel on the value instead, e.g. `a ~ to_submodel(condition(inner(missing, x), (y=y,)))`. Use `condition` rather than `fix`: `condition` keeps the likelihood term for `y`, while `fix` sets `y` without one."
     @test_throws ArgumentError(message) direct(1.0)(Xoshiro(1))
     for model in (
-        held(inner(1.0, 0.3)),
-        held(prefix(inner(1.0, 0.3), @varname(p))),
-        held(middle(inner(1.0, 0.3))),
+        argument_geometry_parent(inner(1.0, 0.3)),
+        argument_geometry_parent(prefix(inner(1.0, 0.3), @varname(p))),
+        argument_geometry_parent(removal_wrapper(inner(1.0, 0.3))),
         indexed(inner(1.0, 0.3)),
         chosen(true),
-        held(keyword()),
+        argument_geometry_parent(keyword()),
     )
         @test_throws r"submodels cannot take observations as arguments" model(Xoshiro(1))
     end
-    @test_throws r"observes `a.y`, `a.z`.*multiple\(missing, missing, x\).*y=y, z=z" held(
+    @test_throws r"observes `a.y`, `a.z`.*multiple\(missing, missing, x\).*y=y, z=z" argument_geometry_parent(
         multiple(1.0, 2.0, 0.3)
     )(
         Xoshiro(1)
     )
     for placeholder in (missing, nothing)
-        model = held(inner(placeholder, 0.3))
+        model = argument_geometry_parent(inner(placeholder, 0.3))
         @test logjoint(model, Dict(@varname(a.y) => 1.0)) ≈ logpdf(Normal(0.3), 1.0)
     end
     @test logjoint(chosen(false), Dict(@varname(a.y) => 1.0)) ≈ logpdf(Normal(0.3), 1.0)
     @test logjoint(inner(1.0, 0.3), (;)) ≈ logpdf(Normal(0.3), 1.0)
     @test loglikelihood(inner(1.0, 0.3), (;)) ≈ logpdf(Normal(0.3), 1.0)
-    @test logjoint(held(condition(inner(missing, 0.3); y=1.0)), (;)) ≈
+    @test logjoint(argument_geometry_parent(condition(inner(missing, 0.3); y=1.0)), (;)) ≈
         logpdf(Normal(0.3), 1.0)
-    @test logjoint(held(decondition(inner(1.0, 0.3))), Dict(@varname(a.y) => 1.0)) ≈
-        logpdf(Normal(0.3), 1.0)
+    @test logjoint(
+        argument_geometry_parent(decondition(inner(1.0, 0.3))), Dict(@varname(a.y) => 1.0)
+    ) ≈ logpdf(Normal(0.3), 1.0)
     @model gated(run, child) = (run && (a ~ to_submodel(child)); nothing)
     @test gated(false, inner(1.0, 0.3))(Xoshiro(1)) === nothing
     @test_throws ArgumentError gated(true, inner(1.0, 0.3))(Xoshiro(1))
     @model partial(y) = (y[1] ~ Normal(); y[2] ~ Normal())
-    @test_throws r"submodels cannot take observations as arguments" held(
+    @test_throws r"submodels cannot take observations as arguments" argument_geometry_parent(
         decondition(partial([1.0, 2.0]), @varname(y[1]))
     )(
         Xoshiro(1)
     )
     for names in ((), (@varname(a.y),))
         @test_throws r"submodels cannot take observations as arguments" decondition(
-            held(inner(1.0, 0.3)), names...
+            argument_geometry_parent(inner(1.0, 0.3)), names...
         )(
             Xoshiro(1)
         )
     end
-    @test_throws r"keyword\(; y=missing, x=x\)" held(keyword())(Xoshiro(1))
+    @test_throws r"keyword\(; y=missing, x=x\)" argument_geometry_parent(keyword())(
+        Xoshiro(1)
+    )
 
     @model splatted(y...) = y[1] ~ Normal()
     @model keyword_splatted(; y...) = y[:x] ~ Normal()
-    @test_throws r"splatted\(map\(_ -> missing, y\)\.\.\.\)" held(splatted(1.0))()
-    @test_throws r"keyword_splatted\(; map\(_ -> missing, NamedTuple\(y\)\)\.\.\.\)" held(
+    @test_throws r"splatted\(map\(_ -> missing, y\)\.\.\.\)" argument_geometry_parent(
+        splatted(1.0)
+    )()
+    @test_throws r"keyword_splatted\(; map\(_ -> missing, NamedTuple\(y\)\)\.\.\.\)" argument_geometry_parent(
         keyword_splatted(; x=1.0)
     )()
     y = (1.0,)
-    @test loglikelihood(held(condition(splatted(map(_ -> missing, y)...); y)), (;)) ≈
-        logpdf(Normal(), 1.0)
+    @test loglikelihood(
+        argument_geometry_parent(condition(splatted(map(_ -> missing, y)...); y)), (;)
+    ) ≈ logpdf(Normal(), 1.0)
     y = (; x=1.0)
     @test loglikelihood(
-        held(condition(keyword_splatted(; map(_ -> missing, NamedTuple(y))...); y)), (;)
+        argument_geometry_parent(
+            condition(keyword_splatted(; map(_ -> missing, NamedTuple(y))...); y)
+        ),
+        (;),
     ) ≈ logpdf(Normal(), 1.0)
 end
 
@@ -2084,18 +2053,15 @@ end
 end
 
 @testset "removals recurse by default" begin
-    @model leaf() = x ~ Normal()
-    @model passed(child) = a ~ to_submodel(child)
-    @model body(bind) = a ~ to_submodel(bind(leaf(); x=2.0))
-    @model nested(child) = b ~ to_submodel(child)
+    @model body(bind) = a ~ to_submodel(bind(namespace_leaf(); x=2.0))
     for (bind, remove) in ((condition, decondition), (fix, unfix))
-        child = bind(leaf(); x=2.0)
+        child = bind(namespace_leaf(); x=2.0)
         for (model, address) in (
-            (passed(child), @varname(a.x)),
+            (argument_geometry_parent(child), @varname(a.x)),
             (body(bind), @varname(a.x)),
-            (nested(passed(child)), @varname(b.a.x)),
-            (prefix(passed(child), @varname(p)), @varname(p.a.x)),
-            (passed(prefix(child, @varname(p))), @varname(a.p.x)),
+            (removal_wrapper(argument_geometry_parent(child)), @varname(b.a.x)),
+            (prefix(argument_geometry_parent(child), @varname(p)), @varname(p.a.x)),
+            (argument_geometry_parent(prefix(child, @varname(p))), @varname(a.p.x)),
         )
             for names in ((), (address,))
                 removed = remove(model, names...)
@@ -2109,9 +2075,11 @@ end
                     (bind === condition ? logpdf(Normal(), 3.0) : 0.0)
             end
         end
-        @test_logs @test check_model(Xoshiro(1), remove(leaf()))
-        @test_logs @test check_model(Xoshiro(1), prefix(remove(leaf()), @varname(p)))
-        conflicting = bind(passed(child), @varname(a.x) => 3.0)
+        @test_logs @test check_model(Xoshiro(1), remove(namespace_leaf()))
+        @test_logs @test check_model(
+            Xoshiro(1), prefix(remove(namespace_leaf()), @varname(p))
+        )
+        conflicting = bind(argument_geometry_parent(child), @varname(a.x) => 3.0)
         @test_throws r"remove it with `decondition`/`unfix` first" conflicting()
     end
     @model observation(y) = y ~ Normal()
@@ -2137,8 +2105,7 @@ end
 
 @testset "dynamic removal addresses" begin
     @model fields(p) = (p.a[1] ~ Normal(); p.a[2] ~ Normal(); p.a)
-    @model leaf() = (x = zeros(2); x[1] ~ Normal(); x[2] ~ Normal(); x)
-    @model parent() = a ~ to_submodel(leaf())
+    @model parent() = a ~ to_submodel(deferred_array_leaves())
     for (bind, remove) in ((condition, decondition), (fix, unfix))
         original = bind(decondition(fields((a=[1.0, 2.0],))); p=(a=[1.0, 2.0],))
         changed = remove(original, @varname(p.a[end]))
