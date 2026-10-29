@@ -8,15 +8,26 @@ using Distributions:
     InverseWishart,
     LKJCholesky,
     Normal,
+    MvNormal,
     product_distribution,
     truncated
 using DifferentiationInterface: DifferentiationInterface
-using DynamicPPL: DynamicPPL, @model, to_submodel, VarInfo, LinkAll, UnlinkAll
+using DynamicPPL:
+    DynamicPPL,
+    @model,
+    @varname,
+    condition,
+    decondition,
+    fix,
+    to_submodel,
+    VarInfo,
+    LinkAll,
+    UnlinkAll
 using DynamicPPL.TestUtils.AD: run_ad, NoTest
 using Enzyme: Enzyme
 using FillArrays: Fill
 using ForwardDiff: ForwardDiff
-using LinearAlgebra: cholesky
+using LinearAlgebra: cholesky, I
 using Mooncake: Mooncake
 using Printf: @sprintf
 using ReverseDiff: ReverseDiff
@@ -37,6 +48,20 @@ using StableRNGs: StableRNG
     x ~ Normal()
     obs ~ Normal(x, 1)
     return (; x=x)
+end
+
+"A NamedTuple-field argument LHS variable with an argument-supplied observation."
+@model function namedtuple_field(p)
+    x ~ Normal()
+    p.a ~ Normal(x, 1)
+    return (; x)
+end
+
+"An MvNormal argument LHS variable with an argument-supplied observation."
+@model function mvnormal_observation(obs)
+    x ~ Normal()
+    obs ~ MvNormal(Fill(x, length(obs)), I)
+    return (; x)
 end
 
 """
@@ -137,20 +162,17 @@ transform_strategy(islinked) = islinked ? LinkAll() : UnlinkAll()
 
 "Dimension of `model`, accounting for linking. Used as a fallback when `benchmark` errors."
 function model_dimension(model, islinked)
-    return try
-        vi = last(
-            DynamicPPL.init!!(
-                StableRNG(23),
-                model,
-                VarInfo(),
-                DynamicPPL.InitFromPrior(),
-                transform_strategy(islinked),
-            ),
-        )
-        length(vi[:])
-    catch
-        missing
-    end
+    # Dimension queries require a value-recording accumulator.
+    vi = last(
+        DynamicPPL.init!!(
+            StableRNG(23),
+            model,
+            VarInfo(DynamicPPL.VectorValueAccumulator()),
+            DynamicPPL.InitFromPrior(),
+            transform_strategy(islinked),
+        ),
+    )
+    return length(vi[:])
 end
 
 """
@@ -314,6 +336,16 @@ function build_combinations(rng)
     models = Tuple{String,DynamicPPL.Model}[
         ("Simple assume observe", simple_assume_observe(randn(rng))), ("Smorgasbord", smorg)
     ]
+    push!(models, ("Smorgasbord fixed", fix(smorg; m=1.0, stds=ones(100))))
+    push!(
+        models, ("Smorgasbord partial condition", condition(smorg, @varname(x[1]) => 0.0))
+    )
+    push!(models, ("Smorgasbord partial decondition", decondition(smorg, @varname(x[1]))))
+    push!(models, ("NamedTuple-field LHS variable", namedtuple_field((; a=1.0))))
+    push!(
+        models,
+        ("MvNormal argument-supplied observation", mvnormal_observation(randn(rng, 100))),
+    )
     for n in (1_000, 10_000)
         data = randn(rng, n)
         push!(models, ("Loop univariate $(n ÷ 1_000)k", loop_univariate(n) | (; o=data)))
