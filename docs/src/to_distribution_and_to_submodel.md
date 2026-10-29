@@ -8,18 +8,11 @@ recording its latent variables separately.
 Currently, `to_distribution` supports only Stan through BridgeStan; `to_submodel` accepts only
 DynamicPPL models.
 
-Each DynamicPPL submodel contributes its tilde address: `a ~ to_submodel(child)` records
-its variable `x` as `a.x`. `to_submodel(child, true)` remains accepted;
-`to_submodel(child, false)` throws `ArgumentError`. To migrate a manually prefixed child,
-replace `unused ~ to_submodel(prefix(child, @varname(a)), false)` with
-`a ~ to_submodel(child)`. Update parameter and binding addresses when adding a child name.
-An explicit prefix composes with that name: `a ~ to_submodel(prefix(child, @varname(b)))`
-records `a.b.x`.
+Each DynamicPPL submodel contributes its tilde address: `a ~ to_submodel(child)`
+records its variable `x` as `a.x`. Submodels take observations through explicit
+bindings. See [Submodels](@ref) for binding rules and
+[Migration to model-owned bindings](@ref) for migration instructions.
 
-Submodels take observations through `condition`, not arguments. If `y` is observed,
-replace `a ~ to_submodel(inner(y, x))` with
-`a ~ to_submodel(condition(inner(missing, x), (y=y,)))`.
-Using `fix` instead would omit the likelihood term for `y`.
 Argument observations remain supported on the model called directly by the user.
 
 ## Stan example

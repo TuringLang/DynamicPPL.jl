@@ -6,7 +6,7 @@ Construct a `VarNamedTuple` from a block of assignments. Each assignment should 
 example:
 
 ```jldoctest
-julia> using DynamicPPL
+julia> using DynamicPPL: @vnt
 
 julia> @vnt begin
            a := 1
@@ -19,7 +19,7 @@ VarNamedTuple
 
 You can set entirely arbitrary variables:
 
-```jldoctest; setup=:(using DynamicPPL)
+```jldoctest; setup=:(using DynamicPPL: @vnt)
 julia> @vnt begin
            a.b.c.d.e := "hello"
        end
@@ -47,7 +47,7 @@ accepts whitespace-separated arguments, which must either be
 
 For example:
 
-```jldoctest; setup=:(using DynamicPPL)
+```jldoctest; setup=:(using DynamicPPL: @vnt)
 julia> x = zeros(5); outside_y = zeros(3, 3);
 
 julia> @vnt begin
@@ -72,7 +72,7 @@ If no template is provided, the VNT will use a `GrowableArray`. This can produce
 results in simple cases, but is not recommended for general use. Please see the
 VarNamedTuple documentation for more details.
 
-```jldoctest; setup=:(using DynamicPPL)
+```jldoctest; setup=:(using DynamicPPL: @vnt)
 julia> @vnt begin
             # No template provided.
             x[1] := 1.0

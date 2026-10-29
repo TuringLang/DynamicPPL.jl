@@ -551,8 +551,23 @@ require concrete storage at binding time; the model's arguments supply their own
 
 # Examples
 
-```julia
-condition(m, @varname(z[1].x) => 1.0, @of(z = of(Array, 3)))
+```jldoctest
+julia> using DynamicPPL.AbstractPPL: @of, of
+
+julia> @model child() = x ~ Normal();
+
+julia> @model function parent()
+           z = zeros(3)
+           for i in eachindex(z)
+               z[i] ~ to_submodel(child())
+           end
+           return z
+       end;
+
+julia> m = condition(parent(), @varname(z[1].x) => 1.0, @of(z = of(Array, 3)));
+
+julia> conditioned(m)[@varname(z[1].x)]
+1.0
 ```
 """
 AbstractPPL.condition(model::Model, inputs...; kwargs...) =
@@ -700,6 +715,13 @@ function _finish_binding(model, table, offered_template)
         _record_binding_template(result, offered_template)
     end
 end
+"""
+    model::Model | values
+
+Condition `model` on `values`, as in [`condition`](@ref). Accept a NamedTuple,
+VarNamedTuple, pair or tuple of binding inputs. Use `condition` directly when
+supplying a storage template.
+"""
 function Base.:|(model::Model, values::Union{NamedTuple,VarNamedTuple,Pair,Tuple})
     any(value -> value isa Type{<:AbstractPPL.OfNamedTuple}, _binding_inputs(values)) &&
         throw(ArgumentError("Binding templates require an explicit condition or fix call"))

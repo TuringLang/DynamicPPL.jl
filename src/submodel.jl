@@ -45,11 +45,10 @@ themselves to the left-hand side.
 Conceptually, `to_submodel(model)` is a `returned_value(model)` wrapper: its value is the
 model's return value, not its latent variables.
 
-Submodels cannot observe through arguments. Replace
-`a ~ to_submodel(inner(y, x))` with
-`a ~ to_submodel(condition(inner(missing, x), (y=y,)))` when `y` is observed.
-Use `condition` to retain its likelihood term; `fix` omits that term.
+Submodels cannot observe through arguments. Use [`condition`](@ref) to supply
+observations and retain their likelihood; [`fix`](@ref) omits that term.
 The model called directly by the user can still observe through its arguments.
+See [Migration to model-owned bindings](@ref) for migration instructions.
 
 `Submodel` is not a `Distribution`; it provides this tilde behavior but no standalone
 `logpdf` method.
