@@ -4,6 +4,7 @@ Once you have defined a DynamicPPL model, let's say,
 
 ```@example 1
 using DynamicPPL, Distributions
+using DynamicPPL: @vnt
 
 @model function f()
     x ~ Normal()

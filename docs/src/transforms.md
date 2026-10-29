@@ -11,6 +11,7 @@ Consider the following model:
 
 ```@example 1
 using DynamicPPL, Distributions
+using DynamicPPL: @vnt
 
 @model function f()
     x ~ LogNormal()

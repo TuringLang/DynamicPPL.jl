@@ -7,6 +7,7 @@ This poses a challenge to DynamicPPL: how can we 'translate' between a model, e.
 
 ```@example 1
 using DynamicPPL, Distributions
+using DynamicPPL: @vnt
 
 @model function f()
     x ~ Normal()
