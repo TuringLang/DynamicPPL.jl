@@ -24,7 +24,7 @@ Added `evaluate!!(model, context, vi)` to evaluate with an explicit leaf context
 
 `decondition(m, names...)` / `unfix(m, names...)`: local removal → removal from the model and its submodels, including bare calls. See [binding migration](docs/src/conditionfix.md#migration-to-model-owned-bindings).
 
-Submodel observations: `to_submodel(inner(y, x))` → `to_submodel(condition(inner(missing, x), (y=y,)))`. See [binding migration](docs/src/conditionfix.md#migration-to-model-owned-bindings).
+Submodel observations: `to_submodel(inner(y, x))` → `to_submodel(condition(inner(missing, x), (y=y,)))` for fully observed data; partly missing arrays require observed-index bindings and a storage template. See [binding migration](docs/src/conditionfix.md#migration-to-model-owned-bindings).
 
 Conditioning/fixing contexts are removed: context inspection → `conditioned(model)` / `fixed(model)` and the public binding functions. See [binding migration](docs/src/conditionfix.md#migration-to-model-owned-bindings).
 

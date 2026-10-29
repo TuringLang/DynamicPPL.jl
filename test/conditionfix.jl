@@ -10252,4 +10252,61 @@ end
     end
 end
 
+@testset "templates replace missing argument storage" begin
+    @model function templated_argument(y)
+        for i in eachindex(y)
+            y[i] ~ Normal()
+        end
+        return y
+    end
+    @model template_child(child) = a ~ to_submodel(child)
+    @model template_middle(child) = b ~ to_submodel(child)
+    for bind in (condition, fix), dims in ((2,), (1, 2))
+        schema = @of(y = of(Array, dims...))
+        child = bind(templated_argument(missing), @varname(y[1]) => 1.0, schema)
+        inherited = bind(
+            template_child(templated_argument(missing)),
+            @varname(a.y[1]) => 1.0,
+            @of(a = @of(y = of(Array, dims...)))
+        )
+        nested = bind(
+            template_child(template_middle(templated_argument(missing))),
+            @varname(a.b.y[1]) => 1.0,
+            @of(a = @of(b = @of(y = of(Array, dims...))))
+        )
+        for model in (
+            child,
+            template_child(child),
+            template_child(template_middle(child)),
+            inherited,
+            nested,
+        )
+            result = model(Xoshiro(1))
+            @test size(result) == dims
+            @test vec(result) == [1.0, rand(Xoshiro(1), Normal())]
+            params = rand(Xoshiro(2), model)
+            @test length(params) == 1
+            @test logprior(model, params) ≈ logpdf(Normal(), only(values(params)))
+            @test loglikelihood(model, params) ≈
+                (bind === condition ? logpdf(Normal(), 1.0) : 0.0)
+            ldf = LogDensityFunction(model)
+            logdensity(x) = LogDensityProblems.logdensity(ldf, x)
+            @test ForwardDiff.gradient(logdensity, [0.4]) ≈ [-0.4]
+        end
+        @test_throws r"whole `missing` storage" bind(
+            templated_argument(missing), @varname(y[1]) => 1.0
+        )
+        @test_throws r"whole `nothing` storage" bind(
+            templated_argument(nothing), @varname(y[1]) => 1.0, schema
+        )
+        concrete = decondition(templated_argument(zeros(3)))
+        result = bind(concrete, @varname(y[1]) => 1.0, schema)(Xoshiro(1))
+        @test size(result) == (3,)
+        @test result[1] == 1.0
+        @test_throws r"template must be the last positional argument" bind(
+            templated_argument(missing), schema, @varname(y[1]) => 1.0
+        )
+    end
+end
+
 end
