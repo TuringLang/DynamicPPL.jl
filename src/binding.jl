@@ -1066,6 +1066,96 @@ function ResolvedBindings(; arguments=VarNamedTuple(), roots=())
         vcat(VarName[roots...], collect(keys(arguments))),
     )
 end
+
+_binding_state(value, argument) = (typeof(value), value)
+_binding_state(value::ModelValue{R}, argument) where {R} = (R, value.value)
+_binding_state(::NoModelBinding, argument) = nothing
+function _binding_state(tree::ModelValueTree, argument)
+    return (
+        ModelValueTree,
+        tree.template,
+        _inherits_shape(tree),
+        tree.observed,
+        _binding_state(tree.values, tree.template),
+    )
+end
+function _binding_state(values::VarNamedTuples.PartialArray, argument)
+    if !_inherits_shape(values.mask) &&
+        argument isa AbstractArray &&
+        axes(values) == axes(argument) &&
+        !any(values.mask)
+        return nothing
+    end
+    owner = if values.mask isa ModelBindingArray
+        template = values.mask.template
+        storage =
+            argument isa AbstractArray ? (typeof(template), axes(template)) : template
+        (storage, values.mask.observed)
+    else
+        nothing
+    end
+    entries = map(CartesianIndices(values.mask)) do i
+        values.mask[i] || return nothing
+        value = values.data[i]
+        child = if value isa VarNamedTuples.ArrayLikeBlock
+            argument
+        elseif argument isa AbstractArray &&
+            checkbounds(Bool, argument, i) &&
+            isassigned(argument, i)
+            argument[i]
+        else
+            NoTemplate()
+        end
+        _binding_state(value, child)
+    end
+    return (VarNamedTuples.PartialArray, axes(values), owner, entries)
+end
+function _binding_state(value::VarNamedTuples.ArrayLikeBlock, argument)
+    child =
+        if argument isa AbstractArray &&
+            checkbounds(Bool, argument, value.ix...; value.kw...)
+            Base.maybeview(argument, value.ix...; value.kw...)
+        else
+            NoTemplate()
+        end
+    return (
+        VarNamedTuples.ArrayLikeBlock,
+        value.ix,
+        value.kw,
+        _binding_state(value.block, child),
+    )
+end
+@generated function _binding_state(values::VarNamedTuple{names}, argument) where {names}
+    ordered = Tuple(sort(collect(names)))
+    return :(_binding_field_state(values.data, argument, Val{$ordered}()))
+end
+_binding_field_state(values, argument, ::Val{()}) = (;)
+function _binding_field_state(values, argument, ::Val{names}) where {names}
+    name = first(names)
+    original = argument isa VarNamedTuple ? argument.data : argument
+    child = original isa NamedTuple ? get(original, name, NoTemplate()) : NoTemplate()
+    state = _binding_state(values[name], child)
+    rest = _binding_field_state(values, argument, Val(Base.tail(names)))
+    return state === nothing ? rest : merge(NamedTuple{(name,)}((state,)), rest)
+end
+function _binding_state(table::ResolvedBindings)
+    # Binding nodes retain evaluation geometry; storage also holds editing-only shapes.
+    return (
+        _binding_state(table.values, table.arguments),
+        _binding_state(table.observed_templates, NoTemplate()),
+        _binding_state(table.fixed_templates, NoTemplate()),
+    )
+end
+function Base.:(==)(a::ResolvedBindings, b::ResolvedBindings)
+    return isequal(a, b)
+end
+function Base.isequal(a::ResolvedBindings, b::ResolvedBindings)
+    return isequal(_binding_state(a), _binding_state(b))
+end
+function Base.hash(table::ResolvedBindings, h::UInt)
+    return hash(_binding_state(table), hash(:ResolvedBindings, h))
+end
+
 function _missing_binding_storage(address=nothing; operation="bind")
     target = address === nothing ? "" : " `$address`"
     throw(

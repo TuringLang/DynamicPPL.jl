@@ -5,7 +5,7 @@ using Dates: now
 __now__ = now()
 
 using AbstractMCMC: AbstractMCMC
-using AbstractPPL: AbstractPPL
+using AbstractPPL: AbstractPPL, @of, of
 using Distributions
 using DynamicPPL
 using LinearAlgebra: I, Cholesky
@@ -827,6 +827,109 @@ DynamicPPL.convert_model_argument(T, ::Type{CustomModelArgument}) = (:converted_
         model = sample_nt(d)
         @test model() isa NamedTuple
     end
+end
+
+@testset "model binding state equality" begin
+    @model g(y, mu) = (y ~ Normal(mu); y)
+    c = condition(g(missing, 0.0); y=1.0)
+    @test (c == c) === true
+    @test (g(missing, 0.0) == g(missing, 0.0)) === true
+    @model scalar_state(x=nothing) = (x ~ Normal(); x)
+    @model array_state(x) = (x ~ MvNormal(zeros(length(x)), I); x)
+    @model tuple_state(x) = (x.a ~ Normal(); x.b ~ Normal(); x)
+    @model default_state(; x=[1.0]) = x
+    @model child_state() = a ~ to_submodel(scalar_state())
+    @model body_state(bind) = (
+        z ~ Normal(); a ~ to_submodel(bind(scalar_state(); x=7.0)); (z=z, a=a)
+    )
+    same(a, b) = (a == b, isequal(a, b), hash(a) == hash(b))
+    @test same(array_state([1.0]), array_state([1.0])) == (true, true, true)
+    @test same(scalar_state(NaN), scalar_state(NaN)) == (true, true, true)
+    @test scalar_state(0.0) != scalar_state(-0.0)
+    @test !isequal(scalar_state(0.0), scalar_state(-0.0))
+    @test !isequal(scalar_state(), scalar_state(1.0))
+    @test (scalar_state(missing) == scalar_state(missing)) === true
+    @test isequal(scalar_state(missing), scalar_state(missing))
+    @test same(default_state(), default_state()) == (true, true, true)
+    @test default_state(; x=[1.0]) != default_state(; x=[2.0])
+    @test scalar_state() != default_state()
+    @test scalar_state() != prefix(scalar_state(), @varname(a))
+    for (bind, remove, listing) in
+        ((condition, decondition, conditioned), (fix, unfix, fixed))
+        for (original, address, value) in (
+                (scalar_state(), @varname(x), 2.0),
+                (array_state(zeros(2)), @varname(x), ones(2)),
+                (tuple_state((a=0.0, b=0.0)), @varname(x), (a=1.0, b=2.0)),
+                (child_state(), @varname(a.x), 2.0),
+                (array_state(zeros(2)), @varname(x[1]), 1.0),
+                (tuple_state((a=0.0, b=0.0)), @varname(x.a), 1.0),
+            ),
+            names in ((), (address,))
+
+            original = decondition(original)
+            m = remove(original, names...)
+            m1 = bind(m, address => value)
+            cleared = remove(m1, names...)
+            @test same(cleared, m) == (true, true, true)
+            @test same(bind(cleared, listing(m1)), m1) == (true, true, true)
+        end
+        original = body_state(bind)
+        bound = bind(original; z=3.0)
+        cleared = remove(bound)
+        rebuilt = bind(cleared, listing(bound))
+        @test cleared != original
+        @test !isequal(cleared, original)
+        @test rebuilt != bound
+        @test !isequal(rebuilt, bound)
+        @test bound(Xoshiro(1)).a == 7.0
+        @test rebuilt(Xoshiro(1)).a != 7.0
+        original = decondition(array_state(zeros(2)))
+        bound = bind(original; x=ones(3))
+        cleared = remove(bound, @varname(x[1]), @varname(x[2]), @varname(x[3]))
+        @test cleared != original
+        @test !isequal(cleared, original)
+        @test length(original(Xoshiro(1))) == 2
+        @test length(cleared(Xoshiro(1))) == 3
+        marked_original = DynamicPPL._reconstruct_model(
+            original;
+            observation_removals=cleared.observation_removals,
+            fixed_removals=cleared.fixed_removals,
+        )
+        @test cleared != marked_original
+        @test !isequal(cleared, marked_original)
+        other = remove(
+            bind(original; x=fill(2.0, 3)), @varname(x[1]), @varname(x[2]), @varname(x[3])
+        )
+        @test cleared(Xoshiro(1)) == other(Xoshiro(1))
+        @test same(cleared, other) == (true, true, true)
+        @test same(remove(bound), remove(bound)) == (true, true, true)
+        @test same(remove(bind(scalar_state(); x=1.0)), remove(scalar_state())) ==
+            (true, true, true)
+        @test bind(scalar_state(); x=1.0) != bind(scalar_state(); x=2.0)
+        @test !isequal(bind(scalar_state(); x=1.0), bind(scalar_state(); x=2.0))
+        @test bind(scalar_state(); x=[1.0]) == bind(scalar_state(); x=[1.0])
+        @test hash(bind(scalar_state(); x=[1.0])) == hash(bind(scalar_state(); x=[1.0]))
+        a = bind(child_state(), @varname(a.x) => 1.0, @of(a = (x=of(Float64),)))
+        b = bind(child_state(), @varname(a.x) => 1.0f0, @of(a = (x=of(Float32),)))
+        @test typeof(a(Xoshiro(1))) != typeof(b(Xoshiro(1)))
+        @test a != b
+        @test !isequal(a, b)
+    end
+    @test condition(scalar_state(); x=1.0) != fix(scalar_state(); x=1.0)
+    @test decondition(scalar_state()) != unfix(scalar_state())
+    @test same(
+        decondition(body_state(condition), @varname(z), @varname(a)),
+        decondition(body_state(condition), @varname(a), @varname(z)),
+    ) == (true, true, true)
+    @test same(
+        condition(body_state(condition), @varname(z) => 1.0, @varname(a.x) => 2.0),
+        condition(body_state(condition), @varname(a.x) => 2.0, @varname(z) => 1.0),
+    ) == (true, true, true)
+    m = condition(array_state(zeros(2)); x=ones(2))
+    n = condition(array_state(zeros(2)); x=ones(2))
+    @test @inferred(m == n)
+    @test @inferred(isequal(m, n))
+    @test @inferred(hash(m)) == hash(n)
 end
 
 @info "Completed $(@__FILE__) in $(now() - __now__)."

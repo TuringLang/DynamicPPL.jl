@@ -198,6 +198,24 @@ struct Model{
     end
 end
 
+_removal_state(::Tuple{}) = ()
+_removal_state(markers::Tuple) = Set(map(r -> r.name, markers))
+
+function _model_state(model::Model)
+    return (
+        model.f,
+        model.args,
+        model.defaults,
+        model.context,
+        model.values,
+        _removal_state(model.observation_removals),
+        _removal_state(model.fixed_removals),
+    )
+end
+Base.:(==)(a::Model, b::Model) = isequal(a, b)
+Base.isequal(a::Model, b::Model) = isequal(_model_state(a), _model_state(b))
+Base.hash(model::Model, h::UInt) = hash(_model_state(model), hash(:Model, h))
+
 function _binding_metadata(
     ::Model{F,A,D,Ta,Td,C,V,Threaded,ArgsOnLHS}
 ) where {F,A,D,Ta,Td,C,V,Threaded,ArgsOnLHS}
