@@ -1760,7 +1760,7 @@ end
     for remove in (decondition, unfix)
         m = remove(skipped_removal_parent(false), @varname(a.x))
         @test m(Xoshiro(1)) == :ok
-        @test_logs (:warn, r"removal") match_mode = :any DynamicPPL.DebugUtils.check_model(
+        @test_logs (:warn, r"Removal") match_mode = :any DynamicPPL.DebugUtils.check_model(
             m
         )
         m = remove(skipped_removal_parent(true), @varname(a.x))
@@ -1772,7 +1772,7 @@ end
     for remove in (decondition, unfix), name in (@varname(a.a.x), @varname(a.a.absent))
         m = remove(nested_outer(nested_outer(namespace_leaf())), name)
         @test keys(rand(Xoshiro(1), m)) == [@varname(a.a.x)]
-        @test_logs (:warn, r"Recursive removal.*unused") DynamicPPL.DebugUtils.check_model(
+        @test_logs (:warn, r"Removal.*unused") DynamicPPL.DebugUtils.check_model(
             Xoshiro(1), m
         )
     end
@@ -2088,7 +2088,7 @@ end
             [@varname(y)]
     end
     @model dormant(run) = (run && (y ~ Normal()); x ~ Normal())
-    @test_logs (:warn, r"removal.*y.*unused") check_model(
+    @test_logs (:warn, r"Removal.*y.*unused") check_model(
         Xoshiro(1), decondition(dormant(false), @varname(y))
     )
 end

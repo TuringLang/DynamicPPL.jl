@@ -117,7 +117,7 @@ function _register_removals!(ctx::BindingCheckContext, model)
                 get!(
                     ctx.removals,
                     marker.token,
-                    "Recursive removal of $layer at `$name` is unused by any reached model.",
+                    "Removal of $layer at `$name` is unused by any reached model.",
                 )
                 marker.matched && push!(ctx.used_removals, marker.token)
             end
@@ -148,7 +148,7 @@ function _warn_unused_binding_names(model, ctx::BindingCheckContext)
     end
     for name in keys(DynamicPPL._submodel_values(model, nothing).data)
         if name ∉ names
-            @warn "Binding `$name` has no LHS top symbol in this model or any reached unprefixed submodel. It may be unused; an unprefixed submodel in an untaken branch could still use it."
+            @warn "Binding `$name` has no LHS top symbol in this model or any reached submodel. It may be unused; a submodel in an untaken branch could still use it."
         end
     end
     return nothing
