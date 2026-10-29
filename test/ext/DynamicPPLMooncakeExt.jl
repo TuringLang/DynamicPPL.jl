@@ -708,16 +708,16 @@ Base.isequal(value::Float64, other::ConvertibleBindingReal) = isequal(value, oth
     @test gradient ≈ [-0.6]
 end
 
-@testset "deferred runtime bindings" begin
-    @model deferred_leaves() = (x ~ Normal(); y ~ Normal())
-    @model deferred_middle() = b ~ to_submodel(deferred_leaves())
-    @model deferred_parent() = a ~ to_submodel(deferred_middle())
-    @model function deferred_runtime()
+@testset "child runtime bindings" begin
+    @model child_binding_leaves() = (x ~ Normal(); y ~ Normal())
+    @model child_binding_middle() = b ~ to_submodel(child_binding_leaves())
+    @model child_binding_parent() = a ~ to_submodel(child_binding_middle())
+    @model function child_binding_runtime()
         m ~ Normal()
-        z ~ to_submodel(condition(deferred_parent(); a=(b=(x=m, y=1.0),)))
+        z ~ to_submodel(condition(child_binding_parent(); a=(b=(x=m, y=1.0),)))
         return m
     end
-    ldf = LogDensityFunction(deferred_runtime(); adtype=AutoMooncake())
+    ldf = LogDensityFunction(child_binding_runtime(); adtype=AutoMooncake())
     density, gradient = LogDensityProblems.logdensity_and_gradient(ldf, [0.3])
     @test density ≈ 2logpdf(Normal(), 0.3) + logpdf(Normal(), 1.0)
     @test gradient ≈ [-0.6]

@@ -568,4 +568,31 @@ end
     end
 end
 
+@testset "repeated binding diagnostics preserve stored values" begin
+    @model function diagnostic_child()
+        x = zeros(2)
+        x[1] ~ Normal()
+        return x
+    end
+    @model diagnostic_parent() = a ~ to_submodel(diagnostic_child())
+    for bind in (condition, fix), threaded in (false, true)
+        model = bind(
+            setthreadsafe(diagnostic_parent(), threaded),
+            @varname(a.x[2]) => 2.0,
+            @of(a = @of(x = of(Array, 2))),
+        )
+        # Model equality omits editing-only storage; compare every stored field.
+        stored_fields(table) = map(name -> getfield(table, name), fieldnames(typeof(table)))
+        before = deepcopy(stored_fields(model.values))
+        for _ in 1:2
+            @test_logs (:warn, r"Partial binding `a.x\[2\]`.*not read") @test check_model(
+                Xoshiro(1), model
+            )
+            @test isequal(stored_fields(model.values), before)
+        end
+        @test_logs model(Xoshiro(1))
+        @test isequal(stored_fields(model.values), before)
+    end
+end
+
 end # module
