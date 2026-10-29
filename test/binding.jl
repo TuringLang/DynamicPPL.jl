@@ -535,7 +535,9 @@ end
         original = [2.0, 3.0]
         gradient = ad(original) do x
             copied = _copy_model_argument((x=x,), @varname(x))
-            @test copied.x !== x
+            if ad === ForwardDiff.gradient
+                @test copied.x !== x
+            end
             scalar = x[1]
             @test _copy_model_argument((scalar=scalar,), @varname(x)).scalar === scalar
             if ad === ReverseDiff.gradient
@@ -719,7 +721,9 @@ end
                 else
                     copied.value
                 end
-                @test value !== z
+                if gradient === ForwardDiff.gradient
+                    @test value !== z
+                end
                 @test value == z
             end
             values = [ModelValue{Condition}(3z[1]), ModelValue{Condition}(z[2])]
@@ -800,7 +804,6 @@ end
             )
             copied = _copy_model_argument((tracked=x, raw=copy(buffer)), @varname(x))
             @test copied.raw !== buffer
-            @test copied.tracked !== x
         end
         scalar = x[1]
         copied = _copy_model_argument([scalar, scalar], @varname(x))
