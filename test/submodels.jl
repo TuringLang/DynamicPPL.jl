@@ -86,9 +86,9 @@ end
     return x[1][1]
 end
 
-@model deferred_leaves() = (x ~ Normal(); y ~ Normal(); (x=x, y=y))
-@model deferred_structure() = (b ~ product_distribution((x=Normal(), y=Normal())); b)
-@model deferred_array_leaves() = (x = zeros(2); x[1] ~ Normal(); x[2] ~ Normal(); x)
+@model child_binding_leaves() = (x ~ Normal(); y ~ Normal(); (x=x, y=y))
+@model child_binding_structure() = (b ~ product_distribution((x=Normal(), y=Normal())); b)
+@model child_binding_array_leaves() = (x = zeros(2); x[1] ~ Normal(); x[2] ~ Normal(); x)
 @model scalar_z() = z ~ Normal()
 @model outer_model(m) = b ~ to_submodel(m)
 @model template_parent(child) = outer ~ to_submodel(child)
@@ -174,7 +174,7 @@ end
 function namespace_density_allocations(ldf, params)
     return @allocated LogDensityProblems.logdensity(ldf, params)
 end
-@testset "deferred namespace density allocations" begin
+@testset "child namespace density allocations" begin
     model = condition(
         body_namespace_parent(),
         VarNamedTuple((a=VarNamedTuple((b=VarNamedTuple((y=1.0,)),)),)),
@@ -223,20 +223,20 @@ end
     @test fix(sibling_namespaces(nested_mid()); a=(b=(u=1.0,),))() == (u=1.0,)
 end
 
-@model deferred_mid() = b ~ to_submodel(deferred_leaves())
-@model deferred_parent() = a ~ to_submodel(deferred_mid())
-@model deferred_structured_parent() = a ~ to_submodel(deferred_structure())
+@model child_binding_mid() = b ~ to_submodel(child_binding_leaves())
+@model child_binding_parent() = a ~ to_submodel(child_binding_mid())
+@model child_binding_structured_parent() = a ~ to_submodel(child_binding_structure())
 @testset "child namespace bindings merge and replace fields" begin
     for (bind, remove, list) in ((condition, decondition, conditioned), (fix, unfix, fixed))
         m = bind(
-            deferred_parent(),
+            child_binding_parent(),
             VarNamedTuple((a=VarNamedTuple((b=VarNamedTuple((x=1.0,)),)),)),
         )
         @test @varname(a.b.x) in keys(list(m))
         @test bind(m; a=(b=(y=2.0,),))() == (x=1.0, y=2.0)
         @test bind(
             bind(
-                deferred_parent(),
+                child_binding_parent(),
                 VarNamedTuple((a=VarNamedTuple((b=VarNamedTuple((x=1.0,)),)),)),
             );
             a=(b=(y=2.0,),),
@@ -246,7 +246,7 @@ end
         )() == (x=3.0, y=2.0)
         @test bind(remove(m, @varname(a.b)), @varname(a.b.y) => 2.0)(Xoshiro(1)).y == 2.0
         s = bind(
-            deferred_structured_parent(),
+            child_binding_structured_parent(),
             VarNamedTuple((a=VarNamedTuple((b=(x=1.0, y=2.0),)),)),
         )
         @test bind(s, @varname(a.b) => (x=3.0, y=4.0))() == (x=3.0, y=4.0)
@@ -255,21 +255,22 @@ end
             @test bind(remove(s, @varname(a.b)), @varname(a.b) => (x=3.0,))() == (x=3.0,)
         @test bind(s, @varname(a.b.x) => 3.0)() == (x=3.0, y=2.0)
         @test_throws ArgumentError bind(
-            deferred_parent(), @varname(a.b) => (x=1.0,), @varname(a.b.x) => 2.0
+            child_binding_parent(), @varname(a.b) => (x=1.0,), @varname(a.b.x) => 2.0
         )
     end
     @test condition(
-        deferred_parent(),
+        child_binding_parent(),
         VarNamedTuple((a=VarNamedTuple((b=VarNamedTuple((x=1.0,)),)),)),
         @varname(a.b.y) => 2.0,
     )() == (x=1.0, y=2.0)
     @test condition(
-        deferred_parent(),
+        child_binding_parent(),
         @varname(a.b.x) => 1.0,
         VarNamedTuple((a=VarNamedTuple((b=VarNamedTuple((y=2.0,)),)),)),
     )() == (x=1.0, y=2.0)
     m = condition(
-        deferred_parent(), VarNamedTuple((a=VarNamedTuple((b=VarNamedTuple((x=1.0,)),)),))
+        child_binding_parent(),
+        VarNamedTuple((a=VarNamedTuple((b=VarNamedTuple((x=1.0,)),)),)),
     )
     @test fix(m, @varname(a.b.y) => 2.0)() == (x=1.0, y=2.0)
     @test_throws ArgumentError fix(m, @varname(a.b.x) => 2.0)
@@ -277,56 +278,57 @@ end
         decondition(m, @varname(a.b.x)), @varname(a.b.x) => 3.0, @varname(a.b.y) => 2.0
     )() == (x=3.0, y=2.0)
 end
-@testset "deferred listing round trips" begin
+@testset "child listing round trips" begin
     for (bind, listing) in ((condition, conditioned), (fix, fixed))
         m = bind(
             bind(
-                deferred_parent(),
+                child_binding_parent(),
                 VarNamedTuple((a=VarNamedTuple((b=VarNamedTuple((x=1.0,)),)),)),
             );
             a=(b=(y=2.0,),),
         )
         @test collect(keys(listing(m))) == [@varname(a.b.x), @varname(a.b.y)]
-        @test bind(deferred_parent(), listing(m))() == (x=1.0, y=2.0)
+        @test bind(child_binding_parent(), listing(m))() == (x=1.0, y=2.0)
         m = bind(
             bind(
-                deferred_structured_parent(),
+                child_binding_structured_parent(),
                 VarNamedTuple((a=VarNamedTuple((b=(x=1.0, y=2.0),)),)),
             );
             a=(b=(x=3.0, y=4.0),),
         )
-        @test bind(deferred_structured_parent(), listing(m))() == (x=3.0, y=4.0)
+        @test bind(child_binding_structured_parent(), listing(m))() == (x=3.0, y=4.0)
     end
 end
-@testset "deferred removal listing changes role" begin
+@testset "child removal listing changes role" begin
     m = decondition(
         condition(
-            deferred_parent(),
+            child_binding_parent(),
             VarNamedTuple((a=VarNamedTuple((b=VarNamedTuple((x=1.0, y=2.0)),)),)),
         ),
         @varname(a.b.x)
     )
-    rebound = fix(deferred_parent(), conditioned(m))
+    rebound = fix(child_binding_parent(), conditioned(m))
     @test rebound(Xoshiro(1)).y == 2.0
     @test rebound(Xoshiro(1)).x != 1.0
 end
 
-@model deferred_array_struct() = (
+@model child_binding_array_struct() = (
     q = (x=zeros(2),); q.x[1] ~ Normal(); q.x[2] ~ Normal(); q
 )
-@model deferred_array_parent() = a ~ to_submodel(deferred_array_struct())
-@model deferred_array_middle() = b ~ to_submodel(deferred_array_leaves())
-@model deferred_arrays_parent() = a ~ to_submodel(deferred_array_middle())
-@testset "deferred array storage" begin
+@model child_binding_array_parent() = a ~ to_submodel(child_binding_array_struct())
+@model child_binding_array_middle() = b ~ to_submodel(child_binding_array_leaves())
+@model child_binding_arrays_parent() = a ~ to_submodel(child_binding_array_middle())
+@testset "child array storage" begin
     for (bind, remove) in ((condition, decondition), (fix, unfix))
         m = bind(
-            deferred_array_parent(), VarNamedTuple((a=VarNamedTuple((q=(x=[1.0, 2.0],),)),))
+            child_binding_array_parent(),
+            VarNamedTuple((a=VarNamedTuple((q=(x=[1.0, 2.0],),)),)),
         )
         @test bind(m, @varname(a.q.x[2]) => 3.0)() == (x=[1.0, 3.0],)
         @test bind(m, @varname(a.q.x[:]) => [3.0, 4.0])() == (x=[3.0, 4.0],)
         @test_throws ArgumentError bind(m, @varname(a.q.x) => ones(3))
         m = bind(
-            deferred_arrays_parent(),
+            child_binding_arrays_parent(),
             VarNamedTuple((a=VarNamedTuple((b=VarNamedTuple((x=[1.0, 2.0],)),)),)),
         )
         @test bind(m, @varname(a.b.x[2]) => 3.0)() == [1.0, 3.0]
@@ -357,13 +359,13 @@ end
     end
 end
 
-@model owned_mid() = b ~ to_submodel(deferred_leaves())
+@model owned_mid() = b ~ to_submodel(child_binding_leaves())
 @model owned_unprefixed() = r ~ to_submodel(condition(owned_mid(), @varname(b.x) => 5.0))
 @model owned_outer() = a ~ to_submodel(owned_unprefixed())
-@model owned_deep_mid() = b ~ to_submodel(condition(deferred_leaves(); x=5.0))
+@model owned_deep_mid() = b ~ to_submodel(condition(child_binding_leaves(); x=5.0))
 @model owned_deep_unprefixed() = r ~ to_submodel(owned_deep_mid())
 @model owned_deep_outer() = a ~ to_submodel(owned_deep_unprefixed())
-@testset "deferred bindings preserve child ownership" begin
+@testset "child bindings preserve child ownership" begin
     for bind in (condition, fix)
         late_bound = bind(owned_unprefixed(); r=(b=(x=1.0,),))
         @test_throws r"already bound" late_bound()
@@ -375,7 +377,7 @@ end
     end
 end
 
-@model listing_mid() = b ~ to_submodel(deferred_leaves())
+@model listing_mid() = b ~ to_submodel(child_binding_leaves())
 @model listing_outer() = a ~ to_submodel(listing_mid())
 @testset "listings merge successive child namespace bindings" begin
     for (bind, remove, list) in ((condition, decondition, conditioned), (fix, unfix, fixed))
@@ -395,7 +397,7 @@ end
         @test Dict(pairs(L)) == Dict(@varname(a.b.x) => 1.0, @varname(a.b.y) => 2.0)
         @test merge(VarNamedTuple((z=3.0,)), L)[@varname(a.b)] ==
             VarNamedTuple((x=1.0, y=2.0))
-        @test !occursin("Deferred", repr(L)) && !occursin("pending", repr(L))
+        @test startswith(repr(L), "VarNamedTuple")
         @test bind(listing_outer(), L)() == (x=1.0, y=2.0)
         @test list(bind(m; a=(b=(x=3.0,),)))[@varname(a.b)] == VarNamedTuple((x=3.0, y=2.0))
         removed = list(remove(m, @varname(a.b.x)))
@@ -404,9 +406,11 @@ end
     end
 end
 
-@model argument_mid() = b ~ to_submodel(deferred_leaves())
+@model argument_mid() = b ~ to_submodel(child_binding_leaves())
 @model argument_body() = a ~ to_submodel(argument_mid())
-@model argument_siblings(m) = (a ~ to_submodel(deferred_structure()); c ~ to_submodel(m); a)
+@model argument_siblings(m) = (
+    a ~ to_submodel(child_binding_structure()); c ~ to_submodel(m); a
+)
 @testset "argument child listings" begin
     for (bind, list) in ((condition, conditioned), (fix, fixed))
         @test collect(keys(list(bind(nested_outer(argument_mid()); a=(b=(x=1.0,),))))) ==
@@ -424,7 +428,7 @@ end
             nested_outer(prefix(argument_mid(), @varname(q.r))); a=(q=(r=(b=(x=1.0,),),),)
         )
         @test collect(pairs(listing(model))) == [@varname(a.q.r.b.x) => 1.0]
-        parent = nested_outer(prefix(deferred_structure(), :b))
+        parent = nested_outer(prefix(child_binding_structure(), :b))
         model = bind(parent; a=(b=(b=(x=1.0, y=2.0),),))
         @test collect(pairs(listing(model))) == [@varname(a.b.b) => (x=1.0, y=2.0)]
         @test bind(parent, listing(model))() == (x=1.0, y=2.0)
@@ -448,7 +452,7 @@ end
 @testset "indexed argument child listings" begin
     for (bind, listing) in ((condition, conditioned), (fix, fixed))
         model = bind(
-            indexed_argument_child(deferred_leaves()),
+            indexed_argument_child(child_binding_leaves()),
             @varname(a[1].x) => 1.0,
             @of(a = of(Array, 2))
         )
@@ -1412,11 +1416,11 @@ end
             prefixed_name = DynamicPPL.maybe_prefix(name, @varname(p))
             @test prefixed_name in
                 keys(rand(Xoshiro(1), remove(prefix(model, @varname(p)), prefixed_name)))
-            deferred = remove(
+            removed = remove(
                 removal_wrapper(model), DynamicPPL.maybe_prefix(name, @varname(b))
             )
             @test DynamicPPL.maybe_prefix(name, @varname(b)) in
-                keys(rand(Xoshiro(1), deferred))
+                keys(rand(Xoshiro(1), removed))
             if !isempty(templates)
                 @test_throws "without storage" bind(model, name => 2.0)
             end
@@ -2105,7 +2109,7 @@ end
 
 @testset "dynamic removal addresses" begin
     @model fields(p) = (p.a[1] ~ Normal(); p.a[2] ~ Normal(); p.a)
-    @model parent() = a ~ to_submodel(deferred_array_leaves())
+    @model parent() = a ~ to_submodel(child_binding_array_leaves())
     for (bind, remove) in ((condition, decondition), (fix, unfix))
         original = bind(decondition(fields((a=[1.0, 2.0],))); p=(a=[1.0, 2.0],))
         changed = remove(original, @varname(p.a[end]))
