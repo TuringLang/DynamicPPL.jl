@@ -8332,19 +8332,9 @@ end
             m = remove(m, VarName{:x}(DynamicPPL.AbstractPPL.Index((i,), (;))))
         end
         @test length(m(Xoshiro(1))) == 3
+        @test_throws ArgumentError other(m; x=ones(4))
         if bind === condition
-            err = try
-                other(m; x=ones(4))
-                nothing
-            catch e
-                e
-            end
-            @test err isa ArgumentError
-            err isa ArgumentError && (@test occursin("`x`", err.msg) &&
-                occursin("decondition", err.msg) &&
-                occursin("unfix", err.msg))
-        else
-            @test_throws ArgumentError other(m; x=ones(4))
+            @test_throws r"(?=.*`x`)(?=.*decondition)(?=.*unfix)" other(m; x=ones(4))
         end
     end
     l = condition(masked_local(), @varname(z[1]) => 1.0, @of(z = of(Array, 3)))
@@ -8362,15 +8352,8 @@ end
     z2_template = @of(z = of(Array, 2))
     t = condition(tl_model(2), @varname(z) => ones(2), z2_template)
     for c in (decondition(t, @varname(z)), decondition(t))
-        err = try
-            condition(c; z=ones(3))
-            nothing
-        catch e
-            e
-        end
-        @test err isa ArgumentError
-        err isa ArgumentError &&
-            @test occursin("`z`", err.msg) && occursin("template", err.msg)
+        @test_throws ArgumentError condition(c; z=ones(3))
+        @test_throws r"(?=.*`z`)(?=.*template)" condition(c; z=ones(3))
         @test_throws r"Bound value at `z`.*supply a new template with the value" fix(
             c; z=ones(3)
         )

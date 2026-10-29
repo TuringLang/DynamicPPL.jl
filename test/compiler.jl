@@ -841,16 +841,14 @@ end
             bind in (condition, fix)
 
             source = bind === fix ? decondition(model) : model
-            err = try
-                bind(source; x=[1])()
-            catch err
-                err
-            end
-            @test err isa ArgumentError
-            @test occursin(name, sprint(showerror, err))
-            @test occursin("`x`", sprint(showerror, err))
-            @test occursin("Vector{Float64}", sprint(showerror, err))
-            @test occursin(string(Vector{Int}), sprint(showerror, err))
+            @test_throws ArgumentError bind(source; x=[1])()
+            @test_throws name bind(source; x=[1])()
+            @test_throws "`x`" bind(source; x=[1])()
+            @test_throws "Vector{Float64}" bind(source; x=[1])()
+            @test_throws string(Vector{Int}) bind(source; x=[1])()
+            @test_throws Regex(
+                "(?=.*$name)(?=.*`x`)(?=.*\\QVector{Float64}\\E)(?=.*\\Q$(Vector{Int})\\E)"
+            ) bind(source; x=[1])()
             @test bind(source; x=[1.0])() == [1.0]
         end
         @model function body_methoderror(x)
