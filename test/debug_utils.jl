@@ -445,7 +445,7 @@ end
     end
     for (bind, remove) in ((condition, decondition), (fix, unfix))
         parent = condition(decondition(branch(true), @varname(a.x)), @varname(a.x) => 2.0)
-        @test_logs (:warn, r"Recursive removal.*a.typo.*unused") check_model(
+        @test_logs (:warn, r"Removal.*a.typo.*unused") check_model(
             Xoshiro(1), remove(parent, @varname(a.typo))
         )
         @test_logs check_model(
@@ -453,15 +453,13 @@ end
         )
     end
     unused = decondition(branch(false), @varname(a.x))
-    @test_logs (:warn, r"Recursive removal.*a.x.*unused") check_model(Xoshiro(1), unused)
+    @test_logs (:warn, r"Removal.*a.x.*unused") check_model(Xoshiro(1), unused)
     @test_logs check_model(Xoshiro(1), decondition(branch(true), @varname(a.x)))
-    @test_logs (:warn, r"Recursive removal.*p.a.x.*unused") check_model(
+    @test_logs (:warn, r"Removal.*p.a.x.*unused") check_model(
         Xoshiro(1), prefix(unused, @varname(p))
     )
     @model outer(m) = b ~ to_submodel(m)
-    @test_logs (:warn, r"Recursive removal.*a.x.*unused") check_model(
-        Xoshiro(1), outer(unused)
-    )
+    @test_logs (:warn, r"Removal.*a.x.*unused") check_model(Xoshiro(1), outer(unused))
     @test_logs check_model(Xoshiro(1), outer(decondition(branch(true), @varname(a.x))))
 end
 
