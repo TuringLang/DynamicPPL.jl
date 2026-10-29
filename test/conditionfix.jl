@@ -59,7 +59,6 @@ end
 @model first_nested_element(x) = (x[1][1] ~ Normal(); x)
 @model first_field_element(x) = (x.a[1] ~ Normal(); x)
 @model scalar_model(x) = x ~ Normal()
-@model scalar_latent() = x ~ Normal()
 @model mv_observation(x) = x ~ MvNormal(zeros(2), I)
 @model mv_latent() = x ~ MvNormal(zeros(2), I)
 @model child_model(child) = a ~ to_submodel(child)
@@ -145,7 +144,6 @@ end
 @model nested_elements(x) = (x[1][1] ~ Normal(); x[1][2] ~ Normal(); x)
 @model nested_covariate(x) = (x[1][1] ~ Normal(); 0.0 ~ Normal(x[1][1]))
 
-@model argument_child(child) = a ~ to_submodel(child)
 @model argument_child_m(m) = a ~ to_submodel(m)
 @model retained_key_parent(child) = s ~ to_submodel(child)
 @model chained_mask_parent() = a ~ to_submodel(decondition(two_elements(zeros(2))))
@@ -172,6 +170,12 @@ end
     end
     return x
 end
+
+@model template_outer() = a ~ to_submodel(local_y_pair())
+@model address_child() = y ~ Normal()
+@model growable_first() = (x = zeros(2, 2); x[1, 1] ~ Normal(); x)
+@model storage_whole() = a ~ to_submodel(storage_structured())
+@model storage_xy() = (x ~ Normal(); y ~ Normal(); (x=x, y=y))
 
 @testset "sample binding templates" begin
     @model function template_vector(x=zeros(2))
@@ -248,13 +252,12 @@ end
 @testset "deferred templates live with bindings" begin
     a_y3_template = @of(a = @of(y = of(Array, 3)))
     b_a_y2_template = @of(b = @of(a = @of(y = of(Array, 2))))
-    @model template_table_parent() = a ~ to_submodel(local_y_pair())
     @model template_table_nested(child) = b ~ to_submodel(child)
 
     for bind in (condition, fix)
         remove = bind === condition ? decondition : unfix
         model = bind(
-            template_table_parent(),
+            template_outer(),
             @varname(a.y[1]) => 1.0,
             @of(a = @of(y = of(Array, 2)), unused = of(Array, 4)),
         )
@@ -278,9 +281,7 @@ end
         owned = bind(model, @varname(a.y) => [3.0, 4.0])
         @test owned(Xoshiro(1)) == [3.0, 4.0]
         child = bind(
-            template_table_parent(),
-            @varname(a.y[1]) => 1.0,
-            @of(a = @of(y = of(Array, Int, 2)))
+            template_outer(), @varname(a.y[1]) => 1.0, @of(a = @of(y = of(Array, Int, 2)))
         )
         nested = template_table_nested(child)
         late_bound = bind(nested, @varname(b.a.y) => [0.5, 1.5])
@@ -1108,9 +1109,9 @@ end
             absent in (missing, nothing)
 
             @test_throws "Cannot bind `x` to a value containing `missing` or `nothing`; bindings cannot hold placeholders. To make it latent, leave it unbound or use `$remove(model, @varname(x))`." bind(
-                scalar_latent(); x=absent
+                normal_local(); x=absent
             )
-            @test bind(scalar_latent(); x=1.0)(Xoshiro(1)) == 1.0
+            @test bind(normal_local(); x=1.0)(Xoshiro(1)) == 1.0
         end
     end
 
@@ -1656,7 +1657,7 @@ end
                 model = fix(assigned_local_shape(2, multivariate); x=ones(n))
                 @test_throws r"ArgumentError: .*x.*static size and shape" model(Xoshiro(1))
                 nested = fix(
-                    argument_child(assigned_local_shape(2, multivariate)),
+                    child_model(assigned_local_shape(2, multivariate)),
                     @varname(a.x) => ones(n),
                 )
                 @test_throws r"ArgumentError: .*x.*static size and shape" nested(Xoshiro(1))
@@ -1997,14 +1998,14 @@ end
     @testset "removal of valid addresses is idempotent" begin
         @model outer_arg() = a ~ to_submodel(condition(normal_default(missing); x=1.0))
         for (bind, remove) in ((condition, unfix), (fix, decondition))
-            @test remove(bind(scalar_latent(); x=1.0), @varname(x))(Xoshiro(1)) == 1.0
-            @test keys(rand(Xoshiro(1), remove(scalar_latent(), @varname(x)))) ==
+            @test remove(bind(normal_local(); x=1.0), @varname(x))(Xoshiro(1)) == 1.0
+            @test keys(rand(Xoshiro(1), remove(normal_local(), @varname(x)))) ==
                 [@varname(x)]
             @test_throws r"ArgumentError: .*`unknown`" remove(
-                scalar_latent(), @varname(unknown)
+                normal_local(), @varname(unknown)
             )
-            @test isempty(keys(conditioned(remove(scalar_latent()))))
-            @test isempty(keys(fixed(remove(scalar_latent()))))
+            @test isempty(keys(conditioned(remove(normal_local()))))
+            @test isempty(keys(fixed(remove(normal_local()))))
         end
         for data in ([1.0, 2.0],),
             (bind, remove, select) in
@@ -2276,7 +2277,7 @@ end
 
     @testset "later bindings replace values within their layer" begin
         for first_op in (condition, fix), last_op in (condition, fix)
-            initial = first_op(scalar_latent(); x=1.0)
+            initial = first_op(normal_local(); x=1.0)
             if first_op !== last_op
                 @test_throws r"already bound" last_op(initial; x=2.0)
                 initial = (first_op === condition ? decondition : unfix)(
@@ -2688,7 +2689,7 @@ end
 
     @testset "invalid bindings below scalar values" begin
         @model scalar_lhs(a) = a ~ Normal()
-        @model scalar_return(a) = a ~ to_submodel(scalar_latent())
+        @model scalar_return(a) = a ~ to_submodel(normal_local())
         for bind in (condition, fix)
             @test_throws r"ArgumentError: .*`a`.*decondition" bind(
                 scalar_lhs(1.0), @varname(a[1]) => 2.0
@@ -3014,11 +3015,10 @@ end
             x[1] ~ Normal()
             return (T, x)
         end
-        @model nested_observation(m) = a ~ to_submodel(m)
         for op in (condition, fix), T in (Float32, BigFloat)
             nested = op(
                 decondition(
-                    nested_observation(condition(typed_observation([0.0]); x=[0.0])),
+                    argument_child_m(condition(typed_observation([0.0]); x=[0.0])),
                     @varname(a.x)
                 ),
                 @varname(a.x) => T[2],
@@ -3231,7 +3231,7 @@ end
         end
 
         for inner_op in (condition, fix)
-            inner_model = inner_op(scalar_latent(); x=1.0)
+            inner_model = inner_op(normal_local(); x=1.0)
             @test outer(inner_model)() == 1.0
             for outer_op in (condition, fix)
                 transformed = outer_op(outer(inner_model), @varname(a.x) => 2.0)
@@ -3342,7 +3342,7 @@ end
 end
 
 @testset "binding input forms" begin
-    @test (@inferred condition(scalar_latent(); x=2.0))(Xoshiro(1)) == 2.0
+    @test (@inferred condition(normal_local(); x=2.0))(Xoshiro(1)) == 2.0
     @test_throws MethodError two_elements(zeros(2)) | Dict(@varname(x) => [2.0, 3.0])
     @test (two_elements(zeros(2)) | (; x=[2.0, 3.0]))(Xoshiro(1)) == [2.0, 3.0]
     for bind in (condition, fix)
@@ -3364,9 +3364,7 @@ end
 
 @testset "binding addresses are checked at construction" begin
     @model address_model(x, n=1) = (x[1] ~ Normal(n); false && (branch ~ Normal()); x)
-    @model address_child() = y ~ Normal()
     @model address_parent() = a ~ to_submodel(address_child())
-    @model address_unprefixed() = a ~ to_submodel(address_child())
     @model address_truncated() = x ~ truncated(Normal(); lower=0)
     @model address_filldist() = x ~ filldist(Normal(), 2)
     @model address_runtime(rhs) = x ~ rhs
@@ -3396,8 +3394,8 @@ end
         @test bind(address_parent(), @varname(a.y) => 2.0)(Xoshiro(1)) == 2.0
         late_bound = bind(address_parent(), @varname(a.z) => 2.0)
         @test_throws ArgumentError late_bound(Xoshiro(1))
-        @test bind(address_unprefixed(); a=(y=2.0,))(Xoshiro(1)) == 2.0
-        @test_throws ArgumentError bind(address_unprefixed(); z=2.0)
+        @test bind(address_parent(); a=(y=2.0,))(Xoshiro(1)) == 2.0
+        @test_throws ArgumentError bind(address_parent(); z=2.0)
     end
 end
 
@@ -3414,7 +3412,7 @@ end
         @test bind(bind === fix ? decondition(scalar_model(1.0)) : scalar_model(1.0); x=2)(
             Xoshiro(1)
         ) === 2
-        @test bind(bind(scalar_latent(); x=1.0); x=2)(Xoshiro(1)) === 2
+        @test bind(bind(normal_local(); x=1.0); x=2)(Xoshiro(1)) === 2
         @test_throws ArgumentError bind(
             if bind === fix
                 decondition(field_return((a=0.0f0,)), @varname(p.a))
@@ -3784,7 +3782,6 @@ end
 @testset "child binding indices use layer storage" begin
     template = @of(z = @of(y = of(Array, 2)))
     @model indexed_parent() = z ~ to_submodel(local_y_pair())
-    @model unprefixed_indexed_parent() = z ~ to_submodel(local_y_pair())
     @model function indexed_argument_child(y=zeros(3))
         y[1] ~ Normal()
         y[2] ~ Normal()
@@ -3806,7 +3803,7 @@ end
 
         @test decondition(q, @varname(z.y[end]))(Xoshiro(1)) == q(Xoshiro(1))
 
-        unprefixed = bind(unprefixed_indexed_parent(), @varname(z.y[1]) => 1.0, template)
+        unprefixed = bind(indexed_parent(), @varname(z.y[1]) => 1.0, template)
         argument = bind(
             decondition(indexed_argument_parent(), @varname(z.y[1])),
             @varname(z.y[1]) => 1.0,
@@ -4798,7 +4795,6 @@ end
     )
     @model growable_slice() = (x = zeros(2, 1); x[1:2, 1] ~ MvNormal(zeros(2), I); x)
     @model growable_argument(x) = (x[2, 1] ~ Normal(); x)
-    @model growable_first() = (x = zeros(2, 2); x[1, 1] ~ Normal(); x)
     @model growable_colon() = (x = zeros(2, 1); x[:, 1] ~ MvNormal(zeros(2), I); x)
     @model growable_cube() = (x = zeros(2, 2, 2); x[1, 2, 1] ~ Normal(); x)
     mismatch(owner, example, lhs, stored, used; cartesian=true) = ArgumentError(
@@ -8104,11 +8100,11 @@ end
     for (bind, remove, selected) in
         ((condition, decondition, conditioned), (fix, unfix, fixed))
         cleared = decondition(condition(replaced_child(zeros(3)); x=zeros(2)))
-        reached = bind(argument_child(cleared), @varname(a.x) => ones(3))(Xoshiro(1))
-        late_bound = bind(argument_child(reached), @varname(a.a.x) => ones(3))
+        reached = bind(child_model(cleared), @varname(a.x) => ones(3))(Xoshiro(1))
+        late_bound = bind(child_model(reached), @varname(a.a.x) => ones(3))
         @test_throws ArgumentError late_bound(Xoshiro(1))
         reused = bind(
-            remove(argument_child(reached), @varname(a.a.x)), @varname(a.a.x) => ones(3)
+            remove(child_model(reached), @varname(a.a.x)), @varname(a.a.x) => ones(3)
         )
         @test reused(Xoshiro(1)) isa Model
         child = bind(retained_parent(), @varname(a.x) => ones(2))(Xoshiro(1))
@@ -8192,7 +8188,7 @@ end
             m, @varname(p[1].x) => 2.0, @of(p = of(Array, 3, 2))
         )
         nested = bind(
-            argument_child(m), @varname(a.p[1].x) => 2.0, @of(a = @of(p = of(Array, 3, 2)))
+            child_model(m), @varname(a.p[1].x) => 2.0, @of(a = @of(p = of(Array, 3, 2)))
         )
         @test_throws r"namespace root `p`.*rebuild" nested(Xoshiro(1))
         pending = remove(shared_shape_removal_parent((2, 2)), @varname(p[3].x))
@@ -8217,7 +8213,7 @@ end
     )
         @test check(
             condition(
-                argument_child(child),
+                child_model(child),
                 @varname(a.x[1]) => input,
                 @of(a = @of(x = of(Array, 2)))
             )(
@@ -8441,7 +8437,7 @@ end
 
 @testset "ancestor templates check held storage" begin
     for bind in (condition, fix)
-        whole = bind(argument_child(local_y_pair()), @varname(a.y) => ones(2))
+        whole = bind(child_model(local_y_pair()), @varname(a.y) => ones(2))
         @test_throws r"Bound value at `a.y` has incompatible template shape" bind(
             whole, @varname(a.y[2]) => 2.0, @of(a = @of(y = of(Array, 3)))
         )
@@ -8459,7 +8455,7 @@ end
         )
         @test bind(child, @varname(q.a[2]) => 2.0)() == (a=[1.0, 2.0], b=0.0)
         @test bind(
-            argument_child(child),
+            child_model(child),
             @varname(a.q.a[2]) => 2.0,
             @of(a = @of(q = @of(a = of(Array, 2))))
         )() == (a=[1.0, 2.0], b=0.0)
@@ -9002,7 +8998,7 @@ end
             @varname(x[1]) => 2.0,
         )
         before = deepcopy(listed(child))
-        parent = decondition(argument_child(child), @varname(a.x[2]))
+        parent = decondition(child_model(child), @varname(a.x[2]))
         reached = bind(parent, @varname(a.x[2]) => 3.0, @of(a = @of(x = of(Array, 2))))(
             Xoshiro(1)
         )
@@ -9582,8 +9578,7 @@ end
                 Xoshiro(1)
             )
             nested = condition(
-                argument_child(observed_local_shape(2, multivariate)),
-                @varname(a.x) => ones(n),
+                child_model(observed_local_shape(2, multivariate)), @varname(a.x) => ones(n)
             )
             @test_throws r"ArgumentError: Observed LHS variable `.*x.*static size and shape" nested(
                 Xoshiro(1)
@@ -9600,9 +9595,7 @@ end
             whole = condition(observed_local_shape(n, multivariate); x=ones(bound))
             edited = condition(whole, @varname(x[1]) => 2.0)
             @test_throws r"Observed.*static size and shape" edited(Xoshiro(1))
-            @test_throws r"Observed.*static size and shape" argument_child(edited)(
-                Xoshiro(1)
-            )
+            @test_throws r"Observed.*static size and shape" child_model(edited)(Xoshiro(1))
         end
     end
     whole = condition(observed_local_shape(2, false); x=ones(3))
@@ -9662,7 +9655,7 @@ end
     child = condition(local_y_pair(), @varname(y[1]) => 1.0, @of(y = of(Array, 2)))
     for (input, template) in
         ((2.0, @of(a = @of(y = of(Array, 3)))), (2, @of(a = @of(y = of(Array, Int, 2)))))
-        stored = condition(argument_child(child), @varname(a.y[2]) => input, template)
+        stored = condition(child_model(child), @varname(a.y[2]) => input, template)
         @test_throws r"Binding template at `a.y` conflicts with existing storage" stored()
     end
 end
@@ -9691,7 +9684,6 @@ struct UndeclaredVectorSizeDistribution <: ContinuousMultivariateDistribution en
     @test_throws MethodError late_bound()
 end
 
-@model template_outer() = a ~ to_submodel(local_y_pair())
 @testset "ancestor template replacement" begin
     a_y3_template = @of(a = @of(y = of(Array, 3)))
     for (bind, remove) in ((condition, decondition), (fix, unfix))
@@ -9862,7 +9854,6 @@ end
     end
 end
 
-@model storage_whole() = a ~ to_submodel(storage_structured())
 @testset "deferred shape release and early conflict" begin
     for (bind, remove) in ((condition, decondition), (fix, unfix))
         m = bind(
@@ -9917,7 +9908,6 @@ end
     end
 end
 
-@model storage_xy() = (x ~ Normal(); y ~ Normal(); (x=x, y=y))
 @model storage_namespace() = b ~ to_submodel(storage_xy())
 @model function storage_branch(flag, m, k)
     return flag ? (r ~ to_submodel(m)) : (s ~ to_submodel(k))
@@ -9936,15 +9926,14 @@ end
 end
 
 @testset "complete deferred listings after partial edits" begin
-    @model complete_parent() = a ~ to_submodel(storage_structured())
     for (bind, remove, list) in ((condition, decondition, conditioned), (fix, unfix, fixed))
         initial = bind(
-            complete_parent(), VarNamedTuple((a=VarNamedTuple((b=(x=1.0, y=2.0),)),))
+            storage_whole(), VarNamedTuple((a=VarNamedTuple((b=(x=1.0, y=2.0),)),))
         )
         for m in (initial, remove(initial, @varname(a.b.x)))
             m = bind(m, @varname(a.b.x) => 5.0)
             @test collect(pairs(list(m))) == [@varname(a.b) => (x=5.0, y=2.0)]
-            @test bind(complete_parent(), list(m))(Xoshiro(1)) == (x=5.0, y=2.0)
+            @test bind(storage_whole(), list(m))(Xoshiro(1)) == (x=5.0, y=2.0)
         end
     end
 end
@@ -9974,9 +9963,8 @@ end
 end
 
 @testset "deferred scalar rejects indexed writes" begin
-    @model scalar_parent() = a ~ to_submodel(storage_structured())
     for bind in (condition, fix)
-        m = bind(scalar_parent(), @varname(a.b) => (x=1.0,))
+        m = bind(storage_whole(), @varname(a.b) => (x=1.0,))
         @test_throws ArgumentError bind(m, @varname(a.b.x[1]) => 2.0)(Xoshiro(1))
     end
 end
@@ -9992,8 +9980,7 @@ end
 @model audit_leaf() = (x = zeros(2); x[1] ~ Normal(); x[2] ~ Normal(); x)
 @model audit_parent(run=true) = (run ? (a ~ to_submodel(audit_leaf())) : nothing)
 @model audit_indexed() = (z = zeros(1); z[1] ~ to_submodel(audit_leaf()); z)
-@model audit_fields() = (x ~ Normal(); y ~ Normal(); (x=x, y=y))
-@model audit_middle() = b ~ to_submodel(audit_fields())
+@model audit_middle() = b ~ to_submodel(storage_xy())
 @model audit_root_parent() = a ~ to_submodel(audit_middle())
 @testset "explicit storage construction contract" begin
     @testset "reject child index without storage" begin
@@ -10086,9 +10073,8 @@ end
     @test_throws ArgumentError fixed_first(Xoshiro(1))
 end
 
-@model audit_record() = b ~ product_distribution((x=Normal(), y=Normal()))
 @model audit_runtime_root(namespace) =
-    a ~ to_submodel(namespace ? audit_middle() : audit_record())
+    a ~ to_submodel(namespace ? audit_middle() : storage_structured())
 @model audit_boolean_parent(flag) = a ~ to_submodel(audit_leaf(), flag)
 @model audit_default_parent() = a ~ to_submodel(audit_leaf())
 @testset "binding construction boundary coverage" begin
@@ -10170,12 +10156,10 @@ end
         end
         return x
     end
-    @model storage_leaf() = x ~ Normal()
-    @model storage_child(m) = a ~ to_submodel(m)
     @model function storage_children(dims)
         z = zeros(dims)
         for i in CartesianIndices(z)
-            z[Tuple(i)...] ~ to_submodel(storage_leaf())
+            z[Tuple(i)...] ~ to_submodel(normal_local())
         end
         return z
     end
@@ -10189,7 +10173,7 @@ end
             ),
             (storage_vector(3), @varname(x[end]), n -> @of(x = of(Array, n)), 3),
             (
-                storage_child(storage_vector(3)),
+                argument_child_m(storage_vector(3)),
                 @varname(a.x[end]),
                 n -> @of(a = @of(x = of(Array, n))),
                 3,
@@ -10210,7 +10194,6 @@ end
 end
 
 @testset "recursive removal index counts" begin
-    @model removal_leaf() = x ~ Normal()
     @model function removal_children(child)
         z = zeros(2, 2)
         for i in 1:2, j in 1:2
@@ -10219,7 +10202,7 @@ end
         return z
     end
     for (bind, remove) in ((condition, decondition), (fix, unfix))
-        m = removal_children(bind(removal_leaf(); x=1.0))
+        m = removal_children(bind(normal_local(); x=1.0))
         for name in (@varname(z[3]), @varname(z[3].x))
             removed = remove(m, name)
             @test_throws ArgumentError removed(Xoshiro(1))
@@ -10245,17 +10228,14 @@ end
 end
 
 @testset "child binding diagnostics use parent addresses" begin
-    @model diagnostic_leaf() = y ~ Normal()
-    @model diagnostic_array() = (x = zeros(2, 2); x[1, 1] ~ Normal(); x)
-    @model diagnostic_parent(child) = a ~ to_submodel(child)
     for bind in (condition, fix)
-        child = bind(diagnostic_leaf(); y=1.0)
-        same = bind(diagnostic_parent(child), @varname(a.y) => 2.0)
+        child = bind(address_child(); y=1.0)
+        same = bind(child_model(child), @varname(a.y) => 2.0)
         @test_throws r"a.y.*another model" same(Xoshiro(1))
         other_bind = bind === condition ? fix : condition
-        other = other_bind(diagnostic_parent(child), @varname(a.y) => 2.0)
+        other = other_bind(child_model(child), @varname(a.y) => 2.0)
         @test_throws r"a.y.*the other role" other(Xoshiro(1))
-        parent = diagnostic_parent(bind(diagnostic_array(); x=ones(2, 2)))
+        parent = child_model(bind(growable_first(); x=ones(2, 2)))
         remove = bind === condition ? decondition : unfix
         removed = remove(parent, @varname(a.x[5]))
         @test_throws r"a.x\[5\]" removed(Xoshiro(1))
