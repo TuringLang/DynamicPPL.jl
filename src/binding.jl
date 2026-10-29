@@ -1094,15 +1094,20 @@ function _binding_state(values::VarNamedTuples.PartialArray, argument)
     else
         nothing
     end
+    child_argument = if argument isa AbstractArray && axes(values) == axes(argument)
+        argument
+    else
+        NoTemplate()
+    end
     entries = map(CartesianIndices(values.mask)) do i
         values.mask[i] || return nothing
         value = values.data[i]
         child = if value isa VarNamedTuples.ArrayLikeBlock
-            argument
-        elseif argument isa AbstractArray &&
-            checkbounds(Bool, argument, i) &&
-            isassigned(argument, i)
-            argument[i]
+            child_argument
+        elseif child_argument isa AbstractArray &&
+            checkbounds(Bool, child_argument, i) &&
+            isassigned(child_argument, i)
+            child_argument[i]
         else
             NoTemplate()
         end

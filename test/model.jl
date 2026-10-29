@@ -915,6 +915,19 @@ end
         @test a != b
         @test !isequal(a, b)
     end
+    @model nested_state(x) = (x[1][1] ~ Normal(); x[1][2])
+    original = decondition(nested_state([zeros(2)]))
+    for n in (1, 2)
+        a = decondition(
+            condition(original; x=[[1.0, 2.0], [3.0, 4.0]][1:n]), @varname(x[1][2])
+        )
+        b = decondition(
+            condition(original; x=[[1.0, 7.0], [3.0, 4.0]][1:n]), @varname(x[1][2])
+        )
+        @test same(a, b) == (n == 1, n == 1, n == 1)
+        @test a(Xoshiro(1)) == (n == 1 ? 0.0 : 2.0)
+        @test b(Xoshiro(1)) == (n == 1 ? 0.0 : 7.0)
+    end
     @test condition(scalar_state(); x=1.0) != fix(scalar_state(); x=1.0)
     @test decondition(scalar_state()) != unfix(scalar_state())
     @test same(
