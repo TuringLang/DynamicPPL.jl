@@ -268,15 +268,7 @@ end
     observations = _submodel_removals(Condition, parent_model, local_prefix)
     fixed = _submodel_removals(Fix, parent_model, local_prefix)
     return _tilde_assume_submodel!!(
-        parent_model,
-        context,
-        submodel,
-        left_vn,
-        template,
-        vi,
-        local_prefix,
-        observations,
-        fixed,
+        parent_model, context, submodel, left_vn, template, vi, observations, fixed
     )
 end
 @inline function _tilde_assume_submodel!!(
@@ -286,11 +278,12 @@ end
     left_vn,
     template,
     vi,
-    local_prefix,
     observation_removals,
     fixed_removals,
 )
     child = submodel.model
+    # Derive prefixes locally to avoid Julia 1.10 widening recursive helper arguments.
+    local_prefix = maybe_prefix(_model_prefix(child), left_vn)
     inherited = _inherited_model_values(_submodel_values(parent_model, local_prefix))
     isempty(inherited.data) ||
         template isa NoTemplate ||
@@ -309,7 +302,6 @@ end
         left_vn,
         template,
         vi,
-        local_prefix,
         observation_removals,
         fixed_removals,
         inherited,
@@ -427,11 +419,11 @@ end
     left_vn,
     template,
     vi,
-    local_prefix,
     observation_removals,
     fixed_removals,
     inherited,
 )
+    local_prefix = maybe_prefix(_model_prefix(child), left_vn)
     prefix = maybe_prefix(local_prefix, _model_prefix(parent_model))
     _has_binding_role(ArgumentCondition, child.values.values) &&
         _submodel_argument_observation_error(child, prefix)
