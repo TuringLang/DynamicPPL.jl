@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Conditioning and fixing · DynamicPPL</title><meta name="title" content="Conditioning and fixing · DynamicPPL"/><meta property="og:title" content="Conditioning and fixing · DynamicPPL"/><meta property="twitter:title" content="Conditioning and fixing · DynamicPPL"/><meta name="description" content="Documentation for DynamicPPL."/><meta property="og:description" content="Documentation for DynamicPPL."/><meta property="twitter:description" content="Documentation for DynamicPPL."/><script data-outdated-warner src="../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.63.2/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL=".."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../assets/documenter.js"></script><script src="../search_index.js"></script><script src="../siteinfo.js"></script><script src="../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../assets/themeswap.js"></script></head><body>
+<!-- NAVBAR START -->
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Source+Sans+Pro&display=swap');
+
+    /* Documenter.jl CSS Overrides */
+    html {
+        scroll-padding-top: calc(var(--navbar-height) + 1rem);
+    }
+    .docs-sidebar, #documenter {
+        margin-top: var(--navbar-height);
+    }
+    .docs-version-selector {
+        margin-bottom: 60px !important;
+    }
+    @media screen and (max-width: 1056px) {
+        .docs-version-selector {
+            margin-bottom: 60px !important;
+        }
+        .docs-sidebar {
+            margin-top: 0 !important;
+        }
+    }
+    /* End of Documenter.jl Tweaks */
+
+    /* DocumenterVitepress integration:
+       Vitepress's default theme already exposes `--vp-layout-top-height` as
+       the hook for adding banner-style chrome above its own nav. Every
+       layout-sensitive component (`.VPNav` `top`, `.VPContent` `margin`,
+       `.VPSidebar` `top`, `.VPLocalNav` `padding-top`, `.VPDocAside` `top`
+       and TOC `padding-top`) is already authored to add this variable to
+       its own offset, so binding it to the TuringLang navbar height makes
+       Vitepress reflow itself correctly with zero further intervention.
+       (`:has(.VPNavBar)` scopes this to Vitepress builds; Documenter HTML
+       sites are untouched.) */
+    html:has(.VPNavBar) {
+        --vp-layout-top-height: var(--navbar-height);
+    }
+
+    /* When the rendered site is Vitepress (detected by .VPNavBar being in the
+       DOM), adopt Vitepress's design tokens so the TuringLang navbar tracks
+       the active theme (light/dark, brand colour, body font) and reads as one
+       piece of chrome with the Vitepress nav below it — rather than a stacked
+       second header with its own colour and typography. */
+    html:has(.VPNavBar) {
+        --primary-bg: var(--vp-c-bg);
+        --heading-color: var(--vp-c-text-1);
+        --item-color: var(--vp-c-text-2);
+        --icon-color: var(--vp-c-text-1);
+        --hover-color: var(--vp-c-brand-1);
+        --shadow-color: var(--vp-c-divider);
+        --dropdown-hover-bg: var(--vp-c-default-soft);
+        --font-family: var(--vp-font-family-base);
+    }
+    html:has(.VPNavBar) .ext-navigation {
+        box-shadow: none;
+        border-bottom: 1px solid var(--vp-c-divider);
+    }
+    /* End of DocumenterVitepress Tweaks */
+
+    /* Color and Font Variables */
+    :root {
+        --heading-color: #6c757d;
+        --item-color: rgb(165, 165, 165);
+        --primary-bg: white;
+        --hover-color: #8faad2;
+        --deprecated-bg: #ff4d4d;
+        --deprecated-text: white;
+        --icon-color: #6c757d;
+        --shadow-color: rgba(0, 0, 0, 0.1);
+        --dropdown-hover-bg: #e9ecef;
+        
+        /* Typography */
+        --font-family: "Source Sans Pro", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+        --nav-link-font-size: 1.0625rem;
+        --turing-title-font-size: 21.25px;
+        --icon-font-size: 1.25rem;
+        --dropdown-arrow-font-size: 0.6875rem;
+        --badge-font-size: 0.75rem;
+
+        /* Sizing and Spacing */
+        --navbar-height: 3.75rem;
+        --logo-height: 31px;
+        --logo-width: auto;
+        --logo-padding-top: 7px;
+        --logo-margin-left: 0.8rem;
+        --title-margin-left: 0.4px;
+        --title-nav-spacing: 1.1rem;
+        --nav-item-margin-left: 1.3rem;
+        --icon-margin-left: 1rem;
+        --dropdown-padding: 1.875rem;
+        --dropdown-item-width: 12.5rem;
+        --dropdown-subitem-width: 15.625rem;
+        --dropdown-subitem-padding: 0.125rem 0.625rem;
+    }
+
+    /* Dark Theme Variable Overrides */
+    html.theme--documenter-dark {
+        --heading-color: #e0e0e0;
+        --item-color: #bdbdbd;
+        --primary-bg: #1f2424;
+        --hover-color: #ffffff;
+        --icon-color: #e0e0e0;
+        --shadow-color: rgba(255, 255, 255, 0.1);
+        --dropdown-hover-bg: #424242;
+    }
+
+    /* Catppuccin Theme Overrides */
+    html.theme--catppuccin-latte {
+        --heading-color: #4c4f69;
+        --primary-bg: #eff1f5;
+        --icon-color: #4c4f69;
+        --shadow-color: rgba(0, 0, 0, 0.1);
+        --dropdown-hover-bg: #e6e9ef;
+    }
+    html.theme--catppuccin-frappe {
+        --heading-color: #c6d0f5;
+        --primary-bg: #303446;
+        --icon-color: #c6d0f5;
+        --shadow-color: rgba(255, 255, 255, 0.1);
+        --dropdown-hover-bg: #51576d;
+    }
+    html.theme--catppuccin-macchiato {
+        --heading-color: #cad3f5;
+        --primary-bg: #24273a;
+        --icon-color: #cad3f5;
+        --shadow-color: rgba(255, 255, 255, 0.1);
+        --dropdown-hover-bg: #494d64;
+    }
+    html.theme--catppuccin-mocha {
+        --heading-color: #cad3f5;
+        --primary-bg: #1e1e2e;
+        --icon-color: #cad3f5;
+        --shadow-color: rgba(255, 255, 255, 0.1);
+        --dropdown-hover-bg: #45475a;
+    }
+
+
+    /* Main Navigation Bar */
+    .ext-navigation {
+        font-family: var(--font-family);
+        position: fixed;
+        height: var(--navbar-height);
+        top: 0;
+        width: 100%;
+        background-color: var(--primary-bg);
+        z-index: 1000;
+        box-shadow: 0 2px 4px var(--shadow-color);
+        display: flex;
+        align-items: center;
+        padding: 0 1.0625rem;
+        transition: transform 0.3s, background-color 0.3s;
+    }
+
+    nav.ext-navigation .ext-navbar-logo {
+        margin-left: var(--logo-margin-left);
+        height: auto;
+        max-height: var(--logo-height);
+        width: auto;
+        padding-top: var(--logo-padding-top);
+    }
+    
+    /* Theme-aware logo text color */
+    .ext-navbar-logo .logo-text {
+        fill: var(--heading-color);
+    }
+    
+    .ext-navbar-title {
+        color: var(--heading-color) !important;
+        font-size: var(--turing-title-font-size) !important;
+        margin-left: var(--title-margin-left);
+        text-decoration: none;
+        transition: color 0.2s ease;
+    }
+    
+    .ext-navbar-title:hover {
+        color: var(--hover-color) !important;
+    }
+
+    .ext-nav-links {
+        display: flex;
+        align-items: center;
+        list-style-type: none;
+        margin: 0;
+        padding: 0;
+        flex-grow: 1;
+        margin-left: var(--title-nav-spacing);
+    }
+
+    .ext-nav-links li:first-child {
+        margin-left: 0 !important;
+    }
+
+    .ext-nav-links li {
+        margin-left: var(--nav-item-margin-left) !important;
+    }
+
+    .ext-nav-link {
+        color: var(--heading-color) !important;
+        text-decoration: none;
+        font-size: var(--nav-link-font-size) !important;
+        transition: color 0.2s ease;
+        cursor: pointer;
+    }
+
+    .ext-nav-link:hover,
+    .ext-navbar-item-single a:hover,
+    .ext-navbar-icons a:hover {
+        color: var(--hover-color) !important;
+    }
+
+    .ext-navbar-item-single a {
+        color: var(--heading-color) !important;
+    }
+    
+    .ext-navbar-icons {
+        display: flex;
+        align-items: center;
+    }
+
+    .ext-navbar-icons a {
+        color: var(--icon-color) !important;
+        font-size: var(--icon-font-size) !important;
+        transition: color 0.2s ease;
+        margin-left: var(--icon-margin-left);
+    }
+
+    .ext-menu-toggle {
+        display: none;
+        font-size: 1.5rem;
+        color: var(--heading-color);
+        cursor: pointer;
+    }
+
+    .ext-dropdown {
+        display: none;
+        grid-template-columns: 1fr 1fr 1fr 1fr;
+        padding: var(--dropdown-padding);
+        position: absolute;
+        top: var(--navbar-height);
+        width: 100%;
+        left: 0;
+        background-color: var(--primary-bg);
+        line-height: 1.875rem;
+        opacity: 0;
+        transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out, background-color 0.3s;
+        transform: translateY(-0.625rem);
+        box-shadow: 0 4px 6px var(--shadow-color);
+    }
+
+    #library-handler::after {
+        content: "▼";
+        font-size: var(--dropdown-arrow-font-size);
+        margin-left: 0.3125rem;
+        transition: transform 0.3s ease-in-out;
+    }
+
+    #library-handler.open::after {
+        content: "▲";
+    }
+
+    .ext-dropdown.show {
+        display: grid;
+        opacity: 1;
+        transform: translateY(0);
+    }
+
+    .ext-dropdown ul {
+        width: var(--dropdown-item-width);
+        margin-bottom: 1.25rem;
+    }
+
+    .ext-dropdown ul li {
+        text-align: left;
+        display: flex;
+        align-items: center;
+    }
+
+    .ext-dropdown ul a li {
+        color: var(--item-color);
+        width: var(--dropdown-subitem-width);
+        border-radius: 3px;
+        padding: var(--dropdown-subitem-padding);
+        transition: background-color 0.2s ease;
+    }
+
+    .ext-dropdown ul a li:hover {
+        background-color: var(--dropdown-hover-bg);
+    }
+
+    .ext-dropdown-item-heading {
+        color: var(--heading-color);
+        text-align: center;
+    }
+
+    .deprecated-badge {
+        background-color: var(--deprecated-bg);
+        color: var(--deprecated-text);
+        font-size: var(--badge-font-size);
+        padding: .1rem;
+        border-radius: 3px;
+        margin-left: 0.5rem;
+        line-height: 1;
+    }
+
+    @media (max-width: 966px) {
+        .ext-dropdown {
+            grid-template-columns: 1fr 1fr 1fr;
+        }
+    }
+
+    @media (max-width: 768px) {
+        .ext-nav-links {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            width: 100%;
+            background-color: var(--primary-bg);
+            position: absolute;
+            top: var(--navbar-height);
+            left: 0;
+            padding: 0.625rem 0;
+            height: auto;
+            overflow-y: auto;
+            box-shadow: 0 4px 6px var(--shadow-color);
+            margin-left: 0;
+        }
+
+        .ext-nav-links.show {
+            display: flex;
+        }
+
+        .ext-nav-links li {
+            margin: 0.625rem 0 !important;
+            text-align: center;
+        }
+        
+        .ext-menu-toggle {
+            display: block;
+            margin-left: auto;
+        }
+
+        .ext-navigation.hide {
+            transform: translateY(calc(-1 * var(--navbar-height)));
+        }
+
+        .ext-dropdown {
+            position: static;
+            display: block;
+            opacity: 1;
+            transform: none;
+            box-shadow: none;
+            grid-template-columns: 1fr;
+            padding: 0.625rem;
+            text-align: center;
+        }
+
+        .ext-dropdown ul {
+            width: auto;
+            display: inline-block;
+            margin: 0 auto 0.3125rem;
+            text-align: left;
+        }
+    }
+</style>
+<nav class="ext-navigation">
+    <a title="TuringLang" href="https://turinglang.org/">
+        <svg width="4333" height="1145" viewBox="0 0 4333 1145" fill="none" xmlns="http://www.w3.org/2000/svg" class="ext-navbar-logo">
+            <path class="logo-text" d="M0.44603 193.181V66.9868H663.471V193.181H406.62V898H257.297V193.181H0.44603ZM1097.24 635.874V274.74H1244.13V898H1101.7V787.225H1095.21C1081.14 822.121 1058.01 850.66 1025.82 872.842C993.902 895.024 954.542 906.115 907.744 906.115C866.896 906.115 830.783 897.053 799.403 878.929C768.295 860.534 743.948 833.889 726.365 798.993C708.782 763.826 699.99 721.356 699.99 671.581V274.74H846.878V648.858C846.878 688.353 857.699 719.733 879.34 742.997C900.981 766.261 929.385 777.893 964.551 777.893C986.192 777.893 1007.16 772.618 1027.45 762.068C1047.73 751.518 1064.37 735.828 1077.35 714.999C1090.61 693.899 1097.24 667.524 1097.24 635.874ZM1395.17 898V274.74H1537.6V378.617H1544.09C1555.45 342.639 1574.93 314.911 1602.52 295.434C1630.38 275.687 1662.17 265.813 1697.88 265.813C1705.99 265.813 1715.05 266.219 1725.06 267.031C1735.34 267.572 1743.86 268.518 1750.63 269.871V404.992C1744.4 402.828 1734.53 400.934 1721 399.311C1707.75 397.417 1694.9 396.471 1682.46 396.471C1655.68 396.471 1631.6 402.287 1610.23 413.919C1589.13 425.28 1572.49 441.105 1560.32 461.393C1548.15 481.682 1542.06 505.081 1542.06 531.591V898H1395.17ZM1848.21 898V274.74H1995.1V898H1848.21ZM1922.06 186.283C1898.8 186.283 1878.78 178.573 1862.01 163.154C1845.24 147.464 1836.85 128.664 1836.85 106.752C1836.85 84.5701 1845.24 65.7695 1862.01 50.3503C1878.78 34.6606 1898.8 26.8158 1922.06 26.8158C1945.6 26.8158 1965.61 34.6606 1982.12 50.3503C1998.89 65.7695 2007.27 84.5701 2007.27 106.752C2007.27 128.664 1998.89 147.464 1982.12 163.154C1965.61 178.573 1945.6 186.283 1922.06 186.283ZM2293.04 532.809V898H2146.15V274.74H2286.54V380.646H2293.85C2308.18 345.75 2331.04 318.022 2362.42 297.463C2394.07 276.904 2433.16 266.625 2479.69 266.625C2522.7 266.625 2560.17 275.822 2592.09 294.217C2624.28 312.612 2649.17 339.257 2666.75 374.153C2684.6 409.049 2693.39 451.385 2693.12 501.159V898H2546.24V523.882C2546.24 482.223 2535.41 449.626 2513.77 426.092C2492.4 402.557 2462.78 390.79 2424.91 390.79C2399.21 390.79 2376.35 396.471 2356.34 407.832C2336.59 418.923 2321.03 435.019 2309.67 456.119C2298.58 477.218 2293.04 502.782 2293.04 532.809ZM3113.5 1144.71C3060.75 1144.71 3015.44 1137.54 2977.57 1123.2C2939.7 1109.13 2909.26 1090.2 2886.27 1066.39C2863.28 1042.59 2847.32 1016.21 2838.39 987.269L2970.67 955.213C2976.62 967.386 2985.28 979.424 2996.64 991.327C3008 1003.5 3023.28 1013.51 3042.49 1021.35C3061.97 1029.47 3086.45 1033.53 3115.93 1033.53C3157.59 1033.53 3192.08 1023.38 3219.4 1003.09C3246.73 983.076 3260.39 950.074 3260.39 904.087V786.008H3253.08C3245.51 801.157 3234.42 816.711 3219.81 832.671C3205.47 848.632 3186.4 862.022 3162.6 872.842C3139.06 883.663 3109.44 889.073 3073.73 889.073C3025.85 889.073 2982.44 877.847 2943.48 855.394C2904.8 832.671 2873.96 798.857 2850.97 753.952C2828.24 708.777 2816.88 652.24 2816.88 584.341C2816.88 515.902 2828.24 458.147 2850.97 411.078C2873.96 363.739 2904.93 327.896 2943.89 303.55C2982.84 278.933 3026.26 266.625 3074.14 266.625C3110.66 266.625 3140.69 272.847 3164.22 285.29C3188.03 297.463 3206.96 312.206 3221.03 329.519C3235.09 346.561 3245.78 362.657 3253.08 377.805H3261.2V274.74H3406.06V908.144C3406.06 961.435 3393.34 1005.53 3367.92 1040.42C3342.49 1075.32 3307.73 1101.43 3263.63 1118.74C3219.54 1136.05 3169.5 1144.71 3113.5 1144.71ZM3114.72 773.835C3145.83 773.835 3172.34 766.261 3194.25 751.112C3216.16 735.963 3232.79 714.187 3244.16 685.783C3255.52 657.379 3261.2 623.295 3261.2 583.53C3261.2 544.305 3255.52 509.95 3244.16 480.465C3233.07 450.979 3216.56 428.12 3194.65 411.89C3173.01 395.389 3146.37 387.138 3114.72 387.138C3081.98 387.138 3054.66 395.659 3032.75 412.701C3010.84 429.744 2994.34 453.143 2983.25 482.899C2972.16 512.385 2966.61 545.929 2966.61 583.53C2966.61 621.672 2972.16 655.08 2983.25 683.754C2994.61 712.158 3011.25 734.34 3033.16 750.3C3055.34 765.99 3082.53 773.835 3114.72 773.835ZM3647.08 906.927C3622.47 906.927 3601.37 898.271 3583.78 880.958C3566.2 863.645 3557.54 842.545 3557.82 817.658C3557.54 793.312 3566.2 772.482 3583.78 755.17C3601.37 737.857 3622.47 729.2 3647.08 729.2C3670.89 729.2 3691.58 737.857 3709.17 755.17C3727.02 772.482 3736.08 793.312 3736.35 817.658C3736.08 834.159 3731.75 849.173 3723.37 862.698C3715.25 876.224 3704.43 887.044 3690.91 895.16C3677.65 903.004 3663.04 906.927 3647.08 906.927ZM3888.01 274.74H4034.9V933.708C4034.9 978.613 4026.38 1015.67 4009.33 1044.89C3992.29 1074.1 3967.67 1095.88 3935.48 1110.22C3903.29 1124.55 3864.2 1131.72 3818.22 1131.72C3812.81 1131.72 3807.8 1131.59 3803.2 1131.32C3798.6 1131.32 3793.6 1131.18 3788.19 1130.91V1011.21C3792.25 1011.48 3795.9 1011.62 3799.15 1011.62C3802.39 1011.89 3805.77 1012.02 3809.29 1012.02C3837.42 1012.02 3857.58 1005.12 3869.75 991.327C3881.92 977.801 3888.01 957.918 3888.01 931.679V274.74ZM3961.05 186.283C3937.51 186.283 3917.36 178.573 3900.59 163.154C3884.09 147.464 3875.84 128.664 3875.84 106.752C3875.84 84.5701 3884.09 65.7695 3900.59 50.3503C3917.36 34.6606 3937.51 26.8158 3961.05 26.8158C3984.31 26.8158 4004.19 34.6606 4020.7 50.3503C4037.47 65.7695 4045.85 84.5701 4045.85 106.752C4045.85 128.664 4037.47 147.464 4020.7 163.154C4004.19 178.573 3984.31 186.283 3961.05 186.283ZM4332.83 66.9868V898H4185.94V66.9868H4332.83Z" fill="currentColor"/>
+            <path d="M4076 108.5C4076 168.424 4027.42 217 3967.5 217C3907.58 217 3859 168.424 3859 108.5C3859 48.5762 3907.58 0 3967.5 0C4027.42 0 4076 48.5762 4076 108.5Z" fill="#389725"/>
+            <path d="M3755 814.5C3755 874.424 3706.42 923 3646.5 923C3586.58 923 3538 874.424 3538 814.5C3538 754.576 3586.58 706 3646.5 706C3706.42 706 3755 754.576 3755 814.5Z" fill="#9457B1"/>
+            <path d="M2030 108.5C2030 168.424 1981.42 217 1921.5 217C1861.58 217 1813 168.424 1813 108.5C1813 48.5762 1861.58 0 1921.5 0C1981.42 0 2030 48.5762 2030 108.5Z" fill="#CA3B33"/>
+        </svg>
+    </a>
+    <!-- <a class="ext-navbar-title" href="https://turinglang.org/">Turing.jl</a> -->
+    
+    <ul class="ext-nav-links">
+        <li><a class="ext-nav-link" href="https://turinglang.org/docs/getting-started/">Get Started</a></li>
+        <li><a class="ext-nav-link" href="https://turinglang.org/docs/tutorials/">Tutorials</a></li>
+        <li><a class="ext-nav-link" href="https://turinglang.org/docs/faq/">FAQ</a></li>
+        <li>
+            <p class="ext-nav-link" id="library-handler">Libraries</p>
+            <div class="ext-dropdown" id="ext-dropdown-items">
+                <ul>
+                    <li class="ext-dropdown-item-heading">Modelling Languages</li>
+                    <a href="https://turinglang.org/DynamicPPL.jl/"><li>DynamicPPL</li></a>
+                    <a href="https://turinglang.org/JuliaBUGS.jl/"><li>JuliaBUGS</li></a>
+                    <a href="https://turinglang.org/TuringGLM.jl/"><li>TuringGLM</li></a>
+                </ul>
+                <ul>
+                    <li class="ext-dropdown-item-heading">MCMC</li>
+                    <a href="https://turinglang.org/AdvancedHMC.jl/"><li>AdvancedHMC</li></a>
+                    <a href="https://turinglang.org/AbstractMCMC.jl/"><li>AbstractMCMC</li></a>
+                    <a href="https://github.com/theogf/ThermodynamicIntegration.jl"><li>ThermodynamicIntegration</li></a>
+                    <a href="https://turinglang.org/AdvancedPS.jl/"><li>AdvancedPS</li></a>
+                    <a href="https://turinglang.org/SliceSampling.jl/"><li>SliceSampling</li></a>
+                    <a href="https://turinglang.org/EllipticalSliceSampling.jl/"><li>EllipticalSliceSampling</li></a>
+                </ul>
+                <ul>
+                    <li class="ext-dropdown-item-heading">Diagnostics</li>
+                    <a href="https://turinglang.org/MCMCChains.jl/"><li>MCMCChains</li></a>
+                    <a href="https://turinglang.org/MCMCDiagnosticTools.jl/"><li>MCMCDiagnosticTools</li></a>
+                    <a href="https://chalk-lab.github.io/ParetoSmooth.jl/"><li>ParetoSmooth</li></a>
+                </ul>
+                <ul>
+                    <li class="ext-dropdown-item-heading">Gaussian Processes</li>
+                    <a href="https://juliagaussianprocesses.github.io/AbstractGPs.jl/"><li>AbstractGPs</li></a>
+                    <a href="https://juliagaussianprocesses.github.io/KernelFunctions.jl/"><li>KernelFunctions</li></a>
+                    <a href="https://juliagaussianprocesses.github.io/ApproximateGPs.jl/"><li>ApproximateGPs</li></a>
+                </ul>
+                <ul><li class="ext-dropdown-item-heading ext-navbar-item-single"><a href="https://turinglang.org/Bijectors.jl/">Bijectors</a></li></ul>
+                <ul><li class="ext-dropdown-item-heading ext-navbar-item-single"><a href="https://turinglang.org/TuringCallbacks.jl/">TuringCallbacks</a></li></ul>
+                <ul><li class="ext-dropdown-item-heading ext-navbar-item-single"><a href="https://turinglang.org/Deprecated/TuringBenchmarking/">TuringBenchmarking</a><span class="deprecated-badge">Deprecated</span></li></ul>
+            </div>
+        </li>
+        <li><a class="ext-nav-link" href="https://turinglang.org/news/">News</a></li>
+        <li><a class="ext-nav-link" href="https://turinglang.org/team/">Team</a></li>
+    </ul>
+
+    <div class="ext-navbar-icons">
+        <a href="https://x.com/TuringLang" aria-label="Turing on X"><i class="fa-brands fa-x-twitter"></i></a>
+        <a href="https://discourse.julialang.org/c/domain/probprog/48" aria-label="Turing on Discourse"><i class="fa-brands fa-discourse"></i></a>
+        <a href="https://julialang.slack.com/archives/CCYDC34A0" aria-label="Turing on Slack"><i class="fa-brands fa-slack"></i></a>
+        <a href="https://github.com/TuringLang/" aria-label="Turing.jl on GitHub"><i class="fa-brands fa-github"></i></a>
+    </div>
+
+    <span class="ext-menu-toggle"><i class="fa-solid fa-bars"></i></span>
+</nav>
+
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        const menuToggle = document.querySelector(".ext-menu-toggle");
+        const navLinks = document.querySelector(".ext-nav-links");
+        const nav = document.querySelector(".ext-navigation");
+        const libraryHandler = document.getElementById("library-handler");
+        const dropdownContainer = document.getElementById("ext-dropdown-items");
+        let lastScrollY = window.scrollY;
+
+        function closeDropdown() {
+            if (dropdownContainer.classList.contains("show")) {
+                libraryHandler.classList.remove("open");
+                dropdownContainer.classList.remove("show");
+                setTimeout(() => {
+                    if (!dropdownContainer.classList.contains("show")) {
+                        dropdownContainer.style.display = "none";
+                    }
+                }, 300);
+            }
+        }
+
+        function openDropdown() {
+            dropdownContainer.style.display = "grid";
+            libraryHandler.classList.add("open");
+            setTimeout(() => {
+                dropdownContainer.classList.add("show");
+            }, 10);
+        }
+
+        function setAppropriateHeight() {
+            if (window.innerWidth <= 768) {
+                const viewportHeight = window.innerHeight;
+                const navHeight = nav.offsetHeight;
+                navLinks.style.maxHeight = `${viewportHeight - navHeight}px`;
+                navLinks.style.overflowY = "auto";
+            } else {
+                navLinks.style.maxHeight = "";
+                navLinks.style.overflowY = "";
+            }
+        }
+
+        menuToggle.addEventListener("click", (event) => {
+            event.stopPropagation();
+            navLinks.classList.toggle("show");
+            if (navLinks.classList.contains("show")) {
+                setAppropriateHeight();
+                closeDropdown();
+                dropdownContainer.style.display = "none";
+            }
+        });
+
+        libraryHandler.addEventListener("click", (event) => {
+            event.stopPropagation();
+            event.preventDefault();
+            if (dropdownContainer.classList.contains("show")) {
+                closeDropdown();
+            } else {
+                openDropdown();
+            }
+            setAppropriateHeight();
+        });
+
+        // Close all menus if a click is registered outside the navigation bar.
+        document.addEventListener("click", (event) => {
+            if (!nav.contains(event.target)) {
+                navLinks.classList.remove("show");
+                closeDropdown();
+            }
+        });
+
+        // Hide navigation bar on scroll down in mobile view.
+        window.addEventListener("scroll", () => {
+            if (window.innerWidth <= 768) {
+                if (window.scrollY > lastScrollY && window.scrollY > nav.offsetHeight){
+                    nav.classList.add("hide");
+                } else {
+                    nav.classList.remove("hide");
+                }
+                lastScrollY = window.scrollY;
+            }
+        });
+
+        window.addEventListener("resize", setAppropriateHeight);
+    });
+</script>
+<!-- NAVBAR END -->
+
+
+<div id="documenter"><nav class="docs-sidebar"><a class="docs-logo" href="../"><img src="../assets/logo.svg" alt="DynamicPPL logo"/></a><div class="docs-package-name"><span class="docs-autofit"><a href="../">DynamicPPL</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><a class="tocitem" href="../">Home</a></li><li><a class="tocitem" href="../onboarding/">Contributor onboarding</a></li><li class="is-active"><a class="tocitem" href>Conditioning and fixing</a><ul class="internal"><li><a class="tocitem" href="#Binding-inputs-and-storage"><span>Binding inputs and storage</span></a></li><li><a class="tocitem" href="#Binding-rules"><span>Binding rules</span></a></li><li><a class="tocitem" href="#Submodels"><span>Submodels</span></a></li><li><a class="tocitem" href="#Removing-bindings"><span>Removing bindings</span></a></li><li><a class="tocitem" href="#Missing-data"><span>Missing data</span></a></li><li><a class="tocitem" href="#Diagnostics"><span>Diagnostics</span></a></li><li><a class="tocitem" href="#Migration-to-model-owned-bindings"><span>Migration to model-owned bindings</span></a></li></ul></li><li><span class="tocitem">VarNamedTuple</span><ul><li><a class="tocitem" href="../vnt/motivation/">Motivation</a></li><li><a class="tocitem" href="../vnt/design/">Design</a></li><li><a class="tocitem" href="../vnt/implementation/">Implementation</a></li><li><a class="tocitem" href="../vnt/arraylikeblocks/">Array-like blocks</a></li><li><a class="tocitem" href="../vnt/manipulation/">Manipulation of VNTs</a></li></ul></li><li><a class="tocitem" href="../evaluation/">Model evaluation</a></li><li><a class="tocitem" href="../tilde/">Tilde-statements</a></li><li><a class="tocitem" href="../init/">Initialisation strategies</a></li><li><a class="tocitem" href="../transforms/">Transform strategies</a></li><li><a class="tocitem" href="../fixed_transforms/">Fixed transforms</a></li><li><a class="tocitem" href="../to_distribution_and_to_submodel/">Model composition</a></li><li><span class="tocitem">Accumulators</span><ul><li><a class="tocitem" href="../accs/overview/">Overview</a></li><li><a class="tocitem" href="../accs/existing/">Existing accumulators in DynamicPPL</a></li><li><a class="tocitem" href="../accs/threadsafe/">Thread-safe accumulation</a></li><li><a class="tocitem" href="../accs/values/">Storing vectorised and raw values</a></li></ul></li><li><span class="tocitem">LogDensityFunction</span><ul><li><a class="tocitem" href="../ldf/overview/">Overview</a></li><li><a class="tocitem" href="../ldf/models/">Using LDFs in model evaluation</a></li><li><a class="tocitem" href="../ldf/subsampling/">Independent subsampling</a></li></ul></li><li><a class="tocitem" href="../migration/">Migrating old VarInfo code</a></li><li><a class="tocitem" href="../api/">API</a></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li class="is-active"><a href>Conditioning and fixing</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Conditioning and fixing</a></li></ul></nav><div class="docs-right"><a class="docs-navbar-link" href="https://github.com/TuringLang/DynamicPPL.jl" title="View the repository on GitHub"><span class="docs-icon fa-brands"></span><span class="docs-label is-hidden-touch">GitHub</span></a><a class="docs-navbar-link" href="https://github.com/TuringLang/DynamicPPL.jl/blob/main/docs/src/conditionfix.md" title="Edit source on GitHub"><span class="docs-icon fa-solid"></span></a><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="Conditioning-and-fixing"><a class="docs-heading-anchor" href="#Conditioning-and-fixing">Conditioning and fixing</a><a id="Conditioning-and-fixing-1"></a><a class="docs-heading-anchor-permalink" href="#Conditioning-and-fixing" title="Permalink"></a></h1><p><code>condition</code> stores observations on a model; their distributions contribute to the likelihood. <code>fix</code> stores values whose distributions contribute no density. Both return a model with the requested bindings. <code>rand</code> draws its remaining latent variables from their prior distributions, not from the posterior.</p><pre><code class="language-julia hljs">using DynamicPPL, Distributions, Random
+using DynamicPPL: @vnt
+using DynamicPPL.AbstractPPL: @of, of
+
+@model function linear_regression(x)
+    m ~ Normal()
+    c ~ Normal()
+    y = zeros(length(x))
+    for i in eachindex(x)
+        y[i] ~ Normal(m * x[i] + c, 1)
+    end
+    return y
+end
+
+x = [0.0, 0.5, 1.0]
+y_data = [3.0, 5.5, 8.0]
+model = linear_regression(x)
+observed = condition(model; y=y_data)
+parameters = rand(Xoshiro(1), observed)
+loglikelihood(observed, parameters)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">-46.74176300650937</code></pre><p>The local allocation of <code>y</code> provides a destination for each tilde assignment. It does not make <code>y</code> observed. A model argument that appears on a tilde&#39;s left-hand side supplies observations when the model is called directly; submodels use explicit bindings instead.</p><pre><code class="language-julia hljs">fixed_model = fix(observed; c=3.0)
+@assert fixed(fixed_model)[@varname(c)] == 3.0
+@assert conditioned(fixed_model)[@varname(y)] == y_data
+rand(Xoshiro(1), fixed_model)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">VarNamedTuple
+└─ <span class="sgr36">m</span> =&gt; -0.07058313895389791</code></pre><h2 id="Binding-inputs-and-storage"><a class="docs-heading-anchor" href="#Binding-inputs-and-storage">Binding inputs and storage</a><a id="Binding-inputs-and-storage-1"></a><a class="docs-heading-anchor-permalink" href="#Binding-inputs-and-storage" title="Permalink"></a></h2><p><code>condition</code> and <code>fix</code> accept NamedTuples, keyword arguments, Symbol or <code>VarName</code> pairs, tuples of these inputs, and <code>VarNamedTuple</code>s. <code>model | values</code> abbreviates <code>condition(model, values)</code>. Dictionaries are not binding inputs.</p><pre><code class="language-julia hljs">@assert conditioned(model | (; y=y_data)) == conditioned(observed)
+@assert conditioned(model | (@varname(y) =&gt; y_data)) == conditioned(observed)
+@assert conditioned(condition(model, :y =&gt; y_data)) == conditioned(observed)
+@assert conditioned(condition(model, ((y=y_data,), :c =&gt; 3.0)))[@varname(c)] == 3.0</code></pre><p>An indexed partial address needs storage when the binding is made. Storage can come from the called model&#39;s arguments, an existing whole binding, a storage carrying <code>VarNamedTuple</code>, or an explicit template. A future allocation in a model body does not supply storage to the binding call.</p><p>Pass at most one <code>@of</code>/<code>of</code> template, as the last positional argument. A template elsewhere throws <code>ArgumentError</code>. Template names are absolute, including any model or child prefix.</p><pre><code class="language-julia hljs">partial = condition(model, @varname(y[1]) =&gt; y_data[1], @of(y = of(Array, 3)))
+@assert partial(Xoshiro(1))[1] == y_data[1]
+
+observations = @vnt begin
+    @template y = y_data
+    y[1] := y_data[1]
+end
+@assert (model | observations)(Xoshiro(1))[1] == y_data[1]</code></pre><p>A template describes storage, not observations. Unbound positions remain latent, and unused template entries do not appear in <code>conditioned</code> or <code>fixed</code>. Templates replace a <code>missing</code> model argument, but concrete arguments keep their own storage. Array extents, selection shapes and aliases are checked at binding time; this includes <code>begin</code>, <code>end</code>, masks and linear versus Cartesian indexing.</p><p>Typed templates also constrain conversion. Values must be exactly representable in the specified type; an inexact conversion throws. Use the runtime value&#39;s type when constructing templates inside differentiated code.</p><pre><code class="language-julia hljs">half = condition(model, @varname(y[1]) =&gt; 0.5, @of(y = of(Array, Float32, 3)))
+@assert conditioned(half)[@varname(y[1])] === 0.5f0</code></pre><p>A run records only the latent sites it reached, omitting observed and fixed sites and untaken branches. A subset of that <code>VarNamedTuple</code> retains storage for its selected values. This supports blockwise conditioning without reconstructing bindings from bare pairs.</p><pre><code class="language-julia hljs">run_values = rand(Xoshiro(2), model)
+block = subset(run_values, [@varname(y[1])])
+blocked = condition(model, block)
+@assert blocked(Xoshiro(1))[1] == run_values[@varname(y[1])]
+storage_only = condition(model, @varname(y[1]) =&gt; 0.5, of(block))
+@assert storage_only(Xoshiro(1))[1] == 0.5</code></pre><p>Rebuild such storage snapshots when parameters change the model&#39;s layout. <code>of(vnt)</code> supports plain numeric arrays, supported real scalars and nested named fields. It cannot preserve scalar <code>Bool</code> values or indexed namespaces; supply explicit storage for those cases. Pass raw model-space values to binding APIs, not linked <code>TransformedValue</code>s or a <code>VarInfo</code>.</p><h2 id="Binding-rules"><a class="docs-heading-anchor" href="#Binding-rules">Binding rules</a><a id="Binding-rules-1"></a><a class="docs-heading-anchor-permalink" href="#Binding-rules" title="Permalink"></a></h2><p>Each executed tilde has one role: latent, observed or fixed. Separate scalar tildes can have different roles. A single multivariate tilde cannot be partly observed or fixed while its remaining positions are latent.</p><p>A later binding in the same role replaces the selected values. Overlap between roles throws; remove the old role before assigning the new one. Overlapping addresses within a single binding call also throw.</p><pre><code class="language-julia hljs">replaced = condition(observed; y=[1.0, 2.0, 3.0])
+@assert replaced(Xoshiro(1)) == [1.0, 2.0, 3.0]
+changed_role = fix(decondition(observed, @varname(y)); y=y_data)
+@assert changed_role(Xoshiro(1)) == y_data</code></pre><p>Bindings must address declared tilde variables or child namespaces. Covariates cannot be bound. Supported partial owners are arrays and NamedTuples with named fields; arbitrary struct, tuple and dictionary reconstruction is not supported. Bind or remove the whole value when partial edits are unsupported.</p><p>Argument bindings are prepared before the model body runs. Body computations therefore see replaced arguments. An observed argument tilde uses the value computed by the body; a fixed argument tilde restores its bound value. Local variables obtain their bindings at the tilde itself. Replacement arguments must satisfy declared argument types.</p><p>Evaluation copies argument storage that can receive latent writes, preserving the caller&#39;s data. Shared backing storage between latent arguments is rejected; covariates and fully bound branches have different copy requirements. Immutable backing storage, unsupported dictionary keys in copied graphs, and custom numeric leaves containing mutable storage can also be rejected. AD extensions handle their supported tracer types. Use ordinary mutable arrays for latent writes; copying is not a promise to reconstruct every custom container.</p><p>A handwritten <code>Model</code> evaluator must perform the argument preparation and role lookup that <code>@model</code> generates. Calling <code>tilde_observe!!</code> directly does not look up model bindings. Prefer <code>@model</code>; <code>args_on_lhs</code> metadata alone does not implement binding semantics in a handwritten evaluator.</p><h2 id="Submodels"><a class="docs-heading-anchor" href="#Submodels">Submodels</a><a id="Submodels-1"></a><a class="docs-heading-anchor-permalink" href="#Submodels" title="Permalink"></a></h2><p>Every submodel contributes its tilde address. In <code>a ~ to_submodel(child)</code>, a child variable <code>x</code> has address <code>a.x</code>. An explicit child prefix composes with that address. The tilde receives the child&#39;s return value; that return is not itself a bindable random variable.</p><pre><code class="language-julia hljs">@model inner(y, x) = (y ~ Normal(x, 1); y)
+@model outer(y, x) = a ~ to_submodel(condition(inner(missing, x), (y=y,)))
+@assert outer(1.0, 0.0)(Xoshiro(1)) == 1.0</code></pre><p>Submodels cannot receive observations as model arguments. Pass covariates as arguments and use <code>condition</code> for observations. <code>fix</code> would omit their likelihood. For partly missing arrays, bind only the observed entries and supply a template as the last positional argument. It replaces the <code>missing</code> argument with storage of the specified shape, so the model can iterate over it; unbound entries remain latent. The same storage rule applies to <code>fix</code>, which omits the fixed entries&#39; densities.</p><pre><code class="language-julia hljs">@model function inner_vec(y)
+    for i in eachindex(y)
+        y[i] ~ Normal()
+    end
+    return y
+end
+@model function outer_vec(y)
+    dims = size(y)
+    child = condition(
+        inner_vec(missing),
+        (@varname(y[i]) =&gt; y[i] for i in eachindex(y) if !ismissing(y[i]))...,
+        @of(y = of(Array, dims...)),
+    )
+    return a ~ to_submodel(child)
+end
+partial_child = outer_vec([1.0, missing])
+@assert partial_child(Xoshiro(1)) == [1.0, rand(Xoshiro(1), Normal())]
+@assert loglikelihood(partial_child, (; a=(; y=[1.0, 0.4]))) == logpdf(Normal(), 1.0)</code></pre><p>Parent bindings cannot overwrite a child&#39;s own bindings, even in the same role; remove those bindings first. Child ownership and storage compatibility are checked when the child is reached, without executing it at bind time.</p><p>Indexed addresses need storage for the namespace as well as any indexed child variable. Plain property paths and whole values need no index storage.</p><pre><code class="language-julia hljs">@model scalar_child() = (x ~ Normal(); x)
+@model function indexed_parent()
+    z = zeros(3)
+    for i in eachindex(z)
+        z[i] ~ to_submodel(scalar_child())
+    end
+    return z
+end
+m = indexed_parent()
+bound_child = condition(m, @varname(z[1].x) =&gt; 1.0, @of(z = of(Array, 3)))
+@assert bound_child(Xoshiro(1))[1] == 1.0</code></pre><p>A whole NamedTuple below an unreached child can denote either a whole variable or a child namespace. Removing a field, or changing its field set through whole or field writes, requires storage that distinguishes these structures. Supply that storage with the original binding, or remove the whole bound root before replacing it. An array&#39;s shape alone does not establish the surrounding field structure. Removal functions do not take a positional template.</p><p>A <code>VarNamedTuple</code> can distinguish the namespace from its whole NamedTuple value:</p><pre><code class="language-julia hljs">@model fields_child() = (x ~ Normal(); y ~ Normal(); (x=x, y=y))
+@model fields_middle() = b ~ to_submodel(fields_child())
+@model fields_parent() = a ~ to_submodel(fields_middle())
+structured = VarNamedTuple((a=VarNamedTuple((b=(x=1.0, y=2.0),)),))
+fields_bound = condition(fields_parent(), structured)
+fields_removed = decondition(fields_bound, @varname(a.b.x))
+@assert !haskey(conditioned(fields_removed), @varname(a.b.x))
+@assert fields_removed(Xoshiro(1)).y == 2.0</code></pre><p>Submodel tilde addresses accept properties and scalar non-Boolean integer indices, including scalar <code>CartesianIndex</code> coordinates. They do not accept slices or masks, and cannot be rooted in an argument. Assign a child&#39;s return to an ordinary local name, then use ordinary Julia assignment to copy that result into a slice or an argument container.</p><h2 id="Removing-bindings"><a class="docs-heading-anchor" href="#Removing-bindings">Removing bindings</a><a id="Removing-bindings-1"></a><a class="docs-heading-anchor-permalink" href="#Removing-bindings" title="Permalink"></a></h2><p><code>decondition(model, names...)</code> and <code>unfix(model, names...)</code> remove the selected role from the model and its submodels. With no names, they remove all bindings in that role. These instructions also apply to children constructed during evaluation. Removing a whole name covers its descendants; removing one indexed position does not remove its siblings. Removing a valid absent address is a no-op on values.</p><pre><code class="language-julia hljs">latent_child = decondition(outer(1.0, 0.0), @varname(a.y))
+@assert haskey(rand(Xoshiro(1), latent_child), @varname(a.y))
+@assert isempty(conditioned(decondition(observed)))
+@assert isempty(fixed(unfix(changed_role)))</code></pre><p>Removal does not restore an overwritten observation. Partial removal retains the storage needed to interpret remaining edits. Whole removal releases the role&#39;s bound data and conversion constraint; argument storage remains available where applicable. Observation and fix roles share a root&#39;s shape but can retain distinct conversion types.</p><p><code>conditioned</code> and <code>fixed</code> list bindings held by the queried model, including its own argument observations. They do not execute the model to discover bindings created inside child bodies. A listing contains values and their storage, not the persistent removal instructions; rebinding a listing need not reproduce a model that also has such instructions.</p><p>Models compare and hash by binding state. <code>==</code> delegates to <code>isequal</code>; arguments and defaults compare by content. Binding roles, storage constraints and removal instructions can distinguish models with the same current listing.</p><h2 id="Missing-data"><a class="docs-heading-anchor" href="#Missing-data">Missing data</a><a id="Missing-data-1"></a><a class="docs-heading-anchor-permalink" href="#Missing-data" title="Permalink"></a></h2><p>A whole <code>missing</code> or <code>nothing</code> argument supplies no observation. A one-level <code>missing</code> entry in a supported argument array is latent. This constructor behaviour does not permit placeholders in explicit <code>condition</code> or <code>fix</code> inputs: those throw.</p><pre><code class="language-julia hljs">@model function measurements(y)
+    for i in eachindex(y)
+        y[i] ~ Normal()
+    end
+    return y
+end
+imputation = measurements(Union{Missing,Float64}[missing, 2.0])
+@assert conditioned(imputation)[@varname(y[2])] == 2.0
+@assert haskey(rand(Xoshiro(1), imputation), @varname(y[1]))</code></pre><p>Each imputed entry must have its own tilde. A partly observed array cannot supply one <code>MvNormal</code> tilde. Nested placeholders in explicit bindings are rejected, and executed observed or fixed values are checked again. A partly bound whole-placeholder argument is not sufficient storage for evaluating the argument.</p><h2 id="Diagnostics"><a class="docs-heading-anchor" href="#Diagnostics">Diagnostics</a><a id="Diagnostics-1"></a><a class="docs-heading-anchor-permalink" href="#Diagnostics" title="Permalink"></a></h2><p><code>check_model</code> reports unused bindings, template entries and named removals for the execution it checks. Dormant bindings do not make ordinary evaluation fail merely because their branch was not reached. A warning does not prove that the address is invalid on every branch; an executed invalid address still throws.</p><pre><code class="language-julia hljs">@model function optional_child(run)
+    q ~ Normal()
+    if run
+        a ~ to_submodel(scalar_child())
+    end
+    return q
+end
+dormant = condition(optional_child(false), @varname(a.x) =&gt; 1.0)
+DynamicPPL.DebugUtils.check_model(Xoshiro(1), dormant)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">true</code></pre><h2 id="Migration-to-model-owned-bindings"><a class="docs-heading-anchor" href="#Migration-to-model-owned-bindings">Migration to model-owned bindings</a><a id="Migration-to-model-owned-bindings-1"></a><a class="docs-heading-anchor-permalink" href="#Migration-to-model-owned-bindings" title="Permalink"></a></h2><p>Bindings now live on <code>Model</code>, rather than in conditioning or fixing contexts. Use <code>condition</code>, <code>fix</code>, <code>decondition</code>, <code>unfix</code>, <code>conditioned</code> and <code>fixed</code> instead of constructing or inspecting the removed <code>CondFixContext</code> representation. Direct evaluators must follow the preparation and lookup rules described above.</p><ul><li>Import <code>@vnt</code> explicitly with <code>using DynamicPPL: @vnt</code>; it is no longer exported.</li><li>Replace <code>model | Dict(@varname(x) =&gt; value)</code> with <code>condition(model, @varname(x) =&gt; value)</code>. For an indexed partial address, supply storage too. Dictionaries remain accepted by parameter initialisation APIs such as <code>InitFromParams</code>; this change concerns bindings only.</li><li>Replace a storage-free partial binding such as <code>condition(m, @varname(z[1].x) =&gt; 1.0)</code> with <code>condition(m, @varname(z[1].x) =&gt; 1.0, @of(z = of(Array, 3)))</code> when the namespace has length three. A partial <code>@vnt</code> without concrete storage is insufficient.</li><li>Move an <code>@of</code>/<code>of</code> binding template to the last positional argument. For example, use <code>condition(m, @varname(z[1].x) =&gt; 1.0, template)</code>.</li><li>Replace <code>unused ~ to_submodel(prefix(child, @varname(a)), false)</code> with <code>a ~ to_submodel(child)</code>. Unprefixed submodels no longer exist. <code>to_submodel(child, true)</code> remains accepted; <code>false</code> throws with migration advice. Update parameter, binding, chain and Gibbs block addresses to include the child name. <code>a ~ to_submodel(prefix(child, @varname(b)))</code> uses <code>a.b.x</code>, not <code>b.x</code>.</li><li>Replace <code>to_submodel(inner(y, x))</code> with <code>to_submodel(condition(inner(missing, x), (y=y,)))</code> when <code>y</code> is fully observed. For partly missing arrays, bind only observed indices and provide storage: <code>condition(inner_vec(missing), @varname(y[1]) =&gt; 1.0, @of(y = of(Array, 2)))</code>. The runnable <code>outer_vec([1.0, missing])</code> example in <a href="#Submodels">Submodels</a> retains <code>y[2]</code> as latent. Top-level argument observations remain supported.</li><li>Existing bare and named <code>decondition</code>/<code>unfix</code> calls now reach submodels too. Remove the old explicit recursion marker from calls; there is no local-only public removal mode. To edit a child in isolation, edit that child before composing the parent.</li><li>For field removal or a field-set-changing rewrite below an unreached whole NamedTuple binding, supply structural storage with the binding, or remove the whole root and bind its replacement.</li><li>Replace explicit bindings containing <code>missing</code> with bindings only for observed positions and their storage. For argument-array imputation, use the constructor form in <a href="#Missing-data">Missing data</a>.</li><li><code>keys</code>, <code>values</code>, <code>haskey</code>, <code>length</code> and <code>isempty</code> on a <code>VarInfo</code> now require a value-recording accumulator. Replace queries on <code>VarInfo()</code> with queries on <code>VarInfo(VectorValueAccumulator())</code> after evaluation, or use <code>rand(rng, model)</code> when raw named parameter values are required.</li></ul><p>For blockwise inference, retain <code>condition(model, subset(run_values, names))</code> when that subset carries the necessary storage. Do not turn the subset into a dictionary or a list of bare pairs. A subset cannot split one multivariate tilde into roles.</p><h3 id="Arguments-and-containers"><a class="docs-heading-anchor" href="#Arguments-and-containers">Arguments and containers</a><a id="Arguments-and-containers-1"></a><a class="docs-heading-anchor-permalink" href="#Arguments-and-containers" title="Permalink"></a></h3><p>Use absolute names on a prefixed model: <code>condition(prefix(m, @varname(p)); y=v)</code> becomes <code>condition(prefix(m, @varname(p)), @varname(p.y) =&gt; v)</code>. For NamedTuple fields in bindings, removals and tildes, replace positional or Symbol indexing such as <code>y[1]</code> or <code>y[:a]</code> with <code>y.a</code>.</p><p>Replace overlapping observation and fix bindings with removal followed by binding: <code>fix(condition(m; x=data); x=value)</code> becomes <code>fix(decondition(condition(m; x=data), @varname(x)); x=value)</code>. Before replacing a child&#39;s own binding from its parent, remove that role at the child&#39;s qualified address. Keep the original model if its observations must be restored later.</p><p>For unsupported nested placeholders, provide concrete data and remove the latent positions. For unsupported partial edits of tuples, structs or dictionaries, replace the whole value or use a NamedTuple/array representation. If latent writeability checks reject a range or array wrapper, use <code>collect</code> when losing its axes or metadata is acceptable.</p><pre><code class="language-julia hljs">@model nested_measurements(y) = (y[1][1] ~ Normal(); y[1][2] ~ Normal(); y)
+nested_imputation = decondition(nested_measurements([[1.0, 0.0]]), @varname(y[1][2]))
+@assert haskey(rand(Xoshiro(1), nested_imputation), @varname(y[1][2]))
+whole_tuple = fix(decondition(measurements((1.0, 2.0))); y=(9.0, 2.0))
+@assert whole_tuple(Xoshiro(1)) == (9.0, 2.0)
+mutable_input = decondition(measurements(collect(1.0:2.0)))
+@assert length(rand(Xoshiro(1), mutable_input)) == 2</code></pre><p>For partial writes into <code>Float32</code> storage, pass <code>Float32(0.1)</code> instead of <code>0.1</code>. For runtime AD values, use storage such as <code>fill(zero(θ), n)</code> or a template such as <code>@of(y = of(Array, typeof(θ), n))</code>. To change a root&#39;s shape, remove both roles at that root before supplying its new whole value or template. Fixed values must still fit the storage used by executed tildes.</p><p>To observe raw data after transforming an argument in the body, use a separate local tilde variable. Reconstruct the model and its partial bindings after mutating argument storage. <code>conditioned(m)</code> includes argument observations; do not merge <code>model.args</code> into it to recover them.</p><p>Keyword splats in <code>model.defaults</code> are nested under their generated name. For <code>@model f(; kw...)</code>, use <code>model.defaults.var&quot;#splat#kw&quot;.z</code> instead of <code>model.defaults.z</code>. Bind a keyword-splat tuple as a whole, for example <code>condition(m; kw=(; y=2))</code>. Inside the body, <code>kw</code> is Julia&#39;s <code>Base.Pairs</code>; read its entries with <code>kw[:y]</code>. A closure&#39;s tilde variable cannot shadow a model argument: if <code>x</code> is an argument, change <code>(x -&gt; x ~ Normal())</code> to <code>(z -&gt; z ~ Normal())</code>.</p><h3 id="Direct-construction-and-context-access"><a class="docs-heading-anchor" href="#Direct-construction-and-context-access">Direct construction and context access</a><a id="Direct-construction-and-context-access-1"></a><a class="docs-heading-anchor-permalink" href="#Direct-construction-and-context-access" title="Permalink"></a></h3><p>Replace construction or dispatch using <code>Model{Threaded,missings}</code> with <code>@model</code> and <code>decondition</code> for latent arguments. Direct constructors need <code>args_on_lhs</code> to identify argument observations. A handwritten evaluator must also implement argument preparation and binding lookup, or reuse an evaluator from <code>@model</code>.</p><pre><code class="language-julia hljs">generated = measurements([1.0, 2.0])
+manual = Model{false}(generated.f, generated.args, generated.defaults; args_on_lhs=(:y,))
+@assert manual(Xoshiro(1)) == [1.0, 2.0]</code></pre><p>Replace <code>conditioned(context)</code> and <code>fixed(context)</code> with model queries. Replace <code>decondition_context</code> and <code>unfix_context</code> with model removals. Replace <code>hasconditioned</code>, <code>getconditioned</code>, <code>hasfixed</code>, <code>getfixed</code> and their nested variants with <code>haskey(conditioned(m), vn)</code>, <code>conditioned(m)[vn]</code> and the corresponding <code>fixed(m)</code> operations. The removed argument/context role helpers, including <code>inmissings</code>, <code>isassumption</code> and <code>isfixed</code>, also give way to model binding queries. For debug introspection, use the callable and argument types returned by <code>gen_evaluator_call_with_types</code>; do not assume that callable is <code>model.f</code>.</p><p>To transfer bindings formerly carried by <code>contextualize(new, old.context)</code>, replay the model&#39;s listings when their addresses and storage fit the new model:</p><pre><code class="language-julia hljs">old = fixed_model
+new = unfix(decondition(model))
+new = condition(new, conditioned(old))
+new = fix(new, fixed(old))
+@assert conditioned(new) == conditioned(old)
+@assert fixed(new) == fixed(old)</code></pre><p>This does not transfer removal instructions or bindings created in child bodies; reapply those separately. Argument observations become explicit bindings. Preserve prefixes, and replay any whole-value resize before the partial removals that depend on it; a surviving partial listing need not reconstruct the earlier storage.</p><script type="module">import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/+esm';
+mermaid.initialize({
+    startOnLoad: true,
+    theme: "neutral"
+});
+</script></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../onboarding/">« Contributor onboarding</a><a class="docs-footer-nextpage" href="../vnt/motivation/">Motivation »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.19.0 on <span class="colophon-date" title="Friday 30 October 2026 16:03">Friday 30 October 2026</span>. Using Julia version 1.13.3.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
