@@ -1318,6 +1318,19 @@ end
         @test size(vnt.data.a.data.b.data.x.data) == (2, 2)
     end
 
+    @testset "type stability of explicitly prefixed nested submodels" begin
+        @model prefixed_leaf() = x ~ Normal()
+        @model prefixed_parent(m) = a ~ to_submodel(m)
+        @model prefixed_outer(m) = b ~ to_submodel(m)
+        model = prefixed_outer(prefixed_parent(prefix(prefixed_leaf(), @varname(p))))
+        context = InitContext(
+            Xoshiro(1),
+            InitFromParams(VarNamedTuple((@varname(b.a.p.x) => 1.0,))),
+            UnlinkAll(),
+        )
+        @test first(@inferred evaluate!!(model, context, VarInfo())) == 1.0
+    end
+
     @testset "type stability of nested submodels (issue #2844)" begin
         # See https://github.com/TuringLang/DynamicPPL.jl/pull/1427.
         @testset "$(nameof(model.f))" for model in (
