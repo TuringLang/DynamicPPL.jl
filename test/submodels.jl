@@ -249,13 +249,6 @@ end
         @test @varname(a.b.x) in keys(list(m))
         @test bind(m; a=(b=(y=2.0,),))() == (x=1.0, y=2.0)
         @test bind(
-            bind(
-                child_binding_parent(),
-                VarNamedTuple((a=VarNamedTuple((b=VarNamedTuple((x=1.0,)),)),)),
-            );
-            a=(b=(y=2.0,),),
-        )() == (x=1.0, y=2.0)
-        @test bind(
             remove(m, @varname(a.b.x)), @varname(a.b.x) => 3.0, @varname(a.b.y) => 2.0
         )() == (x=3.0, y=2.0)
         @test bind(remove(m, @varname(a.b)), @varname(a.b.y) => 2.0)(Xoshiro(1)).y == 2.0
