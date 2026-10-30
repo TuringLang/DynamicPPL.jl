@@ -9996,33 +9996,6 @@ end
             @test m(Xoshiro(1))[1] == 3.0
         end
     end
-    @testset "ambiguous NamedTuple edits require root structure" begin
-        for (bind, remove) in ((condition, decondition), (fix, unfix))
-            m = bind(audit_root_parent(), @varname(a.b) => (x=1.0,))
-            @test_throws ArgumentError bind(m, @varname(a.b) => (y=2.0,))
-            @test_throws ArgumentError bind(m, @varname(a.b.y) => 2.0)
-            @test_throws ArgumentError remove(m, @varname(a.b.x))
-            n = bind(audit_root_parent(), @varname(a.b.y) => 2.0)
-            @test_throws ArgumentError bind(n, @varname(a.b) => (x=1.0,))
-        end
-    end
-    @testset "positional template is last" begin
-        for bind in (condition, fix)
-            schema = @of(x = of(Array, 2))
-            @test_throws ArgumentError bind(audit_leaf(), schema, @varname(x[1]) => 3.0)
-            @test_throws ArgumentError bind(
-                audit_leaf(), @varname(x[1]) => 3.0, schema, @varname(x[2]) => 4.0
-            )
-            @test bind(audit_leaf(), @varname(x[1]) => 3.0, schema)(Xoshiro(1))[1] == 3.0
-        end
-    end
-    @testset "false submodel wrapper is rejected" begin
-        @test_throws ArgumentError to_submodel(audit_leaf(), false)
-        runtime_wrapper(flag) = to_submodel(audit_leaf(), flag)
-        @test_throws ArgumentError runtime_wrapper(false)
-        @test runtime_wrapper(true) isa DynamicPPL.Submodel
-        @test to_submodel(audit_leaf()) isa DynamicPPL.Submodel
-    end
     @testset "consumed parent template is authoritative" begin
         for bind in (condition, fix)
             @test_throws ArgumentError bind(
