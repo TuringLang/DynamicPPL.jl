@@ -125,6 +125,7 @@ To demonstrate:
 
 ```@example 1
 using DynamicPPL
+using DynamicPPL: @vnt
 
 vnt = VarNamedTuple()
 vnt = setindex!!(vnt, 1.0, @varname(x[1].a))

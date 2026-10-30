@@ -397,7 +397,7 @@ Base.mapfoldl(f, op, vnt::VarNamedTuple; init=nothing) = mapreduce(f, op, vnt; i
 
 _mapreduce_recursive(f, op, x, vn, init) = op(init, f(vn => x))
 function _mapreduce_recursive(f, op, alb::ArrayLikeBlock, vn, init)
-    return op(init, f(vn => alb.block))
+    return _mapreduce_recursive(f, op, alb.block, vn, init)
 end
 
 # As above but with a prefix VarName `vn`.
@@ -481,7 +481,9 @@ function densify!!(pa::PartialArray)
     has_albs = (et <: ArrayLikeBlock || ArrayLikeBlock <: et)
     has_vnts = (et <: VarNamedTuple || VarNamedTuple <: et)
     if has_albs || has_vnts
-        new_data = map(densify!!, pa.data)
+        dense_values = map(densify!!, view(pa.data, pa.mask))
+        new_data = similar(pa.data, eltype(dense_values))
+        new_data[pa.mask] = dense_values
         return PartialArray(new_data, pa.mask)
     end
 
@@ -516,6 +518,8 @@ end
 Base.keys(vnt::VarNamedTuple) = mapreduce(first, push!, vnt; init=VarName[])
 Base.values(vnt::VarNamedTuple) = mapreduce(pair -> pair.second, push!, vnt; init=Any[])
 
+# Counts stored values and array cells, not addresses, so it can differ from
+# `length(keys(vnt))`: an `ArrayLikeBlock` over three cells counts three.
 function Base.length(vnt::VarNamedTuple)
     len = 0
     for subdata in vnt.data

@@ -6,7 +6,7 @@ Construct a `VarNamedTuple` from a block of assignments. Each assignment should 
 example:
 
 ```jldoctest
-julia> using DynamicPPL
+julia> using DynamicPPL: @vnt
 
 julia> @vnt begin
            a := 1
@@ -19,7 +19,7 @@ VarNamedTuple
 
 You can set entirely arbitrary variables:
 
-```jldoctest; setup=:(using DynamicPPL)
+```jldoctest; setup=:(using DynamicPPL: @vnt)
 julia> @vnt begin
            a.b.c.d.e := "hello"
        end
@@ -47,7 +47,7 @@ accepts whitespace-separated arguments, which must either be
 
 For example:
 
-```jldoctest; setup=:(using DynamicPPL)
+```jldoctest; setup=:(using DynamicPPL: @vnt)
 julia> x = zeros(5); outside_y = zeros(3, 3);
 
 julia> @vnt begin
@@ -72,7 +72,7 @@ If no template is provided, the VNT will use a `GrowableArray`. This can produce
 results in simple cases, but is not recommended for general use. Please see the
 VarNamedTuple documentation for more details.
 
-```jldoctest; setup=:(using DynamicPPL)
+```jldoctest; setup=:(using DynamicPPL: @vnt)
 julia> @vnt begin
             # No template provided.
             x[1] := 1.0
@@ -126,26 +126,24 @@ function _vnt(input)
             for arg in expr.args[2:end]
                 if arg isa LineNumberNode
                     continue
-                elseif arg isa Symbol
-                    # e.g. @template x
-                    if arg in keys(symbols_to_templates)
-                        error("duplicate template definition for symbol: $arg")
-                    end
-                    symbols_to_templates[arg] = esc(arg)
+                end
+                sym, template_expr, separator = if arg isa Symbol
+                    (arg, arg, ": ")
                 elseif Meta.isexpr(arg, :(=))
-                    # e.g. @template y = x
-                    sym, template_expr = arg.args
-                    if sym in keys(symbols_to_templates)
-                        error("duplicate template definition for symbol $sym")
-                    end
-                    # evaluate the template expression one time so that we don't
-                    # reevaluate it every time we set a value in the VNT
-                    new_sym = gensym()
-                    push!(output.args, :($new_sym = $(esc(template_expr))))
-                    symbols_to_templates[sym] = new_sym
+                    (arg.args[1], arg.args[2], " ")
                 else
                     error("unexpected argument to `@template`: $arg")
                 end
+                if sym in keys(symbols_to_templates)
+                    error("duplicate template definition for symbol$separator$sym")
+                end
+                # Materialize the template once for either `@template x` or
+                # `@template x = e`.
+                new_sym = gensym()
+                push!(
+                    output.args, :($new_sym = materialize_template($(esc(template_expr))))
+                )
+                symbols_to_templates[sym] = new_sym
             end
         elseif Meta.isexpr(expr, :(:=))
             lhs, rhs = expr.args

@@ -15,6 +15,7 @@ For example, this VNT contains a `PartialArray` which is *really* the same thing
 
 ```@example 1
 using DynamicPPL
+using DynamicPPL: @vnt
 
 vnt = @vnt begin
     @template x = zeros(2)
@@ -152,22 +153,8 @@ In the call to `templated_setindex!!` for `x`, the template is `fill(nothing, 3)
 However, the element type of this template array is not important: when DynamicPPL instantiates the new PartialArray, it will use `typeof(val)` rather than `eltype(template)` to determine the element type it should use.
 This allows us to freely choose any element type we like in the skeleton.
 
-Skeleton VNTs are not currently used in DynamicPPL.
-However, it is likely that they will find some kind of use in the future as a minimalistic representation of the *structure* of a VNT, without any of the actual values.
-For example, consider model conditioning:
-
-```@example 1
-@model function f()
-    x = zeros(2)
-    return x .~ Normal()
-end
-
-cond_model = f() | Dict(@varname(x[1]) => 1.0, @varname(x[2]) => 2.0)
-```
-
-Right now, conditioning with a `Dict` will lead to the conditioning values being stored with `GrowableArray`s, which is not ideal.
-However, if the *model* carried with itself a skeleton VNT, then at the point where we condition the model, we could use that to reconstruct a VNT of conditioned values.
-This is not yet implemented, but is one of the use cases that we have in mind.
+Partial model bindings require concrete storage. A storage-carrying VNT can supply
+it; see [Binding inputs and storage](@ref).
 
 FlexiChains does currently make use of skeleton VNTs.
 If we reevaluate a model with a `VNChain`, we need some way of reconstructing VNTs to feed into the model.

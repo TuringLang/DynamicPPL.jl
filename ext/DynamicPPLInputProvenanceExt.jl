@@ -132,6 +132,22 @@ _dualize_input(x::SparseArrays.AbstractSparseArray) = DualizedSparseArray(x)
 _dualize_input(x::AbstractArray) = map(_dualize_input, x)
 _dualize_input(x::NamedTuple) = map(_dualize_input, x)
 _dualize_input(x::Tuple) = map(_dualize_input, x)
+function _dualize_input(x::DynamicPPL.ModelValue{R}) where {R}
+    return DynamicPPL.ModelValue{R}(_dualize_input(x.value))
+end
+function _dualize_input(values::DynamicPPL.VarNamedTuple)
+    return DynamicPPL.map_values!!(_dualize_input, copy(values))
+end
+function _dualize_input(table::DynamicPPL.ResolvedBindings)
+    return DynamicPPL.ResolvedBindings(
+        _dualize_input(table.values),
+        table.storage,
+        table.observed_templates,
+        table.fixed_templates,
+        _dualize_input(table.arguments),
+        table.roots,
+    )
+end
 _dualize_input(x) = x
 
 function _has_input_provenance(x::ForwardDiff.Dual{InputProvenanceTag})
@@ -173,8 +189,16 @@ end
 function check_input_provenance(rng, model, params)
     args = map(_dualize_input, model.args)
     defaults = map(_dualize_input, model.defaults)
+    values = _dualize_input(model.values)
     traced_model = DynamicPPL.Model{DynamicPPL.requires_threadsafe(model)}(
-        model.f, args, defaults, model.context
+        model.f,
+        args,
+        defaults,
+        model.context,
+        values;
+        args_on_lhs=DynamicPPL._binding_metadata(model),
+        observation_removals=model.observation_removals,
+        fixed_removals=model.fixed_removals,
     )
     vi = DynamicPPL.VarInfo((InputProvenanceAccumulator(),))
     strategy = DynamicPPL.InitFromParams(params, nothing)

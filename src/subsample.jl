@@ -633,34 +633,15 @@ function _strict_independent_ldf(
     )
 end
 
-_unprefix_observation(::AbstractContext, observation::VarName) = observation
-function _unprefix_observation(context::PrefixContext, observation::VarName)
-    unprefixed = try
-        AbstractPPL.unprefix(observation, context.vn_prefix)
-    catch e
-        e isa ArgumentError || rethrow()
-        observation
-    end
-    return _unprefix_observation(childcontext(context), unprefixed)
-end
-function _unprefix_observation(context::AbstractParentContext, observation::VarName)
-    return _unprefix_observation(childcontext(context), observation)
-end
-
 function _conditioned_independent_observation(model::Model)
     values = conditioned(model)
-    length(values) == 1 || throw(
+    names = collect(keys(values))
+    length(names) == 1 || throw(
         ArgumentError(
-            "the model must have exactly one fully conditioned variable; found $(collect(keys(values)))",
+            "the model must have exactly one fully conditioned variable; found $(names)"
         ),
     )
-    observation = only(keys(values))
-    unprefixed_observation = _unprefix_observation(model.context, observation)
-    inargnames(unprefixed_observation, model) && throw(
-        ArgumentError(
-            "the independent observation `$observation` must be supplied through `condition`, not as a model argument",
-        ),
-    )
+    observation = only(names)
     data = values[observation]
     data isa AbstractArray{<:Real} || throw(
         ArgumentError(
@@ -730,6 +711,10 @@ function SubsamplingShape(data::A) where {T,N,A<:AbstractArray{T,N}}
     return SubsamplingShape{T,N,A,A}(data, data)
 end
 
+# Subsampling validates observation dimensions separately; batch geometry need not
+# match population storage in the body, and probes must not inspect full data.
+_skip_bound_shape_check(::AbstractSubsamplingData) = true
+
 Base.IndexStyle(::Type{<:SubsamplingShape{T,N,A,R}}) where {T,N,A,R} = IndexStyle(A)
 function _throw_full_data_access()
     throw(
@@ -747,6 +732,18 @@ function VarNamedTuples._haskey_optic(
     data::SubsamplingShape, optic::VarNamedTuples.IndexWithoutChild
 )
     return VarNamedTuples._haskey_optic(data.data, optic)
+end
+function VarNamedTuples._haskey_optic(
+    value::ModelValue{R,<:SubsamplingShape}, optic::AbstractPPL.Index
+) where {R<:Union{Condition,ArgumentCondition,Fix}}
+    head = AbstractPPL.ohead(optic)
+    VarNamedTuples._haskey_optic(value.value, head) || return false
+    optic.child isa AbstractPPL.Iden && return true
+    child = VarNamedTuples._getindex_optic(value.value, head, @varname(_))
+    return VarNamedTuples._haskey_optic(_model_value_like(value, child), optic.child)
+end
+function VarNamedTuples.index_template(data::AbstractSubsamplingData, optic)
+    return getindex(data, optic.ix...; optic.kw...)
 end
 function Base.getindex(data::SubsamplingShape, indices...)
     return SubsamplingShape(view(data.data, indices...), data.root)
@@ -805,7 +802,8 @@ function _subsampling_problem(
     )
     scale = dataset_size//dataset_size
     probe_model = condition(
-        decondition(model, observation), observation => SubsamplingShape(data)
+        _decondition_unfix(model, (observation,), Condition),
+        observation => SubsamplingShape(data),
     )
     layout = _probe_independent_model(
         _subsampling_probe_rng(),
@@ -974,7 +972,7 @@ function _batch_ldf(problem::SubsamplingState, batch::AbstractVector{<:Integer})
     batch_data = _select_batch(problem.full_data, batch)
     batch = collect(Int, batch)
     batch_model = condition(
-        decondition(problem.ldf.model, problem.observation),
+        _decondition_unfix(problem.ldf.model, (problem.observation,), Condition),
         problem.observation => SubsampledData(batch_data),
     )
     ranges = get_all_ranges_and_transforms(problem.ldf)

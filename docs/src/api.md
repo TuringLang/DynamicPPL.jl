@@ -93,7 +93,7 @@ Base.rand(::Random.AbstractRNG, ::LogDensityFunction, ::AbstractInitStrategy)
 A [`Model`](@ref) can be conditioned on a set of observations with [`AbstractPPL.condition`](@ref) or its alias [`|`](@ref).
 
 ```@docs
-|(::Model, ::Union{Tuple,NamedTuple,AbstractDict{<:VarName}})
+|(::Model, ::Union{NamedTuple,VarNamedTuple,Pair,Tuple})
 condition
 DynamicPPL.conditioned
 ```
@@ -494,7 +494,7 @@ tilde_observe!!
 ```
 
 **Parent contexts**: These essentially act as 'modifiers' for leaf contexts.
-For example, `PrefixContext` adds a prefix to all variable names during evaluation, while `CondFixContext` marks certain variables as being either conditioned or fixed.
+For example, `PrefixContext` adds a prefix to variable names during evaluation. Conditioning and fixing are stored on the model; see [Binding rules](@ref).
 
 To implement a parent context, you have to subtype `DynamicPPL.AbstractParentContext`, and implement the `childcontext` and `setchildcontext` methods.
 If needed, you can also implement `tilde_assume!!` and `tilde_observe!!` for your context.

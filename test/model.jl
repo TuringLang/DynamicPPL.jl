@@ -5,7 +5,7 @@ using Dates: now
 __now__ = now()
 
 using AbstractMCMC: AbstractMCMC
-using AbstractPPL: AbstractPPL
+using AbstractPPL: AbstractPPL, @of, of
 using Distributions
 using DynamicPPL
 using LinearAlgebra: I, Cholesky
@@ -60,7 +60,172 @@ end
 
 const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
 
+struct ArgumentEltypeCounter <: DynamicPPL.AbstractInitStrategy
+    calls::Base.RefValue{Int}
+end
+function DynamicPPL.get_param_eltype(strategy::ArgumentEltypeCounter)
+    strategy.calls[] += 1
+    return Float64
+end
+
+struct CustomModelArgument end
+DynamicPPL.convert_model_argument(T, ::CustomModelArgument) = (:converted, T)
+DynamicPPL.convert_model_argument(T, ::Type{CustomModelArgument}) = (:converted_type, T)
+
 @testset "model.jl" begin
+    @testset "parameter eltype is queried only for type arguments" begin
+        @model passthrough(x) = x
+        @model splatted(xs...) = xs
+        value = [1.0f0]
+        for (model, expected) in (
+            (passthrough(1.0f0), 1.0f0),
+            (passthrough(value), value),
+            (splatted(1, 2.0), (1, 2.0)),
+            (passthrough(CustomModelArgument()), (:converted, Any)),
+        )
+            calls = Ref(0)
+            result, _ = init!!(
+                Xoshiro(1),
+                model,
+                VarInfo(DynamicPPL.AccumulatorTuple()),
+                ArgumentEltypeCounter(calls),
+            )
+            @test result === expected
+            @test calls[] == 0
+        end
+        for (argument, expected) in (
+            (Float32, Float64),
+            (Vector{Float32}, Vector{Float64}),
+            (DynamicPPL.TypeWrap{Float32}(), DynamicPPL.TypeWrap{Float64}()),
+            (CustomModelArgument, (:converted_type, Float64)),
+        )
+            calls = Ref(0)
+            result, _ = init!!(
+                Xoshiro(1),
+                passthrough(argument),
+                VarInfo(DynamicPPL.AccumulatorTuple()),
+                ArgumentEltypeCounter(calls),
+            )
+            @test result === expected
+            @test calls[] == 1
+        end
+    end
+
+    @testset "prepared evaluator arguments apply effective bindings" begin
+        @model function prepared_bindings(observation, replaced; held=0.0)
+            observation ~ Normal()
+            replaced ~ Normal()
+            held ~ Normal()
+            return (; observation, replaced, held)
+        end
+        model = condition(prepared_bindings(1.0, 2.0); replaced=3.0)
+        model = fix(decondition(model, @varname(held)); held=4.0)
+        context = DynamicPPL.InitContext(Xoshiro(1), InitFromPrior(), UnlinkAll())
+        args, kwargs = DynamicPPL.make_evaluate_args_and_kwargs(
+            DynamicPPL.setleafcontext(model, context), VarInfo()
+        )
+        result, vi = model.f(args...; kwargs...)
+        @test result == (; observation=1.0, replaced=3.0, held=4.0)
+        @test getloglikelihood(vi) ≈ logpdf(Normal(), 1.0) + logpdf(Normal(), 3.0)
+        @test getlogprior(vi) == 0.0
+    end
+
+    @testset "immutable metadata for arguments with LHS variables" begin
+        @model argument_lhs(x) = x ~ Normal()
+        @test isbitstype(typeof(DynamicPPL.Model{false}(identity, (;), (;))))
+        @test isbitstype(
+            typeof(DynamicPPL.Model{false}(identity, (; x=1.0), (;); args_on_lhs=[:x]))
+        )
+        @test DynamicPPL._args_on_lhs(argument_lhs(1.0)) === (:x,)
+        model = argument_lhs(1.0)
+        accs = VarInfo(DynamicPPL.AccumulatorTuple(LogLikelihoodAccumulator()))
+        @test first(@inferred init!!(Xoshiro(1), model, accs, InitFromPrior())) == 1.0
+    end
+
+    @testset "direct construction without declared argument LHS variables" begin
+        @model covariate(x, y) = y ~ Normal(x)
+        f = covariate(0.0, 1.0).f
+        for m in (
+            DynamicPPL.Model{false}(f, (; x=missing, y=1.0), (;)),
+            DynamicPPL.Model{false}(f, (; x=missing); y=1.0),
+            DynamicPPL.Model{false}(f, (; x=missing, y=1.0), (;), DefaultContext()),
+        )
+            @test isempty(conditioned(m))
+            @test isempty(DynamicPPL._args_on_lhs(m))
+            @test ismissing(m.args.x)
+            @test_throws ArgumentError condition(m; y=2.0)
+            @test_throws ArgumentError fix(m; y=2.0)
+        end
+        @test conditioned(covariate(0.0, 1.0)) == VarNamedTuple(; y=1.0)
+    end
+
+    @testset "direct construction validates argument LHS names" begin
+        for args_on_lhs in ((:typo,), [:y, :typo])
+            @test_throws r"ArgumentError: .*typo.*argument" DynamicPPL.Model{false}(
+                identity, (; y=1.0), (;); args_on_lhs
+            )
+        end
+        for (args, defaults, name) in (
+            ((; y=1.0), (;), :y),
+            ((;), (; y=1.0), :y),
+            (NamedTuple{(Symbol("#splat#ys"),)}(((1.0,),)), (;), :ys),
+            ((;), NamedTuple{(Symbol("#splat#kw"),)}(((; y=1.0),)), :kw),
+        )
+            model = DynamicPPL.Model{false}(identity, args, defaults; args_on_lhs=(name,))
+            @test DynamicPPL._args_on_lhs(model) === (name,)
+        end
+    end
+
+    @testset "direct construction preserves merged prefix metadata" begin
+        @model prefixed_lhs(y) = y ~ Normal()
+        original = prefixed_lhs(1.0)
+        for model in (
+            original,
+            prefix(original, @varname(p)),
+            prefix(original, @varname(p[2]); template=zeros(2)),
+        )
+            direct = DynamicPPL.Model{false}(
+                model.f,
+                model.args,
+                model.defaults,
+                model.context,
+                model.values;
+                args_on_lhs=DynamicPPL._args_on_lhs(model),
+            )
+            @test direct.context === model.context
+            @test (@inferred DynamicPPL._model_prefix(direct)) ==
+                DynamicPPL._model_prefix(model)
+            @test conditioned(direct) == conditioned(model)
+            @test keys(VarInfo(Xoshiro(1), decondition(direct))) ==
+                keys(VarInfo(Xoshiro(1), decondition(model)))
+        end
+    end
+
+    @testset "direct construction records argument-supplied observations" begin
+        @model positional_lhs(y, mu) = y ~ Normal(mu)
+        @model keyword_lhs(; y, mu) = y ~ Normal(mu)
+        direct_lhs(original) = DynamicPPL.Model{false}(
+            original.f, original.args, original.defaults; args_on_lhs=(:y,)
+        )
+        for original in (positional_lhs(1.0, 0.0), keyword_lhs(; y=1.0, mu=0.0))
+            direct = @inferred direct_lhs(original)
+            @test conditioned(direct) == VarNamedTuple(; y=1.0)
+            accs = VarInfo(DynamicPPL.AccumulatorTuple(LogLikelihoodAccumulator()))
+            result, vi = @inferred init!!(Xoshiro(1), direct, accs, InitFromPrior())
+            @test result == 1.0
+            @test getloglikelihood(vi) == logpdf(Normal(), 1.0)
+            @test keys(VarInfo(Xoshiro(1), decondition(direct))) == [@varname(y)]
+        end
+        for original in (positional_lhs(nothing, 0.0), keyword_lhs(; y=nothing, mu=0.0))
+            direct = @inferred direct_lhs(original)
+            @test isempty(conditioned(direct))
+            @test keys(VarInfo(Xoshiro(1), direct)) == [@varname(y)]
+            restored = unfix(fix(direct; y=2.0))
+            @test isempty(conditioned(restored))
+            @test keys(VarInfo(Xoshiro(1), restored)) == [@varname(y)]
+        end
+    end
+
     @testset "convenience functions" begin
         model = GDEMO_DEFAULT
 
@@ -113,7 +278,14 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
             vnt = rand(model)
             chain_sym_map = Dict{Symbol,Symbol}()
             for vn_parent in keys(vnt)
-                sym = DynamicPPL.getsym(vn_parent)
+                local_vn =
+                    if model.f ===
+                        DynamicPPL.TestUtils.demo_assume_submodel_observe_index_literal
+                        AbstractPPL.unprefix(vn_parent, @varname(priors))
+                    else
+                        vn_parent
+                    end
+                sym = DynamicPPL.getsym(local_vn)
                 vn_children = AbstractPPL.varname_leaves(vn_parent, vnt[vn_parent])
                 for vn_child in vn_children
                     chain_sym_map[Symbol(vn_child)] = sym
@@ -140,69 +312,6 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
                 @test logjoints[i] ≈
                     DynamicPPL.TestUtils.logjoint_true(model, samples[:s], samples[:m])
             end
-        end
-    end
-
-    @testset "model de/conditioning" begin
-        @model function demo_condition()
-            x ~ Normal()
-            return y ~ Normal(x)
-        end
-        model = demo_condition()
-
-        # Test that different syntaxes work and give the same underlying CondFixContext
-        @testset "conditioning NamedTuple" begin
-            expected_values = @vnt begin
-                y := 2
-            end
-            @test condition(model, (y=2,)).context.values == expected_values
-            @test condition(model; y=2).context.values == expected_values
-            @test condition(model; y=2).context.values == expected_values
-            @test (model | (y=2,)).context.values == expected_values
-            conditioned_model = condition(model, (y=2,))
-            @test keys(VarInfo(conditioned_model)) == [@varname(x)]
-        end
-
-        @testset "conditioning AbstractDict" begin
-            # condition just 1 variable
-            expected_values = @vnt begin
-                y := 2
-            end
-            @test condition(model, Dict(@varname(y) => 2)).context.values == expected_values
-            @test condition(model, @varname(y) => 2).context.values == expected_values
-            @test (model | (@varname(y) => 2,)).context.values == expected_values
-            @test (model | (@varname(y) => 2)).context.values == expected_values
-            conditioned_model = condition(model, Dict(@varname(y) => 2))
-            @test keys(VarInfo(conditioned_model)) == [@varname(x)]
-
-            # condition 2 variables
-            expected_values = @vnt begin
-                x := 1
-                y := 2
-            end
-            @test condition(model, (@varname(x) => 1, @varname(y) => 2)).context.values ==
-                expected_values
-            conditioned_model = condition(model, (@varname(x) => 1, @varname(y) => 2))
-            @test keys(VarInfo(conditioned_model)) == []
-        end
-
-        @testset "conditioning VNT" begin
-            # This is mostly to check that the VNT method exists
-            expected_values = @vnt begin
-                y := 2
-            end
-            @test condition(model, (@vnt begin
-                y := 2
-            end)).context.values == expected_values
-            @test (model | (@vnt begin
-                y := 2
-            end)).context.values == expected_values
-        end
-
-        @testset "deconditioning" begin
-            conditioned_model = condition(model, (y=2,))
-            deconditioned_model = decondition(conditioned_model)
-            @test keys(VarInfo(deconditioned_model)) == [@varname(x), @varname(y)]
         end
     end
 
@@ -305,21 +414,36 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
 
     @testset "default arguments" begin
         @model test_defaults(x, n=length(x)) = x ~ MvNormal(zeros(n), I)
-        @test length(test_defaults(missing, 2)()) == 2
+        @test length(decondition(test_defaults(zeros(2), 2), @varname(x))(Xoshiro(1))) == 2
     end
 
-    @testset "missing kwarg" begin
-        @model test_missing_kwarg(; x=missing) = x ~ Normal(0, 1)
-        @test @varname(x) in keys(rand(test_missing_kwarg()))
+    @testset "deconditioned kwarg" begin
+        @model test_kwarg(; x=0.0) = x ~ Normal(0, 1)
+        @test @varname(x) in keys(rand(Xoshiro(1), decondition(test_kwarg())))
     end
 
     @testset "extract priors" begin
+        @model function conditional_prior()
+            x ~ Normal()
+            return y ~ Normal(x, 1)
+        end
+        model = conditional_prior()
+        vi = VarInfo(model, InitFromParams((; x=2.0, y=0.0), nothing))
+        @test extract_priors(model, vi)[@varname(y)] == Normal(2.0, 1)
+
         @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
             priors = extract_priors(model)
 
             # We know that any variable starting with `s` should have `InverseGamma`
             # and any variable starting with `m` should have `Normal`.
             for (vn, prior) in pairs(priors)
+                vn =
+                    if model.f ===
+                        DynamicPPL.TestUtils.demo_assume_submodel_observe_index_literal
+                        AbstractPPL.unprefix(vn, @varname(priors))
+                    else
+                        vn
+                    end
                 if DynamicPPL.getsym(vn) == :s
                     @test innermost_distribution_type(prior) <: InverseGamma
                 elseif DynamicPPL.getsym(vn) == :m
@@ -373,7 +497,6 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
             @test results.bsq == params.b^2
             # `returned` should error when not all parameters are provided
             @test_throws ErrorException returned(model, (; a=1.0))
-            @test_throws ErrorException returned(model, (a=1.0, b=missing))
         end
         @testset "Dict" begin
             params = Dict{VarName,Float64}(@varname(a) => 1.0, @varname(b) => 2.0)
@@ -383,9 +506,6 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
             # `returned` should error when not all parameters are provided
             @test_throws ErrorException returned(
                 model, Dict{VarName,Float64}(@varname(a) => 1.0)
-            )
-            @test_throws ErrorException returned(
-                model, Dict{VarName,Any}(@varname(a) => 1.0, @varname(b) => missing)
             )
         end
     end
@@ -474,16 +594,19 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
                 return nothing
             end
             @model function outer_manual_prefix()
-                a ~ to_submodel(DynamicPPL.prefix(inner(), :a), false)
-                b ~ to_submodel(DynamicPPL.prefix(inner(), :b), false)
+                a ~ to_submodel(DynamicPPL.prefix(inner(), :p))
+                b ~ to_submodel(DynamicPPL.prefix(inner(), :p))
                 return nothing
             end
 
-            for model in (outer_auto_prefix(), outer_manual_prefix())
+            for (model, expected) in (
+                (outer_auto_prefix(), Set([@varname(a.x), @varname(b.x)])),
+                (outer_manual_prefix(), Set([@varname(a.p.x), @varname(b.p.x)])),
+            )
                 vi = VarInfo((RawValueAccumulator(false),))
                 _, vi = init!!(model, vi, InitFromPrior(), UnlinkAll())
                 vns = Set(keys(get_raw_values(vi)))
-                @test vns == Set([@varname(a.x), @varname(b.x)])
+                @test vns == expected
             end
         end
     end
@@ -549,7 +672,7 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
 
             # Generate predictions from that chain
             xs_test = [10 + 0.1, 10 + 2 * 0.1]
-            m_lin_reg_test = linear_reg(xs_test, fill(missing, length(xs_test)))
+            m_lin_reg_test = decondition(linear_reg(xs_test, zeros(length(xs_test))), :y)
             predictions = DynamicPPL.predict(m_lin_reg_test, β_chain)
 
             # Also test a vectorized model
@@ -557,7 +680,9 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
                 β ~ Normal(0, 1)
                 return y ~ MvNormal(β .* x, σ^2 * I)
             end
-            m_lin_reg_test_vec = linear_reg_vec(xs_test, missing)
+            m_lin_reg_test_vec = decondition(
+                linear_reg_vec(xs_test, zeros(length(xs_test))), :y
+            )
 
             @testset "variables in chain" begin
                 # Note that this also checks that variables on the lhs of :=,
@@ -702,6 +827,122 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
         model = sample_nt(d)
         @test model() isa NamedTuple
     end
+end
+
+@testset "model binding state equality" begin
+    @model g(y, mu) = (y ~ Normal(mu); y)
+    c = condition(g(missing, 0.0); y=1.0)
+    @test (c == c) === true
+    @test (g(missing, 0.0) == g(missing, 0.0)) === true
+    @model scalar_state(x=nothing) = (x ~ Normal(); x)
+    @model array_state(x) = (x ~ MvNormal(zeros(length(x)), I); x)
+    @model tuple_state(x) = (x.a ~ Normal(); x.b ~ Normal(); x)
+    @model default_state(; x=[1.0]) = x
+    @model child_state() = a ~ to_submodel(scalar_state())
+    @model body_state(bind) = (
+        z ~ Normal(); a ~ to_submodel(bind(scalar_state(); x=7.0)); (z=z, a=a)
+    )
+    same(a, b) = (a == b, isequal(a, b), hash(a) == hash(b))
+    @test same(array_state([1.0]), array_state([1.0])) == (true, true, true)
+    @test same(scalar_state(NaN), scalar_state(NaN)) == (true, true, true)
+    @test scalar_state(0.0) != scalar_state(-0.0)
+    @test !isequal(scalar_state(0.0), scalar_state(-0.0))
+    @test !isequal(scalar_state(), scalar_state(1.0))
+    @test (scalar_state(missing) == scalar_state(missing)) === true
+    @test isequal(scalar_state(missing), scalar_state(missing))
+    @test same(default_state(), default_state()) == (true, true, true)
+    @test default_state(; x=[1.0]) != default_state(; x=[2.0])
+    @test scalar_state() != default_state()
+    @test scalar_state() != prefix(scalar_state(), @varname(a))
+    for (bind, remove, listing) in
+        ((condition, decondition, conditioned), (fix, unfix, fixed))
+        for (original, address, value) in (
+                (scalar_state(), @varname(x), 2.0),
+                (array_state(zeros(2)), @varname(x), ones(2)),
+                (tuple_state((a=0.0, b=0.0)), @varname(x), (a=1.0, b=2.0)),
+                (child_state(), @varname(a.x), 2.0),
+                (array_state(zeros(2)), @varname(x[1]), 1.0),
+                (tuple_state((a=0.0, b=0.0)), @varname(x.a), 1.0),
+            ),
+            names in ((), (address,))
+
+            original = decondition(original)
+            m = remove(original, names...)
+            m1 = bind(m, address => value)
+            cleared = remove(m1, names...)
+            @test same(cleared, m) == (true, true, true)
+            @test same(bind(cleared, listing(m1)), m1) == (true, true, true)
+        end
+        original = body_state(bind)
+        bound = bind(original; z=3.0)
+        cleared = remove(bound)
+        rebuilt = bind(cleared, listing(bound))
+        @test cleared != original
+        @test !isequal(cleared, original)
+        @test rebuilt != bound
+        @test !isequal(rebuilt, bound)
+        @test bound(Xoshiro(1)).a == 7.0
+        @test rebuilt(Xoshiro(1)).a != 7.0
+        original = decondition(array_state(zeros(2)))
+        bound = bind(original; x=ones(3))
+        cleared = remove(bound, @varname(x[1]), @varname(x[2]), @varname(x[3]))
+        @test cleared != original
+        @test !isequal(cleared, original)
+        @test length(original(Xoshiro(1))) == 2
+        @test length(cleared(Xoshiro(1))) == 3
+        marked_original = DynamicPPL._reconstruct_model(
+            original;
+            observation_removals=cleared.observation_removals,
+            fixed_removals=cleared.fixed_removals,
+        )
+        @test cleared != marked_original
+        @test !isequal(cleared, marked_original)
+        other = remove(
+            bind(original; x=fill(2.0, 3)), @varname(x[1]), @varname(x[2]), @varname(x[3])
+        )
+        @test cleared(Xoshiro(1)) == other(Xoshiro(1))
+        @test same(cleared, other) == (true, true, true)
+        @test same(remove(bound), remove(bound)) == (true, true, true)
+        @test same(remove(bind(scalar_state(); x=1.0)), remove(scalar_state())) ==
+            (true, true, true)
+        @test bind(scalar_state(); x=1.0) != bind(scalar_state(); x=2.0)
+        @test !isequal(bind(scalar_state(); x=1.0), bind(scalar_state(); x=2.0))
+        @test bind(scalar_state(); x=[1.0]) == bind(scalar_state(); x=[1.0])
+        @test hash(bind(scalar_state(); x=[1.0])) == hash(bind(scalar_state(); x=[1.0]))
+        a = bind(child_state(), @varname(a.x) => 1.0, @of(a = (x=of(Float64),)))
+        b = bind(child_state(), @varname(a.x) => 1.0f0, @of(a = (x=of(Float32),)))
+        @test typeof(a(Xoshiro(1))) != typeof(b(Xoshiro(1)))
+        @test a != b
+        @test !isequal(a, b)
+    end
+    @model nested_state(x) = (x[1][1] ~ Normal(); x[1][2])
+    original = decondition(nested_state([zeros(2)]))
+    for n in (1, 2)
+        a = decondition(
+            condition(original; x=[[1.0, 2.0], [3.0, 4.0]][1:n]), @varname(x[1][2])
+        )
+        b = decondition(
+            condition(original; x=[[1.0, 7.0], [3.0, 4.0]][1:n]), @varname(x[1][2])
+        )
+        @test same(a, b) == (n == 1, n == 1, n == 1)
+        @test a(Xoshiro(1)) == (n == 1 ? 0.0 : 2.0)
+        @test b(Xoshiro(1)) == (n == 1 ? 0.0 : 7.0)
+    end
+    @test condition(scalar_state(); x=1.0) != fix(scalar_state(); x=1.0)
+    @test decondition(scalar_state()) != unfix(scalar_state())
+    @test same(
+        decondition(body_state(condition), @varname(z), @varname(a)),
+        decondition(body_state(condition), @varname(a), @varname(z)),
+    ) == (true, true, true)
+    @test same(
+        condition(body_state(condition), @varname(z) => 1.0, @varname(a.x) => 2.0),
+        condition(body_state(condition), @varname(a.x) => 2.0, @varname(z) => 1.0),
+    ) == (true, true, true)
+    m = condition(array_state(zeros(2)); x=ones(2))
+    n = condition(array_state(zeros(2)); x=ones(2))
+    @test @inferred(m == n)
+    @test @inferred(isequal(m, n))
+    @test @inferred(hash(m)) == hash(n)
 end
 
 @info "Completed $(@__FILE__) in $(now() - __now__)."

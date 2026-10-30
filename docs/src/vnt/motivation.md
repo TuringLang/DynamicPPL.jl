@@ -153,13 +153,9 @@ When calling functions such as `returned` or `predict` on the chain, we have to 
     (no_dist, with_dist)
     ```
 
-Another problem was when conditioning on values.
-In such cases, you had to condition on `x` in full, rather than its components:
-
-```julia
-model = f4() | Dict(@varname(x) => [1.0, -1.0])  # This would work.
-model = f4() | Dict(@varname(x[1]) => 1.0, @varname(x[2]) => -1.0)  # This would not.
-```
+A dictionary also lacks the storage needed to interpret partial model bindings.
+Use a storage-carrying VNT or an explicit template; see
+[Binding inputs and storage](@ref).
 
 Finally, we are unable to properly use different indexing schemes.
 For example, `x[1]` and `x[1,1]` mean the same thing if `x` is a `Matrix`, but the dictionary will think that they are different `VarName`s.
