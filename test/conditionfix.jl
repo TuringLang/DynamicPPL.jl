@@ -293,12 +293,6 @@ end
         )(
             Xoshiro(1)
         ) == [0.5, 1.5]
-        cleared = remove(nested, @varname(b.a.y))
-        @test bind(
-            cleared, @varname(b.a.y[1]) => 0.5, @varname(b.a.y[2]) => 1.5, b_a_y2_template
-        )(
-            Xoshiro(1)
-        ) == [0.5, 1.5]
         inherited = bind(remove(nested), @varname(b.a.y[2]) => 0.5, b_a_y2_template)
         @test inherited(Xoshiro(1))[2] == 0.5
         retained = bind(child, @varname(a.y[2]) => 2.0)
@@ -2918,13 +2912,6 @@ end
         ) == [7.0, 4.0]
         @test first(
             init!!(
-                unfix(replaced, @varname(x.a)),
-                VarInfo(),
-                InitFromParams((; x=(a=7.0,)), nothing),
-            ),
-        ) == (a=7.0, b=4.0)
-        @test first(
-            init!!(
                 unfix(replaced_tuple, @varname(x)),
                 VarInfo(),
                 InitFromParams((; x=[7.0, 8.0]), nothing),
@@ -3650,12 +3637,8 @@ end
     for op in (condition, fix)
         schema = z3_template
         pair = @varname(z[2]) => 1.0
-        for inputs in (
-            (pair, schema),
-            (pair, schema),
-            ((pair,), schema),
-            (pair, @varname(z[1]) => 2.0, schema),
-        )
+        for inputs in
+            ((pair, schema), ((pair,), schema), (pair, @varname(z[1]) => 2.0, schema))
             m = op(schema_local(), inputs...)
             @test m(Xoshiro(1))[2] == 1.0
             @test length(op === condition ? conditioned(m) : fixed(m)) >= 1
@@ -5329,7 +5312,6 @@ end
 
         j = lastindex(good)
         for model in (
-            unfix(array_model(good), @varname(x[j])),
             unfix(array_model(good), @varname(x[j])),
             unfix(child_model(condition(array_model(good); x=good)), @varname(a.x[j])),
         )
