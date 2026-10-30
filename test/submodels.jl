@@ -687,8 +687,9 @@ end
                     )
                 end
                 @test @inferred(init!!(model, accs, strategy, UnlinkAll())) isa Tuple
+                # Coverage instrumentation adds allocations that grow with the binding count.
                 @test (@allocated init!!(model, accs, strategy, UnlinkAll())) <=
-                    baseline + 128
+                    baseline + 128 skip = Base.JLOptions().code_coverage != 0
             end
         end
     end
