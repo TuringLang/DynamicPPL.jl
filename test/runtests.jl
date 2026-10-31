@@ -36,7 +36,6 @@ Random.seed!(100)
 
         include("pointwise_logdensities.jl")
         include("lkj.jl")
-        include("prefix.jl")
         include("contexts/init.jl")
         include("conditionfix.jl")
         include("binding.jl")
