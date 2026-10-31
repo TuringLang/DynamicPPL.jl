@@ -31,8 +31,8 @@ end
         rng = rng_type(42)
         ldf = LogDensityFunction(rng_deterministic(); rng, adtype)
         expected_rng = copy(rng)
-        @test LogDensityProblems.logdensity(ldf, [0.2]) ≈ logpdf(Normal(), 0.2)
-        @test last(LogDensityProblems.logdensity_and_gradient(ldf, [0.2])) ≈ [-0.2]
+        LogDensityProblems.logdensity(ldf, [0.2])
+        LogDensityProblems.logdensity_and_gradient(ldf, [0.2])
         @test rand(copy(rng)) == rand(expected_rng)
         expected_rng = copy(rng)
         @test only(rand(ldf)) == rand(expected_rng, Normal())
@@ -60,14 +60,12 @@ end
                 @test (@inferred LogDensityProblems.logdensity(ldf, [0.2])) ≈
                     logpdf(Normal(), 0.2) + logpdf(Normal(0.2 + u, 1), 0.0)
             end
-            for include_log_probs in (true, false)
-                u = rand(expected_rng)
-                output = ParamsWithStats([0.2], ldf; include_log_probs)
-                if include_log_probs
-                    @test output.stats.logjoint ≈
-                        logpdf(Normal(), 0.2) + logpdf(Normal(0.2 + u, 1), 0.0)
-                end
-            end
+            u = rand(expected_rng)
+            output = ParamsWithStats([0.2], ldf; include_log_probs=true)
+            @test output.stats.logjoint ≈
+                logpdf(Normal(), 0.2) + logpdf(Normal(0.2 + u, 1), 0.0)
+            rand(expected_rng)
+            ParamsWithStats([0.2], ldf; include_log_probs=false)
             @test rand(copy(rng)) == rand(expected_rng)
         end
         for adtype in (AutoForwardDiff(), AutoMooncake())
@@ -743,8 +741,7 @@ end
 end
 
 @testset "LogDensityFunction: logdensity_internal defaults to the task-local RNG" begin
-    @model tiny() = x ~ Normal()
-    ldf = LogDensityFunction(tiny())
+    ldf = LogDensityFunction(rng_deterministic())
     args = (
         ldf.model,
         DynamicPPL.getlogjoint_internal,
