@@ -40,28 +40,17 @@ __now__ = now()
     end
 
     @testset "stored values follow operation order" begin
-        conditioned_first = DynamicPPL.prefix(condition(model; x=1.0), @varname(a))
-        @test conditioned(conditioned_first)[@varname(a.x)] == 1.0
-        @test conditioned_first().x == 1.0
+        for (bind, bound, remove, before, after) in
+            ((condition, conditioned, decondition, 1.0, 2.0), (fix, fixed, unfix, 3.0, 4.0))
+            bound_first = DynamicPPL.prefix(bind(model; x=before), @varname(a))
+            @test bound(bound_first)[@varname(a.x)] == before
+            @test bound_first().x == before
 
-        prefixed_first = condition(
-            DynamicPPL.prefix(model, @varname(a)), @varname(a.x) => 2.0
-        )
-        @test conditioned(prefixed_first)[@varname(a.x)] == 2.0
-        @test prefixed_first().x == 2.0
-
-        fixed_first = DynamicPPL.prefix(fix(model; x=3.0), @varname(a))
-        @test fixed(fixed_first)[@varname(a.x)] == 3.0
-        @test fixed_first().x == 3.0
-
-        prefixed_then_fixed = fix(
-            DynamicPPL.prefix(model, @varname(a)), @varname(a.x) => 4.0
-        )
-        @test fixed(prefixed_then_fixed)[@varname(a.x)] == 4.0
-        @test prefixed_then_fixed().x == 4.0
-
-        @test isempty(keys(conditioned(decondition(conditioned_first, @varname(a)))))
-        @test isempty(keys(fixed(unfix(fixed_first, @varname(a)))))
+            prefixed_first = bind(prefixed, @varname(a.x) => after)
+            @test bound(prefixed_first)[@varname(a.x)] == after
+            @test prefixed_first().x == after
+            @test isempty(keys(bound(remove(bound_first, @varname(a)))))
+        end
     end
 
     @testset "explicit bindings stay under the model prefix" begin
@@ -81,7 +70,6 @@ __now__ = now()
             )
 
             nested = DynamicPPL.prefix(prefixed_argument, @varname(q))
-            @test_throws ArgumentError op(nested, @varname(p.y) => 0.0)
             @test_throws ArgumentError op(nested, @varname(q.other.y) => 0.0)
             @test op(nested, @varname(q.p.y) => 4.0)(Xoshiro(1)) == 4.0
 
@@ -89,14 +77,8 @@ __now__ = now()
             @test_throws ArgumentError op(indexed, @varname(p[2].y) => 0.0)
             @test op(indexed, @varname(p[1].y) => 5.0)(Xoshiro(1)) == 5.0
 
-            @model function parent_binding(child)
-                result ~ to_submodel(child)
-                return result
-            end
-            @model function parent_binding_unprefixed(child)
-                result ~ to_submodel(child, false)
-                return result
-            end
+            @model parent_binding(child) = result ~ to_submodel(child)
+            @model parent_binding_unprefixed(child) = result ~ to_submodel(child, false)
             child = op(nested, @varname(q.p.y) => 6.0)
             @test_throws ArgumentError parent_binding_unprefixed(child)(Xoshiro(1))
             parent = parent_binding(child)

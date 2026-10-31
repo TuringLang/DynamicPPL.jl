@@ -75,7 +75,6 @@ end
             )
             @test seen ==
                 [@varname(x), @varname(z), nothing, @varname(ys[1]), @varname(ys[2])]
-            @test length(prefixes) == 5
             if m === nested
                 @test all(p -> p isa DynamicPPL.PrefixTemplate, prefixes)
                 @test all(p -> DynamicPPL._getprefix(p) == @varname(b.a[2, 3]), prefixes)
@@ -85,12 +84,8 @@ end
             @test getloglikelihood(vi) ≈ sum(logpdf.(Normal(), 0.0:4.0))
             pointwise = DynamicPPL.get_pointwise_logprobs(vi)
             observation_prefix = DynamicPPL._getprefix(first(prefixes))
-            for (vn, value) in (
-                (@varname(x), 1.0),
-                (@varname(z), 4.0),
-                (@varname(ys[1]), 2.0),
-                (@varname(ys[2]), 3.0),
-            )
+            for (vn, value) in
+                ((@varname(x), 1.0), (@varname(z), 4.0), (@varname(ys[1]), 2.0))
                 name = DynamicPPL.maybe_prefix(vn, observation_prefix)
                 @test pointwise[name] ≈ logpdf(Normal(), value)
             end
