@@ -334,6 +334,43 @@ for f in (:pointwise_logdensities, :pointwise_loglikelihoods, :pointwise_prior_l
     end
 end
 
+function _predict(
+    rng::Random.AbstractRNG, model::Model, params::VarNamedTuple; include_all::Bool=false
+)
+    vi = VarInfo(
+        AccumulatorTuple(
+            LogPriorAccumulator(), LogLikelihoodAccumulator(), RawValueAccumulator(true)
+        ),
+    )
+    _, vi = init!!(rng, model, vi, InitFromParams(params), UnlinkAll())
+    prediction = ParamsWithStats(vi)
+    return if include_all
+        prediction
+    else
+        predicted_params = VarNamedTuple()
+        # Raw values retain sampled-variable boundaries before arrays are densified.
+        for (vn, value) in pairs(get_raw_values(vi))
+            leaves = AbstractPPL.varname_and_value_leaves(vn, value)
+            isempty(leaves) && haskey(params, vn) && !ismissing(params[vn]) && continue
+            keep_all = all(
+                p -> !haskey(params, first(p)) || ismissing(params[first(p)]), leaves
+            )
+            retained = keep_all ? ((vn, value),) : leaves
+            for (leaf, leaf_value) in retained
+                if keep_all || !haskey(params, leaf) || ismissing(params[leaf])
+                    predicted_params = templated_setindex!!(
+                        predicted_params,
+                        leaf_value,
+                        leaf,
+                        prediction.params.data[AbstractPPL.getsym(leaf)],
+                    )
+                end
+            end
+        end
+        ParamsWithStats(densify!!(predicted_params), prediction.stats)
+    end
+end
+
 """
     predict([rng::AbstractRNG,] model::Model, chain::AbstractMCMC.SamplingOutput; include_all=false)
 
@@ -350,42 +387,7 @@ function predict(
     include_all::Bool=false,
 )
     predictions = map(chain.samples) do draw
-        params = _sampling_output_params(draw)
-        vi = VarInfo(
-            AccumulatorTuple(
-                LogPriorAccumulator(),
-                LogLikelihoodAccumulator(),
-                RawValueAccumulator(true),
-            ),
-        )
-        _, vi = init!!(rng, model, vi, InitFromParams(params), UnlinkAll())
-        prediction = ParamsWithStats(vi)
-        if include_all
-            prediction
-        else
-            predicted_params = VarNamedTuple()
-            # Raw values retain sampled-variable boundaries before arrays are densified.
-            for (vn, value) in pairs(get_raw_values(vi))
-                leaves = AbstractPPL.varname_and_value_leaves(vn, value)
-                isempty(leaves) && haskey(params, vn) && !ismissing(params[vn]) && continue
-                keep_all = all(
-                    p -> !haskey(params, first(p)) || ismissing(params[first(p)]),
-                    leaves,
-                )
-                retained = keep_all ? ((vn, value),) : leaves
-                for (leaf, leaf_value) in retained
-                    if keep_all || !haskey(params, leaf) || ismissing(params[leaf])
-                        predicted_params = templated_setindex!!(
-                            predicted_params,
-                            leaf_value,
-                            leaf,
-                            prediction.params.data[AbstractPPL.getsym(leaf)],
-                        )
-                    end
-                end
-            end
-            ParamsWithStats(densify!!(predicted_params), prediction.stats)
-        end
+        _predict(rng, model, _sampling_output_params(draw); include_all)
     end
     return AbstractMCMC.SamplingOutput(predictions; iterations=chain.iterations)
 end
