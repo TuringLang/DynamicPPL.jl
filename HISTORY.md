@@ -1,5 +1,7 @@
 # 0.43.0 (unreleased)
 
+`predict([rng,] model, params::VarNamedTuple)` now predicts from a single draw and returns a `ParamsWithStats`; set `include_all=true` to retain supplied parameters.
+
 Thread-safe tilde assignments now throw an `ArgumentError` if any container is replaced, including same-type immutable values: `(a = zero(T),)` → `Vector{T}(undef, n)`. Allocate mutable storage with `::Type{T}=Float64`; use `Vector{Union{Missing,Real}}` for imputation under AD. See [#1521](https://github.com/TuringLang/DynamicPPL.jl/pull/1521).
 
 `VarNamedTuple` membership resolves `begin` and `end` against the stored array. See [#1490](https://github.com/TuringLang/DynamicPPL.jl/pull/1490).

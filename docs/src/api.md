@@ -136,10 +136,13 @@ DynamicPPL.unfix
 
 DynamicPPL provides functionality for generating samples from the posterior predictive distribution through the `predict` function. This allows you to use posterior parameter samples to generate predictions for unobserved data points.
 
-The `predict` function has two main methods:
+The `predict` function accepts:
 
- 1. For `AbstractVector{<:AbstractVarInfo}` - useful when you have a collection of `VarInfo` objects representing posterior samples.
- 2. For `MCMCChains.Chains` (only available when `MCMCChains.jl` is loaded) - useful when you have posterior samples in the form of an `MCMCChains.Chains` object.
+ 1. A `VarNamedTuple` representing one draw: `predict(model, params)` returns a `ParamsWithStats` containing predicted parameters and log probabilities.
+ 2. An `AbstractMCMC.SamplingOutput` of `VarNamedTuple` or `ParamsWithStats` draws: prediction returns a `SamplingOutput`.
+ 3. An `MCMCChains.Chains` object (when `MCMCChains.jl` is loaded): prediction returns a `Chains` object.
+
+Each form accepts an optional first argument `rng::AbstractRNG`.
 
 ```@docs
 predict
@@ -153,10 +156,10 @@ The typical workflow for posterior prediction involves:
  2. Creating a new model instance with some variables marked as missing (unobserved)
  3. Using `predict` to generate samples for these missing variables based on the posterior parameter samples
 
-When using `predict` with `MCMCChains.Chains`, you can control which variables are included in the output with the `include_all` parameter:
+Use the `include_all` keyword to control which variables are included in the output:
 
   - `include_all=false` (default): Include only newly predicted variables
-  - `include_all=true`: Include both parameters from the original chain and predicted variables
+  - `include_all=true`: Include both supplied parameters and predicted variables
 
 ## Utilities
 

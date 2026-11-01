@@ -334,7 +334,17 @@ for f in (:pointwise_logdensities, :pointwise_loglikelihoods, :pointwise_prior_l
     end
 end
 
-function _predict(
+"""
+    predict([rng::AbstractRNG,] model::Model, params::VarNamedTuple; include_all=false)
+
+Sample predictions using `params` to initialise latent LHS variables, drawing absent
+latent values from their priors. Existing observed and fixed bindings retain their roles.
+
+Return a [`ParamsWithStats`](@ref) containing predicted parameters and freshly evaluated
+log probabilities. By default, omit parameters supplied in `params`; set `include_all=true`
+to retain them. If omitted, `rng` defaults to `Random.default_rng()`.
+"""
+function predict(
     rng::Random.AbstractRNG, model::Model, params::VarNamedTuple; include_all::Bool=false
 )
     vi = VarInfo(
@@ -370,6 +380,9 @@ function _predict(
         ParamsWithStats(densify!!(predicted_params), prediction.stats)
     end
 end
+function predict(model::Model, params::VarNamedTuple; kwargs...)
+    return predict(Random.default_rng(), model, params; kwargs...)
+end
 
 """
     predict([rng::AbstractRNG,] model::Model, chain::AbstractMCMC.SamplingOutput; include_all=false)
@@ -387,7 +400,7 @@ function predict(
     include_all::Bool=false,
 )
     predictions = map(chain.samples) do draw
-        _predict(rng, model, _sampling_output_params(draw); include_all)
+        predict(rng, model, _sampling_output_params(draw); include_all)
     end
     return AbstractMCMC.SamplingOutput(predictions; iterations=chain.iterations)
 end
