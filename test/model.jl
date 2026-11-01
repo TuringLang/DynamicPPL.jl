@@ -482,13 +482,23 @@ DynamicPPL.convert_model_argument(T, ::Type{CustomModelArgument}) = (:converted_
         end
     end
 
-    @testset "returned() on NamedTuple / Dict" begin
+    @testset "returned() on NamedTuple / VarNamedTuple" begin
         @model function demo_returned()
             a ~ Normal()
             b ~ Normal()
             return (asq=a^2, bsq=b^2)
         end
         model = demo_returned()
+
+        @testset "dictionary rejection" begin
+            observed = condition(model; b=2.0)
+            params = Dict{VarName,Float64}(@varname(a) => 1.0)
+            for f in (logprior, loglikelihood, logjoint, returned)
+                @test_throws ArgumentError(
+                    "Model values require a NamedTuple or VarNamedTuple; AbstractDict inputs are not supported",
+                ) f(observed, params)
+            end
+        end
 
         @testset "NamedTuple" begin
             params = (a=1.0, b=2.0)
@@ -498,14 +508,14 @@ DynamicPPL.convert_model_argument(T, ::Type{CustomModelArgument}) = (:converted_
             # `returned` should error when not all parameters are provided
             @test_throws ErrorException returned(model, (; a=1.0))
         end
-        @testset "Dict" begin
-            params = Dict{VarName,Float64}(@varname(a) => 1.0, @varname(b) => 2.0)
+        @testset "VarNamedTuple" begin
+            params = VarNamedTuple((@varname(a) => 1.0, @varname(b) => 2.0))
             results = returned(model, params)
             @test results.asq == params[@varname(a)]^2
             @test results.bsq == params[@varname(b)]^2
             # `returned` should error when not all parameters are provided
             @test_throws ErrorException returned(
-                model, Dict{VarName,Float64}(@varname(a) => 1.0)
+                model, VarNamedTuple((@varname(a) => 1.0,))
             )
         end
     end

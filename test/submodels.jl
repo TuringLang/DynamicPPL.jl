@@ -2015,15 +2015,18 @@ end
     )
     for placeholder in (missing, nothing)
         model = argument_geometry_parent(inner(placeholder, 0.3))
-        @test logjoint(model, Dict(@varname(a.y) => 1.0)) ≈ logpdf(Normal(0.3), 1.0)
+        @test logjoint(model, VarNamedTuple((@varname(a.y) => 1.0,))) ≈
+            logpdf(Normal(0.3), 1.0)
     end
-    @test logjoint(chosen(false), Dict(@varname(a.y) => 1.0)) ≈ logpdf(Normal(0.3), 1.0)
+    @test logjoint(chosen(false), VarNamedTuple((@varname(a.y) => 1.0,))) ≈
+        logpdf(Normal(0.3), 1.0)
     @test logjoint(inner(1.0, 0.3), (;)) ≈ logpdf(Normal(0.3), 1.0)
     @test loglikelihood(inner(1.0, 0.3), (;)) ≈ logpdf(Normal(0.3), 1.0)
     @test logjoint(argument_geometry_parent(condition(inner(missing, 0.3); y=1.0)), (;)) ≈
         logpdf(Normal(0.3), 1.0)
     @test logjoint(
-        argument_geometry_parent(decondition(inner(1.0, 0.3))), Dict(@varname(a.y) => 1.0)
+        argument_geometry_parent(decondition(inner(1.0, 0.3))),
+        VarNamedTuple((@varname(a.y) => 1.0,)),
     ) ≈ logpdf(Normal(0.3), 1.0)
     @model gated(run, child) = (run && (a ~ to_submodel(child)); nothing)
     @test gated(false, inner(1.0, 0.3))(Xoshiro(1)) === nothing
@@ -2099,8 +2102,9 @@ end
             for names in ((), (address,))
                 removed = remove(model, names...)
                 @test keys(rand(Xoshiro(1), removed)) == [address]
-                @test logprior(removed, Dict(address => 0.3)) ≈ logpdf(Normal(), 0.3)
-                @test loglikelihood(removed, Dict(address => 0.3)) == 0.0
+                @test logprior(removed, VarNamedTuple((address => 0.3,))) ≈
+                    logpdf(Normal(), 0.3)
+                @test loglikelihood(removed, VarNamedTuple((address => 0.3,))) == 0.0
                 @test typeof(remove(removed, names...)) === typeof(removed)
                 replaced = bind(removed, address => 3.0)
                 @test replaced(Xoshiro(1)) == 3.0
@@ -2145,7 +2149,7 @@ end
         @test bind(changed, @varname(p.a[2]) => 3.0)() == [1.0, 3.0]
         model = bind(parent(); a=(x=[1.0, 2.0],))
         removed = remove(model, @varname(a.x[end]))
-        @test returned(removed, Dict(@varname(a.x[2]) => 3.0)) == [1.0, 3.0]
+        @test returned(removed, VarNamedTuple((@varname(a.x[2]) => 3.0,))) == [1.0, 3.0]
     end
 end
 

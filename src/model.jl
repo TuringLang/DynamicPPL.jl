@@ -891,7 +891,14 @@ function Base.rand(rng::Random.AbstractRNG, model::Model)
 end
 Base.rand(model::Model) = rand(Random.default_rng(), model)
 
-_model_value_init(parameters...) = InitFromParams(parameters..., nothing)
+function _model_value_init(parameters...)
+    any(p -> p isa AbstractDict, parameters) && throw(
+        ArgumentError(
+            "Model values require a NamedTuple or VarNamedTuple; AbstractDict inputs are not supported",
+        ),
+    )
+    return InitFromParams(parameters..., nothing)
+end
 
 """
     logjoint(model::Model, params)
@@ -899,6 +906,8 @@ _model_value_init(parameters...) = InitFromParams(parameters..., nothing)
 
 Return the log joint probability of variables `params` for the probabilistic `model`, or the
 log joint of the data in `varinfo` if provided.
+
+Pass `params` as a `NamedTuple` or `VarNamedTuple`; `AbstractDict` inputs are not supported.
 
 Note that this probability always refers to the parameters in unlinked space, i.e., the
 return value of `logjoint` does not depend on whether `VarInfo` has been linked or not.
@@ -919,8 +928,8 @@ julia> # Using a `NamedTuple`.
        logjoint(demo([1.0]), (m = 100.0, ))
 -9902.33787706641
 
-julia> # Using a `OrderedDict`.
-       logjoint(demo([1.0]), OrderedDict(@varname(m) => 100.0))
+julia> # Using a `VarNamedTuple`.
+       logjoint(demo([1.0]), VarNamedTuple(; m=100.0))
 -9902.33787706641
 
 julia> # Truth.
@@ -944,6 +953,8 @@ end
 Return the log prior probability of variables `params` for the probabilistic `model`, or the
 log prior of the data in `varinfo` if provided.
 
+Pass `params` as a `NamedTuple` or `VarNamedTuple`; `AbstractDict` inputs are not supported.
+
 Note that this probability always refers to the parameters in unlinked space, i.e., the
 return value of `logprior` does not depend on whether `VarInfo` has been linked or not.
 
@@ -963,8 +974,8 @@ julia> # Using a `NamedTuple`.
        logprior(demo([1.0]), (m = 100.0, ))
 -5000.918938533205
 
-julia> # Using a `OrderedDict`.
-       logprior(demo([1.0]), OrderedDict(@varname(m) => 100.0))
+julia> # Using a `VarNamedTuple`.
+       logprior(demo([1.0]), VarNamedTuple(; m=100.0))
 -5000.918938533205
 
 julia> # Truth.
@@ -988,6 +999,8 @@ end
 Return the log likelihood of variables `params` for the probabilistic `model`, or the log
 likelihood of the data in `varinfo` if provided.
 
+Pass `params` as a `NamedTuple` or `VarNamedTuple`; `AbstractDict` inputs are not supported.
+
 See also [`logjoint`](@ref) and [`logprior`](@ref).
 
 # Examples
@@ -1004,8 +1017,8 @@ julia> # Using a `NamedTuple`.
        loglikelihood(demo([1.0]), (m = 100.0, ))
 -4901.418938533205
 
-julia> # Using a `OrderedDict`.
-       loglikelihood(demo([1.0]), OrderedDict(@varname(m) => 100.0))
+julia> # Using a `VarNamedTuple`.
+       loglikelihood(demo([1.0]), VarNamedTuple(; m=100.0))
 -4901.418938533205
 
 julia> # Truth.
@@ -1032,9 +1045,8 @@ parameters must be provided in a format that can be wrapped in an `InitFromParam
 `InitFromParams(parameters..., nothing)` must be a valid `AbstractInitStrategy` (where
 `nothing` is the fallback strategy to use if parameters are not provided).
 
-As far as DynamicPPL is concerned, `parameters` can be either a singular `NamedTuple` or an
-`AbstractDict{<:VarName}`; however this method is left flexible to allow for other packages
-that wish to extend `InitFromParams`.
+Pass a single `NamedTuple` or `VarNamedTuple`. `AbstractDict` inputs are not supported.
+Other packages may extend `InitFromParams` to support additional parameter formats.
 
 # Example
 ```jldoctest
@@ -1051,7 +1063,7 @@ julia> model = demo();
 julia> returned(model, (; m = 1.0))
 (mp1 = 2.0,)
 
-julia> returned(model, Dict{VarName,Float64}(@varname(m) => 2.0))
+julia> returned(model, VarNamedTuple(; m=2.0))
 (mp1 = 3.0,)
 ```
 """

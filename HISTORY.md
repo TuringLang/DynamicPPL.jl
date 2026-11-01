@@ -28,6 +28,8 @@ Added `evaluate!!(model, context, vi)` to evaluate with an explicit leaf context
 
 ## Breaking changes
 
+`logprior`, `loglikelihood`, `logjoint`, and `returned` reject dictionaries: `f(model, Dict(@varname(x) => v))` → `f(model, (; x=v))` or `f(model, VarNamedTuple((@varname(x) => v,)))`.
+
 `decondition(m, names...)` / `unfix(m, names...)`: local removal → removal from the model and its submodels, including bare calls. See [binding migration](docs/src/conditionfix.md#migration-to-model-owned-bindings).
 
 Submodel observations: `to_submodel(inner(y, x))` → `to_submodel(condition(inner(missing, x), (y=y,)))` for fully observed data; partly missing arrays require observed-index bindings and a storage template. See [binding migration](docs/src/conditionfix.md#migration-to-model-owned-bindings).

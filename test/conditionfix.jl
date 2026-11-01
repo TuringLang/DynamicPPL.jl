@@ -5326,7 +5326,7 @@ end
         @test valid(Xoshiro(1)) isa typeof(good)
         @test child_model(valid)(Xoshiro(1)) == expected
         removed = remove(child_model(valid), @varname(a.x[j]))
-        @test returned(removed, Dict(@varname(a.x[j]) => 4.0))[j] == 4.0
+        @test returned(removed, VarNamedTuple((@varname(a.x[j]) => 4.0,)))[j] == 4.0
         @test !haskey(listing(remove(valid, @varname(x[j]))), @varname(x[j]))
         @test !haskey(
             conditioned(decondition(array_model(good), @varname(x[j]))), @varname(x[j])

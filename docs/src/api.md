@@ -169,7 +169,7 @@ It is possible to manually increase (or decrease) the accumulated log likelihood
 @addlogprob!
 ```
 
-Return values of the model function can be obtained with [`returned(model, sample)`](@ref), where `sample` is a collection of samples in an `AbstractMCMC.SamplingOutput` or `MCMCChains.Chains`, or a single sample represented as a `VarNamedTuple`, `NamedTuple`, or dictionary of VarNames.
+Return values of the model function can be obtained with [`returned(model, sample)`](@ref), where `sample` is a collection of samples in an `AbstractMCMC.SamplingOutput` or `MCMCChains.Chains`, or a single sample represented as a `VarNamedTuple` or `NamedTuple`.
 
 ```@docs
 returned
