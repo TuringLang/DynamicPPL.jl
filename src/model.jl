@@ -891,6 +891,8 @@ function Base.rand(rng::Random.AbstractRNG, model::Model)
 end
 Base.rand(model::Model) = rand(Random.default_rng(), model)
 
+_model_value_init(parameters...) = InitFromParams(parameters..., nothing)
+
 """
     logjoint(model::Model, params)
     logjoint(model::Model, varinfo::AbstractVarInfo)
@@ -928,7 +930,7 @@ julia> # Truth.
 """
 function logjoint(model::Model, params)
     vi = VarInfo(AccumulatorTuple(LogPriorAccumulator(), LogLikelihoodAccumulator()))
-    init_strategy = InitFromParams(params, nothing)
+    init_strategy = _model_value_init(params)
     return getlogjoint(last(init!!(model, vi, init_strategy, UnlinkAll())))
 end
 function logjoint(model::Model, varinfo::AbstractVarInfo)
@@ -972,7 +974,7 @@ julia> # Truth.
 """
 function logprior(model::Model, params)
     vi = VarInfo(AccumulatorTuple(LogPriorAccumulator()))
-    init_strategy = InitFromParams(params, nothing)
+    init_strategy = _model_value_init(params)
     return getlogprior(last(init!!(model, vi, init_strategy, UnlinkAll())))
 end
 function logprior(model::Model, varinfo::AbstractVarInfo)
@@ -1012,7 +1014,7 @@ julia> # Truth.
 """
 function Distributions.loglikelihood(model::Model, params)
     vi = VarInfo(AccumulatorTuple(LogLikelihoodAccumulator()))
-    init_strategy = InitFromParams(params, nothing)
+    init_strategy = _model_value_init(params)
     return getloglikelihood(last(init!!(model, vi, init_strategy, UnlinkAll())))
 end
 function Distributions.loglikelihood(model::Model, varinfo::AbstractVarInfo)
@@ -1062,7 +1064,7 @@ function returned(model::Model, parameters...)
             DynamicPPL.VarInfo(DynamicPPL.AccumulatorTuple()),
             # Use `nothing` as the fallback to ensure that any missing parameters cause an
             # error
-            InitFromParams(parameters..., nothing),
+            _model_value_init(parameters...),
             UnlinkAll(),
         ),
     )
