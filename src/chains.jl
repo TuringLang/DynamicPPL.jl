@@ -335,6 +335,64 @@ for f in (:pointwise_logdensities, :pointwise_loglikelihoods, :pointwise_prior_l
 end
 
 """
+    predict([rng::AbstractRNG,] model::Model, params::Union{VarNamedTuple,ParamsWithStats}; include_all=false)
+
+Sample predictions using a `VarNamedTuple` or the parameters of a `ParamsWithStats`
+to initialise latent LHS variables, drawing absent latent values from their priors.
+Existing observed and fixed bindings retain their roles.
+
+!!! warning "Partially supplied multivariate variables"
+    For a variable such as `x ~ MvNormal(...)`, supplying only `x[1]` resamples the whole vector.
+    Use separate scalar `~` statements to condition on individual components.
+
+Return a [`ParamsWithStats`](@ref) containing predicted parameters and freshly evaluated
+log probabilities. By default, omit parameters supplied in `params`; set `include_all=true`
+to retain them. If omitted, `rng` defaults to `Random.default_rng()`.
+"""
+function predict(
+    rng::Random.AbstractRNG, model::Model, params::VarNamedTuple; include_all::Bool=false
+)
+    vi = VarInfo(
+        AccumulatorTuple(
+            LogPriorAccumulator(), LogLikelihoodAccumulator(), RawValueAccumulator(true)
+        ),
+    )
+    _, vi = init!!(rng, model, vi, InitFromParams(params), UnlinkAll())
+    prediction = ParamsWithStats(vi)
+    return if include_all
+        prediction
+    else
+        predicted_params = VarNamedTuple()
+        # Raw values retain sampled-variable boundaries before arrays are densified.
+        for (vn, value) in pairs(get_raw_values(vi))
+            leaves = AbstractPPL.varname_and_value_leaves(vn, value)
+            isempty(leaves) && haskey(params, vn) && !ismissing(params[vn]) && continue
+            keep_all = all(
+                p -> !haskey(params, first(p)) || ismissing(params[first(p)]), leaves
+            )
+            retained = keep_all ? ((vn, value),) : leaves
+            for (leaf, leaf_value) in retained
+                if keep_all || !haskey(params, leaf) || ismissing(params[leaf])
+                    predicted_params = templated_setindex!!(
+                        predicted_params,
+                        leaf_value,
+                        leaf,
+                        prediction.params.data[AbstractPPL.getsym(leaf)],
+                    )
+                end
+            end
+        end
+        ParamsWithStats(densify!!(predicted_params), prediction.stats)
+    end
+end
+function predict(rng::Random.AbstractRNG, model::Model, params::ParamsWithStats; kwargs...)
+    return predict(rng, model, params.params; kwargs...)
+end
+function predict(model::Model, params::Union{VarNamedTuple,ParamsWithStats}; kwargs...)
+    return predict(Random.default_rng(), model, params; kwargs...)
+end
+
+"""
     predict([rng::AbstractRNG,] model::Model, chain::AbstractMCMC.SamplingOutput; include_all=false)
 
 Sample predictions using each draw's parameters, drawing absent variables from their priors.
@@ -350,42 +408,7 @@ function predict(
     include_all::Bool=false,
 )
     predictions = map(chain.samples) do draw
-        params = _sampling_output_params(draw)
-        vi = VarInfo(
-            AccumulatorTuple(
-                LogPriorAccumulator(),
-                LogLikelihoodAccumulator(),
-                RawValueAccumulator(true),
-            ),
-        )
-        _, vi = init!!(rng, model, vi, InitFromParams(params), UnlinkAll())
-        prediction = ParamsWithStats(vi)
-        if include_all
-            prediction
-        else
-            predicted_params = VarNamedTuple()
-            # Raw values retain sampled-variable boundaries before arrays are densified.
-            for (vn, value) in pairs(get_raw_values(vi))
-                leaves = AbstractPPL.varname_and_value_leaves(vn, value)
-                isempty(leaves) && haskey(params, vn) && !ismissing(params[vn]) && continue
-                keep_all = all(
-                    p -> !haskey(params, first(p)) || ismissing(params[first(p)]),
-                    leaves,
-                )
-                retained = keep_all ? ((vn, value),) : leaves
-                for (leaf, leaf_value) in retained
-                    if keep_all || !haskey(params, leaf) || ismissing(params[leaf])
-                        predicted_params = templated_setindex!!(
-                            predicted_params,
-                            leaf_value,
-                            leaf,
-                            prediction.params.data[AbstractPPL.getsym(leaf)],
-                        )
-                    end
-                end
-            end
-            ParamsWithStats(densify!!(predicted_params), prediction.stats)
-        end
+        predict(rng, model, _sampling_output_params(draw); include_all)
     end
     return AbstractMCMC.SamplingOutput(predictions; iterations=chain.iterations)
 end

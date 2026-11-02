@@ -250,6 +250,14 @@ end
     )
     for params in (VarNamedTuple(), partial)
         chain = SamplingOutput(fill(params, 1, 1))
+        for include_all in (false, true)
+            out = predict(Xoshiro(1), m(), chain; include_all)
+            @test predict(Xoshiro(1), m(), params; include_all) == out[1, 1]
+            @test predict(Xoshiro(1), m(), out[1, 1]; include_all) ==
+                predict(Xoshiro(1), m(), out[1, 1].params; include_all)
+            @test predict(m(), out[1, 1]) isa ParamsWithStats
+        end
+        @test predict(m(), params) isa ParamsWithStats
         full = predict(Xoshiro(1), m(), chain; include_all=true)
         filtered = predict(Xoshiro(1), m(), chain)[1, 1].params
         @test haskey(filtered, @varname(y[1])) == !haskey(params, @varname(y[1]))
