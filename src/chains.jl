@@ -335,10 +335,11 @@ for f in (:pointwise_logdensities, :pointwise_loglikelihoods, :pointwise_prior_l
 end
 
 """
-    predict([rng::AbstractRNG,] model::Model, params::VarNamedTuple; include_all=false)
+    predict([rng::AbstractRNG,] model::Model, params::Union{VarNamedTuple,ParamsWithStats}; include_all=false)
 
-Sample predictions using `params` to initialise latent LHS variables, drawing absent
-latent values from their priors. Existing observed and fixed bindings retain their roles.
+Sample predictions using a `VarNamedTuple` or the parameters of a `ParamsWithStats`
+to initialise latent LHS variables, drawing absent latent values from their priors.
+Existing observed and fixed bindings retain their roles.
 
 !!! warning "Partially supplied multivariate variables"
     For a variable such as `x ~ MvNormal(...)`, supplying only `x[1]` resamples the whole vector.
@@ -384,7 +385,10 @@ function predict(
         ParamsWithStats(densify!!(predicted_params), prediction.stats)
     end
 end
-function predict(model::Model, params::VarNamedTuple; kwargs...)
+function predict(rng::Random.AbstractRNG, model::Model, params::ParamsWithStats; kwargs...)
+    return predict(rng, model, params.params; kwargs...)
+end
+function predict(model::Model, params::Union{VarNamedTuple,ParamsWithStats}; kwargs...)
     return predict(Random.default_rng(), model, params; kwargs...)
 end
 
