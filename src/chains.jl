@@ -340,6 +340,10 @@ end
 Sample predictions using `params` to initialise latent LHS variables, drawing absent
 latent values from their priors. Existing observed and fixed bindings retain their roles.
 
+!!! warning "Partially supplied multivariate variables"
+    For a variable such as `x ~ MvNormal(...)`, supplying only `x[1]` resamples the whole vector.
+    Use separate scalar `~` statements to condition on individual components.
+
 Return a [`ParamsWithStats`](@ref) containing predicted parameters and freshly evaluated
 log probabilities. By default, omit parameters supplied in `params`; set `include_all=true`
 to retain them. If omitted, `rng` defaults to `Random.default_rng()`.
