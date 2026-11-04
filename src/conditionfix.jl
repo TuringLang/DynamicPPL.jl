@@ -564,12 +564,14 @@ end
 """
     condition(model::Model, values...[, template]; kwargs...)
 
-Condition model variables on supplied values. Accept NamedTuples, VarNamedTuples,
-Symbol or VarName pairs, and keyword arguments. Observations contribute likelihood.
+Condition model variables on supplied values.
+
+Accept `NamedTuple`s, `VarNamedTuple`s, `Symbol` or `VarName` pairs, tuples of these
+inputs, and keyword arguments. Observations contribute to the likelihood.
 
 An optional `@of`/`of` binding template must be the last positional argument.
 A template in any other position throws `ArgumentError`. Indexed partial bindings
-require concrete storage at binding time; the model's arguments supply their own storage.
+require concrete storage at binding time; concrete model arguments can supply it.
 
 # Examples
 
@@ -599,6 +601,7 @@ AbstractPPL.condition(model::Model, inputs...; kwargs...) =
     fix(model::Model, values...[, template]; kwargs...)
 
 Fix model variables to supplied values, excluding their densities from the model.
+
 Accept the same binding inputs as [`condition`](@ref). An optional `@of`/`of`
 template must be the last positional argument; otherwise throw `ArgumentError`.
 Remove an overlapping observation with [`decondition`](@ref) before fixing it.
@@ -748,9 +751,10 @@ end
 """
     model::Model | values
 
-Condition `model` on `values`, as in [`condition`](@ref). Accept a NamedTuple,
-VarNamedTuple, pair or tuple of binding inputs. Use `condition` directly when
-supplying a storage template.
+Condition `model` on `values`, as in [`condition`](@ref).
+
+Accept a `NamedTuple`, `VarNamedTuple`, pair or tuple of binding inputs.
+Use `condition` directly when supplying a storage template.
 """
 function Base.:|(
     model::Model, values::Union{NamedTuple,VarNamedTuple,Pair,Tuple,AbstractDict}
@@ -763,13 +767,13 @@ end
 """
     conditioned(model::Model)
 
-Return the model's observations, including observed arguments, as a VarNamedTuple.
+Return the model's observations, including observed arguments, as a `VarNamedTuple`.
 """
 conditioned(model::Model) = _listed_bindings(model, Condition)
 """
     fixed(model::Model)
 
-Return the model's fixed values as a VarNamedTuple.
+Return the model's fixed values as a `VarNamedTuple`.
 """
 fixed(model::Model) = _listed_bindings(model, Fix)
 function _listed_bindings(model, R)
@@ -848,17 +852,20 @@ end
 """
     decondition(model::Model, names...)
 
-Remove observations at the supplied Symbol or VarName addresses from this model and
-its submodels, or all observations when no names are supplied. This also removes the
-called model's own argument observations. Submodels take observations through `condition`.
+Remove observations from the model and its submodels.
+
+Supply `Symbol` or `VarName` addresses to select observations, or omit them to remove
+all observations, including the called model's argument observations.
 """
 AbstractPPL.decondition(model::Model, names::Union{Symbol,VarName}...) =
     _decondition_unfix(model, names, Condition, Val(true))
 """
     unfix(model::Model, names...)
 
-Remove fixed values at the supplied Symbol or VarName addresses from this model and
-its submodels, or all fixed values when no names are supplied.
+Remove fixed values from the model and its submodels.
+
+Supply `Symbol` or `VarName` addresses to select values, or omit them to remove all
+fixed values.
 """
 unfix(model::Model, names::Union{Symbol,VarName}...) =
     _decondition_unfix(model, names, Fix, Val(true))

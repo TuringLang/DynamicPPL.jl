@@ -42,7 +42,7 @@ rand(Xoshiro(1), fixed_model)
 
 ## Binding inputs and storage
 
-`condition` and `fix` accept NamedTuples, keyword arguments, Symbol or `VarName`
+`condition` and `fix` accept `NamedTuple`s, keyword arguments, `Symbol` or `VarName`
 pairs, tuples of these inputs, and `VarNamedTuple`s. `model | values` abbreviates
 `condition(model, values)`. Dictionaries are not binding inputs.
 
@@ -54,8 +54,8 @@ pairs, tuples of these inputs, and `VarNamedTuple`s. `model | values` abbreviate
 ```
 
 An indexed partial address needs storage when the binding is made. Storage can
-come from the called model's arguments, an existing whole binding, a storage
-carrying `VarNamedTuple`, or an explicit template. A future allocation in a model
+come from concrete model arguments, an existing whole binding, a `VarNamedTuple`
+that retains storage, or an explicit template. A future allocation in a model
 body does not supply storage to the binding call.
 
 Pass at most one `@of`/`of` template, as the last positional argument. A template
@@ -88,10 +88,10 @@ half = condition(model, @varname(y[1]) => 0.5, @of(y = of(Array, Float32, 3)))
 @assert conditioned(half)[@varname(y[1])] === 0.5f0
 ```
 
-A run records only the latent sites it reached, omitting observed and fixed sites
-and untaken branches. A subset of that `VarNamedTuple` retains storage for its
-selected values. This supports blockwise conditioning without reconstructing
-bindings from bare pairs.
+`rand(rng, model)` records only the latent sites it reaches, omitting observed and
+fixed sites and untaken branches. A subset of that `VarNamedTuple` retains storage
+for its selected values. This supports blockwise conditioning without
+reconstructing bindings from bare pairs.
 
 ```@example bindings
 run_values = rand(Xoshiro(2), model)
@@ -126,8 +126,8 @@ changed_role = fix(decondition(observed, @varname(y)); y=y_data)
 ```
 
 Bindings must address declared tilde variables or child namespaces. Covariates
-cannot be bound. Supported partial owners are arrays and NamedTuples with named
-fields; arbitrary struct, tuple and dictionary reconstruction is not supported.
+cannot be bound. Partial edits support `NamedTuple` fields, `Array`s and supported
+array wrappers; arbitrary struct, tuple and dictionary reconstruction is unsupported.
 Bind or remove the whole value when partial edits are unsupported.
 
 Argument bindings are prepared before the model body runs. Body computations
@@ -136,13 +136,13 @@ computed by the body; a fixed argument tilde restores its bound value. Local
 variables obtain their bindings at the tilde itself. Replacement arguments must
 satisfy declared argument types.
 
-Evaluation copies argument storage that can receive latent writes, preserving
-the caller's data. Shared backing storage between latent arguments is rejected;
+Evaluation copies argument storage that can receive latent writes. Storage shared
+between a latent argument and another argument or path is rejected;
 covariates and fully bound branches have different copy requirements. Immutable
 backing storage, unsupported dictionary keys in copied graphs, and custom numeric
 leaves containing mutable storage can also be rejected. AD extensions handle
 their supported tracer types. Use ordinary mutable arrays for latent writes;
-copying is not a promise to reconstruct every custom container.
+custom containers must support the required copying and reconstruction operations.
 
 A handwritten `Model` evaluator must perform the argument preparation and role
 lookup that `@model` generates. Calling `tilde_observe!!` directly does not look up
@@ -265,14 +265,15 @@ created inside child bodies. A listing contains values and their storage, not th
 persistent removal instructions; rebinding a listing need not reproduce a model
 that also has such instructions.
 
-Models compare and hash by binding state. `==` delegates to `isequal`; arguments
-and defaults compare by content. Binding roles, storage constraints and removal
-instructions can distinguish models with the same current listing.
+Model comparison and hashing include the evaluator, arguments, defaults, context
+and binding state. `==` delegates to `isequal`; arguments and defaults compare by
+content. Binding roles, retained storage constraints and removal instructions can
+distinguish models with the same current listing.
 
 ## Missing data
 
-A whole `missing` or `nothing` argument supplies no observation. A one-level
-`missing` entry in a supported argument array is latent. This constructor behaviour
+A whole `missing` or `nothing` argument supplies no observation. A `missing`
+entry directly in a supported argument array is latent. This constructor behaviour
 does not permit placeholders in explicit `condition` or `fix` inputs: those throw.
 
 ```@example bindings
@@ -289,15 +290,16 @@ imputation = measurements(Union{Missing,Float64}[missing, 2.0])
 
 Each imputed entry must have its own tilde. A partly observed array cannot supply
 one `MvNormal` tilde. Nested placeholders in explicit bindings are rejected, and
-executed observed or fixed values are checked again. A partly bound whole-placeholder
-argument is not sufficient storage for evaluating the argument.
+observed and fixed values are checked again when their tildes execute. To bind
+part of a `missing` argument, supply a template or a whole binding first.
 
 ## Diagnostics
 
-`check_model` reports unused bindings, template entries and named removals for the
-execution it checks. Dormant bindings do not make ordinary evaluation fail merely
-because their branch was not reached. A warning does not prove that the address is
-invalid on every branch; an executed invalid address still throws.
+`check_model` warns about bindings and template entries absent from reached models,
+unread partial bindings, and unused named removals in the checked execution.
+Dormant bindings do not make ordinary evaluation fail merely because their branch
+was not reached. A warning does not prove that the address is invalid on every
+branch; an executed invalid address still throws.
 
 ```@example bindings
 @model function optional_child(run)

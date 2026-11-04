@@ -17,8 +17,7 @@ end
 
 struct NoModelBinding end
 
-# Partial bindings retain the NamedTuple from which their fields came.
-# S records whether that whole owner reaches child namespaces.
+# Partial bindings retain their NamedTuple owner; `S` marks ownership across child namespaces.
 struct ModelValueTree{T,V<:VarNamedTuple,S}
     template::T
     values::V
@@ -32,7 +31,6 @@ struct ModelValueTree{T,V<:VarNamedTuple,S}
     end
 end
 
-# Copies and partial edits retain the whole owner's recursive scope.
 function ModelValueTree(tree::ModelValueTree{T,V,S}, values::VarNamedTuple) where {T,V,S}
     return ModelValueTree(tree.template, values, Val(S), tree.observed)
 end
@@ -572,8 +570,6 @@ function _inherit_model_array_owner(previous, updates)
     end
     return VarNamedTuples.PartialArray(data, mask)
 end
-# Preserve surviving tuple entries and their roles when the replacement supplies array
-# storage.
 _read_shadowed_tuple(previous, replacement) = previous
 function _read_shadowed_tuple(previous::ModelValue{<:Any,<:Tuple}, replacement)
     data = map(CartesianIndices(replacement.mask)) do i
@@ -859,8 +855,6 @@ function _select_model_node(::Type{R}, tree::ModelValueTree) where {R}
     return _plain_model_values(ModelValueTree(tree, selected))
 end
 
-# Keep whole supplied values intact, but expose incomplete bindings as ordinary partial
-# values.
 _plain_model_values(value) = value
 function _plain_model_values(values::VarNamedTuple)
     return VarNamedTuple(map(_plain_model_values, values.data))
@@ -2519,8 +2513,8 @@ function _array_storage(value::AbstractArray)
     storage = parent(value)
     return storage === value ? value : _array_storage(storage)
 end
-# Returns the address and value of the first unwritable storage below `vn`. A read-only
-# wrapper over a mutable parent is not detected, and neither are struct fields or `Dict`s.
+# `_unwritable_storage` follows tuples and arrays, not struct fields, dictionaries,
+# or read-only wrappers over mutable parents.
 _unwritable_storage(value, vn, seen) = nothing
 function _unwritable_storage(value::Union{Tuple,NamedTuple}, vn, seen)
     for (key, child) in pairs(value)
@@ -3003,7 +2997,6 @@ function _argument_child_policy!(latent, bound, value, leaf::ModelArgumentLeaf)
     return _argument_graph!(leaf.bound ? bound : latent, value)
 end
 function _argument_child_policy!(latent, bound, value, storage::ModelArgumentStorage)
-    # A nested owner can replace the original child, including its size and type.
     value === storage.value || bound === nothing || _argument_graph!(bound, value)
     return _argument_storage_policy!(latent, bound, storage)
 end
@@ -3144,7 +3137,6 @@ end
 function _argument_reconstructible(value::T, patch::P) where {T,P<:NamedTuple}
     setter = ConstructionBase.setproperties
     hasmethod(setter, Tuple{T,P}) || return false
-    # NamedTuples always support replacing existing properties.
     T <: NamedTuple && all(name -> hasfield(T, name), fieldnames(P)) && return true
     which(setter, Tuple{T,P}) !== which(setter, Tuple{Any,NamedTuple}) && return true
     isempty(fieldnames(P)) && return true

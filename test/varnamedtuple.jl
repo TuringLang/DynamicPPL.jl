@@ -996,7 +996,7 @@ end
             @test_throws ArgumentError grow_to_indices!!(pa, 1)
         end
 
-        @testset "Lookups need one index per dimension" begin
+        @testset "growable storage requires one index per dimension" begin
             vnt = setindex!!(VarNamedTuple(), 1.0, @varname(x[2]))
             @test !haskey(vnt, @varname(x[2, 1]))
             @test_throws BoundsError vnt[@varname(x[2, 1])]

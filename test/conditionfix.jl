@@ -34,7 +34,6 @@ end
 Base.convert(::Type{Float64}, value::ConvertibleBindingReal) = value.value
 Base.isequal(value::Float64, other::ConvertibleBindingReal) = isequal(value, other.value)
 
-# Shared models for binding and removal cases with the same tilde structure.
 @model function array_model(x)
     for i in eachindex(x)
         x[i] ~ Normal()
@@ -1877,7 +1876,7 @@ end
         )
     end
 
-    @testset "constructors take any count of missing elements without compiling" begin
+    @testset "missing-element counts do not trigger recompilation" begin
         @model function counts(x)
             m ~ Normal()
             for i in eachindex(x)
@@ -7332,7 +7331,7 @@ function bc_corpus()
 end
 
 function bc_invalid_removal_corpus()
-    # A separate stream leaves every existing random history unchanged.
+    # A separate RNG stream keeps these cases independent of the sampled histories.
     rng = StableRNG(1502)
     return [
         (c, bc_sequence(rng, c, n; invalid_removals=true)) for
@@ -8147,13 +8146,9 @@ end
 @testset "removal identity" begin
     p2x2_template = @of(p = of(Array, 2, 2))
     for (input, template, address) in (
-        # Grown scalar.
         ((3, 2), p2x2_template, @varname(p[3].x)),
-        # Grown range.
         ((3, 2), p2x2_template, @varname(p[3:4])),
-        # Shrunk Cartesian.
         ((1, 2), p2x2_template, @varname(p[2, 2].x)),
-        # Changed rank.
         ((2, 2), @of(p = of(Array, 4)), @varname(p[3].x)),
     )
         m = condition(shared_shape_removal_parent(input), @varname(p[1].x) => 2.0, template)
@@ -8240,15 +8235,10 @@ end
             decondition(decondition(m, @varname(x[1])), @varname(x[2])), @varname(x[3])
         )
         for (remove, input, names, expected) in (
-            # All bindings.
             (decondition, m, (), 2),
-            # Whole root.
             (decondition, m, (@varname(x),), 2),
-            # Sequential partial masks.
             (identity, masked, (), 3),
-            # All bindings after partial masks.
             (decondition, masked, (), 2),
-            # Simultaneous partial masks.
             (decondition, m, (@varname(x[1]), @varname(x[2]), @varname(x[3])), 3),
         )
             @test length(remove(input, names...)(Xoshiro(1))) == expected
@@ -8450,19 +8440,12 @@ end
         bind === fix && (m = decondition(m))
         c = first_field_element(ComponentVector(; a=[0.0, 0.0], b=0.0))
         for (model, inputs, expected) in (
-            # Duplicate scalar.
             (m, (@varname(x[1]) => 3.0, @varname(x[1]) => 4.0), overlap),
-            # Linear and Cartesian.
             (m, (@varname(x[2]) => 3.0, @varname(x[2, 1]) => 4.0), overlap),
-            # Repeated unequal indices.
             (m, (@varname(x[[1, 1]]) => [3.0, 4.0],), overlap),
-            # Repeated equal indices.
             (m, (@varname(x[[1, 1]]) => [3.0, 3.0],), overlap),
-            # Overlapping ranges.
             (m, (@varname(x[1:2]) => [3.0, 4.0], @varname(x[2:3]) => [4.0, 5.0]), overlap),
-            # Whole and partial.
             (m, ((; x=ones(2, 2)), @varname(x[1]) => 3.0), overlap),
-            # Two whole roots.
             (m, (VarNamedTuple((; x=ones(2, 2))), (; x=ones(2, 2))), overlap),
             (
                 overlap_local(),
@@ -8497,11 +8480,8 @@ end
                 (@varname(q) => (a=1.0, b=2.0), @varname(q.a) => 3.0),
                 lowercase_overlap,
             ),
-            # Scalar field and index.
             (c, (@varname(x.a[1]) => 1.0, @varname(x[1]) => 2.0), lowercase_overlap),
-            # Whole field and index.
             (c, (@varname(x.a) => [1.0, 2.0], @varname(x[2]) => 3.0), lowercase_overlap),
-            # Repeated field indices.
             (c, (@varname(x.a[[1, 1]]) => [1.0, 1.0],), lowercase_overlap),
         )
             @test_throws expected bind(model, inputs...)

@@ -33,7 +33,7 @@ struct NoTemplate end
 
 materialize_template(template) = template
 # `zero(T)` fixes the storage element type; runtime AD bindings need a template
-# built from running values, or a whole binding.
+# built from runtime values, or a whole binding.
 materialize_template(::Type{T}) where {T<:AbstractPPL.OfType} = zero(T)
 
 """
@@ -157,10 +157,11 @@ include("varnamedtuple/skeleton.jl")
     AbstractPPL.of(vnt::VarNamedTuple)
 
 Describe the storage in `vnt` as an AbstractPPL `OfNamedTuple` binding template.
+
 Numeric `Array`s retain their element type and size;
 partly filled entries describe their full backing array, without reading unbound slots.
-Nested namespaces become nested templates. Scalars are supported only when `of`
-describes their type exactly. Custom arrays, growable entries (even fully filled),
+Nested namespaces become nested templates. Real scalars are supported only when
+`of` describes their type exactly. Custom arrays, growable entries (even fully filled),
 and scalar types that `of` would widen throw `ArgumentError`.
 
 This is a snapshot of the sample's layout: rebuild the template after layout changes.

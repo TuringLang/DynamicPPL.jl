@@ -153,8 +153,8 @@ In the call to `templated_setindex!!` for `x`, the template is `fill(nothing, 3)
 However, the element type of this template array is not important: when DynamicPPL instantiates the new PartialArray, it will use `typeof(val)` rather than `eltype(template)` to determine the element type it should use.
 This allows us to freely choose any element type we like in the skeleton.
 
-Partial model bindings require concrete storage. A storage-carrying VNT can supply
-it; see [Binding inputs and storage](@ref).
+Indexed partial model bindings require concrete storage. A VNT that retains storage
+can supply it; see [Binding inputs and storage](@ref).
 
 FlexiChains does currently make use of skeleton VNTs.
 If we reevaluate a model with a `VNChain`, we need some way of reconstructing VNTs to feed into the model.

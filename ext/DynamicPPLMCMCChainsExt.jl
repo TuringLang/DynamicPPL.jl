@@ -356,9 +356,9 @@ many variables the time goes into building the `Chains` object rather than into 
 !!! warning "Variables are treated as they occur in the model"
     A variable drawn from a multivariate distribution in a single tilde-statement
     (e.g. `x ~ MvNormal(...)` or `x ~ filldist(Normal(), n)`) is a *single*
-    LHS variable, not a collection of i.i.d. LHS variables. `predict` cannot fix a subset of
-    its LHS subvariables while resampling the rest; if `chain` supplies only
-    some subvariables, the whole LHS variable is silently resampled from the prior. The
+    LHS variable. `predict` cannot initialise only some of its components from
+    `chain` while resampling the rest. If `chain` supplies only some components,
+    the whole LHS variable is silently resampled from the prior. The
     predictions will look plausible but ignore what the chain says about that variable.
     To treat array entries individually, declare separate LHS variables in a loop, e.g.
     `for i in eachindex(x); x[i] ~ Normal(); end`.

@@ -70,15 +70,16 @@ function _reconstruct_model end
 """
     Model{Threaded}(f, args::NamedTuple, defaults::NamedTuple, context=DefaultContext(); args_on_lhs=())
 
-Store a model function, its arguments, context and bindings. Prefer [`@model`](@ref) for
-construction.
+Store a model function, its arguments, context and bindings.
+
+Prefer [`@model`](@ref) for construction.
 
 Set `args_on_lhs` to the names of arguments that occur on the left-hand side of `~`, for
 example `Model{false}(f, (; y=1.0), (;); args_on_lhs=(:y,))`. As with `@model`, these
 arguments supply observations, which [`condition`](@ref), [`fix`](@ref) and
 [`decondition`](@ref) can replace or remove. Without `args_on_lhs`, arguments supply no
 observations and cannot be bound. A whole `missing` or `nothing` argument, or a `missing`
-element of an argument array, supplies no observation; see [Missing data](@ref).
+element of a supported argument array, supplies no observation; see [Missing data](@ref).
 
 A handwritten evaluator must reproduce the argument preparation and binding lookup that
 `@model` generates. Calling `tilde_observe!!` directly performs no binding lookup, and the
@@ -328,7 +329,11 @@ Return a model with its context replaced by `context`.
 function contextualize(model::Model, context::AbstractContext)
     return _reconstruct_model(model; context)
 end
-"""Return a model with its leaf context replaced by `context`."""
+"""
+    setleafcontext(model::Model, context::AbstractContext)
+
+Return a model with its leaf context replaced by `context`.
+"""
 function setleafcontext(model::Model, context::AbstractContext)
     return contextualize(model, setleafcontext(model.context, context))
 end
@@ -592,14 +597,16 @@ _check_fixed_tilde_size(value, dist, vn) = value
 
 Accumulate an observation and return `(left, vi)` with the updated varinfo.
 
-`left` is supplied by the model's conditioned values or by a literal expression. `vn` is
-the variable name before prefixing, or `nothing` for a literal. `template` describes the
-top-level variable's storage; literals use `NoTemplate()`.
+`left` is the observed value: a binding, an argument's current value after body
+computations, or a literal expression. `vn` is the variable name before prefixing,
+or `nothing` for a literal. `template` describes the top-level variable's storage;
+literals use `NoTemplate()`.
 
 Apply `prefix` (a `VarName` or `nothing`) and its storage template `prefix_template`,
 then delegate to [`accumulate_observe!!`](@ref). The compiler passes this metadata directly
-so observations do not box the model. Every observation calls this function, independently
-of the evaluation context. Fixed LHS variables bypass it and do not contribute to the log probability.
+so observations do not box the model. Compiler-generated observations call
+this function independently of the evaluation context. Fixed LHS variables bypass
+it and contribute no density.
 """
 function tilde_observe!!(
     prefix, prefix_template, right::Distribution, left, vn, template, vi
@@ -614,8 +621,9 @@ function tilde_observe!!(
     return left, vi
 end
 
-# Distributions take `AbstractArray{<:Real}`, so narrow a `Union{Missing,T}` array, which
-# holds no `missing` after `_check_tilde_value`. `convert` returns other arrays uncopied.
+# Remove `Missing` from the element type for distribution methods requiring real arrays.
+# `_check_tilde_value` has already rejected missing elements.
+# `convert` returns other arrays uncopied.
 function _nonmissing_eltype(x::AbstractArray{T}) where {T}
     return convert(AbstractArray{nonmissingtype(T)}, x)
 end
@@ -728,7 +736,7 @@ If the leaf context is a `DefaultContext`, then this function:
   stored, then the transform strategy will treat that variable as linked; likewise for
   unlinked)
 - uses the accumulators inside `varinfo` (resetting them before evaluation);
-- records the values of executed LHS variables in the reset value accumulator, omitting LHS variables
+- records executed latent values in the reset value accumulator, omitting variables
   that are no longer executed.
 
 The long-term plan for this method is to:

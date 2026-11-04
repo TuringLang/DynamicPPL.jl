@@ -6,9 +6,9 @@ Fixed `VarNamedTuple` world-age errors when loading without a valid precompiled 
 
 Fixed model argument evaluation world-age errors when loading without a valid precompiled cache.
 
-Models now compare and hash by binding state; `==` delegates to `isequal`. See [binding migration](docs/src/conditionfix.md#migration-to-model-owned-bindings).
+Model comparison and hashing now include binding state; `==` delegates to `isequal`. See [binding migration](docs/src/conditionfix.md#migration-to-model-owned-bindings).
 
-`check_model` reports unread bindings, unused storage templates and unused named removals.
+`check_model` warns about unread partial bindings, unused template entries and unused named removals in the checked execution.
 
 Thread-safe tilde assignments now throw an `ArgumentError` if any container is replaced, including same-type immutable values: `(a = zero(T),)` → `Vector{T}(undef, n)`. Allocate mutable storage with `::Type{T}=Float64`; use `Vector{Union{Missing,Real}}` for imputation under AD. See [#1521](https://github.com/TuringLang/DynamicPPL.jl/pull/1521).
 
@@ -30,7 +30,7 @@ Added `evaluate!!(model, context, vi)` to evaluate with an explicit leaf context
 
 `logprior`, `loglikelihood`, `logjoint`, and `returned` reject dictionaries: `f(model, Dict(@varname(x) => v))` → `f(model, (; x=v))` or `f(model, VarNamedTuple((@varname(x) => v,)))`.
 
-`decondition(m, names...)` / `unfix(m, names...)`: local removal → removal from the model and its submodels, including bare calls. See [binding migration](docs/src/conditionfix.md#migration-to-model-owned-bindings).
+`decondition(m, names...)` and `unfix(m, names...)` now remove bindings from submodels too, including calls without names. See [binding migration](docs/src/conditionfix.md#migration-to-model-owned-bindings).
 
 Submodel observations: `to_submodel(inner(y, x))` → `to_submodel(condition(inner(missing, x), (y=y,)))` for fully observed data; partly missing arrays require observed-index bindings and a storage template. See [binding migration](docs/src/conditionfix.md#migration-to-model-owned-bindings).
 
@@ -40,7 +40,7 @@ Dictionary bindings: `model | Dict(@varname(x) => v)` → `condition(model, @var
 
 Indexed partial bindings require storage: `condition(m, @varname(z[1].x) => v)` → `condition(m, @varname(z[1].x) => v, @of(z = of(Array, n)))`. See [binding migration](docs/src/conditionfix.md#migration-to-model-owned-bindings).
 
-Binding templates must be last: `condition(m, template, values)` → `condition(m, values, template)`. See [binding migration](docs/src/conditionfix.md#migration-to-model-owned-bindings).
+Binding templates must be the last positional argument: `condition(m, template, values)` → `condition(m, values, template)`. See [binding migration](docs/src/conditionfix.md#migration-to-model-owned-bindings).
 
 Unprefixed submodels are removed: `unused ~ to_submodel(prefix(child, @varname(a)), false)` → `a ~ to_submodel(child)`, with child-qualified parameter addresses. See [binding migration](docs/src/conditionfix.md#migration-to-model-owned-bindings).
 
@@ -50,7 +50,7 @@ Explicit placeholder bindings now throw: `condition(m; x=[missing, v])` → a bi
 
 `@vnt` requires an explicit import: `using DynamicPPL` → `using DynamicPPL: @vnt`. See [binding migration](docs/src/conditionfix.md#migration-to-model-owned-bindings).
 
-`VarInfo` collection queries require recorded values: `VarInfo()` → `VarInfo(VectorValueAccumulator())` before evaluation. See [binding migration](docs/src/conditionfix.md#migration-to-model-owned-bindings).
+`VarInfo` collection queries require a `VectorValueAccumulator`: `VarInfo()` → `VarInfo(VectorValueAccumulator())` before evaluation. See [binding migration](docs/src/conditionfix.md#migration-to-model-owned-bindings).
 
 Observation/fix overlap now throws: `fix(condition(m; x=v); x=w)` → remove the observation with `decondition` before fixing. See [binding migration](docs/src/conditionfix.md#migration-to-model-owned-bindings).
 

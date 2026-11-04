@@ -115,7 +115,6 @@ end
         @test getlogjoint(vi) == 0
         @test isempty(internal_values_as_vector(vi))
 
-        # `vi[:]` remains supported until Turing stops using it.
         @test vi[:] == internal_values_as_vector(vi)
 
         vn = @varname(x)

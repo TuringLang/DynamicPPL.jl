@@ -553,16 +553,17 @@ Generate the evaluator call and the types of the arguments.
 - `model::Model`: The model whose evaluator is of interest.
 - `varinfo::AbstractVarInfo`: The varinfo to use when evaluating the model. Default: `VarInfo(model)`.
 
-# Keyword Arguments
+# Keywords
+
 - `context::AbstractContext`: The evaluation context. Defaults to
   `InitContext(InitFromParams(get_values(varinfo), nothing), UnlinkAll())`, or
   `InitContext(InitFromPrior(), UnlinkAll())` when vector values are absent or empty.
 
 # Returns
 A 2-tuple with the following elements:
-- `f`: The model body function, or `Core.kwcall` if it takes keyword arguments.
-    For a model with argument LHS variables, `f` is the inner body function, which receives
-    the prepared arguments.
+- `f`: The model body function, or `Core.kwcall` when keyword arguments are passed.
+    For `@model` evaluators with argument LHS variables, the inner body receives
+    prepared arguments positionally.
 - `argtypes::Type{<:Tuple}`: The types of the arguments for the evaluator.
 """
 function gen_evaluator_call_with_types(

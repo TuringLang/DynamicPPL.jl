@@ -89,7 +89,7 @@ module NoImportDPPLTest
 end
 
 @testset "compiler.jl" begin
-    @testset "latent writes require placeholder storage" begin
+    @testset "latent writes require concrete storage" begin
         @model function indexed_placeholder(x)
             x[1] ~ Normal()
             x[2] ~ Normal()
@@ -537,7 +537,6 @@ end
     end
 
     @testset "to_submodel" begin
-        # One addressed child.
         @model function demo1()
             return x ~ Normal()
         end

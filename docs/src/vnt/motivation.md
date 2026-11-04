@@ -153,8 +153,8 @@ When calling functions such as `returned` or `predict` on the chain, we have to 
     (no_dist, with_dist)
     ```
 
-A dictionary also lacks the storage needed to interpret partial model bindings.
-Use a storage-carrying VNT or an explicit template; see
+Model binding APIs do not accept dictionaries. For indexed partial bindings, use
+a VNT that retains storage or supply an explicit template; see
 [Binding inputs and storage](@ref).
 
 Finally, we are unable to properly use different indexing schemes.

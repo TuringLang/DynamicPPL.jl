@@ -137,8 +137,6 @@ function _vnt(input)
                 if sym in keys(symbols_to_templates)
                     error("duplicate template definition for symbol$separator$sym")
                 end
-                # Materialize the template once for either `@template x` or
-                # `@template x = e`.
                 new_sym = gensym()
                 push!(
                     output.args, :($new_sym = materialize_template($(esc(template_expr))))

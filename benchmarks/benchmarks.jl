@@ -50,14 +50,14 @@ using StableRNGs: StableRNG
     return (; x=x)
 end
 
-"A NamedTuple-field argument LHS variable with an argument-supplied observation."
+"Model an observation supplied through a `NamedTuple` argument field."
 @model function namedtuple_field(p)
     x ~ Normal()
     p.a ~ Normal(x, 1)
     return (; x)
 end
 
-"An MvNormal argument LHS variable with an argument-supplied observation."
+"Model an `MvNormal` observation supplied as an argument."
 @model function mvnormal_observation(obs)
     x ~ Normal()
     obs ~ MvNormal(Fill(x, length(obs)), I)

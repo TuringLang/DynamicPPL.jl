@@ -1337,7 +1337,7 @@ end
         @testset "$(nameof(model.f))" for model in (
             t2844_inner(), t2844_middle(), t2844_outer(), t2844_deeper()
         )
-            # The fast evaluation path: `init!!` into a `VarInfo`, under both
+            # Check inference for `init!!` into a `VarInfo`, under both
             # transform strategies.
             @testset "$tfm" for tfm in (UnlinkAll(), LinkAll())
                 accs = setacc!!(VarInfo(), LogPriorAccumulator())
