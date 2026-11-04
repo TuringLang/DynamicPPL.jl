@@ -234,8 +234,8 @@ Base.hash(model::Model, h::UInt) = hash(_model_state(model), hash(:Model, h))
 """
     getprefix(model::Model)
 
-Return the combined prefix of the model's LHS variables, or `nothing` when absent.
-Storage templates for nested submodel namespaces remain internal to the model.
+Return the model's combined prefix, or `nothing` if it has no prefix.
+The result omits the prefix's storage templates.
 """
 getprefix(model::Model) = _getprefix(model.prefix)
 
@@ -613,10 +613,9 @@ computations, or a literal expression. `vn` is the variable name before prefixin
 or `nothing` for a literal. `template` describes the top-level variable's storage;
 literals use `NoTemplate()`.
 
-Apply `prefix` (`nothing`, a `VarName`, or a `PrefixTemplate` containing storage metadata),
-check `left` for `missing` and `nothing`, then delegate to [`accumulate_observe!!`](@ref).
-The compiler passes the prefix instead of the model so the generated call does not capture
-the model. Every observation reaches this function; fixed LHS variables do not.
+For named observations, apply `prefix` (`nothing`, a `VarName`, or a `PrefixTemplate`
+containing storage metadata). Check `left` for `missing` and `nothing`, then delegate
+to [`accumulate_observe!!`](@ref). Fixed LHS variables bypass this function.
 """
 function tilde_observe!!(prefix, right::Distribution, left, vn, template, vi)
     vn, template = if vn === nothing

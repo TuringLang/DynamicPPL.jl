@@ -39,7 +39,7 @@ __now__ = now()
         end
     end
 
-    @testset "stored values follow operation order" begin
+    @testset "bindings before and after prefixing" begin
         for (bind, bound, remove, before, after) in
             ((condition, conditioned, decondition, 1.0, 2.0), (fix, fixed, unfix, 3.0, 4.0))
             bound_first = DynamicPPL.prefix(bind(model; x=before), @varname(a))
@@ -53,7 +53,7 @@ __now__ = now()
         end
     end
 
-    @testset "explicit bindings stay under the model prefix" begin
+    @testset "explicit bindings use prefixed names" begin
         @model argument_lhs(y) = y ~ Normal()
         for op in (condition, fix)
             argument = argument_lhs(1.0)

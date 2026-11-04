@@ -10,8 +10,8 @@ or `VectorValueAccumulator` when those outputs are needed, for example
 a convenience constructor that records vectorised values and log densities.
 
 `PrefixContext` and `extract_prefixes` are removed. Use `prefix(model, vn; template)`
-to set a prefix and `DynamicPPL.getprefix(model)` to read the combined prefix
-(`nothing` when absent). Do not read `model.prefix` directly; its contents are internal.
+to add a prefix and `DynamicPPL.getprefix(model)` to read the combined prefix
+(`nothing` when absent). The `model.prefix` field also holds internal storage metadata.
 Replace `prefix(ctx, vn)` with
 `AbstractPPL.prefix(vn, DynamicPPL.getprefix(model))` for a prefixed model.
 
@@ -214,5 +214,6 @@ vi
 
 For direct observation calls, replace
 `tilde_observe!!(prefix, prefix_template, dist, value, vn, template, vi)` with
-`tilde_observe!!(prefix, dist, value, vn, template, vi)`, passing the model's merged
-prefix metadata.
+`tilde_observe!!(prefix, dist, value, vn, template, vi)`, passing `model.prefix` as
+the first argument. This internal metadata includes storage templates that
+`DynamicPPL.getprefix(model)` omits.

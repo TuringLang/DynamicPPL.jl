@@ -25,7 +25,7 @@ begin
         raw_x = get_fixed_value(__model__, vn)
 
     elseif is_conditioned(__model__, vn)
-        # Conceptual branch: the compiler knows whether x is an argument.
+        # Argument status is known when expanding `@model`.
         conditioned_x = is_argument(x) ? x : get_conditioned_value(__model__, vn)
         raw_x, __varinfo__ = tilde_observe!!(
             __model__.prefix, dist, conditioned_x, vn, template, __varinfo__
@@ -41,11 +41,11 @@ begin
 end
 ```
 
-The effective binding determines each LHS variable's role; see [Binding rules](@ref).
-An argument on the LHS is observed by default. Argument bindings replace the argument
-before the body runs, so an observed argument is read from the body. A bound local variable
-is read from its binding at the tilde, and a fixed argument is reset to its bound value
-there. See [Binding rules](@ref) for shape checks.
+The effective binding determines each LHS variable's role.
+An argument on the LHS is observed by default. Bindings are applied to arguments before
+the body runs; an observed argument uses its current value at the tilde statement.
+A bound local variable uses its binding's value, and a fixed argument is reset to its
+bound value at the tilde statement. See [Binding rules](@ref) for roles and shape checks.
 
 The compiler passes `__model__.prefix` directly to `tilde_observe!!`. It is `nothing`,
 a `VarName`, or a `PrefixTemplate` containing storage metadata.

@@ -491,7 +491,8 @@ InitContext
 
 Customise latent value selection with an [initialisation strategy](init.md) supplied to `InitContext`.
 `tilde_assume!!` dispatches on that context to initialise, transform, and accumulate a latent value.
-Every observation calls `tilde_observe!!(prefix, right, left, vn, template, vi)`, which applies the prefix metadata and calls `accumulate_observe!!` without dispatching on a context.
+Observations call `tilde_observe!!(prefix, right, left, vn, template, vi)` without a context argument.
+For named observations, this applies the prefix and its storage template before calling `accumulate_observe!!`; literals have no variable name to prefix.
 
 ```@docs
 tilde_assume!!
@@ -502,7 +503,7 @@ tilde_observe!!
 Prefixes, conditioned values, and fixed values are stored on the model; see [Binding rules](@ref).
 
 To implement a parent context, you have to subtype `DynamicPPL.AbstractParentContext`, and implement the `childcontext` and `setchildcontext` methods.
-If needed, you can also implement `tilde_assume!!` for your context.
+You can also implement `tilde_assume!!` to customise how your context handles latent variables.
 This is optional; the default implementation is to simply delegate to the child context.
 
 ```@docs
