@@ -114,8 +114,10 @@ strategy. To reuse vectorised values, record a [`VectorValueAccumulator`](@ref) 
 `get_vector_values(recorded)` to `InitFromParams`; see
 [Storing vectorised and raw values](accs/values.md).
 
-Evaluation can advance the RNG, and Julia mutations in a model body still take effect.
-`LogDensityFunction` supplies latent values from its parameter vector.
+This separation specifies data flow, not purity: evaluation can advance the RNG, and
+ordinary Julia mutations in a model body still take effect.
+During density evaluation, latent variables on the left-hand side of `~` take their values from the supplied parameters.
+See [Randomness in density evaluation](@ref ldf-rng).
 
 ## Accumulators
 
