@@ -1,3 +1,9 @@
+function _element_needs_skeleton(::Type{VarNamedTuple{names,types}}) where {names,types}
+    return any(_element_needs_skeleton, types.parameters)
+end
+_element_needs_skeleton(::Type{<:PartialArray}) = true
+_element_needs_skeleton(::Type{T}) where {T} = VarNamedTuple <: T || PartialArray <: T
+
 """
     DynamicPPL.skeleton(vnt::VarNamedTuple)
 
@@ -40,12 +46,6 @@ infers the element type to use from the value that is being set).
         :(VarNamedTuple($expr))
     end
 end
-
-function _element_needs_skeleton(::Type{VarNamedTuple{names,types}}) where {names,types}
-    return any(_element_needs_skeleton, types.parameters)
-end
-_element_needs_skeleton(::Type{<:PartialArray}) = true
-_element_needs_skeleton(::Type{T}) where {T} = VarNamedTuple <: T || PartialArray <: T
 
 # For some reason this has to be @generated, because sometimes the compiler doesn't figure
 # out _element_needs_skeleton

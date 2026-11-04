@@ -1792,6 +1792,7 @@ end
         vnt = VarNamedTuple()
         @test @inferred(isempty(vnt)) == true
         vnt = setindex!!(vnt, 1.0, @varname(a))
+        @test !@inferred(DynamicPPL.VarNamedTuples._has_partial_array(typeof(vnt)))
         @test @inferred(isempty(vnt)) == false
         test_invariants(vnt)
 
