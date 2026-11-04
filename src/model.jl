@@ -77,7 +77,7 @@ function _reconstruct_model end
     Model{Threaded}(f, args::NamedTuple, defaults::NamedTuple; args_on_lhs=())
 
 Store a model function, its arguments, prefix and bindings. Prefer [`@model`](@ref) for
-construction; the evaluation context is passed to [`evaluate!!`](@ref), not stored.
+construction. Pass the evaluation context to [`evaluate!!`](@ref).
 
 Set `args_on_lhs` to the names of arguments that occur on the left-hand side of `~`, for
 example `Model{false}(f, (; y=1.0), (;); args_on_lhs=(:y,))`. As with `@model`, these
@@ -688,9 +688,8 @@ end
 
 Reset the accumulators and evaluate `model` using `context`, returning `(retval, varinfo)`.
 
-The context belongs to this evaluation, not to the model. The same context is passed to
-submodels and to [`tilde_assume!!`](@ref) for latent LHS variables. Observations and tracked values
-go directly to accumulators, independently of the context. Models marked with
+The context is passed to submodels and to [`tilde_assume!!`](@ref) for latent LHS
+variables. Observations and tracked values go directly to accumulators. Models marked with
 [`setthreadsafe`](@ref) use a `ThreadSafeVarInfo` during evaluation.
 
 The [`Context`](@ref) supplies an RNG, initialisation strategy, and transform strategy.
@@ -715,7 +714,7 @@ julia> retval
 """
 function AbstractPPL.evaluate!!(model::Model, context::Context, varinfo::AbstractVarInfo)
     return if requires_threadsafe(model)
-        # Thread-local accumulators must accept AD values before evaluation starts.
+        # Task-local accumulators must accept AD values before evaluation starts.
         param_eltype = DynamicPPL.get_param_eltype(context)
         wrapper = ThreadSafeVarInfo(varinfo, param_eltype)
         result, wrapper_new = _evaluate!!(model, context, wrapper)
@@ -755,10 +754,11 @@ end
 Return the positional and keyword arguments for `model.f`, including the evaluation context.
 
 The positional arguments begin with `(model, context, varinfo)`, followed by the model
-arguments converted for the parameter element type. Pass the result to
-`model.f(args...; kwargs...)` when a downstream evaluator, such as a taped task, controls
-execution directly. This prepares arguments without executing the model, resetting
-accumulators, or wrapping `varinfo` for thread safety; use [`evaluate!!`](@ref) otherwise.
+arguments. By default, supported positional type arguments are promoted for the parameter
+element type; value arguments and keywords are passed through. Use
+`model.f(args...; kwargs...)` to control execution directly. This function neither executes
+the model nor resets accumulators or wraps `varinfo` for thread safety; use
+[`evaluate!!`](@ref) for those steps.
 """
 @generated function make_evaluate_args_and_kwargs(
     model::Model{_F,argnames,defaultnames}, context::Context, varinfo::AbstractVarInfo

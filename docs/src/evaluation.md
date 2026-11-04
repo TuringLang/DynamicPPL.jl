@@ -61,14 +61,12 @@ retval, accs = evaluate!!(model, context, VarInfo());
 
 ## [Evaluation inputs and outputs](@id evaluation-inputs-outputs)
 
-Evaluation separates the inputs that determine a model run from the outputs it records.
-
-| Object    | Responsibility                                                        |
-|:--------- |:--------------------------------------------------------------------- |
-| `Model`   | Model function, arguments, and conditioned or fixed data              |
-| `Context` | RNG, initialisation strategy, and requested transform strategy        |
-| `VarInfo` | Output accumulators, with no separate parameter or transform storage  |
-| `retval`  | The model body's ordinary Julia return value, distinct from its trace |
+| Object    | Responsibility                                                       |
+|:--------- |:-------------------------------------------------------------------- |
+| `Model`   | Model function, arguments, prefix, and conditioned or fixed data     |
+| `Context` | RNG, initialisation strategy, and transform strategy                 |
+| `VarInfo` | Output accumulators, with no separate parameter or transform storage |
+| `retval`  | The model body's Julia return value                                  |
 
 For a latent statement such as `x ~ Normal()`, the context's initialisation strategy
 supplies `x`. Its transform strategy determines the transformed value and Jacobian.
@@ -76,8 +74,8 @@ Accumulators receive those results to compute densities or record values; evalua
 does not read previously recorded parameters from `VarInfo`.
 
 For an observed LHS variable such as `y ~ Normal(x, 1)`, the model's binding or argument
-supplies `y` and the likelihood accumulator scores it. See [Binding rules](@ref) for when
-argument bindings take effect. Literal observations such as `0 ~ Normal(x, 1)` take the
+supplies `y`. A likelihood accumulator, if present, scores it. See [Binding rules](@ref)
+for when argument bindings take effect. Literal observations such as `0 ~ Normal(x, 1)` take the
 same path. Fixed values are not scored, and tracked assignments such as `z := x + y` are
 recorded when requested. None of these uses the context to select a latent value.
 
@@ -89,8 +87,8 @@ not a custom context type.
 
 `VarInfo(acc1, acc2, ...)` selects the outputs to collect. `VarInfo()` collects only
 log prior, log likelihood, and log Jacobian; it does not record parameter values.
-Every evaluation resets its accumulators, so a value recorded in one run disappears
-if its LHS variable is skipped in the next. Always retain the returned `VarInfo`: `!!` operations
+Each call to `evaluate!!` resets its accumulators, so a value recorded in one run disappears
+if its LHS variable is skipped in the next. Retain the returned `VarInfo`: `!!` operations
 may replace their input.
 
 To reuse outputs as inputs, extract the recorded values and construct a new context
@@ -110,15 +108,14 @@ repeated, scores = evaluate!!(model, context, VarInfo())
 getlogjoint(scores)
 ```
 
-Here `nothing` disables fallback sampling: a missing parameter is an error, not a request
-to consult previous outputs. The second context explicitly requests unlinked outputs,
-independently of the first run's transform strategy. To reuse vectorised values instead,
-record a [`VectorValueAccumulator`](@ref) and pass `get_vector_values(recorded)` to
-`InitFromParams`; see [Storing vectorised and raw values](accs/values.md).
+Here `nothing` disables fallback sampling: an absent parameter causes an error.
+The second context requests unlinked outputs independently of the first run's transform
+strategy. To reuse vectorised values, record a [`VectorValueAccumulator`](@ref) and pass
+`get_vector_values(recorded)` to `InitFromParams`; see
+[Storing vectorised and raw values](accs/values.md).
 
-This separation specifies data flow, not purity: evaluation can advance the RNG, and
-ordinary Julia mutations in a model body still take effect.
-For density evaluation, latent LHS variables get their values from supplied parameters rather than sampling.
+Evaluation can advance the RNG, and Julia mutations in a model body still take effect.
+`LogDensityFunction` supplies latent values from its parameter vector.
 
 ## Accumulators
 

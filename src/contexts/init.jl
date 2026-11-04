@@ -306,12 +306,13 @@ end
 """
     Context([rng::Random.AbstractRNG,] strategy::AbstractInitStrategy, transform_strategy::AbstractTransformStrategy)
 
-Supply the inputs for one model evaluation.
+Specify the RNG, initialisation strategy, and transform strategy for model evaluation.
 
-The strategy obtains latent values, and the transform strategy determines their output
-representation and log-Jacobian. Observations and fixed values come from the model.
-Evaluation never reads parameter values or transforms from its output `VarInfo`.
-Inside a model, use `rand(__context__.rng, ...)` for explicit draws from this RNG.
+The initialisation strategy supplies latent values. The transform strategy determines
+their output representation and log-Jacobian. Observations and fixed values bypass
+latent value selection. Evaluation never reads parameter values or transforms from its
+output `VarInfo`. If omitted, `rng` defaults to `Random.default_rng()`. Inside a model,
+use `rand(__context__.rng, ...)` for explicit draws from the evaluation's RNG.
 
 # Examples
 

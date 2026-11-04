@@ -3,8 +3,8 @@
 
 Obtain a latent value from the context and accumulate its outputs.
 
-Return the model-space value and updated `vi`. The template describes the enclosing
-variable's storage. Extend `init` for custom value selection, or accumulator methods
-for custom output handling.
+Return `(x, vi)`, where `x` is the model-space value and `vi` contains the updated
+accumulators. `template` describes the enclosing variable's storage. Extend
+[`init`](@ref) for custom value selection, or accumulator methods for custom output handling.
 """
 function tilde_assume!! end

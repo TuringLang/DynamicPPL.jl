@@ -7,7 +7,7 @@ Collect model-evaluation outputs in accumulators.
 
 The default accumulators record log prior, log likelihood, and log Jacobian. Add a
 `RawValueAccumulator` or `VectorValueAccumulator` to record parameter values.
-Inputs, including the transform strategy, belong to `Context`; this type stores
+The initialisation and transform strategies belong to `Context`; this type stores
 no independent parameter values or transform state.
 """
 struct VarInfo{Accs<:AccumulatorTuple} <: AbstractVarInfo

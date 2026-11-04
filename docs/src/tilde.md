@@ -82,11 +82,12 @@ Since the value is already untransformed, we can skip the second step.
 Finally, accumulators must behave differently: e.g. incrementing the likelihood instead of the prior.
 That is accomplished by calling `accumulate_observe!!` instead of `accumulate_assume!!`.
 Neither named nor literal observations dispatch on the evaluation context. Fixed LHS variables
-bypass accumulation, and tracked assignments (`:=`) write directly to the raw-value accumulator.
+bypass accumulation. Tracked assignments (`:=`) write to the raw-value accumulator when
+tracked-value extraction is enabled.
 
 In the following sections, we stick to the three sections of `tilde_assume!!`.
 
-Customise value selection by implementing an initialisation strategy, not by introducing another context type.
+Implement an initialisation strategy to customise value selection.
 
 ## Initialisation
 

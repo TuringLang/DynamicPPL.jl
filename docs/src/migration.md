@@ -28,8 +28,8 @@ Replace `get_param_eltype(vi, context)` with `get_param_eltype(strategy)` and mo
 context overloads to initialisation strategies.
 
 `AbstractParentContext` is removed. DynamicPPL no longer defines or exports `AbstractContext`,
-and `Context` subtypes neither. Use initialisation strategies for custom value selection
-and accumulators for custom output handling. `childcontext`, `setchildcontext`, `leafcontext`,
+and `Context` has no abstract context supertype. Use initialisation strategies for custom
+value selection and accumulators for custom output handling. `childcontext`, `setchildcontext`, `leafcontext`,
 and `setleafcontext` are removed; pass a single `Context` directly to evaluation instead
 of traversing or rebuilding a context hierarchy.
 

@@ -470,8 +470,8 @@ outputs in `varinfo`. Accumulators are reset before evaluation.
 
 The context is an evaluation input and is not stored in the model. A `Model` stores its
 prefix and its bindings separately; conditioned and fixed bindings share one store, each
-tagged with its role. Only latent LHS variables reach the context; observations and tracked
-values go directly to the accumulators.
+tagged with its role. The context selects latent values; observations and tracked values
+go directly to the accumulators.
 
 `Context` is the sole evaluation context. It supplies an RNG, an initialisation strategy,
 and a transform strategy. The output `varinfo` never supplies latent inputs.
