@@ -30,9 +30,9 @@ Added `evaluate!!(model, context, vi)` to evaluate with an explicit `Context` an
 
 ## Breaking changes
 
-`LogDensityFunction` shares RNG state across construction, evaluation, AD preparation, and sampling: implicit draws → `LogDensityFunction(m; rng)` and model-body `rand(__context__.rng, ...)`. See [#1504](https://github.com/TuringLang/DynamicPPL.jl/pull/1504), [#721](https://github.com/TuringLang/DynamicPPL.jl/issues/721).
+`LogDensityFunction` shares the supplied RNG across construction, evaluation, AD preparation, and parameter sampling: pass `LogDensityFunction(m; rng)` and replace model-body `rand(...)` with `rand(__context__.rng, ...)` to use it. See [#1504](https://github.com/TuringLang/DynamicPPL.jl/pull/1504), [#721](https://github.com/TuringLang/DynamicPPL.jl/issues/721).
 
-`rand(ldf)` uses `ldf.rng`: relying on the task-local RNG → `rand(Random.default_rng(), ldf)`. See [#1504](https://github.com/TuringLang/DynamicPPL.jl/pull/1504).
+`rand(ldf)` now uses `ldf.rng`; use `rand(Random.default_rng(), ldf)` to sample with the task-local RNG. See [#1504](https://github.com/TuringLang/DynamicPPL.jl/pull/1504).
 
 `DefaultContext()`/`InitContext(...)` are removed → `Context(rng, init_strategy, transform_strategy)` with explicit parameter inputs and output transforms. See [#1503](https://github.com/TuringLang/DynamicPPL.jl/pull/1503), [#1469](https://github.com/TuringLang/DynamicPPL.jl/issues/1469).
 

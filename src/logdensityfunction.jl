@@ -107,11 +107,11 @@ Note that preparing a `LogDensityFunction` with an AD type `AutoBackend()` requi
 backend itself to have been loaded (e.g. with `import Backend`).
 
 The `rng` keyword supplies the RNG for construction and evaluation. During density
-evaluation, `x ~ Normal()` reads `x` from the parameter vector and draws nothing.
-Explicit model-body calls such as `rand(__context__.rng)` advance the supplied RNG;
-the RNG is shared, not copied or reset. Construction may sample parameters, and AD
-preparation may execute the model. See [Randomness in density evaluation](@ref ldf-rng)
-for stochastic-density limitations.
+evaluation, latent variables take their values from the parameter vector without sampling.
+Model-body calls such as `rand(__context__.rng)` advance the supplied RNG, which is
+shared with the caller and is neither copied nor reset. Construction may sample
+parameters, and AD preparation may execute the model.
+See [Randomness in density evaluation](@ref ldf-rng) for limitations of stochastic densities.
 
 ## Fields
 
@@ -447,8 +447,8 @@ ldf_accs(::typeof(getloglikelihood)) = AccumulatorTuple((LogLikelihoodAccumulato
 
 Calculate the log density at the given `params`, using the provided information extracted
 from a `LogDensityFunction`. This is the internal implementation behind
-`LogDensityProblems.logdensity(ldf, params)`. `rng` drives explicit draws in the model
-body, such as `rand(__context__.rng)`; it defaults to the task-local RNG.
+`LogDensityProblems.logdensity(ldf, params)`. Model-body calls to
+`rand(__context__.rng, ...)` use `rng`, which defaults to the task-local RNG.
 """
 function logdensity_internal(
     params::AbstractVector{<:Real},

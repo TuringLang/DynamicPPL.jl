@@ -119,17 +119,17 @@ Other functions such as `LogDensityProblems.capabilities` and `LogDensityProblem
 
 ## [Randomness in density evaluation](@id ldf-rng)
 
-Pass `rng` to `LogDensityFunction` to control model-body randomness. During density
-evaluation, `x ~ Normal()` reads `x` from the supplied parameter vector; it does not
-sample or advance the RNG. Only explicit random draws in the model body or its callees
-advance it. For example:
+Pass `rng` to `LogDensityFunction` and use `rand(__context__.rng, ...)` in the model
+body to draw from it. During density evaluation, a latent variable such as `x` in
+`x ~ Normal()` takes its value from the supplied parameter vector without sampling.
+Explicit draws in the model body or its callees can still advance the RNG. For example:
 
 ```@example ldf-rng
 using DynamicPPL, Distributions, Random, LogDensityProblems
 
 @model function random_observation(y)
-    x ~ Normal()                                    # Read from the parameter vector.
-    i = rand(__context__.rng, eachindex(y))          # Advance the supplied RNG.
+    x ~ Normal()
+    i = rand(__context__.rng, eachindex(y))
     return y[i] ~ Normal(x, 1)
 end
 
@@ -141,10 +141,10 @@ LogDensityProblems.logdensity(ldf, [0.5])
 The same RNG reaches nested submodels and AD evaluation. It is shared with the caller,
 not copied or reset, so repeated calls can choose different observations and return
 different densities at identical parameters. Ordinary `rand(...)` without an RNG still
-uses Julia's default RNG; use `rand(__context__.rng, ...)` for evaluation-controlled draws.
+uses Julia's default RNG.
 
-Construction is distinct from density evaluation: it may sample parameters to determine
-the vector layout. AD preparation may also execute the model and advance the RNG.
+Construction may sample parameters to determine the vector layout. AD preparation may
+also execute the model and advance the RNG.
 `rand(ldf)` samples parameters using `ldf.rng`; `rand(other_rng, ldf)` uses `other_rng`.
 
 RNG control does not make stochastic densities suitable for ordinary HMC or NUTS,
@@ -152,9 +152,9 @@ which require a deterministic target. AD backends may evaluate a model multiple 
 for one gradient, drawing different values, or replay a compiled tape without drawing
 again. RNG consumption therefore depends on the backend, and gradients may not
 correspond to a single realisation. Random operations also need backend support;
-passing an RNG does not supply missing differentiation rules. For deterministic
-inference, select random data or other auxiliary randomness outside density evaluation
-and supply it to the model.
+passing an RNG does not supply missing differentiation rules. To keep density evaluation
+deterministic, select random data or other auxiliary randomness beforehand and supply
+it to the model.
 
 ## Is `LogDensityFunction` less powerful than model evaluation?
 

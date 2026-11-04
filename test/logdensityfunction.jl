@@ -740,7 +740,7 @@ end
     end
 end
 
-@testset "LogDensityFunction: logdensity_internal defaults to the task-local RNG" begin
+@testset "LogDensityFunction: low-level calls accept an omitted RNG" begin
     ldf = LogDensityFunction(rng_deterministic())
     args = (
         ldf.model,

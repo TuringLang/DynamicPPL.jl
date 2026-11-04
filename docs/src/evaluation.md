@@ -116,8 +116,8 @@ strategy. To reuse vectorised values, record a [`VectorValueAccumulator`](@ref) 
 
 This separation specifies data flow, not purity: evaluation can advance the RNG, and
 ordinary Julia mutations in a model body still take effect.
-For density evaluation, latent LHS variables get their values from supplied parameters rather than sampling;
-see [Randomness in density evaluation](@ref ldf-rng).
+During density evaluation, latent variables on the left-hand side of `~` take their values from the supplied parameters.
+See [Randomness in density evaluation](@ref ldf-rng).
 
 ## Accumulators
 

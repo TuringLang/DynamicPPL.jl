@@ -236,15 +236,15 @@ vi
 ## Random number generators
 
 `LogDensityFunction` now shares its supplied RNG across construction, evaluation, AD
-preparation, and parameter sampling. Replace implicit model-body draws such as `rand()`
-with `rand(__context__.rng)` and supply the RNG with `LogDensityFunction(model; rng)`.
+preparation, and parameter sampling. To control model-body draws, replace `rand()`
+with `rand(__context__.rng)` and pass `LogDensityFunction(model; rng)`.
 Replace `rand(ldf)` with `rand(Random.default_rng(), ldf)` if sampling should use the
 task-local RNG; `rand(ldf)` now uses `ldf.rng`.
 
-For low-level density calls, replace `DynamicPPL.logdensity_internal(args...)` with
-`DynamicPPL.logdensity_internal(args..., rng)` to select an RNG explicitly. For
-`AbstractPPL.prepare`, replace `context=(model, getlogdensity, ranges, strategy, accs)`
-with `context=(model, getlogdensity, ranges, strategy, accs, rng)`.
+To select an RNG for low-level density calls, pass
+`DynamicPPL.logdensity_internal(args..., rng)`. With `AbstractPPL.prepare`, use
+`context=(model, getlogdensity, ranges, strategy, accs, rng)`.
+Omitting the trailing `rng` preserves the default RNG behaviour.
 See [Randomness in density evaluation](@ref ldf-rng) for the evaluation contract.
 
 ## Observation hooks

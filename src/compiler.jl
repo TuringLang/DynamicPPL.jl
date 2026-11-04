@@ -1,5 +1,4 @@
-# `__context__` is internal although the docs show `rand(__context__.rng, ...)`; a public
-# accessor for the evaluation RNG is still to be added.
+# `__context__` is internal, but documented model-body RNG access relies on it.
 const INTERNALNAMES = (:__model__, :__context__, :__varinfo__)
 
 drop_escape(x) = x
