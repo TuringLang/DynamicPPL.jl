@@ -264,7 +264,7 @@ end
             ),
         )
     left_vn = _concretize_prefix(left_vn, template; prefix=Val(true))
-    local_prefix = maybe_prefix(_model_prefix(submodel.model), left_vn)
+    local_prefix = maybe_prefix(getprefix(submodel.model), left_vn)
     observations = _submodel_removals(Condition, parent_model, local_prefix)
     fixed = _submodel_removals(Fix, parent_model, local_prefix)
     return _tilde_assume_submodel!!(
@@ -283,7 +283,7 @@ end
 )
     child = submodel.model
     # Derive prefixes locally to avoid Julia 1.10 widening recursive helper arguments.
-    local_prefix = maybe_prefix(_model_prefix(child), left_vn)
+    local_prefix = maybe_prefix(getprefix(child), left_vn)
     inherited = _inherited_model_values(_submodel_values(parent_model, local_prefix))
     isempty(inherited.data) ||
         template isa NoTemplate ||
@@ -291,7 +291,7 @@ end
             _get_model_binding(parent_model, VarName{AbstractPPL.getsym(left_vn)}()),
             template,
             AbstractPPL.getoptic(left_vn),
-            maybe_prefix(left_vn, _model_prefix(parent_model)),
+            maybe_prefix(left_vn, getprefix(parent_model)),
             _has_binding_role(Fix, inherited) ? Fix : Condition;
             submodel=true,
         )
@@ -423,8 +423,8 @@ end
     fixed_removals,
     inherited,
 )
-    local_prefix = maybe_prefix(_model_prefix(child), left_vn)
-    prefix = maybe_prefix(local_prefix, _model_prefix(parent_model))
+    local_prefix = maybe_prefix(getprefix(child), left_vn)
+    prefix = maybe_prefix(local_prefix, getprefix(parent_model))
     _has_binding_role(ArgumentCondition, child.values.values) &&
         _submodel_argument_observation_error(child, prefix)
     table = _apply_parent_removals(
@@ -460,6 +460,7 @@ end
     # Julia 1.10 allocates keyword tuples when child removal-marker types differ.
     model = _reconstruct_model(
         child,
+        child.prefix,
         child.context,
         table,
         Val(requires_threadsafe(child)),
@@ -478,6 +479,6 @@ end
     args, kwargs = make_evaluate_args_and_kwargs(model, vi)
     return @inline model.f(args...; kwargs...)
 end
-function tilde_observe!!(prefix, prefix_template, ::Submodel, left, ::Nothing, template, vi)
+function tilde_observe!!(prefix, ::Submodel, left, ::Nothing, template, vi)
     throw(ArgumentError("`x ~ to_submodel(...)` is not supported when `x` is a literal"))
 end

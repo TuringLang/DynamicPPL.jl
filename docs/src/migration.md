@@ -9,6 +9,12 @@ or `VectorValueAccumulator` when those outputs are needed, for example
 `VarInfo(VectorValueAccumulator(), DynamicPPL.default_accumulators()...)`; `VarInfo(model)` remains
 a convenience constructor that records vectorised values and log densities.
 
+`PrefixContext` and `extract_prefixes` are removed. Use `prefix(model, vn; template)`
+to add a prefix and `DynamicPPL.getprefix(model)` to read the combined prefix
+(`nothing` when absent). The `model.prefix` field also holds internal storage metadata.
+Replace `prefix(ctx, vn)` with
+`AbstractPPL.prefix(vn, DynamicPPL.getprefix(model))` for a prefixed model.
+
 To reuse previous values, extract them explicitly before evaluating:
 
 ```julia
@@ -203,3 +209,11 @@ params = BangBang.setindex!!(params, TransformedValue(2.0, NoTransform()), @varn
 _, vi = init!!(Xoshiro(468), model, vi, InitFromParams(params, nothing), UnlinkAll())
 vi
 ```
+
+## Observation hooks
+
+For direct observation calls, replace
+`tilde_observe!!(prefix, prefix_template, dist, value, vn, template, vi)` with
+`tilde_observe!!(prefix, dist, value, vn, template, vi)`, passing `model.prefix` as
+the first argument. This internal metadata includes storage templates that
+`DynamicPPL.getprefix(model)` omits.

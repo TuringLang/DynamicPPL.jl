@@ -489,7 +489,10 @@ DefaultContext
 InitContext
 ```
 
-To implement a leaf context, you need to subtype `AbstractPPL.AbstractContext` and implement the `tilde_assume!!` and `tilde_observe!!` methods for your context.
+Customise latent value selection with an [initialisation strategy](init.md) supplied to `InitContext`.
+`tilde_assume!!` dispatches on that context to initialise, transform, and accumulate a latent value.
+Observations call `tilde_observe!!(prefix, right, left, vn, template, vi)` without a context argument.
+For named observations, this applies the prefix and its storage template before calling `accumulate_observe!!`; literals have no variable name to prefix.
 
 ```@docs
 tilde_assume!!
@@ -497,10 +500,10 @@ tilde_observe!!
 ```
 
 **Parent contexts**: These essentially act as 'modifiers' for leaf contexts.
-For example, `PrefixContext` adds a prefix to variable names during evaluation. Conditioning and fixing are stored on the model; see [Binding rules](@ref).
+Prefixes, conditioned values, and fixed values are stored on the model; see [Binding rules](@ref).
 
 To implement a parent context, you have to subtype `DynamicPPL.AbstractParentContext`, and implement the `childcontext` and `setchildcontext` methods.
-If needed, you can also implement `tilde_assume!!` and `tilde_observe!!` for your context.
+You can also implement `tilde_assume!!` to customise how your context handles latent variables.
 This is optional; the default implementation is to simply delegate to the child context.
 
 ```@docs
@@ -515,12 +518,6 @@ They are mainly useful for modifying the fundamental behaviour (i.e. the leaf co
 ```@docs
 leafcontext
 setleafcontext
-```
-
-Sometimes it is necessary to handle all `PrefixContext`s in a context stack at one go:
-
-```@docs
-extract_prefixes
 ```
 
 ### VarInfo initialisation

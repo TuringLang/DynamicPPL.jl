@@ -21,26 +21,34 @@ begin
     # To understand the need for `template`, see the VarNamedTuple docs.
     template = x
 
-    if is_fixed(vn)
-        raw_x = get_fixed_value(vn)
+    if is_fixed(__model__, vn)
+        raw_x = get_fixed_value(__model__, vn)
 
-    elseif is_conditioned(vn)
-        conditioned_x = get_conditioned_value(vn)
+    elseif is_conditioned(__model__, vn)
+        # Argument status is known when expanding `@model`.
+        conditioned_x = is_argument(x) ? x : get_conditioned_value(__model__, vn)
         raw_x, __varinfo__ = tilde_observe!!(
-            ctx, dist, conditioned_x, vn, template, __varinfo__
+            __model__.prefix, dist, conditioned_x, vn, template, __varinfo__
         )
 
-    elseif is_model_argument(vn)
-        arg_x = x
-        raw_x, __varinfo__ = tilde_observe!!(ctx, dist, arg_x, vn, template, __varinfo__)
-
     else
-        raw_x, __varinfo__ = tilde_assume!!(ctx, dist, vn, template, __varinfo__)
+        raw_x, __varinfo__ = tilde_assume!!(
+            __model__, __context__, dist, vn, template, __varinfo__
+        )
     end
 
     x = raw_x
 end
 ```
+
+The effective binding determines each LHS variable's role.
+An argument on the LHS is observed by default. Bindings are applied to arguments before
+the body runs; an observed argument uses its current value at the tilde statement.
+A bound local variable uses its binding's value, and a fixed argument is reset to its
+bound value at the tilde statement. See [Binding rules](@ref) for roles and shape checks.
+
+The compiler passes `__model__.prefix` directly to `tilde_observe!!`. It is `nothing`,
+a `VarName`, or a `PrefixTemplate` containing storage metadata.
 
 We won't go into detail about every part of this code; by far the most interesting part is the call to `tilde_assume!!`.
 Every tilde-statement `vn ~ dist` (where `vn` represents a random variable) is transformed into one such call.

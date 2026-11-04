@@ -67,4 +67,5 @@ initializer in unconstrained space.
 to_distribution
 to_submodel
 DynamicPPL.prefix
+DynamicPPL.getprefix
 ```
