@@ -24,6 +24,7 @@ using DynamicPPL:
     LinkAll,
     UnlinkAll
 using DynamicPPL.TestUtils.AD: run_ad, NoTest
+using DynamicPPL.AbstractPPL: @of, of
 using Enzyme: Enzyme
 using FillArrays: Fill
 using ForwardDiff: ForwardDiff
@@ -114,6 +115,18 @@ end
     x ~ to_submodel(_sub())
     obs ~ Normal(x, 1)
     return (; x=x)
+end
+
+@model _indexed_observation(obs, mu) = obs ~ Normal(mu, 1)
+
+"Indexed submodels with explicit observations and one shared latent mean."
+@model function indexed_submodels(obs)
+    mu ~ Normal()
+    x = similar(obs)
+    for i in eachindex(obs)
+        x[i] ~ to_submodel(condition(_indexed_observation(missing, mu); obs=obs[i]))
+    end
+    return (; mu=mu)
 end
 
 "Variables whose support varies under linking, or otherwise nontrivial bijectors."
@@ -353,6 +366,20 @@ function build_combinations(rng)
     end
     push!(models, ("Dynamic", dynamic()))
     push!(models, ("Submodel", parent(randn(rng))))
+    indexed = indexed_submodels(randn(rng, 3_000))
+    push!(models, ("Indexed submodels 3k", indexed))
+    indexed = decondition(indexed, @varname(x[1].obs))
+    push!(
+        models,
+        (
+            "Indexed submodels conditioned",
+            condition(
+                indexed,
+                @varname(x[1].obs) => 0.0,
+                @of(x = of(Array, length(indexed.args.obs)))
+            ),
+        ),
+    )
     d = [1, 1, 1, 2, 2, 2]
     w = [1, 2, 3, 2, 1, 1]
     z = [1, 1, 2, 2, 1, 2]

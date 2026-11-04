@@ -93,11 +93,13 @@ end
                 m = setthreadsafe(model, threaded)
                 function density(value)
                     values = VarNamedTuple((vn => TransformedValue([value], Unlink()),))
-                    _, output = init!!(
+                    _, output = evaluate!!(
                         m,
+                        Context(
+                            InitFromParams(values, nothing),
+                            DynamicPPL.infer_transform_strategy_from_values(values),
+                        ),
                         VarInfo(),
-                        InitFromParams(values, nothing),
-                        DynamicPPL.infer_transform_strategy_from_values(values),
                     )
                     return getlogjoint(output)
                 end

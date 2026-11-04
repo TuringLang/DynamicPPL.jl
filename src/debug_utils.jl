@@ -10,9 +10,9 @@ using Distributions
 export check_model, has_static_constraints
 
 # Accumulators see distributions and values, not submodel calls (or fixed LHS variables).
-# Keep reached models only during check_model, using the existing context traversal.
-struct BindingCheckContext{C<:AbstractContext} <: DynamicPPL.AbstractParentContext
-    context::C
+# Track reached models only during check_model through its initialisation strategy.
+struct BindingCheckStrategy{S<:AbstractInitStrategy} <: AbstractInitStrategy
+    strategy::S
     models::Vector{Model}
     namespaces::Set{Symbol}
     lock::ReentrantLock
@@ -24,9 +24,9 @@ struct BindingCheckContext{C<:AbstractContext} <: DynamicPPL.AbstractParentConte
     binding_reads::Tuple
     binding_values::VarNamedTuple
 end
-function BindingCheckContext(context, models, namespaces, lock)
-    return BindingCheckContext(
-        context,
+function BindingCheckStrategy(strategy, models, namespaces, lock)
+    return BindingCheckStrategy(
+        strategy,
         models,
         namespaces,
         lock,
@@ -39,61 +39,53 @@ function BindingCheckContext(context, models, namespaces, lock)
         DynamicPPL._submodel_values(first(models), nothing),
     )
 end
-DynamicPPL.childcontext(ctx::BindingCheckContext) = ctx.context
-function DynamicPPL.setchildcontext(ctx::BindingCheckContext, child::AbstractContext)
-    return BindingCheckContext(
-        child,
-        ctx.models,
-        ctx.namespaces,
-        ctx.lock,
-        ctx.track_names,
-        ctx.removals,
-        ctx.used_removals,
-        ctx.template_models,
-        ctx.binding_models,
-        ctx.binding_reads,
-        ctx.binding_values,
-    )
+function DynamicPPL.init(rng, vn, dist, strategy::BindingCheckStrategy)
+    return DynamicPPL.init(rng, vn, dist, strategy.strategy)
+end
+function DynamicPPL.get_param_eltype(strategy::BindingCheckStrategy)
+    return DynamicPPL.get_param_eltype(strategy.strategy)
 end
 
 function DynamicPPL.tilde_assume!!(
     parent::Model,
-    ctx::BindingCheckContext,
+    ctx::Context{<:Random.AbstractRNG,<:BindingCheckStrategy},
     submodel::DynamicPPL.Submodel{M},
     vn::VarName,
     template,
     vi::AbstractVarInfo,
 ) where {M<:Model}
-    _register_removals!(ctx, submodel.model)
+    checking = ctx.strategy
+    _register_removals!(checking, submodel.model)
     namespace = DynamicPPL._concretize_prefix(vn, template; prefix=Val(true))
     local_prefix = DynamicPPL.maybe_prefix(DynamicPPL.getprefix(submodel.model), namespace)
     full_prefix = DynamicPPL.maybe_prefix(local_prefix, DynamicPPL.getprefix(parent))
-    lock(ctx.lock) do
-        push!(ctx.template_models, (submodel.model, full_prefix))
+    lock(checking.lock) do
+        push!(checking.template_models, (submodel.model, full_prefix))
     end
-    if ctx.track_names
-        lock(ctx.lock) do
-            push!(ctx.namespaces, DynamicPPL.AbstractPPL.getsym(vn))
+    if checking.track_names
+        lock(checking.lock) do
+            push!(checking.namespaces, DynamicPPL.AbstractPPL.getsym(vn))
         end
     end
     begin
-        ctx = BindingCheckContext(
-            ctx.context,
-            ctx.models,
-            ctx.namespaces,
-            ctx.lock,
+        checking = BindingCheckStrategy(
+            checking.strategy,
+            checking.models,
+            checking.namespaces,
+            checking.lock,
             false,
-            ctx.removals,
-            ctx.used_removals,
-            ctx.template_models,
-            ctx.binding_models,
-            ctx.binding_reads,
-            ctx.binding_values,
+            checking.removals,
+            checking.used_removals,
+            checking.template_models,
+            checking.binding_models,
+            checking.binding_reads,
+            checking.binding_values,
         )
+        ctx = Context(ctx.rng, checking, ctx.transform_strategy)
     end
     return invoke(
         DynamicPPL.tilde_assume!!,
-        Tuple{Model,AbstractContext,typeof(submodel),VarName,Any,AbstractVarInfo},
+        Tuple{Model,Context,typeof(submodel),VarName,Any,AbstractVarInfo},
         parent,
         ctx,
         submodel,
@@ -103,7 +95,7 @@ function DynamicPPL.tilde_assume!!(
     )
 end
 
-function _register_removals!(ctx::BindingCheckContext, model)
+function _register_removals!(ctx::BindingCheckStrategy, model)
     lock(ctx.lock) do
         for role in (DynamicPPL.Condition, DynamicPPL.Fix)
             for marker in DynamicPPL._removals(role, model)
@@ -123,20 +115,20 @@ function _register_removals!(ctx::BindingCheckContext, model)
     end
     return nothing
 end
-function DynamicPPL._record_removal_use(ctx::BindingCheckContext, role, marker)
+function DynamicPPL._record_removal_use(ctx::BindingCheckStrategy, role, marker)
     lock(ctx.lock) do
         push!(ctx.used_removals, marker.token)
     end
     return nothing
 end
-function _warn_unused_removals(ctx::BindingCheckContext)
+function _warn_unused_removals(ctx::BindingCheckStrategy)
     for (token, message) in ctx.removals
         token in ctx.used_removals || @warn message
     end
     return nothing
 end
 
-function _warn_unused_binding_names(model, ctx::BindingCheckContext)
+function _warn_unused_binding_names(model, ctx::BindingCheckStrategy)
     names = copy(ctx.namespaces)
     for reached in ctx.models
         lhs = DynamicPPL._lhs_names(DynamicPPL._binding_metadata(reached))
@@ -152,9 +144,9 @@ function _warn_unused_binding_names(model, ctx::BindingCheckContext)
     return nothing
 end
 
-function _binding_read_context(ctx::BindingCheckContext, values, reads)
-    return BindingCheckContext(
-        ctx.context,
+function _binding_read_context(ctx::BindingCheckStrategy, values, reads)
+    return BindingCheckStrategy(
+        ctx.strategy,
         ctx.models,
         ctx.namespaces,
         ctx.lock,
@@ -167,10 +159,10 @@ function _binding_read_context(ctx::BindingCheckContext, values, reads)
         values,
     )
 end
-function DynamicPPL._binding_read_context(ctx::BindingCheckContext, values)
+function DynamicPPL._binding_read_context(ctx::BindingCheckStrategy, values)
     return _binding_read_context(ctx, values, ctx.binding_reads)
 end
-function DynamicPPL._record_binding_read(ctx::BindingCheckContext, model, vn, template)
+function DynamicPPL._record_binding_read(ctx::BindingCheckStrategy, model, vn, template)
     if vn === nothing
         reads = VarName[]
         lock(ctx.lock) do
@@ -207,7 +199,7 @@ function _unread_binding_names!(
         _unread_binding_names!(names, child, name)
     end
 end
-function _warn_unread_bindings(ctx::BindingCheckContext)
+function _warn_unread_bindings(ctx::BindingCheckStrategy)
     unread = Set{VarName}()
     shared_names = Set(
         DynamicPPL.AbstractPPL.getsym(vn) for model in ctx.models for
@@ -240,7 +232,7 @@ function _warn_unread_bindings(ctx::BindingCheckContext)
     return nothing
 end
 
-function _warn_unused_templates(ctx::BindingCheckContext)
+function _warn_unused_templates(ctx::BindingCheckStrategy)
     entries, lhs = Set{VarName}(), Set{VarName}()
     for (model, prefix) in ctx.template_models
         metadata = DynamicPPL._binding_metadata(model)
@@ -417,18 +409,16 @@ function check_model(
         PriorDistributionAccumulator(),
         DynamicPPL.DebugRawValueAccumulator(),
     ))
-    init_strategy = InitFromPrior()
-    binding_context = BindingCheckContext(
-        model.context, Model[model], Set{Symbol}(), ReentrantLock()
+    checking = BindingCheckStrategy(
+        InitFromPrior(), Model[model], Set{Symbol}(), ReentrantLock()
     )
-    _register_removals!(binding_context, model)
-    push!(binding_context.template_models, (model, DynamicPPL.getprefix(model)))
-    checked_model = DynamicPPL.contextualize(model, binding_context)
-    _, vi = DynamicPPL.init!!(rng, checked_model, vi, init_strategy, UnlinkAll())
-    _warn_unused_binding_names(model, binding_context)
-    _warn_unused_removals(binding_context)
-    _warn_unused_templates(binding_context)
-    _warn_unread_bindings(binding_context)
+    _register_removals!(checking, model)
+    push!(checking.template_models, (model, DynamicPPL.getprefix(model)))
+    _, vi = DynamicPPL.init!!(rng, model, vi, checking, UnlinkAll())
+    _warn_unused_binding_names(model, checking)
+    _warn_unused_removals(checking)
+    _warn_unused_templates(checking)
+    _warn_unread_bindings(checking)
 
     params = get_raw_values(vi)
     # This adds one evaluation per `check_model` call, not per ordinary model evaluation.
@@ -551,11 +541,10 @@ Generate the evaluator call and the types of the arguments.
 - `model::Model`: The model whose evaluator is of interest.
 - `varinfo::AbstractVarInfo`: The varinfo to use when evaluating the model. Default: `VarInfo(model)`.
 
-# Keywords
-
-- `context::AbstractContext`: The evaluation context. Defaults to
-  `InitContext(InitFromParams(get_values(varinfo), nothing), UnlinkAll())`, or
-  `InitContext(InitFromPrior(), UnlinkAll())` when vector values are absent or empty.
+# Keyword Arguments
+- `context::Context`: The evaluation context. Defaults to
+  `Context(InitFromParams(get_values(varinfo), nothing), UnlinkAll())`, or
+  `Context(InitFromPrior(), UnlinkAll())` when vector values are absent or empty.
 
 # Returns
 A 2-tuple with the following elements:
@@ -567,7 +556,7 @@ A 2-tuple with the following elements:
 function gen_evaluator_call_with_types(
     model::Model,
     varinfo::AbstractVarInfo=VarInfo(model);
-    context::AbstractContext=InitContext(
+    context::Context=Context(
         if !DynamicPPL.hasacc(varinfo, Val(DynamicPPL.VECTORVAL_ACCNAME)) ||
             isempty(varinfo)
             InitFromPrior()
@@ -577,9 +566,7 @@ function gen_evaluator_call_with_types(
         UnlinkAll(),
     ),
 )
-    args, kwargs = DynamicPPL.make_evaluate_args_and_kwargs(
-        setleafcontext(model, context), varinfo
-    )
+    args, kwargs = DynamicPPL.make_evaluate_args_and_kwargs(model, context, varinfo)
     f, args, kwargs = DynamicPPL._model_evaluator(model.f, args, kwargs)
     return if isempty(kwargs)
         (f, Base.typesof(args...))
@@ -600,9 +587,9 @@ This simply calls `@code_warntype` on the model's evaluator, filling in internal
 - `varinfo::AbstractVarInfo`: The varinfo to use when evaluating the model. Default: `VarInfo(model)`.
 
 # Keyword Arguments
-- `context::AbstractContext`: The evaluation context. Defaults to
-  `InitContext(InitFromParams(get_values(varinfo), nothing), UnlinkAll())`, or
-  `InitContext(InitFromPrior(), UnlinkAll())` when vector values are absent or empty.
+- `context::Context`: The evaluation context. Defaults to
+  `Context(InitFromParams(get_values(varinfo), nothing), UnlinkAll())`, or
+  `Context(InitFromPrior(), UnlinkAll())` when vector values are absent or empty.
 """
 function model_warntype(
     model::Model, varinfo::AbstractVarInfo=VarInfo(model), optimize::Bool=false; kwargs...
@@ -623,9 +610,9 @@ This simply calls `@code_typed` on the model's evaluator, filling in internal ar
 - `varinfo::AbstractVarInfo`: The varinfo to use when evaluating the model. Default: `VarInfo(model)`.
 
 # Keyword Arguments
-- `context::AbstractContext`: The evaluation context. Defaults to
-  `InitContext(InitFromParams(get_values(varinfo), nothing), UnlinkAll())`, or
-  `InitContext(InitFromPrior(), UnlinkAll())` when vector values are absent or empty.
+- `context::Context`: The evaluation context. Defaults to
+  `Context(InitFromParams(get_values(varinfo), nothing), UnlinkAll())`, or
+  `Context(InitFromPrior(), UnlinkAll())` when vector values are absent or empty.
 """
 function model_typed(
     model::Model, varinfo::AbstractVarInfo=VarInfo(model), optimize::Bool=true; kwargs...

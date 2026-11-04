@@ -249,7 +249,7 @@ end
 
 @inline function tilde_assume!!(
     parent_model::Model,
-    context::AbstractContext,
+    context::Context,
     submodel::Submodel{M},
     left_vn::VarName,
     template,
@@ -461,7 +461,6 @@ end
     model = _reconstruct_model(
         child,
         child.prefix,
-        child.context,
         table,
         Val(requires_threadsafe(child)),
         (child.observation_removals..., observation_removals...),
@@ -475,8 +474,7 @@ end
 @inline function _evaluate_submodel!!(parent_model, context, model, left_vn, template, vi)
     vn, template = _prefix_varname_and_template(left_vn, template, parent_model)
     model = _prefix_model(model, vn, template, model.values)
-    model = setleafcontext(model, context)
-    args, kwargs = make_evaluate_args_and_kwargs(model, vi)
+    args, kwargs = make_evaluate_args_and_kwargs(model, context, vi)
     return @inline model.f(args...; kwargs...)
 end
 function tilde_observe!!(prefix, ::Submodel, left, ::Nothing, template, vi)
