@@ -25,7 +25,7 @@ begin
         x = bound_value(model, vn)
     elseif role isa ConditionRole
         observed = is_argument(vn) ? x : bound_value(model, vn)
-        x, vi = tilde_observe!!(prefix, prefix_template, dist, observed, vn, template, vi)
+        x, vi = tilde_observe!!(model.prefix, dist, observed, vn, template, vi)
     else
         x, vi = tilde_assume!!(model, context, dist, vn, template, vi)
     end
@@ -34,7 +34,8 @@ end
 
 An observed argument uses its current value, including body computations. A fixed
 argument restores its bound value. The model's prefix and storage template qualify
-addresses before accumulation. Only latent tildes call `tilde_assume!!`; fixed
+addresses before accumulation. `model.prefix` is `nothing`, a `VarName`, or a
+`PrefixTemplate` containing storage metadata. Only latent tildes call `tilde_assume!!`; fixed
 tildes contribute no density.
 
 As described on the [Model evaluation page](./evaluation.md), there are three stages to every tilde-statement:

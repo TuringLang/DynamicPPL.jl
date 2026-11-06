@@ -499,7 +499,7 @@ tilde_observe!!
 ```
 
 **Parent contexts**: These essentially act as 'modifiers' for leaf contexts.
-For example, `PrefixContext` adds a prefix to variable names during evaluation. Conditioning and fixing are stored on the model; see [Binding rules](@ref).
+Prefixes, conditioned values, and fixed values are stored on the model; see [Binding rules](@ref).
 
 To implement a parent context, you have to subtype `DynamicPPL.AbstractParentContext`, and implement the `childcontext` and `setchildcontext` methods.
 If needed, implement `tilde_assume!!` for your context; its default method
@@ -517,12 +517,6 @@ They are mainly useful for modifying the fundamental behaviour (i.e. the leaf co
 ```@docs
 leafcontext
 setleafcontext
-```
-
-Sometimes it is necessary to handle all `PrefixContext`s in a context stack at one go:
-
-```@docs
-extract_prefixes
 ```
 
 ### VarInfo initialisation
