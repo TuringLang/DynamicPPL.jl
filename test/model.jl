@@ -63,6 +63,32 @@ end
 const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
 
 @testset "model.jl" begin
+    @testset "direct construction preserves merged prefix metadata" begin
+        @model prefixed_lhs(y) = y ~ Normal()
+        original = prefixed_lhs(1.0)
+        for model in (
+            original,
+            prefix(original, @varname(p)),
+            prefix(original, @varname(p[2]); template=zeros(2)),
+        )
+            direct = DynamicPPL.Model{false}(
+                model.f,
+                model.args,
+                model.defaults,
+                model.prefix,
+                model.values,
+                model.context;
+                args_on_lhs=DynamicPPL._lhs_arguments(model),
+            )
+            @test direct.context === model.context
+            @test direct.prefix === model.prefix
+            @test (@inferred DynamicPPL.getprefix(direct)) == DynamicPPL.getprefix(model)
+            @test conditioned(direct) == conditioned(model)
+            @test keys(VarInfo(Xoshiro(1), decondition(direct))) ==
+                keys(VarInfo(Xoshiro(1), decondition(model)))
+        end
+    end
+
     @testset "convenience functions" begin
         model = GDEMO_DEFAULT
 

@@ -14,6 +14,16 @@ function _prefixed_template(prefix::PrefixTemplate, template)
         _prefixed_template(prefix.inner, template),
     )
 end
+function _compose_prefix_templates(prefix::VarName, inner::Union{Nothing,VarName})
+    return maybe_prefix(inner, prefix)
+end
+function _compose_prefix_templates(prefix::VarName, inner)
+    return PrefixTemplate(prefix, NoTemplate(), inner)
+end
+
+_getprefix(prefix::Union{Nothing,VarName}) = prefix
+_getprefix(prefix::PrefixTemplate) = maybe_prefix(_getprefix(prefix.inner), prefix.prefix)
+
 is_splat_symbol(s::Symbol) = startswith(string(s), "#splat#")
 function unsplat_symbol(s::Symbol)
     return is_splat_symbol(s) ? Symbol(chopprefix(string(s), "#splat#")) : s
@@ -93,8 +103,9 @@ struct Model{
     defaultnames,
     Targs,
     Tdefaults,
-    C<:AbstractContext,
+    Prefix<:Union{VarName,Nothing,PrefixTemplate},
     Values<:BindingTable,
+    C<:AbstractContext,
     Threaded,
     ArgsOnLHS,
     OR<:Tuple,
@@ -104,6 +115,7 @@ struct Model{
     args::NamedTuple{argnames,Targs}
     defaults::NamedTuple{defaultnames,Tdefaults}
     context::C
+    prefix::Prefix
     values::Values
     observation_removals::OR
     fixed_removals::FR
@@ -112,15 +124,16 @@ struct Model{
         f::F,
         args::NamedTuple{A,Ta},
         defaults::NamedTuple{D,Td},
-        context::C,
+        prefix::P,
         values::V,
+        context::C,
         ::Val{Threaded},
         metadata,
         observation_removals::OR,
         fixed_removals::FR,
-    ) where {F,A,Ta,D,Td,C,V,Threaded,OR,FR}
-        return new{F,A,D,Ta,Td,C,V,Threaded,metadata,OR,FR}(
-            f, args, defaults, context, values, observation_removals, fixed_removals
+    ) where {F,A,Ta,D,Td,P,V,C,Threaded,OR,FR}
+        return new{F,A,D,Ta,Td,P,V,C,Threaded,metadata,OR,FR}(
+            f, args, defaults, context, prefix, values, observation_removals, fixed_removals
         )
     end
 end
@@ -129,8 +142,9 @@ Base.@constprop :aggressive function Model{Threaded}(
     f,
     args::NamedTuple,
     defaults::NamedTuple,
-    context::AbstractContext,
-    values::BindingTable;
+    prefix::Union{Nothing,VarName,PrefixTemplate},
+    values::BindingTable,
+    context::AbstractContext;
     observation_removals=(),
     fixed_removals=(),
     args_on_lhs::Union{Tuple{Vararg{Symbol}},Vector{Symbol},ModelBindingMetadata}=(),
@@ -146,8 +160,9 @@ Base.@constprop :aggressive function Model{Threaded}(
         f,
         args,
         defaults,
-        context,
+        prefix,
         values,
+        context,
         Val(Threaded),
         metadata,
         observation_removals,
@@ -161,6 +176,7 @@ function _equality_fields(model::Model)
         model.args,
         model.defaults,
         model.context,
+        model.prefix,
         model.values,
         map(keys(merge(model.args, model.defaults))) do n
             value = merge(model.args, model.defaults)[n]
@@ -180,9 +196,17 @@ Base.:(==)(a::Model, b::Model) = isequal(a, b)
 Base.isequal(a::Model, b::Model) = isequal(_equality_fields(a), _equality_fields(b))
 Base.hash(model::Model, h::UInt) = hash(_equality_fields(model), hash(:Model, h))
 
+"""
+    getprefix(model::Model)
+
+Return the model's combined prefix, or `nothing` if it has no prefix.
+The result omits the prefix's storage templates.
+"""
+getprefix(model::Model) = _getprefix(model.prefix)
+
 function _model_metadata(
-    ::Model{F,A,D,Ta,Td,C,V,Threaded,ArgsOnLHS}
-) where {F,A,D,Ta,Td,C,V,Threaded,ArgsOnLHS}
+    ::Model{F,A,D,Ta,Td,P,V,C,Threaded,ArgsOnLHS}
+) where {F,A,D,Ta,Td,P,V,C,Threaded,ArgsOnLHS}
     return ArgsOnLHS
 end
 
@@ -197,7 +221,7 @@ Base.@constprop :aggressive function Model{Threaded}(
 ) where {Threaded}
     args_on_lhs = args_on_lhs isa ModelBindingMetadata ? args_on_lhs : Tuple(args_on_lhs)
     values = _argument_bindings(merge(args, defaults), args_on_lhs)
-    model = Model{Threaded}(f, args, defaults, context, values; args_on_lhs)
+    model = Model{Threaded}(f, args, defaults, nothing, values, context; args_on_lhs)
     found = _placeholder_addresses(merge(args, defaults), Val(_lhs_arguments(args_on_lhs)))
     return all(isempty, found) ? model : _unbind_placeholders(model, found)
 end
@@ -264,10 +288,12 @@ end
 Return whether `model` has been marked as needing threadsafe evaluation (using
 `setthreadsafe`).
 """
-requires_threadsafe(::Model{F,A,D,Ta,Td,C,V,Threaded}) where {F,A,D,Ta,Td,C,V,Threaded} =
-    Threaded
+requires_threadsafe(
+    ::Model{F,A,D,Ta,Td,P,V,C,Threaded}
+) where {F,A,D,Ta,Td,P,V,C,Threaded} = Threaded
 @inline function _reconstruct_model(
     model::Model;
+    prefix=model.prefix,
     context=model.context,
     values=model.values,
     threaded=Val(requires_threadsafe(model)),
@@ -279,8 +305,9 @@ requires_threadsafe(::Model{F,A,D,Ta,Td,C,V,Threaded}) where {F,A,D,Ta,Td,C,V,Th
         model.f,
         model.args,
         model.defaults,
-        context,
+        prefix,
         values,
+        context,
         threaded,
         metadata,
         observation_removals,
@@ -304,13 +331,6 @@ Return a model with its leaf context replaced by `context`.
 function setleafcontext(model::Model, context::AbstractContext)
     return contextualize(model, setleafcontext(model.context, context))
 end
-_model_prefix(model::Model) = last(extract_prefixes(model.context))
-_model_prefix_template(::AbstractContext) = nothing
-function _model_prefix_template(context::AbstractParentContext)
-    return _model_prefix_template(childcontext(context))
-end
-_model_prefix_template(context::PrefixContext) = context.template
-_model_prefix_template(model::Model) = _model_prefix_template(model.context)
 
 """
     setthreadsafe(model::Model, threadsafe::Bool)
@@ -428,7 +448,7 @@ function _expand_cartesian(optic::AbstractPPL.Index)
 end
 
 """
-    prefix(model::Model, x::VarName)
+    prefix(model::Model, x::VarName; template=NoTemplate())
     prefix(model::Model, x::Val{sym})
     prefix(model::Model, x::Any)
 
@@ -439,6 +459,7 @@ Return `model` but with all random variables prefixed by `x`, where `x` is eithe
   this will introduce runtime overheads so is not recommended unless absolutely
   necessary.
 
+For an indexed prefix, `template` supplies storage shape and resolves `begin` and `end`.
 Prefixes accept properties and scalar integer indices (excluding `Bool`);
 `CartesianIndex` is expanded into integer coordinates. Ranges, colons and masks
 are rejected.
@@ -462,27 +483,18 @@ VarNamedTuple
                 └─ x => 1
 ```
 """
-function prefix(model::Model, x::VarName)
-    x = _concretize_prefix(x, NoTemplate(); prefix=Val(true))
-    return _with_prefix(model, x, NoTemplate(), model.values)
+function prefix(model::Model, x::VarName; template=NoTemplate())
+    template = VarNamedTuples.materialize_template(template)
+    x = _concretize_prefix(x, template; prefix=Val(true))
+    return _with_prefix(model, x, template, model.values)
 end
 function _with_prefix(model::Model, x::VarName, template, values)
-    model_prefix = maybe_prefix(_model_prefix(model), x)
-    prefix_template =
-        if template isa NoTemplate && _model_prefix_template(model) === nothing
-            nothing
-        else
-            inner = if _model_prefix_template(model) === nothing
-                _model_prefix(model)
-            else
-                _model_prefix_template(model)
-            end
-            PrefixTemplate(x, template, inner)
-        end
-    context = PrefixContext(
-        model_prefix, first(extract_prefixes(model.context)), prefix_template
-    )
-    return _reconstruct_model(model; context, values)
+    prefix = if template isa NoTemplate
+        _compose_prefix_templates(x, model.prefix)
+    else
+        PrefixTemplate(x, template, model.prefix)
+    end
+    return _reconstruct_model(model; prefix, values)
 end
 function prefix(model::Model, ::Val{sym}) where {sym}
     return prefix(model, VarName{sym}())
@@ -492,14 +504,13 @@ function prefix(model::Model, x)
 end
 
 function _apply_model_prefix(vn::VarName, template::Any, model::Model)
-    return _apply_model_prefix(
-        vn, template, _model_prefix(model), _model_prefix_template(model)
-    )
+    return _apply_model_prefix(vn, template, model.prefix)
 end
-function _apply_model_prefix(vn::VarName, template, prefix, prefix_template)
+function _apply_model_prefix(vn::VarName, template, prefix)
     prefix === nothing && return vn, template
-    pt = prefix_template === nothing ? prefix : prefix_template
-    return AbstractPPL.prefix(vn, prefix), _prefixed_template(pt, template)
+    return (
+        AbstractPPL.prefix(vn, _getprefix(prefix)), _prefixed_template(prefix, template)
+    )
 end
 
 function tilde_assume!!(
@@ -543,7 +554,7 @@ end
 _check_fixed_tilde_size(value, dist, vn) = value
 
 """
-    tilde_observe!!(prefix, prefix_template, right::Distribution, left, vn, template, vi)
+    tilde_observe!!(prefix, right::Distribution, left, vn, template, vi)
 
 Accumulate an observation and return `(left, vi)` with the updated varinfo.
 
@@ -552,19 +563,15 @@ computations, or a literal expression. `vn` is the variable name before prefixin
 or `nothing` for a literal. `template` describes the top-level variable's storage;
 literals use `NoTemplate()`.
 
-Apply `prefix` (a `VarName` or `nothing`) and its storage template `prefix_template`,
-then delegate to [`accumulate_observe!!`](@ref). The compiler passes this metadata directly
-so observations do not box the model. Compiler-generated observations call
-this function independently of the evaluation context. Fixed LHS variables bypass
-it and contribute no density.
+For named observations, apply `prefix` (`nothing`, a `VarName`, or a `PrefixTemplate`
+containing storage metadata). Check `left` for `missing` and `nothing`, then delegate
+to [`accumulate_observe!!`](@ref). Fixed LHS variables bypass this function.
 """
-function tilde_observe!!(
-    prefix, prefix_template, right::Distribution, left, vn, template, vi
-)
+function tilde_observe!!(prefix, right::Distribution, left, vn, template, vi)
     vn, template = if vn === nothing
         vn, NoTemplate()
     else
-        _apply_model_prefix(vn, template, prefix, prefix_template)
+        _apply_model_prefix(vn, template, prefix)
     end
     left = _check_no_placeholder(left, vn, ConditionRole())
     # Missing elements are already rejected. Distributions need a nonmissing element type;
@@ -1043,3 +1050,7 @@ end
 function AbstractPPL.evaluate!!(model::Model, context::AbstractContext, vi::AbstractVarInfo)
     return evaluate_nowarn!!(setleafcontext(model, context), vi)
 end
+
+optic_skip_length(::AbstractPPL.Iden) = 0
+optic_skip_length(optic::AbstractPPL.Index) = 1 + optic_skip_length(optic.child)
+optic_skip_length(optic::AbstractPPL.Property) = 1 + optic_skip_length(optic.child)

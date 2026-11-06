@@ -55,7 +55,7 @@ function DynamicPPL._binding_check_child(
     ctx::BindingCheckContext, parent, child, prefix, template
 )
     ids = lock(ctx.lock) do
-        own_ids = _register_removals!(ctx, child, DynamicPPL._model_prefix(child))
+        own_ids = _register_removals!(ctx, child, DynamicPPL.getprefix(child))
         table = child.values
         arguments = merge(child.args, child.defaults)
         map(
@@ -86,7 +86,7 @@ function DynamicPPL._binding_check_model(ctx::BindingCheckContext, model)
 end
 function DynamicPPL._binding_check_read(ctx::BindingCheckContext, model, vn, template)
     vn = DynamicPPL._concretize_prefix(vn, template; canonical=true)
-    vn = DynamicPPL.maybe_prefix(vn, DynamicPPL._model_prefix(model))
+    vn = DynamicPPL.maybe_prefix(vn, DynamicPPL.getprefix(model))
     lock(ctx.lock) do
         for reads in ctx.reads
             push!(reads, vn)
@@ -111,7 +111,7 @@ function _warn_unread_bindings(ctx)
             roots[n].value isa Union{VarNamedTuple,DynamicPPL.VarNamedTuples.PartialArray}
         )
         table = DynamicPPL.BindingTable(VarNamedTuple(NamedTuple{names}(roots)))
-        prefix = DynamicPPL._model_prefix(model)
+        prefix = DynamicPPL.getprefix(model)
         local_reads = Tuple(
             prefix === nothing ? vn : DynamicPPL.AbstractPPL.unprefix(vn, prefix) for
             vn in reads if prefix === nothing || subsumes(prefix, vn)
@@ -142,7 +142,7 @@ function _warn_unused_templates(ctx)
     for (model, _) in ctx.models
         metadata = DynamicPPL._model_metadata(model)
         DynamicPPL._lhs_names(metadata) === nothing && continue
-        prefix = DynamicPPL._model_prefix(model)
+        prefix = DynamicPPL.getprefix(model)
         for name in DynamicPPL._template_names(metadata)
             push!(entries, DynamicPPL.maybe_prefix(name, prefix))
         end
@@ -359,7 +359,7 @@ function check_model(
     ))
     init_strategy = InitFromPrior()
     binding_context = BindingCheckContext(model.context)
-    ids = _register_removals!(binding_context, model, DynamicPPL._model_prefix(model))
+    ids = _register_removals!(binding_context, model, DynamicPPL.getprefix(model))
     binding_context = DynamicPPL.ConstructionBase.setproperties(
         binding_context, (; removal_ids=ids)
     )
