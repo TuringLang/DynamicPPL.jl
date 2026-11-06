@@ -2523,6 +2523,21 @@ end
         @test_throws restriction templated_setindex!!(VarNamedTuple(), 1.0f0, vn, template)
         @test_throws restriction VarNamedTuple(; x=template)[vn]
     end
+    mixed = (1.0f0, big"2.0")
+    @test_throws restriction fix(tuple_local(); x=mixed)(Xoshiro(1))
+    params = VarNamedTuple(; x=(1.0f0, big"2.0"))
+    @test_throws restriction init!!(
+        Xoshiro(1),
+        tuple_local(),
+        VarInfo(DynamicPPL.RawValueAccumulator(false)),
+        InitFromParams(params, nothing),
+    )
+    @test_throws restriction init!!(
+        Xoshiro(1),
+        typed_tuple_local((1.0f0, 2.0f0)),
+        VarInfo(DynamicPPL.RawValueAccumulator(false)),
+        InitFromParams(params, nothing),
+    )
     whole = VarNamedTuple(; x=(1.0, 2.0))
     @test haskey(whole, @varname(x[1]))
     @test !haskey(whole, @varname(x[3]))

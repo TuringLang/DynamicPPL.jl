@@ -199,19 +199,6 @@ function check_model(
 )
     failed = false
 
-    # Check that a variable in the model arguments is neither conditioned nor fixed.
-    conditioned_vns = keys(DynamicPPL.conditioned(model.context))
-    for vn in conditioned_vns
-        if DynamicPPL.inargnames(vn, model)
-            @warn (
-                "Variable $(vn) is specified in both the model arguments and conditioned values." *
-                " Please either specify observed data via the model arguments, or through" *
-                " `condition` / `|`, not both."
-            )
-            failed = true
-        end
-    end
-
     # Run the model and collect the data we need
     vi = DynamicPPL.VarInfo((
         DebugAccumulator(),
@@ -344,23 +331,35 @@ Generate the evaluator call and the types of the arguments.
 
 # Returns
 A 2-tuple with the following elements:
-- `f`: This is either `model.f` or `Core.kwcall`, depending on whether
-    the model has keyword arguments.
+- `f`: The model body function, or `Core.kwcall` when keyword arguments are passed.
+    For `@model` evaluators with argument LHS variables, the inner body receives
+    prepared arguments positionally.
 - `argtypes::Type{<:Tuple}`: The types of the arguments for the evaluator.
 """
 function gen_evaluator_call_with_types(
     model::Model, varinfo::AbstractVarInfo=VarInfo(model)
 )
-    args, kwargs = DynamicPPL.make_evaluate_args_and_kwargs(model, varinfo)
+    strategy =
+        if !DynamicPPL.hasacc(varinfo, Val(DynamicPPL.VECTORVAL_ACCNAME)) ||
+            isempty(varinfo)
+            InitFromPrior()
+        else
+            InitFromParams(get_values(varinfo), nothing)
+        end
+    context = InitContext(strategy, UnlinkAll())
+    args, kwargs = DynamicPPL.make_evaluate_args_and_kwargs(
+        setleafcontext(model, context), varinfo
+    )
+    f, args, kwargs = DynamicPPL._model_evaluator(model.f, args, kwargs)
     return if isempty(kwargs)
-        (model.f, Base.typesof(args...))
+        (f, Base.typesof(args...))
     else
-        (Core.kwcall, Tuple{typeof(kwargs),Core.Typeof(model.f),map(Core.Typeof, args)...})
+        (Core.kwcall, Tuple{typeof(kwargs),Core.Typeof(f),map(Core.Typeof, args)...})
     end
 end
 
 """
-    model_warntype(model[, varinfo]; optimize=true)
+    model_warntype(model[, varinfo, optimize=false])
 
 Check the type stability of the model's evaluator, warning about any potential issues.
 
@@ -369,9 +368,6 @@ This simply calls `@code_warntype` on the model's evaluator, filling in internal
 # Arguments
 - `model::Model`: The model to check.
 - `varinfo::AbstractVarInfo`: The varinfo to use when evaluating the model. Default: `VarInfo(model)`.
-
-# Keyword Arguments
-- `optimize::Bool`: Whether to generate optimized code. Default: `false`.
 """
 function model_warntype(
     model::Model, varinfo::AbstractVarInfo=VarInfo(model), optimize::Bool=false
@@ -381,7 +377,7 @@ function model_warntype(
 end
 
 """
-    model_typed(model[, varinfo]; optimize=true)
+    model_typed(model[, varinfo, optimize=true])
 
 Return the type inference for the model's evaluator.
 
@@ -390,9 +386,6 @@ This simply calls `@code_typed` on the model's evaluator, filling in internal ar
 # Arguments
 - `model::Model`: The model to check.
 - `varinfo::AbstractVarInfo`: The varinfo to use when evaluating the model. Default: `VarInfo(model)`.
-
-# Keyword Arguments
-- `optimize::Bool`: Whether to generate optimized code. Default: `true`.
 """
 function model_typed(
     model::Model, varinfo::AbstractVarInfo=VarInfo(model), optimize::Bool=true
