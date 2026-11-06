@@ -79,9 +79,9 @@ _matches_model_role(::Type{Condition}, x::ModelValue{ArgumentCondition}) = true
 """
     _binding_optic(x)
 
-Choose how binding-managed storage holds and rebuilds children without aliasing
+Choose how binding-managed storage holds and rebuilds children without mutating
 the caller's storage. Return `AbstractPPL.Index` for position-addressed containers
-with fresh buffers preserving axes, `AbstractPPL.Property` for field-addressed
+rebuilt with preserved axes, `AbstractPPL.Property` for field-addressed
 containers rebuilt with `ConstructionBase.setproperties`, or `nothing` for
 unclaimed values. Unclaimed values are shared as leaves, except arrays, tuples and
 dictionaries, which are refused where storage is required. This method never

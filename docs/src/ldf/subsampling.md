@@ -6,7 +6,7 @@ useful when implementing stochastic objectives in inference packages such as Adv
 and AdvancedHMC.
 
 Write the observation with `independent_distribution` and supply its complete dataset by
-conditioning, rather than as a model argument:
+conditioning or a model argument:
 
 ```@example subsampling
 using Distributions, DynamicPPL, ForwardDiff, LogDensityProblems

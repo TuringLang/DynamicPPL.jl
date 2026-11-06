@@ -90,10 +90,9 @@ Base.rand(::Random.AbstractRNG, ::LogDensityFunction, ::AbstractInitStrategy)
 
 ## Condition and decondition
 
-A [`Model`](@ref) can be conditioned on a set of observations with [`AbstractPPL.condition`](@ref) or its alias [`|`](@ref).
+A [`Model`](@ref) can be conditioned on a set of observations with [`AbstractPPL.condition`](@ref) or the shorthand `model | values`.
 
 ```@docs
-|(::Model, ::Union{Tuple,NamedTuple,AbstractDict{<:VarName}})
 condition
 DynamicPPL.conditioned
 ```
@@ -169,7 +168,7 @@ It is possible to manually increase (or decrease) the accumulated log likelihood
 @addlogprob!
 ```
 
-Return values of the model function can be obtained with [`returned(model, sample)`](@ref), where `sample` is a collection of samples in an `AbstractMCMC.SamplingOutput` or `MCMCChains.Chains`, or a single sample represented as a `VarNamedTuple`, `NamedTuple`, or dictionary of VarNames.
+Use [`returned(model, sample)`](@ref) to obtain model return values. Pass samples in an `AbstractMCMC.SamplingOutput` or `MCMCChains.Chains`, or a single sample as a `VarNamedTuple` or `NamedTuple`.
 
 ```@docs
 returned
@@ -489,7 +488,10 @@ DefaultContext
 InitContext
 ```
 
-To implement a leaf context, you need to subtype `AbstractPPL.AbstractContext` and implement the `tilde_assume!!` and `tilde_observe!!` methods for your context.
+To implement a leaf context, subtype `AbstractPPL.AbstractContext` and implement
+`tilde_assume!!` for that context. Compiler-generated observations bypass contexts
+and call `tilde_observe!!` with prefix metadata; customise observation accumulation
+through `accumulate_observe!!`.
 
 ```@docs
 tilde_assume!!
@@ -497,11 +499,11 @@ tilde_observe!!
 ```
 
 **Parent contexts**: These essentially act as 'modifiers' for leaf contexts.
-For example, `PrefixContext` adds a prefix to all variable names during evaluation, while `CondFixContext` marks certain variables as being either conditioned or fixed.
+For example, `PrefixContext` adds a prefix to variable names during evaluation. Conditioning and fixing are stored on the model; see [Binding rules](@ref).
 
 To implement a parent context, you have to subtype `DynamicPPL.AbstractParentContext`, and implement the `childcontext` and `setchildcontext` methods.
-If needed, you can also implement `tilde_assume!!` and `tilde_observe!!` for your context.
-This is optional; the default implementation is to simply delegate to the child context.
+If needed, implement `tilde_assume!!` for your context; its default method
+delegates to the child context.
 
 ```@docs
 AbstractParentContext
