@@ -561,7 +561,7 @@ function _bind(
         _check_argument_aliasing(result)
         return result
     end
-    return invoke(_bind, Tuple{Any,Any,Any}, model, R, inputs; kwargs...)
+    return invoke(_bind, Tuple{Any,Type{R},Any}, model, R, inputs; kwargs...)
 end
 function _bind(model, ::Type{R}, inputs; kwargs...) where {R}
     @nospecialize model
@@ -609,6 +609,13 @@ function _bind(model, ::Type{R}, inputs; kwargs...) where {R}
                     )
                 end
             else
+                prefix = _model_prefix(model)
+                if prefix !== nothing && !(storage isa NoTemplate)
+                    root = AbstractPPL.prefix(
+                        VarName{AbstractPPL.getsym(local_vn)}(), prefix
+                    )
+                    storage = _binding_node_at(storage, AbstractPPL.getoptic(root))
+                end
                 entries = (
                     entries..., _split_namespace_entry(model, local_vn, value, storage)...
                 )

@@ -18,6 +18,15 @@ using Test
 using Unitful: @u_str
 
 @testset "condition and fix" begin
+    @testset "prefixed binding inputs" begin
+        @model bound_local() = z ~ Normal()
+        for (bind, listing) in ((condition, conditioned), (fix, fixed))
+            model = prefix(bind(bound_local(); z=1.0), @varname(p))
+            @test_throws r"outside model prefix" bind(model, (; z=2.0))
+            @test bind(model, listing(model))(Xoshiro(1)) == 1.0
+        end
+    end
+
     @testset "external facing condition & fix API" begin
         @model function demo_cond_fix()
             x ~ Normal()
