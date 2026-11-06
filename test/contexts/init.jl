@@ -1,4 +1,4 @@
-module DynamicPPLInitContextTests
+module DynamicPPLContextTests
 
 using Dates: now
 @info "Testing $(@__FILE__)..."
@@ -13,7 +13,7 @@ using Random: Xoshiro
 using StableRNGs: StableRNG
 using Test
 
-@testset "InitContext" begin
+@testset "Context" begin
     @model function test_init_model()
         x ~ Normal()
         y ~ MvNormal(fill(x, 2), I)

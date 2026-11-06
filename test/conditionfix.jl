@@ -208,9 +208,7 @@ end
     end
     original = binding_scalar(1.0)
     @test conditioned(original)[@varname(x)] == 1.0
-    @test isempty(
-        conditioned(contextualize(binding_scalar(), condition(original; x=2.0).context))
-    )
+    @test !hasfield(typeof(original), :context)
     for api in (logprior, loglikelihood, logjoint, returned)
         @test_throws ArgumentError api(binding_scalar(), Dict(@varname(x) => 1.0))
     end

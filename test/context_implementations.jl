@@ -7,10 +7,10 @@ __now__ = now()
 using DynamicPPL
 using Distributions
 using LinearAlgebra: I, norm
-using Test
 using Random: Xoshiro
+using Test
 
-struct ObservationContext <: AbstractContext end
+struct UnimplementedStrategy <: AbstractInitStrategy end
 
 struct ObserveHookDistribution <: ContinuousUnivariateDistribution
     seen::Vector{Union{VarName,Nothing}}
@@ -25,64 +25,77 @@ function DynamicPPL.tilde_observe!!(
     return tilde_observe!!(prefix, Normal(), left, vn, template, vi)
 end
 
-@testset "public observation hook" begin
-    @model observations(x, ys, dist) = (x ~ dist; z ~ dist; 0.0 ~ dist; ys .~ dist)
-    @model parent(child) = b ~ to_submodel(child)
-    seen = Union{VarName,Nothing}[]
-    model = condition(
-        observations(1.0, [2.0, 3.0], ObserveHookDistribution(seen, Any[])); z=4.0
-    )
-    templated = prefix(model, @varname(a[2, 3]); template=zeros(2, 3))
-    nested = parent(condition(templated, conditioned(templated)))
-    for m in (model, prefix(model, @varname(p)), templated, nested)
-        empty!(seen)
-        prefixes = model.args.dist.prefixes
-        empty!(prefixes)
-        acc = DynamicPPL.VNTAccumulator{DynamicPPL.POINTWISE_ACCNAME}(
-            DynamicPPL.PointwiseLogProb{false,true}()
-        )
-        _, vi = DynamicPPL.evaluate_nowarn!!(
-            m, VarInfo((DynamicPPL.default_accumulators()..., acc))
-        )
-        @test seen == [@varname(x), @varname(z), nothing, @varname(ys[1]), @varname(ys[2])]
-        if m === nested
-            @test all(p -> p isa DynamicPPL.PrefixTemplate, prefixes)
-            @test all(p -> DynamicPPL._getprefix(p) == @varname(b.a[2, 3]), prefixes)
-        else
-            @test all(p -> p === m.prefix, prefixes)
-        end
-        @test getloglikelihood(vi) ≈ sum(logpdf.(Normal(), 0.0:4.0))
-        pointwise = DynamicPPL.get_pointwise_logprobs(vi)
-        observation_prefix = DynamicPPL._getprefix(first(prefixes))
-        for (vn, value) in ((@varname(x), 1.0), (@varname(z), 4.0), (@varname(ys[1]), 2.0))
-            name = DynamicPPL.maybe_prefix(vn, observation_prefix)
-            @test pointwise[name] ≈ logpdf(Normal(), value)
-        end
-        if m === templated
-            @test size(pointwise.data.a.data) == (2, 3)
-        elseif m === nested
-            @test size(pointwise.data.b.data.a.data) == (2, 3)
-        end
-    end
+struct RecordingStrategy{S<:AbstractInitStrategy} <: AbstractInitStrategy
+    inner::S
+    assumed::Vector{VarName}
+end
+RecordingStrategy(inner) = RecordingStrategy(inner, VarName[])
+function DynamicPPL.get_param_eltype(strategy::RecordingStrategy)
+    return DynamicPPL.get_param_eltype(strategy.inner)
+end
+function DynamicPPL.init(rng, vn::VarName, dist::Distribution, strategy::RecordingStrategy)
+    push!(strategy.assumed, vn)
+    return DynamicPPL.init(rng, vn, dist, strategy.inner)
 end
 
+@model function child(y=2.0)
+    x ~ Normal()
+    y ~ Normal(x)
+    z := x + y
+    0.0 ~ Normal()
+    return z
+end
+@model parent(m) = a ~ to_submodel(m)
+@model outer(m) = b ~ to_submodel(m)
+
 @testset "context_implementations.jl" begin
-    @testset "leaf contexts without parameter outputs" begin
-        @model function observed_only(x)
-            x ~ Normal()
-            0.0 ~ Normal()
-            return x
+    @testset "public observation hook" begin
+        @model function observations(x, ys, dist)
+            x ~ dist
+            z ~ dist
+            0.0 ~ dist
+            return ys .~ dist
         end
-        for context in (ObservationContext(), DefaultContext()), threaded in (false, true)
-            model = contextualize(setthreadsafe(observed_only(1.0), threaded), context)
-            value, vi = DynamicPPL.evaluate_nowarn!!(model, VarInfo())
-            @test value == 1.0
-            @test getloglikelihood(vi) == logpdf(Normal(), 1.0) + logpdf(Normal(), 0.0)
-        end
-        @model latent() = x ~ Normal()
-        @test_throws "No value was provided" DynamicPPL.evaluate_nowarn!!(
-            latent(), VarInfo()
+        seen = Union{VarName,Nothing}[]
+        model = condition(
+            observations(1.0, [2.0, 3.0], ObserveHookDistribution(seen, Any[])); z=4.0
         )
+        templated = prefix(model, @varname(a[2, 3]); template=zeros(2, 3))
+        nested = outer(condition(templated, conditioned(templated)))
+        for m in (model, prefix(model, @varname(p)), templated, nested)
+            empty!(seen)
+            prefixes = model.args.dist.prefixes
+            empty!(prefixes)
+            acc = DynamicPPL.VNTAccumulator{DynamicPPL.POINTWISE_ACCNAME}(
+                DynamicPPL.PointwiseLogProb{false,true}()
+            )
+            _, vi = evaluate!!(
+                m,
+                Context(UnimplementedStrategy(), UnlinkAll()),
+                VarInfo((DynamicPPL.default_accumulators()..., acc)),
+            )
+            @test seen ==
+                [@varname(x), @varname(z), nothing, @varname(ys[1]), @varname(ys[2])]
+            if m === nested
+                @test all(p -> p isa DynamicPPL.PrefixTemplate, prefixes)
+                @test all(p -> DynamicPPL._getprefix(p) == @varname(b.a[2, 3]), prefixes)
+            else
+                @test all(p -> p === m.prefix, prefixes)
+            end
+            @test getloglikelihood(vi) ≈ sum(logpdf.(Normal(), 0.0:4.0))
+            pointwise = DynamicPPL.get_pointwise_logprobs(vi)
+            observation_prefix = DynamicPPL._getprefix(first(prefixes))
+            for (vn, value) in
+                ((@varname(x), 1.0), (@varname(z), 4.0), (@varname(ys[1]), 2.0))
+                name = DynamicPPL.maybe_prefix(vn, observation_prefix)
+                @test pointwise[name] ≈ logpdf(Normal(), value)
+            end
+            if m === templated
+                @test size(pointwise.data.a.data) == (2, 3)
+            elseif m === nested
+                @test size(pointwise.data.b.data.a.data) == (2, 3)
+            end
+        end
     end
 
     @testset "observations do not dispatch on context" begin
@@ -99,6 +112,121 @@ end
                 end
             end
         end
+    end
+
+    @testset "no context hooks needed without latent LHS variables" begin
+        accs = VarInfo((DynamicPPL.default_accumulators()..., RawValueAccumulator(true)))
+        result, vi = evaluate!!(
+            fix(child(); x=1.0), Context(UnimplementedStrategy(), UnlinkAll()), accs
+        )
+        @test result == 3.0
+        @test get_raw_values(vi)[@varname(z)] == 3.0
+        @test iszero(getlogprior(vi))
+        @test getlogjoint(vi) ≈ logpdf(Normal(1.0), 2.0) + logpdf(Normal(), 0.0)
+    end
+
+    @testset "contexts belong to evaluations" begin
+        for prefixed in (false, true)
+            observed = condition(child(missing); y=2.0)
+            inner = prefixed ? prefix(observed, @varname(p)) : observed
+            model = outer(parent(inner))
+            xname = prefixed ? @varname(b.a.p.x) : @varname(b.a.x)
+            zname = prefixed ? @varname(b.a.p.z) : @varname(b.a.z)
+            for x in (1.0, 3.0)
+                strategy = InitFromParams(VarNamedTuple((xname => x,)))
+                recording = RecordingStrategy(strategy)
+                ctx = Context(Xoshiro(1), recording, UnlinkAll())
+                accs = VarInfo((
+                    DynamicPPL.default_accumulators()..., RawValueAccumulator(true)
+                ))
+                result, vi = evaluate!!(model, ctx, accs)
+                @test result == x + 2.0
+                @test recording.assumed == [xname]
+                @test get_raw_values(vi)[zname] == result
+                @test getlogjoint(vi) ≈
+                    logpdf(Normal(), x) + logpdf(Normal(x), 2.0) + logpdf(Normal(), 0.0)
+                @test iszero(getlogjoint(accs))
+                @test first(@inferred evaluate!!(model, ctx, VarInfo())) == result
+            end
+        end
+    end
+
+    @testset "Context supplies inputs independently of outputs" begin
+        empty_context = Context(
+            Xoshiro(1), InitFromParams(VarNamedTuple(), nothing), UnlinkAll()
+        )
+        @test_throws ErrorException evaluate!!(
+            child(), empty_context, VarInfo(child(), InitFromParams((; x=1.0)))
+        )
+        for T in (Float32, Float64, BigFloat), threaded in (false, true)
+            model = setthreadsafe(child(T(2)), threaded)
+            input = VarInfo(Xoshiro(1), model, InitFromParams((; x=one(T))))
+            context = Context(
+                Xoshiro(1), InitFromParams(get_vector_values(input), nothing), UnlinkAll()
+            )
+            for output in
+                (VarInfo(), VarInfo(Xoshiro(2), model, InitFromParams((; x=T(9)))))
+                # Threaded accumulation can widen output types at runtime.
+                result, output = if threaded
+                    evaluate!!(model, context, output)
+                else
+                    @inferred evaluate!!(model, context, output)
+                end
+                @test result isa T
+                @test result == T(3)
+                @test getlogjoint(output) ≈
+                    logpdf(Normal(), one(T)) +
+                      logpdf(Normal(one(T)), T(2)) +
+                      logpdf(Normal(), 0.0)
+                if DynamicPPL.hasacc(output, Val(DynamicPPL.VECTORVAL_ACCNAME))
+                    @test get_vector_values(output) == get_vector_values(input)
+                end
+            end
+        end
+
+        # Inputs determine transforms even when the reused output recorded linked values.
+        @model positive() = x ~ Exponential()
+        old = VarInfo(positive(), InitFromParams((; x=2.0)), LinkAll())
+        context = Context(Xoshiro(1), InitFromParams((; x=3.0), nothing), UnlinkAll())
+        result, output = evaluate!!(positive(), context, old)
+        @test result == 3.0
+        @test iszero(getlogjac(output))
+        @test get_vector_values(output)[@varname(x)].transform isa Unlink
+
+        @model function optional_lhs(include_x)
+            if include_x
+                x ~ Normal()
+            end
+            return y ~ Normal()
+        end
+        outputs = VarInfo(VectorValueAccumulator(), RawValueAccumulator(false))
+        context = Context(Xoshiro(1), InitFromPrior(), UnlinkAll())
+        _, outputs = evaluate!!(optional_lhs(true), context, outputs)
+        inputs = get_vector_values(outputs)
+        context = Context(Xoshiro(1), InitFromParams(inputs, nothing), UnlinkAll())
+        _, outputs = evaluate!!(optional_lhs(false), context, outputs)
+        @test !haskey(get_vector_values(outputs), @varname(x))
+        @test !haskey(get_raw_values(outputs), @varname(x))
+        @test haskey(inputs, @varname(x))
+
+        @model function dependent_support()
+            x ~ Exponential()
+            y ~ Uniform(zero(x), x)
+            return y
+        end
+        model = dependent_support()
+        input = VarInfo(Xoshiro(1), model, InitFromParams((; x=2.0, y=0.5)), LinkAll())
+        context = Context(
+            InitFromParams(get_values(input), nothing),
+            DynamicPPL.infer_transform_strategy_from_values(get_values(input)),
+        )
+        # The same linked y is 0.5 under Uniform(0, 2), but 1.0 under Uniform(0, 4).
+        changed = fix(model; x=4.0)
+        result, output = @inferred evaluate!!(changed, context, VarInfo())
+        expected = VarInfo(Xoshiro(1), changed, InitFromParams((; y=1.0)), LinkAll())
+        @test result ≈ 1.0
+        @test getlogjoint(output) ≈ getlogjoint(expected)
+        @test getlogjac(output) ≈ getlogjac(expected)
     end
 
     # https://github.com/TuringLang/DynamicPPL.jl/issues/129

@@ -10,8 +10,8 @@ using Distributions
 export check_model, has_static_constraints
 
 # Fixed bindings bypass accumulators, so the checker records reads before tilde dispatch.
-struct BindingCheckContext{C<:AbstractContext} <: DynamicPPL.AbstractParentContext
-    context::C
+struct BindingCheckStrategy{S<:AbstractInitStrategy} <: AbstractInitStrategy
+    strategy::S
     models::Vector{Tuple{Model,Vector{VarName}}}
     removals::Vector{Tuple{Union{VarName,Nothing},DataType,Bool}}
     removal_ids::Tuple{Vector{Int},Vector{Int}}
@@ -19,9 +19,9 @@ struct BindingCheckContext{C<:AbstractContext} <: DynamicPPL.AbstractParentConte
     reads::Tuple
     lock::ReentrantLock
 end
-function BindingCheckContext(context)
-    return BindingCheckContext(
-        context,
+function BindingCheckStrategy(strategy)
+    return BindingCheckStrategy(
+        strategy,
         Tuple{Model,Vector{VarName}}[],
         Tuple{Union{VarName,Nothing},DataType,Bool}[],
         (Int[], Int[]),
@@ -30,9 +30,11 @@ function BindingCheckContext(context)
         ReentrantLock(),
     )
 end
-DynamicPPL.childcontext(ctx::BindingCheckContext) = ctx.context
-function DynamicPPL.setchildcontext(ctx::BindingCheckContext, child::AbstractContext)
-    return DynamicPPL.ConstructionBase.setproperties(ctx, (; context=child))
+function DynamicPPL.init(rng, vn, dist, strategy::BindingCheckStrategy)
+    return DynamicPPL.init(rng, vn, dist, strategy.strategy)
+end
+function DynamicPPL.get_param_eltype(strategy::BindingCheckStrategy)
+    return DynamicPPL.get_param_eltype(strategy.strategy)
 end
 function _register_removals!(ctx, model, prefix)
     return get!(ctx.removal_sources, model) do
@@ -52,7 +54,7 @@ function _register_removals!(ctx, model, prefix)
     end
 end
 function DynamicPPL._binding_check_child(
-    ctx::BindingCheckContext, parent, child, prefix, template
+    ctx::BindingCheckStrategy, parent, child, prefix, template
 )
     ids = lock(ctx.lock) do
         own_ids = _register_removals!(ctx, child, DynamicPPL.getprefix(child))
@@ -78,13 +80,13 @@ function DynamicPPL._binding_check_child(
         ctx, (; removal_ids=ids, reads=(ctx.reads..., VarName[]))
     )
 end
-function DynamicPPL._binding_check_model(ctx::BindingCheckContext, model)
+function DynamicPPL._binding_check_model(ctx::BindingCheckStrategy, model)
     lock(ctx.lock) do
         push!(ctx.models, (model, last(ctx.reads)))
     end
     return nothing
 end
-function DynamicPPL._binding_check_read(ctx::BindingCheckContext, model, vn, template)
+function DynamicPPL._binding_check_read(ctx::BindingCheckStrategy, model, vn, template)
     vn = DynamicPPL._concretize_prefix(vn, template; canonical=true)
     vn = DynamicPPL.maybe_prefix(vn, DynamicPPL.getprefix(model))
     lock(ctx.lock) do
@@ -357,14 +359,12 @@ function check_model(
         PriorDistributionAccumulator(),
         DynamicPPL.DebugRawValueAccumulator(),
     ))
-    init_strategy = InitFromPrior()
-    binding_context = BindingCheckContext(model.context)
+    binding_context = BindingCheckStrategy(InitFromPrior())
     ids = _register_removals!(binding_context, model, DynamicPPL.getprefix(model))
     binding_context = DynamicPPL.ConstructionBase.setproperties(
         binding_context, (; removal_ids=ids)
     )
-    checked_model = DynamicPPL.contextualize(model, binding_context)
-    _, vi = DynamicPPL.init!!(rng, checked_model, vi, init_strategy, UnlinkAll())
+    _, vi = DynamicPPL.init!!(rng, model, vi, binding_context, UnlinkAll())
     _warn_unused_removals(binding_context)
     _warn_unread_bindings(binding_context)
     _warn_unused_templates(binding_context)
@@ -482,13 +482,18 @@ function has_static_constraints(model::Model; num_evals::Int=5)
 end
 
 """
-    gen_evaluator_call_with_types(model[, varinfo])
+    gen_evaluator_call_with_types(model[, varinfo]; context)
 
 Generate the evaluator call and the types of the arguments.
 
 # Arguments
 - `model::Model`: The model whose evaluator is of interest.
 - `varinfo::AbstractVarInfo`: The varinfo to use when evaluating the model. Default: `VarInfo(model)`.
+
+# Keyword Arguments
+- `context::Context`: The evaluation context. Defaults to
+  `Context(InitFromParams(get_values(varinfo), nothing), UnlinkAll())`, or
+  `Context(InitFromPrior(), UnlinkAll())` when vector values are absent or empty.
 
 # Returns
 A 2-tuple with the following elements:
@@ -498,19 +503,19 @@ A 2-tuple with the following elements:
 - `argtypes::Type{<:Tuple}`: The types of the arguments for the evaluator.
 """
 function gen_evaluator_call_with_types(
-    model::Model, varinfo::AbstractVarInfo=VarInfo(model)
-)
-    strategy =
+    model::Model,
+    varinfo::AbstractVarInfo=VarInfo(model);
+    context::Context=Context(
         if !DynamicPPL.hasacc(varinfo, Val(DynamicPPL.VECTORVAL_ACCNAME)) ||
             isempty(varinfo)
             InitFromPrior()
         else
             InitFromParams(get_values(varinfo), nothing)
-        end
-    context = InitContext(strategy, UnlinkAll())
-    args, kwargs = DynamicPPL.make_evaluate_args_and_kwargs(
-        setleafcontext(model, context), varinfo
-    )
+        end,
+        UnlinkAll(),
+    ),
+)
+    args, kwargs = DynamicPPL.make_evaluate_args_and_kwargs(model, context, varinfo)
     f, args, kwargs = DynamicPPL._model_evaluator(model.f, args, kwargs)
     return if isempty(kwargs)
         (f, Base.typesof(args...))
@@ -520,7 +525,7 @@ function gen_evaluator_call_with_types(
 end
 
 """
-    model_warntype(model[, varinfo, optimize=false])
+    model_warntype(model[, varinfo, optimize=false]; context)
 
 Check the type stability of the model's evaluator, warning about any potential issues.
 
@@ -529,16 +534,21 @@ This simply calls `@code_warntype` on the model's evaluator, filling in internal
 # Arguments
 - `model::Model`: The model to check.
 - `varinfo::AbstractVarInfo`: The varinfo to use when evaluating the model. Default: `VarInfo(model)`.
+
+# Keyword Arguments
+- `context::Context`: The evaluation context. Defaults to
+  `Context(InitFromParams(get_values(varinfo), nothing), UnlinkAll())`, or
+  `Context(InitFromPrior(), UnlinkAll())` when vector values are absent or empty.
 """
 function model_warntype(
-    model::Model, varinfo::AbstractVarInfo=VarInfo(model), optimize::Bool=false
+    model::Model, varinfo::AbstractVarInfo=VarInfo(model), optimize::Bool=false; kwargs...
 )
-    ftype, argtypes = gen_evaluator_call_with_types(model, varinfo)
+    ftype, argtypes = gen_evaluator_call_with_types(model, varinfo; kwargs...)
     return InteractiveUtils.code_warntype(ftype, argtypes; optimize=optimize)
 end
 
 """
-    model_typed(model[, varinfo, optimize=true])
+    model_typed(model[, varinfo, optimize=true]; context)
 
 Return the type inference for the model's evaluator.
 
@@ -547,11 +557,16 @@ This simply calls `@code_typed` on the model's evaluator, filling in internal ar
 # Arguments
 - `model::Model`: The model to check.
 - `varinfo::AbstractVarInfo`: The varinfo to use when evaluating the model. Default: `VarInfo(model)`.
+
+# Keyword Arguments
+- `context::Context`: The evaluation context. Defaults to
+  `Context(InitFromParams(get_values(varinfo), nothing), UnlinkAll())`, or
+  `Context(InitFromPrior(), UnlinkAll())` when vector values are absent or empty.
 """
 function model_typed(
-    model::Model, varinfo::AbstractVarInfo=VarInfo(model), optimize::Bool=true
+    model::Model, varinfo::AbstractVarInfo=VarInfo(model), optimize::Bool=true; kwargs...
 )
-    ftype, argtypes = gen_evaluator_call_with_types(model, varinfo)
+    ftype, argtypes = gen_evaluator_call_with_types(model, varinfo; kwargs...)
     return only(InteractiveUtils.code_typed(ftype, argtypes; optimize=optimize))
 end
 
