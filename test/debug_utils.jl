@@ -23,6 +23,87 @@ function test_model_can_run_but_fails_check(model)
 end
 
 @testset "check_model" begin
+    @testset "binding warnings" begin
+        @model warning_leaf() = x ~ Normal()
+        @model function warning_parent(child, run=true)
+            z ~ Normal()
+            if run
+                a ~ to_submodel(child)
+            end
+        end
+        @model function warning_indices(run=true)
+            z ~ Normal()
+            x = zeros(2)
+            if run
+                x[1] ~ Normal()
+            end
+            return x
+        end
+
+        @testset "$bind" for (bind, remove) in ((condition, decondition), (fix, unfix))
+            @testset "unused removals" begin
+                unused = remove(warning_parent(warning_leaf()), @varname(a.x))
+                used = remove(warning_parent(bind(warning_leaf(); x=1.0)), @varname(a.x))
+                dormant = remove(
+                    warning_parent(bind(warning_leaf(); x=1.0), false), @varname(a.x)
+                )
+                local_removal = remove(
+                    bind(warning_parent(warning_leaf()), @varname(a.x) => 1.0),
+                    @varname(a.x)
+                )
+                for (unused, used) in (
+                    (unused, used),
+                    (warning_parent(unused), warning_parent(used)),
+                    (dormant, local_removal),
+                )
+                    @test_logs (:warn, r"Removal.*`a\.x`.*unused") match_mode = :any @test check_model(
+                        Xoshiro(1), unused; error_on_failure=true
+                    )
+                    @test_logs @test check_model(Xoshiro(1), used; error_on_failure=true)
+                end
+            end
+
+            @testset "bindings in reached and dormant submodels" begin
+                used = bind(warning_parent(warning_leaf()), @varname(a.x) => 1.0)
+                dormant = bind(warning_parent(warning_leaf(), false), @varname(a.x) => 1.0)
+                @test_logs @test check_model(Xoshiro(1), used; error_on_failure=true)
+                @test_logs (:warn, r"Partial binding `a\.x`.*not read") match_mode = :any @test check_model(
+                    Xoshiro(1), dormant; error_on_failure=true
+                )
+            end
+
+            @testset "unread partial bindings" begin
+                for (model, vn, warning) in (
+                    (
+                        warning_indices(),
+                        @varname(x[2]),
+                        r"Partial binding `x\[2\]`.*not read",
+                    ),
+                    (
+                        warning_indices(false),
+                        @varname(x[1]),
+                        r"Partial binding `x\[1\]`.*not read",
+                    ),
+                )
+                    unused = bind(model, vn => 1.0, @of(x = of(Array, 2)))
+                    @test_logs (:warn, warning) match_mode = :any @test check_model(
+                        Xoshiro(1), unused; error_on_failure=true
+                    )
+                end
+                used = bind(warning_indices(), @varname(x[1]) => 1.0, @of(x = of(Array, 2)))
+                @test_logs @test check_model(Xoshiro(1), used; error_on_failure=true)
+            end
+
+            @testset "unused template entries" begin
+                unused = bind(warning_indices(), @of(typo = of(Array, 2)))
+                @test_logs (:warn, r"Binding template entry `typo`.*no LHS") match_mode =
+                    :any @test check_model(Xoshiro(1), unused; error_on_failure=true)
+                used = bind(warning_indices(), @of(x = of(Array, 2)))
+                @test_logs @test check_model(Xoshiro(1), used; error_on_failure=true)
+            end
+        end
+    end
+
     @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
         @test check_model(model)
         @test DynamicPPL.has_static_constraints(model)
@@ -262,5 +343,16 @@ end
 end
 
 @info "Completed $(@__FILE__) in $(now() - __now__)."
+
+@testset "unused templates after a metadata-free model" begin
+    @model unused_template() = x ~ Normal()
+    model = condition(unused_template(), (x=1.0,), @of(typo = of(Array, Float64, 2)))
+    manual = Model{false}((args...) -> nothing, (;), (;))
+    ctx = DynamicPPL.DebugUtils.BindingCheckContext(DefaultContext())
+    push!(ctx.models, (manual, VarName[]), (model, VarName[]))
+    @test_logs (:warn, r"Binding template entry `typo`") DynamicPPL.DebugUtils._warn_unused_templates(
+        ctx
+    )
+end
 
 end # module
