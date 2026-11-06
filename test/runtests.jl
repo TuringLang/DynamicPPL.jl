@@ -79,7 +79,7 @@ Random.seed!(100)
         # why...) -- if we don't import them here then the doctest output will include
         # the prefixed module name
         using Distributions: Normal
-        using DynamicPPL: DefaultContext, Condition, Fix
+        using DynamicPPL: DefaultContext, ConditionRole, FixRole
         Documenter.doctest(DynamicPPL; manual=false, doctestfilters=doctestfilters)
     end
 

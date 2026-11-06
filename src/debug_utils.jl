@@ -36,7 +36,7 @@ function DynamicPPL.setchildcontext(ctx::BindingCheckContext, child::AbstractCon
 end
 function _register_removals!(ctx, model, prefix)
     return get!(ctx.removal_sources, model) do
-        return map((DynamicPPL.Condition, DynamicPPL.Fix)) do role
+        return map((DynamicPPL.ConditionRole, DynamicPPL.FixRole)) do role
             ids = Int[]
             for marker in DynamicPPL._removals(role, model)
                 name = if marker.name === nothing
@@ -59,7 +59,7 @@ function DynamicPPL._binding_check_child(
         table = child.values
         arguments = merge(child.args, child.defaults)
         map(
-            (DynamicPPL.Condition, DynamicPPL.Fix), own_ids, ctx.removal_ids
+            (DynamicPPL.ConditionRole, DynamicPPL.FixRole), own_ids, ctx.removal_ids
         ) do role, own, inherited
             markers = DynamicPPL._child_removals(
                 DynamicPPL._removals(role, parent), prefix, template
@@ -97,7 +97,7 @@ end
 function _warn_unused_removals(ctx)
     for (name, role, used) in ctx.removals
         (name === nothing || used) && continue
-        layer = role === DynamicPPL.Condition ? "observations" : "fixed bindings"
+        layer = role === DynamicPPL.ConditionRole ? "observations" : "fixed bindings"
         @warn "Removal of $layer at `$name` is unused by any reached model."
     end
     return nothing
@@ -107,14 +107,14 @@ function _warn_unread_bindings(ctx)
     for (model, reads) in ctx.models
         roots = model.values.roots.data
         names = Tuple(n for n in keys(roots) if roots[n].value isa DynamicPPL.BindingNodes)
-        table = DynamicPPL.ResolvedBindings(VarNamedTuple(NamedTuple{names}(roots)))
+        table = DynamicPPL.BindingTable(VarNamedTuple(NamedTuple{names}(roots)))
         prefix = DynamicPPL._model_prefix(model)
         local_reads = Tuple(
             prefix === nothing ? vn : DynamicPPL.AbstractPPL.unprefix(vn, prefix) for
             vn in reads if prefix === nothing || subsumes(prefix, vn)
         )
         if !isempty(local_reads)
-            for role in (DynamicPPL.Condition, DynamicPPL.Fix)
+            for role in (DynamicPPL.ConditionRole, DynamicPPL.FixRole)
                 table = DynamicPPL._remove_table(table, role, local_reads; validate=false)
             end
         end
@@ -122,7 +122,7 @@ function _warn_unread_bindings(ctx)
             entries = Tuple[]
             DynamicPPL._binding_entries!(entries, root.value, VarName{name}(), root.storage)
             for (vn, value, _) in entries
-                value isa DynamicPPL.ModelValue || continue
+                value isa DynamicPPL.BoundValue || continue
                 push!(unread, DynamicPPL.maybe_prefix(vn, prefix))
             end
         end

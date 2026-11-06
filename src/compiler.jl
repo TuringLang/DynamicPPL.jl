@@ -579,7 +579,7 @@ function generate_tilde(left, right; is_argument=false)
         $dist = $right
         $vn = $(make_varname_expression(left))
         $(DynamicPPL._check_namedtuple_index)(
-            $(DynamicPPL.ModelValue){$(DynamicPPL.Condition)}($template),
+            $(DynamicPPL.BoundValue){$(DynamicPPL.ConditionRole)}($template),
             $(AbstractPPL.getoptic)($vn),
             $(AbstractPPL.Property{top}()),
         )
@@ -589,7 +589,7 @@ function generate_tilde(left, right; is_argument=false)
             $(DynamicPPL._binding_check_read)(__context__, __model__, $vn, $template)
             $lookup_role
         end
-        if $role isa $(DynamicPPL.Fix)
+        if $role isa $(DynamicPPL.FixRole)
             $value = $(DynamicPPL._check_tilde_value)(
                 $fixed_data,
                 $(DynamicPPL.maybe_prefix)($vn, $(DynamicPPL._model_prefix)(__model__)),

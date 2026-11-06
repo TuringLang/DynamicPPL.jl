@@ -22,10 +22,10 @@ end
         :(BindingRoot(_argument_observation(arguments.$n), arguments.$n, ()))
     end
     roots = Tuple(unsplat_symbol(n) for n in names)
-    return :(ResolvedBindings(VarNamedTuple(NamedTuple{$roots}(($(fields...),)))))
+    return :(BindingTable(VarNamedTuple(NamedTuple{$roots}(($(fields...),)))))
 end
-_argument_observation(value) = ModelValue{ArgumentCondition}(value)
-_argument_observation(::Union{Missing,Nothing}) = NoModelBinding()
+_argument_observation(value) = BoundValue{ArgumentRole}(value)
+_argument_observation(::Union{Missing,Nothing}) = NoBinding()
 function _root(model, vn)
     return get(model.values.roots.data, AbstractPPL.getsym(vn), nothing)
 end
@@ -35,30 +35,30 @@ function _get_model_binding(model, vn)
 end
 _get_model_data(model, vn) = _model_data(_get_model_binding(model, vn))
 function _get_model_data(model, vn, root, local_value)
-    _check_runtime_shape(model, vn, local_value, Fix)
+    _check_runtime_shape(model, vn, local_value, FixRole)
     return _get_model_data(model, vn)
 end
 function _get_argument_role(model, vn, argument, local_value=NoTemplate())
     binding = _get_model_binding(model, argument)
     (
-        binding isa Union{ModelValue{Condition},ModelValue{ArgumentCondition}} ||
-        local_value isa Base.Pairs && binding isa ModelValue
+        binding isa Union{BoundValue{ConditionRole},BoundValue{ArgumentRole}} ||
+        local_value isa Base.Pairs && binding isa BoundValue
     ) && return _model_role(binding, vn)
     original = get(merge(model.args, model.defaults), AbstractPPL.getsym(argument), nothing)
     if local_value isa AbstractArray{>:Missing} &&
         _binding_optic(local_value) === AbstractPPL.Index &&
         !(original isa Union{Missing,Nothing})
         value = _node_at(local_value, AbstractPPL.getoptic(vn))
-        value isa AbstractArray && any(ismissing, value) && return Condition()
+        value isa AbstractArray && any(ismissing, value) && return ConditionRole()
     end
-    return _local_binding_role(binding, vn, local_value, model, ArgumentCondition)
+    return _local_binding_role(binding, vn, local_value, model, ArgumentRole)
 end
-function _local_binding_role(binding, vn, template, model, role=Condition)
+function _local_binding_role(binding, vn, template, model, role=ConditionRole)
     found = _model_role_at(
         binding, AbstractPPL.getoptic(vn), maybe_prefix(vn, _model_prefix(model))
     )
-    if role !== ArgumentCondition &&
-        (found !== nothing || binding isa Union{ModelValue{Condition},BindingNodes})
+    if role !== ArgumentRole &&
+        (found !== nothing || binding isa Union{BoundValue{ConditionRole},BindingNodes})
         _check_runtime_shape(model, vn, template, role)
     end
     return found
@@ -87,9 +87,9 @@ function _check_runtime_shape(model, vn, local_value, role; submodel=false)
     return nothing
 end
 function _check_runtime_path(binding, value, optic, vn, role; submodel=false)
-    binding isa Union{Nothing,NoModelBinding} && return nothing
+    binding isa Union{Nothing,NoBinding} && return nothing
     submodel && optic isa AbstractPPL.Iden && return nothing
-    if binding isa ModelValue{role} && !_skip_bound_shape_check(binding.value)
+    if binding isa BoundValue{role} && !_skip_bound_shape_check(binding.value)
         _runtime_shape(binding.value, value) ||
             _binding_error(vn, "local storage shape changed")
     end
@@ -98,7 +98,7 @@ function _check_runtime_path(binding, value, optic, vn, role; submodel=false)
     head = AbstractPPL.ohead(optic)
     head isa AbstractPPL.Index && (head = AbstractPPL.concretize_top_level(head, value))
     child = _node_at(binding, head)
-    child === nothing && role === Condition && return nothing
+    child === nothing && role === ConditionRole && return nothing
     child === nothing && _binding_error(vn, "fixed binding omits an executed address")
     if head isa AbstractPPL.Index &&
         value isa AbstractArray &&
@@ -241,7 +241,7 @@ function _check_ambiguous_field(model, vn, storage)
         typed =
             root !== nothing &&
             any(c -> c.typed === Val(true) && subsumes(c.owner, base), root.constraints)
-        if node isa ModelValue &&
+        if node isa BoundValue &&
             _binding_optic(node.value) === AbstractPPL.Property &&
             (
                 !(
@@ -296,7 +296,7 @@ function _constrained_value(value, optic, address, R, constraints; error_address
     return value
 end
 function _set_root_node(node, name, value, vn, storage)
-    wrapper = if node isa NoModelBinding
+    wrapper = if node isa NoBinding
         VarNamedTuple()
     else
         VarNamedTuple(NamedTuple{(name,)}((node,)))
@@ -313,14 +313,14 @@ Base.@nospecializeinfer function _bind_table(
     seen = VarName[]
     copied = Set{Symbol}()
     unused = filter(n -> n ∉ AbstractPPL.getsym.(first.(entries)), keys(schema))
-    templates = map(n -> (VarName{n}(), NoModelBinding(), NoTemplate()), unused)
+    templates = map(n -> (VarName{n}(), NoBinding(), NoTemplate()), unused)
     for (vn, value, supplied) in (templates..., entries...)
-        value isa NoModelBinding || _check_binding_address(model, vn)
+        value isa NoBinding || _check_binding_address(model, vn)
         _classify_placeholder(value) !== _NoPlaceholder &&
             _binding_error(vn, "explicit bindings cannot contain missing or nothing")
         name = AbstractPPL.getsym(vn)
         base = VarName{name}()
-        old = get(roots.data, name, BindingRoot(NoModelBinding(), NoTemplate(), ()))
+        old = get(roots.data, name, BindingRoot(NoBinding(), NoTemplate(), ()))
         storage = _binding_storage(old.storage)
         offered = get(schema, name, _binding_storage(supplied))
         if offered isa NamedTuple && _known_namespace(model, base)
@@ -331,8 +331,7 @@ Base.@nospecializeinfer function _bind_table(
         if name in _args_on_lhs(model) && !(original isa Union{Missing,Nothing,NoTemplate})
             offered = NoTemplate()
         end
-        if storage isa NoTemplate ||
-            (!(offered isa NoTemplate) && old.value isa NoModelBinding)
+        if storage isa NoTemplate || (!(offered isa NoTemplate) && old.value isa NoBinding)
             storage = offered
         elseif !(offered isa NoTemplate)
             _same_storage_shape(storage, offered) ||
@@ -345,7 +344,7 @@ Base.@nospecializeinfer function _bind_table(
             _missing_argument_error(vn)
         end
         _check_ambiguous_field(model, vn, storage)
-        constraints = if !(offered isa NoTemplate) && old.value isa NoModelBinding
+        constraints = if !(offered isa NoTemplate) && old.value isa NoBinding
             ()
         else
             _root_constraints(old, base)
@@ -365,7 +364,7 @@ Base.@nospecializeinfer function _bind_table(
                 constraints,
             ) && _binding_error(vn, "template disagrees with retained type")
             held = _node_at(old.value, AbstractPPL.getoptic(owner))
-            if held isa ModelValue
+            if held isa BoundValue
                 _same_storage_shape(held.value, template) ||
                     _binding_error(vn, "template disagrees with held shape")
                 _matches_model_role(R, held) &&
@@ -384,14 +383,12 @@ Base.@nospecializeinfer function _bind_table(
                 )
             end
         end
-        if value isa NoModelBinding
+        if value isa NoBinding
             roots = setindex!!(roots, BindingRoot(old.value, storage, constraints), base)
             continue
         end
         if AbstractPPL.getoptic(vn) isa AbstractPPL.Iden && (
-            !(old.value isa NoModelBinding) ||
-            !isempty(constraints) ||
-            storage isa VarNamedTuple
+            !(old.value isa NoBinding) || !isempty(constraints) || storage isa VarNamedTuple
         )
             _same_storage_shape(storage, value) ||
                 _binding_error(vn, "remove the whole binding before changing shape")
@@ -402,12 +399,12 @@ Base.@nospecializeinfer function _bind_table(
         end
         if value isa BindingArray && !any(value.mask)
             node = old.value
-            if _node_at(node, AbstractPPL.getoptic(vn)) isa Union{Nothing,NoModelBinding}
+            if _node_at(node, AbstractPPL.getoptic(vn)) isa Union{Nothing,NoBinding}
                 empty = BindingArray(
-                    similar(value.data, ModelValue{R,eltype(value)}), copy(value.mask)
+                    similar(value.data, BoundValue{R,eltype(value)}), copy(value.mask)
                 )
                 node = _set_root_node(
-                    node isa NoModelBinding ? node : copy(node), name, empty, vn, storage
+                    node isa NoBinding ? node : copy(node), name, empty, vn, storage
                 )
             end
             roots = setindex!!(roots, BindingRoot(node, storage, constraints), base)
@@ -429,16 +426,16 @@ Base.@nospecializeinfer function _bind_table(
             previous isa VarNamedTuple &&
                 !(_binding_optic(_node_at(storage, optic)) === AbstractPPL.Property) &&
                 _binding_error(address, "namespace cannot become a whole value")
-            incoming = ModelValue{R}(element)
+            incoming = BoundValue{R}(element)
             _check_cross_roles(previous, incoming, address; disjoint)
             if !(optic isa AbstractPPL.Iden) && name in _args_on_lhs(model)
                 element = _partial_conversion(element, storage, optic, address)
             end
-            previous isa ModelValue && _same_storage_shape(previous.value, element) ||
-                previous isa ModelValue &&
+            previous isa BoundValue && _same_storage_shape(previous.value, element) ||
+                previous isa BoundValue &&
                     _binding_error(address, "remove the binding before changing shape")
             element = _constrained_value(element, optic, address, R, constraints)
-            incoming = ModelValue{R}(element)
+            incoming = BoundValue{R}(element)
             if optic isa AbstractPPL.Iden
                 node = incoming
                 storage = element
@@ -458,12 +455,12 @@ Base.@nospecializeinfer function _bind_table(
             )
         end
         if isempty(selections)
-            node = _set_root_node(node, name, map(ModelValue{R}, value), vn, storage)
+            node = _set_root_node(node, name, map(BoundValue{R}, value), vn, storage)
         end
         node = _collapse_bindings(node, constraints)
         roots = setindex!!(roots, BindingRoot(node, storage, constraints), base)
     end
-    return ResolvedBindings(roots)
+    return BindingTable(roots)
 end
 
 """
@@ -472,13 +469,13 @@ end
 Bind observations. Pass an optional storage template last.
 """
 AbstractPPL.condition(model::Model, inputs...; kwargs...) =
-    _conditionfix(model, Condition, inputs; kwargs...)
+    _conditionfix(model, ConditionRole, inputs; kwargs...)
 """
     fix(model::Model, values...; kwargs...)
 
 Bind values whose distributions contribute no density. Pass an optional storage template last.
 """
-fix(model::Model, inputs...; kwargs...) = _conditionfix(model, Fix, inputs; kwargs...)
+fix(model::Model, inputs...; kwargs...) = _conditionfix(model, FixRole, inputs; kwargs...)
 function _conditionfix(
     model, ::Type{R}, inputs::Tuple{NamedTuple{N,Tuple{T}}}; kwargs...
 ) where {R,N,T<:Number}
@@ -491,13 +488,16 @@ function _conditionfix(
             old === nothing ||
             isempty(old.constraints) &&
             old.storage isa Union{Number,Missing,Nothing,NoTemplate} &&
-            (old.value isa NoModelBinding || old.value isa ModelValue{<:Any,<:Number})
+            (
+                old.value isa NoBinding ||
+                old.value isa BoundValue && old.value.value isa Number
+            )
         )
         _check_binding_address(model, vn)
         value = only(values(only(inputs)))
-        incoming = ModelValue{R}(value)
+        incoming = BoundValue{R}(value)
         old === nothing || _check_cross_roles(old.value, incoming, vn)
-        table = ResolvedBindings(
+        table = BindingTable(
             setindex!!(model.values.roots, BindingRoot(incoming, value, ()), vn)
         )
         result = _reconstruct_model(model; values=table)
@@ -585,13 +585,13 @@ end
 
 Return observations, including argument observations, as a `VarNamedTuple`.
 """
-conditioned(model::Model) = _listed_bindings(model, Condition)
+conditioned(model::Model) = _listed_bindings(model, ConditionRole)
 """
     fixed(model::Model)
 
 Return fixed values as a `VarNamedTuple`.
 """
-fixed(model::Model) = _listed_bindings(model, Fix)
+fixed(model::Model) = _listed_bindings(model, FixRole)
 function _listed_bindings(model, R)
     result = _table_listing(model.values, R)
     prefix = _model_prefix(model)
@@ -603,12 +603,12 @@ function _listed_bindings(model, R)
         _apply_prefix_template(_model_prefix_template(model), NoTemplate()),
     )
 end
-struct ModelRemoval{N}
+struct BindingRemoval{N}
     name::N
     active::Bool
     matched::Bool
 end
-ModelRemoval(name) = ModelRemoval(name, true, false)
+BindingRemoval(name) = BindingRemoval(name, true, false)
 function _removal_matches(table, R, name)
     if name === nothing
         return any(root -> _has_binding_role(R, root.value), values(table.roots.data))
@@ -617,8 +617,8 @@ function _removal_matches(table, R, name)
     root === nothing && return false
     return _has_binding_role(R, _node_at(root.value, AbstractPPL.getoptic(name)))
 end
-_removals(::Type{Condition}, model) = model.observation_removals
-_removals(::Type{Fix}, model) = model.fixed_removals
+_removals(::Type{ConditionRole}, model) = model.observation_removals
+_removals(::Type{FixRole}, model) = model.fixed_removals
 function _remove_table(table, R, names; arguments=(;), validate=true)
     roots = table.roots
     for name in keys(roots.data)
@@ -628,12 +628,11 @@ function _remove_table(table, R, names; arguments=(;), validate=true)
             isempty(names) ? (base,) : filter(vn -> AbstractPPL.getsym(vn) == name, names)
         node = root.value isa BindingNodes ? copy(root.value) : root.value
         for vn in selectors
-            root.value isa NoModelBinding &&
+            root.value isa NoBinding &&
                 (!validate || _binding_storage(root.storage) isa NoTemplate) &&
                 continue
-            for (address, _) in _selection(
-                root.storage, AbstractPPL.getoptic(vn), base, NoModelBinding(), node
-            )
+            for (address, _) in
+                _selection(root.storage, AbstractPPL.getoptic(vn), base, NoBinding(), node)
                 node = _delete_binding(node, AbstractPPL.getoptic(address), R, address)
             end
         end
@@ -657,9 +656,9 @@ function _remove_table(table, R, names; arguments=(;), validate=true)
                 return BindingConstraint(c.owner, Nothing, c.storage, false)
             end,
         )
-        storage = if base in selectors && node isa NoModelBinding && haskey(arguments, name)
+        storage = if base in selectors && node isa NoBinding && haskey(arguments, name)
             arguments[name]
-        elseif node isa NoModelBinding &&
+        elseif node isa NoBinding &&
             isempty(constraints) &&
             !(
                 root.storage isa VarNamedTuple ||
@@ -672,7 +671,7 @@ function _remove_table(table, R, names; arguments=(;), validate=true)
         node = _collapse_bindings(node, constraints)
         roots = setindex!!(roots, BindingRoot(node, storage, constraints), base)
     end
-    return ResolvedBindings(roots)
+    return BindingTable(roots)
 end
 """
     decondition(model::Model, names...)
@@ -680,14 +679,14 @@ end
 Remove observations recursively; omit names to remove all observations.
 """
 AbstractPPL.decondition(model::Model, names::Union{Symbol,VarName}...) =
-    _decondition_unfix(model, names, Condition, Val(true))
+    _decondition_unfix(model, names, ConditionRole, Val(true))
 """
     unfix(model::Model, names...)
 
 Remove fixed values recursively; omit names to remove all fixed values.
 """
 unfix(model::Model, names::Union{Symbol,VarName}...) =
-    _decondition_unfix(model, names, Fix, Val(true))
+    _decondition_unfix(model, names, FixRole, Val(true))
 function _decondition_unfix(model, names, R, ::Val{recursive}=Val(false)) where {recursive}
     names = map(n -> _public_binding_name(model, n isa Symbol ? VarName{n}() : n), names)
     any(isnothing, names) && (names = ())
@@ -702,12 +701,12 @@ function _decondition_unfix(model, names, R, ::Val{recursive}=Val(false)) where 
     markers = _removals(R, model)
     if recursive
         markers = if isempty(names)
-            (ModelRemoval(nothing),)
+            (BindingRemoval(nothing),)
         else
             (
                 markers...,
                 map(names) do name
-                    ModelRemoval(name, true, _removal_matches(model.values, R, name))
+                    BindingRemoval(name, true, _removal_matches(model.values, R, name))
                 end...,
             )
         end
@@ -715,14 +714,14 @@ function _decondition_unfix(model, names, R, ::Val{recursive}=Val(false)) where 
     result = _reconstruct_model(
         model;
         values=table,
-        observation_removals=R === Condition ? markers : model.observation_removals,
-        fixed_removals=R === Fix ? markers : model.fixed_removals,
+        observation_removals=R === ConditionRole ? markers : model.observation_removals,
+        fixed_removals=R === FixRole ? markers : model.fixed_removals,
     )
     return _check_latent_arguments(result)
 end
 
 function _prepare_argument(binding, value, vn, storage=value)
-    binding isa ModelValue && return binding.value
+    binding isa BoundValue && return binding.value
     if _complete_binding(binding, storage)
         return _model_data(binding, storage)
     end
@@ -783,7 +782,7 @@ function _prepare_latent(binding, value, vn, storage)
         for i in _positional_indices(value)
             optic = AbstractPPL.Index(_index_tuple(i), (;))
             child = _node_at(binding, optic)
-            prepared = if child isa ModelValue
+            prepared = if child isa BoundValue
                 child.value
             else
                 _isassigned(value, i) || continue
@@ -829,7 +828,7 @@ end
         !_complete_binding(root.value, root.storage)
         _missing_argument_error(vn)
     end
-    if root.value isa ModelValue || _complete_binding(root.value, root.storage)
+    if root.value isa BoundValue || _complete_binding(root.value, root.storage)
         T = _declared_argument_type(_binding_metadata(model), stored)
         _model_data(root.value, root.storage) isa T ||
             _binding_error(vn, "binding requires declared argument type $T")
@@ -839,14 +838,14 @@ end
     return nothing
 end
 function _argument_arrays!(arrays, value, binding, vn, parents, storage=value)
-    binding isa Union{ModelValue{Condition},ModelValue{Fix}} && return arrays
+    binding isa Union{BoundValue{ConditionRole},BoundValue{FixRole}} && return arrays
     if binding isa BindingNodes && _complete_binding(binding, storage)
-        binding = ModelValue{ArgumentCondition}(_model_data(binding, storage))
+        binding = BoundValue{ArgumentRole}(_model_data(binding, storage))
     end
     value isa Union{Missing,Nothing} &&
         binding isa BindingNodes &&
         _missing_argument_error(vn)
-    value = if binding isa ModelValue
+    value = if binding isa BoundValue
         binding.value
     else
         _check_latent_storage(_latent_argument_source(value, storage), vn)
@@ -854,17 +853,17 @@ function _argument_arrays!(arrays, value, binding, vn, parents, storage=value)
     kind = _binding_optic(value)
     kind === nothing && return arrays
     if value in parents
-        binding isa ModelValue && return arrays
+        binding isa BoundValue && return arrays
         _binding_error(vn, "cyclic latent storage is unsupported")
     end
     children = if kind === AbstractPPL.Index
-        value isa AbstractArray && push!(arrays, (value, !(binding isa ModelValue), vn))
+        value isa AbstractArray && push!(arrays, (value, !(binding isa BoundValue), vn))
         (
             (AbstractPPL.Index(_index_tuple(i), (;)), value[i]) for
             i in _positional_indices(value) if _isassigned(value, i)
         )
     else
-        binding isa ModelValue ||
+        binding isa BoundValue ||
             ConstructionBase.setproperties(value, ConstructionBase.getproperties(value))
         ((AbstractPPL.Property{n}(), getproperty(value, n)) for n in propertynames(value))
     end
@@ -873,8 +872,8 @@ function _argument_arrays!(arrays, value, binding, vn, parents, storage=value)
         _argument_arrays!(
             arrays,
             child,
-            if binding isa ModelValue
-                ModelValue{ArgumentCondition}(child)
+            if binding isa BoundValue
+                BoundValue{ArgumentRole}(child)
             else
                 _node_at(binding, optic)
             end,
@@ -896,7 +895,7 @@ function _validate_latent_arguments(model)
     for (stored, value) in pairs(merge(model.args, model.defaults))
         vn = VarName{unsplat_symbol(stored)}()
         lhs = AbstractPPL.getsym(vn) in _args_on_lhs(model)
-        binding = lhs ? _get_model_binding(model, vn) : ModelValue{ArgumentCondition}(value)
+        binding = lhs ? _get_model_binding(model, vn) : BoundValue{ArgumentRole}(value)
         _argument_arrays!(
             arrays,
             value,

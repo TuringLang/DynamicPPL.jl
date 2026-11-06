@@ -132,8 +132,8 @@ _dualize_input(x::SparseArrays.AbstractSparseArray) = DualizedSparseArray(x)
 _dualize_input(x::AbstractArray) = map(_dualize_input, x)
 _dualize_input(x::NamedTuple) = map(_dualize_input, x)
 _dualize_input(x::Tuple) = map(_dualize_input, x)
-function _dualize_input(x::DynamicPPL.ModelValue{R}) where {R}
-    return DynamicPPL.ModelValue{R}(_dualize_input(x.value))
+function _dualize_input(x::DynamicPPL.BoundValue{R}) where {R}
+    return DynamicPPL.BoundValue{R}(_dualize_input(x.value))
 end
 function _dualize_input(values::DynamicPPL.VarNamedTuple)
     return DynamicPPL.map_values!!(_dualize_input, copy(values))
@@ -143,8 +143,8 @@ function _dualize_input(root::DynamicPPL.BindingRoot)
         _dualize_input(root.value), root.storage, root.constraints
     )
 end
-function _dualize_input(table::DynamicPPL.ResolvedBindings)
-    return DynamicPPL.ResolvedBindings(_dualize_input(table.roots))
+function _dualize_input(table::DynamicPPL.BindingTable)
+    return DynamicPPL.BindingTable(_dualize_input(table.roots))
 end
 _dualize_input(x) = x
 

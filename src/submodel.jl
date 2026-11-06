@@ -145,7 +145,7 @@ function _child_removals(markers, prefix, template=NoTemplate())
         else
             AbstractPPL.optic_to_varname(child)
         end
-        return ModelRemoval(relative, marker.active && active, marker.matched)
+        return BindingRemoval(relative, marker.active && active, marker.matched)
     end
 end
 function _apply_removals(table, R, markers, arguments)
@@ -163,9 +163,9 @@ function _apply_removals(table, R, markers, arguments)
 end
 _apply_removals(table, R, ::Tuple{}, arguments) = table
 _namespace_values(x::VarNamedTuple, address) = x
-_namespace_values(::Union{Nothing,NoModelBinding}, address) = VarNamedTuple()
-function _namespace_values(x::ModelValue{R,<:NamedTuple}, address) where {R}
-    return VarNamedTuple(map(ModelValue{R}, x.value))
+_namespace_values(::Union{Nothing,NoBinding}, address) = VarNamedTuple()
+function _namespace_values(x::BoundValue{R,<:NamedTuple}, address) where {R}
+    return VarNamedTuple(map(BoundValue{R}, x.value))
 end
 function _namespace_values(x, address)
     return _binding_error(address, "submodel binding requires named values")
@@ -190,9 +190,9 @@ function _child_values(parent, prefix, site)
     )
 end
 function _merge_binding_nodes(previous, incoming)
-    previous isa Union{Nothing,NoModelBinding} && return incoming
-    incoming isa ModelValue && return incoming
-    previous isa ModelValue && (previous = _expand_binding(previous, @varname(_)))
+    previous isa Union{Nothing,NoBinding} && return incoming
+    incoming isa BoundValue && return incoming
+    previous isa BoundValue && (previous = _expand_binding(previous, @varname(_)))
     return VarNamedTuples._merge(copy(previous), copy(incoming), Val(true))
 end
 function _inherited_constraints(parent, prefix, ::Val{name}) where {name}
@@ -225,13 +225,13 @@ function _merge_child_root(old, incoming, parent, prefix, ::Val{name}, child) wh
     vn = VarName{name}()
     address = maybe_prefix(maybe_prefix(vn, prefix), _model_prefix(parent))
     _check_binding_address(child, vn, address)
-    if incoming isa ModelValue && _known_namespace(child, vn)
+    if incoming isa BoundValue && _known_namespace(child, vn)
         incoming = _namespace_values(incoming, address)
     end
     _check_cross_roles(old.value, incoming, address; disjoint=true)
     if incoming isa BindingArray &&
         old.storage isa AbstractArray &&
-        !(old.value isa NoModelBinding)
+        !(old.value isa NoBinding)
         axes(incoming.data) == axes(old.storage) ||
             _binding_error(address, "child storage shape conflicts")
     end
@@ -244,14 +244,12 @@ function _merge_child_root(old, incoming, parent, prefix, ::Val{name}, child) wh
     if !(supplied isa Union{Nothing,NoTemplate}) &&
         !(old.storage isa Union{Nothing,Missing,NoTemplate}) &&
         name in _args_on_lhs(child) &&
-        !(incoming isa ModelValue)
+        !(incoming isa BoundValue)
         _runtime_shape(old.storage, _binding_storage(supplied)) ||
             _binding_error(address, "child argument storage shape conflicts")
     end
-    storage = incoming isa ModelValue ? incoming.value : old.storage
-    if old.value isa NoModelBinding &&
-        !(name in _args_on_lhs(child)) &&
-        supplied !== nothing
+    storage = incoming isa BoundValue ? incoming.value : old.storage
+    if old.value isa NoBinding && !(name in _args_on_lhs(child)) && supplied !== nothing
         storage = supplied
     end
     storage isa Union{NoTemplate,Missing,Nothing} &&
@@ -278,11 +276,11 @@ function _merge_child_root(old, incoming, parent, prefix, ::Val{name}, child) wh
         typed = constraint.typed === Val(true)
         if owner == vn && (
             storage isa Union{NoTemplate,Missing,Nothing} ||
-            old.value isa NoModelBinding && !typed
+            old.value isa NoBinding && !typed
         )
             storage = template
         end
-        incoming isa ModelValue || continue
+        incoming isa BoundValue || continue
         selected = _node_at(incoming.value, AbstractPPL.getoptic(owner))
         selected === nothing && continue
         _same_storage_shape(template, selected) ||
@@ -317,7 +315,7 @@ function _merge_child_root(old, incoming, parent, prefix, ::Val{name}, child) wh
     return BindingRoot(node, storage, constraints)
 end
 @generated function _merge_child_table(
-    table::ResolvedBindings{<:VarNamedTuple{A}},
+    table::BindingTable{<:VarNamedTuple{A}},
     incoming::VarNamedTuple{B},
     parent,
     prefix,
@@ -329,13 +327,13 @@ end
         old = if name in A
             :(table.roots.data.$name)
         else
-            :(BindingRoot(NoModelBinding(), NoTemplate(), ()))
+            :(BindingRoot(NoBinding(), NoTemplate(), ()))
         end
         :(_merge_child_root(
             $old, incoming.data.$name, parent, prefix, Val($(QuoteNode(name))), child
         ))
     end
-    return :(ResolvedBindings(VarNamedTuple(NamedTuple{$names}(($(fields...),)))))
+    return :(BindingTable(VarNamedTuple(NamedTuple{$names}(($(fields...),)))))
 end
 function tilde_assume!!(
     parent::Model,
@@ -349,15 +347,15 @@ function tilde_assume!!(
     (_argument_names(parent.args)..., _argument_names(parent.defaults)...) &&
         _binding_error(vn, "submodel LHS cannot be an argument")
     vn = _concretize_prefix(vn, template; prefix=Val(true))
-    _check_runtime_shape(parent, vn, template, Condition; submodel=true)
-    _check_runtime_shape(parent, vn, template, Fix; submodel=true)
+    _check_runtime_shape(parent, vn, template, ConditionRole; submodel=true)
+    _check_runtime_shape(parent, vn, template, FixRole; submodel=true)
     child = submodel.model
     local_prefix = maybe_prefix(_model_prefix(child), vn)
     context = _binding_check_child(context, parent, child, local_prefix, template)
     observations = _child_removals(parent.observation_removals, local_prefix, template)
     fixes = _child_removals(parent.fixed_removals, local_prefix, template)
     for (name, root) in pairs(child.values.roots.data)
-        _has_binding_role(ArgumentCondition, root.value) && _binding_error(
+        _has_binding_role(ArgumentRole, root.value) && _binding_error(
             maybe_prefix(
                 maybe_prefix(VarName{name}(), local_prefix), _model_prefix(parent)
             ),
@@ -365,9 +363,9 @@ function tilde_assume!!(
         )
     end
     table = _apply_removals(
-        child.values, Condition, observations, merge(child.args, child.defaults)
+        child.values, ConditionRole, observations, merge(child.args, child.defaults)
     )
-    table = _apply_removals(table, Fix, fixes, merge(child.args, child.defaults))
+    table = _apply_removals(table, FixRole, fixes, merge(child.args, child.defaults))
     table = _merge_child_table(
         table, _child_values(parent, local_prefix, vn), parent, local_prefix, child
     )

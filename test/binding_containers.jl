@@ -161,7 +161,7 @@ DynamicPPL._binding_optic(::FieldArray) = AbstractPPL.Property
     data = FieldArray([1.0])
     @test DynamicPPL._binding_optic(data) === AbstractPPL.Property
     @test DynamicPPL._expand_binding(
-        DynamicPPL.ModelValue{DynamicPPL.Condition}(data), @varname(x)
+        DynamicPPL.BoundValue{DynamicPPL.ConditionRole}(data), @varname(x)
     ) isa VarNamedTuple
     @test DynamicPPL._storage_signature(data) ==
         DynamicPPL._storage_signature((; data=data.data))

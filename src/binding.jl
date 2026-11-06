@@ -1,15 +1,16 @@
-struct Condition end
-struct ArgumentCondition end
-struct Fix end
-struct ModelValue{R,T}
+abstract type BindingRole end
+struct ConditionRole <: BindingRole end
+struct ArgumentRole <: BindingRole end
+struct FixRole <: BindingRole end
+struct BoundValue{R<:BindingRole,T}
     value::T
-    function ModelValue{R}(value::T) where {R,T}
-        R in (Condition, ArgumentCondition, Fix) ||
+    function BoundValue{R}(value::T) where {R,T}
+        R in (ConditionRole, ArgumentRole, FixRole) ||
             throw(ArgumentError("Invalid binding role"))
         return new{R,T}(value)
     end
 end
-struct NoModelBinding end
+struct NoBinding end
 struct BindingConstraint{V,R,S,T}
     owner::V
     role::Type{R}
@@ -25,13 +26,13 @@ struct BindingRoot{V,S,C}
     constraints::C
 end
 function _root_constraints(root, base)
-    return if root.value isa ModelValue{ArgumentCondition}
-        (BindingConstraint(base, Condition, root.value.value, false),)
+    return if root.value isa BoundValue{ArgumentRole}
+        (BindingConstraint(base, ConditionRole, root.value.value, false),)
     else
         root.constraints
     end
 end
-struct ResolvedBindings{V<:VarNamedTuple}
+struct BindingTable{V<:VarNamedTuple}
     roots::V
 end
 maybe_prefix(vn, ::Nothing) = vn
@@ -72,10 +73,10 @@ function _classify_placeholder(value, seen=Base.IdSet{Any}())
     end
     return result
 end
-_model_value_like(::ModelValue{R}, value) where {R} = ModelValue{R}(value)
-_model_role(::ModelValue{R}) where {R} = R === Fix ? Fix() : Condition()
-_matches_model_role(R, x) = x isa ModelValue{R}
-_matches_model_role(::Type{Condition}, x::ModelValue{ArgumentCondition}) = true
+_model_value_like(::BoundValue{R}, value) where {R} = BoundValue{R}(value)
+_model_role(::BoundValue{R}) where {R} = R === FixRole ? FixRole() : ConditionRole()
+_matches_model_role(R, x) = x isa BoundValue{R}
+_matches_model_role(::Type{ConditionRole}, x::BoundValue{ArgumentRole}) = true
 """
     _binding_optic(x)
 
@@ -105,57 +106,57 @@ _isassigned(x::Tuple, i) = i in keys(x)
 
 _binding_storage(x) = x
 _binding_storage(x::BindingArray) = x.data
-_binding_storage(x::ModelValue) = x.value
+_binding_storage(x::BoundValue) = x.value
 _binding_storage(::Union{Missing,Nothing}) = NoTemplate()
-function VarNamedTuples.maybe_index_template(::ModelValue, template, optic)
+function VarNamedTuples.maybe_index_template(::BoundValue, template, optic)
     return VarNamedTuples.maybe_index_template(template, optic)
 end
 
-function VarNamedTuples._getindex_optic(x::ModelValue, optic::AbstractPPL.AbstractOptic, vn)
+function VarNamedTuples._getindex_optic(x::BoundValue, optic::AbstractPPL.AbstractOptic, vn)
     return _model_value_like(x, VarNamedTuples._getindex_optic(x.value, optic, vn))
 end
-VarNamedTuples._getindex_optic(x::ModelValue, ::AbstractPPL.Iden, vn) = x
-function VarNamedTuples._haskey_optic(x::ModelValue, optic::AbstractPPL.AbstractOptic)
+VarNamedTuples._getindex_optic(x::BoundValue, ::AbstractPPL.Iden, vn) = x
+function VarNamedTuples._haskey_optic(x::BoundValue, optic::AbstractPPL.AbstractOptic)
     return VarNamedTuples._haskey_optic(x.value, optic)
 end
-VarNamedTuples._haskey_optic(::ModelValue, ::AbstractPPL.Iden) = true
+VarNamedTuples._haskey_optic(::BoundValue, ::AbstractPPL.Iden) = true
 
-function _expand_binding(x::ModelValue{R}, vn) where {R}
+function _expand_binding(x::BoundValue{R}, vn) where {R}
     value = x.value
     if _binding_optic(value) === AbstractPPL.Property
         names = propertynames(value)
         return VarNamedTuple(
-            NamedTuple{names}(map(n -> ModelValue{R}(getproperty(value, n)), names))
+            NamedTuple{names}(map(n -> BoundValue{R}(getproperty(value, n)), names))
         )
     end
     _binding_optic(value) === AbstractPPL.Index || _unsupported_binding_storage(value, vn)
     data = _rebuild_buffer(
-        value, isconcretetype(eltype(value)) ? ModelValue{R,eltype(value)} : ModelValue{R}
+        value, isconcretetype(eltype(value)) ? BoundValue{R,eltype(value)} : BoundValue{R}
     )
     mask = fill!(similar(data, Bool), false)
     for i in _positional_indices(value)
         if _isassigned(value, i)
-            data[i] = ModelValue{R}(value[i])
+            data[i] = BoundValue{R}(value[i])
             mask[i] = true
         end
     end
     return BindingArray(data, mask)
 end
 function VarNamedTuples._setindex_optic!!(
-    x::ModelValue, value, optic::AbstractPPL.AbstractOptic, template, perms
+    x::BoundValue, value, optic::AbstractPPL.AbstractOptic, template, perms
 )
     return VarNamedTuples._setindex_optic!!(
         _expand_binding(x, @varname(_)), value, optic, template, perms
     )
 end
 function VarNamedTuples._setindex_optic!!(
-    ::ModelValue, value, ::AbstractPPL.Iden, template, perms::VarNamedTuples.SetPermissions
+    ::BoundValue, value, ::AbstractPPL.Iden, template, perms::VarNamedTuples.SetPermissions
 )
     return value
 end
 
 function _node_at(x, optic::AbstractPPL.AbstractOptic)
-    x isa Union{Nothing,NoModelBinding} && return nothing
+    x isa Union{Nothing,NoBinding} && return nothing
     head = AbstractPPL.ohead(optic)
     VarNamedTuples._haskey_optic(x, head) || return nothing
     return _node_at(VarNamedTuples._getindex_optic(x, head, @varname(_)), optic.child)
@@ -184,7 +185,7 @@ function _node_at(x::BindingArray, optic::AbstractPPL.Index)
     end
     return _node_at(child, optic.child)
 end
-function _node_at(x::ModelValue{R,<:AbstractArray}, optic::AbstractPPL.Index) where {R}
+function _node_at(x::BoundValue{R,<:AbstractArray}, optic::AbstractPPL.Index) where {R}
     array = x.value
     optic = AbstractPPL.concretize_top_level(optic, array)
     checkbounds(Bool, array, optic.ix...) || return nothing
@@ -196,10 +197,10 @@ function _node_at(x::ModelValue{R,<:AbstractArray}, optic::AbstractPPL.Index) wh
     elseif !_isassigned(array, optic.ix...)
         return nothing
     end
-    return _node_at(ModelValue{R}(getindex(array, optic.ix...; optic.kw...)), optic.child)
+    return _node_at(BoundValue{R}(getindex(array, optic.ix...; optic.kw...)), optic.child)
 end
-_model_role(::Union{Nothing,NoModelBinding}, vn) = nothing
-_model_role(x::ModelValue, vn) = _model_role(x)
+_model_role(::Union{Nothing,NoBinding}, vn) = nothing
+_model_role(x::BoundValue, vn) = _model_role(x)
 function _model_role(x::VarNamedTuple, vn)
     isempty(x) && return nothing
     return _binding_error(vn, "a tilde cannot mix bound and latent fields")
@@ -223,13 +224,14 @@ function _model_role_at(x, optic, vn)
     _check_namedtuple_index(x, optic, AbstractPPL.Property{AbstractPPL.getsym(vn)}())
     node = _node_at(x, optic)
     node === nothing &&
-        x isa ModelValue{<:Any,<:AbstractArray} &&
+        x isa BoundValue &&
+        x.value isa AbstractArray &&
         optic isa AbstractPPL.Index &&
         _node_at(x, AbstractPPL.ohead(optic)) === nothing &&
         _binding_error(vn, "executed index is outside bound storage")
     return _model_role(node, vn)
 end
-_model_data(x::ModelValue) = x.value
+_model_data(x::BoundValue) = x.value
 _model_data(x::VarNamedTuple) = map(_model_data, x.data)
 function _model_data(x::BindingArray)
     all(x.mask) || throw(ArgumentError("Incomplete binding"))
@@ -264,9 +266,9 @@ function _has_binding_role(R, x::BindingNodes)
 end
 _has_binding_role(R, x) = _matches_model_role(R, x)
 function _contains_binding(x::BindingNodes)
-    return _has_binding_role(Condition, x) || _has_binding_role(Fix, x)
+    return _has_binding_role(ConditionRole, x) || _has_binding_role(FixRole, x)
 end
-_contains_binding(x) = x isa ModelValue
+_contains_binding(x) = x isa BoundValue
 
 function _check_selection_indices(optic, vn)
     optic isa AbstractPPL.Iden && return nothing
@@ -296,9 +298,9 @@ end
 function _selection(
     storage, optic::AbstractPPL.Property{S}, vn, value, node=nothing
 ) where {S}
-    node isa ModelValue && (storage = node.value)
+    node isa BoundValue && (storage = node.value)
     storage = _binding_storage(storage)
-    node isa ModelValue || storage isa Number && (storage = NoTemplate())
+    node isa BoundValue || storage isa Number && (storage = NoTemplate())
     (
         storage isa Union{NoTemplate,VarNamedTuple} ||
         _binding_optic(storage) === AbstractPPL.Property
@@ -314,7 +316,7 @@ function _selection(
 end
 function _selection(storage, optic::AbstractPPL.Index, vn, value, node=nothing)
     try
-        node isa ModelValue && (storage = node.value)
+        node isa BoundValue && (storage = node.value)
         node isa BindingArray && storage isa NoTemplate && (storage = node.data)
         storage = _binding_storage(storage)
         _binding_optic(storage) === AbstractPPL.Index ||
@@ -341,7 +343,7 @@ function _selection(storage, optic::AbstractPPL.Index, vn, value, node=nothing)
         end
         child isa AbstractPPL.Iden ||
             _binding_error(vn, "field access on an array selection is unsupported")
-        if !(value isa NoModelBinding)
+        if !(value isa NoBinding)
             if storage isa Tuple
                 value isa Union{Tuple,AbstractArray} ||
                     _binding_error(vn, "selection requires a tuple or array value")
@@ -362,7 +364,7 @@ function _selection(storage, optic::AbstractPPL.Index, vn, value, node=nothing)
             location = AbstractPPL.append_optic(
                 vn, AbstractPPL.Index(_index_tuple(selected[i]), (;))
             )
-            (location, value isa NoModelBinding ? value : value[i])
+            (location, value isa NoBinding ? value : value[i])
         end
     catch err
         err isa BoundsError || rethrow()
@@ -463,9 +465,9 @@ function _partial_conversion(value, storage, optic, vn)
     return child === nothing ? value : _partial_conversion(value, child, optic.child, vn)
 end
 
-function _check_cross_roles(previous, incoming::ModelValue, vn; disjoint=false)
+function _check_cross_roles(previous, incoming::BoundValue, vn; disjoint=false)
     previous === nothing && return nothing
-    if previous isa ModelValue
+    if previous isa BoundValue
         disjoint ||
             typeof(_model_role(previous)) === typeof(_model_role(incoming)) ||
             _binding_error(vn, "observed and fixed positions overlap")
@@ -508,47 +510,47 @@ function _check_cross_roles(previous, incoming::BindingArray, vn; disjoint=false
     return nothing
 end
 function _delete_binding(x, ::AbstractPPL.Iden, R, vn)
-    return _matches_model_role(R, x) ? NoModelBinding() : x
+    return _matches_model_role(R, x) ? NoBinding() : x
 end
 function _delete_binding(x::BindingArray, ::AbstractPPL.Iden, R, vn)
     result = copy(x)
     for i in CartesianIndices(x.mask)
         x.mask[i] || continue
         child = _delete_binding(x.data[i], AbstractPPL.Iden(), R, vn)
-        result = if child isa NoModelBinding
+        result = if child isa NoBinding
             BangBang.delete!!(result, i)
         else
             setindex!!(result, child, i)
         end
     end
-    return _contains_binding(result) ? result : NoModelBinding()
+    return _contains_binding(result) ? result : NoBinding()
 end
 function _delete_binding(x::VarNamedTuple, ::AbstractPPL.Iden, R, vn)
     result = VarNamedTuple(map(v -> _delete_binding(v, AbstractPPL.Iden(), R, vn), x.data))
     for name in keys(result.data)
-        result.data[name] isa NoModelBinding || continue
+        result.data[name] isa NoBinding || continue
         result = VarNamedTuple(Base.structdiff(result.data, NamedTuple{(name,)}))
     end
-    return isempty(result) ? NoModelBinding() : result
+    return isempty(result) ? NoBinding() : result
 end
 function _delete_binding(x, optic::AbstractPPL.AbstractOptic, R, vn)
-    x isa Union{Nothing,NoModelBinding} && return NoModelBinding()
-    x isa ModelValue && (x = _expand_binding(x, vn))
+    x isa Union{Nothing,NoBinding} && return NoBinding()
+    x isa BoundValue && (x = _expand_binding(x, vn))
     head = AbstractPPL.ohead(optic)
     child = _node_at(x, head)
     child === nothing && return x
     replacement = _delete_binding(child, optic.child, R, vn)
-    result = if replacement isa NoModelBinding && x isa VarNamedTuple
+    result = if replacement isa NoBinding && x isa VarNamedTuple
         name = _property_name(head)
         VarNamedTuple(Base.structdiff(x.data, NamedTuple{(name,)}))
-    elseif replacement isa NoModelBinding && x isa BindingArray
+    elseif replacement isa NoBinding && x isa BindingArray
         BangBang.delete!!(x, head.ix...; head.kw...)
     else
         VarNamedTuples._setindex_optic!!(
             x, replacement, head, _binding_storage(x), VarNamedTuples.AllowAll()
         )
     end
-    return _contains_binding(result) ? result : NoModelBinding()
+    return _contains_binding(result) ? result : NoBinding()
 end
 _property_name(::AbstractPPL.Property{S}) where {S} = S
 
@@ -560,12 +562,12 @@ function _collapse_bindings(node, constraints)
         _binding_optic(storage) === AbstractPPL.Property || continue
         selected = _node_at(node, AbstractPPL.getoptic(owner))
         selected isa VarNamedTuple && _complete_binding(selected, storage) || continue
-        _has_binding_role(R === Fix ? Condition : Fix, selected) && continue
-        R in (Condition, Fix) || continue
+        _has_binding_role(R === FixRole ? ConditionRole : FixRole, selected) && continue
+        R in (ConditionRole, FixRole) || continue
         value = _model_data(selected, storage)
         node = VarNamedTuples._setindex_optic!!(
             node,
-            ModelValue{R}(value),
+            BoundValue{R}(value),
             AbstractPPL.getoptic(owner),
             NoTemplate(),
             VarNamedTuples.AllowAll(),
@@ -574,19 +576,19 @@ function _collapse_bindings(node, constraints)
     return node
 end
 
-function VarNamedTuples.make_leaf(value::ModelValue, optic::AbstractPPL.Property, ::Number)
+function VarNamedTuples.make_leaf(value::BoundValue, optic::AbstractPPL.Property, ::Number)
     return VarNamedTuples.make_leaf(value, optic, NoTemplate())
 end
 
-_binding_listing(x, R) = NoModelBinding()
-_binding_listing(x::ModelValue, R) = _matches_model_role(R, x) ? x.value : NoModelBinding()
+_binding_listing(x, R) = NoBinding()
+_binding_listing(x::BoundValue, R) = _matches_model_role(R, x) ? x.value : NoBinding()
 function _binding_listing(x::VarNamedTuple, R)
     fields = map(v -> _binding_listing(v, R), x.data)
     for name in keys(fields)
-        fields[name] isa NoModelBinding || continue
+        fields[name] isa NoBinding || continue
         fields = Base.structdiff(fields, NamedTuple{(name,)})
     end
-    return isempty(fields) ? NoModelBinding() : VarNamedTuple(fields)
+    return isempty(fields) ? NoBinding() : VarNamedTuple(fields)
 end
 function _binding_listing(x::BindingArray, R)
     data = similar(x.data, Union{})
@@ -595,7 +597,7 @@ function _binding_listing(x::BindingArray, R)
     for i in CartesianIndices(x.mask)
         x.mask[i] || continue
         value = _binding_listing(x.data[i], R)
-        value isa NoModelBinding || (result = setindex!!(result, value, i))
+        value isa NoBinding || (result = setindex!!(result, value, i))
     end
     return result
 end
@@ -604,7 +606,7 @@ function _table_listing(table, R)
     for name in keys(table.roots.data)
         root = table.roots.data[name]
         value = _binding_listing(root.value, R)
-        value isa NoModelBinding || (result = setindex!!(result, value, VarName{name}()))
+        value isa NoBinding || (result = setindex!!(result, value, VarName{name}()))
     end
     return result
 end
@@ -612,13 +614,13 @@ function _binding_content(x::BindingNodes)
     entries = Dict(
         first(p) => _binding_content(last(p)) for
         p in mapreduce(identity, push!, VarNamedTuple((; root=x)); init=Pair[]) if
-        !(last(p) isa NoModelBinding)
+        !(last(p) isa NoBinding)
     )
     return isempty(entries) ? nothing : entries
 end
-_binding_content(x::ModelValue) = (typeof(_model_role(x)), x.value)
-_binding_content(::NoModelBinding) = nothing
-function _binding_content(table::ResolvedBindings)
+_binding_content(x::BoundValue) = (typeof(_model_role(x)), x.value)
+_binding_content(::NoBinding) = nothing
+function _binding_content(table::BindingTable)
     result = Dict()
     for (name, root) in pairs(table.roots.data)
         value = _binding_content(root.value)
@@ -636,11 +638,11 @@ function _binding_content(table::ResolvedBindings)
     end
     return result
 end
-function Base.isequal(a::ResolvedBindings, b::ResolvedBindings)
+function Base.isequal(a::BindingTable, b::BindingTable)
     return isequal(_binding_content(a), _binding_content(b))
 end
-Base.:(==)(a::ResolvedBindings, b::ResolvedBindings) = isequal(a, b)
-Base.hash(x::ResolvedBindings, h::UInt) = hash(_binding_content(x), h)
+Base.:(==)(a::BindingTable, b::BindingTable) = isequal(a, b)
+Base.hash(x::BindingTable, h::UInt) = hash(_binding_content(x), h)
 
 function _storage_signature(x, typed=false)
     if _binding_optic(x) === AbstractPPL.Index
@@ -670,7 +672,7 @@ function _storage_signature(x::VarNamedTuple, typed=false)
     return isempty(values) ? nothing : values
 end
 
-_complete_binding(x, storage) = x isa ModelValue
+_complete_binding(x, storage) = x isa BoundValue
 function _complete_binding(x::BindingArray, storage)
     all(x.mask) || return false
     return all(

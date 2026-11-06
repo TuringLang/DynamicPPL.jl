@@ -94,7 +94,7 @@ struct Model{
     Targs,
     Tdefaults,
     C<:AbstractContext,
-    Values<:ResolvedBindings,
+    Values<:BindingTable,
     Threaded,
     ArgsOnLHS,
     OR<:Tuple,
@@ -130,7 +130,7 @@ Base.@constprop :aggressive function Model{Threaded}(
     args::NamedTuple,
     defaults::NamedTuple,
     context::AbstractContext,
-    values::ResolvedBindings;
+    values::BindingTable;
     observation_removals=(),
     fixed_removals=(),
     args_on_lhs::Union{Tuple{Vararg{Symbol}},Vector{Symbol},ModelBindingMetadata}=(),
@@ -209,7 +209,7 @@ end
 _remove_placeholders(model, ::Tuple{}) = model
 function _remove_placeholders(model, found::Tuple)
     names = first(found)
-    model = isempty(names) ? model : _decondition_unfix(model, names, Condition)
+    model = isempty(names) ? model : _decondition_unfix(model, names, ConditionRole)
     return _remove_placeholders(model, Base.tail(found))
 end
 
@@ -514,7 +514,7 @@ function tilde_assume!!(
     return tilde_assume!!(context, right, vn, template, vi)
 end
 
-function _check_tilde_value(value, vn, ::Union{Condition,Fix})
+function _check_tilde_value(value, vn, ::Union{ConditionRole,FixRole})
     placeholder = _classify_placeholder(value)
     absent = placeholder === _MissingPlaceholder ? "missing" : "nothing"
     placeholder === _NoPlaceholder || throw(
@@ -566,7 +566,7 @@ function tilde_observe!!(
     else
         _prefix_varname_and_template(vn, template, prefix, prefix_template)
     end
-    left = _check_tilde_value(left, vn, Condition())
+    left = _check_tilde_value(left, vn, ConditionRole())
     vi = accumulate_observe!!(vi, right, _nonmissing_eltype(left), vn, template)
     return left, vi
 end
