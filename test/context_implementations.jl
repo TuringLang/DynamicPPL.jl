@@ -151,6 +151,25 @@ end
         end
     end
 
+    @testset "explicit inputs with mixed binding roles" begin
+        @model fields(x) = (x.a ~ Normal(); return x)
+        @model nested_fields(m) = child ~ to_submodel(m)
+        parent = condition(
+            nested_fields(decondition(fields((; a=0.0, b=0.0)))),
+            VarNamedTuple((child=VarNamedTuple((x=(a=1.0, b=2.0),)),)),
+        )
+        parent = fix(decondition(parent, @varname(child.x.a)), @varname(child.x.a) => 3.0)
+        result, _ = @inferred evaluate!!(
+            parent,
+            Context(
+                InitFromParams(VarNamedTuple(), nothing),
+                DynamicPPL.infer_transform_strategy_from_values(VarNamedTuple()),
+            ),
+            VarInfo(),
+        )
+        @test result == (; a=3.0, b=2.0)
+    end
+
     @testset "Context supplies inputs independently of outputs" begin
         empty_context = Context(
             Xoshiro(1), InitFromParams(VarNamedTuple(), nothing), UnlinkAll()

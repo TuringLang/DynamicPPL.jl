@@ -80,6 +80,29 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
         @test getlogprior(vi) == 0.0
     end
 
+    @testset "direct construction without declared argument LHS variables" begin
+        @model covariate(x, y) = y ~ Normal(x)
+        f = covariate(0.0, 1.0).f
+        for m in (
+            DynamicPPL.Model{false}(f, (; x=missing, y=1.0), (;)),
+            DynamicPPL.Model{false}(f, (; x=missing); y=1.0),
+            DynamicPPL.Model{false}(
+                f,
+                (; x=missing, y=1.0),
+                (;),
+                nothing,
+                DynamicPPL.BindingTable(VarNamedTuple()),
+            ),
+        )
+            @test isempty(conditioned(m))
+            @test isempty(DynamicPPL._lhs_arguments(m))
+            @test ismissing(m.args.x)
+            @test_throws ArgumentError condition(m; y=2.0)
+            @test_throws ArgumentError fix(m; y=2.0)
+        end
+        @test conditioned(covariate(0.0, 1.0)) == VarNamedTuple(; y=1.0)
+    end
+
     @testset "direct construction preserves merged prefix metadata" begin
         @model prefixed_lhs(y) = y ~ Normal()
         original = prefixed_lhs(1.0)
