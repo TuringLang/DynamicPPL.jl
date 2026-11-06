@@ -28,9 +28,15 @@ Re-evaluation and `LogDensityFunction` construction no longer copy fixed transfo
 
 Added `evaluate!!(model, context, vi)` to evaluate with an explicit `Context` and collect outputs in `vi`, such as `evaluate!!(model, Context(rng, InitFromPrior(), UnlinkAll()), VarInfo())`. See [#1500](https://github.com/TuringLang/DynamicPPL.jl/pull/1500), [#1503](https://github.com/TuringLang/DynamicPPL.jl/pull/1503).
 
+`DynamicPPL.logdensity_internal` and the `AbstractPPL.prepare` context tuple accept a trailing `rng`. See [#1504](https://github.com/TuringLang/DynamicPPL.jl/pull/1504).
+
 ## Breaking changes
 
-Replace `DefaultContext()` and `InitContext(...)` with `Context(rng, init_strategy, transform_strategy)` to specify parameter inputs and output transforms. See [#1503](https://github.com/TuringLang/DynamicPPL.jl/pull/1503), [#1469](https://github.com/TuringLang/DynamicPPL.jl/issues/1469).
+`LogDensityFunction` shares the supplied RNG across construction, evaluation, AD preparation, and parameter sampling: pass `LogDensityFunction(m; rng)` and replace model-body `rand(...)` with `rand(__context__.rng, ...)` to use it. See [#1504](https://github.com/TuringLang/DynamicPPL.jl/pull/1504), [#721](https://github.com/TuringLang/DynamicPPL.jl/issues/721).
+
+`rand(ldf)` now uses `ldf.rng`; use `rand(Random.default_rng(), ldf)` to sample with the task-local RNG. See [#1504](https://github.com/TuringLang/DynamicPPL.jl/pull/1504).
+
+`DefaultContext()`/`InitContext(...)` are removed → `Context(rng, init_strategy, transform_strategy)` with explicit parameter inputs and output transforms. See [#1503](https://github.com/TuringLang/DynamicPPL.jl/pull/1503), [#1469](https://github.com/TuringLang/DynamicPPL.jl/issues/1469).
 
 `Model.context`, `contextualize`, and two-argument evaluation are removed: `evaluate!!(contextualize(m, ctx), vi)` → `evaluate!!(m, ctx, vi)`. See [#1503](https://github.com/TuringLang/DynamicPPL.jl/pull/1503).
 
