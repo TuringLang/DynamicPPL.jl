@@ -11,6 +11,10 @@ using DynamicPPL.VarNamedTuples:
 using ComponentArrays: ComponentArrays, ComponentVector
 using AbstractPPL
 
+function DynamicPPL._binding_optic(x::ComponentArrays.ComponentArray)
+    return ComponentArrays.getdata(x) isa Array ? AbstractPPL.Index : nothing
+end
+
 # Resolve properties through the component axes, including nested fields and slices.
 function _property_to_index(
     template::ComponentVector, optic::AbstractPPL.Property{S}

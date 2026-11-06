@@ -40,6 +40,7 @@ KernelAbstractions = "63c18a36-062a-441e-b654-da1e3ab1ce7c"
 MCMCChains = "c7f686f2-ff18-58e9-bc7b-31028e88f75d"
 Mooncake = "da2b9cff-9c12-43a0-ae48-6db2b0edb7d6"
 ReverseDiff = "37e2e3b7-166d-5795-8a7a-e32c996b4267"
+StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
 
 [extensions]
 DynamicPPLBridgeStanExt = ["BridgeStan"]
@@ -50,6 +51,7 @@ DynamicPPLInputProvenanceExt = ["ForwardDiff"]
 DynamicPPLMCMCChainsExt = ["MCMCChains"]
 DynamicPPLMooncakeExt = ["Mooncake"]
 DynamicPPLReverseDiffExt = ["ReverseDiff"]
+DynamicPPLStaticArraysExt = ["StaticArrays"]
 
 [compat]
 ADTypes = "1"
@@ -85,6 +87,7 @@ Random = "1.6"
 SparseArrays = "1.10"
 SpecialFunctions = "2"
 ReverseDiff = "1"
+StaticArrays = "1.9.24"
 Statistics = "1"
 Test = "1.6"
 julia = "1.10.8"

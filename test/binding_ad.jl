@@ -5,6 +5,7 @@ using DynamicPPL, Distributions, Test
 using DifferentiationInterface: DifferentiationInterface
 using AbstractPPL: @of, of
 using ForwardDiff: ForwardDiff
+using StaticArrays: SVector
 using Mooncake: Mooncake
 using ReverseDiff: ReverseDiff
 using LogDensityProblems: LogDensityProblems
@@ -122,7 +123,9 @@ end
 
 @model tuple_latent(x) = (x[1] ~ Normal(); x[2] ~ Normal(x[1]); x)
 @testset "positional argument gradients" begin
-    for data in ((1.0, 2.0),), adtype in (AutoForwardDiff(), AutoMooncake())
+    for data in ((1.0, 2.0), SVector(1.0, 2.0)),
+        adtype in (AutoForwardDiff(), AutoMooncake())
+
         for fixed_position in (false, true)
             model = decondition(tuple_latent(data))
             model = fixed_position ? fix(model, @varname(x[2]) => 0.7) : model

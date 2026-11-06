@@ -13,6 +13,7 @@ using AbstractPPL: AbstractPPL
 using StableRNGs: StableRNG
 using Random: Xoshiro
 using StaticArrays: SVector
+using ComponentArrays: ComponentArrays, ComponentArray, ComponentVector, Axis
 using Test
 using Unitful: @u_str
 
@@ -323,6 +324,49 @@ end
         x[i] ~ Normal()
     end
     return x
+end
+
+@testset "container interface" begin
+    @testset "ComponentArray index bindings" begin
+        data = ComponentVector(; a=1.0, b=2.0)
+        for (bind, remove) in ((condition, decondition), (fix, unfix))
+            source = decondition(interface_storage(data))
+            partial = bind(source, @varname(x[1]) => 3.0)
+            result = partial(Xoshiro(1))
+            @test typeof(result) === typeof(data)
+            @test axes(result) == axes(data)
+            @test ComponentArrays.getaxes(result) == ComponentArrays.getaxes(data)
+            @test result[1] == 3.0
+            whole = bind(partial, @varname(x[2]) => 4.0)
+            @test whole(Xoshiro(1)) == ComponentVector(; a=3.0, b=4.0)
+            @test typeof(whole(Xoshiro(1))) === typeof(data)
+            released = remove(whole, @varname(x[1]))
+            @test released(Xoshiro(1))[2] == 4.0
+            @test typeof(released(Xoshiro(1))) === typeof(data)
+            @test remove(released, @varname(x[2]))(Xoshiro(1)) == source(Xoshiro(1))
+            @test data == ComponentVector(; a=1.0, b=2.0)
+            @test_throws ArgumentError bind(source, @varname(x.a) => 3.0)
+            @test_throws ArgumentError remove(whole, @varname(x.a))
+        end
+    end
+end
+
+@testset "ComponentArray buffer ownership" begin
+    data = ComponentArray(reshape([1.0, 2.0], 1, 2), Axis(; a=1:1), Axis(; b=1:2))
+    result = DynamicPPL._prepare_latent(nothing, data, @varname(x), data)
+    result[1] = 3.0
+    @test data[1] == 1.0
+end
+
+@testset "ComponentArray latent copies" begin
+    data = ComponentVector(; a=1.0, b=2.0)
+    original = copy(data)
+    result = decondition(interface_storage(data))(Xoshiro(1))
+    @test typeof(result) === typeof(data)
+    @test axes(result) == axes(data)
+    @test result !== data
+    result[1] = 100.0
+    @test data == original
 end
 
 @testset "Unitful latent copies" begin

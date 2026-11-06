@@ -334,3 +334,55 @@ end
     end
 end
 end
+
+module StaticBindingTests
+using DynamicPPL, Distributions, StaticArrays, Test
+using Random: Xoshiro
+using ForwardDiff: ForwardDiff
+@model static_covariate(x) = (y ~ Normal(); x)
+@model static_argument(x) = (x[1] ~ Normal(); x[2] ~ Normal(); x)
+@testset "static argument bindings" begin
+    for data in (SVector(1.0f0, 2.0f0), SVector(big"1.0", big"2.0"), MVector(1.0f0, 2.0f0))
+        @testset "$(typeof(data))" begin
+            snapshot = copy(data)
+            @test static_covariate(data)(Xoshiro(1)) === data
+            latent = decondition(static_argument(data))
+            result, _ = @inferred init!!(
+                Xoshiro(1), latent, VarInfo(), InitFromParams((; x=data), nothing)
+            )
+            @test result == data
+            @test typeof(result) === typeof(data)
+            for (bind, remove) in ((condition, decondition), (fix, unfix))
+                partial = bind(latent, @varname(x[1]) => 3)
+                @test partial(Xoshiro(1))[1] == 3
+                whole = bind(partial, @varname(x[2]) => 4)
+                @test whole(Xoshiro(1)) == typeof(data)(3, 4)
+                @test typeof(whole(Xoshiro(1))) === typeof(data)
+                @test remove(whole, @varname(x[1]))(Xoshiro(1))[2] == 4
+                @test remove(whole, @varname(x))(Xoshiro(1)) == latent(Xoshiro(1))
+            end
+            for selector in (@varname(x[1:2]), @varname(x[:]))
+                bound = condition(latent, selector => [3, 4])
+                @test bound(Xoshiro(1)) == typeof(data)(3, 4)
+                @test decondition(bound, selector)(Xoshiro(1)) == latent(Xoshiro(1))
+                @test_throws ArgumentError condition(latent, selector => [3])
+            end
+            if data isa MVector
+                @test axes(result) == axes(data)
+                @test result !== data
+                result[1] = 10
+            end
+            @test data == snapshot
+        end
+    end
+    for data in (SVector(1.0, 2.0), MVector(1.0, 2.0))
+        dual = ForwardDiff.Dual(3.0, 1.0)
+        result = DynamicPPL._setindex!!(data, dual, 1)
+        @test eltype(result) === typeof(dual)
+        @test result[1] === dual
+        @test result[2] === ForwardDiff.Dual(2.0, 0.0)
+        @test data == [1.0, 2.0]
+    end
+    @test_throws ArgumentError decondition(static_argument(MVector(big"1.0", big"2.0")))
+end
+end
