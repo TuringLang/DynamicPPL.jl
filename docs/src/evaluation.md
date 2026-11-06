@@ -50,14 +50,72 @@ retval, accs = DynamicPPL.init!!(
 
 which returns a tuple of the model's return value (the NamedTuple `(x=x, y=y)` in the example above) and the accumulators after evaluation.
 
-!!! note "VarInfo"
-    
-    `VarInfo` is a thin wrapper around a set of accumulators.
-    You can construct it using `VarInfo(acc1, acc2, ...)`, where `acc1`, `acc2`, ... are the accumulators that you want to use during evaluation.
-    
-    The default accumulators record log prior, log likelihood, and log Jacobian.
-    Add a `VectorValueAccumulator` to record vectorised parameter values, or a
-    `RawValueAccumulator` to record untransformed values.
+The same evaluation with an explicit context:
+
+```@example 1
+using Random: Xoshiro
+
+context = Context(Xoshiro(1), InitFromPrior(), UnlinkAll())
+retval, accs = evaluate!!(model, context, VarInfo());
+```
+
+## [Evaluation inputs and outputs](@id evaluation-inputs-outputs)
+
+| Object    | Responsibility                                                       |
+|:--------- |:-------------------------------------------------------------------- |
+| `Model`   | Model function, arguments, prefix, and conditioned or fixed data     |
+| `Context` | RNG, initialisation strategy, and transform strategy                 |
+| `VarInfo` | Output accumulators, with no separate parameter or transform storage |
+| `retval`  | The model body's Julia return value                                  |
+
+For a latent statement such as `x ~ Normal()`, the context's initialisation strategy
+supplies `x`. Its transform strategy determines the transformed value and Jacobian.
+Accumulators receive those results to compute densities or record values; evaluation
+does not read previously recorded parameters from `VarInfo`.
+
+For an observed LHS variable such as `y ~ Normal(x, 1)`, the model's binding or argument
+supplies `y`. A likelihood accumulator, if present, scores it. See [Binding rules](@ref)
+for when argument bindings take effect. Literal observations such as `0 ~ Normal(x, 1)` take the
+same path. Fixed values are not scored, and tracked assignments such as `z := x + y` are
+recorded when requested. None of these uses the context to select a latent value.
+
+The context belongs to the evaluation, not to `Model`, and is passed to nested submodels.
+Inside a model body, `__context__` refers to this context; use `rand(__context__.rng, ...)`
+for explicit random draws controlled by the evaluation's RNG. `init!!` constructs a `Context`
+and calls `evaluate!!`; custom value selection belongs in an initialisation strategy,
+not a custom context type.
+
+`VarInfo(acc1, acc2, ...)` selects the outputs to collect. `VarInfo()` collects only
+log prior, log likelihood, and log Jacobian; it does not record parameter values.
+Each call to `evaluate!!` resets its accumulators, so a value recorded in one run disappears
+if its LHS variable is skipped in the next. Retain the returned `VarInfo`: `!!` operations
+may replace their input.
+
+To reuse outputs as inputs, extract the recorded values and construct a new context
+explicitly. For example, sample the model above, then evaluate it at the same parameters:
+
+```@example 1
+rng = Xoshiro(1)
+context = Context(rng, InitFromPrior(), LinkAll())
+retval, recorded = evaluate!!(model, context, VarInfo(RawValueAccumulator(false)))
+
+params = get_raw_values(recorded)
+context = Context(rng, InitFromParams(params, nothing), UnlinkAll())
+repeated, scores = evaluate!!(model, context, VarInfo())
+
+@assert repeated == retval
+@assert iszero(getlogjac(scores))
+getlogjoint(scores)
+```
+
+Here `nothing` disables fallback sampling: an absent parameter causes an error.
+The second context requests unlinked outputs independently of the first run's transform
+strategy. To reuse vectorised values, record a [`VectorValueAccumulator`](@ref) and pass
+`get_vector_values(recorded)` to `InitFromParams`; see
+[Storing vectorised and raw values](accs/values.md).
+
+Evaluation can advance the RNG, and Julia mutations in a model body still take effect.
+`LogDensityFunction` supplies latent values from its parameter vector.
 
 ## Accumulators
 

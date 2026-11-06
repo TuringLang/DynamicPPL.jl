@@ -309,7 +309,7 @@ created inside child bodies. A listing contains values and their storage, not th
 persistent removal instructions; rebinding a listing need not reproduce a model
 that also has such instructions.
 
-Model comparison and hashing include the evaluator, arguments, defaults, context
+Model comparison and hashing include the evaluator, arguments, defaults, prefix
 and binding state. `==` delegates to `isequal`; arguments and defaults compare by
 content. Binding roles, retained storage constraints and removal instructions can
 distinguish models with the same current listing.
