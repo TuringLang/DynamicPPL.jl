@@ -155,9 +155,6 @@ Base.@constprop :aggressive function Model{Threaded}(
     )
 end
 
-_removal_state(::Tuple{}) = ()
-_removal_state(markers::Tuple) = Set(r.name for r in markers if r.active)
-
 function _equality_fields(model::Model)
     return (
         model.f,
@@ -174,8 +171,9 @@ function _equality_fields(model::Model)
                 value
             end
         end,
-        _removal_state(model.observation_removals),
-        _removal_state(model.fixed_removals),
+        map((model.observation_removals, model.fixed_removals)) do markers
+            isempty(markers) ? () : Set(r.name for r in markers if r.active)
+        end...,
     )
 end
 Base.:(==)(a::Model, b::Model) = isequal(a, b)
@@ -307,10 +305,12 @@ function setleafcontext(model::Model, context::AbstractContext)
     return contextualize(model, setleafcontext(model.context, context))
 end
 _model_prefix(model::Model) = last(extract_prefixes(model.context))
-_prefix_template(::AbstractContext) = nothing
-_prefix_template(context::AbstractParentContext) = _prefix_template(childcontext(context))
-_prefix_template(context::PrefixContext) = context.template
-_model_prefix_template(model::Model) = _prefix_template(model.context)
+_model_prefix_template(::AbstractContext) = nothing
+function _model_prefix_template(context::AbstractParentContext)
+    return _model_prefix_template(childcontext(context))
+end
+_model_prefix_template(context::PrefixContext) = context.template
+_model_prefix_template(model::Model) = _model_prefix_template(model.context)
 
 """
     setthreadsafe(model::Model, threadsafe::Bool)
@@ -567,17 +567,16 @@ function tilde_observe!!(
         _apply_model_prefix(vn, template, prefix, prefix_template)
     end
     left = _check_no_placeholder(left, vn, ConditionRole())
-    vi = accumulate_observe!!(vi, right, _nonmissing_eltype(left), vn, template)
+    # Missing elements are already rejected. Distributions need a nonmissing element type;
+    # `convert` leaves arrays without `Missing` in their element type uncopied.
+    observed = if left isa AbstractArray
+        convert(AbstractArray{nonmissingtype(eltype(left))}, left)
+    else
+        left
+    end
+    vi = accumulate_observe!!(vi, right, observed, vn, template)
     return left, vi
 end
-
-# Remove `Missing` from the element type for distribution methods requiring real arrays.
-# `_check_no_placeholder` has already rejected missing elements.
-# `convert` returns other arrays uncopied.
-function _nonmissing_eltype(x::AbstractArray{T}) where {T}
-    return convert(AbstractArray{nonmissingtype(T)}, x)
-end
-_nonmissing_eltype(x) = x
 
 """
     store_coloneq_value!!(model::Model, vn::VarName, right, template, vi)

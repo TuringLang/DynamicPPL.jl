@@ -189,12 +189,6 @@ function _child_bindings(parent, prefix, site)
         maybe_prefix(prefix, _model_prefix(parent)),
     )
 end
-function _merge_binding_nodes(previous, incoming)
-    previous isa Union{Nothing,NoBinding} && return incoming
-    incoming isa BoundValue && return incoming
-    previous isa BoundValue && (previous = _split_bound_value(previous, @varname(_)))
-    return VarNamedTuples._merge(copy(previous), copy(incoming), Val(true))
-end
 function _inherited_constraints(parent, prefix, ::Val{name}) where {name}
     root = _binding_root(parent, prefix)
     root === nothing && return ()
@@ -248,7 +242,7 @@ function _merge_child_root(old, incoming, parent, prefix, ::Val{name}, child) wh
         !(old.storage isa Union{Nothing,Missing,NoTemplate}) &&
         name in _lhs_arguments(child) &&
         !(incoming isa BoundValue)
-        _runtime_shape(old.storage, _unwrap_storage(supplied)) ||
+        _matches_local_shape(old.storage, _unwrap_storage(supplied)) ||
             _throw_binding_error(address, "child argument storage shape conflicts")
     end
     storage = incoming isa BoundValue ? incoming.value : old.storage
@@ -319,7 +313,13 @@ function _merge_child_root(old, incoming, parent, prefix, ::Val{name}, child) wh
         end
         _rewrap_role(wrapped, value)
     end
-    node = _merge_binding_nodes(old.value, incoming)
+    previous = old.value
+    node = if previous isa Union{Nothing,NoBinding} || incoming isa BoundValue
+        incoming
+    else
+        previous isa BoundValue && (previous = _split_bound_value(previous, @varname(_)))
+        VarNamedTuples._merge(copy(previous), copy(incoming), Val(true))
+    end
     return BindingRoot(node, storage, constraints)
 end
 @generated function _merge_child_table(
@@ -386,7 +386,7 @@ function tilde_assume!!(
     vn, template = _apply_model_prefix(vn, template, parent)
     child = _with_prefix(child, vn, template, child.values)
     _check_argument_bindings(child)
-    _check_latent_arguments(child)
+    _check_argument_aliasing(child)
     child = setleafcontext(child, context)
     args, kwargs = make_evaluate_args_and_kwargs(child, vi)
     return child.f(args...; kwargs...)

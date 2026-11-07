@@ -470,7 +470,6 @@ end
 function make_leaf_multiindex(value, coptic::AbstractPPL.Index, template)
     sub_value = make_sub_value(value, coptic, template)
     template = template_array(template)
-    sub_value = _prepare_indexed_value(sub_value, template, coptic.ix...; coptic.kw...)
 
     grown_sub_value = if sub_value isa PartialArray
         grow_to_indices!!(sub_value, get_required_size_from_indices(coptic.ix)...; coptic.kw...)

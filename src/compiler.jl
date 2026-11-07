@@ -454,12 +454,6 @@ function _check_argument_write(object, optic, vn)
     optic.child isa AbstractPPL.Iden && return nothing
     return _check_argument_write(AbstractPPL.ohead(optic)(object), optic.child, vn)
 end
-function set_argument_tilde_value!!(vi, object, value, vn)
-    object isa Union{Missing,Nothing} ||
-        _check_argument_write(object, AbstractPPL.getoptic(vn), vn)
-    return set_tilde_value!!(vi, object, value, vn)
-end
-
 assign_or_set!!(lhs::Symbol, rhs, vn, set=set_tilde_value!!) = drop_escape(:($lhs = $rhs))
 function assign_or_set!!(lhs::Expr, rhs, vn, set=set_tilde_value!!)
     left_top_sym = get_top_level_symbol(lhs)
@@ -467,7 +461,13 @@ function assign_or_set!!(lhs::Expr, rhs, vn, set=set_tilde_value!!)
 end
 
 function _set_lhs(object, optic, value, vn)
-    (object === missing || object === nothing) && throw(_placeholder_lhs_error(vn, object))
+    (object === missing || object === nothing) && throw(
+        ArgumentError(
+            "Cannot assign latent LHS variable `$vn`: `$(AbstractPPL.getsym(vn))` is `$object` " *
+            "and has no storage; supply a concrete argument such as `f(zeros(n))` or create the " *
+            "storage in the model body before the tilde.",
+        ),
+    )
     return _set_at_optic(object, optic, value)
 end
 _set_at_optic(object, ::AbstractPPL.Iden, value) = value
@@ -504,13 +504,6 @@ function _set_at_optic(object, optic::AbstractPPL.Index, value)
     end
 end
 
-function _placeholder_lhs_error(vn, object)
-    return ArgumentError(
-        "Cannot assign latent LHS variable `$vn`: `$(AbstractPPL.getsym(vn))` is `$object` " *
-        "and has no storage; supply a concrete argument such as `f(zeros(n))` or create the " *
-        "storage in the model body before the tilde.",
-    )
-end
 # A keyword splat must stay `Base.Pairs`, as plain Julia presents it to the body.
 function _set_lhs(object::Base.Pairs, optic, value, vn)
     return pairs(_set_at_optic(values(object), optic, value))
@@ -617,12 +610,19 @@ function generate_tilde(left, right; is_argument=false)
                 $template,
                 __varinfo__,
             )
-            $(assign_or_set!!(
-                left,
-                value,
-                vn,
-                is_argument ? set_argument_tilde_value!! : set_tilde_value!!,
-            ))
+            $(
+                if is_argument && left isa Expr
+                    quote
+                        $top isa $(Union{Missing,Nothing}) ||
+                            $(DynamicPPL._check_argument_write)(
+                                $top, $(AbstractPPL.getoptic)($vn), $vn
+                            )
+                        $(assign_or_set!!(left, value, vn))
+                    end
+                else
+                    assign_or_set!!(left, value, vn)
+                end
+            )
             $(VarNamedTuples._check_tuple_storage)($template, $(AbstractPPL.getoptic)($vn))
             $value
         else

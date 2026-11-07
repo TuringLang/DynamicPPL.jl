@@ -223,17 +223,6 @@ function _binding_role(x::VarNamedTuples.PartialArray, vn)
     all(x.mask) || _throw_binding_error(vn, "a tilde cannot mix bound and latent positions")
     return found
 end
-function _binding_role_at(x, optic, vn)
-    _check_address_kind(x, optic, AbstractPPL.Property{AbstractPPL.getsym(vn)}())
-    node = _binding_node_at(x, optic)
-    node === nothing &&
-        x isa BoundValue &&
-        x.value isa AbstractArray &&
-        optic isa AbstractPPL.Index &&
-        _binding_node_at(x, AbstractPPL.ohead(optic)) === nothing &&
-        _throw_binding_error(vn, "executed index is outside bound storage")
-    return _binding_role(node, vn)
-end
 _bound_data(x::BoundValue) = x.value
 _bound_data(x::VarNamedTuple) = map(_bound_data, x.data)
 function _bound_data(x::VarNamedTuples.PartialArray)
@@ -279,7 +268,8 @@ function _check_nested_selection(optic, vn)
         optic.child isa AbstractPPL.Index &&
         any(i -> i isa AbstractArray, optic.ix) &&
         all(i -> i isa Union{Integer,AbstractArray}, optic.ix)
-        selected = CartesianIndices(VarNamedTuples._selected_index_shape(optic.ix...))
+        indices = map(i -> i isa AbstractVector{Bool} ? Base.OneTo(count(i)) : i, optic.ix)
+        selected = CartesianIndices(Base.index_shape(indices...))
         child = optic.child
         try
             while selected isa AbstractArray && child isa AbstractPPL.Index
@@ -412,7 +402,7 @@ function _same_shape(a, b, seen=Set{Tuple{UInt,UInt}}())
     end
     return true
 end
-function _runtime_shape(a, b)
+function _matches_local_shape(a, b)
     a, b = _unwrap_storage(a), _unwrap_storage(b)
     if _binding_optic(a) === AbstractPPL.Property || a isa Base.Pairs
         (_binding_optic(b) === AbstractPPL.Property || b isa Base.Pairs) || return false
@@ -551,7 +541,7 @@ function _delete_role_at(x, optic::AbstractPPL.AbstractOptic, R, vn)
     child === nothing && return x
     replacement = _delete_role_at(child, optic.child, R, vn)
     result = if replacement isa NoBinding && x isa VarNamedTuple
-        name = _property_name(head)
+        name = AbstractPPL.getsym(head)
         VarNamedTuple(Base.structdiff(x.data, NamedTuple{(name,)}))
     elseif replacement isa NoBinding && x isa VarNamedTuples.PartialArray
         BangBang.delete!!(x, head.ix...; head.kw...)
@@ -562,7 +552,6 @@ function _delete_role_at(x, optic::AbstractPPL.AbstractOptic, R, vn)
     end
     return _has_bound_value(result) ? result : NoBinding()
 end
-_property_name(::AbstractPPL.Property{S}) where {S} = S
 
 function _collapse_fields(node, constraints)
     for constraint in reverse(constraints)
@@ -608,15 +597,6 @@ function _role_values(x::VarNamedTuples.PartialArray, R)
         x.mask[i] || continue
         value = _role_values(x.data[i], R)
         value isa NoBinding || (result = setindex!!(result, value, i))
-    end
-    return result
-end
-function _table_listing(table, R)
-    result = VarNamedTuple()
-    for name in keys(table.roots.data)
-        root = table.roots.data[name]
-        value = _role_values(root.value, R)
-        value isa NoBinding || (result = setindex!!(result, value, VarName{name}()))
     end
     return result
 end

@@ -126,10 +126,6 @@ function get_maximum_size_from_indices(ix...; kw...)
     return tuple(map(largest_index, ix)...)
 end
 
-_selected_indices(ix::AbstractVector{Bool}) = Base.OneTo(count(ix))
-_selected_indices(ix) = ix
-_selected_index_shape(ix...) = Base.index_shape(map(_selected_indices, ix)...)
-
 # This determines the required size for setting into the indices ix. Note that ix is not
 # splatted! and this function takes no keywords! For example, if ix is (3:5,1), this
 # function will return (3,); but get_maximum_size_from_indices will return (5, 1).
@@ -343,7 +339,16 @@ function _concretise_eltype!!(pa::PartialArray)
     if isconcretetype(eltype(pa))
         return pa
     end
-    new_et = _concretised_eltype(pa)
+    new_et = Union{}
+    for i in eachindex(pa.mask)
+        pa.mask[i] || continue
+        element_type = typeof(pa.data[i])
+        element_type <: new_et && continue
+        # `typejoin` preserves heterogeneous values without numeric conversion.
+        new_et = typejoin(new_et, element_type)
+        # The join cannot change once it reaches the storage element type.
+        new_et === eltype(pa) && break
+    end
     # TODO(mhauru) Should we check as below, or rather isconcretetype(new_et)?
     # In other words, does it help to be more concrete, even if we aren't fully concrete?
     if new_et === Union{} || new_et === eltype(pa)
@@ -357,21 +362,6 @@ function _concretise_eltype!!(pa::PartialArray)
         end
     end
     return PartialArray(new_data, pa.mask)
-end
-
-# Only types and mask metadata affect this query, never the numerical payloads.
-function _concretised_eltype(pa::PartialArray)
-    # `typejoin` preserves heterogeneous values without numeric conversion.
-    new_et = Union{}
-    for i in eachindex(pa.mask)
-        pa.mask[i] || continue
-        element_type = typeof(pa.data[i])
-        element_type <: new_et && continue
-        new_et = typejoin(new_et, element_type)
-        # The join cannot change once it reaches the storage element type.
-        new_et === eltype(pa) && return new_et
-    end
-    return new_et
 end
 
 """
@@ -396,17 +386,14 @@ function _can_get_arraylikeblock(pa_data::AbstractArray)
 end
 
 # Linear or trailing-singleton indices into growable storage would alias other addresses.
-function _index_ndims(inds...)
+function _matches_ndims(pa::PartialArray, inds)
+    pa.data isa GrowableArray || return true
     n = length(Base.index_ndims(inds...))
     for ind in inds
         ind isa AbstractArray{Bool} || continue
         n += ndims(ind) - 1
     end
-    return n
-end
-function _matches_ndims(pa::PartialArray, inds)
-    pa.data isa GrowableArray || return true
-    return _index_ndims(inds...) == ndims(pa)
+    return n == ndims(pa)
 end
 function Base.checkbounds(::Type{Bool}, pa::PartialArray, inds...; kw...)
     return _matches_ndims(pa, inds) && checkbounds(Bool, pa.mask, inds...; kw...)
@@ -642,15 +629,11 @@ function grow_to_indices!!(
 end
 grow_to_indices!!(pa::PartialArray, inds::Vararg{Any}; kw...) = pa
 
-# Storage wrappers may need to distribute metadata over a slice's elements.
-_prepare_indexed_value(value, data, inds...; kw...) = value
-
 function BangBang.setindex!!(pa::PartialArray, value, inds::Vararg{Any}; kw...)
     # If pa.data and pa.mask are GrowableArrays, we may need to resize them before doing
     # anything else. For other AbstractArrays, grow_to_indices is a no-op.
     new_pa = grow_to_indices!!(pa, inds...; kw...)
     new_data, new_mask = new_pa.data, new_pa.mask
-    value = _prepare_indexed_value(value, new_data, inds...; kw...)
 
     # Then delete any overlapping ArrayLikeBlocks
     new_data, new_mask = _remove_partial_blocks!!(new_data, new_mask, inds...; kw...)

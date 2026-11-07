@@ -19,13 +19,19 @@ end
 @generated function _argument_bindings(arguments::NamedTuple{N}, ::Val{L}) where {N,L}
     names = Tuple(n for n in N if unsplat_symbol(n) in L)
     fields = map(names) do n
-        :(BindingRoot(_argument_observation(arguments.$n), arguments.$n, ()))
+        :(BindingRoot(
+            if arguments.$n isa Union{Missing,Nothing}
+                NoBinding()
+            else
+                BoundValue{ArgumentRole}(arguments.$n)
+            end,
+            arguments.$n,
+            (),
+        ))
     end
     roots = Tuple(unsplat_symbol(n) for n in names)
     return :(BindingTable(VarNamedTuple(NamedTuple{$roots}(($(fields...),)))))
 end
-_argument_observation(value) = BoundValue{ArgumentRole}(value)
-_argument_observation(::Union{Missing,Nothing}) = NoBinding()
 function _binding_root(model, vn)
     return get(model.values.roots.data, AbstractPPL.getsym(vn), nothing)
 end
@@ -58,9 +64,17 @@ function _argument_role(model, vn, argument, local_value=NoTemplate())
     return _local_role(binding, vn, local_value, model, ArgumentRole)
 end
 function _local_role(binding, vn, template, model, role=ConditionRole)
-    found = _binding_role_at(
-        binding, AbstractPPL.getoptic(vn), maybe_prefix(vn, _model_prefix(model))
-    )
+    optic = AbstractPPL.getoptic(vn)
+    address = maybe_prefix(vn, _model_prefix(model))
+    _check_address_kind(binding, optic, AbstractPPL.Property{AbstractPPL.getsym(address)}())
+    node = _binding_node_at(binding, optic)
+    node === nothing &&
+        binding isa BoundValue &&
+        binding.value isa AbstractArray &&
+        optic isa AbstractPPL.Index &&
+        _binding_node_at(binding, AbstractPPL.ohead(optic)) === nothing &&
+        _throw_binding_error(address, "executed index is outside bound storage")
+    found = _binding_role(node, address)
     if role !== ArgumentRole && (
         found !== nothing ||
         binding isa
@@ -74,7 +88,7 @@ function _check_local_shape(model, vn, local_value, role; submodel=false)
     local_value isa NoTemplate && return nothing
     root = _binding_root(model, vn)
     root === nothing && return nothing
-    _check_runtime_path(
+    _check_local_shape(
         root.value, local_value, AbstractPPL.getoptic(vn), vn, role; submodel
     )
     if root.value isa VarNamedTuples.PartialArray
@@ -89,16 +103,16 @@ function _check_local_shape(model, vn, local_value, role; submodel=false)
         subsumes(owner, vn) || continue
         value = _binding_node_at(local_value, AbstractPPL.getoptic(owner))
         value === nothing && _throw_binding_error(vn, "local storage omits bound fields")
-        _runtime_shape(storage, value) ||
+        _matches_local_shape(storage, value) ||
             _throw_binding_error(vn, "local storage shape changed")
     end
     return nothing
 end
-function _check_runtime_path(binding, value, optic, vn, role; submodel=false)
+function _check_local_shape(binding, value, optic, vn, role; submodel=false)
     binding isa Union{Nothing,NoBinding} && return nothing
     submodel && optic isa AbstractPPL.Iden && return nothing
     if binding isa BoundValue{role} && !_skip_bound_shape_check(binding.value)
-        _runtime_shape(binding.value, value) ||
+        _matches_local_shape(binding.value, value) ||
             _throw_binding_error(vn, "local storage shape changed")
     end
     (optic isa AbstractPPL.Iden || submodel && optic.child isa AbstractPPL.Iden) &&
@@ -118,7 +132,7 @@ function _check_runtime_path(binding, value, optic, vn, role; submodel=false)
     local_child = _binding_node_at(value, head)
     local_child === nothing &&
         _throw_binding_error(vn, "local storage omits a bound address")
-    return _check_runtime_path(child, local_child, optic.child, vn, role; submodel)
+    return _check_local_shape(child, local_child, optic.child, vn, role; submodel)
 end
 function _check_address_kind(value, optic, prefix=AbstractPPL.Iden())
     optic isa AbstractPPL.Iden && return nothing
@@ -523,7 +537,8 @@ function _bind(
         )
         result = _reconstruct_model(model; values=table)
         _check_argument_bindings(result)
-        return _check_latent_arguments(result)
+        _check_argument_aliasing(result)
+        return result
     end
     return invoke(_bind, Tuple{Any,Any,Any}, model, R, inputs; kwargs...)
 end
@@ -583,7 +598,8 @@ function _bind(model, ::Type{R}, inputs; kwargs...) where {R}
     metadata = _with_binding_template_names(_model_metadata(model), _template_names(schema))
     result = _reconstruct_model(model; values=table, metadata)
     _check_argument_bindings(result)
-    return _check_latent_arguments(result)
+    _check_argument_aliasing(result)
+    return result
 end
 function _template_names(schema::NamedTuple, prefix=nothing)
     return mapreduce((a, b) -> (a..., b...), keys(schema); init=()) do name
@@ -612,7 +628,12 @@ Return fixed values as a `VarNamedTuple`.
 """
 fixed(model::Model) = _role_bindings(model, FixRole)
 function _role_bindings(model, R)
-    result = _table_listing(model.values, R)
+    result = VarNamedTuple()
+    for name in keys(model.values.roots.data)
+        root = model.values.roots.data[name]
+        value = _role_values(root.value, R)
+        value isa NoBinding || (result = setindex!!(result, value, VarName{name}()))
+    end
     prefix = _model_prefix(model)
     (prefix === nothing || isempty(result)) && return result
     return templated_setindex!!(
@@ -735,7 +756,8 @@ function _unbind(model, names, R, ::Val{recursive}=Val(false)) where {recursive}
         observation_removals=R === ConditionRole ? markers : model.observation_removals,
         fixed_removals=R === FixRole ? markers : model.fixed_removals,
     )
-    return _check_latent_arguments(result)
+    _check_argument_aliasing(result)
+    return result
 end
 
 function _prepare_argument(binding, value, vn, storage=value)
@@ -760,7 +782,7 @@ function _fill_latent_storage(
     binding isa Union{VarNamedTuple,VarNamedTuples.PartialArray} || return value
     return _throw_missing_storage(vn)
 end
-@generated function _prepare_latent_fields(binding, value, vn, storage, ::Val{N}) where {N}
+@generated function _fill_latent_storage(binding, value, vn, storage, ::Val{N}) where {N}
     fields = map(N) do name
         quote
             optic = AbstractPPL.Property{$(QuoteNode(name))}()
@@ -788,7 +810,7 @@ function _throw_unsupported_storage(value, vn)
         "unsupported binding storage $(typeof(value)); bind the whole value or use supported storage",
     )
 end
-function _check_latent_storage(value, vn)
+function _check_partial_storage(value, vn)
     if _binding_optic(value) === nothing &&
         value isa Union{AbstractArray,AbstractDict,Tuple}
         _throw_unsupported_storage(value, vn)
@@ -796,7 +818,7 @@ function _check_latent_storage(value, vn)
     return value
 end
 function _fill_latent_storage(binding, value, vn, storage)
-    _check_latent_storage(value, vn)
+    _check_partial_storage(value, vn)
     if _binding_optic(value) === AbstractPPL.Index
         result = _rebuild_buffer(value)
         for i in _positional_indices(value)
@@ -812,9 +834,7 @@ function _fill_latent_storage(binding, value, vn, storage)
         end
         return result
     elseif _binding_optic(value) === AbstractPPL.Property
-        return _prepare_latent_fields(
-            binding, value, vn, storage, Val(propertynames(value))
-        )
+        return _fill_latent_storage(binding, value, vn, storage, Val(propertynames(value)))
     else
         return value
     end
@@ -869,7 +889,7 @@ function _collect_argument_arrays!(arrays, value, binding, vn, parents, storage=
     value = if binding isa BoundValue
         binding.value
     else
-        _check_latent_storage(_latent_source(value, storage), vn)
+        _check_partial_storage(_latent_source(value, storage), vn)
     end
     kind = _binding_optic(value)
     kind === nothing && return arrays
@@ -906,7 +926,6 @@ function _collect_argument_arrays!(arrays, value, binding, vn, parents, storage=
     delete!(parents, value)
     return arrays
 end
-_check_latent_arguments(model) = (_check_argument_aliasing(model); model)
 function _check_argument_aliasing(model)
     any(
         root -> !_is_fully_bound(root.value, root.storage), values(model.values.roots.data)
