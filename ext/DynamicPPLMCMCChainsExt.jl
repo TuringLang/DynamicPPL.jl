@@ -236,6 +236,16 @@ function Base.convert(
     return MCMCChains.setinfo(c, info)
 end
 
+function with_iterations(result::MCMCChains.Chains, source::MCMCChains.Chains)
+    values = MCMCChains.AxisArray(
+        result.value.data;
+        iter=range(source),
+        var=names(result),
+        chain=MCMCChains.chains(result),
+    )
+    return MCMCChains.Chains(values, result.logevidence, result.name_map, result.info)
+end
+
 function reevaluate_with_chain(
     rng::Random.AbstractRNG,
     model::DynamicPPL.Model,
@@ -379,7 +389,7 @@ function DynamicPPL.predict(
             names(chain_result, :parameters),
         )
     end
-    return chain_result[parameter_names]
+    return with_iterations(chain_result[parameter_names], chain)
 end
 function DynamicPPL.predict(model::DynamicPPL.Model, chain::MCMCChains.Chains; kwargs...)
     return DynamicPPL.predict(DynamicPPL.Random.default_rng(), model, chain; kwargs...)
@@ -471,7 +481,9 @@ function _pointwise_logdensities_chain(
             dense_logprobs = DynamicPPL.densify!!(logprobs)
             DynamicPPL.ParamsWithStats(dense_logprobs, (;))
         end
-    return AbstractMCMC.from_samples(MCMCChains.Chains, pointwise_logps)
+    return with_iterations(
+        AbstractMCMC.from_samples(MCMCChains.Chains, pointwise_logps), chain
+    )
 end
 
 """
