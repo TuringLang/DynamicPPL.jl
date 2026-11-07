@@ -11,39 +11,31 @@ This page goes into more detail about exactly *how* initialisation strategies, t
 
 ## The `@model` macro
 
-Each tilde-statement, say, `x ~ Normal()`, is transformed by the `@model` macro into something like the following pseudocode (the functions like `is_fixed` do not have those exact names in DynamicPPL but are conceptually equivalent).
-If you're interested in the gory details you can run `@macroexpand @model f() = x ~ Normal()` in the REPL.
+The `@model` macro prepares argument bindings before entering the model body.
+Each tilde then reads its role from the model's binding table. The following
+pseudocode shows the three paths; see `@macroexpand @model f() = x ~ Normal()`
+for the generated code.
 
 ```julia
 begin
     vn = @varname(x)
     dist = Normal()
-    # To understand the need for `template`, see the VarNamedTuple docs.
-    template = x
-
-    if is_fixed(vn)
-        raw_x = get_fixed_value(vn)
-
-    elseif is_conditioned(vn)
-        conditioned_x = get_conditioned_value(vn)
-        raw_x, __varinfo__ = tilde_observe!!(
-            ctx, dist, conditioned_x, vn, template, __varinfo__
-        )
-
-    elseif is_model_argument(vn)
-        arg_x = x
-        raw_x, __varinfo__ = tilde_observe!!(ctx, dist, arg_x, vn, template, __varinfo__)
-
+    role = binding_role(model, vn)
+    if role isa Fix
+        x = bound_value(model, vn)
+    elseif role isa Condition
+        observed = is_argument(vn) ? x : bound_value(model, vn)
+        x, vi = tilde_observe!!(prefix, prefix_template, dist, observed, vn, template, vi)
     else
-        raw_x, __varinfo__ = tilde_assume!!(ctx, dist, vn, template, __varinfo__)
+        x, vi = tilde_assume!!(model, context, dist, vn, template, vi)
     end
-
-    x = raw_x
 end
 ```
 
-We won't go into detail about every part of this code; by far the most interesting part is the call to `tilde_assume!!`.
-Every tilde-statement `vn ~ dist` (where `vn` represents a random variable) is transformed into one such call.
+An observed argument uses its current value, including body computations. A fixed
+argument restores its bound value. The model's prefix and storage template qualify
+addresses before accumulation. Only latent tildes call `tilde_assume!!`; fixed
+tildes contribute no density.
 
 As described on the [Model evaluation page](./evaluation.md), there are three stages to every tilde-statement:
 
@@ -78,7 +70,8 @@ In the following sections, we stick to the three sections of `tilde_assume!!`.
 !!! note "InitContext"
     
     You may have noticed that we specified that the method above is for `InitContext`.
-    That is because different contexts are allowed to overload `tilde_assume!!` and `tilde_observe!!` and thereby endow them with new semantics.
+    Contexts can overload `tilde_assume!!` to change latent evaluation.
+    Observations bypass contexts; customise their accumulation through `accumulate_observe!!`.
     
     The reason why we recommend using `InitContext` (which `init!!` calls under the hood) is because it provides this framework for model evaluation that is both extensible and powerful.
     You *can* short-circuit all of this and define your own custom context that has completely different behaviour, but that means that it is less compatible with the rest of DynamicPPL.

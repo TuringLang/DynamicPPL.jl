@@ -4,6 +4,7 @@ using AbstractPPL: AbstractPPL
 using Bijectors: Bijectors
 using Chairmarks
 using DynamicPPL
+using DynamicPPL: @vnt
 using Distributions
 using ADTypes
 using DynamicPPL.TestUtils.AD: run_ad, WithExpectedResult, NoTest
@@ -686,6 +687,17 @@ end
         ldf.model, DynamicPPL.getlogjoint_internal, vnt, ts, accs
     )
     @test result isa AbstractPPL.Evaluators.VectorEvaluator
+end
+
+@model body_inner(y, x) = (m ~ Normal(x); y ~ Normal(m, 1); y)
+@model body_outer(y, x) = a ~ to_submodel(condition(body_inner(missing, x), (y=y,)))
+@testset "whole scalar binding inside an evaluator" begin
+    ldf = LogDensityFunction(body_outer(1.0, 0.0))
+    x = [0.3]
+    @test @inferred(LogDensityProblems.logdensity(ldf, x)) ≈
+        logpdf(Normal(), 0.3) + logpdf(Normal(0.3), 1.0)
+    LogDensityProblems.logdensity(ldf, x)
+    @test @allocated(LogDensityProblems.logdensity(ldf, x)) <= 16
 end
 
 end

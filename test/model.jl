@@ -8,8 +8,10 @@ using AbstractMCMC: AbstractMCMC
 using AbstractPPL: AbstractPPL
 using Distributions
 using DynamicPPL
+using DynamicPPL: @vnt
 using LinearAlgebra: I, Cholesky
 using MCMCChains: MCMCChains
+using OffsetArrays: OffsetArray
 using Random: Random, Xoshiro
 using Test
 
@@ -113,7 +115,14 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
             vnt = rand(model)
             chain_sym_map = Dict{Symbol,Symbol}()
             for vn_parent in keys(vnt)
-                sym = DynamicPPL.getsym(vn_parent)
+                local_vn =
+                    if model.f ===
+                        DynamicPPL.TestUtils.demo_assume_submodel_observe_index_literal
+                        AbstractPPL.unprefix(vn_parent, @varname(priors))
+                    else
+                        vn_parent
+                    end
+                sym = DynamicPPL.getsym(local_vn)
                 vn_children = AbstractPPL.varname_leaves(vn_parent, vnt[vn_parent])
                 for vn_child in vn_children
                     chain_sym_map[Symbol(vn_child)] = sym
@@ -150,15 +159,15 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
         end
         model = demo_condition()
 
-        # Test that different syntaxes work and give the same underlying CondFixContext
+        # Test that different syntaxes work and give the same binding listing
         @testset "conditioning NamedTuple" begin
             expected_values = @vnt begin
                 y := 2
             end
-            @test condition(model, (y=2,)).context.values == expected_values
-            @test condition(model; y=2).context.values == expected_values
-            @test condition(model; y=2).context.values == expected_values
-            @test (model | (y=2,)).context.values == expected_values
+            @test conditioned(condition(model, (y=2,))) == expected_values
+            @test conditioned(condition(model; y=2)) == expected_values
+            @test conditioned(condition(model; y=2)) == expected_values
+            @test conditioned((model | (y=2,))) == expected_values
             conditioned_model = condition(model, (y=2,))
             @test keys(VarInfo(conditioned_model)) == [@varname(x)]
         end
@@ -168,11 +177,11 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
             expected_values = @vnt begin
                 y := 2
             end
-            @test condition(model, Dict(@varname(y) => 2)).context.values == expected_values
-            @test condition(model, @varname(y) => 2).context.values == expected_values
-            @test (model | (@varname(y) => 2,)).context.values == expected_values
-            @test (model | (@varname(y) => 2)).context.values == expected_values
-            conditioned_model = condition(model, Dict(@varname(y) => 2))
+            @test_throws ArgumentError condition(model, Dict(@varname(y) => 2))
+            @test conditioned(condition(model, @varname(y) => 2)) == expected_values
+            @test conditioned((model | (@varname(y) => 2,))) == expected_values
+            @test conditioned((model | (@varname(y) => 2))) == expected_values
+            conditioned_model = condition(model, @varname(y) => 2)
             @test keys(VarInfo(conditioned_model)) == [@varname(x)]
 
             # condition 2 variables
@@ -180,7 +189,7 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
                 x := 1
                 y := 2
             end
-            @test condition(model, (@varname(x) => 1, @varname(y) => 2)).context.values ==
+            @test conditioned(condition(model, (@varname(x) => 1, @varname(y) => 2))) ==
                 expected_values
             conditioned_model = condition(model, (@varname(x) => 1, @varname(y) => 2))
             @test keys(VarInfo(conditioned_model)) == []
@@ -191,12 +200,12 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
             expected_values = @vnt begin
                 y := 2
             end
-            @test condition(model, (@vnt begin
+            @test conditioned(condition(model, (@vnt begin
                 y := 2
-            end)).context.values == expected_values
-            @test (model | (@vnt begin
+            end))) == expected_values
+            @test conditioned(model | (@vnt begin
                 y := 2
-            end)).context.values == expected_values
+            end)) == expected_values
         end
 
         @testset "deconditioning" begin
@@ -320,6 +329,10 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
             # We know that any variable starting with `s` should have `InverseGamma`
             # and any variable starting with `m` should have `Normal`.
             for (vn, prior) in pairs(priors)
+                if model.f ===
+                    DynamicPPL.TestUtils.demo_assume_submodel_observe_index_literal
+                    vn = AbstractPPL.unprefix(vn, @varname(priors))
+                end
                 if DynamicPPL.getsym(vn) == :s
                     @test innermost_distribution_type(prior) <: InverseGamma
                 elseif DynamicPPL.getsym(vn) == :m
@@ -373,19 +386,14 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
             @test results.bsq == params.b^2
             # `returned` should error when not all parameters are provided
             @test_throws ErrorException returned(model, (; a=1.0))
-            @test_throws ErrorException returned(model, (a=1.0, b=missing))
+            @test_throws ArgumentError returned(model, (a=1.0, b=missing))
         end
         @testset "Dict" begin
             params = Dict{VarName,Float64}(@varname(a) => 1.0, @varname(b) => 2.0)
-            results = returned(model, params)
-            @test results.asq == params[@varname(a)]^2
-            @test results.bsq == params[@varname(b)]^2
-            # `returned` should error when not all parameters are provided
-            @test_throws ErrorException returned(
-                model, Dict{VarName,Float64}(@varname(a) => 1.0)
-            )
-            @test_throws ErrorException returned(
-                model, Dict{VarName,Any}(@varname(a) => 1.0, @varname(b) => missing)
+            @test_throws ArgumentError returned(model, params)
+            @test_throws ArgumentError returned(model, Dict(@varname(a) => 1.0))
+            @test_throws ArgumentError returned(
+                model, Dict(@varname(a) => 1.0, @varname(b) => missing)
             )
         end
     end
@@ -474,16 +482,19 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
                 return nothing
             end
             @model function outer_manual_prefix()
-                a ~ to_submodel(DynamicPPL.prefix(inner(), :a), false)
-                b ~ to_submodel(DynamicPPL.prefix(inner(), :b), false)
+                a ~ to_submodel(DynamicPPL.prefix(inner(), :p))
+                b ~ to_submodel(DynamicPPL.prefix(inner(), :p))
                 return nothing
             end
 
-            for model in (outer_auto_prefix(), outer_manual_prefix())
+            for (model, expected) in (
+                (outer_auto_prefix(), Set([@varname(a.x), @varname(b.x)])),
+                (outer_manual_prefix(), Set([@varname(a.p.x), @varname(b.p.x)])),
+            )
                 vi = VarInfo((RawValueAccumulator(false),))
                 _, vi = init!!(model, vi, InitFromPrior(), UnlinkAll())
                 vns = Set(keys(get_raw_values(vi)))
-                @test vns == Set([@varname(a.x), @varname(b.x)])
+                @test vns == expected
             end
         end
     end
@@ -705,5 +716,18 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
 end
 
 @info "Completed $(@__FILE__) in $(now() - __now__)."
+
+@testset "supported placeholder storage message" begin
+    @model placeholder_message(y) = y .~ Normal()
+    err = try
+        placeholder_message(OffsetArray([missing, 1.0], 0:1))
+    catch e
+        e
+    end
+    @test err isa ArgumentError
+    message = sprint(showerror, err)
+    @test !occursin("Array`-backed", message)
+    @test !occursin("collect(", message)
+end
 
 end # module

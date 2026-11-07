@@ -54,6 +54,21 @@ Mooncake.@zero_derivative Mooncake.MinimalCtx Tuple{
     typeof(Core.kwcall),NamedTuple,typeof(DynamicPPL.to_distribution),AbstractString
 }
 
+Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
+    typeof(DynamicPPL._validate_latent_arguments),DynamicPPL.Model
+}
+
+Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
+    Union{typeof(DynamicPPL.is_splat_symbol),typeof(DynamicPPL.unsplat_symbol)},Symbol
+}
+
+# Mooncake 0.5.68 mispropagates zeros through coverage-retained PiNodes.
+# Keep this identity separate until narrowed phi cotangents are handled correctly.
+Mooncake.@mooncake_overlay function DynamicPPL._node_at(x, ::AbstractPPL.Iden)
+    Base.@noinline
+    return x
+end
+
 using DynamicPPL: @model, LinkAll, getlogjoint_internal, LogDensityFunction
 using ADTypes: AutoMooncake
 using Distributions: Normal, InverseGamma, Beta

@@ -10,15 +10,30 @@ using LinearAlgebra: I, norm
 using Test
 
 struct ObservationContext <: AbstractContext end
+
+struct ObserveHookDistribution <: ContinuousUnivariateDistribution
+    seen::Vector{Union{VarName,Nothing}}
+end
+Distributions.logpdf(::ObserveHookDistribution, x::Real) = logpdf(Normal(), x)
 function DynamicPPL.tilde_observe!!(
-    ::ObservationContext,
-    dist::Distribution,
-    value,
-    vn::Union{VarName,Nothing},
-    template,
-    vi::AbstractVarInfo,
+    prefix, prefix_template, dist::ObserveHookDistribution, left, vn, template, vi
 )
-    return value, DynamicPPL.accumulate_observe!!(vi, dist, value, vn, template)
+    push!(dist.seen, vn)
+    return tilde_observe!!(prefix, prefix_template, Normal(), left, vn, template, vi)
+end
+
+@testset "public observation hook" begin
+    @model observations(x, ys, dist) = (x ~ dist; z ~ dist; 0.0 ~ dist; ys .~ dist)
+    @model parent(child) = a ~ to_submodel(child)
+    seen = Union{VarName,Nothing}[]
+    model = condition(observations(1.0, [2.0, 3.0], ObserveHookDistribution(seen)); z=4.0)
+    for m in (model, parent(condition(model, conditioned(model))))
+        empty!(seen)
+        _, vi = evaluate!!(m, DefaultContext(), VarInfo())
+        @test length(seen) == 5
+        @test count(isnothing, seen) == 1
+        @test getloglikelihood(vi) ≈ sum(logpdf.(Normal(), 0.0:4.0))
+    end
 end
 
 @testset "context_implementations.jl" begin

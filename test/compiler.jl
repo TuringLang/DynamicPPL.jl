@@ -6,10 +6,11 @@ __now__ = now()
 
 using Distributions
 using DynamicPPL
+using AbstractPPL: getoptic
 using ForwardDiff: ForwardDiff
 using REPL: REPL
 using LinearAlgebra: I
-using Random: Random
+using Random: Random, Xoshiro
 using Test
 
 macro custom(expr)
@@ -87,7 +88,8 @@ end
 
             return x, y
         end
-        @test length(methods(testmodel_comp)) == 2
+        # Argument LHS variables add a debug evaluator method.
+        @test length(methods(testmodel_comp)) == 3
         testmodel_comp(1.0, 1.2)
 
         # check if drawing from the prior works
@@ -95,7 +97,7 @@ end
             x ~ Normal()
             return x
         end
-        @test length(methods(testmodel01)) == 4
+        @test length(methods(testmodel01)) == 6
         f0_mm = testmodel01()
         @test mean(f0_mm() for _ in 1:1000) ≈ 0.0 atol = 0.1
 
@@ -108,7 +110,7 @@ end
             x[2] ~ Normal()
             return x
         end
-        @test length(methods(testmodel02)) == 4
+        @test length(methods(testmodel02)) == 6
         f0_mm = testmodel02()
         @test all(x -> isapprox(x, 0; atol=0.1), mean(f0_mm() for _ in 1:1000))
 
@@ -117,7 +119,7 @@ end
             return x
         end
         f01_mm = testmodel03()
-        @test length(methods(testmodel03)) == 4
+        @test length(methods(testmodel03)) == 6
         @test mean(f01_mm() for _ in 1:1000) ≈ 0.5 atol = 0.1
 
         # test if we get the correct return values
@@ -130,7 +132,7 @@ end
 
             return x1, x2
         end
-        @test length(methods(testmodel1)) == 2
+        @test length(methods(testmodel1)) == 3
         f1_mm = testmodel1(1.0, 10.0)
         @test f1_mm() == (1, 10)
 
@@ -148,7 +150,7 @@ end
 
             return x1, x2
         end
-        @test length(methods(testmodel2)) == 2
+        @test length(methods(testmodel2)) == 3
         f1_mm = testmodel2(; x1=1.0, x2=10.0)
         @test f1_mm() == (1, 10)
 
@@ -220,7 +222,7 @@ end
             x[1] ~ Bernoulli(0.5)
             return x
         end
-        @test_throws MethodError testmodel_missing2(missing)()
+        @test_throws ArgumentError testmodel_missing2(missing)()
 
         # Test use of internal names
         @model function testmodel_missing3(x)
@@ -305,27 +307,12 @@ end
             return (; s=s, m=m, x=x, y=y, z=z)
         end
 
-        m_nonarray = testmodel_nonarray(
+        @test_throws ArgumentError testmodel_nonarray(
             MyCoolStruct([missing, missing]), MyCoolStruct(missing)
-        )
-        result = m_nonarray()
-        @test !any(ismissing, result.x.a)
-        @test result.y.a !== missing
-        @test result.x.a[end] > 10
-        @test Set(keys(VarInfo(m_nonarray))) == Set([
-            @varname(m),
-            @varname(s),
-            @varname(x.a[1]),
-            @varname(y.a),
-            # this is the x.a[end]
-            @varname(x.a[2]),
-            # this is z[1:2] but dot-tilde'd
-            @varname(z[1]),
-            @varname(z[2]),
-            # this is z[end:end]
-            @varname(z[3])
-        ])
-
+        )()
+        @test_throws ArgumentError decondition(
+            testmodel_nonarray(MyCoolStruct(zeros(2)), MyCoolStruct(0.0))
+        )()
         # Ensure that we can work with `Vector{Real}(undef, N)` which is the
         # reason why we're using `BangBang.prefermutation` in `src/compiler.jl`
         # rather than the default from Setfield.jl.
@@ -464,47 +451,46 @@ end
     end
 
     @testset "to_submodel" begin
-        # No prefix, 1 level.
-        @model function demo1(x)
+        @model function demo1()
             return x ~ Normal()
         end
-        @model function demo2(x, y)
-            _ignore ~ to_submodel(demo1(x), false)
+        @model function demo2(unused_x, y)
+            child ~ to_submodel(demo1())
             return y ~ Uniform()
         end
         # No observation.
-        m = demo2(missing, missing)
+        m = decondition(demo2(0.0, 0.0))
         vi = VarInfo(m)
         ks = keys(vi)
-        @test @varname(x) ∈ ks
+        @test @varname(child.x) ∈ ks
         @test @varname(y) ∈ ks
 
         # Observation in top-level.
-        m = demo2(missing, 1.0)
+        m = condition(decondition(demo2(0.0, 0.0)); y=1.0)
         vi = VarInfo(m)
         ks = keys(vi)
-        @test @varname(x) ∈ ks
+        @test @varname(child.x) ∈ ks
         @test @varname(y) ∉ ks
 
         # Observation in nested model.
-        m = demo2(1000.0, missing)
+        m = condition(decondition(demo2(0.0, 0.0)), @varname(child.x) => 1000.0)
         vi = VarInfo(m)
         ks = keys(vi)
-        @test @varname(x) ∉ ks
+        @test @varname(child.x) ∉ ks
         @test @varname(y) ∈ ks
 
         # Observe all.
-        m = demo2(1000.0, 0.5)
+        m = condition(demo2(0.0, 0.0), @varname(child.x) => 1000.0; y=0.5)
         vi = VarInfo(m)
         ks = keys(vi)
         @test isempty(ks)
 
         # Check values makes sense.
         @model function demo3(x, y)
-            _ignore ~ to_submodel(demo1(x), false)
+            child ~ to_submodel(demo1())
             return y ~ Normal(x)
         end
-        m = demo3(1000.0, missing)
+        m = decondition(demo3(1000.0, 0.0), :y)
         # Mean of `y` should be close to 1000.
         @test abs(mean([rand(m)[@varname(y)] for i in 1:10]) - 1000) ≤ 10
 
@@ -514,11 +500,11 @@ end
             return x
         end
         @model function demo_useval(x, y)
-            sub1 ~ to_submodel(demo_return(x))
-            sub2 ~ to_submodel(demo_return(y))
+            sub1 ~ to_submodel(decondition(demo_return(x)))
+            sub2 ~ to_submodel(decondition(demo_return(y)))
             return z ~ Normal(sub1 + sub2 + 100, 1.0)
         end
-        m = demo_useval(missing, missing)
+        m = demo_useval(0.0, 0.0)
         vi = VarInfo(m)
         ks = keys(vi)
         @test @varname(sub1.x) ∈ ks
@@ -545,7 +531,7 @@ end
             num_steps = length(y[1])
             num_obs = length(y)
             @inbounds for i in 1:num_obs
-                x ~ to_submodel(DynamicPPL.prefix(AR1(num_steps, α, μ, σ), "ar1_$i"), false)
+                x ~ to_submodel(DynamicPPL.prefix(AR1(num_steps, α, μ, σ), "ar1_$i"))
                 y[i] ~ MvNormal(x, 0.01 * I)
             end
         end
@@ -554,8 +540,9 @@ end
         m = demo(ys)
         vi = VarInfo(m)
 
-        for vn in
-            [@varname(α), @varname(μ), @varname(σ), @varname(ar1_1.η), @varname(ar1_2.η)]
+        for vn in [
+            @varname(α), @varname(μ), @varname(σ), @varname(x.ar1_1.η), @varname(x.ar1_2.η)
+        ]
             @test vn ∈ keys(vi)
         end
     end
@@ -625,7 +612,7 @@ end
 
         # Ensure we can specialize on arguments.
         @model demo(x) = x ~ Normal()
-        @test length(methods(demo)) == 4
+        @test length(methods(demo)) == 5
         @test f(demo(1.0))
         f(::Model{typeof(demo),(:x,)}) = false
         @test !f(demo(1.0))
@@ -699,20 +686,6 @@ end
         @test demo_ret_with_ret()() === Val(1)
     end
 
-    @testset "issue #368: hasmissing dispatch" begin
-        @test !DynamicPPL.hasmissing(typeof(Union{}[]))
-
-        # (nested) arrays with `Missing` eltypes
-        @test DynamicPPL.hasmissing(Vector{Union{Missing,Float64}})
-        @test DynamicPPL.hasmissing(Matrix{Union{Missing,Real}})
-        @test DynamicPPL.hasmissing(Vector{Matrix{Union{Missing,Float32}}})
-
-        # no `Missing`
-        @test !DynamicPPL.hasmissing(Vector{Float64})
-        @test !DynamicPPL.hasmissing(Matrix{Real})
-        @test !DynamicPPL.hasmissing(Vector{Matrix{Float32}})
-    end
-
     @testset "issue #393: anonymous argument with type parameter" begin
         @model f_393(::Val{ispredict}=Val(false)) where {ispredict} = ispredict ? 0 : 1
         @test f_393()() == 1
@@ -767,17 +740,20 @@ end
             y := 100 + x
             return (; x, y)
         end
-        @model function demo_tracked_submodel_no_prefix()
-            return vals ~ to_submodel(demo_tracked(), false)
+        @model function demo_tracked_submodel()
+            return vals ~ to_submodel(demo_tracked())
         end
-        for model in [demo_tracked(), demo_tracked_submodel_no_prefix()]
+        for (model, xvn, yvn) in (
+            (demo_tracked(), @varname(x), @varname(y)),
+            (demo_tracked_submodel(), @varname(vals.x), @varname(vals.y)),
+        )
             # Make sure it's runnable and `y` is present in the return-value.
             @test model() isa NamedTuple{(:x, :y)}
 
             # `VarInfo` should only contain `x`.
             varinfo = rand(model)
-            @test haskey(varinfo, @varname(x))
-            @test !haskey(varinfo, @varname(y))
+            @test haskey(varinfo, xvn)
+            @test !haskey(varinfo, yvn)
 
             # A `RawValueAccumulator` should preserve the combined values and their
             # provenance if `include_colon_eq` is set to `true`.
@@ -786,19 +762,19 @@ end
             values = get_raw_values(vi)
             parameter_values = get_parameter_values(vi)
             colon_eq_values = get_colon_eq_values(vi)
-            @test haskey(values, @varname(x))
-            @test haskey(values, @varname(y))
-            @test haskey(parameter_values, @varname(x))
-            @test !haskey(parameter_values, @varname(y))
-            @test haskey(colon_eq_values, @varname(y))
+            @test haskey(values, xvn)
+            @test haskey(values, yvn)
+            @test haskey(parameter_values, xvn)
+            @test !haskey(parameter_values, yvn)
+            @test haskey(colon_eq_values, yvn)
 
             # And if include_colon_eq is set to `false`, then `values` should only contain
             # `x`.
             vi = VarInfo((RawValueAccumulator(false),))
             _, vi = init!!(model, vi, InitFromPrior(), UnlinkAll())
             values = get_raw_values(vi)
-            @test haskey(values, @varname(x))
-            @test !haskey(values, @varname(y))
+            @test haskey(values, xvn)
+            @test !haskey(values, yvn)
             @test isempty(get_colon_eq_values(vi))
         end
 
@@ -892,15 +868,15 @@ end
     end
 
     @testset "guarded provenance read" begin
-        read = DynamicPPL.read_input_provenance
+        read(vn, value) = DynamicPPL.read_input_provenance(getoptic(vn), value)
         v = [1.0, 2.0, 3.0]
-        # A scalar index stays a scalar and a range becomes a view, as `@views` would give.
-        @test read(Base.maybeview, v, 2) === 2.0
-        @test read(Base.maybeview, v, 1:2) isa SubArray
+        @test read(@varname(x[2]), v) === 2.0
+        @test read(@varname(x[begin:end]), v) == v
+        @test read(@varname(x.a[end]), (; a=v)) === 3.0
         # An unreadable location is reported as absent rather than throwing.
-        @test read(Base.maybeview, v, 9) === nothing
-        @test read(Base.maybeview, Vector{Vector{Float64}}(undef, 2), 1) === nothing
-        @test read(getproperty, (; a=1.0), :zzz) === nothing
+        @test read(@varname(x[9]), v) === nothing
+        @test read(@varname(x[1]), Vector{Vector{Float64}}(undef, 2)) === nothing
+        @test read(@varname(x.zzz), (; a=1.0)) === nothing
         # A property that only an overloaded `getproperty` can reach is still read, which
         # an `isdefined` guard would have missed.
         struct OnlyOverloaded
@@ -909,7 +885,7 @@ end
         Base.getproperty(o::OnlyOverloaded, s::Symbol) = getfield(o, :d)[s]
         o = OnlyOverloaded(Dict(:x => 1.5))
         @test !isdefined(o, :x)
-        @test read(getproperty, o, :x) === 1.5
+        @test read(@varname(o.x), o) === 1.5
     end
 
     @testset "Immutable data as model arguments" begin
@@ -937,10 +913,9 @@ end
             # convert_model_argument should make sure to not deepcopy arrays if not needed
             x = [1.0]
             @test DynamicPPL.convert_model_argument(Float64, x) === x
-            # but if there's a missing in the array, it should
             y = [1.0, missing]
             y_converted = DynamicPPL.convert_model_argument(Float64, y)
-            @test y_converted !== y
+            @test y_converted === y
             @test isequal(y_converted, y)
         end
         @testset "type arguments" begin

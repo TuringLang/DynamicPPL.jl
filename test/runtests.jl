@@ -39,6 +39,7 @@ Random.seed!(100)
         include("contexts.jl")
         include("contexts/init.jl")
         include("conditionfix.jl")
+        include("binding_containers.jl")
         include("context_implementations.jl")
         include("threadsafe.jl")
         include("debug_utils.jl")
@@ -61,6 +62,7 @@ Random.seed!(100)
         @testset "ad" begin
             include("ext/DynamicPPLForwardDiffExt.jl")
             include("ext/DynamicPPLMooncakeExt.jl")
+            include("binding_ad.jl")
         end
     end
 

@@ -14,101 +14,40 @@ using DynamicPPL:
     setchildcontext,
     AbstractContext,
     AbstractParentContext,
-    contextual_isassumption,
-    PrefixContext,
-    CondFixContext,
-    Condition,
-    Fix,
-    decondition_context,
-    hasconditioned,
-    getconditioned,
-    conditioned,
-    fixed,
-    hasconditioned_nested,
-    getconditioned_nested,
-    collapse_prefix_stack,
-    prefix_cond_and_fixed_variables
+    PrefixContext
 
-# TODO: Should we maybe put this in DPPL itself?
-function Base.iterate(context::AbstractParentContext)
-    return context, childcontext(context)
+struct TestParentContext{C<:AbstractContext} <: AbstractParentContext
+    child::C
 end
-function Base.iterate(context::AbstractContext)
-    return context, nothing
-end
-function Base.iterate(::AbstractContext, state::AbstractParentContext)
-    return state, childcontext(state)
-end
-function Base.iterate(::AbstractContext, state::AbstractContext)
-    return state, nothing
-end
-function Base.iterate(::AbstractContext, state::Nothing)
-    return nothing
-end
-Base.IteratorSize(::Type{<:AbstractContext}) = Base.SizeUnknown()
-Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
+DynamicPPL.childcontext(ctx::TestParentContext) = ctx.child
+DynamicPPL.setchildcontext(::TestParentContext, child) = TestParentContext(child)
 
 @testset "contexts.jl" begin
     contexts = Dict(
         :default => DefaultContext(),
-        :testparent => DynamicPPL.TestUtils.TestParentContext(DefaultContext()),
+        :testparent => TestParentContext(DefaultContext()),
         :prefix => PrefixContext(@varname(x)),
-        :condition1 => CondFixContext{Condition}(VarNamedTuple(; x=1.0)),
-        :condition2 => CondFixContext{Condition}(
-            VarNamedTuple(; x=1.0),
-            DynamicPPL.TestUtils.TestParentContext(
-                CondFixContext{Condition}(VarNamedTuple(; y=2.0))
-            ),
-        ),
-        :condition3 => CondFixContext{Condition}(
-            VarNamedTuple(; x=1.0),
-            PrefixContext(@varname(a), CondFixContext{Condition}(VarNamedTuple(; y=2.0))),
-        ),
-        :condition4 => CondFixContext{Condition}(VarNamedTuple(; x=[1.0, missing])),
     )
 
     @testset "$(name)" for (name, context) in contexts
         @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
-            DynamicPPL.TestUtils.test_context(context, model)
-        end
-    end
-
-    @testset "extracting conditioned values" begin
-        # This testset tests `contextual_isassumption`, `getconditioned_nested`, and
-        # `hasconditioned_nested`.
-
-        @testset "$(name)" for (name, context) in contexts
-            # If the varname doesn't exist, it should always be an assumption.
-            fake_vn = VarName{gensym(:x)}()
-            @test contextual_isassumption(context, fake_vn)
-            @test !hasconditioned_nested(context, fake_vn)
-            @test_throws ErrorException getconditioned_nested(context, fake_vn)
-
-            if any(Base.Fix2(isa, CondFixContext{Condition}), context)
-                # We have a `ConditionContext` among us.
-                # Let's first extract the conditioned variables.
-                conditioned_values = DynamicPPL.conditioned(context)
-
-                # Extract all conditioned variables. We also use varname_leaves
-                # here to split up arrays which could potentially have some,
-                # but not all, elements being `missing`.
-                for p in pairs(conditioned_values),
-                    vn in AbstractPPL.varname_leaves(p.first, p.second)
-
-                    val = conditioned_values[vn]
-                    # These VarNames are present in the conditioning values, so
-                    # we should always be able to extract the value.
-                    @test hasconditioned_nested(context, vn)
-                    @test getconditioned_nested(context, vn) === val
-                    # However, the return value of contextual_isassumption depends on
-                    # whether the value is missing or not.
-                    if ismissing(val)
-                        @test contextual_isassumption(context, vn)
-                    else
-                        @test !contextual_isassumption(context, vn)
-                    end
-                end
+            if context isa AbstractParentContext
+                leaf = InitContext(InitFromPrior(), UnlinkAll())
+                @test leafcontext(setleafcontext(context, leaf)) === leaf
+                child = TestParentContext(DefaultContext())
+                @test childcontext(setchildcontext(context, child)) === child
+                replaced = setchildcontext(context, leaf)
+                @test childcontext(replaced) === leafcontext(replaced) === leaf
             end
+            prepared = contextualize(model, context)
+            _, vi = init!!(prepared, VarInfo(VectorValueAccumulator()))
+            @test vi isa VarInfo
+            _, vi = evaluate!!(
+                prepared,
+                InitContext(InitFromParams(get_values(vi), nothing), UnlinkAll()),
+                vi,
+            )
+            @test vi isa VarInfo
         end
     end
 
@@ -142,11 +81,11 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
             vn = @varname(x[1])
             ctx1 = PrefixContext(@varname(a))
             @test DynamicPPL.prefix(ctx1, vn) == @varname(a.x[1])
-            ctx2 = CondFixContext{Condition}(VarNamedTuple(; b=1), ctx1)
+            ctx2 = TestParentContext(ctx1)
             @test DynamicPPL.prefix(ctx2, vn) == @varname(a.x[1])
             ctx3 = PrefixContext(@varname(b), ctx2)
             @test DynamicPPL.prefix(ctx3, vn) == @varname(b.a.x[1])
-            ctx4 = CondFixContext{Fix}(VarNamedTuple(; c=2), ctx3)
+            ctx4 = TestParentContext(ctx3)
             @test DynamicPPL.prefix(ctx4, vn) == @varname(b.a.x[1])
         end
 
@@ -160,37 +99,30 @@ Base.IteratorEltype(::Type{<:AbstractContext}) = Base.EltypeUnknown()
             @test new_ctx == DefaultContext()
             @test prefixes == @varname(a)
 
-            ctx2 = CondFixContext{Fix}(VarNamedTuple(; b=4), PrefixContext(@varname(a)))
+            ctx2 = TestParentContext(PrefixContext(@varname(a)))
             new_vn, new_ctx = DynamicPPL.prefix_and_strip_contexts(ctx2, vn)
             @test new_vn == @varname(a.x[1])
-            @test new_ctx == CondFixContext{Fix}(VarNamedTuple(; b=4))
+            @test new_ctx == TestParentContext(DefaultContext())
             new_ctx, prefixes = DynamicPPL.extract_prefixes(ctx2)
-            @test new_ctx == CondFixContext{Fix}(VarNamedTuple(; b=4))
+            @test new_ctx == TestParentContext(DefaultContext())
             @test prefixes == @varname(a)
 
-            ctx3 = PrefixContext(
-                @varname(a), CondFixContext{Condition}(VarNamedTuple(; a=1))
-            )
+            ctx3 = PrefixContext(@varname(a), TestParentContext(DefaultContext()))
             new_vn, new_ctx = DynamicPPL.prefix_and_strip_contexts(ctx3, vn)
             @test new_vn == @varname(a.x[1])
-            @test new_ctx == CondFixContext{Condition}(VarNamedTuple(; a=1))
+            @test new_ctx == TestParentContext(DefaultContext())
             new_ctx, prefixes = DynamicPPL.extract_prefixes(ctx3)
-            @test new_ctx == CondFixContext{Condition}(VarNamedTuple(; a=1))
+            @test new_ctx == TestParentContext(DefaultContext())
             @test prefixes == @varname(a)
 
-            ctx4 = CondFixContext{Fix}(
-                VarNamedTuple(; b=4),
-                PrefixContext(@varname(a), CondFixContext{Condition}(VarNamedTuple(; a=1))),
+            ctx4 = TestParentContext(
+                PrefixContext(@varname(a), TestParentContext(DefaultContext()))
             )
             new_vn, new_ctx = DynamicPPL.prefix_and_strip_contexts(ctx4, vn)
             @test new_vn == @varname(a.x[1])
-            @test new_ctx == CondFixContext{Fix}(
-                VarNamedTuple(; b=4), CondFixContext{Condition}(VarNamedTuple(; a=1))
-            )
+            @test new_ctx == TestParentContext(TestParentContext(DefaultContext()))
             new_ctx, prefixes = DynamicPPL.extract_prefixes(ctx4)
-            @test new_ctx == CondFixContext{Fix}(
-                VarNamedTuple(; b=4), CondFixContext{Condition}(VarNamedTuple(; a=1))
-            )
+            @test new_ctx == TestParentContext(TestParentContext(DefaultContext()))
             @test prefixes == @varname(a)
 
             ctx5 = DefaultContext()
