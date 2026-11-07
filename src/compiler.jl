@@ -450,7 +450,7 @@ end
 
 function _check_argument_write(object, optic, vn)
     optic isa AbstractPPL.Iden && return nothing
-    _binding_optic(object) !== nothing || _unsupported_binding_storage(object, vn)
+    _binding_optic(object) !== nothing || _throw_unsupported_storage(object, vn)
     optic.child isa AbstractPPL.Iden && return nothing
     return _check_argument_write(AbstractPPL.ohead(optic)(object), optic.child, vn)
 end
@@ -468,16 +468,16 @@ end
 
 function _set_lhs(object, optic, value, vn)
     (object === missing || object === nothing) && throw(_placeholder_lhs_error(vn, object))
-    return _set_lhs_optic(object, optic, value)
+    return _set_at_optic(object, optic, value)
 end
-_set_lhs_optic(object, ::AbstractPPL.Iden, value) = value
-function _set_lhs_optic(
+_set_at_optic(object, ::AbstractPPL.Iden, value) = value
+function _set_at_optic(
     object::NamedTuple, ::AbstractPPL.Property{S,AbstractPPL.Iden}, value
 ) where {S}
     return merge(object, NamedTuple{(S,)}((value,)))
 end
-function _set_lhs_optic(object, optic::AbstractPPL.Property{S}, value) where {S}
-    child = _set_lhs_optic(getproperty(object, S), optic.child, value)
+function _set_at_optic(object, optic::AbstractPPL.Property{S}, value) where {S}
+    child = _set_at_optic(getproperty(object, S), optic.child, value)
     getproperty(object, S) === child && return object
     if ismutabletype(typeof(object)) &&
         hasfield(typeof(object), S) &&
@@ -490,12 +490,12 @@ function _set_lhs_optic(object, optic::AbstractPPL.Property{S}, value) where {S}
     end
     return BangBang.setproperty!!(object, S, child)
 end
-function _set_lhs_optic(object, optic::AbstractPPL.Index, value)
+function _set_at_optic(object, optic::AbstractPPL.Index, value)
     optic = AbstractPPL.concretize_top_level(optic, object)
     child = if optic.child isa AbstractPPL.Iden
         value
     else
-        _set_lhs_optic(getindex(object, optic.ix...; optic.kw...), optic.child, value)
+        _set_at_optic(getindex(object, optic.ix...; optic.kw...), optic.child, value)
     end
     return if isempty(optic.kw)
         _setindex!!(object, child, optic.ix...)
@@ -513,7 +513,7 @@ function _placeholder_lhs_error(vn, object)
 end
 # A keyword splat must stay `Base.Pairs`, as plain Julia presents it to the body.
 function _set_lhs(object::Base.Pairs, optic, value, vn)
-    return pairs(_set_lhs_optic(values(object), optic, value))
+    return pairs(_set_at_optic(values(object), optic, value))
 end
 # Skip identical (`===`) immutable values so read-only storage works; equality could
 # hide latent aliases. Always write mutable values to avoid allocating comparison slices.
@@ -540,10 +540,10 @@ function generate_tilde(left, right; is_argument=false)
 
     @gensym vn role value dist supplied_val
     lookup_role = if is_argument
-        :($(DynamicPPL._get_argument_role)(__model__, $vn, $(VarName{top}()), $(top)))
+        :($(DynamicPPL._argument_role)(__model__, $vn, $(VarName{top}()), $(top)))
     else
-        :($(DynamicPPL._local_binding_role)(
-            $(DynamicPPL._get_model_binding)(__model__, $(VarName{top}())),
+        :($(DynamicPPL._local_role)(
+            $(DynamicPPL._binding_at)(__model__, $(VarName{top}())),
             $vn,
             if $(Expr(:isdefined, top))
                 $(top)
@@ -554,13 +554,13 @@ function generate_tilde(left, right; is_argument=false)
         ))
     end
 
-    fixed_data = :($(DynamicPPL._get_model_data)(__model__, $vn, $(VarName{top}()), $(top)))
+    fixed_data = :($(DynamicPPL._bound_data_at)(__model__, $vn, $(VarName{top}()), $(top)))
     if !is_argument
         fixed_data = quote
             if $(Expr(:isdefined, top))
                 $fixed_data
             else
-                $(DynamicPPL._get_model_data)(__model__, $vn)
+                $(DynamicPPL._bound_data_at)(__model__, $vn)
             end
         end
     end
@@ -578,7 +578,7 @@ function generate_tilde(left, right; is_argument=false)
     return quote
         $dist = $right
         $vn = $(make_varname_expression(left))
-        $(DynamicPPL._check_namedtuple_index)(
+        $(DynamicPPL._check_address_kind)(
             $(DynamicPPL.BoundValue){$(DynamicPPL.ConditionRole)}($template),
             $(AbstractPPL.getoptic)($vn),
             $(AbstractPPL.Property{top}()),
@@ -590,7 +590,7 @@ function generate_tilde(left, right; is_argument=false)
             $lookup_role
         end
         if $role isa $(DynamicPPL.FixRole)
-            $value = $(DynamicPPL._check_tilde_value)(
+            $value = $(DynamicPPL._check_no_placeholder)(
                 $fixed_data,
                 $(DynamicPPL.maybe_prefix)($vn, $(DynamicPPL._model_prefix)(__model__)),
                 $role,
@@ -630,7 +630,7 @@ function generate_tilde(left, right; is_argument=false)
                 if is_argument
                     :($(Base).@views($left))
                 else
-                    :($(DynamicPPL._get_model_data)(__model__, $vn))
+                    :($(DynamicPPL._bound_data_at)(__model__, $vn))
                 end
             )
 
@@ -1001,7 +1001,7 @@ function build_output(
 end
 
 function _model_evaluator(f, args, kwargs)
-    isempty(_args_on_lhs(first(args))) && return (f, args, kwargs)
+    isempty(_lhs_arguments(first(args))) && return (f, args, kwargs)
     types = Base.typesof(_model_evaluator, args...)
     if hasmethod(f, types)
         signature = Base.unwrap_unionall(which(f, types).sig)

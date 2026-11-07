@@ -38,7 +38,7 @@ function _register_removals!(ctx, model, prefix)
     return get!(ctx.removal_sources, model) do
         return map((DynamicPPL.ConditionRole, DynamicPPL.FixRole)) do role
             ids = Int[]
-            for marker in DynamicPPL._removals(role, model)
+            for marker in DynamicPPL._removal_markers(role, model)
                 name = if marker.name === nothing
                     nothing
                 else
@@ -62,10 +62,10 @@ function DynamicPPL._binding_check_child(
             (DynamicPPL.ConditionRole, DynamicPPL.FixRole), own_ids, ctx.removal_ids
         ) do role, own, inherited
             markers = DynamicPPL._child_removals(
-                DynamicPPL._removals(role, parent), prefix, template
+                DynamicPPL._removal_markers(role, parent), prefix, template
             )
             for (id, marker) in zip(inherited, markers)
-                if marker.active && DynamicPPL._removal_matches(table, role, marker.name)
+                if marker.active && DynamicPPL._removal_hits(table, role, marker.name)
                     name, role, _ = ctx.removals[id]
                     ctx.removals[id] = (name, role, true)
                 end
@@ -118,12 +118,14 @@ function _warn_unread_bindings(ctx)
         )
         if !isempty(local_reads)
             for role in (DynamicPPL.ConditionRole, DynamicPPL.FixRole)
-                table = DynamicPPL._remove_table(table, role, local_reads; validate=false)
+                table = DynamicPPL._remove_role(table, role, local_reads; validate=false)
             end
         end
         for (name, root) in pairs(table.roots.data)
             entries = Tuple[]
-            DynamicPPL._binding_entries!(entries, root.value, VarName{name}(), root.storage)
+            DynamicPPL._flatten_bindings!(
+                entries, root.value, VarName{name}(), root.storage
+            )
             for (vn, value, _) in entries
                 value isa DynamicPPL.BoundValue || continue
                 push!(unread, DynamicPPL.maybe_prefix(vn, prefix))
@@ -138,10 +140,10 @@ end
 function _warn_unused_templates(ctx)
     entries, lhs = Set{VarName}(), Set{VarName}()
     for (model, _) in ctx.models
-        metadata = DynamicPPL._binding_metadata(model)
+        metadata = DynamicPPL._model_metadata(model)
         DynamicPPL._lhs_names(metadata) === nothing && continue
         prefix = DynamicPPL._model_prefix(model)
-        for name in DynamicPPL._binding_template_names(metadata)
+        for name in DynamicPPL._template_names(metadata)
             push!(entries, DynamicPPL.maybe_prefix(name, prefix))
         end
         for (name, submodel) in DynamicPPL._lhs_addresses(metadata)

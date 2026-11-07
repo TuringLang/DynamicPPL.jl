@@ -353,7 +353,7 @@ end
 
 @testset "ComponentArray buffer ownership" begin
     data = ComponentArray(reshape([1.0, 2.0], 1, 2), Axis(; a=1:1), Axis(; b=1:2))
-    result = DynamicPPL._prepare_latent(nothing, data, @varname(x), data)
+    result = DynamicPPL._fill_latent_storage(nothing, data, @varname(x), data)
     result[1] = 3.0
     @test data[1] == 1.0
 end

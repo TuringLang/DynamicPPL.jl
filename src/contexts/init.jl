@@ -184,7 +184,7 @@ function init(
 )
     return if hasvalue(p.params, vn, dist)
         x = getvalue(p.params, vn, dist)
-        _classify_placeholder(x) === :missing && throw(
+        _find_placeholder(x) === :missing && throw(
             ArgumentError(
                 "A `missing` value was provided for `$vn`; omit absent initial parameters instead.",
             ),

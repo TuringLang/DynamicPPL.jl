@@ -55,7 +55,7 @@ Mooncake.@zero_derivative Mooncake.MinimalCtx Tuple{
 }
 
 Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
-    typeof(DynamicPPL._validate_latent_arguments),DynamicPPL.Model
+    typeof(DynamicPPL._check_argument_aliasing),DynamicPPL.Model
 }
 
 Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
@@ -64,7 +64,7 @@ Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
 
 # Mooncake 0.5.68 mispropagates zeros through coverage-retained PiNodes.
 # Keep this identity separate until narrowed phi cotangents are handled correctly.
-Mooncake.@mooncake_overlay function DynamicPPL._node_at(x, ::AbstractPPL.Iden)
+Mooncake.@mooncake_overlay function DynamicPPL._binding_node_at(x, ::AbstractPPL.Iden)
     Base.@noinline
     return x
 end

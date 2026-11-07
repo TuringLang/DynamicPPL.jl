@@ -480,4 +480,4 @@ function infer_transform_strategy_from_values(vnt::VarNamedTuple)
     end
 end
 
-_classify_placeholder(x::TransformedValue, seen) = _classify_placeholder(x.value, seen)
+_find_placeholder(x::TransformedValue, seen) = _find_placeholder(x.value, seen)

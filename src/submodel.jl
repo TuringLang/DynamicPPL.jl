@@ -151,7 +151,7 @@ end
 function _apply_removals(table, R, markers, arguments)
     for marker in markers
         marker.active || continue
-        table = _remove_table(
+        table = _remove_role(
             table,
             R,
             marker.name === nothing ? () : (marker.name,);
@@ -162,41 +162,41 @@ function _apply_removals(table, R, markers, arguments)
     return table
 end
 _apply_removals(table, R, ::Tuple{}, arguments) = table
-_namespace_values(x::VarNamedTuple, address) = x
-_namespace_values(::Union{Nothing,NoBinding}, address) = VarNamedTuple()
-function _namespace_values(x::BoundValue{R,<:NamedTuple}, address) where {R}
+_as_namespace(x::VarNamedTuple, address) = x
+_as_namespace(::Union{Nothing,NoBinding}, address) = VarNamedTuple()
+function _as_namespace(x::BoundValue{R,<:NamedTuple}, address) where {R}
     return VarNamedTuple(map(BoundValue{R}, x.value))
 end
-function _namespace_values(x, address)
-    return _binding_error(address, "submodel binding requires named values")
+function _as_namespace(x, address)
+    return _throw_binding_error(address, "submodel binding requires named values")
 end
-function _child_values(parent, prefix, site)
+function _child_bindings(parent, prefix, site)
     values = VarNamedTuple(map(r -> r.value, parent.values.roots.data))
     if prefix != site
-        node = _node_at(values, AbstractPPL.varname_to_optic(site))
+        node = _binding_node_at(values, AbstractPPL.varname_to_optic(site))
         VarNamedTuples._mapreduce_recursive((a, b) -> nothing, node, site, nothing) do pair
             location, value = pair
             subsumes(prefix, location) ||
-                !_contains_binding(value) ||
-                _binding_error(
+                !_has_bound_value(value) ||
+                _throw_binding_error(
                     maybe_prefix(location, _model_prefix(parent)),
                     "address is outside child prefix $prefix",
                 )
         end
     end
-    return _namespace_values(
-        _node_at(values, AbstractPPL.varname_to_optic(prefix)),
+    return _as_namespace(
+        _binding_node_at(values, AbstractPPL.varname_to_optic(prefix)),
         maybe_prefix(prefix, _model_prefix(parent)),
     )
 end
 function _merge_binding_nodes(previous, incoming)
     previous isa Union{Nothing,NoBinding} && return incoming
     incoming isa BoundValue && return incoming
-    previous isa BoundValue && (previous = _expand_binding(previous, @varname(_)))
+    previous isa BoundValue && (previous = _split_bound_value(previous, @varname(_)))
     return VarNamedTuples._merge(copy(previous), copy(incoming), Val(true))
 end
 function _inherited_constraints(parent, prefix, ::Val{name}) where {name}
-    root = _root(parent, prefix)
+    root = _binding_root(parent, prefix)
     root === nothing && return ()
     address = AbstractPPL.append_optic(prefix, AbstractPPL.Property{name}())
     return mapreduce((a, b) -> (a..., b...), root.constraints; init=()) do constraint
@@ -207,7 +207,7 @@ function _inherited_constraints(parent, prefix, ::Val{name}) where {name}
             relative = AbstractPPL._unprefix_optic(
                 AbstractPPL.getoptic(address), AbstractPPL.getoptic(owner)
             )
-            selected = _node_at(storage, relative)
+            selected = _binding_node_at(storage, relative)
             return if selected === nothing
                 ()
             else
@@ -225,49 +225,52 @@ function _merge_child_root(old, incoming, parent, prefix, ::Val{name}, child) wh
     vn = VarName{name}()
     address = maybe_prefix(maybe_prefix(vn, prefix), _model_prefix(parent))
     _check_binding_address(child, vn, address)
-    if incoming isa BoundValue && _known_namespace(child, vn)
-        incoming = _namespace_values(incoming, address)
+    if incoming isa BoundValue && _is_namespace(child, vn)
+        incoming = _as_namespace(incoming, address)
     end
-    _check_cross_roles(old.value, incoming, address; disjoint=true)
+    _check_role_overlap(old.value, incoming, address; disjoint=true)
     if incoming isa VarNamedTuples.PartialArray &&
         old.storage isa AbstractArray &&
         !(old.value isa NoBinding)
         axes(incoming.data) == axes(old.storage) ||
-            _binding_error(address, "child storage shape conflicts")
+            _throw_binding_error(address, "child storage shape conflicts")
     end
-    supplied = _root(parent, prefix)
+    supplied = _binding_root(parent, prefix)
     supplied = if supplied === nothing
         NoTemplate()
     else
-        _node_at(supplied.storage, AbstractPPL.Property{name}() ∘ AbstractPPL.getoptic(prefix))
+        _binding_node_at(
+            supplied.storage,
+            AbstractPPL.Property{name}() ∘ AbstractPPL.getoptic(prefix),
+        )
     end
     if !(supplied isa Union{Nothing,NoTemplate}) &&
         !(old.storage isa Union{Nothing,Missing,NoTemplate}) &&
-        name in _args_on_lhs(child) &&
+        name in _lhs_arguments(child) &&
         !(incoming isa BoundValue)
-        _runtime_shape(old.storage, _binding_storage(supplied)) ||
-            _binding_error(address, "child argument storage shape conflicts")
+        _runtime_shape(old.storage, _unwrap_storage(supplied)) ||
+            _throw_binding_error(address, "child argument storage shape conflicts")
     end
     storage = incoming isa BoundValue ? incoming.value : old.storage
-    if old.value isa NoBinding && !(name in _args_on_lhs(child)) && supplied !== nothing
+    if old.value isa NoBinding && !(name in _lhs_arguments(child)) && supplied !== nothing
         storage = supplied
     end
     storage isa Union{NoTemplate,Missing,Nothing} &&
         supplied !== nothing &&
         (storage = supplied)
-    previous_constraints = filter(_root_constraints(old, vn)) do c
+    previous_constraints = filter(_effective_constraints(old, vn)) do c
         c.typed === Val(false) ||
-            _contains_binding(_node_at(old.value, AbstractPPL.getoptic(c.owner)))
+            _has_bound_value(_binding_node_at(old.value, AbstractPPL.getoptic(c.owner)))
     end
     inherited = _inherited_constraints(parent, prefix, Val(name))
     for c in inherited, old_c in previous_constraints
         c.owner == old_c.owner || continue
-        _same_storage_shape(c.storage, old_c.storage) ||
-            _binding_error(address, "inherited template conflicts with storage shape")
+        _same_shape(c.storage, old_c.storage) ||
+            _throw_binding_error(address, "inherited template conflicts with storage shape")
         c.role === old_c.role &&
             c.typed === old_c.typed === Val(true) &&
             typeof(c.storage) !== typeof(old_c.storage) &&
-            _binding_error(address, "inherited template conflicts with storage type")
+            _throw_binding_error(address, "inherited template conflicts with storage type")
     end
     constraints = (previous_constraints..., inherited...)
     for constraint in constraints
@@ -281,11 +284,11 @@ function _merge_child_root(old, incoming, parent, prefix, ::Val{name}, child) wh
             storage = template
         end
         incoming isa BoundValue || continue
-        selected = _node_at(incoming.value, AbstractPPL.getoptic(owner))
+        selected = _binding_node_at(incoming.value, AbstractPPL.getoptic(owner))
         selected === nothing && continue
-        _same_storage_shape(template, selected) ||
-            _binding_error(address, "child storage shape conflicts")
-        typed && _convert_binding(selected, template, address)
+        _same_shape(template, selected) ||
+            _throw_binding_error(address, "child storage shape conflicts")
+        typed && _convert_to_storage(selected, template, address)
     end
     incoming = VarNamedTuples._map_pairs_recursive!!(
         if incoming isa Union{VarNamedTuple,VarNamedTuples.PartialArray}
@@ -297,24 +300,24 @@ function _merge_child_root(old, incoming, parent, prefix, ::Val{name}, child) wh
     ) do pair
         location, wrapped = pair
         error_address = maybe_prefix(maybe_prefix(location, prefix), _model_prefix(parent))
-        value = _constrained_value(
+        value = _apply_constraints(
             wrapped.value,
             AbstractPPL.getoptic(location),
             location,
-            typeof(_model_role(wrapped)),
+            typeof(_binding_role(wrapped)),
             previous_constraints;
             error_address,
         )
-        if name in _args_on_lhs(child) &&
+        if name in _lhs_arguments(child) &&
             !(AbstractPPL.getoptic(location) isa AbstractPPL.Iden)
             old.storage isa Union{Missing,Nothing,NoTemplate} || _check_partial_storage(
                 old.storage, AbstractPPL.getoptic(location), error_address
             )
-            value = _partial_conversion(
+            value = _convert_partial(
                 value, old.storage, AbstractPPL.getoptic(location), error_address
             )
         end
-        _model_value_like(wrapped, value)
+        _rewrap_role(wrapped, value)
     end
     node = _merge_binding_nodes(old.value, incoming)
     return BindingRoot(node, storage, constraints)
@@ -350,17 +353,17 @@ function tilde_assume!!(
 ) where {M<:Model}
     AbstractPPL.getsym(vn) in
     (_argument_names(parent.args)..., _argument_names(parent.defaults)...) &&
-        _binding_error(vn, "submodel LHS cannot be an argument")
+        _throw_binding_error(vn, "submodel LHS cannot be an argument")
     vn = _concretize_prefix(vn, template; prefix=Val(true))
-    _check_runtime_shape(parent, vn, template, ConditionRole; submodel=true)
-    _check_runtime_shape(parent, vn, template, FixRole; submodel=true)
+    _check_local_shape(parent, vn, template, ConditionRole; submodel=true)
+    _check_local_shape(parent, vn, template, FixRole; submodel=true)
     child = submodel.model
     local_prefix = maybe_prefix(_model_prefix(child), vn)
     context = _binding_check_child(context, parent, child, local_prefix, template)
     observations = _child_removals(parent.observation_removals, local_prefix, template)
     fixes = _child_removals(parent.fixed_removals, local_prefix, template)
     for (name, root) in pairs(child.values.roots.data)
-        _has_binding_role(ArgumentRole, root.value) && _binding_error(
+        _has_role(ArgumentRole, root.value) && _throw_binding_error(
             maybe_prefix(
                 maybe_prefix(VarName{name}(), local_prefix), _model_prefix(parent)
             ),
@@ -372,7 +375,7 @@ function tilde_assume!!(
     )
     table = _apply_removals(table, FixRole, fixes, merge(child.args, child.defaults))
     table = _merge_child_table(
-        table, _child_values(parent, local_prefix, vn), parent, local_prefix, child
+        table, _child_bindings(parent, local_prefix, vn), parent, local_prefix, child
     )
     child = _reconstruct_model(
         child;
@@ -380,8 +383,8 @@ function tilde_assume!!(
         observation_removals=(child.observation_removals..., observations...),
         fixed_removals=(child.fixed_removals..., fixes...),
     )
-    vn, template = _prefix_varname_and_template(vn, template, parent)
-    child = _prefix_model(child, vn, template, child.values)
+    vn, template = _apply_model_prefix(vn, template, parent)
+    child = _with_prefix(child, vn, template, child.values)
     _check_argument_bindings(child)
     _check_latent_arguments(child)
     child = setleafcontext(child, context)

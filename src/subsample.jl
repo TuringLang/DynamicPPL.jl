@@ -733,12 +733,12 @@ function VarNamedTuples._haskey_optic(
 )
     return VarNamedTuples._haskey_optic(data.data, optic)
 end
-function _node_at(
+function _binding_node_at(
     value::BoundValue{R,<:AbstractSubsamplingData}, optic::AbstractPPL.Index
 ) where {R}
     head = AbstractPPL.ohead(optic)
     child = VarNamedTuples._getindex_optic(value.value, head, @varname(_))
-    return _node_at(BoundValue{R}(child), optic.child)
+    return _binding_node_at(BoundValue{R}(child), optic.child)
 end
 function Base.getindex(data::SubsamplingShape, indices...)
     return SubsamplingShape(view(data.data, indices...), data.root)
@@ -797,8 +797,7 @@ function _subsampling_problem(
     )
     scale = dataset_size//dataset_size
     probe_model = condition(
-        _decondition_unfix(model, (observation,), ConditionRole),
-        observation => SubsamplingShape(data),
+        _unbind(model, (observation,), ConditionRole), observation => SubsamplingShape(data)
     )
     layout = _probe_independent_model(
         _subsampling_probe_rng(),
@@ -967,7 +966,7 @@ function _batch_ldf(problem::SubsamplingState, batch::AbstractVector{<:Integer})
     batch_data = _select_batch(problem.full_data, batch)
     batch = collect(Int, batch)
     batch_model = condition(
-        _decondition_unfix(problem.ldf.model, (problem.observation,), ConditionRole),
+        _unbind(problem.ldf.model, (problem.observation,), ConditionRole),
         problem.observation => SubsampledData(batch_data),
     )
     ranges = get_all_ranges_and_transforms(problem.ldf)

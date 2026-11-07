@@ -111,11 +111,11 @@ end
             (FieldStorage([1.0]), FieldStorage([1.0, 2.0])),
             (view([1.0], :), view([1.0, 2.0], :)),
         )
-            @test DynamicPPL._same_storage_shape(Any[a], Any[b])
+            @test DynamicPPL._same_shape(Any[a], Any[b])
         end
-        @test DynamicPPL._storage_signature(view(Any[[1.0]], :)) === nothing
+        @test DynamicPPL._shape_signature(view(Any[[1.0]], :)) === nothing
     end
-    @test !DynamicPPL._same_storage_shape(Any[([1.0],)], Any[([1.0, 2.0],)])
+    @test !DynamicPPL._same_shape(Any[([1.0],)], Any[([1.0, 2.0],)])
     @testset "latent Type values" begin
         @test decondition(read_argument(Float64))(Xoshiro(1)) === Float64
     end
@@ -160,11 +160,11 @@ DynamicPPL._binding_optic(::FieldArray) = AbstractPPL.Property
 @testset "one binding optic for an array addressed by fields" begin
     data = FieldArray([1.0])
     @test DynamicPPL._binding_optic(data) === AbstractPPL.Property
-    @test DynamicPPL._expand_binding(
+    @test DynamicPPL._split_bound_value(
         DynamicPPL.BoundValue{DynamicPPL.ConditionRole}(data), @varname(x)
     ) isa VarNamedTuple
-    @test DynamicPPL._storage_signature(data) ==
-        DynamicPPL._storage_signature((; data=data.data))
+    @test DynamicPPL._shape_signature(data) ==
+        DynamicPPL._shape_signature((; data=data.data))
     for model in (
         decondition(field_array(data)), decondition(field_array(data), @varname(x.data[1]))
     )
