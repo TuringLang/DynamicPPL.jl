@@ -57,8 +57,11 @@ function _local_binding_role(binding, vn, template, model, role=ConditionRole)
     found = _model_role_at(
         binding, AbstractPPL.getoptic(vn), maybe_prefix(vn, _model_prefix(model))
     )
-    if role !== ArgumentRole &&
-        (found !== nothing || binding isa Union{BoundValue{ConditionRole},BindingNodes})
+    if role !== ArgumentRole && (
+        found !== nothing ||
+        binding isa
+        Union{BoundValue{ConditionRole},VarNamedTuple,VarNamedTuples.PartialArray}
+    )
         _check_runtime_shape(model, vn, template, role)
     end
     return found
@@ -70,7 +73,7 @@ function _check_runtime_shape(model, vn, local_value, role; submodel=false)
     _check_runtime_path(
         root.value, local_value, AbstractPPL.getoptic(vn), vn, role; submodel
     )
-    if root.value isa BindingArray
+    if root.value isa VarNamedTuples.PartialArray
         local_value isa Union{AbstractArray,Tuple} &&
             axes(root.value.data) == axes(local_value) ||
             _binding_error(vn, "local storage shape changed")
@@ -147,7 +150,7 @@ function _binding_entries!(entries, value::VarNamedTuple, vn, storage)
     end
     return entries
 end
-function _binding_entries!(entries, value::BindingArray, vn, storage)
+function _binding_entries!(entries, value::VarNamedTuples.PartialArray, vn, storage)
     if !any(value.mask)
         push!(entries, (vn, value, storage))
     else
@@ -165,7 +168,7 @@ function _binding_entries!(entries, value::BindingArray, vn, storage)
 end
 _binding_entries!(entries, value, vn, storage) = push!(entries, (vn, value, storage))
 function _binding_entries(input::NamedTuple{N}) where {N}
-    any(x -> x isa BindingNodes, values(input)) &&
+    any(x -> x isa Union{VarNamedTuple,VarNamedTuples.PartialArray}, values(input)) &&
         return _binding_entries(VarNamedTuple(input))
     return map(n -> (VarName{n}(), input[n], NoTemplate()), N)
 end
@@ -316,7 +319,7 @@ Base.@nospecializeinfer function _bind_table(
     templates = map(n -> (VarName{n}(), NoBinding(), NoTemplate()), unused)
     for (vn, value, supplied) in (templates..., entries...)
         value isa NoBinding || _check_binding_address(model, vn)
-        _classify_placeholder(value) !== _NoPlaceholder &&
+        _classify_placeholder(value) !== :none &&
             _binding_error(vn, "explicit bindings cannot contain missing or nothing")
         name = AbstractPPL.getsym(vn)
         base = VarName{name}()
@@ -397,10 +400,10 @@ Base.@nospecializeinfer function _bind_table(
                 old.value isa VarNamedTuple && storage isa NoTemplate
             ) && _binding_error(vn, "namespace cannot become a whole value")
         end
-        if value isa BindingArray && !any(value.mask)
+        if value isa VarNamedTuples.PartialArray && !any(value.mask)
             node = old.value
             if _node_at(node, AbstractPPL.getoptic(vn)) isa Union{Nothing,NoBinding}
-                empty = BindingArray(
+                empty = VarNamedTuples.PartialArray(
                     similar(value.data, BoundValue{R,eltype(value)}), copy(value.mask)
                 )
                 node = _set_root_node(
@@ -416,7 +419,12 @@ Base.@nospecializeinfer function _bind_table(
         selections = _selection(storage, AbstractPPL.getoptic(vn), base, value, old.value)
         node = old.value
         name in copied ||
-            (node = node isa BindingNodes ? copy(node) : node; push!(copied, name))
+            (node = if node isa Union{VarNamedTuple,VarNamedTuples.PartialArray}
+                copy(node)
+            else
+                node
+            end;
+            push!(copied, name))
         for (address, element) in selections
             any(other -> subsumes(other, address) || subsumes(address, other), seen) &&
                 _binding_error(address, "inputs overlap in this call")
@@ -603,12 +611,6 @@ function _listed_bindings(model, R)
         _apply_prefix_template(_model_prefix_template(model), NoTemplate()),
     )
 end
-struct BindingRemoval{N}
-    name::N
-    active::Bool
-    matched::Bool
-end
-BindingRemoval(name) = BindingRemoval(name, true, false)
 function _removal_matches(table, R, name)
     if name === nothing
         return any(root -> _has_binding_role(R, root.value), values(table.roots.data))
@@ -626,7 +628,11 @@ function _remove_table(table, R, names; arguments=(;), validate=true)
         base = VarName{name}()
         selectors =
             isempty(names) ? (base,) : filter(vn -> AbstractPPL.getsym(vn) == name, names)
-        node = root.value isa BindingNodes ? copy(root.value) : root.value
+        node = if root.value isa Union{VarNamedTuple,VarNamedTuples.PartialArray}
+            copy(root.value)
+        else
+            root.value
+        end
         for vn in selectors
             root.value isa NoBinding &&
                 (!validate || _binding_storage(root.storage) isa NoTemplate) &&
@@ -701,12 +707,12 @@ function _decondition_unfix(model, names, R, ::Val{recursive}=Val(false)) where 
     markers = _removals(R, model)
     if recursive
         markers = if isempty(names)
-            (BindingRemoval(nothing),)
+            ((name=nothing, active=true, matched=false),)
         else
             (
                 markers...,
                 map(names) do name
-                    BindingRemoval(name, true, _removal_matches(model.values, R, name))
+                    (; name, active=true, matched=_removal_matches(model.values, R, name))
                 end...,
             )
         end
@@ -737,7 +743,7 @@ function _latent_argument_source(value, storage)
     end
 end
 function _prepare_latent(binding, value::Union{Missing,Nothing,NoTemplate}, vn, storage)
-    binding isa BindingNodes || return value
+    binding isa Union{VarNamedTuple,VarNamedTuples.PartialArray} || return value
     return _missing_argument_error(vn)
 end
 @generated function _prepare_latent_fields(binding, value, vn, storage, ::Val{N}) where {N}
@@ -824,7 +830,7 @@ end
     name in _args_on_lhs(model) || _binding_error(vn, "covariates cannot be bound")
     original = arguments[stored]
     if original isa Union{Missing,Nothing} &&
-        root.value isa BindingNodes &&
+        root.value isa Union{VarNamedTuple,VarNamedTuples.PartialArray} &&
         !_complete_binding(root.value, root.storage)
         _missing_argument_error(vn)
     end
@@ -839,11 +845,12 @@ end
 end
 function _argument_arrays!(arrays, value, binding, vn, parents, storage=value)
     binding isa Union{BoundValue{ConditionRole},BoundValue{FixRole}} && return arrays
-    if binding isa BindingNodes && _complete_binding(binding, storage)
+    if binding isa Union{VarNamedTuple,VarNamedTuples.PartialArray} &&
+        _complete_binding(binding, storage)
         binding = BoundValue{ArgumentRole}(_model_data(binding, storage))
     end
     value isa Union{Missing,Nothing} &&
-        binding isa BindingNodes &&
+        binding isa Union{VarNamedTuple,VarNamedTuples.PartialArray} &&
         _missing_argument_error(vn)
     value = if binding isa BoundValue
         binding.value

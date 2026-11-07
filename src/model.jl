@@ -516,8 +516,8 @@ end
 
 function _check_tilde_value(value, vn, ::Union{ConditionRole,FixRole})
     placeholder = _classify_placeholder(value)
-    absent = placeholder === _MissingPlaceholder ? "missing" : "nothing"
-    placeholder === _NoPlaceholder || throw(
+    absent = placeholder === :missing ? "missing" : "nothing"
+    placeholder === :none || throw(
         ArgumentError(
             "LHS variable `$vn` contains `$absent`. Only a whole `missing`/`nothing` " *
             "argument or a `missing` element `x[i]`/`x[i, j]` of a top-level array " *

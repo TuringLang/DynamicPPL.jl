@@ -45,17 +45,14 @@ function _missing_argument_error(vn)
         "partial argument binding lacks storage; bind the whole value or pass a concrete argument (for example one with missing entries)",
     )
 end
-const BindingArray = VarNamedTuples.PartialArray
-const BindingNodes = Union{VarNamedTuple,BindingArray}
-@enum _PlaceholderKind _NoPlaceholder _NothingPlaceholder _MissingPlaceholder
 
 function _classify_placeholder(value, seen=Base.IdSet{Any}())
-    value === missing && return _MissingPlaceholder
-    value === nothing && return _NothingPlaceholder
-    value isa Union{Number,AbstractString,Symbol,Type} && return _NoPlaceholder
-    value isa AbstractArray{<:Number} && return _NoPlaceholder
+    value === missing && return :missing
+    value === nothing && return :nothing
+    value isa Union{Number,AbstractString,Symbol,Type} && return :none
+    value isa AbstractArray{<:Number} && return :none
     if ismutabletype(typeof(value))
-        value in seen && return _NoPlaceholder
+        value in seen && return :none
         push!(seen, value)
     end
     children = if value isa AbstractArray
@@ -65,11 +62,11 @@ function _classify_placeholder(value, seen=Base.IdSet{Any}())
     else
         (getfield(value, i) for i in 1:fieldcount(typeof(value)) if isdefined(value, i))
     end
-    result = _NoPlaceholder
+    result = :none
     for child in children
         kind = _classify_placeholder(child, seen)
-        kind === _MissingPlaceholder && return kind
-        kind === _NothingPlaceholder && (result = kind)
+        kind === :missing && return kind
+        kind === :nothing && (result = kind)
     end
     return result
 end
@@ -105,7 +102,7 @@ _isassigned(x, indices...) = isassigned(x, indices...)
 _isassigned(x::Tuple, i) = i in keys(x)
 
 _binding_storage(x) = x
-_binding_storage(x::BindingArray) = x.data
+_binding_storage(x::VarNamedTuples.PartialArray) = x.data
 _binding_storage(x::BoundValue) = x.value
 _binding_storage(::Union{Missing,Nothing}) = NoTemplate()
 function VarNamedTuples.maybe_index_template(::BoundValue, template, optic)
@@ -140,7 +137,7 @@ function _expand_binding(x::BoundValue{R}, vn) where {R}
             mask[i] = true
         end
     end
-    return BindingArray(data, mask)
+    return VarNamedTuples.PartialArray(data, mask)
 end
 function VarNamedTuples._setindex_optic!!(
     x::BoundValue, value, optic::AbstractPPL.AbstractOptic, template, perms
@@ -173,7 +170,7 @@ function _node_at(x::AbstractArray, optic::AbstractPPL.Index)
         return nothing
     return _node_at(getindex(x, head.ix...), optic.child)
 end
-function _node_at(x::BindingArray, optic::AbstractPPL.Index)
+function _node_at(x::VarNamedTuples.PartialArray, optic::AbstractPPL.Index)
     optic = AbstractPPL.concretize_top_level(optic, x.data)
     checkbounds(Bool, x, optic.ix...) || return nothing
     child = if VarNamedTuples._is_multiindex(x.data, optic.ix...; optic.kw...)
@@ -205,7 +202,7 @@ function _model_role(x::VarNamedTuple, vn)
     isempty(x) && return nothing
     return _binding_error(vn, "a tilde cannot mix bound and latent fields")
 end
-function _model_role(x::BindingArray, vn)
+function _model_role(x::VarNamedTuples.PartialArray, vn)
     found = nothing
     for i in eachindex(x.mask)
         x.mask[i] || continue
@@ -233,7 +230,7 @@ function _model_role_at(x, optic, vn)
 end
 _model_data(x::BoundValue) = x.value
 _model_data(x::VarNamedTuple) = map(_model_data, x.data)
-function _model_data(x::BindingArray)
+function _model_data(x::VarNamedTuples.PartialArray)
     all(x.mask) || throw(ArgumentError("Incomplete binding"))
     return map(_model_data, x.data)
 end
@@ -246,7 +243,7 @@ function _model_data(x::VarNamedTuple, storage)
     end
     return ConstructionBase.setproperties(storage, NamedTuple{names}(fields))
 end
-function _model_data(x::BindingArray, storage::Union{AbstractArray,Tuple})
+function _model_data(x::VarNamedTuples.PartialArray, storage::Union{AbstractArray,Tuple})
     all(x.mask) || throw(ArgumentError("Incomplete binding"))
     @assert axes(storage) == axes(x.data)
     result = _rebuild_buffer(storage)
@@ -259,13 +256,13 @@ function _model_data(x::BindingArray, storage::Union{AbstractArray,Tuple})
     end
     return result
 end
-function _has_binding_role(R, x::BindingNodes)
+function _has_binding_role(R, x::Union{VarNamedTuple,VarNamedTuples.PartialArray})
     return VarNamedTuples._mapreduce_recursive(
         p -> _has_binding_role(R, last(p)), |, x, @varname(_), false
     )
 end
 _has_binding_role(R, x) = _matches_model_role(R, x)
-function _contains_binding(x::BindingNodes)
+function _contains_binding(x::Union{VarNamedTuple,VarNamedTuples.PartialArray})
     return _has_binding_role(ConditionRole, x) || _has_binding_role(FixRole, x)
 end
 _contains_binding(x) = x isa BoundValue
@@ -317,7 +314,9 @@ end
 function _selection(storage, optic::AbstractPPL.Index, vn, value, node=nothing)
     try
         node isa BoundValue && (storage = node.value)
-        node isa BindingArray && storage isa NoTemplate && (storage = node.data)
+        node isa VarNamedTuples.PartialArray &&
+            storage isa NoTemplate &&
+            (storage = node.data)
         storage = _binding_storage(storage)
         _binding_optic(storage) === AbstractPPL.Index ||
             _unsupported_binding_storage(storage, AbstractPPL.append_optic(vn, optic))
@@ -472,7 +471,7 @@ function _check_cross_roles(previous, incoming::BoundValue, vn; disjoint=false)
             typeof(_model_role(previous)) === typeof(_model_role(incoming)) ||
             _binding_error(vn, "observed and fixed positions overlap")
         disjoint && _binding_error(vn, "parent and child bindings overlap")
-    elseif previous isa BindingNodes
+    elseif previous isa Union{VarNamedTuple,VarNamedTuples.PartialArray}
         VarNamedTuples._mapreduce_recursive(
             identity,
             (a, p) -> (_check_cross_roles(last(p), incoming, first(p); disjoint); nothing),
@@ -496,7 +495,9 @@ function _check_cross_roles(previous, incoming::VarNamedTuple, vn; disjoint=fals
     end
     return nothing
 end
-function _check_cross_roles(previous, incoming::BindingArray, vn; disjoint=false)
+function _check_cross_roles(
+    previous, incoming::VarNamedTuples.PartialArray, vn; disjoint=false
+)
     for i in CartesianIndices(incoming.mask)
         incoming.mask[i] || continue
         optic = AbstractPPL.Index(Tuple(i), (;))
@@ -512,7 +513,7 @@ end
 function _delete_binding(x, ::AbstractPPL.Iden, R, vn)
     return _matches_model_role(R, x) ? NoBinding() : x
 end
-function _delete_binding(x::BindingArray, ::AbstractPPL.Iden, R, vn)
+function _delete_binding(x::VarNamedTuples.PartialArray, ::AbstractPPL.Iden, R, vn)
     result = copy(x)
     for i in CartesianIndices(x.mask)
         x.mask[i] || continue
@@ -543,7 +544,7 @@ function _delete_binding(x, optic::AbstractPPL.AbstractOptic, R, vn)
     result = if replacement isa NoBinding && x isa VarNamedTuple
         name = _property_name(head)
         VarNamedTuple(Base.structdiff(x.data, NamedTuple{(name,)}))
-    elseif replacement isa NoBinding && x isa BindingArray
+    elseif replacement isa NoBinding && x isa VarNamedTuples.PartialArray
         BangBang.delete!!(x, head.ix...; head.kw...)
     else
         VarNamedTuples._setindex_optic!!(
@@ -590,10 +591,10 @@ function _binding_listing(x::VarNamedTuple, R)
     end
     return isempty(fields) ? NoBinding() : VarNamedTuple(fields)
 end
-function _binding_listing(x::BindingArray, R)
+function _binding_listing(x::VarNamedTuples.PartialArray, R)
     data = similar(x.data, Union{})
     mask = falses(size(x))
-    result = BindingArray(data, mask)
+    result = VarNamedTuples.PartialArray(data, mask)
     for i in CartesianIndices(x.mask)
         x.mask[i] || continue
         value = _binding_listing(x.data[i], R)
@@ -610,7 +611,7 @@ function _table_listing(table, R)
     end
     return result
 end
-function _binding_content(x::BindingNodes)
+function _binding_content(x::Union{VarNamedTuple,VarNamedTuples.PartialArray})
     entries = Dict(
         first(p) => _binding_content(last(p)) for
         p in mapreduce(identity, push!, VarNamedTuple((; root=x)); init=Pair[]) if
@@ -673,7 +674,7 @@ function _storage_signature(x::VarNamedTuple, typed=false)
 end
 
 _complete_binding(x, storage) = x isa BoundValue
-function _complete_binding(x::BindingArray, storage)
+function _complete_binding(x::VarNamedTuples.PartialArray, storage)
     all(x.mask) || return false
     return all(
         i -> _complete_binding(

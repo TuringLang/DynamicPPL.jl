@@ -145,7 +145,7 @@ function _child_removals(markers, prefix, template=NoTemplate())
         else
             AbstractPPL.optic_to_varname(child)
         end
-        return BindingRemoval(relative, marker.active && active, marker.matched)
+        return (name=relative, active=marker.active && active, matched=marker.matched)
     end
 end
 function _apply_removals(table, R, markers, arguments)
@@ -229,7 +229,7 @@ function _merge_child_root(old, incoming, parent, prefix, ::Val{name}, child) wh
         incoming = _namespace_values(incoming, address)
     end
     _check_cross_roles(old.value, incoming, address; disjoint=true)
-    if incoming isa BindingArray &&
+    if incoming isa VarNamedTuples.PartialArray &&
         old.storage isa AbstractArray &&
         !(old.value isa NoBinding)
         axes(incoming.data) == axes(old.storage) ||
@@ -288,7 +288,12 @@ function _merge_child_root(old, incoming, parent, prefix, ::Val{name}, child) wh
         typed && _convert_binding(selected, template, address)
     end
     incoming = VarNamedTuples._map_pairs_recursive!!(
-        incoming isa BindingNodes ? copy(incoming) : incoming, vn
+        if incoming isa Union{VarNamedTuple,VarNamedTuples.PartialArray}
+            copy(incoming)
+        else
+            incoming
+        end,
+        vn,
     ) do pair
         location, wrapped = pair
         error_address = maybe_prefix(maybe_prefix(location, prefix), _model_prefix(parent))

@@ -106,7 +106,10 @@ function _warn_unread_bindings(ctx)
     unread = Set{VarName}()
     for (model, reads) in ctx.models
         roots = model.values.roots.data
-        names = Tuple(n for n in keys(roots) if roots[n].value isa DynamicPPL.BindingNodes)
+        names = Tuple(
+            n for n in keys(roots) if
+            roots[n].value isa Union{VarNamedTuple,DynamicPPL.VarNamedTuples.PartialArray}
+        )
         table = DynamicPPL.BindingTable(VarNamedTuple(NamedTuple{names}(roots)))
         prefix = DynamicPPL._model_prefix(model)
         local_reads = Tuple(
