@@ -236,75 +236,28 @@ function Base.convert(
     return MCMCChains.setinfo(c, info)
 end
 
-"""
-    chunk_ranges(n::Int, nchunks::Int)
-
-Split `1:n` into at most `nchunks` contiguous ranges of as equal length as possible.
-"""
-function chunk_ranges(n::Int, nchunks::Int)
-    nchunks = min(nchunks, n)
-    bounds = round.(Int, range(0, n; length=(nchunks + 1)))
-    return [(bounds[i] + 1):bounds[i + 1] for i in 1:nchunks]
+function with_iterations(result::MCMCChains.Chains, source::MCMCChains.Chains)
+    values = MCMCChains.AxisArray(
+        result.value.data;
+        iter=range(source),
+        var=names(result),
+        chain=MCMCChains.chains(result),
+    )
+    return MCMCChains.Chains(values, result.logevidence, result.name_map, result.info)
 end
 
-"""
-    reevaluate_with_chain(
-        rng::AbstractRNG,
-        model::Model,
-        chain::MCMCChains.Chains
-        accs::NTuple{N,AbstractAccumulator};
-        fallback=nothing,
-        multithreaded=false,
-    )
-
-Re-evaluate `model` for each sample in `chain` using the accumulators provided in `accs`,
-returning a matrix of `(retval, updated_at)` tuples.
-
-This loops over all entries in the chain and uses `DynamicPPL.InitFromParams` as the
-initialisation strategy when re-evaluating the model. For many usecases the fallback should
-not be provided (as we expect the chain to contain all necessary variables); but for
-`predict` this has to be `InitFromPrior()` to allow sampling new variables (i.e. generating
-the posterior predictions).
-
-Set `multithreaded = true` to spread the samples over threads. Each sample is then evaluated
-with its own random number generator, seeded from `rng` before any thread starts, so the
-result is reproducible and does not depend on the number of threads. It does differ from the
-single-threaded result for the same `rng`, which draws every sample from one stream.
-"""
 function reevaluate_with_chain(
     rng::Random.AbstractRNG,
     model::DynamicPPL.Model,
     chain::MCMCChains.Chains,
     accs::NTuple{N,DynamicPPL.AbstractAccumulator},
     fallback::Union{DynamicPPL.AbstractInitStrategy,Nothing}=nothing;
-    multithreaded::Bool=false,
+    kwargs...,
 ) where {N}
-    params_with_stats = AbstractMCMC.to_samples(DynamicPPL.ParamsWithStats, chain, model)
-    vi = DynamicPPL.VarInfo(DynamicPPL.AccumulatorTuple(accs))
-    function evaluate(r, v, ps)
-        return DynamicPPL.init!!(
-            r,
-            model,
-            v,
-            DynamicPPL.InitFromParams(ps.params, fallback),
-            DynamicPPL.UnlinkAll(),
-        )
-    end
-    if !multithreaded || isempty(params_with_stats)
-        return map(ps -> evaluate(rng, vi, ps), params_with_stats)
-    end
-    seeds = rand(rng, UInt, length(params_with_stats))
-    tasks = map(chunk_ranges(length(params_with_stats), Threads.nthreads())) do idxs
-        # An accumulator may hold mutable state, so no two tasks share a varinfo. Each sample
-        # gets a fresh generator built from its own seed, so `rng` only has to produce the
-        # seeds: copying it would rule out generators such as `RandomDevice`.
-        Threads.@spawn let task_vi = copy(vi)
-            map(idxs) do i
-                evaluate(Random.Xoshiro(seeds[i]), task_vi, params_with_stats[i])
-            end
-        end
-    end
-    return reshape(reduce(vcat, fetch.(tasks)), size(params_with_stats))
+    samples = AbstractMCMC.to_samples(DynamicPPL.ParamsWithStats, chain, model)
+    return DynamicPPL.reevaluate_with_chain(
+        rng, model, AbstractMCMC.SamplingOutput(samples), accs, fallback; kwargs...
+    )
 end
 function reevaluate_with_chain(
     model::DynamicPPL.Model,
@@ -436,7 +389,7 @@ function DynamicPPL.predict(
             names(chain_result, :parameters),
         )
     end
-    return chain_result[parameter_names]
+    return with_iterations(chain_result[parameter_names], chain)
 end
 function DynamicPPL.predict(model::DynamicPPL.Model, chain::MCMCChains.Chains; kwargs...)
     return DynamicPPL.predict(DynamicPPL.Random.default_rng(), model, chain; kwargs...)
@@ -528,7 +481,9 @@ function _pointwise_logdensities_chain(
             dense_logprobs = DynamicPPL.densify!!(logprobs)
             DynamicPPL.ParamsWithStats(dense_logprobs, (;))
         end
-    return AbstractMCMC.from_samples(MCMCChains.Chains, pointwise_logps)
+    return with_iterations(
+        AbstractMCMC.from_samples(MCMCChains.Chains, pointwise_logps), chain
+    )
 end
 
 """

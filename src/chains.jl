@@ -262,6 +262,59 @@ _sampling_output_params(draw::ParamsWithStats) = draw.params
 _sampling_output_params(draw::VarNamedTuple) = draw
 
 """
+    chunk_ranges(n::Int, nchunks::Int)
+
+Split `1:n` into at most `nchunks` contiguous ranges of as equal length as possible.
+"""
+function chunk_ranges(n::Int, nchunks::Int)
+    nchunks = min(nchunks, n)
+    bounds = round.(Int, range(0, n; length=(nchunks + 1)))
+    return [(bounds[i] + 1):bounds[i + 1] for i in 1:nchunks]
+end
+
+"""
+    reevaluate_with_chain(rng, model, chain::SamplingOutput, accs, fallback=nothing; multithreaded=false)
+
+Evaluate the model at each draw using the given accumulators and return `(retval, varinfo)` pairs.
+Threaded evaluation uses a separate seeded RNG for each draw and a copy of the accumulators for each task.
+"""
+function reevaluate_with_chain(
+    rng::Random.AbstractRNG,
+    model::DynamicPPL.Model,
+    chain::AbstractMCMC.SamplingOutput,
+    accs::NTuple{N,DynamicPPL.AbstractAccumulator},
+    fallback::Union{DynamicPPL.AbstractInitStrategy,Nothing}=nothing;
+    multithreaded::Bool=false,
+) where {N}
+    params_with_stats = chain.samples
+    vi = DynamicPPL.VarInfo(DynamicPPL.AccumulatorTuple(accs))
+    function evaluate(r, v, ps)
+        return DynamicPPL.init!!(
+            r,
+            model,
+            v,
+            DynamicPPL.InitFromParams(_sampling_output_params(ps), fallback),
+            DynamicPPL.UnlinkAll(),
+        )
+    end
+    if !multithreaded || isempty(params_with_stats)
+        return map(ps -> evaluate(rng, vi, ps), params_with_stats)
+    end
+    seeds = rand(rng, UInt, length(params_with_stats))
+    tasks = map(chunk_ranges(length(params_with_stats), Threads.nthreads())) do idxs
+        # An accumulator may hold mutable state, so no two tasks share a varinfo. Each sample
+        # gets a fresh generator built from its own seed, so `rng` only has to produce the
+        # seeds: copying it would rule out generators such as `RandomDevice`.
+        Threads.@spawn let task_vi = copy(vi)
+            map(idxs) do i
+                evaluate(Random.Xoshiro(seeds[i]), task_vi, params_with_stats[i])
+            end
+        end
+    end
+    return reshape(reduce(vcat, fetch.(tasks)), size(params_with_stats))
+end
+
+"""
     convert(::Type{T}, output::AbstractMCMC.SamplingOutput)
 
 Convert structured `SamplingOutput` draws to an `AbstractMCMC.AbstractChains` type using
@@ -400,15 +453,26 @@ Sample predictions using each draw's parameters, drawing absent variables from t
 Return a `SamplingOutput` with the input's iteration indices and freshly evaluated log
 probabilities. Set `include_all=true` to retain parameters supplied by each input draw.
 Sampling times and sampler states are not carried over to the predictions.
+Set `multithreaded=true` to evaluate draws in parallel using a separate RNG seeded for each draw.
 """
 function predict(
     rng::Random.AbstractRNG,
     model::Model,
     chain::AbstractMCMC.SamplingOutput{<:Union{ParamsWithStats,VarNamedTuple}};
     include_all::Bool=false,
+    multithreaded::Bool=false,
 )
-    predictions = map(chain.samples) do draw
-        predict(rng, model, _sampling_output_params(draw); include_all)
+    evaluate(rng, draw) = predict(rng, model, _sampling_output_params(draw); include_all)
+    predictions = if multithreaded && !isempty(chain.samples)
+        seeds = rand(rng, UInt, length(chain.samples))
+        tasks = map(chunk_ranges(length(seeds), Threads.nthreads())) do indices
+            Threads.@spawn map(
+                i -> evaluate(Random.Xoshiro(seeds[i]), chain.samples[i]), indices
+            )
+        end
+        reshape(reduce(vcat, fetch.(tasks)), size(chain))
+    else
+        map(draw -> evaluate(rng, draw), chain.samples)
     end
     return AbstractMCMC.SamplingOutput(predictions; iterations=chain.iterations)
 end

@@ -1,5 +1,8 @@
 # 0.43.0 (unreleased)
 
+  - `predict` on `SamplingOutput` did not accept `multithreaded=true` ([#1530](https://github.com/TuringLang/DynamicPPL.jl/pull/1530)).
+  - `predict` and pointwise log-density functions lost iteration labels when returning `MCMCChains.Chains` ([#1530](https://github.com/TuringLang/DynamicPPL.jl/pull/1530)).
+
 `predict([rng,] model, params::VarNamedTuple)` now predicts from a single draw and returns a `ParamsWithStats`; set `include_all=true` to retain supplied parameters.
 
 Fixed `VarNamedTuple` world-age errors when loading without a valid precompiled cache.
