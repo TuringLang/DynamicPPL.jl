@@ -93,8 +93,9 @@ function _check_local_shape(model, vn, local_value, role; submodel=false)
     )
     if root.value isa VarNamedTuples.PartialArray
         local_value isa Union{AbstractArray,Tuple} &&
-            axes(root.value.data) == axes(local_value) ||
-            _throw_binding_error(vn, "local storage shape changed")
+            axes(root.value.data) == axes(local_value) || _throw_local_shape_error(
+            VarName{AbstractPPL.getsym(vn)}(), root.value.data, local_value
+        )
     end
     for constraint in root.constraints
         (; owner, storage) = constraint
@@ -104,16 +105,28 @@ function _check_local_shape(model, vn, local_value, role; submodel=false)
         value = _binding_node_at(local_value, AbstractPPL.getoptic(owner))
         value === nothing && _throw_binding_error(vn, "local storage omits bound fields")
         _matches_local_shape(storage, value) ||
-            _throw_binding_error(vn, "local storage shape changed")
+            _throw_local_shape_error(owner, storage, value)
     end
     return nothing
 end
-function _check_local_shape(binding, value, optic, vn, role; submodel=false)
+function _throw_local_shape_error(vn, bound, local_value)
+    detail =
+        if bound isa Union{AbstractArray,Tuple} &&
+            local_value isa Union{AbstractArray,Tuple}
+            "; bound axes $(axes(bound)), local axes $(axes(local_value))"
+        else
+            ""
+        end
+    return _throw_binding_error(vn, "local storage shape changed" * detail)
+end
+function _check_local_shape(
+    binding, value, optic, vn, role; submodel=false, owner=VarName{AbstractPPL.getsym(vn)}()
+)
     binding isa Union{Nothing,NoBinding} && return nothing
     submodel && optic isa AbstractPPL.Iden && return nothing
     if binding isa BoundValue{role} && !_skip_bound_shape_check(binding.value)
         _matches_local_shape(binding.value, value) ||
-            _throw_binding_error(vn, "local storage shape changed")
+            _throw_local_shape_error(owner, binding.value, value)
     end
     (optic isa AbstractPPL.Iden || submodel && optic.child isa AbstractPPL.Iden) &&
         return nothing
@@ -132,7 +145,15 @@ function _check_local_shape(binding, value, optic, vn, role; submodel=false)
     local_child = _binding_node_at(value, head)
     local_child === nothing &&
         _throw_binding_error(vn, "local storage omits a bound address")
-    return _check_local_shape(child, local_child, optic.child, vn, role; submodel)
+    return _check_local_shape(
+        child,
+        local_child,
+        optic.child,
+        vn,
+        role;
+        submodel,
+        owner=AbstractPPL.append_optic(owner, head),
+    )
 end
 function _check_address_kind(value, optic, prefix=AbstractPPL.Iden())
     optic isa AbstractPPL.Iden && return nothing
@@ -805,10 +826,12 @@ end
 end
 function _throw_unsupported_storage(value, vn)
     VarNamedTuples._check_tuple_storage(value)
-    return _throw_binding_error(
-        vn,
-        "unsupported binding storage $(typeof(value)); bind the whole value or use supported storage",
-    )
+    remedy = if value isa AbstractArray
+        "use collect or pass a plain Array before constructing the model (axes or metadata may be lost)"
+    else
+        "use supported Array/NamedTuple storage and matching index/field addresses"
+    end
+    return _throw_binding_error(vn, "unsupported binding storage $(typeof(value)); $remedy")
 end
 function _check_partial_storage(value, vn)
     if _binding_optic(value) === nothing &&

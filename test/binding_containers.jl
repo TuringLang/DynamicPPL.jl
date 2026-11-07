@@ -72,6 +72,34 @@ end
         end
     end
 end
+@testset "unsupported array storage remedy" begin
+    for data in (view(zeros(2), :), OffsetArray(zeros(2), 0:1), 1.0:2.0),
+        (bind, remove, _) in BINDING_ROLES
+
+        entered = Ref(false)
+        model = if bind === condition
+            element_storage(data, entered)
+        else
+            fix(element_storage(nothing, entered); x=data)
+        end
+        err = try
+            if bind === condition
+                remove(model)
+            else
+                remove(model, @varname(x[firstindex(data)]))
+            end
+        catch e
+            e
+        end
+        @test err isa ArgumentError
+        @test occursin(
+            "use collect or pass a plain Array before constructing the model",
+            sprint(showerror, err),
+        )
+        plain = decondition(element_storage(collect(data), entered))
+        @test length(plain(Xoshiro(1))) == 2
+    end
+end
 @testset "latent tuples rebuild at the write" begin
     entered = Ref(false)
     data = (1.0, 2.0)
@@ -127,7 +155,7 @@ end
         entered = Ref(false)
         model = decondition(field_storage(data, entered))
         @test_throws ArgumentError(
-            "`x.a[1]`: unsupported binding storage $(typeof(data)); bind the whole value or use supported storage",
+            "`x.a[1]`: unsupported binding storage $(typeof(data)); use supported Array/NamedTuple storage and matching index/field addresses",
         ) model(Xoshiro(1))
         @test entered[]
         @test data.a == [1.0]
@@ -137,7 +165,7 @@ end
         d = Dict(:a => 1.0)
         model = decondition(inserted_dictionary(Any[0.0], d, true))
         @test_throws ArgumentError(
-            "`x[1][:a]`: unsupported binding storage $(typeof(d)); bind the whole value or use supported storage",
+            "`x[1][:a]`: unsupported binding storage $(typeof(d)); use supported Array/NamedTuple storage and matching index/field addresses",
         ) model(Xoshiro(1))
         @test d[:a] == 1.0
     end

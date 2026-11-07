@@ -42,6 +42,10 @@ Submodel observations: `to_submodel(inner(y, x))` → `to_submodel(condition(inn
 
 Bindings live on `Model`; conditioning/fixing contexts are removed: context inspection → `conditioned(model)` / `fixed(model)` and the public binding functions. See [binding migration](docs/src/conditionfix.md#migration-to-model-owned-bindings).
 
+Argument bindings now apply before the model body runs: in `fix(f(missing); x=0.0)`, an `ismissing(x)` check before `x ~ ...` previously saw `missing` and returned `true`; it now sees `0.0` and returns `false`. If the branch must depend on the original input's missingness, pass that information as a separate argument.
+
+`contextualize(new, old.context)` no longer transfers bindings: with `old = condition(f(missing); x=1.0)` and `new = f(missing)`, it previously bound `x=1.0`; it now leaves `x` unbound. When addresses and storage match, use `new = unfix(decondition(new)); new = condition(new, conditioned(old)); new = fix(new, fixed(old))`. Reapply removal instructions and child-body bindings separately; preserve prefixes and replay whole-value resizes before dependent partial removals. See [binding migration](docs/src/conditionfix.md#migration-to-model-owned-bindings).
+
 Dictionary bindings: `model | Dict(@varname(x) => v)` → `condition(model, @varname(x) => v)`. See [binding migration](docs/src/conditionfix.md#migration-to-model-owned-bindings).
 
 Indexed partial bindings require storage: `condition(m, @varname(z[1].x) => v)` → `condition(m, @varname(z[1].x) => v, @of(z = of(Array, n)))`. See [binding migration](docs/src/conditionfix.md#migration-to-model-owned-bindings).

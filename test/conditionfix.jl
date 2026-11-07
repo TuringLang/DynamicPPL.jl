@@ -383,8 +383,7 @@ end
 
 @testset "Unitful exact partial conversion" begin
     for (bind, _, listing) in BINDING_ROLES,
-        (T, inexact, error) in
-        ((Float32, 0.1u"m", ArgumentError), (Int, 0.5u"m", InexactError))
+        (T, inexact) in ((Float32, 0.1u"m"), (Int, 0.5u"m"))
 
         data = T[1, 2]u"m"
         model = decondition(interface_storage(data))
@@ -393,7 +392,7 @@ end
         result = DynamicPPL.prepare_model_argument(bound, @varname(x), data)
         @test result == T[3, 2]u"m"
         @test eltype(result) === eltype(data)
-        @test_throws error bind(model, @varname(x[1]) => inexact)
+        @test_throws ArgumentError bind(model, @varname(x[1]) => inexact)
     end
 end
 
@@ -411,7 +410,7 @@ end
         latent = decondition(interface_nested(data))
         bound = condition(latent; x=[[5.0, 6.0]])
         data[1] = view([1.0, 2.0], :)
-        message = "`x[1]`: unsupported binding storage $(typeof(data[1])); bind the whole value or use supported storage"
+        message = "`x[1]`: unsupported binding storage $(typeof(data[1])); use collect or pass a plain Array before constructing the model (axes or metadata may be lost)"
         @test_throws ArgumentError(message) latent(Xoshiro(1))
         @test decondition(bound, @varname(x[1][1]))(Xoshiro(1)) ==
             [[rand(Xoshiro(1), Normal()), 6.0]]
@@ -457,6 +456,45 @@ end
     end
 end
 
+@testset "inexact binding diagnostics" begin
+    for (bind, _, _) in BINDING_ROLES
+        for data in ([1, 2], (1, 2), Float32[1, 2])
+            value = eltype(data) === Float32 ? 0.1 : 1.5
+            binding_error(
+                "`x[1]`",
+                "conversion of $value into storage element type $(eltype(data)) is inexact",
+            ) do
+                bind(decondition(binding_array(data)), @varname(x[1]) => value)
+            end
+        end
+        for (storage, value) in ((1, 1.5), (1.0f0, 0.1))
+            binding_error(
+                "`x.b`",
+                "conversion of $value into storage element type $(typeof(storage)) is inexact",
+            ) do
+                bind(
+                    decondition(binding_fields((a=zeros(2), b=storage))),
+                    @varname(x.b) => value,
+                )
+            end
+        end
+    end
+end
+
+@testset "local shape diagnostics" begin
+    @model local_fields() = (x = (a=zeros(2),); x.a[1] ~ Normal(); x)
+    for (bind, _, _) in BINDING_ROLES
+        binding_error("`x`:", "bound axes (Base.OneTo(3),), local axes (Base.OneTo(2),)") do
+            logjoint(bind(binding_local(); x=ones(3)), (;))
+        end
+        binding_error(
+            "`x.a`:", "bound axes (Base.OneTo(3),), local axes (Base.OneTo(2),)"
+        ) do
+            logjoint(bind(local_fields(), @varname(x.a) => ones(3)), (;))
+        end
+    end
+end
+
 @testset "exact conversion and storage lifetime" begin
     @model nested_arrays(x) = (x[1][1] ~ Normal(); x)
     for (bind, remove, listing) in BINDING_ROLES
@@ -468,8 +506,8 @@ end
             @test listing(m)[@varname(x[1])] == T(0.5)
             @test m(Xoshiro(1))[1] == T(0.5)
         end
-        for (T, value, error) in ((Float32, 0.1, ArgumentError), (Int, 0.5, InexactError))
-            @test_throws error bind(
+        for (T, value) in ((Float32, 0.1), (Int, 0.5))
+            @test_throws ArgumentError bind(
                 binding_local(), @varname(x[1]) => value, @of(x = of(Array, T, 2))
             )
         end

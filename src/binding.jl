@@ -415,6 +415,19 @@ function _matches_local_shape(a, b)
     end
     return true
 end
+function _convert_exact(::Type{T}, value, vn) where {T}
+    try
+        converted = convert(T, value)
+        isequal(converted, value) && return converted
+    catch err
+        err isa InexactError || rethrow()
+    end
+    element_type = T <: Union{AbstractArray,Tuple} ? eltype(T) : T
+    return _throw_binding_error(
+        vn,
+        "conversion of $(repr(value)) into storage element type $element_type is inexact",
+    )
+end
 function _convert_to_storage(value, storage, vn)
     storage = _unwrap_storage(storage)
     storage isa NoTemplate && return value
@@ -429,11 +442,7 @@ function _convert_to_storage(value, storage, vn)
         )
         return ConstructionBase.setproperties(value, NamedTuple{names}(fields))
     end
-    T = typeof(storage)
-    converted = convert(T, value)
-    isequal(converted, value) ||
-        _throw_binding_error(vn, "conversion into retained storage is inexact")
-    return converted
+    return _convert_exact(typeof(storage), value, vn)
 end
 function _check_partial_storage(value, optic, vn)
     optic isa AbstractPPL.Iden && return nothing
@@ -450,13 +459,11 @@ function _convert_partial(value, storage, optic, vn)
     storage = _unwrap_storage(storage)
     storage isa NoTemplate && return value
     if _binding_optic(storage) === AbstractPPL.Index && optic.child isa AbstractPPL.Iden
-        converted = convert(eltype(storage), value)
+        converted = _convert_exact(eltype(storage), value, vn)
         previous = _binding_node_at(storage, head)
         previous === nothing ||
             _same_shape(previous, converted) ||
             _throw_binding_error(vn, "value disagrees with retained shape")
-        isequal(converted, value) ||
-            _throw_binding_error(vn, "conversion into storage is inexact")
         return converted
     end
     child = _binding_node_at(storage, head)
