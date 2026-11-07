@@ -1,5 +1,7 @@
 # 0.43.0 (unreleased)
 
+- `predict` on `SamplingOutput` did not accept `multithreaded=true`.
+
 `predict([rng,] model, params::VarNamedTuple)` now predicts from a single draw and returns a `ParamsWithStats`; set `include_all=true` to retain supplied parameters.
 
 Fixed `VarNamedTuple` world-age errors when loading without a valid precompiled cache.

@@ -265,6 +265,31 @@ end
         @test logjoint(m(), restored) ≈ only(logjoint(m(), full))
     end
 end
+@testset "SamplingOutput threaded prediction" begin
+    @model function threaded_prediction(y)
+        x ~ Normal()
+        return y ~ Normal(x, 1)
+    end
+    output = SamplingOutput(
+        [VarNamedTuple(; x=i / 10) for i in 1:5, j in 1:2]; iterations=3:2:11
+    )
+    for include_all in (false, true)
+        predicted = predict(
+            Xoshiro(3),
+            threaded_prediction(missing),
+            output;
+            multithreaded=true,
+            include_all,
+        )
+        seeds = rand(Xoshiro(3), UInt, length(output.samples))
+        expected = map(eachindex(output.samples)) do i
+            predict(Xoshiro(seeds[i]), threaded_prediction(missing), output[i]; include_all)
+        end
+        @test vec(predicted.samples) == expected
+        @test predicted.iterations == output.iterations
+        @test all(ismissing, predicted.sampler_states)
+    end
+end
 @info "Completed $(@__FILE__) in $(now() - __now__)."
 
 end # module
