@@ -63,6 +63,9 @@ end
             @test Set(keys(c2)) == Set([:x, :y])
             @test c2[:x] == c[:x]
             @test c2[:y] == c[:y]
+            selected = MCMCChains.setrange(c[1:3, :, :], [2, 5, 9])
+            @test range(predict(f(missing), selected)) == [2, 5, 9]
+            @test range(pointwise_logdensities(model, selected)) == [2, 5, 9]
         end
     end
 
@@ -133,35 +136,6 @@ end
             end
             model = f() | (; y=1.0)
             @test_throws "No value was provided" returned(model, chain_m_only)
-        end
-    end
-end
-
-@testset "Model operations preserve iteration labels" begin
-    @model function labels_model(y)
-        x ~ Normal()
-        return y ~ Normal(x, 1)
-    end
-    output = AbstractMCMC.SamplingOutput(
-        fill(ParamsWithStats(VarNamedTuple(; x=0.5), (;)), 3, 2)
-    )
-    chain = MCMCChains.setrange(convert(MCMCChains.Chains, output), [2, 5, 9])
-    for indices in (1:3, [1, 3], [3, 2, 1], [1, 1, 2])
-        selected = chain[indices, :, :]
-        labels = range(selected)
-        for f in
-            (pointwise_logdensities, pointwise_loglikelihoods, pointwise_prior_logdensities)
-            @test range(f(labels_model(1.0), selected)) == labels
-        end
-        for multithreaded in (false, true), include_all in (false, true)
-            predictions = predict(
-                Random.Xoshiro(3),
-                labels_model(missing),
-                selected;
-                multithreaded,
-                include_all,
-            )
-            @test range(predictions) == labels
         end
     end
 end

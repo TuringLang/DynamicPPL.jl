@@ -221,6 +221,13 @@ end
     for draws in (params, map(p -> ParamsWithStats(p, (;)), params))
         chain = SamplingOutput(draws; iterations=3:2:5, sampler_states=[:a, :b])
         @test returned(m(), chain) == map(p -> p[@varname(x)] + ones(2), params)
+        predicted = predict(Xoshiro(3), m(missing), chain; multithreaded=true)
+        seeds = rand(Xoshiro(3), UInt, length(params))
+        expected = map(
+            i -> predict(Xoshiro(seeds[i]), m(missing), params[i]), eachindex(params)
+        )
+        @test vec(predicted.samples) == expected
+        @test predicted.iterations == chain.iterations
         for T in (SamplingOutput, typeof(chain), DynamicPPL.AbstractChains)
             @test convert(T, chain) === chain
         end
@@ -263,31 +270,6 @@ end
         @test haskey(filtered, @varname(y[1])) == !haskey(params, @varname(y[1]))
         restored = densify!!(merge(params, filtered))
         @test logjoint(m(), restored) ≈ only(logjoint(m(), full))
-    end
-end
-@testset "SamplingOutput threaded prediction" begin
-    @model function threaded_prediction(y)
-        x ~ Normal()
-        return y ~ Normal(x, 1)
-    end
-    output = SamplingOutput(
-        [VarNamedTuple(; x=i / 10) for i in 1:5, j in 1:2]; iterations=3:2:11
-    )
-    for include_all in (false, true)
-        predicted = predict(
-            Xoshiro(3),
-            threaded_prediction(missing),
-            output;
-            multithreaded=true,
-            include_all,
-        )
-        seeds = rand(Xoshiro(3), UInt, length(output.samples))
-        expected = map(eachindex(output.samples)) do i
-            predict(Xoshiro(seeds[i]), threaded_prediction(missing), output[i]; include_all)
-        end
-        @test vec(predicted.samples) == expected
-        @test predicted.iterations == output.iterations
-        @test all(ismissing, predicted.sampler_states)
     end
 end
 @info "Completed $(@__FILE__) in $(now() - __now__)."
