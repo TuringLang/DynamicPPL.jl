@@ -8,15 +8,16 @@ using Distributions:
     InverseWishart,
     LKJCholesky,
     Normal,
+    MvNormal,
     product_distribution,
     truncated
 using DifferentiationInterface: DifferentiationInterface
-using DynamicPPL: DynamicPPL, @model, to_submodel, VarInfo, LinkAll, UnlinkAll
+using DynamicPPL: DynamicPPL, @model, fix, to_submodel, VarInfo, LinkAll, UnlinkAll
 using DynamicPPL.TestUtils.AD: run_ad, NoTest
 using Enzyme: Enzyme
 using FillArrays: Fill
 using ForwardDiff: ForwardDiff
-using LinearAlgebra: cholesky
+using LinearAlgebra: cholesky, I
 using Mooncake: Mooncake
 using Printf: @sprintf
 using ReverseDiff: ReverseDiff
@@ -37,6 +38,20 @@ using StableRNGs: StableRNG
     x ~ Normal()
     obs ~ Normal(x, 1)
     return (; x=x)
+end
+
+"Model an observation supplied through a `NamedTuple` argument field."
+@model function namedtuple_field(p)
+    x ~ Normal()
+    p.a ~ Normal(x, 1)
+    return (; x)
+end
+
+"Model an `MvNormal` observation supplied as an argument."
+@model function mvnormal_observation(obs)
+    x ~ Normal()
+    obs ~ MvNormal(Fill(x, length(obs)), I)
+    return (; x)
 end
 
 """
@@ -314,6 +329,12 @@ function build_combinations(rng)
     models = Tuple{String,DynamicPPL.Model}[
         ("Simple assume observe", simple_assume_observe(randn(rng))), ("Smorgasbord", smorg)
     ]
+    push!(models, ("Smorgasbord fixed", fix(smorg; m=1.0, stds=ones(100))))
+    push!(models, ("NamedTuple-field LHS variable", namedtuple_field((; a=1.0))))
+    push!(
+        models,
+        ("MvNormal argument-supplied observation", mvnormal_observation(randn(rng, 100))),
+    )
     for n in (1_000, 10_000)
         data = randn(rng, n)
         push!(models, ("Loop univariate $(n ÷ 1_000)k", loop_univariate(n) | (; o=data)))
