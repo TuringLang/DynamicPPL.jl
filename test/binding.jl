@@ -1,4 +1,4 @@
-module BindingContainerTests
+module BindingTests
 
 using DynamicPPL, Distributions, Test
 using AbstractPPL: AbstractPPL, @of, of
