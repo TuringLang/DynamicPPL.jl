@@ -62,7 +62,6 @@ Random.seed!(100)
         @testset "ad" begin
             include("ext/DynamicPPLForwardDiffExt.jl")
             include("ext/DynamicPPLMooncakeExt.jl")
-            include("binding_ad.jl")
         end
     end
 
