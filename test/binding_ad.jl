@@ -5,6 +5,7 @@ using DynamicPPL, Distributions, Test
 using DifferentiationInterface: DifferentiationInterface
 using AbstractPPL: @of, of
 using ForwardDiff: ForwardDiff
+using LinearAlgebra: I
 using StaticArrays: SVector
 using Mooncake: Mooncake
 using ReverseDiff: ReverseDiff
@@ -118,6 +119,48 @@ end
         value, gradient = LogDensityProblems.logdensity_and_gradient(ldf, [0.5])
         @test value ≈ weight * logpdf(Normal(), 0.5)
         @test gradient ≈ [-weight * 0.5]
+    end
+end
+
+@model function partial_binding_child(x)
+    for i in eachindex(x)
+        x[i] ~ Normal()
+    end
+    return x
+end
+@model function partial_binding_parent()
+    z ~ MvNormal(zeros(2), I)
+    return a ~ to_submodel(
+        condition(decondition(partial_binding_child(copy(z))), @varname(x[1]) => 0.0)
+    )
+end
+@model function latent_partial_binding_parent()
+    m ~ Normal()
+    return a ~ to_submodel(
+        condition(decondition(partial_binding_child(fill(zero(m), 2))), @varname(x[1]) => m)
+    )
+end
+@model function latent_slice_binding_parent()
+    m ~ MvNormal(zeros(2), I)
+    return a ~ to_submodel(
+        condition(
+            decondition(partial_binding_child(zeros(eltype(m), 3))), @varname(x[1:2]) => m
+        ),
+    )
+end
+@testset "partial bindings constructed in a model" begin
+    for (model, params) in (
+        (partial_binding_parent(), [0.1, 0.2, 0.3]),
+        (latent_partial_binding_parent(), [0.1, 0.3]),
+        (latent_slice_binding_parent(), [0.1, 0.2, 0.3]),
+    )
+        results = map((AutoForwardDiff(), AutoMooncake())) do adtype
+            ldf = LogDensityFunction(model; adtype)
+            LogDensityProblems.logdensity_and_gradient(ldf, params)
+        end
+        @test results[2][1] ≈ results[1][1]
+        @test results[2][2] ≈ results[1][2]
+        @test !iszero(results[2][2][1])
     end
 end
 

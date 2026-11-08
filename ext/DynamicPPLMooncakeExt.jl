@@ -58,6 +58,17 @@ Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
     typeof(DynamicPPL._check_argument_aliasing),DynamicPPL.Model
 }
 
+# Mooncake rejects try/catch; these helpers return no differentiable data.
+Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
+    typeof(DynamicPPL._check_nested_selection),Vararg
+}
+Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
+    typeof(DynamicPPL._selection_indices),Vararg
+}
+Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
+    typeof(DynamicPPL._check_selection_shape),Vararg
+}
+
 Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
     Union{typeof(DynamicPPL.is_splat_symbol),typeof(DynamicPPL.unsplat_symbol)},Symbol
 }

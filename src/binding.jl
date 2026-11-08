@@ -311,15 +311,8 @@ function _expand_selection(
         _binding_node_at(node, head),
     )
 end
-function _expand_selection(storage, optic::AbstractPPL.Index, vn, value, node=nothing)
+function _selection_indices(storage, optic, vn)
     try
-        node isa BoundValue && (storage = node.value)
-        node isa VarNamedTuples.PartialArray &&
-            storage isa NoTemplate &&
-            (storage = node.data)
-        storage = _unwrap_storage(storage)
-        _binding_optic(storage) === AbstractPPL.Index ||
-            _throw_unsupported_storage(storage, AbstractPPL.append_optic(vn, optic))
         optic = AbstractPPL.concretize_top_level(optic, storage)
         selected = getindex(_positional_indices(storage), optic.ix...; optic.kw...)
         child = optic.child
@@ -328,46 +321,63 @@ function _expand_selection(storage, optic::AbstractPPL.Index, vn, value, node=no
             selected = getindex(selected, head.ix...; head.kw...)
             child = child.child
         end
-        if selected isa Union{Integer,CartesianIndex}
-            location = AbstractPPL.append_optic(
-                vn, AbstractPPL.Index(_index_tuple(selected), (;))
-            )
-            return _expand_selection(
-                _isassigned(storage, selected) ? storage[selected] : NoTemplate(),
-                child,
-                location,
-                value,
-                _binding_node_at(node, AbstractPPL.Index(_index_tuple(selected), (;))),
-            )
-        end
-        child isa AbstractPPL.Iden ||
-            _throw_binding_error(vn, "field access on an array selection is unsupported")
-        if !(value isa NoBinding)
-            if storage isa Tuple
-                value isa Union{Tuple,AbstractArray} ||
-                    _throw_binding_error(vn, "selection requires a tuple or array value")
-                length(value) == length(selected) ||
-                    _throw_binding_error(vn, "selection and value lengths must match")
-            else
-                value isa AbstractArray ||
-                    _throw_binding_error(vn, "selection requires an array value")
-                try
-                    Base.setindex_shape_check(value, size(selected)...)
-                catch err
-                    err isa DimensionMismatch || rethrow()
-                    _throw_binding_error(vn, "selection and value shapes must match")
-                end
-            end
-        end
-        return map(eachindex(selected)) do i
-            location = AbstractPPL.append_optic(
-                vn, AbstractPPL.Index(_index_tuple(selected[i]), (;))
-            )
-            (location, value isa NoBinding ? value : value[i])
-        end
+        return selected, child
     catch err
         err isa BoundsError || rethrow()
         _throw_binding_error(vn, "index is outside retained storage")
+    end
+end
+function _check_selection_shape(value, selected, vn)
+    try
+        Base.setindex_shape_check(value, size(selected)...)
+        for i in eachindex(selected)
+            checkbounds(value, i)
+        end
+    catch err
+        err isa BoundsError && _throw_binding_error(vn, "index is outside retained storage")
+        err isa DimensionMismatch || rethrow()
+        _throw_binding_error(vn, "selection and value shapes must match")
+    end
+    return nothing
+end
+function _expand_selection(storage, optic::AbstractPPL.Index, vn, value, node=nothing)
+    node isa BoundValue && (storage = node.value)
+    node isa VarNamedTuples.PartialArray && storage isa NoTemplate && (storage = node.data)
+    storage = _unwrap_storage(storage)
+    _binding_optic(storage) === AbstractPPL.Index ||
+        _throw_unsupported_storage(storage, AbstractPPL.append_optic(vn, optic))
+    selected, child = _selection_indices(storage, optic, vn)
+    if selected isa Union{Integer,CartesianIndex}
+        location = AbstractPPL.append_optic(
+            vn, AbstractPPL.Index(_index_tuple(selected), (;))
+        )
+        return _expand_selection(
+            _isassigned(storage, selected) ? storage[selected] : NoTemplate(),
+            child,
+            location,
+            value,
+            _binding_node_at(node, AbstractPPL.Index(_index_tuple(selected), (;))),
+        )
+    end
+    child isa AbstractPPL.Iden ||
+        _throw_binding_error(vn, "field access on an array selection is unsupported")
+    if !(value isa NoBinding)
+        if storage isa Tuple
+            value isa Union{Tuple,AbstractArray} ||
+                _throw_binding_error(vn, "selection requires a tuple or array value")
+            length(value) == length(selected) ||
+                _throw_binding_error(vn, "selection and value lengths must match")
+        else
+            value isa AbstractArray ||
+                _throw_binding_error(vn, "selection requires an array value")
+            _check_selection_shape(value, selected, vn)
+        end
+    end
+    return map(eachindex(selected)) do i
+        location = AbstractPPL.append_optic(
+            vn, AbstractPPL.Index(_index_tuple(selected[i]), (;))
+        )
+        (location, value isa NoBinding ? value : value[i])
     end
 end
 
@@ -415,6 +425,7 @@ function _matches_local_shape(a, b)
     end
     return true
 end
+_convert_exact(::Type{T}, value::T, vn) where {T} = value
 function _convert_exact(::Type{T}, value, vn) where {T}
     try
         converted = convert(T, value)
