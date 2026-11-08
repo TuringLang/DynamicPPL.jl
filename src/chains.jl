@@ -276,7 +276,10 @@ end
     reevaluate_with_chain(rng, model, chain::SamplingOutput, accs, fallback=nothing; multithreaded=false)
 
 Evaluate the model at each draw using the given accumulators and return `(retval, varinfo)` pairs.
-Threaded evaluation uses a separate seeded RNG for each draw and a copy of the accumulators for each task.
+Use `InitFromPrior()` as `fallback` to sample parameters missing from a draw.
+Serial evaluation uses the supplied RNG directly.
+Threaded evaluation seeds a separate RNG for each draw before starting tasks.
+Each task uses a copy of the accumulators.
 """
 function reevaluate_with_chain(
     rng::Random.AbstractRNG,
