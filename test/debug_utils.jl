@@ -33,8 +33,7 @@ end
                     (; y, checking=true),
                     __model__.defaults,
                     __model__.prefix,
-                    __model__.values,
-                    __model__.context;
+                    __model__.values;
                     args_on_lhs=DynamicPPL._lhs_arguments(__model__),
                 )
                 @test check_model(child)
@@ -358,6 +357,9 @@ end
             codeinfo, retype = DynamicPPL.DebugUtils.model_typed(model)
             @test codeinfo isa Core.CodeInfo
             @test retype <: Tuple
+            context = Context(Xoshiro(1), InitFromParams((; y=2.0)), UnlinkAll())
+            _, retype = DynamicPPL.DebugUtils.model_typed(model, VarInfo(); context)
+            @test retype <: Tuple{Float64,VarInfo}
 
             # Just make sure the following is runnable.
             @test DynamicPPL.DebugUtils.model_warntype(model) isa Any
@@ -371,7 +373,7 @@ end
     @model unused_template() = x ~ Normal()
     model = condition(unused_template(), (x=1.0,), @of(typo = of(Array, Float64, 2)))
     manual = Model{false}((args...) -> nothing, (;), (;))
-    ctx = DynamicPPL.DebugUtils.BindingCheckContext(DefaultContext())
+    ctx = DynamicPPL.DebugUtils.BindingCheckStrategy(InitFromPrior())
     push!(ctx.models, (manual, VarName[]), (model, VarName[]))
     @test_logs (:warn, r"Binding template entry `typo`") DynamicPPL.DebugUtils._warn_unused_templates(
         ctx

@@ -345,7 +345,7 @@ end
 end
 function tilde_assume!!(
     parent::Model,
-    context::AbstractContext,
+    context::Context,
     submodel::Submodel{M},
     vn::VarName,
     template,
@@ -385,8 +385,7 @@ function tilde_assume!!(
     child = _with_prefix(child, vn, template, child.values)
     _check_argument_bindings(child)
     _check_argument_aliasing(child)
-    child = setleafcontext(child, context)
-    args, kwargs = make_evaluate_args_and_kwargs(child, vi)
+    args, kwargs = make_evaluate_args_and_kwargs(child, context, vi)
     return child.f(args...; kwargs...)
 end
 function tilde_observe!!(prefix, ::Submodel, left, ::Nothing, template, vi)

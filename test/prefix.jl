@@ -11,6 +11,24 @@ using Random: Xoshiro
 __now__ = now()
 
 @testset "model prefixes" begin
+    @testset "evaluation: $(model.f)" for model in DynamicPPL.TestUtils.ALL_MODELS
+        prefix_vn = @varname(my_prefix)
+        new_model = DynamicPPL.prefix(model, prefix_vn)
+        # Initialize a new varinfo with the prefixed model
+        _, varinfo = DynamicPPL.init!!(
+            new_model, DynamicPPL.VarInfo(VectorValueAccumulator())
+        )
+        # Extract the resulting varnames
+        vns_actual = Set(keys(varinfo))
+
+        # Extract the ground truth varnames
+        vns_expected = Set([
+            AbstractPPL.prefix(vn, prefix_vn) for vn in DynamicPPL.TestUtils.varnames(model)
+        ])
+
+        # Check that all variables are prefixed correctly.
+        @test vns_actual == vns_expected
+    end
     @model function demo_prefix()
         x ~ Normal()
         y = Vector{Float64}(undef, 2)

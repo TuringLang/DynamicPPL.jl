@@ -1,16 +1,17 @@
-_binding_check_child(ctx::AbstractContext, parent, child, prefix, template) = ctx
-function _binding_check_child(ctx::AbstractParentContext, parent, child, prefix, template)
-    inner = childcontext(ctx)
-    checked = _binding_check_child(inner, parent, child, prefix, template)
-    return checked === inner ? ctx : setchildcontext(ctx, checked)
+function _binding_check_child(
+    strategy::AbstractInitStrategy, parent, child, prefix, template
+)
+    return strategy
 end
-_binding_check_model(::AbstractContext, model) = nothing
-function _binding_check_model(ctx::AbstractParentContext, model)
-    return _binding_check_model(childcontext(ctx), model)
+function _binding_check_child(ctx::Context, parent, child, prefix, template)
+    checked = _binding_check_child(ctx.strategy, parent, child, prefix, template)
+    return Context(ctx.rng, checked, ctx.transform_strategy)
 end
-_binding_check_read(::AbstractContext, model, vn, template) = nothing
-function _binding_check_read(ctx::AbstractParentContext, model, vn, template)
-    return _binding_check_read(childcontext(ctx), model, vn, template)
+_binding_check_model(::AbstractInitStrategy, model) = nothing
+_binding_check_model(ctx::Context, model) = _binding_check_model(ctx.strategy, model)
+_binding_check_read(::AbstractInitStrategy, model, vn, template) = nothing
+function _binding_check_read(ctx::Context, model, vn, template)
+    return _binding_check_read(ctx.strategy, model, vn, template)
 end
 
 Base.@constprop :aggressive function _argument_bindings(arguments, metadata)

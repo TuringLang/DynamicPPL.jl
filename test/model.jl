@@ -63,6 +63,46 @@ end
 const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
 
 @testset "model.jl" begin
+    @testset "prepared evaluator arguments apply effective bindings" begin
+        @model function prepared_bindings(observation, replaced; held=0.0)
+            observation ~ Normal()
+            replaced ~ Normal()
+            held ~ Normal()
+            return (; observation, replaced, held)
+        end
+        model = condition(prepared_bindings(1.0, 2.0); replaced=3.0)
+        model = fix(decondition(model, @varname(held)); held=4.0)
+        context = Context(Xoshiro(1), InitFromPrior(), UnlinkAll())
+        args, kwargs = DynamicPPL.make_evaluate_args_and_kwargs(model, context, VarInfo())
+        result, vi = model.f(args...; kwargs...)
+        @test result == (; observation=1.0, replaced=3.0, held=4.0)
+        @test getloglikelihood(vi) ≈ logpdf(Normal(), 1.0) + logpdf(Normal(), 3.0)
+        @test getlogprior(vi) == 0.0
+    end
+
+    @testset "direct construction without declared argument LHS variables" begin
+        @model covariate(x, y) = y ~ Normal(x)
+        f = covariate(0.0, 1.0).f
+        for m in (
+            DynamicPPL.Model{false}(f, (; x=missing, y=1.0), (;)),
+            DynamicPPL.Model{false}(f, (; x=missing); y=1.0),
+            DynamicPPL.Model{false}(
+                f,
+                (; x=missing, y=1.0),
+                (;),
+                nothing,
+                DynamicPPL.BindingTable(VarNamedTuple()),
+            ),
+        )
+            @test isempty(conditioned(m))
+            @test isempty(DynamicPPL._lhs_arguments(m))
+            @test ismissing(m.args.x)
+            @test_throws ArgumentError condition(m; y=2.0)
+            @test_throws ArgumentError fix(m; y=2.0)
+        end
+        @test conditioned(covariate(0.0, 1.0)) == VarNamedTuple(; y=1.0)
+    end
+
     @testset "direct construction preserves merged prefix metadata" begin
         @model prefixed_lhs(y) = y ~ Normal()
         original = prefixed_lhs(1.0)
@@ -76,11 +116,9 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
                 model.args,
                 model.defaults,
                 model.prefix,
-                model.values,
-                model.context;
+                model.values;
                 args_on_lhs=DynamicPPL._lhs_arguments(model),
             )
-            @test direct.context === model.context
             @test direct.prefix === model.prefix
             @test (@inferred DynamicPPL.getprefix(direct)) == DynamicPPL.getprefix(model)
             @test conditioned(direct) == conditioned(model)
@@ -444,7 +482,7 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
                     @inferred(
                         evaluate!!(
                             model,
-                            InitContext(
+                            Context(
                                 InitFromParams(get_values(varinfo), nothing), UnlinkAll()
                             ),
                             VarInfo(),
@@ -458,7 +496,7 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
                     @inferred(
                         evaluate!!(
                             model,
-                            InitContext(
+                            Context(
                                 InitFromParams(get_values(varinfo_linked), nothing),
                                 LinkAll(),
                             ),
