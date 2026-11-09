@@ -959,16 +959,18 @@ Return the arguments and keyword arguments to be passed to the evaluator of the 
 @generated function make_evaluate_args_and_kwargs(
     model::Model{_F,argnames}, varinfo::AbstractVarInfo
 ) where {_F,argnames}
+    # Call the helpers by name, not as `$f`: interpolation reads the binding in the
+    # generator's world, which predates `convert_model_argument` (an error since Julia 1.12).
     unwrap_args = [
         if is_splat_symbol(var)
             :(
-                $convert_model_argument(
-                    $get_param_eltype(varinfo, model.context), model.args.$var
+                convert_model_argument(
+                    get_param_eltype(varinfo, model.context), model.args.$var
                 )...
             )
         else
-            :($convert_model_argument(
-                $get_param_eltype(varinfo, model.context), model.args.$var
+            :(convert_model_argument(
+                get_param_eltype(varinfo, model.context), model.args.$var
             ))
         end for var in argnames
     ]

@@ -199,15 +199,13 @@ Check if any of the types in the `Values` tuple is or contains a `PartialArray`.
 
 Recurses into any sub-`VarNamedTuple`s.
 """
-@generated function _has_partial_array(
-    ::Type{VarNamedTuple{Names,Values}}
-) where {Names,Values}
+function _has_partial_array(::Type{VarNamedTuple{Names,Values}}) where {Names,Values}
     for T in Values.parameters
         if _has_partial_array(T)
-            return :(return true)
+            return true
         end
     end
-    return :(return false)
+    return false
 end
 
 _has_partial_array(::Type{T}) where {T} = false
