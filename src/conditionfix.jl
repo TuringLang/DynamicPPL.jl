@@ -65,7 +65,7 @@ function _argument_role(model, vn, argument, local_value=NoTemplate())
 end
 function _local_role(binding, vn, template, model, role=ConditionRole)
     optic = AbstractPPL.getoptic(vn)
-    address = maybe_prefix(vn, _model_prefix(model))
+    address = maybe_prefix(vn, getprefix(model))
     _check_address_kind(binding, optic, AbstractPPL.Property{AbstractPPL.getsym(address)}())
     node = _binding_node_at(binding, optic)
     node === nothing &&
@@ -220,9 +220,9 @@ function _flatten_bindings(input)
     )
 end
 function _relative_name(model, vn)
-    prefix = _model_prefix(model)
+    prefix = getprefix(model)
     prefix === nothing && return vn
-    template = _prefixed_template(_model_prefix_template(model), NoTemplate())
+    template = _prefixed_template(model.prefix, NoTemplate())
     depth = optic_skip_length(AbstractPPL.getoptic(prefix))
     prefix = _expand_cartesian(_concretize_prefix(prefix, template; depth, canonical=true))
     vn = _expand_cartesian(_concretize_prefix(vn, template; depth, canonical=true))
@@ -251,7 +251,7 @@ function _is_namespace(model, vn)
         name isa Symbol || continue
         child = get(arguments, name, nothing)
         child isa Model || continue
-        prefix = maybe_prefix(_model_prefix(child), site)
+        prefix = maybe_prefix(getprefix(child), site)
         subsumes(vn, prefix) && return true
         subsumes(prefix, vn) &&
             return _is_namespace(child, AbstractPPL.unprefix(vn, prefix))
@@ -538,7 +538,7 @@ function _bind(
     vn = VarName{only(N)}()
     old = _binding_root(model, vn)
     if isempty(kwargs) &&
-        _model_prefix(model) === nothing &&
+        getprefix(model) === nothing &&
         !any(is_splat_symbol, keys(model.defaults)) &&
         (
             old === nothing ||
@@ -561,7 +561,7 @@ function _bind(
         _check_argument_aliasing(result)
         return result
     end
-    return invoke(_bind, Tuple{Any,Any,Any}, model, R, inputs; kwargs...)
+    return invoke(_bind, Tuple{Any,Type{R},Any}, model, R, inputs; kwargs...)
 end
 function _bind(model, ::Type{R}, inputs; kwargs...) where {R}
     @nospecialize model
@@ -576,7 +576,7 @@ function _bind(model, ::Type{R}, inputs; kwargs...) where {R}
                 ArgumentError("Binding template must be the final positional argument")
             )
             schema = zero(input)
-            prefix = _model_prefix(model)
+            prefix = getprefix(model)
             if prefix !== nothing
                 schema = _binding_node_at(schema, AbstractPPL.varname_to_optic(prefix))
                 schema isa NamedTuple ||
@@ -595,7 +595,7 @@ function _bind(model, ::Type{R}, inputs; kwargs...) where {R}
             end
             local_vn = _relative_name(model, vn)
             if local_vn === nothing
-                prefix = _model_prefix(model)
+                prefix = getprefix(model)
                 optic = AbstractPPL._unprefix_optic(
                     AbstractPPL.getoptic(prefix), AbstractPPL.getoptic(vn)
                 )
@@ -609,6 +609,13 @@ function _bind(model, ::Type{R}, inputs; kwargs...) where {R}
                     )
                 end
             else
+                prefix = getprefix(model)
+                if prefix !== nothing && !(storage isa NoTemplate)
+                    root = AbstractPPL.prefix(
+                        VarName{AbstractPPL.getsym(local_vn)}(), prefix
+                    )
+                    storage = _binding_node_at(storage, AbstractPPL.getoptic(root))
+                end
                 entries = (
                     entries..., _split_namespace_entry(model, local_vn, value, storage)...
                 )
@@ -655,13 +662,10 @@ function _role_bindings(model, R)
         value = _role_values(root.value, R)
         value isa NoBinding || (result = setindex!!(result, value, VarName{name}()))
     end
-    prefix = _model_prefix(model)
+    prefix = getprefix(model)
     (prefix === nothing || isempty(result)) && return result
     return templated_setindex!!(
-        VarNamedTuple(),
-        result,
-        prefix,
-        _prefixed_template(_model_prefix_template(model), NoTemplate()),
+        VarNamedTuple(), result, prefix, _prefixed_template(model.prefix, NoTemplate())
     )
 end
 function _removal_hits(table, R, name)
@@ -866,7 +870,7 @@ function prepare_model_argument(model::Model, vn::VarName, value)
     root = _binding_root(model, vn)
     root === nothing && return _prepare_argument(nothing, value, vn)
     return _prepare_argument(
-        root.value, value, maybe_prefix(vn, _model_prefix(model)), root.storage
+        root.value, value, maybe_prefix(vn, getprefix(model)), root.storage
     )
 end
 @generated function _check_argument_bindings(model::Model{F,A,D}) where {F,A,D}
@@ -881,7 +885,7 @@ end
     model, ::Val{stored}, ::Val{name}
 ) where {stored,name}
     arguments = merge(model.args, model.defaults)
-    vn = maybe_prefix(VarName{name}(), _model_prefix(model))
+    vn = maybe_prefix(VarName{name}(), getprefix(model))
     root = _binding_root(model, VarName{name}())
     root === nothing && return nothing
     name in _lhs_arguments(model) || _throw_binding_error(vn, "covariates cannot be bound")
@@ -962,7 +966,7 @@ function _check_argument_aliasing(model)
             arrays,
             value,
             binding,
-            maybe_prefix(vn, _model_prefix(model)),
+            maybe_prefix(vn, getprefix(model)),
             Base.IdSet{Any}(),
             lhs ? _binding_root(model, vn).storage : value,
         )

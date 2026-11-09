@@ -23,6 +23,29 @@ function test_model_can_run_but_fails_check(model)
 end
 
 @testset "check_model" begin
+    @testset "provenance binding wrappers" begin
+        @model regression(y) = (μ ~ Normal(); y ~ Normal(μ))
+        @test check_model(prefix(regression(1.0), @varname(a)))
+        @model checked_child(y, checking=false) = begin
+            if !checking
+                child = DynamicPPL.Model{false}(
+                    __model__.f,
+                    (; y, checking=true),
+                    __model__.defaults,
+                    __model__.prefix,
+                    __model__.values,
+                    __model__.context;
+                    args_on_lhs=DynamicPPL._lhs_arguments(__model__),
+                )
+                @test check_model(child)
+            end
+            μ ~ Normal()
+            y ~ Normal(μ)
+        end
+        @model checked_parent() = a ~ to_submodel(condition(checked_child(missing); y=1.0))
+        @test VarInfo(checked_parent()) isa VarInfo
+    end
+
     @testset "binding warnings" begin
         @model warning_leaf() = x ~ Normal()
         @model function warning_parent(child, run=true)

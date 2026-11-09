@@ -179,14 +179,14 @@ function _child_bindings(parent, prefix, site)
             subsumes(prefix, location) ||
                 !_has_bound_value(value) ||
                 _throw_binding_error(
-                    maybe_prefix(location, _model_prefix(parent)),
+                    maybe_prefix(location, getprefix(parent)),
                     "address is outside child prefix $prefix",
                 )
         end
     end
     return _as_namespace(
         _binding_node_at(values, AbstractPPL.varname_to_optic(prefix)),
-        maybe_prefix(prefix, _model_prefix(parent)),
+        maybe_prefix(prefix, getprefix(parent)),
     )
 end
 function _inherited_constraints(parent, prefix, ::Val{name}) where {name}
@@ -217,7 +217,7 @@ function _inherited_constraints(parent, prefix, ::Val{name}) where {name}
 end
 function _merge_child_root(old, incoming, parent, prefix, ::Val{name}, child) where {name}
     vn = VarName{name}()
-    address = maybe_prefix(maybe_prefix(vn, prefix), _model_prefix(parent))
+    address = maybe_prefix(maybe_prefix(vn, prefix), getprefix(parent))
     _check_binding_address(child, vn, address)
     if incoming isa BoundValue && _is_namespace(child, vn)
         incoming = _as_namespace(incoming, address)
@@ -293,7 +293,7 @@ function _merge_child_root(old, incoming, parent, prefix, ::Val{name}, child) wh
         vn,
     ) do pair
         location, wrapped = pair
-        error_address = maybe_prefix(maybe_prefix(location, prefix), _model_prefix(parent))
+        error_address = maybe_prefix(maybe_prefix(location, prefix), getprefix(parent))
         value = _apply_constraints(
             wrapped.value,
             AbstractPPL.getoptic(location),
@@ -358,15 +358,13 @@ function tilde_assume!!(
     _check_local_shape(parent, vn, template, ConditionRole; submodel=true)
     _check_local_shape(parent, vn, template, FixRole; submodel=true)
     child = submodel.model
-    local_prefix = maybe_prefix(_model_prefix(child), vn)
+    local_prefix = maybe_prefix(getprefix(child), vn)
     context = _binding_check_child(context, parent, child, local_prefix, template)
     observations = _child_removals(parent.observation_removals, local_prefix, template)
     fixes = _child_removals(parent.fixed_removals, local_prefix, template)
     for (name, root) in pairs(child.values.roots.data)
         _has_role(ArgumentRole, root.value) && _throw_binding_error(
-            maybe_prefix(
-                maybe_prefix(VarName{name}(), local_prefix), _model_prefix(parent)
-            ),
+            maybe_prefix(maybe_prefix(VarName{name}(), local_prefix), getprefix(parent)),
             "submodels cannot observe through arguments",
         )
     end
@@ -391,6 +389,6 @@ function tilde_assume!!(
     args, kwargs = make_evaluate_args_and_kwargs(child, vi)
     return child.f(args...; kwargs...)
 end
-function tilde_observe!!(prefix, prefix_template, ::Submodel, left, ::Nothing, template, vi)
+function tilde_observe!!(prefix, ::Submodel, left, ::Nothing, template, vi)
     throw(ArgumentError("A submodel requires a named LHS"))
 end
