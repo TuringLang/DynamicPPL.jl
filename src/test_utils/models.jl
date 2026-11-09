@@ -63,7 +63,7 @@ end
 """
     demo_one_variable_multiple_constraints()
 
-A model with a single multivariate `x` whose components have multiple different constraints.
+A model whose array `x` is filled by four LHS variables with different constraints.
 
 # Model
 ```julia
@@ -422,7 +422,7 @@ end
 
 @model function demo_assume_submodel_observe_index_literal()
     # Submodel prior
-    priors ~ to_submodel(_prior_dot_assume(), false)
+    priors ~ to_submodel(_prior_dot_assume())
     s, m = priors
     1.5 ~ Normal(m[1], sqrt(s[1]))
     2.0 ~ Normal(m[2], sqrt(s[2]))
@@ -445,7 +445,38 @@ function logprior_true_with_logabsdet_jacobian(
     return _demo_logprior_true_with_logabsdet_jacobian(model, s, m)
 end
 function varnames(model::Model{typeof(demo_assume_submodel_observe_index_literal)})
-    return [@varname(s[1]), @varname(s[2]), @varname(m)]
+    return [@varname(priors.s[1]), @varname(priors.s[2]), @varname(priors.m)]
+end
+
+function logprior_true(
+    model::Model{typeof(demo_assume_submodel_observe_index_literal)}, priors
+)
+    return logprior_true(model, priors.s, priors.m)
+end
+function loglikelihood_true(
+    model::Model{typeof(demo_assume_submodel_observe_index_literal)}, priors
+)
+    return loglikelihood_true(model, priors.s, priors.m)
+end
+function logprior_true_with_logabsdet_jacobian(
+    model::Model{typeof(demo_assume_submodel_observe_index_literal)}, priors
+)
+    values, lp = logprior_true_with_logabsdet_jacobian(model, priors.s, priors.m)
+    return (; priors=values), lp
+end
+function rand_prior_true(
+    rng::Random.AbstractRNG, ::Model{typeof(demo_assume_submodel_observe_index_literal)}
+)
+    return (; priors=rand_prior_true(rng, demo_dot_assume_observe_index_literal()))
+end
+function posterior_mean(::Model{typeof(demo_assume_submodel_observe_index_literal)})
+    return (; priors=posterior_mean(demo_dot_assume_observe_index_literal()))
+end
+function posterior_optima(::Model{typeof(demo_assume_submodel_observe_index_literal)})
+    return (; priors=posterior_optima(demo_dot_assume_observe_index_literal()))
+end
+function likelihood_optima(::Model{typeof(demo_assume_submodel_observe_index_literal)})
+    return (; priors=likelihood_optima(demo_dot_assume_observe_index_literal()))
 end
 
 @model function _likelihood_multivariate_observe(s, m, x)
@@ -460,10 +491,7 @@ end
     m = TV(undef, length(x))
     m ~ product_distribution(Normal.(0, sqrt.(s)))
 
-    # Submodel likelihood
-    # With to_submodel, we have to have a left-hand side variable to
-    # capture the result, so we just use a dummy variable
-    _ignore ~ to_submodel(_likelihood_multivariate_observe(s, m, x), false)
+    likelihood ~ to_submodel(condition(_likelihood_multivariate_observe(s, m, missing); x))
 
     return (; s=s, m=m, x=x)
 end
@@ -725,7 +753,6 @@ const MultivariateAssumeDemoModels = Union{
     Model{typeof(demo_dot_assume_observe_index)},
     Model{typeof(demo_assume_multivariate_observe_literal)},
     Model{typeof(demo_dot_assume_observe_index_literal)},
-    Model{typeof(demo_assume_submodel_observe_index_literal)},
     Model{typeof(demo_dot_assume_observe_submodel)},
     Model{typeof(demo_dot_assume_observe_matrix_index)},
     Model{typeof(demo_assume_matrix_index_observe_matrix_index)},

@@ -2465,3 +2465,83 @@ end
 @info "Completed $(@__FILE__) in $(now() - __now__)."
 
 end
+
+module TupleNodeTests
+using DynamicPPL, Distributions, Test
+using Random: Xoshiro
+using AbstractPPL: AbstractPPL
+using DynamicPPL.VarNamedTuples: templated_setindex!!
+
+@model function tuple_local()
+    x = (0.0, 0.0)
+    x[1] ~ Normal()
+    x[2] ~ Normal()
+    return x
+end
+@model function typed_tuple_local(data)
+    x = data
+    x[1] ~ Normal()
+    x[2] ~ Normal()
+    return x
+end
+@testset "tuple Index nodes" begin
+    draw = rand(Xoshiro(1), tuple_local())
+    @test collect(keys(draw)) == [@varname(x[1]), @varname(x[2])]
+    @test [draw[@varname(x[1])], draw[@varname(x[2])]] == rand(Xoshiro(1), Normal(), 2)
+    for (template, names, values) in (
+        ((0.0, 0.0), (@varname(x[1]), @varname(x[2])), (1.0, 2.0)),
+        ((a=(0.0, 0.0),), (@varname(x.a[1]), @varname(x.a[2])), (1.0, 2.0)),
+        (([0.0, 0.0], [0.0]), (@varname(x[1][2]), @varname(x[2][1])), (1.0, 2.0)),
+    )
+        vnt = VarNamedTuple()
+        for (vn, value) in zip(names, values)
+            vnt = templated_setindex!!(vnt, value, vn, template)
+            @test haskey(vnt, vn)
+            @test vnt[vn] == value
+        end
+    end
+    for (value, vn) in (
+        ((a=(1.0, 2.0),), @varname(x.a[2])),
+        ([(1.0, 2.0)], @varname(x[1][2])),
+        (((1.0, 2.0),), @varname(x[1][2])),
+    )
+        whole = VarNamedTuple(; x=value)
+        @test AbstractPPL.hasvalue(whole, vn, Normal())
+        @test whole[vn] == 2.0
+    end
+    restriction = ArgumentError(
+        "same-type tuples only; give the elements one type or use an array"
+    )
+    for template in ((1.0f0, big"2.0"), (a=(1.0f0, big"2.0"),), [(1.0f0, big"2.0")])
+        vn = if template isa NamedTuple
+            @varname(x.a[1])
+        elseif template isa AbstractArray
+            @varname(x[1][1])
+        else
+            @varname(x[1])
+        end
+        @test_throws restriction templated_setindex!!(VarNamedTuple(), 1.0f0, vn, template)
+        @test_throws restriction VarNamedTuple(; x=template)[vn]
+    end
+    mixed = (1.0f0, big"2.0")
+    @test_throws restriction fix(tuple_local(); x=mixed)(Xoshiro(1))
+    params = VarNamedTuple(; x=(1.0f0, big"2.0"))
+    @test_throws restriction init!!(
+        Xoshiro(1),
+        tuple_local(),
+        VarInfo(DynamicPPL.RawValueAccumulator(false)),
+        InitFromParams(params, nothing),
+    )
+    @test_throws restriction init!!(
+        Xoshiro(1),
+        typed_tuple_local((1.0f0, 2.0f0)),
+        VarInfo(DynamicPPL.RawValueAccumulator(false)),
+        InitFromParams(params, nothing),
+    )
+    whole = VarNamedTuple(; x=(1.0, 2.0))
+    @test haskey(whole, @varname(x[1]))
+    @test !haskey(whole, @varname(x[3]))
+    @test haskey(whole, @varname(x[:]))
+    @test !haskey(whole, @varname(x[1:3]))
+end
+end

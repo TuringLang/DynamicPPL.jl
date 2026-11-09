@@ -7,6 +7,7 @@ __now__ = now()
 using AbstractPPL: AbstractPPL
 using Bijectors: Bijectors
 using DynamicPPL
+using DynamicPPL: @vnt
 using Distributions
 using Random: Xoshiro
 using Test

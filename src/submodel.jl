@@ -1,10 +1,9 @@
 """
-    Submodel{M,AutoPrefix}
+    Submodel{M}
 
-A wrapper around a model, plus a flag indicating whether it should be automatically
-prefixed with the left-hand variable in a `~` statement.
+Wrap a model whose variables are prefixed by its tilde address.
 """
-struct Submodel{M,AutoPrefix}
+struct Submodel{M}
     model::M
 end
 
@@ -38,30 +37,24 @@ function _stan_value_and_pullback end
 Wrap `model` for use on the right-hand side of `~`.
 
 In `value ~ to_submodel(model)`, `model` is evaluated, its return value is assigned to
-`value`, and its latent variables are recorded separately in the surrounding trace. By
-default, their names are prefixed with the left-hand side: a latent variable `x` becomes
-`value.x`. This differs from [`to_distribution`](@ref), which assigns the represented latent
-variables themselves to the left-hand side.
+`value`, and its latent variables are recorded separately in the surrounding trace. Their
+names are prefixed with the left-hand side: a latent variable `x` becomes `value.x`. This
+differs from [`to_distribution`](@ref), which assigns the represented latent variables
+themselves to the left-hand side.
 
 Conceptually, `to_submodel(model)` is a `returned_value(model)` wrapper: its value is the
 model's return value, not its latent variables.
 
+Submodels cannot observe through arguments. Use [`condition`](@ref) to supply
+observations and retain their likelihood; [`fix`](@ref) omits that term.
+The model called directly by the user can still observe through its arguments.
+See [Migration to model-owned bindings](@ref) for migration instructions.
+
 `Submodel` is not a `Distribution`; it provides this tilde behavior but no standalone
 `logpdf` method.
 
-!!! warning
-    Operations normally associated with `left ~ right`, such as [`condition`](@ref), do not
-    necessarily work with `to_submodel`.
-
-!!! warning
-    Keep `auto_prefix=true` unless the wrapped model has been explicitly prefixed. Disabling
-    automatic prefixing can make latent-variable names collide.
-
-# Arguments
-
-- `model::Model`: the model to wrap.
-- `auto_prefix::Bool=true`: whether to prefix the model's latent variables with the
-  left-hand side of `~`.
+The optional second argument accepts `true` for compatibility. Passing `false` throws
+`ArgumentError`; choose the child name on the left-hand side of `~` instead.
 
 # Examples
 
@@ -105,173 +98,299 @@ julia> getlogjoint(accs) ≈ logpdf(Normal(), x) + logpdf(Uniform(0, 1 + abs(x))
 true
 ```
 
-## Without automatic prefixing
-
-If `auto_prefix=false`, the submodel's latent-variable names are unchanged.
-```jldoctest submodel-to_submodel-prefix; setup=:(using Distributions)
-julia> @model function demo1(x)
-           x ~ Normal()
-           return 1 + abs(x)
-       end;
-
-julia> @model function demo2_no_prefix(x, z)
-            a ~ to_submodel(demo1(x), false)
-            return z ~ Uniform(-a, 1)
-       end;
-
-julia> model = demo2_no_prefix(missing, 0.4);
-
-julia> haskey(rand(model), @varname(x))  # here we just use `x` instead of `a.x`
-true
-```
-However, not using prefixing is generally not recommended as it can lead to variable name
-clashes unless one is careful. For example, if the same submodel is used multiple times in a
-model, not using prefixing will lead to variable name clashes.
-
-One can manually specify a prefix using [`prefix(::Model, prefix_varname)`](@ref):
-
-```jldoctest submodel-to_submodel-prefix
-julia> @model function demo2(x, y, z)
-            a ~ to_submodel(prefix(demo1(x), @varname(sub1)), false)
-            b ~ to_submodel(prefix(demo1(y), @varname(sub2)), false)
-            return z ~ Uniform(-a, b)
-       end;
-
-julia> model = demo2(missing, missing, 0.4);
-
-julia> haskey(rand(model), @varname(sub1.x))
-true
-
-julia> haskey(rand(model), @varname(sub2.x))
-true
-```
+An explicit prefix composes with the tilde address: `a ~ to_submodel(prefix(child,
+@varname(b)))` records a child variable `x` as `a.b.x`.
 """
-to_submodel(m::Model, auto_prefix::Bool=true) = Submodel{typeof(m),auto_prefix}(m)
-
-# ---------------------------
-# Submodels in tilde-pipeline
-# ---------------------------
-
-"""
-    DynamicPPL.tilde_assume!!(
-        context::AbstractContext,
-        right::DynamicPPL.Submodel,
-        vn::VarName,
-        ::Any,
-        vi::AbstractVarInfo
+to_submodel(m::Model) = Submodel(m)
+function to_submodel(m::Model, auto_prefix::Bool)
+    auto_prefix || throw(
+        ArgumentError(
+            "Unprefixed submodels are unsupported; use `name ~ to_submodel(model)` and update child variable addresses to `name.x`.",
+        ),
     )
-
-Evaluate the submodel with the given context.
-"""
-function tilde_assume!!(
-    context::AbstractContext,
-    right::DynamicPPL.Submodel,
-    vn::VarName,
-    ::Any,
-    vi::AbstractVarInfo,
-)
-    return _evaluate!!(right, vi, context, vn)
+    return to_submodel(m)
 end
 
-# When automatic prefixing is used, the submodel itself doesn't carry the
-# prefix, as the prefix is obtained from the LHS of `~` (whereas the submodel
-# is on the RHS). The prefix can only be obtained in `tilde_assume!!`, and then
-# passed into this function.
-#
-# `parent_context` here refers to the context of the model that contains the
-# submodel.
-function _evaluate!!(
-    submodel::Submodel{M,AutoPrefix},
-    vi::AbstractVarInfo,
-    parent_context::AbstractContext,
-    left_vn::VarName,
-) where {M<:Model,AutoPrefix}
-    # First, we construct the context to be used when evaluating the submodel. There
-    # are several considerations here:
-    # (1) We need to apply an appropriate PrefixContext when evaluating the submodel, but
-    # _only_ if automatic prefixing is supposed to be applied.
-    submodel_context_prefixed = if AutoPrefix
-        PrefixContext(left_vn, submodel.model.context)
-    else
-        submodel.model.context
+_relative_removal(a, b) = (nothing, false)
+_relative_removal(a, ::AbstractPPL.Iden) = (a, true)
+_relative_removal(::AbstractPPL.Iden, b::AbstractPPL.AbstractOptic) = (nothing, true)
+_relative_removal(::AbstractPPL.Iden, ::AbstractPPL.Iden) = (nothing, true)
+function _relative_removal(a::AbstractPPL.Property{S}, b::AbstractPPL.Property{S}) where {S}
+    return _relative_removal(a.child, b.child)
+end
+function _relative_removal(a::AbstractPPL.Index, b::AbstractPPL.Index)
+    child, active = _relative_removal(a.child, b.child)
+    return child, active && subsumes(AbstractPPL.ohead(a), AbstractPPL.ohead(b))
+end
+function _child_removals(markers, prefix, template=NoTemplate())
+    canonical_prefix = _expand_cartesian(
+        _concretize_prefix(prefix, template; canonical=true)
+    )
+    return map(markers) do marker
+        name = marker.name
+        name === nothing && return marker
+        name = _expand_cartesian(
+            _concretize_prefix(
+                name,
+                template;
+                depth=optic_skip_length(AbstractPPL.getoptic(prefix)),
+                canonical=true,
+            ),
+        )
+        a, b = AbstractPPL.varname_to_optic(name),
+        AbstractPPL.varname_to_optic(canonical_prefix)
+        child, active = _relative_removal(a, b)
+        relative = if child isa Union{Nothing,AbstractPPL.Iden}
+            nothing
+        else
+            AbstractPPL.optic_to_varname(child)
+        end
+        return (name=relative, active=marker.active && active, matched=marker.matched)
     end
-
-    # (2) We need to respect the leaf-context of the parent model. This, unfortunately,
-    # means disregarding the leaf-context of the submodel.
-    submodel_context = setleafcontext(
-        submodel_context_prefixed, leafcontext(parent_context)
+end
+function _apply_removals(table, R, markers, arguments)
+    for marker in markers
+        marker.active || continue
+        table = _remove_role(
+            table,
+            R,
+            marker.name === nothing ? () : (marker.name,);
+            arguments,
+            validate=false,
+        )
+    end
+    return table
+end
+_apply_removals(table, R, ::Tuple{}, arguments) = table
+_as_namespace(x::VarNamedTuple, address) = x
+_as_namespace(::Union{Nothing,NoBinding}, address) = VarNamedTuple()
+function _as_namespace(x::BoundValue{R,<:NamedTuple}, address) where {R}
+    return VarNamedTuple(map(BoundValue{R}, x.value))
+end
+function _as_namespace(x, address)
+    return _throw_binding_error(address, "submodel binding requires named values")
+end
+function _child_bindings(parent, prefix, site)
+    values = VarNamedTuple(map(r -> r.value, parent.values.roots.data))
+    if prefix != site
+        node = _binding_node_at(values, AbstractPPL.varname_to_optic(site))
+        VarNamedTuples._mapreduce_recursive((a, b) -> nothing, node, site, nothing) do pair
+            location, value = pair
+            subsumes(prefix, location) ||
+                !_has_bound_value(value) ||
+                _throw_binding_error(
+                    maybe_prefix(location, _model_prefix(parent)),
+                    "address is outside child prefix $prefix",
+                )
+        end
+    end
+    return _as_namespace(
+        _binding_node_at(values, AbstractPPL.varname_to_optic(prefix)),
+        maybe_prefix(prefix, _model_prefix(parent)),
     )
-
-    # (3) We need to use the parent model's context to wrap the whole thing, so that
-    # e.g. if the user conditions the parent model, the conditioned variables will be
-    # correctly picked up when evaluating the submodel.
-    eval_context = setleafcontext(parent_context, submodel_context)
-
-    # (4) Finally, we need to store that context inside the submodel.
-    model = contextualize(submodel.model, eval_context)
-
-    # Evaluate the wrapped model. These two lines are a verbatim copy of the body of
-    # `_evaluate!!(model::Model, ::AbstractVarInfo)` (in `model.jl`), and the duplication is
-    # deliberate: DO NOT replace them with `return _evaluate!!(model, vi)`. Each level of
-    # submodel nesting grows the contextualised `Model`'s context type, and routing the
-    # recursion through the shared `_evaluate!!(::Model, ...)` method trips Julia's recursion
-    # limiter, which widens the `Model` argument to abstract and collapses the return type to
-    # `Any`. Calling `model.f` directly avoids that. See
-    # https://github.com/TuringLang/DynamicPPL.jl/pull/1427 and
-    # https://github.com/TuringLang/Turing.jl/issues/2844 for the full explanation.
-    args, kwargs = make_evaluate_args_and_kwargs(model, vi)
-    return model.f(args...; kwargs...)
 end
-
-function tilde_observe!!(
+function _inherited_constraints(parent, prefix, ::Val{name}) where {name}
+    root = _binding_root(parent, prefix)
+    root === nothing && return ()
+    address = AbstractPPL.append_optic(prefix, AbstractPPL.Property{name}())
+    return mapreduce((a, b) -> (a..., b...), root.constraints; init=()) do constraint
+        (; owner, storage) = constraint
+        R = constraint.role
+        typed = constraint.typed === Val(true)
+        if subsumes(owner, address)
+            relative = AbstractPPL._unprefix_optic(
+                AbstractPPL.getoptic(address), AbstractPPL.getoptic(owner)
+            )
+            selected = _binding_node_at(storage, relative)
+            return if selected === nothing
+                ()
+            else
+                (BindingConstraint(VarName{name}(), R, selected, typed),)
+            end
+        elseif subsumes(address, owner)
+            return (
+                BindingConstraint(AbstractPPL.unprefix(owner, prefix), R, storage, typed),
+            )
+        end
+        return ()
+    end
+end
+function _merge_child_root(old, incoming, parent, prefix, ::Val{name}, child) where {name}
+    vn = VarName{name}()
+    address = maybe_prefix(maybe_prefix(vn, prefix), _model_prefix(parent))
+    _check_binding_address(child, vn, address)
+    if incoming isa BoundValue && _is_namespace(child, vn)
+        incoming = _as_namespace(incoming, address)
+    end
+    _check_role_overlap(old.value, incoming, address; disjoint=true)
+    if incoming isa VarNamedTuples.PartialArray &&
+        old.storage isa AbstractArray &&
+        !(old.value isa NoBinding)
+        axes(incoming.data) == axes(old.storage) ||
+            _throw_binding_error(address, "child storage shape conflicts")
+    end
+    supplied = _binding_root(parent, prefix)
+    supplied = if supplied === nothing
+        NoTemplate()
+    else
+        _binding_node_at(
+            supplied.storage,
+            AbstractPPL.Property{name}() ∘ AbstractPPL.getoptic(prefix),
+        )
+    end
+    if !(supplied isa Union{Nothing,NoTemplate}) &&
+        !(old.storage isa Union{Nothing,Missing,NoTemplate}) &&
+        name in _lhs_arguments(child) &&
+        !(incoming isa BoundValue)
+        _matches_local_shape(old.storage, _unwrap_storage(supplied)) ||
+            _throw_binding_error(address, "child argument storage shape conflicts")
+    end
+    storage = incoming isa BoundValue ? incoming.value : old.storage
+    if old.value isa NoBinding && !(name in _lhs_arguments(child)) && supplied !== nothing
+        storage = supplied
+    end
+    storage isa Union{NoTemplate,Missing,Nothing} &&
+        supplied !== nothing &&
+        (storage = supplied)
+    previous_constraints = filter(_effective_constraints(old, vn)) do c
+        c.typed === Val(false) ||
+            _has_bound_value(_binding_node_at(old.value, AbstractPPL.getoptic(c.owner)))
+    end
+    inherited = _inherited_constraints(parent, prefix, Val(name))
+    for c in inherited, old_c in previous_constraints
+        c.owner == old_c.owner || continue
+        _same_shape(c.storage, old_c.storage) ||
+            _throw_binding_error(address, "inherited template conflicts with storage shape")
+        c.role === old_c.role &&
+            c.typed === old_c.typed === Val(true) &&
+            typeof(c.storage) !== typeof(old_c.storage) &&
+            _throw_binding_error(address, "inherited template conflicts with storage type")
+    end
+    constraints = (previous_constraints..., inherited...)
+    for constraint in constraints
+        owner = constraint.owner
+        template = constraint.storage
+        typed = constraint.typed === Val(true)
+        if owner == vn && (
+            storage isa Union{NoTemplate,Missing,Nothing} ||
+            old.value isa NoBinding && !typed
+        )
+            storage = template
+        end
+        incoming isa BoundValue || continue
+        selected = _binding_node_at(incoming.value, AbstractPPL.getoptic(owner))
+        selected === nothing && continue
+        _same_shape(template, selected) ||
+            _throw_binding_error(address, "child storage shape conflicts")
+        typed && _convert_to_storage(selected, template, address)
+    end
+    incoming = VarNamedTuples._map_pairs_recursive!!(
+        if incoming isa Union{VarNamedTuple,VarNamedTuples.PartialArray}
+            copy(incoming)
+        else
+            incoming
+        end,
+        vn,
+    ) do pair
+        location, wrapped = pair
+        error_address = maybe_prefix(maybe_prefix(location, prefix), _model_prefix(parent))
+        value = _apply_constraints(
+            wrapped.value,
+            AbstractPPL.getoptic(location),
+            location,
+            typeof(_binding_role(wrapped)),
+            previous_constraints;
+            error_address,
+        )
+        if name in _lhs_arguments(child) &&
+            !(AbstractPPL.getoptic(location) isa AbstractPPL.Iden)
+            old.storage isa Union{Missing,Nothing,NoTemplate} || _check_partial_storage(
+                old.storage, AbstractPPL.getoptic(location), error_address
+            )
+            value = _convert_partial(
+                value, old.storage, AbstractPPL.getoptic(location), error_address
+            )
+        end
+        _rewrap_role(wrapped, value)
+    end
+    previous = old.value
+    node = if previous isa Union{Nothing,NoBinding} || incoming isa BoundValue
+        incoming
+    else
+        previous isa BoundValue && (previous = _split_bound_value(previous, @varname(_)))
+        VarNamedTuples._merge(copy(previous), copy(incoming), Val(true))
+    end
+    return BindingRoot(node, storage, constraints)
+end
+@generated function _merge_child_table(
+    table::BindingTable{<:VarNamedTuple{A}},
+    incoming::VarNamedTuple{B},
+    parent,
+    prefix,
+    child,
+) where {A,B}
+    names = Tuple(union(A, B))
+    fields = map(names) do name
+        name in B || return :(table.roots.data.$name)
+        old = if name in A
+            :(table.roots.data.$name)
+        else
+            :(BindingRoot(NoBinding(), NoTemplate(), ()))
+        end
+        :(_merge_child_root(
+            $old, incoming.data.$name, parent, prefix, Val($(QuoteNode(name))), child
+        ))
+    end
+    return :(BindingTable(VarNamedTuple(NamedTuple{$names}(($(fields...),)))))
+end
+function tilde_assume!!(
+    parent::Model,
     context::AbstractContext,
-    right::DynamicPPL.Submodel,
-    left::Any,
+    submodel::Submodel{M},
     vn::VarName,
-    template::Any,
+    template,
     vi::AbstractVarInfo,
-)
-    # TODO(penelopeysm) This is VERY BAD. See
-    # https://github.com/TuringLang/DynamicPPL.jl/issues/1246.
-    #
-    # We need a much more principled way of dealing with this. The problem is that, if we
-    # have
-    #
-    # @model inner() = a ~ Normal()
-    # @model function f()
-    #    x ~ to_submodel(inner())
-    # end
-    # model = f() | (@varname(x.a) => 2.0)
-    #
-    # and a user conditions the top-level model on `x.a` (for example), then when we check
-    # whether `x` is conditioned, we will find that it indeed is (since the conditioned
-    # values will have `values.data.x` pointing to a VNT). That sends us down the path of
-    # tilde_observe!!, so we HAVE to deal with this by calling evaluate.
-    #
-    # What we actually want to forbid is conditioning on the RETURN VALUE. That is, we don't
-    # want someone to think that they can do
-    #
-    # model = f() | (@varname(x) => 3.0)
-    #
-    # or indeed
-    #
-    # @model function f2(x)
-    #     x ~ to_submodel(inner())
-    # end
-    # model2 = f2(3.0)
-    # 
-    # These are the cases that we want to ban. BUT WE HAVE NO WAY OF FIGURING OUT WHICH ONE
-    # THE USER MEANT ---- BECAUSE WE LUMP THE RETURN VALUE AND LATENTS INTO ONE THING.
-    # This is REALLY, really frustrating.
-    #
-    # What we do here is to just evaluate the submodel so that we handle the first case
-    # above correctly. The other cases USED to error; however, now they will work (and the
-    # submodel will be evaluated, but the value of `x` will be ignored). That is probably
-    # not what the user wants, but hey, it'll make tests pass.
-    return _evaluate!!(right, vi, context, vn)
+) where {M<:Model}
+    AbstractPPL.getsym(vn) in
+    (_argument_names(parent.args)..., _argument_names(parent.defaults)...) &&
+        _throw_binding_error(vn, "submodel LHS cannot be an argument")
+    vn = _concretize_prefix(vn, template; prefix=Val(true))
+    _check_local_shape(parent, vn, template, ConditionRole; submodel=true)
+    _check_local_shape(parent, vn, template, FixRole; submodel=true)
+    child = submodel.model
+    local_prefix = maybe_prefix(_model_prefix(child), vn)
+    context = _binding_check_child(context, parent, child, local_prefix, template)
+    observations = _child_removals(parent.observation_removals, local_prefix, template)
+    fixes = _child_removals(parent.fixed_removals, local_prefix, template)
+    for (name, root) in pairs(child.values.roots.data)
+        _has_role(ArgumentRole, root.value) && _throw_binding_error(
+            maybe_prefix(
+                maybe_prefix(VarName{name}(), local_prefix), _model_prefix(parent)
+            ),
+            "submodels cannot observe through arguments",
+        )
+    end
+    table = _apply_removals(
+        child.values, ConditionRole, observations, merge(child.args, child.defaults)
+    )
+    table = _apply_removals(table, FixRole, fixes, merge(child.args, child.defaults))
+    table = _merge_child_table(
+        table, _child_bindings(parent, local_prefix, vn), parent, local_prefix, child
+    )
+    child = _reconstruct_model(
+        child;
+        values=table,
+        observation_removals=(child.observation_removals..., observations...),
+        fixed_removals=(child.fixed_removals..., fixes...),
+    )
+    vn, template = _apply_model_prefix(vn, template, parent)
+    child = _with_prefix(child, vn, template, child.values)
+    _check_argument_bindings(child)
+    _check_argument_aliasing(child)
+    child = setleafcontext(child, context)
+    args, kwargs = make_evaluate_args_and_kwargs(child, vi)
+    return child.f(args...; kwargs...)
 end
-function tilde_observe!!(
-    ::AbstractContext, ::DynamicPPL.Submodel, left, ::Nothing, template, ::AbstractVarInfo
-)
-    throw(ArgumentError("`x ~ to_submodel(...)` is not supported when `x` is a literal"))
+function tilde_observe!!(prefix, prefix_template, ::Submodel, left, ::Nothing, template, vi)
+    throw(ArgumentError("A submodel requires a named LHS"))
 end

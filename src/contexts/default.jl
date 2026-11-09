@@ -52,27 +52,3 @@ function tilde_assume!!(
     vi = accumulate_assume!!(vi, x, tval, -inv_logjac, vn, right, template)
     return x, vi
 end
-
-"""
-    DynamicPPL.tilde_observe!!(
-        ::DefaultContext,
-        right::Distribution,
-        left,
-        vn::Union{VarName,Nothing},
-        template::Any,
-        vi::AbstractVarInfo,
-    )
-
-Handle observed variables. This just accumulates the log-likelihood for `left`.
-"""
-function tilde_observe!!(
-    ::DefaultContext,
-    right::Distribution,
-    left,
-    vn::Union{VarName,Nothing},
-    template::Any,
-    vi::AbstractVarInfo,
-)
-    vi = accumulate_observe!!(vi, right, left, vn, template)
-    return left, vi
-end

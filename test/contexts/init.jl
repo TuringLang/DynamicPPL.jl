@@ -7,6 +7,7 @@ __now__ = now()
 using Bijectors: Bijectors
 using Distributions
 using DynamicPPL
+using DynamicPPL: @vnt
 using LinearAlgebra: I
 using Random: Xoshiro
 using StableRNGs: StableRNG
@@ -297,12 +298,12 @@ using Test
                 )
 
                 # We also explicitly test the case where `y = missing`.
-                vnt_missing = @vnt begin
+                vnt_missing = DynamicPPL.@vnt begin
                     x := my_x
                     y := missing
                 end
-                @test_throws ErrorException(
-                    "A `missing` value was provided for the variable `y`."
+                @test_throws ArgumentError(
+                    "A `missing` value was provided for `y`; omit absent initial parameters instead.",
                 ) DynamicPPL.init!!(
                     model, empty_vi, InitFromParams(vnt_missing, nothing), UnlinkAll()
                 )

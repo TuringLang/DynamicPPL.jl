@@ -1,10 +1,16 @@
 # 0.43.0 (unreleased)
 
+Partial bindings and latent argument reconstruction support plain `Array`s, array-backed `ComponentArray`s by index, same-type tuples, `SVector`s, `MVector`s with bits element types, `NamedTuple`s and opted-in structs; tuple and static-vector writes promote the element type.
+
+`VarNamedTuple` records indexed random variables in same-type tuple templates.
+
 `predict([rng,] model, params::VarNamedTuple)` now predicts from a single draw and returns a `ParamsWithStats`; set `include_all=true` to retain supplied parameters.
 
 Fixed `VarNamedTuple` world-age errors when loading without a valid precompiled cache.
 
 Fixed model argument evaluation world-age errors when loading without a valid precompiled cache.
+
+Model comparison and hashing include binding state; `==` delegates to `isequal`. See [binding migration](docs/src/conditionfix.md#migration-to-model-owned-bindings).
 
 Thread-safe tilde assignments now throw an `ArgumentError` if any container is replaced, including same-type immutable values: `(a = zero(T),)` → `Vector{T}(undef, n)`. Allocate mutable storage with `::Type{T}=Float64`; use `Vector{Union{Missing,Real}}` for imputation under AD. See [#1521](https://github.com/TuringLang/DynamicPPL.jl/pull/1521).
 
@@ -23,6 +29,52 @@ Re-evaluation and `LogDensityFunction` construction no longer copy fixed transfo
 Added `evaluate!!(model, context, vi)` to evaluate with an explicit leaf context and collect outputs in `vi`, such as `evaluate!!(model, InitContext(rng, InitFromPrior(), UnlinkAll()), VarInfo())`. See [#1500](https://github.com/TuringLang/DynamicPPL.jl/pull/1500).
 
 ## Breaking changes
+
+`InitFromParams` rejects `missing` parameter values: `InitFromParams((; x=missing))` → `InitFromParams((;))` to use the fallback.
+
+Observation hooks bypass contexts: context-specific `tilde_observe!!` → accumulator-specific `accumulate_observe!!`.
+
+`logprior`, `loglikelihood`, `logjoint`, and `returned` reject dictionaries: `f(model, Dict(@varname(x) => v))` → `f(model, (; x=v))` or `f(model, VarNamedTuple((@varname(x) => v,)))`.
+
+`decondition(m, names...)` and `unfix(m, names...)` remove bindings from submodels too, including calls without names: explicit recursive removals → ordinary calls; edit a child before composing the parent to limit removal to that child. See [binding migration](docs/src/conditionfix.md#migration-to-model-owned-bindings).
+
+Submodel observations: `to_submodel(inner(y, x))` → `to_submodel(condition(inner(missing, x), (y=y,)))` for fully observed data; partly missing arrays require observed-index bindings and concrete argument storage. See [binding migration](docs/src/conditionfix.md#migration-to-model-owned-bindings).
+
+Bindings live on `Model`; conditioning/fixing contexts are removed: context inspection → `conditioned(model)` / `fixed(model)` and the public binding functions. See [binding migration](docs/src/conditionfix.md#migration-to-model-owned-bindings).
+
+Argument bindings now apply before the model body runs: in `fix(f(missing); x=0.0)`, an `ismissing(x)` check before `x ~ ...` previously saw `missing` and returned `true`; it now sees `0.0` and returns `false`. If the branch must depend on the original input's missingness, pass that information as a separate argument.
+
+`contextualize(new, old.context)` no longer transfers bindings: with `old = condition(f(missing); x=1.0)` and `new = f(missing)`, it previously bound `x=1.0`; it now leaves `x` unbound. When addresses and storage match, use `new = unfix(decondition(new)); new = condition(new, conditioned(old)); new = fix(new, fixed(old))`. Reapply removal instructions and child-body bindings separately; preserve prefixes and replay whole-value resizes before dependent partial removals. See [binding migration](docs/src/conditionfix.md#migration-to-model-owned-bindings).
+
+Dictionary bindings: `model | Dict(@varname(x) => v)` → `condition(model, @varname(x) => v)`. See [binding migration](docs/src/conditionfix.md#migration-to-model-owned-bindings).
+
+Indexed partial bindings require storage: `condition(m, @varname(z[1].x) => v)` → `condition(m, @varname(z[1].x) => v, @of(z = of(Array, n)))`. See [binding migration](docs/src/conditionfix.md#migration-to-model-owned-bindings).
+
+Binding templates must be the last positional argument: `condition(m, template, values)` → `condition(m, values, template)`. See [binding migration](docs/src/conditionfix.md#migration-to-model-owned-bindings).
+
+Partial bindings of `missing` or `nothing` arguments throw if any positions remain unbound, even with a template: placeholder argument → concrete argument storage (for example an array with `missing` entries), or bind every position.
+
+Unprefixed submodels are removed: `unused ~ to_submodel(prefix(child, @varname(a)), false)` → `a ~ to_submodel(child)`, with child-qualified parameter addresses. See [binding migration](docs/src/conditionfix.md#migration-to-model-owned-bindings).
+
+Ambiguous NamedTuple field edits below an unreached child throw: storage-free edits → bindings with structural storage, or whole-root removal and replacement. See [binding migration](docs/src/conditionfix.md#migration-to-model-owned-bindings).
+
+Explicit placeholder bindings throw: `condition(m; x=[missing, v])` → a binding of `x[2]` with storage for `x`. See [binding migration](docs/src/conditionfix.md#migration-to-model-owned-bindings).
+
+Nested `missing` argument values are rejected: implicit nested imputation → concrete values followed by `decondition` at latent positions; whole `missing`/`nothing` arguments and `missing` entries directly in a plain argument `Array` remain latent.
+
+`@vnt` requires an explicit import: `using DynamicPPL` → `using DynamicPPL: @vnt`. See [binding migration](docs/src/conditionfix.md#migration-to-model-owned-bindings).
+
+`VarInfo` collection queries require a `VectorValueAccumulator`: `VarInfo()` → `VarInfo(VectorValueAccumulator())` before evaluation. See [binding migration](docs/src/conditionfix.md#migration-to-model-owned-bindings).
+
+Observation/fix overlap throws: `fix(condition(m; x=v); x=w)` → remove the observation with `decondition` before fixing. See [binding migration](docs/src/conditionfix.md#migration-to-model-owned-bindings).
+
+Bindings outside a model prefix throw: `condition(prefix(m, @varname(p)); x=v)` → `condition(prefix(m, @varname(p)), @varname(p.x) => v)`. See [binding migration](docs/src/conditionfix.md#migration-to-model-owned-bindings).
+
+Partial edits of unclaimed containers, including `OffsetArray`s, `DimArray`s and dictionaries, throw: partial edits → whole-value replacement or supported storage. Unclaimed arrays, dictionaries and mixed tuples cannot supply latent storage; other unclaimed objects are shared leaves that latent tildes can replace but cannot write through. Opted-in structs must support reconstruction when made latent. See [binding migration](docs/src/conditionfix.md#migration-to-model-owned-bindings).
+
+Partial binding conversions must be exact: `0.1` into `Float32` storage → `Float32(0.1)`; shape changes require whole-root removal before rebinding. See [binding migration](docs/src/conditionfix.md#migration-to-model-owned-bindings).
+
+`Model{Threaded,missings}` construction is removed: `Model{Threaded,missings}(...)` → `@model` and `decondition`, or a binding-aware evaluator with `Model{Threaded}(...; args_on_lhs=...)`. See [binding migration](docs/src/conditionfix.md#migration-to-model-owned-bindings).
 
 `marginalize` and the `DynamicPPLMarginalLogDensitiesExt` extension are removed in DynamicPPL 0.43. Users requiring the existing Turing/MLD integration can remain on DynamicPPL 0.42.x with a compatible Turing release—for example, Turing 0.49.0—and MarginalLogDensities 0.4.3–0.4.x. See the [0.42 marginalisation documentation](https://turinglang.org/DynamicPPL.jl/v0.42/api/#Marginalisation).
 

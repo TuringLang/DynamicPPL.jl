@@ -39,6 +39,7 @@ Random.seed!(100)
         include("contexts.jl")
         include("contexts/init.jl")
         include("conditionfix.jl")
+        include("binding.jl")
         include("context_implementations.jl")
         include("threadsafe.jl")
         include("debug_utils.jl")
@@ -77,7 +78,7 @@ Random.seed!(100)
         # why...) -- if we don't import them here then the doctest output will include
         # the prefixed module name
         using Distributions: Normal
-        using DynamicPPL: DefaultContext, Condition, Fix
+        using DynamicPPL: DefaultContext, ConditionRole, FixRole
         Documenter.doctest(DynamicPPL; manual=false, doctestfilters=doctestfilters)
     end
 

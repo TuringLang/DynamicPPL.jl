@@ -8,6 +8,13 @@ recording its latent variables separately.
 Currently, `to_distribution` supports only Stan through BridgeStan; `to_submodel` accepts only
 DynamicPPL models.
 
+Each DynamicPPL submodel contributes its tilde address: `a ~ to_submodel(child)`
+records its variable `x` as `a.x`. Submodels take observations through explicit
+bindings. See [Submodels](@ref) for binding rules and
+[Migration to model-owned bindings](@ref) for migration instructions.
+
+Argument observations remain supported on the model called directly by the user.
+
 ## Stan example
 
 Load BridgeStan and pass Stan source to `to_distribution`. The first call for a given program

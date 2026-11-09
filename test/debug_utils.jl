@@ -5,7 +5,9 @@ using Dates: now
 __now__ = now()
 
 using DynamicPPL, Distributions, Test
+using AbstractPPL: of, @of
 using LinearAlgebra: I
+using OrderedCollections: OrderedDict
 using Random: Xoshiro
 
 function test_model_fails_check(model)
@@ -21,6 +23,87 @@ function test_model_can_run_but_fails_check(model)
 end
 
 @testset "check_model" begin
+    @testset "binding warnings" begin
+        @model warning_leaf() = x ~ Normal()
+        @model function warning_parent(child, run=true)
+            z ~ Normal()
+            if run
+                a ~ to_submodel(child)
+            end
+        end
+        @model function warning_indices(run=true)
+            z ~ Normal()
+            x = zeros(2)
+            if run
+                x[1] ~ Normal()
+            end
+            return x
+        end
+
+        @testset "$bind" for (bind, remove) in ((condition, decondition), (fix, unfix))
+            @testset "unused removals" begin
+                unused = remove(warning_parent(warning_leaf()), @varname(a.x))
+                used = remove(warning_parent(bind(warning_leaf(); x=1.0)), @varname(a.x))
+                dormant = remove(
+                    warning_parent(bind(warning_leaf(); x=1.0), false), @varname(a.x)
+                )
+                local_removal = remove(
+                    bind(warning_parent(warning_leaf()), @varname(a.x) => 1.0),
+                    @varname(a.x)
+                )
+                for (unused, used) in (
+                    (unused, used),
+                    (warning_parent(unused), warning_parent(used)),
+                    (dormant, local_removal),
+                )
+                    @test_logs (:warn, r"Removal.*`a\.x`.*unused") match_mode = :any @test check_model(
+                        Xoshiro(1), unused; error_on_failure=true
+                    )
+                    @test_logs @test check_model(Xoshiro(1), used; error_on_failure=true)
+                end
+            end
+
+            @testset "bindings in reached and dormant submodels" begin
+                used = bind(warning_parent(warning_leaf()), @varname(a.x) => 1.0)
+                dormant = bind(warning_parent(warning_leaf(), false), @varname(a.x) => 1.0)
+                @test_logs @test check_model(Xoshiro(1), used; error_on_failure=true)
+                @test_logs (:warn, r"Partial binding `a\.x`.*not read") match_mode = :any @test check_model(
+                    Xoshiro(1), dormant; error_on_failure=true
+                )
+            end
+
+            @testset "unread partial bindings" begin
+                for (model, vn, warning) in (
+                    (
+                        warning_indices(),
+                        @varname(x[2]),
+                        r"Partial binding `x\[2\]`.*not read",
+                    ),
+                    (
+                        warning_indices(false),
+                        @varname(x[1]),
+                        r"Partial binding `x\[1\]`.*not read",
+                    ),
+                )
+                    unused = bind(model, vn => 1.0, @of(x = of(Array, 2)))
+                    @test_logs (:warn, warning) match_mode = :any @test check_model(
+                        Xoshiro(1), unused; error_on_failure=true
+                    )
+                end
+                used = bind(warning_indices(), @varname(x[1]) => 1.0, @of(x = of(Array, 2)))
+                @test_logs @test check_model(Xoshiro(1), used; error_on_failure=true)
+            end
+
+            @testset "unused template entries" begin
+                unused = bind(warning_indices(), @of(typo = of(Array, 2)))
+                @test_logs (:warn, r"Binding template entry `typo`.*no LHS") match_mode =
+                    :any @test check_model(Xoshiro(1), unused; error_on_failure=true)
+                used = bind(warning_indices(), @of(x = of(Array, 2)))
+                @test_logs @test check_model(Xoshiro(1), used; error_on_failure=true)
+            end
+        end
+    end
+
     @testset "$(model.f)" for model in DynamicPPL.TestUtils.DEMO_MODELS
         @test check_model(model)
         @test DynamicPPL.has_static_constraints(model)
@@ -78,9 +161,9 @@ end
         @testset "submodel" begin
             @model ModelInner() = x ~ Normal()
             @model function ModelOuterBroken()
-                # Without automatic prefixing => `x` s used twice.
-                z ~ to_submodel(ModelInner(), false)
-                return x ~ Normal()
+                # Reusing one child address duplicates its latent variable.
+                z ~ to_submodel(ModelInner())
+                return z ~ to_submodel(ModelInner())
             end
             test_model_can_run_but_fails_check(ModelOuterBroken())
 
@@ -95,8 +178,8 @@ end
 
             # With manual prefixing, https://github.com/TuringLang/DynamicPPL.jl/issues/785
             @model function ModelOuterWorking2()
-                x1 ~ to_submodel(DynamicPPL.prefix(ModelInner(), :a), false)
-                x2 ~ to_submodel(DynamicPPL.prefix(ModelInner(), :b), false)
+                x1 ~ to_submodel(DynamicPPL.prefix(ModelInner(), :a))
+                x2 ~ to_submodel(DynamicPPL.prefix(ModelInner(), :b))
                 return (x1, x2)
             end
             model = ModelOuterWorking2()
@@ -122,30 +205,58 @@ end
         @test_throws ErrorException check_model(m; error_on_failure=true)
     end
 
-    @testset "incorrect use of condition" begin
-        @testset "missing in multivariate" begin
-            @model function demo_missing_in_multivariate(x)
-                return x ~ MvNormal(zeros(length(x)), I)
-            end
-            model = demo_missing_in_multivariate([1.0, missing])
-            test_model_fails_check(model)
-        end
+    @testset "missing in multivariate" begin
+        @model multivariate_missing(x) = x ~ MvNormal(zeros(length(x)), I)
+        @test_throws ArgumentError check_model(multivariate_missing([1.0, missing]))
+        @model missing_slice(y) = y[1:1] ~ MvNormal(zeros(1), I)
+        model = missing_slice([missing])
+        @test_throws ArgumentError check_model(model; error_on_failure=true)
+        @test_throws ArgumentError model(Xoshiro(1))
+        @test_throws ArgumentError rand(Xoshiro(1), model)
 
-        @testset "condition both in args and context" begin
-            @model function demo_condition_both_in_args_and_context(x)
-                return x ~ Normal()
+        @model function slice(x=missing)
+            if ismissing(x)
+                x = Matrix{Union{Missing,Int}}(missing, 2, 2)
             end
-            model = demo_condition_both_in_args_and_context(1.0)
-            for vals in [
-                (x=2.0,),
-                OrderedDict(@varname(x) => 2.0),
-                OrderedDict(@varname(x[1]) => 2.0),
-            ]
-                conditioned_model = DynamicPPL.condition(model, vals)
-                @test_throws ErrorException check_model(
-                    conditioned_model; error_on_failure=true
-                )
+            x[1, :] ~ product_distribution([Poisson(3.0), Poisson(3.0)])
+            return x
+        end
+        model = slice()
+        @test isequal(model(Xoshiro(1)), [2 0; missing missing])
+        @test rand(Xoshiro(1), model)[@varname(x[1, :])] == [2, 0]
+        @test check_model(Xoshiro(1), model; error_on_failure=true)
+    end
+
+    @testset "unused templates on placeholder slices" begin
+        @model function slice2(x=missing)
+            y ~ Normal()
+            if x isa Union{Missing,Nothing}
+                x = Matrix{Union{Missing,Int}}(missing, 2, 2)
             end
+            x[1, :] ~ product_distribution([Poisson(3.0), Poisson(3.0)])
+            return x
+        end
+        @model parent(child) = a ~ to_submodel(child)
+        for placeholder in (missing, nothing), bind in (condition, fix)
+            child = slice2(placeholder)
+            expected = bind(child; y=1.0)(Xoshiro(1))
+            templated = bind(child, (; y=1.0), @of(x = of(Array, Int, 2, 2)))
+            @test isequal(templated(Xoshiro(1)), expected)
+            nested = bind(
+                parent(child), @varname(a.y) => 1.0, @of(a = @of(x = of(Array, Int, 2, 2)))
+            )
+            @test isequal(nested(Xoshiro(1)), expected)
+        end
+    end
+
+    @testset "conditioning overrides argument values" begin
+        @model function demo_conditioned_argument(x)
+            return x ~ Normal()
+        end
+        model = demo_conditioned_argument(1.0)
+        @test check_model(condition(model; x=2.0); error_on_failure=true)
+        for values in (OrderedDict(@varname(x) => 2.0), OrderedDict(@varname(x[1]) => 2.0))
+            @test_throws ArgumentError condition(model, values)
         end
     end
 
@@ -205,6 +316,17 @@ end
         end
     end
 
+    @testset "model_typed exposes the body with an argument on the LHS" begin
+        @model function demo_argument_lhs(x)
+            x ~ Normal()
+            inner_body_value = sin(x)
+            return inner_body_value
+        end
+        model = demo_argument_lhs(1.0)
+        codeinfo, _ = DynamicPPL.DebugUtils.model_typed(model, VarInfo(model), false)
+        @test :inner_body_value in codeinfo.slotnames
+    end
+
     @testset "model_warntype & model_codetyped" begin
         @model demo_without_kwargs(x) = y ~ Normal(x, 1)
         @model demo_with_kwargs(x; z=1) = y ~ Normal(x, z)
@@ -221,5 +343,16 @@ end
 end
 
 @info "Completed $(@__FILE__) in $(now() - __now__)."
+
+@testset "unused templates after a metadata-free model" begin
+    @model unused_template() = x ~ Normal()
+    model = condition(unused_template(), (x=1.0,), @of(typo = of(Array, Float64, 2)))
+    manual = Model{false}((args...) -> nothing, (;), (;))
+    ctx = DynamicPPL.DebugUtils.BindingCheckContext(DefaultContext())
+    push!(ctx.models, (manual, VarName[]), (model, VarName[]))
+    @test_logs (:warn, r"Binding template entry `typo`") DynamicPPL.DebugUtils._warn_unused_templates(
+        ctx
+    )
+end
 
 end # module

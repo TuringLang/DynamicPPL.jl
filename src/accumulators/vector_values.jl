@@ -66,7 +66,7 @@ values in `vnt` contain non-vector values.
 ```jldoctest
 julia> using DynamicPPL
 
-julia> vnt = @vnt begin
+julia> vnt = DynamicPPL.@vnt begin
            x := TransformedValue([1.0, 2.0], Unlink())
            y := TransformedValue([3.0], DynamicLink())
        end
