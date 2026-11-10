@@ -275,11 +275,10 @@ end
 """
     reevaluate_with_chain(rng, model, chain::SamplingOutput, accs, fallback=nothing; multithreaded=false)
 
-Evaluate the model at each draw using the given accumulators and return `(retval, varinfo)` pairs.
-Use `InitFromPrior()` as `fallback` to sample parameters missing from a draw.
-Serial evaluation uses the supplied RNG directly.
-Threaded evaluation seeds a separate RNG for each draw before starting tasks.
-Each task uses a copy of the accumulators.
+Evaluate each draw with `accs`, returning `(retval, varinfo)` pairs. Use `InitFromPrior()`
+as `fallback` to sample missing parameters. Serial evaluation uses `rng` directly;
+threaded evaluation seeds a separate RNG per draw before starting tasks. Accumulators are
+copied per draw on both paths.
 """
 function reevaluate_with_chain(
     rng::Random.AbstractRNG,
@@ -291,27 +290,24 @@ function reevaluate_with_chain(
 ) where {N}
     params_with_stats = chain.samples
     vi = DynamicPPL.VarInfo(DynamicPPL.AccumulatorTuple(accs))
-    function evaluate(r, v, ps)
+    function evaluate(r, ps)
         return DynamicPPL.init!!(
             r,
             model,
-            v,
+            copy(vi),
             DynamicPPL.InitFromParams(_sampling_output_params(ps), fallback),
             DynamicPPL.UnlinkAll(),
         )
     end
     if !multithreaded || isempty(params_with_stats)
-        return map(ps -> evaluate(rng, vi, ps), params_with_stats)
+        return map(ps -> evaluate(rng, ps), params_with_stats)
     end
     seeds = rand(rng, UInt, length(params_with_stats))
     tasks = map(chunk_ranges(length(params_with_stats), Threads.nthreads())) do idxs
-        # An accumulator may hold mutable state, so no two tasks share a varinfo. Each sample
-        # gets a fresh generator built from its own seed, so `rng` only has to produce the
-        # seeds: copying it would rule out generators such as `RandomDevice`.
-        Threads.@spawn let task_vi = copy(vi)
-            map(idxs) do i
-                evaluate(Random.Xoshiro(seeds[i]), task_vi, params_with_stats[i])
-            end
+        # Each sample gets a fresh generator built from its own seed, so `rng` only has to
+        # produce the seeds: copying it would rule out generators such as `RandomDevice`.
+        Threads.@spawn map(idxs) do i
+            evaluate(Random.Xoshiro(seeds[i]), params_with_stats[i])
         end
     end
     return reshape(reduce(vcat, fetch.(tasks)), size(params_with_stats))
