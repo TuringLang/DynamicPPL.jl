@@ -446,7 +446,7 @@ function predict(model::Model, params::Union{VarNamedTuple,ParamsWithStats}; kwa
 end
 
 """
-    predict([rng::AbstractRNG,] model::Model, chain::AbstractMCMC.SamplingOutput; include_all=false)
+    predict([rng::AbstractRNG,] model::Model, chain::AbstractMCMC.SamplingOutput; include_all=false, multithreaded=false)
 
 Sample predictions using each draw's parameters, drawing absent variables from their priors.
 
@@ -454,6 +454,8 @@ Return a `SamplingOutput` with the input's iteration indices and freshly evaluat
 probabilities. Set `include_all=true` to retain parameters supplied by each input draw.
 Sampling times and sampler states are not carried over to the predictions.
 Set `multithreaded=true` to evaluate draws in parallel using a separate RNG seeded for each draw.
+Those predictions differ from the single-threaded ones for that same `rng`, which draws
+every sample from one stream.
 """
 function predict(
     rng::Random.AbstractRNG,

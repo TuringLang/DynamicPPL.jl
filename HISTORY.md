@@ -1,6 +1,6 @@
 # 0.43.0 (unreleased)
 
-  - `predict` on `SamplingOutput` did not accept `multithreaded=true` ([#1530](https://github.com/TuringLang/DynamicPPL.jl/pull/1530)).
+  - `predict` on `SamplingOutput` accepts `multithreaded=true` ([#1530](https://github.com/TuringLang/DynamicPPL.jl/pull/1530)).
   - `predict` and pointwise log-density functions lost iteration labels when returning `MCMCChains.Chains` ([#1530](https://github.com/TuringLang/DynamicPPL.jl/pull/1530)).
   - Re-evaluating chain draws no longer shares a mutable accumulator between draws ([#1530](https://github.com/TuringLang/DynamicPPL.jl/pull/1530)).
 
