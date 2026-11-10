@@ -288,7 +288,6 @@ function reevaluate_with_chain(
     fallback::Union{DynamicPPL.AbstractInitStrategy,Nothing}=nothing;
     multithreaded::Bool=false,
 ) where {N}
-    params_with_stats = chain.samples
     vi = DynamicPPL.VarInfo(DynamicPPL.AccumulatorTuple(accs))
     function evaluate(r, ps)
         return DynamicPPL.init!!(
@@ -299,18 +298,20 @@ function reevaluate_with_chain(
             DynamicPPL.UnlinkAll(),
         )
     end
-    if !multithreaded || isempty(params_with_stats)
-        return map(ps -> evaluate(rng, ps), params_with_stats)
+    return map_chain_samples(evaluate, rng, chain.samples; multithreaded)
+end
+
+function map_chain_samples(f::F, rng, samples; multithreaded) where {F}
+    if !multithreaded || isempty(samples)
+        return map(ps -> f(rng, ps), samples)
     end
-    seeds = rand(rng, UInt, length(params_with_stats))
-    tasks = map(chunk_ranges(length(params_with_stats), Threads.nthreads())) do idxs
-        # Each sample gets a fresh generator built from its own seed, so `rng` only has to
-        # produce the seeds: copying it would rule out generators such as `RandomDevice`.
-        Threads.@spawn map(idxs) do i
-            evaluate(Random.Xoshiro(seeds[i]), params_with_stats[i])
-        end
+    # Each sample gets a fresh generator built from its own seed, so `rng` only has to
+    # produce the seeds: copying it would rule out generators such as `RandomDevice`.
+    seeds = rand(rng, UInt, length(samples))
+    tasks = map(chunk_ranges(length(samples), Threads.nthreads())) do idxs
+        Threads.@spawn map(i -> f(Random.Xoshiro(seeds[i]), samples[i]), idxs)
     end
-    return reshape(reduce(vcat, fetch.(tasks)), size(params_with_stats))
+    return reshape(reduce(vcat, fetch.(tasks)), size(samples))
 end
 
 """
@@ -462,17 +463,7 @@ function predict(
     multithreaded::Bool=false,
 )
     evaluate(rng, draw) = predict(rng, model, _sampling_output_params(draw); include_all)
-    predictions = if multithreaded && !isempty(chain.samples)
-        seeds = rand(rng, UInt, length(chain.samples))
-        tasks = map(chunk_ranges(length(seeds), Threads.nthreads())) do indices
-            Threads.@spawn map(
-                i -> evaluate(Random.Xoshiro(seeds[i]), chain.samples[i]), indices
-            )
-        end
-        reshape(reduce(vcat, fetch.(tasks)), size(chain))
-    else
-        map(draw -> evaluate(rng, draw), chain.samples)
-    end
+    predictions = map_chain_samples(evaluate, rng, chain.samples; multithreaded)
     return AbstractMCMC.SamplingOutput(predictions; iterations=chain.iterations)
 end
 function predict(
