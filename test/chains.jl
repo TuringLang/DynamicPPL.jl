@@ -210,6 +210,33 @@ end
     @test isempty(offending)
 end
 
+struct DrawAccumulator <: DynamicPPL.AbstractAccumulator
+    values::Vector{Float64}
+end
+DynamicPPL.accumulator_name(::DrawAccumulator) = :draw_values
+Base.copy(acc::DrawAccumulator) = DrawAccumulator(copy(acc.values))
+DynamicPPL.reset(acc::DrawAccumulator) = (empty!(acc.values); acc)
+function DynamicPPL.accumulate_assume!!(
+    acc::DrawAccumulator, val, tval, logjac, vn, dist, template
+)
+    push!(acc.values, val)
+    return acc
+end
+DynamicPPL.accumulate_observe!!(acc::DrawAccumulator, args...) = acc
+
+@testset "SamplingOutput accumulator isolation" begin
+    @model m() = x ~ Normal()
+    draws = reshape([ParamsWithStats(VarNamedTuple(; x), (;)) for x in 1.0:3.0], 3, 1)
+    chain = SamplingOutput(draws)
+    for multithreaded in (false, true)
+        results = DynamicPPL.reevaluate_with_chain(
+            Xoshiro(1), m(), chain, (DrawAccumulator(Float64[]),); multithreaded
+        )
+        @test map(r -> DynamicPPL.getacc(last(r), Val(:draw_values)).values, results) ==
+            reshape([[1.0], [2.0], [3.0]], 3, 1)
+    end
+end
+
 @testset "SamplingOutput evaluation and conversion" begin
     @model function m(y=ones(2))
         x ~ MvNormal(zeros(2), I)
@@ -221,6 +248,13 @@ end
     for draws in (params, map(p -> ParamsWithStats(p, (;)), params))
         chain = SamplingOutput(draws; iterations=3:2:5, sampler_states=[:a, :b])
         @test returned(m(), chain) == map(p -> p[@varname(x)] + ones(2), params)
+        predicted = predict(Xoshiro(3), m(missing), chain; multithreaded=true)
+        seeds = rand(Xoshiro(3), UInt, length(params))
+        expected = map(
+            i -> predict(Xoshiro(seeds[i]), m(missing), params[i]), eachindex(params)
+        )
+        @test vec(predicted.samples) == expected
+        @test predicted.iterations == chain.iterations
         for T in (SamplingOutput, typeof(chain), DynamicPPL.AbstractChains)
             @test convert(T, chain) === chain
         end

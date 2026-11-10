@@ -63,6 +63,9 @@ end
             @test Set(keys(c2)) == Set([:x, :y])
             @test c2[:x] == c[:x]
             @test c2[:y] == c[:y]
+            selected = MCMCChains.setrange(c[1:3, :, :], [2, 5, 9])
+            @test range(predict(f(missing), selected)) == [2, 5, 9]
+            @test range(pointwise_logdensities(model, selected)) == [2, 5, 9]
         end
     end
 
