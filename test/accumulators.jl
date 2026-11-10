@@ -53,6 +53,7 @@ TEST_ACCUMULATORS = (
                 LogLikelihoodAccumulator{Float64}() ==
                 LogLikelihoodAccumulator{Float64}(0.0) ==
                 DynamicPPL.reset(LogLikelihoodAccumulator(1.0))
+            @test hash(LogPriorAccumulator(1)) == hash(LogPriorAccumulator(1.0))
         end
 
         @testset "float types" begin
