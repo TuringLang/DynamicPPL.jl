@@ -340,6 +340,26 @@ end
         end
         x = vdemo()()
         @test all((isassigned(x, i) for i in eachindex(x)))
+
+        @testset "tuple Index nodes" begin
+            @model function tuple_local()
+                x = (0.0, 0.0)
+                x[1] ~ Normal()
+                x[2] ~ Normal()
+                return x
+            end
+            draw = rand(Random.Xoshiro(1), tuple_local())
+            @test collect(keys(draw)) == [@varname(x[1]), @varname(x[2])]
+            @test [draw[@varname(x[1])], draw[@varname(x[2])]] ==
+                rand(Random.Xoshiro(1), Normal(), 2)
+            @test fix(tuple_local(); x=(1.0, 2.0))(Random.Xoshiro(1)) == (1.0, 2.0)
+            restriction = ArgumentError(
+                "same-type tuples only; give the elements one type or use an array"
+            )
+            @test_throws restriction fix(tuple_local(); x=(1.0f0, big"2.0"))(
+                Random.Xoshiro(1)
+            )
+        end
     end
 
     # Test that that using @. to stop unwanted broadcasting on the RHS works.
