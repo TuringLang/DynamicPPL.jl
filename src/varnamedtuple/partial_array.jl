@@ -832,11 +832,12 @@ function _warn_growable_array_extraction()
     )
 end
 function _warn_growable_array_creation(size)
+    # Keep different dimensions visible without repeating the warning on every model draw.
     @warn (
         "Creating a growable `Base.Array` of dimension $(length(size)) to store" *
         " values. This may not match the actual type or size of the actual" *
         " `AbstractArray` that will be used inside the DynamicPPL model.\n\n" *
         " If this is not the type or size that you expect, please see:" *
         " https://turinglang.org/docs/uri/growablearray"
-    )
+    ) maxlog = 1 _id = Symbol(:dynamicppl_growable_array_creation_, length(size))
 end

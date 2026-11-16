@@ -896,6 +896,13 @@ end
 
         @testset "Warning when setting untemplated values" begin
             warnmsg = r"Creating a growable `Base.Array`"
+            @test_logs (:warn, r"Creating a growable `Base.Array` of dimension 1") (
+                :warn, r"Creating a growable `Base.Array` of dimension 2"
+            ) for _ in 1:2
+                setindex!!(VarNamedTuple(), 1.0, @varname(x[1]))
+                setindex!!(VarNamedTuple(), [1.0, 2.0], @varname(x[1:2]))
+                setindex!!(VarNamedTuple(), 1.0, @varname(x[1, 1]))
+            end
             @test_logs (:warn, warnmsg) vnt = setindex!!(
                 VarNamedTuple(), [1.0, 2.0], @varname(x[1:2])
             )

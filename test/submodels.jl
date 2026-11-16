@@ -27,6 +27,25 @@ end
 @model t2844_deeper() = (c ~ to_submodel(t2844_outer()); return (; x=c.x))
 
 @testset "submodels.jl" begin
+    @testset "Repeated indexed-prefix warnings" begin
+        @model inner() = a ~ Normal()
+        @model function outer()
+            for i in 1:2
+                child = prefix(inner(), @varname(timestep[1]))
+                a ~ to_submodel(prefix(child, @varname(session[i])), false)
+            end
+        end
+        @model function real_array()
+            x = zeros(2, 2)
+            return x[1] ~ to_submodel(inner())
+        end
+        for evaluate in (rand, VarInfo)
+            @test_logs (:warn, r"Creating a growable `Base.Array`") for _ in 1:2
+                evaluate(outer())
+            end
+            @test_logs (:warn, r"Creating a growable `Base.Array`") evaluate(real_array())
+        end
+    end
     @testset "$op with AbstractPPL API" for op in [condition, fix]
         x_val = 1.0
         x_logp = op == condition ? logpdf(Normal(), x_val) : 0.0
