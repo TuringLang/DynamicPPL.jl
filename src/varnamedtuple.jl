@@ -20,18 +20,14 @@ export VarNamedTuple,
 """
     NoTemplate
 
-A singleton struct representing the fact that there is no template for a top-level variable.
-When `NoTemplate` is used, several things happen:
+Represent the absence of a storage template for a top-level variable.
 
- - If you attempt to call `make_leaf` with an Index optic, this will error.
- - When recursing into substructures, `NoTemplate` will be propagated.
+Low-level `VarNamedTuple` construction can create growable arrays for indexed addresses
+without a template. A concrete template establishes the full extent and resolves dynamic
+indices.
 
-Collectively this means that you can only set values for variables that only have Property
-optics, unless a template is provided.
-
-It might seem more idiomatic to use `nothing` or `missing` for this. However, this causes a
-bug with BangBang.setindex!!: https://github.com/JuliaFolds2/BangBang.jl/issues/43 so we use
-a dedicated struct instead.
+A dedicated marker avoids ambiguous dispatch in `BangBang.setindex!!` with `nothing`
+or `missing`: https://github.com/JuliaFolds2/BangBang.jl/issues/43.
 """
 struct NoTemplate end
 
@@ -58,6 +54,9 @@ end
 # must be wrapped by the appropriate number of SkipTemplates).
 SkipTemplate{N}(v::SkipTemplate{M}) where {N,M} = SkipTemplate{N + M}(v.value)
 SkipTemplate{0}(v::SkipTemplate{M}) where {M} = SkipTemplate{M}(v.value)
+
+# The array a template indexes: a PartialArray's storage, otherwise the template itself.
+unwrap_template(template) = template
 
 """
     abstract type SetPermissions end
