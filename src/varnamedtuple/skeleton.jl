@@ -55,14 +55,21 @@ end
         if _element_needs_skeleton(T)
             # However, constructing the actual value requires recursing on the *values*
             # themselves rather than just the *type*, because the size of the array is not
-            # determined in the type.
-            # We need to be careful about this because some values in the PA may be unset.
+            # determined in the type. Each element that is set therefore gets its own
+            # skeleton: elements of the same type can hold arrays of different sizes, and
+            # even skeletons of different types, such as when a field typed `Any` holds a
+            # vector in one element and a matrix in another, which setindex!! makes room for.
+            # We need to be careful about this because some values in the PA may be unset,
+            # and those get the skeleton of the first element that is set.
             return quote
                 idx = findfirst(pa.mask)
                 idx === nothing && error("Unexpected PartialArray with no data")
                 example_skeleton = skeleton(pa.data[idx])
                 new_data = similar(pa.data, typeof(example_skeleton))
-                fill!(new_data, example_skeleton)
+                for i in eachindex(pa.data)
+                    element_skeleton = pa.mask[i] ? skeleton(pa.data[i]) : example_skeleton
+                    new_data = BangBang.setindex!!(new_data, element_skeleton, i)
+                end
                 return new_data
             end
         else

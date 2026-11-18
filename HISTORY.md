@@ -1,5 +1,6 @@
 # 0.43.0 (unreleased)
 
+  - `skeleton` of a `PartialArray` gives each element its own skeleton, so that elements holding arrays of different sizes, or skeletons of different types, are rebuilt as they were. Before, every element got the skeleton of the first, so rebuilding a `VarNamedTuple` from the skeleton, as FlexiChains.jl does, threw a `BoundsError` or gave arrays of the wrong size ([#1540](https://github.com/TuringLang/DynamicPPL.jl/issues/1540)).
   - Growable-array creation warnings use a logging limit of one per array dimension and logger ([#1538](https://github.com/TuringLang/DynamicPPL.jl/pull/1538)).
   - `predict` on `SamplingOutput` accepts `multithreaded=true` ([#1530](https://github.com/TuringLang/DynamicPPL.jl/pull/1530)).
   - `predict` and pointwise log-density functions lost iteration labels when returning `MCMCChains.Chains` ([#1530](https://github.com/TuringLang/DynamicPPL.jl/pull/1530)).

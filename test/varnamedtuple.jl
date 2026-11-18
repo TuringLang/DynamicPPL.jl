@@ -2466,6 +2466,56 @@ end
         end
         v13s = VarNamedTuple(; x=CA.ComponentArray(; a=nothing, b=nothing))
         test_skeleton(v13, v13s)
+
+        # VNT -> PA -> VNT -> PA, where the inner arrays have different sizes, so that each
+        # element needs a skeleton of its own
+        v14 = @vnt begin
+            @template x = [(; y=zeros(1)), (; y=zeros(3))]
+            x[1].y[1] := 1.0
+            x[2].y[3] := 2.0
+        end
+        v14s = VarNamedTuple(;
+            x=[VarNamedTuple(; y=fill(nothing, 1)), VarNamedTuple(; y=fill(nothing, 3))]
+        )
+        test_skeleton(v14, v14s)
+
+        # The same with the longer inner array first
+        v15 = @vnt begin
+            @template x = [(; y=zeros(3)), (; y=zeros(1))]
+            x[1].y[3] := 1.0
+            x[2].y[1] := 2.0
+        end
+        v15s = VarNamedTuple(;
+            x=[VarNamedTuple(; y=fill(nothing, 3)), VarNamedTuple(; y=fill(nothing, 1))]
+        )
+        test_skeleton(v15, v15s)
+
+        # VNT -> PA -> VNT -> PA, where the elements have one concrete type with a field
+        # typed Any, which holds a vector in one element and a matrix in the other, so that
+        # their skeletons have different types. The skeleton can't be inferred here, so it
+        # is checked without @inferred
+        element_with_any_field(y) = VarNamedTuple(NamedTuple{(:y,),Tuple{Any}}((y,)))
+        v16 = VarNamedTuple(;
+            x=PartialArray(
+                VarNamedTuple{(:y,),Tuple{Any}}[
+                    element_with_any_field(PartialArray([0.0, 1.0], [false, true])),
+                    element_with_any_field(
+                        PartialArray([0.0 2.0; 0.0 0.0], [false true; false false])
+                    ),
+                ],
+                [true, true],
+            ),
+        )
+        @test isconcretetype(eltype(v16.data.x))
+        v16_skeleton = skeleton(v16)
+        @test v16_skeleton.data.x[1].data.y == fill(nothing, 2)
+        @test v16_skeleton.data.x[2].data.y == fill(nothing, 2, 2)
+        new_vnt = VarNamedTuple()
+        for (vn, val) in pairs(v16)
+            template = get(v16_skeleton.data, AbstractPPL.getsym(vn), NoTemplate())
+            new_vnt = templated_setindex!!(new_vnt, val, vn, template)
+        end
+        @test new_vnt == v16
     end
 end
 
