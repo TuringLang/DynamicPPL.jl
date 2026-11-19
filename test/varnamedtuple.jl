@@ -2565,6 +2565,16 @@ end
     end
 end
 
+@testset "binding templates from storage" begin
+    pa = templated_setindex!!(VarNamedTuple(), 1.0f0, @varname(x[2]), zeros(Float32, 3))
+    @test AbstractPPL.of(VarNamedTuple(; a=pa, b=1.0)) ==
+        AbstractPPL.of((a=(x=zeros(Float32, 3),), b=1.0))
+    @test_throws "`a.x` of type String" AbstractPPL.of(
+        VarNamedTuple(; a=VarNamedTuple(; x="a"))
+    )
+    @test_throws "would widen it to Float64" AbstractPPL.of(VarNamedTuple(; x=1//2))
+end
+
 @info "Completed $(@__FILE__) in $(now() - __now__)."
 
 end
