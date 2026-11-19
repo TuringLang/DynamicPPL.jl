@@ -1,6 +1,6 @@
 # 0.43.0 (unreleased)
 
-Rebuilding a `VarNamedTuple` from its skeleton now preserves nested arrays of different sizes ([#1540](https://github.com/TuringLang/DynamicPPL.jl/issues/1540)).
+When rebuilding a `VarNamedTuple` from its skeleton, each nested array now keeps its original size. Previously, reusing the first array’s size could produce incorrectly sized arrays or throw a `BoundsError` ([#1540](https://github.com/TuringLang/DynamicPPL.jl/issues/1540)).
 
 `VarNamedTuple` records indexed random variables in same-type tuple templates ([#1539](https://github.com/TuringLang/DynamicPPL.jl/pull/1539)).
 
