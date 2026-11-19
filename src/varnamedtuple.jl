@@ -141,6 +141,56 @@ include("varnamedtuple/macro.jl")
 include("varnamedtuple/skeleton.jl")
 
 """
+    AbstractPPL.of(vnt::VarNamedTuple)
+
+Describe the storage in `vnt` as an AbstractPPL `OfNamedTuple` binding template.
+
+Numeric `Array`s keep their element type and full size, even when partly filled; nested
+namespaces become nested templates; real scalars are kept when `of` describes their type
+exactly. Values are discarded. Other storage, such as custom or growable arrays, indexed
+namespaces and scalars that `of` would widen, throws `ArgumentError`.
+
+# Examples
+
+```jldoctest
+julia> using AbstractPPL: of
+
+julia> template = of(VarNamedTuple(; y=zeros(Float32, 2)));
+
+julia> zero(template)
+(y = Float32[0.0, 0.0],)
+```
+"""
+AbstractPPL.of(vnt::VarNamedTuple) = _storage_template(vnt, "")
+
+# `path` is the dotted field path of the stored value, for error messages.
+_storage_template(vnt::VarNamedTuple, path) = _storage_template(vnt.data, path)
+function _storage_template(nt::NamedTuple{names}, path) where {names}
+    child(k) = isempty(path) ? string(k) : "$path.$k"
+    return AbstractPPL.of(
+        NamedTuple{names}(map(k -> _storage_template(nt[k], child(k)), names))
+    )
+end
+_storage_template(pa::PartialArray, path) = _storage_template(pa.data, path)
+_storage_template(a::Array{<:Number}, _) = AbstractPPL.of(a)
+function _storage_template(x::Real, path)
+    template = AbstractPPL.of(x)
+    typeof(zero(template)) === typeof(x) || throw(
+        ArgumentError(
+            "Cannot preserve scalar type $(typeof(x)) of `$path` in a binding template: `of` would widen it to $(typeof(zero(template))).",
+        ),
+    )
+    return template
+end
+function _storage_template(x, path)
+    throw(
+        ArgumentError(
+            "Cannot describe `$path` of type $(typeof(x)) exactly in a binding template."
+        ),
+    )
+end
+
+"""
     NamedTuple(vnt::VarNamedTuple)
 
 Convert a `VarNamedTuple` to a standard `NamedTuple`, provided all keys in the
