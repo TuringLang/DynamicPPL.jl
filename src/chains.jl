@@ -242,6 +242,9 @@ end
 function Base.isequal(pws1::ParamsWithStats, pws2::ParamsWithStats)
     return isequal(pws1.params, pws2.params) && isequal(pws1.stats, pws2.stats)
 end
+function Base.hash(pws::ParamsWithStats, h::UInt)
+    return hash(pws.params, hash(pws.stats, hash(:ParamsWithStats, h)))
+end
 
 """
     InitFromParams(

@@ -170,6 +170,11 @@ end
     end
 end
 
+@testset "ParamsWithStats hash" begin
+    ps = () -> ParamsWithStats(VarNamedTuple(; x=[1.0]), (;))
+    @test hash(ps()) == hash(ps())
+end
+
 @testset "no Union-typed VarInfo across init!! (Julia 1.12 -O2 GC miscompile guard)" begin
     # Regression guard for a Julia 1.12 `-O2` codegen/GC-rooting bug. Both `ParamsWithStats`
     # model-reevaluation methods choose an accumulator tuple based on `include_log_probs`. If

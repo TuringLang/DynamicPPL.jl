@@ -72,7 +72,7 @@ Base.view(ga::GrowableArray, ix...) = view(ga.data, ix...)
 Base.copy(ga::GrowableArray) = GrowableArray(copy(ga.data))
 Base.:(==)(ga1::GrowableArray, ga2::GrowableArray) = ga1.data == ga2.data
 Base.isequal(ga1::GrowableArray, ga2::GrowableArray) = isequal(ga1.data, ga2.data)
-Base.hash(ga::GrowableArray, h::UInt) = hash(GrowableArray, hash(ga.data, h))
+Base.hash(ga::GrowableArray, h::UInt) = hash(ga.data, h)
 Base.collect(ga::GrowableArray) = collect(ga.data)
 Base.similar(ga::GrowableArray, ::Type{T}) where {T} = GrowableArray(similar(ga.data, T))
 Base.similar(ga::GrowableArray, sz::Tuple) = GrowableArray(similar(ga.data, sz))
@@ -268,9 +268,8 @@ function Base.isequal(pa1::PartialArray, pa2::PartialArray)
 end
 
 function Base.hash(pa::PartialArray, h::UInt)
-    h = hash(typeof(pa.data), h)
     h = hash(size(pa.data), h)
-    for i in eachindex(pa.mask)
+    for i in LinearIndices(pa.mask)
         @inbounds if pa.mask[i]
             h = hash(i, h)
             h = hash(pa.data[i], h)

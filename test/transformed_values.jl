@@ -86,6 +86,18 @@ Bijectors.with_logabsdet_jacobian(f::ScalarTransform, x) = (f(x), 0.0)
     end
 end
 
+@testset "hash consistent with isequal" begin
+    for f in (
+        () -> FixedTransform([1.0]),
+        () -> TransformedValue([1.0], NoTransform()),
+        () -> WithTransforms(VarNamedTuple(; x=FixedTransform([1.0])), UnlinkAll()),
+        () -> LinkSome(Set([@varname(x)]), UnlinkAll()),
+        () -> UnlinkSome(Set([@varname(x)]), LinkAll()),
+    )
+        @test hash(f()) == hash(f())
+    end
+end
+
 @testset "get_fixed_transforms" begin
     # Check that `get_fixed_transforms` does indeed return a VNT of the correct transforms.
     xdist = Beta(2, 5)
