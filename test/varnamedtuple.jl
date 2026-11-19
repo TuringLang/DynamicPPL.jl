@@ -871,6 +871,45 @@ end
             @test @inferred(vnt[@varname(x[1][1, 2])]) == 2.0
         end
 
+        @testset "Boolean-mask and empty indices" begin
+            mask = [true, false, true]
+            vnt = setindex!!(VarNamedTuple(), [1.0, 2.0], @varname(x[mask]))
+            @test keys(vnt) == [@varname(x[1]), @varname(x[3])]
+            @test vnt[@varname(x[mask])] == [1.0, 2.0]
+            vnt = setindex!!(VarNamedTuple(), Float64[], @varname(x[Int[]]))
+            @test vnt[@varname(x[Int[]])] == Float64[]
+        end
+
+        @testset "widening storage with unassigned slots" begin
+            template = OA.OffsetArray(Vector{Vector{Float64}}(undef, 3), 0:2)
+            vector = templated_setindex!!(VarNamedTuple(), [1.0], @varname(x[1]), template)
+            str = templated_setindex!!(VarNamedTuple(), "a", @varname(x[0]), template)
+            @test merge(str, vector) ==
+                templated_setindex!!(copy(vector), "a", @varname(x[0]), template)
+            promoted = templated_setindex!!(vector, [2], @varname(x[2]), template)
+            @test promoted[@varname(x[2])] == [2.0]
+        end
+
+        @testset "unassigned template entry" begin
+            array = Vector{Vector{Float64}}(undef, 2)
+            partial = templated_setindex!!(VarNamedTuple(), [2.0], @varname(x[2]), array)
+            for template in (array, partial.data.x)
+                vnt = templated_setindex!!(VarNamedTuple(), [2.0], @varname(x[2]), template)
+                vnt = templated_setindex!!(vnt, 1.0, @varname(x[1][1]), template)
+                @test vnt[@varname(x[1][1])] == 1.0
+            end
+        end
+
+        @testset "PartialArray template holding a slice block" begin
+            slices = fill(VarNamedTuple(), 3)
+            inner = VarNamedTuple(; a=[1.0, 1.0])
+            template = templated_setindex!!(
+                VarNamedTuple(), inner, @varname(z[1:2]), slices
+            )
+            vn = @varname(z[1:2].a[1])
+            @test templated_setindex!!(VarNamedTuple(), 3.0, vn, template.data.z)[vn] == 3.0
+        end
+
         @testset "Merging" begin
             # Note that there are a couple more merge tests with ALBs under the merge
             # section.
@@ -2467,6 +2506,52 @@ end
         end
         v13s = VarNamedTuple(; x=CA.ComponentArray(; a=nothing, b=nothing))
         test_skeleton(v13, v13s)
+    end
+
+    @testset "tuple Index nodes" begin
+        for (template, names, values) in (
+            ((0.0, 0.0), (@varname(x[1]), @varname(x[2])), (1.0, 2.0)),
+            ((a=(0.0, 0.0),), (@varname(x.a[1]), @varname(x.a[2])), (1.0, 2.0)),
+            (([0.0, 0.0], [0.0]), (@varname(x[1][2]), @varname(x[2][end])), (1.0, 2.0)),
+        )
+            vnt = VarNamedTuple()
+            for (vn, value) in zip(names, values)
+                vnt = templated_setindex!!(vnt, value, vn, template)
+                @test haskey(vnt, vn)
+                @test vnt[vn] == value
+            end
+        end
+        for (value, vn) in (
+            ((a=(1.0, 2.0),), @varname(x.a[2])),
+            ([(1.0, 2.0)], @varname(x[1][2])),
+            (((1.0, 2.0),), @varname(x[1][2])),
+        )
+            whole = VarNamedTuple(; x=value)
+            @test haskey(whole, vn)
+            @test whole[vn] == 2.0
+        end
+        restriction = ArgumentError(
+            "same-type tuples only; give the elements one type or use an array"
+        )
+        for (template, vn) in (
+            ((1.0f0, big"2.0"), @varname(x[1])),
+            ((a=(1.0f0, big"2.0"),), @varname(x.a[1])),
+            ([(1.0f0, big"2.0")], @varname(x[1][1])),
+        )
+            @test_throws restriction templated_setindex!!(
+                VarNamedTuple(), 1.0f0, vn, template
+            )
+            @test_throws restriction VarNamedTuple(; x=template)[vn]
+        end
+        existing = templated_setindex!!(VarNamedTuple(), 1.0f0, @varname(x[1]), zeros(2))
+        @test_throws restriction templated_setindex!!(
+            existing, 1.0f0, @varname(x[2]), (1.0f0, big"2.0")
+        )
+        whole = VarNamedTuple(; x=(1.0, 2.0))
+        @test !haskey(whole, @varname(x[3]))
+        @test haskey(whole, @varname(x[:]))
+        @test !haskey(whole, @varname(x[1:3]))
+        @test VarNamedTuple(; x=())[@varname(x[:])] == ()
     end
 end
 

@@ -1,10 +1,24 @@
 # 0.43.0 (unreleased)
 
-  - Rebuilding a `VarNamedTuple` from its skeleton now preserves nested arrays of different sizes ([#1540](https://github.com/TuringLang/DynamicPPL.jl/issues/1540)).
-  - Growable-array creation warnings use a logging limit of one per array dimension and logger ([#1538](https://github.com/TuringLang/DynamicPPL.jl/pull/1538)).
-  - `predict` on `SamplingOutput` accepts `multithreaded=true` ([#1530](https://github.com/TuringLang/DynamicPPL.jl/pull/1530)).
-  - `predict` and pointwise log-density functions lost iteration labels when returning `MCMCChains.Chains` ([#1530](https://github.com/TuringLang/DynamicPPL.jl/pull/1530)).
-  - Re-evaluating chain draws no longer shares a mutable accumulator between draws ([#1530](https://github.com/TuringLang/DynamicPPL.jl/pull/1530)).
+Rebuilding a `VarNamedTuple` from its skeleton now preserves nested arrays of different sizes ([#1540](https://github.com/TuringLang/DynamicPPL.jl/issues/1540)).
+
+`VarNamedTuple` records indexed random variables in same-type tuple templates ([#1539](https://github.com/TuringLang/DynamicPPL.jl/pull/1539)).
+
+`fix` and `condition` now apply same-type tuple values to indexed variables: for `x = (0.0, 0.0); x[1] ~ Normal()`, `fix(model; x=(1.0, 2.0))` previously had no effect and now fixes `x[1]`. Mixed-type tuple values, such as `x=(1.0, 2)`, throw an `ArgumentError`, as does indexing into one stored in a `VarNamedTuple` ([#1539](https://github.com/TuringLang/DynamicPPL.jl/pull/1539)).
+
+`VarNamedTuple` accepts Boolean-mask and empty integer-vector indices without a template: `setindex!!(vnt, [1.0, 2.0], @varname(x[[true, false, true]]))` previously threw a `BoundsError`, and `setindex!!(vnt, Float64[], @varname(x[Int[]]))` an `ArgumentError` ([#1539](https://github.com/TuringLang/DynamicPPL.jl/pull/1539)).
+
+`VarNamedTuple` writes and merges that widen non-`Array` storage with unassigned elements, such as an `OffsetArray` of vectors, no longer throw an `UndefRefError` ([#1539](https://github.com/TuringLang/DynamicPPL.jl/pull/1539)).
+
+`templated_setindex!!` accepts another `VarNamedTuple`'s storage as a template when a slice of it, such as `z[1:2]`, holds a `VarNamedTuple`; it previously threw ([#1539](https://github.com/TuringLang/DynamicPPL.jl/pull/1539)).
+
+Growable-array creation warnings use a logging limit of one per array dimension and logger ([#1538](https://github.com/TuringLang/DynamicPPL.jl/pull/1538)).
+
+`predict` on `SamplingOutput` accepts `multithreaded=true` ([#1530](https://github.com/TuringLang/DynamicPPL.jl/pull/1530)).
+
+`predict` and pointwise log-density functions lost iteration labels when returning `MCMCChains.Chains` ([#1530](https://github.com/TuringLang/DynamicPPL.jl/pull/1530)).
+
+Re-evaluating chain draws no longer shares a mutable accumulator between draws ([#1530](https://github.com/TuringLang/DynamicPPL.jl/pull/1530)).
 
 `predict([rng,] model, params::VarNamedTuple)` now predicts from a single draw and returns a `ParamsWithStats`; set `include_all=true` to retain supplied parameters.
 
@@ -29,6 +43,8 @@ Re-evaluation and `LogDensityFunction` construction no longer copy fixed transfo
 Added `evaluate!!(model, context, vi)` to evaluate with an explicit leaf context and collect outputs in `vi`, such as `evaluate!!(model, InitContext(rng, InitFromPrior(), UnlinkAll()), VarInfo())`. See [#1500](https://github.com/TuringLang/DynamicPPL.jl/pull/1500).
 
 ## Breaking changes
+
+`keys`, `haskey`, `length`, `values`, `isempty` and `is_transformed(vi)` on a `VarInfo` without a `VectorValueAccumulator` now throw an `ArgumentError` instead of reporting no variables. Record values with `VarInfo(VectorValueAccumulator(), DynamicPPL.default_accumulators()...)` in place of `VarInfo()`.
 
 `marginalize` and the `DynamicPPLMarginalLogDensitiesExt` extension are removed in DynamicPPL 0.43. Users requiring the existing Turing/MLD integration can remain on DynamicPPL 0.42.x with a compatible Turing release—for example, Turing 0.49.0—and MarginalLogDensities 0.4.3–0.4.x. See the [0.42 marginalisation documentation](https://turinglang.org/DynamicPPL.jl/v0.42/api/#Marginalisation).
 
