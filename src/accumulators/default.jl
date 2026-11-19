@@ -46,7 +46,7 @@ function Base.isequal(acc1::LogProbAccumulator, acc2::LogProbAccumulator)
     return basetypeof(acc1) === basetypeof(acc2) && isequal(logp(acc1), logp(acc2))
 end
 
-Base.hash(acc::T, h::UInt) where {T<:LogProbAccumulator} = hash((T, logp(acc)), h)
+Base.hash(acc::LogProbAccumulator, h::UInt) = hash((basetypeof(acc), logp(acc)), h)
 
 _zero(::Tacc) where {Tlogp,Tacc<:LogProbAccumulator{Tlogp}} = Tacc(zero(Tlogp))
 reset(acc::LogProbAccumulator) = _zero(acc)

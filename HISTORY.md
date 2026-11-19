@@ -12,6 +12,8 @@ When rebuilding a `VarNamedTuple` from its skeleton, each nested array now keeps
 
 `templated_setindex!!` accepts another `VarNamedTuple`'s storage as a template when a slice of it, such as `z[1:2]`, holds a `VarNamedTuple`; it previously threw ([#1539](https://github.com/TuringLang/DynamicPPL.jl/pull/1539)).
 
+`hash` now agrees with `isequal` for transformed values, transform strategies, `ParamsWithStats`, `VarNamedTuple` and log-probability accumulators, so `Set` and `Dict` no longer keep equal copies as separate keys ([#1543](https://github.com/TuringLang/DynamicPPL.jl/pull/1543)).
+
 Growable-array creation warnings use a logging limit of one per array dimension and logger ([#1538](https://github.com/TuringLang/DynamicPPL.jl/pull/1538)).
 
 `predict` on `SamplingOutput` accepts `multithreaded=true` ([#1530](https://github.com/TuringLang/DynamicPPL.jl/pull/1530)).

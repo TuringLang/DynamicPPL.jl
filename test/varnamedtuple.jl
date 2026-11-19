@@ -1177,6 +1177,14 @@ end
                 end
             end
         end
+
+        vnt_templated = templated_setindex!!(
+            VarNamedTuple(), 1, @varname(x[1, 1]), zeros(Int, 1, 1)
+        )
+        vnt_growable = setindex!!(VarNamedTuple(), 1, @varname(x[1, 1]))
+        @test isequal(vnt_templated, vnt_growable)
+        @test hash(vnt_templated) == hash(vnt_growable)
+        @test hash(GrowableArray([1])) == hash([1])
     end
 
     @testset "merge" begin
