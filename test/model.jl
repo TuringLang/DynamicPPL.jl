@@ -10,6 +10,7 @@ using Distributions
 using DynamicPPL
 using LinearAlgebra: I, Cholesky
 using MCMCChains: MCMCChains
+using OffsetArrays: OffsetArray
 using Random: Random, Xoshiro
 using Test
 
@@ -150,15 +151,15 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
         end
         model = demo_condition()
 
-        # Test that different syntaxes work and give the same underlying CondFixContext
+        # Test that different syntaxes work and give the same binding listing
         @testset "conditioning NamedTuple" begin
             expected_values = @vnt begin
                 y := 2
             end
-            @test condition(model, (y=2,)).context.values == expected_values
-            @test condition(model; y=2).context.values == expected_values
-            @test condition(model; y=2).context.values == expected_values
-            @test (model | (y=2,)).context.values == expected_values
+            @test conditioned(condition(model, (y=2,))) == expected_values
+            @test conditioned(condition(model; y=2)) == expected_values
+            @test conditioned(condition(model; y=2)) == expected_values
+            @test conditioned((model | (y=2,))) == expected_values
             conditioned_model = condition(model, (y=2,))
             @test keys(VarInfo(conditioned_model)) == [@varname(x)]
         end
@@ -168,11 +169,11 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
             expected_values = @vnt begin
                 y := 2
             end
-            @test condition(model, Dict(@varname(y) => 2)).context.values == expected_values
-            @test condition(model, @varname(y) => 2).context.values == expected_values
-            @test (model | (@varname(y) => 2,)).context.values == expected_values
-            @test (model | (@varname(y) => 2)).context.values == expected_values
-            conditioned_model = condition(model, Dict(@varname(y) => 2))
+            @test_throws ArgumentError condition(model, Dict(@varname(y) => 2))
+            @test conditioned(condition(model, @varname(y) => 2)) == expected_values
+            @test conditioned((model | (@varname(y) => 2,))) == expected_values
+            @test conditioned((model | (@varname(y) => 2))) == expected_values
+            conditioned_model = condition(model, @varname(y) => 2)
             @test keys(VarInfo(conditioned_model)) == [@varname(x)]
 
             # condition 2 variables
@@ -180,7 +181,7 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
                 x := 1
                 y := 2
             end
-            @test condition(model, (@varname(x) => 1, @varname(y) => 2)).context.values ==
+            @test conditioned(condition(model, (@varname(x) => 1, @varname(y) => 2))) ==
                 expected_values
             conditioned_model = condition(model, (@varname(x) => 1, @varname(y) => 2))
             @test keys(VarInfo(conditioned_model)) == []
@@ -191,12 +192,12 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
             expected_values = @vnt begin
                 y := 2
             end
-            @test condition(model, (@vnt begin
+            @test conditioned(condition(model, (@vnt begin
                 y := 2
-            end)).context.values == expected_values
-            @test (model | (@vnt begin
+            end))) == expected_values
+            @test conditioned(model | (@vnt begin
                 y := 2
-            end)).context.values == expected_values
+            end)) == expected_values
         end
 
         @testset "deconditioning" begin
@@ -745,9 +746,9 @@ end
     # Storage built from these keys has length 2, where `end` names `y[2]`.
     short = Dict(@varname(y[1]) => 1.0, @varname(y[2]) => 2.0)
     @test_throws ArgumentError returned(last_local(), short)
-    @test_throws ArgumentError rand(Xoshiro(1), condition(last_local(), short))
-    @test_throws ArgumentError logjoint(condition(last_local(), short), VarNamedTuple())
-    @test_throws ArgumentError rand(Xoshiro(1), condition(masked_local(), short))
+    @test_throws ArgumentError init!!(
+        Xoshiro(1), masked_local(), vi, InitFromParams(short, InitFromPrior())
+    )
 end
 
 @model function first_of_two()
@@ -760,6 +761,19 @@ end
     predicted(x) = DynamicPPL.predict(Xoshiro(1), first_of_two(), VarNamedTuple(; x)).params
     @test isempty(predicted(xs))
     @test isempty(predicted((xs[1],)))
+end
+
+@testset "supported placeholder storage message" begin
+    @model placeholder_message(y) = y .~ Normal()
+    err = try
+        placeholder_message(OffsetArray([missing, 1.0], 0:1))
+    catch e
+        e
+    end
+    @test err isa ArgumentError
+    message = sprint(showerror, err)
+    @test !occursin("Array`-backed", message)
+    @test !occursin("collect(", message)
 end
 
 @info "Completed $(@__FILE__) in $(now() - __now__)."

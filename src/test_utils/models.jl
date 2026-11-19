@@ -63,7 +63,7 @@ end
 """
     demo_one_variable_multiple_constraints()
 
-A model with a single multivariate `x` whose components have multiple different constraints.
+A model whose array `x` is filled by four LHS variables with different constraints.
 
 # Model
 ```julia
@@ -463,7 +463,9 @@ end
     # Submodel likelihood
     # With to_submodel, we have to have a left-hand side variable to
     # capture the result, so we just use a dummy variable
-    _ignore ~ to_submodel(_likelihood_multivariate_observe(s, m, x), false)
+    _ignore ~ to_submodel(
+        condition(_likelihood_multivariate_observe(s, m, missing); x), false
+    )
 
     return (; s=s, m=m, x=x)
 end

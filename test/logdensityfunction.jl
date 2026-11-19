@@ -544,6 +544,20 @@ end
 
     test_adtypes = [AutoForwardDiff(), AutoMooncake(; config=nothing)]
 
+    @testset "Mooncake with a partly missing argument" begin
+        @model function partly_missing(y)
+            for i in eachindex(y)
+                y[i] ~ Normal()
+            end
+            return y
+        end
+        model = partly_missing(Union{Missing,Float64}[missing, 0.1])
+        ldf = LogDensityFunction(model; adtype=AutoMooncake(; config=nothing))
+        logp, grad = LogDensityProblems.logdensity_and_gradient(ldf, [0.3])
+        @test logp ≈ logpdf(Normal(), 0.3) + logpdf(Normal(), 0.1)
+        @test grad ≈ [-0.3]
+    end
+
     @testset "Correctness" begin
         @testset "$(m.f)" for m in DynamicPPL.TestUtils.ALL_MODELS
             f = LogDensityFunction(m, getlogjoint_internal, LinkAll())
