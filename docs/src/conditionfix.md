@@ -152,7 +152,7 @@ end
 
 Note that in this case since the `VarNamedTuple` has no knowledge of the length or shape of `y`, DynamicPPL will assume that `y` is a `Base.Vector` of unknown length (hence the `GrowableArray` above).
 
-This will work fine as long as `y` is indeed a `Base.Vector`.
+This will work fine as long as `y` is indeed a `Base.Vector` and the model does not index it with `begin`, `end`, `:` or a Boolean mask.
 However, if you want to avoid this, you should provide the full shape of `y` when defining the `VarNamedTuple`:
 
 ```@example 1

@@ -704,6 +704,64 @@ const GDEMO_DEFAULT = DynamicPPL.TestUtils.demo_assume_observe_literal()
     end
 end
 
+@model function linear_local()
+    y = zeros(2, 2)
+    y[1] ~ Normal()
+    return y[1]
+end
+@model function aliased_local()
+    y = zeros(3, 3)
+    y[4] ~ Normal()
+    return y[4]
+end
+@model function last_local()
+    y = zeros(3)
+    y[end] ~ Normal()
+    return y[3]
+end
+@model function masked_local()
+    y = zeros(3)
+    return y[[true, true, false]] ~ MvNormal(zeros(2), I)
+end
+@testset "values keyed in another index form without a template" begin
+    vi = VarInfo(RawValueAccumulator(false))
+    cartesian = Dict(@varname(y[1, 1]) => 1.0)
+    @test_throws ArgumentError init!!(
+        Xoshiro(1), linear_local(), vi, InitFromParams(cartesian, InitFromPrior())
+    )
+    untemplated = VarNamedTuple(pairs(cartesian))
+    @test_throws ArgumentError haskey(untemplated, @varname(y[1]))
+    @test_throws "`y[1]`" untemplated[@varname(y[1])]
+    @test haskey(untemplated, @varname(y[1, 1])) && !haskey(untemplated, @varname(y[2, 2]))
+    # Storage built from these keys is 2x2, where `y[4]` is `y[2, 2]` rather than `y[1, 2]`.
+    aliased = Dict(@varname(y[1, 2]) => 1.0, @varname(y[2, 2]) => 2.0)
+    @test_throws ArgumentError init!!(
+        Xoshiro(1), aliased_local(), vi, InitFromParams(aliased, nothing)
+    )
+    linear = VarNamedTuple(pairs(Dict(@varname(y[1]) => 1.0)))
+    @test isempty(DynamicPPL.predict(Xoshiro(1), linear_local(), linear).params)
+    whole = VarNamedTuple(; y=[1.0 0.0; 0.0 0.0])
+    @test isempty(DynamicPPL.predict(Xoshiro(1), linear_local(), whole).params)
+    # Storage built from these keys has length 2, where `end` names `y[2]`.
+    short = Dict(@varname(y[1]) => 1.0, @varname(y[2]) => 2.0)
+    @test_throws ArgumentError returned(last_local(), short)
+    @test_throws ArgumentError rand(Xoshiro(1), condition(last_local(), short))
+    @test_throws ArgumentError logjoint(condition(last_local(), short), VarNamedTuple())
+    @test_throws ArgumentError rand(Xoshiro(1), condition(masked_local(), short))
+end
+
+@model function first_of_two()
+    x = Vector{Vector{Float64}}(undef, 2)
+    return x[1] ~ MvNormal(zeros(2), I)
+end
+@testset "predict reads supplied values only where the model has variables" begin
+    xs = Vector{Vector{Float64}}(undef, 2)
+    xs[1] = [1.0, 2.0]
+    predicted(x) = DynamicPPL.predict(Xoshiro(1), first_of_two(), VarNamedTuple(; x)).params
+    @test isempty(predicted(xs))
+    @test isempty(predicted((xs[1],)))
+end
+
 @info "Completed $(@__FILE__) in $(now() - __now__)."
 
 end # module

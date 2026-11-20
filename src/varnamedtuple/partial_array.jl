@@ -370,6 +370,36 @@ function _can_get_arraylikeblock(pa_data::AbstractArray)
     return true
 end
 
+# Must throw, not report a miss, for an index that is resolved against the shape of storage
+# built without a template (`begin`, `end`, `:`), a Boolean mask whose axes differ from the
+# storage's, or an index with another number of dimensions: the element it names depends
+# on the unknown shape.
+function _check_index_form(pa::PartialArray, inds, vn)
+    pa.data isa GrowableArray || return nothing
+    n = 0
+    masks_fit = true
+    for ind in inds
+        if ind isa AbstractArray{Bool}
+            offset = n
+            masks_fit &= all(d -> axes(ind, d) == axes(pa.data, offset + d), 1:ndims(ind))
+            n += ndims(ind)
+        else
+            n += length(Base.index_ndims(ind))
+        end
+    end
+    resolved = !_has_colon_or_dynamicindex(inds)
+    resolved && masks_fit && n == ndims(pa) && return nothing
+    throw(
+        ArgumentError(
+            "Cannot look up `$vn` in values set with $(ndims(pa))-dimensional indices " *
+            "without a template: the element it names depends on the array's unknown " *
+            "shape. Supply a template or the whole array, or pass the `VarNamedTuple` " *
+            "itself rather than a `Dict` of its pairs" *
+            (resolved ? "; or use matching indices." : "."),
+        ),
+    )
+end
+
 """
     Base.getindex(pa::PartialArray, inds::Vararg{Any}; kw...)
 
@@ -418,14 +448,6 @@ function Base.getindex(pa::PartialArray, inds::Vararg{Any}; kw...)
             throw(alb_err)
         end
     elseif val isa GrowableArray
-        # This code path is hit for things like `vnt[@varname(x[:])]` where `x` is a PA that
-        # stores a GrowableArray. We warn the user that the result may be wrong.
-        # TODO(penelopeysm): The DynamicIndex check actually doesn't work here because if
-        # you index with `x[end]` for example, `inds` is already concretised outside of this
-        # function.
-        if any(ind -> ind isa AbstractPPL.DynamicIndex || ind isa Colon, inds)
-            _warn_growable_array_extraction()
-        end
         return unwrap_internal_array(val)
     else
         return val
@@ -674,10 +696,6 @@ function BangBang.setindex!!(pa::PartialArray, value, inds::Vararg{Any}; kw...)
 end
 
 function _subset_partialarray(pa::PartialArray, inds::Vararg{Any}; kw...)
-    if pa.data isa GrowableArray &&
-        any(ind -> ind isa AbstractPPL.DynamicIndex || ind isa Colon, inds)
-        _warn_growable_array_extraction()
-    end
     new_data = view(pa.data, inds...; kw...)
     new_mask = view(pa.mask, inds...; kw...)
     return PartialArray(new_data, new_mask)

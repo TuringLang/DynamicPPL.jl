@@ -418,17 +418,34 @@ function predict(
     return if include_all
         prediction
     else
+        # Re-key `params` with the model's templates, as `to_samples` does, so the model's
+        # leaves below match any index form in `params`; keep only the parts the model holds.
+        supplied = VarNamedTuple()
+        for (vn, value) in pairs(params)
+            # Must read `params` at the model's keys, not expand `value`: expanding reads
+            # unassigned elements and treats a `Tuple` as a single leaf.
+            leaves = if haskey(prediction.params, vn)
+                ((vn, value),)
+            else
+                model_leaves = Iterators.filter(l -> subsumes(vn, l), keys(prediction.params))
+                ((l, params[l]) for l in model_leaves if haskey(params, l))
+            end
+            for (leaf, leaf_value) in leaves
+                template = prediction.params.data[AbstractPPL.getsym(leaf)]
+                supplied = templated_setindex!!(supplied, leaf_value, leaf, template)
+            end
+        end
         predicted_params = VarNamedTuple()
         # Raw values retain sampled-variable boundaries before arrays are densified.
         for (vn, value) in pairs(get_raw_values(vi))
             leaves = AbstractPPL.varname_and_value_leaves(vn, value)
-            isempty(leaves) && haskey(params, vn) && !ismissing(params[vn]) && continue
+            isempty(leaves) && haskey(supplied, vn) && !ismissing(supplied[vn]) && continue
             keep_all = all(
-                p -> !haskey(params, first(p)) || ismissing(params[first(p)]), leaves
+                p -> !haskey(supplied, first(p)) || ismissing(supplied[first(p)]), leaves
             )
             retained = keep_all ? ((vn, value),) : leaves
             for (leaf, leaf_value) in retained
-                if keep_all || !haskey(params, leaf) || ismissing(params[leaf])
+                if keep_all || !haskey(supplied, leaf) || ismissing(supplied[leaf])
                     predicted_params = templated_setindex!!(
                         predicted_params,
                         leaf_value,
