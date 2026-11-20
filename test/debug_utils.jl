@@ -8,6 +8,9 @@ using DynamicPPL, Distributions, Test
 using LinearAlgebra: I
 using Random: Xoshiro
 
+struct NaNObservation end
+Base.isnan(::NaNObservation) = true
+
 function test_model_fails_check(model)
     issuccess = check_model(model)
     @test !issuccess
@@ -120,6 +123,14 @@ end
         end
         m = demo_nan_complicated((x=1.0, y=[NaN, 0.5]))
         @test_throws ErrorException check_model(m; error_on_failure=true)
+    end
+
+    @testset "non-numeric data" begin
+        @test !DynamicPPL.DebugUtils._has_nans((
+            label=:right, values=["left", missing, 1.0]
+        ))
+        @test DynamicPPL.DebugUtils._has_nans((label=:right, values=["left", missing, NaN]))
+        @test DynamicPPL.DebugUtils._has_nans((label=:right, value=NaNObservation()))
     end
 
     @testset "incorrect use of condition" begin
