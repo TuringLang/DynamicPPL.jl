@@ -2460,10 +2460,11 @@ end
 
         # VNT -> PA -> PA
         v7 = @vnt begin
-            @template x = fill(zeros(2), 3)
-            x[3][2] := 2.0
+            @template x = [zeros(1), zeros(2)]
+            x[1][1] := 1.0
+            x[2][2] := 2.0
         end
-        v7s = VarNamedTuple(; x=fill(fill(nothing, 2), 3))
+        v7s = VarNamedTuple(; x=[[nothing], [nothing, nothing]])
         test_skeleton(v7, v7s)
 
         # VNT -> PA -> VNT -> PA

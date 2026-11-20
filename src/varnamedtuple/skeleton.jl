@@ -4,6 +4,10 @@ end
 _element_needs_skeleton(::Type{<:PartialArray}) = true
 _element_needs_skeleton(::Type{T}) where {T} = VarNamedTuple <: T || PartialArray <: T
 
+# A field declared as Any may hold a leaf at runtime.
+_field_skeleton(_) = nothing
+_field_skeleton(x::Union{VarNamedTuple,PartialArray}) = skeleton(x)
+
 """
     DynamicPPL.skeleton(vnt::VarNamedTuple)
 
@@ -41,7 +45,7 @@ infers the element type to use from the value that is being set).
     return if isempty(nms_to_include)
         :(VarNamedTuple())
     else
-        args = [:($n = skeleton(vnt.data.$n)) for n in nms_to_include]
+        args = [:($n = _field_skeleton(vnt.data.$n)) for n in nms_to_include]
         expr = Expr(:tuple, args...)
         :(VarNamedTuple($expr))
     end
@@ -63,6 +67,11 @@ end
                 example_skeleton = skeleton(pa.data[idx])
                 new_data = similar(pa.data, typeof(example_skeleton))
                 fill!(new_data, example_skeleton)
+                for i in keys(pa.mask)
+                    if i != idx && pa.mask[i]
+                        new_data = BangBang.setindex!!(new_data, skeleton(pa.data[i]), i)
+                    end
+                end
                 return new_data
             end
         else

@@ -1,5 +1,7 @@
 # 0.43.0 (unreleased)
 
+When rebuilding a `VarNamedTuple` from its skeleton, each nested array now keeps its original size. Previously, reusing the first array’s size could produce incorrectly sized arrays or throw a `BoundsError` ([#1540](https://github.com/TuringLang/DynamicPPL.jl/issues/1540)).
+
 `VarNamedTuple` records indexed random variables in same-type tuple templates ([#1539](https://github.com/TuringLang/DynamicPPL.jl/pull/1539)).
 
 `fix` and `condition` now apply same-type tuple values to indexed variables: for `x = (0.0, 0.0); x[1] ~ Normal()`, `fix(model; x=(1.0, 2.0))` previously had no effect and now fixes `x[1]`. Mixed-type tuple values, such as `x=(1.0, 2)`, throw an `ArgumentError`, as does indexing into one stored in a `VarNamedTuple` ([#1539](https://github.com/TuringLang/DynamicPPL.jl/pull/1539)).
