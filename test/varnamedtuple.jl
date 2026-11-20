@@ -965,14 +965,17 @@ end
                 x[2] := 2.0
             end
             warnmsg = r"Returning a `Base.Array` with"
-            # These should warn. There are various calls to _warn_growable_array() inside
-            # the VNT code to handle each of these cases.
-            @test_logs (:warn, warnmsg) vnt[@varname(x[:][1])]
-            @test_logs (:warn, warnmsg) vnt[@varname(x[:])]
             @test_logs (:warn, warnmsg) vnt[@varname(x)]
-            @test_logs (:warn, warnmsg) vnt[@varname(x[begin])]
-            @test_logs (:warn, warnmsg) vnt[@varname(x[end])]
-            @test_logs (:warn, warnmsg) vnt[@varname(x[1:end])]
+            # Indices resolved against the presumed size throw instead.
+            for vn in (
+                @varname(x[:][1]),
+                @varname(x[:]),
+                @varname(x[begin]),
+                @varname(x[end]),
+                @varname(x[1:end]),
+            )
+                @test_throws ArgumentError vnt[vn]
+            end
             # These shouldn't warn because they are safe
             @test_logs vnt[@varname(x[1:2])]
             @test_logs vnt[@varname(x[1])]
@@ -1096,7 +1099,6 @@ end
             @test @inferred(getindex(vnt, @varname(x[1]))) == 1.0
             # Check that we can get both indices
             @test @inferred(getindex(vnt, @varname(x[1:2]))) == [1.0, 2.0]
-            @test @inferred(getindex(vnt, @varname(x[:]))) == [1.0, 2.0]
             @test @inferred(getindex(vnt, @varname(x))) == [1.0, 2.0]
 
             @test keys(vnt) == [@varname(x[1]), @varname(x[2])]

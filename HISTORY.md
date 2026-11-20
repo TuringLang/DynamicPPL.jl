@@ -28,7 +28,7 @@ Fixed model argument evaluation world-age errors when loading without a valid pr
 
 Thread-safe tilde assignments now throw an `ArgumentError` if any container is replaced, including same-type immutable values: `(a = zero(T),)` → `Vector{T}(undef, n)`. Allocate mutable storage with `::Type{T}=Float64`; use `Vector{Union{Missing,Real}}` for imputation under AD. See [#1521](https://github.com/TuringLang/DynamicPPL.jl/pull/1521).
 
-`VarNamedTuple` membership resolves `begin` and `end` against the stored array. See [#1490](https://github.com/TuringLang/DynamicPPL.jl/pull/1490).
+`VarNamedTuple` membership resolves `begin` and `end` against the stored array when it has a template. See [#1490](https://github.com/TuringLang/DynamicPPL.jl/pull/1490).
 
 `ComponentVector` properties, including nested fields and slices, use consistent indices for membership, retrieval, and updates. See [#1491](https://github.com/TuringLang/DynamicPPL.jl/pull/1491).
 
@@ -45,6 +45,8 @@ Added `evaluate!!(model, context, vi)` to evaluate with an explicit leaf context
 ## Breaking changes
 
 `keys`, `haskey`, `length`, `values`, `isempty` and `is_transformed(vi)` on a `VarInfo` without a `VectorValueAccumulator` now throw an `ArgumentError` instead of reporting no variables. Record values with `VarInfo(VectorValueAccumulator(), DynamicPPL.default_accumulators()...)` in place of `VarInfo()`.
+
+`VarNamedTuple` lookups and model evaluation throw `ArgumentError` for indices with a different number of dimensions, indices using `begin`, `end` or `:`, or Boolean masks of a different shape, in values set by index without a template; previously these could return the wrong element or be treated as missing. Supply a template or the whole array, or pass the `VarNamedTuple` itself rather than a `Dict` of its pairs ([#1544](https://github.com/TuringLang/DynamicPPL.jl/pull/1544)).
 
 `marginalize` and the `DynamicPPLMarginalLogDensitiesExt` extension are removed in DynamicPPL 0.43. Users requiring the existing Turing/MLD integration can remain on DynamicPPL 0.42.x with a compatible Turing release—for example, Turing 0.49.0—and MarginalLogDensities 0.4.3–0.4.x. See the [0.42 marginalisation documentation](https://turinglang.org/DynamicPPL.jl/v0.42/api/#Marginalisation).
 
