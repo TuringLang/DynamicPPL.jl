@@ -1,5 +1,7 @@
 # 0.43.0 (unreleased)
 
+Added `AbstractPPL.of(vnt::VarNamedTuple)`, which describes a `VarNamedTuple`'s storage as an AbstractPPL binding template. It supports numeric `Array`s, nested fields and scalars whose type `of` preserves; other storage, such as values set by index without a template, throws an `ArgumentError` ([#1547](https://github.com/TuringLang/DynamicPPL.jl/pull/1547)).
+
 When rebuilding a `VarNamedTuple` from its skeleton, each nested array now keeps its original size. Previously, reusing the first array’s size could produce incorrectly sized arrays or throw a `BoundsError` ([#1540](https://github.com/TuringLang/DynamicPPL.jl/issues/1540)).
 
 `VarNamedTuple` records indexed random variables in same-type tuple templates ([#1539](https://github.com/TuringLang/DynamicPPL.jl/pull/1539)).
