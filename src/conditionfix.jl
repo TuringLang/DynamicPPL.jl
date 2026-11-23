@@ -649,6 +649,11 @@ function _bind(model, ::Type{R}, inputs; kwargs...) where {R}
             local_vn = _relative_name(model, vn)
             local_vn === nothing &&
                 _throw_binding_error(vn, "address is not below model prefix")
+            prefix = _model_prefix(model)
+            if prefix !== nothing && !(storage isa NoTemplate)
+                root = AbstractPPL.prefix(VarName{AbstractPPL.getsym(local_vn)}(), prefix)
+                storage = _binding_node_at(storage, AbstractPPL.getoptic(root))
+            end
             entries = (
                 entries..., _split_namespace_entry(model, local_vn, value, storage)...
             )

@@ -518,6 +518,21 @@ end
     @test haskey(rand(Xoshiro(1), condition(removed; z=0.0)), @varname(xs[1]))
 end
 
+@testset "prefixed models accept their own listings" begin
+    @model prefixed_local() = (z ~ Normal(); z)
+    @model prefixed_elements() = (z = zeros(2); z[1] ~ Normal(); z[2] ~ Normal(); z)
+    for ((bind, _, listing), (other, _, _)) in zip(BINDING_ROLES, reverse(BINDING_ROLES))
+        model = prefix(bind(prefixed_local(); z=1.0), @varname(p))
+        @test bind(model, listing(model))(Xoshiro(1)) == 1.0
+        model = prefix(prefixed_elements(), @varname(p))
+        draw = rand(Xoshiro(1), model)
+        @test bind(model, draw)(Xoshiro(2)) == draw[@varname(p.z)]
+        bound = other(model, draw)
+        @test listing(bound) == VarNamedTuple()
+        @test bind(bound, listing(bound))(Xoshiro(2)) == draw[@varname(p.z)]
+    end
+end
+
 @testset "local shape diagnostics" begin
     @model local_fields() = (x = (a=zeros(2),); x.a[1] ~ Normal(); x)
     for (bind, _, _) in BINDING_ROLES
