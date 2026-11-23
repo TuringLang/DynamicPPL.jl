@@ -209,7 +209,7 @@ end
 _unbind_placeholders(model, ::Tuple{}) = model
 function _unbind_placeholders(model, found::Tuple)
     names = first(found)
-    model = isempty(names) ? model : _unbind(model, names, ConditionRole)
+    model = isempty(names) ? model : _unbind_local(model, names, ConditionRole)
     return _unbind_placeholders(model, Base.tail(found))
 end
 

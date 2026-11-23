@@ -72,7 +72,8 @@ function _find_placeholder(value, seen=Base.IdSet{Any}())
     return result
 end
 _rewrap_role(::BoundValue{R}, value) where {R} = BoundValue{R}(value)
-_binding_role(::BoundValue{R}) where {R} = R === FixRole ? FixRole() : ConditionRole()
+# `ArgumentRole` maps to `ConditionRole`: an argument observation is an observation.
+_effective_role(::BoundValue{R}) where {R} = R === FixRole ? FixRole : ConditionRole
 _matches_role(R, x) = x isa BoundValue{R}
 _matches_role(::Type{ConditionRole}, x::BoundValue{ArgumentRole}) = true
 """
@@ -266,7 +267,7 @@ function _binding_node_at(
     )
 end
 _binding_role(::Union{Nothing,NoBinding}, vn, storage=NoTemplate()) = nothing
-_binding_role(x::BoundValue, vn, storage=NoTemplate()) = _binding_role(x)
+_binding_role(x::BoundValue, vn, storage=NoTemplate()) = _effective_role(x)
 function _binding_role(x::_InnerNode, vn, storage=NoTemplate())
     if x isa VarNamedTuples.PartialArray{<:BoundValue}
         observed, fixed, complete = false, false, true
@@ -299,7 +300,7 @@ function _binding_role(x::_InnerNode, vn, storage=NoTemplate())
         end
         _throw_binding_error(vn, message)
     end
-    return fixed ? FixRole() : ConditionRole()
+    return fixed ? FixRole : ConditionRole
 end
 _bound_data(x::BoundValue) = x.value
 _bound_data(x::VarNamedTuple) = map(_bound_data, x.data)
@@ -607,10 +608,9 @@ function _check_role_overlap(previous, incoming::BoundValue, vn; disjoint=false)
     # A placeholder argument entry observes nothing; storage conversion reports it.
     previous isa BoundValue{ArgumentRole,<:Union{Missing,Nothing}} && return nothing
     if previous isa BoundValue
-        disjoint ||
-            typeof(_binding_role(previous)) === typeof(_binding_role(incoming)) ||
-            _throw_binding_error(vn, "observed and fixed positions overlap")
         disjoint && _throw_binding_error(vn, "parent and child bindings overlap")
+        _effective_role(previous) === _effective_role(incoming) ||
+            _throw_binding_error(vn, "observed and fixed positions overlap")
     elseif previous isa _InnerNode
         VarNamedTuples._mapreduce_recursive(
             identity,
@@ -770,7 +770,7 @@ function _equality_key(x::_InnerNode)
     )
     return isempty(entries) ? nothing : entries
 end
-_equality_key(x::BoundValue) = (typeof(_binding_role(x)), x.value)
+_equality_key(x::BoundValue) = (_effective_role(x), x.value)
 _equality_key(::NoBinding) = nothing
 function _equality_key(table::BindingTable)
     result = Dict()

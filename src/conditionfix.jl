@@ -75,9 +75,17 @@ function _argument_role(model, vn, argument, local_value=NoTemplate())
                 "a multivariate tilde cannot impute `missing` argument entries; write one tilde per imputed entry, such as `x[i] ~ Normal()`",
             )
     end
-    return _local_role(binding, vn, local_value, model, ArgumentRole)
+    return _stored_role(binding, vn, model)
 end
-function _local_role(binding, vn, template, model, role=ConditionRole)
+# The role of a local LHS variable, after checking its storage against the bound shape.
+function _local_role(binding, vn, template, model)
+    found = _stored_role(binding, vn, model)
+    if binding isa Union{BoundValue,_InnerNode}
+        _check_local_shape(model, vn, template, ConditionRole)
+    end
+    return found
+end
+function _stored_role(binding, vn, model)
     optic = AbstractPPL.getoptic(vn)
     address = maybe_prefix(vn, _model_prefix(model))
     root = _binding_root(model, vn)
@@ -94,11 +102,7 @@ function _local_role(binding, vn, template, model, role=ConditionRole)
     else
         NoTemplate()
     end
-    found = _binding_role(node, address, storage)
-    if role !== ArgumentRole && binding isa Union{BoundValue,_InnerNode}
-        _check_local_shape(model, vn, template, role)
-    end
-    return found
+    return _binding_role(node, address, storage)
 end
 function _check_local_shape(model, vn, local_value, role; submodel=false)
     local_value isa NoTemplate && return nothing
@@ -761,17 +765,21 @@ end
 Remove observations recursively; omit names to remove all observations.
 """
 AbstractPPL.decondition(model::Model, names::Union{Symbol,VarName}...) =
-    _unbind(model, names, ConditionRole, Val(true))
+    _unbind_recursive(model, names, ConditionRole)
 """
     unfix(model::Model, names...)
 
 Remove fixed values recursively; omit names to remove all fixed values.
 """
 unfix(model::Model, names::Union{Symbol,VarName}...) =
-    _unbind(model, names, FixRole, Val(true))
-function _unbind(model, names, R, ::Val{recursive}=Val(false)) where {recursive}
+    _unbind_recursive(model, names, FixRole)
+function _relative_names(model, names)
     names = map(n -> _relative_name(model, n isa Symbol ? VarName{n}() : n), names)
-    any(isnothing, names) && (names = ())
+    return any(isnothing, names) ? () : names
+end
+# Remove `R` bindings at `names` from `model`'s own table; submodels keep theirs.
+function _unbind_local(model, names, R)
+    names = _relative_names(model, names)
     for vn in names
         _check_binding_address(model, vn)
         root = _binding_root(model, vn)
@@ -780,26 +788,28 @@ function _unbind(model, names, R, ::Val{recursive}=Val(false)) where {recursive}
     table = _remove_role(
         model.values, R, names; arguments=merge(model.args, model.defaults)
     )
-    markers = _removal_markers(R, model)
-    if recursive
-        markers = if isempty(names)
-            ((name=nothing, active=true),)
-        else
-            # A repeated name would grow the model type on every call.
-            foldl(names; init=markers) do markers, name
-                any(m -> isequal(m.name, name), markers) && return markers
-                return (markers..., (; name, active=true))
-            end
-        end
-    end
-    result = _reconstruct_model(
-        model;
-        values=table,
-        observation_removals=R === ConditionRole ? markers : model.observation_removals,
-        fixed_removals=R === FixRole ? markers : model.fixed_removals,
-    )
+    result = _reconstruct_model(model; values=table)
     _check_argument_aliasing(result)
     return result
+end
+# Also record removal markers, which each submodel applies to its own bindings when reached.
+function _unbind_recursive(model, names, R)
+    result = _unbind_local(model, names, R)
+    names = _relative_names(model, names)
+    markers = if isempty(names)
+        ((name=nothing, active=true),)
+    else
+        # A repeated name would grow the model type on every call.
+        foldl(names; init=_removal_markers(R, model)) do markers, name
+            any(m -> isequal(m.name, name), markers) && return markers
+            return (markers..., (; name, active=true))
+        end
+    end
+    return if R === ConditionRole
+        _reconstruct_model(result; observation_removals=markers)
+    else
+        _reconstruct_model(result; fixed_removals=markers)
+    end
 end
 
 function _prepare_argument(binding, value, vn, owned, storage=value)

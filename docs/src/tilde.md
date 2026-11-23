@@ -21,9 +21,9 @@ begin
     vn = @varname(x)
     dist = Normal()
     role = binding_role(model, vn)
-    if role isa FixRole
+    if role === FixRole
         x = bound_value(model, vn)
-    elseif role isa ConditionRole
+    elseif role === ConditionRole
         observed = is_argument(vn) ? x : bound_value(model, vn)
         x, vi = tilde_observe!!(prefix, prefix_template, dist, observed, vn, template, vi)
     else

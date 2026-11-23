@@ -654,7 +654,7 @@ function generate_tilde(left, right; is_argument=false)
             $(AbstractPPL.Property{top}()),
         )
         $role = $dist isa $(DynamicPPL.Submodel) ? nothing : $lookup_role
-        if $role isa $(DynamicPPL.FixRole)
+        if $role === $(DynamicPPL.FixRole)
             $value = $(DynamicPPL._check_no_placeholder)(
                 $fixed_data,
                 $(DynamicPPL.maybe_prefix)($vn, $(DynamicPPL._model_prefix)(__model__)),

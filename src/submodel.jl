@@ -348,7 +348,7 @@ function _merge_child_root(old, incoming, parent, prefix, ::Val{name}, child) wh
             wrapped.value,
             AbstractPPL.getoptic(location),
             location,
-            typeof(_binding_role(wrapped)),
+            _effective_role(wrapped),
             previous_constraints;
             error_address,
         )
