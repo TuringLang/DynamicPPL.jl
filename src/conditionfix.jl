@@ -3,21 +3,35 @@ Base.@constprop :aggressive function _argument_bindings(arguments, metadata)
 end
 @generated function _argument_bindings(arguments::NamedTuple{N}, ::Val{L}) where {N,L}
     names = Tuple(n for n in N if unsplat_symbol(n) in L)
-    fields = map(names) do n
-        # An empty keyword splat is unobserved, like a `missing` argument.
-        empty = is_splat_symbol(n) && fieldtype(arguments, n) <: NamedTuple{()}
-        :(BindingRoot(
-            if $empty || arguments.$n isa Union{Missing,Nothing}
-                NoBinding()
-            else
-                BoundValue{ArgumentRole}(arguments.$n)
-            end,
-            arguments.$n,
-            (),
-        ))
+    values = (:(arguments.$n) for n in names)
+    values = :(NamedTuple{$(map(unsplat_symbol, names))}(($(values...),)))
+    # An empty keyword splat is unobserved, like a `missing` argument.
+    empty = Tuple(
+        unsplat_symbol(n) for
+        n in names if is_splat_symbol(n) && fieldtype(arguments, n) <: NamedTuple{()}
+    )
+    unobserved = (:(BindingRoot(NoBinding(), (;), ())) for _ in empty)
+    unobserved = :(NamedTuple{$empty}(($(unobserved...),)))
+    roots = :(_whole_roots(VarNamedTuple(), ArgumentRole, $values).data)
+    return :(BindingTable(VarNamedTuple(merge($roots, $unobserved))))
+end
+# Bind each value in `values` as a whole root. Model construction binds arguments this way;
+# `condition` and `fix` do so whenever `_bind_whole` allows. Names come from types, so the
+# table's type infers without constant folding, which Mooncake does not do.
+@generated function _whole_roots(
+    roots::VarNamedTuple, ::Type{R}, values::NamedTuple{N}
+) where {R,N}
+    fields = (:(_whole_root(R, $(VarName{n}()), values.$n)) for n in N)
+    return :(VarNamedTuple(merge(roots.data, NamedTuple{N}(($(fields...),)))))
+end
+function _whole_root(::Type{R}, vn, value) where {R}
+    if R === ArgumentRole
+        bound = value isa Union{Missing,Nothing} ? NoBinding() : BoundValue{R}(value)
+        return BindingRoot(bound, value, ())
     end
-    roots = Tuple(unsplat_symbol(n) for n in names)
-    return :(BindingTable(VarNamedTuple(NamedTuple{$roots}(($(fields...),)))))
+    # Numeric value nodes already enforce their role and shape.
+    constraints = value isa Number ? () : (BindingConstraint(vn, R, value, Val(:shape)),)
+    return BindingRoot(BoundValue{R}(value), value, constraints)
 end
 function _binding_root(model, vn)
     return get(model.values.roots.data, AbstractPPL.getsym(vn), nothing)
@@ -479,24 +493,18 @@ function _write_selection(
         !_same_shape(previous.value, element) &&
         _throw_binding_error(address, "remove the binding before changing shape")
     element = _apply_constraints(element, optic, address, R, constraints)
-    incoming = BoundValue{R}(element)
+    whole = _whole_root(R, address, element)
     if optic isa AbstractPPL.Iden
-        node = incoming
-        storage = element
-        constraints = filter(c -> c.mode === Val(:type), constraints)
-    else
-        node = _set_binding_node(
-            node, AbstractPPL.getsym(address), incoming, address, located
-        )
+        types = filter(c -> c.mode === Val(:type), constraints)
+        return whole.value, whole.storage, (types..., whole.constraints...)
     end
+    node = _set_binding_node(
+        node, AbstractPPL.getsym(address), whole.value, address, located
+    )
     constraints = filter(
         c -> !(c.owner == address && c.role === R && c.mode === Val(:shape)), constraints
     )
-    # Numeric value nodes already enforce their role and shape.
-    element isa Number || (
-        constraints = (constraints..., BindingConstraint(address, R, element, Val(:shape)))
-    )
-    return node, storage, constraints
+    return node, storage, (constraints..., whole.constraints...)
 end
 # Avoid inference per model history, but retain the role and stored types:
 # `condition` can run inside an evaluator.
@@ -585,58 +593,89 @@ end
 Bind observations. Pass an optional storage template last.
 """
 AbstractPPL.condition(model::Model, inputs...; kwargs...) =
-    _bind(model, ConditionRole, inputs; kwargs...)
+    _bind(model, ConditionRole, inputs, values(kwargs))
 """
     fix(model::Model, values...; kwargs...)
 
 Bind values whose distributions contribute no density. Pass an optional storage template last.
 """
-fix(model::Model, inputs...; kwargs...) = _bind(model, FixRole, inputs; kwargs...)
-function _bind(
-    model, ::Type{R}, inputs::Tuple{NamedTuple{N,Tuple{T}}}; kwargs...
-) where {R,N,T<:Number}
-    vn = VarName{only(N)}()
-    old = _binding_root(model, vn)
-    if isempty(kwargs) &&
-        _model_prefix(model) === nothing &&
-        !any(is_splat_symbol, keys(model.defaults)) &&
-        (
-            old === nothing ||
-            isempty(old.constraints) &&
-            old.storage isa Union{Number,Missing,Nothing,NoTemplate} &&
-            (
-                old.value isa NoBinding ||
-                old.value isa BoundValue && old.value.value isa Number
-            )
-        )
-        _check_binding_address(model, vn)
-        value = only(values(only(inputs)))
-        incoming = BoundValue{R}(value)
-        old === nothing || _check_role_overlap(old.value, incoming, vn)
-        table = BindingTable(
-            setindex!!(model.values.roots, BindingRoot(incoming, value, ()), vn)
-        )
-        result = _reconstruct_model(model; values=table)
-        _check_argument_bindings(result)
-        _check_argument_aliasing(result)
-        return result
-    end
-    return invoke(_bind, Tuple{Any,Type,Any}, model, R, inputs; kwargs...)
+fix(model::Model, inputs...; kwargs...) = _bind(model, FixRole, inputs, values(kwargs))
+function _bind(model, ::Type{R}, inputs, kwargs) where {R}
+    whole = _whole_inputs((inputs..., kwargs))
+    _bind_whole(model, R, whole) || return _bind_general(model, R, inputs, kwargs)
+    result = _reconstruct_model(
+        model; values=BindingTable(_whole_roots(model.values.roots, R, whole))
+    )
+    _check_argument_bindings(result)
+    _check_argument_aliasing(result)
+    return result
 end
-function _bind(model, ::Type{R}, inputs; kwargs...) where {R}
+# Whole-root inputs as one NamedTuple, or `nothing` for other forms and repeated names.
+_whole_inputs(input) = nothing
+_whole_inputs(input::NamedTuple) = input
+function _whole_inputs(p::Pair{<:VarName{s,AbstractPPL.Iden}}) where {s}
+    return NamedTuple{(s,)}((last(p),))
+end
+_whole_inputs(::Tuple{}) = (;)
+function _whole_inputs(inputs::Tuple)
+    head, tail = _whole_inputs(first(inputs)), _whole_inputs(Base.tail(inputs))
+    return head === nothing || tail === nothing ? nothing : _merge_distinct(head, tail)
+end
+@generated function _merge_distinct(a::NamedTuple{A}, b::NamedTuple{B}) where {A,B}
+    return isdisjoint(A, B) ? :(merge(a, b)) : nothing
+end
+# Whether `_add_bindings` would reduce to `_whole_roots`; checks each root as it would.
+_bind_whole(model, ::Type, ::Nothing) = false
+@generated function _bind_whole(model, ::Type{R}, values::NamedTuple{N}) where {R,N}
+    roots = map(N) do n
+        old = :(get(model.values.roots.data, $(QuoteNode(n)), nothing))
+        :(_bind_whole(model, R, $(VarName{n}()), $old, values.$n))
+    end
+    return :(
+        _model_prefix(model) === nothing &&
+        $(foldr((a, b) -> :($a && $b), roots; init=true))
+    )
+end
+function _bind_whole(model, ::Type{R}, vn, old, value) where {R}
+    _replaceable(old, value) && !_splat_root(model, vn) || return false
+    value isa _InnerNode && return false
+    value isa NamedTuple && _is_namespace(model, vn) && return false
+    _check_binding_address(model, vn)
+    _find_placeholder(value) === :none ||
+        _throw_binding_error(vn, "explicit bindings cannot contain missing or nothing")
+    old === nothing || _check_role_overlap(old.value, BoundValue{R}(value), vn)
+    return true
+end
+# Roots whose whole replacement does not consult retained state.
+_replaceable(::Nothing, value) = true
+function _replaceable(::BindingRoot{NoBinding,S,Tuple{}}, value) where {S}
+    return !(S <: Union{VarNamedTuple,BoundValue})
+end
+function _replaceable(
+    ::BindingRoot{
+        <:BoundValue{<:Any,<:Number},<:Union{Number,Missing,Nothing,NoTemplate},Tuple{}
+    },
+    ::Number,
+)
+    return true
+end
+_replaceable(root, value) = false
+@generated _splat_root(::Model{F,A,D}, ::VarName{s}) where {F,A,D,s} =
+    Symbol("#splat#", s) in D
+function _bind_general(model, ::Type{R}, inputs, kwargs) where {R}
     @nospecialize model
     flat = _binding_inputs(inputs)
     count(x -> x isa Type{<:AbstractPPL.OfNamedTuple}, flat) <= 1 ||
         throw(ArgumentError("Only one binding template is allowed"))
     schema = (;)
     entries = ()
-    for (i, input) in enumerate((flat..., (; kwargs...)))
+    prefix = _model_prefix(model)
+    for (i, input) in enumerate((flat..., kwargs))
         if input isa Type{<:AbstractPPL.OfNamedTuple}
             i == length(flat) && !isempty(inputs) && last(inputs) === input || throw(
                 ArgumentError("Binding template must be the final positional argument")
             )
             schema = zero(input)
-            prefix = _model_prefix(model)
             if prefix !== nothing
                 schema = _binding_node_at(schema, AbstractPPL.varname_to_optic(prefix))
                 schema isa NamedTuple ||
@@ -646,16 +685,13 @@ function _bind(model, ::Type{R}, inputs; kwargs...) where {R}
         end
         for (vn, value, storage) in _flatten_bindings(input)
             name = AbstractPPL.getsym(vn)
-            if any(
-                n -> is_splat_symbol(n) && unsplat_symbol(n) == name, keys(model.defaults)
-            )
+            if _splat_root(model, VarName{name}())
                 AbstractPPL.getoptic(vn) isa AbstractPPL.Iden ||
                     _throw_binding_error(vn, "splat arguments require whole bindings")
             end
             local_vn = _relative_name(model, vn)
             local_vn === nothing &&
                 _throw_binding_error(vn, "address is not below model prefix")
-            prefix = _model_prefix(model)
             if prefix !== nothing && !(storage isa NoTemplate)
                 root = AbstractPPL.prefix(VarName{AbstractPPL.getsym(local_vn)}(), prefix)
                 storage = _binding_node_at(storage, AbstractPPL.getoptic(root))
@@ -962,9 +998,7 @@ end
         !_is_fully_bound(root.value, root.storage)
         _throw_missing_storage(vn)
     end
-    if is_splat_symbol(stored) &&
-        haskey(model.defaults, stored) &&
-        !(root.value isa Union{BoundValue,NoBinding})
+    if _splat_root(model, VarName{name}()) && !(root.value isa Union{BoundValue,NoBinding})
         _throw_binding_error(vn, "splat arguments require whole bindings")
     elseif root.value isa BoundValue || _is_fully_bound(root.value, root.storage)
         T = _declared_argument_type(_model_metadata(model), stored)

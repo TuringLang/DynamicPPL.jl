@@ -463,7 +463,7 @@ end
     end
 end
 
-@testset "scalar NamedTuple bindings outside the fast path" begin
+@testset "whole-root bindings with keyword splats, prefixes and repeats" begin
     @model splat_scalar(x=missing; kw...) = (x ~ Normal(); x)
     @model splat_lhs(; kw...) = (kw ~ product_distribution((y=Normal(),)); kw)
     @model splat_unprefixed() = a ~ to_submodel(splat_lhs(), false)
@@ -471,6 +471,9 @@ end
     @model splat_retained() = a ~ to_submodel(decondition(splat_lhs(; y=0.0)))
     for (bind, _, _) in BINDING_ROLES
         @test bind(splat_scalar(), (x=1.0,))(Xoshiro(1)) == 1.0
+        binding_error("`kw.a`", "splat arguments require whole bindings") do
+            bind(splat_scalar(), @varname(kw.a) => 1.0)
+        end
         binding_error("`x`", "address is outside model prefix") do
             bind(prefix(binding_scalar(), :p), (x=1.0,))
         end
@@ -516,6 +519,51 @@ end
     removed = decondition(m, @varname(xs[1]))
     @test logjoint(condition(removed, @varname(xs[1]) => 1.0), (z=0.0,)) ≈ expected
     @test haskey(rand(Xoshiro(1), condition(removed; z=0.0)), @varname(xs[1]))
+end
+
+@testset "whole-root bindings match the general path" begin
+    @model two_roots(x, y) = (x ~ Normal(); y ~ MvNormal(zeros(2), I); (x, y))
+    @model nt_root(x) = (x ~ product_distribution((a=Normal(),)); x)
+    @model nt_namespace() = (b ~ to_submodel(two_roots(missing, missing)); b)
+    @model vector_root(y) = (y ~ MvNormal(zeros(2), I); y)
+    @model kw_child() = (kw ~ Normal(); kw)
+    @model splat_parent(; kw...) = (_ignore ~ to_submodel(kw_child(), false); _ignore)
+    @model fields_child() = (x ~ Normal(); y ~ Normal(); (x=x, y=y))
+    @model fields_middle() = b ~ to_submodel(fields_child())
+    @model fields_parent() = a ~ to_submodel(fields_middle())
+    structured = VarNamedTuple((a=VarNamedTuple((b=(x=1.0, y=2.0),)),))
+    m = two_roots(missing, missing)
+    cases = [
+        (m, (), (x=1.0, y=[1.0, 2.0])),
+        (m, ((x=1,), @varname(y) => [1.0, 2.0]), (;)),
+        (two_roots(0.5, missing), ((x=1.0,),), (;)),
+        (condition(m; x=0.5, y=[1.0, 2.0]), (), (x=1.0, y=[1.0, 2.0, 3.0])),
+        (fix(m; x=0.5), ((x=1.0,),), (;)),
+        (m, ((x=1.0, y=[missing, 2.0]),), (;)),
+        (m, ((x=1.0, z=1.0),), (;)),
+        (m, ((x=1.0,),), (x=2.0,)),
+        (nt_root(missing), ((x=(a=1.0,),),), (;)),
+        (nt_namespace(), ((b=(x=1.0,),),), (;)),
+        (prefix(m, :p), (@varname(p.x) => 1.0,), (;)),
+        (prefix(m, :p), ((x=1.0,),), (;)),
+        (vector_root([1.0, 2.0]), ((y=[3.0, 4.0, 5.0],),), (;)),
+        (m, ((y=VarNamedTuple(),),), (;)),
+        (splat_parent(), (), (kw=1.0,)),
+        (decondition(nt_namespace(), @varname(b.x)), ((b=(x=1.0,),),), (;)),
+        (decondition(condition(fields_parent(), structured)), ((a=1.0,),), (;)),
+    ]
+    outcome(f) =
+        try
+            r = f()
+            (typeof(r), repr(r.values))
+        catch e
+            sprint(showerror, e)
+        end
+    roles = ((condition, DynamicPPL.ConditionRole), (fix, DynamicPPL.FixRole))
+    for (m, inputs, kwargs) in cases, (bind, R) in roles
+        @test outcome(() -> bind(m, inputs...; kwargs...)) ==
+            outcome(() -> DynamicPPL._bind_general(m, R, inputs, kwargs))
+    end
 end
 
 @testset "prefixed models accept their own listings" begin
