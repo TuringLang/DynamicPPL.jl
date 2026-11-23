@@ -604,7 +604,6 @@ end
 
 function _check_role_overlap(previous, incoming::BoundValue, vn; disjoint=false)
     previous === nothing && return nothing
-    disjoint && previous isa BoundValue{ArgumentRole} && return nothing
     # A placeholder argument entry observes nothing; storage conversion reports it.
     previous isa BoundValue{ArgumentRole,<:Union{Missing,Nothing}} && return nothing
     if previous isa BoundValue

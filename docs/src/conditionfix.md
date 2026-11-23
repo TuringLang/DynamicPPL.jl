@@ -216,8 +216,9 @@ random variable.
 
 Submodels cannot retain observations supplied as model arguments. Pass
 covariates as arguments and use `condition` for observations. `fix` would omit
-their likelihood. A whole parent `condition` or `fix` replaces a child
-argument's observation; a whole parent `decondition` makes it latent. For partly
+their likelihood. A parent binding cannot replace a child argument's
+observation, just as it cannot replace the child's own bindings: a whole parent
+`decondition` makes it latent, after which the parent may bind it. For partly
 missing arrays, pass concrete storage and remove its argument observations
 before binding only the observed entries. Unbound entries remain latent. The
 same storage rule applies to `fix`, which omits the fixed entries' densities.
@@ -241,9 +242,10 @@ partial_child = outer_vec([1.0, missing])
 @assert loglikelihood(partial_child, (; a=(; y=[1.0, 0.4]))) == logpdf(Normal(), 1.0)
 ```
 
-Parent bindings cannot overwrite a child's explicit bindings, even in the same role;
-remove those bindings first. Child ownership and storage compatibility are
-checked when the child is reached, without executing it at bind time.
+Parent bindings cannot overwrite a child's bindings, including its argument
+observations, even in the same role; remove those bindings first. Child
+ownership and storage compatibility are checked when the child is reached,
+without executing it at bind time.
 
 Indexed addresses need storage for the namespace as well as any indexed child
 variable. Plain property paths and whole values need no index storage.
@@ -407,8 +409,9 @@ rebinding its record fields.
 
 **Does rebinding one field of an argument record change how a submodel treats it?**
 Untouched fields retain their argument observations, so the model still cannot
-be used as a submodel. Replace every argument observation explicitly, or bind
-the whole record, as described in [Submodels](@ref).
+be used as a submodel. Replace every argument observation explicitly, or remove
+the whole record from the parent with `decondition` and bind it there, as described
+in [Submodels](@ref).
 
 ## Migration to model-owned bindings
 

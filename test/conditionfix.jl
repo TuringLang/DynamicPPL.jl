@@ -1084,18 +1084,25 @@ end
         )
         @test result.z[2] == 5.0 && result.y[2] == 6.0
         @test_throws "template" fix(storage_body(fill(missing, 2)), @varname(a.y[2]) => 5.0)
-        @test fix(storage_parent(storage_child(zeros(2))), @varname(a.y) => [5.0, 6.0])(
-            Xoshiro(1)
-        ) == [5.0, 6.0]
-        @test fix(storage_body(zeros(2)), @varname(a.y) => [5.0, 6.0])(Xoshiro(1)) ==
-            [5.0, 6.0]
-        @test_throws "submodels cannot observe through arguments" fix(
+        # A parent binding must not replace a child's argument observation.
+        for bind in (condition, fix),
+            model in (storage_parent(storage_child(zeros(2))), storage_body(zeros(2)))
+
+            @test_throws "parent and child bindings overlap" bind(
+                model, @varname(a.y) => [5.0, 6.0]
+            )(
+                Xoshiro(1)
+            )
+            latent = decondition(model, @varname(a.y))
+            @test bind(latent, @varname(a.y) => [5.0, 6.0])(Xoshiro(1)) == [5.0, 6.0]
+        end
+        @test_throws "parent and child bindings overlap" fix(
             storage_body(zeros(2)), @varname(a.y[2]) => 5.0, @of(a = @of(y = of(Array, 2)))
         )(
             Xoshiro(1)
         )
         model = storage_parent(storage_child(zeros(2)))
-        observed = condition(model, @varname(a.y) => [5.0, 6.0])
+        observed = condition(decondition(model, @varname(a.y)), @varname(a.y) => [5.0, 6.0])
         @test observed(Xoshiro(1)) == [5.0, 6.0]
         @test loglikelihood(observed, (;)) == sum(logpdf.(Normal(), [5.0, 6.0]))
         latent = decondition(model, @varname(a.y))
