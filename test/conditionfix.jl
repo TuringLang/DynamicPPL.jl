@@ -963,13 +963,16 @@ end
         @test_throws "aliases" validation_parent(child)(Xoshiro(1))
         x = [zeros(1)]
         original = decondition(validation_leaf(x, ones(1)))
-        child = DynamicPPL.Model{false}(
+        child = DynamicPPL._new_model(
             original.f,
             (; x, z=x[1]),
             original.defaults,
             original.context,
-            original.values;
-            args_on_lhs=DynamicPPL._model_metadata(original),
+            original.values,
+            Val(false),
+            DynamicPPL._model_metadata(original),
+            (),
+            (),
         )
         @test_throws "aliases" validation_parent(child)(Xoshiro(1))
         @model validation_view(x, z) = (x[1] ~ Normal(); (x, z))
@@ -990,13 +993,16 @@ end
         end
         @model validation_scalar(y) = (y ~ Normal(); y)
         original = fix(validation_scalar(missing); y=3.0)
-        child = DynamicPPL.Model{false}(
+        child = DynamicPPL._new_model(
             original.f,
             original.args,
             original.defaults,
             original.context,
-            original.values;
-            args_on_lhs=(),
+            original.values,
+            Val(false),
+            (),
+            (),
+            (),
         )
         @test_throws "covariates" validation_parent(child)(Xoshiro(1))
     end

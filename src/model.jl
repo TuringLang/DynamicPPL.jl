@@ -127,36 +127,6 @@ struct Model{
     end
 end
 
-Base.@constprop :aggressive function Model{Threaded}(
-    f,
-    args::NamedTuple,
-    defaults::NamedTuple,
-    context::AbstractContext,
-    values::BindingTable;
-    observation_removals=(),
-    fixed_removals=(),
-    args_on_lhs::Union{Tuple{Vararg{Symbol}},Vector{Symbol},ModelBindingMetadata}=(),
-) where {Threaded}
-    argument_names = _lhs_arguments(args_on_lhs)
-    metadata = args_on_lhs isa ModelBindingMetadata ? args_on_lhs : argument_names
-    for name in argument_names
-        name in (_argument_names(args)..., _argument_names(defaults)...) || throw(
-            ArgumentError("`$name` in `args_on_lhs` is not an argument or default name")
-        )
-    end
-    return _new_model(
-        f,
-        args,
-        defaults,
-        context,
-        values,
-        Val(Threaded),
-        metadata,
-        observation_removals,
-        fixed_removals,
-    )
-end
-
 function _equality_fields(model::Model)
     return (
         model.f,
@@ -198,8 +168,15 @@ Base.@constprop :aggressive function Model{Threaded}(
     args_on_lhs::Union{Tuple{Vararg{Symbol}},Vector{Symbol},ModelBindingMetadata}=(),
 ) where {Threaded}
     args_on_lhs = args_on_lhs isa ModelBindingMetadata ? args_on_lhs : Tuple(args_on_lhs)
+    for name in _lhs_arguments(args_on_lhs)
+        name in (_argument_names(args)..., _argument_names(defaults)...) || throw(
+            ArgumentError("`$name` in `args_on_lhs` is not an argument or default name")
+        )
+    end
     values = _argument_bindings(merge(args, defaults), args_on_lhs)
-    model = Model{Threaded}(f, args, defaults, context, values; args_on_lhs)
+    model = _new_model(
+        f, args, defaults, context, values, Val(Threaded), args_on_lhs, (), ()
+    )
     found = _placeholder_addresses(merge(args, defaults), Val(_lhs_arguments(args_on_lhs)))
     return all(isempty, found) ? model : _unbind_placeholders(model, found)
 end
