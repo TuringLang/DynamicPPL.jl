@@ -392,13 +392,116 @@ function _set_binding_node(node, name, value, vn, storage)
     end
     return templated_setindex!!(wrapper, value, vn, storage).data[name]
 end
+# Resolve root storage and constraints for entry `vn`, possibly indexed, bound as `R`.
+# `original` is the root's argument value, or `NoTemplate()` if it is not an LHS argument.
+Base.@nospecializeinfer function _resolve_root(
+    model, old, vn, ::Type{R}, schema, supplied, original
+) where {R}
+    @nospecialize model original
+    name = AbstractPPL.getsym(vn)
+    base = VarName{name}()
+    optic = AbstractPPL.getoptic(vn)
+    typed = haskey(schema, name)
+    storage = _unwrap_storage(old.storage)
+    offered = get(schema, name, _plain_storage(supplied))
+    if offered isa NamedTuple && _is_namespace(model, base)
+        offered = VarNamedTuple(offered)
+    end
+    # A concrete argument is the storage; templates cannot replace it.
+    original isa Union{Missing,Nothing,NoTemplate} || (offered = NoTemplate())
+    fresh = !(offered isa NoTemplate) && old.value isa NoBinding
+    if storage isa NoTemplate || fresh
+        storage = offered
+    elseif !(offered isa NoTemplate)
+        _same_shape(storage, offered) ||
+            _throw_binding_error(vn, "template disagrees with retained storage")
+    end
+    if original isa Union{Missing,Nothing} &&
+        !(optic isa AbstractPPL.Iden) &&
+        storage isa NoTemplate
+        _throw_missing_storage(vn)
+    end
+    _check_field_under_whole(model, vn, storage)
+    constraints = fresh ? () : _effective_constraints(old, base)
+    if !(offered isa NoTemplate) &&
+        (typed || old.storage isa NoTemplate && !(optic isa AbstractPPL.Iden))
+        owner, template = _template_owner(offered, optic, base)
+        template = _unwrap_storage(template)
+        any(
+            c ->
+                c.owner == owner &&
+                    c.role === R &&
+                    c.mode === Val(:type) &&
+                    typeof(c.storage) !== typeof(template),
+            constraints,
+        ) && _throw_binding_error(vn, "template disagrees with retained type")
+        held = _binding_node_at(old.value, AbstractPPL.getoptic(owner))
+        if held isa BoundValue
+            _same_shape(held.value, template) ||
+                _throw_binding_error(vn, "template disagrees with held shape")
+            typed &&
+                _matches_role(R, held) &&
+                !(held.value isa typeof(template)) &&
+                _throw_binding_error(vn, "template disagrees with held type")
+        end
+        if !(template isa Union{Nothing,NoTemplate}) && !(
+            typed && any(
+                c -> c.owner == owner && c.role === R && c.mode === Val(:type), constraints
+            )
+        )
+            constraints = (
+                constraints...,
+                BindingConstraint(owner, R, template, typed ? Val(:type) : Val(:shape)),
+            )
+        end
+    end
+    return storage, constraints
+end
+# Write `element` at `address`, a selection of entry `vn`, into its root's `node`.
+# Return the updated node, storage and constraints.
+function _write_selection(
+    node, storage, constraints, ::Type{R}, vn, address, element, located, argument
+) where {R}
+    optic = AbstractPPL.getoptic(address)
+    previous = _binding_node_at(node, optic)
+    previous isa VarNamedTuple &&
+        !(_element_optic(_binding_node_at(storage, optic)) === AbstractPPL.Property) &&
+        _throw_binding_error(address, "namespace cannot become a whole value")
+    _check_role_overlap(previous, BoundValue{R}(element), address)
+    if argument && !(optic isa AbstractPPL.Iden)
+        element = _convert_partial(element, storage, optic, vn)
+    end
+    previous isa BoundValue &&
+        !_same_shape(previous.value, element) &&
+        _throw_binding_error(address, "remove the binding before changing shape")
+    element = _apply_constraints(element, optic, address, R, constraints)
+    incoming = BoundValue{R}(element)
+    if optic isa AbstractPPL.Iden
+        node = incoming
+        storage = element
+        constraints = filter(c -> c.mode === Val(:type), constraints)
+    else
+        node = _set_binding_node(
+            node, AbstractPPL.getsym(address), incoming, address, located
+        )
+    end
+    constraints = filter(
+        c -> !(c.owner == address && c.role === R && c.mode === Val(:shape)), constraints
+    )
+    # Numeric value nodes already enforce their role and shape.
+    element isa Number || (
+        constraints = (constraints..., BindingConstraint(address, R, element, Val(:shape)))
+    )
+    return node, storage, constraints
+end
 # Avoid inference per model history, but retain the role and stored types:
 # `condition` can run inside an evaluator.
 Base.@nospecializeinfer function _add_bindings(
-    model, table, ::Type{R}, entries, schema; disjoint=false
+    model, table, ::Type{R}, entries, schema
 ) where {R}
     @nospecialize model
     roots = table.roots
+    arguments = merge(model.args, model.defaults)
     seen = VarName[]
     copied = Set{Symbol}()
     unused = filter(n -> n ∉ AbstractPPL.getsym.(first.(entries)), keys(schema))
@@ -409,78 +512,16 @@ Base.@nospecializeinfer function _add_bindings(
             _throw_binding_error(vn, "explicit bindings cannot contain missing or nothing")
         name = AbstractPPL.getsym(vn)
         base = VarName{name}()
+        optic = AbstractPPL.getoptic(vn)
         old = get(roots.data, name, BindingRoot(NoBinding(), NoTemplate(), ()))
-        storage = _unwrap_storage(old.storage)
-        offered = get(schema, name, _plain_storage(supplied))
-        if offered isa NamedTuple && _is_namespace(model, base)
-            offered = VarNamedTuple(offered)
-        end
-        arguments = merge(model.args, model.defaults)
-        original = get(arguments, name, NoTemplate())
-        if name in _lhs_arguments(model) &&
-            !(original isa Union{Missing,Nothing,NoTemplate})
-            offered = NoTemplate()
-        end
-        if storage isa NoTemplate || (!(offered isa NoTemplate) && old.value isa NoBinding)
-            storage = offered
-        elseif !(offered isa NoTemplate)
-            _same_shape(storage, offered) ||
-                _throw_binding_error(vn, "template disagrees with retained storage")
-        end
-        if name in _lhs_arguments(model) &&
-            original isa Union{Missing,Nothing} &&
-            !(AbstractPPL.getoptic(vn) isa AbstractPPL.Iden) &&
-            storage isa NoTemplate
-            _throw_missing_storage(vn)
-        end
-        _check_field_under_whole(model, vn, storage)
-        constraints = if !(offered isa NoTemplate) && old.value isa NoBinding
-            ()
-        else
-            _effective_constraints(old, base)
-        end
-        if !(offered isa NoTemplate) && (
-            haskey(schema, name) ||
-            old.storage isa NoTemplate && !(AbstractPPL.getoptic(vn) isa AbstractPPL.Iden)
-        )
-            owner, template = _template_owner(offered, AbstractPPL.getoptic(vn), base)
-            template = _unwrap_storage(template)
-            any(
-                c ->
-                    c.owner == owner &&
-                        c.role === R &&
-                        c.mode === Val(:type) &&
-                        typeof(c.storage) !== typeof(template),
-                constraints,
-            ) && _throw_binding_error(vn, "template disagrees with retained type")
-            held = _binding_node_at(old.value, AbstractPPL.getoptic(owner))
-            if held isa BoundValue
-                _same_shape(held.value, template) ||
-                    _throw_binding_error(vn, "template disagrees with held shape")
-                haskey(schema, name) &&
-                    _matches_role(R, held) &&
-                    !(held.value isa typeof(template)) &&
-                    _throw_binding_error(vn, "template disagrees with held type")
-            end
-            if !(template isa Union{Nothing,NoTemplate}) && !(
-                haskey(schema, name) && any(
-                    c -> c.owner == owner && c.role === R && c.mode === Val(:type),
-                    constraints,
-                )
-            )
-                constraints = (
-                    constraints...,
-                    BindingConstraint(
-                        owner, R, template, haskey(schema, name) ? Val(:type) : Val(:shape)
-                    ),
-                )
-            end
-        end
+        argument = name in _lhs_arguments(model)
+        original = argument ? get(arguments, name, NoTemplate()) : NoTemplate()
+        storage, constraints = _resolve_root(model, old, vn, R, schema, supplied, original)
         if value isa NoBinding
             roots = setindex!!(roots, BindingRoot(old.value, storage, constraints), base)
             continue
         end
-        if AbstractPPL.getoptic(vn) isa AbstractPPL.Iden && (
+        if optic isa AbstractPPL.Iden && (
             !(old.value isa NoBinding) || !isempty(constraints) || storage isa VarNamedTuple
         )
             _same_shape(storage, value) ||
@@ -492,7 +533,7 @@ Base.@nospecializeinfer function _add_bindings(
         end
         if value isa VarNamedTuples.PartialArray && !any(value.mask)
             node = old.value
-            if _binding_node_at(node, AbstractPPL.getoptic(vn)) isa Union{Nothing,NoBinding}
+            if _binding_node_at(node, optic) isa Union{Nothing,NoBinding}
                 empty = VarNamedTuples.PartialArray(
                     similar(value.data, BoundValue{R,eltype(value)}), copy(value.mask)
                 )
@@ -503,65 +544,26 @@ Base.@nospecializeinfer function _add_bindings(
             roots = setindex!!(roots, BindingRoot(node, storage, constraints), base)
             continue
         end
-        if name in _lhs_arguments(model) && !(storage isa NoTemplate)
-            _check_partial_storage(storage, AbstractPPL.getoptic(vn), vn)
-        end
+        argument && !(storage isa NoTemplate) && _check_partial_storage(storage, optic, vn)
         # Storage from a child model argument only locates indexed positions; it is not
         # retained, so whole and field bindings keep their unconstrained behaviour.
-        located = if storage isa NoTemplate && _has_index(AbstractPPL.getoptic(vn))
+        located = if storage isa NoTemplate && _has_index(optic)
             _site_storage(model, base)
         else
             storage
         end
-        selections = _expand_selection(
-            located, AbstractPPL.getoptic(vn), base, value, old.value
-        )
+        selections = _expand_selection(located, optic, base, value, old.value)
         node = old.value
-        name in copied || (node = if node isa _InnerNode
-            copy(node)
-        else
-            node
-        end;
-        push!(copied, name))
+        if !(name in copied)
+            node isa _InnerNode && (node = copy(node))
+            push!(copied, name)
+        end
         for (address, element) in selections
             any(other -> subsumes(other, address) || subsumes(address, other), seen) &&
                 _throw_binding_error(address, "inputs overlap in this call")
             push!(seen, address)
-            optic = AbstractPPL.getoptic(address)
-            previous = _binding_node_at(node, optic)
-            previous isa VarNamedTuple &&
-                !(
-                    _element_optic(_binding_node_at(storage, optic)) ===
-                    AbstractPPL.Property
-                ) &&
-                _throw_binding_error(address, "namespace cannot become a whole value")
-            incoming = BoundValue{R}(element)
-            _check_role_overlap(previous, incoming, address; disjoint)
-            if !(optic isa AbstractPPL.Iden) && name in _lhs_arguments(model)
-                element = _convert_partial(element, storage, optic, vn)
-            end
-            previous isa BoundValue && _same_shape(previous.value, element) ||
-                previous isa BoundValue && _throw_binding_error(
-                    address, "remove the binding before changing shape"
-                )
-            element = _apply_constraints(element, optic, address, R, constraints)
-            incoming = BoundValue{R}(element)
-            if optic isa AbstractPPL.Iden
-                node = incoming
-                storage = element
-                constraints = filter(c -> c.mode === Val(:type), constraints)
-            else
-                node = _set_binding_node(node, name, incoming, address, located)
-            end
-            constraints = filter(
-                c -> !(c.owner == address && c.role === R && c.mode === Val(:shape)),
-                constraints,
-            )
-            # Numeric value nodes already enforce their role and shape.
-            element isa Number || (
-                constraints = (
-                    constraints..., BindingConstraint(address, R, element, Val(:shape))
-                )
+            node, storage, constraints = _write_selection(
+                node, storage, constraints, R, vn, address, element, located, argument
             )
         end
         if isempty(selections)
