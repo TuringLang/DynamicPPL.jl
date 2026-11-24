@@ -8,6 +8,9 @@ using DynamicPPL, Distributions, Test
 using LinearAlgebra: I
 using Random: Xoshiro
 
+struct NonNumericDist <: DiscreteUnivariateDistribution end
+Distributions.loglikelihood(::NonNumericDist, ::Union{Symbol,Tuple}) = 0.0
+
 function test_model_fails_check(model)
     issuccess = check_model(model)
     @test !issuccess
@@ -120,6 +123,17 @@ end
         end
         m = demo_nan_complicated((x=1.0, y=[NaN, 0.5]))
         @test_throws ErrorException check_model(m; error_on_failure=true)
+    end
+
+    @testset "non-numeric data" begin
+        @model function demo_nonnumeric(y)
+            x ~ Normal()
+            return y ~ NonNumericDist()
+        end
+        @test check_model(demo_nonnumeric(:a))
+        @test_throws ErrorException check_model(
+            demo_nonnumeric((:a, NaN)); error_on_failure=true
+        )
     end
 
     @testset "incorrect use of condition" begin

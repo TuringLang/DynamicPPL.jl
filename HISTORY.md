@@ -1,5 +1,7 @@
 # 0.43.0 (unreleased)
 
+`check_model` no longer throws a `MethodError` for observations that are not numbers, such as `Symbol`s, and now reports `NaN` inside tuple observations ([#1546](https://github.com/TuringLang/DynamicPPL.jl/pull/1546)).
+
 Added `AbstractPPL.of(vnt::VarNamedTuple)`, which describes a `VarNamedTuple`'s storage as an AbstractPPL binding template. It supports numeric `Array`s, nested fields and scalars whose type `of` preserves; other storage, such as values set by index without a template, throws an `ArgumentError` ([#1547](https://github.com/TuringLang/DynamicPPL.jl/pull/1547)).
 
 When rebuilding a `VarNamedTuple` from its skeleton, each nested array now keeps its original size. Previously, reusing the first array’s size could produce incorrectly sized arrays or throw a `BoundsError` ([#1540](https://github.com/TuringLang/DynamicPPL.jl/issues/1540)).
