@@ -8,8 +8,8 @@ using DynamicPPL, Distributions, Test
 using LinearAlgebra: I
 using Random: Xoshiro
 
-struct NaNObservation end
-Base.isnan(::NaNObservation) = true
+struct NonNumericDist <: DiscreteUnivariateDistribution end
+Distributions.loglikelihood(::NonNumericDist, ::Union{Symbol,Tuple}) = 0.0
 
 function test_model_fails_check(model)
     issuccess = check_model(model)
@@ -126,11 +126,14 @@ end
     end
 
     @testset "non-numeric data" begin
-        @test !DynamicPPL.DebugUtils._has_nans((
-            label=:right, values=["left", missing, 1.0]
-        ))
-        @test DynamicPPL.DebugUtils._has_nans((label=:right, values=["left", missing, NaN]))
-        @test DynamicPPL.DebugUtils._has_nans((label=:right, value=NaNObservation()))
+        @model function demo_nonnumeric(y)
+            x ~ Normal()
+            return y ~ NonNumericDist()
+        end
+        @test check_model(demo_nonnumeric(:a))
+        @test_throws ErrorException check_model(
+            demo_nonnumeric((:a, NaN)); error_on_failure=true
+        )
     end
 
     @testset "incorrect use of condition" begin

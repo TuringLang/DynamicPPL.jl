@@ -1,6 +1,6 @@
 # 0.43.0 (unreleased)
 
-  - `check_model` no longer throws an `isnan` MethodError for nonnumeric observations such as symbols.
+`check_model` no longer throws a `MethodError` for observations that are not numbers, such as `Symbol`s, and now reports `NaN` inside tuple observations ([#1546](https://github.com/TuringLang/DynamicPPL.jl/pull/1546)).
 
 Added `AbstractPPL.of(vnt::VarNamedTuple)`, which describes a `VarNamedTuple`'s storage as an AbstractPPL binding template. It supports numeric `Array`s, nested fields and scalars whose type `of` preserves; other storage, such as values set by index without a template, throws an `ArgumentError` ([#1547](https://github.com/TuringLang/DynamicPPL.jl/pull/1547)).
 
