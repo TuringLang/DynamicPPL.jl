@@ -1,12 +1,12 @@
 function _element_needs_skeleton(::Type{VarNamedTuple{names,types}}) where {names,types}
     return any(_element_needs_skeleton, types.parameters)
 end
-_element_needs_skeleton(::Type{<:PartialArray}) = true
+_element_needs_skeleton(::Type{<:Union{PartialArray,PartialTuple}}) = true
 _element_needs_skeleton(::Type{T}) where {T} = VarNamedTuple <: T || PartialArray <: T
 
 # A field declared as Any may hold a leaf at runtime.
 _field_skeleton(_) = nothing
-_field_skeleton(x::Union{VarNamedTuple,PartialArray}) = skeleton(x)
+_field_skeleton(x::Union{VarNamedTuple,PartialArray,PartialTuple}) = skeleton(x)
 
 """
     DynamicPPL.skeleton(vnt::VarNamedTuple)
@@ -33,7 +33,8 @@ contain `PartialArray`s. `PartialArray`s on the other hand are replaced with arr
 same shape and array type, but with the elements replaced with `nothing` (since that is
 space-efficient). This does not cause any issues with reconstruction type stability, since
 `templated_setindex!!` does not use the array's element type when creating a new entry (it
-infers the element type to use from the value that is being set).
+infers the element type to use from the value that is being set). A `PartialTuple` becomes a
+tuple of its elements' skeletons, with `nothing` for unset elements.
 """
 @generated function skeleton(vnt::VarNamedTuple{names,types}) where {names,types}
     nms_to_include = Symbol[]
@@ -100,4 +101,9 @@ end
             return new_data
         end
     end
+end
+
+# A tuple of the elements' skeletons, which serves as a tuple template.
+function skeleton(pt::PartialTuple)
+    return map(slot -> _isset(slot) ? _field_skeleton(slot.value) : nothing, pt.data)
 end

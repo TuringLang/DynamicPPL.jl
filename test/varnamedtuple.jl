@@ -1802,9 +1802,6 @@ end
     end
 
     @testset "length" begin
-        # Type inference for length fails in some cases on Julia versions < 1.11
-        inference_broken = VERSION < v"1.11"
-
         vnt = VarNamedTuple()
         @test @inferred(length(vnt)) == 0
 
@@ -1821,23 +1818,23 @@ end
         @test @inferred(length(vnt)) == 3
 
         vnt = setindex!!(vnt, -1.0, @varname(d[4]))
-        @test @inferred(length(vnt)) == 4 broken = inference_broken
+        @test @inferred(length(vnt)) == 4
 
         vnt = setindex!!(vnt, ["a", "b"], @varname(d[1:2]))
-        @test @inferred(length(vnt)) == 6 broken = inference_broken
+        @test @inferred(length(vnt)) == 6
 
         vnt = setindex!!(vnt, 2.0, @varname(e.f[3].g.h[2].i))
         vnt = setindex!!(vnt, 3.0, @varname(e.f[3].g.h[2].j))
-        @test @inferred(length(vnt)) == 8 broken = inference_broken
+        @test @inferred(length(vnt)) == 8
 
         vnt = setindex!!(vnt, SizedThing((3, 2)), @varname(x[1, 2:4, 2, 1:2, 3]))
-        @test @inferred(length(vnt)) == 14 broken = inference_broken
+        @test @inferred(length(vnt)) == 14
 
         vnt = setindex!!(vnt, SizedThing((3, 2)), @varname(x[1, 4:6, 2, 1:2, 3]))
-        @test @inferred(length(vnt)) == 14 broken = inference_broken
+        @test @inferred(length(vnt)) == 14
 
         vnt = setindex!!(vnt, [:a, :b], @varname(y[4][3][2][1:2]))
-        @test @inferred(length(vnt)) == 16 broken = inference_broken
+        @test @inferred(length(vnt)) == 16
         test_invariants(vnt)
     end
 
@@ -2516,52 +2513,144 @@ end
         end
         v13s = VarNamedTuple(; x=CA.ComponentArray(; a=nothing, b=nothing))
         test_skeleton(v13, v13s)
+
+        # VNT -> PartialTuple
+        v14 = @vnt begin
+            @template x = (0, 0.0)
+            x[2] := 1
+        end
+        v14s = VarNamedTuple(; x=(nothing, nothing))
+        test_skeleton(v14, v14s)
+
+        # VNT -> PartialTuple -> PA. Not inferable: an unset element has no skeleton.
+        v15 = @vnt begin
+            @template x = (zeros(2), 0)
+            x[1][2] := 1.0
+        end
+        skel = skeleton(v15)
+        @test skel == VarNamedTuple(; x=(fill(nothing, 2), nothing))
+        @test templated_setindex!!(VarNamedTuple(), 1.0, @varname(x[1][2]), skel.data.x) ==
+            v15
     end
 
     @testset "tuple Index nodes" begin
-        for (template, names, values) in (
-            ((0.0, 0.0), (@varname(x[1]), @varname(x[2])), (1.0, 2.0)),
-            ((a=(0.0, 0.0),), (@varname(x.a[1]), @varname(x.a[2])), (1.0, 2.0)),
-            (([0.0, 0.0], [0.0]), (@varname(x[1][2]), @varname(x[2][end])), (1.0, 2.0)),
+        mixed = (1.0f0, big"2.0")
+        for (template, vns, parent) in (
+            (mixed, (@varname(x[1]), @varname(x[2])), @varname(x)),
+            ((a=mixed,), (@varname(x.a[1]), @varname(x.a[2])), @varname(x.a)),
+            ([mixed], (@varname(x[1][1]), @varname(x[1][2])), @varname(x[1])),
+            ((mixed, 0), (@varname(x[1][1]), @varname(x[1][2])), @varname(x[1])),
         )
-            vnt = VarNamedTuple()
-            for (vn, value) in zip(names, values)
-                vnt = templated_setindex!!(vnt, value, vn, template)
-                @test haskey(vnt, vn)
-                @test vnt[vn] == value
-            end
+            partial = templated_setindex!!(VarNamedTuple(), mixed[2], vns[2], template)
+            @test keys(partial) == [vns[2]]
+            @test !haskey(partial, vns[1])
+            @test_throws BoundsError partial[vns[1]]
+            @test_throws "some elements are not set" partial[parent]
+            full = templated_setindex!!(partial, mixed[1], vns[1], template)
+            @test keys(full) == collect(vns)
+            @test full[vns[1]] === mixed[1] && full[vns[2]] === mixed[2]
+            @test full[parent] isa typeof(mixed) && isequal(full[parent], mixed)
         end
+
         for (value, vn) in (
-            ((a=(1.0, 2.0),), @varname(x.a[2])),
-            ([(1.0, 2.0)], @varname(x[1][2])),
-            (((1.0, 2.0),), @varname(x[1][2])),
+            ((a=(1.0f0, 2.0),), @varname(x.a[2])),
+            ([(1.0f0, 2.0)], @varname(x[1][2])),
+            (((1.0f0, 2.0),), @varname(x[1][2])),
         )
             whole = VarNamedTuple(; x=value)
             @test haskey(whole, vn)
-            @test whole[vn] == 2.0
+            @test whole[vn] === 2.0
         end
-        restriction = ArgumentError(
-            "same-type tuples only; give the elements one type or use an array"
-        )
-        for (template, vn) in (
-            ((1.0f0, big"2.0"), @varname(x[1])),
-            ((a=(1.0f0, big"2.0"),), @varname(x.a[1])),
-            ([(1.0f0, big"2.0")], @varname(x[1][1])),
-        )
-            @test_throws restriction templated_setindex!!(
-                VarNamedTuple(), 1.0f0, vn, template
-            )
-            @test_throws restriction VarNamedTuple(; x=template)[vn]
-        end
-        existing = templated_setindex!!(VarNamedTuple(), 1.0f0, @varname(x[1]), zeros(2))
-        @test_throws restriction templated_setindex!!(
-            existing, 1.0f0, @varname(x[2]), (1.0f0, big"2.0")
-        )
         whole = VarNamedTuple(; x=(1.0, 2.0))
         @test !haskey(whole, @varname(x[3]))
         @test haskey(whole, @varname(x[:]))
         @test !haskey(whole, @varname(x[1:3]))
         @test VarNamedTuple(; x=())[@varname(x[:])] == ()
+
+        array_in_tuple = ([0.0, 0.0], 0)
+        vnt = templated_setindex!!(VarNamedTuple(), 1, @varname(x[2]), array_in_tuple)
+        vnt = templated_setindex!!(vnt, 2.0, @varname(x[1][end]), array_in_tuple)
+        @test keys(vnt) == [@varname(x[1][2]), @varname(x[2])]
+        @test vnt[@varname(x[2])] === 1
+        updated = setindex!!(copy(vnt), 3.0, @varname(x[1][2]))
+        @test vnt[@varname(x[1][2])] == 2.0 && updated[@varname(x[1][2])] == 3.0
+        test_invariants(vnt)
+        vnt = templated_setindex!!(vnt, 3.0, @varname(x[1][1]), array_in_tuple)
+        @test vnt[@varname(x)] == ([3.0, 2.0], 1)
+        dense = densify!!(copy(vnt))
+        @test keys(dense) == [@varname(x[1]), @varname(x[2])]
+        @test typeof(@inferred(copy(dense))) === typeof(dense)
+        nested = @vnt begin
+            @template x = ((0, 0.0), 0)
+            x[1][1] := 1
+            x[1][2] := 2.0
+            x[2] := 3
+        end
+        @test nested[@varname(x)] === ((1, 2.0), 3)
+        tuples = [array_in_tuple]
+        in_array = templated_setindex!!(VarNamedTuple(), 1.0, @varname(x[1][1][1]), tuples)
+        in_array = templated_setindex!!(in_array, 2.0, @varname(x[1][1][2]), tuples)
+        @test keys(densify!!(copy(in_array))) == [@varname(x[1][1])]
+        updated = setindex!!(copy(in_array), 9.0, @varname(x[1][1][1]))
+        @test in_array[@varname(x[1][1][1])] == 1.0
+        for (vn, template) in (
+            (@varname(x[1][1]), [([0.0],), ([0.0],)]),
+            (@varname(x[1].a), [(a=[0.0],), (a=[0.0],)]),
+        )
+            @test keys(
+                densify!!(templated_setindex!!(VarNamedTuple(), [1.0], vn, template))
+            ) == [vn]
+        end
+        nt_pairs = [(b=[0.0],), (b=[0.0],)]
+        full = templated_setindex!!(VarNamedTuple(), 1.0, @varname(x[1].b[1]), nt_pairs)
+        full = templated_setindex!!(full, 2.0, @varname(x[2].b[1]), nt_pairs)
+        @test isconcretetype(eltype(densify!!(full)[@varname(x)]))
+
+        set1 = templated_setindex!!(VarNamedTuple(), mixed[1], @varname(x[1]), mixed)
+        set2 = templated_setindex!!(VarNamedTuple(), mixed[2], @varname(x[2]), mixed)
+        both = merge(set1, set2)
+        @test !haskey(set1, @varname(x)) && haskey(both, @varname(x))
+        @test_throws "non-identity VarNames" NamedTuple(both)
+        @test both == merge(set2, set1)
+        @test isequal(both, merge(set2, set1))
+        @test hash(both) == hash(merge(set2, set1))
+        @test both != set1
+        for value in (nothing, Some(1))
+            vnt = templated_setindex!!(set1, value, @varname(x[2]), mixed)
+            @test vnt[@varname(x[2])] === merge(vnt, vnt)[@varname(x[2])] === value
+        end
+        array = templated_setindex!!(VarNamedTuple(), 5.0, @varname(x[2]), zeros(2))
+        @test_throws "Cannot merge tuple and array nodes" merge(both, array)
+        @test_throws "Cannot merge tuple and array nodes" merge(array, both)
+        # Merging writes into neither input, and the later argument wins a nested overlap.
+        vector_first = ([0.0, 0.0], 0.0)
+        a = templated_setindex!!(VarNamedTuple(), 1.0, @varname(x[1][1]), vector_first)
+        b = templated_setindex!!(VarNamedTuple(), 2.0, @varname(x[1][2]), vector_first)
+        @test merge(a, b)[@varname(x[1])] == [1.0, 2.0]
+        @test keys(a) == [@varname(x[1][1])] && keys(b) == [@varname(x[1][2])]
+        newer = templated_setindex!!(VarNamedTuple(), big"3.0", @varname(x[2]), mixed)
+        @test isequal(merge(both, newer)[@varname(x)], (1.0f0, big"3.0"))
+
+        @test isequal(map_values!!(v -> 2v, copy(both))[@varname(x)], (2.0f0, big"4.0"))
+        @test map_pairs!!(p -> string(p.first), set2)[@varname(x[2])] == "x[2]"
+        @test mapreduce(p -> p.second, +, both; init=0) == 3
+        @test keys(densify!!(both)) == [@varname(x[1]), @varname(x[2])]
+        @test empty!!(copy(both)) == VarNamedTuple()
+        @test_throws "Cannot index a tuple with `x[1:2]`" haskey(both, @varname(x[1:2]))
+        @test_throws "Cannot index a tuple with `x[1:2]`" both[@varname(x[1:2])]
+        @test_throws "2-element PartialTuple" setindex!!(both, 3.0, @varname(x[3]))
+        @test templated_setindex!!(VarNamedTuple(), 2.0, @varname(x[end]), mixed) ==
+            templated_setindex!!(VarNamedTuple(), 2.0, @varname(x[2]), mixed)
+        @test_throws MustNotOverwriteError templated_setindex_no_overwrite!!(
+            both, 1.0f0, @varname(x[1]), mixed
+        )
+        @test_throws "a single integer" templated_setindex!!(
+            VarNamedTuple(), [1.0, 2.0], @varname(x[1:2]), (0.0, 0.0)
+        )
+        @test sprint(show, MIME"text/plain"(), set2) == """
+            VarNamedTuple
+            └─ x => PartialTuple length=2
+                    └─ (2,) => 2.0"""
     end
 end
 
@@ -2573,6 +2662,8 @@ end
         VarNamedTuple(; a=VarNamedTuple(; x="a"))
     )
     @test_throws "would widen it to Float64" AbstractPPL.of(VarNamedTuple(; x=1//2))
+    tuple_node = templated_setindex!!(VarNamedTuple(), 1.0, @varname(x[1]), (0.0, 0.0))
+    @test_throws "`x` of type" AbstractPPL.of(tuple_node)
 end
 
 @info "Completed $(@__FILE__) in $(now() - __now__)."

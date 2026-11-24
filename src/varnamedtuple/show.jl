@@ -1,4 +1,4 @@
-# Pretty-printing for VarNamedTuple and PartialArray.
+# Pretty-printing for VarNamedTuple, PartialArray and PartialTuple.
 
 const ELIDED_COLOR = :light_black
 
@@ -13,21 +13,34 @@ end
 
 const MAX_KEYS_OR_INDICES = 8
 
-function vnt_pretty_print(io::IO, pa::PartialArray, prefix::String, depth::Int)
-    # an incomplete PA is dimmed to indicate that it has missing entries.
-    size_style = if all(pa.mask)
-        (;)
-    else
-        (; color=ELIDED_COLOR)
-    end
+# an incomplete node is dimmed to indicate that it has missing entries.
+_size_style(complete::Bool) = complete ? (;) : (; color=ELIDED_COLOR)
+function _print_header(io::IO, pa::PartialArray)
     print(io, "PartialArray ")
-    printstyled(io, "size=" * string(size(pa.data)); size_style...)
-    println(io, " data::" * string(typeof(pa.data)))
-    # can't use `keys(pa)` here as that recurses into each element.
-    nindices = count(pa.mask)
+    printstyled(io, "size=" * string(size(pa.data)); _size_style(all(pa.mask))...)
+    return println(io, " data::" * string(typeof(pa.data)))
+end
+function _print_header(io::IO, pt::PartialTuple)
+    print(io, "PartialTuple ")
+    printstyled(io, "length=" * string(length(pt.data)); _size_style(_all_set(pt))...)
+    return println(io)
+end
+# can't use `keys(pa)` here as that recurses into each element.
+function _set_entries(pa::PartialArray)
+    return [Tuple(idx) => pa.data[idx] for idx in CartesianIndices(pa.data)[pa.mask]]
+end
+function _set_entries(pt::PartialTuple)
+    return [(i,) => slot.value for (i, slot) in enumerate(pt.data) if _isset(slot)]
+end
+
+function vnt_pretty_print(
+    io::IO, node::Union{PartialArray,PartialTuple}, prefix::String, depth::Int
+)
+    _print_header(io, node)
+    entries = _set_entries(node)
+    nindices = length(entries)
     truncate = nindices > MAX_KEYS_OR_INDICES
-    active_indices = CartesianIndices(pa.data)[pa.mask]
-    for (i, idx) in enumerate(active_indices)
+    for (i, (idx, v)) in enumerate(entries)
         tree_symbol = i == nindices ? "└─ " : "├─ "
         if truncate && i > 2 && i < nindices
             if i == 3
@@ -41,12 +54,11 @@ function vnt_pretty_print(io::IO, pa::PartialArray, prefix::String, depth::Int)
             end
             continue
         end
-        key_name = string(Tuple(idx))
+        key_name = string(idx)
         print(io, prefix * tree_symbol)
         printstyled(io, key_name; color=color_at_depth(depth))
         print(io, " => ")
-        v = pa.data[idx]
-        if v isa VarNamedTuple || v isa PartialArray
+        if v isa Union{VarNamedTuple,PartialArray,PartialTuple}
             nspaces_for_key = length(key_name) + 4
             vnt_pretty_print(
                 io,
@@ -63,8 +75,8 @@ function vnt_pretty_print(io::IO, pa::PartialArray, prefix::String, depth::Int)
     end
     return nothing
 end
-function Base.show(io::IO, ::MIME"text/plain", pa::PartialArray)
-    return vnt_pretty_print(io, pa, "", 0)
+function Base.show(io::IO, ::MIME"text/plain", node::Union{PartialArray,PartialTuple})
+    return vnt_pretty_print(io, node, "", 0)
 end
 
 colors = [:red, :green, :blue, :yellow, :magenta, :cyan]
@@ -91,7 +103,7 @@ function vnt_pretty_print(io::IO, vnt::VarNamedTuple, prefix::String, depth::Int
         print(io, prefix * tree_symbol)
         printstyled(io, key_name; color=color_at_depth(depth))
         print(io, " => ")
-        if v isa VarNamedTuple || v isa PartialArray
+        if v isa Union{VarNamedTuple,PartialArray,PartialTuple}
             nspaces_for_key = length(key_name) + 4
             vnt_pretty_print(
                 io,

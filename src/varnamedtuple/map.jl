@@ -92,9 +92,9 @@ end
 """
     _map_pairs_recursive!!(func, x, vn)
 
-Call `func` on `vn => x`, except if `x` is a `VarNamedTuple` or `PartialArray`, in which
-case call `_map_pairs_recursive!!` recursively on all their elements, updating `vn` with the
-right prefix.
+Call `func` on `vn => x`, except if `x` is a `VarNamedTuple`, `PartialArray` or
+`PartialTuple`, in which case call `_map_pairs_recursive!!` recursively on all their
+elements, updating `vn` with the right prefix.
 
 This is the internal implementation of `map_pairs!!`, but because it has a method defined
 for literally every type in existence, we hide it behind the interface of the more
@@ -261,6 +261,18 @@ function _map_values_recursive_pa_noalb!!(func, pa::PartialArray)
         )
         _concretise_eltype!!(PartialArray(new_pa_data, pa.mask))
     end
+end
+
+function _map_pairs_recursive!!(pairfunc, pt::PartialTuple, vn)
+    return PartialTuple(
+        ntuple(Val(length(pt.data))) do i
+            new_vn = AbstractPPL.append_optic(vn, AbstractPPL.Index((i,), (;)))
+            _map_slot(x -> _map_pairs_recursive!!(pairfunc, x, new_vn), pt.data[i])
+        end,
+    )
+end
+function _map_values_recursive!!(func, pt::PartialTuple)
+    return _map_slots(Base.Fix1(_map_values_recursive!!, func), pt)
 end
 
 function _map_pairs_recursive!!(pairfunc, alb::ArrayLikeBlock, vn)
@@ -453,6 +465,16 @@ function _mapreduce_recursive(f, op, pa::PartialArray, vn, init)
     return result
 end
 
+function _mapreduce_recursive(f, op, pt::PartialTuple, vn, init)
+    result = init
+    for (i, slot) in enumerate(pt.data)
+        _isset(slot) || continue
+        new_vn = AbstractPPL.append_optic(vn, AbstractPPL.Index((i,), (;)))
+        result = _mapreduce_recursive(f, op, slot.value, new_vn, result)
+    end
+    return result
+end
+
 """
     densify!!(vnt::VarNamedTuple)
 
@@ -474,14 +496,21 @@ function densify!!(pa::PartialArray)
         return pa
     end
 
-    # We can't densify a PA whose elements are ALBs or VNTs (densifying would lose
-    # VNT-based indexing / ALB semantics). But we still recursively densify the elements
+    # We can't densify a PA whose elements are ALBs, VNTs or PartialTuples (densifying would
+    # lose their indexing / ALB semantics). But we still recursively densify the elements
     # themselves, so that any nested PAs inside VNTs get densified.
     et = eltype(pa)
     has_albs = (et <: ArrayLikeBlock || ArrayLikeBlock <: et)
-    has_vnts = (et <: VarNamedTuple || VarNamedTuple <: et)
+    has_vnts = (et <: Union{VarNamedTuple,PartialTuple} || VarNamedTuple <: et)
     if has_albs || has_vnts
-        new_data = map(densify!!, pa.data)
+        # `map` reads every entry, and reading an unset non-isbits entry throws.
+        all(pa.mask) && return PartialArray(map(densify!!, pa.data), pa.mask)
+        new_data = copy(pa.data)
+        for i in findall(pa.mask)
+            new_data = _setindex_partial_array_data!!(
+                new_data, pa.mask, densify!!(pa.data[i]), i
+            )
+        end
         return PartialArray(new_data, pa.mask)
     end
 
@@ -507,6 +536,8 @@ function densify!!(pa::PartialArray)
         pa.data
     end
 end
+# Keep the tuple node, so its elements stay separate keys, and densify the elements.
+densify!!(pt::PartialTuple) = _map_slots(densify!!, pt)
 @inline densify!!(@nospecialize(x::Any)) = x
 
 # TODO(mhauru) We could try to keep the return types of these more tight, rather than always
@@ -519,7 +550,7 @@ Base.values(vnt::VarNamedTuple) = mapreduce(pair -> pair.second, push!, vnt; ini
 function Base.length(vnt::VarNamedTuple)
     len = 0
     for subdata in vnt.data
-        len += subdata isa VarNamedTuple || subdata isa PartialArray ? length(subdata) : 1
+        len += _leaf_count(subdata)
     end
     return len
 end

@@ -353,12 +353,33 @@ end
             @test [draw[@varname(x[1])], draw[@varname(x[2])]] ==
                 rand(Random.Xoshiro(1), Normal(), 2)
             @test fix(tuple_local(); x=(1.0, 2.0))(Random.Xoshiro(1)) == (1.0, 2.0)
-            restriction = ArgumentError(
-                "same-type tuples only; give the elements one type or use an array"
+            fixed = fix(tuple_local(); x=(1.0f0, big"2.0"))(Random.Xoshiro(1))
+            @test fixed isa Tuple{Float32,BigFloat} && fixed == (1.0f0, 2.0)
+            @model lkj() = x ~ LKJCholesky(2, 1.0)
+            msg = "a tuple value for `x` cannot supply an `LKJCholesky` factor"
+            @test_throws ArgumentError(msg) DynamicPPL.init!!(
+                lkj(), VarInfo(), InitFromParams(draw), UnlinkAll()
             )
-            @test_throws restriction fix(tuple_local(); x=(1.0f0, big"2.0"))(
-                Random.Xoshiro(1)
-            )
+
+            # The first draw leaves the mixed tuple `(missing, draw)` before the next tilde.
+            @model function tuple_argument(x)
+                x[2] ~ Normal()
+                x[1] ~ Normal()
+                return x
+            end
+            draw = rand(Random.Xoshiro(1), tuple_argument((missing, missing)))
+            @test collect(keys(draw)) == [@varname(x[1]), @varname(x[2])]
+            vi = VarInfo(Random.Xoshiro(1), tuple_argument((missing, 1.0)))
+            @test collect(keys(vi)) == [@varname(x[1])]
+
+            model = tuple_argument((missing, missing))
+            ldf = LogDensityFunction(model)
+            θ = [0.5, -1.0]
+            vi = VarInfo(Random.Xoshiro(1), model)
+            _, vi = DynamicPPL.init!!(model, vi, InitFromVector(θ, ldf), UnlinkAll())
+            @test vi[:] ≈ θ
+            logdensity = Base.Fix1(DynamicPPL.LogDensityProblems.logdensity, ldf)
+            @test ForwardDiff.gradient(logdensity, θ) ≈ -θ
         end
     end
 
