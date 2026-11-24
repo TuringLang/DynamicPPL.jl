@@ -52,6 +52,7 @@ function _getindex_optic(
     return _getindex_optic(getindex(vnt.data, S), optic.child, orig_vn)
 end
 function _getindex_optic(pa::PartialArray, optic::AbstractPPL.Index, orig_vn)
+    _check_index_form(pa, optic.ix, orig_vn)
     coptic = AbstractPPL.concretize_top_level(optic, pa.data)
     child_value =
         if _is_multiindex(pa, coptic.ix...; coptic.kw...) &&
@@ -77,12 +78,17 @@ end
     return AbstractPPL.canview(head, x) && _haskey_optic(head(x), o.child)
 end
 function _haskey_optic(vnt::VarNamedTuple, name::VarName)
-    return _haskey_optic(vnt, AbstractPPL.varname_to_optic(name))
+    return _haskey_optic(vnt, AbstractPPL.varname_to_optic(name), name)
 end
+# `orig_vn` only names the variable in errors, as for `_getindex_optic`.
+_haskey_optic(x, optic::AbstractPPL.AbstractOptic, orig_vn) = _haskey_optic(x, optic)
 @inline _haskey_optic(@nospecialize(::Any), ::AbstractPPL.Iden) = true
 @inline _haskey_optic(::VarNamedTuple, ::AbstractPPL.Index) = false
-function _haskey_optic(vnt::VarNamedTuple, optic::AbstractPPL.Property{S}) where {S}
-    return Base.haskey(vnt.data, S) && _haskey_optic(getindex(vnt.data, S), optic.child)
+function _haskey_optic(
+    vnt::VarNamedTuple, optic::AbstractPPL.Property{S}, orig_vn=@varname(_)
+) where {S}
+    return Base.haskey(vnt.data, S) &&
+           _haskey_optic(getindex(vnt.data, S), optic.child, orig_vn)
 end
 function _haskey_optic(pa::PartialArray, ::AbstractPPL.Iden)
     # no masked indices
@@ -96,7 +102,8 @@ function _haskey_optic(pa::PartialArray, ::AbstractPPL.Iden)
         return true
     end
 end
-function _haskey_optic(pa::PartialArray, optic::AbstractPPL.Index)
+function _haskey_optic(pa::PartialArray, optic::AbstractPPL.Index, orig_vn=@varname(_))
+    _check_index_form(pa, optic.ix, orig_vn)
     coptic = AbstractPPL.concretize_top_level(optic, pa.data)
     # check the top level Index
     Base.haskey(pa, coptic.ix...; coptic.kw...) || return false
@@ -104,9 +111,11 @@ function _haskey_optic(pa::PartialArray, optic::AbstractPPL.Index)
     return if optic.child isa AbstractPPL.Iden
         true
     elseif _is_multiindex(pa, coptic.ix...; coptic.kw...)
-        _haskey_optic(_subset_partialarray(pa, coptic.ix...; coptic.kw...), optic.child)
+        _haskey_optic(
+            _subset_partialarray(pa, coptic.ix...; coptic.kw...), optic.child, orig_vn
+        )
     else
-        _haskey_optic(getindex(pa, coptic.ix...; coptic.kw...), optic.child)
+        _haskey_optic(getindex(pa, coptic.ix...; coptic.kw...), optic.child, orig_vn)
     end
 end
 function _haskey_optic(x::Tuple, optic::AbstractPPL.Index)

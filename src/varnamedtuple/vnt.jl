@@ -9,6 +9,9 @@ efficient and type stable manner. It is mainly used through `getindex`, `setinde
 shorthand for an identity `VarName`: `vnt[:x]` is equivalent to `vnt[@varname(x)]`.
 Only symbols that are valid Julia identifiers are accepted. Use a `VarName` for indexed or
 nested variables. `Symbol("x[1]")` and `Symbol("x.y")` are rejected rather than parsed.
+`haskey` and `getindex` throw an `ArgumentError` for an index whose number of dimensions
+differs from that of values set by index without a template, or that uses `begin`, `end`,
+`:` or a Boolean mask of a different shape on such values.
 Other notable methods are `merge` and `subset`.
 
 `VarNamedTuple` has an ordering to its elements, and two `VarNamedTuple`s with the same keys

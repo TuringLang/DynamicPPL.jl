@@ -965,14 +965,17 @@ end
                 x[2] := 2.0
             end
             warnmsg = r"Returning a `Base.Array` with"
-            # These should warn. There are various calls to _warn_growable_array() inside
-            # the VNT code to handle each of these cases.
-            @test_logs (:warn, warnmsg) vnt[@varname(x[:][1])]
-            @test_logs (:warn, warnmsg) vnt[@varname(x[:])]
             @test_logs (:warn, warnmsg) vnt[@varname(x)]
-            @test_logs (:warn, warnmsg) vnt[@varname(x[begin])]
-            @test_logs (:warn, warnmsg) vnt[@varname(x[end])]
-            @test_logs (:warn, warnmsg) vnt[@varname(x[1:end])]
+            # Indices resolved against the presumed size throw instead.
+            for vn in (
+                @varname(x[:][1]),
+                @varname(x[:]),
+                @varname(x[begin]),
+                @varname(x[end]),
+                @varname(x[1:end]),
+            )
+                @test_throws ArgumentError vnt[vn]
+            end
             # These shouldn't warn because they are safe
             @test_logs vnt[@varname(x[1:2])]
             @test_logs vnt[@varname(x[1])]
@@ -1096,7 +1099,6 @@ end
             @test @inferred(getindex(vnt, @varname(x[1]))) == 1.0
             # Check that we can get both indices
             @test @inferred(getindex(vnt, @varname(x[1:2]))) == [1.0, 2.0]
-            @test @inferred(getindex(vnt, @varname(x[:]))) == [1.0, 2.0]
             @test @inferred(getindex(vnt, @varname(x))) == [1.0, 2.0]
 
             @test keys(vnt) == [@varname(x[1]), @varname(x[2])]
@@ -2460,10 +2462,11 @@ end
 
         # VNT -> PA -> PA
         v7 = @vnt begin
-            @template x = fill(zeros(2), 3)
-            x[3][2] := 2.0
+            @template x = [zeros(1), zeros(2)]
+            x[1][1] := 1.0
+            x[2][2] := 2.0
         end
-        v7s = VarNamedTuple(; x=fill(fill(nothing, 2), 3))
+        v7s = VarNamedTuple(; x=[[nothing], [nothing, nothing]])
         test_skeleton(v7, v7s)
 
         # VNT -> PA -> VNT -> PA
@@ -2560,6 +2563,16 @@ end
         @test !haskey(whole, @varname(x[1:3]))
         @test VarNamedTuple(; x=())[@varname(x[:])] == ()
     end
+end
+
+@testset "binding templates from storage" begin
+    pa = templated_setindex!!(VarNamedTuple(), 1.0f0, @varname(x[2]), zeros(Float32, 3))
+    @test AbstractPPL.of(VarNamedTuple(; a=pa, b=1.0)) ==
+        AbstractPPL.of((a=(x=zeros(Float32, 3),), b=1.0))
+    @test_throws "`a.x` of type String" AbstractPPL.of(
+        VarNamedTuple(; a=VarNamedTuple(; x="a"))
+    )
+    @test_throws "would widen it to Float64" AbstractPPL.of(VarNamedTuple(; x=1//2))
 end
 
 @info "Completed $(@__FILE__) in $(now() - __now__)."
