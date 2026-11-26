@@ -124,7 +124,15 @@ function _haskey_optic(pa::PartialArray, optic::AbstractPPL.Index, orig_vn=@varn
         _haskey_optic(getindex(pa, coptic.ix...; coptic.kw...), optic.child, orig_vn)
     end
 end
-_haskey_optic(pt::PartialTuple, ::AbstractPPL.Iden) = _all_set(pt)
+_haskey_optic(pt::PartialTuple, optic::AbstractPPL.Iden) = _slots_complete(pt.data, optic)
+# Recurse rather than loop: iterating a tuple of mixed slot types allocates.
+_slots_complete(::Tuple{}, ::AbstractPPL.Iden) = true
+function _slots_complete(slots::Tuple, optic::AbstractPPL.Iden)
+    slot = first(slots)
+    return _isset(slot) &&
+           _haskey_optic(slot.value, optic) &&
+           _slots_complete(Base.tail(slots), optic)
+end
 function _haskey_optic(pt::PartialTuple, optic::AbstractPPL.Index, orig_vn=@varname(_))
     i = only(_tuple_index(optic, pt.data, orig_vn).ix)
     checkbounds(Bool, keys(pt.data), i) || return false

@@ -2587,6 +2587,12 @@ end
             x[2] := 3
         end
         @test nested[@varname(x)] === ((1, 2.0), 3)
+        @test haskey(nested, @varname(x))
+        inner_unset = @vnt begin
+            @template x = ((0.0, 0.0),)
+            x[1][2] := 2.0
+        end
+        @test !haskey(inner_unset, @varname(x))
         tuples = [array_in_tuple]
         in_array = templated_setindex!!(VarNamedTuple(), 1.0, @varname(x[1][1][1]), tuples)
         in_array = templated_setindex!!(in_array, 2.0, @varname(x[1][1][2]), tuples)
