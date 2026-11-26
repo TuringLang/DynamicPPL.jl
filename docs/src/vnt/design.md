@@ -2,6 +2,7 @@
 
 There are two aspects to the design of `VarNamedTuple`s: property access, and indexing.
 `VarNamedTuple` consists of recursively nested `NamedTuple`s and `PartialArray`s which together support both kinds of access.
+Values set by index into a tuple, such as `x[1]` with `x = (0, 0.0)`, are stored in a `PartialTuple`, which stores each element with the type of the value written to it and addresses each element by a single integer, such as `x[1]` or `x[end]`.
 
 ## Property access
 

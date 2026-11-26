@@ -55,7 +55,7 @@ end
 SkipTemplate{N}(v::SkipTemplate{M}) where {N,M} = SkipTemplate{N + M}(v.value)
 SkipTemplate{0}(v::SkipTemplate{M}) where {M} = SkipTemplate{M}(v.value)
 
-# The array a template indexes: a PartialArray's storage, otherwise the template itself.
+# The data a template indexes: a PartialArray's or PartialTuple's storage, else itself.
 unwrap_template(template) = template
 
 """
@@ -133,6 +133,7 @@ function Base.showerror(io::IO, e::MustNotOverwriteError)
 end
 
 include("varnamedtuple/partial_array.jl")
+include("varnamedtuple/partial_tuple.jl")
 include("varnamedtuple/vnt.jl")
 include("varnamedtuple/getset.jl")
 include("varnamedtuple/map.jl")
@@ -147,8 +148,9 @@ Describe the storage in `vnt` as an AbstractPPL `OfNamedTuple` binding template.
 
 Numeric `Array`s keep their element type and full size, even when partly filled; nested
 namespaces become nested templates; real scalars are kept when `of` describes their type
-exactly. Values are discarded. Other storage, such as custom or growable arrays, indexed
-namespaces and scalars that `of` would widen, throws `ArgumentError`.
+exactly. Values are discarded. Other storage, such as custom or growable arrays, values set
+by index into a tuple, indexed namespaces and scalars that `of` would widen, throws
+`ArgumentError`.
 
 # Examples
 
@@ -230,7 +232,8 @@ ERROR: ArgumentError: Cannot convert VarNamedTuple containing non-identity VarNa
         if v <: VarNamedTuple ||
             VarNamedTuple <: v ||
             v <: PartialArray ||
-            PartialArray <: v
+            PartialArray <: v ||
+            v <: PartialTuple
             throw(
                 ArgumentError(
                     "Cannot convert VarNamedTuple containing non-identity VarNames to NamedTuple. To create a NamedTuple, all keys in the VarNamedTuple must be top-level symbols.",
@@ -255,6 +258,11 @@ AbstractPPL.hasvalue(vnt::VarNamedTuple, vn::VarName) = haskey(vnt, vn)
 AbstractPPL.getvalue(vnt::VarNamedTuple, vn::VarName) = vnt[vn]
 AbstractPPL.hasvalue(vals::VarNamedTuple, vn::VarName, ::Distribution) = haskey(vals, vn)
 AbstractPPL.getvalue(vals::VarNamedTuple, vn::VarName, ::Distribution) = vals[vn]
+function _check_lkj_value(val, vn)
+    val isa PartialTuple || return nothing
+    throw(ArgumentError("a tuple value for `$vn` cannot supply an `LKJCholesky` factor"))
+end
+
 function AbstractPPL.hasvalue(vnt::VarNamedTuple, vn::VarName, dist::LKJCholesky)
     if !haskey(vnt, vn)
         # Can't even find the parent VarName, there is no hope.
@@ -263,6 +271,7 @@ function AbstractPPL.hasvalue(vnt::VarNamedTuple, vn::VarName, dist::LKJCholesky
     # Note that _getindex_optic, rather than Base.getindex, skips the need to denseify
     # PartialArrays.
     val = _getindex_optic(vnt, vn)
+    _check_lkj_value(val, vn)
     if !(val isa VarNamedTuple || val isa PartialArray)
         # There is _a_ value. Whether it's the right kind, we do not know, but returning
         # true is no worse than `hasvalue` returning true for e.g. UnivariateDistributions
@@ -284,6 +293,7 @@ function AbstractPPL.getvalue(vnt::VarNamedTuple, vn::VarName, dist::LKJCholesky
     # Note that _getindex_optic, rather than Base.getindex, skips the need to denseify
     # PartialArrays.
     val = _getindex_optic(vnt, vn)
+    _check_lkj_value(val, vn)
     if !(val isa VarNamedTuple || val isa PartialArray)
         return val
     end

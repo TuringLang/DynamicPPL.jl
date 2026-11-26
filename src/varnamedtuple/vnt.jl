@@ -79,16 +79,13 @@ Base.:(==)(vnt1::VarNamedTuple, vnt2::VarNamedTuple) = vnt1.data == vnt2.data
 Base.isequal(vnt1::VarNamedTuple, vnt2::VarNamedTuple) = isequal(vnt1.data, vnt2.data)
 Base.hash(vnt::VarNamedTuple, h::UInt) = hash("vnt", hash(vnt.data, h))
 
+# Copy nested storage, which may hold mutable arrays; share other values.
+_copy_storage(x) = x isa Union{VarNamedTuple,PartialArray,PartialTuple} ? copy(x) : x
+# Number of values in a stored node, or one for a leaf.
+_leaf_count(x) = x isa Union{VarNamedTuple,PartialArray,PartialTuple} ? length(x) : 1
+
 function Base.copy(vnt::VarNamedTuple{names}) where {names}
-    # Make a shallow copy of vnt, except for any VarNamedTuple or PartialArray elements,
-    # which we recursively copy.
-    return VarNamedTuple(
-        NamedTuple{names}(
-            map(
-                x -> x isa Union{VarNamedTuple,PartialArray} ? copy(x) : x, values(vnt.data)
-            ),
-        ),
-    )
+    return VarNamedTuple(NamedTuple{names}(map(_copy_storage, values(vnt.data))))
 end
 
 # PartialArrays and GrowableArrays are an implementation detail of VarNamedTuple, and should
@@ -222,7 +219,8 @@ Base.empty(::VarNamedTuple) = VarNamedTuple()
 Create an empty version of `vnt` in place.
 
 This differs from `Base.empty` in that any `PartialArray`s contained within `vnt` are kept
-but have their contents deleted, rather than being removed entirely. This means that
+but have their contents deleted, rather than being removed entirely; `PartialTuple`s are
+removed. Keeping the `PartialArray`s means that
 
 1) The result has a "memory" of how many dimensions different variables had, and you cannot,
    for example, set `a[1,2]` after emptying a `VarNamedTuple` that had only `a[1]` defined.

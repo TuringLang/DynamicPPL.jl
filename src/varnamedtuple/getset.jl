@@ -17,16 +17,17 @@ _unimplemented() = error("Not implemented")
 Access the value in `collection` at the location specified by the given `optic`. If a `VarName`
 is provided, it is first converted to an optic using `AbstractPPL.varname_to_optic`.
 
-Here, `collection` can be either a `VarNamedTuple` or a `PartialArray`, or a leaf value stored
-within one of these.
+Here, `collection` can be a `VarNamedTuple`, `PartialArray` or `PartialTuple`, or a leaf
+value stored within one of these.
 
-This is semantically similar to `AbstractPPL.getvalue` but is specialised for `VarNamedTuple`
-and `PartialArray`, and skips a number of checks that are unnecessary here.
+This is semantically similar to `AbstractPPL.getvalue` but is specialised for
+`VarNamedTuple`, `PartialArray` and `PartialTuple`, and skips a number of checks that are
+unnecessary here.
 
 Note that it is only valid to index into a `VarNamedTuple` with a `Property` optic, and a
-`PartialArray` with an `Index` optic. Other combinations are not valid. When we have reached
-the leaf of the VNT i.e. a value, we could still handle pure `Index` optics if the value is
-an `AbstractArray`, but otherwise the only valid optic is `Iden`.
+`PartialArray` or `PartialTuple` with an `Index` optic. Other combinations are not valid.
+When we have reached the leaf of the VNT i.e. a value, we could still handle pure `Index`
+optics if the value is an `AbstractArray`, but otherwise the only valid optic is `Iden`.
 
 `orig_vn` is used to keep track of the original VarName used to index into a VarNamedTuple,
 and is only for error reporting purposes.
@@ -40,7 +41,6 @@ end
 
 @inline _getindex_optic(@nospecialize(x::Any), ::AbstractPPL.Iden, orig_vn) = x
 @inline function _getindex_optic(x::Any, o::AbstractPPL.AbstractOptic, orig_vn)
-    _reject_mixed_tuple(x)
     return _getindex_optic(AbstractPPL.ohead(o)(x), o.child, orig_vn)
 end
 function _getindex_optic(
@@ -66,6 +66,12 @@ function _getindex_optic(pa::PartialArray, optic::AbstractPPL.Index, orig_vn)
             getindex(pa, coptic.ix...; coptic.kw...)
         end
     return _getindex_optic(child_value, optic.child, orig_vn)
+end
+function _getindex_optic(pt::PartialTuple, optic::AbstractPPL.Index, orig_vn)
+    i = only(_tuple_index(optic, pt.data, orig_vn).ix)
+    slot = _slot(pt, i)
+    _isset(slot) || throw(BoundsError(pt, i))
+    return _getindex_optic(slot.value, optic.child, orig_vn)
 end
 function _getindex_optic(arr::AbstractArray, optic::IndexWithoutChild, orig_vn)
     coptic = AbstractPPL.concretize_top_level(optic, arr)
@@ -118,6 +124,21 @@ function _haskey_optic(pa::PartialArray, optic::AbstractPPL.Index, orig_vn=@varn
         _haskey_optic(getindex(pa, coptic.ix...; coptic.kw...), optic.child, orig_vn)
     end
 end
+_haskey_optic(pt::PartialTuple, optic::AbstractPPL.Iden) = _slots_complete(pt.data, optic)
+# Recurse rather than loop: iterating a tuple of mixed slot types allocates.
+_slots_complete(::Tuple{}, ::AbstractPPL.Iden) = true
+function _slots_complete(slots::Tuple, optic::AbstractPPL.Iden)
+    slot = first(slots)
+    return _isset(slot) &&
+           _haskey_optic(slot.value, optic) &&
+           _slots_complete(Base.tail(slots), optic)
+end
+function _haskey_optic(pt::PartialTuple, optic::AbstractPPL.Index, orig_vn=@varname(_))
+    i = only(_tuple_index(optic, pt.data, orig_vn).ix)
+    checkbounds(Bool, keys(pt.data), i) || return false
+    slot = pt.data[i]
+    return _isset(slot) && _haskey_optic(slot.value, optic.child, orig_vn)
+end
 function _haskey_optic(x::Tuple, optic::AbstractPPL.Index)
     coptic = AbstractPPL.concretize_top_level(optic, x)
     isempty(coptic.kw) && length(coptic.ix) == 1 || return false
@@ -137,8 +158,8 @@ end
 """
     _setindex_optic!!(collection, value, optic, template, permissions)
 
-Like `setindex!!`, but special-cased for `VarNamedTuple` and `PartialArray` to recurse into
-nested structures.
+Like `setindex!!`, but special-cased for `VarNamedTuple`, `PartialArray` and `PartialTuple`
+to recurse into nested structures.
 
 The `permissions` argument controls the behaviour depending on whether `optic` already
 exists in `vnt` or does not yet exist. See the docstrings of `AllowAll`, `MustOverwrite`,
@@ -199,6 +220,11 @@ function index_template(template::Union{Tuple,AbstractArray}, optic)
     return getindex(template, optic.ix...; optic.kw...)
 end
 unwrap_template(template::PartialArray) = template.data
+unwrap_template(template::PartialTuple) = template.data
+function index_template(template::PartialTuple, optic)
+    slot = template.data[only(optic.ix)]
+    return _isset(slot) ? slot.value : NoTemplate()
+end
 function index_template(template::PartialArray, optic)
     # Read through the PartialArray so a slice namespace yields its block, rather
     # than an array of ArrayLikeBlocks, before descending into the child's fields.
@@ -213,7 +239,6 @@ end
 function _setindex_optic!!(
     pa::PartialArray, value, optic::AbstractPPL.Index, template, permissions::SetPermissions
 )
-    _reject_mixed_tuple(template)
     need_merge = false
     coptic = AbstractPPL.concretize_top_level(optic, pa.data)
     # We might be attempting to set a slice into a PartialArray{GrowableArray} that
@@ -316,6 +341,28 @@ function _setindex_optic!!(
 end
 
 function _setindex_optic!!(
+    pt::PartialTuple, value, optic::AbstractPPL.Index, template, permissions::SetPermissions
+)
+    coptic = _tuple_index(optic, pt.data)
+    i = only(coptic.ix)
+    slot = _slot(pt, i)
+    sub_value = if optic.child isa AbstractPPL.Iden
+        if permissions isa MustNotOverwrite && _isset(slot)
+            throw(MustNotOverwriteError(permissions))
+        end
+        value
+    elseif _isset(slot)
+        child_template = index_template(template, coptic)
+        _setindex_optic!!(slot.value, value, optic.child, child_template, permissions)
+    elseif permissions isa MustOverwrite
+        throw(MustOverwriteError(permissions))
+    else
+        make_sub_value(value, coptic, template)
+    end
+    return PartialTuple(Base.setindex(pt.data, TupleSlot(sub_value), i))
+end
+
+function _setindex_optic!!(
     vnt::VarNamedTuple{names},
     value,
     optic::AbstractPPL.Property{S},
@@ -349,8 +396,9 @@ end
 Make a new leaf node for a VarNamedTuple.
 
 This is the function that sets any `optic` that is a `Property` to be stored as a
-`VarNamedTuple`, any `Index` to be stored as a `PartialArray`, and other `Iden` optics to be
-stored as raw values. It is the link that joins `VarNamedTuple` and `PartialArray` together.
+`VarNamedTuple`, any `Index` to be stored as a `PartialArray` (a `PartialTuple` if the
+template is a tuple), and other `Iden` optics to be stored as raw values. It is the link
+that joins `VarNamedTuple` and `PartialArray` together.
 
 A lot of the complexity in the VarNamedTuple code comes from this function. For this reason,
 it is heavily documented, not only with comments in the code, but also in the built
@@ -387,18 +435,18 @@ function make_leaf(
         make_leaf_singleindex(value, coptic, template)
     end
 end
-# Tuple nodes are stored as arrays (collect), which cannot keep mixed element types.
-_reject_mixed_tuple(x) = nothing
-_reject_mixed_tuple(::Tuple{T,Vararg{T}}) where {T} = nothing
-_reject_mixed_tuple(::Tuple{}) = nothing
-function _reject_mixed_tuple(::Tuple)
-    throw(
-        ArgumentError("same-type tuples only; give the elements one type or use an array")
+function make_leaf(value, optic::AbstractPPL.Index, template::Union{Tuple,PartialTuple})
+    slots = unwrap_template(template)
+    coptic = _tuple_index(optic, slots)
+    i = only(coptic.ix)
+    checkbounds(Bool, keys(slots), i) || throw(BoundsError(template, i))
+    sub_value = make_sub_value(value, coptic, template)
+    # Unset elements take the value's type; later writes of that type keep the tuple type.
+    return PartialTuple(
+        ntuple(Val(length(slots))) do j
+            j == i ? TupleSlot(sub_value) : TupleSlot{typeof(sub_value)}()
+        end,
     )
-end
-function make_leaf(value, optic::AbstractPPL.Index, template::Tuple)
-    _reject_mixed_tuple(template)
-    return make_leaf(value, optic, collect(template))
 end
 function make_leaf(value, ::AbstractPPL.Index, template::Any)
     # Fallback method; this is hit for other indexable things that we don't know how to deal

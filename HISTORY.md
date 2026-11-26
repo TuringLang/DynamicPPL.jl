@@ -2,13 +2,13 @@
 
 `check_model` no longer throws a `MethodError` for observations that are not numbers, such as `Symbol`s, and now reports `NaN` inside tuple observations ([#1546](https://github.com/TuringLang/DynamicPPL.jl/pull/1546)).
 
-Added `AbstractPPL.of(vnt::VarNamedTuple)`, which describes a `VarNamedTuple`'s storage as an AbstractPPL binding template. It supports numeric `Array`s, nested fields and scalars whose type `of` preserves; other storage, such as values set by index without a template, throws an `ArgumentError` ([#1547](https://github.com/TuringLang/DynamicPPL.jl/pull/1547)).
+Added `AbstractPPL.of(vnt::VarNamedTuple)`, which describes a `VarNamedTuple`'s storage as an AbstractPPL binding template. It supports numeric `Array`s, nested fields and scalars whose type `of` preserves; other storage, such as values set by index without a template or into a tuple, throws an `ArgumentError` ([#1547](https://github.com/TuringLang/DynamicPPL.jl/pull/1547), [#1549](https://github.com/TuringLang/DynamicPPL.jl/pull/1549)).
 
 When rebuilding a `VarNamedTuple` from its skeleton, each nested array now keeps its original size. Previously, reusing the first array’s size could produce incorrectly sized arrays or throw a `BoundsError` ([#1540](https://github.com/TuringLang/DynamicPPL.jl/issues/1540)).
 
-`VarNamedTuple` records indexed random variables in same-type tuple templates ([#1539](https://github.com/TuringLang/DynamicPPL.jl/pull/1539)).
+`VarNamedTuple` records indexed random variables in tuple templates and stores each element with its own type: for `x = (0, 0); x[2] ~ Normal(); x[1] ~ Normal()`, `VarInfo` and `LogDensityFunction` record both elements. An element recorded this way is addressed by a single integer, such as `x[1]` or `x[end]`; reading, writing or checking with `haskey` any other index, such as `x[1:2]` or `x[:]`, throws an `ArgumentError`. Whole tuple values, as in `VarNamedTuple(; x=(1.0, 2.0))`, still accept such indices ([#1539](https://github.com/TuringLang/DynamicPPL.jl/pull/1539), [#1549](https://github.com/TuringLang/DynamicPPL.jl/pull/1549)).
 
-`fix` and `condition` now apply same-type tuple values to indexed variables: for `x = (0.0, 0.0); x[1] ~ Normal()`, `fix(model; x=(1.0, 2.0))` previously had no effect and now fixes `x[1]`. Mixed-type tuple values, such as `x=(1.0, 2)`, throw an `ArgumentError`, as does indexing into one stored in a `VarNamedTuple` ([#1539](https://github.com/TuringLang/DynamicPPL.jl/pull/1539)).
+`fix` and `condition` now apply tuple values to indexed variables: for `x = (0.0, 0.0); x[1] ~ Normal()`, `fix(model; x=(1.0, 2.0))` previously had no effect and now fixes `x[1]` ([#1539](https://github.com/TuringLang/DynamicPPL.jl/pull/1539), [#1549](https://github.com/TuringLang/DynamicPPL.jl/pull/1549)).
 
 `VarNamedTuple` accepts Boolean-mask and empty integer-vector indices without a template: `setindex!!(vnt, [1.0, 2.0], @varname(x[[true, false, true]]))` previously threw a `BoundsError`, and `setindex!!(vnt, Float64[], @varname(x[Int[]]))` an `ArgumentError` ([#1539](https://github.com/TuringLang/DynamicPPL.jl/pull/1539)).
 

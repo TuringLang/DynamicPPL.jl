@@ -241,14 +241,13 @@ function Base.copy(pa::PartialArray)
         VarNamedTuple <: et ||
         et <: VarNamedTuple ||
         PartialArray <: et ||
-        et <: PartialArray
+        et <: PartialArray ||
+        et <: PartialTuple
     )
         @inbounds for i in eachindex(pa.mask)
             if pa.mask[i]
                 val = @inbounds pa_copy.data[i]
-                if val isa VarNamedTuple || val isa PartialArray
-                    pa_copy.data[i] = copy(val)
-                end
+                pa_copy.data[i] = _copy_storage(val)
             end
         end
     end
@@ -303,8 +302,7 @@ function Base.length(pa::PartialArray)
         if !pa.mask[i]
             continue
         end
-        val = pa.data[i]
-        len += val isa VarNamedTuple || val isa PartialArray ? length(val) : 1
+        len += _leaf_count(pa.data[i])
     end
     return len
 end
