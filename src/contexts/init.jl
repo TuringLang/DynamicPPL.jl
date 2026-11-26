@@ -39,7 +39,7 @@ uses it to promote initial accumulators, which can widen further during evaluati
 This type also determines promotion of model arguments, including type arguments used for
 preallocation. Custom strategies that supply AD tracers should implement this method when
 model code directly assigns tracers into preallocated arrays. Tilde assignments already
-permit promotion through `Accessors.set`.
+permit promotion, e.g. through `Accessors.set`.
 
 See https://github.com/TuringLang/DynamicPPL.jl/issues/906 for accumulator types and
 https://github.com/TuringLang/DynamicPPL.jl/issues/823 for type argument promotion.

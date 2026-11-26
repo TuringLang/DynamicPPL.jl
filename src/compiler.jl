@@ -427,8 +427,49 @@ function generate_tilde_literal(left, right)
 end
 
 function set_tilde_value!!(::AbstractVarInfo, object, value, vn::VarName)
-    return Accessors.set(object, AbstractPPL.with_mutation(AbstractPPL.getoptic(vn)), value)
+    return _set_optic!!(object, value, AbstractPPL.getoptic(vn))
 end
+_set_optic!!(object, value, ::AbstractPPL.Iden) = value
+function _set_optic!!(object, value, optic::AbstractPPL.Property{S}) where {S}
+    child = _set_optic!!(getproperty(object, S), value, optic.child)
+    return BangBang.setproperty!!(object, S, child)
+end
+function _set_optic!!(object, value, optic::AbstractPPL.Index)
+    (; ix, kw) = AbstractPPL.concretize_top_level(optic, object)
+    if !(optic.child isa AbstractPPL.Iden)
+        value = _set_optic!!(getindex(object, ix...; kw...), value, optic.child)
+    end
+    if !isempty(kw)
+        setindex!(object, value, ix...; kw...)
+        return object
+    end
+    if object isa AbstractArray
+        # Needed while BangBang's `_index_dimension(())` throws (it sums an empty tuple).
+        # `isa`, not `isempty`: Mooncake loses inference on `isempty(ix)` here.
+        ix = ix isa Tuple{} ? (CartesianIndex(),) : ix
+        if _is_read_only(object)
+            # Observations write back what they read; thread-safe mode needs `===` storage.
+            isequal(object[ix...], value) && return object
+            return Accessors.set(object, Accessors.IndexLens(ix), value)
+        end
+        # BangBang applies slice checks to array-valued scalar writes whose type differs
+        # from the eltype; remove this path when its applicability check handles them.
+        if ix isa Tuple{Vararg{Union{Integer,CartesianIndex}}} &&
+            value isa eltype(object) &&
+            BangBang.implements(setindex!, typeof(object))
+            object[ix...] = value
+            return object
+        end
+    end
+    # Widening converts retained elements unchecked, which can round them.
+    return BangBang.setindex!!(object, value, ix...)
+end
+
+# Must copy these: `BangBang.implements(setindex!, T)` holds for them, but `setindex!` throws.
+_is_read_only(x) = false
+_is_read_only(x::AbstractArray) = parent(x) !== x && _is_read_only(parent(x))
+# The `AbstractFill` case can move to a FillArrays package extension.
+_is_read_only(::Union{AbstractRange,FillArrays.AbstractFill}) = true
 
 assign_or_set!!(lhs::Symbol, rhs, vn) = drop_escape(:($lhs = $rhs))
 function assign_or_set!!(lhs::Expr, rhs, vn)

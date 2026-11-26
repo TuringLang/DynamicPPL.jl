@@ -607,7 +607,6 @@ end
             (immutable_value(), (; x=(a=0.25,))),
             (nested_immutable_value(), (; x=Box((a=0.25,)))),
             (tuple_value(), (; x=[0.25])),
-            (offset_value(), (; x=OffsetArray([[0.25]], 0:0))),
         )
             strategy = InitFromParams(params, nothing)
             @test first(init!!(model, VarInfo(), strategy, UnlinkAll())) == 0.25
@@ -615,6 +614,12 @@ end
                 setthreadsafe(model, true), VarInfo(), strategy, UnlinkAll()
             )
         end
+        offset_params = InitFromParams((; x=OffsetArray([[0.25]], 0:0)), nothing)
+        @test first(
+            init!!(
+                setthreadsafe(offset_value(), true), VarInfo(), offset_params, UnlinkAll()
+            ),
+        ) == 0.25
         for op in (condition, fix)
             @test_throws ArgumentError init!!(
                 op(setthreadsafe(immutable_value(), true), @varname(x.a) => 0.25),
