@@ -16,6 +16,12 @@ When rebuilding a `VarNamedTuple` from its skeleton, each nested array now keeps
 
 `templated_setindex!!` accepts another `VarNamedTuple`'s storage as a template when a slice of it, such as `z[1:2]`, holds a `VarNamedTuple`; it previously threw ([#1539](https://github.com/TuringLang/DynamicPPL.jl/pull/1539)).
 
+Tilde statements on zero-dimensional arrays, such as `x = fill(0.0); x[] ~ Normal()`, no longer throw when values are recorded, as in `rand(model)` or `LogDensityFunction(model)`.
+
+Tilde statements with keyword indices, such as `x[X=2] ~ Normal()` on a `DimArray`, keep the array type; previously `x` became its parent array, and thread-safe evaluation threw.
+
+Tilde statements on FillArrays arrays and ranges, such as `x = Fill(0.0, 2); x[1] ~ Normal()` or the same on `1.0:2.0`, now rebind `x` to a modified copy; they previously threw.
+
 `hash` now agrees with `isequal` for transformed values, transform strategies, `ParamsWithStats`, `VarNamedTuple` and log-probability accumulators, so `Set` and `Dict` no longer keep equal copies as separate keys ([#1543](https://github.com/TuringLang/DynamicPPL.jl/pull/1543)).
 
 Growable-array creation warnings use a logging limit of one per array dimension and logger ([#1538](https://github.com/TuringLang/DynamicPPL.jl/pull/1538)).

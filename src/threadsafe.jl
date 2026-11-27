@@ -71,14 +71,10 @@ end
     return Base.maybeview(object, indices.ix...; indices.kw...)
 end
 
-@inline function _set_tilde_leaf(object, value, optic, vn)
-    return Accessors.set(object, AbstractPPL.with_mutation(optic), value)
-end
-
 @inline function _set_tilde_path(object, value, optic, vn)
     tail = AbstractPPL.otail(optic)
     if tail isa AbstractPPL.Iden
-        new = _set_tilde_leaf(object, value, optic, vn)
+        new = _set_optic!!(object, value, optic)
         object === new || _tilde_container_error(object, new, vn)
     else
         head = AbstractPPL.ohead(optic)

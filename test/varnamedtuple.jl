@@ -296,6 +296,8 @@ end
 
         @testset "Array indices" begin
             test_get_set(GetSetTestCase(@varname(c[2]), 0.42, zeros(3), []))
+            leaf = VarNamedTuple(; c=fill(0.0))
+            @test setindex!!(leaf, 0.42, @varname(c[]))[@varname(c[])] == 0.42
             # Should still be type stable even though the eltype of the template is different, since
             # the eltype is taken from the value.
             test_get_set(GetSetTestCase(@varname(c[2]), "a", zeros(3), []))

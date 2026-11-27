@@ -180,7 +180,9 @@ function _setindex_optic!!(
 )
     perms isa MustNotOverwrite && throw(MustNotOverwriteError(perms))
     coptic = AbstractPPL.concretize_top_level(optic, arr)
-    return BangBang.setindex!!(arr, value, coptic.ix...; coptic.kw...)
+    # Needed while BangBang's `_index_dimension(())` throws (it sums an empty tuple).
+    ix = coptic.ix isa Tuple{} ? (CartesianIndex(),) : coptic.ix
+    return BangBang.setindex!!(arr, value, ix...; coptic.kw...)
 end
 function _setindex_optic!!(
     nt::NamedTuple{names},

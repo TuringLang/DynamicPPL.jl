@@ -229,6 +229,8 @@ function _setindex_partial_array_data!!(data, mask, value, inds...; kw...)
         setindex!(data, value, inds...; kw...)
         return data
     end
+    # Needed while BangBang's `_index_dimension(())` throws (it sums an empty tuple).
+    inds = inds isa Tuple{} ? (CartesianIndex(),) : inds
     return BangBang.setindex!!(data, value, inds...; kw...)
 end
 

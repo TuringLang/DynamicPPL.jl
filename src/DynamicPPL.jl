@@ -11,6 +11,7 @@ using Printf: Printf
 using AbstractMCMC: AbstractMCMC
 using ADTypes: ADTypes
 using BangBang: BangBang, push!!, empty!!, setindex!!
+using FillArrays: FillArrays
 using MacroTools: MacroTools
 using ConstructionBase: ConstructionBase
 using Accessors: Accessors

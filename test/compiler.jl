@@ -6,9 +6,12 @@ __now__ = now()
 
 using Distributions
 using DynamicPPL
+using FillArrays: Fill
+using DimensionalData: DimensionalData as DD
 using ForwardDiff: ForwardDiff
 using REPL: REPL
 using LinearAlgebra: I
+using OffsetArrays: OffsetArray
 using Random: Random
 using Test
 
@@ -964,6 +967,59 @@ end
         @test retval == 5.0
         @test vi isa VarInfo
         @test only(DynamicPPL.getindex_internal(vi, @varname(m))) isa Real
+    end
+
+    @testset "tilde writes keep storage" begin
+        @model function alias_offset()
+            x = OffsetArray(Any[0.0, 0.0], 0:1)
+            y = x
+            x[0] ~ MvNormal(zeros(2), I)
+            return y[0]
+        end
+        @model function alias_zero_dim()
+            x = Array{Any,0}(undef)
+            x[] = 0.0
+            y = x
+            x[] ~ MvNormal(zeros(2), I)
+            return y[]
+        end
+        @model function zero_dim()
+            x = fill(0.0)
+            x[] ~ Normal()
+            return x
+        end
+        @model function dim_keyword()
+            x = DD.DimArray([0.0, 0.0], DD.X([10, 20]))
+            x[X=2] ~ Normal()
+            return x
+        end
+        @test alias_offset()(Random.Xoshiro(1)) isa Vector{Float64}
+        @test alias_zero_dim()(Random.Xoshiro(1)) isa Vector{Float64}
+        @test rand(Random.Xoshiro(1), zero_dim())[@varname(x[])] ==
+            rand(Random.Xoshiro(1), Normal())
+        @test dim_keyword()(Random.Xoshiro(1)) isa DD.DimArray
+        @test setthreadsafe(dim_keyword(), true)(Random.Xoshiro(1)) isa DD.DimArray
+    end
+
+    @testset "tilde writes copy read-only arrays" begin
+        @model function draw_into(make, dist)
+            x = make()
+            x[1] ~ dist
+            return x
+        end
+        any_fill() = Fill{Any}(zeros(2), 2)
+        for (make, dist) in (
+            (any_fill, MvNormal(zeros(2), I)),
+            (() -> OffsetArray(any_fill(), 1:2), MvNormal(zeros(2), I)),
+            (() -> 1.0:2.0, Normal()),
+        )
+            x = draw_into(make, dist)(Random.Xoshiro(1))
+            @test x[1] == rand(Random.Xoshiro(1), dist)
+            @test x[2] == make()[2]
+        end
+        @model observe_first(y) = y[1] ~ Normal()
+        model = setthreadsafe(observe_first(Fill(1.0, 2)), true)
+        @test logjoint(model, (;)) == logpdf(Normal(), 1.0)
     end
 
     @testset "convert_model_argument" begin
