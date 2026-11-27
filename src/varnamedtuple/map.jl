@@ -276,7 +276,7 @@ function _map_values_recursive!!(func, pt::PartialTuple)
 end
 
 function _map_pairs_recursive!!(pairfunc, alb::ArrayLikeBlock, vn)
-    new_block = pairfunc(vn => alb.block)
+    new_block = _map_pairs_recursive!!(pairfunc, alb.block, vn)
     return ArrayLikeBlock(new_block, alb.ix, alb.kw, alb.index_size)
 end
 function _map_values_recursive!!(func, alb::ArrayLikeBlock)
