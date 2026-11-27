@@ -74,7 +74,8 @@ downstream-facing interface behaviour. Test nested fields, indices, ranges,
 overloads such as generic `get(obj, vn)` unless the method is clearly owned.
 
 `VarNamedTuple` is the preferred internal container for named parameter values
-where supported. Convert user-facing `NamedTuple` or `Dict{VarName}` inputs at
+where supported. Binding APIs reject dictionaries; parameter initialisation still
+accepts them. Convert user-facing named parameter inputs at
 API boundaries. Preserve templates, shapes, and index structure so values can
 round-trip between named form and flat vectors. Avoid large mostly-empty shadow
 arrays and keep eltypes concrete in hot paths.

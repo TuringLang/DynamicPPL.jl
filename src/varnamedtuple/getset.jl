@@ -84,7 +84,8 @@ end
     return AbstractPPL.canview(head, x) && _haskey_optic(head(x), o.child)
 end
 function _haskey_optic(vnt::VarNamedTuple, name::VarName)
-    return _haskey_optic(vnt, AbstractPPL.varname_to_optic(name), name)
+    # Inference gives `Any` once more methods match an unknown field than `max_methods`.
+    return _haskey_optic(vnt, AbstractPPL.varname_to_optic(name), name)::Bool
 end
 # `orig_vn` only names the variable in errors, as for `_getindex_optic`.
 _haskey_optic(x, optic::AbstractPPL.AbstractOptic, orig_vn) = _haskey_optic(x, optic)
@@ -216,11 +217,29 @@ end
 # `x.a ~ dist` would error if `x` did not have a property `a`.
 (::SharedGetProperty{S})(x) where {S} = getproperty(x, S)
 
+function (::SharedGetProperty{S})(
+    template::NestedTemplate{<:AbstractPPL.Property{S}}
+) where {S}
+    return nested_template(
+        template.path.child, SharedGetProperty{S}()(template.outer), template.inner
+    )
+end
+
 # Template for the entry that optic's index selects; NoTemplate when it cannot be indexed.
 index_template(template::SkipTemplate, optic) = decrease_skip(template)
 index_template(template, optic) = NoTemplate()
 function index_template(template::Union{Tuple,AbstractArray}, optic)
     return getindex(template, optic.ix...; optic.kw...)
+end
+maybe_index_template(template, optic) = index_template(template, optic)
+maybe_index_template(value, template, optic) = index_template(template, optic)
+function maybe_index_template(template::AbstractArray, optic)
+    return if _is_multiindex(template, optic.ix...; optic.kw...) ||
+        isassigned(template, optic.ix...; optic.kw...)
+        index_template(template, optic)
+    else
+        NoTemplate()
+    end
 end
 unwrap_template(template::PartialArray) = template.data
 unwrap_template(template::PartialTuple) = template.data
@@ -237,6 +256,12 @@ function index_template(template::PartialArray, optic)
     else
         index_template(template.data, optic)
     end
+end
+function index_template(template::NestedTemplate{<:AbstractPPL.Index}, optic)
+    template.path.child isa AbstractPPL.Iden && return SkipTemplate{1}(template.inner)
+    return nested_template(
+        template.path.child, maybe_index_template(template.outer, optic), template.inner
+    )
 end
 
 function _setindex_optic!!(
@@ -266,7 +291,7 @@ function _setindex_optic!!(
                 !isassigned(template, coptic.ix...; coptic.kw...)
                 NoTemplate()
             else
-                index_template(template, coptic)
+                maybe_index_template(value, template, coptic)
             end
 
         # TODO(penelopeysm): This check to haskey() will check *all* the indices, it only
@@ -426,7 +451,9 @@ end
 function make_leaf(
     value,
     optic::AbstractPPL.Index,
-    template::Union{AbstractArray,PartialArray,NoTemplate,SkipTemplate,Missing},
+    template::Union{
+        AbstractArray,PartialArray,NoTemplate,SkipTemplate,Missing,NestedTemplate
+    },
 )
     # First we need to resolve any dynamic indices, since _is_multiindex doesn't work with
     # them. This also helpfully catches errors if there is a dynamic index and a suitable
@@ -439,6 +466,16 @@ function make_leaf(
     end
 end
 function make_leaf(value, optic::AbstractPPL.Index, template::Union{Tuple,PartialTuple})
+    return make_leaf_tuple(value, optic, template)
+end
+function make_leaf(
+    value,
+    optic::AbstractPPL.Index,
+    template::NestedTemplate{<:AbstractPPL.AbstractOptic,<:Union{Tuple,PartialTuple}},
+)
+    return make_leaf_tuple(value, optic, template)
+end
+function make_leaf_tuple(value, optic, template)
     slots = unwrap_template(template)
     coptic = _tuple_index(optic, slots)
     i = only(coptic.ix)
@@ -463,7 +500,7 @@ function make_sub_value(value, coptic::AbstractPPL.Index, template)
     return if coptic.child isa AbstractPPL.Iden
         value
     else
-        child_template = index_template(template, coptic)
+        child_template = maybe_index_template(value, template, coptic)
         make_leaf(value, coptic.child, child_template)
     end
 end

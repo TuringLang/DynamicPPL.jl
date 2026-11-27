@@ -38,6 +38,17 @@ function Mooncake.rrule!!(
     return output, pullback
 end
 
+# These binding checks use try/catch and return no differentiable data.
+Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
+    typeof(DynamicPPL._check_nested_selection),Vararg
+}
+Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
+    typeof(DynamicPPL._selection_indices),Vararg
+}
+Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
+    typeof(DynamicPPL._check_selection_shape),Vararg
+}
+
 # These are purely optimisations (although quite significant ones sometimes, especially for
 # _get_range_and_transform).
 Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{typeof(is_transformed),Vararg}
@@ -52,6 +63,23 @@ Mooncake.@zero_derivative Mooncake.MinimalCtx Tuple{
 }
 Mooncake.@zero_derivative Mooncake.MinimalCtx Tuple{
     typeof(Core.kwcall),NamedTuple,typeof(DynamicPPL.to_distribution),AbstractString
+}
+
+Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
+    typeof(DynamicPPL._check_argument_aliasing),DynamicPPL.Model
+}
+Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
+    typeof(DynamicPPL._argument_role),Vararg
+}
+# Julia 1.11 coverage crashes compiling this reverse rule; remove when compilation is fixed.
+# The Bool depends only on binding structure, so its derivative is zero.
+Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
+    typeof(DynamicPPL._can_create_argument_field),Vararg
+}
+Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{typeof(DynamicPPL._same_shape),Vararg}
+
+Mooncake.@zero_derivative Mooncake.DefaultCtx Tuple{
+    Union{typeof(DynamicPPL.is_splat_symbol),typeof(DynamicPPL.unsplat_symbol)},Symbol
 }
 
 using DynamicPPL: @model, LinkAll, getlogjoint_internal, LogDensityFunction

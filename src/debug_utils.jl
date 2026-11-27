@@ -344,18 +344,30 @@ Generate the evaluator call and the types of the arguments.
 
 # Returns
 A 2-tuple with the following elements:
-- `f`: This is either `model.f` or `Core.kwcall`, depending on whether
-    the model has keyword arguments.
+- `f`: The model body function, or `Core.kwcall` when keyword arguments are passed.
+    For `@model` evaluators with argument LHS variables, the inner body receives
+    prepared arguments positionally.
 - `argtypes::Type{<:Tuple}`: The types of the arguments for the evaluator.
 """
 function gen_evaluator_call_with_types(
     model::Model, varinfo::AbstractVarInfo=VarInfo(model)
 )
-    args, kwargs = DynamicPPL.make_evaluate_args_and_kwargs(model, varinfo)
+    strategy =
+        if !DynamicPPL.hasacc(varinfo, Val(DynamicPPL.VECTORVAL_ACCNAME)) ||
+            isempty(varinfo)
+            InitFromPrior()
+        else
+            InitFromParams(get_values(varinfo), nothing)
+        end
+    context = InitContext(strategy, UnlinkAll())
+    args, kwargs = DynamicPPL.make_evaluate_args_and_kwargs(
+        setleafcontext(model, context), varinfo
+    )
+    f, args, kwargs = DynamicPPL._model_evaluator(model.f, args, kwargs)
     return if isempty(kwargs)
-        (model.f, Base.typesof(args...))
+        (f, Base.typesof(args...))
     else
-        (Core.kwcall, Tuple{typeof(kwargs),Core.Typeof(model.f),map(Core.Typeof, args)...})
+        (Core.kwcall, Tuple{typeof(kwargs),Core.Typeof(f),map(Core.Typeof, args)...})
     end
 end
 

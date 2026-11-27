@@ -71,23 +71,23 @@ end
     return Base.maybeview(object, indices.ix...; indices.kw...)
 end
 
-@inline function _set_tilde_path(object, value, optic, vn)
+@inline function _set_tilde_path(object, value, optic, vn; create)
     tail = AbstractPPL.otail(optic)
     if tail isa AbstractPPL.Iden
-        new = _set_optic!!(object, value, optic)
+        new = _set_optic!!(object, value, optic, vn; create)
         object === new || _tilde_container_error(object, new, vn)
     else
         head = AbstractPPL.ohead(optic)
         child = _tilde_child(object, head)
-        _set_tilde_path(child, value, tail, vn)
+        _set_tilde_path(child, value, tail, vn; create)
         new_child = _tilde_child(object, head)
         child === new_child || _tilde_container_error(child, new_child, vn)
     end
     return object
 end
 
-function set_tilde_value!!(::ThreadSafeVarInfo, object, value, vn::VarName)
-    return _set_tilde_path(object, value, AbstractPPL.getoptic(vn), vn)
+function set_tilde_value!!(::ThreadSafeVarInfo, object, value, vn::VarName; create=false)
+    return _set_tilde_path(object, value, AbstractPPL.getoptic(vn), vn; create)
 end
 
 function _get_task_accs_cache(vi::ThreadSafeVarInfo{V,L}) where {V,L}

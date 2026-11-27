@@ -195,6 +195,13 @@ struct PartialArray{
         if size(data) != size(mask)
             throw(ArgumentError("Data and mask arrays must have the same size"))
         end
+        # Empty PartialArray storage needs an inhabited element type for recursive
+        # return-type queries on Julia 1.10.
+        if ElType === Union{}
+            any(mask) &&
+                throw(ArgumentError("Bottom-typed storage cannot contain assigned values"))
+            return PartialArray(similar(data, Any), mask)
+        end
         return new{ElType,N,typeof(data),typeof(mask)}(data, mask)
     end
 end
@@ -316,6 +323,7 @@ Concretise the element type of a `PartialArray`.
 
 Returns a new `PartialArray` with the same data and mask as `pa`, but with its element type
 concretised to the most specific type that can hold all currently defined elements.
+Empty storage retains its element type.
 
 Note that this function is fundamentally type unstable if the current element type of `pa`
 is not already concrete.
@@ -327,16 +335,19 @@ function _concretise_eltype!!(pa::PartialArray)
     if isconcretetype(eltype(pa))
         return pa
     end
-    # We could use promote_type here, instead of typejoin. However, that would e.g.
-    # cause Ints to be converted to Float64s, since
-    # promote_type(Int, Float64) == Float64, which can cause problems. See
-    # https://github.com/TuringLang/DynamicPPL.jl/pull/1098#discussion_r2472636188.
-    # Base.promote_typejoin would be like typejoin, but creates Unions out of Nothing
-    # and Missing, rather than falling back on Any. However, it's not exported.
-    new_et = typejoin((typeof(pa.data[i]) for i in eachindex(pa.mask) if pa.mask[i])...)
+    new_et = Union{}
+    for i in eachindex(pa.mask)
+        pa.mask[i] || continue
+        element_type = typeof(pa.data[i])
+        element_type <: new_et && continue
+        # `typejoin` preserves heterogeneous values without numeric conversion.
+        new_et = typejoin(new_et, element_type)
+        # The join cannot change once it reaches the storage element type.
+        new_et === eltype(pa) && break
+    end
     # TODO(mhauru) Should we check as below, or rather isconcretetype(new_et)?
     # In other words, does it help to be more concrete, even if we aren't fully concrete?
-    if new_et === eltype(pa)
+    if new_et === Union{} || new_et === eltype(pa)
         # The types of the elements do not allow for concretisation.
         return pa
     end
