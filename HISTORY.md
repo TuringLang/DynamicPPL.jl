@@ -52,7 +52,7 @@ Known binding costs: in a model with 20 child calls, binding every child variabl
 
 An array whose elements hold both observed and fixed values dispatches dynamically: 100 element tildes take about 80 µs and 1,600 allocations, against 0.4 µs when one role binds the array ([#1551](https://github.com/TuringLang/DynamicPPL.jl/pull/1551)).
 
-Mooncake cannot differentiate a loop over a tuple argument with `missing` entries; it throws a `MethodError` for `increment!!`, as before this release. Use an array argument or unroll the loop ([#1551](https://github.com/TuringLang/DynamicPPL.jl/pull/1551)).
+On Julia 1.11 and later, Mooncake cannot differentiate a loop over a tuple argument with `missing` entries; it throws a `MethodError` for `increment!!`, as before this release. Use an array argument or unroll the loop ([#1551](https://github.com/TuringLang/DynamicPPL.jl/pull/1551)).
 
 `LogDensityFunction` evaluation with a half-missing vector of 1,000 two-element vectors is linear but takes about 400 µs versus 220 µs previously (1.8×), owing to argument reconstruction and shape checks ([#1551](https://github.com/TuringLang/DynamicPPL.jl/pull/1551)).
 

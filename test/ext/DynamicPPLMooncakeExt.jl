@@ -70,9 +70,10 @@ end
     end
 
     @testset "loop over a tuple argument with missing entries" begin
-        # Gradient preparation already fails, with a `MethodError` for `increment!!`.
+        # On Julia 1.11 and later, gradient preparation throws a `MethodError` for `increment!!`.
         model = tuple_loop((missing, missing))
-        @test_broken LogDensityFunction(model; adtype=AutoMooncake()) isa LogDensityFunction
+        @test LogDensityFunction(model; adtype=AutoMooncake()) isa LogDensityFunction broken =
+            VERSION >= v"1.11"
     end
 end
 
