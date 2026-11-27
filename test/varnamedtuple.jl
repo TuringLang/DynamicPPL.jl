@@ -2017,6 +2017,17 @@ end
         @test @inferred(getindex(vnt, @varname(y.z[3, 2:3, 3, 2:3, 4]))) == val
     end
 
+    @testset "VarNamedTuple stored over a slice" begin
+        vnt = templated_setindex!!(
+            VarNamedTuple(),
+            VarNamedTuple(; a=[1.0]),
+            @varname(z[1:2]),
+            fill(VarNamedTuple(), 3),
+        )
+        @test keys(vnt) == [@varname(z[1:2].a)]
+        test_invariants(vnt)
+    end
+
     @testset "map and friends" begin
         vnt = VarNamedTuple()
         vnt = @inferred(setindex!!(vnt, 1, @varname(a)))
@@ -2306,6 +2317,15 @@ end
             expected_vnt = templated_setindex!!(expected_vnt, 1.0, @varname(c[1]), zeros(4))
             expected_vnt = templated_setindex!!(expected_vnt, 2.0, @varname(c[2]), zeros(4))
             @test vnt == expected_vnt
+        end
+
+        @testset "type templates" begin
+            vnt = @vnt begin
+                @template y = AbstractPPL.of(Array, 3)
+                y[2] := 1.0
+            end
+            expected = templated_setindex!!(VarNamedTuple(), 1.0, @varname(y[2]), zeros(3))
+            @test vnt == expected
         end
     end
 

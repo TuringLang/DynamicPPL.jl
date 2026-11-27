@@ -133,12 +133,15 @@ templated_setindex!!(vnt, 10, @varname(x[1]), rand(2, 2))
 ```
 
 Here, `rand(2, 2)` is the template for the top-level symbol `x`, which tells `setindex!!`
-that `x` should be a `PartialArray` that is backed by a matrix.
+that `x` should be a `PartialArray` that is backed by a matrix. An `AbstractPPL.of` type
+template, such as `of(Array, 2, 2)`, is materialised with `zero` and used in the same way.
 
 The actual data inside `template` is not needed, and `template` is never mutated by this
 call.
 """
 function templated_setindex!!(vnt::VarNamedTuple, value, vn::VarName, template)
+    # TODO: unify `OfType` templates and `VarNamedTuple`.
+    template isa Type{<:AbstractPPL.OfType} && (template = zero(template))
     return _setindex_optic!!(
         vnt, value, AbstractPPL.varname_to_optic(vn), SkipTemplate{1}(template), AllowAll()
     )

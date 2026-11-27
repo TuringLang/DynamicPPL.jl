@@ -116,7 +116,8 @@ function _haskey_optic(pa::PartialArray, optic::AbstractPPL.Index, orig_vn=@varn
     # recurse if necessary
     return if optic.child isa AbstractPPL.Iden
         true
-    elseif _is_multiindex(pa, coptic.ix...; coptic.kw...)
+    elseif _is_multiindex(pa, coptic.ix...; coptic.kw...) &&
+        optic.child isa AbstractPPL.Index
         _haskey_optic(
             _subset_partialarray(pa, coptic.ix...; coptic.kw...), optic.child, orig_vn
         )
